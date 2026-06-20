@@ -62,7 +62,7 @@ struct ContentView: View {
         .task(id: selectedPhoto?.itemIdentifier) {
             await loadSelectedAvatar()
         }
-        .onChange(of: screen) { newScreen in
+        .onChange(of: screen) { _, newScreen in
             if newScreen != .play {
                 webSocketTask?.cancel(with: .normalClosure, reason: nil)
                 webSocketTask = nil
@@ -263,30 +263,21 @@ struct ContentView: View {
         webSocketTask = task
         task.resume()
 
-        listenWebSocket(task: task, gameId: gameId)
         status = "Connected (real-time)"
+
+        Task {
+            await listenWebSocket(task: task, gameId: gameId)
+        }
     }
 
-    private func listenWebSocket(task: URLSessionWebSocketTask, gameId: String) {
-        task.receive { [weak self] result in
-            guard let self = self else { return }
-            switch result {
-            case .failure(let error):
-                print("WebSocket receive error: \(error.localizedDescription)")
-                DispatchQueue.main.async {
-                    if self.screen == .play && self.webSocketTask === task {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                            if self.screen == .play && self.webSocketTask === task {
-                                self.startWebSocket(gameId: gameId)
-                            }
-                        }
-                    }
-                }
-            case .success(let message):
+    private func listenWebSocket(task: URLSessionWebSocketTask, gameId: String) async {
+        while !Task.isCancelled {
+            do {
+                let message = try await task.receive()
                 switch message {
                 case .string(let text):
                     if let data = text.data(using: .utf8) {
-                        DispatchQueue.main.async {
+                        await MainActor.run {
                             do {
                                 let nextSnapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: data)
                                 self.snapshot = nextSnapshot
@@ -297,7 +288,7 @@ struct ContentView: View {
                         }
                     }
                 case .data(let data):
-                    DispatchQueue.main.async {
+                    await MainActor.run {
                         do {
                             let nextSnapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: data)
                             self.snapshot = nextSnapshot
@@ -309,8 +300,15 @@ struct ContentView: View {
                 @unknown default:
                     break
                 }
-
-                self.listenWebSocket(task: task, gameId: gameId)
+            } catch {
+                print("WebSocket receive error: \(error.localizedDescription)")
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if self.screen == .play && self.webSocketTask === task {
+                    await MainActor.run {
+                        self.startWebSocket(gameId: gameId)
+                    }
+                }
+                break
             }
         }
     }
