@@ -197,10 +197,19 @@ export function createCommanderGame(state, config) {
     );
   }
 
-  drawOpeningHands(snapshot, 7);
   if (config.simulatorPreset === "arena-battlefield") {
+    drawOpeningHands(snapshot, 7);
     seedArenaBattlefield(snapshot, config.humanPlayerId, config.aiPlayers?.[0]?.playerId);
+    snapshot.phase = "beginning";
+    snapshot.step = "untap";
+    snapshot.turn = 1;
+    snapshot.promptText = "Your priority";
+  } else {
+    snapshot.phase = "setup";
+    snapshot.step = "choose_starting_player";
+    snapshot.promptText = "Choose starting player";
   }
+
   snapshot.legalActions = getLegalActions(snapshot, config.humanPlayerId);
   snapshot.engineHealth = getHealth();
   return snapshot;
@@ -211,13 +220,13 @@ export function createGame(state, roomId, playerIds) {
   const snapshot = {
     id: gameId,
     roomId,
-    phase: "beginning",
-    step: "untap",
+    phase: "setup",
+    step: "choose_starting_player",
     turn: 1,
     activePlayerId: playerIds[0],
     priorityPlayerId: playerIds[0],
     waitingOnPlayerId: playerIds[0],
-    promptText: "Your priority",
+    promptText: "Choose starting player",
     players: playerIds.map((playerId) => createPlayer(playerId, playerIds)),
     log: [logEntry(0, `Gateway game ${gameId} created`)],
     legalActions: [],
@@ -280,6 +289,36 @@ function isBridgeSnapshot(snapshot) {
 
 export function applyCommand(snapshot, command) {
   lastAiProgressAt = Date.now();
+
+  if (command.type === "resolve_choice") {
+    const chosenPlayerId = command.choiceIds?.[0] ?? command.playerId;
+    snapshot.activePlayerId = chosenPlayerId;
+    snapshot.priorityPlayerId = "human";
+    snapshot.waitingOnPlayerId = "human";
+    drawOpeningHands(snapshot, 7);
+    snapshot.step = "mulligan";
+    snapshot.promptText = "Mulligan decision (Hand size: 7)";
+    snapshot.log.push(logEntry(snapshot.log.length, `${chosenPlayerId} was chosen to start the game`));
+  }
+
+  if (command.type === "keep_hand") {
+    snapshot.phase = "beginning";
+    snapshot.step = "untap";
+    snapshot.turn = 1;
+    snapshot.priorityPlayerId = snapshot.activePlayerId;
+    snapshot.waitingOnPlayerId = snapshot.activePlayerId;
+    snapshot.promptText = snapshot.priorityPlayerId === "human" ? "Your priority" : "Waiting for AI";
+    snapshot.log.push(logEntry(snapshot.log.length, `${command.playerId} kept hand`));
+  }
+
+  if (command.type === "mulligan") {
+    const player = findPlayer(snapshot, command.playerId);
+    player.zones.library.push(...player.zones.hand);
+    player.zones.hand = [];
+    player.zones.library.reverse();
+    drawOpeningHands(snapshot, 7);
+    snapshot.log.push(logEntry(snapshot.log.length, `${command.playerId} mulliganed and drew 7 cards`));
+  }
 
   if (command.type === "play_land") {
     const player = findPlayer(snapshot, command.playerId);
@@ -361,6 +400,65 @@ export function applyCommand(snapshot, command) {
 function getLegalActions(snapshot, playerId) {
   const player = snapshot.players.find((candidate) => candidate.playerId === playerId);
   if (!player) return [];
+
+  if (snapshot.phase === "setup") {
+    if (snapshot.step === "choose_starting_player") {
+      const aiPlayerId = snapshot.players.find((p) => p.playerId !== playerId)?.playerId ?? "ai-1";
+      return [
+        {
+          id: `${playerId}-choose-human-starts`,
+          type: "resolve_choice",
+          playerId,
+          label: "You start",
+          shortLabel: "You start",
+          targetIds: [playerId],
+          isPrimary: true
+        },
+        {
+          id: `${playerId}-choose-ai-starts`,
+          type: "resolve_choice",
+          playerId,
+          label: "AI starts",
+          shortLabel: "AI starts",
+          targetIds: [aiPlayerId]
+        },
+        {
+          id: `${playerId}-concede`,
+          type: "concede",
+          playerId,
+          label: "Concede",
+          shortLabel: "Concede"
+        }
+      ];
+    }
+
+    if (snapshot.step === "mulligan") {
+      return [
+        {
+          id: `${playerId}-keep`,
+          type: "keep_hand",
+          playerId,
+          label: "Keep Hand",
+          shortLabel: "Keep",
+          isPrimary: true
+        },
+        {
+          id: `${playerId}-mulligan`,
+          type: "mulligan",
+          playerId,
+          label: "Mulligan",
+          shortLabel: "Mulligan"
+        },
+        {
+          id: `${playerId}-concede`,
+          type: "concede",
+          playerId,
+          label: "Concede",
+          shortLabel: "Concede"
+        }
+      ];
+    }
+  }
 
   const firstHandCard = player.zones.hand[0];
   const actions = [

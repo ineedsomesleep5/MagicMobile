@@ -29,7 +29,7 @@ describe("xmage gateway", () => {
 
   it("creates a Commander game with a human and AI seat", () => {
     const state = new Map();
-    const snapshot = createCommanderGame(state, {
+    let snapshot = createCommanderGame(state, {
       roomId: "room-1",
       humanPlayerId: "human",
       humanDeck: deck,
@@ -40,8 +40,33 @@ describe("xmage gateway", () => {
 
     assert.equal(snapshot.players.length, 2);
     assert.equal(snapshot.players[0].zones.command[0].card.name, "Ezuri, Claw of Progress");
+    assert.equal(snapshot.players[0].zones.hand.length, 0);
+    assert.equal(snapshot.phase, "setup");
+    assert.equal(snapshot.step, "choose_starting_player");
+    assert.equal(snapshot.legalActions.some((action) => action.type === "resolve_choice"), true);
+
+    snapshot = applyCommand(snapshot, {
+      type: "resolve_choice",
+      gameId: snapshot.id,
+      playerId: "human",
+      choiceIds: ["human"]
+    });
+
+    assert.equal(snapshot.step, "mulligan");
     assert.equal(snapshot.players[0].zones.hand.length, 7);
-    assert.equal(snapshot.legalActions.some((action) => action.type === "cast_spell"), true);
+    assert.equal(snapshot.legalActions.some((action) => action.type === "keep_hand"), true);
+
+    snapshot = applyCommand(snapshot, {
+      type: "keep_hand",
+      gameId: snapshot.id,
+      playerId: "human"
+    });
+
+    assert.equal(snapshot.phase, "beginning");
+    assert.equal(snapshot.step, "untap");
+    assert.equal(snapshot.turn, 1);
+    assert.equal(snapshot.players[0].zones.hand.length, 7);
+    assert.equal(snapshot.legalActions.some((action) => action.type === "play_land" || action.type === "cast_spell"), true);
     assert.equal(state.has(snapshot.id), true);
   });
 

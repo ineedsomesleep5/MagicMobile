@@ -671,12 +671,12 @@ struct NativeGameView: View {
                         .position(x: metrics.playCenterX, y: metrics.handY)
 
                     PlayerHeroHUD(name: "Noaddrag", player: opponent, avatarData: nil, active: snapshot.activePlayerId == opponent.playerId)
-                        .frame(width: min(metrics.playWidth * 0.58, 410), height: 52)
-                        .position(x: metrics.playCenterX, y: metrics.topHUDY)
+                        .frame(width: metrics.hudWidth, height: 48)
+                        .position(x: metrics.opponentHUDX, y: metrics.topHUDY)
 
                     PlayerHeroHUD(name: "TabletopPolish", player: human, avatarData: avatarData, active: true, compact: true)
-                        .frame(width: min(metrics.playWidth * 0.50, 360), height: 48)
-                        .position(x: metrics.playCenterX, y: metrics.bottomHUDY)
+                        .frame(width: metrics.hudWidth, height: 48)
+                        .position(x: metrics.playerHUDX, y: metrics.bottomHUDY)
 
                     VStack(spacing: 8) {
                         CompactPhaseRail(snapshot: snapshot)
@@ -768,12 +768,24 @@ struct BattlefieldLayoutMetrics {
         max(safeArea.top + 104, 104)
     }
 
+    var hudWidth: CGFloat {
+        min(playWidth * 0.42, 250)
+    }
+
+    var opponentHUDX: CGFloat {
+        leftInset + hudWidth / 2
+    }
+
+    var playerHUDX: CGFloat {
+        leftInset + hudWidth / 2
+    }
+
     var topHUDY: CGFloat {
         max(safeArea.top + 28, 28)
     }
 
     var bottomHUDY: CGFloat {
-        size.height - max(safeArea.bottom + handFrameHeight + 10, handFrameHeight + 12)
+        size.height - safeArea.bottom - 32
     }
 
     var opponentRowY: CGFloat {
@@ -793,7 +805,7 @@ struct BattlefieldLayoutMetrics {
     }
 
     var actionY: CGFloat {
-        size.height - max(safeArea.bottom + handFrameHeight + 46, handFrameHeight + 48)
+        size.height - safeArea.bottom - 80
     }
 
     var actionDockWidth: CGFloat {
@@ -801,7 +813,7 @@ struct BattlefieldLayoutMetrics {
     }
 
     var actionDockX: CGFloat {
-        min(size.width - rightInset - actionDockWidth / 2, playCenterX + playWidth / 2 - actionDockWidth / 2)
+        size.width - safeArea.trailing - actionDockWidth / 2 - 16
     }
 
     var inspectorX: CGFloat {

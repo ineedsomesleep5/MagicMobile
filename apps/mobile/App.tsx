@@ -806,7 +806,7 @@ const styles = StyleSheet.create({
   battlefieldDivider: { height: 2, backgroundColor: "rgba(255,180,93,0.12)", marginHorizontal: 20, marginVertical: 4 },
   hudOverlay: { position: "absolute", inset: 0, justifyContent: "space-between", padding: 8 },
   
-  opponentAvatarWrap: { position: "absolute", top: 8, left: "50%", transform: [{ translateX: -120 }], flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(10,15,15,0.85)", paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: "rgba(255,180,93,0.3)" },
+  opponentAvatarWrap: { position: "absolute", top: 8, left: 12, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(10,15,15,0.85)", paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: "rgba(255,180,93,0.3)" },
   humanAvatarWrap: { position: "absolute", bottom: 8, left: 12, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(10,15,15,0.85)", paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: "rgba(53,199,255,0.3)" },
   avatarLabelWrap: {},
   circularAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#1d2328", borderWidth: 2, borderColor: "#fff2d8", justifyContent: "center", alignItems: "center" },
