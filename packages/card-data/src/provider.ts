@@ -1,4 +1,5 @@
-import type { CardDataProvider } from "@magicmobile/shared";
+import type { CardCacheMetadata, CardDataProvider } from "@magicmobile/shared";
+import { readScryfallCacheMetadata } from "./cache";
 import type { MagicMobileCard } from "./models";
 import { seedCards } from "./seed";
 
@@ -23,5 +24,14 @@ export class SeedCardDataProvider implements CardDataProvider {
 
   async getSeedCards(): Promise<MagicMobileCard[]> {
     return [...this.cards];
+  }
+
+  async getCacheMetadata(): Promise<CardCacheMetadata> {
+    const metadata = await readScryfallCacheMetadata();
+    if (metadata.status !== "empty") {
+      return metadata;
+    }
+
+    return { ...metadata, cardCount: this.cards.length, missingImageCount: this.cards.length };
   }
 }

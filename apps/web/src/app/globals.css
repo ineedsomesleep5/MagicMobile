@@ -310,8 +310,9 @@ body:has(.deck-builder-screen) .content {
   position: relative;
   display: grid;
   min-width: 980px;
-  min-height: 100vh;
-  grid-template-rows: auto minmax(34rem, 1fr) auto;
+  height: 100vh;
+  min-height: 42rem;
+  grid-template-rows: minmax(5.5rem, auto) minmax(0, 1fr) minmax(5.75rem, auto);
   overflow: hidden;
   color: #f6f0df;
   background:
@@ -365,6 +366,14 @@ body:has(.deck-builder-screen) .content {
   text-transform: uppercase;
 }
 
+.arena-status small {
+  max-width: 22rem;
+  color: rgba(246, 240, 223, 0.58);
+  font-size: 0.72rem;
+  font-weight: 750;
+  text-align: center;
+}
+
 .arena-status span,
 .arena-player-badge span,
 .arena-action-rail span {
@@ -411,6 +420,52 @@ body:has(.deck-builder-screen) .content {
   align-content: center;
   gap: 0.6rem;
   padding: 0 2rem;
+}
+
+.three-battlefield {
+  position: relative;
+  z-index: 1;
+  min-height: 0;
+  height: 100%;
+  margin: 0 2rem;
+  overflow: hidden;
+  border: 1px solid rgba(214, 201, 170, 0.14);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 20% 92%, rgba(53, 199, 255, 0.28), transparent 22%),
+    radial-gradient(circle at 86% 90%, rgba(255, 103, 28, 0.28), transparent 20%),
+    rgba(6, 10, 11, 0.72);
+  box-shadow: inset 0 0 7rem rgba(0, 0, 0, 0.44);
+}
+
+.three-battlefield-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.three-battlefield-overlay {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  left: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid rgba(246, 240, 223, 0.14);
+  border-radius: 999px;
+  padding: 0.55rem 0.9rem;
+  color: rgba(246, 240, 223, 0.78);
+  background: rgba(5, 8, 9, 0.68);
+  font-size: 0.85rem;
+  font-weight: 850;
+  pointer-events: none;
+}
+
+.three-battlefield-overlay strong {
+  color: #ffb45d;
+  text-transform: uppercase;
 }
 
 .arena-zone-row,
@@ -554,6 +609,72 @@ body:has(.deck-builder-screen) .content {
   padding: 0.5rem 0.8rem;
   background: rgba(246, 240, 223, 0.14);
   box-shadow: none;
+}
+
+@media (max-height: 600px) {
+  .arena-screen {
+    min-width: 100vw;
+    min-height: 100vh;
+    grid-template-rows: 4.35rem minmax(0, calc(100vh - 8.75rem)) 4.4rem;
+  }
+
+  .arena-top-hud,
+  .arena-bottom-hud {
+    padding: 0.55rem 0.8rem;
+    overflow: hidden;
+  }
+
+  .arena-status {
+    padding: 0.45rem 0.75rem;
+  }
+
+  .arena-status small {
+    display: none;
+  }
+
+  .arena-player-badge {
+    min-width: 8rem;
+    grid-template-columns: 2.8rem auto;
+  }
+
+  .arena-player-badge strong {
+    width: 2.6rem;
+    height: 2.6rem;
+    font-size: 1rem;
+  }
+
+  .three-battlefield {
+    margin: 0 0.75rem;
+  }
+
+  .arena-action-rail button {
+    padding: 0.5rem 0.9rem;
+    font-size: 0.86rem;
+  }
+
+  .arena-action-rail {
+    min-width: 0;
+    grid-auto-flow: column;
+    grid-template-columns: auto auto;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .arena-action-rail span {
+    display: none;
+  }
+
+  .arena-action-rail div button {
+    padding: 0.42rem 0.65rem;
+  }
+
+  .three-battlefield-overlay {
+    right: 0.55rem;
+    bottom: 0.45rem;
+    left: 0.55rem;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.72rem;
+  }
 }
 
 .deck-builder-screen {

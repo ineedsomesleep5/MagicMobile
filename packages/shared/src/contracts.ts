@@ -1,12 +1,17 @@
 import type {
   BracketScore,
+  CardCacheMetadata,
   CardIdentity,
+  CommanderGameConfig,
   DeckEntry,
   DeckList,
   DeckStats,
+  EngineHealth,
   GameId,
+  GameCommand,
   GameSnapshot,
   HybridAction,
+  LegalAction,
   PlayerId,
   RoomId,
   RoomState,
@@ -14,6 +19,7 @@ import type {
 } from "./types";
 
 export interface EngineAdapter {
+  createCommanderGame(input: CommanderGameConfig): Promise<GameSnapshot>;
   createGame(input: { roomId: RoomId; playerIds: PlayerId[] }): Promise<GameSnapshot>;
   joinGame(input: { gameId: GameId; playerId: PlayerId }): Promise<GameSnapshot>;
   loadDeck(input: { gameId: GameId; playerId: PlayerId; deck: DeckList }): Promise<GameSnapshot>;
@@ -22,6 +28,9 @@ export interface EngineAdapter {
   applyHybridAction(input: { gameId: GameId; action: HybridAction }): Promise<GameSnapshot>;
   passPriority(input: { gameId: GameId; playerId: PlayerId }): Promise<GameSnapshot>;
   advancePhase(input: { gameId: GameId }): Promise<GameSnapshot>;
+  submitGameCommand(input: GameCommand): Promise<GameSnapshot>;
+  getLegalActions(input: { gameId: GameId; playerId: PlayerId }): Promise<LegalAction[]>;
+  getHealth(): Promise<EngineHealth>;
   getSnapshot(gameId: GameId): Promise<GameSnapshot>;
 }
 
@@ -63,6 +72,7 @@ export interface CardDataProvider {
   searchCards(query: string): Promise<CardIdentity[]>;
   getCardByName(name: string): Promise<CardIdentity | undefined>;
   getSeedCards(): Promise<CardIdentity[]>;
+  getCacheMetadata(): Promise<CardCacheMetadata>;
 }
 
 export interface RoomService {

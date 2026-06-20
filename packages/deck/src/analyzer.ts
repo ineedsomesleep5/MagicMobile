@@ -88,12 +88,17 @@ export class CommanderDeckAnalyzer implements DeckAnalyzer {
     const errors: string[] = [];
     const cardMap = buildCardMap(input.cards);
     const entries = activeEntries(input.deck);
+    const commanderEntries = entries.filter((entry) => entry.section === "commander");
     const commanderEntry = input.deck.commander ?? entries.find((entry) => entry.section === "commander");
     const commanderCard = commanderEntry ? cardMap.get(normalizeName(commanderEntry.cardName)) : undefined;
     const totalCards = entries.reduce((sum, entry) => sum + entry.quantity, 0);
 
     if (totalCards !== 100) {
       errors.push("Commander decks must contain exactly 100 cards including the commander.");
+    }
+
+    if (commanderEntries.reduce((sum, entry) => sum + entry.quantity, 0) !== 1) {
+      errors.push("Commander decks must contain exactly one commander.");
     }
 
     if (!commanderEntry || !commanderCard) {

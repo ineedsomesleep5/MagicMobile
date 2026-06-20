@@ -11,6 +11,7 @@ apps/
   web/             Next.js web app and API routes
   mobile/          Expo iOS/mobile scaffold
   engine-worker/   Future isolated game-engine worker
+  xmage-gateway/   Local XMage-facing HTTP gateway and simulator boundary
 packages/
   shared/          Cross-app contracts and shared types
   card-data/       Card data provider and Scryfall sync boundary
@@ -42,18 +43,21 @@ docs/
 External systems are isolated behind provider interfaces:
 
 - `EngineAdapter`: mock engine now, XMage worker later.
+- `XmageEngineAdapter`: HTTP adapter for the isolated gateway.
 - `VideoProvider`: mock sessions now, LiveKit later.
 - `RecommendationProvider`: mock/local synergy now, approved EDHREC integration later.
 - `DeckParser` and `DeckAnalyzer`: local deterministic deck features.
 - `CardDataProvider`: seed data now, Scryfall bulk sync later.
 
-## XMage Integration TODO Map
+## XMage Integration Map
 
 - Keep UI and app routes typed against `EngineAdapter`, not XMage classes.
-- Put XMage process/client code inside `apps/engine-worker`.
+- Put XMage process/client code behind `apps/xmage-gateway`.
 - Translate XMage state into `GameSnapshot` before returning across package boundaries.
 - Add adapter contract tests that replay create, join, load deck, priority, and phase flows.
 - Document setup and operational constraints in `docs/xmage-integration.md` when the worker exists.
+
+The first gateway milestone is a local HTTP simulator with the same route and snapshot shape that the Java XMage bridge will expose. This keeps Three.js, web, and mobile clients independent from XMage internals while local Docker and hosted deployments share one service boundary.
 
 ## Testing Strategy
 

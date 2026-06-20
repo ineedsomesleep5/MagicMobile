@@ -9,7 +9,8 @@ describe("PlayPage", () => {
 
     expect(html).toContain("Horizontal game battlefield");
     expect(html).toContain("real card images loaded from Scryfall");
-    expect(html).toContain("Growth Spiral card in hand");
+    expect(html).toContain("3D Commander battlefield");
+    expect(html).toContain("ready: Mock engine");
     expect(html).toContain("Next");
   });
 });

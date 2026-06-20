@@ -51,6 +51,32 @@ describe("CommanderDeckAnalyzer.validateCommander", () => {
     expect(errors).toContain("Sol Ring violates Commander singleton rules.");
     expect(errors).toContain("Lightning Bolt has color identity R outside the commander's color identity C.");
   });
+
+  it("rejects decks without exactly one commander", async () => {
+    const noCommander = validAtraxaDeck();
+    delete noCommander.commander;
+    noCommander.entries = noCommander.entries.filter((entry) => entry.section !== "commander");
+
+    const twoCommanders = validAtraxaDeck();
+    twoCommanders.entries[0] = entry("Atraxa, Praetors' Voice", 2, "commander");
+
+    await expect(analyzer.validateCommander({ deck: noCommander, cards: seedCards })).resolves.toContain(
+      "Commander decks must contain exactly one commander."
+    );
+    await expect(analyzer.validateCommander({ deck: twoCommanders, cards: seedCards })).resolves.toContain(
+      "Commander decks must contain exactly one commander."
+    );
+  });
+
+  it("rejects banned commanders", async () => {
+    const bannedCards = seedCards.map((card) =>
+      card.name === "Atraxa, Praetors' Voice" ? { ...card, legalities: { commander: "banned" as const } } : card
+    );
+
+    const errors = await analyzer.validateCommander({ deck: validAtraxaDeck(), cards: bannedCards });
+
+    expect(errors).toContain("Atraxa, Praetors' Voice is not legal as a Commander.");
+  });
 });
 
 describe("CommanderDeckAnalyzer.getStats", () => {

@@ -105,11 +105,57 @@ describe("EngineAdapter contract", () => {
     expect(reconnect.log.some((entry) => entry.message.includes("turn 2"))).toBe(true);
   });
 
-  it("exposes an XMage adapter stub without importing UI code", async () => {
-    const adapter: EngineAdapter = new XmageEngineAdapter({ endpoint: "http://xmage-worker.test" });
+  it("creates Commander games with AI seats and legal actions", async () => {
+    const adapter = new MockEngineAdapter();
+    const snapshot = await adapter.createCommanderGame({
+      roomId: "room-ai",
+      humanPlayerId: "human",
+      humanDeck: deck,
+      aiPlayers: [{ playerId: "ai-1", displayName: "AI Normal", difficulty: "normal", deck }],
+      startingLife: 40,
+      commanderDamageEnabled: true
+    });
 
-    await expect(adapter.createGame({ roomId: "room-3", playerIds: ["p1"] })).rejects.toThrow(
-      "XMage adapter is a stub"
+    expect(snapshot.players.map((player) => player.playerId)).toEqual(["human", "ai-1"]);
+    expect(snapshot.players[0]?.zones.hand).toHaveLength(7);
+    await expect(adapter.getLegalActions({ gameId: snapshot.id, playerId: "human" })).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "cast_spell" })])
     );
+    await expect(adapter.submitGameCommand({ type: "pass_priority", gameId: snapshot.id, playerId: "human" })).resolves.toMatchObject({
+      priorityPlayerId: "ai-1"
+    });
+    await expect(adapter.getHealth()).resolves.toMatchObject({ status: "ready" });
+  });
+
+  it("talks to the XMage gateway without importing UI code", async () => {
+    const fetchCalls: string[] = [];
+    const adapter: EngineAdapter = new XmageEngineAdapter({
+      endpoint: "http://xmage-worker.test",
+      fetchImpl: async (url, init) => {
+        fetchCalls.push(`${init?.method ?? "GET"} ${url}`);
+        return new Response(
+          JSON.stringify({
+            id: "gateway-game",
+            roomId: "room-3",
+            phase: "beginning",
+            turn: 1,
+            players: [],
+            log: [],
+            legalActions: [],
+            engineHealth: {
+              status: "ready",
+              reason: "test gateway",
+              checkedAt: new Date(0).toISOString()
+            }
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+    });
+
+    await expect(adapter.createGame({ roomId: "room-3", playerIds: ["p1"] })).resolves.toMatchObject({
+      id: "gateway-game"
+    });
+    expect(fetchCalls).toContain("POST http://xmage-worker.test/games");
   });
 });

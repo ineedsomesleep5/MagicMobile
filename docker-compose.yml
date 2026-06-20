@@ -1,4 +1,40 @@
 services:
+  web:
+    image: node:22-alpine
+    working_dir: /workspace
+    command: sh -lc "corepack enable && pnpm install --frozen-lockfile && pnpm dev"
+    environment:
+      XMAGE_GATEWAY_URL: http://xmage-gateway:17171
+      SCRYFALL_CACHE_DIR: /workspace/.cache/scryfall
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/workspace
+      - node-modules:/workspace/node_modules
+      - scryfall-cache:/workspace/.cache/scryfall
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      xmage-gateway:
+        condition: service_started
+
+  xmage-gateway:
+    image: node:22-alpine
+    working_dir: /workspace
+    command: node apps/xmage-gateway/server.mjs
+    environment:
+      PORT: 17171
+      SCRYFALL_CACHE_DIR: /workspace/.cache/scryfall
+      XMAGE_AI_STALL_MS: 45000
+    ports:
+      - "17171:17171"
+    volumes:
+      - .:/workspace
+      - scryfall-cache:/workspace/.cache/scryfall
+      - xmage-assets:/workspace/.cache/xmage
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -26,4 +62,7 @@ services:
       retries: 5
 
 volumes:
+  node-modules:
   postgres-data:
+  scryfall-cache:
+  xmage-assets:

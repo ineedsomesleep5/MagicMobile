@@ -1,3 +1,5 @@
+import { readCachedCardVisuals } from "@magicmobile/card-data";
+
 export interface VisualCard {
   name: string;
   typeLine: string;
@@ -51,6 +53,16 @@ export async function fetchCardVisuals(names: string[]): Promise<Map<string, Vis
     return new Map();
   }
 
+  const cached = await readCachedCardVisuals(uniqueNames);
+  if (cached.size === uniqueNames.length) {
+    return new Map(
+      uniqueNames.map((name) => {
+        const card = cached.get(name) ?? findCachedSplitCard(name, cached);
+        return [name, card ? mapCachedVisual(card) : missingCard(name)];
+      })
+    );
+  }
+
   try {
     const response = await fetch(SCRYFALL_COLLECTION_URL, {
       method: "POST",
@@ -81,6 +93,40 @@ export async function fetchCardVisuals(names: string[]): Promise<Map<string, Vis
   } catch {
     return new Map(uniqueNames.map((name) => [name, missingCard(name)]));
   }
+}
+
+function findCachedSplitCard(name: string, cards: Map<string, { name: string }>): { name: string } | undefined {
+  const target = normalize(name);
+  for (const [cardName, card] of cards) {
+    if (cardName.split("//").some((faceName) => normalize(faceName) === target)) {
+      return card;
+    }
+  }
+  return undefined;
+}
+
+function mapCachedVisual(card: {
+  name: string;
+  imageUrl?: string;
+  artCropUrl?: string;
+  typeLine?: string;
+  manaCost?: string;
+  manaValue?: number;
+  colors?: string[];
+}): VisualCard {
+  const visualCard: VisualCard = {
+    name: card.name,
+    typeLine: card.typeLine ?? "Magic card",
+    manaValue: card.manaValue ?? 0,
+    colors: card.colors ?? [],
+    source: card.imageUrl ? "scryfall" : "missing"
+  };
+
+  if (card.manaCost) visualCard.manaCost = card.manaCost;
+  if (card.imageUrl) visualCard.imageUrl = card.imageUrl;
+  if (card.artCropUrl) visualCard.artCropUrl = card.artCropUrl;
+
+  return visualCard;
 }
 
 function findSplitCard(name: string, cards: Map<string, VisualCard>): VisualCard | undefined {

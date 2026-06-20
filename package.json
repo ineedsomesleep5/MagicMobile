@@ -5,6 +5,7 @@
   "packageManager": "pnpm@10.12.4",
   "scripts": {
     "dev": "pnpm --filter @magicmobile/web dev",
+    "dev:xmage-gateway": "pnpm --filter @magicmobile/xmage-gateway dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",

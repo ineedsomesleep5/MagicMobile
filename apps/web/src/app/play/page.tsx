@@ -1,5 +1,6 @@
-import type { CSSProperties } from "react";
 import { fetchCardVisuals, type VisualCard } from "@/lib/scryfall-cards";
+import { createRuntimeEngineAdapter } from "@/lib/engine";
+import { ThreeBattlefield, type BattlefieldVisualCard } from "./ThreeBattlefield";
 
 const battlefield = {
   opponent: {
@@ -25,6 +26,8 @@ const battlefield = {
 };
 
 export default async function PlayPage() {
+  const engine = createRuntimeEngineAdapter();
+  const engineHealth = await engine.getHealth();
   const cardNames = [
     ...battlefield.opponent.lands,
     ...battlefield.opponent.creatures.map((card) => card.name),
@@ -34,6 +37,7 @@ export default async function PlayPage() {
   ];
   const visuals = await fetchCardVisuals(cardNames);
   const resolvedCount = Array.from(visuals.values()).filter((card) => card.source === "scryfall").length;
+  const threeCards = buildBattlefieldCards(visuals);
 
   return (
     <section className="arena-screen" aria-label="Horizontal game battlefield">
@@ -42,24 +46,14 @@ export default async function PlayPage() {
         <div className="arena-status">
           <strong>Combat</strong>
           <span>{resolvedCount}/{visuals.size} real card images loaded from Scryfall</span>
+          <small>{engineHealth.status}: {engineHealth.reason}</small>
         </div>
       </div>
 
-      <div className="arena-board">
-        <ZoneRow cards={battlefield.opponent.lands} visuals={visuals} zone="opponent lands" compact />
-        <CombatRow cards={battlefield.opponent.creatures} visuals={visuals} owner="opponent" />
-        <div className="arena-center-line">
-          <span>Stack clear</span>
-          <strong>Priority: TabletopPolish</strong>
-          <span>Turn 7</span>
-        </div>
-        <CombatRow cards={battlefield.player.creatures} visuals={visuals} owner="player" />
-        <ZoneRow cards={battlefield.player.lands} visuals={visuals} zone="your lands" compact />
-      </div>
+      <ThreeBattlefield cards={threeCards} activePlayerName={battlefield.player.name} phase="Combat" />
 
       <div className="arena-bottom-hud">
         <PlayerBadge name={battlefield.player.name} life={battlefield.player.life} active />
-        <HandFan cards={battlefield.player.hand} visuals={visuals} />
         <aside className="arena-action-rail" aria-label="Game actions">
           <button type="button">Next</button>
           <span>To Combat</span>
@@ -83,71 +77,43 @@ function PlayerBadge({ name, life, active = false }: { name: string; life: numbe
   );
 }
 
-function ZoneRow({
-  cards,
-  visuals,
-  zone,
-  compact = false
-}: {
-  cards: string[];
-  visuals: Map<string, VisualCard>;
-  zone: string;
-  compact?: boolean;
-}) {
-  return (
-    <div className={compact ? "arena-zone-row arena-zone-row-compact" : "arena-zone-row"} aria-label={zone}>
-      {cards.map((name, index) => (
-        <BattlefieldCard card={visuals.get(name)} key={`${name}-${index}`} tapped={index % 2 === 1} />
-      ))}
-    </div>
-  );
+function buildBattlefieldCards(visuals: Map<string, VisualCard>): BattlefieldVisualCard[] {
+  return [
+    ...battlefield.opponent.lands.map((name, index) => toBattlefieldCard(name, visuals, "opponent-land", index % 2 === 1)),
+    ...battlefield.opponent.creatures.map((card) =>
+      toBattlefieldCard(card.name, visuals, "opponent-creature", false, card.power, card.toughness)
+    ),
+    ...battlefield.player.creatures.map((card) =>
+      toBattlefieldCard(card.name, visuals, "player-creature", false, card.power, card.toughness)
+    ),
+    ...battlefield.player.lands.map((name, index) => toBattlefieldCard(name, visuals, "player-land", index % 2 === 1)),
+    ...battlefield.player.hand.map((name) => toBattlefieldCard(name, visuals, "hand"))
+  ];
 }
 
-function CombatRow({
-  cards,
-  visuals,
-  owner
-}: {
-  cards: Array<{ name: string; power: number; toughness: number }>;
-  visuals: Map<string, VisualCard>;
-  owner: "player" | "opponent";
-}) {
-  return (
-    <div className={`arena-combat-row arena-combat-row-${owner}`}>
-      {cards.map((entry) => (
-        <div className="arena-creature" key={entry.name}>
-          <BattlefieldCard card={visuals.get(entry.name)} />
-          <strong>{entry.power}/{entry.toughness}</strong>
-        </div>
-      ))}
-    </div>
-  );
+function toBattlefieldCard(
+  name: string,
+  visuals: Map<string, VisualCard>,
+  zone: BattlefieldVisualCard["zone"],
+  tapped = false,
+  power?: number,
+  toughness?: number
+): BattlefieldVisualCard {
+  const visual = visuals.get(name);
+  const card: BattlefieldVisualCard = {
+    id: `${zone}-${name}`,
+    name,
+    zone,
+    tapped
+  };
+
+  if (visual?.imageUrl) card.imageUrl = proxyCardImageUrl(visual.imageUrl);
+  if (power !== undefined) card.power = power;
+  if (toughness !== undefined) card.toughness = toughness;
+
+  return card;
 }
 
-function BattlefieldCard({ card, tapped = false }: { card: VisualCard | undefined; tapped?: boolean }) {
-  return (
-    <article className={tapped ? "arena-card is-tapped" : "arena-card"}>
-      {card?.imageUrl ? <img alt={`${card.name} card`} src={card.imageUrl} /> : <div>{card?.name ?? "Card"}</div>}
-    </article>
-  );
-}
-
-function HandFan({ cards, visuals }: { cards: string[]; visuals: Map<string, VisualCard> }) {
-  return (
-    <div className="arena-hand" aria-label="Your hand">
-      {cards.map((name, index) => (
-        <article
-          className="arena-hand-card"
-          key={`${name}-${index}`}
-          style={{ "--index": index, "--count": cards.length } as CSSProperties}
-        >
-          {visuals.get(name)?.imageUrl ? (
-            <img alt={`${name} card in hand`} src={visuals.get(name)?.imageUrl} />
-          ) : (
-            <div>{name}</div>
-          )}
-        </article>
-      ))}
-    </div>
-  );
+function proxyCardImageUrl(url: string): string {
+  return `/api/card-image?url=${encodeURIComponent(url)}`;
 }

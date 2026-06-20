@@ -29,6 +29,16 @@ describe("shared contracts", () => {
       },
       async getSeedCards() {
         return [];
+      },
+      async getCacheMetadata() {
+        return {
+          provider: "scryfall",
+          status: "empty",
+          cardCount: 0,
+          imageCount: 0,
+          missingImageCount: 0,
+          updatedAt: new Date(0).toISOString()
+        };
       }
     };
 
@@ -80,6 +90,9 @@ describe("shared contracts", () => {
     };
 
     const engine: EngineAdapter = {
+      async createCommanderGame() {
+        return snapshot;
+      },
       async createGame() {
         return snapshot;
       },
@@ -97,6 +110,19 @@ describe("shared contracts", () => {
       },
       async applyHybridAction() {
         return snapshot;
+      },
+      async submitGameCommand() {
+        return snapshot;
+      },
+      async getLegalActions() {
+        return [];
+      },
+      async getHealth() {
+        return {
+          status: "ready",
+          reason: "test engine",
+          checkedAt: new Date(0).toISOString()
+        };
       },
       async passPriority() {
         return snapshot;

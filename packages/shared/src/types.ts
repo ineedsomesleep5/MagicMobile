@@ -5,6 +5,7 @@ export type DeckId = string;
 export type CardId = string;
 
 export type ColorSymbol = "W" | "U" | "B" | "R" | "G" | "C";
+export type AiDifficulty = "easy" | "normal" | "hard" | "expert";
 
 export type SeatType = "digital" | "webcam" | "hybrid" | "spectator";
 
@@ -64,6 +65,22 @@ export interface RuleZeroSummary {
   talkingPoints: string[];
 }
 
+export interface AiPlayerConfig {
+  playerId: PlayerId;
+  displayName: string;
+  difficulty: AiDifficulty;
+  deck?: DeckList;
+}
+
+export interface CommanderGameConfig {
+  roomId: RoomId;
+  humanPlayerId: PlayerId;
+  humanDeck: DeckList;
+  aiPlayers: AiPlayerConfig[];
+  startingLife: 40;
+  commanderDamageEnabled: true;
+}
+
 export interface RoomSeat {
   playerId: PlayerId;
   displayName: string;
@@ -110,6 +127,72 @@ export interface GameSnapshot {
   priorityPlayerId?: PlayerId;
   players: PlayerGameState[];
   log: GameLogEntry[];
+  legalActions?: LegalAction[];
+  choicePrompt?: ChoicePrompt;
+  engineHealth?: EngineHealth;
+}
+
+export type LegalActionType =
+  | "keep_hand"
+  | "mulligan"
+  | "cast_spell"
+  | "activate_ability"
+  | "choose_target"
+  | "declare_attackers"
+  | "declare_blockers"
+  | "pass_priority"
+  | "advance_phase"
+  | "concede";
+
+export interface LegalAction {
+  id: string;
+  type: LegalActionType;
+  playerId: PlayerId;
+  label: string;
+  cardInstanceId?: string;
+  targetIds?: string[];
+}
+
+export interface ChoicePrompt {
+  id: string;
+  playerId: PlayerId;
+  message: string;
+  minChoices: number;
+  maxChoices: number;
+  choices: Array<{
+    id: string;
+    label: string;
+    cardInstanceId?: string;
+  }>;
+}
+
+export type GameCommand =
+  | { type: "keep_hand"; gameId: GameId; playerId: PlayerId }
+  | { type: "mulligan"; gameId: GameId; playerId: PlayerId }
+  | { type: "cast_spell"; gameId: GameId; playerId: PlayerId; cardInstanceId?: string; cardName?: string; fromZone?: ZoneName }
+  | { type: "activate_ability"; gameId: GameId; playerId: PlayerId; sourceInstanceId: string; abilityId: string }
+  | { type: "choose_target"; gameId: GameId; playerId: PlayerId; promptId: string; targetIds: string[] }
+  | { type: "declare_attackers"; gameId: GameId; playerId: PlayerId; attackers: Array<{ attackerId: string; defenderId: string }> }
+  | { type: "declare_blockers"; gameId: GameId; playerId: PlayerId; blockers: Array<{ blockerId: string; attackerId: string }> }
+  | { type: "pass_priority"; gameId: GameId; playerId: PlayerId }
+  | { type: "advance_phase"; gameId: GameId; playerId: PlayerId }
+  | { type: "concede"; gameId: GameId; playerId: PlayerId };
+
+export interface EngineHealth {
+  status: "ready" | "starting" | "unavailable" | "stalled";
+  reason: string;
+  checkedAt: string;
+  recoveryAction?: "wait" | "restart_gateway" | "recreate_game" | "switch_to_mock";
+}
+
+export interface CardCacheMetadata {
+  provider: "scryfall";
+  status: "empty" | "syncing" | "ready" | "stale" | "error";
+  bulkVersion?: string;
+  cardCount: number;
+  imageCount: number;
+  missingImageCount: number;
+  updatedAt?: string;
 }
 
 export type HybridActionType =

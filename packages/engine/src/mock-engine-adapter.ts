@@ -1,11 +1,15 @@
 import type {
   CardIdentity,
+  CommanderGameConfig,
   DeckList,
   EngineAdapter,
+  EngineHealth,
+  GameCommand,
   GameId,
   GameLogEntry,
   GameSnapshot,
   HybridAction,
+  LegalAction,
   PlayerGameState,
   PlayerId,
   RoomId,
@@ -40,6 +44,22 @@ export class MockEngineAdapter implements EngineAdapter {
 
   constructor(options: MockEngineAdapterOptions = {}) {
     this.shuffleSeed = options.shuffleSeed ?? 1;
+  }
+
+  async createCommanderGame(input: CommanderGameConfig): Promise<GameSnapshot> {
+    const playerIds = [input.humanPlayerId, ...input.aiPlayers.map((player) => player.playerId)];
+    const created = await this.createGame({ roomId: input.roomId, playerIds });
+    await this.loadDeck({ gameId: created.id, playerId: input.humanPlayerId, deck: input.humanDeck });
+
+    for (const aiPlayer of input.aiPlayers) {
+      await this.loadDeck({ gameId: created.id, playerId: aiPlayer.playerId, deck: aiPlayer.deck ?? input.humanDeck });
+    }
+
+    for (const playerId of playerIds) {
+      await this.shuffle({ gameId: created.id, playerId });
+    }
+
+    return this.drawOpeningHands({ gameId: created.id, count: 7 });
   }
 
   async createGame(input: { roomId: RoomId; playerIds: PlayerId[] }): Promise<GameSnapshot> {
@@ -88,8 +108,48 @@ export class MockEngineAdapter implements EngineAdapter {
     return this.getSnapshot(input.gameId);
   }
 
+  async submitGameCommand(input: GameCommand): Promise<GameSnapshot> {
+    switch (input.type) {
+      case "keep_hand":
+        return this.applyHybridAction({ gameId: input.gameId, action: { type: "pass_priority", playerId: input.playerId } });
+      case "mulligan":
+        return this.drawOpeningHands({ gameId: input.gameId, count: 7 });
+      case "cast_spell": {
+        const action: HybridAction = { type: "cast_spell", playerId: input.playerId };
+        if (input.cardName !== undefined) action.cardName = input.cardName;
+        if (input.fromZone !== undefined) action.fromZone = input.fromZone;
+        return this.applyHybridAction({ gameId: input.gameId, action });
+      }
+      case "declare_attackers":
+        return this.applyHybridAction({ gameId: input.gameId, action: { type: "attack_player", playerId: input.playerId } });
+      case "pass_priority":
+        return this.passPriority({ gameId: input.gameId, playerId: input.playerId });
+      case "advance_phase":
+        return this.advancePhase({ gameId: input.gameId });
+      case "concede":
+        return this.applyHybridAction({ gameId: input.gameId, action: { type: "change_life", playerId: input.playerId, amount: -99 } });
+      case "activate_ability":
+      case "choose_target":
+      case "declare_blockers":
+        return this.applyHybridAction({ gameId: input.gameId, action: { type: "pass_priority", playerId: input.playerId } });
+    }
+  }
+
+  async getLegalActions(input: { gameId: GameId; playerId: PlayerId }): Promise<LegalAction[]> {
+    return getLegalActions(this.reduce(input.gameId), input.playerId);
+  }
+
+  async getHealth(): Promise<EngineHealth> {
+    return {
+      status: "ready",
+      reason: "Mock engine is available for local Commander flow testing.",
+      checkedAt: new Date(0).toISOString(),
+      recoveryAction: "switch_to_mock"
+    };
+  }
+
   async getSnapshot(gameId: GameId): Promise<GameSnapshot> {
-    return cloneSnapshot(this.reduce(gameId));
+    return cloneSnapshot(enrichSnapshot(this.reduce(gameId)));
   }
 
   private append(gameId: GameId, event: MockEngineEvent): void {
@@ -142,6 +202,74 @@ export class MockEngineAdapter implements EngineAdapter {
 
     return snapshot;
   }
+}
+
+function enrichSnapshot(snapshot: GameSnapshot): GameSnapshot {
+  const legalActions = snapshot.priorityPlayerId ? getLegalActions(snapshot, snapshot.priorityPlayerId) : [];
+  return {
+    ...snapshot,
+    legalActions,
+    engineHealth: {
+      status: "ready",
+      reason: "Mock engine snapshot is current.",
+      checkedAt: new Date(0).toISOString(),
+      recoveryAction: "switch_to_mock"
+    }
+  };
+}
+
+function getLegalActions(snapshot: GameSnapshot, playerId: PlayerId): LegalAction[] {
+  const player = findPlayer(snapshot, playerId);
+  const handCard = player.zones.hand[0];
+  const actions: LegalAction[] = [
+    {
+      id: `${playerId}-pass-priority`,
+      type: "pass_priority",
+      playerId,
+      label: "Pass Priority"
+    },
+    {
+      id: `${playerId}-advance-phase`,
+      type: "advance_phase",
+      playerId,
+      label: "Next Phase"
+    },
+    {
+      id: `${playerId}-concede`,
+      type: "concede",
+      playerId,
+      label: "Concede"
+    }
+  ];
+
+  if (handCard) {
+    actions.unshift({
+      id: `${handCard.instanceId}-cast`,
+      type: "cast_spell",
+      playerId,
+      label: `Cast ${handCard.card.name}`,
+      cardInstanceId: handCard.instanceId
+    });
+  }
+
+  if (snapshot.phase === "beginning" && player.zones.hand.length > 0) {
+    actions.unshift(
+      {
+        id: `${playerId}-keep`,
+        type: "keep_hand",
+        playerId,
+        label: "Keep Hand"
+      },
+      {
+        id: `${playerId}-mulligan`,
+        type: "mulligan",
+        playerId,
+        label: "Mulligan"
+      }
+    );
+  }
+
+  return actions;
 }
 
 function applyEvent(snapshot: GameSnapshot, event: Exclude<MockEngineEvent, { type: "game_created" }>): void {

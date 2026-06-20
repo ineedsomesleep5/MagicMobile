@@ -8,7 +8,9 @@ export interface EngineWorkerConfig {
 
 export function createEngineWorkerAdapter(config: EngineWorkerConfig = {}): EngineAdapter {
   if (config.mode === "xmage") {
-    return new XmageEngineAdapter({ endpoint: config.xmageEndpoint ?? "http://localhost:17171" });
+    return new XmageEngineAdapter({
+      endpoint: config.xmageEndpoint ?? process.env.XMAGE_GATEWAY_URL ?? "http://localhost:17171"
+    });
   }
 
   return new MockEngineAdapter();

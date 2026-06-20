@@ -11,9 +11,9 @@ describe("createEngineWorkerAdapter", () => {
     expect(snapshot.players).toHaveLength(1);
   });
 
-  it("creates the explicit XMage stub when requested", async () => {
+  it("creates the explicit XMage gateway adapter when requested", async () => {
     const adapter = createEngineWorkerAdapter({ mode: "xmage", xmageEndpoint: "http://xmage.test" });
 
-    await expect(adapter.getSnapshot("game-1")).rejects.toThrow("XMage adapter is a stub for http://xmage.test");
+    await expect(adapter.getHealth()).resolves.toMatchObject({ status: "unavailable" });
   });
 });

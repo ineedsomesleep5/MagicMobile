@@ -22,6 +22,7 @@ interface ScryfallCard {
 
 const hand = ["Growth Spiral", "Hinterland Harbor", "Llanowar Elves", "Arboreal Grazer", "Time Wipe"];
 const battlefield = ["Ezuri, Claw of Progress", "Hydroid Krasis", "Llanowar Elves", "Command Tower"];
+const difficulties = ["easy", "normal", "hard", "expert"];
 
 export default function App() {
   const [cards, setCards] = useState<Record<string, MobileCard>>({});
@@ -73,7 +74,10 @@ export default function App() {
         <View style={styles.table}>
           <View style={styles.topHud}>
             <PlayerBadge name="Noaddrag" life={20} />
-            <Text style={styles.phase}>Combat</Text>
+            <View style={styles.modePanel}>
+              <Text style={styles.phase}>Commander vs AI</Text>
+              <Text style={styles.cardStatus}>Difficulty: normal</Text>
+            </View>
           </View>
 
           <View style={styles.boardRow}>
@@ -87,6 +91,20 @@ export default function App() {
             <TouchableOpacity style={styles.nextButton}>
               <Text style={styles.nextButtonText}>Next</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryAction}>
+              <Text style={styles.secondaryActionText}>Cast</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryAction}>
+              <Text style={styles.secondaryActionText}>Pass</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.difficultyRail}>
+            {difficulties.map((difficulty) => (
+              <View key={difficulty} style={difficulty === "normal" ? styles.activeDifficulty : styles.difficulty}>
+                <Text style={difficulty === "normal" ? styles.activeDifficultyText : styles.difficultyText}>{difficulty}</Text>
+              </View>
+            ))}
           </View>
 
           <View style={styles.hand}>
@@ -190,6 +208,10 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     textTransform: "uppercase"
   },
+  modePanel: {
+    alignItems: "flex-end",
+    gap: 4
+  },
   boardRow: {
     flexDirection: "row",
     justifyContent: "center",
@@ -213,6 +235,45 @@ const styles = StyleSheet.create({
   },
   nextButtonText: {
     color: "#fff8e8",
+    fontWeight: "900"
+  },
+  secondaryAction: {
+    borderColor: "#3f5656",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 18,
+    paddingVertical: 10
+  },
+  secondaryActionText: {
+    color: "#f5ecd8",
+    fontWeight: "900"
+  },
+  difficultyRail: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8
+  },
+  difficulty: {
+    borderColor: "#3f5656",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 8
+  },
+  activeDifficulty: {
+    borderColor: "#35c7ff",
+    borderRadius: 999,
+    borderWidth: 1,
+    backgroundColor: "#143f4f",
+    paddingHorizontal: 14,
+    paddingVertical: 8
+  },
+  difficultyText: {
+    color: "#aeb7b3",
+    fontWeight: "800"
+  },
+  activeDifficultyText: {
+    color: "#f5ecd8",
     fontWeight: "900"
   },
   hand: {
