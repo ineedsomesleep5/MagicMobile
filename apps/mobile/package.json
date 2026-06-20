@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "App.tsx",
+  "main": "index.ts",
   "scripts": {
     "dev": "expo start",
     "build": "tsc --noEmit",

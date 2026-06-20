@@ -71,6 +71,7 @@ public final class MagicMobileBridge implements MageClient {
     private volatile UUID lastStartedGameId;
     private volatile UUID lastStartedHumanPlayerId;
     private volatile boolean cardRepositoryReady;
+    private volatile boolean bridgeConnected;
 
     private MagicMobileBridge(String xmageHost, int xmagePort) {
         this.xmageHost = xmageHost;
@@ -134,7 +135,7 @@ public final class MagicMobileBridge implements MageClient {
     }
 
     private JsonObject createCommanderGame(JsonObject config) throws Exception {
-        ensureConnected();
+        ensureConnected(false);
         UUID roomId = session.getMainRoomId();
         if (roomId == null) {
             throw new IllegalStateException("XMage main room is unavailable");
@@ -164,9 +165,21 @@ public final class MagicMobileBridge implements MageClient {
         options.setQuitRatio(100);
         options.setMinimumRating(0);
 
+        lastStartedGameId = null;
+        lastStartedHumanPlayerId = null;
+
         TableView table = session.createTable(roomId, options);
         if (table == null) {
-            throw new IllegalStateException("XMage did not create a Commander table");
+            ensureConnected(true);
+            roomId = session.getMainRoomId();
+            if (roomId == null) {
+                throw new IllegalStateException("XMage main room is unavailable after reconnect");
+            }
+            table = session.createTable(roomId, options);
+        }
+        if (table == null) {
+            String reason = lastError == null || lastError.isEmpty() ? "no XMage error detail returned" : lastError;
+            throw new IllegalStateException("XMage did not create a Commander table: " + reason);
         }
 
         boolean humanJoined = session.joinTable(roomId, table.getTableId(), "TabletopPolish", PlayerType.HUMAN, 1, deckFromConfig(object(config, "humanDeck")), "");
@@ -211,7 +224,7 @@ public final class MagicMobileBridge implements MageClient {
     }
 
     private JsonObject submitCommand(String gameId, JsonObject command) throws Exception {
-        ensureConnected();
+        ensureConnected(false);
         UUID xmageGameId = UUID.fromString(gameId);
         String type = string(command, "type", "");
 
@@ -770,8 +783,8 @@ public final class MagicMobileBridge implements MageClient {
         boolean ready = false;
         String reason = "XMage bridge starting.";
         try {
-            ensureConnected();
-            ready = session != null && session.isServerReady();
+            ensureConnected(false);
+            ready = session != null && bridgeConnected && session.isConnected() && session.isServerReady();
             reason = ready
                     ? "XMage Java bridge connected to " + xmageHost + ":" + xmagePort + "."
                     : "XMage server is reachable but not ready.";
@@ -785,19 +798,28 @@ public final class MagicMobileBridge implements MageClient {
         return health;
     }
 
-    private void ensureConnected() {
+    private void ensureConnected(boolean forceReconnect) {
         synchronized (connectionLock) {
-            if (session != null && session.isConnected() && session.isServerReady()) {
+            if (!forceReconnect && session != null && bridgeConnected && session.isConnected() && session.isServerReady()) {
                 return;
             }
+            if (session != null) {
+                try {
+                    session.connectStop(false, false);
+                } catch (Exception ignored) {
+                    // The session may already be dead; reconnect below with a fresh client.
+                }
+            }
+            bridgeConnected = false;
+            lastError = "";
             session = new SessionImpl(this);
             Connection connection = new Connection();
-            connection.setUsername("magicmobile");
+            connection.setUsername("mm" + (System.currentTimeMillis() % 1_000_000_000L));
             connection.setHost(xmageHost);
             connection.setPort(xmagePort);
             connection.setProxyType(Connection.ProxyType.NONE);
             boolean connected = session.connectStart(connection);
-            if (!connected || !session.isServerReady()) {
+            if (!connected || !bridgeConnected || !session.isServerReady()) {
                 throw new IllegalStateException(lastError.isEmpty() ? "XMage server is not ready yet" : lastError);
             }
         }
@@ -810,11 +832,13 @@ public final class MagicMobileBridge implements MageClient {
 
     @Override
     public void connected(String message) {
+        bridgeConnected = true;
         System.out.println("XMage connected: " + message);
     }
 
     @Override
     public void disconnected(boolean askToReconnect, boolean keepMySessionActive) {
+        bridgeConnected = false;
         System.out.println("XMage disconnected");
     }
 

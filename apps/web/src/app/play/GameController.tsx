@@ -31,8 +31,8 @@ export function GameController({ config, initialHealth, requireXmage = false, si
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(config)
     })
-      .then((response) => {
-        if (!response.ok) throw new Error(`Game start failed (${response.status})`);
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await errorMessage(response, "Game start failed"));
         return response.json() as Promise<GameSnapshot>;
       })
       .then((nextSnapshot) => {
@@ -81,8 +81,8 @@ export function GameController({ config, initialHealth, requireXmage = false, si
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(command)
       })
-        .then((response) => {
-          if (!response.ok) throw new Error(`Command failed (${response.status})`);
+        .then(async (response) => {
+          if (!response.ok) throw new Error(await errorMessage(response, "Command failed"));
           return response.json() as Promise<GameSnapshot>;
         })
         .then((nextSnapshot) => setSnapshot(nextSnapshot))
@@ -139,6 +139,16 @@ export function GameController({ config, initialHealth, requireXmage = false, si
       </div>
     </section>
   );
+}
+
+async function errorMessage(response: Response, fallback: string): Promise<string> {
+  const status = `${fallback} (${response.status})`;
+  try {
+    const body = (await response.json()) as { error?: string; message?: string };
+    return body.error || body.message ? `${status}: ${body.error ?? body.message}` : status;
+  } catch {
+    return status;
+  }
 }
 
 function XmageSetupRequired({ health }: { health: EngineHealth }) {
