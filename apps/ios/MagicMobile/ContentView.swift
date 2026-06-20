@@ -25,54 +25,25 @@ struct ContentView: View {
             LinearGradient(colors: [Color(red: 0.03, green: 0.08, blue: 0.08), Color(red: 0.16, green: 0.25, blue: 0.13)], startPoint: .topLeading, endPoint: .bottomTrailing)
                 .ignoresSafeArea()
 
-            VStack(spacing: 10) {
-                HeaderBar(screen: screen, status: status, isLoading: isLoading) {
-                    screen = .menu
-                }
+            if screen == .play {
+                ImmersivePlayShell(
+                    snapshot: snapshot,
+                    selectedCard: $selectedCard,
+                    avatarData: playerAvatarData,
+                    runAction: { action in Task { await run(action: action) } },
+                    newGame: { screen = .setup }
+                )
+            } else {
+                VStack(spacing: 10) {
+                    HeaderBar(screen: screen, status: status, isLoading: isLoading) {
+                        screen = .menu
+                    }
 
-                switch screen {
-                case .menu:
-                    MenuView(
-                        startSetup: { screen = .setup },
-                        openDecks: { screen = .decks },
-                        quickStart: { Task { await startGame() } },
-                        openArena: { screen = .arenaWeb }
-                    )
-                case .setup:
-                    SetupView(
-                        serverURLText: $serverURLText,
-                        difficulty: $difficulty,
-                        selectedHumanPrecon: $selectedHumanPrecon,
-                        selectedAIPrecon: $selectedAIPrecon,
-                        selectedPhoto: $selectedPhoto,
-                        avatarData: playerAvatarData,
-                        deckSummary: deckSummary,
-                        checkBridge: { Task { await checkBridge() } },
-                        openDecks: { screen = .decks },
-                        startGame: { Task { await startGame() } }
-                    )
-                case .decks:
-                    DeckBuilderView(
-                        deckText: $deckText,
-                        deckSource: $deckSource,
-                        deckSummary: deckSummary,
-                        importDeck: importDeck,
-                        selectedHumanPrecon: $selectedHumanPrecon
-                    )
-                case .play:
-                    NativeGameView(
-                        snapshot: snapshot,
-                        selectedCard: $selectedCard,
-                        avatarData: playerAvatarData,
-                        runAction: { action in Task { await run(action: action) } },
-                        newGame: { screen = .setup }
-                    )
-                case .arenaWeb:
-                    ArenaWebContainer(url: webPlayURL)
+                    chromeScreen
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
         }
         .alert("MagicMobile", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) { errorMessage = nil }
@@ -81,6 +52,44 @@ struct ContentView: View {
         }
         .task(id: selectedPhoto?.itemIdentifier) {
             await loadSelectedAvatar()
+        }
+    }
+
+    @ViewBuilder
+    private var chromeScreen: some View {
+        switch screen {
+        case .menu:
+            MenuView(
+                startSetup: { screen = .setup },
+                openDecks: { screen = .decks },
+                quickStart: { Task { await startGame() } },
+                openArena: { screen = .arenaWeb }
+            )
+        case .setup:
+            SetupView(
+                serverURLText: $serverURLText,
+                difficulty: $difficulty,
+                selectedHumanPrecon: $selectedHumanPrecon,
+                selectedAIPrecon: $selectedAIPrecon,
+                selectedPhoto: $selectedPhoto,
+                avatarData: playerAvatarData,
+                deckSummary: deckSummary,
+                checkBridge: { Task { await checkBridge() } },
+                openDecks: { screen = .decks },
+                startGame: { Task { await startGame() } }
+            )
+        case .decks:
+            DeckBuilderView(
+                deckText: $deckText,
+                deckSource: $deckSource,
+                deckSummary: deckSummary,
+                importDeck: importDeck,
+                selectedHumanPrecon: $selectedHumanPrecon
+            )
+        case .arenaWeb:
+            ArenaWebContainer(url: webPlayURL)
+        case .play:
+            EmptyView()
         }
     }
 
@@ -414,74 +423,104 @@ struct AvatarPreview: View {
     }
 }
 
-struct NativeGameView: View {
+struct ImmersivePlayShell: View {
     let snapshot: GameSnapshot?
     @Binding var selectedCard: ZoneCard?
     let avatarData: Data?
     let runAction: (LegalAction) -> Void
     let newGame: () -> Void
 
+    var body: some View {
+        NativeGameView(
+            snapshot: snapshot,
+            selectedCard: $selectedCard,
+            avatarData: avatarData,
+            runAction: runAction,
+            newGame: newGame
+        )
+        .ignoresSafeArea()
+    }
+}
+
+struct NativeGameView: View {
+    let snapshot: GameSnapshot?
+    @Binding var selectedCard: ZoneCard?
+    let avatarData: Data?
+    let runAction: (LegalAction) -> Void
+    let newGame: () -> Void
+    @State private var isLogOpen = false
+
     @ViewBuilder
     var body: some View {
         if let snapshot, let human = snapshot.human, let opponent = snapshot.opponent {
             GeometryReader { proxy in
-                let railWidth = min(max(proxy.size.width * 0.18, 132), 180)
+                let metrics = BattlefieldLayoutMetrics(proxy: proxy)
                 let actions = selectedActions(in: snapshot).isEmpty ? promptActions(in: snapshot) : selectedActions(in: snapshot)
 
-                ZStack(alignment: .trailing) {
+                ZStack {
                     BattlefieldSurface()
 
-                    VStack(spacing: 0) {
-                        PlayerStrip(name: "Noaddrag", player: opponent, avatarData: nil)
-                            .padding(.horizontal, 10)
+                    BattlefieldRow(title: "Opponent", cards: opponent.zones.battlefield, selectedCard: $selectedCard, flipped: true, cardWidth: metrics.permanentCardWidth)
+                        .frame(width: metrics.playWidth, height: metrics.rowHeight)
+                        .position(x: metrics.playCenterX, y: metrics.opponentRowY)
 
-                        VStack(spacing: 6) {
-                            BattlefieldRow(title: "Opponent", cards: opponent.zones.battlefield, selectedCard: $selectedCard, flipped: true)
-                            PromptPill(snapshot: snapshot)
-                            BattlefieldRow(title: "You", cards: human.zones.battlefield, selectedCard: $selectedCard)
-                        }
-                        .padding(.horizontal, 16)
-                        .frame(maxHeight: .infinity)
+                    BattlefieldRow(title: "You", cards: human.zones.battlefield, selectedCard: $selectedCard, cardWidth: metrics.permanentCardWidth)
+                        .frame(width: metrics.playWidth, height: metrics.rowHeight)
+                        .position(x: metrics.playCenterX, y: metrics.playerRowY)
 
-                        HandFan(cards: human.zones.hand, selectedCard: $selectedCard)
-                            .padding(.bottom, 2)
+                    PromptPill(snapshot: snapshot)
+                        .frame(width: min(metrics.playWidth * 0.82, 560))
+                        .position(x: metrics.playCenterX, y: metrics.promptY)
 
-                        PlayerStrip(name: "TabletopPolish", player: human, avatarData: avatarData, active: true)
-                            .padding(.horizontal, 10)
-                    }
-                    .padding(.trailing, railWidth + 8)
-                    .padding(.vertical, 4)
+                    HandFan(cards: human.zones.hand, selectedCard: $selectedCard, metrics: metrics)
+                        .frame(width: metrics.playWidth, height: metrics.handFrameHeight)
+                        .position(x: metrics.playCenterX, y: metrics.handY)
+
+                    PlayerHeroHUD(name: "Noaddrag", player: opponent, avatarData: nil, active: snapshot.activePlayerId == opponent.playerId)
+                        .frame(width: min(metrics.playWidth * 0.58, 410), height: 52)
+                        .position(x: metrics.playCenterX, y: metrics.topHUDY)
+
+                    PlayerHeroHUD(name: "TabletopPolish", player: human, avatarData: avatarData, active: true, compact: true)
+                        .frame(width: min(metrics.playWidth * 0.50, 360), height: 48)
+                        .position(x: metrics.playCenterX, y: metrics.bottomHUDY)
 
                     VStack(spacing: 8) {
                         CompactPhaseRail(snapshot: snapshot)
-                        MiniLog(log: snapshot.log)
-                        Button("Setup", action: newGame)
-                            .buttonStyle(SecondaryButtonStyle())
+                        Button {
+                            isLogOpen.toggle()
+                        } label: {
+                            Image(systemName: "list.bullet.rectangle")
+                        }
+                        .buttonStyle(IconButtonStyle())
+
+                        Button(action: newGame) {
+                            Image(systemName: "gearshape.fill")
+                        }
+                        .buttonStyle(IconButtonStyle())
                     }
-                    .padding(8)
-                    .frame(width: railWidth)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .background(.black.opacity(0.34))
-                    .overlay(Rectangle().fill(.white.opacity(0.10)).frame(width: 1), alignment: .leading)
+                    .frame(width: metrics.railWidth)
+                    .position(x: metrics.railCenterX, y: metrics.railY)
 
                     if !actions.isEmpty {
                         ContextActionTray(actions: actions, runAction: runAction)
-                            .frame(width: min(260, proxy.size.width * 0.34))
-                            .padding(.trailing, railWidth + 12)
-                            .padding(.bottom, 58)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                            .frame(maxWidth: min(metrics.playWidth * 0.58, 430))
+                            .position(x: metrics.playCenterX, y: metrics.actionY)
                     }
 
                     if let selectedCard {
                         CardInspector(card: selectedCard)
-                            .frame(width: min(260, proxy.size.width * 0.34), height: min(230, proxy.size.height * 0.46))
-                            .padding(.leading, 10)
-                            .padding(.bottom, 56)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                            .frame(width: min(metrics.playWidth * 0.36, 250), height: min(metrics.size.height * 0.43, 220))
+                            .position(x: metrics.inspectorX, y: metrics.inspectorY)
+                    }
+
+                    if isLogOpen {
+                        GameLogDrawer(log: snapshot.log) {
+                            isLogOpen = false
+                        }
+                        .frame(width: min(metrics.playWidth * 0.42, 320), height: min(metrics.size.height * 0.55, 260))
+                        .position(x: metrics.logX, y: metrics.logY)
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.12)))
             }
         } else {
             LoadingGameView()
@@ -495,6 +534,108 @@ struct NativeGameView: View {
 
     private func promptActions(in snapshot: GameSnapshot) -> [LegalAction] {
         snapshot.legalActions?.filter { ["keep_hand", "mulligan", "resolve_choice", "pass_priority", "pass_until_response", "concede"].contains($0.type) } ?? []
+    }
+}
+
+struct BattlefieldLayoutMetrics {
+    let size: CGSize
+    let safeArea: EdgeInsets
+
+    init(proxy: GeometryProxy) {
+        size = proxy.size
+        safeArea = proxy.safeAreaInsets
+    }
+
+    var railWidth: CGFloat {
+        min(max(size.width * 0.075, 64), 92)
+    }
+
+    var leftInset: CGFloat {
+        max(safeArea.leading + 10, 12)
+    }
+
+    var rightInset: CGFloat {
+        max(safeArea.trailing + railWidth + 10, railWidth + 14)
+    }
+
+    var playWidth: CGFloat {
+        max(size.width - leftInset - rightInset, 320)
+    }
+
+    var playCenterX: CGFloat {
+        leftInset + playWidth / 2
+    }
+
+    var railCenterX: CGFloat {
+        size.width - max(safeArea.trailing + 6, 8) - railWidth / 2
+    }
+
+    var railY: CGFloat {
+        max(safeArea.top + 96, 96)
+    }
+
+    var topHUDY: CGFloat {
+        max(safeArea.top + 28, 28)
+    }
+
+    var bottomHUDY: CGFloat {
+        size.height - max(safeArea.bottom + handFrameHeight + 10, handFrameHeight + 12)
+    }
+
+    var opponentRowY: CGFloat {
+        size.height * 0.28
+    }
+
+    var promptY: CGFloat {
+        size.height * 0.47
+    }
+
+    var playerRowY: CGFloat {
+        size.height * 0.61
+    }
+
+    var handY: CGFloat {
+        size.height - max(safeArea.bottom + handFrameHeight / 2 + 2, handFrameHeight / 2 + 4)
+    }
+
+    var actionY: CGFloat {
+        size.height - max(safeArea.bottom + handFrameHeight + 28, handFrameHeight + 30)
+    }
+
+    var inspectorX: CGFloat {
+        leftInset + min(playWidth * 0.18, 150)
+    }
+
+    var inspectorY: CGFloat {
+        size.height - max(safeArea.bottom + handFrameHeight + 96, handFrameHeight + 98)
+    }
+
+    var logX: CGFloat {
+        railCenterX - railWidth / 2 - min(playWidth * 0.21, 160) - 10
+    }
+
+    var logY: CGFloat {
+        min(size.height * 0.44, 210)
+    }
+
+    var handCardWidth: CGFloat {
+        min(max(playWidth / 11.6, 54), 76)
+    }
+
+    var handCardHeight: CGFloat {
+        handCardWidth * 1.40
+    }
+
+    var handFrameHeight: CGFloat {
+        handCardHeight + 38
+    }
+
+    var permanentCardWidth: CGFloat {
+        min(max(playWidth / 15.5, 46), 60)
+    }
+
+    var rowHeight: CGFloat {
+        permanentCardWidth * 1.40 + 24
     }
 }
 
@@ -579,6 +720,52 @@ struct PlayerStrip: View {
     }
 }
 
+struct PlayerHeroHUD: View {
+    let name: String
+    let player: PlayerGameState
+    let avatarData: Data?
+    var active = false
+    var compact = false
+
+    var body: some View {
+        HStack(spacing: compact ? 6 : 8) {
+            PlayerAvatar(data: avatarData, size: compact ? 36 : 42, active: active)
+                .overlay(alignment: .bottomTrailing) {
+                    Text("\(player.life)")
+                        .font(.system(size: compact ? 11 : 12, weight: .black))
+                        .foregroundStyle(.white)
+                        .padding(4)
+                        .background(.black.opacity(0.78), in: Circle())
+                        .offset(x: 5, y: 5)
+                }
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text(name)
+                    .font(.system(size: compact ? 14 : 16, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text(player.zones.command.first?.card.name ?? "Commander")
+                    .font(.system(size: compact ? 9 : 10, weight: .black))
+                    .foregroundStyle(.orange)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+            }
+
+            Spacer(minLength: 2)
+            ZoneCounter(label: "Lib", value: player.zones.library.count, compact: compact)
+            ZoneCounter(label: "Hand", value: player.zones.hand.count, compact: compact)
+            ZoneCounter(label: "Grave", value: player.zones.graveyard.count, compact: compact)
+            ZoneCounter(label: "Exile", value: player.zones.exile.count, compact: compact)
+        }
+        .padding(.horizontal, compact ? 8 : 10)
+        .padding(.vertical, compact ? 4 : 5)
+        .background(.black.opacity(0.38), in: Capsule())
+        .overlay(Capsule().stroke(active ? .cyan.opacity(0.45) : .white.opacity(0.10), lineWidth: 1))
+        .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
+    }
+}
+
 struct PlayerAvatar: View {
     let data: Data?
     let size: CGFloat
@@ -608,17 +795,18 @@ struct PlayerAvatar: View {
 struct ZoneCounter: View {
     let label: String
     let value: Int
+    var compact = false
 
     var body: some View {
         VStack(spacing: 0) {
             Text("\(value)")
-                .font(.caption.weight(.black))
+                .font(.system(size: compact ? 10 : 12, weight: .black))
             Text(label)
-                .font(.system(size: 8, weight: .black))
+                .font(.system(size: compact ? 7 : 8, weight: .black))
                 .foregroundStyle(.white.opacity(0.65))
         }
         .foregroundStyle(.white)
-        .frame(width: 38, height: 32)
+        .frame(width: compact ? 30 : 36, height: compact ? 26 : 30)
         .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
     }
 }
@@ -653,25 +841,27 @@ struct BattlefieldRow: View {
     let cards: [ZoneCard]
     @Binding var selectedCard: ZoneCard?
     var flipped = false
+    let cardWidth: CGFloat
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(title.uppercased())
-                    .font(.caption.weight(.black))
-                    .foregroundStyle(.orange.opacity(0.95))
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundStyle(.orange.opacity(0.78))
                 Spacer()
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .center, spacing: -10) {
                     if cards.isEmpty {
                         Text("No permanents")
-                            .font(.title3.weight(.black))
-                            .foregroundStyle(.white.opacity(0.6))
-                            .frame(maxWidth: .infinity, minHeight: 86, alignment: .leading)
+                            .font(.caption.weight(.black))
+                            .foregroundStyle(.white.opacity(0.38))
+                            .padding(.horizontal, 12)
+                            .frame(maxWidth: .infinity, minHeight: cardWidth * 1.40, alignment: .leading)
                     }
                     ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
-                        CardTile(card: card, selected: selectedCard?.id == card.id, width: 58, height: 81)
+                        CardTile(card: card, selected: selectedCard?.id == card.id, width: cardWidth, height: cardWidth * 1.40)
                             .rotationEffect(.degrees(flipped ? 180 : 0))
                             .offset(y: card.tapped == true ? 5 : 0)
                             .zIndex(Double(index))
@@ -688,19 +878,26 @@ struct BattlefieldRow: View {
 struct HandFan: View {
     let cards: [ZoneCard]
     @Binding var selectedCard: ZoneCard?
+    let metrics: BattlefieldLayoutMetrics
 
     var body: some View {
-        HStack(spacing: -18) {
+        ZStack {
             ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
-                let center = Double(cards.count - 1) / 2
-                CardTile(card: card, selected: selectedCard?.id == card.id, width: 66, height: 92)
-                    .rotationEffect(.degrees((Double(index) - center) * 5.0))
-                    .offset(x: CGFloat((Double(index) - center) * 1.5), y: selectedCard?.id == card.id ? -28 : abs(Double(index) - center) * 3)
+                let center = CGFloat(cards.count - 1) / 2
+                let distance = CGFloat(index) - center
+                let maxSpread = max((metrics.playWidth - metrics.handCardWidth) / CGFloat(max(cards.count - 1, 1)), 0)
+                let spread = min(metrics.handCardWidth * 0.56, maxSpread)
+                let selected = selectedCard?.id == card.id
+
+                CardTile(card: card, selected: selected, width: metrics.handCardWidth, height: metrics.handCardHeight)
+                    .scaleEffect(selected ? 1.16 : 1.0)
+                    .rotationEffect(.degrees(Double(distance) * 5.2))
+                    .offset(x: distance * spread, y: selected ? -30 : abs(distance) * 4 + 10)
                     .zIndex(selectedCard?.id == card.id ? 10 : Double(index))
                     .onTapGesture { selectedCard = card }
             }
         }
-        .frame(height: 116)
+        .frame(width: metrics.playWidth, height: metrics.handFrameHeight)
     }
 }
 
@@ -763,20 +960,22 @@ struct CompactPhaseRail: View {
         let previous = stageLabels[max(index - 1, 0)]
         let next = stageLabels[min(index + 1, stageLabels.count - 1)]
 
-        VStack(alignment: .leading, spacing: 6) {
-            Text("PHASE")
-                .font(.caption.weight(.black))
+        VStack(alignment: .leading, spacing: 5) {
+            Image(systemName: "hourglass")
+                .font(.system(size: 15, weight: .black))
                 .foregroundStyle(.orange)
+                .frame(maxWidth: .infinity)
             PhaseChip(label: "Prev", phase: previous, active: false)
             PhaseChip(label: "Now", phase: current, active: true)
             PhaseChip(label: "Next", phase: next, active: false)
-            Text(snapshot.priorityPlayerId == "human" ? "Your priority" : "AI priority")
-                .font(.caption.weight(.black))
+            Text(snapshot.priorityPlayerId == "human" ? "YOU" : "AI")
+                .font(.system(size: 10, weight: .black))
                 .foregroundStyle(.white.opacity(0.75))
                 .lineLimit(1)
+                .frame(maxWidth: .infinity)
         }
-        .padding(9)
-        .background(.black.opacity(0.42), in: RoundedRectangle(cornerRadius: 8))
+        .padding(6)
+        .background(.black.opacity(0.44), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.12)))
     }
 }
@@ -789,15 +988,15 @@ struct PhaseChip: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(label.uppercased())
-                .font(.system(size: 8, weight: .black))
+                .font(.system(size: 7, weight: .black))
                 .foregroundStyle(active ? .black.opacity(0.7) : .white.opacity(0.55))
             Text(phase.phaseTitle)
-                .font(.caption.weight(.black))
+                .font(.system(size: 10, weight: .black))
                 .foregroundStyle(active ? .black : .white)
                 .lineLimit(2)
                 .minimumScaleFactor(0.65)
         }
-        .padding(7)
+        .padding(5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(active ? Color.orange : Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
     }
@@ -808,18 +1007,15 @@ struct ContextActionTray: View {
     let runAction: (LegalAction) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("ACTIONS")
-                .font(.caption.weight(.black))
-                .foregroundStyle(.orange)
+        HStack(spacing: 8) {
             ForEach(actions.prefix(4)) { action in
                 Button(action.label) { runAction(action) }
-                    .buttonStyle(PrimaryButtonStyle())
+                    .buttonStyle(CompactActionButtonStyle())
             }
         }
-        .padding(10)
-        .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.14)))
+        .padding(8)
+        .background(.black.opacity(0.62), in: Capsule())
+        .overlay(Capsule().stroke(.white.opacity(0.14)))
     }
 }
 
@@ -871,6 +1067,40 @@ struct MiniLog: View {
         .padding(9)
         .background(.black.opacity(0.38), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.12)))
+    }
+}
+
+struct GameLogDrawer: View {
+    let log: [GameLogEntry]
+    let close: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("LOG")
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(.orange)
+                Spacer()
+                Button(action: close) {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(IconButtonStyle(small: true))
+            }
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(log.suffix(16)) { entry in
+                        Text(entry.message)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.78))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.16)))
     }
 }
 
@@ -940,6 +1170,32 @@ struct SecondaryButtonStyle: ButtonStyle {
             .frame(minHeight: 42)
             .background(configuration.isPressed ? Color.white.opacity(0.18) : Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.14)))
+    }
+}
+
+struct CompactActionButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 15, weight: .black, design: .rounded))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(configuration.isPressed ? Color.orange.opacity(0.68) : Color.orange, in: Capsule())
+    }
+}
+
+struct IconButtonStyle: ButtonStyle {
+    var small = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: small ? 12 : 16, weight: .black))
+            .foregroundStyle(.white)
+            .frame(width: small ? 28 : 42, height: small ? 28 : 42)
+            .background(configuration.isPressed ? Color.white.opacity(0.18) : Color.black.opacity(0.45), in: Circle())
+            .overlay(Circle().stroke(.white.opacity(0.16)))
     }
 }
 
