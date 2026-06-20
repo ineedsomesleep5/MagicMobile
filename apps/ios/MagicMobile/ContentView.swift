@@ -24,6 +24,7 @@ struct ContentView: View {
     @State private var lastSubmittedSnapshotSignature: String?
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var webSocketTask: URLSessionWebSocketTask?
 
     var body: some View {
         ZStack {
@@ -60,6 +61,12 @@ struct ContentView: View {
         }
         .task(id: selectedPhoto?.itemIdentifier) {
             await loadSelectedAvatar()
+        }
+        .onChange(of: screen) { newScreen in
+            if newScreen != .play {
+                webSocketTask?.cancel(with: .normalClosure, reason: nil)
+                webSocketTask = nil
+            }
         }
     }
 
@@ -191,6 +198,7 @@ struct ContentView: View {
                 startupStatus = nil
                 selectedCard = nil
                 status = "Commander game started with \(deckName)"
+                startWebSocket(gameId: nextSnapshot.id)
                 return
             }
 
@@ -228,8 +236,7 @@ struct ContentView: View {
             let nextSnapshot = try await api.submit(action: action, gameId: currentSnapshot.id)
             snapshot = nextSnapshot
             selectedCard = nil
-            status = "Updated from XMage"
-            try await pollSnapshotUntilUpdated(api: api, gameId: currentSnapshot.id, previousSignature: snapshotSignature(nextSnapshot))
+            status = "Action submitted"
         } catch {
             errorMessage = error.localizedDescription
             status = error.localizedDescription
@@ -239,15 +246,71 @@ struct ContentView: View {
         pendingCardInstanceId = nil
     }
 
-    private func pollSnapshotUntilUpdated(api: MagicMobileAPI, gameId: String, previousSignature: String) async throws {
-        for _ in 0..<8 {
-            try await Task.sleep(nanoseconds: 350_000_000)
-            let refreshed = try await api.snapshot(gameId: gameId)
-            let refreshedSignature = snapshotSignature(refreshed)
-            snapshot = refreshed
-            if refreshedSignature != previousSignature {
-                status = "XMage ready"
-                return
+    private func startWebSocket(gameId: String) {
+        webSocketTask?.cancel(with: .goingAway, reason: nil)
+
+        guard let api,
+              let urlComponents = URLComponents(url: api.baseURL, resolvingAgainstBaseURL: false) else { return }
+
+        let wsScheme = urlComponents.scheme == "https" ? "wss" : "ws"
+        let wsHost = urlComponents.host ?? "localhost"
+        let wsPort = urlComponents.port != nil ? ":\(urlComponents.port!)" : ""
+        let wsURLString = "\(wsScheme)://\(wsHost)\(wsPort)/ws/games/\(gameId)"
+
+        guard let url = URL(string: wsURLString) else { return }
+
+        let task = URLSession.shared.webSocketTask(with: url)
+        webSocketTask = task
+        task.resume()
+
+        listenWebSocket(task: task, gameId: gameId)
+        status = "Connected (real-time)"
+    }
+
+    private func listenWebSocket(task: URLSessionWebSocketTask, gameId: String) {
+        task.receive { [weak self] result in
+            guard let self = self else { return }
+            switch result {
+            case .failure(let error):
+                print("WebSocket receive error: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    if self.screen == .play && self.webSocketTask === task {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            if self.screen == .play && self.webSocketTask === task {
+                                self.startWebSocket(gameId: gameId)
+                            }
+                        }
+                    }
+                }
+            case .success(let message):
+                switch message {
+                case .string(let text):
+                    if let data = text.data(using: .utf8) {
+                        DispatchQueue.main.async {
+                            do {
+                                let nextSnapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: data)
+                                self.snapshot = nextSnapshot
+                                self.selectedCard = nil
+                            } catch {
+                                print("Error decoding snapshot: \(error)")
+                            }
+                        }
+                    }
+                case .data(let data):
+                    DispatchQueue.main.async {
+                        do {
+                            let nextSnapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: data)
+                            self.snapshot = nextSnapshot
+                            self.selectedCard = nil
+                        } catch {
+                            print("Error decoding snapshot: \(error)")
+                        }
+                    }
+                @unknown default:
+                    break
+                }
+
+                self.listenWebSocket(task: task, gameId: gameId)
             }
         }
     }
@@ -578,13 +641,21 @@ struct NativeGameView: View {
                 ZStack {
                     BattlefieldSurface()
 
-                    BattlefieldRow(title: "Opponent", cards: opponent.zones.battlefield, selectedCard: $selectedCard, flipped: true, cardWidth: metrics.permanentCardWidth)
-                        .frame(width: metrics.playWidth, height: metrics.rowHeight)
-                        .position(x: metrics.playCenterX, y: metrics.opponentRowY)
+                    VStack(spacing: 8) {
+                        BattlefieldRow(title: "Opponent", cards: opponent.zones.battlefield, selectedCard: $selectedCard, flipped: true, cardWidth: metrics.permanentCardWidth)
+                            .frame(width: metrics.playWidth, height: metrics.rowHeight)
 
-                    BattlefieldRow(title: "You", cards: human.zones.battlefield, selectedCard: $selectedCard, cardWidth: metrics.permanentCardWidth)
-                        .frame(width: metrics.playWidth, height: metrics.rowHeight)
-                        .position(x: metrics.playCenterX, y: metrics.playerRowY)
+                        Rectangle()
+                            .fill(.white.opacity(0.12))
+                            .frame(height: 1.5)
+                            .padding(.horizontal, 30)
+
+                        BattlefieldRow(title: "You", cards: human.zones.battlefield, selectedCard: $selectedCard, cardWidth: metrics.permanentCardWidth)
+                            .frame(width: metrics.playWidth, height: metrics.rowHeight)
+                    }
+                    .frame(width: metrics.playWidth, height: metrics.rowHeight * 2 + 16)
+                    .position(x: metrics.playCenterX, y: (metrics.opponentRowY + metrics.playerRowY) / 2)
+                    .rotation3DEffect(.degrees(46), axis: (x: 1, y: 0, z: 0), anchor: .center, anchorZ: 0, perspective: 0.85)
 
                     PromptPill(snapshot: snapshot)
                         .frame(width: min(metrics.playWidth * 0.82, 560))
@@ -1475,6 +1546,9 @@ struct GameTextFieldStyle: TextFieldStyle {
 
 enum CardImageURL {
     static func normal(_ name: String) -> URL? {
+        if name == "Hidden card" {
+            return URL(string: "https://gatherer.wizards.com/Images/CardBack.jpg")
+        }
         var components = URLComponents(string: "https://api.scryfall.com/cards/named")
         components?.queryItems = [
             URLQueryItem(name: "format", value: "image"),
