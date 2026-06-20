@@ -1,5 +1,4 @@
 import SwiftUI
-import WebKit
 import PhotosUI
 import UIKit
 
@@ -68,6 +67,9 @@ struct ContentView: View {
                 webSocketTask = nil
             }
         }
+        .task {
+            await checkBridge()
+        }
     }
 
     @ViewBuilder
@@ -77,8 +79,7 @@ struct ContentView: View {
             MenuView(
                 startSetup: { screen = .setup },
                 openDecks: { screen = .decks },
-                quickStart: { Task { await startGame() } },
-                openArena: { screen = .arenaWeb }
+                quickStart: { Task { await startGame() } }
             )
         case .setup:
             SetupView(
@@ -101,8 +102,6 @@ struct ContentView: View {
                 importDeck: importDeck,
                 selectedHumanPrecon: $selectedHumanPrecon
             )
-        case .arenaWeb:
-            ArenaWebContainer(url: webPlayURL)
         case .play:
             EmptyView()
         }
@@ -341,7 +340,6 @@ enum AppScreen: String {
     case setup = "Setup"
     case decks = "Decks"
     case play = "Play"
-    case arenaWeb = "Arena"
 }
 
 struct HeaderBar: View {
@@ -389,14 +387,12 @@ struct MenuView: View {
     let startSetup: () -> Void
     let openDecks: () -> Void
     let quickStart: () -> Void
-    let openArena: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
             HeroCard(title: "Commander vs AI", description: "Start a real XMage-backed 100-card Commander game.", button: "Game setup", action: startSetup)
             HeroCard(title: "Deck Builder", description: "Paste Archidekt or Moxfield export text, or pick an included Commander precon.", button: "Build deck", action: openDecks)
             HeroCard(title: "Quick Battle", description: "Use your selected precon and jump into a 1v1 game against AI.", button: "Start now", action: quickStart)
-            HeroCard(title: "Arena View", description: "Open the polished web battlefield inside this Swift app.", button: "Open arena", action: openArena)
         }
     }
 }
@@ -1430,32 +1426,6 @@ struct GameLogDrawer: View {
         .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.16)))
     }
-}
-
-struct ArenaWebContainer: View {
-    let url: URL
-
-    var body: some View {
-        WebView(url: url)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.15)))
-    }
-}
-
-struct WebView: UIViewRepresentable {
-    let url: URL
-
-    func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.allowsInlineMediaPlayback = true
-        let view = WKWebView(frame: .zero, configuration: configuration)
-        view.isOpaque = false
-        view.backgroundColor = .clear
-        view.load(URLRequest(url: url))
-        return view
-    }
-
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
 }
 
 struct Panel<Content: View>: View {
