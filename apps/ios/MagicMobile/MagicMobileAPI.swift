@@ -15,6 +15,23 @@ struct MagicMobileAPI {
     }
 
     func startCommanderGame(humanDeck: DeckList, aiDeck: DeckList, difficulty: AiDifficulty) async throws -> GameSnapshot {
+        let config = commanderConfig(humanDeck: humanDeck, aiDeck: aiDeck, difficulty: difficulty)
+        return try await post("/api/engine/commander", body: config)
+    }
+
+    func startCommanderStartup(humanDeck: DeckList, aiDeck: DeckList, difficulty: AiDifficulty) async throws -> CommanderStartupResponse {
+        try await post("/api/engine/commander/start", body: commanderConfig(humanDeck: humanDeck, aiDeck: aiDeck, difficulty: difficulty))
+    }
+
+    func commanderStartupStatus(startupId: String) async throws -> CommanderStartupResponse {
+        try await get("/api/engine/commander/start/\(startupId)")
+    }
+
+    func snapshot(gameId: String) async throws -> GameSnapshot {
+        try await get("/api/engine/games/\(gameId)")
+    }
+
+    private func commanderConfig(humanDeck: DeckList, aiDeck: DeckList, difficulty: AiDifficulty) -> CommanderGameConfig {
         let config = CommanderGameConfig(
             roomId: "ios-\(Int(Date().timeIntervalSince1970))",
             humanPlayerId: "human",
@@ -25,7 +42,7 @@ struct MagicMobileAPI {
             startingLife: 40,
             commanderDamageEnabled: true
         )
-        return try await post("/api/engine/commander", body: config)
+        return config
     }
 
     func submit(action: LegalAction, gameId: String) async throws -> GameSnapshot {

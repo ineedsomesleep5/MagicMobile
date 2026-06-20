@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Linking,
   SafeAreaView,
   ScrollView,
@@ -103,6 +104,37 @@ export default function App() {
   const [selectedCard, setSelectedCard] = useState<ZoneCard | undefined>();
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    if (!snapshot?.id) return;
+    const wsUrl = `${baseUrl.replace(/^http/, "ws")}/ws/games/${snapshot.id}`;
+    console.log("WebSocket connecting to:", wsUrl);
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      setStatus("Connected (real-time)");
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const nextSnapshot = JSON.parse(event.data);
+        setSnapshot(nextSnapshot);
+        setSelectedCard(undefined);
+      } catch (err) {
+        console.error("WS parse error:", err);
+      }
+    };
+
+    ws.onclose = () => {
+      setStatus("WebSocket closed");
+    };
+
+    ws.onerror = (err) => {
+      console.warn("WebSocket error:", err);
+    };
+
+    return () => ws.close();
+  }, [snapshot?.id, baseUrl]);
+
   const baseUrl = normalizeServerUrl(serverUrl);
   const human = snapshot?.players.find((player) => player.playerId === humanPlayerId);
   const opponent = snapshot?.players.find((player) => player.playerId !== humanPlayerId);
@@ -202,51 +234,49 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView horizontal contentContainerStyle={styles.landscapeShell}>
-        <View style={styles.appFrame}>
-          <Header screen={screen} status={status} busy={busy} onMenu={() => setScreen("menu")} />
-          {screen === "menu" ? (
-            <MenuScreen onSetup={() => setScreen("setup")} onDecks={() => setScreen("decks")} onPlay={startGame} />
-          ) : null}
-          {screen === "setup" ? (
-            <SetupScreen
-              serverUrl={serverUrl}
-              setServerUrl={setServerUrl}
-              difficulty={difficulty}
-              setDifficulty={setDifficulty}
-              deckSummary={deckSummary}
-              onCheckServer={checkServer}
-              onGenerateDeck={generateDeck}
-              onStartGame={startGame}
-              onDecks={() => setScreen("decks")}
-            />
-          ) : null}
-          {screen === "decks" ? (
-            <DeckBuilderScreen
-              deckText={deckText}
-              setDeckText={setDeckText}
-              deckSource={deckSource}
-              setDeckSource={setDeckSource}
-              deckSummary={deckSummary}
-              onImport={importDeck}
-              onGenerate={generateDeck}
-            />
-          ) : null}
-          {screen === "play" ? (
-            <PlayScreen
-              human={human}
-              opponent={opponent}
-              snapshot={snapshot}
-              selectedCard={selectedCard}
-              setSelectedCard={setSelectedCard}
-              selectedActions={selectedActions}
-              promptActions={promptActions}
-              onRunAction={runAction}
-              onNewGame={() => setScreen("setup")}
-            />
-          ) : null}
-        </View>
-      </ScrollView>
+      <View style={styles.appFrame}>
+        <Header screen={screen} status={status} busy={busy} onMenu={() => setScreen("menu")} />
+        {screen === "menu" ? (
+          <MenuScreen onSetup={() => setScreen("setup")} onDecks={() => setScreen("decks")} onPlay={startGame} />
+        ) : null}
+        {screen === "setup" ? (
+          <SetupScreen
+            serverUrl={serverUrl}
+            setServerUrl={setServerUrl}
+            difficulty={difficulty}
+            setDifficulty={setDifficulty}
+            deckSummary={deckSummary}
+            onCheckServer={checkServer}
+            onGenerateDeck={generateDeck}
+            onStartGame={startGame}
+            onDecks={() => setScreen("decks")}
+          />
+        ) : null}
+        {screen === "decks" ? (
+          <DeckBuilderScreen
+            deckText={deckText}
+            setDeckText={setDeckText}
+            deckSource={deckSource}
+            setDeckSource={setDeckSource}
+            deckSummary={deckSummary}
+            onImport={importDeck}
+            onGenerate={generateDeck}
+          />
+        ) : null}
+        {screen === "play" ? (
+          <PlayScreen
+            human={human}
+            opponent={opponent}
+            snapshot={snapshot}
+            selectedCard={selectedCard}
+            setSelectedCard={setSelectedCard}
+            selectedActions={selectedActions}
+            promptActions={promptActions}
+            onRunAction={runAction}
+            onNewGame={() => setScreen("setup")}
+          />
+        ) : null}
+      </View>
     </SafeAreaView>
   );
 }
@@ -387,6 +417,19 @@ function DeckBuilderScreen({
   );
 }
 
+function CardArt({ cardName, style }: { cardName: string; style?: any }) {
+  const uri = cardName === "Hidden card"
+    ? "https://gatherer.wizards.com/Images/CardBack.jpg"
+    : `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}&format=image&version=normal`;
+  return (
+    <Image
+      source={{ uri }}
+      style={[styles.cardArtImage, style]}
+      resizeMode="cover"
+    />
+  );
+}
+
 function PlayScreen({
   human,
   opponent,
@@ -408,55 +451,135 @@ function PlayScreen({
   onRunAction: (action: LegalAction) => void;
   onNewGame: () => void;
 }) {
+  const [showLog, setShowLog] = useState(false);
+
   if (!snapshot || !human || !opponent) {
     return (
       <View style={styles.loadingPanel}>
-        <ActivityIndicator color="#ffb45d" />
+        <ActivityIndicator color="#ffb45d" size="large" />
         <Text style={styles.panelTitle}>Starting Commander table...</Text>
       </View>
     );
   }
 
   const actions = selectedActions.length > 0 ? selectedActions : promptActions;
+  
+  // Split battlefield cards into Lands and non-lands
+  const opponentLands = opponent.zones.battlefield.filter(c => isLand(c));
+  const opponentCreatures = opponent.zones.battlefield.filter(c => !isLand(c));
+  const humanCreatures = human.zones.battlefield.filter(c => !isLand(c));
+  const humanLands = human.zones.battlefield.filter(c => isLand(c));
+
   return (
     <View style={styles.gameLayout}>
-      <View style={styles.battlefield}>
-        <PlayerRail player={opponent} label="Noaddrag" />
-        <CardRow title="Opponent Battlefield" cards={opponent.zones.battlefield} selectedCard={selectedCard} onSelect={setSelectedCard} />
-        <View style={styles.centerPrompt}>
-          <Text style={styles.phaseText}>{snapshot.step ?? snapshot.phase}</Text>
-          <Text style={styles.promptText}>{snapshot.promptText ?? "Waiting for XMage"}</Text>
-          <Text style={styles.promptMeta}>Turn {snapshot.turn} - Priority {snapshot.priorityPlayerId ?? "none"}</Text>
+      <View style={styles.battlefieldContainer}>
+        {/* 3D Tilted Battlefield */}
+        <View style={styles.battlefield}>
+          {/* Opponent Lands */}
+          <CardRow title="Opponent Lands" cards={opponentLands} selectedCard={selectedCard} onSelect={setSelectedCard} compact />
+          
+          {/* Opponent Creatures */}
+          <CardRow title="Opponent Creatures" cards={opponentCreatures} selectedCard={selectedCard} onSelect={setSelectedCard} />
+
+          {/* Center River / Splitter */}
+          <View style={styles.battlefieldDivider} />
+
+          {/* Your Creatures */}
+          <CardRow title="Your Creatures" cards={humanCreatures} selectedCard={selectedCard} onSelect={setSelectedCard} />
+
+          {/* Your Lands */}
+          <CardRow title="Your Lands" cards={humanLands} selectedCard={selectedCard} onSelect={setSelectedCard} compact />
         </View>
-        <CardRow title="Your Battlefield" cards={human.zones.battlefield} selectedCard={selectedCard} onSelect={setSelectedCard} />
-        <HandFan cards={human.zones.hand} selectedCard={selectedCard} onSelect={setSelectedCard} />
-        <PlayerRail player={human} label="TabletopPolish" active />
-      </View>
-      <View style={styles.sidePanel}>
-        <Text style={styles.panelTitle}>Stages</Text>
-        <View style={styles.stageGrid}>
-          {steps.map((step) => (
-            <Text key={step} style={step === snapshot.step ? styles.stageActive : styles.stage}>{step.replace("-", " ")}</Text>
-          ))}
-        </View>
-        <Text style={styles.panelTitle}>Actions</Text>
-        <ScrollView style={styles.actionList}>
-          {actions.map((action) => (
-            <TouchableOpacity key={action.id} style={styles.contextButton} onPress={() => onRunAction(action)}>
-              <Text style={styles.contextButtonText}>{action.label}</Text>
+
+        {/* 2D HUD Overlays (circular avatars, hand, buttons) */}
+        <View style={styles.hudOverlay} pointerEvents="box-none">
+          {/* Opponent circular HUD */}
+          <View style={styles.opponentAvatarWrap}>
+            <View style={styles.circularAvatar}>
+              <Text style={styles.lifeText}>{opponent.life}</Text>
+            </View>
+            <View style={styles.avatarLabelWrap}>
+              <Text style={styles.playerName}>Noaddrag</Text>
+              <Text style={styles.playerSubText}>Lib: {opponent.zones.library.length} · Hand: {opponent.zones.hand.length}</Text>
+            </View>
+          </View>
+
+          {/* Center phase status banner */}
+          <View style={styles.centerBanner}>
+            <Text style={styles.phaseBannerText}>{snapshot.step ?? snapshot.phase}</Text>
+            <Text style={styles.promptBannerText} numberOfLines={1}>{snapshot.promptText ?? "Waiting..."}</Text>
+          </View>
+
+          {/* Player circular HUD */}
+          <View style={styles.humanAvatarWrap}>
+            <View style={[styles.circularAvatar, styles.humanLifeBorder]}>
+              <Text style={styles.lifeText}>{human.life}</Text>
+            </View>
+            <View style={styles.avatarLabelWrap}>
+              <Text style={styles.playerName}>You</Text>
+              <Text style={styles.playerSubText}>Lib: {human.zones.library.length} · Grave: {human.zones.graveyard.length}</Text>
+            </View>
+          </View>
+
+          {/* Overlapping Curved Hand Fan */}
+          <HandFan cards={human.zones.hand} selectedCard={selectedCard} onSelect={setSelectedCard} />
+
+          {/* Thumb-friendly Action buttons overlay */}
+          <View style={styles.actionRailContainer}>
+            {actions.slice(0, 3).map((action, idx) => {
+              const isPrimary = idx === 0;
+              return (
+                <TouchableOpacity
+                  key={action.id}
+                  style={isPrimary ? styles.primaryActionButton : styles.secondaryActionButton}
+                  onPress={() => onRunAction(action)}
+                >
+                  <Text style={isPrimary ? styles.primaryActionText : styles.secondaryActionText}>
+                    {action.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+            <TouchableOpacity style={styles.secondaryActionButton} onPress={() => setShowLog(!showLog)}>
+              <Text style={styles.secondaryActionText}>{showLog ? "Close Log" : "Show Log"}</Text>
             </TouchableOpacity>
-          ))}
-          <TouchableOpacity style={styles.secondaryButton} onPress={onNewGame}>
-            <Text style={styles.secondaryButtonText}>New game</Text>
-          </TouchableOpacity>
-        </ScrollView>
-        <CardInspector card={selectedCard} />
-        <Text style={styles.panelTitle}>Log</Text>
-        <ScrollView style={styles.logList}>
-          {snapshot.log.slice(-10).map((entry) => (
-            <Text key={entry.id} style={styles.logLine}>{entry.message}</Text>
-          ))}
-        </ScrollView>
+            <TouchableOpacity style={styles.dangerButton} onPress={onNewGame}>
+              <Text style={styles.dangerButtonText}>Concede</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Slide-out floating log drawer */}
+        {showLog ? (
+          <View style={styles.floatingLogPanel}>
+            <View style={styles.floatingLogHeader}>
+              <Text style={styles.panelTitle}>Game Log</Text>
+              <TouchableOpacity onPress={() => setShowLog(false)}>
+                <Text style={styles.closeBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.logList}>
+              {snapshot.log.slice(-15).map((entry) => (
+                <Text key={entry.id} style={styles.logLine}>{entry.message}</Text>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {/* Floating Card Inspector overlay when tapped */}
+        {selectedCard ? (
+          <View style={styles.floatingInspector}>
+            <TouchableOpacity style={styles.inspectorClose} onPress={() => setSelectedCard(undefined)}>
+              <Text style={styles.closeBtnText}>✕</Text>
+            </TouchableOpacity>
+            <CardArt cardName={selectedCard.card.name} style={styles.inspectorImage} />
+            <Text style={styles.inspectorTitle}>{selectedCard.card.name}</Text>
+            <Text style={styles.inspectorType}>{selectedCard.card.typeLine}</Text>
+            {selectedCard.card.oracleText ? (
+              <Text style={styles.inspectorText} numberOfLines={4}>{selectedCard.card.oracleText}</Text>
+            ) : null}
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -474,70 +597,99 @@ function HeroPanel({ title, body, action, onPress }: { title: string; body: stri
   );
 }
 
-function PlayerRail({ player, label, active = false }: { player: PlayerGameState; label: string; active?: boolean }) {
-  const commander = player.zones.command[0]?.card.name ?? "No commander";
-  return (
-    <View style={styles.playerRail}>
-      <View style={active ? styles.lifeActive : styles.life}><Text style={styles.lifeText}>{player.life}</Text></View>
-      <Text style={styles.playerName}>{label}</Text>
-      <Text style={styles.zoneText}>Library {player.zones.library.length}  Grave {player.zones.graveyard.length}  Exile {player.zones.exile.length}</Text>
-      <Text style={styles.zoneText}>Commander: {commander}  Tax {player.commanderTax}</Text>
-    </View>
-  );
-}
-
-function CardRow({ title, cards, selectedCard, onSelect }: { title: string; cards: ZoneCard[]; selectedCard: ZoneCard | undefined; onSelect: (card: ZoneCard) => void }) {
+function CardRow({
+  cards,
+  selectedCard,
+  onSelect,
+  compact = false
+}: {
+  title: string;
+  cards: ZoneCard[];
+  selectedCard: ZoneCard | undefined;
+  onSelect: (card: ZoneCard) => void;
+  compact?: boolean;
+}) {
   return (
     <View style={styles.cardRowWrap}>
-      <Text style={styles.rowTitle}>{title}</Text>
       <ScrollView horizontal contentContainerStyle={styles.cardRow}>
-        {cards.length === 0 ? <Text style={styles.emptyText}>No permanents</Text> : null}
         {cards.map((card) => (
-          <CardButton key={card.instanceId} card={card} selected={selectedCard?.instanceId === card.instanceId} onPress={() => onSelect(card)} />
+          <CardButton
+            key={card.instanceId}
+            card={card}
+            selected={selectedCard?.instanceId === card.instanceId}
+            onPress={() => onSelect(card)}
+            compact={compact}
+          />
         ))}
       </ScrollView>
     </View>
   );
 }
 
-function HandFan({ cards, selectedCard, onSelect }: { cards: ZoneCard[]; selectedCard: ZoneCard | undefined; onSelect: (card: ZoneCard) => void }) {
+function HandFan({
+  cards,
+  selectedCard,
+  onSelect
+}: {
+  cards: ZoneCard[];
+  selectedCard: ZoneCard | undefined;
+  onSelect: (card: ZoneCard) => void;
+}) {
   return (
-    <View style={styles.handFan}>
-      {cards.map((card, index) => (
-        <TouchableOpacity
-          key={card.instanceId}
-          style={[
-            styles.handCard,
-            { transform: [{ rotate: `${(index - (cards.length - 1) / 2) * 4}deg` }, { translateY: selectedCard?.instanceId === card.instanceId ? -20 : Math.abs(index - (cards.length - 1) / 2) * 3 }] }
-          ]}
-          onPress={() => onSelect(card)}
-        >
-          <Text style={styles.cardName} numberOfLines={2}>{card.card.name}</Text>
-          <Text style={styles.cardType} numberOfLines={1}>{card.card.typeLine}</Text>
-        </TouchableOpacity>
-      ))}
+    <View style={styles.handFan} pointerEvents="box-none">
+      {cards.map((card, index) => {
+        const rotation = (index - (cards.length - 1) / 2) * 5;
+        const translationY = Math.abs(index - (cards.length - 1) / 2) * 4 - (selectedCard?.instanceId === card.instanceId ? 30 : 0);
+        return (
+          <TouchableOpacity
+            key={card.instanceId}
+            style={[
+              styles.handCard,
+              {
+                transform: [
+                  { rotate: `${rotation}deg` },
+                  { translateY: translationY }
+                ],
+                zIndex: index + (selectedCard?.instanceId === card.instanceId ? 100 : 0)
+              }
+            ]}
+            onPress={() => onSelect(card)}
+          >
+            <CardArt cardName={card.card.name} style={styles.handCardArt} />
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
 
-function CardButton({ card, selected, onPress }: { card: ZoneCard; selected: boolean; onPress: () => void }) {
+function CardButton({
+  card,
+  selected,
+  onPress,
+  compact = false
+}: {
+  card: ZoneCard;
+  selected: boolean;
+  onPress: () => void;
+  compact?: boolean;
+}) {
   return (
-    <TouchableOpacity style={[styles.cardButton, selected && styles.cardButtonSelected, card.tapped && styles.cardTapped]} onPress={onPress}>
-      <Text style={styles.cardName} numberOfLines={2}>{card.card.name}</Text>
-      <Text style={styles.cardType} numberOfLines={2}>{card.card.typeLine}</Text>
-      {card.power !== undefined || card.toughness !== undefined ? <Text style={styles.ptBadge}>{card.power ?? "*"}/{card.toughness ?? "*"}</Text> : null}
+    <TouchableOpacity
+      style={[
+        compact ? styles.compactCardButton : styles.cardButton,
+        selected && styles.cardButtonSelected,
+        card.tapped && styles.cardTapped
+      ]}
+      onPress={onPress}
+    >
+      <CardArt cardName={card.card.name} style={styles.battleCardArt} />
+      {card.power !== undefined && card.toughness !== undefined ? (
+        <View style={styles.ptBadge}>
+          <Text style={styles.ptBadgeText}>{card.power}/{card.toughness}</Text>
+        </View>
+      ) : null}
     </TouchableOpacity>
-  );
-}
-
-function CardInspector({ card }: { card: ZoneCard | undefined }) {
-  return (
-    <View style={styles.inspector}>
-      <Text style={styles.inspectorKicker}>Selected</Text>
-      <Text style={styles.inspectorTitle}>{card?.card.name ?? "Tap a card"}</Text>
-      <Text style={styles.inspectorType}>{card?.card.typeLine ?? "Inspect hand, battlefield, command, graveyard, or exile cards."}</Text>
-      <Text style={styles.inspectorText}>{card?.card.oracleText ?? ""}</Text>
-    </View>
   );
 }
 
@@ -616,72 +768,90 @@ function normalizeServerUrl(value: string): string {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#071012" },
-  landscapeShell: { minWidth: 940, flexGrow: 1 },
-  appFrame: { flex: 1, minWidth: 940, minHeight: 520, padding: 12, backgroundColor: "#101817" },
-  header: { height: 62, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  logoButton: { minWidth: 180 },
-  logo: { color: "#fff2d8", fontSize: 24, fontWeight: "900" },
-  logoSub: { color: "#ffb45d", fontSize: 12, fontWeight: "800", textTransform: "uppercase" },
-  statusPanel: { flex: 1, minHeight: 46, borderWidth: 1, borderColor: "#30413c", borderRadius: 8, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 10, backgroundColor: "#0a0f0f" },
-  statusText: { color: "#d7d0bf", fontWeight: "700", textAlign: "right" },
+  landscapeShell: { flexGrow: 1 },
+  appFrame: { flex: 1, padding: 8, backgroundColor: "#101817" },
+  header: { height: 50, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  logoButton: { minWidth: 140 },
+  logo: { color: "#fff2d8", fontSize: 20, fontWeight: "900" },
+  logoSub: { color: "#ffb45d", fontSize: 10, fontWeight: "800", textTransform: "uppercase" },
+  statusPanel: { flex: 1, minHeight: 38, borderWidth: 1, borderColor: "#30413c", borderRadius: 8, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 10, backgroundColor: "#0a0f0f" },
+  statusText: { color: "#d7d0bf", fontSize: 12, fontWeight: "700", textAlign: "right" },
   menuGrid: { flex: 1, flexDirection: "row", gap: 12, alignItems: "stretch" },
-  heroPanel: { flex: 1, borderWidth: 1, borderColor: "#30413c", borderRadius: 8, padding: 18, justifyContent: "space-between", backgroundColor: "#14211d" },
-  heroTitle: { color: "#fff2d8", fontSize: 28, fontWeight: "900" },
-  heroBody: { color: "#c7c0ae", fontSize: 16, lineHeight: 23, fontWeight: "600" },
+  heroPanel: { flex: 1, borderWidth: 1, borderColor: "#30413c", borderRadius: 8, padding: 14, justifyContent: "space-between", backgroundColor: "#14211d" },
+  heroTitle: { color: "#fff2d8", fontSize: 22, fontWeight: "900" },
+  heroBody: { color: "#c7c0ae", fontSize: 13, lineHeight: 18, fontWeight: "600" },
   twoColumn: { flex: 1, flexDirection: "row", gap: 12 },
-  panel: { flex: 1, borderWidth: 1, borderColor: "#30413c", borderRadius: 8, padding: 14, gap: 12, backgroundColor: "#101615" },
-  panelTitle: { color: "#ffb45d", fontSize: 16, fontWeight: "900", textTransform: "uppercase" },
-  input: { minHeight: 44, borderWidth: 1, borderColor: "#40534f", borderRadius: 7, paddingHorizontal: 12, color: "#fff2d8", fontWeight: "700", backgroundColor: "#080d0d" },
-  deckInput: { flex: 1, minHeight: 260, borderWidth: 1, borderColor: "#40534f", borderRadius: 7, padding: 12, color: "#fff2d8", fontWeight: "700", textAlignVertical: "top", backgroundColor: "#080d0d" },
-  helpText: { color: "#b7b09f", lineHeight: 20, fontWeight: "600" },
-  deckSummary: { color: "#fff2d8", fontSize: 17, lineHeight: 24, fontWeight: "800" },
-  actionRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  primaryButton: { minHeight: 44, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 12, alignItems: "center", justifyContent: "center", backgroundColor: "#f57a2d" },
-  primaryButtonText: { color: "#fff6e8", fontWeight: "900" },
-  secondaryButton: { minHeight: 44, borderWidth: 1, borderColor: "#526964", borderRadius: 8, paddingHorizontal: 14, paddingVertical: 11, alignItems: "center", justifyContent: "center", backgroundColor: "#17221f" },
-  secondaryButtonText: { color: "#fff2d8", fontWeight: "900" },
-  segmentRow: { flexDirection: "row", gap: 8 },
-  segment: { borderWidth: 1, borderColor: "#526964", borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10 },
-  segmentActive: { borderWidth: 1, borderColor: "#35c7ff", borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: "#123845" },
-  segmentText: { color: "#c7c0ae", fontWeight: "800" },
-  segmentActiveText: { color: "#f2fbff", fontWeight: "900" },
+  panel: { flex: 1, borderWidth: 1, borderColor: "#30413c", borderRadius: 8, padding: 12, gap: 10, backgroundColor: "#101615" },
+  panelTitle: { color: "#ffb45d", fontSize: 14, fontWeight: "900", textTransform: "uppercase" },
+  input: { minHeight: 38, borderWidth: 1, borderColor: "#40534f", borderRadius: 7, paddingHorizontal: 12, color: "#fff2d8", fontWeight: "700", backgroundColor: "#080d0d" },
+  deckInput: { flex: 1, minHeight: 180, borderWidth: 1, borderColor: "#40534f", borderRadius: 7, padding: 10, color: "#fff2d8", fontWeight: "700", textAlignVertical: "top", backgroundColor: "#080d0d" },
+  helpText: { color: "#b7b09f", fontSize: 11, lineHeight: 16, fontWeight: "600" },
+  deckSummary: { color: "#fff2d8", fontSize: 14, lineHeight: 20, fontWeight: "800" },
+  actionRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  primaryButton: { minHeight: 38, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10, alignItems: "center", justifyContent: "center", backgroundColor: "#f57a2d" },
+  primaryButtonText: { color: "#fff6e8", fontSize: 12, fontWeight: "900" },
+  secondaryButton: { minHeight: 38, borderWidth: 1, borderColor: "#526964", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, alignItems: "center", justifyContent: "center", backgroundColor: "#17221f" },
+  secondaryButtonText: { color: "#fff2d8", fontSize: 12, fontWeight: "900" },
+  segmentRow: { flexDirection: "row", gap: 6 },
+  segment: { borderWidth: 1, borderColor: "#526964", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
+  segmentActive: { borderWidth: 1, borderColor: "#35c7ff", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#123845" },
+  segmentText: { color: "#c7c0ae", fontSize: 12, fontWeight: "800" },
+  segmentActiveText: { color: "#f2fbff", fontSize: 12, fontWeight: "900" },
   loadingPanel: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-  gameLayout: { flex: 1, flexDirection: "row", gap: 10 },
-  battlefield: { flex: 1, borderWidth: 1, borderColor: "#344d37", borderRadius: 8, padding: 10, justifyContent: "space-between", backgroundColor: "#20371e" },
-  sidePanel: { width: 286, borderWidth: 1, borderColor: "#30413c", borderRadius: 8, padding: 10, gap: 8, backgroundColor: "#0b1010" },
-  playerRail: { minHeight: 54, flexDirection: "row", alignItems: "center", gap: 10 },
-  life: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: "#e6dac2", alignItems: "center", justifyContent: "center", backgroundColor: "#514b3f" },
-  lifeActive: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: "#35c7ff", alignItems: "center", justifyContent: "center", backgroundColor: "#2e4c5c" },
-  lifeText: { color: "#fff2d8", fontSize: 20, fontWeight: "900" },
-  playerName: { minWidth: 110, color: "#fff2d8", fontWeight: "900" },
-  zoneText: { color: "#d1cab9", fontWeight: "700" },
-  cardRowWrap: { minHeight: 82, gap: 4 },
-  rowTitle: { color: "#ffb45d", fontSize: 11, fontWeight: "900", textTransform: "uppercase" },
-  cardRow: { gap: 8, alignItems: "center" },
-  cardButton: { width: 76, height: 106, borderRadius: 7, borderWidth: 2, borderColor: "#273633", padding: 6, justifyContent: "space-between", backgroundColor: "#d5c5a3" },
-  cardButtonSelected: { borderColor: "#32d4ff", shadowColor: "#32d4ff", shadowOpacity: 0.7, shadowRadius: 10 },
-  cardTapped: { transform: [{ rotate: "10deg" }] },
-  cardName: { color: "#17130d", fontSize: 11, fontWeight: "900" },
-  cardType: { color: "#31271b", fontSize: 9, fontWeight: "700" },
-  ptBadge: { alignSelf: "flex-end", color: "#17130d", fontWeight: "900" },
-  emptyText: { color: "#a8b0a1", fontWeight: "700" },
-  centerPrompt: { alignSelf: "center", minWidth: 420, borderRadius: 8, padding: 10, alignItems: "center", backgroundColor: "rgba(5,8,8,0.72)" },
-  phaseText: { color: "#ffb45d", fontSize: 18, fontWeight: "900", textTransform: "uppercase" },
-  promptText: { color: "#fff2d8", fontSize: 16, fontWeight: "900", textAlign: "center" },
-  promptMeta: { color: "#b7b09f", fontWeight: "800" },
-  handFan: { height: 120, flexDirection: "row", alignItems: "flex-end", justifyContent: "center", gap: -12 },
-  handCard: { width: 82, height: 112, marginHorizontal: -5, borderWidth: 2, borderColor: "#23c7ff", borderRadius: 7, padding: 7, justifyContent: "space-between", backgroundColor: "#d9c8a7" },
-  stageGrid: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
-  stage: { width: 82, borderWidth: 1, borderColor: "#283733", borderRadius: 6, padding: 5, color: "#b9b2a1", fontSize: 10, fontWeight: "800", textAlign: "center" },
-  stageActive: { width: 82, borderWidth: 1, borderColor: "#ffb45d", borderRadius: 6, padding: 5, color: "#fff2d8", fontSize: 10, fontWeight: "900", textAlign: "center", backgroundColor: "#59391d" },
-  actionList: { maxHeight: 132 },
-  contextButton: { minHeight: 38, borderRadius: 7, paddingHorizontal: 10, paddingVertical: 9, marginBottom: 6, backgroundColor: "#69391f" },
-  contextButtonText: { color: "#fff2d8", fontWeight: "900", textAlign: "center" },
-  inspector: { minHeight: 110, borderWidth: 1, borderColor: "#30413c", borderRadius: 8, padding: 9, backgroundColor: "#111817" },
-  inspectorKicker: { color: "#ffb45d", fontSize: 10, fontWeight: "900", textTransform: "uppercase" },
-  inspectorTitle: { color: "#fff2d8", fontSize: 15, fontWeight: "900" },
-  inspectorType: { color: "#d8d0be", fontSize: 11, fontWeight: "800" },
-  inspectorText: { color: "#bcb5a6", fontSize: 11, lineHeight: 15 },
+  
+  // Play screen revamped layout styles
+  gameLayout: { flex: 1, flexDirection: "row" },
+  battlefieldContainer: { flex: 1, position: "relative", overflow: "hidden" },
+  battlefield: { position: "absolute", inset: 0, justifyContent: "space-around", paddingVertical: 12, transform: [{ perspective: 1200 }, { rotateX: "50deg" }, { scaleY: 0.95 }] },
+  battlefieldDivider: { height: 2, backgroundColor: "rgba(255,180,93,0.12)", marginHorizontal: 20, marginVertical: 4 },
+  hudOverlay: { position: "absolute", inset: 0, justifyContent: "space-between", padding: 8 },
+  
+  opponentAvatarWrap: { position: "absolute", top: 8, left: "50%", transform: [{ translateX: -120 }], flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(10,15,15,0.85)", paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: "rgba(255,180,93,0.3)" },
+  humanAvatarWrap: { position: "absolute", bottom: 8, left: 12, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(10,15,15,0.85)", paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: "rgba(53,199,255,0.3)" },
+  avatarLabelWrap: {},
+  circularAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#1d2328", borderWidth: 2, borderColor: "#fff2d8", justifyContent: "center", alignItems: "center" },
+  humanLifeBorder: { borderColor: "#32d4ff" },
+  lifeText: { color: "#fff", fontSize: 16, fontWeight: "900" },
+  playerName: { color: "#fff2d8", fontSize: 13, fontWeight: "900" },
+  playerSubText: { color: "#a8b0a1", fontSize: 10, fontWeight: "700" },
+  
+  centerBanner: { position: "absolute", top: 8, right: 12, alignItems: "flex-end", backgroundColor: "rgba(10,15,15,0.8)", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)" },
+  phaseBannerText: { color: "#ffb45d", fontSize: 12, fontWeight: "900", textTransform: "uppercase" },
+  promptBannerText: { color: "#fff2d8", fontSize: 11, fontWeight: "700" },
+  
+  handFan: { position: "absolute", bottom: -15, left: "50%", transform: [{ translateX: -150 }], width: 300, height: 95, flexDirection: "row", justifyContent: "center", alignItems: "flex-end" },
+  handCard: { width: 64, height: 90, marginHorizontal: -12, borderWidth: 2, borderColor: "#23c7ff", borderRadius: 6, overflow: "hidden", shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 5 },
+  handCardArt: { width: "100%", height: "100%" },
+  cardArtImage: { width: "100%", height: "100%" },
+  
+  cardRowWrap: { minHeight: 70, justifyContent: "center" },
+  cardRow: { gap: 10, paddingHorizontal: 12 },
+  cardButton: { width: 56, height: 78, borderRadius: 6, borderWidth: 2, borderColor: "#273633", overflow: "hidden" },
+  compactCardButton: { width: 46, height: 64, borderRadius: 5, borderWidth: 1.5, borderColor: "#273633", overflow: "hidden" },
+  cardButtonSelected: { borderColor: "#32d4ff" },
+  cardTapped: { transform: [{ rotate: "90deg" }] },
+  battleCardArt: { width: "100%", height: "100%" },
+  ptBadge: { position: "absolute", bottom: 2, right: 2, backgroundColor: "rgba(0,0,0,0.85)", paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3, borderWidth: 0.5, borderColor: "#ffb45d" },
+  ptBadgeText: { color: "#fff", fontSize: 8, fontWeight: "900" },
+  
+  actionRailContainer: { position: "absolute", bottom: 8, right: 8, alignItems: "flex-end", gap: 6 },
+  primaryActionButton: { minWidth: 110, minHeight: 38, borderRadius: 19, backgroundColor: "#ff7a00", justifyContent: "center", alignItems: "center", paddingHorizontal: 12, borderWidth: 1, borderColor: "#ffc83b", shadowColor: "#ff7a00", shadowOpacity: 0.5, shadowRadius: 8 },
+  primaryActionText: { color: "#fff", fontSize: 11, fontWeight: "900", textTransform: "uppercase" },
+  secondaryActionButton: { minWidth: 90, minHeight: 32, borderRadius: 16, backgroundColor: "rgba(23,34,31,0.9)", justifyContent: "center", alignItems: "center", paddingHorizontal: 10, borderWidth: 1, borderColor: "#526964" },
+  secondaryActionText: { color: "#fff2d8", fontSize: 10, fontWeight: "800" },
+  dangerButton: { minWidth: 90, minHeight: 32, borderRadius: 16, backgroundColor: "#8a231f", justifyContent: "center", alignItems: "center", paddingHorizontal: 10, borderWidth: 1, borderColor: "#b83b35" },
+  dangerButtonText: { color: "#fff", fontSize: 10, fontWeight: "900" },
+  
+  floatingLogPanel: { position: "absolute", top: 50, right: 12, bottom: 80, width: 220, backgroundColor: "rgba(10,15,15,0.95)", borderWidth: 1, borderColor: "#30413c", borderRadius: 8, padding: 8, zIndex: 1000 },
+  floatingLogHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
+  closeBtnText: { color: "#a8b0a1", fontSize: 16, fontWeight: "700", padding: 4 },
   logList: { flex: 1 },
-  logLine: { color: "#c9c2b2", fontSize: 11, lineHeight: 16, fontWeight: "700", borderBottomWidth: 1, borderBottomColor: "#1d2926", paddingVertical: 4 }
+  logLine: { color: "#c9c2b2", fontSize: 10, paddingVertical: 3, borderBottomWidth: 0.5, borderBottomColor: "#1d2926" },
+  
+  floatingInspector: { position: "absolute", top: 40, left: 12, bottom: 80, width: 180, backgroundColor: "rgba(10,15,15,0.95)", borderWidth: 1, borderColor: "#32d4ff", borderRadius: 8, padding: 8, alignItems: "center", zIndex: 1001 },
+  inspectorClose: { position: "absolute", top: 4, right: 8, zIndex: 10 },
+  inspectorImage: { width: 140, height: 195, borderRadius: 6, marginBottom: 6 },
+  inspectorTitle: { color: "#fff2d8", fontSize: 12, fontWeight: "900", textAlign: "center" },
+  inspectorType: { color: "#a8b0a1", fontSize: 10, fontWeight: "700", textAlign: "center", marginBottom: 4 },
+  inspectorText: { color: "#d8d0be", fontSize: 9, lineHeight: 12, textAlign: "center" }
 });

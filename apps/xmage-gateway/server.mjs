@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { parse as parseUrl } from "node:url";
+import { WebSocketServer } from "ws";
 
 export const aiDifficultyProfiles = {
   easy: { playerType: "Computer - default", skill: 3 },
@@ -46,6 +47,15 @@ export function createGatewayHandler(state = games, options = {}) {
         }
         const snapshot = createCommanderGame(state, body);
         return sendJson(response, snapshot, 201);
+      }
+
+      const updatesMatch = url.pathname?.match(/^\/api\/engine\/games\/([^/]+)\/updates$/);
+      if (method === "POST" && updatesMatch) {
+        const gameId = decodeURIComponent(updatesMatch[1]);
+        const nextSnapshot = await readJson(request);
+        state.set(gameId, nextSnapshot);
+        broadcastSnapshot(gameId, nextSnapshot);
+        return sendJson(response, { status: "ok" });
       }
 
       const gameMatch = url.pathname?.match(/^\/games\/([^/]+)(?:\/([^/]+))?$/);
@@ -322,6 +332,13 @@ export function applyCommand(snapshot, command) {
     snapshot.log.push(logEntry(snapshot.log.length, `${command.playerId} passed priority`));
   }
 
+  if (command.type === "pass_until_next_turn") {
+    snapshot.priorityPlayerId = snapshot.activePlayerId;
+    snapshot.waitingOnPlayerId = snapshot.activePlayerId;
+    snapshot.promptText = "Your priority";
+    snapshot.log.push(logEntry(snapshot.log.length, `${command.playerId} passed until next turn`));
+  }
+
   if (command.type === "advance_phase") {
     const phases = ["beginning", "precombat-main", "combat", "postcombat-main", "ending"];
     snapshot.phase = phases[(phases.indexOf(snapshot.phase) + 1) % phases.length] ?? "beginning";
@@ -347,9 +364,10 @@ function getLegalActions(snapshot, playerId) {
 
   const firstHandCard = player.zones.hand[0];
   const actions = [
-    { id: `${playerId}-pass`, type: "pass_priority", playerId, label: "Pass Priority" },
-    { id: `${playerId}-phase`, type: "advance_phase", playerId, label: "Next Phase" },
-    { id: `${playerId}-concede`, type: "concede", playerId, label: "Concede" }
+    { id: `${playerId}-pass`, type: "pass_priority", playerId, label: "Pass Priority", shortLabel: "Done", isPrimary: true },
+    { id: `${playerId}-phase`, type: "advance_phase", playerId, label: "Next Phase", shortLabel: "Next" },
+    { id: `${playerId}-skip-turn`, type: "pass_until_next_turn", playerId, label: "Pass until next turn", shortLabel: "Skip turn" },
+    { id: `${playerId}-concede`, type: "concede", playerId, label: "Concede", shortLabel: "Concede" }
   ];
 
   if (firstHandCard) {
@@ -358,8 +376,10 @@ function getLegalActions(snapshot, playerId) {
       type: "cast_spell",
       playerId,
       label: `Cast ${firstHandCard.card.name}`,
+      shortLabel: "Cast",
       cardInstanceId: firstHandCard.instanceId,
-      sourceZone: "hand"
+      sourceZone: "hand",
+      requiresTarget: false
     });
     if (isLand(firstHandCard)) {
       actions.unshift({
@@ -367,8 +387,10 @@ function getLegalActions(snapshot, playerId) {
         type: "play_land",
         playerId,
         label: `Play ${firstHandCard.card.name}`,
+        shortLabel: "Play",
         cardInstanceId: firstHandCard.instanceId,
-        sourceZone: "hand"
+        sourceZone: "hand",
+        requiresTarget: false
       });
     }
   }
@@ -380,7 +402,9 @@ function getLegalActions(snapshot, playerId) {
       type: "declare_attackers",
       playerId,
       label: `Attack with ${untappedCreature.card.name}`,
-      cardInstanceId: untappedCreature.instanceId
+      shortLabel: "Attack",
+      cardInstanceId: untappedCreature.instanceId,
+      requiresTarget: true
     });
   }
 
@@ -391,7 +415,9 @@ function getLegalActions(snapshot, playerId) {
       type: "tap_permanent",
       playerId,
       label: `Tap ${untappedPermanent.card.name}`,
-      cardInstanceId: untappedPermanent.instanceId
+      shortLabel: "Tap",
+      cardInstanceId: untappedPermanent.instanceId,
+      requiresTarget: false
     });
   }
 
@@ -605,8 +631,70 @@ function sendJson(response, body, status = 200) {
 
 class NotFoundError extends Error {}
 
+const wssClients = new Map(); // gameId -> Set of ws clients
+
+export function registerWebSocketConnection(gameId, ws) {
+  if (!wssClients.has(gameId)) {
+    wssClients.set(gameId, new Set());
+  }
+  wssClients.get(gameId).add(ws);
+  
+  ws.on("close", () => {
+    const clients = wssClients.get(gameId);
+    if (clients) {
+      clients.delete(ws);
+      if (clients.size === 0) {
+        wssClients.delete(gameId);
+      }
+    }
+  });
+}
+
+export function broadcastSnapshot(gameId, snapshot) {
+  const clients = wssClients.get(gameId);
+  if (clients) {
+    const payload = JSON.stringify(snapshot);
+    for (const ws of clients) {
+      if (ws.readyState === 1) { // OPEN
+        ws.send(payload);
+      }
+    }
+  }
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
-  createServer(createGatewayHandler()).listen(port, () => {
+  const handler = createGatewayHandler();
+  const server = createServer(handler);
+
+  const wss = new WebSocketServer({ noServer: true });
+  wss.on("connection", (ws, request) => {
+    const url = parseUrl(request.url ?? "/", true);
+    const match = url.pathname?.match(/^\/ws\/games\/([^/]+)$/);
+    if (match) {
+      const gameId = decodeURIComponent(match[1]);
+      registerWebSocketConnection(gameId, ws);
+      
+      const snapshot = games.get(gameId);
+      if (snapshot) {
+        ws.send(JSON.stringify(snapshot));
+      }
+    } else {
+      ws.close();
+    }
+  });
+
+  server.on("upgrade", (request, socket, head) => {
+    const url = parseUrl(request.url ?? "/", true);
+    if (url.pathname?.startsWith("/ws/games/")) {
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit("connection", ws, request);
+      });
+    } else {
+      socket.destroy();
+    }
+  });
+
+  server.listen(port, () => {
     console.log(`MagicMobile XMage gateway listening on ${port}`);
   });
 }

@@ -142,6 +142,16 @@ export interface GameSnapshot {
   engineHealth?: EngineHealth;
 }
 
+export type CommanderStartupStatus = "starting" | "ready" | "failed";
+
+export interface CommanderStartupResponse {
+  startupId: string;
+  status: CommanderStartupStatus;
+  snapshot?: GameSnapshot;
+  message?: string;
+  error?: string;
+}
+
 export type GameStep =
   | "untap"
   | "upkeep"
@@ -174,6 +184,7 @@ export type LegalActionType =
   | "untap_permanent"
   | "pass_priority"
   | "pass_until_response"
+  | "pass_until_next_turn"
   | "advance_phase"
   | "concede";
 
@@ -187,6 +198,9 @@ export interface LegalAction {
   sourceInstanceId?: string;
   targetIds?: string[];
   validTargetIds?: string[];
+  isPrimary?: boolean;
+  requiresTarget?: boolean;
+  shortLabel?: string;
   commandTemplate?: Partial<GameCommand>;
 }
 
@@ -221,6 +235,7 @@ export type GameCommand =
   | { type: "untap_permanent"; gameId: GameId; playerId: PlayerId; cardInstanceId: string }
   | { type: "pass_priority"; gameId: GameId; playerId: PlayerId }
   | { type: "pass_until_response"; gameId: GameId; playerId: PlayerId }
+  | { type: "pass_until_next_turn"; gameId: GameId; playerId: PlayerId }
   | { type: "advance_phase"; gameId: GameId; playerId: PlayerId }
   | { type: "concede"; gameId: GameId; playerId: PlayerId };
 

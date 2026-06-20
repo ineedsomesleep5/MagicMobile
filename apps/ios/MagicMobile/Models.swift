@@ -87,6 +87,14 @@ struct GameSnapshot: Decodable {
     }
 }
 
+struct CommanderStartupResponse: Decodable {
+    let startupId: String
+    let status: String
+    let snapshot: GameSnapshot?
+    let message: String?
+    let error: String?
+}
+
 struct GameLogEntry: Decodable, Identifiable {
     let id: String
     let message: String
@@ -140,8 +148,13 @@ struct LegalAction: Decodable, Identifiable {
     let playerId: String
     let label: String
     let cardInstanceId: String?
+    let sourceZone: String?
     let sourceInstanceId: String?
     let targetIds: [String]?
+    let validTargetIds: [String]?
+    let isPrimary: Bool?
+    let requiresTarget: Bool?
+    let shortLabel: String?
     let commandTemplate: [String: String]?
 }
 

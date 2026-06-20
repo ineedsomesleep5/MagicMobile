@@ -65,6 +65,7 @@ public final class MagicMobileBridge implements MageClient {
     private final Map<String, GameRecord> games = new ConcurrentHashMap<>();
     private final String xmageHost;
     private final int xmagePort;
+    private final String gatewayUrl;
 
     private Session session;
     private volatile String lastError = "";
@@ -73,16 +74,18 @@ public final class MagicMobileBridge implements MageClient {
     private volatile boolean cardRepositoryReady;
     private volatile boolean bridgeConnected;
 
-    private MagicMobileBridge(String xmageHost, int xmagePort) {
+    private MagicMobileBridge(String xmageHost, int xmagePort, String gatewayUrl) {
         this.xmageHost = xmageHost;
         this.xmagePort = xmagePort;
+        this.gatewayUrl = gatewayUrl;
     }
 
     public static void main(String[] args) throws Exception {
         String host = env("XMAGE_HOST", "127.0.0.1");
         int xmagePort = Integer.parseInt(env("XMAGE_PORT", "17171"));
         int bridgePort = Integer.parseInt(env("BRIDGE_PORT", "17172"));
-        MagicMobileBridge bridge = new MagicMobileBridge(host, xmagePort);
+        String gatewayUrl = env("GATEWAY_URL", "http://localhost:17171");
+        MagicMobileBridge bridge = new MagicMobileBridge(host, xmagePort, gatewayUrl);
 
         HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", bridgePort), 0);
         server.createContext("/", bridge::handleRequest);
@@ -210,9 +213,7 @@ public final class MagicMobileBridge implements MageClient {
                 }
                 if (existing.latestView != null) {
                     lastRecord = existing;
-                    if (isOpeningSnapshotReady(existing)) {
-                        return existing;
-                    }
+                    return existing;
                 }
             }
             Thread.sleep(250);
@@ -234,7 +235,7 @@ public final class MagicMobileBridge implements MageClient {
             session.sendPlayerBoolean(xmageGameId, false);
         } else if ("mulligan".equals(type)) {
             session.sendPlayerBoolean(xmageGameId, true);
-        } else if ("pass_until_response".equals(type) || "advance_phase".equals(type)) {
+        } else if ("pass_until_response".equals(type) || "pass_until_next_turn".equals(type) || "advance_phase".equals(type)) {
             session.sendPlayerAction(PlayerAction.PASS_PRIORITY_UNTIL_NEXT_MAIN_PHASE, xmageGameId, null);
         } else if ("concede".equals(type)) {
             session.sendPlayerAction(PlayerAction.CONCEDE, xmageGameId, null);
@@ -334,6 +335,7 @@ public final class MagicMobileBridge implements MageClient {
             actions.add(action("xmage-keep", "keep_hand", humanId, "Keep", null, null, null));
             actions.add(action("xmage-mulligan", "mulligan", humanId, "Mulligan", null, null, null));
             actions.add(action("xmage-concede", "concede", humanId, "Concede", null, null, null));
+            markPrimary(actions, "xmage-keep", "Keep");
             return actions;
         }
 
@@ -352,6 +354,8 @@ public final class MagicMobileBridge implements MageClient {
         if (humanHasPriority(record, view)) {
             actions.add(action("xmage-pass", "pass_priority", humanId, "Done", null, null, null));
             actions.add(action("xmage-pass-main", "pass_until_response", humanId, "Pass until response", null, null, null));
+            actions.add(action("xmage-pass-turn", "pass_until_next_turn", humanId, "Pass until next turn", null, null, null));
+            markPrimary(actions, "xmage-pass", "Done");
         }
         actions.add(action("xmage-concede", "concede", humanId, "Concede", null, null, null));
 
@@ -391,6 +395,8 @@ public final class MagicMobileBridge implements MageClient {
         action.addProperty("type", type);
         action.addProperty("playerId", playerId);
         action.addProperty("label", label);
+        action.addProperty("shortLabel", shortLabel(type, label));
+        action.addProperty("requiresTarget", requiresTarget(type));
         if (cardInstanceId != null) {
             action.addProperty("cardInstanceId", cardInstanceId);
             action.addProperty("sourceInstanceId", cardInstanceId);
@@ -404,6 +410,30 @@ public final class MagicMobileBridge implements MageClient {
             action.add("commandTemplate", template);
         }
         return action;
+    }
+
+    private void markPrimary(JsonArray actions, String id, String shortLabel) {
+        for (JsonElement element : actions) {
+            if (!element.isJsonObject()) continue;
+            JsonObject action = element.getAsJsonObject();
+            if (id.equals(string(action, "id", ""))) {
+                action.addProperty("isPrimary", true);
+                action.addProperty("shortLabel", shortLabel);
+            }
+        }
+    }
+
+    private String shortLabel(String type, String label) {
+        if ("pass_priority".equals(type)) return "Done";
+        if ("pass_until_response".equals(type)) return "Pass";
+        if ("pass_until_next_turn".equals(type)) return "Skip turn";
+        if ("play_land".equals(type)) return "Play";
+        if ("cast_spell".equals(type)) return "Cast";
+        return label;
+    }
+
+    private boolean requiresTarget(String type) {
+        return "choose_target".equals(type) || "declare_attackers".equals(type) || "declare_blockers".equals(type);
     }
 
     private JsonObject choiceAction(String choiceId, String playerId, String label) {
@@ -916,6 +946,33 @@ public final class MagicMobileBridge implements MageClient {
         } else if (promptText != null) {
             record.choicePrompt = null;
         }
+        try {
+            JsonObject snap = snapshot(gameId.toString());
+            pushSnapshotToGateway(gameId.toString(), snap);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void pushSnapshotToGateway(String gameId, JsonObject snap) {
+        new Thread(() -> {
+            try {
+                java.net.URL url = new java.net.URL(gatewayUrl + "/api/engine/games/" + java.net.URLEncoder.encode(gameId, "UTF-8") + "/updates");
+                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setDoOutput(true);
+                byte[] postData = GSON.toJson(snap).getBytes(StandardCharsets.UTF_8);
+                try (java.io.OutputStream os = conn.getOutputStream()) {
+                    os.write(postData);
+                }
+                int responseCode = conn.getResponseCode();
+                if (responseCode >= 300) {
+                    System.err.println("Gateway update POST failed: " + responseCode);
+                }
+            } catch (Exception e) {
+                System.err.println("Error pushing update to gateway: " + e.getMessage());
+            }
+        }).start();
     }
 
     private JsonObject readJson(HttpExchange exchange) throws IOException {

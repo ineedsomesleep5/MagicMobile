@@ -16,7 +16,12 @@ struct ContentView: View {
     @State private var deckSource = ""
     @State private var importedDeck: DeckList?
     @State private var snapshot: GameSnapshot?
+    @State private var startupStatus: CommanderStartupResponse?
     @State private var selectedCard: ZoneCard?
+    @State private var pendingActionId: String?
+    @State private var pendingCardInstanceId: String?
+    @State private var lastSubmittedActionId: String?
+    @State private var lastSubmittedSnapshotSignature: String?
     @State private var isLoading = false
     @State private var errorMessage: String?
 
@@ -28,8 +33,11 @@ struct ContentView: View {
             if screen == .play {
                 ImmersivePlayShell(
                     snapshot: snapshot,
+                    startupStatus: startupStatus,
                     selectedCard: $selectedCard,
                     avatarData: playerAvatarData,
+                    pendingActionId: pendingActionId,
+                    pendingCardInstanceId: pendingCardInstanceId,
                     runAction: { action in Task { await run(action: action) } },
                     newGame: { screen = .setup }
                 )
@@ -127,26 +135,127 @@ struct ContentView: View {
     }
 
     private func startGame() async {
-        await perform {
-            guard let api else { throw MagicMobileError.invalidServerURL }
+        guard let api else {
+            errorMessage = MagicMobileError.invalidServerURL.localizedDescription
+            status = MagicMobileError.invalidServerURL.localizedDescription
+            return
+        }
+
+        isLoading = true
+        snapshot = nil
+        selectedCard = nil
+        pendingActionId = nil
+        pendingCardInstanceId = nil
+        lastSubmittedActionId = nil
+        lastSubmittedSnapshotSignature = nil
+        startupStatus = CommanderStartupResponse(
+            startupId: "pending",
+            status: "starting",
+            snapshot: nil,
+            message: "Creating XMage table.",
+            error: nil
+        )
+        screen = .play
+        status = "Creating XMage table"
+
+        do {
             let humanDeck = importedDeck ?? selectedHumanPrecon.deckList
             let aiDeck = selectedAIPrecon.deckList
-            let nextSnapshot = try await api.startCommanderGame(humanDeck: humanDeck, aiDeck: aiDeck, difficulty: difficulty)
-            snapshot = nextSnapshot
-            selectedCard = nil
-            screen = .play
-            status = "Commander game started with \(humanDeck.name)"
+            let startup = try await api.startCommanderStartup(humanDeck: humanDeck, aiDeck: aiDeck, difficulty: difficulty)
+            startupStatus = startup
+            status = startup.message ?? "XMage table starting"
+
+            try await pollStartup(api: api, startupId: startup.startupId, deckName: humanDeck.name)
+        } catch {
+            startupStatus = CommanderStartupResponse(
+                startupId: startupStatus?.startupId ?? "failed",
+                status: "failed",
+                snapshot: nil,
+                message: nil,
+                error: error.localizedDescription
+            )
+            errorMessage = error.localizedDescription
+            status = error.localizedDescription
         }
+
+        isLoading = false
+    }
+
+    private func pollStartup(api: MagicMobileAPI, startupId: String, deckName: String) async throws {
+        for _ in 0..<90 {
+            let current = try await api.commanderStartupStatus(startupId: startupId)
+            startupStatus = current
+
+            if current.status == "ready", let nextSnapshot = current.snapshot {
+                snapshot = nextSnapshot
+                startupStatus = nil
+                selectedCard = nil
+                status = "Commander game started with \(deckName)"
+                return
+            }
+
+            if current.status == "failed" {
+                throw MagicMobileError.server(current.error ?? "XMage game start failed.")
+            }
+
+            try await Task.sleep(nanoseconds: 650_000_000)
+        }
+
+        throw MagicMobileError.server("XMage took too long to create the table. Check the bridge and try again.")
     }
 
     private func run(action: LegalAction) async {
-        await perform {
-            guard let api else { throw MagicMobileError.invalidServerURL }
-            guard let gameId = snapshot?.id else { return }
-            snapshot = try await api.submit(action: action, gameId: gameId)
+        guard pendingActionId == nil else { return }
+        guard let api else {
+            errorMessage = MagicMobileError.invalidServerURL.localizedDescription
+            status = MagicMobileError.invalidServerURL.localizedDescription
+            return
+        }
+        guard let currentSnapshot = snapshot else { return }
+
+        let currentSignature = snapshotSignature(currentSnapshot)
+        if lastSubmittedActionId == action.id, lastSubmittedSnapshotSignature == currentSignature {
+            return
+        }
+
+        pendingActionId = action.id
+        pendingCardInstanceId = action.cardInstanceId ?? action.sourceInstanceId
+        lastSubmittedActionId = action.id
+        lastSubmittedSnapshotSignature = currentSignature
+        status = "Sending \(action.shortLabel ?? action.label)"
+
+        do {
+            let nextSnapshot = try await api.submit(action: action, gameId: currentSnapshot.id)
+            snapshot = nextSnapshot
             selectedCard = nil
             status = "Updated from XMage"
+            try await pollSnapshotUntilUpdated(api: api, gameId: currentSnapshot.id, previousSignature: snapshotSignature(nextSnapshot))
+        } catch {
+            errorMessage = error.localizedDescription
+            status = error.localizedDescription
         }
+
+        pendingActionId = nil
+        pendingCardInstanceId = nil
+    }
+
+    private func pollSnapshotUntilUpdated(api: MagicMobileAPI, gameId: String, previousSignature: String) async throws {
+        for _ in 0..<8 {
+            try await Task.sleep(nanoseconds: 350_000_000)
+            let refreshed = try await api.snapshot(gameId: gameId)
+            let refreshedSignature = snapshotSignature(refreshed)
+            snapshot = refreshed
+            if refreshedSignature != previousSignature {
+                status = "XMage ready"
+                return
+            }
+        }
+    }
+
+    private func snapshotSignature(_ snapshot: GameSnapshot) -> String {
+        let legalActionIds = snapshot.legalActions?.map(\.id).joined(separator: ",") ?? ""
+        let handCounts = snapshot.players.map { "\($0.playerId):\($0.zones.hand.count):\($0.zones.battlefield.count):\($0.zones.graveyard.count)" }.joined(separator: "|")
+        return "\(snapshot.id)|\(snapshot.turn)|\(snapshot.phase)|\(snapshot.step ?? "")|\(snapshot.priorityPlayerId ?? "")|\(snapshot.promptText ?? "")|\(handCounts)|\(legalActionIds)"
     }
 
     private func perform(_ work: @escaping () async throws -> Void) async {
@@ -425,16 +534,22 @@ struct AvatarPreview: View {
 
 struct ImmersivePlayShell: View {
     let snapshot: GameSnapshot?
+    let startupStatus: CommanderStartupResponse?
     @Binding var selectedCard: ZoneCard?
     let avatarData: Data?
+    let pendingActionId: String?
+    let pendingCardInstanceId: String?
     let runAction: (LegalAction) -> Void
     let newGame: () -> Void
 
     var body: some View {
         NativeGameView(
             snapshot: snapshot,
+            startupStatus: startupStatus,
             selectedCard: $selectedCard,
             avatarData: avatarData,
+            pendingActionId: pendingActionId,
+            pendingCardInstanceId: pendingCardInstanceId,
             runAction: runAction,
             newGame: newGame
         )
@@ -444,8 +559,11 @@ struct ImmersivePlayShell: View {
 
 struct NativeGameView: View {
     let snapshot: GameSnapshot?
+    let startupStatus: CommanderStartupResponse?
     @Binding var selectedCard: ZoneCard?
     let avatarData: Data?
+    let pendingActionId: String?
+    let pendingCardInstanceId: String?
     let runAction: (LegalAction) -> Void
     let newGame: () -> Void
     @State private var isLogOpen = false
@@ -472,7 +590,14 @@ struct NativeGameView: View {
                         .frame(width: min(metrics.playWidth * 0.82, 560))
                         .position(x: metrics.playCenterX, y: metrics.promptY)
 
-                    HandFan(cards: human.zones.hand, selectedCard: $selectedCard, metrics: metrics)
+                    HandFan(
+                        cards: human.zones.hand,
+                        legalActions: snapshot.legalActions ?? [],
+                        selectedCard: $selectedCard,
+                        pendingCardInstanceId: pendingCardInstanceId,
+                        metrics: metrics,
+                        runAction: runAction
+                    )
                         .frame(width: metrics.playWidth, height: metrics.handFrameHeight)
                         .position(x: metrics.playCenterX, y: metrics.handY)
 
@@ -502,9 +627,9 @@ struct NativeGameView: View {
                     .position(x: metrics.railCenterX, y: metrics.railY)
 
                     if !actions.isEmpty {
-                        ContextActionTray(actions: actions, runAction: runAction)
-                            .frame(maxWidth: min(metrics.playWidth * 0.58, 430))
-                            .position(x: metrics.playCenterX, y: metrics.actionY)
+                        ContextActionTray(actions: actions, pendingActionId: pendingActionId, runAction: runAction)
+                            .frame(width: metrics.actionDockWidth)
+                            .position(x: metrics.actionDockX, y: metrics.actionY)
                     }
 
                     if let selectedCard {
@@ -523,7 +648,7 @@ struct NativeGameView: View {
                 }
             }
         } else {
-            LoadingGameView()
+            LoadingGameView(startupStatus: startupStatus)
         }
     }
 
@@ -533,7 +658,7 @@ struct NativeGameView: View {
     }
 
     private func promptActions(in snapshot: GameSnapshot) -> [LegalAction] {
-        snapshot.legalActions?.filter { ["keep_hand", "mulligan", "resolve_choice", "pass_priority", "pass_until_response", "concede"].contains($0.type) } ?? []
+        snapshot.legalActions?.filter { ["keep_hand", "mulligan", "resolve_choice", "pass_priority", "pass_until_response", "pass_until_next_turn", "concede"].contains($0.type) } ?? []
     }
 }
 
@@ -551,11 +676,11 @@ struct BattlefieldLayoutMetrics {
     }
 
     var leftInset: CGFloat {
-        max(safeArea.leading + 10, 12)
+        max(safeArea.leading + 42, 52)
     }
 
     var rightInset: CGFloat {
-        max(safeArea.trailing + railWidth + 10, railWidth + 14)
+        max(safeArea.trailing + railWidth + 12, railWidth + 16)
     }
 
     var playWidth: CGFloat {
@@ -571,7 +696,7 @@ struct BattlefieldLayoutMetrics {
     }
 
     var railY: CGFloat {
-        max(safeArea.top + 96, 96)
+        max(safeArea.top + 104, 104)
     }
 
     var topHUDY: CGFloat {
@@ -599,15 +724,23 @@ struct BattlefieldLayoutMetrics {
     }
 
     var actionY: CGFloat {
-        size.height - max(safeArea.bottom + handFrameHeight + 28, handFrameHeight + 30)
+        size.height - max(safeArea.bottom + handFrameHeight + 46, handFrameHeight + 48)
+    }
+
+    var actionDockWidth: CGFloat {
+        min(max(playWidth * 0.26, 230), 320)
+    }
+
+    var actionDockX: CGFloat {
+        min(size.width - rightInset - actionDockWidth / 2, playCenterX + playWidth / 2 - actionDockWidth / 2)
     }
 
     var inspectorX: CGFloat {
-        leftInset + min(playWidth * 0.18, 150)
+        leftInset + min(playWidth * 0.18, 158)
     }
 
     var inspectorY: CGFloat {
-        size.height - max(safeArea.bottom + handFrameHeight + 96, handFrameHeight + 98)
+        min(size.height - max(safeArea.bottom + handFrameHeight + 96, handFrameHeight + 98), size.height * 0.58)
     }
 
     var logX: CGFloat {
@@ -640,13 +773,36 @@ struct BattlefieldLayoutMetrics {
 }
 
 struct LoadingGameView: View {
+    let startupStatus: CommanderStartupResponse?
+
     var body: some View {
-        VStack(spacing: 14) {
-            ProgressView()
-                .tint(.orange)
-            Text("Starting Commander table...")
-                .font(.title3.weight(.black))
-                .foregroundStyle(.white)
+        ZStack {
+            BattlefieldSurface()
+
+            VStack(spacing: 12) {
+                if startupStatus?.status == "failed" {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.title.weight(.black))
+                        .foregroundStyle(.orange)
+                } else {
+                    ProgressView()
+                        .tint(.orange)
+                }
+
+                Text(startupStatus?.status == "failed" ? "XMage start failed" : "Creating XMage table")
+                    .font(.title3.weight(.black))
+                    .foregroundStyle(.white)
+
+                Text(startupStatus?.error ?? startupStatus?.message ?? "The battlefield is ready while the rules engine finishes seating players.")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+            }
+            .padding(20)
+            .frame(maxWidth: 420)
+            .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.14)))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -877,8 +1033,11 @@ struct BattlefieldRow: View {
 
 struct HandFan: View {
     let cards: [ZoneCard]
+    let legalActions: [LegalAction]
     @Binding var selectedCard: ZoneCard?
+    let pendingCardInstanceId: String?
     let metrics: BattlefieldLayoutMetrics
+    let runAction: (LegalAction) -> Void
 
     var body: some View {
         ZStack {
@@ -888,22 +1047,45 @@ struct HandFan: View {
                 let maxSpread = max((metrics.playWidth - metrics.handCardWidth) / CGFloat(max(cards.count - 1, 1)), 0)
                 let spread = min(metrics.handCardWidth * 0.56, maxSpread)
                 let selected = selectedCard?.id == card.id
+                let action = legalHandAction(for: card)
 
-                CardTile(card: card, selected: selected, width: metrics.handCardWidth, height: metrics.handCardHeight)
+                CardTile(
+                    card: card,
+                    selected: selected,
+                    pending: pendingCardInstanceId == card.instanceId,
+                    width: metrics.handCardWidth,
+                    height: metrics.handCardHeight
+                )
                     .scaleEffect(selected ? 1.16 : 1.0)
                     .rotationEffect(.degrees(Double(distance) * 5.2))
                     .offset(x: distance * spread, y: selected ? -30 : abs(distance) * 4 + 10)
                     .zIndex(selectedCard?.id == card.id ? 10 : Double(index))
                     .onTapGesture { selectedCard = card }
+                    .gesture(
+                        DragGesture(minimumDistance: 16)
+                            .onEnded { value in
+                                selectedCard = card
+                                guard value.translation.height < -42, let action else { return }
+                                runAction(action)
+                            }
+                    )
             }
         }
         .frame(width: metrics.playWidth, height: metrics.handFrameHeight)
+    }
+
+    private func legalHandAction(for card: ZoneCard) -> LegalAction? {
+        legalActions.first {
+            ($0.cardInstanceId == card.instanceId || $0.sourceInstanceId == card.instanceId) &&
+            ["play_land", "cast_spell"].contains($0.type)
+        }
     }
 }
 
 struct CardTile: View {
     let card: ZoneCard
     let selected: Bool
+    var pending = false
     var width: CGFloat = 82
     var height: CGFloat = 112
 
@@ -945,9 +1127,19 @@ struct CardTile: View {
             }
         }
         .frame(width: width, height: height)
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(selected ? .cyan : .black.opacity(0.55), lineWidth: selected ? 3 : 1))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(strokeColor, lineWidth: selected || pending ? 3 : 1))
         .rotationEffect(card.tapped == true ? .degrees(12) : .zero)
-        .shadow(color: selected ? .cyan.opacity(0.65) : .clear, radius: 10)
+        .shadow(color: pending ? .orange.opacity(0.75) : selected ? .cyan.opacity(0.65) : .clear, radius: 10)
+    }
+
+    private var strokeColor: Color {
+        if pending {
+            return .orange
+        }
+        if selected {
+            return .cyan
+        }
+        return .black.opacity(0.55)
     }
 }
 
@@ -1004,18 +1196,73 @@ struct PhaseChip: View {
 
 struct ContextActionTray: View {
     let actions: [LegalAction]
+    let pendingActionId: String?
     let runAction: (LegalAction) -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            ForEach(actions.prefix(4)) { action in
-                Button(action.label) { runAction(action) }
-                    .buttonStyle(CompactActionButtonStyle())
+        VStack(alignment: .trailing, spacing: 7) {
+            ForEach(orderedActions.prefix(4)) { action in
+                Button {
+                    runAction(action)
+                } label: {
+                    HStack(spacing: 7) {
+                        if pendingActionId == action.id {
+                            ProgressView()
+                                .tint(.white)
+                                .scaleEffect(0.74)
+                        }
+                        Text(action.shortLabel ?? shortActionLabel(action))
+                    }
+                }
+                .buttonStyle(CompactActionButtonStyle(isDanger: action.type == "concede", isPrimary: action.isPrimary == true || ["keep_hand", "pass_priority"].contains(action.type)))
+                .disabled(pendingActionId != nil)
             }
         }
         .padding(8)
-        .background(.black.opacity(0.62), in: Capsule())
-        .overlay(Capsule().stroke(.white.opacity(0.14)))
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .background(.black.opacity(0.50), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.14)))
+    }
+
+    private var orderedActions: [LegalAction] {
+        actions.sorted { lhs, rhs in
+            priority(lhs) < priority(rhs)
+        }
+    }
+
+    private func priority(_ action: LegalAction) -> Int {
+        if action.isPrimary == true { return 0 }
+        switch action.type {
+        case "keep_hand", "resolve_choice", "play_land", "cast_spell":
+            return 1
+        case "pass_priority":
+            return 2
+        case "pass_until_response":
+            return 3
+        case "pass_until_next_turn":
+            return 4
+        case "concede":
+            return 9
+        default:
+            return 5
+        }
+    }
+
+    private func shortActionLabel(_ action: LegalAction) -> String {
+        switch action.type {
+        case "pass_priority":
+            return "Done"
+        case "pass_until_response":
+            return "Pass"
+        case "pass_until_next_turn":
+            return "Skip turn"
+        case "play_land":
+            return "Play"
+        case "cast_spell":
+            return "Cast"
+        default:
+            return action.label
+        }
     }
 }
 
@@ -1174,15 +1421,30 @@ struct SecondaryButtonStyle: ButtonStyle {
 }
 
 struct CompactActionButtonStyle: ButtonStyle {
+    var isDanger = false
+    var isPrimary = false
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 15, weight: .black, design: .rounded))
+            .font(.system(size: isPrimary ? 15 : 13, weight: .black, design: .rounded))
             .foregroundStyle(.white)
             .lineLimit(1)
             .minimumScaleFactor(0.7)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(configuration.isPressed ? Color.orange.opacity(0.68) : Color.orange, in: Capsule())
+            .padding(.horizontal, isPrimary ? 15 : 12)
+            .padding(.vertical, isPrimary ? 10 : 8)
+            .frame(minWidth: isPrimary ? 112 : 94, alignment: .center)
+            .background(backgroundColor(isPressed: configuration.isPressed), in: Capsule())
+            .opacity(configuration.isPressed ? 0.82 : 1)
+    }
+
+    private func backgroundColor(isPressed: Bool) -> Color {
+        if isDanger {
+            return isPressed ? Color.red.opacity(0.62) : Color.red.opacity(0.78)
+        }
+        if isPrimary {
+            return isPressed ? Color.orange.opacity(0.68) : Color.orange
+        }
+        return isPressed ? Color.white.opacity(0.18) : Color.black.opacity(0.52)
     }
 }
 

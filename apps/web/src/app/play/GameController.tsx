@@ -203,7 +203,7 @@ function isCardSpecificAction(type: LegalAction["type"]): boolean {
 }
 
 function isPromptAction(type: LegalAction["type"]): boolean {
-  return ["advance_phase", "pass_priority", "pass_until_response", "keep_hand", "mulligan", "resolve_choice"].includes(type);
+  return ["advance_phase", "pass_priority", "pass_until_response", "pass_until_next_turn", "keep_hand", "mulligan", "resolve_choice"].includes(type);
 }
 
 function getImmediateCardAction(instanceId: string, legalActions: LegalAction[]): LegalAction | undefined {
@@ -328,6 +328,8 @@ function toCommand(
       return { type: "pass_priority", gameId: snapshot.id, playerId: action.playerId };
     case "pass_until_response":
       return { type: "pass_until_response", gameId: snapshot.id, playerId: action.playerId };
+    case "pass_until_next_turn":
+      return { type: "pass_until_next_turn", gameId: snapshot.id, playerId: action.playerId };
     case "advance_phase":
       return { type: "advance_phase", gameId: snapshot.id, playerId: action.playerId };
     case "concede":

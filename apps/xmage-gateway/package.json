@@ -10,5 +10,8 @@
     "test": "node --test ./server.test.mjs",
     "lint": "node --check ./server.mjs && node --check ./server.test.mjs",
     "typecheck": "node --check ./server.mjs && node --check ./server.test.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.21.0"
   }
 }

@@ -162,6 +162,8 @@ export class MockEngineAdapter implements EngineAdapter {
         return this.passPriority({ gameId: input.gameId, playerId: input.playerId });
       case "pass_until_response":
         return this.passPriority({ gameId: input.gameId, playerId: input.playerId });
+      case "pass_until_next_turn":
+        return this.passPriority({ gameId: input.gameId, playerId: input.playerId });
       case "advance_phase":
         return this.advancePhase({ gameId: input.gameId });
       case "concede":
@@ -277,7 +279,16 @@ function getLegalActions(snapshot: GameSnapshot, playerId: PlayerId): LegalActio
       id: `${playerId}-pass-priority`,
       type: "pass_priority",
       playerId,
-      label: "Pass Priority"
+      label: "Pass Priority",
+      shortLabel: "Done",
+      isPrimary: true
+    },
+    {
+      id: `${playerId}-skip-turn`,
+      type: "pass_until_next_turn",
+      playerId,
+      label: "Pass until next turn",
+      shortLabel: "Skip turn"
     },
     {
       id: `${playerId}-advance-phase`,
@@ -300,8 +311,10 @@ function getLegalActions(snapshot: GameSnapshot, playerId: PlayerId): LegalActio
         type: "cast_spell",
         playerId,
         label: `Cast ${handCard.card.name}`,
+        shortLabel: "Cast",
         cardInstanceId: handCard.instanceId,
-        sourceZone: "hand"
+        sourceZone: "hand",
+        requiresTarget: false
       },
       ...(isLand(handCard)
         ? [
@@ -310,8 +323,10 @@ function getLegalActions(snapshot: GameSnapshot, playerId: PlayerId): LegalActio
               type: "play_land" as const,
               playerId,
               label: `Play ${handCard.card.name}`,
+              shortLabel: "Play",
               cardInstanceId: handCard.instanceId,
-              sourceZone: "hand" as const
+              sourceZone: "hand" as const,
+              requiresTarget: false
             }
           ]
         : [])

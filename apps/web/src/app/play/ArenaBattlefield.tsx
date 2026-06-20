@@ -344,6 +344,8 @@ function shortActionLabel(action: LegalAction): string {
       return "Pass";
     case "pass_until_response":
       return "Pass Until Response";
+    case "pass_until_next_turn":
+      return "Skip Turn";
     case "play_land":
       return "Play";
     case "cast_spell":

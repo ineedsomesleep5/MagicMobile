@@ -111,7 +111,11 @@ importers:
         specifier: ^3.2.4
         version: 3.2.6(@types/node@24.13.2)(lightningcss@1.27.0)(terser@5.48.0)
 
-  apps/xmage-gateway: {}
+  apps/xmage-gateway:
+    dependencies:
+      ws:
+        specifier: ^8.21.0
+        version: 8.21.0
 
   packages/card-data:
     dependencies:
