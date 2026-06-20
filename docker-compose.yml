@@ -24,7 +24,7 @@ services:
   xmage-gateway:
     image: node:22-alpine
     working_dir: /workspace
-    command: node apps/xmage-gateway/server.mjs
+    command: sh -lc "corepack enable && pnpm install --frozen-lockfile && node apps/xmage-gateway/server.mjs"
     environment:
       PORT: 17171
       SCRYFALL_CACHE_DIR: /workspace/.cache/scryfall
@@ -34,6 +34,7 @@ services:
       - "17171:17171"
     volumes:
       - .:/workspace
+      - node-modules:/workspace/node_modules
       - scryfall-cache:/workspace/.cache/scryfall
       - xmage-assets:/workspace/.cache/xmage
     depends_on:
@@ -48,6 +49,7 @@ services:
       BRIDGE_PORT: 17172
       XMAGE_HOST: 127.0.0.1
       XMAGE_PORT: 17171
+      GATEWAY_URL: http://xmage-gateway:17171
     ports:
       - "17172:17172"
       - "17179:17179"
