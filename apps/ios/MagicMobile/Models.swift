@@ -117,9 +117,13 @@ struct ZoneCard: Decodable, Identifiable, Hashable {
     let instanceId: String
     let card: CardIdentity
     let tapped: Bool?
+    let counters: [String: Int]?
     let power: Int?
     let toughness: Int?
     let damage: Int?
+    let isAttacking: Bool?
+    let blocking: [String]?
+    let attachedToInstanceId: String?
 
     var id: String { instanceId }
 }

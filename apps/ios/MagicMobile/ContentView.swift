@@ -1,15 +1,20 @@
 import SwiftUI
 import WebKit
+import PhotosUI
+import UIKit
 
 struct ContentView: View {
     @State private var serverURLText = "http://192.168.68.168:3000"
     @State private var status = "Not connected"
     @State private var screen: AppScreen = .menu
     @State private var difficulty: AiDifficulty = .normal
+    @State private var selectedHumanPrecon = PreconCatalog.all[0]
+    @State private var selectedAIPrecon = PreconCatalog.all[1]
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var playerAvatarData: Data?
     @State private var deckText = ""
     @State private var deckSource = ""
     @State private var importedDeck: DeckList?
-    @State private var generatedDeck: GeneratedDeckResponse?
     @State private var snapshot: GameSnapshot?
     @State private var selectedCard: ZoneCard?
     @State private var isLoading = false
@@ -37,9 +42,12 @@ struct ContentView: View {
                     SetupView(
                         serverURLText: $serverURLText,
                         difficulty: $difficulty,
+                        selectedHumanPrecon: $selectedHumanPrecon,
+                        selectedAIPrecon: $selectedAIPrecon,
+                        selectedPhoto: $selectedPhoto,
+                        avatarData: playerAvatarData,
                         deckSummary: deckSummary,
                         checkBridge: { Task { await checkBridge() } },
-                        generateDeck: { Task { await generateDeck() } },
                         openDecks: { screen = .decks },
                         startGame: { Task { await startGame() } }
                     )
@@ -49,12 +57,13 @@ struct ContentView: View {
                         deckSource: $deckSource,
                         deckSummary: deckSummary,
                         importDeck: importDeck,
-                        generateDeck: { Task { await generateDeck() } }
+                        selectedHumanPrecon: $selectedHumanPrecon
                     )
                 case .play:
                     NativeGameView(
                         snapshot: snapshot,
                         selectedCard: $selectedCard,
+                        avatarData: playerAvatarData,
                         runAction: { action in Task { await run(action: action) } },
                         newGame: { screen = .setup }
                     )
@@ -70,6 +79,9 @@ struct ContentView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+        .task(id: selectedPhoto?.itemIdentifier) {
+            await loadSelectedAvatar()
+        }
     }
 
     private var api: MagicMobileAPI? {
@@ -84,10 +96,7 @@ struct ContentView: View {
     }
 
     private var deckSummary: String {
-        let deck = importedDeck ?? generatedDeck?.deck
-        guard let deck else {
-            return "No deck selected. A legal bracket-3 Commander deck will be generated automatically."
-        }
+        let deck = importedDeck ?? selectedHumanPrecon.deckList
         return "\(deck.name) - \(deck.totalCards) cards - Commander: \(deck.commander?.cardName ?? "unknown")"
     }
 
@@ -99,36 +108,25 @@ struct ContentView: View {
         }
     }
 
-    private func generateDeck() async {
-        await perform {
-            guard let api else { throw MagicMobileError.invalidServerURL }
-            let deck = try await api.generateDeck(seed: "ios-\(Date().timeIntervalSince1970)", playerId: "human")
-            generatedDeck = deck
-            importedDeck = nil
-            status = "Generated \(deck.deck.name)"
-        }
-    }
-
     private func importDeck() {
         guard let deck = DeckImporter.parse(text: deckText, source: deckSource.isEmpty ? "Imported Commander Deck" : deckSource) else {
             errorMessage = "Paste an Archidekt/Moxfield exported text list or a Commander text list."
             return
         }
         importedDeck = deck
-        generatedDeck = nil
         status = "Imported \(deck.name)"
     }
 
     private func startGame() async {
         await perform {
             guard let api else { throw MagicMobileError.invalidServerURL }
-            let humanDeck = try await selectedOrGeneratedHumanDeck(api: api)
-            let aiDeck = try await api.generateDeck(seed: "ios-ai-\(Date().timeIntervalSince1970)", playerId: "ai-1").deck
+            let humanDeck = importedDeck ?? selectedHumanPrecon.deckList
+            let aiDeck = selectedAIPrecon.deckList
             let nextSnapshot = try await api.startCommanderGame(humanDeck: humanDeck, aiDeck: aiDeck, difficulty: difficulty)
             snapshot = nextSnapshot
             selectedCard = nil
             screen = .play
-            status = "Commander game started"
+            status = "Commander game started with \(humanDeck.name)"
         }
     }
 
@@ -142,16 +140,6 @@ struct ContentView: View {
         }
     }
 
-    private func selectedOrGeneratedHumanDeck(api: MagicMobileAPI) async throws -> DeckList {
-        if let importedDeck {
-            return importedDeck
-        }
-        if let generatedDeck {
-            return generatedDeck.deck
-        }
-        return try await api.generateDeck(seed: "ios-human-\(Date().timeIntervalSince1970)", playerId: "human").deck
-    }
-
     private func perform(_ work: @escaping () async throws -> Void) async {
         isLoading = true
         defer { isLoading = false }
@@ -161,6 +149,11 @@ struct ContentView: View {
             errorMessage = error.localizedDescription
             status = error.localizedDescription
         }
+    }
+
+    private func loadSelectedAvatar() async {
+        guard let selectedPhoto else { return }
+        playerAvatarData = try? await selectedPhoto.loadTransferable(type: Data.self)
     }
 }
 
@@ -222,8 +215,8 @@ struct MenuView: View {
     var body: some View {
         HStack(spacing: 12) {
             HeroCard(title: "Commander vs AI", description: "Start a real XMage-backed 100-card Commander game.", button: "Game setup", action: startSetup)
-            HeroCard(title: "Deck Builder", description: "Paste Archidekt or Moxfield export text, or generate a legal deck.", button: "Build deck", action: openDecks)
-            HeroCard(title: "Quick Battle", description: "Generate both decks and jump into a 1v1 game against AI.", button: "Start now", action: quickStart)
+            HeroCard(title: "Deck Builder", description: "Paste Archidekt or Moxfield export text, or pick an included Commander precon.", button: "Build deck", action: openDecks)
+            HeroCard(title: "Quick Battle", description: "Use your selected precon and jump into a 1v1 game against AI.", button: "Start now", action: quickStart)
             HeroCard(title: "Arena View", description: "Open the polished web battlefield inside this Swift app.", button: "Open arena", action: openArena)
         }
     }
@@ -257,9 +250,12 @@ struct HeroCard: View {
 struct SetupView: View {
     @Binding var serverURLText: String
     @Binding var difficulty: AiDifficulty
+    @Binding var selectedHumanPrecon: PreconDeck
+    @Binding var selectedAIPrecon: PreconDeck
+    @Binding var selectedPhoto: PhotosPickerItem?
+    let avatarData: Data?
     let deckSummary: String
     let checkBridge: () -> Void
-    let generateDeck: () -> Void
     let openDecks: () -> Void
     let startGame: () -> Void
 
@@ -276,24 +272,40 @@ struct SetupView: View {
                 Button("Check XMage bridge", action: checkBridge)
                     .buttonStyle(PrimaryButtonStyle())
             }
+            .frame(width: 330)
 
             Panel(title: "Game Setup") {
-                Picker("AI", selection: $difficulty) {
-                    ForEach(AiDifficulty.allCases) { difficulty in
-                        Text(difficulty.rawValue.capitalized).tag(difficulty)
-                    }
+                HStack(alignment: .top, spacing: 12) {
+                    PreconPicker(title: "Your precon", selection: $selectedHumanPrecon)
+                    PreconPicker(title: "AI deck", selection: $selectedAIPrecon)
                 }
-                .pickerStyle(.segmented)
 
                 Text(deckSummary)
                     .font(.title3.weight(.black))
                     .foregroundStyle(.white)
-                    .lineLimit(3)
+                    .lineLimit(2)
+
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("AI level")
+                            .font(.caption.weight(.black))
+                            .foregroundStyle(.orange)
+                        Picker("AI level", selection: $difficulty) {
+                            ForEach(AiDifficulty.allCases) { difficulty in
+                                Text(difficulty.menuLabel).tag(difficulty)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
+                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                        AvatarPreview(data: avatarData)
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 HStack {
                     Button("Deck upload", action: openDecks)
-                        .buttonStyle(SecondaryButtonStyle())
-                    Button("Generate deck", action: generateDeck)
                         .buttonStyle(SecondaryButtonStyle())
                     Button("Start vs AI", action: startGame)
                         .buttonStyle(PrimaryButtonStyle())
@@ -308,7 +320,7 @@ struct DeckBuilderView: View {
     @Binding var deckSource: String
     let deckSummary: String
     let importDeck: () -> Void
-    let generateDeck: () -> Void
+    @Binding var selectedHumanPrecon: PreconDeck
 
     var body: some View {
         HStack(spacing: 12) {
@@ -340,8 +352,7 @@ struct DeckBuilderView: View {
                 Text("Use exported plain text from Archidekt or Moxfield. Direct scraping is intentionally avoided.")
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.7))
-                Button("Generate bracket-3 deck", action: generateDeck)
-                    .buttonStyle(PrimaryButtonStyle())
+                PreconPicker(title: "Fallback precon", selection: $selectedHumanPrecon)
                 Spacer()
             }
             .frame(width: 330)
@@ -349,37 +360,132 @@ struct DeckBuilderView: View {
     }
 }
 
+struct PreconPicker: View {
+    let title: String
+    @Binding var selection: PreconDeck
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(title.uppercased())
+                .font(.caption.weight(.black))
+                .foregroundStyle(.orange)
+            Picker(title, selection: $selection) {
+                ForEach(PreconCatalog.all) { precon in
+                    Text("\(precon.name) (\(precon.colors))").tag(precon)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(.white)
+
+            Text(selection.subtitle)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.72))
+                .lineLimit(1)
+            Text(selection.commander)
+                .font(.footnote.weight(.black))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.12)))
+    }
+}
+
+struct AvatarPreview: View {
+    let data: Data?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            PlayerAvatar(data: data, size: 46, active: true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Player icon")
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(.orange)
+                Text("Choose photo")
+                    .font(.callout.weight(.black))
+                    .foregroundStyle(.white)
+            }
+        }
+        .padding(8)
+        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.12)))
+    }
+}
+
 struct NativeGameView: View {
     let snapshot: GameSnapshot?
     @Binding var selectedCard: ZoneCard?
+    let avatarData: Data?
     let runAction: (LegalAction) -> Void
     let newGame: () -> Void
 
+    @ViewBuilder
     var body: some View {
-        guard let snapshot, let human = snapshot.human, let opponent = snapshot.opponent else {
-            return AnyView(LoadingGameView())
-        }
+        if let snapshot, let human = snapshot.human, let opponent = snapshot.opponent {
+            GeometryReader { proxy in
+                let railWidth = min(max(proxy.size.width * 0.18, 132), 180)
+                let actions = selectedActions(in: snapshot).isEmpty ? promptActions(in: snapshot) : selectedActions(in: snapshot)
 
-        let actions = selectedActions(in: snapshot).isEmpty ? promptActions(in: snapshot) : selectedActions(in: snapshot)
+                ZStack(alignment: .trailing) {
+                    BattlefieldSurface()
 
-        return AnyView(
-            HStack(spacing: 10) {
-                VStack(spacing: 8) {
-                    PlayerStrip(name: "Noaddrag", player: opponent)
-                    CardLane(title: "Opponent Battlefield", cards: opponent.zones.battlefield, selectedCard: $selectedCard)
-                    PromptBand(snapshot: snapshot)
-                    CardLane(title: "Your Battlefield", cards: human.zones.battlefield, selectedCard: $selectedCard)
-                    HandFan(cards: human.zones.hand, selectedCard: $selectedCard)
-                    PlayerStrip(name: "TabletopPolish", player: human, active: true)
+                    VStack(spacing: 0) {
+                        PlayerStrip(name: "Noaddrag", player: opponent, avatarData: nil)
+                            .padding(.horizontal, 10)
+
+                        VStack(spacing: 6) {
+                            BattlefieldRow(title: "Opponent", cards: opponent.zones.battlefield, selectedCard: $selectedCard, flipped: true)
+                            PromptPill(snapshot: snapshot)
+                            BattlefieldRow(title: "You", cards: human.zones.battlefield, selectedCard: $selectedCard)
+                        }
+                        .padding(.horizontal, 16)
+                        .frame(maxHeight: .infinity)
+
+                        HandFan(cards: human.zones.hand, selectedCard: $selectedCard)
+                            .padding(.bottom, 2)
+
+                        PlayerStrip(name: "TabletopPolish", player: human, avatarData: avatarData, active: true)
+                            .padding(.horizontal, 10)
+                    }
+                    .padding(.trailing, railWidth + 8)
+                    .padding(.vertical, 4)
+
+                    VStack(spacing: 8) {
+                        CompactPhaseRail(snapshot: snapshot)
+                        MiniLog(log: snapshot.log)
+                        Button("Setup", action: newGame)
+                            .buttonStyle(SecondaryButtonStyle())
+                    }
+                    .padding(8)
+                    .frame(width: railWidth)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .background(.black.opacity(0.34))
+                    .overlay(Rectangle().fill(.white.opacity(0.10)).frame(width: 1), alignment: .leading)
+
+                    if !actions.isEmpty {
+                        ContextActionTray(actions: actions, runAction: runAction)
+                            .frame(width: min(260, proxy.size.width * 0.34))
+                            .padding(.trailing, railWidth + 12)
+                            .padding(.bottom, 58)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    }
+
+                    if let selectedCard {
+                        CardInspector(card: selectedCard)
+                            .frame(width: min(260, proxy.size.width * 0.34), height: min(230, proxy.size.height * 0.46))
+                            .padding(.leading, 10)
+                            .padding(.bottom, 56)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                    }
                 }
-                .padding(10)
-                .background(Color.green.opacity(0.18), in: RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(.green.opacity(0.25)))
-
-                SideGamePanel(snapshot: snapshot, selectedCard: selectedCard, actions: actions, runAction: runAction, newGame: newGame)
-                    .frame(width: 310)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.12)))
             }
-        )
+        } else {
+            LoadingGameView()
+        }
     }
 
     private func selectedActions(in snapshot: GameSnapshot) -> [LegalAction] {
@@ -405,79 +511,175 @@ struct LoadingGameView: View {
     }
 }
 
+struct BattlefieldSurface: View {
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.08, green: 0.22, blue: 0.13),
+                    Color(red: 0.18, green: 0.31, blue: 0.16),
+                    Color(red: 0.26, green: 0.16, blue: 0.08)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            RadialGradient(colors: [.orange.opacity(0.22), .clear], center: .bottomTrailing, startRadius: 20, endRadius: 420)
+            RadialGradient(colors: [.cyan.opacity(0.20), .clear], center: .bottomLeading, startRadius: 20, endRadius: 390)
+            VStack {
+                Spacer()
+                Capsule()
+                    .fill(.black.opacity(0.20))
+                    .frame(height: 54)
+                    .padding(.horizontal, 42)
+                    .blur(radius: 18)
+                Spacer()
+            }
+        }
+    }
+}
+
 struct PlayerStrip: View {
     let name: String
     let player: PlayerGameState
+    let avatarData: Data?
     var active = false
 
     var body: some View {
-        HStack(spacing: 10) {
-            Text("\(player.life)")
-                .font(.title2.weight(.black))
-                .frame(width: 48, height: 48)
-                .background(active ? Color.cyan.opacity(0.4) : Color.white.opacity(0.16), in: Circle())
-                .overlay(Circle().stroke(active ? .cyan : .white.opacity(0.55), lineWidth: 2))
-            Text(name)
-                .font(.headline.weight(.black))
-                .foregroundStyle(.white)
-                .frame(width: 130, alignment: .leading)
-            Text("Library \(player.zones.library.count)   Grave \(player.zones.graveyard.count)   Exile \(player.zones.exile.count)")
-                .font(.callout.weight(.bold))
-                .foregroundStyle(.white.opacity(0.82))
-            Text("Commander: \(player.zones.command.first?.card.name ?? "none")")
-                .font(.callout.weight(.bold))
-                .foregroundStyle(.orange)
+        HStack(spacing: 8) {
+            PlayerAvatar(data: avatarData, size: 40, active: active)
+                .overlay(alignment: .bottomTrailing) {
+                    Text("\(player.life)")
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(.white)
+                        .padding(4)
+                        .background(.black.opacity(0.75), in: Circle())
+                        .offset(x: 5, y: 5)
+                }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name)
+                    .font(.headline.weight(.black))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(player.zones.command.first?.card.name ?? "Commander hidden")
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(.orange)
+                    .lineLimit(1)
+            }
+
+            ZoneCounter(label: "Lib", value: player.zones.library.count)
+            ZoneCounter(label: "Hand", value: player.zones.hand.count)
+            ZoneCounter(label: "Grave", value: player.zones.graveyard.count)
+            ZoneCounter(label: "Exile", value: player.zones.exile.count)
             Spacer()
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(.black.opacity(0.28), in: Capsule())
     }
 }
 
-struct PromptBand: View {
+struct PlayerAvatar: View {
+    let data: Data?
+    let size: CGFloat
+    var active = false
+
+    var body: some View {
+        Group {
+            if let data, let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Text("N")
+                    .font(.system(size: size * 0.46, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(.white.opacity(0.10))
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(active ? .cyan : .white.opacity(0.52), lineWidth: active ? 3 : 2))
+        .shadow(color: active ? .cyan.opacity(0.45) : .clear, radius: 10)
+    }
+}
+
+struct ZoneCounter: View {
+    let label: String
+    let value: Int
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text("\(value)")
+                .font(.caption.weight(.black))
+            Text(label)
+                .font(.system(size: 8, weight: .black))
+                .foregroundStyle(.white.opacity(0.65))
+        }
+        .foregroundStyle(.white)
+        .frame(width: 38, height: 32)
+        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+    }
+}
+
+struct PromptPill: View {
     let snapshot: GameSnapshot
 
     var body: some View {
-        VStack(spacing: 4) {
-            Text(snapshot.step ?? snapshot.phase)
-                .font(.headline.weight(.black))
+        HStack(spacing: 10) {
+            Text((snapshot.step ?? snapshot.phase).phaseTitle)
+                .font(.caption.weight(.black))
                 .foregroundStyle(.orange)
-                .textCase(.uppercase)
             Text(snapshot.promptText ?? "Waiting for XMage")
-                .font(.title3.weight(.black))
+                .font(.callout.weight(.black))
                 .foregroundStyle(.white)
-                .lineLimit(2)
-            Text("Turn \(snapshot.turn) - Priority \(snapshot.priorityPlayerId ?? "none")")
-                .font(.footnote.weight(.bold))
-                .foregroundStyle(.white.opacity(0.7))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Spacer()
+            Text("Turn \(snapshot.turn)")
+                .font(.caption.weight(.black))
+                .foregroundStyle(.white.opacity(0.72))
         }
-        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
         .frame(maxWidth: .infinity)
-        .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+        .background(.black.opacity(0.48), in: Capsule())
     }
 }
 
-struct CardLane: View {
+struct BattlefieldRow: View {
     let title: String
     let cards: [ZoneCard]
     @Binding var selectedCard: ZoneCard?
+    var flipped = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title.uppercased())
-                .font(.caption.weight(.black))
-                .foregroundStyle(.orange)
+            HStack {
+                Text(title.uppercased())
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(.orange.opacity(0.95))
+                Spacer()
+            }
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                HStack(alignment: .center, spacing: -10) {
                     if cards.isEmpty {
                         Text("No permanents")
-                            .font(.callout.weight(.bold))
+                            .font(.title3.weight(.black))
                             .foregroundStyle(.white.opacity(0.6))
+                            .frame(maxWidth: .infinity, minHeight: 86, alignment: .leading)
                     }
-                    ForEach(cards) { card in
-                        CardTile(card: card, selected: selectedCard?.id == card.id)
+                    ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
+                        CardTile(card: card, selected: selectedCard?.id == card.id, width: 58, height: 81)
+                            .rotationEffect(.degrees(flipped ? 180 : 0))
+                            .offset(y: card.tapped == true ? 5 : 0)
+                            .zIndex(Double(index))
                             .onTapGesture { selectedCard = card }
                     }
                 }
-                .frame(minHeight: 96)
+                .padding(.horizontal, 8)
+                .frame(maxWidth: .infinity, minHeight: 88, alignment: .center)
             }
         }
     }
@@ -488,114 +690,187 @@ struct HandFan: View {
     @Binding var selectedCard: ZoneCard?
 
     var body: some View {
-        HStack(spacing: -10) {
+        HStack(spacing: -18) {
             ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
                 let center = Double(cards.count - 1) / 2
-                CardTile(card: card, selected: selectedCard?.id == card.id)
-                    .rotationEffect(.degrees((Double(index) - center) * 3.5))
-                    .offset(y: selectedCard?.id == card.id ? -18 : abs(Double(index) - center) * 2)
+                CardTile(card: card, selected: selectedCard?.id == card.id, width: 66, height: 92)
+                    .rotationEffect(.degrees((Double(index) - center) * 5.0))
+                    .offset(x: CGFloat((Double(index) - center) * 1.5), y: selectedCard?.id == card.id ? -28 : abs(Double(index) - center) * 3)
                     .zIndex(selectedCard?.id == card.id ? 10 : Double(index))
                     .onTapGesture { selectedCard = card }
             }
         }
-        .frame(height: 118)
+        .frame(height: 116)
     }
 }
 
 struct CardTile: View {
     let card: ZoneCard
     let selected: Bool
+    var width: CGFloat = 82
+    var height: CGFloat = 112
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(card.card.name)
-                .font(.caption.weight(.black))
-                .foregroundStyle(.black)
-                .lineLimit(2)
-            Spacer()
-            Text(card.card.typeLine)
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.black.opacity(0.75))
-                .lineLimit(2)
+        ZStack(alignment: .bottomTrailing) {
+            AsyncImage(url: CardImageURL.normal(card.card.name)) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                default:
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(card.card.name)
+                            .font(.caption2.weight(.black))
+                            .foregroundStyle(.black)
+                            .lineLimit(3)
+                        Spacer()
+                        Text(card.card.typeLine)
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(.black.opacity(0.75))
+                            .lineLimit(2)
+                    }
+                    .padding(6)
+                    .background(Color(red: 0.86, green: 0.78, blue: 0.62))
+                }
+            }
+            .frame(width: width, height: height)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+
             if card.power != nil || card.toughness != nil {
                 Text("\(card.power ?? 0)/\(card.toughness ?? 0)")
-                    .font(.caption2.weight(.black))
+                    .font(.system(size: 10, weight: .black))
                     .foregroundStyle(.black)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(.white.opacity(0.92), in: Capsule())
+                    .padding(3)
             }
         }
-        .padding(7)
-        .frame(width: 82, height: 112)
-        .background(Color(red: 0.86, green: 0.78, blue: 0.62), in: RoundedRectangle(cornerRadius: 7))
-        .overlay(RoundedRectangle(cornerRadius: 7).stroke(selected ? .cyan : .black.opacity(0.55), lineWidth: selected ? 3 : 1))
-        .rotationEffect(card.tapped == true ? .degrees(8) : .zero)
+        .frame(width: width, height: height)
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(selected ? .cyan : .black.opacity(0.55), lineWidth: selected ? 3 : 1))
+        .rotationEffect(card.tapped == true ? .degrees(12) : .zero)
         .shadow(color: selected ? .cyan.opacity(0.65) : .clear, radius: 10)
     }
 }
 
-struct SideGamePanel: View {
+struct CompactPhaseRail: View {
     let snapshot: GameSnapshot
-    let selectedCard: ZoneCard?
-    let actions: [LegalAction]
-    let runAction: (LegalAction) -> Void
-    let newGame: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Panel(title: "Stages") {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 5)], spacing: 5) {
-                    ForEach(stageLabels, id: \.self) { stage in
-                        Text(stage.replacingOccurrences(of: "-", with: " "))
-                            .font(.system(size: 10, weight: .black))
-                            .padding(.vertical, 5)
-                            .frame(maxWidth: .infinity)
-                            .background(stage == snapshot.step ? Color.orange.opacity(0.55) : Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
-                            .foregroundStyle(.white)
-                    }
-                }
-            }
-            .fixedSize(horizontal: false, vertical: true)
+        let current = snapshot.step ?? snapshot.phase
+        let index = stageLabels.firstIndex(of: current) ?? 0
+        let previous = stageLabels[max(index - 1, 0)]
+        let next = stageLabels[min(index + 1, stageLabels.count - 1)]
 
-            Panel(title: "Actions") {
-                ScrollView {
-                    VStack(spacing: 7) {
-                        ForEach(actions) { action in
-                            Button(action.label) { runAction(action) }
-                                .buttonStyle(PrimaryButtonStyle())
-                        }
-                        Button("New game", action: newGame)
-                            .buttonStyle(SecondaryButtonStyle())
-                    }
-                }
-                .frame(maxHeight: 130)
-            }
+        VStack(alignment: .leading, spacing: 6) {
+            Text("PHASE")
+                .font(.caption.weight(.black))
+                .foregroundStyle(.orange)
+            PhaseChip(label: "Prev", phase: previous, active: false)
+            PhaseChip(label: "Now", phase: current, active: true)
+            PhaseChip(label: "Next", phase: next, active: false)
+            Text(snapshot.priorityPlayerId == "human" ? "Your priority" : "AI priority")
+                .font(.caption.weight(.black))
+                .foregroundStyle(.white.opacity(0.75))
+                .lineLimit(1)
+        }
+        .padding(9)
+        .background(.black.opacity(0.42), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.12)))
+    }
+}
 
-            Panel(title: "Selected") {
-                Text(selectedCard?.card.name ?? "Tap a card")
+struct PhaseChip: View {
+    let label: String
+    let phase: String
+    let active: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label.uppercased())
+                .font(.system(size: 8, weight: .black))
+                .foregroundStyle(active ? .black.opacity(0.7) : .white.opacity(0.55))
+            Text(phase.phaseTitle)
+                .font(.caption.weight(.black))
+                .foregroundStyle(active ? .black : .white)
+                .lineLimit(2)
+                .minimumScaleFactor(0.65)
+        }
+        .padding(7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(active ? Color.orange : Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+    }
+}
+
+struct ContextActionTray: View {
+    let actions: [LegalAction]
+    let runAction: (LegalAction) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("ACTIONS")
+                .font(.caption.weight(.black))
+                .foregroundStyle(.orange)
+            ForEach(actions.prefix(4)) { action in
+                Button(action.label) { runAction(action) }
+                    .buttonStyle(PrimaryButtonStyle())
+            }
+        }
+        .padding(10)
+        .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.14)))
+    }
+}
+
+struct CardInspector: View {
+    let card: ZoneCard
+
+    var body: some View {
+        HStack(spacing: 9) {
+            CardTile(card: card, selected: true, width: 82, height: 114)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(card.card.name)
                     .font(.headline.weight(.black))
                     .foregroundStyle(.white)
-                Text(selectedCard?.card.typeLine ?? "Inspect hand, battlefield, command, graveyard, or exile cards.")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.white.opacity(0.75))
-                Text(selectedCard?.card.oracleText ?? "")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.72))
-                    .lineLimit(6)
-            }
-
-            Panel(title: "Log") {
+                    .lineLimit(2)
+                Text(card.card.typeLine)
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(.orange)
+                    .lineLimit(2)
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 5) {
-                        ForEach(snapshot.log.suffix(10)) { entry in
-                            Text(entry.message)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.white.opacity(0.75))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
+                    Text(card.card.oracleText ?? "XMage has not exposed rules text for this card yet.")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
+        .padding(10)
+        .background(.black.opacity(0.64), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.cyan.opacity(0.35)))
+    }
+}
+
+struct MiniLog: View {
+    let log: [GameLogEntry]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("LOG")
+                .font(.caption.weight(.black))
+                .foregroundStyle(.orange)
+            ForEach(log.suffix(5)) { entry in
+                Text(entry.message)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(9)
+        .background(.black.opacity(0.38), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.12)))
     }
 }
 
@@ -677,6 +952,41 @@ struct GameTextFieldStyle: TextFieldStyle {
             .frame(minHeight: 44)
             .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.12)))
+    }
+}
+
+enum CardImageURL {
+    static func normal(_ name: String) -> URL? {
+        var components = URLComponents(string: "https://api.scryfall.com/cards/named")
+        components?.queryItems = [
+            URLQueryItem(name: "format", value: "image"),
+            URLQueryItem(name: "version", value: "normal"),
+            URLQueryItem(name: "exact", value: name)
+        ]
+        return components?.url
+    }
+}
+
+extension AiDifficulty {
+    var menuLabel: String {
+        switch self {
+        case .easy:
+            return "Easy"
+        case .normal:
+            return "Normal"
+        case .hard:
+            return "Hard"
+        case .expert:
+            return "Expert"
+        }
+    }
+}
+
+extension String {
+    var phaseTitle: String {
+        split(separator: "-")
+            .map { $0.capitalized }
+            .joined(separator: " ")
     }
 }
 
