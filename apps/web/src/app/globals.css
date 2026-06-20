@@ -316,22 +316,22 @@ body:has(.deck-builder-screen) .content {
   overflow: hidden;
   color: #f6f0df;
   background:
-    radial-gradient(circle at 50% 48%, rgba(95, 132, 124, 0.24), transparent 30%),
-    radial-gradient(circle at 18% 95%, rgba(32, 162, 219, 0.34), transparent 18%),
-    radial-gradient(circle at 92% 88%, rgba(255, 103, 28, 0.34), transparent 15%),
-    linear-gradient(145deg, #1d2525, #0b0f10 62%, #15110d);
+    radial-gradient(circle at 18% 94%, rgba(32, 162, 219, 0.38), transparent 18%),
+    radial-gradient(circle at 92% 88%, rgba(255, 103, 28, 0.38), transparent 15%),
+    linear-gradient(145deg, #243127, #101916 62%, #15110d);
 }
 
 .arena-screen::before {
   position: absolute;
-  inset: 5rem 2rem 10rem;
+  inset: 4.7rem 1.6rem 6.8rem;
   content: "";
-  border: 1px solid rgba(214, 201, 170, 0.18);
+  border: 1px solid rgba(214, 201, 170, 0.12);
   background:
-    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
-  background-size: 4.8rem 4.8rem;
-  box-shadow: inset 0 0 8rem rgba(0, 0, 0, 0.42);
+    radial-gradient(circle at 14% 14%, rgba(249, 129, 54, 0.2), transparent 14%),
+    radial-gradient(circle at 88% 20%, rgba(255, 230, 150, 0.15), transparent 13%),
+    radial-gradient(circle at 50% 45%, rgba(151, 190, 83, 0.34), transparent 42%),
+    linear-gradient(130deg, rgba(53, 105, 72, 0.82), rgba(52, 77, 42, 0.78) 52%, rgba(86, 58, 32, 0.62));
+  box-shadow: inset 0 0 7rem rgba(0, 0, 0, 0.34);
 }
 
 .arena-top-hud,
@@ -348,6 +348,10 @@ body:has(.deck-builder-screen) .content {
   justify-content: space-between;
   gap: 1rem;
   padding: 1rem 1.35rem;
+}
+
+.arena-bottom-hud {
+  background: linear-gradient(90deg, rgba(4, 8, 9, 0.2), rgba(4, 8, 9, 0.62), rgba(4, 8, 9, 0.22));
 }
 
 .arena-status {
@@ -422,9 +426,11 @@ body:has(.deck-builder-screen) .content {
   padding: 0 2rem;
 }
 
-.three-battlefield {
+.arena-battlefield {
   position: relative;
   z-index: 1;
+  display: grid;
+  grid-template-rows: 0.72fr 0.92fr 0.62fr 1fr 0.82fr;
   min-height: 0;
   height: 100%;
   margin: 0 2rem;
@@ -432,20 +438,101 @@ body:has(.deck-builder-screen) .content {
   border: 1px solid rgba(214, 201, 170, 0.14);
   border-radius: 8px;
   background:
-    radial-gradient(circle at 20% 92%, rgba(53, 199, 255, 0.28), transparent 22%),
-    radial-gradient(circle at 86% 90%, rgba(255, 103, 28, 0.28), transparent 20%),
-    rgba(6, 10, 11, 0.72);
-  box-shadow: inset 0 0 7rem rgba(0, 0, 0, 0.44);
+    radial-gradient(circle at 18% 94%, rgba(53, 199, 255, 0.28), transparent 22%),
+    radial-gradient(circle at 85% 90%, rgba(255, 103, 28, 0.3), transparent 21%),
+    linear-gradient(180deg, rgba(15, 23, 20, 0.36), rgba(7, 11, 10, 0.42));
+  box-shadow: inset 0 0 5rem rgba(0, 0, 0, 0.36);
 }
 
-.three-battlefield-canvas {
+.arena-battlefield.is-loading {
+  place-items: center;
+  color: rgba(246, 240, 223, 0.76);
+  font-weight: 850;
+}
+
+.arena-fx-canvas,
+.arena-map-river {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.arena-fx-canvas {
+  z-index: 0;
   display: block;
   width: 100%;
   height: 100%;
 }
 
-.three-battlefield-overlay {
+.arena-map-river {
+  z-index: 0;
+  opacity: 0.58;
+  background:
+    linear-gradient(118deg, transparent 0 24%, rgba(48, 114, 141, 0.72) 25%, rgba(37, 86, 121, 0.58) 28%, transparent 30% 100%);
+  filter: blur(0.4px);
+}
+
+.arena-zone,
+.arena-combat-lane,
+.arena-hand-fan,
+.arena-stack-zone,
+.arena-priority-strip {
+  position: relative;
+  z-index: 1;
+}
+
+.arena-zone,
+.arena-combat-lane {
+  display: flex;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(0.3rem, 1vw, 0.7rem);
+}
+
+.arena-zone-opponent-lands {
+  align-items: end;
+  padding-top: 0.5rem;
+}
+
+.arena-zone-opponent-creatures {
+  align-items: center;
+}
+
+.arena-combat-lane {
+  align-items: center;
+}
+
+.arena-zone-player-creatures {
+  align-items: center;
+}
+
+.arena-zone-player-lands {
+  align-items: start;
+}
+
+.arena-stack-zone {
   position: absolute;
+  top: 45%;
+  right: 6.5%;
+  display: flex;
+  gap: 0.45rem;
+}
+
+.arena-hand-fan {
+  position: absolute;
+  bottom: -2.65rem;
+  left: 50%;
+  z-index: 3;
+  width: min(56rem, 88vw);
+  height: 12rem;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.arena-priority-strip {
+  position: absolute;
+  z-index: 2;
   right: 1rem;
   bottom: 1rem;
   left: 1rem;
@@ -455,56 +542,184 @@ body:has(.deck-builder-screen) .content {
   gap: 1rem;
   border: 1px solid rgba(246, 240, 223, 0.14);
   border-radius: 999px;
-  padding: 0.55rem 0.9rem;
-  color: rgba(246, 240, 223, 0.78);
-  background: rgba(5, 8, 9, 0.68);
-  font-size: 0.85rem;
+  padding: 0.52rem 0.9rem;
+  color: rgba(246, 240, 223, 0.82);
+  background: rgba(5, 8, 9, 0.7);
+  font-size: 0.82rem;
   font-weight: 850;
   pointer-events: none;
 }
 
-.three-battlefield-overlay strong {
+.arena-priority-strip strong {
   color: #ffb45d;
   text-transform: uppercase;
 }
 
-.arena-zone-row,
-.arena-combat-row {
-  display: flex;
-  min-height: 6.2rem;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
+.battle-card {
+  position: relative;
+  display: block;
+  width: clamp(4.9rem, 7.3vw, 6.85rem);
+  aspect-ratio: 488 / 680;
+  border: 2px solid rgba(22, 18, 12, 0.86);
+  border-radius: 7px;
+  padding: 0;
+  overflow: visible;
+  background: #17120f;
+  box-shadow: 0 13px 22px rgba(0, 0, 0, 0.42);
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
 }
 
-.arena-zone-row-compact .arena-card {
-  width: 5.6rem;
+.battle-card img,
+.battle-card-fallback {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 5px;
+  object-fit: cover;
+  pointer-events: none;
 }
 
-.arena-combat-row-opponent {
-  transform: perspective(900px) rotateX(-7deg);
+.battle-card-fallback {
+  display: grid;
+  place-items: center;
+  padding: 0.6rem;
+  color: #211910;
+  background: linear-gradient(145deg, #f2e6c8, #7fa786);
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-align: center;
 }
 
-.arena-combat-row-player {
-  transform: perspective(900px) rotateX(7deg);
+.battle-card.is-compact {
+  width: clamp(4.1rem, 6.1vw, 5.6rem);
 }
 
-.arena-center-line {
-  display: flex;
-  width: min(42rem, 70%);
-  align-items: center;
-  justify-content: space-between;
-  justify-self: center;
-  border: 1px solid rgba(246, 240, 223, 0.16);
+.battle-card.is-hand {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: clamp(6rem, 9.5vw, 8.25rem);
+  margin-left: calc(clamp(6rem, 9.5vw, 8.25rem) / -2);
+  border-color: rgba(49, 207, 255, 0.8);
+  box-shadow: 0 0 0 1px rgba(49, 207, 255, 0.44), 0 18px 32px rgba(0, 0, 0, 0.58);
+  pointer-events: auto;
+}
+
+.battle-card.is-tapped:not(.is-hand) {
+  transform: rotate(8deg) translateY(0.2rem);
+}
+
+.battle-card.is-selected,
+.battle-card.is-legal:hover {
+  z-index: 90;
+  box-shadow:
+    0 0 0 2px rgba(49, 207, 255, 0.9),
+    0 0 18px rgba(49, 207, 255, 0.76),
+    0 18px 34px rgba(0, 0, 0, 0.62);
+}
+
+.battle-card.is-selected:not(.is-hand) {
+  transform: translateY(-0.5rem) scale(1.05);
+}
+
+.battle-card.is-attacking {
+  border-color: rgba(255, 112, 64, 0.9);
+  box-shadow:
+    0 0 0 2px rgba(255, 112, 64, 0.48),
+    0 0 18px rgba(255, 112, 64, 0.52),
+    0 15px 30px rgba(0, 0, 0, 0.55);
+}
+
+.battle-card:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.35);
+  opacity: 0.62;
+}
+
+.battle-card-quantity,
+.battle-card-stat,
+.battle-card-counters {
+  position: absolute;
+  z-index: 3;
+  border: 2px solid rgba(22, 18, 12, 0.9);
   border-radius: 999px;
-  padding: 0.55rem 1rem;
-  background: rgba(6, 8, 9, 0.62);
-  color: rgba(246, 240, 223, 0.8);
-  font-size: 0.85rem;
+  color: #17120f;
+  background: #f8edd8;
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.42);
+  font-weight: 950;
+  pointer-events: none;
 }
 
-.arena-card,
-.arena-hand-card,
+.battle-card-quantity {
+  top: -0.6rem;
+  left: -0.45rem;
+  padding: 0.12rem 0.4rem;
+  font-size: 0.72rem;
+}
+
+.battle-card-stat {
+  right: -0.42rem;
+  bottom: -0.36rem;
+  padding: 0.14rem 0.42rem;
+  font-size: 0.82rem;
+}
+
+.battle-card-counters {
+  top: -0.55rem;
+  right: -0.5rem;
+  display: grid;
+  gap: 0.12rem;
+  padding: 0.14rem 0.36rem;
+  font-size: 0.66rem;
+}
+
+.arena-attacker {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.arena-attack-arrow {
+  position: absolute;
+  top: -0.85rem;
+  left: 50%;
+  width: 4.2rem;
+  height: 1.1rem;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, #fff3cf, #ff6326);
+  clip-path: polygon(50% 0, 100% 100%, 74% 100%, 50% 42%, 26% 100%, 0 100%);
+  filter: drop-shadow(0 0 9px rgba(255, 97, 38, 0.85));
+}
+
+.arena-selected-card {
+  display: grid;
+  min-width: min(22rem, 34vw);
+  justify-items: center;
+  gap: 0.22rem;
+  border: 1px solid rgba(246, 240, 223, 0.1);
+  border-radius: 8px;
+  padding: 0.55rem 0.9rem;
+  background: rgba(6, 9, 10, 0.46);
+  text-align: center;
+}
+
+.arena-selected-card span {
+  color: rgba(246, 240, 223, 0.58);
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.arena-selected-card strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: #f6f0df;
+  font-size: 0.95rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .deck-card-frame {
   position: relative;
   overflow: hidden;
@@ -513,73 +728,11 @@ body:has(.deck-builder-screen) .content {
   box-shadow: 0 14px 26px rgba(0, 0, 0, 0.42);
 }
 
-.arena-card {
-  width: 6.6rem;
-  aspect-ratio: 5 / 7;
-  border: 2px solid rgba(246, 240, 223, 0.34);
-}
-
-.arena-card img,
-.arena-hand-card img,
 .deck-card img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-
-.arena-card.is-tapped {
-  transform: rotate(8deg);
-  opacity: 0.78;
-}
-
-.arena-creature {
-  position: relative;
-}
-
-.arena-creature strong {
-  position: absolute;
-  right: -0.4rem;
-  bottom: -0.35rem;
-  border: 2px solid rgba(23, 20, 15, 0.9);
-  border-radius: 999px;
-  padding: 0.18rem 0.48rem;
-  color: #17140f;
-  background: #f8f0dc;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
-  font-size: 0.9rem;
-}
-
-.arena-hand {
-  position: absolute;
-  bottom: -1.8rem;
-  left: 50%;
-  display: flex;
-  width: 45rem;
-  height: 12rem;
-  justify-content: center;
-  transform: translateX(-50%);
-  pointer-events: none;
-}
-
-.arena-hand-card {
-  position: absolute;
-  width: 8rem;
-  aspect-ratio: 5 / 7;
-  border: 2px solid #35c7ff;
-  transform:
-    translateX(calc((var(--index) - ((var(--count) - 1) / 2)) * 4.8rem))
-    rotate(calc((var(--index) - ((var(--count) - 1) / 2)) * 5deg));
-  transition: transform 160ms ease;
-  pointer-events: auto;
-}
-
-.arena-hand-card:hover {
-  z-index: 5;
-  transform:
-    translateX(calc((var(--index) - ((var(--count) - 1) / 2)) * 4.8rem))
-    translateY(-1.5rem)
-    rotate(0deg);
 }
 
 .arena-action-rail {
@@ -643,8 +796,53 @@ body:has(.deck-builder-screen) .content {
     font-size: 1rem;
   }
 
-  .three-battlefield {
-    margin: 0 0.75rem;
+  .arena-battlefield {
+    margin: 0 0.65rem;
+    grid-template-rows: 0.62fr 0.82fr 0.46fr 0.92fr 0.68fr;
+  }
+
+  .arena-hand-fan {
+    bottom: -2.85rem;
+    width: min(40rem, 92vw);
+    height: 9rem;
+  }
+
+  .arena-priority-strip {
+    right: 0.5rem;
+    bottom: 0.35rem;
+    left: 0.5rem;
+    padding: 0.32rem 0.55rem;
+    font-size: 0.66rem;
+  }
+
+  .battle-card {
+    width: clamp(3.25rem, 6.2vw, 4.3rem);
+  }
+
+  .battle-card.is-compact {
+    width: clamp(2.95rem, 5.4vw, 3.8rem);
+  }
+
+  .battle-card.is-hand {
+    width: clamp(4.2rem, 10.5vw, 5.4rem);
+  }
+
+  .battle-card-stat {
+    padding: 0.1rem 0.32rem;
+    font-size: 0.66rem;
+  }
+
+  .arena-selected-card {
+    min-width: 10rem;
+    padding: 0.4rem 0.55rem;
+  }
+
+  .arena-selected-card span {
+    display: none;
+  }
+
+  .arena-selected-card strong {
+    font-size: 0.78rem;
   }
 
   .arena-action-rail button {
@@ -668,13 +866,6 @@ body:has(.deck-builder-screen) .content {
     padding: 0.42rem 0.65rem;
   }
 
-  .three-battlefield-overlay {
-    right: 0.55rem;
-    bottom: 0.45rem;
-    left: 0.55rem;
-    padding: 0.35rem 0.55rem;
-    font-size: 0.72rem;
-  }
 }
 
 .deck-builder-screen {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { aiDifficultyProfiles, createCommanderGame, getHealth } from "./server.mjs";
+import { aiDifficultyProfiles, applyCommand, createCommanderGame, getHealth } from "./server.mjs";
 
 const deck = {
   name: "Gateway Commander",
@@ -36,6 +36,45 @@ describe("xmage gateway", () => {
     assert.equal(snapshot.players[0].zones.hand.length, 7);
     assert.equal(snapshot.legalActions.some((action) => action.type === "cast_spell"), true);
     assert.equal(state.has(snapshot.id), true);
+  });
+
+  it("applies simulator tap and attack commands through snapshots", () => {
+    const snapshot = createCommanderGame(new Map(), {
+      roomId: "room-arena",
+      humanPlayerId: "human",
+      humanDeck: deck,
+      aiPlayers: [{ playerId: "ai-1", displayName: "AI Normal", difficulty: "normal", deck }],
+      startingLife: 40,
+      commanderDamageEnabled: true,
+      simulatorPreset: "arena-battlefield"
+    });
+
+    const tapAction = snapshot.legalActions.find((action) => action.type === "tap_permanent");
+    assert.ok(tapAction.cardInstanceId);
+
+    const tapped = applyCommand(snapshot, {
+      type: "tap_permanent",
+      gameId: snapshot.id,
+      playerId: "human",
+      cardInstanceId: tapAction.cardInstanceId
+    });
+    assert.equal(
+      tapped.players[0].zones.battlefield.find((card) => card.instanceId === tapAction.cardInstanceId).tapped,
+      true
+    );
+
+    const attackAction = tapped.legalActions.find((action) => action.type === "declare_attackers");
+    assert.ok(attackAction.cardInstanceId);
+    const attacking = applyCommand(tapped, {
+      type: "declare_attackers",
+      gameId: snapshot.id,
+      playerId: "human",
+      attackers: [{ attackerId: attackAction.cardInstanceId, defenderId: "ai-1" }]
+    });
+    assert.equal(
+      attacking.players[0].zones.battlefield.find((card) => card.instanceId === attackAction.cardInstanceId).isAttacking,
+      true
+    );
   });
 
   it("reports stalled health when the AI watchdog window is exceeded", () => {

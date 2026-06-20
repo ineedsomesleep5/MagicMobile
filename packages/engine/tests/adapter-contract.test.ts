@@ -127,6 +127,46 @@ describe("EngineAdapter contract", () => {
     await expect(adapter.getHealth()).resolves.toMatchObject({ status: "ready" });
   });
 
+  it("keeps Arena simulator tap and attack mechanics snapshot-driven", async () => {
+    const adapter = new MockEngineAdapter();
+    const snapshot = await adapter.createCommanderGame({
+      roomId: "room-arena",
+      humanPlayerId: "human",
+      humanDeck: deck,
+      aiPlayers: [{ playerId: "ai-1", displayName: "AI Normal", difficulty: "normal", deck }],
+      startingLife: 40,
+      commanderDamageEnabled: true,
+      simulatorPreset: "arena-battlefield"
+    });
+
+    const tapAction = snapshot.legalActions?.find((action) => action.type === "tap_permanent");
+    expect(tapAction?.cardInstanceId).toBeTruthy();
+
+    const tapped = await adapter.submitGameCommand({
+      type: "tap_permanent",
+      gameId: snapshot.id,
+      playerId: "human",
+      cardInstanceId: tapAction!.cardInstanceId!
+    });
+    expect(tapped.players[0]?.zones.battlefield.find((card) => card.instanceId === tapAction?.cardInstanceId)).toMatchObject({
+      tapped: true
+    });
+
+    const attackAction = tapped.legalActions?.find((action) => action.type === "declare_attackers");
+    expect(attackAction?.cardInstanceId).toBeTruthy();
+
+    const attacking = await adapter.submitGameCommand({
+      type: "declare_attackers",
+      gameId: snapshot.id,
+      playerId: "human",
+      attackers: [{ attackerId: attackAction!.cardInstanceId!, defenderId: "ai-1" }]
+    });
+    expect(attacking.players[0]?.zones.battlefield.find((card) => card.instanceId === attackAction?.cardInstanceId)).toMatchObject({
+      tapped: true,
+      isAttacking: true
+    });
+  });
+
   it("talks to the XMage gateway without importing UI code", async () => {
     const fetchCalls: string[] = [];
     const adapter: EngineAdapter = new XmageEngineAdapter({

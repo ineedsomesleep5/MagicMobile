@@ -79,6 +79,7 @@ export interface CommanderGameConfig {
   aiPlayers: AiPlayerConfig[];
   startingLife: 40;
   commanderDamageEnabled: true;
+  simulatorPreset?: "arena-battlefield";
 }
 
 export interface RoomSeat {
@@ -107,6 +108,12 @@ export interface ZoneCard {
   card: CardIdentity;
   tapped?: boolean;
   counters?: Record<string, number>;
+  power?: number;
+  toughness?: number;
+  damage?: number;
+  isAttacking?: boolean;
+  blocking?: string[];
+  attachedToInstanceId?: string;
 }
 
 export interface PlayerGameState {
@@ -140,6 +147,8 @@ export type LegalActionType =
   | "choose_target"
   | "declare_attackers"
   | "declare_blockers"
+  | "tap_permanent"
+  | "untap_permanent"
   | "pass_priority"
   | "advance_phase"
   | "concede";
@@ -174,6 +183,8 @@ export type GameCommand =
   | { type: "choose_target"; gameId: GameId; playerId: PlayerId; promptId: string; targetIds: string[] }
   | { type: "declare_attackers"; gameId: GameId; playerId: PlayerId; attackers: Array<{ attackerId: string; defenderId: string }> }
   | { type: "declare_blockers"; gameId: GameId; playerId: PlayerId; blockers: Array<{ blockerId: string; attackerId: string }> }
+  | { type: "tap_permanent"; gameId: GameId; playerId: PlayerId; cardInstanceId: string }
+  | { type: "untap_permanent"; gameId: GameId; playerId: PlayerId; cardInstanceId: string }
   | { type: "pass_priority"; gameId: GameId; playerId: PlayerId }
   | { type: "advance_phase"; gameId: GameId; playerId: PlayerId }
   | { type: "concede"; gameId: GameId; playerId: PlayerId };

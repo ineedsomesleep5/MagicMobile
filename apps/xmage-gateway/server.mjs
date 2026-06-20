@@ -108,6 +108,9 @@ export function createCommanderGame(state, config) {
   }
 
   drawOpeningHands(snapshot, 7);
+  if (config.simulatorPreset === "arena-battlefield") {
+    seedArenaBattlefield(snapshot, config.humanPlayerId, config.aiPlayers?.[0]?.playerId);
+  }
   snapshot.legalActions = getLegalActions(snapshot, config.humanPlayerId);
   snapshot.engineHealth = getHealth();
   return snapshot;
@@ -144,7 +147,7 @@ export function getHealth(now = Date.now()) {
   };
 }
 
-function applyCommand(snapshot, command) {
+export function applyCommand(snapshot, command) {
   lastAiProgressAt = Date.now();
 
   if (command.type === "cast_spell") {
@@ -153,6 +156,31 @@ function applyCommand(snapshot, command) {
       ? moveNamedCard(player, command.cardName, command.fromZone ?? "hand", "stack")
       : moveFirstCard(player, "hand", "stack");
     snapshot.log.push(logEntry(snapshot.log.length, `${command.playerId} casts ${card?.card.name ?? "a spell"}`));
+  }
+
+  if (command.type === "tap_permanent") {
+    const player = findPlayer(snapshot, command.playerId);
+    const card = findCardByNameOrInstance(player, "battlefield", command.cardInstanceId);
+    card.tapped = true;
+    snapshot.log.push(logEntry(snapshot.log.length, `${command.playerId} tapped ${card.card.name}`));
+  }
+
+  if (command.type === "untap_permanent") {
+    const player = findPlayer(snapshot, command.playerId);
+    const card = findCardByNameOrInstance(player, "battlefield", command.cardInstanceId);
+    card.tapped = false;
+    snapshot.log.push(logEntry(snapshot.log.length, `${command.playerId} untapped ${card.card.name}`));
+  }
+
+  if (command.type === "declare_attackers") {
+    const player = findPlayer(snapshot, command.playerId);
+    for (const attacker of command.attackers ?? []) {
+      const card = findCardByNameOrInstance(player, "battlefield", attacker.attackerId);
+      card.tapped = true;
+      card.isAttacking = true;
+    }
+    snapshot.priorityPlayerId = nextPlayerId(snapshot, command.playerId);
+    snapshot.log.push(logEntry(snapshot.log.length, `${command.playerId} declared attackers`));
   }
 
   if (command.type === "pass_priority") {
@@ -194,6 +222,28 @@ function getLegalActions(snapshot, playerId) {
       playerId,
       label: `Cast ${firstHandCard.card.name}`,
       cardInstanceId: firstHandCard.instanceId
+    });
+  }
+
+  const untappedCreature = player.zones.battlefield.find((card) => !card.tapped && isCreature(card));
+  if (untappedCreature) {
+    actions.unshift({
+      id: `${untappedCreature.instanceId}-attack`,
+      type: "declare_attackers",
+      playerId,
+      label: `Attack with ${untappedCreature.card.name}`,
+      cardInstanceId: untappedCreature.instanceId
+    });
+  }
+
+  const untappedPermanent = player.zones.battlefield.find((card) => !card.tapped);
+  if (untappedPermanent) {
+    actions.unshift({
+      id: `${untappedPermanent.instanceId}-tap`,
+      type: "tap_permanent",
+      playerId,
+      label: `Tap ${untappedPermanent.card.name}`,
+      cardInstanceId: untappedPermanent.instanceId
     });
   }
 
@@ -245,6 +295,7 @@ function drawOpeningHands(snapshot, count) {
 }
 
 function createZoneCard(name, source, index) {
+  const stats = cardStats[name];
   return {
     instanceId: `${slug(name)}-${source}-${index}`,
     card: {
@@ -252,8 +303,9 @@ function createZoneCard(name, source, index) {
       name,
       manaValue: 0,
       colorIdentity: [],
-      typeLine: "XMage Gateway Card"
-    }
+      typeLine: stats ? "Creature" : "XMage Gateway Card"
+    },
+    ...(stats ? { power: stats.power, toughness: stats.toughness } : {})
   };
 }
 
@@ -271,6 +323,59 @@ function moveFirstCard(player, fromZone, toZone) {
   if (card) player.zones[toZone].push(card);
   return card;
 }
+
+function findCardByNameOrInstance(player, zone, value) {
+  const card = player.zones[zone].find((candidate) => candidate.instanceId === value || candidate.card.name === value);
+  if (!card) throw new NotFoundError(`Card not found in ${zone}: ${value}`);
+  return card;
+}
+
+function isCreature(card) {
+  return card.power !== undefined || card.card.typeLine.toLowerCase().includes("creature");
+}
+
+function seedArenaBattlefield(snapshot, humanPlayerId, aiPlayerId) {
+  const human = findPlayer(snapshot, humanPlayerId);
+  const opponent = aiPlayerId ? findPlayer(snapshot, aiPlayerId) : undefined;
+
+  human.zones.battlefield = [
+    createZoneCard("Arboreal Grazer", "battlefield", 0),
+    createZoneCard("Island", "battlefield", 1),
+    { ...createZoneCard("Forest", "battlefield", 2), tapped: true },
+    createZoneCard("Hydroid Krasis", "battlefield", 3),
+    createZoneCard("Ezuri, Claw of Progress", "battlefield", 4)
+  ];
+  human.zones.hand = [
+    createZoneCard("Growth Spiral", "hand", 0),
+    createZoneCard("Hinterland Harbor", "hand", 1),
+    createZoneCard("Llanowar Elves", "hand", 2),
+    createZoneCard("Arboreal Grazer", "hand", 3),
+    createZoneCard("Time Wipe", "hand", 4),
+    createZoneCard("Hydroid Krasis", "hand", 5)
+  ];
+
+  if (opponent) {
+    opponent.zones.battlefield = [
+      { ...createZoneCard("Mountain", "battlefield", 0), tapped: true },
+      createZoneCard("Sacred Foundry", "battlefield", 1),
+      { ...createZoneCard("Swiftblade Vindicator", "battlefield", 2), tapped: true, isAttacking: true },
+      { ...createZoneCard("Light of the Legion", "battlefield", 3), tapped: true, isAttacking: true },
+      createZoneCard("Battlefield Forge", "battlefield", 4)
+    ];
+  }
+
+  snapshot.phase = "combat";
+  snapshot.priorityPlayerId = humanPlayerId;
+}
+
+const cardStats = {
+  "Arboreal Grazer": { power: 0, toughness: 3 },
+  "Hydroid Krasis": { power: 4, toughness: 4 },
+  "Ezuri, Claw of Progress": { power: 3, toughness: 3 },
+  "Llanowar Elves": { power: 1, toughness: 1 },
+  "Swiftblade Vindicator": { power: 1, toughness: 1 },
+  "Light of the Legion": { power: 5, toughness: 5 }
+};
 
 function getGame(state, gameId) {
   const snapshot = state.get(gameId);

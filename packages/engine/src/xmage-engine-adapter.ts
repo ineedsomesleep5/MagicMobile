@@ -151,6 +151,14 @@ function hybridActionToCommand(gameId: GameId, action: HybridAction): GameComman
     return { type: "declare_attackers", gameId, playerId: action.playerId, attackers: [] };
   }
 
+  if (action.type === "tap_permanent" && action.cardName) {
+    return { type: "tap_permanent", gameId, playerId: action.playerId, cardInstanceId: action.cardName };
+  }
+
+  if (action.type === "untap_permanent" && action.cardName) {
+    return { type: "untap_permanent", gameId, playerId: action.playerId, cardInstanceId: action.cardName };
+  }
+
   if (action.type === "pass_priority") {
     return { type: "pass_priority", gameId, playerId: action.playerId };
   }

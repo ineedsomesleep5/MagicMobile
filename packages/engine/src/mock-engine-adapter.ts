@@ -23,6 +23,7 @@ type MockEngineEvent =
   | { type: "deck_loaded"; playerId: PlayerId; deck: DeckList }
   | { type: "library_shuffled"; playerId: PlayerId; seed: number }
   | { type: "opening_hands_drawn"; count: number }
+  | { type: "arena_battlefield_seeded"; humanPlayerId: PlayerId; aiPlayerId?: PlayerId }
   | { type: "hybrid_action"; action: HybridAction }
   | { type: "priority_passed"; playerId: PlayerId }
   | { type: "phase_advanced" }
@@ -59,7 +60,14 @@ export class MockEngineAdapter implements EngineAdapter {
       await this.shuffle({ gameId: created.id, playerId });
     }
 
-    return this.drawOpeningHands({ gameId: created.id, count: 7 });
+    await this.drawOpeningHands({ gameId: created.id, count: 7 });
+    if (input.simulatorPreset === "arena-battlefield") {
+      const seedEvent: MockEngineEvent = { type: "arena_battlefield_seeded", humanPlayerId: input.humanPlayerId };
+      if (input.aiPlayers[0]?.playerId) seedEvent.aiPlayerId = input.aiPlayers[0].playerId;
+      this.append(created.id, seedEvent);
+    }
+
+    return this.getSnapshot(created.id);
   }
 
   async createGame(input: { roomId: RoomId; playerIds: PlayerId[] }): Promise<GameSnapshot> {
@@ -120,8 +128,22 @@ export class MockEngineAdapter implements EngineAdapter {
         if (input.fromZone !== undefined) action.fromZone = input.fromZone;
         return this.applyHybridAction({ gameId: input.gameId, action });
       }
-      case "declare_attackers":
-        return this.applyHybridAction({ gameId: input.gameId, action: { type: "attack_player", playerId: input.playerId } });
+      case "declare_attackers": {
+        const action: HybridAction = { type: "attack_player", playerId: input.playerId };
+        const attackerId = input.attackers[0]?.attackerId;
+        if (attackerId) action.cardName = attackerId;
+        return this.applyHybridAction({ gameId: input.gameId, action });
+      }
+      case "tap_permanent":
+        return this.applyHybridAction({
+          gameId: input.gameId,
+          action: { type: "tap_permanent", playerId: input.playerId, cardName: input.cardInstanceId }
+        });
+      case "untap_permanent":
+        return this.applyHybridAction({
+          gameId: input.gameId,
+          action: { type: "untap_permanent", playerId: input.playerId, cardName: input.cardInstanceId }
+        });
       case "pass_priority":
         return this.passPriority({ gameId: input.gameId, playerId: input.playerId });
       case "advance_phase":
@@ -252,6 +274,28 @@ function getLegalActions(snapshot: GameSnapshot, playerId: PlayerId): LegalActio
     });
   }
 
+  const untappedCreature = player.zones.battlefield.find((card) => !card.tapped && isCreature(card));
+  if (untappedCreature) {
+    actions.unshift({
+      id: `${untappedCreature.instanceId}-attack`,
+      type: "declare_attackers",
+      playerId,
+      label: `Attack with ${untappedCreature.card.name}`,
+      cardInstanceId: untappedCreature.instanceId
+    });
+  }
+
+  const untappedPermanent = player.zones.battlefield.find((card) => !card.tapped);
+  if (untappedPermanent) {
+    actions.unshift({
+      id: `${untappedPermanent.instanceId}-tap`,
+      type: "tap_permanent",
+      playerId,
+      label: `Tap ${untappedPermanent.card.name}`,
+      cardInstanceId: untappedPermanent.instanceId
+    });
+  }
+
   if (snapshot.phase === "beginning" && player.zones.hand.length > 0) {
     actions.unshift(
       {
@@ -294,6 +338,9 @@ function applyEvent(snapshot: GameSnapshot, event: Exclude<MockEngineEvent, { ty
         moveTopCards(player, "library", "hand", event.count);
       }
       break;
+    case "arena_battlefield_seeded":
+      seedArenaBattlefield(snapshot, event.humanPlayerId, event.aiPlayerId);
+      break;
     case "hybrid_action":
       applyHybridAction(snapshot, event.action);
       break;
@@ -333,12 +380,12 @@ function applyHybridAction(snapshot: GameSnapshot, action: HybridAction): void {
       break;
     case "tap_permanent":
       if (cardName) {
-        findCard(player, "battlefield", cardName).tapped = true;
+        findCardByNameOrInstance(player, "battlefield", cardName).tapped = true;
       }
       break;
     case "untap_permanent":
       if (cardName) {
-        findCard(player, "battlefield", cardName).tapped = false;
+        findCardByNameOrInstance(player, "battlefield", cardName).tapped = false;
       }
       break;
     case "add_counter":
@@ -363,7 +410,17 @@ function applyHybridAction(snapshot: GameSnapshot, action: HybridAction): void {
         target.commanderDamage[action.playerId] = (target.commanderDamage[action.playerId] ?? 0) + (action.amount ?? 0);
       }
       break;
-    case "attack_player":
+    case "attack_player": {
+      const attacker = cardName
+        ? findCardByNameOrInstance(player, "battlefield", cardName)
+        : player.zones.battlefield.find((card) => isCreature(card) && !card.tapped);
+      if (attacker) {
+        attacker.tapped = true;
+        attacker.isAttacking = true;
+      }
+      snapshot.priorityPlayerId = nextPlayerId(snapshot, action.playerId);
+      break;
+    }
     case "pass_priority":
       snapshot.priorityPlayerId = nextPlayerId(snapshot, action.playerId);
       break;
@@ -411,19 +468,22 @@ function loadDeck(player: PlayerGameState, deck: DeckList): void {
 }
 
 function createZoneCard(name: string, source: string, index: number): ZoneCard {
+  const stats = cardStats[name];
   return {
     instanceId: `${slug(name)}-${source}-${index}`,
-    card: createCardIdentity(name)
+    card: createCardIdentity(name),
+    ...(stats ? { power: stats.power, toughness: stats.toughness } : {})
   };
 }
 
 function createCardIdentity(name: string): CardIdentity {
+  const stats = cardStats[name];
   return {
     id: slug(name),
     name,
     manaValue: 0,
     colorIdentity: [],
-    typeLine: "Mock Card"
+    typeLine: stats ? "Creature" : "Mock Card"
   };
 }
 
@@ -451,6 +511,62 @@ function findCard(player: PlayerGameState, zone: ZoneName, cardName: string): Zo
   }
   return card;
 }
+
+function findCardByNameOrInstance(player: PlayerGameState, zone: ZoneName, value: string): ZoneCard {
+  const card = player.zones[zone].find((candidate) => candidate.instanceId === value || candidate.card.name === value);
+  if (!card) {
+    throw new Error(`Card not found in ${zone}: ${value}`);
+  }
+  return card;
+}
+
+function isCreature(card: ZoneCard): boolean {
+  return card.power !== undefined || card.card.typeLine.toLowerCase().includes("creature");
+}
+
+function seedArenaBattlefield(snapshot: GameSnapshot, humanPlayerId: PlayerId, aiPlayerId?: PlayerId): void {
+  const human = findPlayer(snapshot, humanPlayerId);
+  const opponent = aiPlayerId ? findPlayer(snapshot, aiPlayerId) : undefined;
+
+  human.zones.battlefield = [
+    createZoneCard("Arboreal Grazer", "battlefield", 0),
+    createZoneCard("Island", "battlefield", 1),
+    { ...createZoneCard("Forest", "battlefield", 2), tapped: true },
+    createZoneCard("Hydroid Krasis", "battlefield", 3),
+    createZoneCard("Ezuri, Claw of Progress", "battlefield", 4)
+  ];
+  human.zones.hand = [
+    createZoneCard("Growth Spiral", "hand", 0),
+    createZoneCard("Hinterland Harbor", "hand", 1),
+    createZoneCard("Llanowar Elves", "hand", 2),
+    createZoneCard("Arboreal Grazer", "hand", 3),
+    createZoneCard("Time Wipe", "hand", 4),
+    createZoneCard("Hydroid Krasis", "hand", 5)
+  ];
+
+  if (opponent) {
+    opponent.zones.battlefield = [
+      { ...createZoneCard("Mountain", "battlefield", 0), tapped: true },
+      createZoneCard("Sacred Foundry", "battlefield", 1),
+      { ...createZoneCard("Swiftblade Vindicator", "battlefield", 2), tapped: true, isAttacking: true },
+      { ...createZoneCard("Light of the Legion", "battlefield", 3), tapped: true, isAttacking: true },
+      createZoneCard("Battlefield Forge", "battlefield", 4)
+    ];
+  }
+
+  snapshot.phase = "combat";
+  snapshot.priorityPlayerId = humanPlayerId;
+  snapshot.legalActions = getLegalActions(snapshot, humanPlayerId);
+}
+
+const cardStats: Record<string, { power: number; toughness: number }> = {
+  "Arboreal Grazer": { power: 0, toughness: 3 },
+  "Hydroid Krasis": { power: 4, toughness: 4 },
+  "Ezuri, Claw of Progress": { power: 3, toughness: 3 },
+  "Llanowar Elves": { power: 1, toughness: 1 },
+  "Swiftblade Vindicator": { power: 1, toughness: 1 },
+  "Light of the Legion": { power: 5, toughness: 5 }
+};
 
 function findPlayer(snapshot: GameSnapshot, playerId: PlayerId): PlayerGameState {
   const player = snapshot.players.find((candidate) => candidate.playerId === playerId);
@@ -487,6 +603,8 @@ function describeEvent(event: Exclude<MockEngineEvent, { type: "game_created" }>
       return `${event.playerId} shuffled library`;
     case "opening_hands_drawn":
       return `Opening hands drawn (${event.count})`;
+    case "arena_battlefield_seeded":
+      return "Arena simulator battlefield seeded";
     case "hybrid_action":
       return describeHybridAction(event.action);
     case "priority_passed":
