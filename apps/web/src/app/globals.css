@@ -1,0 +1,285 @@
+@import "@magicmobile/ui/styles.css";
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  max-width: 100vw;
+  margin: 0;
+  color: var(--mm-ink);
+  background: var(--mm-bg);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+main {
+  min-height: 100vh;
+}
+
+.app-shell {
+  display: grid;
+  min-height: 100vh;
+  grid-template-columns: 15rem 1fr;
+}
+
+.side-nav {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  border-right: 1px solid var(--mm-line);
+  padding: 1.25rem;
+  background: #fffaf0;
+}
+
+.brand {
+  display: grid;
+  gap: 0.2rem;
+  margin-bottom: 1.4rem;
+}
+
+.brand strong {
+  font-size: 1.2rem;
+}
+
+.brand span,
+.page-kicker,
+.muted {
+  color: var(--mm-muted);
+}
+
+.side-nav nav {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.side-nav a {
+  border-radius: 8px;
+  padding: 0.7rem 0.75rem;
+  font-weight: 750;
+}
+
+.side-nav a:hover {
+  background: var(--mm-panel-strong);
+}
+
+.content {
+  display: grid;
+  gap: 1.25rem;
+  align-content: start;
+  padding: clamp(1rem, 3vw, 2rem);
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.page-header h1 {
+  margin: 0.2rem 0 0;
+  font-size: clamp(2rem, 5vw, 4rem);
+  line-height: 0.95;
+  letter-spacing: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.hero-grid,
+.two-column,
+.three-column,
+.room-grid,
+.play-grid,
+.component-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.hero-grid {
+  grid-template-columns: minmax(0, 1.15fr) minmax(18rem, 0.85fr);
+}
+
+.two-column,
+.room-grid,
+.play-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
+}
+
+.three-column,
+.component-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.panel,
+.feature,
+.list-row,
+.form-panel {
+  border: 1px solid var(--mm-line);
+  border-radius: 8px;
+  background: var(--mm-panel);
+  box-shadow: var(--mm-shadow);
+}
+
+.panel,
+.feature,
+.form-panel {
+  padding: 1rem;
+}
+
+.feature h2,
+.panel h2,
+.form-panel h2 {
+  margin: 0 0 0.6rem;
+}
+
+.battlefield-preview {
+  display: grid;
+  gap: 1rem;
+  min-height: 28rem;
+  border-radius: 8px;
+  padding: 1rem;
+  background:
+    linear-gradient(rgba(24, 33, 25, 0.04), rgba(24, 33, 25, 0.04)),
+    radial-gradient(circle at top right, rgba(185, 133, 43, 0.25), transparent 28%),
+    #e5ead8;
+}
+
+.seat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.list-row h2,
+.list-row h3,
+.list-row p {
+  margin: 0;
+}
+
+.list-row p,
+.form-panel label,
+.small {
+  color: var(--mm-muted);
+  font-size: 0.92rem;
+}
+
+.form-panel {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.field input,
+.field textarea,
+.field select {
+  width: 100%;
+  border: 1px solid var(--mm-line);
+  border-radius: 8px;
+  padding: 0.8rem;
+  color: var(--mm-ink);
+  background: #ffffff;
+  font: inherit;
+}
+
+.field textarea {
+  min-height: 12rem;
+  resize: vertical;
+}
+
+.dev-table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--mm-panel);
+}
+
+.dev-table th,
+.dev-table td {
+  border-bottom: 1px solid var(--mm-line);
+  padding: 0.8rem;
+  text-align: left;
+}
+
+@media (max-width: 860px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .side-nav {
+    position: static;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--mm-line);
+  }
+
+  .side-nav nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .side-nav a {
+    text-align: center;
+  }
+
+  .hero-grid,
+  .two-column,
+  .three-column,
+  .room-grid,
+  .play-grid,
+  .component-grid,
+  .seat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .page-header {
+    display: grid;
+    align-items: start;
+  }
+
+  .list-row {
+    align-items: start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 520px) {
+  .side-nav nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .content {
+    padding: 0.85rem;
+  }
+
+  .actions,
+  .actions .mm-button {
+    width: 100%;
+  }
+}

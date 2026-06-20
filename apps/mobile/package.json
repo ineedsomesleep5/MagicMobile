@@ -1,0 +1,24 @@
+{
+  "name": "@magicmobile/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "App.tsx",
+  "scripts": {
+    "dev": "expo start",
+    "build": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "expo": "^53.0.12",
+    "react": "^19.0.0",
+    "react-native": "^0.79.4"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

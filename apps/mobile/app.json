@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "MagicMobile",
+    "slug": "magicmobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "magicmobile",
+    "platforms": ["ios", "android"],
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true
+  }
+}
