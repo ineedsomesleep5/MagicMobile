@@ -3,7 +3,7 @@ import PhotosUI
 import UIKit
 
 struct ContentView: View {
-    @State private var serverURLText = "http://72.62.200.185:3000"
+    @State private var serverURLText = "https://magicmobile.openclaw-is3w.srv1420950.hstgr.cloud"
     @State private var status = "Not connected"
     @State private var screen: AppScreen = .menu
     @State private var difficulty: AiDifficulty = .normal
@@ -115,7 +115,7 @@ struct ContentView: View {
     }
 
     private var webPlayURL: URL {
-        URL(string: serverURLText.trimmingCharacters(in: .whitespacesAndNewlines) + "/play") ?? URL(string: "http://72.62.200.185:3000/play")!
+        URL(string: serverURLText.trimmingCharacters(in: .whitespacesAndNewlines) + "/play") ?? URL(string: "https://magicmobile.openclaw-is3w.srv1420950.hstgr.cloud/play")!
     }
 
     private var deckSummary: String {

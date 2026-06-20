@@ -88,7 +88,7 @@ interface GeneratedDeckResponse {
 
 const humanPlayerId = "human";
 const aiPlayerId = "ai-1";
-const defaultServerUrl = "http://192.168.68.168:3000";
+const defaultServerUrl = "https://magicmobile.openclaw-is3w.srv1420950.hstgr.cloud";
 const steps = ["untap", "upkeep", "draw", "precombat-main", "begin-combat", "declare-attackers", "declare-blockers", "combat-damage", "postcombat-main", "end", "cleanup"];
 
 export default function App() {
