@@ -6,13 +6,15 @@
   "scripts": {
     "dev": "pnpm --filter @magicmobile/web dev",
     "dev:xmage-gateway": "pnpm --filter @magicmobile/xmage-gateway dev",
+    "dev:xmage": "docker compose up --build xmage-bridge xmage-gateway web",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "db:migrate": "pnpm --filter @magicmobile/shared db:migrate",
     "db:seed": "pnpm --filter @magicmobile/card-data db:seed",
-    "sync:scryfall": "pnpm --filter @magicmobile/card-data sync:scryfall"
+    "sync:scryfall": "pnpm --filter @magicmobile/card-data sync:scryfall",
+    "smoke:xmage": "vite-node apps/xmage-gateway/scripts/smoke-create-commander-game.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

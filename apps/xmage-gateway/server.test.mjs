@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { aiDifficultyProfiles, applyCommand, createCommanderGame, getHealth } from "./server.mjs";
+import {
+  aiDifficultyProfiles,
+  applyCommand,
+  createCommanderGame,
+  createHttpBridgeClient,
+  getGatewayHealth,
+  getHealth
+} from "./server.mjs";
 
 const deck = {
   name: "Gateway Commander",
@@ -87,5 +94,37 @@ describe("xmage gateway", () => {
     const health = getHealth(Date.now(), false);
     assert.equal(health.status, "unavailable");
     assert.equal(health.recoveryAction, "restart_gateway");
+  });
+
+  it("reports ready health from the Java bridge before a game starts", async () => {
+    const health = await getGatewayHealth(
+      {
+        health: async () => ({
+          status: "ready",
+          reason: "bridge ready",
+          checkedAt: new Date(0).toISOString(),
+          recoveryAction: "wait"
+        })
+      },
+      Date.now() + 999_999
+    );
+
+    assert.equal(health.status, "ready");
+    assert.equal(health.reason, "bridge ready");
+  });
+
+  it("sends Commander game creation through the HTTP bridge client", async () => {
+    const requests = [];
+    const client = createHttpBridgeClient("http://bridge.test/", async (url, init) => {
+      requests.push({ url, init });
+      return new Response(JSON.stringify({ id: "xmage-game-1" }), { status: 201 });
+    });
+
+    const snapshot = await client.createCommanderGame({ roomId: "room-1" });
+
+    assert.equal(snapshot.id, "xmage-game-1");
+    assert.equal(requests[0].url, "http://bridge.test/games/commander");
+    assert.equal(requests[0].init.method, "POST");
+    assert.equal(JSON.parse(requests[0].init.body).roomId, "room-1");
   });
 });

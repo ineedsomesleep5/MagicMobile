@@ -24,7 +24,7 @@ describe("PlayPage", () => {
 
     expect(html).toContain("Horizontal game battlefield");
     expect(html).toContain("XMage setup required");
-    expect(html).toContain("pnpm --filter @magicmobile/xmage-gateway dev");
+    expect(html).toContain("docker compose up --build xmage-bridge xmage-gateway");
     expect(html).not.toContain("Simulator preview");
   });
 });

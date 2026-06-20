@@ -2,8 +2,9 @@ services:
   web:
     image: node:22-alpine
     working_dir: /workspace
-    command: sh -lc "corepack enable && pnpm install --frozen-lockfile && pnpm dev"
+    command: sh -lc "corepack enable && pnpm install --frozen-lockfile && pnpm --filter @magicmobile/web exec next dev --hostname 0.0.0.0"
     environment:
+      ENGINE_MODE: xmage
       XMAGE_GATEWAY_URL: http://xmage-gateway:17171
       SCRYFALL_CACHE_DIR: /workspace/.cache/scryfall
     ports:
@@ -28,12 +29,34 @@ services:
       PORT: 17171
       SCRYFALL_CACHE_DIR: /workspace/.cache/scryfall
       XMAGE_AI_STALL_MS: 45000
+      XMAGE_BRIDGE_URL: http://xmage-bridge:17172
     ports:
       - "17171:17171"
     volumes:
       - .:/workspace
       - scryfall-cache:/workspace/.cache/scryfall
       - xmage-assets:/workspace/.cache/xmage
+    depends_on:
+      xmage-bridge:
+        condition: service_started
+
+  xmage-bridge:
+    build:
+      context: ./apps/xmage-gateway/bridge
+    environment:
+      XMAGE_SERVER_XMX: 1024m
+      BRIDGE_PORT: 17172
+      XMAGE_HOST: 127.0.0.1
+      XMAGE_PORT: 17171
+    ports:
+      - "17172:17172"
+      - "17179:17179"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:17172/health | grep -q '\"status\":\"ready\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 45s
 
   postgres:
     image: postgres:16-alpine

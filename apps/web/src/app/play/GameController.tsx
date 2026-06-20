@@ -148,8 +148,8 @@ function XmageSetupRequired({ health }: { health: EngineHealth }) {
         <span>XMage setup required</span>
         <h1>Start the rules engine before playing Commander</h1>
         <p>{health.reason}</p>
-        <code>pnpm --filter @magicmobile/xmage-gateway dev</code>
-        <code>ENGINE_MODE=xmage XMAGE_GATEWAY_URL=http://localhost:17171 pnpm dev</code>
+        <code>docker compose up --build xmage-bridge xmage-gateway</code>
+        <code>ENGINE_MODE=xmage XMAGE_GATEWAY_URL=http://localhost:17171 pnpm --filter @magicmobile/web exec next dev --hostname 0.0.0.0</code>
         <small>
           The simulator preview lives at /dev/play-simulator. Production /play does not fall back because tapping,
           priority, combat, costs, and AI decisions must come from XMage.
@@ -193,7 +193,7 @@ function isCardSpecificAction(type: LegalAction["type"]): boolean {
 }
 
 function isPromptAction(type: LegalAction["type"]): boolean {
-  return ["advance_phase", "pass_priority", "pass_until_response", "keep_hand", "mulligan"].includes(type);
+  return ["advance_phase", "pass_priority", "pass_until_response", "keep_hand", "mulligan", "resolve_choice"].includes(type);
 }
 
 function getImmediateCardAction(instanceId: string, legalActions: LegalAction[]): LegalAction | undefined {
@@ -272,7 +272,18 @@ function toCommand(
             type: "make_mana",
             gameId: snapshot.id,
             playerId: action.playerId,
-            sourceInstanceId: action.sourceInstanceId ?? action.cardInstanceId ?? ""
+            sourceInstanceId: action.sourceInstanceId ?? action.cardInstanceId ?? "",
+            ...abilityTemplate(action)
+          }
+        : undefined;
+    case "activate_ability":
+      return action.cardInstanceId ?? action.sourceInstanceId
+        ? {
+            type: "activate_ability",
+            gameId: snapshot.id,
+            playerId: action.playerId,
+            sourceInstanceId: action.sourceInstanceId ?? action.cardInstanceId ?? "",
+            abilityId: abilityTemplate(action).abilityId ?? action.id
           }
         : undefined;
     case "choose_target":
@@ -299,6 +310,10 @@ function toCommand(
         promptId: snapshot.choicePrompt?.id ?? action.id,
         choiceIds: action.targetIds ?? action.validTargetIds ?? []
       };
+    case "keep_hand":
+      return { type: "keep_hand", gameId: snapshot.id, playerId: action.playerId };
+    case "mulligan":
+      return { type: "mulligan", gameId: snapshot.id, playerId: action.playerId };
     case "pass_priority":
       return { type: "pass_priority", gameId: snapshot.id, playerId: action.playerId };
     case "pass_until_response":
@@ -310,4 +325,9 @@ function toCommand(
     default:
       return undefined;
   }
+}
+
+function abilityTemplate(action: LegalAction): { abilityId?: string } {
+  const template = action.commandTemplate as { abilityId?: unknown } | undefined;
+  return typeof template?.abilityId === "string" ? { abilityId: template.abilityId } : {};
 }

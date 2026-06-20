@@ -232,7 +232,7 @@ function ActionPanel({
   selectedCard: BattlefieldCardView | undefined;
   onRunAction: ((action: LegalAction) => void) | undefined;
 }) {
-  const visibleActions = selectedActions.length > 0 ? selectedActions : promptActions.slice(0, 3);
+  const visibleActions = selectedActions.length > 0 ? selectedActions : promptActions.slice(0, 8);
   if (visibleActions.length === 0) return null;
 
   return (

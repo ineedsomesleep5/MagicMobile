@@ -14,14 +14,16 @@ let lastAiProgressAt = Date.now();
 const aiStallMs = Number.parseInt(process.env.XMAGE_AI_STALL_MS ?? "45000", 10);
 const port = Number.parseInt(process.env.PORT ?? "17171", 10);
 
-export function createGatewayHandler(state = games) {
+export function createGatewayHandler(state = games, options = {}) {
+  const bridgeClient = options.bridgeClient ?? createBridgeClientFromEnv();
+
   return async function handleRequest(request, response) {
     try {
       const url = parseUrl(request.url ?? "/", true);
       const method = request.method ?? "GET";
 
       if (method === "GET" && url.pathname === "/health") {
-        return sendJson(response, getHealth());
+        return sendJson(response, await getGatewayHealth(bridgeClient));
       }
 
       if (method === "GET" && url.pathname === "/ai/difficulties") {
@@ -36,6 +38,12 @@ export function createGatewayHandler(state = games) {
 
       if (method === "POST" && url.pathname === "/games/commander") {
         const body = await readJson(request);
+        if (bridgeClient && body.simulatorPreset !== "arena-battlefield") {
+          const snapshot = await bridgeClient.createCommanderGame(body);
+          lastAiProgressAt = Date.now();
+          state.set(snapshot.id, snapshot);
+          return sendJson(response, snapshot, 201);
+        }
         const snapshot = createCommanderGame(state, body);
         return sendJson(response, snapshot, 201);
       }
@@ -47,15 +55,30 @@ export function createGatewayHandler(state = games) {
         const snapshot = getGame(state, gameId);
 
         if (method === "GET" && !action) {
+          if (bridgeClient && isBridgeSnapshot(snapshot)) {
+            const nextSnapshot = await bridgeClient.getSnapshot(gameId);
+            lastAiProgressAt = Date.now();
+            state.set(nextSnapshot.id, nextSnapshot);
+            return sendJson(response, nextSnapshot);
+          }
           return sendJson(response, snapshot);
         }
 
         if (method === "GET" && action === "legal-actions") {
+          if (bridgeClient && isBridgeSnapshot(snapshot)) {
+            return sendJson(response, await bridgeClient.getLegalActions(gameId, String(url.query.playerId ?? "")));
+          }
           return sendJson(response, getLegalActions(snapshot, String(url.query.playerId ?? "")));
         }
 
         if (method === "POST" && action === "commands") {
           const command = await readJson(request);
+          if (bridgeClient && isBridgeSnapshot(snapshot)) {
+            const nextSnapshot = await bridgeClient.submitCommand(gameId, command);
+            lastAiProgressAt = Date.now();
+            state.set(nextSnapshot.id, nextSnapshot);
+            return sendJson(response, nextSnapshot);
+          }
           return sendJson(response, applyCommand(snapshot, command));
         }
 
@@ -88,6 +111,63 @@ export function createGatewayHandler(state = games) {
         error instanceof NotFoundError ? 404 : 500
       );
     }
+  };
+}
+
+export function createHttpBridgeClient(endpoint, fetchImpl = fetch) {
+  const baseUrl = endpoint.replace(/\/$/, "");
+  return {
+    async health() {
+      return requestBridge(fetchImpl, baseUrl, "/health");
+    },
+    async createCommanderGame(config) {
+      return requestBridge(fetchImpl, baseUrl, "/games/commander", { method: "POST", body: config });
+    },
+    async getSnapshot(gameId) {
+      return requestBridge(fetchImpl, baseUrl, `/games/${encodeURIComponent(gameId)}`);
+    },
+    async getLegalActions(gameId, playerId) {
+      return requestBridge(
+        fetchImpl,
+        baseUrl,
+        `/games/${encodeURIComponent(gameId)}/legal-actions?playerId=${encodeURIComponent(playerId)}`
+      );
+    },
+    async submitCommand(gameId, command) {
+      return requestBridge(fetchImpl, baseUrl, `/games/${encodeURIComponent(gameId)}/commands`, {
+        method: "POST",
+        body: command
+      });
+    }
+  };
+}
+
+export async function getGatewayHealth(bridgeClient = createBridgeClientFromEnv(), now = Date.now()) {
+  if (!bridgeClient) {
+    return getHealth(now);
+  }
+
+  let bridgeHealth;
+  try {
+    bridgeHealth = await bridgeClient.health();
+  } catch (error) {
+    return {
+      status: "unavailable",
+      reason: `XMage Java bridge unavailable: ${error instanceof Error ? error.message : "request failed"}`,
+      checkedAt: new Date(now).toISOString(),
+      recoveryAction: "restart_gateway"
+    };
+  }
+
+  if (bridgeHealth.status !== "ready") {
+    return bridgeHealth;
+  }
+
+  return {
+    status: "ready",
+    reason: bridgeHealth.reason ?? "XMage Java bridge is connected and ready.",
+    checkedAt: bridgeHealth.checkedAt ?? new Date(now).toISOString(),
+    recoveryAction: "wait"
   };
 }
 
@@ -142,7 +222,7 @@ export function getHealth(now = Date.now(), bridgeConnected = isBridgeConnected(
   if (!bridgeConnected) {
     return {
       status: "unavailable",
-      reason: "XMage Java bridge is not connected. Start/connect the real XMage bridge before using /play.",
+      reason: "XMage Java bridge is not connected. Start Docker Compose or set XMAGE_BRIDGE_URL before using /play.",
       checkedAt: new Date(now).toISOString(),
       recoveryAction: "restart_gateway"
     };
@@ -153,7 +233,7 @@ export function getHealth(now = Date.now(), bridgeConnected = isBridgeConnected(
     status: stalled ? "stalled" : "ready",
     reason: stalled
       ? "AI watchdog has not observed gateway progress inside the configured window."
-      : "XMage gateway is ready. Java XMage bridge is not connected in this milestone.",
+      : "XMage gateway simulator is ready.",
     checkedAt: new Date(now).toISOString(),
     recoveryAction: stalled ? "recreate_game" : "wait"
   };
@@ -161,6 +241,31 @@ export function getHealth(now = Date.now(), bridgeConnected = isBridgeConnected(
 
 function isBridgeConnected() {
   return process.env.XMAGE_BRIDGE_READY === "true" || process.env.XMAGE_BRIDGE_MODE === "simulator";
+}
+
+function createBridgeClientFromEnv() {
+  if (!process.env.XMAGE_BRIDGE_URL) return null;
+  return createHttpBridgeClient(process.env.XMAGE_BRIDGE_URL);
+}
+
+async function requestBridge(fetchImpl, baseUrl, path, options = {}) {
+  const requestInit = {
+    method: options.method ?? "GET",
+    headers: { Accept: "application/json", "Content-Type": "application/json" }
+  };
+  if (options.body !== undefined) {
+    requestInit.body = JSON.stringify(options.body);
+  }
+
+  const response = await fetchImpl(`${baseUrl}${path}`, requestInit);
+  if (!response.ok) {
+    throw new Error(`bridge request failed (${response.status}) for ${path}: ${await response.text()}`);
+  }
+  return response.json();
+}
+
+function isBridgeSnapshot(snapshot) {
+  return snapshot?.source === "xmage-java-bridge" || String(snapshot?.id ?? "").startsWith("xmage-bridge-");
 }
 
 export function applyCommand(snapshot, command) {
