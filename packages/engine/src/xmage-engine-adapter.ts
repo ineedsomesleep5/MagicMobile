@@ -136,6 +136,15 @@ export class XmageEngineAdapter implements EngineAdapter {
 }
 
 function hybridActionToCommand(gameId: GameId, action: HybridAction): GameCommand {
+  if (action.type === "play_land") {
+    return {
+      type: "play_land",
+      gameId,
+      playerId: action.playerId,
+      ...(action.cardName ? { cardName: action.cardName } : {})
+    };
+  }
+
   if (action.type === "cast_spell") {
     const command: GameCommand = {
       type: "cast_spell",

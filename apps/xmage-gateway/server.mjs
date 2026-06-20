@@ -122,9 +122,12 @@ export function createGame(state, roomId, playerIds) {
     id: gameId,
     roomId,
     phase: "beginning",
+    step: "untap",
     turn: 1,
     activePlayerId: playerIds[0],
     priorityPlayerId: playerIds[0],
+    waitingOnPlayerId: playerIds[0],
+    promptText: "Your priority",
     players: playerIds.map((playerId) => createPlayer(playerId, playerIds)),
     log: [logEntry(0, `Gateway game ${gameId} created`)],
     legalActions: [],
@@ -135,7 +138,16 @@ export function createGame(state, roomId, playerIds) {
   return snapshot;
 }
 
-export function getHealth(now = Date.now()) {
+export function getHealth(now = Date.now(), bridgeConnected = isBridgeConnected()) {
+  if (!bridgeConnected) {
+    return {
+      status: "unavailable",
+      reason: "XMage Java bridge is not connected. Start/connect the real XMage bridge before using /play.",
+      checkedAt: new Date(now).toISOString(),
+      recoveryAction: "restart_gateway"
+    };
+  }
+
   const stalled = now - lastAiProgressAt > aiStallMs;
   return {
     status: stalled ? "stalled" : "ready",
@@ -147,8 +159,20 @@ export function getHealth(now = Date.now()) {
   };
 }
 
+function isBridgeConnected() {
+  return process.env.XMAGE_BRIDGE_READY === "true" || process.env.XMAGE_BRIDGE_MODE === "simulator";
+}
+
 export function applyCommand(snapshot, command) {
   lastAiProgressAt = Date.now();
+
+  if (command.type === "play_land") {
+    const player = findPlayer(snapshot, command.playerId);
+    const card = command.cardName
+      ? moveNamedCard(player, command.cardName, "hand", "battlefield")
+      : moveCardByInstance(player, command.cardInstanceId, "hand", "battlefield");
+    snapshot.log.push(logEntry(snapshot.log.length, `${command.playerId} plays ${card?.card.name ?? "a land"}`));
+  }
 
   if (command.type === "cast_spell") {
     const player = findPlayer(snapshot, command.playerId);
@@ -180,17 +204,24 @@ export function applyCommand(snapshot, command) {
       card.isAttacking = true;
     }
     snapshot.priorityPlayerId = nextPlayerId(snapshot, command.playerId);
+    snapshot.waitingOnPlayerId = snapshot.priorityPlayerId;
+    snapshot.step = "declare-blockers";
+    snapshot.promptText = "Declare blockers";
     snapshot.log.push(logEntry(snapshot.log.length, `${command.playerId} declared attackers`));
   }
 
-  if (command.type === "pass_priority") {
+  if (command.type === "pass_priority" || command.type === "pass_until_response") {
     snapshot.priorityPlayerId = nextPlayerId(snapshot, command.playerId);
+    snapshot.waitingOnPlayerId = snapshot.priorityPlayerId;
+    snapshot.promptText = snapshot.priorityPlayerId === snapshot.activePlayerId ? "Your priority" : "Waiting for AI";
     snapshot.log.push(logEntry(snapshot.log.length, `${command.playerId} passed priority`));
   }
 
   if (command.type === "advance_phase") {
     const phases = ["beginning", "precombat-main", "combat", "postcombat-main", "ending"];
     snapshot.phase = phases[(phases.indexOf(snapshot.phase) + 1) % phases.length] ?? "beginning";
+    snapshot.step = phaseToStep(snapshot.phase);
+    snapshot.promptText = promptForStep(snapshot.step, snapshot.priorityPlayerId, snapshot.activePlayerId);
     snapshot.log.push(logEntry(snapshot.log.length, `Advanced to ${snapshot.phase}`));
   }
 
@@ -201,6 +232,7 @@ export function applyCommand(snapshot, command) {
 
   snapshot.legalActions = getLegalActions(snapshot, snapshot.priorityPlayerId ?? command.playerId);
   snapshot.engineHealth = getHealth();
+  snapshot.waitingOnPlayerId = snapshot.priorityPlayerId;
   return snapshot;
 }
 
@@ -221,8 +253,19 @@ function getLegalActions(snapshot, playerId) {
       type: "cast_spell",
       playerId,
       label: `Cast ${firstHandCard.card.name}`,
-      cardInstanceId: firstHandCard.instanceId
+      cardInstanceId: firstHandCard.instanceId,
+      sourceZone: "hand"
     });
+    if (isLand(firstHandCard)) {
+      actions.unshift({
+        id: `${firstHandCard.instanceId}-play-land`,
+        type: "play_land",
+        playerId,
+        label: `Play ${firstHandCard.card.name}`,
+        cardInstanceId: firstHandCard.instanceId,
+        sourceZone: "hand"
+      });
+    }
   }
 
   const untappedCreature = player.zones.battlefield.find((card) => !card.tapped && isCreature(card));
@@ -303,7 +346,7 @@ function createZoneCard(name, source, index) {
       name,
       manaValue: 0,
       colorIdentity: [],
-      typeLine: stats ? "Creature" : "XMage Gateway Card"
+      typeLine: isLandName(name) ? "Land" : stats ? "Creature" : "XMage Gateway Card"
     },
     ...(stats ? { power: stats.power, toughness: stats.toughness } : {})
   };
@@ -312,6 +355,15 @@ function createZoneCard(name, source, index) {
 function moveNamedCard(player, name, fromZone, toZone) {
   const source = player.zones[fromZone] ?? [];
   const index = source.findIndex((card) => card.card.name === name);
+  if (index === -1) return undefined;
+  const [card] = source.splice(index, 1);
+  if (card) player.zones[toZone].push(card);
+  return card;
+}
+
+function moveCardByInstance(player, instanceId, fromZone, toZone) {
+  const source = player.zones[fromZone] ?? [];
+  const index = source.findIndex((card) => card.instanceId === instanceId);
   if (index === -1) return undefined;
   const [card] = source.splice(index, 1);
   if (card) player.zones[toZone].push(card);
@@ -332,6 +384,32 @@ function findCardByNameOrInstance(player, zone, value) {
 
 function isCreature(card) {
   return card.power !== undefined || card.card.typeLine.toLowerCase().includes("creature");
+}
+
+function isLand(card) {
+  return card.card.typeLine.toLowerCase().includes("land") || isLandName(card.card.name);
+}
+
+function isLandName(name) {
+  return /\b(forest|island|mountain|plains|swamp|foundry|harbor|forge|tower|pool|retreat)\b/i.test(name);
+}
+
+function phaseToStep(phase) {
+  const stepByPhase = {
+    beginning: "untap",
+    "precombat-main": "precombat-main",
+    combat: "declare-attackers",
+    "postcombat-main": "postcombat-main",
+    ending: "end"
+  };
+  return stepByPhase[phase] ?? "untap";
+}
+
+function promptForStep(step, priorityPlayerId, activePlayerId) {
+  if (step === "declare-attackers") return "Declare attackers";
+  if (step === "declare-blockers") return "Declare blockers";
+  if (priorityPlayerId && priorityPlayerId !== activePlayerId) return "Waiting for AI";
+  return "Your priority";
 }
 
 function seedArenaBattlefield(snapshot, humanPlayerId, aiPlayerId) {

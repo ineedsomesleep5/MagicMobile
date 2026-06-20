@@ -34,6 +34,10 @@ const visuals = cards.map((card) => {
     manaCost: card.mana_cost,
     manaValue: card.cmc,
     colors: card.colors?.length ? card.colors : card.color_identity ?? [],
+    colorIdentity: card.color_identity ?? [],
+    oracleText: card.oracle_text,
+    legalities: card.legalities ? { commander: card.legalities.commander } : undefined,
+    isBasicLand: Boolean(card.type_line?.includes("Basic Land")),
     imageUrl: imageUris?.normal ?? imageUris?.border_crop,
     artCropUrl: imageUris?.art_crop
   };

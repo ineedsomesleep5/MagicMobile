@@ -78,8 +78,14 @@ describe("xmage gateway", () => {
   });
 
   it("reports stalled health when the AI watchdog window is exceeded", () => {
-    const staleHealth = getHealth(Date.now() + 999_999);
+    const staleHealth = getHealth(Date.now() + 999_999, true);
     assert.equal(staleHealth.status, "stalled");
     assert.equal(staleHealth.recoveryAction, "recreate_game");
+  });
+
+  it("reports unavailable health when the Java bridge is not connected", () => {
+    const health = getHealth(Date.now(), false);
+    assert.equal(health.status, "unavailable");
+    assert.equal(health.recoveryAction, "restart_gateway");
   });
 });

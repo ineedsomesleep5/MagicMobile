@@ -71,6 +71,7 @@ const categoryFlags = (card: CardIdentity) => {
         name === "cultivate" ||
         oracle.includes("treasure token") ||
         oracle.includes("add one mana") ||
+        /\badd \{[wubrgc]\}/i.test(oracle) ||
         oracle.includes("add {c}{c}") ||
         oracle.includes("basic land cards")),
     draw: !land && oracle.includes("draw a card"),

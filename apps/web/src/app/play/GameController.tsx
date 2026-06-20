@@ -8,17 +8,22 @@ import { buildBattlefieldViewModel, type BattlefieldCardView, type VisualCardRec
 interface GameControllerProps {
   config: CommanderGameConfig;
   initialHealth: EngineHealth;
+  requireXmage?: boolean;
   simulatorMode: boolean;
   visuals: VisualCardRecord;
 }
 
-export function GameController({ config, initialHealth, simulatorMode, visuals }: GameControllerProps) {
+export function GameController({ config, initialHealth, requireXmage = false, simulatorMode, visuals }: GameControllerProps) {
   const [snapshot, setSnapshot] = useState<GameSnapshot | null>(null);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
+    if (requireXmage && initialHealth.status !== "ready") {
+      return;
+    }
+
     let active = true;
     setError(undefined);
     fetch("/api/engine/commander", {
@@ -43,7 +48,7 @@ export function GameController({ config, initialHealth, simulatorMode, visuals }
     return () => {
       active = false;
     };
-  }, [config]);
+  }, [config, initialHealth.status, requireXmage]);
 
   const viewModel = useMemo(() => {
     if (!snapshot) return undefined;
@@ -59,10 +64,12 @@ export function GameController({ config, initialHealth, simulatorMode, visuals }
   const health = snapshot?.engineHealth ?? initialHealth;
   const modeLabel = simulatorMode ? "Simulator preview" : "XMage rules";
 
-  const runAction = (type: LegalAction["type"]) => {
+  if (requireXmage && health.status !== "ready") {
+    return <XmageSetupRequired health={health} />;
+  }
+
+  const runLegalAction = (action: LegalAction) => {
     if (!snapshot || !viewModel) return;
-    const action = pickLegalAction(type, legalActions, selectedInstanceId);
-    if (!action) return;
     const actionCard = selectedCard ?? findActionCard(viewModel, action.cardInstanceId);
     const command = toCommand(action, snapshot, actionCard, viewModel.opponent.playerId);
     if (!command) return;
@@ -83,7 +90,10 @@ export function GameController({ config, initialHealth, simulatorMode, visuals }
     });
   };
 
-  const actionEnabled = (type: LegalAction["type"]) => Boolean(pickLegalAction(type, legalActions, selectedInstanceId));
+  const selectedActions = selectedInstanceId
+    ? legalActions.filter((action) => action.cardInstanceId === selectedInstanceId || action.sourceInstanceId === selectedInstanceId)
+    : [];
+  const promptActions = legalActions.filter((action) => isPromptAction(action.type));
 
   return (
     <section className="arena-screen" aria-label="Horizontal game battlefield">
@@ -100,7 +110,19 @@ export function GameController({ config, initialHealth, simulatorMode, visuals }
         <ArenaBattlefield
           viewModel={viewModel}
           selectedInstanceId={selectedInstanceId}
-          onSelectCard={(card) => setSelectedInstanceId(card.instanceId)}
+          selectedActions={selectedActions}
+          promptActions={promptActions}
+          actionPending={isPending}
+          onSelectCard={(card) => {
+            const immediateAction = getImmediateCardAction(card.instanceId, legalActions);
+            if (immediateAction) {
+              setSelectedInstanceId(card.instanceId);
+              runLegalAction(immediateAction);
+              return;
+            }
+            setSelectedInstanceId(card.instanceId);
+          }}
+          onRunAction={runLegalAction}
         />
       ) : (
         <div className="arena-battlefield is-loading" data-testid="arena-battlefield">
@@ -114,20 +136,24 @@ export function GameController({ config, initialHealth, simulatorMode, visuals }
           <span>Selected</span>
           <strong>{selectedCard?.name ?? "Choose a card"}</strong>
         </div>
-        <aside className="arena-action-rail" aria-label="Game actions">
-          <button disabled={!actionEnabled("advance_phase") || isPending} onClick={() => runAction("advance_phase")} type="button">
-            Next
-          </button>
-          <span>{isPending ? "Resolving" : "Engine approved"}</span>
-          <div>
-            <button disabled={!actionEnabled("cast_spell") || isPending} onClick={() => runAction("cast_spell")} type="button">Cast</button>
-            <button disabled={!actionEnabled("tap_permanent") || isPending} onClick={() => runAction("tap_permanent")} type="button">Tap</button>
-            <button disabled={!actionEnabled("declare_attackers") || isPending} onClick={() => runAction("declare_attackers")} type="button">
-              Attack
-            </button>
-            <button disabled={!actionEnabled("pass_priority") || isPending} onClick={() => runAction("pass_priority")} type="button">Pass</button>
-          </div>
-        </aside>
+      </div>
+    </section>
+  );
+}
+
+function XmageSetupRequired({ health }: { health: EngineHealth }) {
+  return (
+    <section className="arena-screen is-setup" aria-label="Horizontal game battlefield">
+      <div className="xmage-setup-panel" role="status">
+        <span>XMage setup required</span>
+        <h1>Start the rules engine before playing Commander</h1>
+        <p>{health.reason}</p>
+        <code>pnpm --filter @magicmobile/xmage-gateway dev</code>
+        <code>ENGINE_MODE=xmage XMAGE_GATEWAY_URL=http://localhost:17171 pnpm dev</code>
+        <small>
+          The simulator preview lives at /dev/play-simulator. Production /play does not fall back because tapping,
+          priority, combat, costs, and AI decisions must come from XMage.
+        </small>
       </div>
     </section>
   );
@@ -152,7 +178,29 @@ function pickLegalAction(type: LegalAction["type"], legalActions: LegalAction[],
 }
 
 function isCardSpecificAction(type: LegalAction["type"]): boolean {
-  return ["activate_ability", "cast_spell", "choose_target", "declare_attackers", "declare_blockers", "tap_permanent", "untap_permanent"].includes(type);
+  return [
+    "activate_ability",
+    "cast_spell",
+    "choose_card",
+    "choose_target",
+    "declare_attackers",
+    "declare_blockers",
+    "make_mana",
+    "play_land",
+    "tap_permanent",
+    "untap_permanent"
+  ].includes(type);
+}
+
+function isPromptAction(type: LegalAction["type"]): boolean {
+  return ["advance_phase", "pass_priority", "pass_until_response", "keep_hand", "mulligan"].includes(type);
+}
+
+function getImmediateCardAction(instanceId: string, legalActions: LegalAction[]): LegalAction | undefined {
+  const actions = legalActions.filter((action) => action.cardInstanceId === instanceId || action.sourceInstanceId === instanceId);
+  if (actions.length !== 1) return undefined;
+  const [action] = actions;
+  return action && ["make_mana", "tap_permanent"].includes(action.type) ? action : undefined;
 }
 
 function findActionCard(viewModel: ReturnType<typeof buildBattlefieldViewModel>, cardInstanceId?: string): BattlefieldCardView | undefined {
@@ -180,6 +228,14 @@ function toCommand(
   opponentPlayerId: string
 ): GameCommand | undefined {
   switch (action.type) {
+    case "play_land":
+      return {
+        type: "play_land",
+        gameId: snapshot.id,
+        playerId: action.playerId,
+        ...(action.cardInstanceId ? { cardInstanceId: action.cardInstanceId } : {}),
+        ...(selectedCard?.name ? { cardName: selectedCard.name } : {})
+      };
     case "cast_spell":
       return {
         type: "cast_spell",
@@ -201,8 +257,52 @@ function toCommand(
             attackers: [{ attackerId: action.cardInstanceId, defenderId: opponentPlayerId }]
           }
         : undefined;
+    case "declare_blockers":
+      return action.cardInstanceId && action.validTargetIds?.[0]
+        ? {
+            type: "declare_blockers",
+            gameId: snapshot.id,
+            playerId: action.playerId,
+            blockers: [{ blockerId: action.cardInstanceId, attackerId: action.validTargetIds[0] }]
+          }
+        : undefined;
+    case "make_mana":
+      return action.cardInstanceId ?? action.sourceInstanceId
+        ? {
+            type: "make_mana",
+            gameId: snapshot.id,
+            playerId: action.playerId,
+            sourceInstanceId: action.sourceInstanceId ?? action.cardInstanceId ?? ""
+          }
+        : undefined;
+    case "choose_target":
+      return {
+        type: "choose_target",
+        gameId: snapshot.id,
+        playerId: action.playerId,
+        promptId: snapshot.choicePrompt?.id ?? action.id,
+        targetIds: action.validTargetIds ?? action.targetIds ?? []
+      };
+    case "choose_card":
+      return {
+        type: "choose_card",
+        gameId: snapshot.id,
+        playerId: action.playerId,
+        promptId: snapshot.choicePrompt?.id ?? action.id,
+        cardInstanceIds: action.validTargetIds ?? action.targetIds ?? []
+      };
+    case "resolve_choice":
+      return {
+        type: "resolve_choice",
+        gameId: snapshot.id,
+        playerId: action.playerId,
+        promptId: snapshot.choicePrompt?.id ?? action.id,
+        choiceIds: action.targetIds ?? action.validTargetIds ?? []
+      };
     case "pass_priority":
       return { type: "pass_priority", gameId: snapshot.id, playerId: action.playerId };
+    case "pass_until_response":
+      return { type: "pass_until_response", gameId: snapshot.id, playerId: action.playerId };
     case "advance_phase":
       return { type: "advance_phase", gameId: snapshot.id, playerId: action.playerId };
     case "concede":

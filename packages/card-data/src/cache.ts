@@ -10,6 +10,12 @@ export interface CachedCardVisual {
   manaCost?: string;
   manaValue?: number;
   colors?: string[];
+  colorIdentity?: string[];
+  oracleText?: string;
+  legalities?: {
+    commander?: "legal" | "not_legal" | "banned" | "unknown";
+  };
+  isBasicLand?: boolean;
 }
 
 const defaultCacheDir = ".cache/scryfall";

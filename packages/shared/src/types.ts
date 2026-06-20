@@ -130,8 +130,11 @@ export interface GameSnapshot {
   roomId: RoomId;
   activePlayerId?: PlayerId;
   phase: "beginning" | "precombat-main" | "combat" | "postcombat-main" | "ending";
+  step?: GameStep;
   turn: number;
   priorityPlayerId?: PlayerId;
+  waitingOnPlayerId?: PlayerId;
+  promptText?: string;
   players: PlayerGameState[];
   log: GameLogEntry[];
   legalActions?: LegalAction[];
@@ -139,17 +142,38 @@ export interface GameSnapshot {
   engineHealth?: EngineHealth;
 }
 
+export type GameStep =
+  | "untap"
+  | "upkeep"
+  | "draw"
+  | "precombat-main"
+  | "begin-combat"
+  | "declare-attackers"
+  | "declare-blockers"
+  | "combat-damage"
+  | "end-combat"
+  | "postcombat-main"
+  | "end"
+  | "cleanup";
+
 export type LegalActionType =
   | "keep_hand"
   | "mulligan"
+  | "play_land"
   | "cast_spell"
   | "activate_ability"
   | "choose_target"
+  | "make_mana"
+  | "pay_cost"
+  | "choose_mode"
+  | "choose_card"
   | "declare_attackers"
   | "declare_blockers"
+  | "resolve_choice"
   | "tap_permanent"
   | "untap_permanent"
   | "pass_priority"
+  | "pass_until_response"
   | "advance_phase"
   | "concede";
 
@@ -159,7 +183,11 @@ export interface LegalAction {
   playerId: PlayerId;
   label: string;
   cardInstanceId?: string;
+  sourceZone?: ZoneName;
+  sourceInstanceId?: string;
   targetIds?: string[];
+  validTargetIds?: string[];
+  commandTemplate?: Partial<GameCommand>;
 }
 
 export interface ChoicePrompt {
@@ -178,14 +206,21 @@ export interface ChoicePrompt {
 export type GameCommand =
   | { type: "keep_hand"; gameId: GameId; playerId: PlayerId }
   | { type: "mulligan"; gameId: GameId; playerId: PlayerId }
+  | { type: "play_land"; gameId: GameId; playerId: PlayerId; cardInstanceId?: string; cardName?: string }
   | { type: "cast_spell"; gameId: GameId; playerId: PlayerId; cardInstanceId?: string; cardName?: string; fromZone?: ZoneName }
   | { type: "activate_ability"; gameId: GameId; playerId: PlayerId; sourceInstanceId: string; abilityId: string }
   | { type: "choose_target"; gameId: GameId; playerId: PlayerId; promptId: string; targetIds: string[] }
+  | { type: "make_mana"; gameId: GameId; playerId: PlayerId; sourceInstanceId: string; abilityId?: string }
+  | { type: "pay_cost"; gameId: GameId; playerId: PlayerId; paymentId?: string; sourceInstanceIds?: string[] }
+  | { type: "choose_mode"; gameId: GameId; playerId: PlayerId; promptId: string; modeIds: string[] }
+  | { type: "choose_card"; gameId: GameId; playerId: PlayerId; promptId: string; cardInstanceIds: string[] }
   | { type: "declare_attackers"; gameId: GameId; playerId: PlayerId; attackers: Array<{ attackerId: string; defenderId: string }> }
   | { type: "declare_blockers"; gameId: GameId; playerId: PlayerId; blockers: Array<{ blockerId: string; attackerId: string }> }
+  | { type: "resolve_choice"; gameId: GameId; playerId: PlayerId; promptId: string; choiceIds: string[] }
   | { type: "tap_permanent"; gameId: GameId; playerId: PlayerId; cardInstanceId: string }
   | { type: "untap_permanent"; gameId: GameId; playerId: PlayerId; cardInstanceId: string }
   | { type: "pass_priority"; gameId: GameId; playerId: PlayerId }
+  | { type: "pass_until_response"; gameId: GameId; playerId: PlayerId }
   | { type: "advance_phase"; gameId: GameId; playerId: PlayerId }
   | { type: "concede"; gameId: GameId; playerId: PlayerId };
 

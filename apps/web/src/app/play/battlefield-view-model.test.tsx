@@ -40,7 +40,14 @@ const snapshot: GameSnapshot = {
         battlefield: [forest(1), forest(2), grazer],
         graveyard: [],
         exile: [],
-        command: [],
+        command: [
+          {
+            instanceId: "commander-1",
+            card: { id: "ezuri", name: "Ezuri, Claw of Progress", manaValue: 4, colorIdentity: ["G", "U"], typeLine: "Legendary Creature" },
+            power: 3,
+            toughness: 3
+          }
+        ],
         stack: []
       }
     },
@@ -61,7 +68,7 @@ const snapshot: GameSnapshot = {
       }
     }
   ],
-  log: [],
+  log: [{ id: "log-1", message: "Game started", createdAt: new Date(0).toISOString() }],
   legalActions: [
     { id: "spell-1-cast", type: "cast_spell", playerId: "human", label: "Cast Growth Spiral", cardInstanceId: "spell-1" }
   ]
@@ -88,5 +95,36 @@ describe("BattlefieldViewModel", () => {
     expect(html).toContain("0/3");
     expect(html).toContain("+1/+1 2");
     expect(html).toContain("x2");
+  });
+
+  it("renders a stage tracker and pinned card inspector for selected cards", () => {
+    const viewModel = buildBattlefieldViewModel(
+      { ...snapshot, step: "declare-attackers", promptText: "Declare attackers" },
+      {},
+      "human"
+    );
+    const html = renderToStaticMarkup(
+      <ArenaBattlefield
+        actionPending={false}
+        promptActions={[{ id: "pass", type: "pass_priority", playerId: "human", label: "Pass Priority" }]}
+        selectedActions={[{ id: "spell-1-cast", type: "cast_spell", playerId: "human", label: "Cast Growth Spiral", cardInstanceId: "spell-1" }]}
+        viewModel={viewModel}
+        selectedInstanceId="spell-1"
+        onRunAction={() => undefined}
+        onSelectCard={() => undefined}
+      />
+    );
+
+    expect(html).toContain("Untap");
+    expect(html).toContain("Declare Attackers");
+    expect(html).toContain("Declare attackers");
+    expect(html).toContain("Card inspector");
+    expect(html).toContain("Growth Spiral");
+    expect(html).toContain("Log");
+    expect(html).toContain("Game started");
+    expect(html).toContain("Library 0");
+    expect(html).toContain("Commander");
+    expect(html).toContain("Ezuri, Claw of Progress");
+    expect(html).toContain("Cast");
   });
 });

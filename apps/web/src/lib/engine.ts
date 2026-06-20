@@ -10,12 +10,13 @@ const globalForEngine = globalThis as typeof globalThis & {
   __magicMobileEngineAdapterCache?: EngineAdapterCache;
 };
 
-export function createRuntimeEngineAdapter() {
+export function createRuntimeEngineAdapter(options: Partial<EngineWorkerConfig> = {}) {
   const config: EngineWorkerConfig = {
-    mode: process.env.ENGINE_MODE === "xmage" ? "xmage" : "mock"
+    mode: options.mode ?? (process.env.ENGINE_MODE === "xmage" ? "xmage" : "mock")
   };
-  if (process.env.XMAGE_GATEWAY_URL) {
-    config.xmageEndpoint = process.env.XMAGE_GATEWAY_URL;
+  const xmageEndpoint = options.xmageEndpoint ?? process.env.XMAGE_GATEWAY_URL;
+  if (xmageEndpoint) {
+    config.xmageEndpoint = xmageEndpoint;
   }
 
   const key = `${config.mode}:${config.xmageEndpoint ?? ""}`;

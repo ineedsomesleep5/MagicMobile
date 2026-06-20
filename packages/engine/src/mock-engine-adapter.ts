@@ -8,6 +8,7 @@ import type {
   GameId,
   GameLogEntry,
   GameSnapshot,
+  GameStep,
   HybridAction,
   LegalAction,
   PlayerGameState,
@@ -122,6 +123,19 @@ export class MockEngineAdapter implements EngineAdapter {
         return this.applyHybridAction({ gameId: input.gameId, action: { type: "pass_priority", playerId: input.playerId } });
       case "mulligan":
         return this.drawOpeningHands({ gameId: input.gameId, count: 7 });
+      case "play_land":
+        const cardName = input.cardName ?? input.cardInstanceId;
+        const action: HybridAction = {
+          type: "play_land",
+          playerId: input.playerId,
+          fromZone: "hand",
+          toZone: "battlefield"
+        };
+        if (cardName) action.cardName = cardName;
+        return this.applyHybridAction({
+          gameId: input.gameId,
+          action
+        });
       case "cast_spell": {
         const action: HybridAction = { type: "cast_spell", playerId: input.playerId };
         if (input.cardName !== undefined) action.cardName = input.cardName;
@@ -146,13 +160,20 @@ export class MockEngineAdapter implements EngineAdapter {
         });
       case "pass_priority":
         return this.passPriority({ gameId: input.gameId, playerId: input.playerId });
+      case "pass_until_response":
+        return this.passPriority({ gameId: input.gameId, playerId: input.playerId });
       case "advance_phase":
         return this.advancePhase({ gameId: input.gameId });
       case "concede":
         return this.applyHybridAction({ gameId: input.gameId, action: { type: "change_life", playerId: input.playerId, amount: -99 } });
       case "activate_ability":
+      case "make_mana":
+      case "pay_cost":
+      case "choose_mode":
+      case "choose_card":
       case "choose_target":
       case "declare_blockers":
+      case "resolve_choice":
         return this.applyHybridAction({ gameId: input.gameId, action: { type: "pass_priority", playerId: input.playerId } });
     }
   }
@@ -228,9 +249,11 @@ export class MockEngineAdapter implements EngineAdapter {
 
 function enrichSnapshot(snapshot: GameSnapshot): GameSnapshot {
   const legalActions = snapshot.priorityPlayerId ? getLegalActions(snapshot, snapshot.priorityPlayerId) : [];
-  return {
+  const enriched: GameSnapshot = {
     ...snapshot,
     legalActions,
+    step: phaseToStep(snapshot.phase),
+    promptText: snapshot.priorityPlayerId ? "Your priority" : "Waiting for engine",
     engineHealth: {
       status: "ready",
       reason: "Mock engine snapshot is current.",
@@ -238,6 +261,12 @@ function enrichSnapshot(snapshot: GameSnapshot): GameSnapshot {
       recoveryAction: "switch_to_mock"
     }
   };
+
+  if (snapshot.priorityPlayerId) {
+    enriched.waitingOnPlayerId = snapshot.priorityPlayerId;
+  }
+
+  return enriched;
 }
 
 function getLegalActions(snapshot: GameSnapshot, playerId: PlayerId): LegalAction[] {
@@ -265,13 +294,28 @@ function getLegalActions(snapshot: GameSnapshot, playerId: PlayerId): LegalActio
   ];
 
   if (handCard) {
-    actions.unshift({
-      id: `${handCard.instanceId}-cast`,
-      type: "cast_spell",
-      playerId,
-      label: `Cast ${handCard.card.name}`,
-      cardInstanceId: handCard.instanceId
-    });
+    actions.unshift(
+      {
+        id: `${handCard.instanceId}-cast`,
+        type: "cast_spell",
+        playerId,
+        label: `Cast ${handCard.card.name}`,
+        cardInstanceId: handCard.instanceId,
+        sourceZone: "hand"
+      },
+      ...(isLand(handCard)
+        ? [
+            {
+              id: `${handCard.instanceId}-play-land`,
+              type: "play_land" as const,
+              playerId,
+              label: `Play ${handCard.card.name}`,
+              cardInstanceId: handCard.instanceId,
+              sourceZone: "hand" as const
+            }
+          ]
+        : [])
+    );
   }
 
   const untappedCreature = player.zones.battlefield.find((card) => !card.tapped && isCreature(card));
@@ -483,7 +527,7 @@ function createCardIdentity(name: string): CardIdentity {
     name,
     manaValue: 0,
     colorIdentity: [],
-    typeLine: stats ? "Creature" : "Mock Card"
+    typeLine: isLandName(name) ? "Land" : stats ? "Creature" : "Mock Card"
   };
 }
 
@@ -522,6 +566,29 @@ function findCardByNameOrInstance(player: PlayerGameState, zone: ZoneName, value
 
 function isCreature(card: ZoneCard): boolean {
   return card.power !== undefined || card.card.typeLine.toLowerCase().includes("creature");
+}
+
+function isLand(card: ZoneCard): boolean {
+  return card.card.typeLine.toLowerCase().includes("land") || isLandName(card.card.name);
+}
+
+function isLandName(name: string): boolean {
+  return /\b(forest|island|mountain|plains|swamp|foundry|harbor|forge|tower|pool|retreat)\b/i.test(name);
+}
+
+function phaseToStep(phase: GameSnapshot["phase"]): GameStep {
+  switch (phase) {
+    case "beginning":
+      return "untap";
+    case "precombat-main":
+      return "precombat-main";
+    case "combat":
+      return "declare-attackers";
+    case "postcombat-main":
+      return "postcombat-main";
+    case "ending":
+      return "end";
+  }
 }
 
 function seedArenaBattlefield(snapshot: GameSnapshot, humanPlayerId: PlayerId, aiPlayerId?: PlayerId): void {

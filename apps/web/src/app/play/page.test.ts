@@ -1,15 +1,30 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import PlayPage from "./page";
 
+vi.mock("@/lib/scryfall-cards", () => ({
+  fetchCardVisuals: vi.fn(async () => new Map())
+}));
+
+vi.mock("@/lib/engine", () => ({
+  createRuntimeEngineAdapter: vi.fn(() => ({
+    getHealth: vi.fn(async () => ({
+      status: "unavailable",
+      reason: "XMage gateway unavailable in test",
+      checkedAt: new Date(0).toISOString(),
+      recoveryAction: "restart_gateway"
+    }))
+  }))
+}));
+
 describe("PlayPage", () => {
-  it("renders a horizontal battlefield with real card imagery", async () => {
+  it("requires XMage for the production play route", async () => {
     const element = await PlayPage();
     const html = renderToStaticMarkup(element);
 
     expect(html).toContain("Horizontal game battlefield");
-    expect(html).toContain("Simulator preview");
-    expect(html).toContain("UI mechanics only; full rules require XMage bridge.");
-    expect(html).toContain("Next");
+    expect(html).toContain("XMage setup required");
+    expect(html).toContain("pnpm --filter @magicmobile/xmage-gateway dev");
+    expect(html).not.toContain("Simulator preview");
   });
 });

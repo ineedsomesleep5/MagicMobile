@@ -6,6 +6,7 @@ export interface VisualCard {
   manaCost?: string;
   manaValue: number;
   colors: string[];
+  oracleText?: string;
   imageUrl?: string;
   artCropUrl?: string;
   source: "scryfall" | "missing";
@@ -25,6 +26,7 @@ interface ScryfallCollectionCard {
   name: string;
   type_line?: string;
   mana_cost?: string;
+  oracle_text?: string;
   cmc?: number;
   colors?: string[];
   color_identity?: string[];
@@ -113,6 +115,7 @@ function mapCachedVisual(card: {
   manaCost?: string;
   manaValue?: number;
   colors?: string[];
+  oracleText?: string;
 }): VisualCard {
   const visualCard: VisualCard = {
     name: card.name,
@@ -125,6 +128,7 @@ function mapCachedVisual(card: {
   if (card.manaCost) visualCard.manaCost = card.manaCost;
   if (card.imageUrl) visualCard.imageUrl = card.imageUrl;
   if (card.artCropUrl) visualCard.artCropUrl = card.artCropUrl;
+  if (card.oracleText) visualCard.oracleText = card.oracleText;
 
   return visualCard;
 }
@@ -154,6 +158,10 @@ function mapVisualCard(card: ScryfallCollectionCard): VisualCard {
 
   if (card.mana_cost) {
     visualCard.manaCost = card.mana_cost;
+  }
+
+  if (card.oracle_text) {
+    visualCard.oracleText = card.oracle_text;
   }
 
   if (imageUrl) {
