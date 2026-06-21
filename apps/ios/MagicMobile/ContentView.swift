@@ -2953,14 +2953,14 @@ struct HandFan: View {
                 let maxSpread = max((metrics.playWidth - metrics.handCardWidth) / CGFloat(max(cards.count - 1, 1)), 0)
                 let spread = min(metrics.handCardWidth * 0.56, maxSpread)
                 let selected = selectedCard?.id == card.id
-                let action = legalHandAction(for: card)
+                let playableActions = legalHandActions(for: card)
                 let isDragging = draggingCardId == card.id
 
                 CardTile(
                     card: card,
                     selected: selected,
                     pending: pendingCardInstanceId == card.instanceId,
-                    legal: action != nil,
+                    legal: !playableActions.isEmpty,
                     width: metrics.handCardWidth,
                     height: metrics.handCardHeight
                 )
@@ -2998,14 +2998,16 @@ struct HandFan: View {
                     draggingCardId = nil
                     dragOffset = .zero
                     isOverPlayerDropZone = false
-                    guard shouldPlay, let action = legalHandAction(for: card) else { return }
+                    guard shouldPlay else { return }
+                    let playableActions = legalHandActions(for: card)
+                    guard playableActions.count == 1, let action = playableActions.first else { return }
                     runAction(action)
                 }
         )
     }
 
-    private func legalHandAction(for card: ZoneCard) -> LegalAction? {
-        legalActions.first {
+    private func legalHandActions(for card: ZoneCard) -> [LegalAction] {
+        legalActions.filter {
             ($0.cardInstanceId == card.instanceId || $0.sourceInstanceId == card.instanceId) &&
             ["play_land", "cast_spell"].contains($0.type)
         }
