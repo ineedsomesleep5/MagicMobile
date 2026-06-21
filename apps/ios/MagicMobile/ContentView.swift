@@ -327,17 +327,18 @@ struct ContentView: View {
             applySnapshot(nextSnapshot)
             status = nextSnapshot.pendingStatus == "waiting_for_xmage" ? "Waiting for XMage update" : "Action submitted"
             if nextSnapshot.pendingStatus == "waiting_for_xmage" {
-                lastSubmittedActionId = nil
-                lastSubmittedSnapshotSignature = nil
-                await pollSnapshotAfterCommand(api: api, gameId: currentSnapshot.id, previousSignature: previousSignature)
+                let updated = await pollSnapshotAfterCommand(api: api, gameId: currentSnapshot.id, previousSignature: previousSignature)
+                if !updated {
+                    clearPendingAction()
+                }
+            } else {
+                clearPendingAction()
             }
         } catch {
             errorMessage = error.localizedDescription
             status = error.localizedDescription
+            clearPendingAction()
         }
-
-        pendingActionId = nil
-        pendingCardInstanceId = nil
     }
 
     private func run(command: GameCommand, label: String, pendingId: String) async {
@@ -366,17 +367,18 @@ struct ContentView: View {
             applySnapshot(nextSnapshot)
             status = nextSnapshot.pendingStatus == "waiting_for_xmage" ? "Waiting for XMage update" : "Action submitted"
             if nextSnapshot.pendingStatus == "waiting_for_xmage" {
-                lastSubmittedActionId = nil
-                lastSubmittedSnapshotSignature = nil
-                await pollSnapshotAfterCommand(api: api, gameId: currentSnapshot.id, previousSignature: previousSignature)
+                let updated = await pollSnapshotAfterCommand(api: api, gameId: currentSnapshot.id, previousSignature: previousSignature)
+                if !updated {
+                    clearPendingAction()
+                }
+            } else {
+                clearPendingAction()
             }
         } catch {
             errorMessage = error.localizedDescription
             status = error.localizedDescription
+            clearPendingAction()
         }
-
-        pendingActionId = nil
-        pendingCardInstanceId = nil
     }
 
     private func startWebSocket(gameId: String) {
@@ -470,8 +472,12 @@ struct ContentView: View {
 
     private func applySnapshot(_ nextSnapshot: GameSnapshot) {
         guard shouldAcceptSnapshot(nextSnapshot) else { return }
+        let changedFromSubmittedSnapshot = lastSubmittedSnapshotSignature.map { snapshotSignature(nextSnapshot) != $0 } ?? false
         snapshot = nextSnapshot
         selectedCard = nil
+        if pendingActionId != nil && nextSnapshot.pendingStatus != "waiting_for_xmage" && changedFromSubmittedSnapshot {
+            clearPendingAction()
+        }
     }
 
     private func shouldAcceptSnapshot(_ nextSnapshot: GameSnapshot) -> Bool {
@@ -484,14 +490,16 @@ struct ContentView: View {
         return (nextSnapshot.xmageCycle ?? -1) >= (current.xmageCycle ?? -1)
     }
 
-    private func pollSnapshotAfterCommand(api: MagicMobileAPI, gameId: String, previousSignature: String) async {
+    @discardableResult
+    private func pollSnapshotAfterCommand(api: MagicMobileAPI, gameId: String, previousSignature: String) async -> Bool {
         for _ in 0..<8 {
             try? await Task.sleep(nanoseconds: 350_000_000)
             guard let refreshed = try? await api.snapshot(gameId: gameId) else { continue }
+            let changed = snapshotSignature(refreshed) != previousSignature
             applySnapshot(refreshed)
-            if snapshotSignature(refreshed) != previousSignature {
+            if changed {
                 status = "XMage board updated"
-                return
+                return true
             }
         }
         if let health = try? await api.health() {
@@ -499,6 +507,14 @@ struct ContentView: View {
         } else {
             status = "XMage update delayed. Refresh or retry the action."
         }
+        return false
+    }
+
+    private func clearPendingAction() {
+        pendingActionId = nil
+        pendingCardInstanceId = nil
+        lastSubmittedActionId = nil
+        lastSubmittedSnapshotSignature = nil
     }
 
     private func perform(_ work: @escaping () async throws -> Void) async {
