@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { POST as createCommanderGame } from "../commander/route";
+import { GET as getEngineHealth } from "../health/route";
 import { GET as getGame } from "./[gameId]/route";
 import { GET as getLegalActions } from "./[gameId]/legal-actions/route";
 import { POST as postCommand } from "./[gameId]/commands/route";
@@ -11,6 +12,10 @@ async function json<T>(response: Response): Promise<T> {
 }
 
 describe("engine game API routes", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("keeps production Commander starts on the explicit XMage adapter path", () => {
     const routeSource = readFileSync(new URL("../commander/route.ts", import.meta.url), "utf8");
     const startupRouteSource = readFileSync(new URL("../commander/start/route.ts", import.meta.url), "utf8");
@@ -21,6 +26,21 @@ describe("engine game API routes", () => {
     expect(startupRouteSource).toContain("createCommanderRuntimeEngineAdapter(config)");
     expect(gameRouteSource).toContain("createGameRuntimeEngineAdapter(gameId)");
     expect(commandRouteSource).toContain("createGameRuntimeEngineAdapter(gameId)");
+  });
+
+  it("does not report mock health for the real engine health endpoint", async () => {
+    vi.stubEnv("ENGINE_MODE", "");
+    vi.stubEnv("XMAGE_GATEWAY_URL", "");
+
+    const response = await getEngineHealth();
+    const health = await json<{ status: string; reason: string; recoveryAction: string }>(response);
+
+    expect(response.status).toBe(200);
+    expect(health).toMatchObject({
+      status: "unavailable",
+      recoveryAction: "restart_gateway"
+    });
+    expect(health.reason).toContain("ENGINE_MODE=xmage");
   });
 
   it("creates a simulator Commander game, reads legal actions, and submits an engine command", async () => {
