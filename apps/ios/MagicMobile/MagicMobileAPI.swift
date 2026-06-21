@@ -7,6 +7,22 @@ struct MagicMobileAPI {
         try await get("/api/engine/health")
     }
 
+    func cardCacheMetadata() async throws -> CardCacheMetadata {
+        try await get("/api/card-cache")
+    }
+
+    func syncCardCache() async throws -> CardCacheMetadata {
+        try await post("/api/card-cache", body: EmptyRequest())
+    }
+
+    func cardImageManifest() async throws -> CardImageManifestResponse {
+        try await get("/api/card-cache/images")
+    }
+
+    func symbolManifest() async throws -> SymbolManifestResponse {
+        try await get("/api/card-cache/symbols")
+    }
+
     func generateDeck(seed: String, playerId: String) async throws -> GeneratedDeckResponse {
         try await post(
             "/api/decks/generate",
@@ -56,11 +72,119 @@ struct MagicMobileAPI {
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
-                cardInstanceId: nil,
-                sourceInstanceId: nil,
-                abilityId: nil,
                 promptId: action.id,
                 choiceIds: action.targetIds ?? []
+            )
+        }
+
+        if action.type == "choose_target" {
+            return GameCommand(
+                type: action.type,
+                gameId: gameId,
+                playerId: action.playerId,
+                promptId: action.id,
+                targetIds: action.targetIds ?? action.validTargetIds ?? []
+            )
+        }
+
+        if action.type == "choose_card" {
+            return GameCommand(
+                type: action.type,
+                gameId: gameId,
+                playerId: action.playerId,
+                promptId: action.id,
+                cardInstanceIds: action.targetIds ?? action.validTargetIds ?? []
+            )
+        }
+
+        if action.type == "choose_mode" {
+            return GameCommand(
+                type: action.type,
+                gameId: gameId,
+                playerId: action.playerId,
+                promptId: action.id,
+                modeIds: action.targetIds ?? []
+            )
+        }
+
+        if action.type == "play_mana" {
+            return GameCommand(
+                type: action.type,
+                gameId: gameId,
+                playerId: action.playerId,
+                promptId: action.id,
+                manaType: action.targetIds?.first ?? "C"
+            )
+        }
+
+        if action.type == "choose_ability" {
+            return GameCommand(
+                type: action.type,
+                gameId: gameId,
+                playerId: action.playerId,
+                abilityId: action.targetIds?.first ?? action.validTargetIds?.first ?? action.id,
+                promptId: action.id
+            )
+        }
+
+        if action.type == "choose_pile" {
+            return GameCommand(
+                type: action.type,
+                gameId: gameId,
+                playerId: action.playerId,
+                promptId: action.id,
+                pile: Int(action.targetIds?.first ?? "1") ?? 1
+            )
+        }
+
+        if action.type == "choose_amount" || action.type == "play_x_mana" {
+            return GameCommand(
+                type: action.type,
+                gameId: gameId,
+                playerId: action.playerId,
+                promptId: action.id,
+                amount: Int(action.targetIds?.first ?? action.validTargetIds?.first ?? "0") ?? 0
+            )
+        }
+
+        if action.type == "choose_multi_amount" {
+            return GameCommand(
+                type: action.type,
+                gameId: gameId,
+                playerId: action.playerId,
+                promptId: action.id,
+                amounts: (action.targetIds ?? []).compactMap(Int.init)
+            )
+        }
+
+        if action.type == "search_select" || action.type == "order_triggers" {
+            return GameCommand(
+                type: action.type,
+                gameId: gameId,
+                playerId: action.playerId,
+                promptId: action.id,
+                cardInstanceIds: action.type == "search_select" ? action.targetIds : nil,
+                orderedIds: action.type == "order_triggers" ? action.targetIds : nil
+            )
+        }
+
+        if action.type == "commander_replacement" {
+            return GameCommand(
+                type: action.type,
+                gameId: gameId,
+                playerId: action.playerId,
+                promptId: action.id,
+                useCommandZone: action.targetIds?.first != "graveyard"
+            )
+        }
+
+        if action.type == "pay_cost" {
+            return GameCommand(
+                type: action.type,
+                gameId: gameId,
+                playerId: action.playerId,
+                sourceInstanceIds: action.targetIds ?? [],
+                paymentId: action.id
             )
         }
 
@@ -69,11 +193,8 @@ struct MagicMobileAPI {
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
-                cardInstanceId: nil,
                 sourceInstanceId: action.sourceInstanceId ?? action.cardInstanceId,
-                abilityId: action.commandTemplate?["abilityId"] ?? action.id,
-                promptId: nil,
-                choiceIds: nil
+                abilityId: action.abilityId ?? action.commandTemplate?["abilityId"] ?? action.id
             )
         }
 
@@ -83,9 +204,7 @@ struct MagicMobileAPI {
             playerId: action.playerId,
             cardInstanceId: action.cardInstanceId,
             sourceInstanceId: action.sourceInstanceId,
-            abilityId: action.commandTemplate?["abilityId"],
-            promptId: nil,
-            choiceIds: nil
+            abilityId: action.abilityId ?? action.commandTemplate?["abilityId"]
         )
     }
 
@@ -99,6 +218,7 @@ struct MagicMobileAPI {
         var request = URLRequest(url: url(path))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(UUID().uuidString, forHTTPHeaderField: "X-Request-Id")
         request.httpBody = try JSONEncoder.magicMobile.encode(body)
         let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
@@ -184,6 +304,8 @@ private struct GenerateDeckRequest: Encodable {
 private struct APIError: Decodable {
     let error: String
 }
+
+struct EmptyRequest: Encodable {}
 
 enum MagicMobileError: LocalizedError {
     case invalidServerURL

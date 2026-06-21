@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const cacheDir = process.env.SCRYFALL_CACHE_DIR ?? ".cache/scryfall";
-const bulkEndpoint = "https://api.scryfall.com/bulk-data/default-cards";
+const bulkEndpoint = "https://api.scryfall.com/bulk-data/oracle-cards";
 
 const headers = {
   Accept: "application/json",
@@ -38,6 +38,7 @@ const visuals = cards.map((card) => {
     oracleText: card.oracle_text,
     legalities: card.legalities ? { commander: card.legalities.commander } : undefined,
     isBasicLand: Boolean(card.type_line?.includes("Basic Land")),
+    smallImageUrl: imageUris?.small ?? imageUris?.normal ?? imageUris?.border_crop,
     imageUrl: imageUris?.normal ?? imageUris?.border_crop,
     artCropUrl: imageUris?.art_crop
   };

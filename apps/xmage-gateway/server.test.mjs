@@ -4,9 +4,12 @@ import {
   aiDifficultyProfiles,
   applyCommand,
   createCommanderGame,
+  createGatewayHandler,
   createHttpBridgeClient,
   getGatewayHealth,
-  getHealth
+  getHealth,
+  registerWebSocketConnection,
+  shouldAcceptSnapshot
 } from "./server.mjs";
 
 const deck = {
@@ -109,6 +112,55 @@ describe("xmage gateway", () => {
     );
   });
 
+  it("initializes mana pools and exposes make-mana actions for untapped lands", () => {
+    const state = new Map();
+    let snapshot = createCommanderGame(state, {
+      roomId: "room-mana",
+      humanPlayerId: "human",
+      humanDeck: {
+        ...deck,
+        entries: [{ cardName: "Forest", quantity: 1, section: "deck" }, ...deck.entries.slice(1)]
+      },
+      aiPlayers: [{ playerId: "ai-1", displayName: "AI Normal", difficulty: "normal", deck }],
+      startingLife: 40,
+      commanderDamageEnabled: true
+    });
+
+    assert.deepEqual(snapshot.players[0].manaPool, { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 });
+
+    snapshot = applyCommand(snapshot, {
+      type: "resolve_choice",
+      gameId: snapshot.id,
+      playerId: "human",
+      choiceIds: ["human"]
+    });
+    snapshot = applyCommand(snapshot, {
+      type: "keep_hand",
+      gameId: snapshot.id,
+      playerId: "human"
+    });
+    snapshot = applyCommand(snapshot, {
+      type: "play_land",
+      gameId: snapshot.id,
+      playerId: "human",
+      cardInstanceId: snapshot.players[0].zones.hand.find((card) => card.card.name === "Forest").instanceId
+    });
+
+    const manaAction = snapshot.legalActions.find((action) => action.type === "make_mana");
+    assert.equal(manaAction.shortLabel, "Mana");
+    assert.equal(manaAction.sourceZone, "battlefield");
+
+    snapshot = applyCommand(snapshot, {
+      type: "make_mana",
+      gameId: snapshot.id,
+      playerId: "human",
+      sourceInstanceId: manaAction.sourceInstanceId
+    });
+
+    assert.equal(snapshot.players[0].zones.battlefield[0].tapped, true);
+    assert.deepEqual(snapshot.players[0].manaPool, { W: 0, U: 0, B: 0, R: 0, G: 1, C: 0 });
+  });
+
   it("reports stalled health when the AI watchdog window is exceeded", () => {
     const staleHealth = getHealth(Date.now() + 999_999, true);
     assert.equal(staleHealth.status, "stalled");
@@ -152,4 +204,128 @@ describe("xmage gateway", () => {
     assert.equal(requests[0].init.method, "POST");
     assert.equal(JSON.parse(requests[0].init.body).roomId, "room-1");
   });
+
+  it("rejects stale bridge snapshots by revision", () => {
+    assert.equal(shouldAcceptSnapshot({ bridgeRevision: 3 }, { bridgeRevision: 2 }), false);
+    assert.equal(shouldAcceptSnapshot({ bridgeRevision: 3 }, { bridgeRevision: 3 }), true);
+    assert.equal(shouldAcceptSnapshot({ bridgeRevision: 3 }, { bridgeRevision: 4 }), true);
+  });
+
+  it("broadcasts command-response snapshots to websocket listeners", async () => {
+    const state = new Map();
+    const snapshot = { id: "bridge-game-1", source: "xmage-java-bridge", bridgeRevision: 1 };
+    state.set(snapshot.id, snapshot);
+    let sentPayload = "";
+    const socket = {
+      readyState: 1,
+      send(payload) {
+        sentPayload = payload;
+      },
+      on() {}
+    };
+    registerWebSocketConnection(snapshot.id, socket);
+    const handler = createGatewayHandler(state, {
+      bridgeClient: {
+        submitCommand: async () => ({ ...snapshot, bridgeRevision: 2, promptText: "Your priority" })
+      }
+    });
+    const response = await runHandler(
+      handler,
+      `/games/${snapshot.id}/commands`,
+      "POST",
+      { type: "keep_hand", gameId: snapshot.id, playerId: "human" }
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(JSON.parse(sentPayload).bridgeRevision, 2);
+  });
+
+  it("exposes bridge protocol debug state with rich XMage payload coverage", async () => {
+    const state = new Map();
+    const snapshot = {
+      id: "bridge-game-debug",
+      source: "xmage-java-bridge",
+      bridgeRevision: 7,
+      promptEnvelopeV2: {
+        id: "xmage-prompt-44",
+        method: "GAME_TARGET",
+        messageId: 44,
+        playerId: "human",
+        responseKind: "target",
+        message: "Choose target",
+        required: true,
+        minChoices: 1,
+        maxChoices: 1,
+        responseCommand: { type: "choose_target", promptId: "xmage-prompt-44" }
+      },
+      xmage: {
+        schemaVersion: 1,
+        gameId: "bridge-game-debug",
+        callbackCoverage: ["GAME_TARGET"],
+        stack: [{ id: "stack-1", name: "Lightning Bolt", rulesText: "Lightning Bolt deals 3 damage to any target." }],
+        players: [
+          {
+            playerId: "human",
+            command: [{ id: "cmd-1", name: "Ezuri, Claw of Progress", zone: "command" }],
+            zones: { graveyard: [], exile: [], sideboard: [] },
+            manaPool: { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 }
+          }
+        ],
+        panels: {
+          stack: true,
+          command: true,
+          graveyard: true,
+          exile: true,
+          revealed: true,
+          lookedAt: true,
+          search: true
+        }
+      }
+    };
+    state.set(snapshot.id, snapshot);
+    const handler = createGatewayHandler(state, { bridgeClient: null });
+
+    const response = await runHandler(handler, `/games/${snapshot.id}/debug`);
+
+    assert.equal(response.status, 200);
+    const body = JSON.parse(response.body);
+    assert.equal(body.gameId, snapshot.id);
+    assert.equal(body.bridgeRevision, 7);
+    assert.deepEqual(body.callbackCoverage, ["GAME_TARGET"]);
+    assert.equal(body.prompt.method, "GAME_TARGET");
+    assert.equal(body.xmage.stack[0].rulesText, "Lightning Bolt deals 3 damage to any target.");
+    assert.equal(body.xmage.panels.command, true);
+  });
 });
+
+function runHandler(handler, path, method = "GET", body = undefined) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    const request = {
+      url: path,
+      method,
+      async *[Symbol.asyncIterator]() {
+        if (body !== undefined) {
+          yield Buffer.from(JSON.stringify(body));
+        }
+      }
+    };
+    const response = {
+      status: 200,
+      headers: {},
+      writeHead(status, headers) {
+        this.status = status;
+        this.headers = headers;
+      },
+      end(chunk) {
+        if (chunk) chunks.push(Buffer.from(chunk));
+        resolve({
+          status: this.status,
+          headers: this.headers,
+          body: Buffer.concat(chunks).toString("utf8")
+        });
+      }
+    };
+    void handler(request, response);
+  });
+}

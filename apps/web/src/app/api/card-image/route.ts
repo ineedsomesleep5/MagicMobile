@@ -1,11 +1,27 @@
 import { NextResponse } from "next/server";
+import { fetchCardVisuals } from "@/lib/scryfall-cards";
 
 const allowedHosts = new Set(["cards.scryfall.io", "img.scryfall.com"]);
 
 export async function GET(request: Request) {
-  const url = new URL(request.url).searchParams.get("url");
+  const searchParams = new URL(request.url).searchParams;
+  let url = searchParams.get("url");
+  const name = searchParams.get("name");
+  const version = searchParams.get("version") ?? "normal";
+  if (!url && name) {
+    const visuals = await fetchCardVisuals([name]);
+    const visual = visuals.get(name);
+    if (version === "art_crop") {
+      url = visual?.artCropUrl ?? null;
+    } else if (version === "small") {
+      url = visual?.smallImageUrl ?? visual?.imageUrl ?? null;
+    } else {
+      url = visual?.imageUrl ?? null;
+    }
+  }
+
   if (!url) {
-    return NextResponse.json({ error: "Missing card image URL." }, { status: 400 });
+    return NextResponse.json({ error: "Missing card image URL." }, { status: name ? 404 : 400 });
   }
 
   let imageUrl: URL;

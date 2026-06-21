@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   CommanderGameConfig,
   DeckList,
@@ -17,6 +18,16 @@ export interface XmageEngineAdapterOptions {
   fetchImpl?: typeof fetch;
 }
 
+export class XmageGatewayRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly body: unknown
+  ) {
+    super(message);
+  }
+}
+
 export class XmageEngineAdapter implements EngineAdapter {
   private readonly endpoint: string;
   private readonly fetchImpl: typeof fetch;
@@ -29,7 +40,8 @@ export class XmageEngineAdapter implements EngineAdapter {
   async createCommanderGame(input: CommanderGameConfig): Promise<GameSnapshot> {
     return this.request<GameSnapshot>("/games/commander", {
       method: "POST",
-      body: input
+      body: input,
+      timeoutMs: 60_000
     });
   }
 
@@ -109,11 +121,18 @@ export class XmageEngineAdapter implements EngineAdapter {
     return this.request<GameSnapshot>(`/games/${encodeURIComponent(gameId)}`);
   }
 
-  private async request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
+  private async request<T>(path: string, options: { method?: string; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
     let response: Response;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 15_000);
     const requestInit: RequestInit = {
       method: options.method ?? "GET",
-      headers: { Accept: "application/json", "Content-Type": "application/json" }
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "X-Request-Id": randomUUID()
+      },
+      signal: controller.signal
     };
     if (options.body !== undefined) {
       requestInit.body = JSON.stringify(options.body);
@@ -125,13 +144,29 @@ export class XmageEngineAdapter implements EngineAdapter {
       throw new Error(
         `XMage gateway unavailable at ${this.endpoint}: ${error instanceof Error ? error.message : "request failed"}`
       );
+    } finally {
+      clearTimeout(timeout);
     }
 
     if (!response.ok) {
-      throw new Error(`XMage gateway request failed (${response.status}) for ${path}: ${await response.text()}`);
+      const text = await response.text();
+      const body = parseJsonBody(text);
+      throw new XmageGatewayRequestError(
+        `XMage gateway request failed (${response.status}) for ${path}: ${text}`,
+        response.status,
+        body ?? { error: text }
+      );
     }
 
     return (await response.json()) as T;
+  }
+}
+
+function parseJsonBody(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
   }
 }
 

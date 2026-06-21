@@ -42,6 +42,14 @@ const isLand = (card: CardIdentity): boolean => card.typeLine.toLowerCase().incl
 const isBasicLand = (card: CardIdentity | undefined): boolean =>
   Boolean(card?.isBasicLand || card?.typeLine.toLowerCase().includes("basic land"));
 
+const commanderLegalityError = (card: CardWithOptionalData, commander = false): string | undefined => {
+  const legality = card.legalities?.commander;
+  if (legality === "banned" || legality === "not_legal" || legality === "unknown") {
+    return commander ? `${card.name} is not legal as a Commander.` : `${card.name} is not legal in Commander.`;
+  }
+  return undefined;
+};
+
 const includesAny = (text: string, phrases: string[]): boolean =>
   phrases.some((phrase) => text.includes(phrase));
 
@@ -115,8 +123,9 @@ export class CommanderDeckAnalyzer implements DeckAnalyzer {
         errors.push("Commander must be a legendary creature or explicitly allowed commander.");
       }
 
-      if (commanderCard.legalities?.commander === "banned") {
-        errors.push(`${commanderCard.name} is not legal as a Commander.`);
+      const legalityError = commanderLegalityError(commanderCard, true);
+      if (legalityError) {
+        errors.push(legalityError);
       }
     }
 
@@ -139,6 +148,13 @@ export class CommanderDeckAnalyzer implements DeckAnalyzer {
       counts.set(normalizedName, counted);
 
       if (commanderCard && card) {
+        if (entry.section !== "commander") {
+          const legalityError = commanderLegalityError(card);
+          if (legalityError) {
+            errors.push(legalityError);
+          }
+        }
+
         const illegalColors = card.colorIdentity.filter(
           (color) => color !== "C" && !commanderColors.has(color)
         );

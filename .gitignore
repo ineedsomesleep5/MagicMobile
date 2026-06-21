@@ -6,6 +6,7 @@ coverage/
 .turbo/
 .cache/
 .expo/
+.derivedData/
 .env
 .env.local
 .DS_Store

@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { randomUUID } from "node:crypto";
 import { parse as parseUrl } from "node:url";
 import { WebSocketServer } from "ws";
 
@@ -53,8 +54,7 @@ export function createGatewayHandler(state = games, options = {}) {
       if (method === "POST" && updatesMatch) {
         const gameId = decodeURIComponent(updatesMatch[1]);
         const nextSnapshot = await readJson(request);
-        state.set(gameId, nextSnapshot);
-        broadcastSnapshot(gameId, nextSnapshot);
+        storeSnapshot(state, gameId, nextSnapshot, { broadcast: true });
         return sendJson(response, { status: "ok" });
       }
 
@@ -68,10 +68,14 @@ export function createGatewayHandler(state = games, options = {}) {
           if (bridgeClient && isBridgeSnapshot(snapshot)) {
             const nextSnapshot = await bridgeClient.getSnapshot(gameId);
             lastAiProgressAt = Date.now();
-            state.set(nextSnapshot.id, nextSnapshot);
-            return sendJson(response, nextSnapshot);
+            const storedSnapshot = storeSnapshot(state, nextSnapshot.id, nextSnapshot);
+            return sendJson(response, storedSnapshot);
           }
           return sendJson(response, snapshot);
+        }
+
+        if (method === "GET" && action === "debug") {
+          return sendJson(response, protocolDebug(snapshot));
         }
 
         if (method === "GET" && action === "legal-actions") {
@@ -86,10 +90,12 @@ export function createGatewayHandler(state = games, options = {}) {
           if (bridgeClient && isBridgeSnapshot(snapshot)) {
             const nextSnapshot = await bridgeClient.submitCommand(gameId, command);
             lastAiProgressAt = Date.now();
-            state.set(nextSnapshot.id, nextSnapshot);
+            storeSnapshot(state, nextSnapshot.id, nextSnapshot, { broadcast: true });
             return sendJson(response, nextSnapshot);
           }
-          return sendJson(response, applyCommand(snapshot, command));
+          const nextSnapshot = applyCommand(snapshot, command);
+          storeSnapshot(state, nextSnapshot.id, nextSnapshot, { broadcast: true });
+          return sendJson(response, nextSnapshot);
         }
 
         if (method === "POST" && action === "decks") {
@@ -115,6 +121,9 @@ export function createGatewayHandler(state = games, options = {}) {
 
       return sendJson(response, { error: "Not found" }, 404);
     } catch (error) {
+      if (error instanceof BridgeRequestError) {
+        return sendJson(response, error.body, error.status);
+      }
       return sendJson(
         response,
         { error: error instanceof Error ? error.message : "Gateway request failed" },
@@ -131,7 +140,7 @@ export function createHttpBridgeClient(endpoint, fetchImpl = fetch) {
       return requestBridge(fetchImpl, baseUrl, "/health");
     },
     async createCommanderGame(config) {
-      return requestBridge(fetchImpl, baseUrl, "/games/commander", { method: "POST", body: config });
+      return requestBridge(fetchImpl, baseUrl, "/games/commander", { method: "POST", body: config, timeoutMs: 60_000 });
     },
     async getSnapshot(gameId) {
       return requestBridge(fetchImpl, baseUrl, `/games/${encodeURIComponent(gameId)}`);
@@ -268,19 +277,39 @@ function createBridgeClientFromEnv() {
 }
 
 async function requestBridge(fetchImpl, baseUrl, path, options = {}) {
+  const requestId = options.body?.requestId ?? randomUUID();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 20_000);
   const requestInit = {
     method: options.method ?? "GET",
-    headers: { Accept: "application/json", "Content-Type": "application/json" }
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "X-Request-Id": requestId
+    },
+    signal: controller.signal
   };
   if (options.body !== undefined) {
     requestInit.body = JSON.stringify(options.body);
   }
 
-  const response = await fetchImpl(`${baseUrl}${path}`, requestInit);
-  if (!response.ok) {
-    throw new Error(`bridge request failed (${response.status}) for ${path}: ${await response.text()}`);
+  let response;
+  try {
+    response = await fetchImpl(`${baseUrl}${path}`, requestInit);
+  } finally {
+    clearTimeout(timeout);
   }
-  return response.json();
+  const text = await response.text();
+  let body;
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    body = { error: text || `bridge request failed (${response.status})` };
+  }
+  if (!response.ok) {
+    throw new BridgeRequestError(response.status, body);
+  }
+  return body;
 }
 
 function isBridgeSnapshot(snapshot) {
@@ -341,6 +370,15 @@ export function applyCommand(snapshot, command) {
     const card = findCardByNameOrInstance(player, "battlefield", command.cardInstanceId);
     card.tapped = true;
     snapshot.log.push(logEntry(snapshot.log.length, `${command.playerId} tapped ${card.card.name}`));
+  }
+
+  if (command.type === "make_mana") {
+    const player = findPlayer(snapshot, command.playerId);
+    const card = findCardByNameOrInstance(player, "battlefield", command.sourceInstanceId ?? command.cardInstanceId);
+    card.tapped = true;
+    const symbol = manaSymbolFor(card);
+    player.manaPool[symbol] += 1;
+    snapshot.log.push(logEntry(snapshot.log.length, `${command.playerId} tapped ${card.card.name} for {${symbol}}`));
   }
 
   if (command.type === "untap_permanent") {
@@ -506,7 +544,22 @@ function getLegalActions(snapshot, playerId) {
     });
   }
 
-  const untappedPermanent = player.zones.battlefield.find((card) => !card.tapped);
+  const untappedManaPermanent = player.zones.battlefield.find((card) => !card.tapped && canMakeMana(card));
+  if (untappedManaPermanent) {
+    actions.unshift({
+      id: `${untappedManaPermanent.instanceId}-mana`,
+      type: "make_mana",
+      playerId,
+      label: `Tap ${untappedManaPermanent.card.name} for mana`,
+      shortLabel: "Mana",
+      cardInstanceId: untappedManaPermanent.instanceId,
+      sourceInstanceId: untappedManaPermanent.instanceId,
+      sourceZone: "battlefield",
+      requiresTarget: false
+    });
+  }
+
+  const untappedPermanent = player.zones.battlefield.find((card) => !card.tapped && !canMakeMana(card));
   if (untappedPermanent) {
     actions.unshift({
       id: `${untappedPermanent.instanceId}-tap`,
@@ -528,6 +581,7 @@ function createPlayer(playerId, playerIds) {
     life: 40,
     poison: 0,
     commanderTax: 0,
+    manaPool: emptyManaPool(),
     zones: {
       library: [],
       hand: [],
@@ -539,6 +593,10 @@ function createPlayer(playerId, playerIds) {
     },
     commanderDamage: Object.fromEntries(playerIds.map((id) => [id, 0]))
   };
+}
+
+function emptyManaPool() {
+  return { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
 }
 
 function loadDeck(player, deck) {
@@ -619,6 +677,24 @@ function isLand(card) {
   return card.card.typeLine.toLowerCase().includes("land") || isLandName(card.card.name);
 }
 
+function canMakeMana(card) {
+  const text = `${card.card.name} ${card.card.typeLine} ${card.card.oracleText ?? ""}`;
+  return isLand(card) || /\{T\}:\s*Add|Add \{[WUBRGC]\}/i.test(text);
+}
+
+function manaSymbolFor(card) {
+  const name = card.card.name.toLowerCase();
+  const text = `${card.card.oracleText ?? ""} ${card.card.typeLine}`;
+  const explicit = text.match(/Add \{([WUBRGC])\}/i);
+  if (explicit) return explicit[1].toUpperCase();
+  if (name.includes("plains")) return "W";
+  if (name.includes("island")) return "U";
+  if (name.includes("swamp")) return "B";
+  if (name.includes("mountain")) return "R";
+  if (name.includes("forest")) return "G";
+  return "C";
+}
+
 function isLandName(name) {
   return /\b(forest|island|mountain|plains|swamp|foundry|harbor|forge|tower|pool|retreat)\b/i.test(name);
 }
@@ -690,6 +766,43 @@ function getGame(state, gameId) {
   return snapshot;
 }
 
+export function shouldAcceptSnapshot(currentSnapshot, nextSnapshot) {
+  const currentRevision = Number(currentSnapshot?.bridgeRevision ?? -1);
+  const nextRevision = Number(nextSnapshot?.bridgeRevision ?? -1);
+  if (currentRevision >= 0 && nextRevision >= 0) {
+    return nextRevision >= currentRevision;
+  }
+  return true;
+}
+
+export function storeSnapshot(state, gameId, nextSnapshot, options = {}) {
+  const currentSnapshot = state.get(gameId);
+  if (!shouldAcceptSnapshot(currentSnapshot, nextSnapshot)) {
+    return currentSnapshot;
+  }
+  state.set(gameId, nextSnapshot);
+  if (options.broadcast) {
+    broadcastSnapshot(gameId, nextSnapshot);
+  }
+  return nextSnapshot;
+}
+
+export function protocolDebug(snapshot) {
+  const xmage = snapshot?.xmage ?? null;
+  const prompt = snapshot?.promptEnvelopeV2 ?? snapshot?.promptEnvelope ?? null;
+  return {
+    gameId: snapshot?.id,
+    source: snapshot?.source ?? "simulator",
+    bridgeRevision: snapshot?.bridgeRevision ?? null,
+    xmageCycle: snapshot?.xmageCycle ?? null,
+    pendingStatus: snapshot?.pendingStatus ?? null,
+    prompt,
+    callbackCoverage: xmage?.callbackCoverage ?? (prompt?.method ? [prompt.method] : []),
+    panels: xmage?.panels ?? {},
+    xmage
+  };
+}
+
 function findPlayer(snapshot, playerId) {
   const player = snapshot.players.find((candidate) => candidate.playerId === playerId);
   if (!player) throw new NotFoundError(`Player not found: ${playerId}`);
@@ -728,6 +841,14 @@ function sendJson(response, body, status = 200) {
 }
 
 class NotFoundError extends Error {}
+
+class BridgeRequestError extends Error {
+  constructor(status, body) {
+    super(body?.message ?? body?.error ?? `Bridge request failed (${status})`);
+    this.status = status;
+    this.body = body;
+  }
+}
 
 const wssClients = new Map(); // gameId -> Set of ws clients
 

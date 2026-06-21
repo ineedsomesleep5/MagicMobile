@@ -103,6 +103,7 @@ export default function App() {
   const [snapshot, setSnapshot] = useState<GameSnapshot | undefined>();
   const [selectedCard, setSelectedCard] = useState<ZoneCard | undefined>();
   const [busy, setBusy] = useState(false);
+  const baseUrl = normalizeServerUrl(serverUrl);
 
   useEffect(() => {
     if (!snapshot?.id) return;
@@ -135,11 +136,10 @@ export default function App() {
     return () => ws.close();
   }, [snapshot?.id, baseUrl]);
 
-  const baseUrl = normalizeServerUrl(serverUrl);
   const human = snapshot?.players.find((player) => player.playerId === humanPlayerId);
   const opponent = snapshot?.players.find((player) => player.playerId !== humanPlayerId);
   const selectedActions = snapshot?.legalActions?.filter((action) => action.cardInstanceId === selectedCard?.instanceId || action.sourceInstanceId === selectedCard?.instanceId) ?? [];
-  const promptActions = snapshot?.legalActions?.filter((action) => ["keep_hand", "mulligan", "resolve_choice", "pass_priority", "pass_until_response", "concede"].includes(action.type)) ?? [];
+  const promptActions = snapshot?.legalActions?.filter((action) => ["keep_hand", "mulligan", "resolve_choice", "pass_priority", "pass_until_response", "pass_until_next_turn", "concede"].includes(action.type)) ?? [];
 
   async function checkServer() {
     await withBusy(async () => {
@@ -420,7 +420,7 @@ function DeckBuilderScreen({
 function CardArt({ cardName, style }: { cardName: string; style?: any }) {
   const uri = cardName === "Hidden card"
     ? "https://gatherer.wizards.com/Images/CardBack.jpg"
-    : `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}&format=image&version=normal`;
+    : `https://magicmobile.openclaw-is3w.srv1420950.hstgr.cloud/api/card-image?name=${encodeURIComponent(cardName)}&version=normal`;
   return (
     <Image
       source={{ uri }}
@@ -691,6 +691,10 @@ function CardButton({
       ) : null}
     </TouchableOpacity>
   );
+}
+
+function isLand(card: ZoneCard): boolean {
+  return /\bland\b/i.test(card.card.typeLine);
 }
 
 async function requestJson<T>(baseUrl: string, path: string, options?: { method?: string; body?: unknown }): Promise<T> {

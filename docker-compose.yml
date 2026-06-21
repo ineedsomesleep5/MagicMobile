@@ -1,12 +1,15 @@
 services:
   web:
-    image: node:22-alpine
+    image: node:22-bookworm-slim
     working_dir: /workspace
-    command: sh -lc "corepack enable && pnpm install --frozen-lockfile && pnpm --filter @magicmobile/web exec next dev --hostname 0.0.0.0"
+    command: sh -lc "corepack enable && pnpm install --frozen-lockfile --config.ignore-scripts=false && pnpm --filter @magicmobile/web build && pnpm --filter @magicmobile/web exec next start --hostname 0.0.0.0"
     environment:
       ENGINE_MODE: xmage
       XMAGE_GATEWAY_URL: http://xmage-gateway:17171
       SCRYFALL_CACHE_DIR: /workspace/.cache/scryfall
+      PUBLIC_APP_URL: https://magicmobile.openclaw-is3w.srv1420950.hstgr.cloud
+      NEXT_TELEMETRY_DISABLED: "1"
+      NODE_ENV: production
     ports:
       - "3000:3000"
     volumes:
@@ -22,9 +25,9 @@ services:
         condition: service_started
 
   xmage-gateway:
-    image: node:22-alpine
+    image: node:22-bookworm-slim
     working_dir: /workspace
-    command: sh -lc "corepack enable && pnpm install --frozen-lockfile && node apps/xmage-gateway/server.mjs"
+    command: sh -lc "corepack enable && pnpm install --frozen-lockfile --config.ignore-scripts=false && node apps/xmage-gateway/server.mjs"
     environment:
       PORT: 17171
       SCRYFALL_CACHE_DIR: /workspace/.cache/scryfall

@@ -11,12 +11,14 @@
 		037F8C88A7F2DD19D445DEE4 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6872434C0866DDE9DEF3FB8C /* Models.swift */; };
 		551A8C60BC9EF53BC42CE492 /* MagicMobileAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5880A440F12FAFCB5E9DB6 /* MagicMobileAPI.swift */; };
 		752C5EFA30A506F19E13681B /* MagicMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69B2CFE17C03F7A7CC6CFEC3 /* MagicMobileApp.swift */; };
+		C1511A400C8C25B7D7B72191 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 268E12F4889571947D93BF23 /* Assets.xcassets */; };
 		C8623EC979ACF45B170D1881 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29DCFFDEC2E73604A42C81C3 /* ContentView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		08AC5C4DD955D082D3138966 /* MagicMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MagicMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1EC7F366BBFC899D5DD7671C /* PreconCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreconCatalog.swift; sourceTree = "<group>"; };
+		268E12F4889571947D93BF23 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		29DCFFDEC2E73604A42C81C3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		5A5880A440F12FAFCB5E9DB6 /* MagicMobileAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MagicMobileAPI.swift; sourceTree = "<group>"; };
 		6872434C0866DDE9DEF3FB8C /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
@@ -28,6 +30,7 @@
 		545B5AB13CF2F1913730E238 /* MagicMobile */ = {
 			isa = PBXGroup;
 			children = (
+				268E12F4889571947D93BF23 /* Assets.xcassets */,
 				29DCFFDEC2E73604A42C81C3 /* ContentView.swift */,
 				FF4EE202904EFC97FF10F5D0 /* Info.plist */,
 				5A5880A440F12FAFCB5E9DB6 /* MagicMobileAPI.swift */,
@@ -62,6 +65,7 @@
 			buildConfigurationList = B8EB6F1C3B37B7CE7DEFF9A2 /* Build configuration list for PBXNativeTarget "MagicMobile" */;
 			buildPhases = (
 				08275B628476837D8B65D70B /* Sources */,
+				69B18D5EF2E089E9AB3F0995 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -107,6 +111,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		69B18D5EF2E089E9AB3F0995 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C1511A400C8C25B7D7B72191 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		08275B628476837D8B65D70B /* Sources */ = {

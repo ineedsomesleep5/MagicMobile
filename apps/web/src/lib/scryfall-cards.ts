@@ -7,12 +7,14 @@ export interface VisualCard {
   manaValue: number;
   colors: string[];
   oracleText?: string;
+  smallImageUrl?: string;
   imageUrl?: string;
   artCropUrl?: string;
   source: "scryfall" | "missing";
 }
 
 interface ScryfallCardImageUris {
+  small?: string;
   normal?: string;
   art_crop?: string;
   border_crop?: string;
@@ -109,6 +111,7 @@ function findCachedSplitCard(name: string, cards: Map<string, { name: string }>)
 
 function mapCachedVisual(card: {
   name: string;
+  smallImageUrl?: string;
   imageUrl?: string;
   artCropUrl?: string;
   typeLine?: string;
@@ -126,6 +129,7 @@ function mapCachedVisual(card: {
   };
 
   if (card.manaCost) visualCard.manaCost = card.manaCost;
+  if (card.smallImageUrl) visualCard.smallImageUrl = card.smallImageUrl;
   if (card.imageUrl) visualCard.imageUrl = card.imageUrl;
   if (card.artCropUrl) visualCard.artCropUrl = card.artCropUrl;
   if (card.oracleText) visualCard.oracleText = card.oracleText;
@@ -148,6 +152,7 @@ function findSplitCard(name: string, cards: Map<string, VisualCard>): VisualCard
 function mapVisualCard(card: ScryfallCollectionCard): VisualCard {
   const imageUris = card.image_uris ?? card.card_faces?.find((face) => face.image_uris)?.image_uris;
   const imageUrl = imageUris?.normal ?? imageUris?.border_crop;
+  const smallImageUrl = imageUris?.small ?? imageUrl;
   const visualCard: VisualCard = {
     name: card.name,
     typeLine: card.type_line ?? "Magic card",
@@ -166,6 +171,10 @@ function mapVisualCard(card: ScryfallCollectionCard): VisualCard {
 
   if (imageUrl) {
     visualCard.imageUrl = imageUrl;
+  }
+
+  if (smallImageUrl) {
+    visualCard.smallImageUrl = smallImageUrl;
   }
 
   if (imageUris?.art_crop) {

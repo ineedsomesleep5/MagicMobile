@@ -79,7 +79,14 @@ export interface CommanderGameConfig {
   aiPlayers: AiPlayerConfig[];
   startingLife: 40;
   commanderDamageEnabled: true;
+  mulligan?: CommanderMulliganConfig;
+  startingPlayer?: "random" | "human" | "ai";
   simulatorPreset?: "arena-battlefield";
+}
+
+export interface CommanderMulliganConfig {
+  rule: "commander-free-first" | "london";
+  freeMulligans: number;
 }
 
 export interface RoomSeat {
@@ -116,11 +123,21 @@ export interface ZoneCard {
   attachedToInstanceId?: string;
 }
 
+export interface ManaPool {
+  W: number;
+  U: number;
+  B: number;
+  R: number;
+  G: number;
+  C: number;
+}
+
 export interface PlayerGameState {
   playerId: PlayerId;
   life: number;
   poison: number;
   commanderTax: number;
+  manaPool?: ManaPool;
   zones: Record<ZoneName, ZoneCard[]>;
   commanderDamage: Record<PlayerId, number>;
 }
@@ -128,6 +145,9 @@ export interface PlayerGameState {
 export interface GameSnapshot {
   id: GameId;
   roomId: RoomId;
+  bridgeRevision?: number;
+  xmageCycle?: number;
+  pendingStatus?: "accepted" | "waiting_for_xmage" | "stalled";
   activePlayerId?: PlayerId;
   phase: "beginning" | "precombat-main" | "combat" | "postcombat-main" | "ending";
   step?: GameStep;
@@ -139,6 +159,9 @@ export interface GameSnapshot {
   log: GameLogEntry[];
   legalActions?: LegalAction[];
   choicePrompt?: ChoicePrompt;
+  promptEnvelope?: PromptEnvelope;
+  promptEnvelopeV2?: PromptEnvelopeV2;
+  xmage?: XmageMobileSnapshot;
   engineHealth?: EngineHealth;
 }
 
@@ -174,9 +197,18 @@ export type LegalActionType =
   | "activate_ability"
   | "choose_target"
   | "make_mana"
+  | "play_mana"
   | "pay_cost"
   | "choose_mode"
+  | "choose_ability"
   | "choose_card"
+  | "choose_pile"
+  | "choose_amount"
+  | "choose_multi_amount"
+  | "play_x_mana"
+  | "order_triggers"
+  | "search_select"
+  | "commander_replacement"
   | "declare_attackers"
   | "declare_blockers"
   | "resolve_choice"
@@ -196,10 +228,16 @@ export interface LegalAction {
   cardInstanceId?: string;
   sourceZone?: ZoneName;
   sourceInstanceId?: string;
+  abilityId?: string;
   targetIds?: string[];
   validTargetIds?: string[];
   isPrimary?: boolean;
   requiresTarget?: boolean;
+  responseKind?: string;
+  messageId?: number;
+  minChoices?: number;
+  maxChoices?: number;
+  zoneContext?: ZoneName | "prompt" | "stack" | "search";
   shortLabel?: string;
   commandTemplate?: Partial<GameCommand>;
 }
@@ -217,17 +255,135 @@ export interface ChoicePrompt {
   }>;
 }
 
+export interface PromptEnvelope {
+  id: string;
+  method: string;
+  messageId: number;
+  playerId: PlayerId;
+  responseKind: string;
+  message: string;
+  required?: boolean;
+  minChoices?: number;
+  maxChoices?: number;
+  targetIds?: string[];
+  choices?: Array<{
+    id: string;
+    label: string;
+    cardInstanceId?: string;
+  }>;
+}
+
+export interface PromptEnvelopeV2 extends PromptEnvelope {
+  responseCommand?: Partial<GameCommand> & { promptId?: string };
+  cards?: ZoneCard[];
+  targets?: Array<{ id: string; label: string; cardInstanceId?: string }>;
+  piles?: Array<{ id: "1" | "2"; label: string; cards: ZoneCard[] }>;
+  abilities?: Array<{ id: string; label: string; rulesText?: string }>;
+  modes?: Array<{ id: string; label: string }>;
+  amounts?: number[];
+  options?: Record<string, string | number | boolean>;
+}
+
+export interface XmageMobileSnapshot {
+  schemaVersion: 1;
+  gameId: GameId;
+  bridgeRevision: number;
+  xmageCycle?: number;
+  callbackCoverage: string[];
+  stack: XmageStackObject[];
+  combat: XmageCombatGroup[];
+  players: XmageMobilePlayer[];
+  exileZones: XmageNamedZone[];
+  revealed: XmageNamedZone[];
+  lookedAt: XmageNamedZone[];
+  companion: XmageNamedZone[];
+  playableObjects: XmagePlayableObject[];
+  panels: {
+    stack: boolean;
+    command: boolean;
+    graveyard: boolean;
+    exile: boolean;
+    revealed: boolean;
+    lookedAt: boolean;
+    search: boolean;
+  };
+}
+
+export interface XmageMobilePlayer {
+  playerId: PlayerId;
+  xmagePlayerId?: string;
+  name: string;
+  active: boolean;
+  hasPriority: boolean;
+  timerActive: boolean;
+  skipState: {
+    passedTurn: boolean;
+    passedUntilEndOfTurn: boolean;
+    passedUntilNextMain: boolean;
+    passedUntilStackResolved: boolean;
+    passedAllTurns: boolean;
+    passedUntilEndStepBeforeMyTurn: boolean;
+  };
+  manaPool: ManaPool;
+  command: ZoneCard[];
+  zones: {
+    battlefield: ZoneCard[];
+    graveyard: ZoneCard[];
+    exile: ZoneCard[];
+    sideboard: ZoneCard[];
+  };
+}
+
+export interface XmageStackObject {
+  id: string;
+  name: string;
+  rulesText?: string;
+  sourceCard?: ZoneCard;
+  paid?: boolean;
+}
+
+export interface XmageCombatGroup {
+  defenderId: string;
+  defenderName: string;
+  blocked: boolean;
+  attackers: ZoneCard[];
+  blockers: ZoneCard[];
+}
+
+export interface XmageNamedZone {
+  id: string;
+  name: string;
+  cards: ZoneCard[];
+}
+
+export interface XmagePlayableObject {
+  sourceInstanceId: string;
+  sourceZone?: ZoneName | "command" | "stack";
+  cardName: string;
+  categories: Array<"mana" | "play" | "cast" | "ability">;
+  abilities: Array<{ id: string; label: string; category: "mana" | "play" | "cast" | "ability" }>;
+}
+
 export type GameCommand =
   | { type: "keep_hand"; gameId: GameId; playerId: PlayerId }
   | { type: "mulligan"; gameId: GameId; playerId: PlayerId }
-  | { type: "play_land"; gameId: GameId; playerId: PlayerId; cardInstanceId?: string; cardName?: string }
-  | { type: "cast_spell"; gameId: GameId; playerId: PlayerId; cardInstanceId?: string; cardName?: string; fromZone?: ZoneName }
+  | { type: "play_land"; gameId: GameId; playerId: PlayerId; cardInstanceId?: string; sourceInstanceId?: string; abilityId?: string; cardName?: string }
+  | { type: "cast_spell"; gameId: GameId; playerId: PlayerId; cardInstanceId?: string; sourceInstanceId?: string; abilityId?: string; cardName?: string; fromZone?: ZoneName }
   | { type: "activate_ability"; gameId: GameId; playerId: PlayerId; sourceInstanceId: string; abilityId: string }
   | { type: "choose_target"; gameId: GameId; playerId: PlayerId; promptId: string; targetIds: string[] }
   | { type: "make_mana"; gameId: GameId; playerId: PlayerId; sourceInstanceId: string; abilityId?: string }
+  | { type: "play_mana"; gameId: GameId; playerId: PlayerId; promptId: string; manaType: "W" | "U" | "B" | "R" | "G" | "C" }
   | { type: "pay_cost"; gameId: GameId; playerId: PlayerId; paymentId?: string; sourceInstanceIds?: string[] }
   | { type: "choose_mode"; gameId: GameId; playerId: PlayerId; promptId: string; modeIds: string[] }
+  | { type: "choose_ability"; gameId: GameId; playerId: PlayerId; promptId: string; abilityId: string }
   | { type: "choose_card"; gameId: GameId; playerId: PlayerId; promptId: string; cardInstanceIds: string[] }
+  | { type: "choose_pile"; gameId: GameId; playerId: PlayerId; promptId: string; pile: 1 | 2 }
+  | { type: "choose_amount"; gameId: GameId; playerId: PlayerId; promptId: string; amount: number }
+  | { type: "choose_multi_amount"; gameId: GameId; playerId: PlayerId; promptId: string; amounts: number[] }
+  | { type: "play_x_mana"; gameId: GameId; playerId: PlayerId; promptId: string; amount: number }
+  | { type: "order_triggers"; gameId: GameId; playerId: PlayerId; promptId: string; orderedIds: string[] }
+  | { type: "search_select"; gameId: GameId; playerId: PlayerId; promptId: string; cardInstanceIds: string[] }
+  | { type: "commander_replacement"; gameId: GameId; playerId: PlayerId; promptId: string; useCommandZone: boolean }
   | { type: "declare_attackers"; gameId: GameId; playerId: PlayerId; attackers: Array<{ attackerId: string; defenderId: string }> }
   | { type: "declare_blockers"; gameId: GameId; playerId: PlayerId; blockers: Array<{ blockerId: string; attackerId: string }> }
   | { type: "resolve_choice"; gameId: GameId; playerId: PlayerId; promptId: string; choiceIds: string[] }
@@ -253,6 +409,7 @@ export interface CardCacheMetadata {
   cardCount: number;
   imageCount: number;
   missingImageCount: number;
+  symbolCount?: number;
   updatedAt?: string;
 }
 

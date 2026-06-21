@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var snapshot: GameSnapshot?
     @State private var startupStatus: CommanderStartupResponse?
     @State private var selectedCard: ZoneCard?
+    @State private var inspectedCard: ZoneCard?
     @State private var pendingActionId: String?
     @State private var pendingCardInstanceId: String?
     @State private var lastSubmittedActionId: String?
@@ -24,6 +25,11 @@ struct ContentView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var webSocketTask: URLSessionWebSocketTask?
+    @State private var cardCacheMetadata: CardCacheMetadata?
+    @State private var isSyncingCardCache = false
+    @State private var phoneImageCacheCount = 0
+    @State private var phoneSymbolCacheCount = 0
+    @State private var phoneImageDownloadProgress: String?
 
     var body: some View {
         ZStack {
@@ -35,6 +41,7 @@ struct ContentView: View {
                     snapshot: snapshot,
                     startupStatus: startupStatus,
                     selectedCard: $selectedCard,
+                    inspectedCard: $inspectedCard,
                     avatarData: playerAvatarData,
                     pendingActionId: pendingActionId,
                     pendingCardInstanceId: pendingCardInstanceId,
@@ -67,8 +74,14 @@ struct ContentView: View {
                 webSocketTask = nil
             }
         }
+        .onChange(of: serverURLText) { _, newValue in
+            CardImageURL.setBaseURL(newValue)
+        }
         .task {
+            CardImageURL.setBaseURL(serverURLText)
             await checkBridge()
+            await refreshCardCacheMetadata()
+            await refreshPhoneAssetCacheCounts()
         }
     }
 
@@ -79,7 +92,13 @@ struct ContentView: View {
             MenuView(
                 startSetup: { screen = .setup },
                 openDecks: { screen = .decks },
-                quickStart: { Task { await startGame() } }
+                quickStart: { Task { await startGame() } },
+                cardCacheMetadata: cardCacheMetadata,
+                isSyncingCardCache: isSyncingCardCache,
+                phoneImageCacheCount: phoneImageCacheCount,
+                phoneSymbolCacheCount: phoneSymbolCacheCount,
+                phoneImageDownloadProgress: phoneImageDownloadProgress,
+                syncCardCache: { Task { await syncCardCache() } }
             )
         case .setup:
             SetupView(
@@ -90,6 +109,12 @@ struct ContentView: View {
                 selectedPhoto: $selectedPhoto,
                 avatarData: playerAvatarData,
                 deckSummary: deckSummary,
+                cardCacheMetadata: cardCacheMetadata,
+                isSyncingCardCache: isSyncingCardCache,
+                phoneImageCacheCount: phoneImageCacheCount,
+                phoneSymbolCacheCount: phoneSymbolCacheCount,
+                phoneImageDownloadProgress: phoneImageDownloadProgress,
+                syncCardCache: { Task { await syncCardCache() } },
                 checkBridge: { Task { await checkBridge() } },
                 openDecks: { screen = .decks },
                 startGame: { Task { await startGame() } }
@@ -131,6 +156,64 @@ struct ContentView: View {
         }
     }
 
+    private func refreshCardCacheMetadata() async {
+        guard let api else { return }
+        cardCacheMetadata = try? await api.cardCacheMetadata()
+    }
+
+    private func refreshPhoneAssetCacheCounts() async {
+        phoneImageCacheCount = CardImageURL.cachedImageCount()
+        phoneSymbolCacheCount = CardImageURL.cachedSymbolCount()
+    }
+
+    private func syncCardCache() async {
+        guard !isSyncingCardCache else { return }
+        guard let api else {
+            errorMessage = MagicMobileError.invalidServerURL.localizedDescription
+            return
+        }
+
+        isSyncingCardCache = true
+        phoneImageDownloadProgress = "Preparing index"
+        status = "Preparing Scryfall card index"
+        do {
+            cardCacheMetadata = try await api.syncCardCache()
+            async let imageManifestRequest = api.cardImageManifest()
+            async let symbolManifestRequest = api.symbolManifest()
+            let manifest = try await imageManifestRequest
+            let symbolManifest = try await symbolManifestRequest
+            cardCacheMetadata = manifest.metadata
+            phoneImageDownloadProgress = "images 0/\(manifest.images.count)"
+            status = "Downloading card images to iPhone"
+            let downloaded = try await CardImageURL.downloadAllImagesToPhone(images: manifest.images) { completed, total in
+                await MainActor.run {
+                    phoneImageDownloadProgress = "images \(completed)/\(total)"
+                    if completed == total || completed % 25 == 0 {
+                        status = "Downloading card images \(completed)/\(total)"
+                    }
+                }
+            }
+            phoneImageDownloadProgress = "symbols 0/\(symbolManifest.symbols.count)"
+            let downloadedSymbols = try await CardImageURL.downloadAllSymbolsToPhone(symbols: symbolManifest.symbols) { completed, total in
+                await MainActor.run {
+                    phoneImageDownloadProgress = "symbols \(completed)/\(total)"
+                    if completed == total || completed % 10 == 0 {
+                        status = "Downloading symbols \(completed)/\(total)"
+                    }
+                }
+            }
+            await refreshPhoneAssetCacheCounts()
+            status = "Assets ready: \(phoneImageCacheCount) cards, \(phoneSymbolCacheCount) symbols cached (\(downloaded) cards, \(downloadedSymbols) symbols new)"
+        } catch {
+            lastSubmittedActionId = nil
+            lastSubmittedSnapshotSignature = nil
+            errorMessage = error.localizedDescription
+            status = error.localizedDescription
+        }
+        phoneImageDownloadProgress = nil
+        isSyncingCardCache = false
+    }
+
     private func importDeck() {
         guard let deck = DeckImporter.parse(text: deckText, source: deckSource.isEmpty ? "Imported Commander Deck" : deckSource) else {
             errorMessage = "Paste an Archidekt/Moxfield exported text list or a Commander text list."
@@ -150,6 +233,7 @@ struct ContentView: View {
         isLoading = true
         snapshot = nil
         selectedCard = nil
+        inspectedCard = nil
         pendingActionId = nil
         pendingCardInstanceId = nil
         lastSubmittedActionId = nil
@@ -193,9 +277,10 @@ struct ContentView: View {
             startupStatus = current
 
             if current.status == "ready", let nextSnapshot = current.snapshot {
-                snapshot = nextSnapshot
+                applySnapshot(nextSnapshot)
                 startupStatus = nil
                 selectedCard = nil
+                inspectedCard = nil
                 status = "Commander game started with \(deckName)"
                 startWebSocket(gameId: nextSnapshot.id)
                 return
@@ -232,10 +317,15 @@ struct ContentView: View {
         status = "Sending \(action.shortLabel ?? action.label)"
 
         do {
+            let previousSignature = snapshotSignature(currentSnapshot)
             let nextSnapshot = try await api.submit(action: action, gameId: currentSnapshot.id)
-            snapshot = nextSnapshot
-            selectedCard = nil
-            status = "Action submitted"
+            applySnapshot(nextSnapshot)
+            status = nextSnapshot.pendingStatus == "waiting_for_xmage" ? "Waiting for XMage update" : "Action submitted"
+            if nextSnapshot.pendingStatus == "waiting_for_xmage" {
+                lastSubmittedActionId = nil
+                lastSubmittedSnapshotSignature = nil
+                await pollSnapshotAfterCommand(api: api, gameId: currentSnapshot.id, previousSignature: previousSignature)
+            }
         } catch {
             errorMessage = error.localizedDescription
             status = error.localizedDescription
@@ -262,7 +352,7 @@ struct ContentView: View {
         webSocketTask = task
         task.resume()
 
-        status = "Connected (real-time)"
+        status = "Connecting real-time updates"
 
         Task {
             await listenWebSocket(task: task, gameId: gameId)
@@ -279,8 +369,8 @@ struct ContentView: View {
                         await MainActor.run {
                             do {
                                 let nextSnapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: data)
-                                self.snapshot = nextSnapshot
-                                self.selectedCard = nil
+                                self.status = "Connected (real-time)"
+                                self.applySnapshot(nextSnapshot)
                             } catch {
                                 print("Error decoding snapshot: \(error)")
                             }
@@ -290,8 +380,8 @@ struct ContentView: View {
                     await MainActor.run {
                         do {
                             let nextSnapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: data)
-                            self.snapshot = nextSnapshot
-                            self.selectedCard = nil
+                            self.status = "Connected (real-time)"
+                            self.applySnapshot(nextSnapshot)
                         } catch {
                             print("Error decoding snapshot: \(error)")
                         }
@@ -315,7 +405,40 @@ struct ContentView: View {
     private func snapshotSignature(_ snapshot: GameSnapshot) -> String {
         let legalActionIds = snapshot.legalActions?.map(\.id).joined(separator: ",") ?? ""
         let handCounts = snapshot.players.map { "\($0.playerId):\($0.zones.hand.count):\($0.zones.battlefield.count):\($0.zones.graveyard.count)" }.joined(separator: "|")
-        return "\(snapshot.id)|\(snapshot.turn)|\(snapshot.phase)|\(snapshot.step ?? "")|\(snapshot.priorityPlayerId ?? "")|\(snapshot.promptText ?? "")|\(handCounts)|\(legalActionIds)"
+        return "\(snapshot.id)|\(snapshot.bridgeRevision ?? -1)|\(snapshot.xmageCycle ?? -1)|\(snapshot.turn)|\(snapshot.phase)|\(snapshot.step ?? "")|\(snapshot.priorityPlayerId ?? "")|\(snapshot.promptText ?? "")|\(handCounts)|\(legalActionIds)"
+    }
+
+    private func applySnapshot(_ nextSnapshot: GameSnapshot) {
+        guard shouldAcceptSnapshot(nextSnapshot) else { return }
+        snapshot = nextSnapshot
+        selectedCard = nil
+    }
+
+    private func shouldAcceptSnapshot(_ nextSnapshot: GameSnapshot) -> Bool {
+        guard let current = snapshot, current.id == nextSnapshot.id else { return true }
+        let currentRevision = current.bridgeRevision ?? -1
+        let nextRevision = nextSnapshot.bridgeRevision ?? -1
+        if nextRevision != currentRevision {
+            return nextRevision > currentRevision
+        }
+        return (nextSnapshot.xmageCycle ?? -1) >= (current.xmageCycle ?? -1)
+    }
+
+    private func pollSnapshotAfterCommand(api: MagicMobileAPI, gameId: String, previousSignature: String) async {
+        for _ in 0..<8 {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard let refreshed = try? await api.snapshot(gameId: gameId) else { continue }
+            applySnapshot(refreshed)
+            if snapshotSignature(refreshed) != previousSignature {
+                status = "XMage board updated"
+                return
+            }
+        }
+        if let health = try? await api.health() {
+            status = "\(health.status): \(health.reason)"
+        } else {
+            status = "XMage update delayed. Refresh or retry the action."
+        }
     }
 
     private func perform(_ work: @escaping () async throws -> Void) async {
@@ -387,13 +510,110 @@ struct MenuView: View {
     let startSetup: () -> Void
     let openDecks: () -> Void
     let quickStart: () -> Void
+    let cardCacheMetadata: CardCacheMetadata?
+    let isSyncingCardCache: Bool
+    let phoneImageCacheCount: Int
+    let phoneSymbolCacheCount: Int
+    let phoneImageDownloadProgress: String?
+    let syncCardCache: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            HeroCard(title: "Commander vs AI", description: "Start a real XMage-backed 100-card Commander game.", button: "Game setup", action: startSetup)
-            HeroCard(title: "Deck Builder", description: "Paste Archidekt or Moxfield export text, or pick an included Commander precon.", button: "Build deck", action: openDecks)
-            HeroCard(title: "Quick Battle", description: "Use your selected precon and jump into a 1v1 game against AI.", button: "Start now", action: quickStart)
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Commander")
+                    .font(.system(size: 42, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                Text("XMage rules, 100-card precons, real Scryfall card art, built for landscape iPhone play.")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .lineLimit(3)
+                Spacer()
+                HStack(spacing: 10) {
+                    Button("Game setup", action: startSetup)
+                        .buttonStyle(PrimaryButtonStyle())
+                    Button("Quick battle", action: quickStart)
+                        .buttonStyle(SecondaryButtonStyle())
+                }
+            }
+            .padding(22)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(
+                LinearGradient(colors: [.black.opacity(0.64), .orange.opacity(0.20)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                in: RoundedRectangle(cornerRadius: 8)
+            )
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(.orange.opacity(0.24)))
+
+            VStack(spacing: 12) {
+                HeroCard(title: "Deck Builder", description: "Paste Archidekt or Moxfield export text, or pick an included Commander precon.", button: "Build deck", action: openDecks)
+                CardCachePanel(
+                    metadata: cardCacheMetadata,
+                    isSyncing: isSyncingCardCache,
+                    phoneImageCacheCount: phoneImageCacheCount,
+                    phoneSymbolCacheCount: phoneSymbolCacheCount,
+                    downloadProgress: phoneImageDownloadProgress,
+                    sync: syncCardCache
+                )
+            }
+            .frame(width: 360)
         }
+    }
+}
+
+struct CardCachePanel: View {
+    let metadata: CardCacheMetadata?
+    let isSyncing: Bool
+    let phoneImageCacheCount: Int
+    let phoneSymbolCacheCount: Int
+    let downloadProgress: String?
+    let sync: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "square.and.arrow.down")
+                    .foregroundStyle(.orange)
+                Text("Game Assets")
+                    .font(.title3.weight(.black))
+                    .foregroundStyle(.white)
+                Spacer()
+                Text(metadata?.status.uppercased() ?? "EMPTY")
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(metadata?.status == "ready" ? .green : .orange)
+            }
+
+            Text(cacheSummary)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.72))
+                .lineLimit(3)
+
+            Button {
+                sync()
+            } label: {
+                HStack {
+                    if isSyncing {
+                        ProgressView()
+                            .tint(.white)
+                    }
+                    Text(isSyncing ? "Downloading \(downloadProgress ?? "")" : "Download cards + symbols")
+                }
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .disabled(isSyncing)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background(.black.opacity(0.34), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.12)))
+    }
+
+    private var cacheSummary: String {
+        guard let metadata else {
+            return "Download the full Scryfall image pack onto this iPhone so gameplay renders cards locally."
+        }
+        if metadata.status == "ready" {
+            return "Phone cache: \(phoneImageCacheCount) cards, \(phoneSymbolCacheCount) symbols. Scryfall index: \(metadata.cardCount) cards, \(metadata.symbolCount ?? 0) symbols."
+        }
+        return "Phone cache: \(phoneImageCacheCount) cards, \(phoneSymbolCacheCount) symbols. Scryfall index status: \(metadata.status)."
     }
 }
 
@@ -430,63 +650,122 @@ struct SetupView: View {
     @Binding var selectedPhoto: PhotosPickerItem?
     let avatarData: Data?
     let deckSummary: String
+    let cardCacheMetadata: CardCacheMetadata?
+    let isSyncingCardCache: Bool
+    let phoneImageCacheCount: Int
+    let phoneSymbolCacheCount: Int
+    let phoneImageDownloadProgress: String?
+    let syncCardCache: () -> Void
     let checkBridge: () -> Void
     let openDecks: () -> Void
     let startGame: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            Panel(title: "Server") {
-                TextField("http://your-mac-ip:3000", text: $serverURLText)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-                    .textFieldStyle(GameTextFieldStyle())
-                Text("Your iPhone is the client. XMage, Docker, and the rules bridge stay on the Mac or server.")
-                    .foregroundStyle(.white.opacity(0.7))
-                    .font(.callout.weight(.semibold))
-                Button("Check XMage bridge", action: checkBridge)
-                    .buttonStyle(PrimaryButtonStyle())
-            }
-            .frame(width: 330)
+        GeometryReader { proxy in
+            let gap: CGFloat = 10
+            let leftWidth = min(max(proxy.size.width * 0.32, 278), 330)
+            let rightWidth = max(proxy.size.width - leftWidth - gap, 430)
 
-            Panel(title: "Game Setup") {
-                HStack(alignment: .top, spacing: 12) {
-                    PreconPicker(title: "Your precon", selection: $selectedHumanPrecon)
-                    PreconPicker(title: "AI deck", selection: $selectedAIPrecon)
-                }
-
-                Text(deckSummary)
-                    .font(.title3.weight(.black))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("AI level")
-                            .font(.caption.weight(.black))
-                            .foregroundStyle(.orange)
-                        Picker("AI level", selection: $difficulty) {
-                            ForEach(AiDifficulty.allCases) { difficulty in
-                                Text(difficulty.menuLabel).tag(difficulty)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                    }
-
-                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                        AvatarPreview(data: avatarData)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                HStack {
-                    Button("Deck upload", action: openDecks)
+            HStack(spacing: gap) {
+                Panel(title: "Connection") {
+                    TextField("Server URL", text: $serverURLText)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
+                        .textFieldStyle(GameTextFieldStyle())
+                    Text("iPhone client. XMage, Docker, card cache, symbols, and rules bridge run on this server.")
+                        .foregroundStyle(.white.opacity(0.68))
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(3)
+                    Button("Check XMage bridge", action: checkBridge)
                         .buttonStyle(SecondaryButtonStyle())
-                    Button("Start vs AI", action: startGame)
-                        .buttonStyle(PrimaryButtonStyle())
+                    CardCachePanel(
+                        metadata: cardCacheMetadata,
+                        isSyncing: isSyncingCardCache,
+                        phoneImageCacheCount: phoneImageCacheCount,
+                        phoneSymbolCacheCount: phoneSymbolCacheCount,
+                        downloadProgress: phoneImageDownloadProgress,
+                        sync: syncCardCache
+                    )
                 }
+                .frame(width: leftWidth)
+
+                Panel(title: "Commander vs AI") {
+                    HStack(alignment: .top, spacing: 10) {
+                        PreconPicker(title: "Your precon", selection: $selectedHumanPrecon)
+                        PreconPicker(title: "AI deck", selection: $selectedAIPrecon)
+                    }
+
+                    Text(deckSummary)
+                        .font(.system(size: 18, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.62)
+
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("AI skill")
+                                .font(.caption.weight(.black))
+                                .foregroundStyle(MagicPalette.antiqueGold)
+                            Picker("AI skill", selection: $difficulty) {
+                                ForEach(AiDifficulty.allCases) { difficulty in
+                                    Text(difficulty.menuLabel).tag(difficulty)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                        }
+
+                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                            AvatarPreview(data: avatarData)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    HStack(spacing: 7) {
+                        SetupRuleChip(title: "Format", value: "Commander")
+                        SetupRuleChip(title: "Players", value: "1v1 AI")
+                        SetupRuleChip(title: "Life", value: "40")
+                        SetupRuleChip(title: "Mulligan", value: "XMage")
+                        SetupRuleChip(title: "Start", value: "Prompt")
+                    }
+
+                    Text("XMage controls rules, mulligans, priority, mana, and legal actions.")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.58))
+                        .lineLimit(1)
+
+                    HStack {
+                        Button("Deck upload", action: openDecks)
+                            .buttonStyle(SecondaryButtonStyle())
+                        Button("Start vs AI", action: startGame)
+                            .buttonStyle(PrimaryButtonStyle())
+                    }
+                }
+                .frame(width: rightWidth)
             }
         }
+    }
+}
+
+struct SetupRuleChip: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(spacing: 3) {
+            Text(title.uppercased())
+                .font(.system(size: 8, weight: .black))
+                .foregroundStyle(.white.opacity(0.55))
+            Text(value)
+                .font(.caption.weight(.black))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity)
+        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.10)))
     }
 }
 
@@ -543,7 +822,7 @@ struct PreconPicker: View {
         VStack(alignment: .leading, spacing: 7) {
             Text(title.uppercased())
                 .font(.caption.weight(.black))
-                .foregroundStyle(.orange)
+                .foregroundStyle(MagicPalette.antiqueGold)
             Picker(title, selection: $selection) {
                 ForEach(PreconCatalog.all) { precon in
                     Text("\(precon.name) (\(precon.colors))").tag(precon)
@@ -551,17 +830,20 @@ struct PreconPicker: View {
             }
             .pickerStyle(.menu)
             .tint(.white)
+            .lineLimit(2)
+            .minimumScaleFactor(0.65)
 
             Text(selection.subtitle)
-                .font(.caption.weight(.semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.72))
                 .lineLimit(1)
             Text(selection.commander)
-                .font(.footnote.weight(.black))
+                .font(.system(size: 12, weight: .black))
                 .foregroundStyle(.white)
                 .lineLimit(1)
+                .minimumScaleFactor(0.65)
         }
-        .padding(10)
+        .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.12)))
@@ -593,6 +875,7 @@ struct ImmersivePlayShell: View {
     let snapshot: GameSnapshot?
     let startupStatus: CommanderStartupResponse?
     @Binding var selectedCard: ZoneCard?
+    @Binding var inspectedCard: ZoneCard?
     let avatarData: Data?
     let pendingActionId: String?
     let pendingCardInstanceId: String?
@@ -604,13 +887,13 @@ struct ImmersivePlayShell: View {
             snapshot: snapshot,
             startupStatus: startupStatus,
             selectedCard: $selectedCard,
+            inspectedCard: $inspectedCard,
             avatarData: avatarData,
             pendingActionId: pendingActionId,
             pendingCardInstanceId: pendingCardInstanceId,
             runAction: runAction,
             newGame: newGame
         )
-        .ignoresSafeArea()
     }
 }
 
@@ -618,12 +901,14 @@ struct NativeGameView: View {
     let snapshot: GameSnapshot?
     let startupStatus: CommanderStartupResponse?
     @Binding var selectedCard: ZoneCard?
+    @Binding var inspectedCard: ZoneCard?
     let avatarData: Data?
     let pendingActionId: String?
     let pendingCardInstanceId: String?
     let runAction: (LegalAction) -> Void
     let newGame: () -> Void
     @State private var isLogOpen = false
+    @State private var isOverPlayerDropZone = false
 
     @ViewBuilder
     var body: some View {
@@ -634,45 +919,95 @@ struct NativeGameView: View {
 
                 ZStack {
                     BattlefieldSurface()
+                        .ignoresSafeArea()
 
-                    VStack(spacing: 8) {
-                        BattlefieldRow(title: "Opponent", cards: opponent.zones.battlefield, selectedCard: $selectedCard, flipped: true, cardWidth: metrics.permanentCardWidth)
-                            .frame(width: metrics.playWidth, height: metrics.rowHeight)
+                    BattlefieldRow(title: "Opponent board", cards: nonLandPermanents(opponent.zones.battlefield), legalActions: snapshot.legalActions ?? [], selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.permanentCardWidth, rowWidth: metrics.playWidth, runAction: runAction)
+                        .frame(width: metrics.playWidth, height: metrics.compactRowHeight)
+                        .position(x: metrics.playCenterX, y: metrics.opponentBoardY)
 
-                        Rectangle()
-                            .fill(.white.opacity(0.12))
-                            .frame(height: 1.5)
-                            .padding(.horizontal, 30)
+                    BattlefieldRow(title: "Opponent lands", cards: landPermanents(opponent.zones.battlefield), legalActions: snapshot.legalActions ?? [], selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.landCardWidth, rowWidth: metrics.playWidth, runAction: runAction)
+                        .frame(width: metrics.playWidth, height: metrics.landRowHeight)
+                        .position(x: metrics.playCenterX, y: metrics.opponentLandsY)
 
-                        BattlefieldRow(title: "You", cards: human.zones.battlefield, selectedCard: $selectedCard, cardWidth: metrics.permanentCardWidth)
-                            .frame(width: metrics.playWidth, height: metrics.rowHeight)
+                    Rectangle()
+                        .fill(.white.opacity(0.13))
+                        .frame(width: max(metrics.playWidth - 28, 80), height: 1.5)
+                        .position(x: metrics.playCenterX, y: metrics.centerLineY)
+
+                    BattlefieldRow(title: "Your board", cards: nonLandPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.permanentCardWidth, rowWidth: metrics.playWidth, runAction: runAction)
+                        .frame(width: metrics.playWidth, height: metrics.compactRowHeight)
+                        .position(x: metrics.playCenterX, y: metrics.playerBoardY)
+
+                    BattlefieldRow(title: "Your lands", cards: landPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.landCardWidth, rowWidth: metrics.playWidth, runAction: runAction)
+                        .frame(width: metrics.playWidth, height: metrics.landRowHeight)
+                        .position(x: metrics.playCenterX, y: metrics.playerLandsY)
+
+                    if let xmageStack = snapshot.xmage?.stack, !xmageStack.isEmpty {
+                        XmageStackPeek(objects: xmageStack, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+                            .frame(width: min(metrics.playWidth * 0.40, 320), height: 92)
+                            .position(x: metrics.stackX, y: metrics.stackY)
+                    } else if !human.zones.stack.isEmpty {
+                        StackPeek(cards: human.zones.stack, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+                            .frame(width: min(metrics.playWidth * 0.36, 280), height: 74)
+                            .position(x: metrics.stackX, y: metrics.stackY)
                     }
-                    .frame(width: metrics.playWidth, height: metrics.rowHeight * 2 + 16)
-                    .position(x: metrics.playCenterX, y: (metrics.opponentRowY + metrics.playerRowY) / 2)
-                    .rotation3DEffect(.degrees(46), axis: (x: 1, y: 0, z: 0), anchor: .center, anchorZ: 0, perspective: 0.85)
 
                     PromptPill(snapshot: snapshot)
                         .frame(width: min(metrics.playWidth * 0.82, 560))
                         .position(x: metrics.playCenterX, y: metrics.promptY)
 
+                    if let prompt = snapshot.choicePrompt {
+                        PromptChoicePanel(prompt: prompt, actions: snapshot.legalActions ?? [], pendingActionId: pendingActionId, runAction: runAction)
+                            .frame(width: min(metrics.playWidth * 0.46, 360))
+                            .position(x: metrics.choicePanelX, y: metrics.choicePanelY)
+                    }
+
+                    if let envelope = snapshot.promptEnvelopeV2 {
+                        PromptEnvelopeV2Badge(prompt: envelope)
+                            .frame(width: min(metrics.playWidth * 0.38, 300))
+                            .position(x: metrics.promptBadgeX, y: metrics.promptBadgeY)
+                    } else if let envelope = snapshot.promptEnvelope {
+                        PromptEnvelopeBadge(prompt: envelope)
+                            .frame(width: min(metrics.playWidth * 0.36, 280))
+                            .position(x: metrics.promptBadgeX, y: metrics.promptBadgeY)
+                    }
+
+                    if isOverPlayerDropZone {
+                        RoundedRectangle(cornerRadius: 14)
+                            .fill(MagicPalette.antiqueGold.opacity(0.14))
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(MagicPalette.antiqueGold.opacity(0.72), lineWidth: 2))
+                            .frame(width: metrics.playerDropZone.width, height: metrics.playerDropZone.height)
+                            .position(x: metrics.playerDropZone.midX, y: metrics.playerDropZone.midY)
+                            .allowsHitTesting(false)
+                    }
+
                     HandFan(
                         cards: human.zones.hand,
                         legalActions: snapshot.legalActions ?? [],
                         selectedCard: $selectedCard,
+                        inspectedCard: $inspectedCard,
                         pendingCardInstanceId: pendingCardInstanceId,
                         metrics: metrics,
+                        isOverPlayerDropZone: $isOverPlayerDropZone,
                         runAction: runAction
                     )
                         .frame(width: metrics.playWidth, height: metrics.handFrameHeight)
                         .position(x: metrics.playCenterX, y: metrics.handY)
 
-                    PlayerHeroHUD(name: "Noaddrag", player: opponent, avatarData: nil, active: snapshot.activePlayerId == opponent.playerId)
-                        .frame(width: metrics.hudWidth, height: 48)
+                    TurnStatusBadge(snapshot: snapshot, human: human, opponent: opponent)
+                        .frame(width: metrics.turnBadgeWidth, height: 34)
+                        .position(x: metrics.playCenterX, y: metrics.topHUDY)
+
+                    PlayerHeroHUD(name: "Noaddrag", player: opponent, avatarData: nil, active: snapshot.activePlayerId == opponent.playerId, opponentId: human.playerId, compact: true, tiny: true)
+                        .frame(width: metrics.opponentHUDWidth, height: 38)
                         .position(x: metrics.opponentHUDX, y: metrics.topHUDY)
 
-                    PlayerHeroHUD(name: "TabletopPolish", player: human, avatarData: avatarData, active: true, compact: true)
+                    PlayerHeroHUD(name: "TabletopPolish", player: human, avatarData: avatarData, active: snapshot.activePlayerId == human.playerId, opponentId: opponent.playerId, compact: true)
                         .frame(width: metrics.hudWidth, height: 48)
                         .position(x: metrics.playerHUDX, y: metrics.bottomHUDY)
+
+                    ManaPoolHUD(manaPool: human.manaPool)
+                        .position(x: metrics.manaHUDX, y: metrics.manaHUDY)
 
                     VStack(spacing: 8) {
                         CompactPhaseRail(snapshot: snapshot)
@@ -697,8 +1032,8 @@ struct NativeGameView: View {
                             .position(x: metrics.actionDockX, y: metrics.actionY)
                     }
 
-                    if let selectedCard {
-                        CardInspector(card: selectedCard)
+                    if let inspectedCard {
+                        CardInspector(card: inspectedCard)
                             .frame(width: min(metrics.playWidth * 0.36, 250), height: min(metrics.size.height * 0.43, 220))
                             .position(x: metrics.inspectorX, y: metrics.inspectorY)
                     }
@@ -723,7 +1058,22 @@ struct NativeGameView: View {
     }
 
     private func promptActions(in snapshot: GameSnapshot) -> [LegalAction] {
-        snapshot.legalActions?.filter { ["keep_hand", "mulligan", "resolve_choice", "pass_priority", "pass_until_response", "pass_until_next_turn", "concede"].contains($0.type) } ?? []
+        snapshot.legalActions?.filter {
+            [
+                "keep_hand", "mulligan", "resolve_choice", "choose_target", "choose_card",
+                "choose_mode", "choose_ability", "choose_pile", "choose_amount", "choose_multi_amount",
+                "play_mana", "play_x_mana", "search_select", "order_triggers", "commander_replacement",
+                "pay_cost", "pass_priority", "pass_until_response", "pass_until_next_turn", "concede"
+            ].contains($0.type)
+        } ?? []
+    }
+
+    private func landPermanents(_ cards: [ZoneCard]) -> [ZoneCard] {
+        cards.filter { $0.card.isLand }
+    }
+
+    private func nonLandPermanents(_ cards: [ZoneCard]) -> [ZoneCard] {
+        cards.filter { !$0.card.isLand }
     }
 }
 
@@ -741,15 +1091,27 @@ struct BattlefieldLayoutMetrics {
     }
 
     var leftInset: CGFloat {
-        max(safeArea.leading + 42, 52)
+        max(safeArea.leading + 54, 64)
     }
 
-    var rightInset: CGFloat {
-        max(safeArea.trailing + railWidth + 12, railWidth + 16)
+    var railLeftX: CGFloat {
+        size.width - safeArea.trailing - 8 - railWidth
+    }
+
+    var actionDockWidth: CGFloat {
+        min(max(size.width * 0.12, 168), 220)
+    }
+
+    var actionDockRightX: CGFloat {
+        railLeftX - 12
+    }
+
+    var playRightX: CGFloat {
+        actionDockRightX - actionDockWidth - 16
     }
 
     var playWidth: CGFloat {
-        max(size.width - leftInset - rightInset, 320)
+        max(playRightX - leftInset, 280)
     }
 
     var playCenterX: CGFloat {
@@ -757,59 +1119,144 @@ struct BattlefieldLayoutMetrics {
     }
 
     var railCenterX: CGFloat {
-        size.width - max(safeArea.trailing + 6, 8) - railWidth / 2
+        railLeftX + railWidth / 2
     }
 
     var railY: CGFloat {
-        max(safeArea.top + 104, 104)
+        max(safeArea.top + 112, 112)
     }
 
     var hudWidth: CGFloat {
-        min(playWidth * 0.42, 250)
+        min(playWidth * 0.36, 230)
+    }
+
+    var opponentHUDWidth: CGFloat {
+        min(playWidth * 0.23, 154)
+    }
+
+    var turnBadgeWidth: CGFloat {
+        min(playWidth * 0.40, 310)
     }
 
     var opponentHUDX: CGFloat {
-        leftInset + hudWidth / 2
+        leftInset + opponentHUDWidth / 2
     }
 
     var playerHUDX: CGFloat {
         leftInset + hudWidth / 2
     }
 
+    var manaHUDX: CGFloat {
+        leftInset + 102
+    }
+
+    var manaHUDY: CGFloat {
+        playerLandsY - landRowHeight / 2 - 18
+    }
+
     var topHUDY: CGFloat {
-        max(safeArea.top + 28, 28)
+        max(safeArea.top + 24, 24)
     }
 
     var bottomHUDY: CGFloat {
-        size.height - safeArea.bottom - 32
+        min(handVisualTopY - 30, size.height - max(safeArea.bottom + handFrameHeight + 18, handFrameHeight + 20))
     }
 
-    var opponentRowY: CGFloat {
-        size.height * 0.28
+    var battlefieldTopY: CGFloat {
+        max(safeArea.top + 58, topHUDY + 42)
+    }
+
+    var battlefieldBottomY: CGFloat {
+        handVisualTopY - 14
+    }
+
+    var battlefieldAvailableHeight: CGFloat {
+        max(battlefieldBottomY - battlefieldTopY, 180)
+    }
+
+    var rowsTopY: CGFloat {
+        battlefieldTopY + max((battlefieldAvailableHeight - battlefieldRowsHeight) / 2, 0)
+    }
+
+    var laneGap: CGFloat {
+        5
+    }
+
+    var centerGap: CGFloat {
+        12
+    }
+
+    var opponentBoardY: CGFloat {
+        rowsTopY + compactRowHeight / 2
+    }
+
+    var opponentLandsY: CGFloat {
+        opponentBoardY + compactRowHeight / 2 + laneGap + landRowHeight / 2
+    }
+
+    var centerLineY: CGFloat {
+        opponentLandsY + landRowHeight / 2 + centerGap / 2
+    }
+
+    var playerBoardY: CGFloat {
+        centerLineY + centerGap / 2 + compactRowHeight / 2
+    }
+
+    var playerLandsY: CGFloat {
+        playerBoardY + compactRowHeight / 2 + laneGap + landRowHeight / 2
     }
 
     var promptY: CGFloat {
-        size.height * 0.47
+        centerLineY
     }
 
-    var playerRowY: CGFloat {
-        size.height * 0.61
+    var stackX: CGFloat {
+        playCenterX + min(playWidth * 0.18, 150)
+    }
+
+    var stackY: CGFloat {
+        max(opponentLandsY + landRowHeight / 2 + 20, centerLineY - 34)
+    }
+
+    var choicePanelX: CGFloat {
+        actionDockX - actionDockWidth / 2 - min(playWidth * 0.23, 180)
+    }
+
+    var choicePanelY: CGFloat {
+        min(actionY - 88, handVisualTopY - 78)
+    }
+
+    var promptBadgeX: CGFloat {
+        max(leftInset + 140, min(playCenterX + playWidth * 0.25, actionDockX - actionDockWidth / 2 - 150))
+    }
+
+    var promptBadgeY: CGFloat {
+        max(promptY - 44, battlefieldTopY + 34)
     }
 
     var handY: CGFloat {
         size.height - max(safeArea.bottom + handFrameHeight / 2 + 2, handFrameHeight / 2 + 4)
     }
 
-    var actionY: CGFloat {
-        size.height - safeArea.bottom - 80
+    var handVisualTopY: CGFloat {
+        handY - handFrameHeight / 2 - 38
     }
 
-    var actionDockWidth: CGFloat {
-        min(max(playWidth * 0.26, 230), 320)
+    var actionY: CGFloat {
+        size.height - max(safeArea.bottom + 92, 96)
     }
 
     var actionDockX: CGFloat {
-        size.width - safeArea.trailing - actionDockWidth / 2 - 16
+        actionDockRightX - actionDockWidth / 2
+    }
+
+    var playerDropZone: CGRect {
+        CGRect(
+            x: leftInset,
+            y: playerBoardY - compactRowHeight / 2 - 10,
+            width: playWidth,
+            height: compactRowHeight + landRowHeight + laneGap + 24
+        )
     }
 
     var inspectorX: CGFloat {
@@ -817,7 +1264,7 @@ struct BattlefieldLayoutMetrics {
     }
 
     var inspectorY: CGFloat {
-        min(size.height - max(safeArea.bottom + handFrameHeight + 96, handFrameHeight + 98), size.height * 0.58)
+        min(handVisualTopY - 96, size.height * 0.56)
     }
 
     var logX: CGFloat {
@@ -829,7 +1276,7 @@ struct BattlefieldLayoutMetrics {
     }
 
     var handCardWidth: CGFloat {
-        min(max(playWidth / 11.6, 54), 76)
+        min(max(playWidth / 10.8, 50), 74)
     }
 
     var handCardHeight: CGFloat {
@@ -841,12 +1288,65 @@ struct BattlefieldLayoutMetrics {
     }
 
     var permanentCardWidth: CGFloat {
-        min(max(playWidth / 15.5, 46), 60)
+        basePermanentCardWidth * battlefieldScale
+    }
+
+    var landCardWidth: CGFloat {
+        baseLandCardWidth * battlefieldScale
+    }
+
+    var landRowHeight: CGFloat {
+        landCardWidth * 1.40 + rowPadding
+    }
+
+    var compactRowHeight: CGFloat {
+        permanentCardWidth * 1.40 + rowPadding
     }
 
     var rowHeight: CGFloat {
-        permanentCardWidth * 1.40 + 24
+        permanentCardWidth * 1.40 + rowPadding
     }
+
+    var battlefieldRowsHeight: CGFloat {
+        compactRowHeight * 2 + landRowHeight * 2 + laneGap * 3 + centerGap
+    }
+
+    private var basePermanentCardWidth: CGFloat {
+        min(max(playWidth / 15.5, 40), 58)
+    }
+
+    private var baseLandCardWidth: CGFloat {
+        min(max(playWidth / 19.5, 32), 48)
+    }
+
+    private var naturalPermanentRowHeight: CGFloat {
+        basePermanentCardWidth * 1.40 + rowPadding
+    }
+
+    private var naturalLandRowHeight: CGFloat {
+        baseLandCardWidth * 1.40 + rowPadding
+    }
+
+    private var naturalRowsHeight: CGFloat {
+        naturalPermanentRowHeight * 2 + naturalLandRowHeight * 2 + laneGap * 3 + centerGap
+    }
+
+    private var rowPadding: CGFloat {
+        12
+    }
+
+    private var battlefieldScale: CGFloat {
+        let fixedHeight = rowPadding * 4 + laneGap * 3 + centerGap
+        let scalableHeight = basePermanentCardWidth * 1.40 * 2 + baseLandCardWidth * 1.40 * 2
+        return min(1, max(0.42, (battlefieldAvailableHeight - fixedHeight) / max(scalableHeight, 1)))
+    }
+}
+
+typealias BattlefieldBoardLayout = BattlefieldLayoutMetrics
+
+struct BattlefieldLane {
+    let name: String
+    let frame: CGRect
 }
 
 struct LoadingGameView: View {
@@ -885,24 +1385,34 @@ struct LoadingGameView: View {
     }
 }
 
+enum MagicPalette {
+    static let antiqueGold = Color(red: 0.78, green: 0.58, blue: 0.24)
+    static let moss = Color(red: 0.18, green: 0.27, blue: 0.15)
+    static let deepMoss = Color(red: 0.06, green: 0.14, blue: 0.08)
+    static let iron = Color(red: 0.10, green: 0.09, blue: 0.08)
+    static let parchment = Color(red: 0.82, green: 0.73, blue: 0.55)
+    static let oxblood = Color(red: 0.38, green: 0.08, blue: 0.06)
+    static let leather = Color(red: 0.25, green: 0.14, blue: 0.07)
+}
+
 struct BattlefieldSurface: View {
     var body: some View {
         ZStack {
             LinearGradient(
                 colors: [
-                    Color(red: 0.08, green: 0.22, blue: 0.13),
-                    Color(red: 0.18, green: 0.31, blue: 0.16),
-                    Color(red: 0.26, green: 0.16, blue: 0.08)
+                    MagicPalette.deepMoss,
+                    MagicPalette.moss,
+                    MagicPalette.leather
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            RadialGradient(colors: [.orange.opacity(0.22), .clear], center: .bottomTrailing, startRadius: 20, endRadius: 420)
-            RadialGradient(colors: [.cyan.opacity(0.20), .clear], center: .bottomLeading, startRadius: 20, endRadius: 390)
+            RadialGradient(colors: [MagicPalette.antiqueGold.opacity(0.24), .clear], center: .bottomTrailing, startRadius: 20, endRadius: 420)
+            RadialGradient(colors: [MagicPalette.oxblood.opacity(0.18), .clear], center: .topLeading, startRadius: 20, endRadius: 390)
             VStack {
                 Spacer()
                 Capsule()
-                    .fill(.black.opacity(0.20))
+                    .fill(MagicPalette.iron.opacity(0.34))
                     .frame(height: 54)
                     .padding(.horizontal, 42)
                     .blur(radius: 18)
@@ -958,44 +1468,120 @@ struct PlayerHeroHUD: View {
     let player: PlayerGameState
     let avatarData: Data?
     var active = false
+    var opponentId: String?
     var compact = false
+    var tiny = false
 
     var body: some View {
-        HStack(spacing: compact ? 6 : 8) {
-            PlayerAvatar(data: avatarData, size: compact ? 36 : 42, active: active)
+        HStack(spacing: tiny ? 4 : (compact ? 6 : 8)) {
+            PlayerAvatar(data: avatarData, size: tiny ? 30 : (compact ? 36 : 42), active: active)
                 .overlay(alignment: .bottomTrailing) {
                     Text("\(player.life)")
-                        .font(.system(size: compact ? 11 : 12, weight: .black))
+                        .font(.system(size: tiny ? 9 : (compact ? 11 : 12), weight: .black))
                         .foregroundStyle(.white)
-                        .padding(4)
+                        .padding(tiny ? 3 : 4)
                         .background(.black.opacity(0.78), in: Circle())
-                        .offset(x: 5, y: 5)
+                        .offset(x: tiny ? 4 : 5, y: tiny ? 4 : 5)
                 }
 
             VStack(alignment: .leading, spacing: 0) {
                 Text(name)
-                    .font(.system(size: compact ? 14 : 16, weight: .black, design: .rounded))
+                    .font(.system(size: tiny ? 10 : (compact ? 14 : 16), weight: .black, design: .rounded))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 Text(player.zones.command.first?.card.name ?? "Commander")
-                    .font(.system(size: compact ? 9 : 10, weight: .black))
-                    .foregroundStyle(.orange)
+                    .font(.system(size: tiny ? 7 : (compact ? 9 : 10), weight: .black))
+                    .foregroundStyle(MagicPalette.antiqueGold)
                     .lineLimit(1)
                     .minimumScaleFactor(0.65)
             }
 
             Spacer(minLength: 2)
-            ZoneCounter(label: "Lib", value: player.zones.library.count, compact: compact)
-            ZoneCounter(label: "Hand", value: player.zones.hand.count, compact: compact)
-            ZoneCounter(label: "Grave", value: player.zones.graveyard.count, compact: compact)
-            ZoneCounter(label: "Exile", value: player.zones.exile.count, compact: compact)
+            if !tiny {
+                CommanderBadge(tax: player.commanderTax, damage: opponentId.flatMap { player.commanderDamage?[$0] } ?? 0)
+            }
+            ZoneCounter(label: "Lib", value: player.zones.library.count, compact: compact || tiny, tiny: tiny)
+            ZoneCounter(label: "Hand", value: player.zones.hand.count, compact: compact || tiny, tiny: tiny)
+            if !tiny {
+                ZoneCounter(label: "Grave", value: player.zones.graveyard.count, compact: compact)
+                ZoneCounter(label: "Exile", value: player.zones.exile.count, compact: compact)
+            }
         }
-        .padding(.horizontal, compact ? 8 : 10)
-        .padding(.vertical, compact ? 4 : 5)
-        .background(.black.opacity(0.38), in: Capsule())
-        .overlay(Capsule().stroke(active ? .cyan.opacity(0.45) : .white.opacity(0.10), lineWidth: 1))
-        .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
+        .padding(.horizontal, tiny ? 6 : (compact ? 8 : 10))
+        .padding(.vertical, tiny ? 3 : (compact ? 4 : 5))
+        .background(.black.opacity(active ? 0.58 : 0.34), in: Capsule())
+        .overlay(Capsule().stroke(active ? MagicPalette.antiqueGold.opacity(0.9) : MagicPalette.parchment.opacity(0.14), lineWidth: active ? 2 : 1))
+        .shadow(color: active ? MagicPalette.antiqueGold.opacity(0.34) : .black.opacity(0.22), radius: active ? 14 : 12, y: 5)
+    }
+}
+
+struct CommanderBadge: View {
+    let tax: Int
+    let damage: Int
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text("+\(tax)")
+                .font(.system(size: 9, weight: .black))
+            Text("CMD \(damage)")
+                .font(.system(size: 6, weight: .black))
+                .foregroundStyle(.white.opacity(0.65))
+        }
+        .foregroundStyle(MagicPalette.antiqueGold)
+        .frame(width: 38, height: 28)
+        .background(MagicPalette.iron.opacity(0.62), in: RoundedRectangle(cornerRadius: 7))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(MagicPalette.antiqueGold.opacity(0.28)))
+    }
+}
+
+struct TurnStatusBadge: View {
+    let snapshot: GameSnapshot
+    let human: PlayerGameState
+    let opponent: PlayerGameState
+
+    private var isHumanTurn: Bool {
+        snapshot.activePlayerId == human.playerId || snapshot.activePlayerId == "human"
+    }
+
+    private var activeName: String {
+        isHumanTurn ? "Your Turn" : "Opponent Turn"
+    }
+
+    private var detail: String {
+        if snapshot.priorityPlayerId == human.playerId || snapshot.waitingOnPlayerId == human.playerId {
+            return "Your priority"
+        }
+        if snapshot.priorityPlayerId == "human" || snapshot.waitingOnPlayerId == "human" {
+            return "Your priority"
+        }
+        if snapshot.priorityPlayerId == opponent.playerId || snapshot.waitingOnPlayerId == opponent.playerId || snapshot.priorityPlayerId?.hasPrefix("ai") == true {
+            return "AI thinking"
+        }
+        return (snapshot.step ?? snapshot.phase).phaseTitle
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(isHumanTurn ? MagicPalette.antiqueGold : MagicPalette.oxblood)
+                .frame(width: 9, height: 9)
+                .shadow(color: (isHumanTurn ? MagicPalette.antiqueGold : MagicPalette.oxblood).opacity(0.8), radius: 7)
+            Text(activeName.uppercased())
+                .font(.system(size: 12, weight: .black))
+                .foregroundStyle(isHumanTurn ? MagicPalette.antiqueGold : MagicPalette.parchment)
+                .lineLimit(1)
+            Text(detail)
+                .font(.system(size: 10, weight: .black))
+                .foregroundStyle(.white.opacity(0.72))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity)
+        .background(.black.opacity(0.54), in: Capsule())
+        .overlay(Capsule().stroke((isHumanTurn ? MagicPalette.antiqueGold : MagicPalette.oxblood).opacity(0.55), lineWidth: 1))
     }
 }
 
@@ -1020,8 +1606,8 @@ struct PlayerAvatar: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .overlay(Circle().stroke(active ? .cyan : .white.opacity(0.52), lineWidth: active ? 3 : 2))
-        .shadow(color: active ? .cyan.opacity(0.45) : .clear, radius: 10)
+        .overlay(Circle().stroke(active ? MagicPalette.antiqueGold : MagicPalette.parchment.opacity(0.52), lineWidth: active ? 3 : 2))
+        .shadow(color: active ? MagicPalette.antiqueGold.opacity(0.35) : .clear, radius: 10)
     }
 }
 
@@ -1029,18 +1615,187 @@ struct ZoneCounter: View {
     let label: String
     let value: Int
     var compact = false
+    var tiny = false
 
     var body: some View {
         VStack(spacing: 0) {
             Text("\(value)")
-                .font(.system(size: compact ? 10 : 12, weight: .black))
+                .font(.system(size: tiny ? 8 : (compact ? 10 : 12), weight: .black))
             Text(label)
-                .font(.system(size: compact ? 7 : 8, weight: .black))
+                .font(.system(size: tiny ? 6 : (compact ? 7 : 8), weight: .black))
                 .foregroundStyle(.white.opacity(0.65))
         }
         .foregroundStyle(.white)
-        .frame(width: compact ? 30 : 36, height: compact ? 26 : 30)
-        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+        .frame(width: tiny ? 24 : (compact ? 30 : 36), height: tiny ? 22 : (compact ? 26 : 30))
+        .background(.white.opacity(tiny ? 0.06 : 0.08), in: RoundedRectangle(cornerRadius: 7))
+    }
+}
+
+struct ManaPoolHUD: View {
+    let manaPool: ManaPool?
+
+    private var values: [(String, Int)] {
+        [
+            ("W", manaPool?.W ?? 0),
+            ("U", manaPool?.U ?? 0),
+            ("B", manaPool?.B ?? 0),
+            ("R", manaPool?.R ?? 0),
+            ("G", manaPool?.G ?? 0),
+            ("C", manaPool?.C ?? 0)
+        ]
+    }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(values, id: \.0) { symbol, count in
+                HStack(spacing: 2) {
+                    ManaSymbolView(symbol: symbol, size: 18)
+                    Text("\(count)")
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundStyle(.white)
+                        .frame(minWidth: 8)
+                }
+                .opacity(count > 0 ? 1 : 0.45)
+            }
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(MagicPalette.iron.opacity(0.68), in: Capsule())
+        .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.30), lineWidth: 1))
+        .shadow(color: .black.opacity(0.30), radius: 10, y: 5)
+    }
+}
+
+struct ManaSymbolView: View {
+    let symbol: String
+    let size: CGFloat
+
+    var body: some View {
+        if let url = CardImageURL.symbol("{\(symbol)}"),
+           let image = UIImage(contentsOfFile: url.path) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(width: size, height: size)
+        } else {
+            Text(symbol)
+                .font(.system(size: size * 0.58, weight: .black))
+                .foregroundStyle(foregroundColor)
+                .frame(width: size, height: size)
+                .background(backgroundColor, in: Circle())
+                .overlay(Circle().stroke(.black.opacity(0.45), lineWidth: 1))
+        }
+    }
+
+    private var backgroundColor: Color {
+        switch symbol {
+        case "W": return Color(red: 0.92, green: 0.86, blue: 0.66)
+        case "U": return Color(red: 0.32, green: 0.55, blue: 0.78)
+        case "B": return Color(red: 0.18, green: 0.16, blue: 0.15)
+        case "R": return Color(red: 0.78, green: 0.25, blue: 0.16)
+        case "G": return Color(red: 0.25, green: 0.52, blue: 0.25)
+        default: return Color(red: 0.60, green: 0.57, blue: 0.50)
+        }
+    }
+
+    private var foregroundColor: Color {
+        symbol == "B" ? .white : .black
+    }
+}
+
+struct StackPeek: View {
+    let cards: [ZoneCard]
+    @Binding var selectedCard: ZoneCard?
+    @Binding var inspectedCard: ZoneCard?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("STACK")
+                .font(.system(size: 10, weight: .black))
+                .foregroundStyle(MagicPalette.antiqueGold)
+                .rotationEffect(.degrees(-90))
+                .frame(width: 24)
+
+            HStack(spacing: -14) {
+                ForEach(Array(cards.suffix(4).enumerated()), id: \.element.id) { index, card in
+                    CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, width: 38, height: 54)
+                        .zIndex(Double(index))
+                        .onTapGesture {
+                            selectedCard = card
+                            inspectedCard = nil
+                        }
+                        .onLongPressGesture(minimumDuration: 0.35) {
+                            inspectedCard = card
+                        }
+                }
+            }
+
+            Text(cards.last?.card.name ?? "Resolving")
+                .font(.system(size: 11, weight: .black))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .minimumScaleFactor(0.65)
+            Spacer(minLength: 0)
+        }
+        .padding(8)
+        .background(.black.opacity(0.56), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.antiqueGold.opacity(0.24)))
+    }
+}
+
+struct XmageStackPeek: View {
+    let objects: [XmageStackObject]
+    @Binding var selectedCard: ZoneCard?
+    @Binding var inspectedCard: ZoneCard?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("STACK")
+                .font(.system(size: 10, weight: .black))
+                .foregroundStyle(MagicPalette.antiqueGold)
+                .rotationEffect(.degrees(-90))
+                .frame(width: 24)
+
+            HStack(spacing: -12) {
+                ForEach(Array(objects.suffix(3).enumerated()), id: \.element.id) { index, object in
+                    if let card = object.sourceCard {
+                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, width: 38, height: 54)
+                            .zIndex(Double(index))
+                            .onTapGesture {
+                                selectedCard = card
+                                inspectedCard = nil
+                            }
+                            .onLongPressGesture(minimumDuration: 0.35) {
+                                inspectedCard = card
+                            }
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(objects.last?.name ?? "Resolving")
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+                if let text = objects.last?.rulesText, !text.isEmpty {
+                    Text(text)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.72))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.62)
+                }
+                if let paid = objects.last?.paid {
+                    Text(paid ? "Paid" : "Pending payment")
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundStyle(paid ? MagicPalette.parchment.opacity(0.7) : MagicPalette.antiqueGold)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(8)
+        .background(MagicPalette.iron.opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.antiqueGold.opacity(0.30)))
     }
 }
 
@@ -1069,15 +1824,146 @@ struct PromptPill: View {
     }
 }
 
-struct BattlefieldRow: View {
-    let title: String
-    let cards: [ZoneCard]
-    @Binding var selectedCard: ZoneCard?
-    var flipped = false
-    let cardWidth: CGFloat
+struct PromptChoicePanel: View {
+    let prompt: ChoicePrompt
+    let actions: [LegalAction]
+    let pendingActionId: String?
+    let runAction: (LegalAction) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("XMAGE PROMPT")
+                .font(.system(size: 8, weight: .black))
+                .foregroundStyle(MagicPalette.antiqueGold)
+            Text(prompt.message)
+                .font(.system(size: 12, weight: .black))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .minimumScaleFactor(0.68)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    ForEach(prompt.choices.prefix(8)) { choice in
+                        Button {
+                            if let action = action(for: choice) {
+                                runAction(action)
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                if pendingActionId == action(for: choice)?.id {
+                                    ProgressView()
+                                        .tint(.white)
+                                        .scaleEffect(0.62)
+                                }
+                                Text(choice.label)
+                            }
+                        }
+                        .buttonStyle(CompactActionButtonStyle(isPrimary: true))
+                        .disabled(pendingActionId != nil || action(for: choice) == nil)
+                    }
+                }
+            }
+        }
+        .padding(9)
+        .background(MagicPalette.iron.opacity(0.78), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.antiqueGold.opacity(0.32)))
+    }
+
+    private func action(for choice: ChoicePromptOption) -> LegalAction? {
+        actions.first { action in
+            action.targetIds?.contains(choice.id) == true ||
+            action.validTargetIds?.contains(choice.id) == true ||
+            action.id.hasSuffix(choice.id)
+        }
+    }
+}
+
+struct PromptEnvelopeBadge: View {
+    let prompt: PromptEnvelope
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 5) {
+                Text(prompt.method.replacingOccurrences(of: "GAME_", with: ""))
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundStyle(MagicPalette.antiqueGold)
+                Spacer(minLength: 6)
+                Text(prompt.responseKind.uppercased())
+                    .font(.system(size: 7, weight: .black))
+                    .foregroundStyle(.white.opacity(0.64))
+            }
+
+            Text(prompt.message)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .minimumScaleFactor(0.72)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .background(MagicPalette.iron.opacity(0.70), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.antiqueGold.opacity(0.25)))
+        .allowsHitTesting(false)
+    }
+}
+
+struct PromptEnvelopeV2Badge: View {
+    let prompt: PromptEnvelopeV2
+
+    private var detail: String {
+        var parts: [String] = []
+        if let count = prompt.targets?.count, count > 0 { parts.append("\(count) targets") }
+        if let count = prompt.cards?.count, count > 0 { parts.append("\(count) cards") }
+        if let count = prompt.abilities?.count, count > 0 { parts.append("\(count) abilities") }
+        if let count = prompt.amounts?.count, count > 0 { parts.append("\(count) amounts") }
+        return parts.isEmpty ? (prompt.responseCommand?.type ?? prompt.responseKind) : parts.joined(separator: " | ")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 5) {
+                Text(prompt.method.replacingOccurrences(of: "GAME_", with: ""))
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundStyle(MagicPalette.antiqueGold)
+                Spacer(minLength: 6)
+                Text((prompt.responseCommand?.type ?? prompt.responseKind).uppercased())
+                    .font(.system(size: 7, weight: .black))
+                    .foregroundStyle(.white.opacity(0.64))
+            }
+
+            Text(prompt.message)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .minimumScaleFactor(0.72)
+
+            Text(detail)
+                .font(.system(size: 8, weight: .black))
+                .foregroundStyle(MagicPalette.parchment.opacity(0.68))
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .background(MagicPalette.iron.opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.antiqueGold.opacity(0.28)))
+        .allowsHitTesting(false)
+    }
+}
+
+struct BattlefieldRow: View {
+    let title: String
+    let cards: [ZoneCard]
+    let legalActions: [LegalAction]
+    @Binding var selectedCard: ZoneCard?
+    @Binding var inspectedCard: ZoneCard?
+    var flipped = false
+    let cardWidth: CGFloat
+    let rowWidth: CGFloat
+    let runAction: (LegalAction) -> Void
+
+    var body: some View {
+        VStack(alignment: .center, spacing: 4) {
             HStack {
                 Text(title.uppercased())
                     .font(.system(size: 11, weight: .black))
@@ -1089,21 +1975,35 @@ struct BattlefieldRow: View {
                     if cards.isEmpty {
                         Text("No permanents")
                             .font(.caption.weight(.black))
-                            .foregroundStyle(.white.opacity(0.38))
+                            .foregroundStyle(MagicPalette.parchment.opacity(0.42))
                             .padding(.horizontal, 12)
-                            .frame(maxWidth: .infinity, minHeight: cardWidth * 1.40, alignment: .leading)
+                            .frame(minWidth: rowWidth, minHeight: cardWidth * 1.40, alignment: .center)
                     }
                     ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
-                        CardTile(card: card, selected: selectedCard?.id == card.id, width: cardWidth, height: cardWidth * 1.40)
-                            .rotationEffect(.degrees(flipped ? 180 : 0))
+                        let action = legalAction(for: card)
+                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: action != nil, width: cardWidth, height: cardWidth * 1.40)
                             .offset(y: card.tapped == true ? 5 : 0)
                             .zIndex(Double(index))
-                            .onTapGesture { selectedCard = card }
+                            .onTapGesture {
+                                if let action, action.type == "make_mana" {
+                                    runAction(action)
+                                } else {
+                                    selectedCard = card
+                                    inspectedCard = nil
+                                }
+                        }
+                        .onLongPressGesture(minimumDuration: 0.35) { inspectedCard = card }
                     }
                 }
                 .padding(.horizontal, 8)
-                .frame(maxWidth: .infinity, minHeight: 88, alignment: .center)
+                .frame(minWidth: rowWidth, minHeight: cardWidth * 1.40 + 6, alignment: .center)
             }
+        }
+    }
+
+    private func legalAction(for card: ZoneCard) -> LegalAction? {
+        legalActions.first {
+            $0.cardInstanceId == card.instanceId || $0.sourceInstanceId == card.instanceId
         }
     }
 }
@@ -1112,9 +2012,13 @@ struct HandFan: View {
     let cards: [ZoneCard]
     let legalActions: [LegalAction]
     @Binding var selectedCard: ZoneCard?
+    @Binding var inspectedCard: ZoneCard?
     let pendingCardInstanceId: String?
     let metrics: BattlefieldLayoutMetrics
+    @Binding var isOverPlayerDropZone: Bool
     let runAction: (LegalAction) -> Void
+    @State private var draggingCardId: String?
+    @State private var dragOffset: CGSize = .zero
 
     var body: some View {
         ZStack {
@@ -1125,30 +2029,54 @@ struct HandFan: View {
                 let spread = min(metrics.handCardWidth * 0.56, maxSpread)
                 let selected = selectedCard?.id == card.id
                 let action = legalHandAction(for: card)
+                let isDragging = draggingCardId == card.id
 
                 CardTile(
                     card: card,
                     selected: selected,
                     pending: pendingCardInstanceId == card.instanceId,
+                    legal: action != nil,
                     width: metrics.handCardWidth,
                     height: metrics.handCardHeight
                 )
                     .scaleEffect(selected ? 1.16 : 1.0)
                     .rotationEffect(.degrees(Double(distance) * 5.2))
-                    .offset(x: distance * spread, y: selected ? -30 : abs(distance) * 4 + 10)
-                    .zIndex(selectedCard?.id == card.id ? 10 : Double(index))
-                    .onTapGesture { selectedCard = card }
-                    .gesture(
-                        DragGesture(minimumDistance: 16)
-                            .onEnded { value in
-                                selectedCard = card
-                                guard value.translation.height < -42, let action else { return }
-                                runAction(action)
-                            }
+                    .offset(
+                        x: distance * spread + (isDragging ? dragOffset.width : 0),
+                        y: (selected ? -30 : abs(distance) * 4 + 10) + (isDragging ? dragOffset.height : 0)
                     )
+                    .zIndex(isDragging || selectedCard?.id == card.id ? 10 : Double(index))
+                    .onTapGesture {
+                        selectedCard = card
+                        inspectedCard = nil
+                    }
+                    .onLongPressGesture(minimumDuration: 0.35) { inspectedCard = card }
             }
         }
         .frame(width: metrics.playWidth, height: metrics.handFrameHeight)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 4)
+                .onChanged { value in
+                    if let card = draggingCard ?? card(at: value.location.x) {
+                        selectedCard = card
+                        inspectedCard = nil
+                        draggingCardId = card.id
+                        dragOffset = value.translation
+                        isOverPlayerDropZone = metrics.playerDropZone.contains(globalPoint(for: value.location))
+                    }
+                }
+                .onEnded { value in
+                    guard let card = draggingCard ?? selectedCard else { return }
+                    selectedCard = card
+                    let shouldPlay = metrics.playerDropZone.contains(globalPoint(for: value.location))
+                    draggingCardId = nil
+                    dragOffset = .zero
+                    isOverPlayerDropZone = false
+                    guard shouldPlay, let action = legalHandAction(for: card) else { return }
+                    runAction(action)
+                }
+        )
     }
 
     private func legalHandAction(for card: ZoneCard) -> LegalAction? {
@@ -1157,12 +2085,35 @@ struct HandFan: View {
             ["play_land", "cast_spell"].contains($0.type)
         }
     }
+
+    private func card(at x: CGFloat) -> ZoneCard? {
+        guard !cards.isEmpty else { return nil }
+        guard cards.count > 1 else { return cards.first }
+        let center = CGFloat(cards.count - 1) / 2
+        let maxSpread = max((metrics.playWidth - metrics.handCardWidth) / CGFloat(max(cards.count - 1, 1)), 0)
+        let spread = min(metrics.handCardWidth * 0.56, maxSpread)
+        let index = Int(round((x - metrics.playWidth / 2) / max(spread, 1) + center))
+        return cards[min(max(index, 0), cards.count - 1)]
+    }
+
+    private func globalPoint(for localPoint: CGPoint) -> CGPoint {
+        CGPoint(
+            x: metrics.playCenterX - metrics.playWidth / 2 + localPoint.x,
+            y: metrics.handY - metrics.handFrameHeight / 2 + localPoint.y
+        )
+    }
+
+    private var draggingCard: ZoneCard? {
+        guard let draggingCardId else { return nil }
+        return cards.first { $0.id == draggingCardId }
+    }
 }
 
 struct CardTile: View {
     let card: ZoneCard
     let selected: Bool
     var pending = false
+    var legal = false
     var width: CGFloat = 82
     var height: CGFloat = 112
 
@@ -1202,11 +2153,21 @@ struct CardTile: View {
                     .background(.white.opacity(0.92), in: Capsule())
                     .padding(3)
             }
+
+            if card.tapped == true {
+                Text("TAP")
+                    .font(.system(size: 7, weight: .black))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background(MagicPalette.oxblood.opacity(0.88), in: Capsule())
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(3)
+            }
         }
         .frame(width: width, height: height)
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(strokeColor, lineWidth: selected || pending ? 3 : 1))
-        .rotationEffect(card.tapped == true ? .degrees(12) : .zero)
-        .shadow(color: pending ? .orange.opacity(0.75) : selected ? .cyan.opacity(0.65) : .clear, radius: 10)
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(strokeColor, lineWidth: selected || pending || legal ? 3 : 1))
+        .shadow(color: shadowColor, radius: legal || selected || pending ? 10 : 0)
     }
 
     private var strokeColor: Color {
@@ -1214,9 +2175,25 @@ struct CardTile: View {
             return .orange
         }
         if selected {
-            return .cyan
+            return MagicPalette.antiqueGold
+        }
+        if legal {
+            return Color(red: 0.55, green: 0.28, blue: 0.72)
         }
         return .black.opacity(0.55)
+    }
+
+    private var shadowColor: Color {
+        if pending {
+            return .orange.opacity(0.75)
+        }
+        if selected {
+            return MagicPalette.antiqueGold.opacity(0.55)
+        }
+        if legal {
+            return Color(red: 0.55, green: 0.28, blue: 0.72).opacity(0.55)
+        }
+        return .clear
     }
 }
 
@@ -1525,17 +2502,251 @@ struct GameTextFieldStyle: TextFieldStyle {
 }
 
 enum CardImageURL {
+    private static let baseURLKey = "MagicMobile.cardImageBaseURL"
+
+    static func setBaseURL(_ value: String) {
+        UserDefaults.standard.set(value.trimmingCharacters(in: .whitespacesAndNewlines), forKey: baseURLKey)
+    }
+
     static func normal(_ name: String) -> URL? {
         if name == "Hidden card" {
             return URL(string: "https://gatherer.wizards.com/Images/CardBack.jpg")
         }
-        var components = URLComponents(string: "https://api.scryfall.com/cards/named")
+        let localURL = cacheURL(for: name)
+        if FileManager.default.fileExists(atPath: localURL.path) {
+            return localURL
+        }
+        let baseURL = UserDefaults.standard.string(forKey: baseURLKey) ?? "https://magicmobile.openclaw-is3w.srv1420950.hstgr.cloud"
+        var components = URLComponents(string: baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/card-image")
         components?.queryItems = [
-            URLQueryItem(name: "format", value: "image"),
-            URLQueryItem(name: "version", value: "normal"),
-            URLQueryItem(name: "exact", value: name)
+            URLQueryItem(name: "version", value: "small"),
+            URLQueryItem(name: "name", value: name)
         ]
         return components?.url
+    }
+
+    static func cachedImageCount() -> Int {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: cacheDirectory,
+            includingPropertiesForKeys: nil
+        ) else {
+            return 0
+        }
+        return files.filter { $0.pathExtension.lowercased() == "jpg" }.count
+    }
+
+    static func cachedSymbolCount() -> Int {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: symbolCacheDirectory,
+            includingPropertiesForKeys: nil
+        ) else {
+            return 0
+        }
+        return files.filter { $0.pathExtension.lowercased() == "png" }.count
+    }
+
+    static func symbol(_ symbol: String) -> URL? {
+        let localURL = symbolCacheURL(for: symbol)
+        return FileManager.default.fileExists(atPath: localURL.path) ? localURL : nil
+    }
+
+    static func downloadAllImagesToPhone(
+        images: [CardImageManifestEntry],
+        progress: @escaping (_ completed: Int, _ total: Int) async -> Void
+    ) async throws -> Int {
+        try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        try excludeFromBackup(cacheDirectory)
+        let uniqueImages = uniqueManifestEntries(images)
+        let total = uniqueImages.count
+        var completed = 0
+        var downloaded = 0
+        let batchSize = 8
+
+        await progress(completed, total)
+
+        for startIndex in stride(from: 0, to: uniqueImages.count, by: batchSize) {
+            let endIndex = min(startIndex + batchSize, uniqueImages.count)
+            let batch = Array(uniqueImages[startIndex..<endIndex])
+
+            downloaded += await withTaskGroup(of: Bool.self) { group in
+                for entry in batch {
+                    group.addTask {
+                        await downloadImage(entry)
+                    }
+                }
+
+                var batchDownloaded = 0
+                for await didDownload in group where didDownload {
+                    batchDownloaded += 1
+                }
+                return batchDownloaded
+            }
+
+            completed += batch.count
+            await progress(completed, total)
+        }
+
+        return downloaded
+    }
+
+    static func downloadAllSymbolsToPhone(
+        symbols: [SymbolManifestEntry],
+        progress: @escaping (_ completed: Int, _ total: Int) async -> Void
+    ) async throws -> Int {
+        try FileManager.default.createDirectory(at: symbolCacheDirectory, withIntermediateDirectories: true)
+        try excludeFromBackup(symbolCacheDirectory)
+        let uniqueSymbols = uniqueSymbolEntries(symbols)
+        let total = uniqueSymbols.count
+        var completed = 0
+        var downloaded = 0
+        let batchSize = 12
+
+        await progress(completed, total)
+
+        for startIndex in stride(from: 0, to: uniqueSymbols.count, by: batchSize) {
+            let endIndex = min(startIndex + batchSize, uniqueSymbols.count)
+            let batch = Array(uniqueSymbols[startIndex..<endIndex])
+
+            downloaded += await withTaskGroup(of: Bool.self) { group in
+                for entry in batch {
+                    group.addTask {
+                        await downloadSymbol(entry)
+                    }
+                }
+
+                var batchDownloaded = 0
+                for await didDownload in group where didDownload {
+                    batchDownloaded += 1
+                }
+                return batchDownloaded
+            }
+
+            completed += batch.count
+            await progress(completed, total)
+        }
+
+        return downloaded
+    }
+
+    private static func downloadImage(_ entry: CardImageManifestEntry) async -> Bool {
+        let destination = cacheURL(for: entry.name)
+        if FileManager.default.fileExists(atPath: destination.path) {
+            return false
+        }
+        guard let sourceURL = URL(string: entry.url) else {
+            return false
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(from: sourceURL)
+            if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
+                try data.write(to: destination, options: .atomic)
+                return true
+            }
+        } catch {
+            print("Card image download failed for \(entry.name): \(error.localizedDescription)")
+        }
+
+        return false
+    }
+
+    private static func downloadSymbol(_ entry: SymbolManifestEntry) async -> Bool {
+        let destination = symbolCacheURL(for: entry.symbol)
+        if FileManager.default.fileExists(atPath: destination.path) {
+            return false
+        }
+        guard let source = entry.pngUrl,
+              let sourceURL = URL(string: source) else {
+            return false
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(from: sourceURL)
+            if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
+                try data.write(to: destination, options: .atomic)
+                return true
+            }
+        } catch {
+            print("Symbol download failed for \(entry.symbol): \(error.localizedDescription)")
+        }
+
+        return false
+    }
+
+    private static var cacheDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("MagicMobileCardImages", isDirectory: true)
+    }
+
+    private static var symbolCacheDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("MagicMobileSymbols", isDirectory: true)
+    }
+
+    private static func excludeFromBackup(_ url: URL) throws {
+        var mutableURL = url
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try mutableURL.setResourceValues(values)
+    }
+
+    private static func cacheURL(for name: String) -> URL {
+        cacheDirectory.appendingPathComponent(fileName(for: name))
+    }
+
+    private static func symbolCacheURL(for symbol: String) -> URL {
+        symbolCacheDirectory.appendingPathComponent(symbolFileName(for: symbol))
+    }
+
+    private static func fileName(for name: String) -> String {
+        let slug = name
+            .lowercased()
+            .unicodeScalars
+            .map { CharacterSet.alphanumerics.contains($0) ? String($0) : "_" }
+            .joined()
+            .replacingOccurrences(of: "_+", with: "_", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+        return "\(slug.isEmpty ? "card" : slug).jpg"
+    }
+
+    private static func symbolFileName(for symbol: String) -> String {
+        let cleaned = symbol
+            .replacingOccurrences(of: "{", with: "")
+            .replacingOccurrences(of: "}", with: "")
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: "∞", with: "infinity")
+        let slug = cleaned
+            .lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: "-")
+        return "\(slug.isEmpty ? "symbol" : slug).png"
+    }
+
+    private static func uniqueManifestEntries(_ images: [CardImageManifestEntry]) -> [CardImageManifestEntry] {
+        var seen = Set<String>()
+        var unique: [CardImageManifestEntry] = []
+
+        for image in images.sorted(by: { $0.name < $1.name }) {
+            let key = image.name.lowercased()
+            guard !seen.contains(key) else { continue }
+            seen.insert(key)
+            unique.append(image)
+        }
+
+        return unique
+    }
+
+    private static func uniqueSymbolEntries(_ symbols: [SymbolManifestEntry]) -> [SymbolManifestEntry] {
+        var seen = Set<String>()
+        var unique: [SymbolManifestEntry] = []
+        for symbol in symbols {
+            let key = symbol.symbol
+            if seen.insert(key).inserted {
+                unique.append(symbol)
+            }
+        }
+        return unique
     }
 }
 
@@ -1562,6 +2773,12 @@ extension String {
     }
 }
 
+private extension CardIdentity {
+    var isLand: Bool {
+        typeLine.localizedCaseInsensitiveContains("land")
+    }
+}
+
 private let stageLabels = [
     "untap",
     "upkeep",
@@ -1571,6 +2788,7 @@ private let stageLabels = [
     "declare-attackers",
     "declare-blockers",
     "combat-damage",
+    "end-combat",
     "postcombat-main",
     "end",
     "cleanup"

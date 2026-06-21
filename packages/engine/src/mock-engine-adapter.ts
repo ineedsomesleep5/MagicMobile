@@ -174,6 +174,15 @@ export class MockEngineAdapter implements EngineAdapter {
       case "choose_mode":
       case "choose_card":
       case "choose_target":
+      case "choose_ability":
+      case "choose_pile":
+      case "choose_amount":
+      case "choose_multi_amount":
+      case "play_mana":
+      case "play_x_mana":
+      case "order_triggers":
+      case "search_select":
+      case "commander_replacement":
       case "declare_blockers":
       case "resolve_choice":
         return this.applyHybridAction({ gameId: input.gameId, action: { type: "pass_priority", playerId: input.playerId } });

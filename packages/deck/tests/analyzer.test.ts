@@ -77,6 +77,16 @@ describe("CommanderDeckAnalyzer.validateCommander", () => {
 
     expect(errors).toContain("Atraxa, Praetors' Voice is not legal as a Commander.");
   });
+
+  it("rejects cards that are not legal in Commander", async () => {
+    const bannedCards = seedCards.map((card) =>
+      card.name === "Demonic Tutor" ? { ...card, legalities: { commander: "banned" as const } } : card
+    );
+
+    const errors = await analyzer.validateCommander({ deck: validAtraxaDeck(), cards: bannedCards });
+
+    expect(errors).toContain("Demonic Tutor is not legal in Commander.");
+  });
 });
 
 describe("CommanderDeckAnalyzer.getStats", () => {
