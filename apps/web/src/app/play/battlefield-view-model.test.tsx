@@ -144,11 +144,15 @@ describe("BattlefieldViewModel", () => {
         maxChoices: 1,
         choices: [{ id: "draw", label: "Draw a card" }],
         targets: [{ id: "target-1", label: "Arboreal Grazer", cardInstanceId: "grazer-1" }],
+        players: [{ id: "opponent", label: "Opponent", playerId: "opponent", life: 20 }],
         cards: [grazer],
         abilities: [{ id: "ability-1", label: "Beast Whisperer trigger", rulesText: "Whenever you cast a creature spell, draw a card." }],
         modes: [{ id: "mode-1", label: "Draw" }],
         amounts: [0, 1, 2],
-        piles: [{ id: "1", label: "Pile 1", cards: [grazer] }]
+        manaChoices: [{ id: "G", label: "Pay {G}", manaType: "G" }],
+        piles: [{ id: "1", label: "Pile 1", cards: [grazer] }],
+        orderedItems: [{ id: "trigger-1", label: "Resolve trigger first", kind: "order" }],
+        confirmation: { yesLabel: "Yes", noLabel: "No" }
       },
       xmage: {
         schemaVersion: 1,
@@ -204,8 +208,12 @@ describe("BattlefieldViewModel", () => {
     expect(html).toContain("GAME CHOOSE CHOICE");
     expect(html).toContain("Choose a mode");
     expect(html).toContain("Draw a card");
+    expect(html).toContain("Opponent (20)");
     expect(html).toContain("Beast Whisperer trigger");
     expect(html).toContain("Whenever you cast a creature spell, draw a card.");
+    expect(html).toContain("Pay {G}");
+    expect(html).toContain("Resolve trigger first");
+    expect(html).toContain("Confirmation");
     expect(html).toContain("Amount 10");
     expect(html).toContain("Paid");
     expect(html).toContain("Exiled by Oblivion Ring");

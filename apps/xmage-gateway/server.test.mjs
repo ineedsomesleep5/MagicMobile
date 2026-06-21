@@ -479,6 +479,10 @@ describe("xmage gateway", () => {
 
     assert.match(bridgeSource, /currentPromptForCommand/);
     assert.match(bridgeSource, /validatePromptSelections/);
+    assert.match(bridgeSource, /prompt\.add\("manaChoices"/);
+    assert.match(bridgeSource, /prompt\.add\("confirmation"/);
+    assert.match(bridgeSource, /prompt\.add\("orderedItems"/);
+    assert.match(bridgeSource, /prompt\.add\("players"/);
     assert.doesNotMatch(bridgeSource, /sendFirstUuid/);
     assert.doesNotMatch(bridgeSource, /sendFirstStringOrUuid/);
   });

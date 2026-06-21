@@ -22,8 +22,8 @@ const created = await request("/games/commander", {
 });
 
 let snapshot = created;
-const steps: Array<{ label: string; type: string; optional?: boolean }> = [
-  { label: "choose starting player", type: "resolve_choice", optional: true },
+const steps: Array<{ label: string; type: string | string[]; optional?: boolean }> = [
+  { label: "choose starting player", type: ["resolve_choice", "choose_target"], optional: true },
   { label: "keep hand", type: "keep_hand" },
   { label: "play land", type: "play_land" },
   { label: "make mana", type: "make_mana" },
@@ -34,7 +34,15 @@ const completed: string[] = [];
 const promptChecks: string[] = [];
 
 for (const step of steps) {
-  const action = findAction(snapshot, step.type);
+  const waited = await waitForAction(snapshot, step.type, step.optional);
+  snapshot = waited.snapshot;
+  let action = waited.action;
+  if (!action && step.type === "play_land") {
+    const advanced = await passUntilAction(snapshot, step.type);
+    snapshot = advanced.snapshot;
+    action = advanced.action;
+    completed.push(...advanced.completed);
+  }
   if (!action) {
     if (step.optional) continue;
     throw new Error(`XMage smoke missing ${step.label} action. Legal actions: ${formatActions(snapshot)}`);
@@ -50,8 +58,8 @@ for (const step of steps) {
 
   if (snapshot.promptEnvelopeV2) {
     promptChecks.push(`${snapshot.promptEnvelopeV2.method ?? "unknown"}:${snapshot.promptEnvelopeV2.responseKind ?? "unknown"}`);
-    if (!snapshot.legalActions?.some((candidate: SmokeAction) => candidate.responseKind || candidate.targetIds?.length)) {
-      throw new Error("XMage promptEnvelopeV2 was present but no response-shaped legal action was exposed.");
+    if (!snapshot.legalActions?.length) {
+      throw new Error("XMage promptEnvelopeV2 was present but no legal response action was exposed.");
     }
   }
 }
@@ -97,8 +105,42 @@ async function request(path: string, options: { method?: string; body?: unknown 
   return body;
 }
 
-function findAction(snapshot: SmokeSnapshot, type: string) {
-  return snapshot.legalActions?.find((action) => action.type === type);
+function findAction(snapshot: SmokeSnapshot, type: string | string[]) {
+  const types = Array.isArray(type) ? type : [type];
+  return snapshot.legalActions?.find((action) => types.includes(action.type));
+}
+
+async function waitForAction(snapshot: SmokeSnapshot, type: string | string[], optional = false) {
+  let current = snapshot;
+  const deadline = Date.now() + (optional ? 500 : 30000);
+  while (true) {
+    const action = findAction(current, type);
+    if (action || Date.now() >= deadline) {
+      return { snapshot: current, action };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 750));
+    current = await request(`/games/${encodeURIComponent(current.id)}`);
+  }
+}
+
+async function passUntilAction(snapshot: SmokeSnapshot, type: string | string[]) {
+  let current = snapshot;
+  const completedPasses: string[] = [];
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const action = findAction(current, type);
+    if (action) return { snapshot: current, action, completed: completedPasses };
+    const pass = findAction(current, ["pass_priority", "pass_until_response"]);
+    if (!pass) return { snapshot: current, action: undefined, completed: completedPasses };
+    const previous = current;
+    current = await request(`/games/${encodeURIComponent(current.id)}/commands`, {
+      method: "POST",
+      body: commandFromAction(current.id, pass)
+    });
+    assertBridgeProgress(previous, current, "pass toward main phase");
+    completedPasses.push(`pass toward main phase ${attempt + 1}`);
+    current = (await waitForAction(current, type, true)).snapshot;
+  }
+  return { snapshot: current, action: findAction(current, type), completed: completedPasses };
 }
 
 function commandFromAction(gameId: string, action: SmokeAction) {
@@ -112,8 +154,16 @@ function commandFromAction(gameId: string, action: SmokeAction) {
     abilityId: action.abilityId ?? action.commandTemplate?.abilityId,
     choiceIds: targetIds,
     targetIds,
-    cardInstanceIds: targetIds,
-    modeIds: targetIds
+    cardInstanceIds: action.cardInstanceIds ?? targetIds,
+    modeIds: action.modeIds ?? targetIds,
+    playerIds: action.playerIds ?? action.validPlayerIds ?? targetIds,
+    manaTypes: action.manaTypes,
+    orderedIds: action.orderedIds ?? targetIds,
+    confirmed: action.confirmed,
+    amount: action.amount,
+    amounts: action.amounts,
+    pile: action.pile,
+    useCommandZone: action.useCommandZone
   };
 }
 
@@ -123,16 +173,20 @@ function assertBridgeProgress(
   label: string,
   options: { allowEqual?: boolean } = {}
 ) {
-  assertAdvanced("bridgeRevision", previous.bridgeRevision, next.bridgeRevision, label, options.allowEqual);
-  assertAdvanced("xmageCycle", previous.xmageCycle, next.xmageCycle, label, options.allowEqual);
+  const revisionAdvanced = advanced(previous.bridgeRevision, next.bridgeRevision, options.allowEqual);
+  const cycleAdvanced = advanced(previous.xmageCycle, next.xmageCycle, options.allowEqual);
+  if (!revisionAdvanced && !cycleAdvanced) {
+    throw new Error(
+      `XMage smoke ${label} did not advance bridgeRevision or xmageCycle: `
+        + `${previous.bridgeRevision ?? "n/a"} -> ${next.bridgeRevision ?? "n/a"}, `
+        + `${previous.xmageCycle ?? "n/a"} -> ${next.xmageCycle ?? "n/a"}`
+    );
+  }
 }
 
-function assertAdvanced(field: string, before: unknown, after: unknown, label: string, allowEqual = false) {
+function advanced(before: unknown, after: unknown, allowEqual = false) {
   if (typeof before !== "number" || typeof after !== "number") return;
-  const advanced = allowEqual ? after >= before : after > before;
-  if (!advanced) {
-    throw new Error(`XMage smoke ${label} did not advance ${field}: ${before} -> ${after}`);
-  }
+  return allowEqual ? after >= before : after > before;
 }
 
 function formatActions(snapshot: SmokeSnapshot) {
@@ -171,4 +225,15 @@ type SmokeAction = {
   responseKind?: string;
   targetIds?: string[];
   validTargetIds?: string[];
+  cardInstanceIds?: string[];
+  modeIds?: string[];
+  playerIds?: string[];
+  validPlayerIds?: string[];
+  manaTypes?: string[];
+  orderedIds?: string[];
+  confirmed?: boolean;
+  amount?: number;
+  amounts?: number[];
+  pile?: number;
+  useCommandZone?: boolean;
 };

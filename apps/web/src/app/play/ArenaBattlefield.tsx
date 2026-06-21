@@ -294,11 +294,20 @@ function PromptEnvelopePanel({
         </div>
       ) : null}
       <PromptItemList label="Targets" items={prompt.targets?.map((target) => target.label) ?? []} />
+      <PromptItemList label="Players" items={prompt.players?.map((player) => player.life === undefined ? player.label : `${player.label} (${player.life})`) ?? []} />
       <PromptItemList label="Cards" items={prompt.cards?.map((card) => card.card.name) ?? []} />
       <PromptItemList label="Modes" items={prompt.modes?.map((mode) => mode.label) ?? []} />
       <PromptItemList label="Abilities" items={prompt.abilities?.map((ability) => ability.rulesText ? `${ability.label}: ${ability.rulesText}` : ability.label) ?? []} />
       <PromptItemList label="Amounts" items={prompt.amounts?.map(String) ?? []} />
+      <PromptItemList label="Mana" items={prompt.manaChoices?.map((choice) => choice.label) ?? []} />
       <PromptItemList label="Piles" items={prompt.piles?.map((pile) => `${pile.label}: ${pile.cards.map((card) => card.card.name).join(", ")}`) ?? []} />
+      <PromptItemList label="Order" items={prompt.orderedItems?.map((item) => item.label) ?? []} />
+      {prompt.confirmation ? (
+        <PromptItemList
+          label="Confirmation"
+          items={[prompt.confirmation.yesLabel ?? "Yes", prompt.confirmation.noLabel ?? "No"]}
+        />
+      ) : null}
     </section>
   );
 }
@@ -499,6 +508,14 @@ function actionForChoice(actions: LegalAction[], choiceId: string): LegalAction 
   return actions.find((action) =>
     action.targetIds?.includes(choiceId)
     || action.validTargetIds?.includes(choiceId)
+    || action.choiceIds?.includes(choiceId)
+    || action.cardInstanceIds?.includes(choiceId)
+    || action.modeIds?.includes(choiceId)
+    || action.orderedIds?.includes(choiceId)
+    || action.playerIds?.includes(choiceId)
+    || action.validPlayerIds?.includes(choiceId)
+    || action.manaType === choiceId
+    || String(action.amount) === choiceId
     || action.id === choiceId
     || action.id.endsWith(choiceId)
   );

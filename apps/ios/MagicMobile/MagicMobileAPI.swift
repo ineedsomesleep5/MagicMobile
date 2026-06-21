@@ -97,7 +97,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: action.id,
-                cardInstanceIds: action.targetIds ?? action.validTargetIds ?? []
+                cardInstanceIds: action.cardInstanceIds ?? action.targetIds ?? action.validTargetIds ?? []
             )
         }
 
@@ -117,7 +117,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: action.id,
-                modeIds: action.targetIds ?? []
+                modeIds: action.modeIds ?? action.targetIds ?? []
             )
         }
 
@@ -137,7 +137,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: action.id,
-                manaTypes: [action.manaType ?? action.targetIds?.first ?? "C"]
+                manaTypes: action.manaTypes ?? [action.manaType ?? action.choiceIds?.first ?? action.targetIds?.first ?? "C"]
             )
         }
 
@@ -187,7 +187,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: action.id,
-                cardInstanceIds: action.type == "search_select" ? action.targetIds : nil,
+                cardInstanceIds: action.type == "search_select" ? action.cardInstanceIds ?? action.targetIds : nil,
                 orderedIds: action.type == "order_triggers" || action.type == "order_items" ? action.targetIds ?? action.orderedIds : nil
             )
         }

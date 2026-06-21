@@ -245,6 +245,7 @@ export interface LegalAction {
   amount?: number;
   amounts?: number[];
   manaType?: ColorSymbol;
+  manaTypes?: ColorSymbol[];
   pile?: 1 | 2 | string;
   confirmed?: boolean;
   isPrimary?: boolean;

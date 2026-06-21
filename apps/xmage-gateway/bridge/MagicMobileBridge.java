@@ -1141,6 +1141,15 @@ public final class MagicMobileBridge implements MageClient {
         } else if ("play_mana".equals(type)) {
             action.addProperty("manaType", choiceId);
             template.addProperty("manaType", choiceId);
+        } else if ("choose_mana".equals(type)) {
+            JsonArray manaTypes = new JsonArray();
+            manaTypes.add(choiceId);
+            action.add("manaTypes", manaTypes);
+            template.add("manaTypes", manaTypes.deepCopy());
+        } else if ("choose_player".equals(type)) {
+            action.add("playerIds", choiceIds);
+            action.add("validPlayerIds", choiceIds.deepCopy());
+            template.add("playerIds", choiceIds.deepCopy());
         } else if ("choose_amount".equals(type) || "play_x_mana".equals(type)) {
             try {
                 action.addProperty("amount", Integer.parseInt(choiceId));
@@ -1149,6 +1158,13 @@ public final class MagicMobileBridge implements MageClient {
                 action.addProperty("amount", choiceId);
                 template.addProperty("amount", choiceId);
             }
+        } else if ("answer_yes_no".equals(type)) {
+            boolean confirmed = !"false".equalsIgnoreCase(choiceId);
+            action.addProperty("confirmed", confirmed);
+            template.addProperty("confirmed", confirmed);
+        } else if ("order_items".equals(type) || "order_triggers".equals(type)) {
+            action.add("orderedIds", choiceIds);
+            template.add("orderedIds", choiceIds.deepCopy());
         } else {
             action.add("choiceIds", choiceIds);
             template.add("choiceIds", choiceIds.deepCopy());
@@ -1746,6 +1762,21 @@ public final class MagicMobileBridge implements MageClient {
         if (method == ClientCallbackMethod.GAME_ASK) {
             choices.add(promptChoice("true", "Yes", null));
             choices.add(promptChoice("false", "No", null));
+            JsonObject confirmation = new JsonObject();
+            confirmation.addProperty("yesLabel", "Yes");
+            confirmation.addProperty("noLabel", "No");
+            confirmation.addProperty("defaultValue", true);
+            JsonObject yesCommand = new JsonObject();
+            yesCommand.addProperty("type", commandTypeForResponseKind(string(prompt, "responseKind", "confirmation")));
+            yesCommand.addProperty("promptId", string(prompt, "id", ""));
+            yesCommand.addProperty("confirmed", true);
+            JsonObject noCommand = new JsonObject();
+            noCommand.addProperty("type", commandTypeForResponseKind(string(prompt, "responseKind", "confirmation")));
+            noCommand.addProperty("promptId", string(prompt, "id", ""));
+            noCommand.addProperty("confirmed", false);
+            confirmation.add("yesCommand", yesCommand);
+            confirmation.add("noCommand", noCommand);
+            prompt.add("confirmation", confirmation);
         } else if (method == ClientCallbackMethod.GAME_CHOOSE_PILE) {
             choices.add(promptChoice("1", "Pile 1", null));
             choices.add(promptChoice("2", "Pile 2", null));
@@ -1755,11 +1786,27 @@ public final class MagicMobileBridge implements MageClient {
             prompt.add("piles", piles);
         } else if (method == ClientCallbackMethod.GAME_CHOOSE_CHOICE && message.getChoice() != null) {
             addChoiceOptions(choices, message.getChoice());
-            prompt.add("modes", choices.deepCopy());
+            if ("order".equals(string(prompt, "responseKind", ""))) {
+                prompt.add("orderedItems", choices.deepCopy());
+            } else {
+                prompt.add("modes", choices.deepCopy());
+            }
         } else if (method == ClientCallbackMethod.GAME_PLAY_MANA) {
+            JsonArray manaChoices = new JsonArray();
             for (String symbol : new String[]{"W", "U", "B", "R", "G", "C"}) {
                 choices.add(promptChoice(symbol, "Pay {" + symbol + "}", null));
+                JsonObject manaChoice = new JsonObject();
+                manaChoice.addProperty("id", symbol);
+                manaChoice.addProperty("label", "Pay {" + symbol + "}");
+                manaChoice.addProperty("manaType", symbol);
+                JsonObject responseCommand = new JsonObject();
+                responseCommand.addProperty("type", "play_mana");
+                responseCommand.addProperty("promptId", string(prompt, "id", ""));
+                responseCommand.addProperty("manaType", symbol);
+                manaChoice.add("responseCommand", responseCommand);
+                manaChoices.add(manaChoice);
             }
+            prompt.add("manaChoices", manaChoices);
         } else if (method == ClientCallbackMethod.GAME_GET_AMOUNT || method == ClientCallbackMethod.GAME_PLAY_XMANA) {
             int min = message.getMin();
             int max = message.getMax();
@@ -1775,18 +1822,29 @@ public final class MagicMobileBridge implements MageClient {
         if (message.getTargets() != null && !message.getTargets().isEmpty()) {
             JsonArray targetIds = new JsonArray();
             JsonArray targets = new JsonArray();
+            JsonArray players = new JsonArray();
             for (UUID target : message.getTargets()) {
                 targetIds.add(target.toString());
                 CardView card = message.getCardsView1() == null ? null : message.getCardsView1().get(target);
                 if (card == null && message.getGameView() != null) {
                     card = findVisibleCard(message.getGameView(), target);
                 }
-                JsonObject choice = promptChoice(target.toString(), card == null ? target.toString() : card.getName(), target.toString());
+                PlayerView player = message.getGameView() == null ? null : findPlayer(message.getGameView(), target);
+                JsonObject choice = promptChoice(target.toString(), card == null ? player == null ? target.toString() : player.getName() : card.getName(), card == null ? null : target.toString());
                 choices.add(choice);
-                targets.add(choice.deepCopy());
+                if (player == null) {
+                    targets.add(choice.deepCopy());
+                } else {
+                    players.add(promptPlayer(player));
+                }
             }
             prompt.add("targetIds", targetIds);
-            prompt.add("targets", targets);
+            if (targets.size() > 0) {
+                prompt.add("targets", targets);
+            }
+            if (players.size() > 0) {
+                prompt.add("players", players);
+            }
         } else if (message.getCardsView1() != null && !message.getCardsView1().isEmpty()) {
             addCardChoices(choices, message.getCardsView1());
             prompt.add("cards", zoneCards(message.getCardsView1().values(), false));
@@ -1874,6 +1932,9 @@ public final class MagicMobileBridge implements MageClient {
         if (method == ClientCallbackMethod.GAME_SELECT) return normalizedMessage.contains("search") ? "search" : "card";
         if (method == ClientCallbackMethod.GAME_CHOOSE_ABILITY) return "ability";
         if (method == ClientCallbackMethod.GAME_CHOOSE_PILE) return "pile";
+        if (method == ClientCallbackMethod.GAME_CHOOSE_CHOICE && (normalizedMessage.contains("order") || normalizedMessage.contains("stack"))) {
+            return "order";
+        }
         if (method == ClientCallbackMethod.GAME_CHOOSE_CHOICE && normalizedMessage.contains("mode")) return "mode";
         if (method == ClientCallbackMethod.GAME_PLAY_MANA) return "mana";
         if (method == ClientCallbackMethod.GAME_PLAY_XMANA) return "x_mana";
@@ -1886,6 +1947,7 @@ public final class MagicMobileBridge implements MageClient {
         if (method == ClientCallbackMethod.GAME_ASK && normalizedMessage.contains("pay") && normalizedMessage.contains("cost")) {
             return "pay_cost";
         }
+        if (method == ClientCallbackMethod.GAME_ASK) return "confirmation";
         return "resolve_choice";
     }
 
@@ -1926,6 +1988,31 @@ public final class MagicMobileBridge implements MageClient {
             choice.addProperty("cardInstanceId", cardInstanceId);
         }
         return choice;
+    }
+
+    private PlayerView findPlayer(GameView view, UUID id) {
+        for (PlayerView player : view.getPlayers()) {
+            if (player.getPlayerId().equals(id)) {
+                return player;
+            }
+        }
+        return null;
+    }
+
+    private JsonObject promptPlayer(PlayerView player) {
+        JsonObject option = new JsonObject();
+        option.addProperty("id", player.getPlayerId().toString());
+        option.addProperty("label", player.getName());
+        option.addProperty("playerId", player.getPlayerId().toString());
+        option.addProperty("life", player.getLife());
+        option.addProperty("selectable", true);
+        JsonObject responseCommand = new JsonObject();
+        responseCommand.addProperty("type", "choose_player");
+        JsonArray playerIds = new JsonArray();
+        playerIds.add(player.getPlayerId().toString());
+        responseCommand.add("playerIds", playerIds);
+        option.add("responseCommand", responseCommand);
+        return option;
     }
 
     private JsonObject choicePromptFromEnvelope(JsonObject promptEnvelope) {

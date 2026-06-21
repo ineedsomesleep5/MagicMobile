@@ -2083,12 +2083,20 @@ struct UniversalPromptActionPanel: View {
                 }
             }
 
+            if let confirmation = prompt.confirmation, isConfirmationPrompt(prompt) {
+                confirmationPicker(confirmation: confirmation, prompt: prompt)
+            }
+
             if let choices = prompt.choices, !choices.isEmpty {
                 optionGrid(choices.map { ($0.id, $0.label) }, prompt: prompt, fallbackType: "resolve_choice", icon: "checkmark.circle")
             }
 
             if let targets = prompt.targets, !targets.isEmpty {
                 optionGrid(targets.map { ($0.id, $0.label) }, prompt: prompt, fallbackType: "choose_target", icon: "scope")
+            }
+
+            if let players = prompt.players, !players.isEmpty {
+                optionGrid(players.map { ($0.playerId, playerPromptLabel($0)) }, prompt: prompt, fallbackType: "choose_player", icon: "person.crop.circle")
             }
 
             if let cards = prompt.cards, !cards.isEmpty {
@@ -2111,7 +2119,21 @@ struct UniversalPromptActionPanel: View {
                 amountPicker(amounts: amounts, prompt: prompt)
             }
 
-            if isManaPrompt(prompt) {
+            if let orderedItems = prompt.orderedItems, !orderedItems.isEmpty {
+                placeholderSubmit(
+                    title: "Order",
+                    button: "Submit shown order",
+                    prompt: prompt,
+                    type: "order_items",
+                    ids: orderedItems.map(\.id)
+                )
+            }
+
+            if let manaChoices = prompt.manaChoices, !manaChoices.isEmpty {
+                manaChoicePicker(choices: manaChoices, prompt: prompt)
+            }
+
+            if prompt.manaChoices?.isEmpty != false && isManaPrompt(prompt) {
                 manaPicker(prompt: prompt)
             }
 
@@ -2349,6 +2371,57 @@ struct UniversalPromptActionPanel: View {
     }
 
     @ViewBuilder
+    private func manaChoicePicker(choices: [XmagePromptManaChoice], prompt: PromptEnvelopeV2) -> some View {
+        PromptMiniLabel("Mana")
+        HStack(spacing: 6) {
+            ForEach(choices) { choice in
+                let symbol = choice.manaType ?? choice.id
+                Button {
+                    if let command = command(type: prompt.responseCommand?.type ?? "play_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [symbol], manaType: symbol) {
+                        runCommand(command, choice.label, "\(prompt.id)-mana-choice-\(choice.id)")
+                    }
+                } label: {
+                    VStack(spacing: 2) {
+                        ManaSymbolView(symbol: symbol, size: 24)
+                        if let amount = choice.amount {
+                            Text("x\(amount)")
+                                .font(.system(size: 8, weight: .black))
+                                .foregroundStyle(.white.opacity(0.76))
+                        }
+                    }
+                    .overlay {
+                        if pendingActionId == "\(prompt.id)-mana-choice-\(choice.id)" {
+                            ProgressView()
+                                .tint(.white)
+                                .scaleEffect(0.6)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(pendingActionId != nil)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func confirmationPicker(confirmation: XmagePromptConfirmation, prompt: PromptEnvelopeV2) -> some View {
+        HStack(spacing: 6) {
+            promptButton(
+                label: confirmation.yesLabel ?? "Yes",
+                systemImage: "checkmark.circle",
+                pendingId: "\(prompt.id)-yes",
+                command: command(type: prompt.responseCommand?.type ?? "answer_yes_no", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: ["true"])
+            )
+            promptButton(
+                label: confirmation.noLabel ?? "No",
+                systemImage: "xmark.circle",
+                pendingId: "\(prompt.id)-no",
+                command: command(type: prompt.responseCommand?.type ?? "answer_yes_no", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: ["false"])
+            )
+        }
+    }
+
+    @ViewBuilder
     private func placeholderSubmit(title: String, button: String, prompt: PromptEnvelopeV2, type: String, ids: [String]) -> some View {
         PromptMiniLabel(title)
         promptButton(
@@ -2447,8 +2520,19 @@ struct UniversalPromptActionPanel: View {
         return ["choose_amount", "choose_multi_amount", "play_x_mana"].contains(preferred) ? preferred : "choose_amount"
     }
 
+    private func playerPromptLabel(_ player: XmagePromptPlayer) -> String {
+        if let life = player.life {
+            return "\(player.label) (\(life))"
+        }
+        return player.label
+    }
+
     private func isManaPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
-        prompt.responseCommand?.type?.lowercased() == "play_mana" || prompt.responseKind.lowercased() == "play_mana"
+        prompt.responseCommand?.type?.lowercased() == "play_mana" || ["mana", "play_mana"].contains(prompt.responseKind.lowercased())
+    }
+
+    private func isConfirmationPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
+        prompt.responseCommand?.type?.lowercased() == "answer_yes_no" || prompt.responseKind.lowercased() == "confirmation"
     }
 
     private func isCommanderReplacement(_ prompt: PromptEnvelopeV2) -> Bool {

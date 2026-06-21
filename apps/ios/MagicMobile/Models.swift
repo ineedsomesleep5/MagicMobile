@@ -208,11 +208,13 @@ struct LegalAction: Decodable, Identifiable {
     let playerIds: [String]?
     let validPlayerIds: [String]?
     let choiceIds: [String]?
+    let cardInstanceIds: [String]?
     let modeIds: [String]?
     let orderedIds: [String]?
     let amount: Int?
     let amounts: [Int]?
     let manaType: String?
+    let manaTypes: [String]?
     let pile: String?
     let confirmed: Bool?
     let isPrimary: Bool?
@@ -270,10 +272,14 @@ struct PromptEnvelopeV2: Decodable, Identifiable {
     let responseCommand: XmageResponseCommand?
     let cards: [ZoneCard]?
     let targets: [ChoicePromptOption]?
+    let players: [XmagePromptPlayer]?
     let piles: [XmagePromptPile]?
     let abilities: [XmagePromptAbility]?
     let modes: [ChoicePromptOption]?
     let amounts: [Int]?
+    let manaChoices: [XmagePromptManaChoice]?
+    let orderedItems: [ChoicePromptOption]?
+    let confirmation: XmagePromptConfirmation?
     let options: [String: JSONValue]?
 }
 
@@ -292,6 +298,27 @@ struct XmagePromptAbility: Decodable, Identifiable {
     let id: String
     let label: String
     let rulesText: String?
+}
+
+struct XmagePromptPlayer: Decodable, Identifiable {
+    let id: String
+    let label: String
+    let playerId: String
+    let life: Int?
+    let selectable: Bool?
+}
+
+struct XmagePromptManaChoice: Decodable, Identifiable {
+    let id: String
+    let label: String
+    let manaType: String?
+    let amount: Int?
+}
+
+struct XmagePromptConfirmation: Decodable {
+    let yesLabel: String?
+    let noLabel: String?
+    let defaultValue: Bool?
 }
 
 struct XmageMobileSnapshot: Decodable {

@@ -356,7 +356,7 @@ function toCommand(
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
-        cardInstanceIds: action.validTargetIds ?? action.targetIds ?? []
+        cardInstanceIds: action.cardInstanceIds ?? action.validTargetIds ?? action.targetIds ?? []
       };
     case "choose_player":
       return {
@@ -372,7 +372,7 @@ function toCommand(
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
-        modeIds: action.targetIds ?? action.validTargetIds ?? []
+        modeIds: action.modeIds ?? action.targetIds ?? action.validTargetIds ?? []
       };
     case "choose_ability":
       return {
@@ -413,7 +413,7 @@ function toCommand(
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
-        manaTypes: [action.manaType ?? manaType(action.targetIds?.[0] ?? action.validTargetIds?.[0])]
+        manaTypes: action.manaTypes ?? [action.manaType ?? manaType(action.choiceIds?.[0] ?? action.targetIds?.[0] ?? action.validTargetIds?.[0])]
       };
     case "answer_yes_no":
       return {
