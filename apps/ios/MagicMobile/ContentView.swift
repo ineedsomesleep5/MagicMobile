@@ -25,6 +25,7 @@ struct ContentView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var webSocketTask: URLSessionWebSocketTask?
+    @State private var liveUpdateStatus = "Idle"
     @State private var cardCacheMetadata: CardCacheMetadata?
     @State private var isSyncingCardCache = false
     @State private var phoneImageCacheCount = 0
@@ -45,6 +46,7 @@ struct ContentView: View {
                     avatarData: playerAvatarData,
                     pendingActionId: pendingActionId,
                     pendingCardInstanceId: pendingCardInstanceId,
+                    liveUpdateStatus: liveUpdateStatus,
                     runAction: { action in Task { await run(action: action) } },
                     runCommand: { command, label, pendingId in Task { await run(command: command, label: label, pendingId: pendingId) } },
                     newGame: { screen = .setup }
@@ -73,6 +75,7 @@ struct ContentView: View {
             if newScreen != .play {
                 webSocketTask?.cancel(with: .normalClosure, reason: nil)
                 webSocketTask = nil
+                liveUpdateStatus = "Idle"
             }
         }
         .onChange(of: serverURLText) { _, newValue in
@@ -239,6 +242,7 @@ struct ContentView: View {
         pendingCardInstanceId = nil
         lastSubmittedActionId = nil
         lastSubmittedSnapshotSignature = nil
+        liveUpdateStatus = "Idle"
         startupStatus = CommanderStartupResponse(
             startupId: "pending",
             status: "starting",
@@ -378,20 +382,16 @@ struct ContentView: View {
     private func startWebSocket(gameId: String) {
         webSocketTask?.cancel(with: .goingAway, reason: nil)
 
-        guard let api,
-              let urlComponents = URLComponents(url: api.baseURL, resolvingAgainstBaseURL: false) else { return }
-
-        let wsScheme = urlComponents.scheme == "https" ? "wss" : "ws"
-        let wsHost = urlComponents.host ?? "localhost"
-        let wsPort = urlComponents.port != nil ? ":\(urlComponents.port!)" : ""
-        let wsURLString = "\(wsScheme)://\(wsHost)\(wsPort)/ws/games/\(gameId)"
-
-        guard let url = URL(string: wsURLString) else { return }
+        guard let api, let url = webSocketURL(gameId: gameId, baseURL: api.baseURL) else {
+            liveUpdateStatus = "Live updates unavailable"
+            return
+        }
 
         let task = URLSession.shared.webSocketTask(with: url)
         webSocketTask = task
         task.resume()
 
+        liveUpdateStatus = "Connecting"
         status = "Connecting real-time updates"
 
         Task {
@@ -409,9 +409,11 @@ struct ContentView: View {
                         await MainActor.run {
                             do {
                                 let nextSnapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: data)
+                                self.liveUpdateStatus = "Live"
                                 self.status = "Connected (real-time)"
                                 self.applySnapshot(nextSnapshot)
                             } catch {
+                                self.liveUpdateStatus = "Update decode failed"
                                 print("Error decoding snapshot: \(error)")
                             }
                         }
@@ -420,9 +422,11 @@ struct ContentView: View {
                     await MainActor.run {
                         do {
                             let nextSnapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: data)
+                            self.liveUpdateStatus = "Live"
                             self.status = "Connected (real-time)"
                             self.applySnapshot(nextSnapshot)
                         } catch {
+                            self.liveUpdateStatus = "Update decode failed"
                             print("Error decoding snapshot: \(error)")
                         }
                     }
@@ -431,6 +435,9 @@ struct ContentView: View {
                 }
             } catch {
                 print("WebSocket receive error: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.liveUpdateStatus = "Reconnecting"
+                }
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
                 if self.screen == .play && self.webSocketTask === task {
                     await MainActor.run {
@@ -440,6 +447,19 @@ struct ContentView: View {
                 break
             }
         }
+    }
+
+    private func webSocketURL(gameId: String, baseURL: URL) -> URL? {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else { return nil }
+        components.scheme = components.scheme == "https" ? "wss" : "ws"
+        let basePath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        var allowedPathSegment = CharacterSet.urlPathAllowed
+        allowedPathSegment.remove(charactersIn: "/")
+        let encodedGameId = gameId.addingPercentEncoding(withAllowedCharacters: allowedPathSegment) ?? gameId
+        components.percentEncodedPath = "/" + ([basePath, "ws", "games", encodedGameId].filter { !$0.isEmpty }.joined(separator: "/"))
+        components.query = nil
+        components.fragment = nil
+        return components.url
     }
 
     private func snapshotSignature(_ snapshot: GameSnapshot) -> String {
@@ -919,6 +939,7 @@ struct ImmersivePlayShell: View {
     let avatarData: Data?
     let pendingActionId: String?
     let pendingCardInstanceId: String?
+    let liveUpdateStatus: String
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
     let newGame: () -> Void
@@ -932,6 +953,7 @@ struct ImmersivePlayShell: View {
             avatarData: avatarData,
             pendingActionId: pendingActionId,
             pendingCardInstanceId: pendingCardInstanceId,
+            liveUpdateStatus: liveUpdateStatus,
             runAction: runAction,
             runCommand: runCommand,
             newGame: newGame
@@ -947,6 +969,7 @@ struct NativeGameView: View {
     let avatarData: Data?
     let pendingActionId: String?
     let pendingCardInstanceId: String?
+    let liveUpdateStatus: String
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
     let newGame: () -> Void
@@ -1025,6 +1048,10 @@ struct NativeGameView: View {
                     TurnStatusBadge(snapshot: snapshot, human: human, opponent: opponent)
                         .frame(width: metrics.turnBadgeWidth, height: 34)
                         .position(x: metrics.playCenterX, y: metrics.topHUDY)
+
+                    LiveUpdateBadge(status: liveUpdateStatus)
+                        .frame(width: min(metrics.turnBadgeWidth * 0.46, 170), height: 28)
+                        .position(x: metrics.liveStatusX, y: metrics.topHUDY + 40)
 
                     PlayerHeroHUD(name: "Noaddrag", player: opponent, avatarData: nil, active: snapshot.activePlayerId == opponent.playerId, opponentId: human.playerId, compact: true, tiny: true)
                         .frame(width: metrics.opponentHUDWidth, height: 38)
@@ -1166,6 +1193,10 @@ struct BattlefieldLayoutMetrics {
 
     var turnBadgeWidth: CGFloat {
         min(playWidth * 0.40, 310)
+    }
+
+    var liveStatusX: CGFloat {
+        min(playCenterX + turnBadgeWidth * 0.42, actionDockX - actionDockWidth / 2 - 82)
     }
 
     var opponentHUDX: CGFloat {
@@ -1612,6 +1643,33 @@ struct TurnStatusBadge: View {
         .frame(maxWidth: .infinity)
         .background(.black.opacity(0.54), in: Capsule())
         .overlay(Capsule().stroke((isHumanTurn ? MagicPalette.antiqueGold : MagicPalette.oxblood).opacity(0.55), lineWidth: 1))
+    }
+}
+
+struct LiveUpdateBadge: View {
+    let status: String
+
+    private var isLive: Bool {
+        status.lowercased().contains("live")
+    }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(isLive ? Color.green : MagicPalette.antiqueGold)
+                .frame(width: 7, height: 7)
+                .shadow(color: (isLive ? Color.green : MagicPalette.antiqueGold).opacity(0.75), radius: 5)
+            Text(status.uppercased())
+                .font(.system(size: 8, weight: .black))
+                .foregroundStyle(.white.opacity(0.82))
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity)
+        .background(.black.opacity(0.42), in: Capsule())
+        .overlay(Capsule().stroke((isLive ? Color.green : MagicPalette.antiqueGold).opacity(0.36), lineWidth: 1))
     }
 }
 
