@@ -534,6 +534,15 @@ describe("xmage gateway", () => {
     assert.equal(bridgeSource.includes('session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "pay", true));'), false);
     assert.equal(bridgeSource.includes('session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "confirmed", true));'), false);
   });
+
+  it("cleans XMage HTML and hint markup before exposing card text", () => {
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+
+    assert.equal(bridgeSource.includes("&lt;"), true);
+    assert.equal(bridgeSource.includes("<br\\\\s*/?>"), true);
+    assert.equal(bridgeSource.includes("<hintstart>.*?(<hintend>|$)"), true);
+    assert.equal(bridgeSource.includes("ICON_[A-Z_]+"), true);
+  });
 });
 
 function bridgeSmokeSnapshot(bridgeRevision, xmageCycle, step, legalActions) {

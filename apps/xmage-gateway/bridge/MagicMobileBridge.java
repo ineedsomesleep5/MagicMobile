@@ -2232,7 +2232,26 @@ public final class MagicMobileBridge implements MageClient {
     }
 
     private static String cleanText(String value) {
-        return value == null ? "" : value.replaceAll("<[^>]+>", "").replace("&nbsp;", " ").trim();
+        if (value == null) {
+            return "";
+        }
+        String text = value
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&amp;", "&")
+                .replace("&nbsp;", " ")
+                .replace("&quot;", "\"")
+                .replace("&#39;", "'")
+                .replace("&#x27;", "'");
+        text = text.replaceAll("(?i)<br\\s*/?>", "\n");
+        text = text.replaceAll("(?i)</p\\s*>", "\n");
+        text = text.replaceAll("(?is)<hintstart>.*?(<hintend>|$)", "");
+        text = text.replaceAll("(?i)</?hint(end|start)>", "");
+        text = text.replaceAll("\\bICON_[A-Z_]+\\b", "");
+        text = text.replaceAll("<[^>]+>", "");
+        text = text.replaceAll("[ \\t\\r\\f]+", " ");
+        text = text.replaceAll("\\n\\s*\\n+", "\n");
+        return text.trim();
     }
 
     private static String slug(String value) {
