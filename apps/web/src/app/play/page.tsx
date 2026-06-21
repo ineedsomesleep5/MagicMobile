@@ -37,10 +37,17 @@ export default async function PlayPage() {
       requireXmage
       simulatorMode={false}
       visuals={Object.fromEntries(visuals)}
+      webSocketBaseUrl={xmageWebSocketBaseUrl()}
     />
   );
 }
 
 function deckCardNames(decks: DeckList[]): string[] {
   return Array.from(new Set(decks.flatMap((deck) => deck.entries.map((entry) => entry.cardName))));
+}
+
+function xmageWebSocketBaseUrl(): string | undefined {
+  return process.env.NEXT_PUBLIC_XMAGE_GATEWAY_WS_URL
+    ?? process.env.NEXT_PUBLIC_XMAGE_GATEWAY_URL
+    ?? (process.env.NODE_ENV === "development" ? process.env.XMAGE_GATEWAY_URL : undefined);
 }

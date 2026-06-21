@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GameSnapshot, LegalAction } from "@magicmobile/shared";
-import { toCommand } from "./GameController";
+import { gameWebSocketUrl, latestSnapshot, toCommand } from "./GameController";
 
 const snapshot: GameSnapshot = {
   id: "game-1",
@@ -32,5 +32,20 @@ describe("GameController command mapping", () => {
       sourceInstanceId: "forest-instance",
       abilityId: "mana-ability"
     });
+  });
+
+  it("builds gateway websocket URLs for direct gateway and same-origin proxy modes", () => {
+    expect(gameWebSocketUrl("game 1", "http://localhost:17171")).toBe("ws://localhost:17171/ws/games/game%201");
+    expect(gameWebSocketUrl("game-2", "https://magicmobile.example/base/")).toBe("wss://magicmobile.example/base/ws/games/game-2");
+    expect(gameWebSocketUrl("game-3")).toBe("/ws/games/game-3");
+  });
+
+  it("rejects stale bridge snapshots before updating the client board", () => {
+    const current = { ...snapshot, bridgeRevision: 7, promptText: "newer" };
+    const stale = { ...snapshot, bridgeRevision: 6, promptText: "older" };
+    const fresh = { ...snapshot, bridgeRevision: 8, promptText: "fresh" };
+
+    expect(latestSnapshot(current, stale)).toBe(current);
+    expect(latestSnapshot(current, fresh)).toMatchObject({ bridgeRevision: 8, promptText: "fresh" });
   });
 });

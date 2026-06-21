@@ -11,14 +11,16 @@ interface GameControllerProps {
   requireXmage?: boolean;
   simulatorMode: boolean;
   visuals: VisualCardRecord;
+  webSocketBaseUrl?: string | undefined;
 }
 
-export function GameController({ config, initialHealth, requireXmage = false, simulatorMode, visuals }: GameControllerProps) {
+export function GameController({ config, initialHealth, requireXmage = false, simulatorMode, visuals, webSocketBaseUrl }: GameControllerProps) {
   const [snapshot, setSnapshot] = useState<GameSnapshot | null>(null);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [pendingActionId, setPendingActionId] = useState<string | undefined>();
   const [pendingActionLabel, setPendingActionLabel] = useState<string | undefined>();
+  const [socketStatus, setSocketStatus] = useState<"idle" | "connecting" | "live" | "unavailable">("idle");
 
   useEffect(() => {
     if (requireXmage && initialHealth.status !== "ready") {
@@ -50,6 +52,40 @@ export function GameController({ config, initialHealth, requireXmage = false, si
       active = false;
     };
   }, [config, initialHealth.status, requireXmage]);
+
+  useEffect(() => {
+    if (!snapshot?.id || simulatorMode || typeof WebSocket === "undefined") {
+      setSocketStatus("idle");
+      return;
+    }
+
+    let active = true;
+    const socket = new WebSocket(gameWebSocketUrl(snapshot.id, webSocketBaseUrl));
+    setSocketStatus("connecting");
+
+    socket.addEventListener("open", () => {
+      if (active) setSocketStatus("live");
+    });
+    socket.addEventListener("message", (event) => {
+      try {
+        const nextSnapshot = JSON.parse(String(event.data)) as GameSnapshot;
+        if (active) setSnapshot((current) => latestSnapshot(current, nextSnapshot));
+      } catch {
+        if (active) setError("Received an unreadable XMage live update.");
+      }
+    });
+    socket.addEventListener("error", () => {
+      if (active) setSocketStatus("unavailable");
+    });
+    socket.addEventListener("close", () => {
+      if (active) setSocketStatus("unavailable");
+    });
+
+    return () => {
+      active = false;
+      socket.close();
+    };
+  }, [simulatorMode, snapshot?.id, webSocketBaseUrl]);
 
   const viewModel = useMemo(() => {
     if (!snapshot) return undefined;
@@ -88,7 +124,7 @@ export function GameController({ config, initialHealth, requireXmage = false, si
         if (!response.ok) throw new Error(await errorMessage(response, "Command failed"));
         return response.json() as Promise<GameSnapshot>;
       })
-      .then((nextSnapshot) => setSnapshot(nextSnapshot))
+      .then((nextSnapshot) => setSnapshot((current) => latestSnapshot(current, nextSnapshot)))
       .catch((caughtError) => setError(caughtError instanceof Error ? caughtError.message : "Command failed"))
       .finally(() => {
         setPendingActionId(undefined);
@@ -109,6 +145,7 @@ export function GameController({ config, initialHealth, requireXmage = false, si
           <strong>{viewModel?.phase ?? "starting"}</strong>
           <span>{modeLabel}</span>
           <small>{health.status}: {simulatorMode ? "UI mechanics only; full rules require XMage bridge." : health.reason}</small>
+          {!simulatorMode ? <small>Live updates: {socketStatus}</small> : null}
           {pendingActionLabel ? <small>Action sent: {pendingActionLabel}. Waiting for XMage.</small> : null}
           {error ? <small role="alert">Command error: {error}</small> : null}
         </div>
@@ -176,6 +213,34 @@ function XmageSetupRequired({ health }: { health: EngineHealth }) {
       </div>
     </section>
   );
+}
+
+export function gameWebSocketUrl(gameId: string, baseUrl?: string): string {
+  const path = `/ws/games/${encodeURIComponent(gameId)}`;
+  if (baseUrl) {
+    const url = new URL(baseUrl);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    url.pathname = `${url.pathname.replace(/\/$/, "")}${path}`;
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  }
+
+  if (typeof window === "undefined") {
+    return path;
+  }
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}${path}`;
+}
+
+export function latestSnapshot(current: GameSnapshot | null, next: GameSnapshot): GameSnapshot {
+  if (!current) return next;
+  const currentRevision = current.bridgeRevision;
+  const nextRevision = next.bridgeRevision;
+  if (typeof currentRevision === "number" && typeof nextRevision === "number" && nextRevision < currentRevision) {
+    return current;
+  }
+  return next;
 }
 
 function PlayerBadge({ name, life, active = false }: { name: string; life: number; active?: boolean }) {
