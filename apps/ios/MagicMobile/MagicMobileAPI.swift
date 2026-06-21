@@ -66,6 +66,10 @@ struct MagicMobileAPI {
         return try await post("/api/engine/games/\(gameId)/commands", body: command)
     }
 
+    func submit(command: GameCommand, gameId: String) async throws -> GameSnapshot {
+        try await post("/api/engine/games/\(gameId)/commands", body: command)
+    }
+
     private func command(for action: LegalAction, gameId: String) -> GameCommand {
         if action.type == "resolve_choice" {
             return GameCommand(
@@ -97,6 +101,16 @@ struct MagicMobileAPI {
             )
         }
 
+        if action.type == "choose_player" {
+            return GameCommand(
+                type: action.type,
+                gameId: gameId,
+                playerId: action.playerId,
+                promptId: action.id,
+                playerIds: action.playerIds ?? action.validPlayerIds ?? action.targetIds ?? action.validTargetIds ?? []
+            )
+        }
+
         if action.type == "choose_mode" {
             return GameCommand(
                 type: action.type,
@@ -113,7 +127,17 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: action.id,
-                manaType: action.targetIds?.first ?? "C"
+                manaType: action.manaType ?? action.targetIds?.first ?? "C"
+            )
+        }
+
+        if action.type == "choose_mana" {
+            return GameCommand(
+                type: action.type,
+                gameId: gameId,
+                playerId: action.playerId,
+                promptId: action.id,
+                manaTypes: [action.manaType ?? action.targetIds?.first ?? "C"]
             )
         }
 
@@ -157,14 +181,24 @@ struct MagicMobileAPI {
             )
         }
 
-        if action.type == "search_select" || action.type == "order_triggers" {
+        if action.type == "search_select" || action.type == "order_triggers" || action.type == "order_items" {
             return GameCommand(
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: action.id,
                 cardInstanceIds: action.type == "search_select" ? action.targetIds : nil,
-                orderedIds: action.type == "order_triggers" ? action.targetIds : nil
+                orderedIds: action.type == "order_triggers" || action.type == "order_items" ? action.targetIds ?? action.orderedIds : nil
+            )
+        }
+
+        if action.type == "answer_yes_no" {
+            return GameCommand(
+                type: action.type,
+                gameId: gameId,
+                playerId: action.playerId,
+                promptId: action.id,
+                confirmed: action.confirmed ?? (action.targetIds?.first != "false")
             )
         }
 

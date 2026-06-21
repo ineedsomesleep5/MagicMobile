@@ -257,6 +257,7 @@ public final class MagicMobileBridge implements MageClient {
         String type = string(command, "type", "");
         GameRecord record = games.get(gameId);
         long startRevision = record == null ? -1 : record.bridgeRevision.get();
+        JsonObject prompt = currentPromptForCommand(gameId, command, type);
 
         if ("play_land".equals(type)) {
             session.sendPlayerUUID(xmageGameId, playableSourceUuid(gameId, command));
@@ -278,35 +279,53 @@ public final class MagicMobileBridge implements MageClient {
         } else if ("concede".equals(type)) {
             session.sendPlayerAction(PlayerAction.CONCEDE, xmageGameId, null);
         } else if ("choose_target".equals(type)) {
-            sendFirstUuid(xmageGameId, array(command, "targetIds"));
+            sendPromptUuids(gameId, xmageGameId, prompt, selectionIds(command, "targetIds", "targetId", "choiceIds", "choiceId"));
         } else if ("choose_card".equals(type)) {
-            sendFirstUuid(xmageGameId, array(command, "cardInstanceIds"));
+            sendPromptUuids(gameId, xmageGameId, prompt, selectionIds(command, "cardInstanceIds", "cardInstanceId", "choiceIds", "choiceId"));
+        } else if ("choose_player".equals(type)) {
+            sendPromptStringsOrUuids(gameId, xmageGameId, prompt, selectionIds(command, "playerIds", "playerId", "choiceIds", "choiceId"));
         } else if ("choose_mode".equals(type)) {
-            sendFirstStringOrUuid(xmageGameId, array(command, "modeIds"));
+            sendPromptStringsOrUuids(gameId, xmageGameId, prompt, selectionIds(command, "modeIds", "modeId", "choiceIds", "choiceId"));
         } else if ("play_mana".equals(type)) {
-            session.sendPlayerManaType(xmageGameId, manaPlayerUuid(gameId), manaTypeFromSymbol(string(command, "manaType", "C")));
+            String manaChoice = firstSelection(command, "manaType", "mana", "choiceIds", "choiceId");
+            if (manaChoice.isEmpty() && prompt != null) {
+                sendEmptyPromptSelection(gameId, xmageGameId, prompt);
+            } else {
+                validatePromptSelections(gameId, prompt, singletonSelection(manaChoice));
+                session.sendPlayerManaType(xmageGameId, manaPlayerUuid(gameId), manaTypeFromSymbol(manaChoice.isEmpty() ? "C" : manaChoice));
+            }
+        } else if ("choose_mana".equals(type)) {
+            String manaChoice = firstSelection(command, "manaTypes", "manaType", "choiceIds", "choiceId");
+            validatePromptSelections(gameId, prompt, singletonSelection(manaChoice));
+            session.sendPlayerManaType(xmageGameId, manaPlayerUuid(gameId), manaTypeFromSymbol(manaChoice.isEmpty() ? "C" : manaChoice));
         } else if ("choose_ability".equals(type)) {
-            String abilityId = string(command, "abilityId", string(command, "abilityIdChoice", ""));
+            String abilityId = firstSelection(command, "abilityId", "abilityIdChoice", "choiceIds", "choiceId");
+            validatePromptSelections(gameId, prompt, singletonSelection(abilityId));
             session.sendPlayerUUID(xmageGameId, abilityId.isEmpty() ? null : UUID.fromString(abilityId));
         } else if ("choose_pile".equals(type)) {
             session.sendPlayerBoolean(xmageGameId, integer(command, "pile", 1) == 1);
         } else if ("choose_amount".equals(type) || "play_x_mana".equals(type)) {
-            session.sendPlayerInteger(xmageGameId, integer(command, "amount", 0));
+            int amount = amountFromCommand(command, "amount", 0);
+            session.sendPlayerInteger(xmageGameId, amount);
         } else if ("choose_multi_amount".equals(type)) {
-            session.sendPlayerString(xmageGameId, joinNumbers(array(command, "amounts")));
-        } else if ("order_triggers".equals(type)) {
-            sendFirstUuid(xmageGameId, array(command, "orderedIds"));
+            JsonArray amounts = array(command, "amounts");
+            session.sendPlayerString(xmageGameId, joinNumbers(amounts));
+        } else if ("order_triggers".equals(type) || "order_items".equals(type)) {
+            sendPromptUuids(gameId, xmageGameId, prompt, selectionIds(command, "orderedIds", "orderedId", "choiceIds", "choiceId"));
         } else if ("search_select".equals(type)) {
-            sendFirstUuid(xmageGameId, array(command, "cardInstanceIds"));
+            sendPromptUuids(gameId, xmageGameId, prompt, selectionIds(command, "cardInstanceIds", "cardInstanceId", "choiceIds", "choiceId"));
         } else if ("commander_replacement".equals(type)) {
-            session.sendPlayerBoolean(xmageGameId, bool(command, "useCommandZone", true));
+            session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "useCommandZone", true));
         } else if ("pay_cost".equals(type)) {
-            session.sendPlayerBoolean(xmageGameId, true);
+            session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "pay", true));
+        } else if ("answer_yes_no".equals(type)) {
+            session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "confirmed", true));
         } else if ("declare_attackers".equals(type) || "declare_blockers".equals(type)) {
-            session.sendPlayerBoolean(xmageGameId, true);
+            sendCombatSelection(gameId, xmageGameId, command, "declare_attackers".equals(type));
         } else if ("resolve_choice".equals(type)) {
             JsonArray choices = array(command, "choiceIds");
             if (choices.size() > 0) {
+                validatePromptSelections(gameId, prompt, choices);
                 String choice = choices.get(0).getAsString();
                 if (isUuid(choice)) {
                     session.sendPlayerUUID(xmageGameId, UUID.fromString(choice));
@@ -316,7 +335,11 @@ public final class MagicMobileBridge implements MageClient {
                     session.sendPlayerString(xmageGameId, choice);
                 }
             } else {
-                session.sendPlayerBoolean(xmageGameId, true);
+                if (prompt != null && !hasExplicitBooleanResponse(command, "value")) {
+                    sendEmptyPromptSelection(gameId, xmageGameId, prompt);
+                } else {
+                    session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "value", true));
+                }
             }
         } else {
             String abilityId = string(command, "abilityId", "");
@@ -411,25 +434,254 @@ public final class MagicMobileBridge implements MageClient {
         return ManaType.COLORLESS;
     }
 
-    private void sendFirstUuid(UUID gameId, JsonArray ids) {
-        if (ids.size() == 0) {
-            session.sendPlayerBoolean(gameId, true);
-            return;
+    private JsonObject currentPromptForCommand(String gameId, JsonObject command, String type) {
+        GameRecord record = games.get(gameId);
+        JsonObject prompt = record == null ? null : record.promptEnvelope;
+        String requestedPromptId = string(command, "promptId", "");
+        int requestedMessageId = integer(command, "messageId", -1);
+        boolean exactPromptRequested = !requestedPromptId.isEmpty() || requestedMessageId >= 0;
+
+        if (prompt == null) {
+            if (exactPromptRequested) {
+                throw new ActionNoLongerLegalException(gameId, "XMage prompt is no longer active");
+            }
+            return null;
         }
-        session.sendPlayerUUID(gameId, UUID.fromString(ids.get(0).getAsString()));
+
+        String activePromptId = string(prompt, "id", "");
+        int activeMessageId = integer(prompt, "messageId", -1);
+        if (!requestedPromptId.isEmpty() && !requestedPromptId.equals(activePromptId)) {
+            throw new ActionNoLongerLegalException(gameId, "XMage prompt is no longer active: " + requestedPromptId);
+        }
+        if (requestedMessageId >= 0 && requestedMessageId != activeMessageId) {
+            throw new ActionNoLongerLegalException(gameId, "XMage prompt message is no longer active: " + requestedMessageId);
+        }
+
+        if (exactPromptRequested && !isCommandCompatibleWithPrompt(type, prompt)) {
+            throw new ActionNoLongerLegalException(gameId, "Command " + type + " does not answer active XMage prompt " + activePromptId);
+        }
+        return exactPromptRequested || isCommandCompatibleWithPrompt(type, prompt) ? prompt : null;
     }
 
-    private void sendFirstStringOrUuid(UUID gameId, JsonArray ids) {
-        if (ids.size() == 0) {
-            session.sendPlayerBoolean(gameId, true);
+    private boolean isCommandCompatibleWithPrompt(String type, JsonObject prompt) {
+        String responseKind = string(prompt, "responseKind", "resolve_choice");
+        String promptType = commandTypeForResponseKind(responseKind);
+        if (type.equals(promptType) || "resolve_choice".equals(type)) {
+            return true;
+        }
+        if ("search_select".equals(type) && ("card".equals(responseKind) || "search".equals(responseKind))) {
+            return true;
+        }
+        if ("choose_player".equals(type) && "player".equals(responseKind)) {
+            return true;
+        }
+        if ("choose_mana".equals(type) && "mana".equals(responseKind)) {
+            return true;
+        }
+        if ("answer_yes_no".equals(type) && ("confirmation".equals(responseKind) || "resolve_choice".equals(promptType))) {
+            return true;
+        }
+        if ("order_items".equals(type) && "order".equals(responseKind)) {
+            return true;
+        }
+        if ("choose_card".equals(type) && "search".equals(responseKind)) {
+            return true;
+        }
+        if ("pay_cost".equals(type) || "commander_replacement".equals(type)) {
+            return "resolve_choice".equals(promptType) || "commander_replacement".equals(responseKind);
+        }
+        return false;
+    }
+
+    private JsonArray selectionIds(JsonObject command, String pluralKey, String singularKey, String fallbackPluralKey, String fallbackSingularKey) {
+        JsonArray selections = new JsonArray();
+        addSelections(selections, command, pluralKey);
+        addSelection(selections, string(command, singularKey, ""));
+        addSelections(selections, command, fallbackPluralKey);
+        addSelection(selections, string(command, fallbackSingularKey, ""));
+        return selections;
+    }
+
+    private void addSelections(JsonArray selections, JsonObject command, String key) {
+        JsonArray values = array(command, key);
+        for (JsonElement value : values) {
+            if (value == null || value.isJsonNull()) continue;
+            addSelection(selections, value.getAsString());
+        }
+    }
+
+    private void addSelection(JsonArray selections, String value) {
+        if (value != null && !value.isEmpty()) {
+            selections.add(value);
+        }
+    }
+
+    private JsonArray singletonSelection(String value) {
+        JsonArray selections = new JsonArray();
+        addSelection(selections, value);
+        return selections;
+    }
+
+    private String firstSelection(JsonObject command, String key, String fallbackKey, String fallbackPluralKey, String fallbackSingularKey) {
+        String value = string(command, key, "");
+        if (!value.isEmpty()) return value;
+        value = string(command, fallbackKey, "");
+        if (!value.isEmpty()) return value;
+        JsonArray fallbackValues = array(command, fallbackPluralKey);
+        if (fallbackValues.size() > 0) return fallbackValues.get(0).getAsString();
+        return string(command, fallbackSingularKey, "");
+    }
+
+    private int amountFromCommand(JsonObject command, String key, int fallback) {
+        if (command.has(key) && !command.get(key).isJsonNull()) {
+            return integer(command, key, fallback);
+        }
+        JsonArray choices = array(command, "choiceIds");
+        if (choices.size() > 0) {
+            try {
+                return Integer.parseInt(choices.get(0).getAsString());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return fallback;
+    }
+
+    private boolean booleanResponse(JsonObject command, String preferredKey, boolean fallback) {
+        if (command.has(preferredKey) && !command.get(preferredKey).isJsonNull()) {
+            return bool(command, preferredKey, fallback);
+        }
+        for (String key : new String[]{"value", "answer", "accepted", "confirmed", "yes", "useReplacement"}) {
+            if (command.has(key) && !command.get(key).isJsonNull()) {
+                return bool(command, key, fallback);
+            }
+        }
+        JsonArray choices = array(command, "choiceIds");
+        if (choices.size() > 0) {
+            String choice = choices.get(0).getAsString();
+            if ("true".equalsIgnoreCase(choice) || "yes".equalsIgnoreCase(choice)) return true;
+            if ("false".equalsIgnoreCase(choice) || "no".equalsIgnoreCase(choice)) return false;
+        }
+        return fallback;
+    }
+
+    private boolean hasExplicitBooleanResponse(JsonObject command, String preferredKey) {
+        if (command.has(preferredKey) && !command.get(preferredKey).isJsonNull()) {
+            return true;
+        }
+        for (String key : new String[]{"value", "answer", "accepted", "confirmed", "yes", "useReplacement"}) {
+            if (command.has(key) && !command.get(key).isJsonNull()) {
+                return true;
+            }
+        }
+        JsonArray choices = array(command, "choiceIds");
+        if (choices.size() == 0) {
+            return false;
+        }
+        String choice = choices.get(0).getAsString();
+        return "true".equalsIgnoreCase(choice)
+                || "yes".equalsIgnoreCase(choice)
+                || "false".equalsIgnoreCase(choice)
+                || "no".equalsIgnoreCase(choice);
+    }
+
+    private void validatePromptSelections(String gameId, JsonObject prompt, JsonArray selections) {
+        if (prompt == null) {
             return;
         }
-        String value = ids.get(0).getAsString();
-        if (isUuid(value)) {
-            session.sendPlayerUUID(gameId, UUID.fromString(value));
-        } else {
-            session.sendPlayerString(gameId, value);
+        boolean required = bool(prompt, "required", true);
+        int min = integer(prompt, "minChoices", required ? 1 : 0);
+        int max = integer(prompt, "maxChoices", min);
+        if (!required && selections.size() == 0) {
+            return;
         }
+        if (selections.size() < min) {
+            throw new ActionNoLongerLegalException(gameId, "XMage prompt requires at least " + min + " selection(s)");
+        }
+        if (max > 0 && selections.size() > max) {
+            throw new ActionNoLongerLegalException(gameId, "XMage prompt allows at most " + max + " selection(s)");
+        }
+        if (!prompt.has("choices") || !prompt.get("choices").isJsonArray()) {
+            return;
+        }
+        Set<String> allowed = new HashSet<>();
+        for (JsonElement element : prompt.getAsJsonArray("choices")) {
+            if (!element.isJsonObject()) continue;
+            String id = string(element.getAsJsonObject(), "id", "");
+            if (!id.isEmpty()) {
+                allowed.add(id);
+            }
+        }
+        if (allowed.isEmpty()) {
+            return;
+        }
+        for (JsonElement element : selections) {
+            String id = element.getAsString();
+            if (!allowed.contains(id)) {
+                throw new ActionNoLongerLegalException(gameId, "Selection is not valid for active XMage prompt: " + id);
+            }
+        }
+    }
+
+    private void sendPromptUuids(String bridgeGameId, UUID xmageGameId, JsonObject prompt, JsonArray ids) {
+        validatePromptSelections(bridgeGameId, prompt, ids);
+        if (ids.size() == 0) {
+            sendEmptyPromptSelection(bridgeGameId, xmageGameId, prompt);
+            return;
+        }
+        for (JsonElement id : ids) {
+            String value = id.getAsString();
+            if (!isUuid(value)) {
+                throw new ActionNoLongerLegalException(bridgeGameId, "XMage expected UUID selection but received " + value);
+            }
+            session.sendPlayerUUID(xmageGameId, UUID.fromString(value));
+        }
+    }
+
+    private void sendPromptStringsOrUuids(String bridgeGameId, UUID xmageGameId, JsonObject prompt, JsonArray ids) {
+        validatePromptSelections(bridgeGameId, prompt, ids);
+        if (ids.size() == 0) {
+            sendEmptyPromptSelection(bridgeGameId, xmageGameId, prompt);
+            return;
+        }
+        for (JsonElement id : ids) {
+            String value = id.getAsString();
+            if (isUuid(value)) {
+                session.sendPlayerUUID(xmageGameId, UUID.fromString(value));
+            } else {
+                session.sendPlayerString(xmageGameId, value);
+            }
+        }
+    }
+
+    private void sendEmptyPromptSelection(String bridgeGameId, UUID xmageGameId, JsonObject prompt) {
+        if (prompt != null && !bool(prompt, "required", true)) {
+            session.sendPlayerBoolean(xmageGameId, false);
+            return;
+        }
+        throw new ActionNoLongerLegalException(bridgeGameId, "Missing selection for active XMage prompt");
+    }
+
+    private void sendCombatSelection(String bridgeGameId, UUID xmageGameId, JsonObject command, boolean attackers) {
+        JsonArray ids = new JsonArray();
+        JsonArray groups = array(command, attackers ? "attackers" : "blockers");
+        String objectKey = attackers ? "attackerId" : "blockerId";
+        for (JsonElement element : groups) {
+            if (!element.isJsonObject()) continue;
+            addSelection(ids, string(element.getAsJsonObject(), objectKey, ""));
+        }
+        addSelections(ids, command, attackers ? "attackerIds" : "blockerIds");
+        if (ids.size() == 0) {
+            session.sendPlayerBoolean(xmageGameId, true);
+            return;
+        }
+        for (JsonElement id : ids) {
+            String value = id.getAsString();
+            if (!isUuid(value)) {
+                throw new ActionNoLongerLegalException(bridgeGameId, "XMage expected combat UUID but received " + value);
+            }
+            session.sendPlayerUUID(xmageGameId, UUID.fromString(value));
+        }
+        session.sendPlayerBoolean(xmageGameId, true);
     }
 
     private JsonObject waitForUpdatedSnapshot(String gameId, String commandType, long startRevision) throws InterruptedException {
@@ -539,7 +791,7 @@ public final class MagicMobileBridge implements MageClient {
                 JsonObject choice = choiceElement.getAsJsonObject();
                 String choiceId = string(choice, "id", "");
                 if (choiceId.isEmpty()) continue;
-                actions.add(choiceAction(choiceId, choiceActionType, humanId, labelForChoice(record, playerIds, choiceId)));
+                actions.add(choiceAction(record, choiceId, choiceActionType, humanId, labelForChoice(record, playerIds, choiceId)));
             }
             actions.add(action("xmage-concede", "concede", humanId, "Concede", null, null, null));
             return actions;
@@ -844,17 +1096,63 @@ public final class MagicMobileBridge implements MageClient {
         return "choose_target".equals(type) || "declare_attackers".equals(type) || "declare_blockers".equals(type);
     }
 
-    private JsonObject choiceAction(String choiceId, String type, String playerId, String label) {
+    private JsonObject choiceAction(GameRecord record, String choiceId, String type, String playerId, String label) {
         JsonObject action = action("xmage-choice-" + choiceId, type, playerId, label, null, null, null);
+        JsonObject template = new JsonObject();
+        template.addProperty("type", type);
+        if (record.promptEnvelope != null) {
+            String promptId = string(record.promptEnvelope, "id", "");
+            int messageId = integer(record.promptEnvelope, "messageId", -1);
+            if (!promptId.isEmpty()) {
+                action.addProperty("promptId", promptId);
+                template.addProperty("promptId", promptId);
+            }
+            if (messageId >= 0) {
+                action.addProperty("messageId", messageId);
+                template.addProperty("messageId", messageId);
+            }
+        }
         JsonArray targetIds = new JsonArray();
         targetIds.add(choiceId);
-        action.add("targetIds", targetIds);
-        action.add("validTargetIds", targetIds.deepCopy());
+        addChoiceCommandFields(action, template, type, choiceId, targetIds);
         action.addProperty("zoneContext", "prompt");
         if (type != null) {
             action.addProperty("responseKind", type);
         }
+        action.add("commandTemplate", template);
         return action;
+    }
+
+    private void addChoiceCommandFields(JsonObject action, JsonObject template, String type, String choiceId, JsonArray choiceIds) {
+        if ("choose_target".equals(type)) {
+            action.add("targetIds", choiceIds);
+            action.add("validTargetIds", choiceIds.deepCopy());
+            template.add("targetIds", choiceIds.deepCopy());
+        } else if ("choose_card".equals(type) || "search_select".equals(type)) {
+            action.add("cardInstanceIds", choiceIds);
+            action.add("validCardInstanceIds", choiceIds.deepCopy());
+            template.add("cardInstanceIds", choiceIds.deepCopy());
+        } else if ("choose_mode".equals(type)) {
+            action.add("modeIds", choiceIds);
+            template.add("modeIds", choiceIds.deepCopy());
+        } else if ("choose_ability".equals(type)) {
+            action.addProperty("abilityId", choiceId);
+            template.addProperty("abilityId", choiceId);
+        } else if ("play_mana".equals(type)) {
+            action.addProperty("manaType", choiceId);
+            template.addProperty("manaType", choiceId);
+        } else if ("choose_amount".equals(type) || "play_x_mana".equals(type)) {
+            try {
+                action.addProperty("amount", Integer.parseInt(choiceId));
+                template.addProperty("amount", Integer.parseInt(choiceId));
+            } catch (NumberFormatException ignored) {
+                action.addProperty("amount", choiceId);
+                template.addProperty("amount", choiceId);
+            }
+        } else {
+            action.add("choiceIds", choiceIds);
+            template.add("choiceIds", choiceIds.deepCopy());
+        }
     }
 
     private String promptActionType(GameRecord record) {
@@ -864,14 +1162,19 @@ public final class MagicMobileBridge implements MageClient {
         String responseKind = string(record.promptEnvelope, "responseKind", "resolve_choice");
         if ("target".equals(responseKind)) return "choose_target";
         if ("card".equals(responseKind)) return "choose_card";
+        if ("player".equals(responseKind)) return "choose_player";
         if ("ability".equals(responseKind)) return "choose_ability";
+        if ("mode".equals(responseKind)) return "choose_mode";
         if ("pile".equals(responseKind)) return "choose_pile";
         if ("amount".equals(responseKind)) return "choose_amount";
         if ("multi_amount".equals(responseKind)) return "choose_multi_amount";
         if ("mana".equals(responseKind)) return "play_mana";
         if ("x_mana".equals(responseKind)) return "play_x_mana";
+        if ("order".equals(responseKind)) return "order_items";
+        if ("confirmation".equals(responseKind)) return "answer_yes_no";
         if ("search".equals(responseKind)) return "search_select";
         if ("commander_replacement".equals(responseKind)) return "commander_replacement";
+        if ("pay_cost".equals(responseKind)) return "pay_cost";
         return responseKind;
     }
 
@@ -1434,13 +1737,16 @@ public final class MagicMobileBridge implements MageClient {
         if (!isPromptMethod(method)) {
             return null;
         }
-        JsonObject prompt = basePrompt(callback, responseKind(method), message.getMessage());
+        JsonObject prompt = basePrompt(callback, responseKind(method, message.getMessage()), message.getMessage());
         prompt.addProperty("required", message.isFlag());
         prompt.addProperty("minChoices", message.getMin());
         prompt.addProperty("maxChoices", message.getMax());
 
         JsonArray choices = new JsonArray();
-        if (method == ClientCallbackMethod.GAME_CHOOSE_PILE) {
+        if (method == ClientCallbackMethod.GAME_ASK) {
+            choices.add(promptChoice("true", "Yes", null));
+            choices.add(promptChoice("false", "No", null));
+        } else if (method == ClientCallbackMethod.GAME_CHOOSE_PILE) {
             choices.add(promptChoice("1", "Pile 1", null));
             choices.add(promptChoice("2", "Pile 2", null));
             JsonArray piles = new JsonArray();
@@ -1523,6 +1829,7 @@ public final class MagicMobileBridge implements MageClient {
         JsonObject responseCommand = new JsonObject();
         responseCommand.addProperty("type", commandTypeForResponseKind(responseKind));
         responseCommand.addProperty("promptId", "xmage-prompt-" + callback.getMessageId());
+        responseCommand.addProperty("messageId", callback.getMessageId());
         prompt.add("responseCommand", responseCommand);
         return prompt;
     }
@@ -1530,12 +1837,19 @@ public final class MagicMobileBridge implements MageClient {
     private String commandTypeForResponseKind(String responseKind) {
         if ("target".equals(responseKind)) return "choose_target";
         if ("card".equals(responseKind)) return "choose_card";
+        if ("player".equals(responseKind)) return "choose_player";
         if ("ability".equals(responseKind)) return "choose_ability";
+        if ("mode".equals(responseKind)) return "choose_mode";
         if ("pile".equals(responseKind)) return "choose_pile";
         if ("amount".equals(responseKind)) return "choose_amount";
         if ("multi_amount".equals(responseKind)) return "choose_multi_amount";
         if ("mana".equals(responseKind)) return "play_mana";
         if ("x_mana".equals(responseKind)) return "play_x_mana";
+        if ("order".equals(responseKind)) return "order_items";
+        if ("confirmation".equals(responseKind)) return "answer_yes_no";
+        if ("search".equals(responseKind)) return "search_select";
+        if ("commander_replacement".equals(responseKind)) return "commander_replacement";
+        if ("pay_cost".equals(responseKind)) return "pay_cost";
         if ("game_over".equals(responseKind)) return "game_over";
         return "resolve_choice";
     }
@@ -1554,16 +1868,24 @@ public final class MagicMobileBridge implements MageClient {
                 || method == ClientCallbackMethod.GAME_OVER;
     }
 
-    private String responseKind(ClientCallbackMethod method) {
+    private String responseKind(ClientCallbackMethod method, String message) {
+        String normalizedMessage = message == null ? "" : message.toLowerCase();
         if (method == ClientCallbackMethod.GAME_TARGET) return "target";
-        if (method == ClientCallbackMethod.GAME_SELECT) return "card";
+        if (method == ClientCallbackMethod.GAME_SELECT) return normalizedMessage.contains("search") ? "search" : "card";
         if (method == ClientCallbackMethod.GAME_CHOOSE_ABILITY) return "ability";
         if (method == ClientCallbackMethod.GAME_CHOOSE_PILE) return "pile";
+        if (method == ClientCallbackMethod.GAME_CHOOSE_CHOICE && normalizedMessage.contains("mode")) return "mode";
         if (method == ClientCallbackMethod.GAME_PLAY_MANA) return "mana";
         if (method == ClientCallbackMethod.GAME_PLAY_XMANA) return "x_mana";
         if (method == ClientCallbackMethod.GAME_GET_AMOUNT) return "amount";
         if (method == ClientCallbackMethod.GAME_GET_MULTI_AMOUNT) return "multi_amount";
         if (method == ClientCallbackMethod.GAME_OVER) return "game_over";
+        if (method == ClientCallbackMethod.GAME_ASK && normalizedMessage.contains("commander") && normalizedMessage.contains("command")) {
+            return "commander_replacement";
+        }
+        if (method == ClientCallbackMethod.GAME_ASK && normalizedMessage.contains("pay") && normalizedMessage.contains("cost")) {
+            return "pay_cost";
+        }
         return "resolve_choice";
     }
 

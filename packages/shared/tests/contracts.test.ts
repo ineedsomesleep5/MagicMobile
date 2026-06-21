@@ -4,7 +4,10 @@ import type {
   DeckAnalyzer,
   DeckParser,
   EngineAdapter,
+  GameCommand,
   GameSnapshot,
+  LegalAction,
+  PromptEnvelopeV2,
   RecommendationProvider,
   VideoProvider
 } from "@magicmobile/shared";
@@ -141,5 +144,79 @@ describe("shared contracts", () => {
     expect(recommendations).toBeDefined();
     expect(video).toBeDefined();
     await expect(engine.createGame({ roomId: "room-1", playerIds: [] })).resolves.toEqual(snapshot);
+  });
+
+  it("expresses XMage prompt envelopes without changing snapshot requirements", () => {
+    const prompt: PromptEnvelopeV2 = {
+      id: "prompt-1",
+      method: "choose",
+      messageId: 42,
+      playerId: "player-1",
+      responseKind: "target",
+      message: "Choose up to two targets.",
+      required: false,
+      minChoices: 0,
+      maxChoices: 2,
+      responseCommand: {
+        type: "choose_player",
+        promptId: "prompt-1",
+        playerIds: []
+      },
+      choices: [
+        { id: "yes", label: "Yes", kind: "confirmation", value: true },
+        { id: "no", label: "No", kind: "confirmation", value: false }
+      ],
+      cards: [
+        {
+          instanceId: "card-1",
+          card: {
+            id: "card-id-1",
+            name: "Example Card",
+            manaValue: 1,
+            colorIdentity: ["G"],
+            typeLine: "Creature"
+          }
+        }
+      ],
+      targets: [{ id: "target-1", label: "Target creature", kind: "target", cardInstanceId: "card-1" }],
+      players: [{ id: "player-2", label: "Opponent", playerId: "player-2", selectable: true }],
+      modes: [{ id: "mode-1", label: "Destroy artifact", kind: "mode" }],
+      abilities: [{ id: "ability-1", label: "Activated ability", kind: "ability", rulesText: "{T}: Add {G}." }],
+      amounts: [0, 1, 2],
+      manaChoices: [{ id: "mana-g", label: "Green", manaType: "G", amount: 1 }],
+      piles: [{ id: 1, label: "Pile 1", cards: [] }],
+      orderedItems: [{ id: "trigger-1", label: "Resolve first", kind: "order", defaultIndex: 0 }],
+      confirmation: {
+        yesLabel: "Yes",
+        noLabel: "No",
+        yesCommand: { type: "answer_yes_no", promptId: "prompt-1", confirmed: true },
+        noCommand: { type: "answer_yes_no", promptId: "prompt-1", confirmed: false }
+      }
+    };
+
+    const legalAction: LegalAction = {
+      id: "action-1",
+      type: "choose_mana",
+      playerId: "player-1",
+      label: "Choose mana",
+      promptId: "prompt-1",
+      manaType: "G",
+      minChoices: 1,
+      maxChoices: 1,
+      required: true,
+      commandTemplate: { type: "choose_mana", promptId: "prompt-1", manaTypes: ["G"] }
+    };
+
+    const command: GameCommand = {
+      type: "answer_yes_no",
+      gameId: "game-1",
+      playerId: "player-1",
+      promptId: "prompt-1",
+      confirmed: true
+    };
+
+    expect(prompt.players?.[0]?.playerId).toBe("player-2");
+    expect(legalAction.commandTemplate?.type).toBe("choose_mana");
+    expect(command.confirmed).toBe(true);
   });
 });

@@ -1,0 +1,13 @@
+schemaVersion: 1
+sessionDefaultsProfiles:
+  ios:
+    projectPath: apps/ios/MagicMobileiOS.xcodeproj
+    scheme: MagicMobile
+    configuration: Debug
+    simulatorName: iPhone 17 Pro Max
+    simulatorId: 6CC574DD-C83E-4839-905C-CF51F29B4ADA
+    simulatorPlatform: iOS Simulator
+    useLatestOS: true
+    preferXcodebuild: true
+    bundleId: com.calebfeliciano.magicmobile
+activeSessionDefaultsProfile: ios

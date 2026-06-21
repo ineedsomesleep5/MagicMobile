@@ -545,13 +545,17 @@ body:has(.deck-builder-screen) .content {
   bottom: 2.9rem;
   display: grid;
   width: clamp(12rem, 18vw, 15rem);
-  grid-template-rows: auto auto minmax(6rem, 1fr) auto;
+  grid-auto-rows: min-content;
   gap: 0.55rem;
+  overflow: hidden auto;
   pointer-events: none;
 }
 
 .arena-stage-panel,
 .arena-context-panel,
+.arena-prompt-detail-panel,
+.arena-stack-detail-panel,
+.arena-zone-access-panel,
 .arena-zone-panel,
 .arena-log-panel {
   border: 1px solid rgba(246, 240, 223, 0.12);
@@ -566,6 +570,9 @@ body:has(.deck-builder-screen) .content {
 
 .arena-stage-panel h2,
 .arena-context-panel h2,
+.arena-prompt-detail-panel h2,
+.arena-stack-detail-panel h2,
+.arena-zone-access-panel h2,
 .arena-zone-panel h2,
 .arena-log-panel h2 {
   margin: 0 0 0.38rem;
@@ -632,6 +639,115 @@ body:has(.deck-builder-screen) .content {
 .arena-context-panel button:disabled {
   cursor: wait;
   opacity: 0.62;
+}
+
+.arena-prompt-detail-panel,
+.arena-stack-detail-panel,
+.arena-zone-access-panel {
+  display: grid;
+  gap: 0.38rem;
+  padding: 0.5rem;
+  color: #f6f0df;
+  pointer-events: auto;
+}
+
+.arena-prompt-detail-panel strong,
+.arena-stack-detail-panel strong,
+.arena-zone-access-panel strong {
+  overflow-wrap: anywhere;
+  font-size: 0.72rem;
+  line-height: 1.16;
+}
+
+.arena-prompt-detail-panel small,
+.arena-stack-detail-panel span,
+.arena-stack-detail-panel small,
+.arena-stack-detail-panel p,
+.arena-zone-access-panel button,
+.arena-prompt-item-list dd {
+  color: rgba(246, 240, 223, 0.7);
+  font-size: 0.6rem;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.arena-prompt-choice-grid,
+.arena-zone-access-panel div div {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.arena-prompt-choice-grid button,
+.arena-zone-access-panel button {
+  min-height: 1.8rem;
+  border: 1px solid rgba(53, 199, 255, 0.24);
+  border-radius: 8px;
+  padding: 0.28rem 0.42rem;
+  color: #f6f0df;
+  background: rgba(5, 14, 18, 0.72);
+  font: 850 0.62rem/1.15 system-ui, sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.arena-prompt-choice-grid button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.arena-prompt-item-list {
+  display: grid;
+  gap: 0.16rem;
+  margin: 0;
+}
+
+.arena-prompt-item-list dt {
+  color: rgba(255, 180, 93, 0.82);
+  font-size: 0.52rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.arena-prompt-item-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.arena-stack-detail-panel ol {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.arena-stack-detail-panel li {
+  display: grid;
+  gap: 0.12rem;
+  border-top: 1px solid rgba(246, 240, 223, 0.08);
+  padding-top: 0.34rem;
+}
+
+.arena-stack-detail-panel li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.arena-stack-detail-panel p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.arena-zone-access-panel > div {
+  display: grid;
+  gap: 0.26rem;
+  border-top: 1px solid rgba(246, 240, 223, 0.08);
+  padding-top: 0.34rem;
+}
+
+.arena-zone-access-panel > div:first-of-type {
+  border-top: 0;
+  padding-top: 0;
 }
 
 .arena-zone-panel {

@@ -5,10 +5,11 @@ import { useMemo, useState } from "react";
 import { getHandFanStyle } from "./arena-layout";
 import { ArenaFxLayer } from "./ArenaFxLayer";
 import type { BattlefieldCardView, BattlefieldViewModel } from "./battlefield-view-model";
-import type { LegalAction } from "@magicmobile/shared";
+import type { GameSnapshot, LegalAction, PromptEnvelope, PromptEnvelopeV2, XmageNamedZone, XmageStackObject, ZoneCard } from "@magicmobile/shared";
 
 interface ArenaBattlefieldProps {
   viewModel: BattlefieldViewModel;
+  snapshot?: GameSnapshot | undefined;
   selectedInstanceId?: string | undefined;
   selectedActions?: LegalAction[];
   promptActions?: LegalAction[];
@@ -19,6 +20,7 @@ interface ArenaBattlefieldProps {
 
 export function ArenaBattlefield({
   viewModel,
+  snapshot,
   selectedInstanceId,
   selectedActions = [],
   promptActions = [],
@@ -30,6 +32,7 @@ export function ArenaBattlefield({
   const allCards = useMemo(() => getRenderableCards(viewModel), [viewModel]);
   const inspectCard = allCards.find((card) => card.instanceId === selectedInstanceId)
     ?? allCards.find((card) => card.instanceId === hoveredInstanceId);
+  const promptEnvelope = snapshot?.promptEnvelopeV2 ?? snapshot?.promptEnvelope;
 
   return (
     <div className="arena-battlefield" data-testid="arena-battlefield" aria-label="Arena-style Commander battlefield">
@@ -48,6 +51,16 @@ export function ArenaBattlefield({
           selectedCard={allCards.find((card) => card.instanceId === selectedInstanceId)}
           onRunAction={onRunAction}
         />
+        {promptEnvelope ? (
+          <PromptEnvelopePanel
+            actions={promptActions}
+            envelope={promptEnvelope}
+            pending={actionPending}
+            onRunAction={onRunAction}
+          />
+        ) : null}
+        <StackDetailPanel fallbackStack={viewModel.stack} stackObjects={snapshot?.xmage?.stack ?? []} />
+        <ZoneAccessPanel namedZones={namedZoneGroups(snapshot)} onSelectCard={onSelectCard} />
         <GameLog entries={viewModel.logEntries} />
         <ZonePanel
           humanCommand={viewModel.humanCommand}
@@ -232,7 +245,7 @@ function ActionPanel({
   selectedCard: BattlefieldCardView | undefined;
   onRunAction: ((action: LegalAction) => void) | undefined;
 }) {
-  const visibleActions = selectedActions.length > 0 ? selectedActions : promptActions.slice(0, 8);
+  const visibleActions = selectedActions.length > 0 ? selectedActions : promptActions;
   if (visibleActions.length === 0) return null;
 
   return (
@@ -245,6 +258,124 @@ function ActionPanel({
           </button>
         ))}
       </div>
+    </section>
+  );
+}
+
+function PromptEnvelopePanel({
+  actions,
+  envelope,
+  pending,
+  onRunAction
+}: {
+  actions: LegalAction[];
+  envelope: PromptEnvelope | PromptEnvelopeV2;
+  pending: boolean;
+  onRunAction: ((action: LegalAction) => void) | undefined;
+}) {
+  const prompt = envelope as PromptEnvelopeV2;
+  const choices = prompt.choices ?? [];
+
+  return (
+    <section className="arena-prompt-detail-panel" aria-label="XMage prompt detail">
+      <h2>{formatPromptMethod(prompt.method)}</h2>
+      <strong>{prompt.message}</strong>
+      <small>{formatPromptRequirement(prompt)}</small>
+      {choices.length > 0 ? (
+        <div className="arena-prompt-choice-grid">
+          {choices.map((choice) => {
+            const action = actionForChoice(actions, choice.id);
+            return (
+              <button disabled={pending || !action || !onRunAction} key={choice.id} onClick={() => action && onRunAction?.(action)} type="button">
+                {choice.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+      <PromptItemList label="Targets" items={prompt.targets?.map((target) => target.label) ?? []} />
+      <PromptItemList label="Cards" items={prompt.cards?.map((card) => card.card.name) ?? []} />
+      <PromptItemList label="Modes" items={prompt.modes?.map((mode) => mode.label) ?? []} />
+      <PromptItemList label="Abilities" items={prompt.abilities?.map((ability) => ability.rulesText ? `${ability.label}: ${ability.rulesText}` : ability.label) ?? []} />
+      <PromptItemList label="Amounts" items={prompt.amounts?.map(String) ?? []} />
+      <PromptItemList label="Piles" items={prompt.piles?.map((pile) => `${pile.label}: ${pile.cards.map((card) => card.card.name).join(", ")}`) ?? []} />
+    </section>
+  );
+}
+
+function PromptItemList({ label, items }: { label: string; items: string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <dl className="arena-prompt-item-list">
+      <dt>{label}</dt>
+      {items.map((item) => (
+        <dd key={`${label}-${item}`}>{item}</dd>
+      ))}
+    </dl>
+  );
+}
+
+function StackDetailPanel({
+  fallbackStack,
+  stackObjects
+}: {
+  fallbackStack: BattlefieldCardView[];
+  stackObjects: XmageStackObject[];
+}) {
+  if (stackObjects.length === 0 && fallbackStack.length === 0) return null;
+
+  return (
+    <section className="arena-stack-detail-panel" aria-label="Stack detail">
+      <h2>Stack</h2>
+      {stackObjects.length > 0 ? (
+        <ol>
+          {stackObjects.map((object) => (
+            <li key={object.id}>
+              <strong>{object.name}</strong>
+              {object.sourceCard ? <span>Source: {object.sourceCard.card.name}</span> : null}
+              {object.rulesText ? <p>{object.rulesText}</p> : null}
+              {object.paid !== undefined ? <small>{object.paid ? "Paid" : "Unpaid"}</small> : null}
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <ol>
+          {fallbackStack.map((card) => (
+            <li key={card.instanceId}>
+              <strong>{card.name}</strong>
+              {card.oracleText ? <p>{card.oracleText}</p> : null}
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
+
+function ZoneAccessPanel({
+  namedZones,
+  onSelectCard
+}: {
+  namedZones: XmageNamedZone[];
+  onSelectCard: (card: BattlefieldCardView) => void;
+}) {
+  if (namedZones.length === 0) return null;
+
+  return (
+    <section className="arena-zone-access-panel" aria-label="Visible XMage zones">
+      <h2>Visible Zones</h2>
+      {namedZones.map((zone) => (
+        <div key={zone.id}>
+          <strong>{zone.name}</strong>
+          <div>
+            {zone.cards.map((card) => (
+              <button key={card.instanceId} onClick={() => onSelectCard(zoneCardToBattlefieldCard(card))} type="button">
+                {card.card.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
     </section>
   );
 }
@@ -334,6 +465,56 @@ function getRenderableCards(viewModel: BattlefieldViewModel): BattlefieldCardVie
 
 function formatStepLabel(step: BattlefieldViewModel["step"]): string {
   return stageLabels.find(([candidate]) => candidate === step)?.[1] ?? step;
+}
+
+function namedZoneGroups(snapshot: GameSnapshot | undefined): XmageNamedZone[] {
+  if (!snapshot?.xmage) return [];
+  return [
+    ...snapshot.xmage.exileZones,
+    ...snapshot.xmage.revealed,
+    ...snapshot.xmage.lookedAt,
+    ...snapshot.xmage.companion
+  ].filter((zone) => zone.cards.length > 0);
+}
+
+function zoneCardToBattlefieldCard(card: ZoneCard): BattlefieldCardView {
+  return {
+    instanceId: card.instanceId,
+    name: card.card.name,
+    typeLine: card.card.typeLine,
+    ...(card.card.oracleText ? { oracleText: card.card.oracleText } : {}),
+    tapped: card.tapped ?? false,
+    ...(card.power !== undefined ? { power: card.power } : {}),
+    ...(card.toughness !== undefined ? { toughness: card.toughness } : {}),
+    ...(card.damage !== undefined ? { damage: card.damage } : {}),
+    isAttacking: card.isAttacking ?? false,
+    blocking: card.blocking ?? [],
+    counters: Object.entries(card.counters ?? {}).map(([label, value]) => ({ label, value })),
+    quantity: 1,
+    legalActionTypes: []
+  };
+}
+
+function actionForChoice(actions: LegalAction[], choiceId: string): LegalAction | undefined {
+  return actions.find((action) =>
+    action.targetIds?.includes(choiceId)
+    || action.validTargetIds?.includes(choiceId)
+    || action.id === choiceId
+    || action.id.endsWith(choiceId)
+  );
+}
+
+function formatPromptMethod(method: string): string {
+  return method.replace(/^GAME_/, "GAME ").replaceAll("_", " ");
+}
+
+function formatPromptRequirement(prompt: PromptEnvelope | PromptEnvelopeV2): string {
+  const promptV2 = prompt as PromptEnvelopeV2;
+  const responseType = (promptV2.responseCommand?.type ?? prompt.responseKind).replaceAll("_", " ");
+  const range = prompt.minChoices !== undefined || prompt.maxChoices !== undefined
+    ? ` · ${prompt.minChoices ?? 0}-${prompt.maxChoices ?? "any"} choices`
+    : "";
+  return `${responseType}${prompt.required ? " · required" : ""}${range}`;
 }
 
 function shortActionLabel(action: LegalAction): string {

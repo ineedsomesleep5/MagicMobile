@@ -46,6 +46,7 @@ struct ContentView: View {
                     pendingActionId: pendingActionId,
                     pendingCardInstanceId: pendingCardInstanceId,
                     runAction: { action in Task { await run(action: action) } },
+                    runCommand: { command, label, pendingId in Task { await run(command: command, label: label, pendingId: pendingId) } },
                     newGame: { screen = .setup }
                 )
             } else {
@@ -319,6 +320,45 @@ struct ContentView: View {
         do {
             let previousSignature = snapshotSignature(currentSnapshot)
             let nextSnapshot = try await api.submit(action: action, gameId: currentSnapshot.id)
+            applySnapshot(nextSnapshot)
+            status = nextSnapshot.pendingStatus == "waiting_for_xmage" ? "Waiting for XMage update" : "Action submitted"
+            if nextSnapshot.pendingStatus == "waiting_for_xmage" {
+                lastSubmittedActionId = nil
+                lastSubmittedSnapshotSignature = nil
+                await pollSnapshotAfterCommand(api: api, gameId: currentSnapshot.id, previousSignature: previousSignature)
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+            status = error.localizedDescription
+        }
+
+        pendingActionId = nil
+        pendingCardInstanceId = nil
+    }
+
+    private func run(command: GameCommand, label: String, pendingId: String) async {
+        guard pendingActionId == nil else { return }
+        guard let api else {
+            errorMessage = MagicMobileError.invalidServerURL.localizedDescription
+            status = MagicMobileError.invalidServerURL.localizedDescription
+            return
+        }
+        guard let currentSnapshot = snapshot else { return }
+
+        let currentSignature = snapshotSignature(currentSnapshot)
+        if lastSubmittedActionId == pendingId, lastSubmittedSnapshotSignature == currentSignature {
+            return
+        }
+
+        pendingActionId = pendingId
+        pendingCardInstanceId = command.cardInstanceId ?? command.sourceInstanceId
+        lastSubmittedActionId = pendingId
+        lastSubmittedSnapshotSignature = currentSignature
+        status = "Sending \(label)"
+
+        do {
+            let previousSignature = snapshotSignature(currentSnapshot)
+            let nextSnapshot = try await api.submit(command: command, gameId: currentSnapshot.id)
             applySnapshot(nextSnapshot)
             status = nextSnapshot.pendingStatus == "waiting_for_xmage" ? "Waiting for XMage update" : "Action submitted"
             if nextSnapshot.pendingStatus == "waiting_for_xmage" {
@@ -880,6 +920,7 @@ struct ImmersivePlayShell: View {
     let pendingActionId: String?
     let pendingCardInstanceId: String?
     let runAction: (LegalAction) -> Void
+    let runCommand: (GameCommand, String, String) -> Void
     let newGame: () -> Void
 
     var body: some View {
@@ -892,6 +933,7 @@ struct ImmersivePlayShell: View {
             pendingActionId: pendingActionId,
             pendingCardInstanceId: pendingCardInstanceId,
             runAction: runAction,
+            runCommand: runCommand,
             newGame: newGame
         )
     }
@@ -906,6 +948,7 @@ struct NativeGameView: View {
     let pendingActionId: String?
     let pendingCardInstanceId: String?
     let runAction: (LegalAction) -> Void
+    let runCommand: (GameCommand, String, String) -> Void
     let newGame: () -> Void
     @State private var isLogOpen = false
     @State private var isOverPlayerDropZone = false
@@ -915,7 +958,8 @@ struct NativeGameView: View {
         if let snapshot, let human = snapshot.human, let opponent = snapshot.opponent {
             GeometryReader { proxy in
                 let metrics = BattlefieldLayoutMetrics(proxy: proxy)
-                let actions = selectedActions(in: snapshot).isEmpty ? promptActions(in: snapshot) : selectedActions(in: snapshot)
+                let selectedCardActions = selectedActions(in: snapshot)
+                let allActions = snapshot.legalActions ?? []
 
                 ZStack {
                     BattlefieldSurface()
@@ -955,22 +999,6 @@ struct NativeGameView: View {
                     PromptPill(snapshot: snapshot)
                         .frame(width: min(metrics.playWidth * 0.82, 560))
                         .position(x: metrics.playCenterX, y: metrics.promptY)
-
-                    if let prompt = snapshot.choicePrompt {
-                        PromptChoicePanel(prompt: prompt, actions: snapshot.legalActions ?? [], pendingActionId: pendingActionId, runAction: runAction)
-                            .frame(width: min(metrics.playWidth * 0.46, 360))
-                            .position(x: metrics.choicePanelX, y: metrics.choicePanelY)
-                    }
-
-                    if let envelope = snapshot.promptEnvelopeV2 {
-                        PromptEnvelopeV2Badge(prompt: envelope)
-                            .frame(width: min(metrics.playWidth * 0.38, 300))
-                            .position(x: metrics.promptBadgeX, y: metrics.promptBadgeY)
-                    } else if let envelope = snapshot.promptEnvelope {
-                        PromptEnvelopeBadge(prompt: envelope)
-                            .frame(width: min(metrics.playWidth * 0.36, 280))
-                            .position(x: metrics.promptBadgeX, y: metrics.promptBadgeY)
-                    }
 
                     if isOverPlayerDropZone {
                         RoundedRectangle(cornerRadius: 14)
@@ -1026,9 +1054,18 @@ struct NativeGameView: View {
                     .frame(width: metrics.railWidth)
                     .position(x: metrics.railCenterX, y: metrics.railY)
 
-                    if !actions.isEmpty {
-                        ContextActionTray(actions: actions, pendingActionId: pendingActionId, runAction: runAction)
+                    if !allActions.isEmpty || snapshot.choicePrompt != nil || snapshot.promptEnvelope != nil || snapshot.promptEnvelopeV2 != nil {
+                        UniversalPromptActionPanel(
+                            snapshot: snapshot,
+                            selectedCardActions: selectedCardActions,
+                            selectedCard: $selectedCard,
+                            inspectedCard: $inspectedCard,
+                            pendingActionId: pendingActionId,
+                            runAction: runAction,
+                            runCommand: runCommand
+                        )
                             .frame(width: metrics.actionDockWidth)
+                            .frame(maxHeight: metrics.actionPanelHeight)
                             .position(x: metrics.actionDockX, y: metrics.actionY)
                     }
 
@@ -1055,17 +1092,6 @@ struct NativeGameView: View {
     private func selectedActions(in snapshot: GameSnapshot) -> [LegalAction] {
         guard let selectedCard else { return [] }
         return snapshot.legalActions?.filter { $0.cardInstanceId == selectedCard.instanceId || $0.sourceInstanceId == selectedCard.instanceId } ?? []
-    }
-
-    private func promptActions(in snapshot: GameSnapshot) -> [LegalAction] {
-        snapshot.legalActions?.filter {
-            [
-                "keep_hand", "mulligan", "resolve_choice", "choose_target", "choose_card",
-                "choose_mode", "choose_ability", "choose_pile", "choose_amount", "choose_multi_amount",
-                "play_mana", "play_x_mana", "search_select", "order_triggers", "commander_replacement",
-                "pay_cost", "pass_priority", "pass_until_response", "pass_until_next_turn", "concede"
-            ].contains($0.type)
-        } ?? []
     }
 
     private func landPermanents(_ cards: [ZoneCard]) -> [ZoneCard] {
@@ -1099,7 +1125,11 @@ struct BattlefieldLayoutMetrics {
     }
 
     var actionDockWidth: CGFloat {
-        min(max(size.width * 0.12, 168), 220)
+        min(max(size.width * 0.16, 220), 292)
+    }
+
+    var actionPanelHeight: CGFloat {
+        min(max(size.height * 0.54, 250), 390)
     }
 
     var actionDockRightX: CGFloat {
@@ -1951,6 +1981,714 @@ struct PromptEnvelopeV2Badge: View {
     }
 }
 
+struct UniversalPromptActionPanel: View {
+    let snapshot: GameSnapshot
+    let selectedCardActions: [LegalAction]
+    @Binding var selectedCard: ZoneCard?
+    @Binding var inspectedCard: ZoneCard?
+    let pendingActionId: String?
+    let runAction: (LegalAction) -> Void
+    let runCommand: (GameCommand, String, String) -> Void
+
+    private var allActions: [LegalAction] {
+        (snapshot.legalActions ?? []).sorted { lhs, rhs in
+            if lhs.actionPriority != rhs.actionPriority {
+                return lhs.actionPriority < rhs.actionPriority
+            }
+            return lhs.label < rhs.label
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundStyle(MagicPalette.antiqueGold)
+                Text("PROMPT")
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundStyle(MagicPalette.antiqueGold)
+                Spacer(minLength: 4)
+                Text(priorityLabel)
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundStyle(.white.opacity(0.68))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    MobileSurfacesPanel(
+                        snapshot: snapshot,
+                        selectedCard: $selectedCard,
+                        inspectedCard: $inspectedCard
+                    )
+
+                    if let prompt = snapshot.promptEnvelopeV2 {
+                        promptEnvelopeV2Section(prompt)
+                    } else if let prompt = snapshot.promptEnvelope {
+                        promptEnvelopeSection(prompt)
+                    }
+
+                    if let prompt = snapshot.choicePrompt {
+                        choicePromptSection(prompt)
+                    }
+
+                    if !selectedCardActions.isEmpty, let selectedCard {
+                        actionSection(
+                            title: "Selected",
+                            detail: selectedCard.card.name,
+                            actions: selectedCardActions
+                        )
+                    }
+
+                    actionSection(title: "All Actions", detail: "\(allActions.count)", actions: allActions)
+                }
+                .padding(.vertical, 1)
+            }
+        }
+        .padding(9)
+        .background(MagicPalette.iron.opacity(0.78), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.antiqueGold.opacity(0.30)))
+    }
+
+    private var priorityLabel: String {
+        if snapshot.priorityPlayerId == "human" || snapshot.waitingOnPlayerId == "human" {
+            return "YOUR PRIORITY"
+        }
+        return snapshot.priorityPlayerId ?? snapshot.waitingOnPlayerId ?? "WAITING"
+    }
+
+    @ViewBuilder
+    private func promptEnvelopeV2Section(_ prompt: PromptEnvelopeV2) -> some View {
+        PromptPanelSection(title: prompt.method.replacingOccurrences(of: "GAME_", with: ""), detail: prompt.responseCommand?.type ?? prompt.responseKind) {
+            Text(prompt.message)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white.opacity(0.86))
+                .lineLimit(3)
+                .minimumScaleFactor(0.68)
+
+            if isCommanderReplacement(prompt) {
+                HStack(spacing: 6) {
+                    promptButton(
+                        label: "Command zone",
+                        pendingId: "\(prompt.id)-command-zone",
+                        command: command(type: "commander_replacement", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, useCommandZone: true)
+                    )
+                    promptButton(
+                        label: "Graveyard",
+                        pendingId: "\(prompt.id)-graveyard",
+                        command: command(type: "commander_replacement", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, useCommandZone: false)
+                    )
+                }
+            }
+
+            if let choices = prompt.choices, !choices.isEmpty {
+                optionGrid(choices.map { ($0.id, $0.label) }, prompt: prompt, fallbackType: "resolve_choice", icon: "checkmark.circle")
+            }
+
+            if let targets = prompt.targets, !targets.isEmpty {
+                optionGrid(targets.map { ($0.id, $0.label) }, prompt: prompt, fallbackType: "choose_target", icon: "scope")
+            }
+
+            if let cards = prompt.cards, !cards.isEmpty {
+                cardPicker(cards: cards, prompt: prompt)
+            }
+
+            if let modes = prompt.modes, !modes.isEmpty {
+                optionGrid(modes.map { ($0.id, $0.label) }, prompt: prompt, fallbackType: "choose_mode", icon: "square.stack.3d.up")
+            }
+
+            if let abilities = prompt.abilities, !abilities.isEmpty {
+                abilityPicker(abilities: abilities, prompt: prompt)
+            }
+
+            if let piles = prompt.piles, !piles.isEmpty {
+                pilePicker(piles: piles, prompt: prompt)
+            }
+
+            if let amounts = prompt.amounts, !amounts.isEmpty {
+                amountPicker(amounts: amounts, prompt: prompt)
+            }
+
+            if isManaPrompt(prompt) {
+                manaPicker(prompt: prompt)
+            }
+
+            if isTriggerOrderPrompt(prompt) {
+                placeholderSubmit(
+                    title: "Trigger order",
+                    button: "Submit shown order",
+                    prompt: prompt,
+                    type: "order_triggers",
+                    ids: prompt.cards?.map(\.id) ?? prompt.targets?.map(\.id) ?? prompt.choices?.map(\.id) ?? []
+                )
+            }
+
+            if isSearchPrompt(prompt), prompt.cards?.isEmpty != false, prompt.targets?.isEmpty != false {
+                placeholderSubmit(
+                    title: "Search/select",
+                    button: "Submit exposed selection",
+                    prompt: prompt,
+                    type: "search_select",
+                    ids: prompt.targetIds ?? []
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func promptEnvelopeSection(_ prompt: PromptEnvelope) -> some View {
+        PromptPanelSection(title: prompt.method.replacingOccurrences(of: "GAME_", with: ""), detail: prompt.responseKind) {
+            Text(prompt.message)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white.opacity(0.86))
+                .lineLimit(3)
+                .minimumScaleFactor(0.68)
+
+            if let choices = prompt.choices, !choices.isEmpty {
+                legacyOptionGrid(choices.map { ($0.id, $0.label) }, prompt: prompt, fallbackType: "resolve_choice")
+            }
+
+            if let targetIds = prompt.targetIds, !targetIds.isEmpty {
+                legacyOptionGrid(targetIds.map { ($0, $0) }, prompt: prompt, fallbackType: "choose_target")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func choicePromptSection(_ prompt: ChoicePrompt) -> some View {
+        PromptPanelSection(title: "Choice", detail: "\(prompt.minChoices)-\(prompt.maxChoices)") {
+            Text(prompt.message)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white.opacity(0.86))
+                .lineLimit(3)
+                .minimumScaleFactor(0.68)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 6)], spacing: 6) {
+                ForEach(prompt.choices) { choice in
+                    let action = action(for: choice, promptId: prompt.id)
+                    Button {
+                        if let action {
+                            runAction(action)
+                        } else if let command = command(type: "resolve_choice", promptId: prompt.id, playerId: prompt.playerId, ids: [choice.id]) {
+                            runCommand(command, choice.label, "\(prompt.id)-\(choice.id)")
+                        }
+                    } label: {
+                        PromptButtonLabel(
+                            title: choice.label,
+                            systemImage: yesNoIcon(choice.label),
+                            isPending: pendingActionId == action?.id || pendingActionId == "\(prompt.id)-\(choice.id)"
+                        )
+                    }
+                    .buttonStyle(PanelActionButtonStyle(isPrimary: action?.isPrimary == true))
+                    .disabled(pendingActionId != nil || (action == nil && command(type: "resolve_choice", promptId: prompt.id, playerId: prompt.playerId, ids: [choice.id]) == nil))
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func actionSection(title: String, detail: String, actions: [LegalAction]) -> some View {
+        PromptPanelSection(title: title, detail: detail) {
+            if actions.isEmpty {
+                Text("No exposed actions")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.48))
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 98), spacing: 6)], spacing: 6) {
+                    ForEach(actions) { action in
+                        Button {
+                            runAction(action)
+                        } label: {
+                            PromptButtonLabel(
+                                title: action.displayLabel,
+                                subtitle: action.actionDetail,
+                                systemImage: action.systemImage,
+                                isPending: pendingActionId == action.id
+                            )
+                        }
+                        .buttonStyle(PanelActionButtonStyle(isDanger: action.type == "concede", isPrimary: action.isPrimary == true))
+                        .disabled(pendingActionId != nil)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func optionGrid(_ options: [(String, String)], prompt: PromptEnvelopeV2, fallbackType: String, icon: String) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 6)], spacing: 6) {
+            ForEach(options, id: \.0) { option in
+                let type = idCommandType(preferred: prompt.responseCommand?.type, fallback: fallbackType)
+                promptButton(
+                    label: option.1,
+                    systemImage: yesNoIcon(option.1) ?? icon,
+                    pendingId: "\(prompt.id)-\(option.0)",
+                    command: command(type: type, promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [option.0])
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func legacyOptionGrid(_ options: [(String, String)], prompt: PromptEnvelope, fallbackType: String) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 6)], spacing: 6) {
+            ForEach(options, id: \.0) { option in
+                promptButton(
+                    label: option.1,
+                    systemImage: yesNoIcon(option.1),
+                    pendingId: "\(prompt.id)-\(option.0)",
+                    command: command(type: fallbackType, promptId: prompt.id, playerId: prompt.playerId, ids: [option.0])
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func cardPicker(cards: [ZoneCard], prompt: PromptEnvelopeV2) -> some View {
+        PromptMiniLabel("Cards")
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 7) {
+                ForEach(cards) { card in
+                    let type = idCommandType(preferred: prompt.responseCommand?.type, fallback: isSearchPrompt(prompt) ? "search_select" : "choose_card")
+                    VStack(spacing: 4) {
+                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: true, width: 38, height: 53)
+                            .onTapGesture {
+                                selectedCard = card
+                                inspectedCard = nil
+                            }
+                            .onLongPressGesture(minimumDuration: 0.35) {
+                                inspectedCard = card
+                            }
+                        promptButton(
+                            label: "Choose",
+                            subtitle: card.card.name,
+                            systemImage: "checkmark.circle",
+                            pendingId: "\(prompt.id)-\(card.instanceId)",
+                            command: command(type: type, promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [card.instanceId])
+                        )
+                        .frame(width: 74)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func abilityPicker(abilities: [XmagePromptAbility], prompt: PromptEnvelopeV2) -> some View {
+        PromptMiniLabel("Abilities")
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 6)], spacing: 6) {
+            ForEach(abilities) { ability in
+                promptButton(
+                    label: ability.label,
+                    subtitle: ability.rulesText,
+                    systemImage: "bolt.fill",
+                    pendingId: "\(prompt.id)-\(ability.id)",
+                    command: command(type: "choose_ability", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [ability.id])
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func pilePicker(piles: [XmagePromptPile], prompt: PromptEnvelopeV2) -> some View {
+        PromptMiniLabel("Piles")
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 6)], spacing: 6) {
+            ForEach(piles) { pile in
+                promptButton(
+                    label: pile.label,
+                    subtitle: "\(pile.cards.count) cards",
+                    systemImage: "tray.full",
+                    pendingId: "\(prompt.id)-pile-\(pile.id)",
+                    command: command(type: "choose_pile", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, pile: Int(pile.id) ?? 1)
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func amountPicker(amounts: [Int], prompt: PromptEnvelopeV2) -> some View {
+        PromptMiniLabel("Amount")
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 44), spacing: 6)], spacing: 6) {
+            ForEach(amounts, id: \.self) { amount in
+                let type = amountCommandType(preferred: prompt.responseCommand?.type)
+                promptButton(
+                    label: "\(amount)",
+                    systemImage: "number",
+                    pendingId: "\(prompt.id)-amount-\(amount)",
+                    command: command(type: type, promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, amount: amount, amounts: [amount])
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func manaPicker(prompt: PromptEnvelopeV2) -> some View {
+        PromptMiniLabel("Mana")
+        HStack(spacing: 6) {
+            ForEach(["W", "U", "B", "R", "G", "C"], id: \.self) { mana in
+                Button {
+                    if let command = command(type: "play_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, manaType: mana) {
+                        runCommand(command, mana, "\(prompt.id)-mana-\(mana)")
+                    }
+                } label: {
+                    ManaSymbolView(symbol: mana, size: 26)
+                        .overlay {
+                            if pendingActionId == "\(prompt.id)-mana-\(mana)" {
+                                ProgressView()
+                                    .tint(.white)
+                                    .scaleEffect(0.6)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .disabled(pendingActionId != nil)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func placeholderSubmit(title: String, button: String, prompt: PromptEnvelopeV2, type: String, ids: [String]) -> some View {
+        PromptMiniLabel(title)
+        promptButton(
+            label: button,
+            subtitle: ids.isEmpty ? "Waiting for exposed ids" : "\(ids.count) ids",
+            systemImage: type == "order_triggers" ? "arrow.up.arrow.down" : "magnifyingglass",
+            pendingId: "\(prompt.id)-\(type)",
+            command: ids.isEmpty ? nil : command(type: type, promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: ids)
+        )
+    }
+
+    @ViewBuilder
+    private func promptButton(label: String, subtitle: String? = nil, systemImage: String? = nil, pendingId: String, command: GameCommand?) -> some View {
+        Button {
+            if let command {
+                runCommand(command, label, pendingId)
+            }
+        } label: {
+            PromptButtonLabel(title: label, subtitle: subtitle, systemImage: systemImage, isPending: pendingActionId == pendingId)
+        }
+        .buttonStyle(PanelActionButtonStyle(isPrimary: true))
+        .disabled(pendingActionId != nil || command == nil)
+    }
+
+    private func action(for choice: ChoicePromptOption, promptId: String) -> LegalAction? {
+        allActions.first { action in
+            action.id == choice.id ||
+            action.id == "\(promptId)-\(choice.id)" ||
+            action.targetIds?.contains(choice.id) == true ||
+            action.validTargetIds?.contains(choice.id) == true ||
+            action.id.hasSuffix(choice.id)
+        }
+    }
+
+    private func command(
+        type rawType: String,
+        promptId: String,
+        playerId: String,
+        ids: [String] = [],
+        amount: Int? = nil,
+        amounts: [Int]? = nil,
+        pile: Int? = nil,
+        useCommandZone: Bool? = nil,
+        manaType: String? = nil
+    ) -> GameCommand? {
+        let type = rawType.lowercased()
+        switch type {
+        case "resolve_choice":
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, choiceIds: ids)
+        case "choose_target":
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, targetIds: ids)
+        case "choose_card":
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, cardInstanceIds: ids)
+        case "choose_player":
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, playerIds: ids)
+        case "choose_mode":
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, modeIds: ids)
+        case "choose_ability":
+            guard let abilityId = ids.first else { return nil }
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, abilityId: abilityId, promptId: promptId)
+        case "choose_pile":
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, pile: pile ?? Int(ids.first ?? "1") ?? 1)
+        case "choose_amount", "play_x_mana":
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, amount: amount ?? Int(ids.first ?? "0") ?? 0)
+        case "choose_multi_amount":
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, amounts: amounts ?? ids.compactMap(Int.init))
+        case "play_mana":
+            guard let manaType else { return nil }
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, manaType: manaType)
+        case "choose_mana":
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, manaTypes: manaType.map { [$0] } ?? ids)
+        case "search_select":
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, cardInstanceIds: ids)
+        case "order_triggers", "order_items":
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, orderedIds: ids)
+        case "commander_replacement":
+            guard let useCommandZone else { return nil }
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, useCommandZone: useCommandZone)
+        case "answer_yes_no":
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, confirmed: ids.first != "false")
+        default:
+            return nil
+        }
+    }
+
+    private func idCommandType(preferred: String?, fallback: String) -> String {
+        guard let preferred = preferred?.lowercased() else { return fallback }
+        if ["resolve_choice", "choose_target", "choose_card", "choose_player", "choose_mode", "choose_ability", "search_select", "order_triggers", "order_items", "answer_yes_no"].contains(preferred) {
+            return preferred
+        }
+        return fallback
+    }
+
+    private func amountCommandType(preferred: String?) -> String {
+        guard let preferred = preferred?.lowercased() else { return "choose_amount" }
+        return ["choose_amount", "choose_multi_amount", "play_x_mana"].contains(preferred) ? preferred : "choose_amount"
+    }
+
+    private func isManaPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
+        prompt.responseCommand?.type?.lowercased() == "play_mana" || prompt.responseKind.lowercased() == "play_mana"
+    }
+
+    private func isCommanderReplacement(_ prompt: PromptEnvelopeV2) -> Bool {
+        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
+        return type == "commander_replacement" || prompt.message.localizedCaseInsensitiveContains("command zone")
+    }
+
+    private func isTriggerOrderPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
+        (prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()) == "order_triggers"
+    }
+
+    private func isSearchPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
+        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
+        return type == "search_select" || prompt.method.localizedCaseInsensitiveContains("search")
+    }
+
+    private func yesNoIcon(_ label: String) -> String? {
+        let lower = label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if ["yes", "ok", "accept"].contains(lower) { return "checkmark.circle" }
+        if ["no", "cancel", "decline"].contains(lower) { return "xmark.circle" }
+        return nil
+    }
+}
+
+struct MobileSurfacesPanel: View {
+    let snapshot: GameSnapshot
+    @Binding var selectedCard: ZoneCard?
+    @Binding var inspectedCard: ZoneCard?
+
+    var body: some View {
+        PromptPanelSection(title: "Surfaces", detail: surfaceSummary) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 76), spacing: 5)], spacing: 5) {
+                SurfaceChip(title: "Stack", value: "\(stackCards.count)")
+                SurfaceChip(title: "Command", value: "\(commandCards.count)")
+                SurfaceChip(title: "Grave", value: "\(graveyardCards.count)")
+                SurfaceChip(title: "Exile", value: "\(exileCards.count)")
+                SurfaceChip(title: "Priority", value: priorityOwner)
+                SurfaceChip(title: "Actions", value: "\((snapshot.legalActions ?? []).count)")
+            }
+
+            if !stackCards.isEmpty {
+                MiniZoneRow(title: "Stack", cards: stackCards, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+            }
+            if !commandCards.isEmpty {
+                MiniZoneRow(title: "Command", cards: commandCards, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+            }
+            if !graveyardCards.isEmpty {
+                MiniZoneRow(title: "Graveyard", cards: Array(graveyardCards.suffix(8)), selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+            }
+            if !exileCards.isEmpty {
+                MiniZoneRow(title: "Exile", cards: Array(exileCards.suffix(8)), selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+            }
+        }
+    }
+
+    private var surfaceSummary: String {
+        if snapshot.xmage?.panels.search == true {
+            return "search"
+        }
+        return priorityOwner
+    }
+
+    private var priorityOwner: String {
+        if snapshot.priorityPlayerId == "human" || snapshot.waitingOnPlayerId == "human" {
+            return "You"
+        }
+        return snapshot.priorityPlayerId ?? snapshot.waitingOnPlayerId ?? "-"
+    }
+
+    private var stackCards: [ZoneCard] {
+        let xmageCards = snapshot.xmage?.stack.compactMap(\.sourceCard) ?? []
+        if !xmageCards.isEmpty { return xmageCards }
+        return snapshot.players.flatMap(\.zones.stack)
+    }
+
+    private var commandCards: [ZoneCard] {
+        snapshot.players.flatMap(\.zones.command) + (snapshot.xmage?.players.flatMap(\.command) ?? [])
+    }
+
+    private var graveyardCards: [ZoneCard] {
+        snapshot.players.flatMap(\.zones.graveyard) + (snapshot.xmage?.players.flatMap(\.zones.graveyard) ?? [])
+    }
+
+    private var exileCards: [ZoneCard] {
+        snapshot.players.flatMap(\.zones.exile) + (snapshot.xmage?.players.flatMap(\.zones.exile) ?? []) + (snapshot.xmage?.exileZones.flatMap(\.cards) ?? [])
+    }
+}
+
+struct PromptPanelSection<Content: View>: View {
+    let title: String
+    let detail: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 5) {
+                Text(title.uppercased())
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundStyle(MagicPalette.antiqueGold)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Spacer(minLength: 3)
+                Text(detail.uppercased())
+                    .font(.system(size: 7, weight: .black))
+                    .foregroundStyle(.white.opacity(0.50))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+            }
+            content
+        }
+        .padding(7)
+        .background(.black.opacity(0.32), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.10)))
+    }
+}
+
+struct PromptMiniLabel: View {
+    let title: String
+
+    init(_ title: String) {
+        self.title = title
+    }
+
+    var body: some View {
+        Text(title.uppercased())
+            .font(.system(size: 7, weight: .black))
+            .foregroundStyle(.white.opacity(0.54))
+    }
+}
+
+struct PromptButtonLabel: View {
+    let title: String
+    var subtitle: String?
+    var systemImage: String?
+    var isPending = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if isPending {
+                ProgressView()
+                    .tint(.white)
+                    .scaleEffect(0.58)
+            } else if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: 9, weight: .black))
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 10, weight: .black))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.62)
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.62))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.62)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+struct PanelActionButtonStyle: ButtonStyle {
+    var isDanger = false
+    var isPrimary = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(.white)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+            .background(backgroundColor(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 7))
+            .overlay(RoundedRectangle(cornerRadius: 7).stroke(.white.opacity(isPrimary ? 0.18 : 0.10)))
+            .opacity(configuration.isPressed ? 0.82 : 1)
+    }
+
+    private func backgroundColor(isPressed: Bool) -> Color {
+        if isDanger {
+            return isPressed ? Color.red.opacity(0.58) : Color.red.opacity(0.72)
+        }
+        if isPrimary {
+            return isPressed ? Color.orange.opacity(0.64) : Color.orange.opacity(0.82)
+        }
+        return isPressed ? Color.white.opacity(0.16) : Color.white.opacity(0.08)
+    }
+}
+
+struct SurfaceChip: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(spacing: 1) {
+            Text(value)
+                .font(.system(size: 10, weight: .black))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Text(title.uppercased())
+                .font(.system(size: 6, weight: .black))
+                .foregroundStyle(.white.opacity(0.55))
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, minHeight: 30)
+        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 7))
+    }
+}
+
+struct MiniZoneRow: View {
+    let title: String
+    let cards: [ZoneCard]
+    @Binding var selectedCard: ZoneCard?
+    @Binding var inspectedCard: ZoneCard?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            PromptMiniLabel(title)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: -7) {
+                    ForEach(cards) { card in
+                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, width: 28, height: 39)
+                            .onTapGesture {
+                                selectedCard = card
+                                inspectedCard = nil
+                            }
+                            .onLongPressGesture(minimumDuration: 0.35) {
+                                inspectedCard = card
+                            }
+                    }
+                }
+                .padding(.vertical, 2)
+                .padding(.trailing, 7)
+            }
+        }
+    }
+}
+
 struct BattlefieldRow: View {
     let title: String
     let cards: [ZoneCard]
@@ -2776,6 +3514,98 @@ extension String {
 private extension CardIdentity {
     var isLand: Bool {
         typeLine.localizedCaseInsensitiveContains("land")
+    }
+}
+
+private extension LegalAction {
+    var displayLabel: String {
+        if let shortLabel, !shortLabel.isEmpty {
+            return shortLabel
+        }
+        switch type {
+        case "pass_priority":
+            return "Done"
+        case "pass_until_response":
+            return "Pass"
+        case "pass_until_next_turn":
+            return "Skip turn"
+        case "play_land":
+            return "Play"
+        case "cast_spell":
+            return "Cast"
+        case "activate_ability":
+            return "Ability"
+        case "make_mana":
+            return "Mana"
+        default:
+            return label
+        }
+    }
+
+    var actionDetail: String? {
+        if let zoneContext, !zoneContext.isEmpty {
+            return zoneContext
+        }
+        if let sourceZone, !sourceZone.isEmpty {
+            return sourceZone
+        }
+        let count = validTargetIds?.count ?? targetIds?.count ?? 0
+        return count > 0 ? "\(count) choices" : nil
+    }
+
+    var actionPriority: Int {
+        if isPrimary == true { return 0 }
+        switch type {
+        case "keep_hand", "resolve_choice", "play_land", "cast_spell":
+            return 1
+        case "choose_target", "choose_card", "choose_mode", "choose_ability", "choose_amount", "play_mana":
+            return 2
+        case "make_mana", "activate_ability", "pay_cost":
+            return 3
+        case "pass_priority":
+            return 4
+        case "pass_until_response", "pass_until_next_turn", "advance_phase":
+            return 5
+        case "concede":
+            return 9
+        default:
+            return 6
+        }
+    }
+
+    var systemImage: String {
+        switch type {
+        case "keep_hand":
+            return "hand.thumbsup.fill"
+        case "mulligan":
+            return "arrow.counterclockwise"
+        case "play_land":
+            return "leaf.fill"
+        case "cast_spell":
+            return "sparkles"
+        case "activate_ability", "choose_ability":
+            return "bolt.fill"
+        case "make_mana", "play_mana", "play_x_mana":
+            return "circle.hexagongrid.fill"
+        case "choose_target":
+            return "scope"
+        case "choose_card", "search_select":
+            return "rectangle.stack.fill"
+        case "choose_mode":
+            return "square.stack.3d.up"
+        case "choose_amount", "choose_multi_amount":
+            return "number"
+        case "order_triggers":
+            return "arrow.up.arrow.down"
+        case "commander_replacement":
+            return "crown.fill"
+        case "pass_priority", "pass_until_response", "pass_until_next_turn", "advance_phase":
+            return "forward.fill"
+        case "concede":
+            return "flag.fill"
+        default:
+            return "circle.fill"
+        }
     }
 }
 

@@ -202,11 +202,15 @@ export type LegalActionType =
   | "choose_mode"
   | "choose_ability"
   | "choose_card"
+  | "choose_player"
   | "choose_pile"
   | "choose_amount"
   | "choose_multi_amount"
+  | "choose_mana"
+  | "answer_yes_no"
   | "play_x_mana"
   | "order_triggers"
+  | "order_items"
   | "search_select"
   | "commander_replacement"
   | "declare_attackers"
@@ -225,21 +229,66 @@ export interface LegalAction {
   type: LegalActionType;
   playerId: PlayerId;
   label: string;
+  promptId?: string;
   cardInstanceId?: string;
   sourceZone?: ZoneName;
   sourceInstanceId?: string;
   abilityId?: string;
   targetIds?: string[];
   validTargetIds?: string[];
+  playerIds?: PlayerId[];
+  validPlayerIds?: PlayerId[];
+  cardInstanceIds?: string[];
+  choiceIds?: string[];
+  modeIds?: string[];
+  orderedIds?: string[];
+  amount?: number;
+  amounts?: number[];
+  manaType?: ColorSymbol;
+  pile?: 1 | 2 | string;
+  confirmed?: boolean;
   isPrimary?: boolean;
   requiresTarget?: boolean;
+  required?: boolean;
+  optional?: boolean;
   responseKind?: string;
   messageId?: number;
   minChoices?: number;
   maxChoices?: number;
   zoneContext?: ZoneName | "prompt" | "stack" | "search";
   shortLabel?: string;
-  commandTemplate?: Partial<GameCommand>;
+  commandTemplate?: GameCommandTemplate;
+}
+
+export type PromptChoiceKind =
+  | "card"
+  | "target"
+  | "player"
+  | "mode"
+  | "ability"
+  | "amount"
+  | "mana"
+  | "pile"
+  | "order"
+  | "confirmation"
+  | "option";
+
+export interface PromptChoiceOption {
+  id: string;
+  label: string;
+  kind?: PromptChoiceKind;
+  cardInstanceId?: string;
+  playerId?: PlayerId;
+  sourceInstanceId?: string;
+  abilityId?: string;
+  targetId?: string;
+  zone?: ZoneName | "prompt" | "stack" | "search";
+  amount?: number;
+  manaType?: ColorSymbol;
+  value?: string | number | boolean;
+  selected?: boolean;
+  disabled?: boolean;
+  responseCommand?: GameCommandTemplate;
 }
 
 export interface ChoicePrompt {
@@ -248,11 +297,7 @@ export interface ChoicePrompt {
   message: string;
   minChoices: number;
   maxChoices: number;
-  choices: Array<{
-    id: string;
-    label: string;
-    cardInstanceId?: string;
-  }>;
+  choices: PromptChoiceOption[];
 }
 
 export interface PromptEnvelope {
@@ -266,21 +311,72 @@ export interface PromptEnvelope {
   minChoices?: number;
   maxChoices?: number;
   targetIds?: string[];
-  choices?: Array<{
-    id: string;
-    label: string;
-    cardInstanceId?: string;
-  }>;
+  choices?: PromptChoiceOption[];
+}
+
+export interface PromptPlayerOption {
+  id: PlayerId;
+  label: string;
+  playerId: PlayerId;
+  life?: number;
+  selectable?: boolean;
+  responseCommand?: GameCommandTemplate;
+}
+
+export interface PromptTargetOption extends PromptChoiceOption {
+  kind?: "target";
+}
+
+export interface PromptAbilityOption extends PromptChoiceOption {
+  kind?: "ability";
+  rulesText?: string;
+}
+
+export interface PromptModeOption extends PromptChoiceOption {
+  kind?: "mode";
+}
+
+export interface PromptManaChoice {
+  id: string;
+  label: string;
+  manaType?: ColorSymbol;
+  amount?: number;
+  manaPool?: Partial<ManaPool>;
+  responseCommand?: GameCommandTemplate;
+}
+
+export interface PromptPile {
+  id: 1 | 2 | string;
+  label: string;
+  cards: ZoneCard[];
+  responseCommand?: GameCommandTemplate;
+}
+
+export interface PromptOrderedItem extends PromptChoiceOption {
+  kind?: "order";
+  defaultIndex?: number;
+}
+
+export interface PromptConfirmation {
+  yesLabel?: string;
+  noLabel?: string;
+  defaultValue?: boolean;
+  yesCommand?: GameCommandTemplate;
+  noCommand?: GameCommandTemplate;
 }
 
 export interface PromptEnvelopeV2 extends PromptEnvelope {
-  responseCommand?: Partial<GameCommand> & { promptId?: string };
+  responseCommand?: GameCommandTemplate;
   cards?: ZoneCard[];
-  targets?: Array<{ id: string; label: string; cardInstanceId?: string }>;
-  piles?: Array<{ id: "1" | "2"; label: string; cards: ZoneCard[] }>;
-  abilities?: Array<{ id: string; label: string; rulesText?: string }>;
-  modes?: Array<{ id: string; label: string }>;
+  targets?: PromptTargetOption[];
+  players?: PromptPlayerOption[];
+  piles?: PromptPile[];
+  abilities?: PromptAbilityOption[];
+  modes?: PromptModeOption[];
   amounts?: number[];
+  manaChoices?: PromptManaChoice[];
+  orderedItems?: PromptOrderedItem[];
+  confirmation?: PromptConfirmation;
   options?: Record<string, string | number | boolean>;
 }
 
@@ -364,6 +460,36 @@ export interface XmagePlayableObject {
   abilities: Array<{ id: string; label: string; category: "mana" | "play" | "cast" | "ability" }>;
 }
 
+export interface GameCommandTemplate {
+  type?: GameCommand["type"];
+  gameId?: GameId;
+  playerId?: PlayerId;
+  promptId?: string;
+  cardInstanceId?: string;
+  cardInstanceIds?: string[];
+  sourceInstanceId?: string;
+  sourceInstanceIds?: string[];
+  sourceZone?: ZoneName;
+  fromZone?: ZoneName;
+  abilityId?: string;
+  targetIds?: string[];
+  playerIds?: PlayerId[];
+  modeIds?: string[];
+  choiceIds?: string[];
+  paymentId?: string;
+  manaType?: ColorSymbol;
+  manaTypes?: ColorSymbol[];
+  amount?: number;
+  amounts?: number[];
+  pile?: 1 | 2 | string;
+  orderedIds?: string[];
+  confirmed?: boolean;
+  useCommandZone?: boolean;
+  attackers?: Array<{ attackerId: string; defenderId: string }>;
+  blockers?: Array<{ blockerId: string; attackerId: string }>;
+  cardName?: string;
+}
+
 export type GameCommand =
   | { type: "keep_hand"; gameId: GameId; playerId: PlayerId }
   | { type: "mulligan"; gameId: GameId; playerId: PlayerId }
@@ -377,11 +503,15 @@ export type GameCommand =
   | { type: "choose_mode"; gameId: GameId; playerId: PlayerId; promptId: string; modeIds: string[] }
   | { type: "choose_ability"; gameId: GameId; playerId: PlayerId; promptId: string; abilityId: string }
   | { type: "choose_card"; gameId: GameId; playerId: PlayerId; promptId: string; cardInstanceIds: string[] }
+  | { type: "choose_player"; gameId: GameId; playerId: PlayerId; promptId: string; playerIds: PlayerId[] }
   | { type: "choose_pile"; gameId: GameId; playerId: PlayerId; promptId: string; pile: 1 | 2 }
   | { type: "choose_amount"; gameId: GameId; playerId: PlayerId; promptId: string; amount: number }
   | { type: "choose_multi_amount"; gameId: GameId; playerId: PlayerId; promptId: string; amounts: number[] }
+  | { type: "choose_mana"; gameId: GameId; playerId: PlayerId; promptId: string; manaTypes: ColorSymbol[] }
+  | { type: "answer_yes_no"; gameId: GameId; playerId: PlayerId; promptId: string; confirmed: boolean }
   | { type: "play_x_mana"; gameId: GameId; playerId: PlayerId; promptId: string; amount: number }
   | { type: "order_triggers"; gameId: GameId; playerId: PlayerId; promptId: string; orderedIds: string[] }
+  | { type: "order_items"; gameId: GameId; playerId: PlayerId; promptId: string; orderedIds: string[] }
   | { type: "search_select"; gameId: GameId; playerId: PlayerId; promptId: string; cardInstanceIds: string[] }
   | { type: "commander_replacement"; gameId: GameId; playerId: PlayerId; promptId: string; useCommandZone: boolean }
   | { type: "declare_attackers"; gameId: GameId; playerId: PlayerId; attackers: Array<{ attackerId: string; defenderId: string }> }

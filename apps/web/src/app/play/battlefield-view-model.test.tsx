@@ -127,4 +127,89 @@ describe("BattlefieldViewModel", () => {
     expect(html).toContain("Ezuri, Claw of Progress");
     expect(html).toContain("Cast");
   });
+
+  it("renders PromptEnvelopeV2 detail, stack detail, zone access, and every prompt action", () => {
+    const promptedSnapshot: GameSnapshot = {
+      ...snapshot,
+      promptText: "Choose how Beast Whisperer resolves",
+      promptEnvelopeV2: {
+        id: "prompt-1",
+        method: "GAME_CHOOSE_CHOICE",
+        messageId: 9,
+        playerId: "human",
+        responseKind: "mode",
+        message: "Choose a mode",
+        required: true,
+        minChoices: 1,
+        maxChoices: 1,
+        choices: [{ id: "draw", label: "Draw a card" }],
+        targets: [{ id: "target-1", label: "Arboreal Grazer", cardInstanceId: "grazer-1" }],
+        cards: [grazer],
+        abilities: [{ id: "ability-1", label: "Beast Whisperer trigger", rulesText: "Whenever you cast a creature spell, draw a card." }],
+        modes: [{ id: "mode-1", label: "Draw" }],
+        amounts: [0, 1, 2],
+        piles: [{ id: "1", label: "Pile 1", cards: [grazer] }]
+      },
+      xmage: {
+        schemaVersion: 1,
+        gameId: "game-1",
+        bridgeRevision: 7,
+        callbackCoverage: ["GAME_CHOOSE_CHOICE"],
+        stack: [
+          {
+            id: "stack-1",
+            name: "Beast Whisperer",
+            rulesText: "Whenever you cast a creature spell, draw a card.",
+            sourceCard: grazer,
+            paid: true
+          }
+        ],
+        combat: [],
+        players: [],
+        exileZones: [{ id: "exile-1", name: "Exiled by Oblivion Ring", cards: [grazer] }],
+        revealed: [{ id: "revealed-1", name: "Revealed cards", cards: [grazer] }],
+        lookedAt: [{ id: "looked-1", name: "Looked at cards", cards: [grazer] }],
+        companion: [],
+        playableObjects: [],
+        panels: {
+          stack: true,
+          command: true,
+          graveyard: true,
+          exile: true,
+          revealed: true,
+          lookedAt: true,
+          search: false
+        }
+      }
+    };
+    const viewModel = buildBattlefieldViewModel(promptedSnapshot, {}, "human");
+    const promptActions = Array.from({ length: 10 }, (_, index) => ({
+      id: `choice-${index}`,
+      type: "choose_amount" as const,
+      playerId: "human",
+      label: `Amount ${index + 1}`
+    }));
+
+    const html = renderToStaticMarkup(
+      <ArenaBattlefield
+        actionPending={false}
+        promptActions={promptActions}
+        snapshot={promptedSnapshot}
+        viewModel={viewModel}
+        onRunAction={() => undefined}
+        onSelectCard={() => undefined}
+      />
+    );
+
+    expect(html).toContain("GAME CHOOSE CHOICE");
+    expect(html).toContain("Choose a mode");
+    expect(html).toContain("Draw a card");
+    expect(html).toContain("Beast Whisperer trigger");
+    expect(html).toContain("Whenever you cast a creature spell, draw a card.");
+    expect(html).toContain("Amount 10");
+    expect(html).toContain("Paid");
+    expect(html).toContain("Exiled by Oblivion Ring");
+    expect(html).toContain("Revealed cards");
+    expect(html).toContain("Looked at cards");
+  });
 });

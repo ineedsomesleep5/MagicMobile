@@ -205,6 +205,16 @@ struct LegalAction: Decodable, Identifiable {
     let abilityId: String?
     let targetIds: [String]?
     let validTargetIds: [String]?
+    let playerIds: [String]?
+    let validPlayerIds: [String]?
+    let choiceIds: [String]?
+    let modeIds: [String]?
+    let orderedIds: [String]?
+    let amount: Int?
+    let amounts: [Int]?
+    let manaType: String?
+    let pile: String?
+    let confirmed: Bool?
     let isPrimary: Bool?
     let requiresTarget: Bool?
     let responseKind: String?
@@ -423,6 +433,9 @@ struct GameCommand: Encodable {
     let orderedIds: [String]?
     let useCommandZone: Bool?
     let manaType: String?
+    let manaTypes: [String]?
+    let playerIds: [String]?
+    let confirmed: Bool?
 
     init(
         type: String,
@@ -444,7 +457,10 @@ struct GameCommand: Encodable {
         amounts: [Int]? = nil,
         orderedIds: [String]? = nil,
         useCommandZone: Bool? = nil,
-        manaType: String? = nil
+        manaType: String? = nil,
+        manaTypes: [String]? = nil,
+        playerIds: [String]? = nil,
+        confirmed: Bool? = nil
     ) {
         self.type = type
         self.gameId = gameId
@@ -466,5 +482,8 @@ struct GameCommand: Encodable {
         self.orderedIds = orderedIds
         self.useCommandZone = useCommandZone
         self.manaType = manaType
+        self.manaTypes = manaTypes
+        self.playerIds = playerIds
+        self.confirmed = confirmed
     }
 }

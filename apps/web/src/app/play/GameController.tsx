@@ -109,6 +109,7 @@ export function GameController({ config, initialHealth, requireXmage = false, si
       {viewModel ? (
         <ArenaBattlefield
           viewModel={viewModel}
+          snapshot={snapshot ?? undefined}
           selectedInstanceId={selectedInstanceId}
           selectedActions={selectedActions}
           promptActions={promptActions}
@@ -203,7 +204,33 @@ function isCardSpecificAction(type: LegalAction["type"]): boolean {
 }
 
 function isPromptAction(type: LegalAction["type"]): boolean {
-  return ["advance_phase", "pass_priority", "pass_until_response", "pass_until_next_turn", "keep_hand", "mulligan", "resolve_choice"].includes(type);
+  return [
+    "advance_phase",
+    "pass_priority",
+    "pass_until_response",
+    "pass_until_next_turn",
+    "keep_hand",
+    "mulligan",
+    "resolve_choice",
+    "choose_target",
+    "choose_card",
+    "choose_player",
+    "choose_mode",
+    "choose_ability",
+    "choose_pile",
+    "choose_amount",
+    "choose_multi_amount",
+    "choose_mana",
+    "answer_yes_no",
+    "play_mana",
+    "play_x_mana",
+    "pay_cost",
+    "order_triggers",
+    "order_items",
+    "search_select",
+    "commander_replacement",
+    "concede"
+  ].includes(type);
 }
 
 function getImmediateCardAction(instanceId: string, legalActions: LegalAction[]): LegalAction | undefined {
@@ -286,6 +313,25 @@ function toCommand(
             ...abilityTemplate(action)
           }
         : undefined;
+    case "play_mana":
+      return {
+        type: "play_mana",
+        gameId: snapshot.id,
+        playerId: action.playerId,
+        promptId: promptId(snapshot, action),
+        manaType: manaType(action.targetIds?.[0] ?? action.validTargetIds?.[0])
+      };
+    case "pay_cost": {
+      const paymentId = stringTemplateValue(action, "paymentId");
+      const sourceInstanceIds = action.targetIds ?? action.validTargetIds;
+      return {
+        type: "pay_cost",
+        gameId: snapshot.id,
+        playerId: action.playerId,
+        ...(paymentId ? { paymentId } : {}),
+        ...(sourceInstanceIds ? { sourceInstanceIds } : {})
+      };
+    }
     case "activate_ability":
       return action.cardInstanceId ?? action.sourceInstanceId
         ? {
@@ -301,7 +347,7 @@ function toCommand(
         type: "choose_target",
         gameId: snapshot.id,
         playerId: action.playerId,
-        promptId: snapshot.choicePrompt?.id ?? action.id,
+        promptId: promptId(snapshot, action),
         targetIds: action.validTargetIds ?? action.targetIds ?? []
       };
     case "choose_card":
@@ -309,15 +355,112 @@ function toCommand(
         type: "choose_card",
         gameId: snapshot.id,
         playerId: action.playerId,
-        promptId: snapshot.choicePrompt?.id ?? action.id,
+        promptId: promptId(snapshot, action),
         cardInstanceIds: action.validTargetIds ?? action.targetIds ?? []
+      };
+    case "choose_player":
+      return {
+        type: "choose_player",
+        gameId: snapshot.id,
+        playerId: action.playerId,
+        promptId: promptId(snapshot, action),
+        playerIds: action.validPlayerIds ?? action.playerIds ?? action.validTargetIds ?? action.targetIds ?? []
+      };
+    case "choose_mode":
+      return {
+        type: "choose_mode",
+        gameId: snapshot.id,
+        playerId: action.playerId,
+        promptId: promptId(snapshot, action),
+        modeIds: action.targetIds ?? action.validTargetIds ?? []
+      };
+    case "choose_ability":
+      return {
+        type: "choose_ability",
+        gameId: snapshot.id,
+        playerId: action.playerId,
+        promptId: promptId(snapshot, action),
+        abilityId: action.targetIds?.[0] ?? action.validTargetIds?.[0] ?? action.abilityId ?? action.id
+      };
+    case "choose_pile":
+      return {
+        type: "choose_pile",
+        gameId: snapshot.id,
+        playerId: action.playerId,
+        promptId: promptId(snapshot, action),
+        pile: action.targetIds?.[0] === "2" || action.validTargetIds?.[0] === "2" ? 2 : 1
+      };
+    case "choose_amount":
+    case "play_x_mana":
+      return {
+        type: action.type,
+        gameId: snapshot.id,
+        playerId: action.playerId,
+        promptId: promptId(snapshot, action),
+        amount: Number(action.targetIds?.[0] ?? action.validTargetIds?.[0] ?? 0)
+      };
+    case "choose_multi_amount":
+      return {
+        type: "choose_multi_amount",
+        gameId: snapshot.id,
+        playerId: action.playerId,
+        promptId: promptId(snapshot, action),
+        amounts: (action.targetIds ?? action.validTargetIds ?? []).map(Number).filter(Number.isFinite)
+      };
+    case "choose_mana":
+      return {
+        type: "choose_mana",
+        gameId: snapshot.id,
+        playerId: action.playerId,
+        promptId: promptId(snapshot, action),
+        manaTypes: [action.manaType ?? manaType(action.targetIds?.[0] ?? action.validTargetIds?.[0])]
+      };
+    case "answer_yes_no":
+      return {
+        type: "answer_yes_no",
+        gameId: snapshot.id,
+        playerId: action.playerId,
+        promptId: promptId(snapshot, action),
+        confirmed: action.confirmed ?? action.targetIds?.[0] !== "false"
+      };
+    case "order_triggers":
+      return {
+        type: "order_triggers",
+        gameId: snapshot.id,
+        playerId: action.playerId,
+        promptId: promptId(snapshot, action),
+        orderedIds: action.targetIds ?? action.validTargetIds ?? []
+      };
+    case "order_items":
+      return {
+        type: "order_items",
+        gameId: snapshot.id,
+        playerId: action.playerId,
+        promptId: promptId(snapshot, action),
+        orderedIds: action.orderedIds ?? action.targetIds ?? action.validTargetIds ?? []
+      };
+    case "search_select":
+      return {
+        type: "search_select",
+        gameId: snapshot.id,
+        playerId: action.playerId,
+        promptId: promptId(snapshot, action),
+        cardInstanceIds: action.targetIds ?? action.validTargetIds ?? []
+      };
+    case "commander_replacement":
+      return {
+        type: "commander_replacement",
+        gameId: snapshot.id,
+        playerId: action.playerId,
+        promptId: promptId(snapshot, action),
+        useCommandZone: action.targetIds?.[0] !== "graveyard" && action.validTargetIds?.[0] !== "graveyard"
       };
     case "resolve_choice":
       return {
         type: "resolve_choice",
         gameId: snapshot.id,
         playerId: action.playerId,
-        promptId: snapshot.choicePrompt?.id ?? action.id,
+        promptId: promptId(snapshot, action),
         choiceIds: action.targetIds ?? action.validTargetIds ?? []
       };
     case "keep_hand":
@@ -342,4 +485,17 @@ function toCommand(
 function abilityTemplate(action: LegalAction): { abilityId?: string } {
   const template = action.commandTemplate as { abilityId?: unknown } | undefined;
   return typeof template?.abilityId === "string" ? { abilityId: template.abilityId } : {};
+}
+
+function promptId(snapshot: GameSnapshot, action: LegalAction): string {
+  return snapshot.promptEnvelopeV2?.id ?? snapshot.promptEnvelope?.id ?? snapshot.choicePrompt?.id ?? action.id;
+}
+
+function stringTemplateValue(action: LegalAction, key: string): string | undefined {
+  const value = action.commandTemplate?.[key as keyof GameCommand];
+  return typeof value === "string" ? value : undefined;
+}
+
+function manaType(value: string | undefined): "W" | "U" | "B" | "R" | "G" | "C" {
+  return value === "W" || value === "U" || value === "B" || value === "R" || value === "G" || value === "C" ? value : "C";
 }
