@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CommanderGameConfig, EngineHealth, GameCommand, GameSnapshot, LegalAction } from "@magicmobile/shared";
 import { ArenaBattlefield } from "./ArenaBattlefield";
 import { buildBattlefieldViewModel, type BattlefieldCardView, type VisualCardRecord } from "./battlefield-view-model";
@@ -17,7 +17,8 @@ export function GameController({ config, initialHealth, requireXmage = false, si
   const [snapshot, setSnapshot] = useState<GameSnapshot | null>(null);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
-  const [isPending, startTransition] = useTransition();
+  const [pendingActionId, setPendingActionId] = useState<string | undefined>();
+  const [pendingActionLabel, setPendingActionLabel] = useState<string | undefined>();
 
   useEffect(() => {
     if (requireXmage && initialHealth.status !== "ready") {
@@ -63,31 +64,36 @@ export function GameController({ config, initialHealth, requireXmage = false, si
   const legalActions = snapshot?.legalActions ?? [];
   const health = snapshot?.engineHealth ?? initialHealth;
   const modeLabel = simulatorMode ? "Simulator preview" : "XMage rules";
+  const actionPending = pendingActionId !== undefined;
 
   if (requireXmage && health.status !== "ready") {
     return <XmageSetupRequired health={health} />;
   }
 
   const runLegalAction = (action: LegalAction) => {
-    if (!snapshot || !viewModel) return;
+    if (!snapshot || !viewModel || actionPending) return;
     const actionCard = selectedCard ?? findActionCard(viewModel, action.cardInstanceId);
     const command = toCommand(action, snapshot, actionCard, viewModel.opponent.playerId);
     if (!command) return;
 
-    startTransition(() => {
-      setError(undefined);
-      fetch(`/api/engine/games/${encodeURIComponent(snapshot.id)}/commands`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(command)
+    setError(undefined);
+    setPendingActionId(action.id);
+    setPendingActionLabel(actionLabel(action));
+    fetch(`/api/engine/games/${encodeURIComponent(snapshot.id)}/commands`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(command)
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await errorMessage(response, "Command failed"));
+        return response.json() as Promise<GameSnapshot>;
       })
-        .then(async (response) => {
-          if (!response.ok) throw new Error(await errorMessage(response, "Command failed"));
-          return response.json() as Promise<GameSnapshot>;
-        })
-        .then((nextSnapshot) => setSnapshot(nextSnapshot))
-        .catch((caughtError) => setError(caughtError instanceof Error ? caughtError.message : "Command failed"));
-    });
+      .then((nextSnapshot) => setSnapshot(nextSnapshot))
+      .catch((caughtError) => setError(caughtError instanceof Error ? caughtError.message : "Command failed"))
+      .finally(() => {
+        setPendingActionId(undefined);
+        setPendingActionLabel(undefined);
+      });
   };
 
   const selectedActions = selectedInstanceId
@@ -103,6 +109,8 @@ export function GameController({ config, initialHealth, requireXmage = false, si
           <strong>{viewModel?.phase ?? "starting"}</strong>
           <span>{modeLabel}</span>
           <small>{health.status}: {simulatorMode ? "UI mechanics only; full rules require XMage bridge." : health.reason}</small>
+          {pendingActionLabel ? <small>Action sent: {pendingActionLabel}. Waiting for XMage.</small> : null}
+          {error ? <small role="alert">Command error: {error}</small> : null}
         </div>
       </div>
 
@@ -113,7 +121,7 @@ export function GameController({ config, initialHealth, requireXmage = false, si
           selectedInstanceId={selectedInstanceId}
           selectedActions={selectedActions}
           promptActions={promptActions}
-          actionPending={isPending}
+          actionPending={actionPending}
           onSelectCard={(card) => {
             const immediateAction = getImmediateCardAction(card.instanceId, legalActions);
             if (immediateAction) {
@@ -240,6 +248,10 @@ function getImmediateCardAction(instanceId: string, legalActions: LegalAction[])
   return action && ["make_mana", "tap_permanent"].includes(action.type) ? action : undefined;
 }
 
+function actionLabel(action: LegalAction): string {
+  return action.shortLabel ?? action.label ?? action.type.replaceAll("_", " ");
+}
+
 function findActionCard(viewModel: ReturnType<typeof buildBattlefieldViewModel>, cardInstanceId?: string): BattlefieldCardView | undefined {
   if (!cardInstanceId) return undefined;
   return getAllCards(viewModel).find((card) => card.instanceId === cardInstanceId);
@@ -258,38 +270,41 @@ function getAllCards(viewModel: ReturnType<typeof buildBattlefieldViewModel>): B
   ];
 }
 
-function toCommand(
+export function toCommand(
   action: LegalAction,
   snapshot: GameSnapshot,
   selectedCard: BattlefieldCardView | undefined,
   opponentPlayerId: string
 ): GameCommand | undefined {
-  const commandTemplate = commandFromTemplate(action, snapshot);
-  if (commandTemplate) return commandTemplate;
-
+  let command: GameCommand | undefined;
   switch (action.type) {
     case "play_land":
-      return {
+      command = {
         type: "play_land",
         gameId: snapshot.id,
         playerId: action.playerId,
         ...(action.cardInstanceId ? { cardInstanceId: action.cardInstanceId } : {}),
+        ...(action.sourceInstanceId ? { sourceInstanceId: action.sourceInstanceId } : {}),
         ...(selectedCard?.name ? { cardName: selectedCard.name } : {})
       };
+      break;
     case "cast_spell":
-      return {
+      command = {
         type: "cast_spell",
         gameId: snapshot.id,
         playerId: action.playerId,
         ...(action.cardInstanceId ? { cardInstanceId: action.cardInstanceId } : {}),
+        ...(action.sourceInstanceId ? { sourceInstanceId: action.sourceInstanceId } : {}),
         ...(selectedCard?.name ? { cardName: selectedCard.name, fromZone: "hand" as const } : {})
       };
+      break;
     case "tap_permanent":
-      return action.cardInstanceId
+      command = action.cardInstanceId
         ? { type: "tap_permanent", gameId: snapshot.id, playerId: action.playerId, cardInstanceId: action.cardInstanceId }
         : undefined;
+      break;
     case "declare_attackers":
-      return action.cardInstanceId
+      command = action.cardInstanceId
         ? {
             type: "declare_attackers",
             gameId: snapshot.id,
@@ -297,8 +312,9 @@ function toCommand(
             attackers: [{ attackerId: action.cardInstanceId, defenderId: opponentPlayerId }]
           }
         : undefined;
+      break;
     case "declare_blockers":
-      return action.cardInstanceId && action.validTargetIds?.[0]
+      command = action.cardInstanceId && action.validTargetIds?.[0]
         ? {
             type: "declare_blockers",
             gameId: snapshot.id,
@@ -306,8 +322,9 @@ function toCommand(
             blockers: [{ blockerId: action.cardInstanceId, attackerId: action.validTargetIds[0] }]
           }
         : undefined;
+      break;
     case "make_mana":
-      return action.cardInstanceId ?? action.sourceInstanceId
+      command = action.cardInstanceId ?? action.sourceInstanceId
         ? {
             type: "make_mana",
             gameId: snapshot.id,
@@ -316,27 +333,30 @@ function toCommand(
             ...abilityTemplate(action)
           }
         : undefined;
+      break;
     case "play_mana":
-      return {
+      command = {
         type: "play_mana",
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
         manaType: manaType(action.manaType ?? action.targetIds?.[0] ?? action.validTargetIds?.[0])
       };
+      break;
     case "pay_cost": {
       const paymentId = stringTemplateValue(action, "paymentId");
       const sourceInstanceIds = action.targetIds ?? action.validTargetIds;
-      return {
+      command = {
         type: "pay_cost",
         gameId: snapshot.id,
         playerId: action.playerId,
         ...(paymentId ? { paymentId } : {}),
         ...(sourceInstanceIds ? { sourceInstanceIds } : {})
       };
+      break;
     }
     case "activate_ability":
-      return action.cardInstanceId ?? action.sourceInstanceId
+      command = action.cardInstanceId ?? action.sourceInstanceId
         ? {
             type: "activate_ability",
             gameId: snapshot.id,
@@ -345,144 +365,169 @@ function toCommand(
             abilityId: abilityTemplate(action).abilityId ?? action.id
           }
         : undefined;
+      break;
     case "choose_target":
-      return {
+      command = {
         type: "choose_target",
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
         targetIds: action.validTargetIds ?? action.targetIds ?? []
       };
+      break;
     case "choose_card":
-      return {
+      command = {
         type: "choose_card",
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
         cardInstanceIds: action.cardInstanceIds ?? action.validTargetIds ?? action.targetIds ?? []
       };
+      break;
     case "choose_player":
-      return {
+      command = {
         type: "choose_player",
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
         playerIds: action.validPlayerIds ?? action.playerIds ?? action.validTargetIds ?? action.targetIds ?? []
       };
+      break;
     case "choose_mode":
-      return {
+      command = {
         type: "choose_mode",
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
         modeIds: action.modeIds ?? action.targetIds ?? action.validTargetIds ?? []
       };
+      break;
     case "choose_ability":
-      return {
+      command = {
         type: "choose_ability",
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
         abilityId: action.targetIds?.[0] ?? action.validTargetIds?.[0] ?? action.abilityId ?? action.id
       };
+      break;
     case "choose_pile":
-      return {
+      command = {
         type: "choose_pile",
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
         pile: action.targetIds?.[0] === "2" || action.validTargetIds?.[0] === "2" ? 2 : 1
       };
+      break;
     case "choose_amount":
     case "play_x_mana":
-      return {
+      command = {
         type: action.type,
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
         amount: Number(action.targetIds?.[0] ?? action.validTargetIds?.[0] ?? 0)
       };
+      break;
     case "choose_multi_amount":
-      return {
+      command = {
         type: "choose_multi_amount",
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
         amounts: (action.targetIds ?? action.validTargetIds ?? []).map(Number).filter(Number.isFinite)
       };
+      break;
     case "choose_mana":
-      return {
+      command = {
         type: "choose_mana",
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
         manaTypes: action.manaTypes ?? [action.manaType ?? manaType(action.choiceIds?.[0] ?? action.targetIds?.[0] ?? action.validTargetIds?.[0])]
       };
+      break;
     case "answer_yes_no":
-      return {
+      command = {
         type: "answer_yes_no",
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
         confirmed: action.confirmed ?? action.targetIds?.[0] !== "false"
       };
+      break;
     case "order_triggers":
-      return {
+      command = {
         type: "order_triggers",
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
         orderedIds: action.targetIds ?? action.validTargetIds ?? []
       };
+      break;
     case "order_items":
-      return {
+      command = {
         type: "order_items",
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
         orderedIds: action.orderedIds ?? action.targetIds ?? action.validTargetIds ?? []
       };
+      break;
     case "search_select":
-      return {
+      command = {
         type: "search_select",
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
         cardInstanceIds: action.cardInstanceIds ?? action.validCardInstanceIds ?? action.targetIds ?? action.validTargetIds ?? []
       };
+      break;
     case "commander_replacement":
-      return {
+      command = {
         type: "commander_replacement",
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
         useCommandZone: action.targetIds?.[0] !== "graveyard" && action.validTargetIds?.[0] !== "graveyard"
       };
+      break;
     case "resolve_choice":
-      return {
+      command = {
         type: "resolve_choice",
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
         choiceIds: action.targetIds ?? action.validTargetIds ?? []
       };
+      break;
     case "keep_hand":
-      return { type: "keep_hand", gameId: snapshot.id, playerId: action.playerId };
+      command = { type: "keep_hand", gameId: snapshot.id, playerId: action.playerId };
+      break;
     case "mulligan":
-      return { type: "mulligan", gameId: snapshot.id, playerId: action.playerId };
+      command = { type: "mulligan", gameId: snapshot.id, playerId: action.playerId };
+      break;
     case "pass_priority":
-      return { type: "pass_priority", gameId: snapshot.id, playerId: action.playerId };
+      command = { type: "pass_priority", gameId: snapshot.id, playerId: action.playerId };
+      break;
     case "pass_until_response":
-      return { type: "pass_until_response", gameId: snapshot.id, playerId: action.playerId };
+      command = { type: "pass_until_response", gameId: snapshot.id, playerId: action.playerId };
+      break;
     case "pass_until_next_turn":
-      return { type: "pass_until_next_turn", gameId: snapshot.id, playerId: action.playerId };
+      command = { type: "pass_until_next_turn", gameId: snapshot.id, playerId: action.playerId };
+      break;
     case "advance_phase":
-      return { type: "advance_phase", gameId: snapshot.id, playerId: action.playerId };
+      command = { type: "advance_phase", gameId: snapshot.id, playerId: action.playerId };
+      break;
     case "concede":
-      return { type: "concede", gameId: snapshot.id, playerId: action.playerId };
+      command = { type: "concede", gameId: snapshot.id, playerId: action.playerId };
+      break;
     default:
-      return undefined;
+      command = undefined;
   }
+
+  return command ? mergeCommandTemplate(command, action) : undefined;
 }
 
 function abilityTemplate(action: LegalAction): { abilityId?: string } {
@@ -499,13 +544,14 @@ function stringTemplateValue(action: LegalAction, key: string): string | undefin
   return typeof value === "string" ? value : undefined;
 }
 
-function commandFromTemplate(action: LegalAction, snapshot: GameSnapshot): GameCommand | undefined {
+function mergeCommandTemplate(command: GameCommand, action: LegalAction): GameCommand {
   const template = action.commandTemplate;
-  if (!template?.type) return undefined;
+  if (!template) return command;
   return {
+    ...command,
     ...template,
-    type: template.type,
-    gameId: snapshot.id,
+    type: template.type ?? command.type,
+    gameId: command.gameId,
     playerId: action.playerId
   } as GameCommand;
 }
