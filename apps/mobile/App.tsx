@@ -36,7 +36,7 @@ interface LegalAction {
   cardInstanceId?: string;
   sourceInstanceId?: string;
   targetIds?: string[];
-  commandTemplate?: Record<string, string>;
+  commandTemplate?: Record<string, unknown>;
 }
 
 interface ZoneCard {
@@ -67,6 +67,7 @@ interface GameSnapshot {
   priorityPlayerId?: string;
   waitingOnPlayerId?: string;
   promptText?: string;
+  bridgeRevision?: number;
   players: PlayerGameState[];
   legalActions?: LegalAction[];
   log: Array<{ id: string; message: string }>;
@@ -203,7 +204,7 @@ export default function App() {
   async function runAction(action: LegalAction) {
     if (!snapshot) return;
     await withBusy(async () => {
-      const command = commandForAction(snapshot.id, action);
+      const command = commandForAction(snapshot, action);
       const next = await requestJson<GameSnapshot>(baseUrl, `/api/engine/games/${encodeURIComponent(snapshot.id)}/commands`, {
         method: "POST",
         body: command
@@ -719,15 +720,17 @@ async function requestJson<T>(baseUrl: string, path: string, options?: { method?
   return response.json() as Promise<T>;
 }
 
-function commandForAction(gameId: string, action: LegalAction): Record<string, unknown> {
+function commandForAction(snapshot: GameSnapshot, action: LegalAction): Record<string, unknown> {
+  const gameId = snapshot.id;
   const template = action.commandTemplate ?? {};
+  const expected = snapshot.bridgeRevision === undefined ? {} : { expectedBridgeRevision: snapshot.bridgeRevision };
   if (action.type === "resolve_choice") {
-    return { type: "resolve_choice", gameId, playerId: action.playerId, promptId: action.id, choiceIds: action.targetIds ?? [] };
+    return { type: "resolve_choice", gameId, playerId: action.playerId, promptId: action.id, choiceIds: action.targetIds ?? [], ...expected };
   }
   if (action.type === "activate_ability" || action.type === "make_mana") {
-    return { type: action.type, gameId, playerId: action.playerId, sourceInstanceId: action.sourceInstanceId ?? action.cardInstanceId, abilityId: template.abilityId ?? action.id };
+    return { type: action.type, gameId, playerId: action.playerId, sourceInstanceId: action.sourceInstanceId ?? action.cardInstanceId, abilityId: template.abilityId ?? action.id, ...expected };
   }
-  return { ...template, type: action.type, gameId, playerId: action.playerId, cardInstanceId: action.cardInstanceId, sourceInstanceId: action.sourceInstanceId };
+  return { ...template, type: action.type, gameId, playerId: action.playerId, cardInstanceId: action.cardInstanceId, sourceInstanceId: action.sourceInstanceId, ...expected };
 }
 
 function parseDeckList(text: string, source: string): DeckList | undefined {

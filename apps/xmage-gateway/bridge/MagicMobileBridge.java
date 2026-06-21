@@ -257,6 +257,10 @@ public final class MagicMobileBridge implements MageClient {
         String type = string(command, "type", "");
         GameRecord record = games.get(gameId);
         long startRevision = record == null ? -1 : record.bridgeRevision.get();
+        long expectedRevision = longInteger(command, "expectedBridgeRevision", -1L);
+        if (expectedRevision >= 0 && startRevision > expectedRevision) {
+            throw new ActionNoLongerLegalException(gameId, "Action was based on stale XMage snapshot revision " + expectedRevision + "; current revision is " + startRevision);
+        }
         JsonObject prompt = currentPromptForCommand(gameId, command, type);
 
         if ("play_land".equals(type)) {
@@ -2204,6 +2208,11 @@ public final class MagicMobileBridge implements MageClient {
     private static int integer(JsonObject object, String name, int fallback) {
         JsonElement element = object == null ? null : object.get(name);
         return element != null && !element.isJsonNull() ? element.getAsInt() : fallback;
+    }
+
+    private static long longInteger(JsonObject object, String name, long fallback) {
+        JsonElement element = object == null ? null : object.get(name);
+        return element != null && !element.isJsonNull() ? element.getAsLong() : fallback;
     }
 
     private static boolean bool(JsonObject object, String name, boolean fallback) {

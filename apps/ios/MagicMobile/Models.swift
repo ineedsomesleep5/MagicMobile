@@ -517,6 +517,7 @@ struct GameCommand: Encodable {
     let manaTypes: [String]?
     let playerIds: [String]?
     let confirmed: Bool?
+    let expectedBridgeRevision: Int?
 
     init(
         type: String,
@@ -542,7 +543,8 @@ struct GameCommand: Encodable {
         manaType: String? = nil,
         manaTypes: [String]? = nil,
         playerIds: [String]? = nil,
-        confirmed: Bool? = nil
+        confirmed: Bool? = nil,
+        expectedBridgeRevision: Int? = nil
     ) {
         self.type = type
         self.gameId = gameId
@@ -568,5 +570,6 @@ struct GameCommand: Encodable {
         self.manaTypes = manaTypes
         self.playerIds = playerIds
         self.confirmed = confirmed
+        self.expectedBridgeRevision = expectedBridgeRevision
     }
 }

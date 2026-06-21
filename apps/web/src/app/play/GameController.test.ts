@@ -25,12 +25,13 @@ describe("GameController command mapping", () => {
       }
     };
 
-    expect(toCommand(action, snapshot, undefined, "ai-1")).toMatchObject({
+    expect(toCommand(action, { ...snapshot, bridgeRevision: 12 }, undefined, "ai-1")).toMatchObject({
       type: "make_mana",
       gameId: "game-1",
       playerId: "human",
       sourceInstanceId: "forest-instance",
-      abilityId: "mana-ability"
+      abilityId: "mana-ability",
+      expectedBridgeRevision: 12
     });
   });
 

@@ -463,6 +463,7 @@ export interface XmagePlayableObject {
 }
 
 export interface GameCommandTemplate {
+  expectedBridgeRevision?: number;
   type?: GameCommand["type"];
   gameId?: GameId;
   playerId?: PlayerId;
@@ -493,7 +494,7 @@ export interface GameCommandTemplate {
   cardName?: string;
 }
 
-export type GameCommand =
+export type GameCommand = (
   | { type: "keep_hand"; gameId: GameId; playerId: PlayerId }
   | { type: "mulligan"; gameId: GameId; playerId: PlayerId }
   | { type: "play_land"; gameId: GameId; playerId: PlayerId; cardInstanceId?: string; sourceInstanceId?: string; abilityId?: string; cardName?: string }
@@ -526,7 +527,8 @@ export type GameCommand =
   | { type: "pass_until_response"; gameId: GameId; playerId: PlayerId }
   | { type: "pass_until_next_turn"; gameId: GameId; playerId: PlayerId }
   | { type: "advance_phase"; gameId: GameId; playerId: PlayerId }
-  | { type: "concede"; gameId: GameId; playerId: PlayerId };
+  | { type: "concede"; gameId: GameId; playerId: PlayerId }
+) & { expectedBridgeRevision?: number };
 
 export interface EngineHealth {
   status: "ready" | "starting" | "unavailable" | "stalled";

@@ -592,7 +592,7 @@ export function toCommand(
       command = undefined;
   }
 
-  return command ? mergeCommandTemplate(command, action) : undefined;
+  return command ? withExpectedBridgeRevision(mergeCommandTemplate(command, action), snapshot.bridgeRevision) : undefined;
 }
 
 function abilityTemplate(action: LegalAction): { abilityId?: string } {
@@ -619,6 +619,11 @@ function mergeCommandTemplate(command: GameCommand, action: LegalAction): GameCo
     gameId: command.gameId,
     playerId: action.playerId
   } as GameCommand;
+}
+
+function withExpectedBridgeRevision(command: GameCommand, bridgeRevision: number | undefined): GameCommand {
+  if (bridgeRevision === undefined) return command;
+  return { ...command, expectedBridgeRevision: bridgeRevision };
 }
 
 function manaType(value: string | undefined): "W" | "U" | "B" | "R" | "G" | "C" {

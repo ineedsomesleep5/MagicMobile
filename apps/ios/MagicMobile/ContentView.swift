@@ -323,7 +323,7 @@ struct ContentView: View {
 
         do {
             let previousSignature = snapshotSignature(currentSnapshot)
-            let nextSnapshot = try await api.submit(action: action, gameId: currentSnapshot.id)
+            let nextSnapshot = try await api.submit(action: action, gameId: currentSnapshot.id, expectedBridgeRevision: currentSnapshot.bridgeRevision)
             applySnapshot(nextSnapshot)
             status = nextSnapshot.pendingStatus == "waiting_for_xmage" ? "Waiting for XMage update" : "Action submitted"
             if nextSnapshot.pendingStatus == "waiting_for_xmage" {
@@ -362,7 +362,7 @@ struct ContentView: View {
 
         do {
             let previousSignature = snapshotSignature(currentSnapshot)
-            let nextSnapshot = try await api.submit(command: command, gameId: currentSnapshot.id)
+            let nextSnapshot = try await api.submit(command: command, gameId: currentSnapshot.id, expectedBridgeRevision: currentSnapshot.bridgeRevision)
             applySnapshot(nextSnapshot)
             status = nextSnapshot.pendingStatus == "waiting_for_xmage" ? "Waiting for XMage update" : "Action submitted"
             if nextSnapshot.pendingStatus == "waiting_for_xmage" {

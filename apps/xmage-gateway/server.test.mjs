@@ -327,6 +327,7 @@ describe("xmage gateway", () => {
       playerId: "human",
       promptId: "xmage-prompt-7",
       messageId: 7,
+      expectedBridgeRevision: 4,
       targetIds: ["target-1"],
       commandTemplate: {
         type: "choose_target",
@@ -525,6 +526,8 @@ describe("xmage gateway", () => {
     assert.match(bridgeSource, /prompt\.add\("confirmation"/);
     assert.match(bridgeSource, /prompt\.add\("orderedItems"/);
     assert.match(bridgeSource, /prompt\.add\("players"/);
+    assert.match(bridgeSource, /expectedBridgeRevision/);
+    assert.match(bridgeSource, /Action was based on stale XMage snapshot revision/);
     assert.doesNotMatch(bridgeSource, /sendFirstUuid/);
     assert.doesNotMatch(bridgeSource, /sendFirstStringOrUuid/);
     assert.equal(bridgeSource.includes('session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "useCommandZone", true));'), false);

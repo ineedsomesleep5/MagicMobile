@@ -61,13 +61,19 @@ struct MagicMobileAPI {
         return config
     }
 
-    func submit(action: LegalAction, gameId: String) async throws -> GameSnapshot {
-        let command = mergeCommandTemplate(command(for: action, gameId: gameId), action: action, gameId: gameId)
+    func submit(action: LegalAction, gameId: String, expectedBridgeRevision: Int?) async throws -> GameSnapshot {
+        let command = withExpectedBridgeRevision(
+            mergeCommandTemplate(command(for: action, gameId: gameId), action: action, gameId: gameId),
+            expectedBridgeRevision: expectedBridgeRevision
+        )
         return try await post("/api/engine/games/\(gameId)/commands", body: command)
     }
 
-    func submit(command: GameCommand, gameId: String) async throws -> GameSnapshot {
-        try await post("/api/engine/games/\(gameId)/commands", body: command)
+    func submit(command: GameCommand, gameId: String, expectedBridgeRevision: Int?) async throws -> GameSnapshot {
+        try await post(
+            "/api/engine/games/\(gameId)/commands",
+            body: withExpectedBridgeRevision(command, expectedBridgeRevision: expectedBridgeRevision)
+        )
     }
 
     private func command(for action: LegalAction, gameId: String) -> GameCommand {
@@ -271,7 +277,39 @@ struct MagicMobileAPI {
             manaType: templateString(action, "manaType") ?? command.manaType,
             manaTypes: templateStringArray(action, "manaTypes") ?? command.manaTypes,
             playerIds: templateStringArray(action, "playerIds") ?? command.playerIds,
-            confirmed: templateBool(action, "confirmed") ?? command.confirmed
+            confirmed: templateBool(action, "confirmed") ?? command.confirmed,
+            expectedBridgeRevision: templateInt(action, "expectedBridgeRevision") ?? command.expectedBridgeRevision
+        )
+    }
+
+    private func withExpectedBridgeRevision(_ command: GameCommand, expectedBridgeRevision: Int?) -> GameCommand {
+        guard let expectedBridgeRevision else { return command }
+        return GameCommand(
+            type: command.type,
+            gameId: command.gameId,
+            playerId: command.playerId,
+            cardInstanceId: command.cardInstanceId,
+            sourceInstanceId: command.sourceInstanceId,
+            abilityId: command.abilityId,
+            promptId: command.promptId,
+            messageId: command.messageId,
+            choiceIds: command.choiceIds,
+            targetIds: command.targetIds,
+            cardInstanceIds: command.cardInstanceIds,
+            modeIds: command.modeIds,
+            sourceInstanceIds: command.sourceInstanceIds,
+            paymentId: command.paymentId,
+            abilityIdChoice: command.abilityIdChoice,
+            pile: command.pile,
+            amount: command.amount,
+            amounts: command.amounts,
+            orderedIds: command.orderedIds,
+            useCommandZone: command.useCommandZone,
+            manaType: command.manaType,
+            manaTypes: command.manaTypes,
+            playerIds: command.playerIds,
+            confirmed: command.confirmed,
+            expectedBridgeRevision: expectedBridgeRevision
         )
     }
 
