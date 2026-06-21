@@ -1,12 +1,15 @@
 # MagicMobile
 
-Commander-first web and mobile scaffold for digital, webcam, and hybrid tabletop play. This milestone adds a rules-engine boundary for Commander play, a local XMage gateway simulator, Scryfall card-image caching, and a Three.js battlefield shell while preserving the modern React/Expo UI.
+MagicMobile is a Commander-only digital play client powered by XMage. The current product focus is a smooth mobile/web Commander experience where players can import or build valid 100-card Commander decks and play digitally against XMage AI first, then against human opponents, and later in 3-4 player Commander pods.
+
+The real game path uses XMage as the rules, AI, priority, stack, prompt, Commander, and game-state authority. The app UI may show immediate local feedback while an action is pending, but authoritative board state must come from XMage snapshots.
 
 ## Apps and Packages
 
 - `apps/web`: Next.js App Router scaffold with Commander deck, card, play, room, settings, and dev routes.
-- `apps/mobile`: Expo scaffold with landscape Commander gameplay controls, deck list, and room placeholders.
-- `apps/xmage-gateway`: Local HTTP gateway that exposes the XMage-ready engine API, AI difficulty mapping, health checks, and a simulator used until the Java bridge is connected.
+- `apps/mobile`: Expo scaffold kept compiling while the native iOS client is the primary phone target.
+- `apps/ios`: Native Swift iOS client for Commander setup and landscape gameplay.
+- `apps/xmage-gateway`: Local HTTP gateway that exposes the XMage engine API, AI difficulty mapping, health checks, WebSocket updates, and a dev-only simulator.
 - `packages/ui`: Reusable React UI primitives for Commander gameplay surfaces.
 - `packages/shared`: Shared TypeScript contracts owned by the architecture workstream.
 - `packages/card-data` and `packages/deck`: Seed card data, deck parsing, Commander validation, stats, Rule 0, and bracket scoring.
@@ -36,22 +39,27 @@ pnpm build
 docker compose config
 ```
 
-Local services:
+Local XMage services:
 
 ```sh
-docker compose up web xmage-gateway postgres redis
+docker compose up --build xmage-bridge xmage-gateway
 ```
 
 ## Environment
 
-Copy `.env.example` into a local `.env` file when a package needs runtime configuration. Use `ENGINE_MODE=xmage` with `XMAGE_GATEWAY_URL=http://localhost:17171` to route engine calls through the gateway.
+Copy `.env.example` into a local `.env` file when a package needs runtime configuration. Use `ENGINE_MODE=xmage` with `XMAGE_GATEWAY_URL=http://localhost:17171` to route real game calls through the gateway.
 
 ## Milestone Boundaries
 
 - No Wizards logos or official branding are included.
+- Commander-only is the current production scope: 100-card decks, command zone, commander tax, commander damage, 40 life, color identity, singleton rules, Commander legality, and XMage-backed Commander prompts.
+- 1v1 Commander vs XMage AI is the first playable target. Human-vs-human and 3-4 player digital Commander pods are later milestones.
+- Draft, sealed, tournaments, non-Commander formats, webcam play, hybrid paper/digital play, and SpellTable-style recognition are not current implementation targets.
 - EDHREC support is limited to documented link-outs and disabled provider stubs. No scraping is included.
-- Room and recommendation APIs use in-memory providers for this milestone.
-- Deck detail connects to seed card data, Commander analysis, and mock recommendations.
-- Play UI renders a Three.js battlefield and connects through the shared engine adapter boundary.
-- The XMage gateway currently runs a local simulator with XMage-compatible command and health endpoints. A deeper upstream XMage Java bridge is the next integration step.
-- Hybrid and webcam seats are visual placeholders, not live video or recognition implementations.
+- The production `/play` route must use XMage through the gateway and Java bridge. It must not silently fall back to simulator mode.
+- The simulator remains available only for fast UI development and should stay clearly labeled under dev-only routes such as `/dev/play-simulator`.
+- The current integration hardening focus is prompt/action parity: every XMage prompt should render in iOS/web, respond with exact prompt metadata, reject stale prompts, and reconcile through server-authoritative snapshots.
+
+## Performance Goals
+
+MagicMobile should feel like a polished mobile Commander client, not a frozen remote control for a desktop Java app. See [docs/PERFORMANCE_TARGETS.md](docs/PERFORMANCE_TARGETS.md) for the current latency targets, pending-state requirements, WebSocket-first update path, and measurement checklist.

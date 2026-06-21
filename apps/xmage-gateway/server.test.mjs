@@ -302,6 +302,47 @@ describe("xmage gateway", () => {
     assert.equal(JSON.parse(sentPayload).bridgeRevision, 2);
   });
 
+  it("forwards prompt command metadata unchanged to the Java bridge", async () => {
+    const state = new Map();
+    const snapshot = {
+      id: "bridge-game-prompt",
+      source: "xmage-java-bridge",
+      bridgeRevision: 4,
+      legalActions: []
+    };
+    state.set(snapshot.id, snapshot);
+    let forwardedCommand;
+    const handler = createGatewayHandler(state, {
+      bridgeClient: {
+        submitCommand: async (_gameId, command) => {
+          forwardedCommand = command;
+          return { ...snapshot, bridgeRevision: 5, pendingStatus: "waiting_for_xmage" };
+        }
+      }
+    });
+
+    const command = {
+      type: "choose_target",
+      gameId: snapshot.id,
+      playerId: "human",
+      promptId: "xmage-prompt-7",
+      messageId: 7,
+      targetIds: ["target-1"],
+      commandTemplate: {
+        type: "choose_target",
+        promptId: "xmage-prompt-7",
+        messageId: 7,
+        targetIds: ["target-1"]
+      }
+    };
+    const response = await runHandler(handler, `/games/${snapshot.id}/commands`, "POST", command);
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(forwardedCommand, command);
+    assert.equal(state.get(snapshot.id).bridgeRevision, 5);
+    assert.equal(JSON.parse(response.body).pendingStatus, "waiting_for_xmage");
+  });
+
   it("forwards a bridge smoke loop and stores revised XMage snapshots", async () => {
     const state = new Map();
     const commands = [];
@@ -479,12 +520,16 @@ describe("xmage gateway", () => {
 
     assert.match(bridgeSource, /currentPromptForCommand/);
     assert.match(bridgeSource, /validatePromptSelections/);
+    assert.match(bridgeSource, /requiredBooleanResponse/);
     assert.match(bridgeSource, /prompt\.add\("manaChoices"/);
     assert.match(bridgeSource, /prompt\.add\("confirmation"/);
     assert.match(bridgeSource, /prompt\.add\("orderedItems"/);
     assert.match(bridgeSource, /prompt\.add\("players"/);
     assert.doesNotMatch(bridgeSource, /sendFirstUuid/);
     assert.doesNotMatch(bridgeSource, /sendFirstStringOrUuid/);
+    assert.equal(bridgeSource.includes('session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "useCommandZone", true));'), false);
+    assert.equal(bridgeSource.includes('session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "pay", true));'), false);
+    assert.equal(bridgeSource.includes('session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "confirmed", true));'), false);
   });
 });
 

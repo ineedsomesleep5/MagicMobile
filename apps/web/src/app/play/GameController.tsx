@@ -264,6 +264,9 @@ function toCommand(
   selectedCard: BattlefieldCardView | undefined,
   opponentPlayerId: string
 ): GameCommand | undefined {
+  const commandTemplate = commandFromTemplate(action, snapshot);
+  if (commandTemplate) return commandTemplate;
+
   switch (action.type) {
     case "play_land":
       return {
@@ -319,7 +322,7 @@ function toCommand(
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
-        manaType: manaType(action.targetIds?.[0] ?? action.validTargetIds?.[0])
+        manaType: manaType(action.manaType ?? action.targetIds?.[0] ?? action.validTargetIds?.[0])
       };
     case "pay_cost": {
       const paymentId = stringTemplateValue(action, "paymentId");
@@ -445,7 +448,7 @@ function toCommand(
         gameId: snapshot.id,
         playerId: action.playerId,
         promptId: promptId(snapshot, action),
-        cardInstanceIds: action.targetIds ?? action.validTargetIds ?? []
+        cardInstanceIds: action.cardInstanceIds ?? action.validCardInstanceIds ?? action.targetIds ?? action.validTargetIds ?? []
       };
     case "commander_replacement":
       return {
@@ -488,12 +491,23 @@ function abilityTemplate(action: LegalAction): { abilityId?: string } {
 }
 
 function promptId(snapshot: GameSnapshot, action: LegalAction): string {
-  return snapshot.promptEnvelopeV2?.id ?? snapshot.promptEnvelope?.id ?? snapshot.choicePrompt?.id ?? action.id;
+  return action.promptId ?? snapshot.promptEnvelopeV2?.id ?? snapshot.promptEnvelope?.id ?? snapshot.choicePrompt?.id ?? action.id;
 }
 
 function stringTemplateValue(action: LegalAction, key: string): string | undefined {
   const value = action.commandTemplate?.[key as keyof GameCommand];
   return typeof value === "string" ? value : undefined;
+}
+
+function commandFromTemplate(action: LegalAction, snapshot: GameSnapshot): GameCommand | undefined {
+  const template = action.commandTemplate;
+  if (!template?.type) return undefined;
+  return {
+    ...template,
+    type: template.type,
+    gameId: snapshot.id,
+    playerId: action.playerId
+  } as GameCommand;
 }
 
 function manaType(value: string | undefined): "W" | "U" | "B" | "R" | "G" | "C" {

@@ -239,6 +239,7 @@ export interface LegalAction {
   playerIds?: PlayerId[];
   validPlayerIds?: PlayerId[];
   cardInstanceIds?: string[];
+  validCardInstanceIds?: string[];
   choiceIds?: string[];
   modeIds?: string[];
   orderedIds?: string[];
@@ -466,6 +467,7 @@ export interface GameCommandTemplate {
   gameId?: GameId;
   playerId?: PlayerId;
   promptId?: string;
+  messageId?: number;
   cardInstanceId?: string;
   cardInstanceIds?: string[];
   sourceInstanceId?: string;

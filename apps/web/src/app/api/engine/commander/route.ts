@@ -1,5 +1,5 @@
 import type { CommanderGameConfig } from "@magicmobile/shared";
-import { createRuntimeEngineAdapter } from "@/lib/engine";
+import { createCommanderRuntimeEngineAdapter } from "@/lib/engine";
 import { validateCommanderGameConfig } from "@/lib/commander-validation";
 
 export async function POST(request: Request) {
@@ -11,6 +11,6 @@ export async function POST(request: Request) {
     }
   }
 
-  const engine = createRuntimeEngineAdapter();
+  const engine = createCommanderRuntimeEngineAdapter(config);
   return Response.json(await engine.createCommanderGame(config), { status: 201 });
 }

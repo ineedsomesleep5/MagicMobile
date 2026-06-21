@@ -261,12 +261,14 @@ public final class MagicMobileBridge implements MageClient {
 
         if ("play_land".equals(type)) {
             session.sendPlayerUUID(xmageGameId, playableSourceUuid(gameId, command));
-        } else if ("cast_spell".equals(type) || "activate_ability".equals(type)) {
+        } else if ("cast_spell".equals(type)) {
+            session.sendPlayerUUID(xmageGameId, playableSourceUuid(gameId, command));
+        } else if ("activate_ability".equals(type)) {
             session.sendPlayerUUID(xmageGameId, playableCommandUuid(gameId, command));
         } else if ("make_mana".equals(type)) {
             session.sendPlayerUUID(xmageGameId, playableSourceUuid(gameId, command));
         } else if ("pass_priority".equals(type)) {
-            session.sendPlayerBoolean(xmageGameId, true);
+            session.sendPlayerBoolean(xmageGameId, false);
         } else if ("keep_hand".equals(type)) {
             session.sendPlayerBoolean(xmageGameId, false);
         } else if ("mulligan".equals(type)) {
@@ -306,20 +308,22 @@ public final class MagicMobileBridge implements MageClient {
             session.sendPlayerBoolean(xmageGameId, integer(command, "pile", 1) == 1);
         } else if ("choose_amount".equals(type) || "play_x_mana".equals(type)) {
             int amount = amountFromCommand(command, "amount", 0);
+            validatePromptAmount(gameId, prompt, amount);
             session.sendPlayerInteger(xmageGameId, amount);
         } else if ("choose_multi_amount".equals(type)) {
             JsonArray amounts = array(command, "amounts");
+            validatePromptMultiAmount(gameId, prompt, amounts);
             session.sendPlayerString(xmageGameId, joinNumbers(amounts));
         } else if ("order_triggers".equals(type) || "order_items".equals(type)) {
             sendPromptUuids(gameId, xmageGameId, prompt, selectionIds(command, "orderedIds", "orderedId", "choiceIds", "choiceId"));
         } else if ("search_select".equals(type)) {
             sendPromptUuids(gameId, xmageGameId, prompt, selectionIds(command, "cardInstanceIds", "cardInstanceId", "choiceIds", "choiceId"));
         } else if ("commander_replacement".equals(type)) {
-            session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "useCommandZone", true));
+            session.sendPlayerBoolean(xmageGameId, requiredBooleanResponse(gameId, command, "useCommandZone"));
         } else if ("pay_cost".equals(type)) {
-            session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "pay", true));
+            session.sendPlayerBoolean(xmageGameId, requiredBooleanResponse(gameId, command, "pay"));
         } else if ("answer_yes_no".equals(type)) {
-            session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "confirmed", true));
+            session.sendPlayerBoolean(xmageGameId, requiredBooleanResponse(gameId, command, "confirmed"));
         } else if ("declare_attackers".equals(type) || "declare_blockers".equals(type)) {
             sendCombatSelection(gameId, xmageGameId, command, "declare_attackers".equals(type));
         } else if ("resolve_choice".equals(type)) {
@@ -525,6 +529,8 @@ public final class MagicMobileBridge implements MageClient {
     private String firstSelection(JsonObject command, String key, String fallbackKey, String fallbackPluralKey, String fallbackSingularKey) {
         String value = string(command, key, "");
         if (!value.isEmpty()) return value;
+        JsonArray values = array(command, key);
+        if (values.size() > 0) return values.get(0).getAsString();
         value = string(command, fallbackKey, "");
         if (!value.isEmpty()) return value;
         JsonArray fallbackValues = array(command, fallbackPluralKey);
@@ -546,6 +552,35 @@ public final class MagicMobileBridge implements MageClient {
         return fallback;
     }
 
+    private void validatePromptAmount(String gameId, JsonObject prompt, int amount) {
+        if (prompt == null) {
+            return;
+        }
+        int min = integer(prompt, "minChoices", Integer.MIN_VALUE);
+        int max = integer(prompt, "maxChoices", Integer.MAX_VALUE);
+        if (amount < min || amount > max) {
+            throw new ActionNoLongerLegalException(gameId, "Amount is outside active XMage prompt range: " + amount);
+        }
+    }
+
+    private void validatePromptMultiAmount(String gameId, JsonObject prompt, JsonArray amounts) {
+        if (prompt == null) {
+            return;
+        }
+        boolean required = bool(prompt, "required", true);
+        int min = integer(prompt, "minChoices", required ? 1 : 0);
+        int max = integer(prompt, "maxChoices", min);
+        if (!required && amounts.size() == 0) {
+            return;
+        }
+        if (amounts.size() < min) {
+            throw new ActionNoLongerLegalException(gameId, "XMage amount prompt requires at least " + min + " value(s)");
+        }
+        if (max > 0 && amounts.size() > max) {
+            throw new ActionNoLongerLegalException(gameId, "XMage amount prompt allows at most " + max + " value(s)");
+        }
+    }
+
     private boolean booleanResponse(JsonObject command, String preferredKey, boolean fallback) {
         if (command.has(preferredKey) && !command.get(preferredKey).isJsonNull()) {
             return bool(command, preferredKey, fallback);
@@ -562,6 +597,13 @@ public final class MagicMobileBridge implements MageClient {
             if ("false".equalsIgnoreCase(choice) || "no".equalsIgnoreCase(choice)) return false;
         }
         return fallback;
+    }
+
+    private boolean requiredBooleanResponse(String gameId, JsonObject command, String preferredKey) {
+        if (!hasExplicitBooleanResponse(command, preferredKey)) {
+            throw new ActionNoLongerLegalException(gameId, "Missing explicit boolean response for " + string(command, "type", "XMage prompt"));
+        }
+        return booleanResponse(command, preferredKey, false);
     }
 
     private boolean hasExplicitBooleanResponse(JsonObject command, String preferredKey) {
@@ -1111,6 +1153,9 @@ public final class MagicMobileBridge implements MageClient {
                 action.addProperty("messageId", messageId);
                 template.addProperty("messageId", messageId);
             }
+            action.addProperty("required", bool(record.promptEnvelope, "required", true));
+            action.addProperty("minChoices", integer(record.promptEnvelope, "minChoices", 1));
+            action.addProperty("maxChoices", integer(record.promptEnvelope, "maxChoices", 1));
         }
         JsonArray targetIds = new JsonArray();
         targetIds.add(choiceId);
@@ -1158,6 +1203,15 @@ public final class MagicMobileBridge implements MageClient {
                 action.addProperty("amount", choiceId);
                 template.addProperty("amount", choiceId);
             }
+        } else if ("choose_multi_amount".equals(type)) {
+            JsonArray amounts = new JsonArray();
+            try {
+                amounts.add(Integer.parseInt(choiceId));
+            } catch (NumberFormatException ignored) {
+                amounts.add(choiceId);
+            }
+            action.add("amounts", amounts);
+            template.add("amounts", amounts.deepCopy());
         } else if ("answer_yes_no".equals(type)) {
             boolean confirmed = !"false".equalsIgnoreCase(choiceId);
             action.addProperty("confirmed", confirmed);
@@ -1807,7 +1861,9 @@ public final class MagicMobileBridge implements MageClient {
                 manaChoices.add(manaChoice);
             }
             prompt.add("manaChoices", manaChoices);
-        } else if (method == ClientCallbackMethod.GAME_GET_AMOUNT || method == ClientCallbackMethod.GAME_PLAY_XMANA) {
+        } else if (method == ClientCallbackMethod.GAME_GET_AMOUNT
+                || method == ClientCallbackMethod.GAME_GET_MULTI_AMOUNT
+                || method == ClientCallbackMethod.GAME_PLAY_XMANA) {
             int min = message.getMin();
             int max = message.getMax();
             int cappedMax = Math.min(max, min + 20);
@@ -2038,8 +2094,9 @@ public final class MagicMobileBridge implements MageClient {
         record.latestCycle = view.getGameCycle();
         record.bridgeRevision.incrementAndGet();
         record.lastProgressAt = System.currentTimeMillis();
-        record.promptText = promptText == null ? null : cleanText(promptText);
-        record.promptEnvelope = promptEnvelope;
+        JsonObject actionablePrompt = isActionablePrompt(promptEnvelope) ? promptEnvelope : null;
+        record.promptText = actionablePrompt == null && promptEnvelope != null ? null : promptText == null ? null : cleanText(promptText);
+        record.promptEnvelope = actionablePrompt;
         if (targets != null && !targets.isEmpty()) {
             JsonObject prompt = new JsonObject();
             prompt.addProperty("id", "xmage-choice-" + gameId);
@@ -2059,13 +2116,25 @@ public final class MagicMobileBridge implements MageClient {
             prompt.add("choices", choices);
             record.choicePrompt = prompt;
         } else {
-            record.choicePrompt = choicePromptFromEnvelope(promptEnvelope);
+            record.choicePrompt = choicePromptFromEnvelope(actionablePrompt);
         }
         try {
             JsonObject snap = snapshot(gameId.toString());
             pushSnapshotToGateway(gameId.toString(), snap);
         } catch (Exception ignored) {
         }
+    }
+
+    private boolean isActionablePrompt(JsonObject prompt) {
+        if (prompt == null) {
+            return false;
+        }
+        for (String key : new String[]{"choices", "cards", "targets", "players", "piles", "abilities", "modes", "amounts", "manaChoices", "orderedItems"}) {
+            if (prompt.has(key) && prompt.get(key).isJsonArray() && prompt.getAsJsonArray(key).size() > 0) {
+                return true;
+            }
+        }
+        return prompt.has("confirmation") || "game_over".equals(string(prompt, "responseKind", ""));
     }
 
     private void pushSnapshotToGateway(String gameId, JsonObject snap) {

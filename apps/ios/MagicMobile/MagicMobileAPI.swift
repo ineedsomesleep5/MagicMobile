@@ -71,12 +71,13 @@ struct MagicMobileAPI {
     }
 
     private func command(for action: LegalAction, gameId: String) -> GameCommand {
+        let promptId = promptId(for: action)
         if action.type == "resolve_choice" {
             return GameCommand(
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
-                promptId: action.id,
+                promptId: promptId,
                 choiceIds: action.targetIds ?? []
             )
         }
@@ -86,7 +87,7 @@ struct MagicMobileAPI {
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
-                promptId: action.id,
+                promptId: promptId,
                 targetIds: action.targetIds ?? action.validTargetIds ?? []
             )
         }
@@ -96,8 +97,8 @@ struct MagicMobileAPI {
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
-                promptId: action.id,
-                cardInstanceIds: action.cardInstanceIds ?? action.targetIds ?? action.validTargetIds ?? []
+                promptId: promptId,
+                cardInstanceIds: action.cardInstanceIds ?? action.validCardInstanceIds ?? action.targetIds ?? action.validTargetIds ?? templateStringArray(action, "cardInstanceIds") ?? []
             )
         }
 
@@ -106,7 +107,7 @@ struct MagicMobileAPI {
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
-                promptId: action.id,
+                promptId: promptId,
                 playerIds: action.playerIds ?? action.validPlayerIds ?? action.targetIds ?? action.validTargetIds ?? []
             )
         }
@@ -116,7 +117,7 @@ struct MagicMobileAPI {
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
-                promptId: action.id,
+                promptId: promptId,
                 modeIds: action.modeIds ?? action.targetIds ?? []
             )
         }
@@ -126,18 +127,20 @@ struct MagicMobileAPI {
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
-                promptId: action.id,
-                manaType: action.manaType ?? action.targetIds?.first ?? "C"
+                promptId: promptId,
+                manaType: action.manaType ?? action.targetIds?.first
             )
         }
 
         if action.type == "choose_mana" {
+            let manaTypes = action.manaTypes
+                ?? (action.manaType ?? action.choiceIds?.first ?? action.targetIds?.first).map { [$0] }
             return GameCommand(
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
-                promptId: action.id,
-                manaTypes: action.manaTypes ?? [action.manaType ?? action.choiceIds?.first ?? action.targetIds?.first ?? "C"]
+                promptId: promptId,
+                manaTypes: manaTypes
             )
         }
 
@@ -147,7 +150,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 abilityId: action.targetIds?.first ?? action.validTargetIds?.first ?? action.id,
-                promptId: action.id
+                promptId: promptId
             )
         }
 
@@ -156,8 +159,8 @@ struct MagicMobileAPI {
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
-                promptId: action.id,
-                pile: Int(action.targetIds?.first ?? "1") ?? 1
+                promptId: promptId,
+                pile: action.targetIds?.first.flatMap(Int.init)
             )
         }
 
@@ -166,8 +169,8 @@ struct MagicMobileAPI {
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
-                promptId: action.id,
-                amount: Int(action.targetIds?.first ?? action.validTargetIds?.first ?? "0") ?? 0
+                promptId: promptId,
+                amount: (action.targetIds?.first ?? action.validTargetIds?.first).flatMap(Int.init)
             )
         }
 
@@ -176,7 +179,7 @@ struct MagicMobileAPI {
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
-                promptId: action.id,
+                promptId: promptId,
                 amounts: (action.targetIds ?? []).compactMap(Int.init)
             )
         }
@@ -186,9 +189,9 @@ struct MagicMobileAPI {
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
-                promptId: action.id,
-                cardInstanceIds: action.type == "search_select" ? action.cardInstanceIds ?? action.targetIds : nil,
-                orderedIds: action.type == "order_triggers" || action.type == "order_items" ? action.targetIds ?? action.orderedIds : nil
+                promptId: promptId,
+                cardInstanceIds: action.type == "search_select" ? action.cardInstanceIds ?? action.validCardInstanceIds ?? action.targetIds : nil,
+                orderedIds: action.type == "order_triggers" || action.type == "order_items" ? action.orderedIds ?? action.targetIds : nil
             )
         }
 
@@ -197,8 +200,8 @@ struct MagicMobileAPI {
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
-                promptId: action.id,
-                confirmed: action.confirmed ?? (action.targetIds?.first != "false")
+                promptId: promptId,
+                confirmed: action.confirmed ?? templateBool(action, "confirmed") ?? boolFromTarget(action.targetIds?.first)
             )
         }
 
@@ -207,8 +210,8 @@ struct MagicMobileAPI {
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
-                promptId: action.id,
-                useCommandZone: action.targetIds?.first != "graveyard"
+                promptId: promptId,
+                useCommandZone: action.confirmed ?? templateBool(action, "useCommandZone") ?? templateBool(action, "confirmed") ?? boolFromTarget(action.targetIds?.first)
             )
         }
 
@@ -228,7 +231,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 sourceInstanceId: action.sourceInstanceId ?? action.cardInstanceId,
-                abilityId: action.abilityId ?? action.commandTemplate?["abilityId"] ?? action.id
+                abilityId: action.abilityId ?? templateString(action, "abilityId") ?? action.id
             )
         }
 
@@ -238,8 +241,32 @@ struct MagicMobileAPI {
             playerId: action.playerId,
             cardInstanceId: action.cardInstanceId,
             sourceInstanceId: action.sourceInstanceId,
-            abilityId: action.abilityId ?? action.commandTemplate?["abilityId"]
+            abilityId: action.abilityId ?? templateString(action, "abilityId")
         )
+    }
+
+    private func promptId(for action: LegalAction) -> String {
+        templateString(action, "promptId") ?? action.promptId ?? action.id
+    }
+
+    private func templateString(_ action: LegalAction, _ key: String) -> String? {
+        action.commandTemplate?[key]?.stringValue
+    }
+
+    private func templateStringArray(_ action: LegalAction, _ key: String) -> [String]? {
+        action.commandTemplate?[key]?.stringArrayValue
+    }
+
+    private func templateBool(_ action: LegalAction, _ key: String) -> Bool? {
+        action.commandTemplate?[key]?.boolValue
+    }
+
+    private func boolFromTarget(_ value: String?) -> Bool? {
+        guard let value else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if ["true", "yes", "command", "command_zone", "command-zone"].contains(normalized) { return true }
+        if ["false", "no", "original", "original_zone", "original-zone"].contains(normalized) { return false }
+        return nil
     }
 
     private func get<T: Decodable>(_ path: String) async throws -> T {

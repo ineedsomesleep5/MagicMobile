@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { GameCommand } from "@magicmobile/shared";
-import { createRuntimeEngineAdapter } from "@/lib/engine";
+import { createGameRuntimeEngineAdapter } from "@/lib/engine";
 
 interface CommandsRouteContext {
   params: Promise<{ gameId: string }>;
@@ -16,7 +16,7 @@ export async function POST(request: Request, context: CommandsRouteContext): Pro
     return Response.json({ error: "Command gameId does not match route gameId" }, { status: 400 });
   }
 
-  const engine = createRuntimeEngineAdapter();
+  const engine = createGameRuntimeEngineAdapter(gameId);
   try {
     const snapshot = await engine.submitGameCommand(command);
     console.info(`command ${requestId} ${command.type} ${gameId} completed in ${Date.now() - startedAt}ms`);

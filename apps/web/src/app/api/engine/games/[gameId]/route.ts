@@ -1,4 +1,4 @@
-import { createRuntimeEngineAdapter } from "@/lib/engine";
+import { createGameRuntimeEngineAdapter } from "@/lib/engine";
 
 interface GameRouteContext {
   params: Promise<{ gameId: string }>;
@@ -6,7 +6,7 @@ interface GameRouteContext {
 
 export async function GET(_request: Request, context: GameRouteContext): Promise<Response> {
   const { gameId } = await context.params;
-  const engine = createRuntimeEngineAdapter();
+  const engine = createGameRuntimeEngineAdapter(gameId);
 
   try {
     return Response.json(await engine.getSnapshot(gameId));

@@ -2076,8 +2076,8 @@ struct UniversalPromptActionPanel: View {
                         command: command(type: "commander_replacement", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, useCommandZone: true)
                     )
                     promptButton(
-                        label: "Graveyard",
-                        pendingId: "\(prompt.id)-graveyard",
+                        label: "Original zone",
+                        pendingId: "\(prompt.id)-original-zone",
                         command: command(type: "commander_replacement", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, useCommandZone: false)
                     )
                 }
@@ -2220,18 +2220,21 @@ struct UniversalPromptActionPanel: View {
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 98), spacing: 6)], spacing: 6) {
                     ForEach(actions) { action in
+                        let directlyRunnable = isDirectlyRunnable(action)
                         Button {
-                            runAction(action)
+                            if directlyRunnable {
+                                runAction(action)
+                            }
                         } label: {
                             PromptButtonLabel(
                                 title: action.displayLabel,
-                                subtitle: action.actionDetail,
+                                subtitle: directlyRunnable ? action.actionDetail : "Use prompt picker",
                                 systemImage: action.systemImage,
                                 isPending: pendingActionId == action.id
                             )
                         }
                         .buttonStyle(PanelActionButtonStyle(isDanger: action.type == "concede", isPrimary: action.isPrimary == true))
-                        .disabled(pendingActionId != nil)
+                        .disabled(pendingActionId != nil || !directlyRunnable)
                     }
                 }
             }
@@ -2410,13 +2413,23 @@ struct UniversalPromptActionPanel: View {
                 label: confirmation.yesLabel ?? "Yes",
                 systemImage: "checkmark.circle",
                 pendingId: "\(prompt.id)-yes",
-                command: command(type: prompt.responseCommand?.type ?? "answer_yes_no", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: ["true"])
+                command: command(
+                    type: confirmation.yesCommand?.type ?? prompt.responseCommand?.type ?? "answer_yes_no",
+                    promptId: confirmation.yesCommand?.promptId ?? prompt.responseCommand?.promptId ?? prompt.id,
+                    playerId: prompt.playerId,
+                    ids: [(confirmation.yesCommand?.confirmed ?? true) ? "true" : "false"]
+                )
             )
             promptButton(
                 label: confirmation.noLabel ?? "No",
                 systemImage: "xmark.circle",
                 pendingId: "\(prompt.id)-no",
-                command: command(type: prompt.responseCommand?.type ?? "answer_yes_no", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: ["false"])
+                command: command(
+                    type: confirmation.noCommand?.type ?? prompt.responseCommand?.type ?? "answer_yes_no",
+                    promptId: confirmation.noCommand?.promptId ?? prompt.responseCommand?.promptId ?? prompt.id,
+                    playerId: prompt.playerId,
+                    ids: [(confirmation.noCommand?.confirmed ?? false) ? "true" : "false"]
+                )
             )
         }
     }
@@ -2468,43 +2481,52 @@ struct UniversalPromptActionPanel: View {
         manaType: String? = nil
     ) -> GameCommand? {
         let type = rawType.lowercased()
+        let promptMessageId = resolvedMessageId(for: promptId)
         switch type {
         case "resolve_choice":
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, choiceIds: ids)
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, choiceIds: ids)
         case "choose_target":
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, targetIds: ids)
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, targetIds: ids)
         case "choose_card":
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, cardInstanceIds: ids)
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, cardInstanceIds: ids)
         case "choose_player":
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, playerIds: ids)
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, playerIds: ids)
         case "choose_mode":
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, modeIds: ids)
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, modeIds: ids)
         case "choose_ability":
             guard let abilityId = ids.first else { return nil }
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, abilityId: abilityId, promptId: promptId)
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, abilityId: abilityId, promptId: promptId, messageId: promptMessageId)
         case "choose_pile":
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, pile: pile ?? Int(ids.first ?? "1") ?? 1)
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, pile: pile ?? Int(ids.first ?? "1") ?? 1)
         case "choose_amount", "play_x_mana":
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, amount: amount ?? Int(ids.first ?? "0") ?? 0)
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, amount: amount ?? Int(ids.first ?? "0") ?? 0)
         case "choose_multi_amount":
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, amounts: amounts ?? ids.compactMap(Int.init))
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, amounts: amounts ?? ids.compactMap(Int.init))
         case "play_mana":
             guard let manaType else { return nil }
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, manaType: manaType)
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, manaType: manaType)
         case "choose_mana":
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, manaTypes: manaType.map { [$0] } ?? ids)
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, manaTypes: manaType.map { [$0] } ?? ids)
         case "search_select":
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, cardInstanceIds: ids)
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, cardInstanceIds: ids)
         case "order_triggers", "order_items":
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, orderedIds: ids)
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, orderedIds: ids)
         case "commander_replacement":
             guard let useCommandZone else { return nil }
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, useCommandZone: useCommandZone)
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, useCommandZone: useCommandZone)
         case "answer_yes_no":
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, confirmed: ids.first != "false")
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, confirmed: ids.first != "false")
         default:
             return nil
         }
+    }
+
+    private func resolvedMessageId(for promptId: String) -> Int? {
+        guard let prompt = snapshot.promptEnvelopeV2 else { return nil }
+        if prompt.id == promptId || prompt.responseCommand?.promptId == promptId {
+            return prompt.responseCommand?.messageId ?? prompt.messageId
+        }
+        return nil
     }
 
     private func idCommandType(preferred: String?, fallback: String) -> String {
@@ -2554,6 +2576,29 @@ struct UniversalPromptActionPanel: View {
         if ["yes", "ok", "accept"].contains(lower) { return "checkmark.circle" }
         if ["no", "cancel", "decline"].contains(lower) { return "xmark.circle" }
         return nil
+    }
+
+    private func isDirectlyRunnable(_ action: LegalAction) -> Bool {
+        switch action.type {
+        case "choose_target":
+            return singleCount(action.targetIds) || singleCount(action.validTargetIds)
+        case "choose_card", "search_select":
+            return singleCount(action.cardInstanceIds) || singleCount(action.validCardInstanceIds) || singleCount(action.targetIds) || singleCount(action.validTargetIds)
+        case "choose_player":
+            return singleCount(action.playerIds) || singleCount(action.validPlayerIds) || singleCount(action.targetIds) || singleCount(action.validTargetIds)
+        case "choose_mode":
+            return singleCount(action.modeIds) || singleCount(action.targetIds) || singleCount(action.validTargetIds)
+        case "resolve_choice":
+            return singleCount(action.choiceIds) || singleCount(action.targetIds) || singleCount(action.validTargetIds)
+        case "choose_multi_amount", "order_triggers", "order_items", "declare_attackers", "declare_blockers":
+            return false
+        default:
+            return true
+        }
+    }
+
+    private func singleCount(_ values: [String]?) -> Bool {
+        values?.count == 1
     }
 }
 

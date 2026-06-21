@@ -29,3 +29,15 @@ export function createRuntimeEngineAdapter(options: Partial<EngineWorkerConfig> 
 
   return cache.adapter;
 }
+
+export function createCommanderRuntimeEngineAdapter(config: { simulatorPreset?: string }) {
+  return createRuntimeEngineAdapter({
+    mode: config.simulatorPreset === "arena-battlefield" ? "mock" : "xmage"
+  });
+}
+
+export function createGameRuntimeEngineAdapter(gameId: string) {
+  return createRuntimeEngineAdapter({
+    mode: gameId.startsWith("mock-") ? "mock" : "xmage"
+  });
+}

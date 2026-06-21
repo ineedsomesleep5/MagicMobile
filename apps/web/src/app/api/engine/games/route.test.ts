@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { POST as createCommanderGame } from "../commander/route";
 import { GET as getGame } from "./[gameId]/route";
 import { GET as getLegalActions } from "./[gameId]/legal-actions/route";
@@ -10,6 +11,18 @@ async function json<T>(response: Response): Promise<T> {
 }
 
 describe("engine game API routes", () => {
+  it("keeps production Commander starts on the explicit XMage adapter path", () => {
+    const routeSource = readFileSync(new URL("../commander/route.ts", import.meta.url), "utf8");
+    const startupRouteSource = readFileSync(new URL("../commander/start/route.ts", import.meta.url), "utf8");
+    const gameRouteSource = readFileSync(new URL("./[gameId]/route.ts", import.meta.url), "utf8");
+    const commandRouteSource = readFileSync(new URL("./[gameId]/commands/route.ts", import.meta.url), "utf8");
+
+    expect(routeSource).toContain("createCommanderRuntimeEngineAdapter(config)");
+    expect(startupRouteSource).toContain("createCommanderRuntimeEngineAdapter(config)");
+    expect(gameRouteSource).toContain("createGameRuntimeEngineAdapter(gameId)");
+    expect(commandRouteSource).toContain("createGameRuntimeEngineAdapter(gameId)");
+  });
+
   it("creates a simulator Commander game, reads legal actions, and submits an engine command", async () => {
     const config = createArenaDemoConfig();
     const createResponse = await createCommanderGame(

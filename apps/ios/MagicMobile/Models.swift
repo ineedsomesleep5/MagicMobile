@@ -199,6 +199,7 @@ struct LegalAction: Decodable, Identifiable {
     let type: String
     let playerId: String
     let label: String
+    let promptId: String?
     let cardInstanceId: String?
     let sourceZone: String?
     let sourceInstanceId: String?
@@ -209,6 +210,7 @@ struct LegalAction: Decodable, Identifiable {
     let validPlayerIds: [String]?
     let choiceIds: [String]?
     let cardInstanceIds: [String]?
+    let validCardInstanceIds: [String]?
     let modeIds: [String]?
     let orderedIds: [String]?
     let amount: Int?
@@ -225,7 +227,7 @@ struct LegalAction: Decodable, Identifiable {
     let maxChoices: Int?
     let zoneContext: String?
     let shortLabel: String?
-    let commandTemplate: [String: String]?
+    let commandTemplate: [String: JSONValue]?
 }
 
 struct ChoicePrompt: Decodable, Identifiable {
@@ -286,6 +288,8 @@ struct PromptEnvelopeV2: Decodable, Identifiable {
 struct XmageResponseCommand: Decodable {
     let type: String?
     let promptId: String?
+    let messageId: Int?
+    let confirmed: Bool?
 }
 
 struct XmagePromptPile: Decodable, Identifiable {
@@ -319,6 +323,8 @@ struct XmagePromptConfirmation: Decodable {
     let yesLabel: String?
     let noLabel: String?
     let defaultValue: Bool?
+    let yesCommand: XmageResponseCommand?
+    let noCommand: XmageResponseCommand?
 }
 
 struct XmageMobileSnapshot: Decodable {
@@ -419,10 +425,12 @@ struct XmagePanels: Decodable {
     let search: Bool
 }
 
-enum JSONValue: Decodable {
+indirect enum JSONValue: Decodable {
     case string(String)
     case number(Double)
     case bool(Bool)
+    case array([JSONValue])
+    case object([String: JSONValue])
     case null
 
     init(from decoder: Decoder) throws {
@@ -433,8 +441,53 @@ enum JSONValue: Decodable {
             self = .bool(value)
         } else if let value = try? container.decode(Double.self) {
             self = .number(value)
+        } else if let value = try? container.decode([JSONValue].self) {
+            self = .array(value)
+        } else if let value = try? container.decode([String: JSONValue].self) {
+            self = .object(value)
         } else {
             self = .string(try container.decode(String.self))
+        }
+    }
+
+    var stringValue: String? {
+        switch self {
+        case .string(let value):
+            return value
+        case .number(let value):
+            let intValue = Int(value)
+            return value == Double(intValue) ? String(intValue) : String(value)
+        case .bool(let value):
+            return value ? "true" : "false"
+        case .array, .object, .null:
+            return nil
+        }
+    }
+
+    var stringArrayValue: [String]? {
+        switch self {
+        case .array(let values):
+            let strings = values.compactMap(\.stringValue)
+            return strings.count == values.count ? strings : nil
+        case .string(let value):
+            return [value]
+        case .number, .bool, .object, .null:
+            return nil
+        }
+    }
+
+    var boolValue: Bool? {
+        switch self {
+        case .bool(let value):
+            return value
+        case .string(let value):
+            if ["true", "yes"].contains(value.lowercased()) { return true }
+            if ["false", "no"].contains(value.lowercased()) { return false }
+            return nil
+        case .number(let value):
+            return value != 0
+        case .array, .object, .null:
+            return nil
         }
     }
 }
@@ -447,6 +500,7 @@ struct GameCommand: Encodable {
     let sourceInstanceId: String?
     let abilityId: String?
     let promptId: String?
+    let messageId: Int?
     let choiceIds: [String]?
     let targetIds: [String]?
     let cardInstanceIds: [String]?
@@ -472,6 +526,7 @@ struct GameCommand: Encodable {
         sourceInstanceId: String? = nil,
         abilityId: String? = nil,
         promptId: String? = nil,
+        messageId: Int? = nil,
         choiceIds: [String]? = nil,
         targetIds: [String]? = nil,
         cardInstanceIds: [String]? = nil,
@@ -496,6 +551,7 @@ struct GameCommand: Encodable {
         self.sourceInstanceId = sourceInstanceId
         self.abilityId = abilityId
         self.promptId = promptId
+        self.messageId = messageId
         self.choiceIds = choiceIds
         self.targetIds = targetIds
         self.cardInstanceIds = cardInstanceIds

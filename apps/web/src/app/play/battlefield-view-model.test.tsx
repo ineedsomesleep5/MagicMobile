@@ -208,11 +208,15 @@ describe("BattlefieldViewModel", () => {
     expect(html).toContain("GAME CHOOSE CHOICE");
     expect(html).toContain("Choose a mode");
     expect(html).toContain("Draw a card");
+    expect(html).toContain('type="button">Draw a card</button>');
     expect(html).toContain("Opponent (20)");
+    expect(html).toContain('type="button">Opponent (20)</button>');
     expect(html).toContain("Beast Whisperer trigger");
     expect(html).toContain("Whenever you cast a creature spell, draw a card.");
     expect(html).toContain("Pay {G}");
+    expect(html).toContain('type="button">Pay {G}</button>');
     expect(html).toContain("Resolve trigger first");
+    expect(html).toContain('type="button">Resolve trigger first</button>');
     expect(html).toContain("Confirmation");
     expect(html).toContain("Amount 10");
     expect(html).toContain("Paid");

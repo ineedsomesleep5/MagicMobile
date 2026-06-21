@@ -1,5 +1,5 @@
 import type { CommanderGameConfig, CommanderStartupResponse } from "@magicmobile/shared";
-import { createRuntimeEngineAdapter } from "@/lib/engine";
+import { createCommanderRuntimeEngineAdapter } from "@/lib/engine";
 import { cleanupOldStartups, startupStore, toStartupResponse, type StartupRecord } from "@/lib/commander-startups";
 import { validateCommanderGameConfig } from "@/lib/commander-validation";
 
@@ -23,7 +23,7 @@ export async function POST(request: Request): Promise<Response> {
   };
   startupStore().set(startupId, starting);
 
-  void createRuntimeEngineAdapter()
+  void createCommanderRuntimeEngineAdapter(config)
     .createCommanderGame(config)
     .then((snapshot) => {
       startupStore().set(startupId, {

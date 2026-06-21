@@ -275,6 +275,10 @@ function PromptEnvelopePanel({
 }) {
   const prompt = envelope as PromptEnvelopeV2;
   const choices = prompt.choices ?? [];
+  const runPromptValue = (type: LegalAction["type"], id: string, label: string) => {
+    const action = actionForPromptValue(actions, prompt, type, id, label) ?? actionFromPromptValue(prompt, type, id, label);
+    if (action) onRunAction?.(action);
+  };
 
   return (
     <section className="arena-prompt-detail-panel" aria-label="XMage prompt detail">
@@ -284,7 +288,8 @@ function PromptEnvelopePanel({
       {choices.length > 0 ? (
         <div className="arena-prompt-choice-grid">
           {choices.map((choice) => {
-            const action = actionForChoice(actions, choice.id);
+            const type = prompt.responseCommand?.type ?? "resolve_choice";
+            const action = actionForPromptValue(actions, prompt, type, choice.id, choice.label) ?? actionFromPromptValue(prompt, type, choice.id, choice.label);
             return (
               <button disabled={pending || !action || !onRunAction} key={choice.id} onClick={() => action && onRunAction?.(action)} type="button">
                 {choice.label}
@@ -293,22 +298,98 @@ function PromptEnvelopePanel({
           })}
         </div>
       ) : null}
-      <PromptItemList label="Targets" items={prompt.targets?.map((target) => target.label) ?? []} />
-      <PromptItemList label="Players" items={prompt.players?.map((player) => player.life === undefined ? player.label : `${player.label} (${player.life})`) ?? []} />
-      <PromptItemList label="Cards" items={prompt.cards?.map((card) => card.card.name) ?? []} />
-      <PromptItemList label="Modes" items={prompt.modes?.map((mode) => mode.label) ?? []} />
-      <PromptItemList label="Abilities" items={prompt.abilities?.map((ability) => ability.rulesText ? `${ability.label}: ${ability.rulesText}` : ability.label) ?? []} />
-      <PromptItemList label="Amounts" items={prompt.amounts?.map(String) ?? []} />
-      <PromptItemList label="Mana" items={prompt.manaChoices?.map((choice) => choice.label) ?? []} />
-      <PromptItemList label="Piles" items={prompt.piles?.map((pile) => `${pile.label}: ${pile.cards.map((card) => card.card.name).join(", ")}`) ?? []} />
-      <PromptItemList label="Order" items={prompt.orderedItems?.map((item) => item.label) ?? []} />
+      <PromptActionList
+        disabled={pending || !onRunAction}
+        label="Targets"
+        options={prompt.targets?.map((target) => ({ id: target.id, label: target.label, type: "choose_target" as const })) ?? []}
+        onRun={runPromptValue}
+      />
+      <PromptActionList
+        disabled={pending || !onRunAction}
+        label="Players"
+        options={prompt.players?.map((player) => ({ id: player.playerId, label: player.life === undefined ? player.label : `${player.label} (${player.life})`, type: "choose_player" as const })) ?? []}
+        onRun={runPromptValue}
+      />
+      <PromptActionList
+        disabled={pending || !onRunAction}
+        label="Cards"
+        options={prompt.cards?.map((card) => ({ id: card.instanceId, label: card.card.name, type: prompt.responseCommand?.type === "search_select" ? "search_select" as const : "choose_card" as const })) ?? []}
+        onRun={runPromptValue}
+      />
+      <PromptActionList
+        disabled={pending || !onRunAction}
+        label="Modes"
+        options={prompt.modes?.map((mode) => ({ id: mode.id, label: mode.label, type: "choose_mode" as const })) ?? []}
+        onRun={runPromptValue}
+      />
+      <PromptActionList
+        disabled={pending || !onRunAction}
+        label="Abilities"
+        options={prompt.abilities?.map((ability) => ({ id: ability.id, label: ability.rulesText ? `${ability.label}: ${ability.rulesText}` : ability.label, type: "choose_ability" as const })) ?? []}
+        onRun={runPromptValue}
+      />
+      <PromptActionList
+        disabled={pending || !onRunAction}
+        label="Amounts"
+        options={prompt.amounts?.map((amount) => ({ id: String(amount), label: String(amount), type: prompt.responseCommand?.type === "play_x_mana" ? "play_x_mana" as const : "choose_amount" as const })) ?? []}
+        onRun={runPromptValue}
+      />
+      <PromptActionList
+        disabled={pending || !onRunAction}
+        label="Mana"
+        options={prompt.manaChoices?.map((choice) => ({ id: choice.manaType ?? choice.id, label: choice.label, type: "play_mana" as const })) ?? []}
+        onRun={runPromptValue}
+      />
+      <PromptActionList
+        disabled={pending || !onRunAction}
+        label="Piles"
+        options={prompt.piles?.map((pile) => ({ id: String(pile.id), label: `${pile.label}: ${pile.cards.map((card) => card.card.name).join(", ")}`, type: "choose_pile" as const })) ?? []}
+        onRun={runPromptValue}
+      />
+      <PromptActionList
+        disabled={pending || !onRunAction}
+        label="Order"
+        options={prompt.orderedItems?.map((item) => ({ id: item.id, label: item.label, type: "order_items" as const })) ?? []}
+        onRun={runPromptValue}
+      />
       {prompt.confirmation ? (
-        <PromptItemList
+        <PromptActionList
+          disabled={pending || !onRunAction}
           label="Confirmation"
-          items={[prompt.confirmation.yesLabel ?? "Yes", prompt.confirmation.noLabel ?? "No"]}
+          options={[
+            { id: "true", label: prompt.confirmation.yesLabel ?? "Yes", type: "answer_yes_no" as const },
+            { id: "false", label: prompt.confirmation.noLabel ?? "No", type: "answer_yes_no" as const }
+          ]}
+          onRun={runPromptValue}
         />
       ) : null}
     </section>
+  );
+}
+
+function PromptActionList({
+  disabled,
+  label,
+  onRun,
+  options
+}: {
+  disabled: boolean;
+  label: string;
+  onRun: (type: LegalAction["type"], id: string, label: string) => void;
+  options: Array<{ id: string; label: string; type: LegalAction["type"] }>;
+}) {
+  if (options.length === 0) return null;
+  return (
+    <dl className="arena-prompt-item-list">
+      <dt>{label}</dt>
+      {options.map((item) => (
+        <dd key={`${label}-${item.id}`}>
+          <button disabled={disabled} onClick={() => onRun(item.type, item.id, item.label)} type="button">
+            {item.label}
+          </button>
+        </dd>
+      ))}
+    </dl>
   );
 }
 
@@ -504,21 +585,142 @@ function zoneCardToBattlefieldCard(card: ZoneCard): BattlefieldCardView {
   };
 }
 
-function actionForChoice(actions: LegalAction[], choiceId: string): LegalAction | undefined {
-  return actions.find((action) =>
-    action.targetIds?.includes(choiceId)
-    || action.validTargetIds?.includes(choiceId)
-    || action.choiceIds?.includes(choiceId)
-    || action.cardInstanceIds?.includes(choiceId)
-    || action.modeIds?.includes(choiceId)
-    || action.orderedIds?.includes(choiceId)
-    || action.playerIds?.includes(choiceId)
-    || action.validPlayerIds?.includes(choiceId)
-    || action.manaType === choiceId
-    || String(action.amount) === choiceId
-    || action.id === choiceId
-    || action.id.endsWith(choiceId)
+function actionForPromptValue(actions: LegalAction[], prompt: PromptEnvelopeV2, type: LegalAction["type"], choiceId: string, label: string): LegalAction | undefined {
+  const promptId = prompt.responseCommand?.promptId ?? prompt.id;
+  const samePrompt = (action: LegalAction) =>
+    (action.promptId === undefined || action.promptId === promptId)
+    && (action.messageId === undefined || prompt.messageId === undefined || action.messageId === prompt.messageId);
+  const action = actions.find((candidate) =>
+    samePrompt(candidate) && candidate.type === type && (
+      candidate.targetIds?.includes(choiceId)
+      || candidate.validTargetIds?.includes(choiceId)
+      || candidate.choiceIds?.includes(choiceId)
+      || candidate.cardInstanceIds?.includes(choiceId)
+      || candidate.validCardInstanceIds?.includes(choiceId)
+      || candidate.modeIds?.includes(choiceId)
+      || candidate.orderedIds?.includes(choiceId)
+      || candidate.playerIds?.includes(choiceId)
+      || candidate.validPlayerIds?.includes(choiceId)
+      || candidate.manaType === choiceId
+      || String(candidate.amount) === choiceId
+      || candidate.id === choiceId
+      || candidate.id.endsWith(choiceId)
+    )
+  ) ?? actions.find((action) =>
+    samePrompt(action) && action.type === type && (
+      action.targetIds?.includes(choiceId)
+      || action.validTargetIds?.includes(choiceId)
+      || action.choiceIds?.includes(choiceId)
+      || action.cardInstanceIds?.includes(choiceId)
+      || action.validCardInstanceIds?.includes(choiceId)
+      || action.modeIds?.includes(choiceId)
+      || action.orderedIds?.includes(choiceId)
+      || action.playerIds?.includes(choiceId)
+      || action.validPlayerIds?.includes(choiceId)
+      || action.manaType === choiceId
+      || String(action.amount) === choiceId
+      || action.id === choiceId
+      || action.id.endsWith(choiceId)
+    )
   );
+  return action ? narrowPromptAction(action, type, choiceId, label) : undefined;
+}
+
+function actionFromPromptValue(prompt: PromptEnvelopeV2, type: LegalAction["type"], choiceId: string, label: string): LegalAction | undefined {
+  const commandTemplate = narrowCommandTemplate(prompt.responseCommand, type, choiceId);
+  return narrowPromptAction({
+    id: `${prompt.id}-${choiceId}`,
+    type,
+    playerId: prompt.playerId,
+    label,
+    promptId: prompt.responseCommand?.promptId ?? prompt.id,
+    messageId: prompt.messageId,
+    zoneContext: "prompt",
+    ...(prompt.minChoices === undefined ? {} : { minChoices: prompt.minChoices }),
+    ...(prompt.maxChoices === undefined ? {} : { maxChoices: prompt.maxChoices }),
+    ...(prompt.required === undefined ? {} : { required: prompt.required }),
+    ...(commandTemplate === undefined ? {} : { commandTemplate })
+  }, type, choiceId, label);
+}
+
+function narrowPromptAction(action: LegalAction, type: LegalAction["type"], choiceId: string, label: string): LegalAction {
+  const narrowedTemplate = narrowCommandTemplate(action.commandTemplate, type, choiceId);
+  const narrowed: LegalAction = {
+    ...action,
+    id: `${action.id}-${choiceId}`,
+    type,
+    label,
+    ...(narrowedTemplate === undefined ? {} : { commandTemplate: narrowedTemplate })
+  };
+  switch (type) {
+    case "choose_target":
+      return { ...narrowed, targetIds: [choiceId], validTargetIds: [choiceId] };
+    case "choose_card":
+    case "search_select":
+      return { ...narrowed, cardInstanceIds: [choiceId], validCardInstanceIds: [choiceId] };
+    case "choose_player":
+      return { ...narrowed, playerIds: [choiceId], validPlayerIds: [choiceId] };
+    case "choose_mode":
+      return { ...narrowed, modeIds: [choiceId] };
+    case "choose_ability":
+      return { ...narrowed, abilityId: choiceId };
+    case "choose_pile":
+      return { ...narrowed, targetIds: [choiceId] };
+    case "choose_amount":
+    case "play_x_mana":
+      return { ...narrowed, amount: Number(choiceId), targetIds: [choiceId] };
+    case "play_mana":
+      return { ...narrowed, manaType: promptManaType(choiceId) };
+    case "choose_mana":
+      return { ...narrowed, manaTypes: [promptManaType(choiceId)] };
+    case "answer_yes_no":
+      return { ...narrowed, confirmed: choiceId !== "false", targetIds: [choiceId] };
+    case "order_items":
+    case "order_triggers":
+      return { ...narrowed, orderedIds: [choiceId] };
+    case "resolve_choice":
+      return { ...narrowed, choiceIds: [choiceId], targetIds: [choiceId] };
+    default:
+      return narrowed;
+  }
+}
+
+function narrowCommandTemplate(command: LegalAction["commandTemplate"], type: LegalAction["type"], choiceId: string): LegalAction["commandTemplate"] {
+  if (!command) return command;
+  const narrowed = { ...command, type };
+  switch (type) {
+    case "choose_target":
+      return { ...narrowed, targetIds: [choiceId] };
+    case "choose_card":
+    case "search_select":
+      return { ...narrowed, cardInstanceIds: [choiceId] };
+    case "choose_player":
+      return { ...narrowed, playerIds: [choiceId] };
+    case "choose_mode":
+      return { ...narrowed, modeIds: [choiceId] };
+    case "choose_ability":
+      return { ...narrowed, abilityId: choiceId };
+    case "choose_amount":
+    case "play_x_mana":
+      return { ...narrowed, amount: Number(choiceId) };
+    case "play_mana":
+      return { ...narrowed, manaType: promptManaType(choiceId) };
+    case "choose_mana":
+      return { ...narrowed, manaTypes: [promptManaType(choiceId)] };
+    case "answer_yes_no":
+      return { ...narrowed, confirmed: choiceId !== "false" };
+    case "order_items":
+    case "order_triggers":
+      return { ...narrowed, orderedIds: [choiceId] };
+    case "resolve_choice":
+      return { ...narrowed, choiceIds: [choiceId] };
+    default:
+      return narrowed;
+  }
+}
+
+function promptManaType(value: string): "W" | "U" | "B" | "R" | "G" | "C" {
+  return value === "W" || value === "U" || value === "B" || value === "R" || value === "G" || value === "C" ? value : "C";
 }
 
 function formatPromptMethod(method: string): string {
