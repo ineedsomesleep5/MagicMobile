@@ -62,7 +62,7 @@ struct MagicMobileAPI {
     }
 
     func submit(action: LegalAction, gameId: String) async throws -> GameSnapshot {
-        let command = command(for: action, gameId: gameId)
+        let command = mergeCommandTemplate(command(for: action, gameId: gameId), action: action, gameId: gameId)
         return try await post("/api/engine/games/\(gameId)/commands", body: command)
     }
 
@@ -245,6 +245,36 @@ struct MagicMobileAPI {
         )
     }
 
+    private func mergeCommandTemplate(_ command: GameCommand, action: LegalAction, gameId: String) -> GameCommand {
+        guard action.commandTemplate != nil else { return command }
+        return GameCommand(
+            type: templateString(action, "type") ?? command.type,
+            gameId: gameId,
+            playerId: action.playerId,
+            cardInstanceId: templateString(action, "cardInstanceId") ?? command.cardInstanceId,
+            sourceInstanceId: templateString(action, "sourceInstanceId") ?? command.sourceInstanceId,
+            abilityId: templateString(action, "abilityId") ?? command.abilityId,
+            promptId: templateString(action, "promptId") ?? command.promptId,
+            messageId: templateInt(action, "messageId") ?? command.messageId,
+            choiceIds: templateStringArray(action, "choiceIds") ?? command.choiceIds,
+            targetIds: templateStringArray(action, "targetIds") ?? command.targetIds,
+            cardInstanceIds: templateStringArray(action, "cardInstanceIds") ?? command.cardInstanceIds,
+            modeIds: templateStringArray(action, "modeIds") ?? command.modeIds,
+            sourceInstanceIds: templateStringArray(action, "sourceInstanceIds") ?? command.sourceInstanceIds,
+            paymentId: templateString(action, "paymentId") ?? command.paymentId,
+            abilityIdChoice: templateString(action, "abilityIdChoice") ?? command.abilityIdChoice,
+            pile: templateInt(action, "pile") ?? command.pile,
+            amount: templateInt(action, "amount") ?? command.amount,
+            amounts: templateIntArray(action, "amounts") ?? command.amounts,
+            orderedIds: templateStringArray(action, "orderedIds") ?? command.orderedIds,
+            useCommandZone: templateBool(action, "useCommandZone") ?? command.useCommandZone,
+            manaType: templateString(action, "manaType") ?? command.manaType,
+            manaTypes: templateStringArray(action, "manaTypes") ?? command.manaTypes,
+            playerIds: templateStringArray(action, "playerIds") ?? command.playerIds,
+            confirmed: templateBool(action, "confirmed") ?? command.confirmed
+        )
+    }
+
     private func promptId(for action: LegalAction) -> String {
         templateString(action, "promptId") ?? action.promptId ?? action.id
     }
@@ -255,6 +285,48 @@ struct MagicMobileAPI {
 
     private func templateStringArray(_ action: LegalAction, _ key: String) -> [String]? {
         action.commandTemplate?[key]?.stringArrayValue
+    }
+
+    private func templateInt(_ action: LegalAction, _ key: String) -> Int? {
+        guard let value = action.commandTemplate?[key] else { return nil }
+        switch value {
+        case .number(let number):
+            return Int(number)
+        case .string(let string):
+            return Int(string)
+        case .bool(let bool):
+            return bool ? 1 : 0
+        case .array, .object, .null:
+            return nil
+        }
+    }
+
+    private func templateIntArray(_ action: LegalAction, _ key: String) -> [Int]? {
+        guard let value = action.commandTemplate?[key] else { return nil }
+        switch value {
+        case .array(let values):
+            let ints = values.compactMap { item -> Int? in
+                switch item {
+                case .number(let number):
+                    return Int(number)
+                case .string(let string):
+                    return Int(string)
+                case .bool(let bool):
+                    return bool ? 1 : 0
+                case .array, .object, .null:
+                    return nil
+                }
+            }
+            return ints.count == values.count ? ints : nil
+        case .number(let number):
+            return [Int(number)]
+        case .string(let string):
+            return Int(string).map { [$0] }
+        case .bool(let bool):
+            return [bool ? 1 : 0]
+        case .object, .null:
+            return nil
+        }
     }
 
     private func templateBool(_ action: LegalAction, _ key: String) -> Bool? {
