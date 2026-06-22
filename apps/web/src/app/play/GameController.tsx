@@ -415,6 +415,8 @@ export function toCommand(
         type: "pay_cost",
         gameId: snapshot.id,
         playerId: action.playerId,
+        promptId: promptId(snapshot, action),
+        pay: action.confirmed ?? booleanTemplateValue(action, "pay") ?? booleanTemplateValue(action, "confirmed") ?? true,
         ...(paymentId ? { paymentId } : {}),
         ...(sourceInstanceIds ? { sourceInstanceIds } : {})
       };
@@ -607,6 +609,11 @@ function promptId(snapshot: GameSnapshot, action: LegalAction): string {
 function stringTemplateValue(action: LegalAction, key: string): string | undefined {
   const value = action.commandTemplate?.[key as keyof GameCommand];
   return typeof value === "string" ? value : undefined;
+}
+
+function booleanTemplateValue(action: LegalAction, key: string): boolean | undefined {
+  const value = action.commandTemplate?.[key as keyof GameCommand];
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function mergeCommandTemplate(command: GameCommand, action: LegalAction): GameCommand {

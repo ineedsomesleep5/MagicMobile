@@ -249,6 +249,7 @@ export interface LegalAction {
   manaTypes?: ColorSymbol[];
   pile?: 1 | 2 | string;
   confirmed?: boolean;
+  pay?: boolean;
   isPrimary?: boolean;
   requiresTarget?: boolean;
   required?: boolean;
@@ -488,6 +489,7 @@ export interface GameCommandTemplate {
   pile?: 1 | 2 | string;
   orderedIds?: string[];
   confirmed?: boolean;
+  pay?: boolean;
   useCommandZone?: boolean;
   attackers?: Array<{ attackerId: string; defenderId: string }>;
   blockers?: Array<{ blockerId: string; attackerId: string }>;
@@ -503,7 +505,7 @@ export type GameCommand = (
   | { type: "choose_target"; gameId: GameId; playerId: PlayerId; promptId: string; targetIds: string[] }
   | { type: "make_mana"; gameId: GameId; playerId: PlayerId; sourceInstanceId: string; abilityId?: string }
   | { type: "play_mana"; gameId: GameId; playerId: PlayerId; promptId: string; manaType: "W" | "U" | "B" | "R" | "G" | "C" }
-  | { type: "pay_cost"; gameId: GameId; playerId: PlayerId; paymentId?: string; sourceInstanceIds?: string[] }
+  | { type: "pay_cost"; gameId: GameId; playerId: PlayerId; paymentId?: string; sourceInstanceIds?: string[]; promptId?: string; pay?: boolean; confirmed?: boolean }
   | { type: "choose_mode"; gameId: GameId; playerId: PlayerId; promptId: string; modeIds: string[] }
   | { type: "choose_ability"; gameId: GameId; playerId: PlayerId; promptId: string; abilityId: string }
   | { type: "choose_card"; gameId: GameId; playerId: PlayerId; promptId: string; cardInstanceIds: string[] }

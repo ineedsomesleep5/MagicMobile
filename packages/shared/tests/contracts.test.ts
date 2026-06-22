@@ -215,8 +215,18 @@ describe("shared contracts", () => {
       confirmed: true
     };
 
+    const payCommand: GameCommand = {
+      type: "pay_cost",
+      gameId: "game-1",
+      playerId: "player-1",
+      promptId: "prompt-pay",
+      pay: false,
+      confirmed: false
+    };
+
     expect(prompt.players?.[0]?.playerId).toBe("player-2");
     expect(legalAction.commandTemplate?.type).toBe("choose_mana");
     expect(command.confirmed).toBe(true);
+    expect(payCommand.pay).toBe(false);
   });
 });

@@ -219,6 +219,7 @@ struct LegalAction: Decodable, Identifiable {
     let manaTypes: [String]?
     let pile: String?
     let confirmed: Bool?
+    let pay: Bool?
     let isPrimary: Bool?
     let requiresTarget: Bool?
     let responseKind: String?
@@ -517,6 +518,7 @@ struct GameCommand: Encodable {
     let manaTypes: [String]?
     let playerIds: [String]?
     let confirmed: Bool?
+    let pay: Bool?
     let expectedBridgeRevision: Int?
 
     init(
@@ -544,6 +546,7 @@ struct GameCommand: Encodable {
         manaTypes: [String]? = nil,
         playerIds: [String]? = nil,
         confirmed: Bool? = nil,
+        pay: Bool? = nil,
         expectedBridgeRevision: Int? = nil
     ) {
         self.type = type
@@ -570,6 +573,7 @@ struct GameCommand: Encodable {
         self.manaTypes = manaTypes
         self.playerIds = playerIds
         self.confirmed = confirmed
+        self.pay = pay
         self.expectedBridgeRevision = expectedBridgeRevision
     }
 }

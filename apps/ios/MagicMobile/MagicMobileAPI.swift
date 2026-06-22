@@ -226,8 +226,11 @@ struct MagicMobileAPI {
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
+                promptId: promptId,
                 sourceInstanceIds: action.targetIds ?? [],
-                paymentId: action.id
+                paymentId: action.id,
+                confirmed: action.confirmed ?? templateBool(action, "confirmed") ?? templateBool(action, "pay"),
+                pay: action.pay ?? templateBool(action, "pay") ?? templateBool(action, "confirmed") ?? action.confirmed ?? true
             )
         }
 
@@ -278,6 +281,7 @@ struct MagicMobileAPI {
             manaTypes: templateStringArray(action, "manaTypes") ?? command.manaTypes,
             playerIds: templateStringArray(action, "playerIds") ?? command.playerIds,
             confirmed: templateBool(action, "confirmed") ?? command.confirmed,
+            pay: templateBool(action, "pay") ?? command.pay,
             expectedBridgeRevision: templateInt(action, "expectedBridgeRevision") ?? command.expectedBridgeRevision
         )
     }
@@ -309,6 +313,7 @@ struct MagicMobileAPI {
             manaTypes: command.manaTypes,
             playerIds: command.playerIds,
             confirmed: command.confirmed,
+            pay: command.pay,
             expectedBridgeRevision: expectedBridgeRevision
         )
     }

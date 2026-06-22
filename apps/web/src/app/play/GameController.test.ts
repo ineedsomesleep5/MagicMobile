@@ -35,6 +35,32 @@ describe("GameController command mapping", () => {
     });
   });
 
+  it("preserves explicit XMage pay-cost prompt responses", () => {
+    const action: LegalAction = {
+      id: "pay-action",
+      type: "pay_cost",
+      playerId: "human",
+      label: "Pay cost",
+      promptId: "prompt-pay",
+      commandTemplate: {
+        type: "pay_cost",
+        promptId: "prompt-pay",
+        pay: false,
+        confirmed: false
+      }
+    };
+
+    expect(toCommand(action, { ...snapshot, bridgeRevision: 13 }, undefined, "ai-1")).toMatchObject({
+      type: "pay_cost",
+      gameId: "game-1",
+      playerId: "human",
+      promptId: "prompt-pay",
+      pay: false,
+      confirmed: false,
+      expectedBridgeRevision: 13
+    });
+  });
+
   it("builds gateway websocket URLs for direct gateway and same-origin proxy modes", () => {
     expect(gameWebSocketUrl("game 1", "http://localhost:17171")).toBe("ws://localhost:17171/ws/games/game%201");
     expect(gameWebSocketUrl("game-2", "https://magicmobile.example/base/")).toBe("wss://magicmobile.example/base/ws/games/game-2");
