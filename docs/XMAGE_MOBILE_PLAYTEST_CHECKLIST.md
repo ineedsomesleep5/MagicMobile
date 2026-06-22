@@ -44,11 +44,15 @@ Commands run:
 docker compose config --quiet
 docker build -t magicmobile-xmage-bridge-check apps/xmage-gateway/bridge
 pnpm --filter @magicmobile/xmage-gateway test
+pnpm --filter @magicmobile/web test -- apps/web/src/app/play
 pnpm typecheck
 docker compose up -d --build xmage-bridge xmage-gateway
 XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage
 XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=combat pnpm smoke:xmage
 XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-state pnpm smoke:xmage
+pnpm lint
+pnpm test
+pnpm build
 ```
 
 The Docker services were running, the bridge container was rebuilt, the gateway was restarted to pick up local source changes, and the smoke test used the live gateway/Java bridge path.
@@ -67,19 +71,21 @@ Smoke result: passed.
 
 Final broad smoke output:
 
-- `gameId`: `a99ba08e-f04f-41d7-bd9b-ac3e451c51f0`
+- `gameId`: `25ce583a-02cb-4acf-95d9-d74694192724`
 - `source`: `xmage-java-bridge`
-- `bridgeRevision`: `242`
-- `xmageCycle`: `414`
+- `bridgeRevision`: `112`
+- `xmageCycle`: `201`
 - `phase` / `step`: `precombat-main`
-- `turn`: `9`
-- `promptText`: `Waiting for AI`
-- `promptChecks`: `GAME_TARGET:target`, `GAME_ASK:confirmation`, `GAME_PLAY_MANA:mana`
+- `turn`: `5`
+- `promptText`: `Your priority`
+- `promptChecks`: `GAME_ASK:confirmation`, `GAME_PLAY_MANA:mana`
+- `actionsByType`: `keep_hand`, `play_land`, `make_mana`, `cast_spell`, `play_mana`, `pass_priority`, `answer_yes_no`
 
 Targeted fixture smoke outputs:
 
 - `XMAGE_SMOKE_SCENARIO=combat`: passed with `combatExercised: true` after submitting `declare_attackers: Attack Noaddrag with Isamaru, Hound of Konda`.
 - `XMAGE_SMOKE_SCENARIO=commander-state`: passed with `combatExercised: true`, `commanderTaxChanges: [{ "playerId": "human", "tax": 2, "turn": 2 }]`, `commanderDamageChanges: [{ "recipient": "ai-1", "attacker": "human", "damage": 2, "turn": 4 }]`, and AI life at `38`.
+- `XMAGE_SMOKE_SCENARIO=arcane-signet`: intentionally not counted as passing. The current fixture with repeated `Arcane Signet` was rejected by XMage Commander legality, so the next version needs a Commander-legal deterministic payment-source fixture.
 
 Confirmed live steps across the local verification run:
 
@@ -91,9 +97,8 @@ Confirmed live steps across the local verification run:
 - made mana from a real battlefield source
 - passed through AI turns until a castable spell appeared
 - answered a real mana-payment prompt through `PromptEnvelopeV2`
-- cast multiple simple spells
-- answered a real target prompt with a named card choice
-- submitted typed combat pair payloads for real blockers in the broad smoke
+- cast a simple spell
+- inferred and submitted multi-select target choices for XMage search prompts when the callback text exposes `selected 0 of N`
 - submitted a typed attacker-to-defender payload in the deterministic combat fixture
 - verified commander tax from XMage command-card rules text
 - verified commander damage from XMage command-card rules text and a changed life total
@@ -108,6 +113,7 @@ Failures fixed during this verification:
 - the smoke helper was pre-tapping lands while searching for a cast action, which could hide the real castable spell state.
 - commander tax and damage parsed directly from rules text in the bridge.
 - prompt choice legal actions used raw UUID labels for library/search-style prompts, which made the smoke runner pick an invalid nonland for `Select a basic land card`.
+- XMage multi-select target/card prompts exposed `maxChoices: 0` even when prompt text said `selected 0 of 2`; the bridge now infers that choice count and confirms `GAME_TARGET` / `GAME_SELECT` UUID selections.
 - `PermanentView.isCanAttack()` / `isCanBlock()` was too conservative for the client view, so combat legal actions now use the current XMage combat step plus visible untapped creatures and still let XMage validate the submitted UUIDs.
 - the smoke runner now treats recovered stale-action `409`s as a refresh-and-retry path rather than counting them as semantic progress.
 
@@ -115,6 +121,7 @@ Remaining live-coverage gaps:
 
 - player-scoped snapshots are still required before human-vs-human or pods.
 - damage assignment prompts have not been live-fixtured yet because the current Commander fixture does not produce a manual damage-assignment prompt.
+- `Arcane Signet` payment-source smoke needs a Commander-legal deterministic fixture; repeated nonbasic copies are correctly rejected by XMage.
 
 ## Web Play Loop
 

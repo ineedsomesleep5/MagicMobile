@@ -33,6 +33,10 @@ export function ArenaBattlefield({
   const inspectCard = allCards.find((card) => card.instanceId === selectedInstanceId)
     ?? allCards.find((card) => card.instanceId === hoveredInstanceId);
   const promptEnvelope = snapshot?.promptEnvelopeV2 ?? snapshot?.promptEnvelope;
+  const promptDetailActions = useMemo(
+    () => mergePromptDetailActions(promptActions, viewModel.legalActions),
+    [promptActions, viewModel.legalActions]
+  );
 
   return (
     <div className="arena-battlefield" data-testid="arena-battlefield" aria-label="Arena-style Commander battlefield">
@@ -53,7 +57,7 @@ export function ArenaBattlefield({
         />
         {promptEnvelope ? (
           <PromptEnvelopePanel
-            actions={promptActions}
+            actions={promptDetailActions}
             envelope={promptEnvelope}
             pending={actionPending}
             onRunAction={onRunAction}
@@ -463,7 +467,7 @@ function ActionPanel({
   selectedCard: BattlefieldCardView | undefined;
   onRunAction: ((action: LegalAction) => void) | undefined;
 }) {
-  const visibleActions = selectedActions.length > 0 ? selectedActions : promptActions;
+  const visibleActions = selectedActions.length > 0 ? selectedActions : selectedCard ? [] : promptActions;
   if (visibleActions.length === 0 && !selectedCard) return null;
 
   return (
@@ -489,6 +493,22 @@ function ActionPanel({
           XMage is not exposing a cast/play action for this card right now. Answer the active prompt, wait for priority, or inspect the card.
         </p>
       )}
+      {selectedCard && selectedActions.length === 0 && promptActions.length > 0 ? (
+        <div>
+          <small>Current prompt</small>
+          {promptActions.map((action) => (
+            <button
+              disabled={pending || !onRunAction}
+              key={action.id}
+              onClick={() => onRunAction?.(action)}
+              type="button"
+            >
+              {shortActionLabel(action)}
+              {actionHint(action) ? <small>{actionHint(action)}</small> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -540,6 +560,10 @@ function PromptEnvelopePanel({
     return type === "search_select" || (p.method ?? "").toLowerCase().includes("search");
   };
 
+  const sourceManaActions = actions.filter((action) => action.type === "make_mana" && (action.sourceInstanceId || action.cardInstanceId));
+  const paymentActions = actions.filter((action) => action.type === "pay_cost");
+  const exposedSearchIds = prompt.targetIds?.filter(Boolean) ?? [];
+
   return (
     <section className="arena-prompt-detail-panel" aria-label="XMage prompt detail">
       <h2>{formatPromptMethod(prompt.method)}</h2>
@@ -547,17 +571,22 @@ function PromptEnvelopePanel({
       <small>{formatPromptRequirement(prompt)}</small>
 
       {isManaOrPaymentPrompt(prompt) ? (
-        <PromptActionList
+        <PromptDirectActionList
           disabled={pending || !onRunAction}
-          label="Available Mana Sources"
-          options={actions
-            .filter((action) => action.type === "make_mana" && (action.sourceInstanceId || action.cardInstanceId))
-            .map((action) => ({
-              id: action.id,
-              label: `${action.cardName ? `Tap ${action.cardName}` : action.label}${actionHint(action) ? ` · ${actionHint(action)}` : ""}`,
-              type: "make_mana" as const
-            }))}
-          onRun={runPromptValue}
+          label={paymentActions.length > 0 ? "Pay with sources" : "Available Mana Sources"}
+          actions={sourceManaActions}
+          onRun={onRunAction}
+          format={(action) => `${action.cardName ? `Tap ${action.cardName}` : action.label}${actionHint(action) ? ` · ${actionHint(action)}` : ""}`}
+        />
+      ) : null}
+
+      {paymentActions.length > 0 ? (
+        <PromptDirectActionList
+          disabled={pending || !onRunAction}
+          label="Payment"
+          actions={paymentActions}
+          onRun={onRunAction}
+          format={(action) => action.shortLabel ?? action.label ?? (action.pay === false ? "Decline payment" : "Pay cost")}
         />
       ) : null}
 
@@ -691,18 +720,22 @@ function PromptEnvelopePanel({
 
       {/* Search/Select parity */}
       {isSearchPrompt(prompt) && (!prompt.cards || prompt.cards.length === 0) && (!prompt.targets || prompt.targets.length === 0) ? (
-        <PromptActionList
-          disabled={pending || !onRunAction}
-          label="Search/Select"
-          options={[
-            {
-              id: (prompt.targetIds ?? []).join(","),
-              label: "Submit exposed selection",
-              type: "search_select"
-            }
-          ]}
-          onRun={runPromptValue}
-        />
+        exposedSearchIds.length > 0 ? (
+          <PromptActionList
+            disabled={pending || !onRunAction}
+            label="Search/Select"
+            options={[
+              {
+                id: exposedSearchIds.join(","),
+                label: "Submit exposed selection",
+                type: "search_select"
+              }
+            ]}
+            onRun={runPromptValue}
+          />
+        ) : (
+          <p className="arena-action-help">XMage has not exposed selectable search cards yet.</p>
+        )
       ) : null}
 
       {prompt.confirmation ? (
@@ -717,6 +750,34 @@ function PromptEnvelopePanel({
         />
       ) : null}
     </section>
+  );
+}
+
+function PromptDirectActionList({
+  actions,
+  disabled,
+  format,
+  label,
+  onRun
+}: {
+  actions: LegalAction[];
+  disabled: boolean;
+  format: (action: LegalAction) => string;
+  label: string;
+  onRun: ((action: LegalAction) => void) | undefined;
+}) {
+  if (actions.length === 0) return null;
+  return (
+    <dl className="arena-prompt-item-list">
+      <dt>{label}</dt>
+      {actions.map((action) => (
+        <dd key={`${label}-${action.id}`}>
+          <button disabled={disabled || !onRun} onClick={() => onRun?.(action)} type="button">
+            {format(action)}
+          </button>
+        </dd>
+      ))}
+    </dl>
   );
 }
 
@@ -989,6 +1050,20 @@ function actionForPromptValue(actions: LegalAction[], prompt: PromptEnvelopeV2, 
     )
   );
   return action ? narrowPromptAction(action, type, choiceId, label) : undefined;
+}
+
+function mergePromptDetailActions(promptActions: LegalAction[], legalActions: LegalAction[]) {
+  const usefulDirectActions = legalActions.filter((action) =>
+    action.type === "make_mana"
+      || action.type === "pay_cost"
+      || action.type === "play_mana"
+      || action.type === "choose_mana"
+  );
+  const merged = new Map<string, LegalAction>();
+  for (const action of [...promptActions, ...usefulDirectActions]) {
+    merged.set(action.id, action);
+  }
+  return Array.from(merged.values());
 }
 
 function actionFromPromptValue(prompt: PromptEnvelopeV2, type: LegalAction["type"], choiceId: string, label: string): LegalAction | undefined {

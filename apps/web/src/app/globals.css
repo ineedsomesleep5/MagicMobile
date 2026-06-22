@@ -1348,7 +1348,7 @@ body:has(.deck-builder-screen) .content {
   .arena-prompt-banner {
     top: 0.55rem;
     left: 50%;
-    transform: none;
+    transform: translateX(-50%);
     padding: 0.32rem 0.72rem;
   }
 

@@ -48,19 +48,24 @@ All performance tests and builds were run locally on macOS.
 
 | Command | Purpose | Duration (s) | Result |
 |---|---|---|---|
-| `pnpm test` | Package-wide test suites | **13.433s** | Pass (92 tests across 11 packages) |
-| `pnpm typecheck` | TypeScript compiler check | **11.782s** | Pass (All workspace projects) |
-| `pnpm build` | Production packages & Next.js build | **29.385s** | Pass (Compiled static/dynamic routes) |
-| `pnpm smoke:xmage` | Live gateway & Java bridge play loop | **1m 12.37s** | Pass (Turns 1-4 game progress) |
+| `pnpm lint` | Workspace lint/type checks | **28.3s** | Pass |
+| `pnpm test` | Package-wide test suites | **28.9s** | Pass |
+| `pnpm typecheck` | TypeScript compiler check | **13.6s** | Pass |
+| `pnpm build` | Production packages & Next.js build | **~60s** | Pass |
+| `XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage` | Live gateway & Java bridge play loop | **~60s** | Pass (core loop through turn 5) |
+| `XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=combat pnpm smoke:xmage` | Typed combat fixture | **~30s** | Pass (`declare_attackers`) |
+| `XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-state pnpm smoke:xmage` | Commander tax/damage fixture | **18.3s** | Pass (tax and damage observed) |
 
 ### Key Smoke Test Verification Points:
 - Created a game via HTTP client against the live Java bridge.
 - Performed opening hand keep (`keep_hand`).
 - Played a Forest land card from hand (`play_land`).
 - Tapped land to generate green mana (`make_mana`).
-- Cast `Llanowar Elves` spell from hand (`cast_spell`).
+- Cast a simple creature spell from hand (`cast_spell`).
 - Resolved the mana-payment prompt (`GAME_PLAY_MANA` prompt envelope).
 - Passed priority to the AI (`pass_priority`) and verified AI response execution.
+- Submitted typed combat attacker payloads in the combat fixture.
+- Parsed commander tax and commander damage from real XMage snapshots in the commander-state fixture.
 
 ---
 
@@ -103,7 +108,7 @@ With services up and healthy, run the smoke test:
 ```sh
 pnpm smoke:xmage
 ```
-**Expected output:** A JSON snapshot containing final game state, showing turns progressed to 1-4 and a final revision status.
+**Expected output:** A JSON snapshot containing final game state, showing the core loop progressed through keep, land, mana, cast, payment, AI wait/progress, combat step, and final revision status.
 
 ---
 
@@ -114,10 +119,12 @@ pnpm smoke:xmage
 - Monorepo package versions are locked at Node 22 and pnpm 10.12.4.
 
 ### Blockers:
-- No critical blockers prevent 1v1 digital play against XMage AI.
+- No critical blockers prevent the current real-XMage core smoke loop.
+- The attempted `arcane-signet` fixture is not a valid release gate yet because XMage correctly rejects repeated nonbasic `Arcane Signet` copies under Commander legality.
 
 ### Remaining TODOs / Gaps:
 1. **Viewer-scoped Snapshots**: Multiplayer human pods need snapshot filtering so opponents cannot inspect other players' libraries or hands.
-2. **Advanced UI Prompts**: Render and handle reordering triggers/items and declaring attackers/blockers directly in UI components.
+2. **Advanced UI Prompts**: Render and handle reordering triggers/items, mode/ability/pile/amount choices, commander replacement, and blockers directly in UI components.
 3. **Card Art fallback**: Handle missing image urls smoothly without throwing render errors.
 4. **Casting/payment manual QA**: The live smoke proves land, mana, spell, and prompt flow, but iPhone/web still need manual regression coverage for the two-lands-into-`Arcane Signet` case documented in [CASTING_AND_MANA_FLOW.md](file:///Users/calebfeliciano/Documents/MagicMobile/docs/CASTING_AND_MANA_FLOW.md).
+5. **Long AI endurance**: A previous long random-deck smoke exposed an AI waiting stall on turn 7. The app must continue surfacing AI thinking/stalled states honestly while targeted fixtures keep the core loop deterministic.

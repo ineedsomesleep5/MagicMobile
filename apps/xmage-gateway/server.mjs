@@ -144,7 +144,7 @@ export function createHttpBridgeClient(endpoint, fetchImpl = fetch) {
       return requestBridge(fetchImpl, baseUrl, "/health");
     },
     async createCommanderGame(config) {
-      return requestBridge(fetchImpl, baseUrl, "/games/commander", { method: "POST", body: config, timeoutMs: 60_000 });
+      return requestBridge(fetchImpl, baseUrl, "/games/commander", { method: "POST", body: config, timeoutMs: 120_000 });
     },
     async getSnapshot(gameId, playerId) {
       const query = playerId ? `?playerId=${encodeURIComponent(playerId)}` : "";

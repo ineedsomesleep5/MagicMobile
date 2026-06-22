@@ -11,7 +11,7 @@ MagicMobile uses a thin gateway and Java bridge to run XMage server-side while i
 ## Current Strengths
 
 - **Healthy Dockerized Java Bridge**: Starts upstream XMage and exposes HTTP endpoints behind `apps/xmage-gateway`.
-- **Green Live Smoke Test**: The live smoke play loop (`pnpm smoke:xmage`) consistently runs to turn 4, validating hand keeping, land play, mana generation, cost payments, spell casting, stack resolution, and priority passing.
+- **Green Live Smoke Test**: The live smoke play loop (`pnpm smoke:xmage`) runs through the core 1v1 Commander vs AI loop, validating hand keeping, land play, mana generation, mana payment, spell casting, stack presence, AI waiting/progress, combat steps, and priority passing on the real Java bridge.
 - **BridgeRevision and Cycle Rejection**: Fully enforced at both gateway (`server.mjs`) and client levels (Swift/Next.js), preventing stale updates or websocket snap-backs.
 - **Strict Command Mapping**: The bridge throws an `IllegalArgumentException` for unknown command types rather than silently mapping to random UUID sends.
 - **Parsed Commander Tax**: Real casting counts are extracted from commander card rules text (e.g. `"played from the command zone"`) and parsed to calculate commander tax:
@@ -24,6 +24,7 @@ MagicMobile uses a thin gateway and Java bridge to run XMage server-side while i
 | Area | Status | Gaps & Next Step |
 |---|---|---|
 | **Human Multiplayer** | Modeled but unproven | Viewer-scoped snapshot routing is required to hide hands and library cards before human-vs-human or 3-4 player pods. |
+| **Advanced prompt fixtures** | Partially live-smoked | Mode/ability/pile/amount/order/commander-replacement prompts are mapped but need deterministic real-XMage fixtures. |
 | **Webcam / Hybrid paper** | Out of scope | Postponed until after the digital mobile alpha playtest. |
 
 ## Bridge Invariants

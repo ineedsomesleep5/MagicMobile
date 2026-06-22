@@ -1,137 +1,123 @@
 {
   "endpoint": "http://localhost:17171",
-  "scenario": "general",
+  "scenario": "commander-state",
   "health": {
     "status": "ready",
     "reason": "XMage Java bridge connected to 127.0.0.1:17171.",
-    "checkedAt": "2026-06-22T16:30:07.545Z",
+    "checkedAt": "2026-06-22T18:30:32.528Z",
     "recoveryAction": "wait"
   },
-  "gameId": "a99ba08e-f04f-41d7-bd9b-ac3e451c51f0",
+  "gameId": "f1a291eb-3ffb-4055-8785-40fb0322f4ec",
   "source": "xmage-java-bridge",
-  "bridgeRevision": 242,
-  "xmageCycle": 414,
-  "phase": "precombat-main",
-  "step": "precombat-main",
-  "turn": 9,
-  "promptText": "Waiting for AI",
+  "bridgeRevision": 91,
+  "xmageCycle": 145,
+  "phase": "combat",
+  "step": "combat-damage",
+  "turn": 4,
+  "promptText": "Your priority",
   "promptChecks": [
-    "GAME_TARGET:target",
     "GAME_ASK:confirmation",
     "GAME_PLAY_MANA:mana"
   ],
   "completed": [
-    "[Turn 1 beginning] choose_target: Choose TabletopPolish",
     "[Turn 1 beginning] keep_hand: Keep",
-    "[Turn 1 precombat-main] play_land: Play Forest",
-    "[Turn 1 precombat-main] make_mana: Tap Forest",
     "[Turn 1 precombat-main] pass_priority: Done",
-    "[Turn 1 precombat-main] answer_yes_no: Choose Yes",
+    "[Turn 1 precombat-main] pass_priority: Done",
     "[Turn 1 combat] pass_priority: Done",
     "[Turn 1 postcombat-main] pass_priority: Done",
+    "[Turn 2 precombat-main] play_land: Play Plains",
+    "[Turn 2 precombat-main] cast_spell: Cast Isamaru, Hound of Konda",
+    "[Turn 2 precombat-main] make_mana: Tap Plains",
     "[Turn 2 precombat-main] pass_priority: Done",
     "[Turn 2 precombat-main] pass_priority: Done",
     "[Turn 2 combat] pass_priority: Done",
     "[Turn 2 postcombat-main] pass_priority: Done",
-    "[Turn 3 precombat-main] play_land: Play Forest",
-    "[Turn 3 precombat-main] make_mana: Tap Forest",
-    "[Turn 3 precombat-main] make_mana: Tap Forest",
-    "[Turn 3 precombat-main] cast_spell: Cast Priest of Titania",
-    "[Turn 3 precombat-main] play_mana: Choose Pay {G}",
-    "[Turn 3 precombat-main] play_mana: Choose Pay {G}",
-    "[Turn 3 precombat-main] pass_priority: Done",
     "[Turn 3 precombat-main] pass_priority: Done",
     "[Turn 3 combat] pass_priority: Done",
     "[Turn 3 postcombat-main] pass_priority: Done",
+    "[Turn 4 precombat-main] play_land: Play Plains",
+    "[Turn 4 precombat-main] make_mana: Tap Plains",
+    "[Turn 4 precombat-main] make_mana: Tap Plains",
     "[Turn 4 precombat-main] pass_priority: Done",
-    "[Turn 4 precombat-main] pass_priority: Done",
+    "[Turn 4 precombat-main] answer_yes_no: Choose Yes",
+    "[Turn 4 combat] declare_attackers: Attack Noaddrag with Isamaru, Hound of Konda",
     "[Turn 4 combat] pass_priority: Done",
-    "[Turn 4 combat] declare_blockers: Block Allosaurus Shepherd with Priest of Titania",
-    "[Turn 4 combat] declare_blockers: Block Allosaurus Shepherd with Priest of Titania",
-    "[Turn 4 combat] declare_blockers: Block Allosaurus Shepherd with Priest of Titania",
-    "[Turn 4 combat] pass_priority: Done",
-    "[Turn 4 postcombat-main] pass_priority: Done",
-    "[Turn 5 precombat-main] make_mana: Tap Forest",
-    "[Turn 5 precombat-main] make_mana: Tap Forest",
-    "[Turn 5 precombat-main] pass_priority: Done",
-    "[Turn 5 precombat-main] answer_yes_no: Choose Yes",
-    "[Turn 5 combat] pass_priority: Done",
-    "[Turn 5 postcombat-main] pass_priority: Done",
-    "[Turn 6 precombat-main] pass_priority: Done",
-    "[Turn 6 precombat-main] pass_priority: Done",
-    "[Turn 6 combat] pass_priority: Done",
-    "[Turn 6 combat] pass_priority: Done",
-    "[Turn 6 combat] pass_priority: Done",
-    "[Turn 6 postcombat-main] pass_priority: Done",
-    "[Turn 7 precombat-main] play_land: Play Forest",
-    "[Turn 7 precombat-main] make_mana: Tap Forest",
-    "[Turn 7 precombat-main] make_mana: Tap Forest",
-    "[Turn 7 precombat-main] make_mana: Tap Forest",
-    "[Turn 7 precombat-main] cast_spell: Cast Ezuri, Renegade Leader",
-    "[Turn 7 precombat-main] play_mana: Choose Pay {G}",
-    "[Turn 7 precombat-main] play_mana: Choose Pay {G}",
-    "[Turn 7 precombat-main] play_mana: Choose Pay {G}",
-    "[Turn 7 precombat-main] pass_priority: Done",
-    "[Turn 7 precombat-main] pass_priority: Done",
-    "[Turn 7 combat] pass_priority: Done",
-    "[Turn 7 postcombat-main] pass_priority: Done",
-    "[Turn 8 precombat-main] pass_priority: Done",
-    "[Turn 8 precombat-main] pass_priority: Done",
-    "[Turn 8 precombat-main] pass_priority: Done",
-    "[Turn 8 precombat-main] pass_priority: Done",
-    "[Turn 8 precombat-main] pass_priority: Done",
-    "[Turn 8 combat] pass_priority: Done",
-    "[Turn 8 combat] declare_blockers: Block Ezuri, Renegade Leader with Ezuri, Renegade Leader",
-    "[Turn 8 combat] declare_blockers: Block Ezuri, Renegade Leader with Ezuri, Renegade Leader",
-    "[Turn 8 combat] answer_yes_no: Choose Yes",
-    "[Turn 8 combat] pass_priority: Done",
-    "[Turn 8 postcombat-main] pass_priority: Done"
+    "[Turn 4 combat] pass_priority: Done"
   ],
+  "turnsObserved": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "actionsByType": {
+    "keep_hand": 1,
+    "pass_priority": 14,
+    "play_land": 2,
+    "cast_spell": 1,
+    "make_mana": 3,
+    "answer_yes_no": 1,
+    "declare_attackers": 1
+  },
+  "staleActionRecoveries": 0,
+  "aiWaits": 0,
+  "stackSeen": true,
+  "combatStepSeen": true,
   "combatExercised": true,
+  "arcaneSignet": {
+    "castSeen": false,
+    "paymentSourceSeen": false,
+    "resolvedSeen": false
+  },
   "commanderTaxChanges": [
-    {
-      "playerId": "ai-1",
-      "tax": 2,
-      "turn": 6
-    },
     {
       "playerId": "human",
       "tax": 2,
-      "turn": 7
+      "turn": 2
     }
   ],
-  "commanderDamageChanges": [],
+  "commanderDamageChanges": [
+    {
+      "recipient": "ai-1",
+      "attacker": "human",
+      "damage": 2,
+      "turn": 4
+    }
+  ],
   "players": [
     {
       "playerId": "human",
-      "life": 37,
-      "commanderTax": 2,
-      "commanderDamage": {
-        "human": 0,
-        "ai-1": 0
-      },
-      "library": 88,
-      "hand": 7,
-      "battlefield": 3,
-      "command": [
-        "Ezuri, Renegade Leader"
-      ]
-    },
-    {
-      "playerId": "ai-1",
       "life": 40,
       "commanderTax": 2,
       "commanderDamage": {
         "human": 0,
         "ai-1": 0
       },
-      "library": 87,
-      "hand": 3,
-      "battlefield": 10,
+      "library": 90,
+      "hand": 7,
+      "battlefield": 3,
       "command": []
+    },
+    {
+      "playerId": "ai-1",
+      "life": 38,
+      "commanderTax": 0,
+      "commanderDamage": {
+        "human": 2,
+        "ai-1": 0
+      },
+      "library": 93,
+      "hand": 4,
+      "battlefield": 2,
+      "command": [
+        "Kozilek, Butcher of Truth"
+      ]
     }
   ],
   "legalActions": [
+    "pass_priority",
+    "pass_until_response",
+    "pass_until_next_turn",
     "concede"
   ]
 }

@@ -68,6 +68,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public final class MagicMobileBridge implements MageClient {
@@ -748,6 +750,9 @@ public final class MagicMobileBridge implements MageClient {
             }
             session.sendPlayerUUID(xmageGameId, UUID.fromString(value));
         }
+        if (isConfirmableSelectionPrompt(prompt)) {
+            session.sendPlayerBoolean(xmageGameId, true);
+        }
     }
 
     private void sendPromptStringsOrUuids(String bridgeGameId, UUID xmageGameId, JsonObject prompt, JsonArray ids) {
@@ -764,6 +769,14 @@ public final class MagicMobileBridge implements MageClient {
                 session.sendPlayerString(xmageGameId, value);
             }
         }
+    }
+
+    private boolean isConfirmableSelectionPrompt(JsonObject prompt) {
+        if (prompt == null) {
+            return false;
+        }
+        String method = string(prompt, "method", "");
+        return "GAME_TARGET".equals(method) || "GAME_SELECT".equals(method);
     }
 
     private void sendEmptyPromptSelection(String bridgeGameId, UUID xmageGameId, JsonObject prompt) {
@@ -867,7 +880,7 @@ public final class MagicMobileBridge implements MageClient {
         snapshot.add("players", players(record, view, playerIds));
         snapshot.add("log", log(record, view));
         snapshot.add("legalActions", pendingStatus == null ? legalActions(record, view, playerIds) : pendingLegalActions(record));
-        snapshot.add("engineHealth", health());
+        snapshot.add("engineHealth", passiveHealth());
         if (record.choicePrompt != null) {
             snapshot.add("choicePrompt", record.choicePrompt);
         }
@@ -1147,9 +1160,20 @@ public final class MagicMobileBridge implements MageClient {
             return false;
         }
         String responseKind = string(record.promptEnvelope, "responseKind", "");
+        String responseType = "";
+        JsonObject responseCommand = object(record.promptEnvelope, "responseCommand");
+        if (responseCommand != null) {
+            responseType = string(responseCommand, "type", "");
+        }
         String method = string(record.promptEnvelope, "method", "");
         return "mana".equals(responseKind)
+                || "pay_cost".equals(responseKind)
+                || "cost".equals(responseKind)
                 || "x_mana".equals(responseKind)
+                || "pay_cost".equals(responseType)
+                || "choose_mana".equals(responseType)
+                || "play_mana".equals(responseType)
+                || "play_x_mana".equals(responseType)
                 || "GAME_PLAY_MANA".equals(method)
                 || "GAME_PLAY_XMANA".equals(method);
     }
@@ -2263,11 +2287,21 @@ public final class MagicMobileBridge implements MageClient {
     }
 
     private JsonObject health() {
+        return health(true);
+    }
+
+    private JsonObject passiveHealth() {
+        return health(false);
+    }
+
+    private JsonObject health(boolean reconnectIfNeeded) {
         JsonObject health = new JsonObject();
         boolean ready = false;
         String reason = "XMage bridge starting.";
         try {
-            ensureConnected(false);
+            if (reconnectIfNeeded) {
+                ensureConnected(false);
+            }
             ready = session != null && bridgeConnected && session.isConnected() && session.isServerReady();
             reason = ready
                     ? "XMage Java bridge connected to " + xmageHost + ":" + xmagePort + "."
@@ -2390,9 +2424,14 @@ public final class MagicMobileBridge implements MageClient {
             return null;
         }
         JsonObject prompt = basePrompt(callback, responseKind(method, message.getMessage()), message.getMessage());
+        int maxChoices = message.getMax();
+        int inferredMaxChoices = inferredMaxChoices(message.getMessage());
+        if (maxChoices <= 0 && inferredMaxChoices > 0) {
+            maxChoices = inferredMaxChoices;
+        }
         prompt.addProperty("required", message.isFlag());
         prompt.addProperty("minChoices", message.getMin());
-        prompt.addProperty("maxChoices", message.getMax());
+        prompt.addProperty("maxChoices", maxChoices);
 
         JsonArray choices = new JsonArray();
         if (method == ClientCallbackMethod.GAME_ASK) {
@@ -2499,6 +2538,21 @@ public final class MagicMobileBridge implements MageClient {
             prompt.add("choices", choices);
         }
         return prompt;
+    }
+
+    private int inferredMaxChoices(String message) {
+        if (message == null) {
+            return 0;
+        }
+        Matcher matcher = Pattern.compile("selected\\s+\\d+\\s+of\\s+(\\d+)", Pattern.CASE_INSENSITIVE).matcher(message);
+        if (!matcher.find()) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(matcher.group(1));
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
     }
 
     private JsonObject promptEnvelope(ClientCallback callback, AbilityPickerView picker) {

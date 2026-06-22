@@ -552,6 +552,9 @@ describe("xmage gateway", () => {
     assert.match(bridgeSource, /pendingLegalActions/);
     assert.match(bridgeSource, /pendingStatus == null \? legalActions\(record, view, playerIds\) : pendingLegalActions\(record\)/);
     assert.match(bridgeSource, /isManaPaymentPrompt\(record\)/);
+    assert.match(bridgeSource, /"pay_cost"\.equals\(responseKind\)/);
+    assert.match(bridgeSource, /"pay_cost"\.equals\(responseType\)/);
+    assert.match(bridgeSource, /"choose_mana"\.equals\(responseType\)/);
     assert.match(bridgeSource, /addPlayableObjectActions\(actions, humanId, view, true\)/);
     assert.match(bridgeSource, /String type = manaOnly \? "make_mana" : actionType\(card, handIds\.contains\(objectId\), inCommand\)/);
     assert.match(bridgeSource, /Set<UUID> commandIds = commandIds\(view\);/);

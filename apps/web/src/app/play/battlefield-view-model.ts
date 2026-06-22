@@ -114,12 +114,13 @@ function toCardView(card: ZoneCard, visuals: VisualCardRecord, legalActions: Leg
     .filter((action) => action.cardInstanceId === card.instanceId || action.sourceInstanceId === card.instanceId)
     .map((action) => action.type);
   const oracleText = visual?.oracleText ?? card.card.oracleText;
+  const visualTypeLine = visual?.source === "scryfall" ? visual.typeLine : undefined;
 
   return {
     instanceId: card.instanceId,
     name: card.card.name,
     ...(visual?.imageUrl ? { imageUrl: visual.imageUrl } : {}),
-    typeLine: visual?.typeLine ?? card.card.typeLine,
+    typeLine: visualTypeLine ?? card.card.typeLine,
     ...(visual?.manaCost ? { manaCost: visual.manaCost } : {}),
     ...(oracleText ? { oracleText } : {}),
     tapped: card.tapped ?? false,

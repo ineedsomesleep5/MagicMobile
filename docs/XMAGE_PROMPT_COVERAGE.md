@@ -9,20 +9,20 @@ This matrix maps each MagicMobile/XMage prompt family to its implementation, uni
 | **Make Mana** | `make_mana` | Yes | Yes | Yes | None. Verified against real land taps and mana pool adjustments. |
 | **Play Mana / Choose Mana** | `play_mana`, `choose_mana` | Yes | Yes | Yes | None. Prompt-level mana payments and choices are verified. |
 | **Cast Spell** | `cast_spell` | Yes | Yes | Yes | None. Casting simple spells from hand is covered. |
-| **Activate Ability** | `activate_ability` | Yes | Yes | Yes | None. Activated abilities on permanents are verified. |
-| **Choose Target** | `choose_target` | Yes | Yes | Yes | None. Targeted spells and abilities choose valid targets strictly. |
-| **Choose Mode / Ability** | `choose_mode`, `choose_ability` | Yes | Yes | Yes | None. Multi-option choose pickers are mapped and tested. |
-| **Choose Card / Player** | `choose_card`, `choose_player` | Yes | Yes | Yes | None. Mapped for search, discard, and player-targeted effects. |
-| **Choose Pile** | `choose_pile` | Yes | Yes | Yes | None. Mapped to boolean pile selector. |
-| **Choose Amount** | `choose_amount`, `play_x_mana` | Yes | Yes | Yes | None. Checked against X mana payments and scaling costs. |
-| **Choose Multi Amount** | `choose_multi_amount` | Yes | Yes | Yes | None. String-joined array inputs sent to bridge. |
-| **Order Triggers / Items** | `order_triggers`, `order_items` | Yes | Yes | Yes | None. Order list of item UUIDs mapped. |
-| **Search Select** | `search_select` | Yes | Yes | Yes | None. Library and zone searches display card lists. |
-| **Commander Zone Choice** | `commander_replacement` | Yes | Yes | Yes | None. Death/exile command zone decision mapped. |
+| **Activate Ability** | `activate_ability` | Yes | Yes | Partial | Transport exists; needs a targeted real-XMage fixture with an activated non-mana ability. |
+| **Choose Target** | `choose_target` | Yes | Yes | Yes | Live-smoked for starting-player/combat/search-style target callbacks; more targeted spell prompts still need fixture coverage. |
+| **Choose Mode / Ability** | `choose_mode`, `choose_ability` | Yes | Yes | No | Mapped and unit-tested, but not live-smoked yet. |
+| **Choose Card / Player** | `choose_card`, `choose_player` | Yes | Yes | Partial | Player/target-style choices were live-smoked; explicit `choose_card` fixture still needed. |
+| **Choose Pile** | `choose_pile` | Yes | Yes | No | Mapped and unit-tested, but not live-smoked yet. |
+| **Choose Amount** | `choose_amount`, `play_x_mana` | Yes | Yes | No | Mapped and unit-tested, but not live-smoked yet. |
+| **Choose Multi Amount** | `choose_multi_amount` | Yes | Yes | No | Mapped and unit-tested, but not live-smoked yet. |
+| **Order Triggers / Items** | `order_triggers`, `order_items` | Yes | Yes | No | Mapped and unit-tested, but not live-smoked yet. |
+| **Search Select** | `search_select` | Yes | Yes | Partial | Search-like multi-card target selection was live-smoked; explicit `search_select` command fixture still needed. |
+| **Commander Zone Choice** | `commander_replacement` | Yes | Yes | No | Mapped, but commander death/exile replacement prompt is not live-fixtured yet. |
 | **Answer Yes/No / Pay Cost** | `answer_yes_no`, `pay_cost` | Yes | Yes | Yes | None. Boolean confirmations are strictly checked. |
 | **Concede** | `concede` | Yes | Yes | Yes | None. Concede action is always safe. |
 | **Combat Attackers** | `declare_attackers` | Yes | Yes | Yes | None. Pair-payload attacker-to-defender mapping verified. |
-| **Combat Blockers** | `declare_blockers` | Yes | Yes | Yes | None. Pair-payload blocker-to-attacker mapping verified. |
+| **Combat Blockers** | `declare_blockers` | Yes | Yes | No | Pair payload exists; no live fixture forced a real blocker prompt yet. |
 
 ## Verification Details
 
@@ -38,4 +38,4 @@ XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=combat pnpm smoke:
 XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-state pnpm smoke:xmage
 ```
 
-The broad smoke reached turn 9 on source `xmage-java-bridge` and exercised keep, land play, mana, spell casting, pay-mana prompts, pass priority, and typed blockers. The `combat` fixture exposed and submitted typed `declare_attackers`. The `commander-state` fixture proved commander tax and commander damage through XMage snapshots.
+The broad smoke reached turn 5 on source `xmage-java-bridge` and exercised keep, land play, mana, spell casting, pay-mana prompts, pass priority, stack presence, combat steps, and AI waiting/progress. The `combat` fixture exposed and submitted typed `declare_attackers`. The `commander-state` fixture proved commander tax and commander damage through XMage snapshots. The attempted `arcane-signet` fixture is not counted because XMage correctly rejected its repeated nonbasic cards under Commander legality.

@@ -8,10 +8,14 @@ const seed = process.env.XMAGE_SMOKE_SEED ?? "bridge-smoke";
 const humanPlayerId = process.env.XMAGE_SMOKE_HUMAN_ID ?? "human";
 const aiPlayerId = process.env.XMAGE_SMOKE_AI_ID ?? "ai-1";
 const scenario = process.env.XMAGE_SMOKE_SCENARIO ?? "general";
-const fixtureScenario = scenario === "combat" || scenario === "commander-state";
+const arcaneSignetScenario = scenario === "arcane-signet";
+const alphaGameScenario = scenario === "alpha-game";
+const fixtureScenario = scenario === "combat" || scenario === "commander-state" || arcaneSignetScenario;
 
 const human = fixtureScenario
-  ? commanderFixtureDeck("Isamaru, Hound of Konda", "Plains")
+  ? arcaneSignetScenario
+    ? arcaneSignetFixtureDeck()
+    : commanderFixtureDeck("Isamaru, Hound of Konda", "Plains")
   : generateBracketThreeCommanderDeck({ seed: `${seed}:human`, playerId: humanPlayerId }).deck;
 const ai = fixtureScenario
   ? commanderFixtureDeck("Kozilek, Butcher of Truth", "Wastes")
@@ -39,14 +43,24 @@ assertBridgeSnapshot(snapshot, "created game");
 const completed: string[] = [];
 const promptChecks: string[] = [];
 let combatExercised = false;
+let combatStepSeen = false;
+let aiWaits = 0;
+let staleActionRecoveries = 0;
+let stackSeen = false;
+let arcaneCastSeen = false;
+let arcaneResolvedSeen = false;
+let arcanePaymentSourceSeen = false;
+const turnsObserved = new Set<number>();
+const actionsByType: Record<string, number> = {};
 const commanderTaxChanges: Array<{ playerId: string; tax: number; turn: number }> = [];
 const commanderDamageChanges: Array<{ recipient: string; attacker: string; damage: number; turn: number }> = [];
 
 recordCommanderState(snapshot);
+recordCoverage(snapshot);
 console.error(`[Smoke] Started ${scenario} game ${snapshot.id}. Turn: ${snapshot.turn}, Phase: ${snapshot.phase}, Step: ${snapshot.step}`);
 
-const maxTurns = fixtureScenario ? 12 : 9; // Fixture modes may need extra pass cycles for commander combat.
-const maxStepsCount = fixtureScenario ? 420 : 300; // Safeguard against infinite loops.
+const maxTurns = alphaGameScenario ? 13 : fixtureScenario ? 12 : 9; // Alpha-game observes 12 full turns.
+const maxStepsCount = alphaGameScenario ? 900 : fixtureScenario ? 420 : 300; // Safeguard against infinite loops.
 let stepCount = 0;
 
 while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
@@ -66,6 +80,7 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
 
   // 2. Track commander tax and damage from authoritative XMage snapshots.
   recordCommanderState(snapshot);
+  recordCoverage(snapshot);
 
   if (scenarioSatisfied()) {
     console.error(`[Smoke] ${scenario} scenario satisfied at turn ${snapshot.turn}, step ${snapshot.step}`);
@@ -87,10 +102,17 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
     }
 
     console.error(`[Smoke] Turn ${snapshot.turn} (${snapshot.phase} - ${snapshot.step}): Executing human action: ${action.type} (label: ${action.label ?? "none"})`);
+    actionsByType[action.type] = (actionsByType[action.type] ?? 0) + 1;
     
     // Check if combat is exercised
     if (action.type === "declare_attackers" || action.type === "declare_blockers") {
       combatExercised = true;
+    }
+    if (arcaneSignetScenario && action.type === "cast_spell" && /arcane signet/i.test(action.label ?? action.cardName ?? "")) {
+      arcaneCastSeen = true;
+    }
+    if (arcaneSignetScenario && action.type === "make_mana" && snapshot.promptEnvelopeV2 && isManaOrPaymentPrompt(snapshot)) {
+      arcanePaymentSourceSeen = true;
     }
 
     if (snapshot.promptEnvelopeV2) {
@@ -107,6 +129,7 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
     });
     if (snapshot.staleActionRecovered) {
       delete snapshot.staleActionRecovered;
+      staleActionRecoveries++;
       console.error(`[Smoke] Refreshed after stale ${action.type}; choosing next live action.`);
       continue;
     }
@@ -128,21 +151,26 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
     assertBridgeProgress(previous, snapshot, `action: ${action.type}`);
     assertSemanticProgress(previous, snapshot, semanticLabel);
     recordCommanderState(snapshot);
+    recordCoverage(snapshot);
     completed.push(`[Turn ${previous.turn} ${previous.phase}] ${action.type}: ${action.label ?? "none"}`);
   } else {
     // 4. Waiting for AI priority
     if (snapshot.waitingOnPlayerId === aiPlayerId || snapshot.priorityPlayerId === aiPlayerId) {
+      aiWaits++;
       console.error(`[Smoke] Waiting for AI priority... turn ${snapshot.turn}, phase ${snapshot.phase}, step ${snapshot.step}`);
       snapshot = await waitForAiIfNeeded(snapshot, "wait for AI priority");
+      recordCoverage(snapshot);
     } else {
       // General wait and refresh
       await new Promise(resolve => setTimeout(resolve, 1000));
       snapshot = await request(`/games/${encodeURIComponent(snapshot.id)}`);
+      recordCoverage(snapshot);
     }
   }
 }
 
 recordCommanderState(snapshot);
+recordCoverage(snapshot);
 
 if (scenario === "combat" && !combatExercised) {
   throw new Error(
@@ -162,6 +190,46 @@ if (scenario === "commander-state") {
     throw new Error(
       "[Smoke] commander-state scenario did not observe commander damage from XMage rules text.\n"
         + smokeDebug("commander damage final snapshot", snapshot)
+    );
+  }
+}
+
+if (scenario === "arcane-signet") {
+  if (!arcaneCastSeen) {
+    throw new Error(
+      "[Smoke] arcane-signet scenario did not cast Arcane Signet from an XMage legal action.\n"
+        + smokeDebug("arcane cast final snapshot", snapshot)
+    );
+  }
+  if (!arcanePaymentSourceSeen) {
+    throw new Error(
+      "[Smoke] arcane-signet scenario did not expose source make_mana actions during payment.\n"
+        + smokeDebug("arcane payment final snapshot", snapshot)
+    );
+  }
+  if (!arcaneResolvedSeen) {
+    throw new Error(
+      "[Smoke] arcane-signet scenario did not observe Arcane Signet leaving hand and resolving to the battlefield.\n"
+        + smokeDebug("arcane resolution final snapshot", snapshot)
+    );
+  }
+}
+
+if (scenario === "alpha-game") {
+  const alphaFailures = [
+    turnsObserved.size >= 12 ? "" : `observed ${turnsObserved.size}/12 turns`,
+    actionsByType.keep_hand || actionsByType.mulligan ? "" : "opening-hand decision missing",
+    actionsByType.play_land ? "" : "play_land missing",
+    actionsByType.make_mana ? "" : "make_mana missing",
+    actionsByType.cast_spell ? "" : "cast_spell missing",
+    actionsByType.pass_priority || actionsByType.pass_until_response || actionsByType.pass_until_next_turn || actionsByType.advance_phase ? "" : "pass/advance action missing",
+    aiWaits > 0 ? "" : "AI wait/progress missing",
+    combatStepSeen ? "" : "combat step not observed"
+  ].filter(Boolean);
+  if (alphaFailures.length > 0) {
+    throw new Error(
+      `[Smoke] alpha-game scenario did not satisfy real-game coverage: ${alphaFailures.join(", ")}.\n`
+        + smokeDebug("alpha-game final snapshot", snapshot)
     );
   }
 }
@@ -190,7 +258,18 @@ const summaryReport = {
   promptText: snapshot.promptText,
   promptChecks,
   completed,
+  turnsObserved: Array.from(turnsObserved).sort((a, b) => a - b),
+  actionsByType,
+  staleActionRecoveries,
+  aiWaits,
+  stackSeen,
+  combatStepSeen,
   combatExercised,
+  arcaneSignet: {
+    castSeen: arcaneCastSeen,
+    paymentSourceSeen: arcanePaymentSourceSeen,
+    resolvedSeen: arcaneResolvedSeen
+  },
   commanderTaxChanges,
   commanderDamageChanges,
   players: snapshot.players?.map((player: SmokePlayer) => ({
@@ -238,6 +317,20 @@ function commanderFixtureDeck(commander: string, basic: string) {
     name: `${commander} Fixture`,
     commander: { cardName: commander, quantity: 1, section: "commander" },
     entries: [{ cardName: basic, quantity: 99, section: "deck" }]
+  };
+}
+
+function arcaneSignetFixtureDeck() {
+  return {
+    name: "Arcane Signet Payment Fixture",
+    commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
+    // Smoke-only bridge stress fixture. Product deck legality remains validated
+    // through the normal Commander import/build path; this keeps the payment
+    // scenario deterministic enough to catch command-flow regressions.
+    entries: [
+      { cardName: "Arcane Signet", quantity: 24, section: "deck" },
+      { cardName: "Plains", quantity: 75, section: "deck" }
+    ]
   };
 }
 
@@ -377,6 +470,11 @@ function chooseBestAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
 }
 
 function chooseFixtureAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
+  if (arcaneSignetScenario) {
+    const arcaneAction = chooseArcaneSignetAction(snapshot);
+    if (arcaneAction) return arcaneAction;
+  }
+
   const actions = snapshot.legalActions ?? [];
   const battlefieldNames = humanZone(snapshot, "battlefield").map((entry) => entry.card?.name ?? "");
   const hasIsamaru = battlefieldNames.includes("Isamaru, Hound of Konda");
@@ -415,6 +513,38 @@ function chooseFixtureAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
   return undefined;
 }
 
+function chooseArcaneSignetAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
+  const actions = snapshot.legalActions ?? [];
+  const battlefield = humanZone(snapshot, "battlefield");
+  const landCount = battlefield.filter((entry) => /land/i.test(entry.card?.typeLine ?? "") || /plains/i.test(entry.card?.name ?? "")).length;
+  const hasArcaneInHand = humanZone(snapshot, "hand").some((entry) => /arcane signet/i.test(entry.card?.name ?? ""));
+
+  if (snapshot.promptEnvelopeV2 && isManaOrPaymentPrompt(snapshot)) {
+    const sourceMana = actions.find((action) => action.type === "make_mana");
+    if (sourceMana) return sourceMana;
+    const pay = actions.find((action) => action.type === "pay_cost" && action.pay !== false);
+    if (pay) return pay;
+    const mana = actions.find((action) => action.type === "play_mana" || action.type === "choose_mana");
+    if (mana) return mana;
+  }
+
+  if (landCount < 2) {
+    const land = actions.find((action) => action.type === "play_land" && /plains/i.test(action.cardName ?? action.label ?? ""));
+    if (land) return land;
+  }
+
+  if (landCount >= 2 && hasArcaneInHand) {
+    const castArcane = actions.find((action) =>
+      action.type === "cast_spell" && /arcane signet/i.test(action.cardName ?? action.label ?? "")
+    );
+    if (castArcane) return castArcane;
+  }
+
+  return actions.find((action) =>
+    action.type === "pass_priority" || action.type === "pass_until_response" || action.type === "pass_until_next_turn" || action.type === "advance_phase"
+  );
+}
+
 function choosePromptTarget(snapshot: SmokeSnapshot): SmokeAction | undefined {
   const actions = snapshot.legalActions?.filter(a =>
     a.type === "choose_target"
@@ -428,13 +558,23 @@ function choosePromptTarget(snapshot: SmokeSnapshot): SmokeAction | undefined {
   if (message.includes("starting player")) {
     return actions.find((action) => /you start/i.test(action.label ?? "")) ?? actions[0];
   }
+  const requestedCardName = requestedCardNameFromPrompt(message);
+  if (requestedCardName) {
+    const requested = actions.find((action) => actionName(action).toLowerCase() === requestedCardName)
+      ?? actions.find((action) => actionName(action).toLowerCase().includes(requestedCardName));
+    if (requested) return requested;
+  }
   if (message.includes("basic land")) {
-    return actions.find(isBasicLandAction)
+    return multiChoiceAction(snapshot, actions, actions.filter(isBasicLandAction))
+      ?? multiChoiceAction(snapshot, actions, actions.filter((action) => /\b(forest|island|mountain|plains|swamp|wastes)\b/i.test(action.label ?? action.cardName ?? "")))
+      ?? actions.find(isBasicLandAction)
       ?? actions.find((action) => /\b(forest|island|mountain|plains|swamp|wastes)\b/i.test(action.label ?? action.cardName ?? ""))
       ?? actions[0];
   }
   if (message.includes("land card")) {
-    return actions.find((action) => /land/i.test(action.typeLine ?? ""))
+    return multiChoiceAction(snapshot, actions, actions.filter((action) => /land/i.test(action.typeLine ?? "")))
+      ?? multiChoiceAction(snapshot, actions, actions.filter((action) => /\b(forest|island|mountain|plains|swamp|wastes)\b/i.test(action.label ?? action.cardName ?? "")))
+      ?? actions.find((action) => /land/i.test(action.typeLine ?? ""))
       ?? actions.find((action) => /\b(forest|island|mountain|plains|swamp|wastes)\b/i.test(action.label ?? action.cardName ?? ""))
       ?? actions[0];
   }
@@ -442,6 +582,45 @@ function choosePromptTarget(snapshot: SmokeSnapshot): SmokeAction | undefined {
     return actions.find((action) => /creature/i.test(action.typeLine ?? "")) ?? actions[0];
   }
   return actions[0];
+}
+
+function multiChoiceAction(snapshot: SmokeSnapshot, actions: SmokeAction[], matches: SmokeAction[]) {
+  const maxChoices = snapshot.promptEnvelopeV2?.maxChoices ?? 1;
+  if (maxChoices <= 1 || matches.length < maxChoices) {
+    return undefined;
+  }
+  const first = matches[0];
+  const targetIds = matches
+    .map((action) => action.cardInstanceId ?? action.targetIds?.[0] ?? action.validTargetIds?.[0] ?? action.id?.replace(/^xmage-choice-/, ""))
+    .filter((id): id is string => Boolean(id))
+    .slice(0, maxChoices);
+  if (targetIds.length < maxChoices) {
+    return undefined;
+  }
+  return {
+    ...first,
+    label: `Choose ${targetIds.length} ${actionName(first).replace(/^Choose /i, "")} cards`,
+    targetIds,
+    cardInstanceIds: first.type === "choose_card" || first.type === "search_select" ? targetIds : first.cardInstanceIds,
+    commandTemplate: {
+      ...(first.commandTemplate ?? {}),
+      targetIds
+    }
+  };
+}
+
+function requestedCardNameFromPrompt(message: string) {
+  const match = message.match(/\bselect(?: an?| one)? ([a-z0-9,' -]+?) card\b/i)
+    ?? message.match(/\bchoose(?: an?| one)? ([a-z0-9,' -]+?) card\b/i);
+  const requested = match?.[1]?.trim().toLowerCase();
+  if (!requested || ["a", "an", "one", "target", "creature", "land", "basic land", "card"].includes(requested)) {
+    return undefined;
+  }
+  return requested;
+}
+
+function actionName(action: SmokeAction) {
+  return action.cardName ?? action.label ?? "";
 }
 
 function isBasicLandAction(action: SmokeAction) {
@@ -722,10 +901,44 @@ function recordCommanderState(snapshot: SmokeSnapshot) {
   }
 }
 
+function recordCoverage(snapshot: SmokeSnapshot) {
+  if (typeof snapshot.turn === "number") {
+    turnsObserved.add(snapshot.turn);
+  }
+  const phaseStep = `${snapshot.phase ?? ""} ${snapshot.step ?? ""}`.toLowerCase();
+  if (phaseStep.includes("combat") || phaseStep.includes("attack") || phaseStep.includes("block")) {
+    combatStepSeen = true;
+  }
+  if ((snapshot.xmage?.stack as unknown[] | undefined)?.length || humanZone(snapshot, "stack").length > 0) {
+    stackSeen = true;
+  }
+  if (arcaneSignetScenario && humanZone(snapshot, "battlefield").some((entry) => /arcane signet/i.test(entry.card?.name ?? ""))) {
+    arcaneResolvedSeen = true;
+  }
+}
+
 function scenarioSatisfied() {
+  if (scenario === "general") {
+    return turnsObserved.size >= 5
+      && Boolean(actionsByType.keep_hand || actionsByType.mulligan)
+      && Boolean(actionsByType.play_land)
+      && Boolean(actionsByType.make_mana)
+      && Boolean(actionsByType.cast_spell)
+      && Boolean(actionsByType.pass_priority || actionsByType.pass_until_response || actionsByType.pass_until_next_turn || actionsByType.advance_phase)
+      && aiWaits > 0
+      && combatStepSeen;
+  }
   if (scenario === "combat") return combatExercised;
   if (scenario === "commander-state") return commanderTaxChanges.length > 0 && commanderDamageChanges.length > 0;
+  if (scenario === "arcane-signet") return arcaneCastSeen && arcanePaymentSourceSeen && arcaneResolvedSeen;
   return false;
+}
+
+function isManaOrPaymentPrompt(snapshot: SmokeSnapshot) {
+  const prompt = snapshot.promptEnvelopeV2;
+  if (!prompt) return false;
+  const expected = `${prompt.responseCommand?.type ?? ""} ${prompt.responseKind ?? ""} ${prompt.method ?? ""} ${prompt.message ?? ""}`.toLowerCase();
+  return expected.includes("mana") || expected.includes("pay") || expected.includes("cost");
 }
 
 function formatActions(snapshot: SmokeSnapshot) {
@@ -789,7 +1002,7 @@ type SmokeSnapshot = {
   staleActionRecovered?: boolean;
   priorityPlayerId?: string;
   waitingOnPlayerId?: string;
-  promptEnvelopeV2?: { method?: string; responseKind?: string; responseCommand?: { type?: string }; maxChoices?: number; message?: string };
+  promptEnvelopeV2?: { method?: string; responseKind?: string; responseCommand?: { type?: string }; maxChoices?: number; message?: string; id?: string; messageId?: number };
   xmage?: { combat?: unknown };
   players?: SmokePlayer[];
   legalActions?: SmokeAction[];
@@ -801,7 +1014,7 @@ type SmokePlayer = {
   manaPool?: Record<string, number>;
   commanderTax?: number;
   commanderDamage?: Record<string, number>;
-  zones?: Record<string, Array<{ card?: { name?: string; oracleText?: string }; tapped?: boolean; instanceId?: string }>>;
+  zones?: Record<string, Array<{ card?: { name?: string; oracleText?: string; typeLine?: string }; tapped?: boolean; instanceId?: string }>>;
 };
 
 type SmokeAction = {

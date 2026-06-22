@@ -85,6 +85,24 @@ describe("BattlefieldViewModel", () => {
     ]);
   });
 
+  it("keeps XMage card text when Scryfall visual lookup is missing", () => {
+    const viewModel = buildBattlefieldViewModel(
+      snapshot,
+      {
+        "Growth Spiral": {
+          name: "Growth Spiral",
+          typeLine: "Card image unavailable",
+          manaValue: 0,
+          colors: [],
+          source: "missing"
+        }
+      },
+      "human"
+    );
+
+    expect(viewModel.humanHand[0]).toEqual(expect.objectContaining({ typeLine: "Instant" }));
+  });
+
   it("renders tapped creature state, stats, counters, and legal glow classes", () => {
     const viewModel = buildBattlefieldViewModel(snapshot, {}, "human");
     const html = renderToStaticMarkup(
@@ -224,5 +242,61 @@ describe("BattlefieldViewModel", () => {
     expect(html).toContain("Exiled by Oblivion Ring");
     expect(html).toContain("Revealed cards");
     expect(html).toContain("Looked at cards");
+  });
+
+  it("renders source mana and payment actions from legal actions during XMage payment prompts", () => {
+    const paymentSnapshot: GameSnapshot = {
+      ...snapshot,
+      promptText: "Pay for Arcane Signet",
+      promptEnvelopeV2: {
+        id: "pay-prompt",
+        method: "GAME_ASK",
+        messageId: 22,
+        playerId: "human",
+        responseKind: "pay_cost",
+        message: "Pay {2} for Arcane Signet",
+        required: true,
+        minChoices: 1,
+        maxChoices: 1,
+        responseCommand: { type: "pay_cost", promptId: "pay-prompt", messageId: 22, pay: true }
+      },
+      legalActions: [
+        {
+          id: "forest-1-mana",
+          type: "make_mana",
+          playerId: "human",
+          label: "Add {G}",
+          cardName: "Forest",
+          sourceInstanceId: "forest-1",
+          commandTemplate: { type: "make_mana", sourceInstanceId: "forest-1" }
+        },
+        {
+          id: "pay-arcane",
+          type: "pay_cost",
+          playerId: "human",
+          label: "Pay Arcane Signet",
+          shortLabel: "Pay",
+          promptId: "pay-prompt",
+          messageId: 22,
+          pay: true,
+          commandTemplate: { type: "pay_cost", promptId: "pay-prompt", messageId: 22, pay: true, confirmed: true }
+        }
+      ]
+    };
+    const viewModel = buildBattlefieldViewModel(paymentSnapshot, {}, "human");
+    const html = renderToStaticMarkup(
+      <ArenaBattlefield
+        actionPending={false}
+        snapshot={paymentSnapshot}
+        viewModel={viewModel}
+        onRunAction={() => undefined}
+        onSelectCard={() => undefined}
+      />
+    );
+
+    expect(html).toContain("Pay with sources");
+    expect(html).toContain("Tap Forest");
+    expect(html).toContain("Payment");
+    expect(html).toContain("Pay");
   });
 });
