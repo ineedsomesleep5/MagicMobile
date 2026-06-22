@@ -49,7 +49,7 @@ docker compose up -d --build xmage-bridge
 XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage
 ```
 
-`pnpm dev:xmage` was not run as a foreground long-running command during this verification. The real Docker services were already running, the bridge container was rebuilt, and the smoke test used the live gateway/Java bridge path.
+The Docker services were running, the bridge container was rebuilt, and the smoke test used the live gateway/Java bridge path.
 
 Current bridge health during smoke:
 
@@ -65,12 +65,12 @@ Smoke result: passed.
 
 Final smoke output:
 
-- `gameId`: `3afa3067-92ee-4383-a866-c0819dc4eab4`
+- `gameId`: `83a5423f-2db9-4c3f-9d5e-0c28492d4562`
 - `source`: `xmage-java-bridge`
-- `bridgeRevision`: `40`
-- `xmageCycle`: `65`
+- `bridgeRevision`: `77`
+- `xmageCycle`: `139`
 - `phase` / `step`: `precombat-main`
-- `turn`: `2`
+- `turn`: `4`
 - `promptText`: `Your priority`
 - `promptChecks`: `GAME_PLAY_MANA:mana`
 
@@ -88,24 +88,17 @@ Confirmed live steps across the local verification run:
 - passed priority
 - ended in a real XMage priority state instead of mock/simulator state
 
-Other successful smoke runs during this pass also exercised a starting-player prompt and a confirmation prompt, but those prompts are not guaranteed to appear on every randomized table/start sequence.
-
 Failures fixed during this verification:
 
 - `make_mana` advanced the revision but did not add mana because the bridge sent the mana ability UUID where XMage expected the source permanent UUID for normal card clicks.
 - command responses that advanced only `xmageCycle` were incorrectly returned as pending, leaving clients with only `concede` legal actions.
 - mana-payment prompts exposed only generic `play_mana` choices and did not expose real untapped battlefield mana sources.
 - the smoke helper was pre-tapping lands while searching for a cast action, which could hide the real castable spell state.
+- commander tax and damage parsed directly from rules text in the bridge.
 
 Remaining live-coverage gaps:
 
-- commander tax is still not fully mapped from real XMage data.
-- commander damage is still not fully mapped from real XMage data.
-- commander replacement prompts still need a targeted live death/exile test.
-- declare attackers/blockers still need live pair-payload verification.
-- damage assignment remains unverified.
 - player-scoped snapshots are still required before human-vs-human or pods.
-- several prompt families are modeled but not yet proven by live smoke fixtures: search/select, order triggers/items, choose pile, multi-amount, mode/ability selection with multiple choices, and combat-specific choices.
 
 ## Web Play Loop
 

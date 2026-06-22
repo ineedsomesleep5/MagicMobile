@@ -11,7 +11,7 @@ const snapshot: GameSnapshot = {
   log: []
 };
 
-describe("GameController command mapping", () => {
+describe("GameController command mapping and state integration", () => {
   it("preserves the source UUID when an XMage action includes command template metadata", () => {
     const action: LegalAction = {
       id: "mana-action",
@@ -67,12 +67,331 @@ describe("GameController command mapping", () => {
     expect(gameWebSocketUrl("game-3")).toBe("/ws/games/game-3");
   });
 
-  it("rejects stale bridge snapshots before updating the client board", () => {
-    const current = { ...snapshot, bridgeRevision: 7, promptText: "newer" };
-    const stale = { ...snapshot, bridgeRevision: 6, promptText: "older" };
-    const fresh = { ...snapshot, bridgeRevision: 8, promptText: "fresh" };
+  describe("latestSnapshot updates and snap-back protection", () => {
+    it("rejects stale bridge snapshots before updating the client board", () => {
+      const current = { ...snapshot, bridgeRevision: 7, promptText: "newer" };
+      const stale = { ...snapshot, bridgeRevision: 6, promptText: "older" };
+      const fresh = { ...snapshot, bridgeRevision: 8, promptText: "fresh" };
 
-    expect(latestSnapshot(current, stale)).toBe(current);
-    expect(latestSnapshot(current, fresh)).toMatchObject({ bridgeRevision: 8, promptText: "fresh" });
+      expect(latestSnapshot(current, stale)).toBe(current);
+      expect(latestSnapshot(current, fresh)).toMatchObject({ bridgeRevision: 8, promptText: "fresh" });
+    });
+
+    it("rejects stale xmageCycle snapshots when bridgeRevision is identical", () => {
+      const current = { ...snapshot, bridgeRevision: 10, xmageCycle: 20, promptText: "current" };
+      const stale = { ...snapshot, bridgeRevision: 10, xmageCycle: 19, promptText: "stale" };
+      const fresh = { ...snapshot, bridgeRevision: 10, xmageCycle: 21, promptText: "fresh" };
+
+      expect(latestSnapshot(current, stale)).toBe(current);
+      expect(latestSnapshot(current, fresh)).toMatchObject({ bridgeRevision: 10, xmageCycle: 21 });
+    });
+
+    it("prefers larger bridgeRevision over xmageCycle when deciding freshness", () => {
+      const current = { ...snapshot, bridgeRevision: 10, xmageCycle: 20 };
+      const nextWithNewerBridgeOlderCycle = { ...snapshot, bridgeRevision: 11, xmageCycle: 19 };
+
+      // Revisions are checked first. Since next has a newer bridge revision, it wins.
+      expect(latestSnapshot(current, nextWithNewerBridgeOlderCycle)).toBe(nextWithNewerBridgeOlderCycle);
+    });
+  });
+
+  describe("prompt family mappings", () => {
+    it("maps choose_target correctly", () => {
+      const action: LegalAction = {
+        id: "target-1",
+        type: "choose_target",
+        playerId: "human",
+        label: "Choose target",
+        validTargetIds: ["card-instance-1"]
+      };
+      const cmd = toCommand(action, snapshot, undefined, "opponent");
+      expect(cmd).toEqual({
+        type: "choose_target",
+        gameId: "game-1",
+        playerId: "human",
+        promptId: "target-1",
+        targetIds: ["card-instance-1"]
+      });
+    });
+
+    it("maps choose_card correctly", () => {
+      const action: LegalAction = {
+        id: "card-1",
+        type: "choose_card",
+        playerId: "human",
+        label: "Choose card",
+        validTargetIds: ["card-instance-1"]
+      };
+      const cmd = toCommand(action, snapshot, undefined, "opponent");
+      expect(cmd).toEqual({
+        type: "choose_card",
+        gameId: "game-1",
+        playerId: "human",
+        promptId: "card-1",
+        cardInstanceIds: ["card-instance-1"]
+      });
+    });
+
+    it("maps choose_player correctly", () => {
+      const action: LegalAction = {
+        id: "player-1",
+        type: "choose_player",
+        playerId: "human",
+        label: "Choose player",
+        validPlayerIds: ["ai-1"]
+      };
+      const cmd = toCommand(action, snapshot, undefined, "opponent");
+      expect(cmd).toEqual({
+        type: "choose_player",
+        gameId: "game-1",
+        playerId: "human",
+        promptId: "player-1",
+        playerIds: ["ai-1"]
+      });
+    });
+
+    it("maps choose_mode correctly", () => {
+      const action: LegalAction = {
+        id: "mode-1",
+        type: "choose_mode",
+        playerId: "human",
+        label: "Choose mode",
+        modeIds: ["mode-idx-2"]
+      };
+      const cmd = toCommand(action, snapshot, undefined, "opponent");
+      expect(cmd).toEqual({
+        type: "choose_mode",
+        gameId: "game-1",
+        playerId: "human",
+        promptId: "mode-1",
+        modeIds: ["mode-idx-2"]
+      });
+    });
+
+    it("maps choose_ability correctly", () => {
+      const action: LegalAction = {
+        id: "ability-1",
+        type: "choose_ability",
+        playerId: "human",
+        label: "Choose ability",
+        targetIds: ["ability-instance-3"]
+      };
+      const cmd = toCommand(action, snapshot, undefined, "opponent");
+      expect(cmd).toEqual({
+        type: "choose_ability",
+        gameId: "game-1",
+        playerId: "human",
+        promptId: "ability-1",
+        abilityId: "ability-instance-3"
+      });
+    });
+
+    it("maps choose_amount and play_x_mana correctly", () => {
+      const actionAmount: LegalAction = {
+        id: "amount-1",
+        type: "choose_amount",
+        playerId: "human",
+        label: "Choose amount",
+        targetIds: ["5"]
+      };
+      const cmdAmount = toCommand(actionAmount, snapshot, undefined, "opponent");
+      expect(cmdAmount).toEqual({
+        type: "choose_amount",
+        gameId: "game-1",
+        playerId: "human",
+        promptId: "amount-1",
+        amount: 5
+      });
+
+      const actionXMana: LegalAction = {
+        id: "x-mana-1",
+        type: "play_x_mana",
+        playerId: "human",
+        label: "Play X mana",
+        targetIds: ["8"]
+      };
+      const cmdXMana = toCommand(actionXMana, snapshot, undefined, "opponent");
+      expect(cmdXMana).toEqual({
+        type: "play_x_mana",
+        gameId: "game-1",
+        playerId: "human",
+        promptId: "x-mana-1",
+        amount: 8
+      });
+    });
+
+    it("maps choose_multi_amount correctly", () => {
+      const action: LegalAction = {
+        id: "multi-amount-1",
+        type: "choose_multi_amount",
+        playerId: "human",
+        label: "Choose multi amount",
+        targetIds: ["2", "4"]
+      };
+      const cmd = toCommand(action, snapshot, undefined, "opponent");
+      expect(cmd).toEqual({
+        type: "choose_multi_amount",
+        gameId: "game-1",
+        playerId: "human",
+        promptId: "multi-amount-1",
+        amounts: [2, 4]
+      });
+    });
+
+    it("maps choose_mana correctly", () => {
+      const action: LegalAction = {
+        id: "mana-choice-1",
+        type: "choose_mana",
+        playerId: "human",
+        label: "Choose mana",
+        manaTypes: ["W"]
+      };
+      const cmd = toCommand(action, snapshot, undefined, "opponent");
+      expect(cmd).toEqual({
+        type: "choose_mana",
+        gameId: "game-1",
+        playerId: "human",
+        promptId: "mana-choice-1",
+        manaTypes: ["W"]
+      });
+    });
+
+    it("maps answer_yes_no correctly", () => {
+      const actionYes: LegalAction = {
+        id: "yes-no-1",
+        type: "answer_yes_no",
+        playerId: "human",
+        label: "Yes",
+        confirmed: true
+      };
+      const cmdYes = toCommand(actionYes, snapshot, undefined, "opponent");
+      expect(cmdYes).toEqual({
+        type: "answer_yes_no",
+        gameId: "game-1",
+        playerId: "human",
+        promptId: "yes-no-1",
+        confirmed: true
+      });
+
+      const actionNo: LegalAction = {
+        id: "yes-no-1",
+        type: "answer_yes_no",
+        playerId: "human",
+        label: "No",
+        confirmed: false
+      };
+      const cmdNo = toCommand(actionNo, snapshot, undefined, "opponent");
+      expect(cmdNo).toEqual({
+        type: "answer_yes_no",
+        gameId: "game-1",
+        playerId: "human",
+        promptId: "yes-no-1",
+        confirmed: false
+      });
+    });
+
+    it("maps order_triggers and order_items correctly", () => {
+      const actionTriggers: LegalAction = {
+        id: "order-triggers-1",
+        type: "order_triggers",
+        playerId: "human",
+        label: "Order triggers",
+        targetIds: ["trigger-1", "trigger-2"]
+      };
+      const cmdTriggers = toCommand(actionTriggers, snapshot, undefined, "opponent");
+      expect(cmdTriggers).toEqual({
+        type: "order_triggers",
+        gameId: "game-1",
+        playerId: "human",
+        promptId: "order-triggers-1",
+        orderedIds: ["trigger-1", "trigger-2"]
+      });
+
+      const actionItems: LegalAction = {
+        id: "order-items-1",
+        type: "order_items",
+        playerId: "human",
+        label: "Order items",
+        orderedIds: ["item-1", "item-2"]
+      };
+      const cmdItems = toCommand(actionItems, snapshot, undefined, "opponent");
+      expect(cmdItems).toEqual({
+        type: "order_items",
+        gameId: "game-1",
+        playerId: "human",
+        promptId: "order-items-1",
+        orderedIds: ["item-1", "item-2"]
+      });
+    });
+
+    it("maps search_select correctly", () => {
+      const action: LegalAction = {
+        id: "search-select-1",
+        type: "search_select",
+        playerId: "human",
+        label: "Search select",
+        cardInstanceIds: ["card-instance-5"]
+      };
+      const cmd = toCommand(action, snapshot, undefined, "opponent");
+      expect(cmd).toEqual({
+        type: "search_select",
+        gameId: "game-1",
+        playerId: "human",
+        promptId: "search-select-1",
+        cardInstanceIds: ["card-instance-5"]
+      });
+    });
+
+    it("maps commander_replacement correctly", () => {
+      const actionGraveyard: LegalAction = {
+        id: "commander-replace-1",
+        type: "commander_replacement",
+        playerId: "human",
+        label: "Graveyard",
+        targetIds: ["graveyard"]
+      };
+      const cmdGraveyard = toCommand(actionGraveyard, snapshot, undefined, "opponent");
+      expect(cmdGraveyard).toEqual({
+        type: "commander_replacement",
+        gameId: "game-1",
+        playerId: "human",
+        promptId: "commander-replace-1",
+        useCommandZone: false
+      });
+
+      const actionCommandZone: LegalAction = {
+        id: "commander-replace-1",
+        type: "commander_replacement",
+        playerId: "human",
+        label: "Command Zone",
+        targetIds: ["command_zone"]
+      };
+      const cmdCommandZone = toCommand(actionCommandZone, snapshot, undefined, "opponent");
+      expect(cmdCommandZone).toEqual({
+        type: "commander_replacement",
+        gameId: "game-1",
+        playerId: "human",
+        promptId: "commander-replace-1",
+        useCommandZone: true
+      });
+    });
+
+    it("maps resolve_choice correctly", () => {
+      const action: LegalAction = {
+        id: "resolve-choice-1",
+        type: "resolve_choice",
+        playerId: "human",
+        label: "Choice 1",
+        targetIds: ["choice-instance-9"]
+      };
+      const cmd = toCommand(action, snapshot, undefined, "opponent");
+      expect(cmd).toEqual({
+        type: "resolve_choice",
+        gameId: "game-1",
+        playerId: "human",
+        promptId: "resolve-choice-1",
+        choiceIds: ["choice-instance-9"]
+      });
+    });
   });
 });

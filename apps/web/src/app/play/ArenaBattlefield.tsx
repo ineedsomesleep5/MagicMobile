@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { getHandFanStyle } from "./arena-layout";
 import { ArenaFxLayer } from "./ArenaFxLayer";
 import type { BattlefieldCardView, BattlefieldViewModel } from "./battlefield-view-model";
-import type { GameSnapshot, LegalAction, PromptEnvelope, PromptEnvelopeV2, XmageNamedZone, XmageStackObject, ZoneCard } from "@magicmobile/shared";
+import type { GameSnapshot, LegalAction, ManaPool, PromptEnvelope, PromptEnvelopeV2, XmageCombatGroup, XmageNamedZone, XmageStackObject, ZoneCard } from "@magicmobile/shared";
 
 interface ArenaBattlefieldProps {
   viewModel: BattlefieldViewModel;
@@ -61,12 +61,20 @@ export function ArenaBattlefield({
         ) : null}
         <StackDetailPanel fallbackStack={viewModel.stack} stackObjects={snapshot?.xmage?.stack ?? []} />
         <ZoneAccessPanel namedZones={namedZoneGroups(snapshot)} onSelectCard={onSelectCard} />
+        <CombatPairingsPanel combat={snapshot?.xmage?.combat} />
         <GameLog entries={viewModel.logEntries} />
         <ZonePanel
           humanCommand={viewModel.humanCommand}
           humanCounts={viewModel.humanZoneCounts}
           opponentCommand={viewModel.opponentCommand}
           opponentCounts={viewModel.opponentZoneCounts}
+          humanGraveyard={viewModel.humanGraveyard}
+          opponentGraveyard={viewModel.opponentGraveyard}
+          humanExile={viewModel.humanExile}
+          opponentExile={viewModel.opponentExile}
+          humanManaPool={viewModel.human.manaPool}
+          opponentManaPool={viewModel.opponent.manaPool}
+          stackCards={viewModel.stack}
           onSelectCard={onSelectCard}
         />
       </aside>
@@ -182,17 +190,80 @@ function GameLog({ entries }: { entries: BattlefieldViewModel["logEntries"] }) {
   );
 }
 
+function ManaPoolCompact({ pool }: { pool?: ManaPool | undefined }) {
+  if (!pool) return <span style={{ fontSize: "0.7rem", color: "rgba(246,240,223,0.4)" }}>None</span>;
+  const symbols = ["W", "U", "B", "R", "G", "C"] as const;
+  const colors: Record<string, string> = {
+    W: "#fef3c7",
+    U: "#3b82f6",
+    B: "#1f2937",
+    R: "#ef4444",
+    G: "#10b981",
+    C: "#6b7280"
+  };
+  const textColors: Record<string, string> = {
+    W: "#000",
+    U: "#fff",
+    B: "#fff",
+    R: "#fff",
+    G: "#fff",
+    C: "#fff"
+  };
+
+  return (
+    <span style={{ display: "inline-flex", gap: "2px" }}>
+      {symbols.map((sym) => {
+        const count = pool[sym] ?? 0;
+        if (count === 0) return null;
+        return (
+          <span
+            key={sym}
+            style={{
+              background: colors[sym],
+              color: textColors[sym],
+              padding: "1px 4px",
+              borderRadius: "3px",
+              fontSize: "0.65rem",
+              fontWeight: "bold",
+              border: "1px solid rgba(255,255,255,0.15)"
+            }}
+          >
+            {sym}:{count}
+          </span>
+        );
+      })}
+      {Object.values(pool).every((val) => val === 0) && (
+        <span style={{ fontSize: "0.65rem", color: "rgba(246,240,223,0.4)" }}>0</span>
+      )}
+    </span>
+  );
+}
+
 function ZonePanel({
   humanCommand,
   humanCounts,
   opponentCommand,
   opponentCounts,
+  humanGraveyard,
+  opponentGraveyard,
+  humanExile,
+  opponentExile,
+  humanManaPool,
+  opponentManaPool,
+  stackCards,
   onSelectCard
 }: {
   humanCommand: BattlefieldViewModel["humanCommand"];
   humanCounts: BattlefieldViewModel["humanZoneCounts"];
   opponentCommand: BattlefieldViewModel["opponentCommand"];
   opponentCounts: BattlefieldViewModel["opponentZoneCounts"];
+  humanGraveyard: BattlefieldViewModel["humanGraveyard"];
+  opponentGraveyard: BattlefieldViewModel["opponentGraveyard"];
+  humanExile: BattlefieldViewModel["humanExile"];
+  opponentExile: BattlefieldViewModel["opponentExile"];
+  humanManaPool?: ManaPool | undefined;
+  opponentManaPool?: ManaPool | undefined;
+  stackCards: BattlefieldViewModel["stack"];
   onSelectCard: (card: BattlefieldCardView) => void;
 }) {
   return (
@@ -202,18 +273,151 @@ function ZonePanel({
         <ZoneCount label="You" counts={humanCounts} />
         <ZoneCount label="AI" counts={opponentCounts} />
       </div>
-      <div className="arena-command-list">
-        {humanCommand.map((card) => (
-          <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button">
-            <span>Commander</span>
-            <strong>{card.name}</strong>
-          </button>
-        ))}
-        {opponentCommand.map((card) => (
-          <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button">
-            <span>AI Commander</span>
-            <strong>{card.name}</strong>
-          </button>
+
+      {/* Mana Pools */}
+      <div className="arena-mana-pools" style={{ padding: "0.45rem", borderTop: "1px solid rgba(246, 240, 223, 0.12)" }}>
+        <strong style={{ fontSize: "0.6rem", color: "#ffb45d", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Mana Pools</strong>
+        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+          <div>
+            <span style={{ fontSize: "0.7rem", color: "rgba(246,240,223,0.7)" }}>You: </span>
+            <ManaPoolCompact pool={humanManaPool} />
+          </div>
+          <div>
+            <span style={{ fontSize: "0.7rem", color: "rgba(246,240,223,0.7)" }}>AI: </span>
+            <ManaPoolCompact pool={opponentManaPool} />
+          </div>
+        </div>
+      </div>
+
+      {/* Zone Card Details */}
+      <div className="arena-zone-details" style={{ display: "flex", flexDirection: "column", gap: "4px", borderTop: "1px solid rgba(246, 240, 223, 0.12)", padding: "0.45rem" }}>
+        
+        {/* Command Zone */}
+        <details className="zone-details-group" style={{ cursor: "pointer" }}>
+          <summary style={{ fontSize: "0.7rem", color: "#ffb45d", fontWeight: "bold", outline: "none" }}>
+            Command Zone ({humanCommand.length + opponentCommand.length})
+          </summary>
+          <div className="zone-card-list" style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "4px", paddingLeft: "8px" }}>
+            {humanCommand.map((card) => (
+              <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
+                [You] {card.name}
+              </button>
+            ))}
+            {opponentCommand.map((card) => (
+              <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
+                [AI] {card.name}
+              </button>
+            ))}
+            {humanCommand.length === 0 && opponentCommand.length === 0 && (
+              <span style={{ fontSize: "0.65rem", color: "rgba(246,240,223,0.4)" }}>Empty</span>
+            )}
+          </div>
+        </details>
+
+        {/* Graveyard */}
+        <details className="zone-details-group" style={{ cursor: "pointer" }}>
+          <summary style={{ fontSize: "0.7rem", color: "#ffb45d", fontWeight: "bold", outline: "none" }}>
+            Graveyard ({humanGraveyard.length + opponentGraveyard.length})
+          </summary>
+          <div className="zone-card-list" style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "4px", paddingLeft: "8px" }}>
+            {humanGraveyard.map((card) => (
+              <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
+                [You] {card.name}
+              </button>
+            ))}
+            {opponentGraveyard.map((card) => (
+              <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
+                [AI] {card.name}
+              </button>
+            ))}
+            {humanGraveyard.length === 0 && opponentGraveyard.length === 0 && (
+              <span style={{ fontSize: "0.65rem", color: "rgba(246,240,223,0.4)" }}>Empty</span>
+            )}
+          </div>
+        </details>
+
+        {/* Exile */}
+        <details className="zone-details-group" style={{ cursor: "pointer" }}>
+          <summary style={{ fontSize: "0.7rem", color: "#ffb45d", fontWeight: "bold", outline: "none" }}>
+            Exile ({humanExile.length + opponentExile.length})
+          </summary>
+          <div className="zone-card-list" style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "4px", paddingLeft: "8px" }}>
+            {humanExile.map((card) => (
+              <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
+                [You] {card.name}
+              </button>
+            ))}
+            {opponentExile.map((card) => (
+              <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
+                [AI] {card.name}
+              </button>
+            ))}
+            {humanExile.length === 0 && opponentExile.length === 0 && (
+              <span style={{ fontSize: "0.65rem", color: "rgba(246,240,223,0.4)" }}>Empty</span>
+            )}
+          </div>
+        </details>
+
+        {/* Stack */}
+        <details className="zone-details-group" style={{ cursor: "pointer" }}>
+          <summary style={{ fontSize: "0.7rem", color: "#ffb45d", fontWeight: "bold", outline: "none" }}>
+            Stack ({stackCards.length})
+          </summary>
+          <div className="zone-card-list" style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "4px", paddingLeft: "8px" }}>
+            {stackCards.map((card) => (
+              <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
+                {card.name}
+              </button>
+            ))}
+            {stackCards.length === 0 && (
+              <span style={{ fontSize: "0.65rem", color: "rgba(246,240,223,0.4)" }}>Empty</span>
+            )}
+          </div>
+        </details>
+
+      </div>
+    </section>
+  );
+}
+
+const zoneCardBtnStyle: CSSProperties = {
+  background: "none",
+  border: "none",
+  color: "rgba(246, 240, 223, 0.8)",
+  textAlign: "left",
+  fontSize: "0.75rem",
+  padding: "2px 4px",
+  cursor: "pointer",
+  width: "100%",
+  display: "block",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap"
+};
+
+function CombatPairingsPanel({ combat }: { combat?: XmageCombatGroup[] | undefined }) {
+  if (!combat || combat.length === 0) return null;
+  return (
+    <section className="arena-combat-pairings-panel" aria-label="Combat pairings" style={{ padding: "0.45rem", border: "1px solid rgba(246, 240, 223, 0.12)", borderRadius: "8px", background: "rgba(6, 9, 10, 0.58)" }}>
+      <h2 style={{ margin: "0 0 0.38rem", color: "#ffb45d", fontSize: "0.62rem", fontWeight: 950, textTransform: "uppercase" }}>Combat Pairings</h2>
+      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+        {combat.map((group, idx) => (
+          <div key={idx} style={{ fontSize: "0.7rem", color: "rgba(246,240,223,0.85)" }}>
+            <div style={{ fontWeight: "bold" }}>Defending: {group.defenderName}</div>
+            {group.attackers.map((att) => {
+              const attackersBlockers = group.blockers.map(b => b.card.name).join(", ");
+              return (
+                <div key={att.instanceId} style={{ paddingLeft: "6px", marginTop: "2px" }}>
+                  ⚔️ <strong>{att.card.name}</strong> 
+                  {group.blocked ? (
+                    <span style={{ color: "#ef4444" }}> (Blocked by: {attackersBlockers || "blockers"})</span>
+                  ) : (
+                    <span style={{ color: "#10b981" }}> (Unblocked)</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         ))}
       </div>
     </section>
@@ -549,7 +753,11 @@ function getRenderableCards(viewModel: BattlefieldViewModel): BattlefieldCardVie
     ...viewModel.opponentAttackers,
     ...viewModel.stack,
     ...viewModel.humanCommand,
-    ...viewModel.opponentCommand
+    ...viewModel.opponentCommand,
+    ...viewModel.humanGraveyard,
+    ...viewModel.opponentGraveyard,
+    ...viewModel.humanExile,
+    ...viewModel.opponentExile
   ];
 }
 

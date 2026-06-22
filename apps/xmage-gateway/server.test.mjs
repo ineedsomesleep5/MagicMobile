@@ -565,6 +565,20 @@ describe("xmage gateway", () => {
     assert.equal(bridgeSource.includes("<hintstart>.*?(<hintend>|$)"), true);
     assert.equal(bridgeSource.includes("ICON_[A-Z_]+"), true);
   });
+
+  it("rejects older bridgeRevisions or equal revisions with older xmageCycles", () => {
+    const current = { bridgeRevision: 10, xmageCycle: 5 };
+    assert.equal(shouldAcceptSnapshot(current, { bridgeRevision: 9, xmageCycle: 5 }), false);
+    assert.equal(shouldAcceptSnapshot(current, { bridgeRevision: 10, xmageCycle: 4 }), false);
+    assert.equal(shouldAcceptSnapshot(current, { bridgeRevision: 11, xmageCycle: 5 }), true);
+    assert.equal(shouldAcceptSnapshot(current, { bridgeRevision: 10, xmageCycle: 6 }), true);
+    assert.equal(shouldAcceptSnapshot(current, { bridgeRevision: 10, xmageCycle: 5 }), true);
+  });
+
+  it("ensures Java bridge rejects unknown command types", () => {
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+    assert.match(bridgeSource, /throw new IllegalArgumentException\("Unknown command type: " \+ type\);/);
+  });
 });
 
 function bridgeSmokeSnapshot(bridgeRevision, xmageCycle, step, legalActions) {

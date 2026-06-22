@@ -43,6 +43,10 @@ export interface BattlefieldViewModel {
   stack: BattlefieldCardView[];
   humanCommand: BattlefieldCardView[];
   opponentCommand: BattlefieldCardView[];
+  humanGraveyard: BattlefieldCardView[];
+  opponentGraveyard: BattlefieldCardView[];
+  humanExile: BattlefieldCardView[];
+  opponentExile: BattlefieldCardView[];
   humanZoneCounts: PlayerZoneCounts;
   opponentZoneCounts: PlayerZoneCounts;
 }
@@ -92,6 +96,10 @@ export function buildBattlefieldViewModel(
     stack: toViews(human.zones.stack.concat(opponent.zones.stack)),
     humanCommand: toViews(human.zones.command),
     opponentCommand: toViews(opponent.zones.command),
+    humanGraveyard: toViews(human.zones.graveyard),
+    opponentGraveyard: toViews(opponent.zones.graveyard),
+    humanExile: toViews(human.zones.exile),
+    opponentExile: toViews(opponent.zones.exile),
     humanZoneCounts: getZoneCounts(human),
     opponentZoneCounts: getZoneCounts(opponent)
   };

@@ -353,9 +353,7 @@ public final class MagicMobileBridge implements MageClient {
                 }
             }
         } else {
-            String abilityId = string(command, "abilityId", "");
-            String sourceId = string(command, "sourceInstanceId", string(command, "cardInstanceId", ""));
-            session.sendPlayerUUID(xmageGameId, UUID.fromString(abilityId.isEmpty() ? sourceId : abilityId));
+            throw new IllegalArgumentException("Unknown command type: " + type);
         }
 
         if (record != null) {
@@ -1368,7 +1366,102 @@ public final class MagicMobileBridge implements MageClient {
         return null;
     }
 
+    private int parseCommanderTax(CardView card) {
+        if (card.getRules() == null) return 0;
+        for (String rule : card.getRules()) {
+            String cleanRule = cleanText(rule).toLowerCase();
+            if (cleanRule.contains("played from the command zone")) {
+                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("(\\d+)");
+                java.util.regex.Matcher matcher = pattern.matcher(cleanRule);
+                if (matcher.find()) {
+                    int casts = Integer.parseInt(matcher.group(1));
+                    return casts * 2;
+                }
+            }
+        }
+        return 0;
+    }
+
+    private int playerCommanderTax(PlayerView player, GameView view) {
+        int maxTax = 0;
+        for (CommandObjectView command : player.getCommandObjectList()) {
+            if (command instanceof CardView) {
+                maxTax = Math.max(maxTax, parseCommanderTax((CardView) command));
+            }
+        }
+        for (CardView card : player.getBattlefield().values()) {
+            maxTax = Math.max(maxTax, parseCommanderTax(card));
+        }
+        for (CardView card : player.getGraveyard().values()) {
+            maxTax = Math.max(maxTax, parseCommanderTax(card));
+        }
+        for (CardView card : player.getExile().values()) {
+            maxTax = Math.max(maxTax, parseCommanderTax(card));
+        }
+        if (player.getPlayerId().equals(view.getMyPlayer().getPlayerId())) {
+            for (CardView card : view.getMyHand().values()) {
+                maxTax = Math.max(maxTax, parseCommanderTax(card));
+            }
+        }
+        return maxTax;
+    }
+
     private JsonArray players(GameRecord record, GameView view, Map<UUID, String> playerIds) {
+        // Collect commander damage maps: recipientExternalId -> (attackerExternalId -> damageAmount)
+        Map<String, Map<String, Integer>> receivedDamage = new HashMap<>();
+        for (String id : playerIds.values()) {
+            receivedDamage.put(id, new HashMap<>());
+        }
+
+        // Scan all cards for each player to find their commander damage logs
+        for (PlayerView player : view.getPlayers()) {
+            String attackerExternalId = playerIds.get(player.getPlayerId());
+            if (attackerExternalId == null) continue;
+
+            List<CardView> cardsToCheck = new java.util.ArrayList<>();
+            for (CommandObjectView command : player.getCommandObjectList()) {
+                if (command instanceof CardView) {
+                    cardsToCheck.add((CardView) command);
+                }
+            }
+            cardsToCheck.addAll(player.getBattlefield().values());
+            cardsToCheck.addAll(player.getGraveyard().values());
+            cardsToCheck.addAll(player.getExile().values());
+
+            if (player.getPlayerId().equals(view.getMyPlayer().getPlayerId())) {
+                cardsToCheck.addAll(view.getMyHand().values());
+            }
+
+            for (CardView card : cardsToCheck) {
+                if (card.getRules() == null) continue;
+                for (String rule : card.getRules()) {
+                    String cleanRule = cleanText(rule).toLowerCase();
+                    if (cleanRule.contains("combat damage to player")) {
+                        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("did\\s+(\\d+)\\s+combat\\s+damage\\s+to\\s+player\\s+(.+)");
+                        java.util.regex.Matcher matcher = pattern.matcher(cleanRule);
+                        if (matcher.find()) {
+                            int damage = Integer.parseInt(matcher.group(1));
+                            String targetPlayerName = matcher.group(2).trim();
+                            if (targetPlayerName.endsWith(".")) {
+                                targetPlayerName = targetPlayerName.substring(0, targetPlayerName.length() - 1);
+                            }
+
+                            for (PlayerView p : view.getPlayers()) {
+                                String name = p.getName().toLowerCase();
+                                if (name.equals(targetPlayerName) || targetPlayerName.contains(name) || name.contains(targetPlayerName)) {
+                                    String recipientExternalId = playerIds.get(p.getPlayerId());
+                                    if (recipientExternalId != null) {
+                                        receivedDamage.get(recipientExternalId).put(attackerExternalId, damage);
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         JsonArray players = new JsonArray();
         for (PlayerView player : view.getPlayers()) {
             JsonObject out = new JsonObject();
@@ -1376,7 +1469,7 @@ public final class MagicMobileBridge implements MageClient {
             out.addProperty("playerId", externalId);
             out.addProperty("life", player.getLife());
             out.addProperty("poison", counterValue(player, "poison"));
-            out.addProperty("commanderTax", 0);
+            out.addProperty("commanderTax", playerCommanderTax(player, view));
             out.add("manaPool", manaPool(player.getManaPool()));
 
             JsonObject zones = new JsonObject();
@@ -1391,8 +1484,10 @@ public final class MagicMobileBridge implements MageClient {
             out.add("zones", zones);
 
             JsonObject commanderDamage = new JsonObject();
+            Map<String, Integer> attackerDamage = receivedDamage.get(externalId);
             for (String id : playerIds.values()) {
-                commanderDamage.addProperty(id, 0);
+                int dmg = (attackerDamage != null && attackerDamage.containsKey(id)) ? attackerDamage.get(id) : 0;
+                commanderDamage.addProperty(id, dmg);
             }
             out.add("commanderDamage", commanderDamage);
             players.add(out);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { CommanderGameConfig, EngineHealth, GameCommand, GameSnapshot, LegalAction } from "@magicmobile/shared";
+import type { CommanderGameConfig, EngineHealth, GameCommand, GameSnapshot, LegalAction, ManaPool } from "@magicmobile/shared";
 import { ArenaBattlefield } from "./ArenaBattlefield";
 import { buildBattlefieldViewModel, type BattlefieldCardView, type VisualCardRecord } from "./battlefield-view-model";
 
@@ -99,11 +99,18 @@ export function GameController({ config, initialHealth, requireXmage = false, si
 
   const legalActions = snapshot?.legalActions ?? [];
   const health = snapshot?.engineHealth ?? initialHealth;
-  const modeLabel = simulatorMode ? "Simulator preview" : "XMage rules";
+  const modeLabel = simulatorMode ? "DEVELOPMENT ONLY - Simulator Preview" : "XMage rules";
   const actionPending = pendingActionId !== undefined;
 
-  if (requireXmage && health.status !== "ready") {
-    return <XmageSetupRequired health={health} />;
+  const connectionFailed = (requireXmage && health.status !== "ready") || (requireXmage && socketStatus === "unavailable");
+
+  if (connectionFailed) {
+    return (
+      <XmageSetupRequired
+        health={health}
+        reason={socketStatus === "unavailable" ? "WebSocket connection to XMage Gateway is unavailable." : undefined}
+      />
+    );
   }
 
   const runLegalAction = (action: LegalAction) => {
@@ -137,10 +144,50 @@ export function GameController({ config, initialHealth, requireXmage = false, si
     : [];
   const promptActions = legalActions.filter((action) => isPromptAction(action.type));
 
+  const handlePlayerClick = (playerId: string) => {
+    const matchingPromptAction = promptActions.find((action) =>
+      action.playerIds?.includes(playerId)
+      || action.validPlayerIds?.includes(playerId)
+      || action.targetIds?.includes(playerId)
+      || action.validTargetIds?.includes(playerId)
+    );
+    if (matchingPromptAction) {
+      runLegalAction(matchingPromptAction);
+    }
+  };
+
   return (
     <section className="arena-screen" aria-label="Horizontal game battlefield">
+      {simulatorMode && (
+        <div
+          className="simulator-banner"
+          style={{
+            background: "#b45309",
+            color: "#fff",
+            textAlign: "center",
+            padding: "6px",
+            fontWeight: "bold",
+            fontSize: "0.85rem",
+            letterSpacing: "0.05em",
+            borderBottom: "1px solid rgba(246, 240, 223, 0.15)",
+            zIndex: 10,
+            position: "relative"
+          }}
+        >
+          ⚠️ DEVELOPMENT ONLY: SIMULATOR PREVIEW MODE (UI MECHANICS ONLY) ⚠️
+        </div>
+      )}
       <div className="arena-top-hud">
-        <PlayerBadge name="Noaddrag" life={viewModel?.opponent.life ?? 40} />
+        <PlayerBadge
+          name="Noaddrag"
+          life={viewModel?.opponent.life ?? 40}
+          manaPool={viewModel?.opponent.manaPool}
+          onClick={() => {
+            if (viewModel?.opponent.playerId) {
+              handlePlayerClick(viewModel.opponent.playerId);
+            }
+          }}
+        />
         <div className="arena-status">
           <strong>{viewModel?.phase ?? "starting"}</strong>
           <span>{modeLabel}</span>
@@ -160,6 +207,20 @@ export function GameController({ config, initialHealth, requireXmage = false, si
           promptActions={promptActions}
           actionPending={actionPending}
           onSelectCard={(card) => {
+            const matchingPromptAction = promptActions.find((action) =>
+              action.cardInstanceId === card.instanceId
+              || action.sourceInstanceId === card.instanceId
+              || action.targetIds?.includes(card.instanceId)
+              || action.validTargetIds?.includes(card.instanceId)
+              || action.choiceIds?.includes(card.instanceId)
+              || action.cardInstanceIds?.includes(card.instanceId)
+              || action.validCardInstanceIds?.includes(card.instanceId)
+            );
+            if (matchingPromptAction) {
+              runLegalAction(matchingPromptAction);
+              return;
+            }
+
             const immediateAction = getImmediateCardAction(card.instanceId, legalActions);
             if (immediateAction) {
               setSelectedInstanceId(card.instanceId);
@@ -177,7 +238,17 @@ export function GameController({ config, initialHealth, requireXmage = false, si
       )}
 
       <div className="arena-bottom-hud">
-        <PlayerBadge name="TabletopPolish" life={viewModel?.human.life ?? 40} active />
+        <PlayerBadge
+          name="TabletopPolish"
+          life={viewModel?.human.life ?? 40}
+          manaPool={viewModel?.human.manaPool}
+          active
+          onClick={() => {
+            if (viewModel?.human.playerId) {
+              handlePlayerClick(viewModel.human.playerId);
+            }
+          }}
+        />
         <div className="arena-selected-card">
           <span>Selected</span>
           <strong>{selectedCard?.name ?? "Choose a card"}</strong>
@@ -197,13 +268,14 @@ async function errorMessage(response: Response, fallback: string): Promise<strin
   }
 }
 
-function XmageSetupRequired({ health }: { health: EngineHealth }) {
+function XmageSetupRequired({ health, reason }: { health: EngineHealth; reason?: string | undefined }) {
+  const displayReason = reason ?? health.reason ?? "XMage rules engine is not reachable.";
   return (
     <section className="arena-screen is-setup" aria-label="Horizontal game battlefield">
       <div className="xmage-setup-panel" role="status">
         <span>XMage setup required</span>
         <h1>Start the rules engine before playing Commander</h1>
-        <p>{health.reason}</p>
+        <p>{displayReason}</p>
         <code>docker compose up --build xmage-bridge xmage-gateway</code>
         <code>ENGINE_MODE=xmage XMAGE_GATEWAY_URL=http://localhost:17171 pnpm --filter @magicmobile/web exec next dev --hostname 0.0.0.0</code>
         <small>
@@ -235,21 +307,107 @@ export function gameWebSocketUrl(gameId: string, baseUrl?: string): string {
 
 export function latestSnapshot(current: GameSnapshot | null, next: GameSnapshot): GameSnapshot {
   if (!current) return next;
+
   const currentRevision = current.bridgeRevision;
   const nextRevision = next.bridgeRevision;
-  if (typeof currentRevision === "number" && typeof nextRevision === "number" && nextRevision < currentRevision) {
-    return current;
+  if (typeof currentRevision === "number" && typeof nextRevision === "number") {
+    if (nextRevision > currentRevision) {
+      return next;
+    }
+    if (nextRevision < currentRevision) {
+      return current;
+    }
   }
+
+  const currentCycle = current.xmageCycle;
+  const nextCycle = next.xmageCycle;
+  if (typeof currentCycle === "number" && typeof nextCycle === "number") {
+    if (nextCycle < currentCycle) {
+      return current;
+    }
+  }
+
   return next;
 }
 
-function PlayerBadge({ name, life, active = false }: { name: string; life: number; active?: boolean }) {
+function ManaPoolView({ manaPool }: { manaPool?: ManaPool | undefined }) {
+  if (!manaPool) return null;
+  const symbols = ["W", "U", "B", "R", "G", "C"] as const;
+  const colors: Record<string, string> = {
+    W: "#fef3c7",
+    U: "#3b82f6",
+    B: "#1f2937",
+    R: "#ef4444",
+    G: "#10b981",
+    C: "#6b7280"
+  };
+  const textColors: Record<string, string> = {
+    W: "#000",
+    U: "#fff",
+    B: "#fff",
+    R: "#fff",
+    G: "#fff",
+    C: "#fff"
+  };
   return (
-    <div className={active ? "arena-player-badge is-active" : "arena-player-badge"}>
+    <div className="mana-pool-view" style={{ display: "flex", gap: "2px", marginTop: "2px" }}>
+      {symbols.map((sym) => {
+        const count = manaPool[sym] ?? 0;
+        if (count === 0) return null;
+        return (
+          <span
+            key={sym}
+            style={{
+              background: colors[sym],
+              color: textColors[sym],
+              padding: "1px 4px",
+              borderRadius: "3px",
+              fontSize: "0.65rem",
+              fontWeight: "bold",
+              border: "1px solid rgba(255,255,255,0.15)"
+            }}
+          >
+            {sym}:{count}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function PlayerBadge({
+  name,
+  life,
+  manaPool,
+  active = false,
+  onClick
+}: {
+  name: string;
+  life: number;
+  manaPool?: ManaPool | undefined;
+  active?: boolean;
+  onClick?: (() => void) | undefined;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={!onClick}
+      className={active ? "arena-player-badge is-active" : "arena-player-badge"}
+      style={{
+        background: "none",
+        border: "none",
+        textAlign: "left",
+        cursor: onClick ? "pointer" : "default",
+        padding: 0,
+        display: "block"
+      }}
+      type="button"
+    >
       <div className="arena-avatar" />
       <strong>{life}</strong>
       <span>{name}</span>
-    </div>
+      <ManaPoolView manaPool={manaPool} />
+    </button>
   );
 }
 

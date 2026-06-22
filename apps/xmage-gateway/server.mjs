@@ -770,7 +770,18 @@ export function shouldAcceptSnapshot(currentSnapshot, nextSnapshot) {
   const currentRevision = Number(currentSnapshot?.bridgeRevision ?? -1);
   const nextRevision = Number(nextSnapshot?.bridgeRevision ?? -1);
   if (currentRevision >= 0 && nextRevision >= 0) {
-    return nextRevision >= currentRevision;
+    if (nextRevision > currentRevision) {
+      return true;
+    }
+    if (nextRevision < currentRevision) {
+      return false;
+    }
+    const currentCycle = Number(currentSnapshot?.xmageCycle ?? -1);
+    const nextCycle = Number(nextSnapshot?.xmageCycle ?? -1);
+    if (currentCycle >= 0 && nextCycle >= 0) {
+      return nextCycle >= currentCycle;
+    }
+    return true;
   }
   return true;
 }
