@@ -2641,12 +2641,17 @@ struct UniversalPromptActionPanel: View {
     }
 
     private func action(for choice: ChoicePromptOption, promptId: String) -> LegalAction? {
-        allActions.first { action in
-            action.id == choice.id ||
-            action.id == "\(promptId)-\(choice.id)" ||
-            action.targetIds?.contains(choice.id) == true ||
-            action.validTargetIds?.contains(choice.id) == true ||
-            action.id.hasSuffix(choice.id)
+        let actions = snapshot.legalActions ?? []
+        let choiceId = choice.id
+        let suffixTarget = "-\(choiceId)"
+        let composedId = "\(promptId)-\(choiceId)"
+        return actions.first { action in
+            if action.id == choiceId { return true }
+            if action.id == composedId { return true }
+            if action.targetIds?.contains(choiceId) == true { return true }
+            if action.validTargetIds?.contains(choiceId) == true { return true }
+            if action.id.hasSuffix(suffixTarget) { return true }
+            return false
         }
     }
 
