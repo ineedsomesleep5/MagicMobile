@@ -61,7 +61,10 @@ for (const step of steps) {
   }
   if (!action) {
     if (step.optional) continue;
-    throw new Error(`XMage smoke missing ${step.label} action. Legal actions: ${formatActions(snapshot)}`);
+    throw new Error(
+      `XMage smoke missing ${step.label} action. Legal actions: ${formatActions(snapshot)}\n`
+        + smokeDebug(`missing ${step.label}`, snapshot)
+    );
   }
 
   const previous = snapshot;
@@ -178,17 +181,24 @@ async function passUntilAction(snapshot: SmokeSnapshot, type: string | string[])
 async function prepareUntilCastSpell(snapshot: SmokeSnapshot) {
   let current = snapshot;
   const completedPreparations: string[] = [];
-  for (let attempt = 0; attempt < 6; attempt += 1) {
+  for (let attempt = 0; attempt < 18; attempt += 1) {
     const cast = findAction(current, "cast_spell");
     if (cast) return { snapshot: current, action: cast, completed: completedPreparations };
 
     const prep = findAction(current, "play_land")
-      ?? findAction(current, "make_mana")
       ?? findAction(current, "answer_yes_no")
       ?? findAction(current, "resolve_choice")
       ?? findAction(current, "pass_until_next_turn")
       ?? findAction(current, ["pass_priority", "pass_until_response"]);
-    if (!prep) return { snapshot: current, action: undefined, completed: completedPreparations };
+    if (!prep) {
+      const waited = await waitForAiIfNeeded(current, "prepare cast spell");
+      if (waited !== current) {
+        current = waited;
+        completedPreparations.push(`wait for AI ${attempt + 1}`);
+        continue;
+      }
+      return { snapshot: current, action: undefined, completed: completedPreparations };
+    }
 
     const previous = current;
     current = await request(`/games/${encodeURIComponent(current.id)}/commands`, {
@@ -198,9 +208,7 @@ async function prepareUntilCastSpell(snapshot: SmokeSnapshot) {
     assertBridgeProgress(previous, current, `prepare cast spell ${prep.type}`);
     const semanticLabel = prep.type === "play_land"
       ? "play land"
-      : prep.type === "make_mana"
-        ? "make mana"
-        : prep.type === "answer_yes_no" || prep.type === "resolve_choice"
+      : prep.type === "answer_yes_no" || prep.type === "resolve_choice"
           ? "resolve prompt"
           : "pass priority";
     current = await waitForSemanticProgress(previous, current, semanticLabel);
@@ -210,6 +218,26 @@ async function prepareUntilCastSpell(snapshot: SmokeSnapshot) {
   return { snapshot: current, action: findAction(current, "cast_spell"), completed: completedPreparations };
 }
 
+async function waitForAiIfNeeded(snapshot: SmokeSnapshot, label: string) {
+  if (snapshot.waitingOnPlayerId !== aiPlayerId && snapshot.priorityPlayerId !== aiPlayerId) {
+    return snapshot;
+  }
+  let current = snapshot;
+  const deadline = Date.now() + 60000;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    current = await request(`/games/${encodeURIComponent(current.id)}`);
+    const actionable = current.legalActions?.some((action) => action.type !== "concede") ?? false;
+    if (current.waitingOnPlayerId !== aiPlayerId || current.priorityPlayerId !== aiPlayerId || actionable) {
+      return current;
+    }
+  }
+  throw new Error(
+    `XMage smoke ${label} timed out waiting for AI progress.\n`
+      + smokeDebug(`AI stalled during ${label}`, current)
+  );
+}
+
 async function resolvePromptsUntilAction(snapshot: SmokeSnapshot, type: string | string[]) {
   let current = snapshot;
   const completedPrompts: string[] = [];
@@ -217,7 +245,8 @@ async function resolvePromptsUntilAction(snapshot: SmokeSnapshot, type: string |
     const action = findAction(current, type);
     if (action) return { snapshot: current, action, completed: completedPrompts };
 
-    const promptAction = findAction(current, "play_mana")
+    const promptAction = findAction(current, "make_mana")
+      ?? findAction(current, "play_mana")
       ?? findAction(current, "choose_mana")
       ?? findAction(current, "answer_yes_no")
       ?? findAction(current, "resolve_choice")
@@ -311,13 +340,23 @@ function assertSemanticProgress(previous: SmokeSnapshot, next: SmokeSnapshot, la
     throw new Error(`XMage smoke play land did not increase human battlefield count: ${humanZone(previous, "battlefield").length} -> ${humanZone(next, "battlefield").length}`);
   }
   if (label === "make mana") {
-    throw new Error(`XMage smoke make mana did not increase human mana pool: ${manaTotal(previous)} -> ${manaTotal(next)}`);
+    throw new Error(
+      `XMage smoke make mana did not increase human mana pool: ${manaTotal(previous)} -> ${manaTotal(next)}\n`
+        + smokeDebug("before make_mana", previous)
+        + "\n"
+        + smokeDebug("after make_mana", next)
+    );
   }
   if (label === "cast simple spell") {
     throw new Error("XMage smoke cast simple spell did not change hand, board, graveyard, stack, mana, or prompt state.");
   }
   if (label === "pass priority") {
-    throw new Error("XMage smoke pass priority did not change priority, phase/step, or prompt state.");
+    throw new Error(
+      "XMage smoke pass priority did not change priority, phase/step, prompt state, or visible game zones.\n"
+        + smokeDebug("before pass_priority", previous)
+        + "\n"
+        + smokeDebug("after pass_priority", next)
+    );
   }
 }
 
@@ -341,6 +380,14 @@ function hasSemanticProgress(previous: SmokeSnapshot, next: SmokeSnapshot, label
       || previous.waitingOnPlayerId !== next.waitingOnPlayerId
       || previous.step !== next.step
       || previous.phase !== next.phase
+      || previous.turn !== next.turn
+      || previous.promptText !== next.promptText
+      || humanZone(previous, "hand").length !== humanZone(next, "hand").length
+      || humanZone(previous, "battlefield").length !== humanZone(next, "battlefield").length
+      || humanZone(previous, "graveyard").length !== humanZone(next, "graveyard").length
+      || humanZone(previous, "stack").length !== humanZone(next, "stack").length
+      || manaTotal(previous) !== manaTotal(next)
+      || formatActions(previous) !== formatActions(next)
       || next.promptEnvelopeV2 !== undefined;
   }
   if (label === "resolve prompt") {
@@ -385,6 +432,41 @@ function formatActions(snapshot: SmokeSnapshot) {
   return snapshot.legalActions?.map((action) => `${action.type}:${action.label ?? action.id}`).join(", ") || "none";
 }
 
+function smokeDebug(label: string, snapshot: SmokeSnapshot) {
+  return `${label}: ${JSON.stringify({
+    id: snapshot.id,
+    source: snapshot.source,
+    bridgeRevision: snapshot.bridgeRevision,
+    xmageCycle: snapshot.xmageCycle,
+    pendingStatus: snapshot.pendingStatus,
+    phase: snapshot.phase,
+    step: snapshot.step,
+    turn: snapshot.turn,
+    promptText: snapshot.promptText,
+    priorityPlayerId: snapshot.priorityPlayerId,
+    waitingOnPlayerId: snapshot.waitingOnPlayerId,
+    humanManaPool: humanPlayer(snapshot)?.manaPool ?? {},
+    humanBattlefield: humanZone(snapshot, "battlefield").map((entry) => ({
+      name: entry.card?.name,
+      tapped: entry.tapped,
+      instanceId: entry.instanceId
+    })),
+    humanHand: humanZone(snapshot, "hand").map((entry) => entry.card?.name).slice(0, 10),
+    promptEnvelopeV2: snapshot.promptEnvelopeV2,
+    legalActions: (snapshot.legalActions ?? []).map((action) => ({
+      id: action.id,
+      type: action.type,
+      label: action.label,
+      cardInstanceId: action.cardInstanceId,
+      sourceInstanceId: action.sourceInstanceId,
+      abilityId: action.abilityId,
+      manaType: action.manaType,
+      responseKind: action.responseKind,
+      commandTemplate: action.commandTemplate
+    })).slice(0, 16)
+  }, null, 2)}`;
+}
+
 type SmokeSnapshot = {
   id: string;
   source?: string;
@@ -394,6 +476,7 @@ type SmokeSnapshot = {
   step?: string;
   turn?: number;
   promptText?: string;
+  pendingStatus?: string;
   priorityPlayerId?: string;
   waitingOnPlayerId?: string;
   promptEnvelopeV2?: { method?: string; responseKind?: string; responseCommand?: { type?: string } };
@@ -405,7 +488,7 @@ type SmokePlayer = {
   playerId: string;
   life?: number;
   manaPool?: Record<string, number>;
-  zones?: Record<string, Array<{ card?: { name?: string } }>>;
+  zones?: Record<string, Array<{ card?: { name?: string }; tapped?: boolean; instanceId?: string }>>;
 };
 
 type SmokeAction = {

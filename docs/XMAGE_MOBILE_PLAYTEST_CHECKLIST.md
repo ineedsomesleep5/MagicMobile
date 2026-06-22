@@ -32,6 +32,81 @@ Expected result: health reports `ready`, the smoke output includes a game id, so
 
 If the live smoke fails, capture the exact failing step instead of treating simulator success as product success. Current high-value failures are usually in pass priority, AI waiting, stale prompt answers, or a missing legal action after XMage changes state.
 
+## Latest Verified Local Smoke
+
+Verified on June 22, 2026 against the local Docker gateway at `http://localhost:17171`.
+
+Commands run:
+
+```sh
+docker compose config --quiet
+pnpm install
+pnpm lint
+pnpm test
+pnpm build
+docker build -t magicmobile-xmage-bridge-check apps/xmage-gateway/bridge
+docker compose up -d --build xmage-bridge
+XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage
+```
+
+`pnpm dev:xmage` was not run as a foreground long-running command during this verification. The real Docker services were already running, the bridge container was rebuilt, and the smoke test used the live gateway/Java bridge path.
+
+Current bridge health during smoke:
+
+```json
+{
+  "status": "ready",
+  "reason": "XMage Java bridge connected to 127.0.0.1:17171.",
+  "recoveryAction": "wait"
+}
+```
+
+Smoke result: passed.
+
+Final smoke output:
+
+- `gameId`: `3afa3067-92ee-4383-a866-c0819dc4eab4`
+- `source`: `xmage-java-bridge`
+- `bridgeRevision`: `40`
+- `xmageCycle`: `65`
+- `phase` / `step`: `precombat-main`
+- `turn`: `2`
+- `promptText`: `Your priority`
+- `promptChecks`: `GAME_PLAY_MANA:mana`
+
+Confirmed live steps across the local verification run:
+
+- created a real Commander game with `source: "xmage-java-bridge"`
+- received numeric `bridgeRevision`
+- received `xmageCycle`
+- kept opening hand
+- played a land
+- made mana from a real battlefield source
+- passed through AI turns until a castable spell appeared
+- answered a real mana-payment prompt through `PromptEnvelopeV2`
+- cast a simple spell
+- passed priority
+- ended in a real XMage priority state instead of mock/simulator state
+
+Other successful smoke runs during this pass also exercised a starting-player prompt and a confirmation prompt, but those prompts are not guaranteed to appear on every randomized table/start sequence.
+
+Failures fixed during this verification:
+
+- `make_mana` advanced the revision but did not add mana because the bridge sent the mana ability UUID where XMage expected the source permanent UUID for normal card clicks.
+- command responses that advanced only `xmageCycle` were incorrectly returned as pending, leaving clients with only `concede` legal actions.
+- mana-payment prompts exposed only generic `play_mana` choices and did not expose real untapped battlefield mana sources.
+- the smoke helper was pre-tapping lands while searching for a cast action, which could hide the real castable spell state.
+
+Remaining live-coverage gaps:
+
+- commander tax is still not fully mapped from real XMage data.
+- commander damage is still not fully mapped from real XMage data.
+- commander replacement prompts still need a targeted live death/exile test.
+- declare attackers/blockers still need live pair-payload verification.
+- damage assignment remains unverified.
+- player-scoped snapshots are still required before human-vs-human or pods.
+- several prompt families are modeled but not yet proven by live smoke fixtures: search/select, order triggers/items, choose pile, multi-amount, mode/ability selection with multiple choices, and combat-specific choices.
+
 ## Web Play Loop
 
 - [ ] Open `http://localhost:3000/play`.

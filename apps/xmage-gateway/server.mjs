@@ -90,12 +90,12 @@ export function createGatewayHandler(state = games, options = {}) {
           if (bridgeClient && isBridgeSnapshot(snapshot)) {
             const nextSnapshot = await bridgeClient.submitCommand(gameId, command);
             lastAiProgressAt = Date.now();
-            storeSnapshot(state, nextSnapshot.id, nextSnapshot, { broadcast: true });
-            return sendJson(response, nextSnapshot);
+            const storedSnapshot = storeSnapshot(state, nextSnapshot.id, nextSnapshot, { broadcast: true });
+            return sendJson(response, storedSnapshot);
           }
           const nextSnapshot = applyCommand(snapshot, command);
-          storeSnapshot(state, nextSnapshot.id, nextSnapshot, { broadcast: true });
-          return sendJson(response, nextSnapshot);
+          const storedSnapshot = storeSnapshot(state, nextSnapshot.id, nextSnapshot, { broadcast: true });
+          return sendJson(response, storedSnapshot);
         }
 
         if (method === "POST" && action === "decks") {
@@ -780,11 +780,23 @@ export function storeSnapshot(state, gameId, nextSnapshot, options = {}) {
   if (!shouldAcceptSnapshot(currentSnapshot, nextSnapshot)) {
     return currentSnapshot;
   }
-  state.set(gameId, nextSnapshot);
+  const storedSnapshot = sanitizePendingSnapshot(nextSnapshot);
+  state.set(gameId, storedSnapshot);
   if (options.broadcast) {
-    broadcastSnapshot(gameId, nextSnapshot);
+    broadcastSnapshot(gameId, storedSnapshot);
   }
-  return nextSnapshot;
+  return storedSnapshot;
+}
+
+function sanitizePendingSnapshot(snapshot) {
+  if (!snapshot?.pendingStatus) {
+    return snapshot;
+  }
+  const legalActions = Array.isArray(snapshot.legalActions) ? snapshot.legalActions : [];
+  return {
+    ...snapshot,
+    legalActions: legalActions.filter((action) => action?.type === "concede")
+  };
 }
 
 export function protocolDebug(snapshot) {

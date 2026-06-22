@@ -316,7 +316,16 @@ describe("xmage gateway", () => {
       bridgeClient: {
         submitCommand: async (_gameId, command) => {
           forwardedCommand = command;
-          return { ...snapshot, bridgeRevision: 5, pendingStatus: "waiting_for_xmage" };
+          return {
+            ...snapshot,
+            bridgeRevision: 5,
+            pendingStatus: "waiting_for_xmage",
+            legalActions: [
+              { id: "stale-pass", type: "pass_priority", playerId: "human", label: "Done" },
+              { id: "stale-cast", type: "cast_spell", playerId: "human", label: "Cast spell" },
+              { id: "safe-concede", type: "concede", playerId: "human", label: "Concede" }
+            ]
+          };
         }
       }
     });
@@ -341,7 +350,10 @@ describe("xmage gateway", () => {
     assert.equal(response.status, 200);
     assert.deepEqual(forwardedCommand, command);
     assert.equal(state.get(snapshot.id).bridgeRevision, 5);
-    assert.equal(JSON.parse(response.body).pendingStatus, "waiting_for_xmage");
+    const body = JSON.parse(response.body);
+    assert.equal(body.pendingStatus, "waiting_for_xmage");
+    assert.deepEqual(body.legalActions.map((action) => action.type), ["concede"]);
+    assert.deepEqual(state.get(snapshot.id).legalActions.map((action) => action.type), ["concede"]);
   });
 
   it("forwards a bridge smoke loop and stores revised XMage snapshots", async () => {
@@ -527,8 +539,17 @@ describe("xmage gateway", () => {
     assert.match(bridgeSource, /prompt\.add\("orderedItems"/);
     assert.match(bridgeSource, /prompt\.add\("players"/);
     assert.match(bridgeSource, /expectedBridgeRevision/);
+    assert.match(bridgeSource, /pendingLegalActions/);
+    assert.match(bridgeSource, /pendingStatus == null \? legalActions\(record, view, playerIds\) : pendingLegalActions\(record\)/);
+    assert.match(bridgeSource, /isManaPaymentPrompt\(record\)/);
+    assert.match(bridgeSource, /addPlayableObjectActions\(actions, humanId, view, true\)/);
+    assert.match(bridgeSource, /String type = manaOnly \? "make_mana" : actionType\(card, handIds\.contains\(objectId\)\)/);
+    assert.match(bridgeSource, /yesCommand\.addProperty\("pay", true\)/);
+    assert.match(bridgeSource, /noCommand\.addProperty\("pay", false\)/);
     assert.match(bridgeSource, /Action was based on stale XMage snapshot revision/);
-    assert.match(bridgeSource, /"make_mana"\.equals\(type\)\) \{\s*session\.sendPlayerUUID\(xmageGameId, playableCommandUuid\(gameId, command\)\);/);
+    assert.match(bridgeSource, /int startCycle = record == null \? -1 : record\.latestCycle;/);
+    assert.match(bridgeSource, /record\.bridgeRevision\.get\(\) > startRevision \|\| record\.latestCycle > startCycle/);
+    assert.match(bridgeSource, /"make_mana"\.equals\(type\)\) \{\s*UUID sourceUuid = playableSourceUuid\(gameId, command\);\s*playableCommandUuid\(gameId, command\);\s*session\.sendPlayerUUID\(xmageGameId, sourceUuid\);/);
     assert.doesNotMatch(bridgeSource, /sendFirstUuid/);
     assert.doesNotMatch(bridgeSource, /sendFirstStringOrUuid/);
     assert.equal(bridgeSource.includes('session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "useCommandZone", true));'), false);

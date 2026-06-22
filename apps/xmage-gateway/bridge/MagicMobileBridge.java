@@ -257,6 +257,7 @@ public final class MagicMobileBridge implements MageClient {
         String type = string(command, "type", "");
         GameRecord record = games.get(gameId);
         long startRevision = record == null ? -1 : record.bridgeRevision.get();
+        int startCycle = record == null ? -1 : record.latestCycle;
         long expectedRevision = longInteger(command, "expectedBridgeRevision", -1L);
         if (expectedRevision >= 0 && startRevision > expectedRevision) {
             throw new ActionNoLongerLegalException(gameId, "Action was based on stale XMage snapshot revision " + expectedRevision + "; current revision is " + startRevision);
@@ -270,7 +271,9 @@ public final class MagicMobileBridge implements MageClient {
         } else if ("activate_ability".equals(type)) {
             session.sendPlayerUUID(xmageGameId, playableCommandUuid(gameId, command));
         } else if ("make_mana".equals(type)) {
-            session.sendPlayerUUID(xmageGameId, playableCommandUuid(gameId, command));
+            UUID sourceUuid = playableSourceUuid(gameId, command);
+            playableCommandUuid(gameId, command);
+            session.sendPlayerUUID(xmageGameId, sourceUuid);
         } else if ("pass_priority".equals(type)) {
             session.sendPlayerBoolean(xmageGameId, false);
         } else if ("keep_hand".equals(type)) {
@@ -358,7 +361,7 @@ public final class MagicMobileBridge implements MageClient {
         if (record != null) {
             record.lastProgressAt = System.currentTimeMillis();
         }
-        return waitForUpdatedSnapshot(gameId, type, startRevision);
+        return waitForUpdatedSnapshot(gameId, type, startRevision, startCycle);
     }
 
     private UUID playableSourceUuid(String gameId, JsonObject command) {
@@ -730,13 +733,15 @@ public final class MagicMobileBridge implements MageClient {
         session.sendPlayerBoolean(xmageGameId, true);
     }
 
-    private JsonObject waitForUpdatedSnapshot(String gameId, String commandType, long startRevision) throws InterruptedException {
+    private JsonObject waitForUpdatedSnapshot(String gameId, String commandType, long startRevision, int startCycle) throws InterruptedException {
         GameRecord record;
         long waitMs = isDirectCommand(commandType) ? 1500 : 6000;
         long deadline = System.currentTimeMillis() + waitMs;
         while (System.currentTimeMillis() < deadline) {
             record = games.get(gameId);
-            if (record != null && record.latestView != null && record.bridgeRevision.get() > startRevision) {
+            if (record != null
+                    && record.latestView != null
+                    && (record.bridgeRevision.get() > startRevision || record.latestCycle > startCycle)) {
                 return snapshot(gameId);
             }
             Thread.sleep(200);
@@ -797,7 +802,7 @@ public final class MagicMobileBridge implements MageClient {
         snapshot.addProperty("promptText", promptText(record, view));
         snapshot.add("players", players(record, view, playerIds));
         snapshot.add("log", log(record, view));
-        snapshot.add("legalActions", legalActions(record, view, playerIds));
+        snapshot.add("legalActions", pendingStatus == null ? legalActions(record, view, playerIds) : pendingLegalActions(record));
         snapshot.add("engineHealth", health());
         if (record.choicePrompt != null) {
             snapshot.add("choicePrompt", record.choicePrompt);
@@ -816,6 +821,12 @@ public final class MagicMobileBridge implements MageClient {
             return new JsonArray();
         }
         return legalActions(record, record.latestView, externalPlayerIds(record, record.latestView));
+    }
+
+    private JsonArray pendingLegalActions(GameRecord record) {
+        JsonArray actions = new JsonArray();
+        actions.add(action("xmage-concede", "concede", record.humanExternalId, "Concede", null, null, null));
+        return actions;
     }
 
     private JsonArray legalActions(GameRecord record, GameView view, Map<UUID, String> playerIds) {
@@ -839,6 +850,9 @@ public final class MagicMobileBridge implements MageClient {
                 if (choiceId.isEmpty()) continue;
                 actions.add(choiceAction(record, choiceId, choiceActionType, humanId, labelForChoice(record, playerIds, choiceId)));
             }
+            if (isManaPaymentPrompt(record)) {
+                addPlayableObjectActions(actions, humanId, view, true);
+            }
             actions.add(action("xmage-concede", "concede", humanId, "Concede", null, null, null));
             return actions;
         }
@@ -851,9 +865,15 @@ public final class MagicMobileBridge implements MageClient {
         }
         actions.add(action("xmage-concede", "concede", humanId, "Concede", null, null, null));
 
+        addPlayableObjectActions(actions, humanId, view, false);
+
+        return actions;
+    }
+
+    private void addPlayableObjectActions(JsonArray actions, String humanId, GameView view, boolean manaOnly) {
         PlayableObjectsList playable = view.getCanPlayObjects();
         if (playable == null || playable.isEmpty()) {
-            return actions;
+            return;
         }
 
         Set<UUID> handIds = new HashSet<>(view.getMyHand().keySet());
@@ -863,8 +883,11 @@ public final class MagicMobileBridge implements MageClient {
             if (card == null) {
                 continue;
             }
+            if (manaOnly && handIds.contains(objectId)) {
+                continue;
+            }
             List<UUID> abilityIds = entry.getValue().getPlayableAbilityIds();
-            String type = actionType(card, handIds.contains(objectId));
+            String type = manaOnly ? "make_mana" : actionType(card, handIds.contains(objectId));
             String sourceZone = handIds.contains(objectId) ? "hand" : card.isLand() ? "battlefield" : "battlefield";
             if (abilityIds.isEmpty()) {
                 actions.add(action(
@@ -891,8 +914,18 @@ public final class MagicMobileBridge implements MageClient {
                 }
             }
         }
+    }
 
-        return actions;
+    private boolean isManaPaymentPrompt(GameRecord record) {
+        if (record.promptEnvelope == null) {
+            return false;
+        }
+        String responseKind = string(record.promptEnvelope, "responseKind", "");
+        String method = string(record.promptEnvelope, "method", "");
+        return "mana".equals(responseKind)
+                || "x_mana".equals(responseKind)
+                || "GAME_PLAY_MANA".equals(method)
+                || "GAME_PLAY_XMANA".equals(method);
     }
 
     private JsonObject action(String id, String type, String playerId, String label, String cardInstanceId, String sourceZone, String abilityId) {

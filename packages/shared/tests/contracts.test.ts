@@ -189,8 +189,8 @@ describe("shared contracts", () => {
       confirmation: {
         yesLabel: "Yes",
         noLabel: "No",
-        yesCommand: { type: "answer_yes_no", promptId: "prompt-1", confirmed: true },
-        noCommand: { type: "answer_yes_no", promptId: "prompt-1", confirmed: false }
+        yesCommand: { type: "pay_cost", promptId: "prompt-1", confirmed: true, pay: true },
+        noCommand: { type: "pay_cost", promptId: "prompt-1", confirmed: false, pay: false }
       }
     };
 
@@ -226,6 +226,8 @@ describe("shared contracts", () => {
 
     expect(prompt.players?.[0]?.playerId).toBe("player-2");
     expect(legalAction.commandTemplate?.type).toBe("choose_mana");
+    expect(prompt.confirmation?.yesCommand?.pay).toBe(true);
+    expect(prompt.confirmation?.noCommand?.pay).toBe(false);
     expect(command.confirmed).toBe(true);
     expect(payCommand.pay).toBe(false);
   });
