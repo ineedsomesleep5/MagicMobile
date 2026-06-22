@@ -528,6 +528,7 @@ describe("xmage gateway", () => {
     assert.match(bridgeSource, /prompt\.add\("players"/);
     assert.match(bridgeSource, /expectedBridgeRevision/);
     assert.match(bridgeSource, /Action was based on stale XMage snapshot revision/);
+    assert.match(bridgeSource, /"make_mana"\.equals\(type\)\) \{\s*session\.sendPlayerUUID\(xmageGameId, playableCommandUuid\(gameId, command\)\);/);
     assert.doesNotMatch(bridgeSource, /sendFirstUuid/);
     assert.doesNotMatch(bridgeSource, /sendFirstStringOrUuid/);
     assert.equal(bridgeSource.includes('session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "useCommandZone", true));'), false);

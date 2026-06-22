@@ -270,7 +270,7 @@ public final class MagicMobileBridge implements MageClient {
         } else if ("activate_ability".equals(type)) {
             session.sendPlayerUUID(xmageGameId, playableCommandUuid(gameId, command));
         } else if ("make_mana".equals(type)) {
-            session.sendPlayerUUID(xmageGameId, playableSourceUuid(gameId, command));
+            session.sendPlayerUUID(xmageGameId, playableCommandUuid(gameId, command));
         } else if ("pass_priority".equals(type)) {
             session.sendPlayerBoolean(xmageGameId, false);
         } else if ("keep_hand".equals(type)) {

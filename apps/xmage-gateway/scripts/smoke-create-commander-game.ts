@@ -25,6 +25,7 @@ const created = await request("/games/commander", {
 });
 
 let snapshot = created;
+assertBridgeSnapshot(snapshot, "created game");
 const steps: Array<{ label: string; type: string | string[]; optional?: boolean }> = [
   { label: "choose starting player", type: ["resolve_choice", "choose_target"], optional: true },
   { label: "keep hand", type: "keep_hand" },
@@ -68,6 +69,7 @@ for (const step of steps) {
     method: "POST",
     body: commandFromAction(snapshot.id, action)
   });
+  assertBridgeSnapshot(snapshot, step.label);
   assertBridgeProgress(previous, snapshot, step.label);
   snapshot = await waitForSemanticProgress(previous, snapshot, step.label);
   assertSemanticProgress(previous, snapshot, step.label);
@@ -87,6 +89,7 @@ for (const step of steps) {
 }
 
 const refreshed = await request(`/games/${encodeURIComponent(snapshot.id)}`);
+assertBridgeSnapshot(refreshed, "refresh snapshot");
 assertBridgeProgress(snapshot, refreshed, "refresh snapshot", { allowEqual: true });
 
 console.log(JSON.stringify({
@@ -288,6 +291,15 @@ function assertBridgeProgress(
         + `${previous.bridgeRevision ?? "n/a"} -> ${next.bridgeRevision ?? "n/a"}, `
         + `${previous.xmageCycle ?? "n/a"} -> ${next.xmageCycle ?? "n/a"}`
     );
+  }
+}
+
+function assertBridgeSnapshot(snapshot: SmokeSnapshot, label: string) {
+  if (snapshot.source !== "xmage-java-bridge") {
+    throw new Error(`XMage smoke ${label} did not return a Java bridge snapshot. Source: ${snapshot.source ?? "missing"}`);
+  }
+  if (typeof snapshot.bridgeRevision !== "number") {
+    throw new Error(`XMage smoke ${label} did not include numeric bridgeRevision.`);
   }
 }
 
