@@ -47,6 +47,10 @@ struct ContentView: View {
                     pendingActionId: pendingActionId,
                     pendingCardInstanceId: pendingCardInstanceId,
                     liveUpdateStatus: liveUpdateStatus,
+                    onInteractionFeedback: { message in
+                        status = message
+                        liveUpdateStatus = message
+                    },
                     runAction: { action in Task { await run(action: action) } },
                     runCommand: { command, label, pendingId in Task { await run(command: command, label: label, pendingId: pendingId) } },
                     newGame: { screen = .setup }
@@ -956,6 +960,7 @@ struct ImmersivePlayShell: View {
     let pendingActionId: String?
     let pendingCardInstanceId: String?
     let liveUpdateStatus: String
+    let onInteractionFeedback: (String) -> Void
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
     let newGame: () -> Void
@@ -970,6 +975,7 @@ struct ImmersivePlayShell: View {
             pendingActionId: pendingActionId,
             pendingCardInstanceId: pendingCardInstanceId,
             liveUpdateStatus: liveUpdateStatus,
+            onInteractionFeedback: onInteractionFeedback,
             runAction: runAction,
             runCommand: runCommand,
             newGame: newGame
@@ -986,6 +992,7 @@ struct NativeGameView: View {
     let pendingActionId: String?
     let pendingCardInstanceId: String?
     let liveUpdateStatus: String
+    let onInteractionFeedback: (String) -> Void
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
     let newGame: () -> Void
@@ -1056,6 +1063,7 @@ struct NativeGameView: View {
                         pendingCardInstanceId: pendingCardInstanceId,
                         metrics: metrics,
                         isOverPlayerDropZone: $isOverPlayerDropZone,
+                        onDropFeedback: onInteractionFeedback,
                         runAction: runAction
                     )
                         .frame(width: metrics.playWidth, height: metrics.handFrameHeight)
@@ -2957,6 +2965,7 @@ struct HandFan: View {
     let pendingCardInstanceId: String?
     let metrics: BattlefieldLayoutMetrics
     @Binding var isOverPlayerDropZone: Bool
+    let onDropFeedback: (String) -> Void
     let runAction: (LegalAction) -> Void
     @State private var draggingCardId: String?
     @State private var dragOffset: CGSize = .zero
@@ -3016,7 +3025,14 @@ struct HandFan: View {
                     isOverPlayerDropZone = false
                     guard shouldPlay else { return }
                     let playableActions = legalHandActions(for: card)
-                    guard playableActions.count == 1, let action = playableActions.first else { return }
+                    guard playableActions.count == 1, let action = playableActions.first else {
+                        if playableActions.isEmpty {
+                            onDropFeedback("\(card.card.name) is not currently playable")
+                        } else {
+                            onDropFeedback("Choose how to play \(card.card.name)")
+                        }
+                        return
+                    }
                     runAction(action)
                 }
         )
