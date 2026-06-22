@@ -28,4 +28,14 @@ This matrix maps each MagicMobile/XMage prompt family to its implementation, uni
 
 1. **Unit Tests**: Mapped inside `apps/web/src/app/play/GameController.test.ts` and `apps/xmage-gateway/server.test.mjs`.
 2. **Bridge Source Tests**: Bridge constraints on command mapping are asserted inside `apps/xmage-gateway/server.test.mjs`.
-3. **Live Smoke Tests**: Verified in `pnpm smoke:xmage` against the live rules engine stack.
+3. **Live Smoke Tests**: Verified only when the real Java bridge path passes. Simulator or mock success does not count.
+
+Latest real bridge evidence from June 22, 2026:
+
+```bash
+XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage
+XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=combat pnpm smoke:xmage
+XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-state pnpm smoke:xmage
+```
+
+The broad smoke reached turn 9 on source `xmage-java-bridge` and exercised keep, land play, mana, spell casting, pay-mana prompts, pass priority, and typed blockers. The `combat` fixture exposed and submitted typed `declare_attackers`. The `commander-state` fixture proved commander tax and commander damage through XMage snapshots.

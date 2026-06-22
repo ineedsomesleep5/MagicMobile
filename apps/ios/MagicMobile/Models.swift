@@ -201,6 +201,8 @@ struct LegalAction: Decodable, Identifiable {
     let label: String
     let promptId: String?
     let cardInstanceId: String?
+    let cardName: String?
+    let manaCost: String?
     let sourceZone: String?
     let sourceInstanceId: String?
     let abilityId: String?
@@ -222,6 +224,8 @@ struct LegalAction: Decodable, Identifiable {
     let pay: Bool?
     let isPrimary: Bool?
     let requiresTarget: Bool?
+    let requiresPayment: Bool?
+    let producedMana: [String]?
     let responseKind: String?
     let messageId: Int?
     let minChoices: Int?
@@ -606,4 +610,3 @@ extension ZoneCard {
         card.isCreature
     }
 }
-

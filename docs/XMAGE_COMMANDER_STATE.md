@@ -12,10 +12,20 @@ The server method `addCardInfoToCommander` gets the plays count from the server'
 The Java bridge (`MagicMobileBridge.java`) scans the rules list of the commander cards (located in the command zone, battlefield, graveyard, or exile) and cleans the HTML markup to match:
 `"played from the command zone"`
 
-The bridge extracts the plays count integer from this string and calculates:
+The bridge extracts the plays count integer from this string, including the observed XMage form
+`"Commander 1 time played from the command zone."`, and calculates:
 $$\text{Commander Tax} = \text{Plays Count} \times 2$$
 
 This is mapped directly to the `commanderTax` property on each `PlayerGameState` object.
+
+Live verification: on June 22, 2026, the real bridge smoke
+`XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-state pnpm smoke:xmage`
+cast `Isamaru, Hound of Konda` from the command zone and reported:
+```json
+"commanderTaxChanges": [
+  { "playerId": "human", "tax": 2, "turn": 2 }
+]
+```
 
 ## Commander Damage Matrix
 
@@ -32,6 +42,13 @@ It extracts the damage total and resolves the recipient player's name back to th
   "ai-1": 6,
   "human": 0
 }
+```
+
+Live verification: the same real `commander-state` smoke attacked with Isamaru, reached combat damage, dropped the AI life total to 38, and reported:
+```json
+"commanderDamageChanges": [
+  { "recipient": "ai-1", "attacker": "human", "damage": 2, "turn": 4 }
+]
 ```
 
 ## Command Zone UI Representation

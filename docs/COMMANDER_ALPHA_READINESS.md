@@ -120,3 +120,4 @@ pnpm smoke:xmage
 1. **Viewer-scoped Snapshots**: Multiplayer human pods need snapshot filtering so opponents cannot inspect other players' libraries or hands.
 2. **Advanced UI Prompts**: Render and handle reordering triggers/items and declaring attackers/blockers directly in UI components.
 3. **Card Art fallback**: Handle missing image urls smoothly without throwing render errors.
+4. **Casting/payment manual QA**: The live smoke proves land, mana, spell, and prompt flow, but iPhone/web still need manual regression coverage for the two-lands-into-`Arcane Signet` case documented in [CASTING_AND_MANA_FLOW.md](file:///Users/calebfeliciano/Documents/MagicMobile/docs/CASTING_AND_MANA_FLOW.md).

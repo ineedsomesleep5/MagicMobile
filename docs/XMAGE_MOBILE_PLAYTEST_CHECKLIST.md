@@ -26,6 +26,8 @@ Use this checklist when validating the XMage-backed Commander play loop from Doc
 
   ```sh
   XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage
+  XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=combat pnpm smoke:xmage
+  XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-state pnpm smoke:xmage
   ```
 
 Expected result: health reports `ready`, the smoke output includes a game id, source, completed play-loop steps, and advancing `bridgeRevision` / `xmageCycle` when the Java bridge is active.
@@ -40,16 +42,16 @@ Commands run:
 
 ```sh
 docker compose config --quiet
-pnpm install
-pnpm lint
-pnpm test
-pnpm build
 docker build -t magicmobile-xmage-bridge-check apps/xmage-gateway/bridge
-docker compose up -d --build xmage-bridge
+pnpm --filter @magicmobile/xmage-gateway test
+pnpm typecheck
+docker compose up -d --build xmage-bridge xmage-gateway
 XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage
+XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=combat pnpm smoke:xmage
+XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-state pnpm smoke:xmage
 ```
 
-The Docker services were running, the bridge container was rebuilt, and the smoke test used the live gateway/Java bridge path.
+The Docker services were running, the bridge container was rebuilt, the gateway was restarted to pick up local source changes, and the smoke test used the live gateway/Java bridge path.
 
 Current bridge health during smoke:
 
@@ -63,16 +65,21 @@ Current bridge health during smoke:
 
 Smoke result: passed.
 
-Final smoke output:
+Final broad smoke output:
 
-- `gameId`: `83a5423f-2db9-4c3f-9d5e-0c28492d4562`
+- `gameId`: `a99ba08e-f04f-41d7-bd9b-ac3e451c51f0`
 - `source`: `xmage-java-bridge`
-- `bridgeRevision`: `77`
-- `xmageCycle`: `139`
+- `bridgeRevision`: `242`
+- `xmageCycle`: `414`
 - `phase` / `step`: `precombat-main`
-- `turn`: `4`
-- `promptText`: `Your priority`
-- `promptChecks`: `GAME_PLAY_MANA:mana`
+- `turn`: `9`
+- `promptText`: `Waiting for AI`
+- `promptChecks`: `GAME_TARGET:target`, `GAME_ASK:confirmation`, `GAME_PLAY_MANA:mana`
+
+Targeted fixture smoke outputs:
+
+- `XMAGE_SMOKE_SCENARIO=combat`: passed with `combatExercised: true` after submitting `declare_attackers: Attack Noaddrag with Isamaru, Hound of Konda`.
+- `XMAGE_SMOKE_SCENARIO=commander-state`: passed with `combatExercised: true`, `commanderTaxChanges: [{ "playerId": "human", "tax": 2, "turn": 2 }]`, `commanderDamageChanges: [{ "recipient": "ai-1", "attacker": "human", "damage": 2, "turn": 4 }]`, and AI life at `38`.
 
 Confirmed live steps across the local verification run:
 
@@ -84,7 +91,12 @@ Confirmed live steps across the local verification run:
 - made mana from a real battlefield source
 - passed through AI turns until a castable spell appeared
 - answered a real mana-payment prompt through `PromptEnvelopeV2`
-- cast a simple spell
+- cast multiple simple spells
+- answered a real target prompt with a named card choice
+- submitted typed combat pair payloads for real blockers in the broad smoke
+- submitted a typed attacker-to-defender payload in the deterministic combat fixture
+- verified commander tax from XMage command-card rules text
+- verified commander damage from XMage command-card rules text and a changed life total
 - passed priority
 - ended in a real XMage priority state instead of mock/simulator state
 
@@ -95,10 +107,14 @@ Failures fixed during this verification:
 - mana-payment prompts exposed only generic `play_mana` choices and did not expose real untapped battlefield mana sources.
 - the smoke helper was pre-tapping lands while searching for a cast action, which could hide the real castable spell state.
 - commander tax and damage parsed directly from rules text in the bridge.
+- prompt choice legal actions used raw UUID labels for library/search-style prompts, which made the smoke runner pick an invalid nonland for `Select a basic land card`.
+- `PermanentView.isCanAttack()` / `isCanBlock()` was too conservative for the client view, so combat legal actions now use the current XMage combat step plus visible untapped creatures and still let XMage validate the submitted UUIDs.
+- the smoke runner now treats recovered stale-action `409`s as a refresh-and-retry path rather than counting them as semantic progress.
 
 Remaining live-coverage gaps:
 
 - player-scoped snapshots are still required before human-vs-human or pods.
+- damage assignment prompts have not been live-fixtured yet because the current Commander fixture does not produce a manual damage-assignment prompt.
 
 ## Web Play Loop
 
@@ -120,6 +136,17 @@ Remaining live-coverage gaps:
 - [ ] Confirm AI turns show AI waiting/thinking rather than a dead screen.
 - [ ] Confirm missing card art renders a placeholder and does not block gameplay.
 
+### Casting And Mana Payment Regression
+
+- [ ] Reach a state with at least two untapped mana sources on your battlefield and `Arcane Signet` or another two-mana spell in hand.
+- [ ] Select the hand card and confirm the context panel shows a primary `Cast` action.
+- [ ] Run the cast action without manually pre-tapping lands.
+- [ ] If XMage asks for mana/payment, confirm the prompt panel shows `Available Mana Sources` before generic mana buttons.
+- [ ] Tap exposed mana-source actions only from XMage legal actions.
+- [ ] Confirm floating mana/prompt state updates from the next authoritative snapshot.
+- [ ] Confirm the card moves to stack/battlefield/graveyard only after XMage returns that state.
+- [ ] Select a non-castable hand card and confirm the UI explains that XMage did not expose a cast/play action instead of silently doing nothing.
+
 ## iPhone Play Loop
 
 - [ ] Put the iPhone and development machine on the same network.
@@ -139,6 +166,16 @@ Remaining live-coverage gaps:
 - [ ] Confirm the stack, command zone, graveyard, exile, life total, poison, commander tax, commander damage, phase/step, active player, priority player, pending status, legal action count, and game log are reachable.
 - [ ] Confirm manual reconnect/refresh recovers after a network interruption without duplicate command submission.
 - [ ] If the UI appears frozen, compare the visible state to `GET /games/{gameId}/debug` and verify whether `bridgeRevision` or `xmageCycle` is still advancing.
+
+### iPhone Arcane Signet / Two Lands Regression
+
+- [ ] With two untapped lands on the battlefield, tap `Arcane Signet` in hand.
+- [ ] Confirm tapping selects the card and shows a selected-card action section; it must not open the inspector unless long-pressed.
+- [ ] Confirm `Cast Arcane Signet` or a clear cast/play chooser appears when XMage exposes the action.
+- [ ] Dragging the card to the battlefield may be used as a shortcut, but the visible button must also work.
+- [ ] After casting, confirm any payment prompt shows source-based `Tap [land/artifact]` buttons.
+- [ ] Confirm every source button uses a real `make_mana` legal action and shows produced mana hints when available.
+- [ ] Confirm rejected or stale actions refresh from XMage and show a visible message instead of leaving the card half-played.
 
 ## Commander Deck Flow
 

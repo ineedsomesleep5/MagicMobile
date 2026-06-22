@@ -200,7 +200,11 @@ describe("shared contracts", () => {
       playerId: "player-1",
       label: "Choose mana",
       promptId: "prompt-1",
+      cardName: "Forest",
+      manaCost: "{G}",
       manaType: "G",
+      requiresPayment: true,
+      producedMana: ["G"],
       minChoices: 1,
       maxChoices: 1,
       required: true,
@@ -226,6 +230,9 @@ describe("shared contracts", () => {
 
     expect(prompt.players?.[0]?.playerId).toBe("player-2");
     expect(legalAction.commandTemplate?.type).toBe("choose_mana");
+    expect(legalAction.cardName).toBe("Forest");
+    expect(legalAction.producedMana).toEqual(["G"]);
+    expect(legalAction.requiresPayment).toBe(true);
     expect(prompt.confirmation?.yesCommand?.pay).toBe(true);
     expect(prompt.confirmation?.noCommand?.pay).toBe(false);
     expect(command.confirmed).toBe(true);

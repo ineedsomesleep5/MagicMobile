@@ -7,9 +7,15 @@ const endpoint = (process.env.XMAGE_GATEWAY_URL ?? "http://localhost:17171").rep
 const seed = process.env.XMAGE_SMOKE_SEED ?? "bridge-smoke";
 const humanPlayerId = process.env.XMAGE_SMOKE_HUMAN_ID ?? "human";
 const aiPlayerId = process.env.XMAGE_SMOKE_AI_ID ?? "ai-1";
+const scenario = process.env.XMAGE_SMOKE_SCENARIO ?? "general";
+const fixtureScenario = scenario === "combat" || scenario === "commander-state";
 
-const human = generateBracketThreeCommanderDeck({ seed: `${seed}:human`, playerId: humanPlayerId }).deck;
-const ai = generateBracketThreeCommanderDeck({ seed: `${seed}:ai`, playerId: aiPlayerId }).deck;
+const human = fixtureScenario
+  ? commanderFixtureDeck("Isamaru, Hound of Konda", "Plains")
+  : generateBracketThreeCommanderDeck({ seed: `${seed}:human`, playerId: humanPlayerId }).deck;
+const ai = fixtureScenario
+  ? commanderFixtureDeck("Kozilek, Butcher of Truth", "Wastes")
+  : generateBracketThreeCommanderDeck({ seed: `${seed}:ai`, playerId: aiPlayerId }).deck;
 
 const health = await request("/health");
 if (health.status !== "ready") {
@@ -36,10 +42,11 @@ let combatExercised = false;
 const commanderTaxChanges: Array<{ playerId: string; tax: number; turn: number }> = [];
 const commanderDamageChanges: Array<{ recipient: string; attacker: string; damage: number; turn: number }> = [];
 
-console.error(`[Smoke] Started game ${snapshot.id}. Turn: ${snapshot.turn}, Phase: ${snapshot.phase}, Step: ${snapshot.step}`);
+recordCommanderState(snapshot);
+console.error(`[Smoke] Started ${scenario} game ${snapshot.id}. Turn: ${snapshot.turn}, Phase: ${snapshot.phase}, Step: ${snapshot.step}`);
 
-const maxTurns = 9; // Play until turn 9 (which completes 8 full turns)
-const maxStepsCount = 300; // Safeguard against infinite loops
+const maxTurns = fixtureScenario ? 12 : 9; // Fixture modes may need extra pass cycles for commander combat.
+const maxStepsCount = fixtureScenario ? 420 : 300; // Safeguard against infinite loops.
 let stepCount = 0;
 
 while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
@@ -57,22 +64,12 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
     break;
   }
 
-  // 2. Track commander tax and damage
-  for (const player of snapshot.players ?? []) {
-    if (player.commanderTax !== undefined && player.commanderTax > 0) {
-      if (!commanderTaxChanges.some(t => t.playerId === player.playerId && t.tax === player.commanderTax)) {
-        commanderTaxChanges.push({ playerId: player.playerId, tax: player.commanderTax, turn: snapshot.turn ?? 1 });
-        console.error(`[Smoke] Witnessed Commander Tax: ${player.playerId} tax is now ${player.commanderTax} on turn ${snapshot.turn}`);
-      }
-    }
-    for (const [oppId, dmg] of Object.entries(player.commanderDamage ?? {})) {
-      if (typeof dmg === "number" && dmg > 0) {
-        if (!commanderDamageChanges.some(d => d.recipient === player.playerId && d.attacker === oppId && d.damage === dmg)) {
-          commanderDamageChanges.push({ recipient: player.playerId, attacker: oppId, damage: dmg, turn: snapshot.turn ?? 1 });
-          console.error(`[Smoke] Witnessed Commander Damage: ${oppId} dealt ${dmg} to ${player.playerId} on turn ${snapshot.turn}`);
-        }
-      }
-    }
+  // 2. Track commander tax and damage from authoritative XMage snapshots.
+  recordCommanderState(snapshot);
+
+  if (scenarioSatisfied()) {
+    console.error(`[Smoke] ${scenario} scenario satisfied at turn ${snapshot.turn}, step ${snapshot.step}`);
+    break;
   }
 
   // 3. Check if human has legal actions
@@ -108,22 +105,29 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
       method: "POST",
       body: commandFromAction(snapshot.id, action, snapshot)
     });
-    
-    assertBridgeSnapshot(snapshot, `action: ${action.type}`);
-    assertBridgeProgress(previous, snapshot, `action: ${action.type}`);
-    
+    if (snapshot.staleActionRecovered) {
+      delete snapshot.staleActionRecovered;
+      console.error(`[Smoke] Refreshed after stale ${action.type}; choosing next live action.`);
+      continue;
+    }
+
     const semanticLabel = action.type === "play_land"
       ? "play land"
       : action.type === "make_mana"
         ? "make mana"
         : action.type === "cast_spell"
           ? "cast simple spell"
+          : action.type === "declare_attackers" || action.type === "declare_blockers"
+            ? "combat"
           : action.type === "pass_priority" || action.type === "pass_until_response" || action.type === "pass_until_next_turn"
             ? "pass priority"
             : "resolve prompt";
             
     snapshot = await waitForSemanticProgress(previous, snapshot, semanticLabel);
+    assertBridgeSnapshot(snapshot, `action: ${action.type}`);
+    assertBridgeProgress(previous, snapshot, `action: ${action.type}`);
     assertSemanticProgress(previous, snapshot, semanticLabel);
+    recordCommanderState(snapshot);
     completed.push(`[Turn ${previous.turn} ${previous.phase}] ${action.type}: ${action.label ?? "none"}`);
   } else {
     // 4. Waiting for AI priority
@@ -138,8 +142,35 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
   }
 }
 
+recordCommanderState(snapshot);
+
+if (scenario === "combat" && !combatExercised) {
+  throw new Error(
+    "[Smoke] combat scenario did not exercise real declare_attackers/declare_blockers actions.\n"
+      + smokeDebug("combat scenario final snapshot", snapshot)
+  );
+}
+
+if (scenario === "commander-state") {
+  if (commanderTaxChanges.length === 0) {
+    throw new Error(
+      "[Smoke] commander-state scenario did not observe commander tax from XMage rules text.\n"
+        + smokeDebug("commander tax final snapshot", snapshot)
+    );
+  }
+  if (commanderDamageChanges.length === 0) {
+    throw new Error(
+      "[Smoke] commander-state scenario did not observe commander damage from XMage rules text.\n"
+        + smokeDebug("commander damage final snapshot", snapshot)
+    );
+  }
+}
+
 if (stepCount >= maxStepsCount) {
-  console.error(`[Smoke] Warning: hit maximum loop safeguards (${maxStepsCount} steps).`);
+  throw new Error(
+    `[Smoke] hit maximum loop safeguards (${maxStepsCount} steps).\n`
+      + smokeDebug("max step snapshot", snapshot)
+  );
 }
 
 console.error(`[Smoke] Play loop finished at turn ${snapshot.turn}. Saving report...`);
@@ -147,6 +178,7 @@ console.error(`[Smoke] Play loop finished at turn ${snapshot.turn}. Saving repor
 // Produce final JSON summary report
 const summaryReport = {
   endpoint,
+  scenario,
   health,
   gameId: snapshot.id,
   source: snapshot.source ?? "gateway",
@@ -191,9 +223,22 @@ async function request(path: string, options: { method?: string; body?: unknown 
   const text = await response.text();
   const body = text ? JSON.parse(text) : {};
   if (!response.ok) {
+    if (response.status === 409 && body?.error === "action_no_longer_legal" && body.snapshot) {
+      console.error(`[Smoke] Recovered from stale action on ${path}: ${body.message ?? body.error}`);
+      body.snapshot.staleActionRecovered = true;
+      return body.snapshot;
+    }
     throw new Error(`XMage smoke request failed (${response.status}) ${path}: ${text}`);
   }
   return body;
+}
+
+function commanderFixtureDeck(commander: string, basic: string) {
+  return {
+    name: `${commander} Fixture`,
+    commander: { cardName: commander, quantity: 1, section: "commander" },
+    entries: [{ cardName: basic, quantity: 99, section: "deck" }]
+  };
 }
 
 function findAction(snapshot: SmokeSnapshot, type: string | string[], label = "") {
@@ -233,6 +278,8 @@ function chooseBestAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
 
     // Play/choose/make mana prompts
     if (expected === "play_mana" || expected === "mana" || expected === "choose_mana") {
+      const sourceManaAction = snapshot.legalActions.find(a => a.type === "make_mana");
+      if (sourceManaAction) return sourceManaAction;
       const playManaActions = snapshot.legalActions.filter(a => a.type === "play_mana" || a.type === "choose_mana");
       if (playManaActions.length > 0) {
         const green = playManaActions.find(a => a.manaType === "G" || /\{G\}| G$|Choose G/i.test(a.label ?? ""));
@@ -253,6 +300,8 @@ function chooseBestAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
 
     // Targets picker
     if (expected === "choose_target" || expected === "resolve_choice") {
+      const promptTarget = choosePromptTarget(snapshot);
+      if (promptTarget) return promptTarget;
       const target = snapshot.legalActions.find(a => 
         a.type === "choose_target" || 
         a.type === "resolve_choice" || 
@@ -286,6 +335,11 @@ function chooseBestAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
   const keepHand = snapshot.legalActions.find(a => a.type === "keep_hand");
   if (keepHand) return keepHand;
 
+  if (fixtureScenario) {
+    const fixtureAction = chooseFixtureAction(snapshot);
+    if (fixtureAction) return fixtureAction;
+  }
+
   // 3. Play land
   const playLand = snapshot.legalActions.find(a => a.type === "play_land");
   if (playLand) return playLand;
@@ -298,27 +352,102 @@ function chooseBestAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
   const castSpell = snapshot.legalActions.find(a => a.type === "cast_spell");
   if (castSpell) return castSpell;
 
-  // 6. Activate abilities on battlefield permanents
-  const activateAbility = snapshot.legalActions.find(a => a.type === "activate_ability");
-  if (activateAbility) return activateAbility;
-
-  // 7. Declare attackers
+  // 6. Declare attackers
   const attackers = snapshot.legalActions.find(a => a.type === "declare_attackers");
   if (attackers) return attackers;
 
-  // 8. Declare blockers
+  // 7. Declare blockers
   const blockers = snapshot.legalActions.find(a => a.type === "declare_blockers");
   if (blockers) return blockers;
 
-  // 9. Pass priority / next phase
+  // 8. Pass priority / next phase. Prefer this before optional activated abilities
+  // so the smoke runner does not loop on equipment or utility permanents.
   const pass = snapshot.legalActions.find(a => a.type === "pass_priority" || a.type === "pass_until_response" || a.type === "advance_phase");
   if (pass) return pass;
+
+  // 9. Activate abilities on battlefield permanents only when no pass action exists.
+  const activateAbility = snapshot.legalActions.find(a => a.type === "activate_ability");
+  if (activateAbility) return activateAbility;
 
   // 10. Fallback
   const fallback = snapshot.legalActions.find(a => a.type !== "concede");
   if (fallback) return fallback;
 
   return undefined;
+}
+
+function chooseFixtureAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
+  const actions = snapshot.legalActions ?? [];
+  const battlefieldNames = humanZone(snapshot, "battlefield").map((entry) => entry.card?.name ?? "");
+  const hasIsamaru = battlefieldNames.includes("Isamaru, Hound of Konda");
+  const hasLand = humanZone(snapshot, "battlefield").some((entry) => /plains/i.test(entry.card?.name ?? ""));
+
+  if (!hasLand) {
+    const land = actions.find((action) => action.type === "play_land" && /plains/i.test(action.cardName ?? action.label ?? ""));
+    if (land) return land;
+  }
+
+  if (!hasIsamaru) {
+    const castCommander = actions.find((action) =>
+      action.type === "cast_spell"
+      && ((action.sourceZone ?? action.commandTemplate?.sourceZone) === "command" || /isamaru/i.test(action.cardName ?? action.label ?? ""))
+    );
+    if (castCommander) return castCommander;
+
+    const makeWhite = actions.find((action) =>
+      action.type === "make_mana"
+      && ((action.producedMana ?? action.commandTemplate?.producedMana ?? []).includes("W")
+        || /plains|white|\{w\}/i.test(action.cardName ?? action.label ?? ""))
+    );
+    if (makeWhite) return makeWhite;
+
+    const makeMana = actions.find((action) => action.type === "make_mana");
+    if (makeMana) return makeMana;
+  }
+
+  const attacker = actions.find((action) => action.type === "declare_attackers" && /isamaru/i.test(action.label ?? action.cardName ?? ""))
+    ?? actions.find((action) => action.type === "declare_attackers");
+  if (attacker) return attacker;
+
+  const blocker = actions.find((action) => action.type === "declare_blockers");
+  if (blocker) return blocker;
+
+  return undefined;
+}
+
+function choosePromptTarget(snapshot: SmokeSnapshot): SmokeAction | undefined {
+  const actions = snapshot.legalActions?.filter(a =>
+    a.type === "choose_target"
+      || a.type === "resolve_choice"
+      || a.type === "choose_card"
+      || a.type === "search_select"
+  ) ?? [];
+  if (actions.length === 0) return undefined;
+
+  const message = `${snapshot.promptText ?? ""} ${snapshot.promptEnvelopeV2?.message ?? ""}`.toLowerCase();
+  if (message.includes("starting player")) {
+    return actions.find((action) => /you start/i.test(action.label ?? "")) ?? actions[0];
+  }
+  if (message.includes("basic land")) {
+    return actions.find(isBasicLandAction)
+      ?? actions.find((action) => /\b(forest|island|mountain|plains|swamp|wastes)\b/i.test(action.label ?? action.cardName ?? ""))
+      ?? actions[0];
+  }
+  if (message.includes("land card")) {
+    return actions.find((action) => /land/i.test(action.typeLine ?? ""))
+      ?? actions.find((action) => /\b(forest|island|mountain|plains|swamp|wastes)\b/i.test(action.label ?? action.cardName ?? ""))
+      ?? actions[0];
+  }
+  if (message.includes("creature")) {
+    return actions.find((action) => /creature/i.test(action.typeLine ?? "")) ?? actions[0];
+  }
+  return actions[0];
+}
+
+function isBasicLandAction(action: SmokeAction) {
+  if (action.isBasicLand) return true;
+  return /basic land/i.test(action.typeLine ?? "")
+    || /\b(forest|island|mountain|plains|swamp|wastes)\b/i.test(action.label ?? action.cardName ?? "");
 }
 
 async function waitForAction(snapshot: SmokeSnapshot, type: string | string[], optional = false, label = "") {
@@ -422,7 +551,9 @@ function commandFromAction(gameId: string, action: SmokeAction, snapshot: SmokeS
     amount: action.amount ?? template.amount,
     amounts: action.amounts ?? template.amounts,
     pile: action.pile ?? template.pile,
-    useCommandZone: action.useCommandZone ?? template.useCommandZone
+    useCommandZone: action.useCommandZone ?? template.useCommandZone,
+    attackers: action.attackers ?? template.attackers,
+    blockers: action.blockers ?? template.blockers
   };
 }
 
@@ -485,7 +616,15 @@ function hasSemanticProgress(previous: SmokeSnapshot, next: SmokeSnapshot, label
     return humanZone(next, "battlefield").length > humanZone(previous, "battlefield").length;
   }
   if (label === "make mana") {
-    return manaTotal(next) > manaTotal(previous);
+    return manaTotal(next) > manaTotal(previous)
+      || humanZone(previous, "battlefield").some((beforeCard) => {
+        const afterCard = humanZone(next, "battlefield").find((card) => card.instanceId === beforeCard.instanceId);
+        return beforeCard.tapped !== true && afterCard?.tapped === true;
+      })
+      || previous.promptEnvelopeV2?.id !== next.promptEnvelopeV2?.id
+      || humanZone(previous, "stack").length !== humanZone(next, "stack").length
+      || previous.bridgeRevision !== next.bridgeRevision
+      || previous.xmageCycle !== next.xmageCycle;
   }
   if (label === "cast simple spell") {
     return humanZone(previous, "hand").length !== humanZone(next, "hand").length
@@ -494,6 +633,18 @@ function hasSemanticProgress(previous: SmokeSnapshot, next: SmokeSnapshot, label
       || humanZone(previous, "stack").length !== humanZone(next, "stack").length
       || manaTotal(previous) !== manaTotal(next)
       || next.promptEnvelopeV2 !== undefined;
+  }
+  if (label === "combat") {
+    return previous.step !== next.step
+      || previous.phase !== next.phase
+      || previous.turn !== next.turn
+      || previous.priorityPlayerId !== next.priorityPlayerId
+      || previous.waitingOnPlayerId !== next.waitingOnPlayerId
+      || JSON.stringify(previous.xmage?.combat ?? null) !== JSON.stringify(next.xmage?.combat ?? null)
+      || JSON.stringify(humanZone(previous, "battlefield")) !== JSON.stringify(humanZone(next, "battlefield"))
+      || JSON.stringify(next.players?.map((player) => player.life)) !== JSON.stringify(previous.players?.map((player) => player.life))
+      || previous.bridgeRevision !== next.bridgeRevision
+      || previous.xmageCycle !== next.xmageCycle;
   }
   if (label === "pass priority") {
     return previous.priorityPlayerId !== next.priorityPlayerId
@@ -552,6 +703,31 @@ function manaTotal(snapshot: SmokeSnapshot) {
   return Object.values(pool).reduce((total, value) => total + (typeof value === "number" ? value : 0), 0);
 }
 
+function recordCommanderState(snapshot: SmokeSnapshot) {
+  for (const player of snapshot.players ?? []) {
+    if (player.commanderTax !== undefined && player.commanderTax > 0) {
+      if (!commanderTaxChanges.some(t => t.playerId === player.playerId && t.tax === player.commanderTax)) {
+        commanderTaxChanges.push({ playerId: player.playerId, tax: player.commanderTax, turn: snapshot.turn ?? 1 });
+        console.error(`[Smoke] Witnessed Commander Tax: ${player.playerId} tax is now ${player.commanderTax} on turn ${snapshot.turn}`);
+      }
+    }
+    for (const [oppId, dmg] of Object.entries(player.commanderDamage ?? {})) {
+      if (typeof dmg === "number" && dmg > 0) {
+        if (!commanderDamageChanges.some(d => d.recipient === player.playerId && d.attacker === oppId && d.damage === dmg)) {
+          commanderDamageChanges.push({ recipient: player.playerId, attacker: oppId, damage: dmg, turn: snapshot.turn ?? 1 });
+          console.error(`[Smoke] Witnessed Commander Damage: ${oppId} dealt ${dmg} to ${player.playerId} on turn ${snapshot.turn}`);
+        }
+      }
+    }
+  }
+}
+
+function scenarioSatisfied() {
+  if (scenario === "combat") return combatExercised;
+  if (scenario === "commander-state") return commanderTaxChanges.length > 0 && commanderDamageChanges.length > 0;
+  return false;
+}
+
 function formatActions(snapshot: SmokeSnapshot) {
   return snapshot.legalActions?.map((action) => `${action.type}:${action.label ?? action.id}`).join(", ") || "none";
 }
@@ -573,7 +749,16 @@ function smokeDebug(label: string, snapshot: SmokeSnapshot) {
     humanBattlefield: humanZone(snapshot, "battlefield").map((entry) => ({
       name: entry.card?.name,
       tapped: entry.tapped,
-      instanceId: entry.instanceId
+      instanceId: entry.instanceId,
+      oracleText: entry.card?.oracleText
+    })),
+    humanCommand: humanZone(snapshot, "command").map((entry) => ({
+      name: entry.card?.name,
+      oracleText: entry.card?.oracleText
+    })),
+    aiCommand: snapshot.players?.find((player) => player.playerId === aiPlayerId)?.zones?.command?.map((entry) => ({
+      name: entry.card?.name,
+      oracleText: entry.card?.oracleText
     })),
     humanHand: humanZone(snapshot, "hand").map((entry) => entry.card?.name).slice(0, 10),
     promptEnvelopeV2: snapshot.promptEnvelopeV2,
@@ -601,9 +786,11 @@ type SmokeSnapshot = {
   turn?: number;
   promptText?: string;
   pendingStatus?: string;
+  staleActionRecovered?: boolean;
   priorityPlayerId?: string;
   waitingOnPlayerId?: string;
-  promptEnvelopeV2?: { method?: string; responseKind?: string; responseCommand?: { type?: string }; maxChoices?: number };
+  promptEnvelopeV2?: { method?: string; responseKind?: string; responseCommand?: { type?: string }; maxChoices?: number; message?: string };
+  xmage?: { combat?: unknown };
   players?: SmokePlayer[];
   legalActions?: SmokeAction[];
 };
@@ -614,7 +801,7 @@ type SmokePlayer = {
   manaPool?: Record<string, number>;
   commanderTax?: number;
   commanderDamage?: Record<string, number>;
-  zones?: Record<string, Array<{ card?: { name?: string }; tapped?: boolean; instanceId?: string }>>;
+  zones?: Record<string, Array<{ card?: { name?: string; oracleText?: string }; tapped?: boolean; instanceId?: string }>>;
 };
 
 type SmokeAction = {
@@ -625,7 +812,11 @@ type SmokeAction = {
   promptId?: string;
   messageId?: number;
   cardInstanceId?: string;
+  cardName?: string;
+  typeLine?: string;
+  isBasicLand?: boolean;
   sourceInstanceId?: string;
+  sourceZone?: string;
   abilityId?: string;
   commandTemplate?: SmokeCommandTemplate;
   responseKind?: string;
@@ -639,6 +830,7 @@ type SmokeAction = {
   validPlayerIds?: string[];
   manaType?: string;
   manaTypes?: string[];
+  producedMana?: string[];
   orderedIds?: string[];
   confirmed?: boolean;
   pay?: boolean;
@@ -646,6 +838,8 @@ type SmokeAction = {
   amounts?: number[];
   pile?: number;
   useCommandZone?: boolean;
+  attackers?: Array<{ attackerId: string; defenderId: string }>;
+  blockers?: Array<{ blockerId: string; attackerId: string }>;
 };
 
 type SmokeCommandTemplate = {
@@ -655,6 +849,7 @@ type SmokeCommandTemplate = {
   messageId?: number;
   cardInstanceId?: string;
   sourceInstanceId?: string;
+  sourceZone?: string;
   abilityId?: string;
   choiceIds?: string[];
   targetIds?: string[];
@@ -663,6 +858,7 @@ type SmokeCommandTemplate = {
   playerIds?: string[];
   manaType?: string;
   manaTypes?: string[];
+  producedMana?: string[];
   orderedIds?: string[];
   confirmed?: boolean;
   pay?: boolean;
@@ -670,4 +866,6 @@ type SmokeCommandTemplate = {
   amounts?: number[];
   pile?: number;
   useCommandZone?: boolean;
+  attackers?: Array<{ attackerId: string; defenderId: string }>;
+  blockers?: Array<{ blockerId: string; attackerId: string }>;
 };

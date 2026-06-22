@@ -151,6 +151,15 @@ describe("xmage gateway", () => {
     const manaAction = snapshot.legalActions.find((action) => action.type === "make_mana");
     assert.equal(manaAction.shortLabel, "Mana");
     assert.equal(manaAction.sourceZone, "battlefield");
+    assert.equal(manaAction.cardName, "Forest");
+    assert.deepEqual(manaAction.producedMana, ["G"]);
+    assert.deepEqual(manaAction.commandTemplate, {
+      type: "make_mana",
+      cardInstanceId: manaAction.cardInstanceId,
+      sourceInstanceId: manaAction.sourceInstanceId,
+      sourceZone: "battlefield",
+      cardName: "Forest"
+    });
 
     snapshot = applyCommand(snapshot, {
       type: "make_mana",
@@ -544,7 +553,9 @@ describe("xmage gateway", () => {
     assert.match(bridgeSource, /pendingStatus == null \? legalActions\(record, view, playerIds\) : pendingLegalActions\(record\)/);
     assert.match(bridgeSource, /isManaPaymentPrompt\(record\)/);
     assert.match(bridgeSource, /addPlayableObjectActions\(actions, humanId, view, true\)/);
-    assert.match(bridgeSource, /String type = manaOnly \? "make_mana" : actionType\(card, handIds\.contains\(objectId\)\)/);
+    assert.match(bridgeSource, /String type = manaOnly \? "make_mana" : actionType\(card, handIds\.contains\(objectId\), inCommand\)/);
+    assert.match(bridgeSource, /Set<UUID> commandIds = commandIds\(view\);/);
+    assert.match(bridgeSource, /String sourceZone = handIds\.contains\(objectId\) \? "hand" : inCommand \? "command" : "battlefield";/);
     assert.match(bridgeSource, /yesCommand\.addProperty\("pay", true\)/);
     assert.match(bridgeSource, /noCommand\.addProperty\("pay", false\)/);
     assert.match(bridgeSource, /Action was based on stale XMage snapshot revision/);
@@ -683,12 +694,22 @@ describe("xmage gateway", () => {
     assert.ok(bridgeSource.includes("commander tax:?\\\\s*\\\\{?(\\\\d+)\\\\}?"));
     assert.ok(bridgeSource.includes("(?:commander\\\\s+casts|casts\\\\s+from\\\\s+(?:the\\\\s+)?command\\\\s+zone|played\\\\s+from\\\\s+(?:the\\\\s+)?command\\\\s+zone|casts|number\\\\s+of\\\\s+(?:times\\\\s+)?cast(?:s)?)\\\\s*[:\\\\s]\\\\s*(\\\\d+)"));
     assert.ok(bridgeSource.includes("(?:cast|played)\\\\s+(\\\\d+)\\\\s+time"));
+    assert.ok(bridgeSource.includes("(\\\\d+)\\\\s+time(?:s)?\\\\s+played\\\\s+from\\\\s+(?:the\\\\s+)?command\\\\s+zone"));
 
     // Commander Damage text variants regex
     assert.ok(bridgeSource.includes("(?:did|dealt|deals|has\\\\s+dealt)\\\\s+(\\\\d+)\\\\s+(?:combat|commander)\\\\s+damage\\\\s+to\\\\s+(?:player\\\\s+)?([^.]+)"));
     assert.ok(bridgeSource.includes("(\\\\d+)\\\\s+(?:combat|commander)\\\\s+damage\\\\s+to\\\\s+(?:player\\\\s+)?([^.]+)"));
     assert.ok(bridgeSource.includes("(?:combat\\\\s+)?damage\\\\s+dealt\\\\s+(?:by\\\\s+commander\\\\s+)?to\\\\s+([^:]+):\\\\s*(\\\\d+)"));
     assert.ok(bridgeSource.includes("commander\\\\s+combat\\\\s+damage\\\\s+to\\\\s+([^:]+):\\\\s*(\\\\d+)"));
+
+    // Combat actions preserve typed pair payloads for mobile/web clients.
+    assert.ok(bridgeSource.includes("combatActions(record, view, playerIds)"));
+    assert.ok(bridgeSource.includes("\"declare_attackers\""));
+    assert.ok(bridgeSource.includes("\"declare_blockers\""));
+    assert.ok(bridgeSource.includes("pair.addProperty(\"attackerId\", permanent.getId().toString());"));
+    assert.ok(bridgeSource.includes("pair.addProperty(\"defenderId\", defenderId);"));
+    assert.ok(bridgeSource.includes("pair.addProperty(\"blockerId\", permanent.getId().toString());"));
+    assert.ok(bridgeSource.includes("pair.addProperty(\"attackerId\", attackerId);"));
   });
 });
 

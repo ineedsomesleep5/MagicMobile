@@ -636,6 +636,19 @@ body:has(.deck-builder-screen) .content {
   cursor: pointer;
 }
 
+.arena-context-panel button small {
+  display: block;
+  margin-top: 0.16rem;
+  color: rgba(255, 248, 223, 0.72);
+  font: 800 0.58rem/1 system-ui, sans-serif;
+}
+
+.arena-context-panel .arena-action-help {
+  margin: 0;
+  color: rgba(255, 248, 223, 0.72);
+  font: 800 0.7rem/1.25 system-ui, sans-serif;
+}
+
 .arena-context-panel button:disabled {
   cursor: wait;
   opacity: 0.62;

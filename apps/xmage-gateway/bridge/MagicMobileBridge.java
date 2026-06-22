@@ -905,6 +905,15 @@ public final class MagicMobileBridge implements MageClient {
             return actions;
         }
 
+        JsonArray combatActions = combatActions(record, view, playerIds);
+        if (combatActions.size() > 0) {
+            for (JsonElement element : combatActions) {
+                actions.add(element);
+            }
+            actions.add(action("xmage-concede", "concede", humanId, "Concede", null, null, null));
+            return actions;
+        }
+
         if (record.choicePrompt != null && record.choicePrompt.has("choices")) {
             String choiceActionType = promptActionType(record);
             for (JsonElement choiceElement : record.choicePrompt.getAsJsonArray("choices")) {
@@ -941,18 +950,25 @@ public final class MagicMobileBridge implements MageClient {
         }
 
         Set<UUID> handIds = new HashSet<>(view.getMyHand().keySet());
+        Set<UUID> commandIds = commandIds(view);
         for (Map.Entry<UUID, PlayableObjectStats> entry : playable.getObjects().entrySet()) {
             UUID objectId = entry.getKey();
             CardView card = findVisibleCard(view, objectId);
             if (card == null) {
                 continue;
             }
+            PlayableObjectStats stats = entry.getValue();
+            if (manaOnly && !hasManaPlayable(card, stats)) {
+                continue;
+            }
             if (manaOnly && handIds.contains(objectId)) {
                 continue;
             }
-            List<UUID> abilityIds = entry.getValue().getPlayableAbilityIds();
-            String type = manaOnly ? "make_mana" : actionType(card, handIds.contains(objectId));
-            String sourceZone = handIds.contains(objectId) ? "hand" : card.isLand() ? "battlefield" : "battlefield";
+            List<UUID> abilityIds = stats.getPlayableAbilityIds();
+            List<String> abilityLabels = stats.getPlayableAbilityNames();
+            boolean inCommand = commandIds.contains(objectId);
+            String type = manaOnly ? "make_mana" : actionType(card, handIds.contains(objectId), inCommand);
+            String sourceZone = handIds.contains(objectId) ? "hand" : inCommand ? "command" : "battlefield";
             if (abilityIds.isEmpty()) {
                 actions.add(action(
                         objectId.toString(),
@@ -961,10 +977,16 @@ public final class MagicMobileBridge implements MageClient {
                         labelFor(type, card.getName()),
                         objectId.toString(),
                         sourceZone,
-                        null
+                        null,
+                        card
                 ));
             } else {
-                for (UUID abilityUuid : abilityIds) {
+                for (int index = 0; index < abilityIds.size(); index++) {
+                    String abilityLabel = index < abilityLabels.size() ? abilityLabels.get(index) : "";
+                    if (manaOnly && !isManaAbility(card, abilityLabel)) {
+                        continue;
+                    }
+                    UUID abilityUuid = abilityIds.get(index);
                     String abilityId = abilityUuid.toString();
                     actions.add(action(
                             abilityId,
@@ -973,11 +995,151 @@ public final class MagicMobileBridge implements MageClient {
                             labelFor(type, card.getName()),
                             objectId.toString(),
                             sourceZone,
-                            abilityId
+                            abilityId,
+                            card
                     ));
                 }
             }
         }
+    }
+
+    private Set<UUID> commandIds(GameView view) {
+        Set<UUID> ids = new HashSet<>();
+        for (PlayerView player : view.getPlayers()) {
+            for (CommandObjectView command : player.getCommandObjectList()) {
+                ids.add(command.getId());
+            }
+        }
+        return ids;
+    }
+
+    private JsonArray combatActions(GameRecord record, GameView view, Map<UUID, String> playerIds) {
+        JsonArray actions = new JsonArray();
+        if (!humanHasPriority(record, view)) {
+            return actions;
+        }
+        PlayerView human = playerByExternalId(record.humanExternalId, view, playerIds);
+        if (human == null) {
+            return actions;
+        }
+        String step = step(view.getStep());
+        if ("declare-attackers".equals(step)) {
+            PlayerView defender = firstOpponent(record.humanExternalId, view, playerIds);
+            if (defender == null) {
+                return actions;
+            }
+            String defenderExternalId = playerIds.get(defender.getPlayerId());
+            for (PermanentView permanent : human.getBattlefield().values()) {
+                if (!permanent.isCreature() || permanent.isTapped() || permanent.hasSummoningSickness()) {
+                    continue;
+                }
+                actions.add(combatAction(
+                        "xmage-attack-" + permanent.getId(),
+                        "declare_attackers",
+                        record.humanExternalId,
+                        "Attack " + defender.getName() + " with " + permanent.getName(),
+                        permanent,
+                        defenderExternalId,
+                        null
+                ));
+            }
+        } else if ("declare-blockers".equals(step)) {
+            JsonArray attackerChoices = combatAttackers(view);
+            if (attackerChoices.size() == 0) {
+                return actions;
+            }
+            for (PermanentView permanent : human.getBattlefield().values()) {
+                if (!permanent.isCreature() || permanent.isTapped()) {
+                    continue;
+                }
+                for (JsonElement element : attackerChoices) {
+                    if (!element.isJsonObject()) continue;
+                    JsonObject attacker = element.getAsJsonObject();
+                    String attackerId = string(attacker, "id", "");
+                    if (attackerId.isEmpty()) continue;
+                    actions.add(combatAction(
+                            "xmage-block-" + permanent.getId() + "-" + attackerId,
+                            "declare_blockers",
+                            record.humanExternalId,
+                            "Block " + string(attacker, "name", "attacker") + " with " + permanent.getName(),
+                            permanent,
+                            null,
+                            attackerId
+                    ));
+                }
+            }
+        }
+        return actions;
+    }
+
+    private JsonArray combatAttackers(GameView view) {
+        JsonArray attackers = new JsonArray();
+        for (CombatGroupView group : view.getCombat()) {
+            for (CardView attacker : group.getAttackers().values()) {
+                JsonObject item = new JsonObject();
+                item.addProperty("id", attacker.getId().toString());
+                item.addProperty("name", attacker.getName());
+                attackers.add(item);
+            }
+        }
+        return attackers;
+    }
+
+    private PlayerView playerByExternalId(String externalId, GameView view, Map<UUID, String> playerIds) {
+        for (PlayerView player : view.getPlayers()) {
+            if (externalId.equals(playerIds.get(player.getPlayerId()))) {
+                return player;
+            }
+        }
+        return null;
+    }
+
+    private PlayerView firstOpponent(String externalId, GameView view, Map<UUID, String> playerIds) {
+        for (PlayerView player : view.getPlayers()) {
+            if (!externalId.equals(playerIds.get(player.getPlayerId()))) {
+                return player;
+            }
+        }
+        return null;
+    }
+
+    private JsonObject combatAction(String id, String type, String playerId, String label, PermanentView permanent, String defenderId, String attackerId) {
+        JsonObject action = action(id, type, playerId, label, permanent.getId().toString(), "battlefield", null, permanent);
+        JsonObject template = new JsonObject();
+        template.addProperty("type", type);
+        template.addProperty("cardInstanceId", permanent.getId().toString());
+        template.addProperty("sourceInstanceId", permanent.getId().toString());
+        template.addProperty("sourceZone", "battlefield");
+        template.addProperty("cardName", permanent.getName());
+        if ("declare_attackers".equals(type)) {
+            JsonArray attackers = new JsonArray();
+            JsonObject pair = new JsonObject();
+            pair.addProperty("attackerId", permanent.getId().toString());
+            if (defenderId != null) {
+                pair.addProperty("defenderId", defenderId);
+            }
+            attackers.add(pair);
+            action.add("attackers", attackers.deepCopy());
+            template.add("attackers", attackers.deepCopy());
+        } else if ("declare_blockers".equals(type)) {
+            JsonArray blockers = new JsonArray();
+            JsonObject pair = new JsonObject();
+            pair.addProperty("blockerId", permanent.getId().toString());
+            if (attackerId != null) {
+                pair.addProperty("attackerId", attackerId);
+            }
+            blockers.add(pair);
+            action.add("blockers", blockers.deepCopy());
+            JsonArray validTargetIds = new JsonArray();
+            if (attackerId != null) {
+                validTargetIds.add(attackerId);
+            }
+            action.add("validTargetIds", validTargetIds);
+            template.add("blockers", blockers.deepCopy());
+        }
+        action.add("commandTemplate", template);
+        action.addProperty("isPrimary", true);
+        return action;
     }
 
     private boolean isManaPaymentPrompt(GameRecord record) {
@@ -992,7 +1154,32 @@ public final class MagicMobileBridge implements MageClient {
                 || "GAME_PLAY_XMANA".equals(method);
     }
 
+    private boolean hasManaPlayable(CardView card, PlayableObjectStats stats) {
+        if (card.isLand() || producedManaHint(card).size() > 0) {
+            return true;
+        }
+        List<String> labels = stats.getPlayableAbilityNames();
+        for (String label : labels) {
+            if (isManaAbility(card, label)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isManaAbility(CardView card, String abilityLabel) {
+        String text = cleanText((abilityLabel == null ? "" : abilityLabel) + "\n" + rulesText(card)).toLowerCase();
+        return text.contains("add {")
+                || text.contains("add one mana")
+                || text.contains("add x mana")
+                || text.contains("mana of any color");
+    }
+
     private JsonObject action(String id, String type, String playerId, String label, String cardInstanceId, String sourceZone, String abilityId) {
+        return action(id, type, playerId, label, cardInstanceId, sourceZone, abilityId, null);
+    }
+
+    private JsonObject action(String id, String type, String playerId, String label, String cardInstanceId, String sourceZone, String abilityId, CardView card) {
         JsonObject action = new JsonObject();
         action.addProperty("id", id);
         action.addProperty("type", type);
@@ -1000,6 +1187,18 @@ public final class MagicMobileBridge implements MageClient {
         action.addProperty("label", label);
         action.addProperty("shortLabel", shortLabel(type, label));
         action.addProperty("requiresTarget", requiresTarget(type));
+        if (card != null) {
+            action.addProperty("cardName", card.getName());
+            if ("cast_spell".equals(type) && card.getManaValue() > 0) {
+                action.addProperty("requiresPayment", true);
+            }
+            if ("make_mana".equals(type)) {
+                JsonArray producedMana = producedManaHint(card);
+                if (producedMana.size() > 0) {
+                    action.add("producedMana", producedMana);
+                }
+            }
+        }
         if (cardInstanceId != null) {
             action.addProperty("cardInstanceId", cardInstanceId);
             action.addProperty("sourceInstanceId", cardInstanceId);
@@ -1007,13 +1206,54 @@ public final class MagicMobileBridge implements MageClient {
         if (sourceZone != null) {
             action.addProperty("sourceZone", sourceZone);
         }
+        JsonObject template = new JsonObject();
+        template.addProperty("type", type);
+        if (cardInstanceId != null) {
+            template.addProperty("cardInstanceId", cardInstanceId);
+            template.addProperty("sourceInstanceId", cardInstanceId);
+        }
+        if (sourceZone != null) {
+            template.addProperty("sourceZone", sourceZone);
+        }
+        if (card != null) {
+            template.addProperty("cardName", card.getName());
+        }
         if (abilityId != null) {
             action.addProperty("abilityId", abilityId);
-            JsonObject template = new JsonObject();
             template.addProperty("abilityId", abilityId);
+        }
+        if (template.size() > 1) {
             action.add("commandTemplate", template);
         }
         return action;
+    }
+
+    private JsonArray producedManaHint(CardView card) {
+        JsonArray out = new JsonArray();
+        if (card == null) {
+            return out;
+        }
+        String text = (card.getName() + "\n" + rulesText(card)).toLowerCase();
+        addManaHint(out, text, "{w}", "W");
+        addManaHint(out, text, "{u}", "U");
+        addManaHint(out, text, "{b}", "B");
+        addManaHint(out, text, "{r}", "R");
+        addManaHint(out, text, "{g}", "G");
+        addManaHint(out, text, "{c}", "C");
+        if (out.size() == 0 && text.contains("mana of any color")) {
+            out.add("W");
+            out.add("U");
+            out.add("B");
+            out.add("R");
+            out.add("G");
+        }
+        return out;
+    }
+
+    private void addManaHint(JsonArray out, String text, String token, String symbol) {
+        if (text.contains(token)) {
+            out.add(symbol);
+        }
     }
 
     private JsonObject xmageMobileSnapshot(GameRecord record, GameView view, Map<UUID, String> playerIds) {
@@ -1154,14 +1394,16 @@ public final class MagicMobileBridge implements MageClient {
             return out;
         }
         Set<UUID> handIds = new HashSet<>(view.getMyHand().keySet());
+        Set<UUID> commandIds = commandIds(view);
         for (Map.Entry<UUID, PlayableObjectStats> entry : playable.getObjects().entrySet()) {
             UUID sourceId = entry.getKey();
             CardView card = findVisibleCard(view, sourceId);
             if (card == null) continue;
-            String category = playableCategory(card, handIds.contains(sourceId));
+            boolean inCommand = commandIds.contains(sourceId);
+            String category = playableCategory(card, handIds.contains(sourceId), inCommand);
             JsonObject item = new JsonObject();
             item.addProperty("sourceInstanceId", sourceId.toString());
-            item.addProperty("sourceZone", handIds.contains(sourceId) ? "hand" : "battlefield");
+            item.addProperty("sourceZone", handIds.contains(sourceId) ? "hand" : inCommand ? "command" : "battlefield");
             item.addProperty("cardName", card.getName());
             JsonArray categories = new JsonArray();
             categories.add(category);
@@ -1172,7 +1414,7 @@ public final class MagicMobileBridge implements MageClient {
             for (int i = 0; i < ids.size(); i++) {
                 JsonObject ability = new JsonObject();
                 ability.addProperty("id", ids.get(i).toString());
-                ability.addProperty("label", cleanText(i < labels.size() ? labels.get(i) : labelFor(actionType(card, handIds.contains(sourceId)), card.getName())));
+                ability.addProperty("label", cleanText(i < labels.size() ? labels.get(i) : labelFor(actionType(card, handIds.contains(sourceId), inCommand), card.getName())));
                 ability.addProperty("category", category);
                 abilities.add(ability);
             }
@@ -1182,9 +1424,9 @@ public final class MagicMobileBridge implements MageClient {
         return out;
     }
 
-    private String playableCategory(CardView card, boolean inHand) {
+    private String playableCategory(CardView card, boolean inHand, boolean inCommand) {
         if (inHand && card.isLand()) return "play";
-        if (inHand) return "cast";
+        if (inHand || inCommand) return "cast";
         if (card.isLand()) return "mana";
         return "ability";
     }
@@ -1265,8 +1507,38 @@ public final class MagicMobileBridge implements MageClient {
         if (type != null) {
             action.addProperty("responseKind", type);
         }
+        addPromptChoiceMetadata(record, choiceId, action);
         action.add("commandTemplate", template);
         return action;
+    }
+
+    private void addPromptChoiceMetadata(GameRecord record, String choiceId, JsonObject action) {
+        JsonObject choice = promptChoiceById(record, choiceId);
+        if (choice != null) {
+            String label = string(choice, "label", "");
+            if (!label.isEmpty()) {
+                action.addProperty("cardName", label);
+            }
+            String cardInstanceId = string(choice, "cardInstanceId", "");
+            if (!cardInstanceId.isEmpty()) {
+                action.addProperty("cardInstanceId", cardInstanceId);
+            }
+        }
+        JsonObject card = promptCardById(record, choiceId);
+        if (card != null && card.has("card") && card.get("card").isJsonObject()) {
+            JsonObject cardInfo = card.getAsJsonObject("card");
+            String name = string(cardInfo, "name", "");
+            if (!name.isEmpty()) {
+                action.addProperty("cardName", name);
+            }
+            String typeLine = string(cardInfo, "typeLine", "");
+            if (!typeLine.isEmpty()) {
+                action.addProperty("typeLine", typeLine);
+            }
+            if (cardInfo.has("isBasicLand")) {
+                action.addProperty("isBasicLand", bool(cardInfo, "isBasicLand", false));
+            }
+        }
     }
 
     private void addChoiceCommandFields(JsonObject action, JsonObject template, String type, String choiceId, JsonArray choiceIds) {
@@ -1350,6 +1622,14 @@ public final class MagicMobileBridge implements MageClient {
     }
 
     private String labelForChoice(GameRecord record, Map<UUID, String> playerIds, String choiceId) {
+        JsonObject promptChoice = promptChoiceById(record, choiceId);
+        if (promptChoice != null) {
+            String label = string(promptChoice, "label", "");
+            if (!label.isEmpty() && !label.equals(choiceId)) {
+                boolean bottomPrompt = record.promptText != null && record.promptText.toLowerCase().contains("bottom");
+                return (bottomPrompt ? "Bottom " : "Choose ") + label;
+            }
+        }
         if (isUuid(choiceId)) {
             UUID id = UUID.fromString(choiceId);
             CardView card = record.latestView == null ? null : findVisibleCard(record.latestView, id);
@@ -1369,11 +1649,39 @@ public final class MagicMobileBridge implements MageClient {
         return "Choose " + choiceId;
     }
 
-    private String actionType(CardView card, boolean inHand) {
+    private JsonObject promptChoiceById(GameRecord record, String choiceId) {
+        if (record == null || record.promptEnvelope == null || !record.promptEnvelope.has("choices")) {
+            return null;
+        }
+        for (JsonElement element : record.promptEnvelope.getAsJsonArray("choices")) {
+            if (!element.isJsonObject()) continue;
+            JsonObject choice = element.getAsJsonObject();
+            if (choiceId.equals(string(choice, "id", ""))) {
+                return choice;
+            }
+        }
+        return null;
+    }
+
+    private JsonObject promptCardById(GameRecord record, String choiceId) {
+        if (record == null || record.promptEnvelope == null || !record.promptEnvelope.has("cards")) {
+            return null;
+        }
+        for (JsonElement element : record.promptEnvelope.getAsJsonArray("cards")) {
+            if (!element.isJsonObject()) continue;
+            JsonObject card = element.getAsJsonObject();
+            if (choiceId.equals(string(card, "instanceId", ""))) {
+                return card;
+            }
+        }
+        return null;
+    }
+
+    private String actionType(CardView card, boolean inHand, boolean inCommand) {
         if (inHand && card.isLand()) {
             return "play_land";
         }
-        if (inHand) {
+        if (inHand || inCommand) {
             return "cast_spell";
         }
         if (card.isLand()) {
@@ -1463,6 +1771,15 @@ public final class MagicMobileBridge implements MageClient {
             java.util.regex.Matcher matcher2 = castPattern2.matcher(cleanRule);
             if (matcher2.find()) {
                 return Integer.parseInt(matcher2.group(1)) * 2;
+            }
+
+            // e.g. "1 time played from the command zone"
+            java.util.regex.Pattern castPattern3 = java.util.regex.Pattern.compile(
+                "(\\d+)\\s+time(?:s)?\\s+played\\s+from\\s+(?:the\\s+)?command\\s+zone"
+            );
+            java.util.regex.Matcher matcher3 = castPattern3.matcher(cleanRule);
+            if (matcher3.find()) {
+                return Integer.parseInt(matcher3.group(1)) * 2;
             }
         }
         return 0;

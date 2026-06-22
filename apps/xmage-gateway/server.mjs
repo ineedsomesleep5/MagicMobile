@@ -539,8 +539,19 @@ function getLegalActions(snapshot, playerId) {
       label: `Cast ${firstHandCard.card.name}`,
       shortLabel: "Cast",
       cardInstanceId: firstHandCard.instanceId,
+      cardName: firstHandCard.card.name,
+      manaCost: firstHandCard.card.manaCost,
       sourceZone: "hand",
-      requiresTarget: false
+      isPrimary: true,
+      requiresPayment: (firstHandCard.card.manaValue ?? 0) > 0,
+      requiresTarget: false,
+      commandTemplate: {
+        type: "cast_spell",
+        cardInstanceId: firstHandCard.instanceId,
+        sourceInstanceId: firstHandCard.instanceId,
+        sourceZone: "hand",
+        cardName: firstHandCard.card.name
+      }
     });
     if (isLand(firstHandCard)) {
       actions.unshift({
@@ -550,8 +561,17 @@ function getLegalActions(snapshot, playerId) {
         label: `Play ${firstHandCard.card.name}`,
         shortLabel: "Play",
         cardInstanceId: firstHandCard.instanceId,
+        cardName: firstHandCard.card.name,
         sourceZone: "hand",
-        requiresTarget: false
+        isPrimary: true,
+        requiresTarget: false,
+        commandTemplate: {
+          type: "play_land",
+          cardInstanceId: firstHandCard.instanceId,
+          sourceInstanceId: firstHandCard.instanceId,
+          sourceZone: "hand",
+          cardName: firstHandCard.card.name
+        }
       });
     }
   }
@@ -579,8 +599,17 @@ function getLegalActions(snapshot, playerId) {
       shortLabel: "Mana",
       cardInstanceId: untappedManaPermanent.instanceId,
       sourceInstanceId: untappedManaPermanent.instanceId,
+      cardName: untappedManaPermanent.card.name,
       sourceZone: "battlefield",
-      requiresTarget: false
+      producedMana: producedManaHint(untappedManaPermanent),
+      requiresTarget: false,
+      commandTemplate: {
+        type: "make_mana",
+        cardInstanceId: untappedManaPermanent.instanceId,
+        sourceInstanceId: untappedManaPermanent.instanceId,
+        sourceZone: "battlefield",
+        cardName: untappedManaPermanent.card.name
+      }
     });
   }
 
@@ -705,6 +734,33 @@ function isLand(card) {
 function canMakeMana(card) {
   const text = `${card.card.name} ${card.card.typeLine} ${card.card.oracleText ?? ""}`;
   return isLand(card) || /\{T\}:\s*Add|Add \{[WUBRGC]\}/i.test(text);
+}
+
+function producedManaHint(card) {
+  const text = `${card?.card?.name ?? ""}\n${card?.card?.oracleText ?? ""}`.toLowerCase();
+  const symbols = [];
+  for (const [token, symbol] of [
+    ["{w}", "W"],
+    ["{u}", "U"],
+    ["{b}", "B"],
+    ["{r}", "R"],
+    ["{g}", "G"],
+    ["{c}", "C"]
+  ]) {
+    if (text.includes(token)) symbols.push(symbol);
+  }
+  if (symbols.length === 0 && text.includes("mana of any color")) {
+    symbols.push("W", "U", "B", "R", "G");
+  }
+  if (symbols.length === 0) {
+    const name = card?.card?.name?.toLowerCase() ?? "";
+    if (name.includes("plains")) symbols.push("W");
+    if (name.includes("island")) symbols.push("U");
+    if (name.includes("swamp")) symbols.push("B");
+    if (name.includes("mountain")) symbols.push("R");
+    if (name.includes("forest")) symbols.push("G");
+  }
+  return Array.from(new Set(symbols));
 }
 
 function manaSymbolFor(card) {

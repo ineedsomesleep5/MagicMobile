@@ -234,6 +234,8 @@ export interface LegalAction {
   label: string;
   promptId?: string;
   cardInstanceId?: string;
+  cardName?: string;
+  manaCost?: string;
   sourceZone?: ZoneName;
   sourceInstanceId?: string;
   abilityId?: string;
@@ -256,6 +258,8 @@ export interface LegalAction {
   useCommandZone?: boolean;
   isPrimary?: boolean;
   requiresTarget?: boolean;
+  requiresPayment?: boolean;
+  producedMana?: ColorSymbol[];
   required?: boolean;
   optional?: boolean;
   responseKind?: string;

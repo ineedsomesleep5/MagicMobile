@@ -464,18 +464,31 @@ function ActionPanel({
   onRunAction: ((action: LegalAction) => void) | undefined;
 }) {
   const visibleActions = selectedActions.length > 0 ? selectedActions : promptActions;
-  if (visibleActions.length === 0) return null;
+  if (visibleActions.length === 0 && !selectedCard) return null;
 
   return (
     <section className="arena-context-panel" aria-label="Context actions">
       <h2>{selectedCard?.name ?? "Prompt"}</h2>
-      <div>
-        {visibleActions.map((action) => (
-          <button disabled={pending || !onRunAction} key={action.id} onClick={() => onRunAction?.(action)} type="button">
-            {shortActionLabel(action)}
-          </button>
-        ))}
-      </div>
+      {visibleActions.length > 0 ? (
+        <div>
+          {visibleActions.map((action) => (
+            <button
+              className={isCastOrPlayAction(action) ? "arena-primary-action" : undefined}
+              disabled={pending || !onRunAction}
+              key={action.id}
+              onClick={() => onRunAction?.(action)}
+              type="button"
+            >
+              {shortActionLabel(action)}
+              {actionHint(action) ? <small>{actionHint(action)}</small> : null}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="arena-action-help">
+          XMage is not exposing a cast/play action for this card right now. Answer the active prompt, wait for priority, or inspect the card.
+        </p>
+      )}
     </section>
   );
 }
@@ -511,6 +524,13 @@ function PromptEnvelopePanel({
     return p.responseCommand?.type?.toLowerCase() === "play_mana" || ["mana", "play_mana"].includes((p.responseKind ?? "").toLowerCase());
   };
 
+  const isManaOrPaymentPrompt = (p: PromptEnvelopeV2) => {
+    const type = p.responseCommand?.type?.toLowerCase() ?? "";
+    const kind = (p.responseKind ?? "").toLowerCase();
+    const message = (p.message ?? "").toLowerCase();
+    return isManaPrompt(p) || ["pay_cost", "choose_mana", "play_x_mana"].includes(type) || ["pay_cost", "cost", "mana", "x_mana"].includes(kind) || message.includes("pay") || message.includes("mana");
+  };
+
   const isTriggerOrderPrompt = (p: PromptEnvelopeV2) => {
     return (p.responseCommand?.type?.toLowerCase() ?? p.responseKind?.toLowerCase() ?? "") === "order_triggers";
   };
@@ -525,6 +545,21 @@ function PromptEnvelopePanel({
       <h2>{formatPromptMethod(prompt.method)}</h2>
       <strong>{prompt.message}</strong>
       <small>{formatPromptRequirement(prompt)}</small>
+
+      {isManaOrPaymentPrompt(prompt) ? (
+        <PromptActionList
+          disabled={pending || !onRunAction}
+          label="Available Mana Sources"
+          options={actions
+            .filter((action) => action.type === "make_mana" && (action.sourceInstanceId || action.cardInstanceId))
+            .map((action) => ({
+              id: action.id,
+              label: `${action.cardName ? `Tap ${action.cardName}` : action.label}${actionHint(action) ? ` · ${actionHint(action)}` : ""}`,
+              type: "make_mana" as const
+            }))}
+          onRun={runPromptValue}
+        />
+      ) : null}
 
       {/* Commander Replacement parity */}
       {isCommanderReplacement(prompt) ? (
@@ -1111,4 +1146,20 @@ function shortActionLabel(action: LegalAction): string {
     default:
       return action.label;
   }
+}
+
+function isCastOrPlayAction(action: LegalAction): boolean {
+  return action.type === "cast_spell" || action.type === "play_land";
+}
+
+function actionHint(action: LegalAction): string | undefined {
+  if (action.type === "cast_spell") {
+    if (action.manaCost && action.requiresPayment) return `${action.manaCost} · XMage will ask for payment`;
+    if (action.manaCost) return action.manaCost;
+    if (action.requiresPayment) return "XMage will ask for payment";
+  }
+  if (action.type === "make_mana" && action.producedMana?.length) {
+    return action.producedMana.map((symbol) => `{${symbol}}`).join(" ");
+  }
+  return action.sourceZone ?? action.zoneContext;
 }

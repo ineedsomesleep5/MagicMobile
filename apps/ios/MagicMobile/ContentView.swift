@@ -2157,6 +2157,12 @@ struct UniversalPromptActionPanel: View {
         }
     }
 
+    private var sourceManaActions: [LegalAction] {
+        (snapshot.legalActions ?? []).filter {
+            $0.type == "make_mana" && ($0.sourceInstanceId != nil || $0.cardInstanceId != nil)
+        }
+    }
+
     private var otherActions: [LegalAction] {
         let types = ["pass_priority", "pass_until_response", "pass_until_next_turn", "advance_phase",
                      "play_land", "cast_spell",
@@ -2208,6 +2214,8 @@ struct UniversalPromptActionPanel: View {
                             detail: selectedCard.card.name,
                             actions: selectedCardActions
                         )
+                    } else if let selectedCard, selectedCardIsInHumanHand(selectedCard) {
+                        selectedCardUnavailableSection(selectedCard)
                     }
 
                     if !passActions.isEmpty {
@@ -2246,6 +2254,10 @@ struct UniversalPromptActionPanel: View {
                 .foregroundStyle(.white.opacity(0.86))
                 .lineLimit(3)
                 .minimumScaleFactor(0.68)
+
+            if isManaOrPaymentPrompt(prompt), !sourceManaActions.isEmpty {
+                sourceManaActionSection(prompt)
+            }
 
             if isCommanderReplacement(prompt) {
                 HStack(spacing: 6) {
@@ -2412,10 +2424,49 @@ struct UniversalPromptActionPanel: View {
                                 isPending: pendingActionId == action.id
                             )
                         }
-                        .buttonStyle(PanelActionButtonStyle(isDanger: action.type == "concede", isPrimary: action.isPrimary == true))
+                        .buttonStyle(PanelActionButtonStyle(isDanger: action.type == "concede", isPrimary: action.isPrimary == true || isCastOrPlay(action)))
                         .disabled(pendingActionId != nil || !directlyRunnable)
                     }
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func selectedCardUnavailableSection(_ card: ZoneCard) -> some View {
+        PromptPanelSection(title: "Selected", detail: card.card.name) {
+            Text(selectedCardBlockedReason(card))
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.white.opacity(0.72))
+                .lineLimit(3)
+                .minimumScaleFactor(0.72)
+            Button {
+                inspectedCard = card
+            } label: {
+                PromptButtonLabel(title: "Inspect", subtitle: "Long press cards also opens this", systemImage: "doc.text.magnifyingglass", isPending: false)
+            }
+            .buttonStyle(PanelActionButtonStyle())
+            .disabled(pendingActionId != nil)
+        }
+    }
+
+    @ViewBuilder
+    private func sourceManaActionSection(_ prompt: PromptEnvelopeV2) -> some View {
+        PromptMiniLabel(prompt.responseCommand?.type?.lowercased() == "pay_cost" ? "Pay with sources" : "Available mana sources")
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 6)], spacing: 6) {
+            ForEach(sourceManaActions) { action in
+                Button {
+                    runAction(action)
+                } label: {
+                    PromptButtonLabel(
+                        title: "Tap \(sourceCardName(for: action))",
+                        subtitle: producedManaLabel(for: action),
+                        systemImage: "sparkles",
+                        isPending: pendingActionId == action.id
+                    )
+                }
+                .buttonStyle(PanelActionButtonStyle(isPrimary: true))
+                .disabled(pendingActionId != nil)
             }
         }
     }
@@ -2743,6 +2794,16 @@ struct UniversalPromptActionPanel: View {
         prompt.responseCommand?.type?.lowercased() == "play_mana" || ["mana", "play_mana"].contains(prompt.responseKind.lowercased())
     }
 
+    private func isManaOrPaymentPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
+        let type = prompt.responseCommand?.type?.lowercased() ?? ""
+        let kind = prompt.responseKind.lowercased()
+        return isManaPrompt(prompt)
+            || ["pay_cost", "choose_mana", "play_x_mana"].contains(type)
+            || ["pay_cost", "cost", "mana", "x_mana"].contains(kind)
+            || prompt.message.localizedCaseInsensitiveContains("pay")
+            || prompt.message.localizedCaseInsensitiveContains("mana")
+    }
+
     private func isConfirmationPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
         prompt.responseCommand?.type?.lowercased() == "answer_yes_no" || prompt.responseKind.lowercased() == "confirmation"
     }
@@ -2789,6 +2850,48 @@ struct UniversalPromptActionPanel: View {
 
     private func singleCount(_ values: [String]?) -> Bool {
         values?.count == 1
+    }
+
+    private func isCastOrPlay(_ action: LegalAction) -> Bool {
+        action.type == "cast_spell" || action.type == "play_land"
+    }
+
+    private func selectedCardIsInHumanHand(_ card: ZoneCard) -> Bool {
+        snapshot.human?.zones.hand.contains { $0.instanceId == card.instanceId } == true
+    }
+
+    private func selectedCardBlockedReason(_ card: ZoneCard) -> String {
+        if pendingActionId != nil {
+            return "Action sent. Waiting for XMage to confirm the next game state."
+        }
+        if snapshot.waitingOnPlayerId != nil && snapshot.waitingOnPlayerId != "human" {
+            return "Waiting on \(snapshot.waitingOnPlayerId ?? "another player"). XMage has not exposed a cast/play action for this card."
+        }
+        if snapshot.priorityPlayerId != nil && snapshot.priorityPlayerId != "human" {
+            return "Not your priority. XMage will expose cast/play actions when this card is legal."
+        }
+        if snapshot.promptEnvelopeV2 != nil || snapshot.promptEnvelope != nil || snapshot.choicePrompt != nil {
+            return "Answer the current XMage prompt first. This card remains inspectable, but XMage is not accepting a cast/play action for it right now."
+        }
+        return "XMage did not expose a cast/play action for \(card.card.name). It may need mana, timing, a target, or another required choice."
+    }
+
+    private func sourceCardName(for action: LegalAction) -> String {
+        if let cardName = action.cardName, !cardName.isEmpty {
+            return cardName
+        }
+        let id = action.sourceInstanceId ?? action.cardInstanceId
+        if let id, let card = snapshot.human?.zones.battlefield.first(where: { $0.instanceId == id }) {
+            return card.card.name
+        }
+        return action.label
+    }
+
+    private func producedManaLabel(for action: LegalAction) -> String? {
+        guard let producedMana = action.producedMana, !producedMana.isEmpty else {
+            return action.actionDetail
+        }
+        return producedMana.map { "{\($0)}" }.joined(separator: " ")
     }
 }
 
@@ -3976,6 +4079,17 @@ private extension LegalAction {
     }
 
     var actionDetail: String? {
+        if type == "cast_spell" {
+            if let manaCost, !manaCost.isEmpty {
+                return requiresPayment == true ? "\(manaCost) · XMage will ask for payment" : manaCost
+            }
+            if requiresPayment == true {
+                return "XMage will ask for payment"
+            }
+        }
+        if type == "make_mana", let producedMana, !producedMana.isEmpty {
+            return producedMana.map { "{\($0)}" }.joined(separator: " ")
+        }
         if let zoneContext, !zoneContext.isEmpty {
             return zoneContext
         }
