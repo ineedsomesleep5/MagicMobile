@@ -1825,13 +1825,20 @@ public final class MagicMobileBridge implements MageClient {
             confirmation.addProperty("noLabel", "No");
             confirmation.addProperty("defaultValue", true);
             JsonObject yesCommand = new JsonObject();
-            yesCommand.addProperty("type", commandTypeForResponseKind(string(prompt, "responseKind", "confirmation")));
+            String responseType = commandTypeForResponseKind(string(prompt, "responseKind", "confirmation"));
+            yesCommand.addProperty("type", responseType);
             yesCommand.addProperty("promptId", string(prompt, "id", ""));
             yesCommand.addProperty("confirmed", true);
+            if ("pay_cost".equals(responseType)) {
+                yesCommand.addProperty("pay", true);
+            }
             JsonObject noCommand = new JsonObject();
-            noCommand.addProperty("type", commandTypeForResponseKind(string(prompt, "responseKind", "confirmation")));
+            noCommand.addProperty("type", responseType);
             noCommand.addProperty("promptId", string(prompt, "id", ""));
             noCommand.addProperty("confirmed", false);
+            if ("pay_cost".equals(responseType)) {
+                noCommand.addProperty("pay", false);
+            }
             confirmation.add("yesCommand", yesCommand);
             confirmation.add("noCommand", noCommand);
             prompt.add("confirmation", confirmation);

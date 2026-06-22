@@ -357,8 +357,8 @@ function PromptEnvelopePanel({
           disabled={pending || !onRunAction}
           label="Confirmation"
           options={[
-            { id: "true", label: prompt.confirmation.yesLabel ?? "Yes", type: "answer_yes_no" as const },
-            { id: "false", label: prompt.confirmation.noLabel ?? "No", type: "answer_yes_no" as const }
+            { id: "true", label: prompt.confirmation.yesLabel ?? "Yes", type: prompt.confirmation.yesCommand?.type ?? prompt.responseCommand?.type ?? "answer_yes_no" },
+            { id: "false", label: prompt.confirmation.noLabel ?? "No", type: prompt.confirmation.noCommand?.type ?? prompt.responseCommand?.type ?? "answer_yes_no" }
           ]}
           onRun={runPromptValue}
         />
@@ -675,6 +675,8 @@ function narrowPromptAction(action: LegalAction, type: LegalAction["type"], choi
       return { ...narrowed, manaTypes: [promptManaType(choiceId)] };
     case "answer_yes_no":
       return { ...narrowed, confirmed: choiceId !== "false", targetIds: [choiceId] };
+    case "pay_cost":
+      return { ...narrowed, confirmed: choiceId !== "false", pay: choiceId !== "false", targetIds: [choiceId] };
     case "order_items":
     case "order_triggers":
       return { ...narrowed, orderedIds: [choiceId] };
@@ -709,6 +711,8 @@ function narrowCommandTemplate(command: LegalAction["commandTemplate"], type: Le
       return { ...narrowed, manaTypes: [promptManaType(choiceId)] };
     case "answer_yes_no":
       return { ...narrowed, confirmed: choiceId !== "false" };
+    case "pay_cost":
+      return { ...narrowed, confirmed: choiceId !== "false", pay: choiceId !== "false" };
     case "order_items":
     case "order_triggers":
       return { ...narrowed, orderedIds: [choiceId] };

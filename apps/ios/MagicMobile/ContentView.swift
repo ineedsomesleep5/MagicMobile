@@ -2499,7 +2499,8 @@ struct UniversalPromptActionPanel: View {
                     type: confirmation.yesCommand?.type ?? prompt.responseCommand?.type ?? "answer_yes_no",
                     promptId: confirmation.yesCommand?.promptId ?? prompt.responseCommand?.promptId ?? prompt.id,
                     playerId: prompt.playerId,
-                    ids: [(confirmation.yesCommand?.confirmed ?? true) ? "true" : "false"]
+                    ids: [(confirmation.yesCommand?.confirmed ?? true) ? "true" : "false"],
+                    pay: confirmation.yesCommand?.pay ?? confirmation.yesCommand?.confirmed ?? true
                 )
             )
             promptButton(
@@ -2510,7 +2511,8 @@ struct UniversalPromptActionPanel: View {
                     type: confirmation.noCommand?.type ?? prompt.responseCommand?.type ?? "answer_yes_no",
                     promptId: confirmation.noCommand?.promptId ?? prompt.responseCommand?.promptId ?? prompt.id,
                     playerId: prompt.playerId,
-                    ids: [(confirmation.noCommand?.confirmed ?? false) ? "true" : "false"]
+                    ids: [(confirmation.noCommand?.confirmed ?? false) ? "true" : "false"],
+                    pay: confirmation.noCommand?.pay ?? confirmation.noCommand?.confirmed ?? false
                 )
             )
         }
@@ -2560,7 +2562,8 @@ struct UniversalPromptActionPanel: View {
         amounts: [Int]? = nil,
         pile: Int? = nil,
         useCommandZone: Bool? = nil,
-        manaType: String? = nil
+        manaType: String? = nil,
+        pay: Bool? = nil
     ) -> GameCommand? {
         let type = rawType.lowercased()
         let promptMessageId = resolvedMessageId(for: promptId)
@@ -2596,6 +2599,9 @@ struct UniversalPromptActionPanel: View {
         case "commander_replacement":
             guard let useCommandZone else { return nil }
             return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, useCommandZone: useCommandZone)
+        case "pay_cost":
+            let shouldPay = pay ?? (ids.first != "false")
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, confirmed: shouldPay, pay: shouldPay)
         case "answer_yes_no":
             return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, confirmed: ids.first != "false")
         default:

@@ -291,6 +291,7 @@ struct XmageResponseCommand: Decodable {
     let promptId: String?
     let messageId: Int?
     let confirmed: Bool?
+    let pay: Bool?
 }
 
 struct XmagePromptPile: Decodable, Identifiable {
