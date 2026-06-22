@@ -8,6 +8,7 @@ coverage/
 .cache/
 .expo/
 .derivedData/
+build_output/
 .env
 .env.local
 .DS_Store

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GameSnapshot, LegalAction } from "@magicmobile/shared";
 import { gameWebSocketUrl, latestSnapshot, toCommand } from "./GameController";
+import { narrowCommandTemplate, narrowPromptAction } from "./ArenaBattlefield";
 
 const snapshot: GameSnapshot = {
   id: "game-1",
@@ -392,6 +393,82 @@ describe("GameController command mapping and state integration", () => {
         promptId: "resolve-choice-1",
         choiceIds: ["choice-instance-9"]
       });
+    });
+  });
+
+  describe("narrowPromptAction and narrowCommandTemplate arrays & custom mappings", () => {
+    it("splits comma-separated IDs for search_select, order_items, and order_triggers", () => {
+      const baseAction: LegalAction = {
+        id: "base",
+        type: "search_select",
+        playerId: "human",
+        label: "Search Select"
+      };
+
+      const narrowed = narrowPromptAction(baseAction, "search_select", "id1,id2,id3", "Search Select");
+      expect(narrowed.cardInstanceIds).toEqual(["id1", "id2", "id3"]);
+      expect(narrowed.validCardInstanceIds).toEqual(["id1", "id2", "id3"]);
+
+      const orderAction: LegalAction = {
+        id: "order",
+        type: "order_triggers",
+        playerId: "human",
+        label: "Order Triggers"
+      };
+      const narrowedOrder = narrowPromptAction(orderAction, "order_triggers", "trig1,trig2", "Order");
+      expect(narrowedOrder.orderedIds).toEqual(["trig1", "trig2"]);
+
+      const template = { type: "order_items" as const };
+      const narrowedTemplate = narrowCommandTemplate(template, "order_items", "item1,item2");
+      expect(narrowedTemplate).toEqual({
+        type: "order_items",
+        orderedIds: ["item1", "item2"]
+      });
+    });
+
+    it("handles commander_replacement mapping with useCommandZone", () => {
+      const baseAction: LegalAction = {
+        id: "commander",
+        type: "commander_replacement",
+        playerId: "human",
+        label: "Commander Zone Choice"
+      };
+
+      const narrowedCmdZone = narrowPromptAction(baseAction, "commander_replacement", "command_zone", "Command Zone");
+      expect(narrowedCmdZone.useCommandZone).toBe(true);
+
+      const narrowedGraveyard = narrowPromptAction(baseAction, "commander_replacement", "graveyard", "Graveyard");
+      expect(narrowedGraveyard.useCommandZone).toBe(false);
+
+      const template = { type: "commander_replacement" as const };
+      const templateCmdZone = narrowCommandTemplate(template, "commander_replacement", "command_zone");
+      expect(templateCmdZone).toEqual({
+        type: "commander_replacement",
+        useCommandZone: true
+      });
+      const templateGraveyard = narrowCommandTemplate(template, "commander_replacement", "graveyard");
+      expect(templateGraveyard).toEqual({
+        type: "commander_replacement",
+        useCommandZone: false
+      });
+    });
+
+    it("handles manaType mapping", () => {
+      const template = { type: "play_mana" as const };
+      const narrowed = narrowCommandTemplate(template, "play_mana", "G");
+      expect(narrowed).toEqual({
+        type: "play_mana",
+        manaType: "G"
+      });
+    });
+  });
+
+  describe("snapshot version rules additional validations", () => {
+    it("handles undefined bridgeRevision or xmageCycle gracefully", () => {
+      const current = { ...snapshot, bridgeRevision: 10 };
+      const nextNoRevision = { ...snapshot }; // undefined bridgeRevision
+
+      expect(latestSnapshot(current, nextNoRevision)).toBe(nextNoRevision);
     });
   });
 });

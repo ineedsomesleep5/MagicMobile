@@ -1,7 +1,7 @@
 "use client";
 
+import React, { useMemo, useState } from "react";
 import type { CSSProperties, MouseEventHandler } from "react";
-import { useMemo, useState } from "react";
 import { getHandFanStyle } from "./arena-layout";
 import { ArenaFxLayer } from "./ArenaFxLayer";
 import type { BattlefieldCardView, BattlefieldViewModel } from "./battlefield-view-model";
@@ -137,7 +137,7 @@ export function ArenaBattlefield({
       <div className="arena-priority-strip">
         <span>Priority: {viewModel.priorityPlayerName}</span>
         <strong>{formatStepLabel(viewModel.step)}</strong>
-        <span>Turn {viewModel.turn}</span>
+        <span>Turn {viewModel.turn} {viewModel.health ? `(Engine: ${viewModel.health.status})` : ""}</span>
       </div>
     </div>
   );
@@ -160,33 +160,39 @@ const stageLabels = [
 
 function StageTracker({ activeStep }: { activeStep: BattlefieldViewModel["step"] }) {
   return (
-    <section className="arena-stage-panel">
-      <h2>Stages</h2>
-      <ol className="arena-stage-tracker" aria-label="Game stage tracker">
+    <details className="arena-stage-panel" open style={{ pointerEvents: "auto" }}>
+      <summary style={{ cursor: "pointer", outline: "none", listStyle: "none" }}>
+        <h2 style={{ display: "inline-block", margin: 0 }}>Stages</h2>
+      </summary>
+      <ol className="arena-stage-tracker" aria-label="Game stage tracker" style={{ marginTop: "0.38rem" }}>
         {stageLabels.map(([step, label]) => (
           <li className={step === activeStep ? "is-active" : ""} key={step}>
             {label}
           </li>
         ))}
       </ol>
-    </section>
+    </details>
   );
 }
 
 function GameLog({ entries }: { entries: BattlefieldViewModel["logEntries"] }) {
   return (
-    <section className="arena-log-panel" aria-label="Move log">
-      <h2>Log</h2>
-      {entries.length > 0 ? (
-        <ol>
-          {entries.map((entry) => (
-            <li key={entry.id}>{entry.message}</li>
-          ))}
-        </ol>
-      ) : (
-        <p>Waiting for first move</p>
-      )}
-    </section>
+    <details className="arena-log-panel" aria-label="Move log" open style={{ pointerEvents: "auto" }}>
+      <summary style={{ cursor: "pointer", outline: "none", listStyle: "none" }}>
+        <h2 style={{ display: "inline-block", margin: 0 }}>Log</h2>
+      </summary>
+      <div style={{ marginTop: "0.38rem" }}>
+        {entries.length > 0 ? (
+          <ol>
+            {entries.map((entry) => (
+              <li key={entry.id}>{entry.message}</li>
+            ))}
+          </ol>
+        ) : (
+          <p>Waiting for first move</p>
+        )}
+      </div>
+    </details>
   );
 }
 
@@ -267,116 +273,122 @@ function ZonePanel({
   onSelectCard: (card: BattlefieldCardView) => void;
 }) {
   return (
-    <section className="arena-zone-panel" aria-label="Player zones">
-      <h2>Zones</h2>
-      <div className="arena-zone-count-grid">
-        <ZoneCount label="You" counts={humanCounts} />
-        <ZoneCount label="AI" counts={opponentCounts} />
-      </div>
+    <details className="arena-zone-panel" aria-label="Player zones" open style={{ pointerEvents: "auto" }}>
+      <summary style={{ cursor: "pointer", outline: "none", listStyle: "none" }}>
+        <h2 style={{ display: "inline-block", margin: 0 }}>Zones</h2>
+      </summary>
+      <div style={{ marginTop: "0.38rem", display: "grid", gap: "0.42rem" }}>
+        <div className="arena-zone-count-grid">
+          <ZoneCount label="You" counts={humanCounts} />
+          <ZoneCount label="AI" counts={opponentCounts} />
+        </div>
 
-      {/* Mana Pools */}
-      <div className="arena-mana-pools" style={{ padding: "0.45rem", borderTop: "1px solid rgba(246, 240, 223, 0.12)" }}>
-        <strong style={{ fontSize: "0.6rem", color: "#ffb45d", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Mana Pools</strong>
-        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-          <div>
-            <span style={{ fontSize: "0.7rem", color: "rgba(246,240,223,0.7)" }}>You: </span>
-            <ManaPoolCompact pool={humanManaPool} />
+        {/* Mana Pools */}
+        <details className="zone-details-group" style={{ cursor: "pointer", borderTop: "1px solid rgba(246, 240, 223, 0.12)", paddingTop: "0.45rem" }} open>
+          <summary style={{ fontSize: "0.7rem", color: "#ffb45d", fontWeight: "bold", outline: "none", listStyle: "none" }}>
+            <strong style={{ fontSize: "0.6rem", color: "#ffb45d", textTransform: "uppercase", display: "inline-block" }}>Mana Pools</strong>
+          </summary>
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginTop: "4px", paddingLeft: "8px" }}>
+            <div>
+              <span style={{ fontSize: "0.7rem", color: "rgba(246, 240, 223, 0.7)" }}>You: </span>
+              <ManaPoolCompact pool={humanManaPool} />
+            </div>
+            <div>
+              <span style={{ fontSize: "0.7rem", color: "rgba(246, 240, 223, 0.7)" }}>AI: </span>
+              <ManaPoolCompact pool={opponentManaPool} />
+            </div>
           </div>
-          <div>
-            <span style={{ fontSize: "0.7rem", color: "rgba(246,240,223,0.7)" }}>AI: </span>
-            <ManaPoolCompact pool={opponentManaPool} />
-          </div>
+        </details>
+
+        {/* Zone Card Details */}
+        <div className="arena-zone-details" style={{ display: "flex", flexDirection: "column", gap: "4px", borderTop: "1px solid rgba(246, 240, 223, 0.12)", padding: "0.45rem" }}>
+          
+          {/* Command Zone */}
+          <details className="zone-details-group" style={{ cursor: "pointer" }}>
+            <summary style={{ fontSize: "0.7rem", color: "#ffb45d", fontWeight: "bold", outline: "none" }}>
+              Command Zone ({humanCommand.length + opponentCommand.length})
+            </summary>
+            <div className="zone-card-list" style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "4px", paddingLeft: "8px" }}>
+              {humanCommand.map((card) => (
+                <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
+                  [You] {card.name}
+                </button>
+              ))}
+              {opponentCommand.map((card) => (
+                <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
+                  [AI] {card.name}
+                </button>
+              ))}
+              {humanCommand.length === 0 && opponentCommand.length === 0 && (
+                <span style={{ fontSize: "0.65rem", color: "rgba(246,240,223,0.4)" }}>Empty</span>
+              )}
+            </div>
+          </details>
+
+          {/* Graveyard */}
+          <details className="zone-details-group" style={{ cursor: "pointer" }}>
+            <summary style={{ fontSize: "0.7rem", color: "#ffb45d", fontWeight: "bold", outline: "none" }}>
+              Graveyard ({humanGraveyard.length + opponentGraveyard.length})
+            </summary>
+            <div className="zone-card-list" style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "4px", paddingLeft: "8px" }}>
+              {humanGraveyard.map((card) => (
+                <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
+                  [You] {card.name}
+                </button>
+              ))}
+              {opponentGraveyard.map((card) => (
+                <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
+                  [AI] {card.name}
+                </button>
+              ))}
+              {humanGraveyard.length === 0 && opponentGraveyard.length === 0 && (
+                <span style={{ fontSize: "0.65rem", color: "rgba(246,240,223,0.4)" }}>Empty</span>
+              )}
+            </div>
+          </details>
+
+          {/* Exile */}
+          <details className="zone-details-group" style={{ cursor: "pointer" }}>
+            <summary style={{ fontSize: "0.7rem", color: "#ffb45d", fontWeight: "bold", outline: "none" }}>
+              Exile ({humanExile.length + opponentExile.length})
+            </summary>
+            <div className="zone-card-list" style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "4px", paddingLeft: "8px" }}>
+              {humanExile.map((card) => (
+                <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
+                  [You] {card.name}
+                </button>
+              ))}
+              {opponentExile.map((card) => (
+                <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
+                  [AI] {card.name}
+                </button>
+              ))}
+              {humanExile.length === 0 && opponentExile.length === 0 && (
+                <span style={{ fontSize: "0.65rem", color: "rgba(246,240,223,0.4)" }}>Empty</span>
+              )}
+            </div>
+          </details>
+
+          {/* Stack */}
+          <details className="zone-details-group" style={{ cursor: "pointer" }}>
+            <summary style={{ fontSize: "0.7rem", color: "#ffb45d", fontWeight: "bold", outline: "none" }}>
+              Stack ({stackCards.length})
+            </summary>
+            <div className="zone-card-list" style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "4px", paddingLeft: "8px" }}>
+              {stackCards.map((card) => (
+                <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
+                  {card.name}
+                </button>
+              ))}
+              {stackCards.length === 0 && (
+                <span style={{ fontSize: "0.65rem", color: "rgba(246,240,223,0.4)" }}>Empty</span>
+              )}
+            </div>
+          </details>
+
         </div>
       </div>
-
-      {/* Zone Card Details */}
-      <div className="arena-zone-details" style={{ display: "flex", flexDirection: "column", gap: "4px", borderTop: "1px solid rgba(246, 240, 223, 0.12)", padding: "0.45rem" }}>
-        
-        {/* Command Zone */}
-        <details className="zone-details-group" style={{ cursor: "pointer" }}>
-          <summary style={{ fontSize: "0.7rem", color: "#ffb45d", fontWeight: "bold", outline: "none" }}>
-            Command Zone ({humanCommand.length + opponentCommand.length})
-          </summary>
-          <div className="zone-card-list" style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "4px", paddingLeft: "8px" }}>
-            {humanCommand.map((card) => (
-              <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
-                [You] {card.name}
-              </button>
-            ))}
-            {opponentCommand.map((card) => (
-              <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
-                [AI] {card.name}
-              </button>
-            ))}
-            {humanCommand.length === 0 && opponentCommand.length === 0 && (
-              <span style={{ fontSize: "0.65rem", color: "rgba(246,240,223,0.4)" }}>Empty</span>
-            )}
-          </div>
-        </details>
-
-        {/* Graveyard */}
-        <details className="zone-details-group" style={{ cursor: "pointer" }}>
-          <summary style={{ fontSize: "0.7rem", color: "#ffb45d", fontWeight: "bold", outline: "none" }}>
-            Graveyard ({humanGraveyard.length + opponentGraveyard.length})
-          </summary>
-          <div className="zone-card-list" style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "4px", paddingLeft: "8px" }}>
-            {humanGraveyard.map((card) => (
-              <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
-                [You] {card.name}
-              </button>
-            ))}
-            {opponentGraveyard.map((card) => (
-              <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
-                [AI] {card.name}
-              </button>
-            ))}
-            {humanGraveyard.length === 0 && opponentGraveyard.length === 0 && (
-              <span style={{ fontSize: "0.65rem", color: "rgba(246,240,223,0.4)" }}>Empty</span>
-            )}
-          </div>
-        </details>
-
-        {/* Exile */}
-        <details className="zone-details-group" style={{ cursor: "pointer" }}>
-          <summary style={{ fontSize: "0.7rem", color: "#ffb45d", fontWeight: "bold", outline: "none" }}>
-            Exile ({humanExile.length + opponentExile.length})
-          </summary>
-          <div className="zone-card-list" style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "4px", paddingLeft: "8px" }}>
-            {humanExile.map((card) => (
-              <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
-                [You] {card.name}
-              </button>
-            ))}
-            {opponentExile.map((card) => (
-              <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
-                [AI] {card.name}
-              </button>
-            ))}
-            {humanExile.length === 0 && opponentExile.length === 0 && (
-              <span style={{ fontSize: "0.65rem", color: "rgba(246,240,223,0.4)" }}>Empty</span>
-            )}
-          </div>
-        </details>
-
-        {/* Stack */}
-        <details className="zone-details-group" style={{ cursor: "pointer" }}>
-          <summary style={{ fontSize: "0.7rem", color: "#ffb45d", fontWeight: "bold", outline: "none" }}>
-            Stack ({stackCards.length})
-          </summary>
-          <div className="zone-card-list" style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "4px", paddingLeft: "8px" }}>
-            {stackCards.map((card) => (
-              <button key={card.instanceId} onClick={() => onSelectCard(card)} type="button" style={zoneCardBtnStyle}>
-                {card.name}
-              </button>
-            ))}
-            {stackCards.length === 0 && (
-              <span style={{ fontSize: "0.65rem", color: "rgba(246,240,223,0.4)" }}>Empty</span>
-            )}
-          </div>
-        </details>
-
-      </div>
-    </section>
+    </details>
   );
 }
 
@@ -398,9 +410,11 @@ const zoneCardBtnStyle: CSSProperties = {
 function CombatPairingsPanel({ combat }: { combat?: XmageCombatGroup[] | undefined }) {
   if (!combat || combat.length === 0) return null;
   return (
-    <section className="arena-combat-pairings-panel" aria-label="Combat pairings" style={{ padding: "0.45rem", border: "1px solid rgba(246, 240, 223, 0.12)", borderRadius: "8px", background: "rgba(6, 9, 10, 0.58)" }}>
-      <h2 style={{ margin: "0 0 0.38rem", color: "#ffb45d", fontSize: "0.62rem", fontWeight: 950, textTransform: "uppercase" }}>Combat Pairings</h2>
-      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+    <details className="arena-combat-pairings-panel" aria-label="Combat pairings" open style={{ padding: "0.45rem", border: "1px solid rgba(246, 240, 223, 0.12)", borderRadius: "8px", background: "rgba(6, 9, 10, 0.58)", pointerEvents: "auto" }}>
+      <summary style={{ cursor: "pointer", outline: "none", listStyle: "none" }}>
+        <h2 style={{ display: "inline-block", margin: 0 }}>Combat Pairings</h2>
+      </summary>
+      <div style={{ marginTop: "0.38rem", display: "flex", flexDirection: "column", gap: "6px" }}>
         {combat.map((group, idx) => (
           <div key={idx} style={{ fontSize: "0.7rem", color: "rgba(246,240,223,0.85)" }}>
             <div style={{ fontWeight: "bold" }}>Defending: {group.defenderName}</div>
@@ -420,7 +434,7 @@ function CombatPairingsPanel({ combat }: { combat?: XmageCombatGroup[] | undefin
           </div>
         ))}
       </div>
-    </section>
+    </details>
   );
 }
 
@@ -484,11 +498,60 @@ function PromptEnvelopePanel({
     if (action) onRunAction?.(action);
   };
 
+  const isCommanderReplacement = (p: PromptEnvelopeV2) => {
+    const type = (p.responseCommand?.type ?? p.responseKind ?? "").toLowerCase();
+    return type === "commander_replacement" || (p.message ?? "").toLowerCase().includes("command zone");
+  };
+
+  const isConfirmationPrompt = (p: PromptEnvelopeV2) => {
+    return p.responseCommand?.type?.toLowerCase() === "answer_yes_no" || (p.responseKind ?? "").toLowerCase() === "confirmation";
+  };
+
+  const isManaPrompt = (p: PromptEnvelopeV2) => {
+    return p.responseCommand?.type?.toLowerCase() === "play_mana" || ["mana", "play_mana"].includes((p.responseKind ?? "").toLowerCase());
+  };
+
+  const isTriggerOrderPrompt = (p: PromptEnvelopeV2) => {
+    return (p.responseCommand?.type?.toLowerCase() ?? p.responseKind?.toLowerCase() ?? "") === "order_triggers";
+  };
+
+  const isSearchPrompt = (p: PromptEnvelopeV2) => {
+    const type = p.responseCommand?.type?.toLowerCase() ?? p.responseKind?.toLowerCase() ?? "";
+    return type === "search_select" || (p.method ?? "").toLowerCase().includes("search");
+  };
+
   return (
     <section className="arena-prompt-detail-panel" aria-label="XMage prompt detail">
       <h2>{formatPromptMethod(prompt.method)}</h2>
       <strong>{prompt.message}</strong>
       <small>{formatPromptRequirement(prompt)}</small>
+
+      {/* Commander Replacement parity */}
+      {isCommanderReplacement(prompt) ? (
+        <PromptActionList
+          disabled={pending || !onRunAction}
+          label="Commander Placement"
+          options={[
+            { id: "command_zone", label: "Command Zone", type: "commander_replacement" },
+            { id: "graveyard", label: "Original Zone", type: "commander_replacement" }
+          ]}
+          onRun={runPromptValue}
+        />
+      ) : null}
+
+      {/* Confirmation parity */}
+      {!prompt.confirmation && isConfirmationPrompt(prompt) ? (
+        <PromptActionList
+          disabled={pending || !onRunAction}
+          label="Confirmation"
+          options={[
+            { id: "true", label: "Yes", type: prompt.responseCommand?.type ?? "answer_yes_no" },
+            { id: "false", label: "No", type: prompt.responseCommand?.type ?? "answer_yes_no" }
+          ]}
+          onRun={runPromptValue}
+        />
+      ) : null}
+
       {choices.length > 0 ? (
         <div className="arena-prompt-choice-grid">
           {choices.map((choice) => {
@@ -538,12 +601,30 @@ function PromptEnvelopePanel({
         options={prompt.amounts?.map((amount) => ({ id: String(amount), label: String(amount), type: prompt.responseCommand?.type === "play_x_mana" ? "play_x_mana" as const : "choose_amount" as const })) ?? []}
         onRun={runPromptValue}
       />
+      
+      {/* Mana choices and Mana Picker parity */}
       <PromptActionList
         disabled={pending || !onRunAction}
         label="Mana"
         options={prompt.manaChoices?.map((choice) => ({ id: choice.manaType ?? choice.id, label: choice.label, type: "play_mana" as const })) ?? []}
         onRun={runPromptValue}
       />
+      {isManaPrompt(prompt) && (!prompt.manaChoices || prompt.manaChoices.length === 0) ? (
+        <PromptActionList
+          disabled={pending || !onRunAction}
+          label="Mana Picker"
+          options={[
+            { id: "W", label: "{W}", type: "play_mana" },
+            { id: "U", label: "{U}", type: "play_mana" },
+            { id: "B", label: "{B}", type: "play_mana" },
+            { id: "R", label: "{R}", type: "play_mana" },
+            { id: "G", label: "{G}", type: "play_mana" },
+            { id: "C", label: "{C}", type: "play_mana" }
+          ]}
+          onRun={runPromptValue}
+        />
+      ) : null}
+
       <PromptActionList
         disabled={pending || !onRunAction}
         label="Piles"
@@ -556,6 +637,39 @@ function PromptEnvelopePanel({
         options={prompt.orderedItems?.map((item) => ({ id: item.id, label: item.label, type: "order_items" as const })) ?? []}
         onRun={runPromptValue}
       />
+      
+      {/* Trigger Order parity */}
+      {isTriggerOrderPrompt(prompt) ? (
+        <PromptActionList
+          disabled={pending || !onRunAction}
+          label="Trigger Order"
+          options={[
+            {
+              id: (prompt.cards?.map(c => c.instanceId) ?? prompt.targets?.map(t => t.id) ?? prompt.choices?.map(c => c.id) ?? []).join(","),
+              label: "Submit shown order",
+              type: "order_triggers"
+            }
+          ]}
+          onRun={runPromptValue}
+        />
+      ) : null}
+
+      {/* Search/Select parity */}
+      {isSearchPrompt(prompt) && (!prompt.cards || prompt.cards.length === 0) && (!prompt.targets || prompt.targets.length === 0) ? (
+        <PromptActionList
+          disabled={pending || !onRunAction}
+          label="Search/Select"
+          options={[
+            {
+              id: (prompt.targetIds ?? []).join(","),
+              label: "Submit exposed selection",
+              type: "search_select"
+            }
+          ]}
+          onRun={runPromptValue}
+        />
+      ) : null}
+
       {prompt.confirmation ? (
         <PromptActionList
           disabled={pending || !onRunAction}
@@ -619,30 +733,34 @@ function StackDetailPanel({
   if (stackObjects.length === 0 && fallbackStack.length === 0) return null;
 
   return (
-    <section className="arena-stack-detail-panel" aria-label="Stack detail">
-      <h2>Stack</h2>
-      {stackObjects.length > 0 ? (
-        <ol>
-          {stackObjects.map((object) => (
-            <li key={object.id}>
-              <strong>{object.name}</strong>
-              {object.sourceCard ? <span>Source: {object.sourceCard.card.name}</span> : null}
-              {object.rulesText ? <p>{object.rulesText}</p> : null}
-              {object.paid !== undefined ? <small>{object.paid ? "Paid" : "Unpaid"}</small> : null}
-            </li>
-          ))}
-        </ol>
-      ) : (
-        <ol>
-          {fallbackStack.map((card) => (
-            <li key={card.instanceId}>
-              <strong>{card.name}</strong>
-              {card.oracleText ? <p>{card.oracleText}</p> : null}
-            </li>
-          ))}
-        </ol>
-      )}
-    </section>
+    <details className="arena-stack-detail-panel" aria-label="Stack detail" open style={{ pointerEvents: "auto" }}>
+      <summary style={{ cursor: "pointer", outline: "none", listStyle: "none" }}>
+        <h2 style={{ display: "inline-block", margin: 0 }}>Stack</h2>
+      </summary>
+      <div style={{ marginTop: "0.38rem" }}>
+        {stackObjects.length > 0 ? (
+          <ol>
+            {stackObjects.map((object) => (
+              <li key={object.id}>
+                <strong>{object.name}</strong>
+                {object.sourceCard ? <span>Source: {object.sourceCard.card.name}</span> : null}
+                {object.rulesText ? <p>{object.rulesText}</p> : null}
+                {object.paid !== undefined ? <small>{object.paid ? "Paid" : "Unpaid"}</small> : null}
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <ol>
+            {fallbackStack.map((card) => (
+              <li key={card.instanceId}>
+                <strong>{card.name}</strong>
+                {card.oracleText ? <p>{card.oracleText}</p> : null}
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </details>
   );
 }
 
@@ -656,21 +774,25 @@ function ZoneAccessPanel({
   if (namedZones.length === 0) return null;
 
   return (
-    <section className="arena-zone-access-panel" aria-label="Visible XMage zones">
-      <h2>Visible Zones</h2>
-      {namedZones.map((zone) => (
-        <div key={zone.id}>
-          <strong>{zone.name}</strong>
-          <div>
-            {zone.cards.map((card) => (
-              <button key={card.instanceId} onClick={() => onSelectCard(zoneCardToBattlefieldCard(card))} type="button">
-                {card.card.name}
-              </button>
-            ))}
+    <details className="arena-zone-access-panel" aria-label="Visible XMage zones" open style={{ pointerEvents: "auto" }}>
+      <summary style={{ cursor: "pointer", outline: "none", listStyle: "none" }}>
+        <h2 style={{ display: "inline-block", margin: 0 }}>Visible Zones</h2>
+      </summary>
+      <div style={{ marginTop: "0.38rem", display: "grid", gap: "0.38rem" }}>
+        {namedZones.map((zone) => (
+          <div key={zone.id}>
+            <strong>{zone.name}</strong>
+            <div>
+              {zone.cards.map((card) => (
+                <button key={card.instanceId} onClick={() => onSelectCard(zoneCardToBattlefieldCard(card))} type="button">
+                  {card.card.name}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
-    </section>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -851,7 +973,7 @@ function actionFromPromptValue(prompt: PromptEnvelopeV2, type: LegalAction["type
   }, type, choiceId, label);
 }
 
-function narrowPromptAction(action: LegalAction, type: LegalAction["type"], choiceId: string, label: string): LegalAction {
+export function narrowPromptAction(action: LegalAction, type: LegalAction["type"], choiceId: string, label: string): LegalAction {
   const narrowedTemplate = narrowCommandTemplate(action.commandTemplate, type, choiceId);
   const narrowed: LegalAction = {
     ...action,
@@ -864,8 +986,13 @@ function narrowPromptAction(action: LegalAction, type: LegalAction["type"], choi
     case "choose_target":
       return { ...narrowed, targetIds: [choiceId], validTargetIds: [choiceId] };
     case "choose_card":
-    case "search_select":
       return { ...narrowed, cardInstanceIds: [choiceId], validCardInstanceIds: [choiceId] };
+    case "search_select":
+      return {
+        ...narrowed,
+        cardInstanceIds: choiceId ? choiceId.split(",") : [],
+        validCardInstanceIds: choiceId ? choiceId.split(",") : []
+      };
     case "choose_player":
       return { ...narrowed, playerIds: [choiceId], validPlayerIds: [choiceId] };
     case "choose_mode":
@@ -887,23 +1014,26 @@ function narrowPromptAction(action: LegalAction, type: LegalAction["type"], choi
       return { ...narrowed, confirmed: choiceId !== "false", pay: choiceId !== "false", targetIds: [choiceId] };
     case "order_items":
     case "order_triggers":
-      return { ...narrowed, orderedIds: [choiceId] };
+      return { ...narrowed, orderedIds: choiceId ? choiceId.split(",") : [] };
     case "resolve_choice":
       return { ...narrowed, choiceIds: [choiceId], targetIds: [choiceId] };
+    case "commander_replacement":
+      return { ...narrowed, targetIds: [choiceId], validTargetIds: [choiceId], useCommandZone: choiceId !== "graveyard" };
     default:
       return narrowed;
   }
 }
 
-function narrowCommandTemplate(command: LegalAction["commandTemplate"], type: LegalAction["type"], choiceId: string): LegalAction["commandTemplate"] {
+export function narrowCommandTemplate(command: LegalAction["commandTemplate"], type: LegalAction["type"], choiceId: string): LegalAction["commandTemplate"] {
   if (!command) return command;
   const narrowed = { ...command, type };
   switch (type) {
     case "choose_target":
       return { ...narrowed, targetIds: [choiceId] };
     case "choose_card":
-    case "search_select":
       return { ...narrowed, cardInstanceIds: [choiceId] };
+    case "search_select":
+      return { ...narrowed, cardInstanceIds: choiceId ? choiceId.split(",") : [] };
     case "choose_player":
       return { ...narrowed, playerIds: [choiceId] };
     case "choose_mode":
@@ -923,9 +1053,11 @@ function narrowCommandTemplate(command: LegalAction["commandTemplate"], type: Le
       return { ...narrowed, confirmed: choiceId !== "false", pay: choiceId !== "false" };
     case "order_items":
     case "order_triggers":
-      return { ...narrowed, orderedIds: [choiceId] };
+      return { ...narrowed, orderedIds: choiceId ? choiceId.split(",") : [] };
     case "resolve_choice":
       return { ...narrowed, choiceIds: [choiceId] };
+    case "commander_replacement":
+      return { ...narrowed, useCommandZone: choiceId !== "graveyard" };
     default:
       return narrowed;
   }

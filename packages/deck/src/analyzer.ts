@@ -95,41 +95,103 @@ const categoryFlags = (card: CardIdentity) => {
 export class CommanderDeckAnalyzer implements DeckAnalyzer {
   async validateCommander(input: { deck: DeckList; cards: CardIdentity[] }): Promise<string[]> {
     const errors: string[] = [];
+    if (input.deck.errors) {
+      errors.push(...input.deck.errors);
+    }
+
     const cardMap = buildCardMap(input.cards);
     const entries = activeEntries(input.deck);
     const commanderEntries = entries.filter((entry) => entry.section === "commander");
-    const commanderEntry = input.deck.commander ?? entries.find((entry) => entry.section === "commander");
-    const commanderCard = commanderEntry ? cardMap.get(normalizeName(commanderEntry.cardName)) : undefined;
     const totalCards = entries.reduce((sum, entry) => sum + entry.quantity, 0);
 
     if (totalCards !== 100) {
       errors.push("Commander decks must contain exactly 100 cards including the commander.");
     }
 
-    if (commanderEntries.reduce((sum, entry) => sum + entry.quantity, 0) !== 1) {
+    const totalCommanders = commanderEntries.reduce((sum, entry) => sum + entry.quantity, 0);
+    const commanderColors = new Set<ColorSymbol>();
+
+    const isTwoCommanders = commanderEntries.length === 2 && commanderEntries.every(e => e.quantity === 1);
+    const isOneCommander = commanderEntries.length === 1 && commanderEntries[0]?.quantity === 1;
+
+    if (!isOneCommander && !isTwoCommanders) {
       errors.push("Commander decks must contain exactly one commander.");
     }
 
-    if (!commanderEntry || !commanderCard) {
+    if (totalCommanders === 0) {
       errors.push("Commander is required and must exist in card data.");
-    } else {
-      const typeLine = commanderCard.typeLine.toLowerCase();
-      const oracle = commanderCard.oracleText?.toLowerCase() ?? "";
-      const canBeCommander =
-        (typeLine.includes("legendary") && typeLine.includes("creature")) ||
-        oracle.includes("can be your commander");
+    } else if (isTwoCommanders && commanderEntries[0] && commanderEntries[1]) {
+      const card1 = cardMap.get(normalizeName(commanderEntries[0].cardName));
+      const card2 = cardMap.get(normalizeName(commanderEntries[1].cardName));
 
-      if (!canBeCommander) {
-        errors.push("Commander must be a legendary creature or explicitly allowed commander.");
+      if (!card1 || !card2) {
+        errors.push("Commander is required and must exist in card data.");
+      } else {
+        const type1 = card1.typeLine.toLowerCase();
+        const type2 = card2.typeLine.toLowerCase();
+        const oracle1 = card1.oracleText?.toLowerCase() ?? "";
+        const oracle2 = card2.oracleText?.toLowerCase() ?? "";
+
+        if (!type1.includes("legendary") || !type2.includes("legendary")) {
+          errors.push("Both commanders must be legendary.");
+        }
+
+        const isPartner1 = oracle1.includes("partner") || oracle1.includes("friends forever") || oracle1.includes("doctor's companion");
+        const isPartner2 = oracle2.includes("partner") || oracle2.includes("friends forever") || oracle2.includes("doctor's companion");
+        const hasChooseBackground1 = oracle1.includes("choose a background");
+        const hasChooseBackground2 = oracle2.includes("choose a background");
+        const isBackground1 = type1.includes("background");
+        const isBackground2 = type2.includes("background");
+
+        const legalPartners =
+          (isPartner1 && isPartner2) ||
+          (hasChooseBackground1 && isBackground2) ||
+          (hasChooseBackground2 && isBackground1);
+
+        if (!legalPartners) {
+          errors.push(`${card1.name} and ${card2.name} are not legal partners.`);
+        }
+
+        const legalityError1 = commanderLegalityError(card1, true);
+        if (legalityError1) errors.push(legalityError1);
+        const legalityError2 = commanderLegalityError(card2, true);
+        if (legalityError2) errors.push(legalityError2);
       }
 
-      const legalityError = commanderLegalityError(commanderCard, true);
-      if (legalityError) {
-        errors.push(legalityError);
+      for (const card of [card1, card2]) {
+        if (card) {
+          for (const color of card.colorIdentity) {
+            commanderColors.add(color);
+          }
+        }
+      }
+    } else {
+      const commanderEntry = commanderEntries[0];
+      const commanderCard = commanderEntry ? cardMap.get(normalizeName(commanderEntry.cardName)) : undefined;
+      if (!commanderCard) {
+        errors.push("Commander is required and must exist in card data.");
+      } else {
+        const typeLine = commanderCard.typeLine.toLowerCase();
+        const oracle = commanderCard.oracleText?.toLowerCase() ?? "";
+        const canBeCommander =
+          (typeLine.includes("legendary") && typeLine.includes("creature")) ||
+          oracle.includes("can be your commander");
+
+        if (!canBeCommander) {
+          errors.push("Commander must be a legendary creature or explicitly allowed commander.");
+        }
+
+        const legalityError = commanderLegalityError(commanderCard, true);
+        if (legalityError) {
+          errors.push(legalityError);
+        }
+
+        for (const color of commanderCard.colorIdentity) {
+          commanderColors.add(color);
+        }
       }
     }
 
-    const commanderColors = new Set(commanderCard?.colorIdentity ?? []);
     const counts = new Map<string, { displayName: string; quantity: number; card?: CardIdentity }>();
 
     for (const entry of entries) {
@@ -147,7 +209,7 @@ export class CommanderDeckAnalyzer implements DeckAnalyzer {
 
       counts.set(normalizedName, counted);
 
-      if (commanderCard && card) {
+      if (card) {
         if (entry.section !== "commander") {
           const legalityError = commanderLegalityError(card);
           if (legalityError) {
@@ -161,7 +223,7 @@ export class CommanderDeckAnalyzer implements DeckAnalyzer {
         if (illegalColors.length > 0) {
           errors.push(
             `${card.name} has color identity ${illegalColors.join("")} outside the commander's color identity ${
-              commanderCard.colorIdentity.join("") || "C"
+              Array.from(commanderColors).join("") || "C"
             }.`
           );
         }
@@ -170,6 +232,16 @@ export class CommanderDeckAnalyzer implements DeckAnalyzer {
 
     for (const counted of counts.values()) {
       if (counted.quantity > 1 && !isBasicLand(counted.card)) {
+        if (counted.card) {
+          const nameLower = normalizeName(counted.card.name);
+          const oracle = counted.card.oracleText?.toLowerCase() ?? "";
+          if (nameLower === "seven dwarves" && counted.quantity <= 7) {
+            continue;
+          }
+          if (oracle.includes("any number of cards named") || oracle.includes("any number of copies")) {
+            continue;
+          }
+        }
         errors.push(`${counted.displayName} violates Commander singleton rules.`);
       }
     }

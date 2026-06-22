@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { CommanderGameConfig, EngineHealth, GameCommand, GameSnapshot, LegalAction, ManaPool } from "@magicmobile/shared";
 import { ArenaBattlefield } from "./ArenaBattlefield";
 import { buildBattlefieldViewModel, type BattlefieldCardView, type VisualCardRecord } from "./battlefield-view-model";
@@ -22,8 +22,10 @@ export function GameController({ config, initialHealth, requireXmage = false, si
   const [pendingActionLabel, setPendingActionLabel] = useState<string | undefined>();
   const [socketStatus, setSocketStatus] = useState<"idle" | "connecting" | "live" | "unavailable">("idle");
 
+  const finalRequireXmage = requireXmage || !simulatorMode;
+
   useEffect(() => {
-    if (requireXmage && initialHealth.status !== "ready") {
+    if (finalRequireXmage && initialHealth.status !== "ready") {
       return;
     }
 
@@ -51,7 +53,7 @@ export function GameController({ config, initialHealth, requireXmage = false, si
     return () => {
       active = false;
     };
-  }, [config, initialHealth.status, requireXmage]);
+  }, [config, initialHealth.status, finalRequireXmage]);
 
   useEffect(() => {
     if (!snapshot?.id || simulatorMode || typeof WebSocket === "undefined") {
@@ -87,22 +89,23 @@ export function GameController({ config, initialHealth, requireXmage = false, si
     };
   }, [simulatorMode, snapshot?.id, webSocketBaseUrl]);
 
+  const legalActions = snapshot?.legalActions ?? [];
+  const health = snapshot?.engineHealth ?? initialHealth;
+
   const viewModel = useMemo(() => {
     if (!snapshot) return undefined;
-    return buildBattlefieldViewModel(snapshot, visuals, config.humanPlayerId);
-  }, [config.humanPlayerId, snapshot, visuals]);
+    return buildBattlefieldViewModel(snapshot, visuals, config.humanPlayerId, health);
+  }, [config.humanPlayerId, snapshot, visuals, health]);
 
   const selectedCard = useMemo(() => {
     if (!viewModel || !selectedInstanceId) return undefined;
     return getAllCards(viewModel).find((card) => card.instanceId === selectedInstanceId);
   }, [selectedInstanceId, viewModel]);
 
-  const legalActions = snapshot?.legalActions ?? [];
-  const health = snapshot?.engineHealth ?? initialHealth;
   const modeLabel = simulatorMode ? "DEVELOPMENT ONLY - Simulator Preview" : "XMage rules";
   const actionPending = pendingActionId !== undefined;
 
-  const connectionFailed = (requireXmage && health.status !== "ready") || (requireXmage && socketStatus === "unavailable");
+  const connectionFailed = (finalRequireXmage && health.status !== "ready") || (finalRequireXmage && socketStatus === "unavailable");
 
   if (connectionFailed) {
     return (

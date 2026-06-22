@@ -9,6 +9,8 @@ export interface MagicMobileCard extends CardIdentity {
   legalities?: {
     commander?: CommanderLegality;
   };
+  artist?: string;
+  copyright?: string;
 }
 
 export interface ScryfallCardLike {
@@ -23,4 +25,6 @@ export interface ScryfallCardLike {
   legalities?: {
     commander?: CommanderLegality;
   };
+  artist?: string;
+  copyright?: string;
 }

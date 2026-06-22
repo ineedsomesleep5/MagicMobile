@@ -22,3 +22,11 @@ targets:
         INFOPLIST_FILE: MagicMobile/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: NO
+  MagicMobileTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: MagicMobileTests
+    dependencies:
+      - target: MagicMobile
+

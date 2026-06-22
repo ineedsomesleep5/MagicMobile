@@ -65,13 +65,17 @@ export function createGatewayHandler(state = games, options = {}) {
         const snapshot = getGame(state, gameId);
 
         if (method === "GET" && !action) {
+          let currentSnapshot = snapshot;
+          const playerId = url.query.playerId ? String(url.query.playerId) : undefined;
           if (bridgeClient && isBridgeSnapshot(snapshot)) {
-            const nextSnapshot = await bridgeClient.getSnapshot(gameId);
+            const nextSnapshot = await bridgeClient.getSnapshot(gameId, playerId);
             lastAiProgressAt = Date.now();
-            const storedSnapshot = storeSnapshot(state, nextSnapshot.id, nextSnapshot);
-            return sendJson(response, storedSnapshot);
+            currentSnapshot = storeSnapshot(state, nextSnapshot.id, nextSnapshot);
           }
-          return sendJson(response, snapshot);
+          if (playerId) {
+            currentSnapshot = obfuscateSnapshotForPlayer(currentSnapshot, playerId);
+          }
+          return sendJson(response, currentSnapshot);
         }
 
         if (method === "GET" && action === "debug") {
@@ -142,8 +146,9 @@ export function createHttpBridgeClient(endpoint, fetchImpl = fetch) {
     async createCommanderGame(config) {
       return requestBridge(fetchImpl, baseUrl, "/games/commander", { method: "POST", body: config, timeoutMs: 60_000 });
     },
-    async getSnapshot(gameId) {
-      return requestBridge(fetchImpl, baseUrl, `/games/${encodeURIComponent(gameId)}`);
+    async getSnapshot(gameId, playerId) {
+      const query = playerId ? `?playerId=${encodeURIComponent(playerId)}` : "";
+      return requestBridge(fetchImpl, baseUrl, `/games/${encodeURIComponent(gameId)}${query}`);
     },
     async getLegalActions(gameId, playerId) {
       return requestBridge(
@@ -318,6 +323,26 @@ function isBridgeSnapshot(snapshot) {
 
 export function applyCommand(snapshot, command) {
   lastAiProgressAt = Date.now();
+
+  const knownCommands = new Set([
+    "resolve_choice",
+    "keep_hand",
+    "mulligan",
+    "play_land",
+    "cast_spell",
+    "tap_permanent",
+    "make_mana",
+    "untap_permanent",
+    "declare_attackers",
+    "pass_priority",
+    "pass_until_response",
+    "pass_until_next_turn",
+    "advance_phase",
+    "concede"
+  ]);
+  if (!knownCommands.has(command.type)) {
+    throw new Error(`Unknown command type: ${command.type}`);
+  }
 
   if (command.type === "resolve_choice") {
     const chosenPlayerId = command.choiceIds?.[0] ?? command.playerId;
@@ -808,6 +833,76 @@ function sanitizePendingSnapshot(snapshot) {
     ...snapshot,
     legalActions: legalActions.filter((action) => action?.type === "concede")
   };
+}
+
+export function obfuscateSnapshotForPlayer(snapshot, targetPlayerId) {
+  if (!snapshot) return snapshot;
+
+  const obfuscated = JSON.parse(JSON.stringify(snapshot));
+
+  if (Array.isArray(obfuscated.players)) {
+    for (const player of obfuscated.players) {
+      if (player.playerId !== targetPlayerId) {
+        if (player.zones && Array.isArray(player.zones.hand)) {
+          player.zones.hand = player.zones.hand.map((card, idx) => ({
+            instanceId: `hidden-hand-${player.playerId}-${idx}`,
+            card: {
+              id: "hidden-card",
+              name: "Hidden card",
+              manaValue: 0,
+              colorIdentity: [],
+              typeLine: "Hidden"
+            }
+          }));
+        }
+      }
+      if (player.zones && Array.isArray(player.zones.library)) {
+        player.zones.library = player.zones.library.map((card, idx) => ({
+          instanceId: `hidden-library-${player.playerId}-${idx}`,
+          card: {
+            id: "hidden-card",
+            name: "Hidden card",
+            manaValue: 0,
+            colorIdentity: [],
+            typeLine: "Hidden"
+          }
+        }));
+      }
+    }
+  }
+
+  if (obfuscated.xmage && Array.isArray(obfuscated.xmage.players)) {
+    for (const player of obfuscated.xmage.players) {
+      if (player.playerId !== targetPlayerId) {
+        if (player.zones && Array.isArray(player.zones.hand)) {
+          player.zones.hand = player.zones.hand.map((card, idx) => ({
+            instanceId: `hidden-hand-${player.playerId}-${idx}`,
+            card: {
+              id: "hidden-card",
+              name: "Hidden card",
+              manaValue: 0,
+              colorIdentity: [],
+              typeLine: "Hidden"
+            }
+          }));
+        }
+      }
+      if (player.zones && Array.isArray(player.zones.library)) {
+        player.zones.library = player.zones.library.map((card, idx) => ({
+          instanceId: `hidden-library-${player.playerId}-${idx}`,
+          card: {
+            id: "hidden-card",
+            name: "Hidden card",
+            manaValue: 0,
+            colorIdentity: [],
+            typeLine: "Hidden"
+          }
+        }));
+      }
+    }
+  }
+
+  return obfuscated;
 }
 
 export function protocolDebug(snapshot) {

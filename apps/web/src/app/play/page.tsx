@@ -1,3 +1,4 @@
+import React from "react";
 import type { DeckList } from "@magicmobile/shared";
 import { generateBracketThreeCommanderDeck } from "@magicmobile/deck";
 import { fetchCardVisuals } from "@/lib/scryfall-cards";

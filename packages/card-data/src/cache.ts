@@ -17,6 +17,8 @@ export interface CachedCardVisual {
     commander?: "legal" | "not_legal" | "banned" | "unknown";
   };
   isBasicLand?: boolean;
+  artist?: string;
+  copyright?: string;
 }
 
 export interface CachedCardImageManifestEntry {
@@ -147,7 +149,9 @@ export async function syncScryfallCache(cacheDir = getScryfallCacheDir()): Promi
       isBasicLand: Boolean(card.type_line?.includes("Basic Land")),
       smallImageUrl: imageUris?.small ?? imageUris?.normal ?? imageUris?.border_crop,
       imageUrl: imageUris?.normal ?? imageUris?.border_crop,
-      artCropUrl: imageUris?.art_crop
+      artCropUrl: imageUris?.art_crop,
+      artist: card.artist,
+      copyright: card.copyright ?? "™ & © Wizards of the Coast"
     };
   });
 
@@ -191,6 +195,8 @@ interface ScryfallBulkCard {
   legalities?: {
     commander?: "legal" | "not_legal" | "banned" | "unknown";
   };
+  artist?: string;
+  copyright?: string;
 }
 
 interface ScryfallImageUris {

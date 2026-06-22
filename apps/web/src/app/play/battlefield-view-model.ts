@@ -1,4 +1,4 @@
-import type { GameSnapshot, GameStep, LegalAction, PlayerGameState, ZoneCard } from "@magicmobile/shared";
+import type { EngineHealth, GameSnapshot, GameStep, LegalAction, PlayerGameState, ZoneCard } from "@magicmobile/shared";
 import type { VisualCard } from "@/lib/scryfall-cards";
 
 export type VisualCardRecord = Record<string, VisualCard>;
@@ -49,6 +49,7 @@ export interface BattlefieldViewModel {
   opponentExile: BattlefieldCardView[];
   humanZoneCounts: PlayerZoneCounts;
   opponentZoneCounts: PlayerZoneCounts;
+  health?: EngineHealth | undefined;
 }
 
 export interface PlayerZoneCounts {
@@ -61,7 +62,8 @@ export interface PlayerZoneCounts {
 export function buildBattlefieldViewModel(
   snapshot: GameSnapshot,
   visuals: VisualCardRecord,
-  humanPlayerId: string
+  humanPlayerId: string,
+  health?: EngineHealth
 ): BattlefieldViewModel {
   const human = snapshot.players.find((player) => player.playerId === humanPlayerId) ?? snapshot.players[0];
   if (!human) {
@@ -101,7 +103,8 @@ export function buildBattlefieldViewModel(
     humanExile: toViews(human.zones.exile),
     opponentExile: toViews(opponent.zones.exile),
     humanZoneCounts: getZoneCounts(human),
-    opponentZoneCounts: getZoneCounts(opponent)
+    opponentZoneCounts: getZoneCounts(opponent),
+    health: health ?? snapshot.engineHealth
   };
 }
 

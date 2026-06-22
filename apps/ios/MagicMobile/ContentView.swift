@@ -18,6 +18,9 @@ struct ContentView: View {
     @State private var startupStatus: CommanderStartupResponse?
     @State private var selectedCard: ZoneCard?
     @State private var inspectedCard: ZoneCard?
+    @State private var inspectingZoneTitle: String? = nil
+    @State private var inspectingZoneCards: [ZoneCard] = []
+
     @State private var pendingActionId: String?
     @State private var pendingCardInstanceId: String?
     @State private var lastSubmittedActionId: String?
@@ -36,7 +39,6 @@ struct ContentView: View {
         ZStack {
             LinearGradient(colors: [Color(red: 0.03, green: 0.08, blue: 0.08), Color(red: 0.16, green: 0.25, blue: 0.13)], startPoint: .topLeading, endPoint: .bottomTrailing)
                 .ignoresSafeArea()
-
             if screen == .play {
                 ImmersivePlayShell(
                     snapshot: snapshot,
@@ -53,7 +55,11 @@ struct ContentView: View {
                     },
                     runAction: { action in Task { await run(action: action) } },
                     runCommand: { command, label, pendingId in Task { await run(command: command, label: label, pendingId: pendingId) } },
-                    newGame: { screen = .setup }
+                    newGame: { screen = .setup },
+                    viewZone: { title, cards in
+                        inspectingZoneTitle = title
+                        inspectingZoneCards = cards
+                    }
                 )
             } else {
                 VStack(spacing: 10) {
@@ -71,6 +77,15 @@ struct ContentView: View {
             Button("OK", role: .cancel) { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
+        }
+        .sheet(item: Binding<ZoneInspectorData?>(
+            get: { inspectingZoneTitle.map { ZoneInspectorData(title: $0, cards: inspectingZoneCards) } },
+            set: { data in
+                inspectingZoneTitle = data?.title
+                inspectingZoneCards = data?.cards ?? []
+            }
+        )) { data in
+            ZoneInspectorSheet(title: data.title, cards: data.cards, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
         }
         .task(id: selectedPhoto?.itemIdentifier) {
             await loadSelectedAvatar()
@@ -964,6 +979,7 @@ struct ImmersivePlayShell: View {
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
     let newGame: () -> Void
+    let viewZone: (String, [ZoneCard]) -> Void
 
     var body: some View {
         NativeGameView(
@@ -978,7 +994,8 @@ struct ImmersivePlayShell: View {
             onInteractionFeedback: onInteractionFeedback,
             runAction: runAction,
             runCommand: runCommand,
-            newGame: newGame
+            newGame: newGame,
+            viewZone: viewZone
         )
     }
 }
@@ -996,6 +1013,7 @@ struct NativeGameView: View {
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
     let newGame: () -> Void
+    let viewZone: (String, [ZoneCard]) -> Void
     @State private var isLogOpen = false
     @State private var isOverPlayerDropZone = false
 
@@ -1113,7 +1131,8 @@ struct NativeGameView: View {
                             inspectedCard: $inspectedCard,
                             pendingActionId: pendingActionId,
                             runAction: runAction,
-                            runCommand: runCommand
+                            runCommand: runCommand,
+                            viewZone: viewZone
                         )
                             .frame(width: metrics.actionDockWidth)
                             .frame(maxHeight: metrics.actionPanelHeight)
@@ -1132,6 +1151,25 @@ struct NativeGameView: View {
                         }
                         .frame(width: min(metrics.playWidth * 0.42, 320), height: min(metrics.size.height * 0.55, 260))
                         .position(x: metrics.logX, y: metrics.logY)
+                    }
+
+                    if pendingActionId != nil {
+                        ZStack {
+                            Color.black.opacity(0.35)
+                                .ignoresSafeArea()
+                            VStack(spacing: 8) {
+                                ProgressView()
+                                    .tint(.white)
+                                    .scaleEffect(1.3)
+                                Text("Waiting for XMage...")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(.white)
+                            }
+                            .padding(14)
+                            .background(.black.opacity(0.75), in: RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.12)))
+                        }
+                        .transition(.opacity)
                     }
                 }
             }
@@ -1629,44 +1667,60 @@ struct TurnStatusBadge: View {
         snapshot.activePlayerId == human.playerId || snapshot.activePlayerId == "human"
     }
 
-    private var activeName: String {
-        isHumanTurn ? "Your Turn" : "Opponent Turn"
+    private var priorityText: String {
+        if let priority = snapshot.priorityPlayerId {
+            return priority == "human" ? "YOU" : "AI"
+        }
+        return "None"
     }
 
-    private var detail: String {
-        if snapshot.priorityPlayerId == human.playerId || snapshot.waitingOnPlayerId == human.playerId {
-            return "Your priority"
-        }
-        if snapshot.priorityPlayerId == "human" || snapshot.waitingOnPlayerId == "human" {
-            return "Your priority"
-        }
-        if snapshot.priorityPlayerId == opponent.playerId || snapshot.waitingOnPlayerId == opponent.playerId || snapshot.priorityPlayerId?.hasPrefix("ai") == true {
-            return "AI thinking"
-        }
-        return (snapshot.step ?? snapshot.phase).phaseTitle
+    private var phaseText: String {
+        let phase = (snapshot.step ?? snapshot.phase).phaseTitle
+        return phase
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(isHumanTurn ? MagicPalette.antiqueGold : MagicPalette.oxblood)
-                .frame(width: 9, height: 9)
-                .shadow(color: (isHumanTurn ? MagicPalette.antiqueGold : MagicPalette.oxblood).opacity(0.8), radius: 7)
-            Text(activeName.uppercased())
-                .font(.system(size: 12, weight: .black))
-                .foregroundStyle(isHumanTurn ? MagicPalette.antiqueGold : MagicPalette.parchment)
+        HStack(spacing: 10) {
+            HStack(spacing: 4) {
+                Text("TURN")
+                    .font(.system(size: 9, weight: .black))
+                    .foregroundStyle(.white.opacity(0.6))
+                Text("\(snapshot.turn)")
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundStyle(MagicPalette.antiqueGold)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+
+            Divider()
+                .frame(height: 16)
+                .background(.white.opacity(0.2))
+
+            Text(phaseText.uppercased())
+                .font(.system(size: 11, weight: .black))
+                .foregroundStyle(.white)
                 .lineLimit(1)
-            Text(detail)
-                .font(.system(size: 10, weight: .black))
-                .foregroundStyle(.white.opacity(0.72))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .minimumScaleFactor(0.8)
+
+            Divider()
+                .frame(height: 16)
+                .background(.white.opacity(0.2))
+
+            HStack(spacing: 4) {
+                Text("PRIORITY:")
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundStyle(.white.opacity(0.6))
+                Text(priorityText)
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundStyle(snapshot.priorityPlayerId == "human" ? .green : (snapshot.priorityPlayerId != nil ? .orange : .white.opacity(0.4)))
+            }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
         .frame(maxWidth: .infinity)
-        .background(.black.opacity(0.54), in: Capsule())
-        .overlay(Capsule().stroke((isHumanTurn ? MagicPalette.antiqueGold : MagicPalette.oxblood).opacity(0.55), lineWidth: 1))
+        .background(.black.opacity(0.64), in: Capsule())
+        .overlay(Capsule().stroke(isHumanTurn ? MagicPalette.antiqueGold.opacity(0.55) : MagicPalette.oxblood.opacity(0.55), lineWidth: 1.5))
     }
 }
 
@@ -1914,25 +1968,37 @@ struct XmageStackPeek: View {
 struct PromptPill: View {
     let snapshot: GameSnapshot
 
+    private var isWaitingOnHuman: Bool {
+        snapshot.waitingOnPlayerId == "human" || (snapshot.waitingOnPlayerId == nil && snapshot.priorityPlayerId == "human")
+    }
+
     var body: some View {
         HStack(spacing: 10) {
-            Text((snapshot.step ?? snapshot.phase).phaseTitle)
-                .font(.caption.weight(.black))
-                .foregroundStyle(.orange)
+            Circle()
+                .fill(isWaitingOnHuman ? Color.orange : Color.blue)
+                .frame(width: 8, height: 8)
+                .shadow(color: (isWaitingOnHuman ? Color.orange : Color.blue).opacity(0.8), radius: 5)
+            
+            Text(isWaitingOnHuman ? "YOUR DECISION" : "AI DECISION")
+                .font(.system(size: 9, weight: .black))
+                .foregroundStyle(isWaitingOnHuman ? .orange : .blue)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background((isWaitingOnHuman ? Color.orange : Color.blue).opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
+
             Text(snapshot.promptText ?? "Waiting for XMage")
-                .font(.callout.weight(.black))
+                .font(.system(size: 11, weight: .black))
                 .foregroundStyle(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .lineLimit(2)
+                .minimumScaleFactor(0.75)
+            
             Spacer()
-            Text("Turn \(snapshot.turn)")
-                .font(.caption.weight(.black))
-                .foregroundStyle(.white.opacity(0.72))
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
-        .background(.black.opacity(0.48), in: Capsule())
+        .background(.black.opacity(0.68), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(isWaitingOnHuman ? Color.orange.opacity(0.5) : Color.white.opacity(0.12), lineWidth: 1.5))
     }
 }
 
@@ -2071,13 +2137,32 @@ struct UniversalPromptActionPanel: View {
     let pendingActionId: String?
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
+    let viewZone: (String, [ZoneCard]) -> Void
 
-    private var allActions: [LegalAction] {
-        (snapshot.legalActions ?? []).sorted { lhs, rhs in
-            if lhs.actionPriority != rhs.actionPriority {
-                return lhs.actionPriority < rhs.actionPriority
-            }
-            return lhs.label < rhs.label
+    private var passActions: [LegalAction] {
+        (snapshot.legalActions ?? []).filter {
+            ["pass_priority", "pass_until_response", "pass_until_next_turn", "advance_phase"].contains($0.type)
+        }
+    }
+
+    private var spellsAndLands: [LegalAction] {
+        (snapshot.legalActions ?? []).filter {
+            ["play_land", "cast_spell"].contains($0.type)
+        }
+    }
+
+    private var abilitiesAndMana: [LegalAction] {
+        (snapshot.legalActions ?? []).filter {
+            ["activate_ability", "make_mana", "play_mana", "choose_mana", "choose_ability"].contains($0.type)
+        }
+    }
+
+    private var otherActions: [LegalAction] {
+        let types = ["pass_priority", "pass_until_response", "pass_until_next_turn", "advance_phase",
+                     "play_land", "cast_spell",
+                     "activate_ability", "make_mana", "play_mana", "choose_mana", "choose_ability"]
+        return (snapshot.legalActions ?? []).filter {
+            !types.contains($0.type)
         }
     }
 
@@ -2103,7 +2188,8 @@ struct UniversalPromptActionPanel: View {
                     MobileSurfacesPanel(
                         snapshot: snapshot,
                         selectedCard: $selectedCard,
-                        inspectedCard: $inspectedCard
+                        inspectedCard: $inspectedCard,
+                        viewZone: viewZone
                     )
 
                     if let prompt = snapshot.promptEnvelopeV2 {
@@ -2124,7 +2210,18 @@ struct UniversalPromptActionPanel: View {
                         )
                     }
 
-                    actionSection(title: "All Actions", detail: "\(allActions.count)", actions: allActions)
+                    if !passActions.isEmpty {
+                        actionSection(title: "Pass / Steps", detail: "\(passActions.count)", actions: passActions)
+                    }
+                    if !spellsAndLands.isEmpty {
+                        actionSection(title: "Spells & Lands", detail: "\(spellsAndLands.count)", actions: spellsAndLands)
+                    }
+                    if !abilitiesAndMana.isEmpty {
+                        actionSection(title: "Abilities & Mana", detail: "\(abilitiesAndMana.count)", actions: abilitiesAndMana)
+                    }
+                    if !otherActions.isEmpty {
+                        actionSection(title: "Other Actions", detail: "\(otherActions.count)", actions: otherActions)
+                    }
                 }
                 .padding(.vertical, 1)
             }
@@ -2143,7 +2240,7 @@ struct UniversalPromptActionPanel: View {
 
     @ViewBuilder
     private func promptEnvelopeV2Section(_ prompt: PromptEnvelopeV2) -> some View {
-        PromptPanelSection(title: prompt.method.replacingOccurrences(of: "GAME_", with: ""), detail: prompt.responseCommand?.type ?? prompt.responseKind) {
+        PromptPanelSection(title: prompt.method.replacingOccurrences(of: "GAME_", with: ""), detail: prompt.responseCommand?.type ?? prompt.responseKind, isHighlighted: true) {
             Text(prompt.message)
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(.white.opacity(0.86))
@@ -2243,7 +2340,7 @@ struct UniversalPromptActionPanel: View {
 
     @ViewBuilder
     private func promptEnvelopeSection(_ prompt: PromptEnvelope) -> some View {
-        PromptPanelSection(title: prompt.method.replacingOccurrences(of: "GAME_", with: ""), detail: prompt.responseKind) {
+        PromptPanelSection(title: prompt.method.replacingOccurrences(of: "GAME_", with: ""), detail: prompt.responseKind, isHighlighted: true) {
             Text(prompt.message)
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(.white.opacity(0.86))
@@ -2262,7 +2359,7 @@ struct UniversalPromptActionPanel: View {
 
     @ViewBuilder
     private func choicePromptSection(_ prompt: ChoicePrompt) -> some View {
-        PromptPanelSection(title: "Choice", detail: "\(prompt.minChoices)-\(prompt.maxChoices)") {
+        PromptPanelSection(title: "Choice", detail: "\(prompt.minChoices)-\(prompt.maxChoices)", isHighlighted: true) {
             Text(prompt.message)
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(.white.opacity(0.86))
@@ -2694,29 +2791,50 @@ struct MobileSurfacesPanel: View {
     let snapshot: GameSnapshot
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
+    let viewZone: (String, [ZoneCard]) -> Void
 
     var body: some View {
         PromptPanelSection(title: "Surfaces", detail: surfaceSummary) {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 76), spacing: 5)], spacing: 5) {
                 SurfaceChip(title: "Stack", value: "\(stackCards.count)")
+                    .onTapGesture {
+                        if !stackCards.isEmpty { viewZone("Stack", stackCards) }
+                    }
                 SurfaceChip(title: "Command", value: "\(commandCards.count)")
+                    .onTapGesture {
+                        if !commandCards.isEmpty { viewZone("Command", commandCards) }
+                    }
                 SurfaceChip(title: "Grave", value: "\(graveyardCards.count)")
+                    .onTapGesture {
+                        if !graveyardCards.isEmpty { viewZone("Graveyard", graveyardCards) }
+                    }
                 SurfaceChip(title: "Exile", value: "\(exileCards.count)")
+                    .onTapGesture {
+                        if !exileCards.isEmpty { viewZone("Exile", exileCards) }
+                    }
                 SurfaceChip(title: "Priority", value: priorityOwner)
                 SurfaceChip(title: "Actions", value: "\((snapshot.legalActions ?? []).count)")
             }
 
             if !stackCards.isEmpty {
-                MiniZoneRow(title: "Stack", cards: stackCards, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+                MiniZoneRow(title: "Stack", cards: stackCards, selectedCard: $selectedCard, inspectedCard: $inspectedCard) {
+                    viewZone("Stack", stackCards)
+                }
             }
             if !commandCards.isEmpty {
-                MiniZoneRow(title: "Command", cards: commandCards, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+                MiniZoneRow(title: "Command", cards: commandCards, selectedCard: $selectedCard, inspectedCard: $inspectedCard) {
+                    viewZone("Command", commandCards)
+                }
             }
             if !graveyardCards.isEmpty {
-                MiniZoneRow(title: "Graveyard", cards: Array(graveyardCards.suffix(8)), selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+                MiniZoneRow(title: "Graveyard", cards: Array(graveyardCards.suffix(8)), selectedCard: $selectedCard, inspectedCard: $inspectedCard, onViewAll: {
+                    viewZone("Graveyard", graveyardCards)
+                })
             }
             if !exileCards.isEmpty {
-                MiniZoneRow(title: "Exile", cards: Array(exileCards.suffix(8)), selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+                MiniZoneRow(title: "Exile", cards: Array(exileCards.suffix(8)), selectedCard: $selectedCard, inspectedCard: $inspectedCard, onViewAll: {
+                    viewZone("Exile", exileCards)
+                })
             }
         }
     }
@@ -2757,6 +2875,7 @@ struct MobileSurfacesPanel: View {
 struct PromptPanelSection<Content: View>: View {
     let title: String
     let detail: String
+    var isHighlighted = false
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -2764,21 +2883,21 @@ struct PromptPanelSection<Content: View>: View {
             HStack(spacing: 5) {
                 Text(title.uppercased())
                     .font(.system(size: 8, weight: .black))
-                    .foregroundStyle(MagicPalette.antiqueGold)
+                    .foregroundStyle(isHighlighted ? .orange : MagicPalette.antiqueGold)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 Spacer(minLength: 3)
                 Text(detail.uppercased())
                     .font(.system(size: 7, weight: .black))
-                    .foregroundStyle(.white.opacity(0.50))
+                    .foregroundStyle(isHighlighted ? .orange.opacity(0.8) : .white.opacity(0.50))
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
             }
             content
         }
         .padding(7)
-        .background(.black.opacity(0.32), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.10)))
+        .background(isHighlighted ? Color.orange.opacity(0.08) : .black.opacity(0.32), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(isHighlighted ? Color.orange.opacity(0.4) : .white.opacity(0.10), lineWidth: isHighlighted ? 1.5 : 1))
     }
 }
 
@@ -2882,10 +3001,22 @@ struct MiniZoneRow: View {
     let cards: [ZoneCard]
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
+    var onViewAll: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            PromptMiniLabel(title)
+            HStack {
+                PromptMiniLabel(title)
+                Spacer()
+                if let onViewAll {
+                    Button("View All (\(cards.count))") {
+                        onViewAll()
+                    }
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.cyan)
+                    .buttonStyle(.plain)
+                }
+            }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: -7) {
                     ForEach(cards) { card in
@@ -2921,16 +3052,19 @@ struct BattlefieldRow: View {
         VStack(alignment: .center, spacing: 4) {
             HStack {
                 Text(title.uppercased())
-                    .font(.system(size: 11, weight: .black))
-                    .foregroundStyle(.orange.opacity(0.78))
+                    .font(.system(size: 9, weight: .black))
+                    .foregroundStyle(.white.opacity(0.65))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.black.opacity(0.4), in: RoundedRectangle(cornerRadius: 4))
                 Spacer()
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .center, spacing: -10) {
                     if cards.isEmpty {
                         Text("No permanents")
-                            .font(.caption.weight(.black))
-                            .foregroundStyle(MagicPalette.parchment.opacity(0.42))
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(MagicPalette.parchment.opacity(0.35))
                             .padding(.horizontal, 12)
                             .frame(minWidth: rowWidth, minHeight: cardWidth * 1.40, alignment: .center)
                     }
@@ -2953,6 +3087,9 @@ struct BattlefieldRow: View {
                 .padding(.horizontal, 8)
                 .frame(minWidth: rowWidth, minHeight: cardWidth * 1.40 + 6, alignment: .center)
             }
+            .background(.black.opacity(0.18))
+            .cornerRadius(8)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.08), lineWidth: 1))
         }
     }
 
@@ -3090,19 +3227,37 @@ struct CardTile: View {
                     image
                         .resizable()
                         .scaledToFill()
-                default:
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(card.card.name)
-                            .font(.caption2.weight(.black))
-                            .foregroundStyle(.black)
-                            .lineLimit(3)
-                        Spacer()
-                        Text(card.card.typeLine)
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundStyle(.black.opacity(0.75))
-                            .lineLimit(2)
+                case .empty:
+                    ZStack {
+                        Color(red: 0.15, green: 0.15, blue: 0.15)
+                        ProgressView()
+                            .tint(.white.opacity(0.6))
                     }
-                    .padding(6)
+                case .failure, _:
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(card.card.name)
+                            .font(.system(size: 7, weight: .black))
+                            .foregroundStyle(MagicPalette.oxblood)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.7)
+                        
+                        ZStack {
+                            Color(red: 0.22, green: 0.22, blue: 0.22)
+                            Image(systemName: "photo.fill")
+                                .font(.system(size: 14))
+                                .foregroundStyle(.white.opacity(0.18))
+                        }
+                        .cornerRadius(3)
+                        
+                        Spacer(minLength: 1)
+                        
+                        Text(card.card.typeLine)
+                            .font(.system(size: 5.5, weight: .bold))
+                            .foregroundStyle(.black.opacity(0.75))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .padding(4)
                     .background(Color(red: 0.86, green: 0.78, blue: 0.62))
                 }
             }
@@ -3288,6 +3443,34 @@ struct ContextActionTray: View {
 struct CardInspector: View {
     let card: ZoneCard
 
+    private var badges: [BadgeItem] {
+        var items: [BadgeItem] = []
+        if card.tapped == true {
+            items.append(BadgeItem(text: "TAPPED", color: MagicPalette.oxblood))
+        }
+        if card.isAttacking == true {
+            items.append(BadgeItem(text: "ATTACKING", color: Color.red))
+        }
+        if let blocking = card.blocking, !blocking.isEmpty {
+            items.append(BadgeItem(text: "BLOCKING", color: Color.green))
+        }
+        if let damage = card.damage, damage > 0 {
+            items.append(BadgeItem(text: "DAMAGE: \(damage)", color: Color(red: 0.7, green: 0.1, blue: 0.1)))
+        }
+        if let power = card.power, let toughness = card.toughness {
+            items.append(BadgeItem(text: "P/T: \(power)/\(toughness)", color: MagicPalette.antiqueGold))
+        }
+        if let counters = card.counters {
+            for (name, val) in counters where val > 0 {
+                items.append(BadgeItem(text: "\(name): \(val)", color: Color.purple))
+            }
+        }
+        if card.attachedToInstanceId != nil {
+            items.append(BadgeItem(text: "ATTACHED", color: Color.blue))
+        }
+        return items
+    }
+
     var body: some View {
         HStack(spacing: 9) {
             CardTile(card: card, selected: true, width: 82, height: 114)
@@ -3300,8 +3483,25 @@ struct CardInspector: View {
                     .font(.caption.weight(.black))
                     .foregroundStyle(.orange)
                     .lineLimit(2)
+                
+                if !badges.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 4) {
+                            ForEach(badges, id: \.text) { badge in
+                                Text(badge.text)
+                                    .font(.system(size: 8, weight: .black))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(badge.color, in: RoundedRectangle(cornerRadius: 4))
+                            }
+                        }
+                    }
+                    .frame(height: 16)
+                }
+
                 ScrollView {
-                    Text(card.card.oracleText ?? "XMage has not exposed rules text for this card yet.")
+                    Text(card.card.oracleText ?? "Rules text unavailable.")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.78))
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -3309,9 +3509,14 @@ struct CardInspector: View {
             }
         }
         .padding(10)
-        .background(.black.opacity(0.64), in: RoundedRectangle(cornerRadius: 8))
+        .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(.cyan.opacity(0.35)))
     }
+}
+
+struct BadgeItem {
+    let text: String
+    let color: Color
 }
 
 struct MiniLog: View {
@@ -3738,11 +3943,7 @@ extension String {
     }
 }
 
-private extension CardIdentity {
-    var isLand: Bool {
-        typeLine.localizedCaseInsensitiveContains("land")
-    }
-}
+
 
 private extension LegalAction {
     var displayLabel: String {
@@ -3853,4 +4054,45 @@ private let stageLabels = [
 
 #Preview {
     ContentView()
+}
+
+struct ZoneInspectorData: Identifiable {
+    var id: String { title }
+    let title: String
+    let cards: [ZoneCard]
+}
+
+struct ZoneInspectorSheet: View {
+    let title: String
+    let cards: [ZoneCard]
+    @Binding var selectedCard: ZoneCard?
+    @Binding var inspectedCard: ZoneCard?
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 64), spacing: 8)], spacing: 8) {
+                    ForEach(cards) { card in
+                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, width: 64, height: 90)
+                            .onTapGesture {
+                                selectedCard = card
+                                inspectedCard = card
+                            }
+                    }
+                }
+                .padding(16)
+            }
+            .navigationTitle("\(title) (\(cards.count) cards)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+            .background(Color(red: 0.1, green: 0.12, blue: 0.1))
+        }
+    }
 }

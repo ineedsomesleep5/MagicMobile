@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DeckEntry, DeckList } from "@magicmobile/shared";
+import type { CardIdentity, DeckEntry, DeckList } from "@magicmobile/shared";
 import { seedCards } from "../../card-data/src";
 import { CommanderDeckAnalyzer } from "../src";
 
@@ -86,6 +86,105 @@ describe("CommanderDeckAnalyzer.validateCommander", () => {
     const errors = await analyzer.validateCommander({ deck: validAtraxaDeck(), cards: bannedCards });
 
     expect(errors).toContain("Demonic Tutor is not legal in Commander.");
+  });
+
+  it("handles partner and background commanders correctly", async () => {
+    const partner1: CardIdentity = {
+      id: "partner1",
+      name: "Partner One",
+      manaValue: 3,
+      colorIdentity: ["W", "U"],
+      typeLine: "Legendary Creature — Human",
+      oracleText: "Partner"
+    };
+    const partner2: CardIdentity = {
+      id: "partner2",
+      name: "Partner Two",
+      manaValue: 3,
+      colorIdentity: ["B", "G"],
+      typeLine: "Legendary Creature — Elf",
+      oracleText: "Partner"
+    };
+
+    const deck = validAtraxaDeck();
+    deck.commander = entry("Partner One", 1, "commander");
+    deck.entries = deck.entries.filter(e => e.cardName !== "Atraxa, Praetors' Voice");
+    deck.entries.push(entry("Partner One", 1, "commander"));
+    deck.entries.push(entry("Partner Two", 1, "commander"));
+    const plainsEntry = deck.entries.find(e => e.cardName === "Plains");
+    if (plainsEntry) plainsEntry.quantity--;
+
+    const cards = [...seedCards, partner1, partner2];
+    const errors = await analyzer.validateCommander({ deck, cards });
+    expect(errors).toEqual([]);
+  });
+
+  it("rejects invalid partner pairings", async () => {
+    const partner1: CardIdentity = {
+      id: "partner1",
+      name: "Partner One",
+      manaValue: 3,
+      colorIdentity: ["W"],
+      typeLine: "Legendary Creature — Human",
+      oracleText: "Partner"
+    };
+    const nonPartner: CardIdentity = {
+      id: "nonpartner",
+      name: "Non-Partner",
+      manaValue: 3,
+      colorIdentity: ["U"],
+      typeLine: "Legendary Creature — Elf",
+      oracleText: "Does something else"
+    };
+
+    const deck = validAtraxaDeck();
+    deck.entries = deck.entries.filter(e => e.cardName !== "Atraxa, Praetors' Voice");
+    deck.entries.push(entry("Partner One", 1, "commander"));
+    deck.entries.push(entry("Non-Partner", 1, "commander"));
+    const plainsEntry = deck.entries.find(e => e.cardName === "Plains");
+    if (plainsEntry) plainsEntry.quantity--;
+
+    const cards = [...seedCards, partner1, nonPartner];
+    const errors = await analyzer.validateCommander({ deck, cards });
+    expect(errors).toContain("Partner One and Non-Partner are not legal partners.");
+  });
+
+  it("respects singleton exceptions like Relentless Rats and Seven Dwarves", async () => {
+    const relentlessRats: CardIdentity = {
+      id: "rats",
+      name: "Relentless Rats",
+      manaValue: 3,
+      colorIdentity: ["B"],
+      typeLine: "Creature — Rat",
+      oracleText: "A deck can have any number of cards named Relentless Rats."
+    };
+    const sevenDwarves: CardIdentity = {
+      id: "dwarves",
+      name: "Seven Dwarves",
+      manaValue: 2,
+      colorIdentity: ["R"],
+      typeLine: "Creature — Dwarf",
+      oracleText: "A deck can have up to seven cards named Seven Dwarves."
+    };
+
+    const deck = validAtraxaDeck();
+    deck.entries.push(entry("Relentless Rats", 10));
+    deck.entries.push(entry("Seven Dwarves", 5));
+    const plains = deck.entries.find(e => e.cardName === "Plains");
+    if (plains) plains.quantity -= 15;
+
+    const cards = [...seedCards, relentlessRats, sevenDwarves];
+    const errors = await analyzer.validateCommander({ deck, cards });
+    const singletonErrors = errors.filter(e => e.includes("singleton"));
+    expect(singletonErrors).toEqual([]);
+    expect(errors.some(e => e.includes("color identity"))).toBe(true);
+  });
+
+  it("propagates parser errors", async () => {
+    const deck = validAtraxaDeck();
+    deck.errors = ["Some parser error"];
+    const errors = await analyzer.validateCommander({ deck, cards: seedCards });
+    expect(errors).toContain("Some parser error");
   });
 });
 

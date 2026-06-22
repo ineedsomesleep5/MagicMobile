@@ -39,5 +39,11 @@ export const mapScryfallCard = (card: ScryfallCardLike): MagicMobileCard => {
     mapped.legalities = card.legalities;
   }
 
+  if (card.artist) {
+    mapped.artist = card.artist;
+  }
+
+  mapped.copyright = card.copyright ?? "™ & © Wizards of the Coast";
+
   return mapped;
 };

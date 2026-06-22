@@ -10,7 +10,8 @@ import {
   getGatewayHealth,
   getHealth,
   registerWebSocketConnection,
-  shouldAcceptSnapshot
+  shouldAcceptSnapshot,
+  obfuscateSnapshotForPlayer
 } from "./server.mjs";
 
 const deck = {
@@ -578,6 +579,116 @@ describe("xmage gateway", () => {
   it("ensures Java bridge rejects unknown command types", () => {
     const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
     assert.match(bridgeSource, /throw new IllegalArgumentException\("Unknown command type: " \+ type\);/);
+  });
+
+  it("ensures applyCommand throws for unknown command types", () => {
+    const snapshot = { players: [] };
+    assert.throws(() => {
+      applyCommand(snapshot, { type: "invalid_command_type" });
+    }, /Unknown command type: invalid_command_type/);
+  });
+
+  it("obfuscates snapshots based on player context", () => {
+    const snapshot = {
+      players: [
+        {
+          playerId: "human",
+          zones: {
+            hand: [{ instanceId: "card-1", card: { name: "Growth Spiral" } }],
+            library: [{ instanceId: "card-2", card: { name: "Forest" } }]
+          }
+        },
+        {
+          playerId: "ai-1",
+          zones: {
+            hand: [{ instanceId: "card-3", card: { name: "Sol Ring" } }],
+            library: [{ instanceId: "card-4", card: { name: "Swamp" } }]
+          }
+        }
+      ],
+      xmage: {
+        players: [
+          {
+            playerId: "human",
+            zones: {
+              hand: [{ instanceId: "card-1", card: { name: "Growth Spiral" } }],
+              library: [{ instanceId: "card-2", card: { name: "Forest" } }]
+            }
+          },
+          {
+            playerId: "ai-1",
+            zones: {
+              hand: [{ instanceId: "card-3", card: { name: "Sol Ring" } }],
+              library: [{ instanceId: "card-4", card: { name: "Swamp" } }]
+            }
+          }
+        ]
+      }
+    };
+
+    const obfuscatedForHuman = obfuscateSnapshotForPlayer(snapshot, "human");
+    assert.equal(obfuscatedForHuman.players[0].zones.hand[0].card.name, "Growth Spiral");
+    assert.equal(obfuscatedForHuman.players[0].zones.library[0].card.name, "Hidden card");
+    assert.equal(obfuscatedForHuman.players[1].zones.hand[0].card.name, "Hidden card");
+    assert.equal(obfuscatedForHuman.players[1].zones.library[0].card.name, "Hidden card");
+
+    assert.equal(obfuscatedForHuman.xmage.players[0].zones.hand[0].card.name, "Growth Spiral");
+    assert.equal(obfuscatedForHuman.xmage.players[0].zones.library[0].card.name, "Hidden card");
+    assert.equal(obfuscatedForHuman.xmage.players[1].zones.hand[0].card.name, "Hidden card");
+    assert.equal(obfuscatedForHuman.xmage.players[1].zones.library[0].card.name, "Hidden card");
+  });
+
+  it("obfuscates snapshots in GET /games/:id route if playerId query param is present", async () => {
+    const state = new Map();
+    const game = {
+      id: "game-1",
+      players: [
+        {
+          playerId: "human",
+          zones: {
+            hand: [{ instanceId: "card-1", card: { name: "Growth Spiral" } }],
+            library: []
+          }
+        },
+        {
+          playerId: "ai-1",
+          zones: {
+            hand: [{ instanceId: "card-3", card: { name: "Sol Ring" } }],
+            library: []
+          }
+        }
+      ]
+    };
+    state.set(game.id, game);
+    const handler = createGatewayHandler(state);
+
+    const response = await runHandler(handler, `/games/${game.id}?playerId=human`, "GET");
+    assert.equal(response.status, 200);
+    const body = JSON.parse(response.body);
+    assert.equal(body.players[0].zones.hand[0].card.name, "Growth Spiral");
+    assert.equal(body.players[1].zones.hand[0].card.name, "Hidden card");
+  });
+
+  it("keeps Java bridge code hardened with command/prompt validations and parsing patterns", () => {
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+
+    // Command/prompt validations
+    assert.ok(bridgeSource.includes("if (command == null) {"));
+    assert.ok(bridgeSource.includes("isPromptRespondingCommand"));
+    assert.ok(bridgeSource.includes("validatePromptSelections(gameId, prompt, singletonSelection(String.valueOf(pile)));"));
+    assert.ok(bridgeSource.includes("validatePromptSelections(gameId, prompt, singletonSelection(String.valueOf(response)));"));
+
+    // Commander Tax text variants regex
+    assert.ok(bridgeSource.includes("commander tax"));
+    assert.ok(bridgeSource.includes("commander tax:?\\\\s*\\\\{?(\\\\d+)\\\\}?"));
+    assert.ok(bridgeSource.includes("(?:commander\\\\s+casts|casts\\\\s+from\\\\s+(?:the\\\\s+)?command\\\\s+zone|played\\\\s+from\\\\s+(?:the\\\\s+)?command\\\\s+zone|casts|number\\\\s+of\\\\s+(?:times\\\\s+)?cast(?:s)?)\\\\s*[:\\\\s]\\\\s*(\\\\d+)"));
+    assert.ok(bridgeSource.includes("(?:cast|played)\\\\s+(\\\\d+)\\\\s+time"));
+
+    // Commander Damage text variants regex
+    assert.ok(bridgeSource.includes("(?:did|dealt|deals|has\\\\s+dealt)\\\\s+(\\\\d+)\\\\s+(?:combat|commander)\\\\s+damage\\\\s+to\\\\s+(?:player\\\\s+)?([^.]+)"));
+    assert.ok(bridgeSource.includes("(\\\\d+)\\\\s+(?:combat|commander)\\\\s+damage\\\\s+to\\\\s+(?:player\\\\s+)?([^.]+)"));
+    assert.ok(bridgeSource.includes("(?:combat\\\\s+)?damage\\\\s+dealt\\\\s+(?:by\\\\s+commander\\\\s+)?to\\\\s+([^:]+):\\\\s*(\\\\d+)"));
+    assert.ok(bridgeSource.includes("commander\\\\s+combat\\\\s+damage\\\\s+to\\\\s+([^:]+):\\\\s*(\\\\d+)"));
   });
 });
 

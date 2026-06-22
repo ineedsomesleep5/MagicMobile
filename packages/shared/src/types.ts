@@ -26,6 +26,8 @@ export interface CardIdentity {
   typeLine: string;
   oracleText?: string;
   isBasicLand?: boolean;
+  artist?: string;
+  copyright?: string;
 }
 
 export interface DeckEntry {
@@ -39,6 +41,7 @@ export interface DeckList {
   name: string;
   commander?: DeckEntry;
   entries: DeckEntry[];
+  errors?: string[];
 }
 
 export interface DeckStats {
@@ -250,6 +253,7 @@ export interface LegalAction {
   pile?: 1 | 2 | string;
   confirmed?: boolean;
   pay?: boolean;
+  useCommandZone?: boolean;
   isPrimary?: boolean;
   requiresTarget?: boolean;
   required?: boolean;

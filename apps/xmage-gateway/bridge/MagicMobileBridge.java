@@ -113,6 +113,16 @@ public final class MagicMobileBridge implements MageClient {
         try {
             String method = exchange.getRequestMethod();
             String path = exchange.getRequestURI().getPath();
+            String query = exchange.getRequestURI().getQuery();
+            String queryPlayerId = null;
+            if (query != null) {
+                for (String param : query.split("&")) {
+                    String[] pair = param.split("=");
+                    if (pair.length > 0 && "playerId".equals(pair[0])) {
+                        queryPlayerId = pair.length > 1 ? pair[1] : "";
+                    }
+                }
+            }
 
             if ("GET".equals(method) && "/health".equals(path)) {
                 writeJson(exchange, 200, health());
@@ -128,7 +138,11 @@ public final class MagicMobileBridge implements MageClient {
             if (parts.length >= 3 && "games".equals(parts[1])) {
                 String gameId = parts[2];
                 if ("GET".equals(method) && parts.length == 3) {
-                    writeJson(exchange, 200, snapshot(gameId));
+                    JsonObject snap = snapshot(gameId);
+                    if (queryPlayerId != null && !queryPlayerId.isEmpty()) {
+                        snap = obfuscateSnapshotForPlayer(snap, queryPlayerId);
+                    }
+                    writeJson(exchange, 200, snap);
                     return;
                 }
                 if ("GET".equals(method) && parts.length == 4 && "legal-actions".equals(parts[3])) {
@@ -252,6 +266,9 @@ public final class MagicMobileBridge implements MageClient {
     }
 
     private JsonObject submitCommand(String gameId, JsonObject command) throws Exception {
+        if (command == null) {
+            throw new IllegalArgumentException("Command cannot be null");
+        }
         ensureConnected(false);
         UUID xmageGameId = UUID.fromString(gameId);
         String type = string(command, "type", "");
@@ -312,7 +329,9 @@ public final class MagicMobileBridge implements MageClient {
             validatePromptSelections(gameId, prompt, singletonSelection(abilityId));
             session.sendPlayerUUID(xmageGameId, abilityId.isEmpty() ? null : UUID.fromString(abilityId));
         } else if ("choose_pile".equals(type)) {
-            session.sendPlayerBoolean(xmageGameId, integer(command, "pile", 1) == 1);
+            int pile = integer(command, "pile", 1);
+            validatePromptSelections(gameId, prompt, singletonSelection(String.valueOf(pile)));
+            session.sendPlayerBoolean(xmageGameId, pile == 1);
         } else if ("choose_amount".equals(type) || "play_x_mana".equals(type)) {
             int amount = amountFromCommand(command, "amount", 0);
             validatePromptAmount(gameId, prompt, amount);
@@ -326,11 +345,17 @@ public final class MagicMobileBridge implements MageClient {
         } else if ("search_select".equals(type)) {
             sendPromptUuids(gameId, xmageGameId, prompt, selectionIds(command, "cardInstanceIds", "cardInstanceId", "choiceIds", "choiceId"));
         } else if ("commander_replacement".equals(type)) {
-            session.sendPlayerBoolean(xmageGameId, requiredBooleanResponse(gameId, command, "useCommandZone"));
+            boolean response = requiredBooleanResponse(gameId, command, "useCommandZone");
+            validatePromptSelections(gameId, prompt, singletonSelection(String.valueOf(response)));
+            session.sendPlayerBoolean(xmageGameId, response);
         } else if ("pay_cost".equals(type)) {
-            session.sendPlayerBoolean(xmageGameId, requiredBooleanResponse(gameId, command, "pay"));
+            boolean response = requiredBooleanResponse(gameId, command, "pay");
+            validatePromptSelections(gameId, prompt, singletonSelection(String.valueOf(response)));
+            session.sendPlayerBoolean(xmageGameId, response);
         } else if ("answer_yes_no".equals(type)) {
-            session.sendPlayerBoolean(xmageGameId, requiredBooleanResponse(gameId, command, "confirmed"));
+            boolean response = requiredBooleanResponse(gameId, command, "confirmed");
+            validatePromptSelections(gameId, prompt, singletonSelection(String.valueOf(response)));
+            session.sendPlayerBoolean(xmageGameId, response);
         } else if ("declare_attackers".equals(type) || "declare_blockers".equals(type)) {
             sendCombatSelection(gameId, xmageGameId, command, "declare_attackers".equals(type));
         } else if ("resolve_choice".equals(type)) {
@@ -349,7 +374,9 @@ public final class MagicMobileBridge implements MageClient {
                 if (prompt != null && !hasExplicitBooleanResponse(command, "value")) {
                     sendEmptyPromptSelection(gameId, xmageGameId, prompt);
                 } else {
-                    session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "value", true));
+                    boolean response = booleanResponse(command, "value", true);
+                    validatePromptSelections(gameId, prompt, singletonSelection(String.valueOf(response)));
+                    session.sendPlayerBoolean(xmageGameId, response);
                 }
             }
         } else {
@@ -443,6 +470,27 @@ public final class MagicMobileBridge implements MageClient {
         return ManaType.COLORLESS;
     }
 
+    private boolean isPromptRespondingCommand(String type) {
+        return "choose_target".equals(type)
+                || "choose_card".equals(type)
+                || "choose_player".equals(type)
+                || "choose_mode".equals(type)
+                || "play_mana".equals(type)
+                || "choose_mana".equals(type)
+                || "choose_ability".equals(type)
+                || "choose_pile".equals(type)
+                || "choose_amount".equals(type)
+                || "play_x_mana".equals(type)
+                || "choose_multi_amount".equals(type)
+                || "order_triggers".equals(type)
+                || "order_items".equals(type)
+                || "search_select".equals(type)
+                || "commander_replacement".equals(type)
+                || "pay_cost".equals(type)
+                || "answer_yes_no".equals(type)
+                || "resolve_choice".equals(type);
+    }
+
     private JsonObject currentPromptForCommand(String gameId, JsonObject command, String type) {
         GameRecord record = games.get(gameId);
         JsonObject prompt = record == null ? null : record.promptEnvelope;
@@ -450,26 +498,44 @@ public final class MagicMobileBridge implements MageClient {
         int requestedMessageId = integer(command, "messageId", -1);
         boolean exactPromptRequested = !requestedPromptId.isEmpty() || requestedMessageId >= 0;
 
-        if (prompt == null) {
-            if (exactPromptRequested) {
-                throw new ActionNoLongerLegalException(gameId, "XMage prompt is no longer active");
+        if (isPromptRespondingCommand(type)) {
+            if (prompt == null) {
+                throw new ActionNoLongerLegalException(gameId, "XMage prompt is no longer active for command: " + type);
             }
-            return null;
-        }
+            String activePromptId = string(prompt, "id", "");
+            int activeMessageId = integer(prompt, "messageId", -1);
+            if (!requestedPromptId.isEmpty() && !requestedPromptId.equals(activePromptId)) {
+                throw new ActionNoLongerLegalException(gameId, "XMage prompt is no longer active: " + requestedPromptId);
+            }
+            if (requestedMessageId >= 0 && requestedMessageId != activeMessageId) {
+                throw new ActionNoLongerLegalException(gameId, "XMage prompt message is no longer active: " + requestedMessageId);
+            }
+            if (!isCommandCompatibleWithPrompt(type, prompt)) {
+                throw new ActionNoLongerLegalException(gameId, "Command " + type + " does not answer active XMage prompt " + activePromptId);
+            }
+            return prompt;
+        } else {
+            if (prompt == null) {
+                if (exactPromptRequested) {
+                    throw new ActionNoLongerLegalException(gameId, "XMage prompt is no longer active");
+                }
+                return null;
+            }
 
-        String activePromptId = string(prompt, "id", "");
-        int activeMessageId = integer(prompt, "messageId", -1);
-        if (!requestedPromptId.isEmpty() && !requestedPromptId.equals(activePromptId)) {
-            throw new ActionNoLongerLegalException(gameId, "XMage prompt is no longer active: " + requestedPromptId);
-        }
-        if (requestedMessageId >= 0 && requestedMessageId != activeMessageId) {
-            throw new ActionNoLongerLegalException(gameId, "XMage prompt message is no longer active: " + requestedMessageId);
-        }
+            String activePromptId = string(prompt, "id", "");
+            int activeMessageId = integer(prompt, "messageId", -1);
+            if (!requestedPromptId.isEmpty() && !requestedPromptId.equals(activePromptId)) {
+                throw new ActionNoLongerLegalException(gameId, "XMage prompt is no longer active: " + requestedPromptId);
+            }
+            if (requestedMessageId >= 0 && requestedMessageId != activeMessageId) {
+                throw new ActionNoLongerLegalException(gameId, "XMage prompt message is no longer active: " + requestedMessageId);
+            }
 
-        if (exactPromptRequested && !isCommandCompatibleWithPrompt(type, prompt)) {
-            throw new ActionNoLongerLegalException(gameId, "Command " + type + " does not answer active XMage prompt " + activePromptId);
+            if (exactPromptRequested && !isCommandCompatibleWithPrompt(type, prompt)) {
+                throw new ActionNoLongerLegalException(gameId, "Command " + type + " does not answer active XMage prompt " + activePromptId);
+            }
+            return exactPromptRequested || isCommandCompatibleWithPrompt(type, prompt) ? prompt : null;
         }
-        return exactPromptRequested || isCommandCompatibleWithPrompt(type, prompt) ? prompt : null;
     }
 
     private boolean isCommandCompatibleWithPrompt(String type, JsonObject prompt) {
@@ -1370,13 +1436,33 @@ public final class MagicMobileBridge implements MageClient {
         if (card.getRules() == null) return 0;
         for (String rule : card.getRules()) {
             String cleanRule = cleanText(rule).toLowerCase();
-            if (cleanRule.contains("played from the command zone")) {
-                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("(\\d+)");
+            
+            // 1. Explicit tax amount, e.g. "commander tax: {2}" or "commander tax: 2"
+            if (cleanRule.contains("commander tax")) {
+                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("commander tax:?\\s*\\{?(\\d+)\\}?");
                 java.util.regex.Matcher matcher = pattern.matcher(cleanRule);
                 if (matcher.find()) {
-                    int casts = Integer.parseInt(matcher.group(1));
-                    return casts * 2;
+                    return Integer.parseInt(matcher.group(1));
                 }
+            }
+            
+            // 2. Cast count (to be multiplied by 2)
+            // e.g. "casts: 1", "commander casts: 1", "casts from command zone: 1", "played from command zone: 1"
+            java.util.regex.Pattern castPattern = java.util.regex.Pattern.compile(
+                "(?:commander\\s+casts|casts\\s+from\\s+(?:the\\s+)?command\\s+zone|played\\s+from\\s+(?:the\\s+)?command\\s+zone|casts|number\\s+of\\s+(?:times\\s+)?cast(?:s)?)\\s*[:\\s]\\s*(\\d+)"
+            );
+            java.util.regex.Matcher matcher = castPattern.matcher(cleanRule);
+            if (matcher.find()) {
+                return Integer.parseInt(matcher.group(1)) * 2;
+            }
+
+            // e.g. "cast 1 times", "played 1 times"
+            java.util.regex.Pattern castPattern2 = java.util.regex.Pattern.compile(
+                "(?:cast|played)\\s+(\\d+)\\s+time"
+            );
+            java.util.regex.Matcher matcher2 = castPattern2.matcher(cleanRule);
+            if (matcher2.find()) {
+                return Integer.parseInt(matcher2.group(1)) * 2;
             }
         }
         return 0;
@@ -1436,25 +1522,72 @@ public final class MagicMobileBridge implements MageClient {
                 if (card.getRules() == null) continue;
                 for (String rule : card.getRules()) {
                     String cleanRule = cleanText(rule).toLowerCase();
-                    if (cleanRule.contains("combat damage to player")) {
-                        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("did\\s+(\\d+)\\s+combat\\s+damage\\s+to\\s+player\\s+(.+)");
-                        java.util.regex.Matcher matcher = pattern.matcher(cleanRule);
-                        if (matcher.find()) {
-                            int damage = Integer.parseInt(matcher.group(1));
-                            String targetPlayerName = matcher.group(2).trim();
-                            if (targetPlayerName.endsWith(".")) {
-                                targetPlayerName = targetPlayerName.substring(0, targetPlayerName.length() - 1);
-                            }
+                    int damage = -1;
+                    String targetPlayerName = null;
 
-                            for (PlayerView p : view.getPlayers()) {
-                                String name = p.getName().toLowerCase();
-                                if (name.equals(targetPlayerName) || targetPlayerName.contains(name) || name.contains(targetPlayerName)) {
-                                    String recipientExternalId = playerIds.get(p.getPlayerId());
-                                    if (recipientExternalId != null) {
-                                        receivedDamage.get(recipientExternalId).put(attackerExternalId, damage);
-                                    }
-                                    break;
+                    // Match pattern: "did/dealt (\d+) combat/commander damage to (?:player )?(.+)"
+                    // e.g. "did 5 combat damage to player human", "dealt 5 combat damage to human"
+                    java.util.regex.Pattern pattern1 = java.util.regex.Pattern.compile(
+                        "(?:did|dealt|deals|has\\s+dealt)\\s+(\\d+)\\s+(?:combat|commander)\\s+damage\\s+to\\s+(?:player\\s+)?([^.]+)"
+                    );
+                    java.util.regex.Matcher matcher1 = pattern1.matcher(cleanRule);
+                    if (matcher1.find()) {
+                        damage = Integer.parseInt(matcher1.group(1));
+                        targetPlayerName = matcher1.group(2).trim();
+                    }
+
+                    // Match pattern: "(\d+) (?:combat|commander) damage to (?:player )?(.+)"
+                    // e.g. "5 commander damage to player human"
+                    if (damage == -1) {
+                        java.util.regex.Pattern pattern2 = java.util.regex.Pattern.compile(
+                            "(\\d+)\\s+(?:combat|commander)\\s+damage\\s+to\\s+(?:player\\s+)?([^.]+)"
+                        );
+                        java.util.regex.Matcher matcher2 = pattern2.matcher(cleanRule);
+                        if (matcher2.find()) {
+                            damage = Integer.parseInt(matcher2.group(1));
+                            targetPlayerName = matcher2.group(2).trim();
+                        }
+                    }
+
+                    // Match pattern: "(?:combat\\s+)?damage\\s+dealt\\s+(?:by\\s+commander\\s+)?to\\s+([^:]+):\\s*(\\d+)"
+                    // e.g. "commander damage dealt to human: 5", "combat damage dealt by commander to human: 5"
+                    if (damage == -1) {
+                        java.util.regex.Pattern pattern3 = java.util.regex.Pattern.compile(
+                            "(?:combat\\s+)?damage\\s+dealt\\s+(?:by\\s+commander\\s+)?to\\s+([^:]+):\\s*(\\d+)"
+                        );
+                        java.util.regex.Matcher matcher3 = pattern3.matcher(cleanRule);
+                        if (matcher3.find()) {
+                            targetPlayerName = matcher3.group(1).trim();
+                            damage = Integer.parseInt(matcher3.group(2));
+                        }
+                    }
+
+                    // Match pattern: "commander\\s+combat\\s+damage\\s+to\\s+([^:]+):\\s*(\\d+)"
+                    // e.g. "commander combat damage to human: 5"
+                    if (damage == -1) {
+                        java.util.regex.Pattern pattern4 = java.util.regex.Pattern.compile(
+                            "commander\\s+combat\\s+damage\\s+to\\s+([^:]+):\\s*(\\d+)"
+                        );
+                        java.util.regex.Matcher matcher4 = pattern4.matcher(cleanRule);
+                        if (matcher4.find()) {
+                            targetPlayerName = matcher4.group(1).trim();
+                            damage = Integer.parseInt(matcher4.group(2));
+                        }
+                    }
+
+                    if (damage >= 0 && targetPlayerName != null) {
+                        if (targetPlayerName.endsWith(".")) {
+                            targetPlayerName = targetPlayerName.substring(0, targetPlayerName.length() - 1).trim();
+                        }
+
+                        for (PlayerView p : view.getPlayers()) {
+                            String name = p.getName().toLowerCase();
+                            if (name.equals(targetPlayerName) || targetPlayerName.contains(name) || name.contains(targetPlayerName)) {
+                                String recipientExternalId = playerIds.get(p.getPlayerId());
+                                if (recipientExternalId != null) {
+                                    receivedDamage.get(recipientExternalId).put(attackerExternalId, damage);
                                 }
+                                break;
                             }
                         }
                     }
@@ -2393,6 +2526,65 @@ public final class MagicMobileBridge implements MageClient {
         String normalized = value == null ? "zone" : value.toLowerCase().replaceAll("[^a-z0-9]+", "-");
         normalized = normalized.replaceAll("(^-+|-+$)", "");
         return normalized.isEmpty() ? "zone" : normalized;
+    }
+
+    public JsonObject obfuscateSnapshotForPlayer(JsonObject snapshot, String playerId) {
+        if (snapshot == null) return null;
+        JsonObject obfuscated = snapshot.deepCopy();
+        
+        if (obfuscated.has("players") && obfuscated.get("players").isJsonArray()) {
+            JsonArray players = obfuscated.getAsJsonArray("players");
+            for (JsonElement playerEl : players) {
+                if (!playerEl.isJsonObject()) continue;
+                JsonObject player = playerEl.getAsJsonObject();
+                String extId = string(player, "playerId", "");
+                if (!extId.equals(playerId)) {
+                    if (player.has("zones") && player.get("zones").isJsonObject()) {
+                        JsonObject zones = player.getAsJsonObject("zones");
+                        if (zones.has("hand") && zones.get("hand").isJsonArray()) {
+                            int handSize = zones.getAsJsonArray("hand").size();
+                            zones.add("hand", hiddenCards(handSize, "hand-" + extId));
+                        }
+                    }
+                }
+                if (player.has("zones") && player.get("zones").isJsonObject()) {
+                    JsonObject zones = player.getAsJsonObject("zones");
+                    if (zones.has("library") && zones.get("library").isJsonArray()) {
+                        int libSize = zones.getAsJsonArray("library").size();
+                        zones.add("library", hiddenCards(libSize, "library-" + extId));
+                    }
+                }
+            }
+        }
+        
+        if (obfuscated.has("xmage") && obfuscated.get("xmage").isJsonObject()) {
+            JsonObject xmage = obfuscated.getAsJsonObject("xmage");
+            if (xmage.has("players") && xmage.get("players").isJsonArray()) {
+                JsonArray players = xmage.getAsJsonArray("players");
+                for (JsonElement playerEl : players) {
+                    if (!playerEl.isJsonObject()) continue;
+                    JsonObject player = playerEl.getAsJsonObject();
+                    String extId = string(player, "playerId", "");
+                    if (!extId.equals(playerId)) {
+                        if (player.has("zones") && player.get("zones").isJsonObject()) {
+                            JsonObject zones = player.getAsJsonObject("zones");
+                            if (zones.has("hand") && zones.get("hand").isJsonArray()) {
+                                int handSize = zones.getAsJsonArray("hand").size();
+                                zones.add("hand", hiddenCards(handSize, "hand-" + extId));
+                            }
+                        }
+                    }
+                    if (player.has("zones") && player.get("zones").isJsonObject()) {
+                        JsonObject zones = player.getAsJsonObject("zones");
+                        if (zones.has("library") && zones.get("library").isJsonArray()) {
+                            int libSize = zones.getAsJsonArray("library").size();
+                            zones.add("library", hiddenCards(libSize, "library-" + extId));
+                        }
+                    }
+                }
+            }
+        }
+        return obfuscated;
     }
 
     private static boolean isUuid(String value) {

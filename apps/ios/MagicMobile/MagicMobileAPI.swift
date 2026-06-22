@@ -384,8 +384,15 @@ struct MagicMobileAPI {
         return nil
     }
 
+    private var session: URLSession {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 15.0
+        config.timeoutIntervalForResource = 30.0
+        return URLSession(configuration: config)
+    }
+
     private func get<T: Decodable>(_ path: String) async throws -> T {
-        let (data, response) = try await URLSession.shared.data(from: url(path))
+        let (data, response) = try await session.data(from: url(path))
         try validate(response: response, data: data)
         return try JSONDecoder.magicMobile.decode(T.self, from: data)
     }
@@ -396,7 +403,7 @@ struct MagicMobileAPI {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(UUID().uuidString, forHTTPHeaderField: "X-Request-Id")
         request.httpBody = try JSONEncoder.magicMobile.encode(body)
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
         return try JSONDecoder.magicMobile.decode(T.self, from: data)
     }

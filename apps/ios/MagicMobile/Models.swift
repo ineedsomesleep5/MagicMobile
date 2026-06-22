@@ -578,3 +578,32 @@ struct GameCommand: Encodable {
         self.expectedBridgeRevision = expectedBridgeRevision
     }
 }
+
+extension CardIdentity {
+    public var isLand: Bool {
+        typeLine.localizedCaseInsensitiveContains("land")
+    }
+
+    public var isCreature: Bool {
+        typeLine.localizedCaseInsensitiveContains("creature")
+    }
+
+    public var isPlaneswalker: Bool {
+        typeLine.localizedCaseInsensitiveContains("planeswalker")
+    }
+
+    public var isArtifact: Bool {
+        typeLine.localizedCaseInsensitiveContains("artifact")
+    }
+
+    public var isEnchantment: Bool {
+        typeLine.localizedCaseInsensitiveContains("enchantment")
+    }
+}
+
+extension ZoneCard {
+    public var isCreature: Bool {
+        card.isCreature
+    }
+}
+
