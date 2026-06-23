@@ -368,6 +368,32 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertFalse(PromptCommandBuilder.canSubmitShownOrder(ids: ["trigger-1", "trigger-2"]))
     }
 
+    func testPromptCommandBuilderRecognizesPrebuiltCombatPayloads() throws {
+        let attackerAction = try decodeAction(
+            type: "declare_attackers",
+            extra: #"""
+            "commandTemplate": {
+              "type": "declare_attackers",
+              "attackers": [{ "attackerId": "attacker-1", "defenderId": "ai-1" }]
+            }
+            """#
+        )
+        let blockerAction = try decodeAction(
+            type: "declare_blockers",
+            extra: #"""
+            "commandTemplate": {
+              "type": "declare_blockers",
+              "blockers": [{ "blockerId": "blocker-1", "attackerId": "attacker-1" }]
+            }
+            """#
+        )
+        let incompleteAction = try decodeAction(type: "declare_attackers")
+
+        XCTAssertTrue(PromptCommandBuilder.hasPrebuiltCombatPayload(attackerAction))
+        XCTAssertTrue(PromptCommandBuilder.hasPrebuiltCombatPayload(blockerAction))
+        XCTAssertFalse(PromptCommandBuilder.hasPrebuiltCombatPayload(incompleteAction))
+    }
+
     private func decodeAction(type: String, extra: String? = nil) throws -> LegalAction {
         let extraFields = extra.map { ",\n          \($0)" } ?? ""
         let data = """

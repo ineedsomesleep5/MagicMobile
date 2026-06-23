@@ -97,11 +97,27 @@ enum PromptCommandBuilder {
         ids.count == 1
     }
 
+    static func hasPrebuiltCombatPayload(_ action: LegalAction) -> Bool {
+        switch action.type {
+        case "declare_attackers":
+            return action.attackers?.isEmpty == false || jsonArrayHasItems(action.commandTemplate?["attackers"])
+        case "declare_blockers":
+            return action.blockers?.isEmpty == false || jsonArrayHasItems(action.commandTemplate?["blockers"])
+        default:
+            return false
+        }
+    }
+
     private static func resolvedMessageId(promptEnvelope: PromptEnvelopeV2?, promptId: String) -> Int? {
         guard let prompt = promptEnvelope else { return nil }
         if prompt.id == promptId || prompt.responseCommand?.promptId == promptId {
             return prompt.responseCommand?.messageId ?? prompt.messageId
         }
         return nil
+    }
+
+    private static func jsonArrayHasItems(_ value: JSONValue?) -> Bool {
+        guard case .array(let values) = value else { return false }
+        return !values.isEmpty
     }
 }

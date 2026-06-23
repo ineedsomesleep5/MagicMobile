@@ -2992,9 +2992,9 @@ struct UniversalPromptActionPanel: View {
         case "resolve_choice":
             return singleCount(action.choiceIds) || singleCount(action.targetIds) || singleCount(action.validTargetIds)
         case "declare_attackers":
-            return action.attackers?.isEmpty == false
+            return PromptCommandBuilder.hasPrebuiltCombatPayload(action)
         case "declare_blockers":
-            return action.blockers?.isEmpty == false
+            return PromptCommandBuilder.hasPrebuiltCombatPayload(action)
         case "choose_multi_amount", "order_triggers", "order_items":
             return false
         default:
