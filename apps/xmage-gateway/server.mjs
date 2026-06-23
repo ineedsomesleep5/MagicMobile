@@ -512,7 +512,7 @@ function fixtureHumanDeck(scenario) {
       name: "Mana Rock Fixture",
       commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
       entries: [
-        { cardName: "Arcane Signet", quantity: 1, section: "deck" },
+        { cardName: "Sol Ring", quantity: 1, section: "deck" },
         { cardName: "Plains", quantity: 98, section: "deck" }
       ]
     };

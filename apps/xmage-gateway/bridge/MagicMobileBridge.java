@@ -3069,7 +3069,7 @@ public final class MagicMobileBridge implements MageClient {
             return;
         }
         if ("mana-rock".equals(fixtureName)) {
-            defaultCards(schema, "humanHand", "Arcane Signet");
+            defaultCards(schema, "humanHand", "Sol Ring");
             defaultBattlefield(schema, "humanBattlefield", "Plains", "Plains");
             defaultCards(schema, "humanLibraryTop", "Plains");
             schema.addProperty("turn", 1);

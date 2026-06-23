@@ -557,7 +557,7 @@ describe("xmage gateway", () => {
 
     assert.equal(fixture.schema.scenarioName, "mana-rock");
     assert.equal(fixture.config.humanDeck.commander.cardName, "Isamaru, Hound of Konda");
-    assert.equal(entries.find((entry) => entry.cardName === "Arcane Signet").quantity, 1);
+    assert.equal(entries.find((entry) => entry.cardName === "Sol Ring").quantity, 1);
     assert.equal(entries.find((entry) => entry.cardName === "Plains").quantity, 98);
   });
 

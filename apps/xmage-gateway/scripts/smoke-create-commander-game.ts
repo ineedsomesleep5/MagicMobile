@@ -13,7 +13,8 @@ const aiPlayerId = process.env.XMAGE_SMOKE_AI_ID ?? "ai-1";
 const requestedScenario = process.env.XMAGE_SMOKE_SCENARIO ?? "core-flow";
 const scenarioModule = scenarioModuleFor(requestedScenario);
 const scenario = scenarioModule.id;
-const arcaneSignetScenario = scenario === "mana-rock";
+const manaRockScenario = scenario === "mana-rock";
+const manaRockCardName = process.env.XMAGE_SMOKE_MANA_ROCK_CARD ?? "Sol Ring";
 const alphaGameScenario = scenario === "core-flow";
 const commanderGauntletScenario = scenario === "commander-gauntlet";
 const blockerFlowScenario = scenario === "blocker-flow";
@@ -93,8 +94,8 @@ const human = fixtureScenario
     ? activatedAbilityFixtureDeck()
     : triggeredAbilityScenario
     ? triggeredAbilityFixtureDeck()
-    : arcaneSignetScenario
-    ? arcaneSignetFixtureDeck()
+    : manaRockScenario
+    ? manaRockFixtureDeck()
     : commanderFixtureDeck("Isamaru, Hound of Konda", "Plains")
   : generateBracketThreeCommanderDeck({ seed: `${seed}:human`, playerId: humanPlayerId }).deck;
 const ai = fixtureScenario
@@ -156,9 +157,9 @@ let combatStepSeen = false;
 let aiWaits = 0;
 let staleActionRecoveries = 0;
 let stackSeen = false;
-let arcaneCastSeen = false;
-let arcaneResolvedSeen = false;
-let arcanePaymentSourceSeen = false;
+let manaRockCastSeen = false;
+let manaRockResolvedSeen = false;
+let manaRockPaymentSourceSeen = false;
 const turnsObserved = new Set<number>();
 const actionsByType: Record<string, number> = {};
 const commanderTaxChanges: Array<{ playerId: string; tax: number; turn: number }> = [];
@@ -237,16 +238,17 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
       continue;
     }
 
-    if (arcaneSignetScenario && action.type === "cast_spell" && /arcane signet/i.test(action.label ?? action.cardName ?? "") && arcaneCastSeen) {
+    const manaRockSourceManaAvailable = snapshot.legalActions?.some((candidate) => candidate.type === "make_mana") ?? false;
+    if (manaRockScenario && action.type === "cast_spell" && isManaRockAction(action) && manaRockCastSeen && !manaRockSourceManaAvailable) {
       const report = {
         ...baseSummaryReport(snapshot),
         failedStep: "mana-rock-cast-no-progress",
-        failureReason: "Arcane Signet remained in hand and castable after a prior real XMage cast attempt; payment/resolution did not progress."
+        failureReason: `${manaRockCardName} remained in hand and castable after a prior real XMage cast attempt; payment/resolution did not progress.`
       };
       writeSmokeReport(report);
       throw new Error(
-        "[Smoke] refusing repeated Arcane Signet cast with no payment or zone progress.\n"
-          + smokeDebug("repeated Arcane Signet cast snapshot", snapshot)
+        `[Smoke] refusing repeated ${manaRockCardName} cast with no payment or zone progress.\n`
+          + smokeDebug(`repeated ${manaRockCardName} cast snapshot`, snapshot)
       );
     }
 
@@ -262,11 +264,11 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
     if (action.type === "declare_blockers") {
       blockerAssignmentExercised = true;
     }
-    if (arcaneSignetScenario && action.type === "cast_spell" && /arcane signet/i.test(action.label ?? action.cardName ?? "")) {
-      arcaneCastSeen = true;
+    if (manaRockScenario && action.type === "cast_spell" && isManaRockAction(action)) {
+      manaRockCastSeen = true;
     }
-    if (arcaneSignetScenario && action.type === "make_mana" && snapshot.promptEnvelopeV2 && isManaOrPaymentPrompt(snapshot)) {
-      arcanePaymentSourceSeen = true;
+    if (manaRockScenario && action.type === "make_mana" && manaRockCastSeen) {
+      manaRockPaymentSourceSeen = true;
     }
     recordGauntletAction(snapshot, action);
 
@@ -312,8 +314,8 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
                 : "resolve prompt";
             
     snapshot = await waitForSemanticProgress(previous, snapshot, semanticLabel);
-    if (arcaneSignetScenario && action.type === "cast_spell" && /arcane signet/i.test(action.label ?? action.cardName ?? "")) {
-      assertArcaneCastProgress(previous, snapshot);
+    if (manaRockScenario && action.type === "cast_spell" && isManaRockAction(action)) {
+      assertManaRockCastProgress(previous, snapshot);
     }
     assertBridgeSnapshot(snapshot, `action: ${action.type}`);
     assertBridgeProgress(previous, snapshot, `action: ${action.type}`, {
@@ -370,22 +372,22 @@ if (scenario === "commander-replacement-tax" || scenario === "commander-damage")
 }
 
 if (scenario === "mana-rock") {
-  if (!arcaneCastSeen) {
+  if (!manaRockCastSeen) {
     throw new Error(
-      "[Smoke] arcane-signet scenario did not cast Arcane Signet from an XMage legal action.\n"
-        + smokeDebug("arcane cast final snapshot", snapshot)
+      `[Smoke] mana-rock scenario did not cast ${manaRockCardName} from an XMage legal action.\n`
+        + smokeDebug("mana-rock cast final snapshot", snapshot)
     );
   }
-  if (!arcanePaymentSourceSeen) {
+  if (!manaRockPaymentSourceSeen) {
     throw new Error(
-      "[Smoke] arcane-signet scenario did not expose source make_mana actions during payment.\n"
-        + smokeDebug("arcane payment final snapshot", snapshot)
+      "[Smoke] mana-rock scenario did not expose source make_mana actions during payment.\n"
+        + smokeDebug("mana-rock payment final snapshot", snapshot)
     );
   }
-  if (!arcaneResolvedSeen) {
+  if (!manaRockResolvedSeen) {
     throw new Error(
-      "[Smoke] arcane-signet scenario did not observe Arcane Signet leaving hand and resolving to the battlefield.\n"
-        + smokeDebug("arcane resolution final snapshot", snapshot)
+      `[Smoke] mana-rock scenario did not observe ${manaRockCardName} leaving hand and resolving to the battlefield.\n`
+        + smokeDebug("mana-rock resolution final snapshot", snapshot)
     );
   }
 }
@@ -523,11 +525,17 @@ function baseSummaryReport(snapshot: SmokeSnapshot) {
     combatStepSeen,
     combatExercised,
     blockerAssignmentExercised,
-    arcaneSignet: {
-      castSeen: arcaneCastSeen,
-      paymentSourceSeen: arcanePaymentSourceSeen,
-      resolvedSeen: arcaneResolvedSeen
+    manaRock: {
+      cardName: manaRockCardName,
+      castSeen: manaRockCastSeen,
+      paymentSourceSeen: manaRockPaymentSourceSeen,
+      resolvedSeen: manaRockResolvedSeen
     },
+    arcaneSignet: manaRockCardName === "Arcane Signet" ? {
+      castSeen: manaRockCastSeen,
+      paymentSourceSeen: manaRockPaymentSourceSeen,
+      resolvedSeen: manaRockResolvedSeen
+    } : undefined,
     commanderTaxChanges,
     commanderDamageChanges,
     players: snapshot.players?.map((player: SmokePlayer) => ({
@@ -637,8 +645,8 @@ function fixtureSeedSchema() {
   const expectedRoutes = routeFamiliesRequired.length > 0 ? routeFamiliesRequired : scenarioModule.requiredSteps;
   const hand = blockerFlowScenario
     ? [basic]
-    : arcaneSignetScenario
-    ? ["Arcane Signet"]
+    : manaRockScenario
+    ? [manaRockCardName]
     : commanderGauntletScenario
     ? ["Sol Ring", "Arcane Signet", "Terramorphic Expanse", "Swords to Plowshares", "Spirited Companion", "Plains", "Plains"]
     : activatedAbilityScenario
@@ -649,7 +657,7 @@ function fixtureSeedSchema() {
   const libraryTop = commanderGauntletScenario ? Array.from({ length: 24 }, () => "Plains") : [basic];
   const battlefield = blockerFlowScenario
     ? ["Silvercoat Lion", basic]
-    : arcaneSignetScenario
+    : manaRockScenario
     ? [basic, basic]
     : activatedAbilityScenario
     ? ["Seal of Cleansing", basic]
@@ -731,7 +739,7 @@ function completedScenarioSteps() {
   if (combatStepSeen) steps.add("combat-step-seen");
   if (stackSeen) steps.add("stack-seen");
   if (combatExercised) steps.add("combat-exercised");
-  if (arcaneCastSeen && arcanePaymentSourceSeen && arcaneResolvedSeen) steps.add("mana-rock");
+  if (manaRockCastSeen && manaRockPaymentSourceSeen && manaRockResolvedSeen) steps.add("mana-rock");
   if (gauntlet.searchResolved || actionsByType.search_select) steps.add("search-select");
   if (gauntlet.commanderReplacementAnswered || commanderTaxChanges.length > 0) steps.add("commander-replacement-tax");
   if (commanderDamageChanges.length > 0) steps.add("commander-damage");
@@ -996,12 +1004,12 @@ function commanderFixtureDeck(commander: string, basic: string) {
   };
 }
 
-function arcaneSignetFixtureDeck() {
+function manaRockFixtureDeck() {
   return {
-    name: "Arcane Signet Payment Fixture",
+    name: `${manaRockCardName} Payment Fixture`,
     commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
     entries: [
-      { cardName: "Arcane Signet", quantity: 1, section: "deck" },
+      { cardName: manaRockCardName, quantity: 1, section: "deck" },
       { cardName: "Plains", quantity: 98, section: "deck" }
     ]
   };
@@ -1199,9 +1207,9 @@ function chooseFixtureAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
     if (gauntletAction) return gauntletAction;
   }
 
-  if (arcaneSignetScenario) {
-    const arcaneAction = chooseArcaneSignetAction(snapshot);
-    if (arcaneAction) return arcaneAction;
+  if (manaRockScenario) {
+    const manaRockAction = chooseManaRockAction(snapshot);
+    if (manaRockAction) return manaRockAction;
   }
 
   const actions = snapshot.legalActions ?? [];
@@ -1317,11 +1325,11 @@ function chooseCommanderGauntletAction(snapshot: SmokeSnapshot): SmokeAction | u
   );
 }
 
-function chooseArcaneSignetAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
+function chooseManaRockAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
   const actions = snapshot.legalActions ?? [];
   const battlefield = humanZone(snapshot, "battlefield");
   const landCount = battlefield.filter((entry) => /land/i.test(entry.card?.typeLine ?? "") || /plains/i.test(entry.card?.name ?? "")).length;
-  const hasArcaneInHand = humanZone(snapshot, "hand").some((entry) => /arcane signet/i.test(entry.card?.name ?? ""));
+  const hasManaRockInHand = humanZone(snapshot, "hand").some((entry) => isManaRockName(entry.card?.name ?? ""));
 
   if (snapshot.promptEnvelopeV2 && isManaOrPaymentPrompt(snapshot)) {
     const sourceMana = actions.find((action) => action.type === "make_mana");
@@ -1337,11 +1345,16 @@ function chooseArcaneSignetAction(snapshot: SmokeSnapshot): SmokeAction | undefi
     if (land) return land;
   }
 
-  if (landCount >= 2 && hasArcaneInHand) {
-    const castArcane = actions.find((action) =>
-      action.type === "cast_spell" && /arcane signet/i.test(action.cardName ?? action.label ?? "")
+  if (manaRockCastSeen && !manaRockResolvedSeen) {
+    const sourceMana = actions.find((action) => action.type === "make_mana");
+    if (sourceMana) return sourceMana;
+  }
+
+  if (landCount >= 2 && hasManaRockInHand) {
+    const castManaRock = actions.find((action) =>
+      action.type === "cast_spell" && isManaRockAction(action)
     );
-    if (castArcane) return castArcane;
+    if (castManaRock) return castManaRock;
   }
 
   return actions.find((action) =>
@@ -1528,7 +1541,7 @@ async function waitForSemanticProgress(previous: SmokeSnapshot, next: SmokeSnaps
 }
 
 function semanticProgressDeadlineMs(label: string) {
-  if (arcaneSignetScenario && label === "cast simple spell") return 5000;
+  if (manaRockScenario && label === "cast simple spell") return 5000;
   if (label === "cast simple spell") return 30000;
   if (label === "resolve prompt") return 20000;
   return 15000;
@@ -1771,31 +1784,39 @@ function assertSemanticProgress(previous: SmokeSnapshot, next: SmokeSnapshot, la
   }
 }
 
-function assertArcaneCastProgress(previous: SmokeSnapshot, next: SmokeSnapshot) {
-  if (arcaneCastMadeProgress(previous, next)) return;
+function assertManaRockCastProgress(previous: SmokeSnapshot, next: SmokeSnapshot) {
+  if (manaRockCastMadeProgress(previous, next)) return;
   const report = {
     ...baseSummaryReport(next),
     failedStep: "mana-rock-cast-no-progress",
-    failureReason: "Arcane Signet cast action returned a real XMage snapshot but did not open a payment prompt, expose source make_mana actions, move the card, use mana, or put an object on the stack."
+    failureReason: `${manaRockCardName} cast action returned a real XMage snapshot but did not open a payment prompt, expose source make_mana actions, move the card, use mana, or put an object on the stack.`
   };
   writeSmokeReport(report);
   throw new Error(
     "[Smoke] mana-rock cast did not make real XMage gameplay progress.\n"
-      + smokeDebug("before Arcane Signet cast", previous)
+      + smokeDebug(`before ${manaRockCardName} cast`, previous)
       + "\n"
-      + smokeDebug("after Arcane Signet cast", next)
+      + smokeDebug(`after ${manaRockCardName} cast`, next)
   );
 }
 
-function arcaneCastMadeProgress(previous: SmokeSnapshot, next: SmokeSnapshot) {
-  return humanZone(next, "hand").filter((entry) => /arcane signet/i.test(entry.card?.name ?? "")).length
-      < humanZone(previous, "hand").filter((entry) => /arcane signet/i.test(entry.card?.name ?? "")).length
-    || humanZone(next, "battlefield").some((entry) => /arcane signet/i.test(entry.card?.name ?? ""))
+function manaRockCastMadeProgress(previous: SmokeSnapshot, next: SmokeSnapshot) {
+  return humanZone(next, "hand").filter((entry) => isManaRockName(entry.card?.name ?? "")).length
+      < humanZone(previous, "hand").filter((entry) => isManaRockName(entry.card?.name ?? "")).length
+    || humanZone(next, "battlefield").some((entry) => isManaRockName(entry.card?.name ?? ""))
     || humanZone(next, "stack").length > humanZone(previous, "stack").length
     || snapshotHasStackObject(next)
     || next.promptEnvelopeV2 !== undefined
     || manaTotal(previous) !== manaTotal(next)
     || (next.legalActions ?? []).some((action) => action.type === "make_mana" && next.promptEnvelopeV2 && isManaOrPaymentPrompt(next));
+}
+
+function isManaRockAction(action: SmokeAction) {
+  return isManaRockName(action.cardName ?? action.label ?? "");
+}
+
+function isManaRockName(name: string) {
+  return name.toLowerCase().includes(manaRockCardName.toLowerCase());
 }
 
 function hasSemanticProgress(previous: SmokeSnapshot, next: SmokeSnapshot, label: string) {
@@ -2151,8 +2172,8 @@ function recordCoverage(snapshot: SmokeSnapshot) {
     stackSeen = true;
     markRouteFamily("stack_object_seen");
   }
-  if (arcaneSignetScenario && humanZone(snapshot, "battlefield").some((entry) => /arcane signet/i.test(entry.card?.name ?? ""))) {
-    arcaneResolvedSeen = true;
+  if (manaRockScenario && humanZone(snapshot, "battlefield").some((entry) => isManaRockName(entry.card?.name ?? ""))) {
+    manaRockResolvedSeen = true;
   }
   if (
     triggeredAbilityScenario
@@ -2186,7 +2207,7 @@ function scenarioSatisfied() {
   if (scenario === "blocker-flow") return blockerAssignmentExercised;
   if (scenario === "commander-replacement-tax") return commanderTaxChanges.length > 0;
   if (scenario === "commander-damage") return commanderDamageChanges.length > 0;
-  if (scenario === "mana-rock") return arcaneCastSeen && arcanePaymentSourceSeen && arcaneResolvedSeen;
+  if (scenario === "mana-rock") return manaRockCastSeen && manaRockPaymentSourceSeen && manaRockResolvedSeen;
   if (scenario === "search-select") return gauntlet.searchResolved || actionsByType.search_select > 0;
   if (scenario === "prompt-variety") return promptVarietyRouteFamiliesSatisfied();
   if (scenario === "activated-ability-stack" || scenario === "triggered-ability-stack") return missingRouteFamilies().length === 0;
