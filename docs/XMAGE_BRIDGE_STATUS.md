@@ -13,6 +13,7 @@ MagicMobile uses a thin gateway and Java bridge to run XMage server-side while i
 - **Healthy Dockerized Java Bridge**: Starts upstream XMage and exposes HTTP endpoints behind `apps/xmage-gateway`.
 - **Live Smoke Coverage Exists, Not a Required CI Gate**: The live smoke play loop (`pnpm smoke:xmage`) is available for Docker/XMage validation and writes reports to `build_output/smoke/*.json`. It must report `source: "xmage-java-bridge"` to count as real evidence. Normal CI does not require live smoke.
 - **BridgeRevision and Cycle Rejection**: Fully enforced at both gateway (`server.mjs`) and client levels (Swift/Next.js), preventing stale updates or websocket snap-backs.
+- **Remoting Keepalive and Honest Disconnects**: The Java bridge periodically pings the XMage remoting session and reports disconnects through health/smoke as bridge failures instead of masking them as generic AI stalls.
 - **Strict Command Mapping**: The bridge throws an `IllegalArgumentException` for unknown command types rather than silently mapping to random UUID sends.
 - **Parsed Commander Tax**: Real casting counts are extracted from commander card rules text (e.g. `"played from the command zone"`) and parsed to calculate commander tax:
   $$\text{Tax} = \text{Casts} \times 2$$

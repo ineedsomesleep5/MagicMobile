@@ -83,6 +83,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
@@ -100,6 +101,7 @@ public final class MagicMobileBridge implements MageClient {
     private final int xmagePort;
     private final String gatewayUrl;
     private final ExecutorService updateExecutor = Executors.newSingleThreadExecutor();
+    private final ScheduledExecutorService keepAliveExecutor = Executors.newSingleThreadScheduledExecutor();
 
     private Session session;
     private volatile String lastError = "";
@@ -129,6 +131,7 @@ public final class MagicMobileBridge implements MageClient {
         server.createContext("/", this::handleRequest);
         server.setExecutor(null);
         server.start();
+        keepAliveExecutor.scheduleAtFixedRate(this::pingIfConnected, 15, 15, TimeUnit.SECONDS);
         System.out.println("MagicMobile XMage Java bridge listening on " + bridgePort);
     }
 
@@ -3218,7 +3221,7 @@ public final class MagicMobileBridge implements MageClient {
             ready = session != null && bridgeConnected && session.isConnected() && session.isServerReady();
             reason = ready
                     ? "XMage Java bridge connected to " + xmageHost + ":" + xmagePort + "."
-                    : "XMage server is reachable but not ready.";
+                    : lastError == null || lastError.isEmpty() ? "XMage server is reachable but not ready." : lastError;
         } catch (Exception error) {
             reason = error.getMessage() == null ? error.toString() : error.getMessage();
         }
@@ -3256,6 +3259,18 @@ public final class MagicMobileBridge implements MageClient {
         }
     }
 
+    private void pingIfConnected() {
+        try {
+            Session current = session;
+            if (current != null && bridgeConnected && current.isConnected()) {
+                current.ping();
+            }
+        } catch (Exception error) {
+            bridgeConnected = false;
+            lastError = "XMage bridge keepalive failed: " + (error.getMessage() == null ? error.toString() : error.getMessage());
+        }
+    }
+
     @Override
     public MageVersion getVersion() {
         return VERSION;
@@ -3270,6 +3285,7 @@ public final class MagicMobileBridge implements MageClient {
     @Override
     public void disconnected(boolean askToReconnect, boolean keepMySessionActive) {
         bridgeConnected = false;
+        lastError = "XMage bridge disconnected";
         System.out.println("XMage disconnected");
     }
 

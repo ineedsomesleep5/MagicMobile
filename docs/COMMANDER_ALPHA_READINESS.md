@@ -65,17 +65,17 @@ All commands below were run locally on macOS on June 23, 2026 against the shared
 | `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test docker compose up -d --build xmage-bridge xmage-gateway` | Embedded same-JVM fixture startup | ~2-3m to ready after cached rebuild | Pass: gateway health reached `status: "ready"` after XMage card/server startup |
 | `curl http://localhost:17171/health` | Gateway/bridge health | Ready after startup polling | Pass: `status: "ready"`, `reason: "XMage Java bridge connected to 127.0.0.1:17171."` |
 | `XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage` | Live gateway & Java bridge non-fixtured play loop | Diagnostic only | Not a release gate; nondeterministic legal-deck state can miss required proof routes |
-| `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage` | Full deterministic Commander gauntlet smoke | ~90s after services ready | Historical pass: real `source: "xmage-java-bridge"`, direct fixture seeding, `stepsBlocked: []` |
+| `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage` | Full deterministic Commander gauntlet smoke | ~90s after services ready | Latest local pass: real `source: "xmage-java-bridge"`, direct fixture seeding, final `bridgeRevision: 133`, final `xmageCycle: 223`, `stepsBlocked: []` |
 | `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-damage XMAGE_USE_FIXTURE=true pnpm smoke:xmage` | Targeted deterministic commander damage smoke | ~40s after services ready | Historical pass: real `source: "xmage-java-bridge"`, commander-damage evidence, `stepsBlocked: []` |
 
 ### Key Smoke Test Verification Points:
-- The bridge image was rebuilt after the source-UUID `make_mana` fix and after the activation-dispatch/commander prompt classifier fixes in this pass.
-- Final deterministic smoke evidence from this pass used `source: "xmage-java-bridge"`, direct fixture seeding, seeded-state verification, and `stepsBlocked: []`.
+- The bridge image was rebuilt after the source-UUID `make_mana` fix, after the activation-dispatch/commander prompt classifier fixes, and after the bridge keepalive/error-reporting fix in this pass.
+- Final deterministic smoke evidence from this pass used `source: "xmage-java-bridge"`, direct fixture seeding, seeded-state verification, final `bridgeRevision: 133`, final `xmageCycle: 223`, and `stepsBlocked: []`.
 - Focused activated-ability fixture evidence from the same pass used `source: "xmage-java-bridge"`, direct fixture seeding, no missing route families, and `stepsBlocked: []`.
 - Focused commander-damage fixture evidence from the same pass used `source: "xmage-java-bridge"` and non-empty commander-damage evidence after the combat-selection bridge fix.
 - The successful gauntlet used `setupMethod: "in_server_game_cheat"` and `source: "xmage-server-fixture-service"` for setup metadata, then all gameplay actions went through the real Java bridge command path.
 - Live route-family evidence in the passing report: `play_land`, `cast_spell`, `make_mana`, `activate_ability`, `search_select/choose_card` via XMage `GAME_TARGET` search selection, `choose_target`, `answer_yes_no`, `pay_cost` via `GAME_PLAY_MANA`, `commander_replacement`, `pass_priority`, `stack_object_seen`, `trigger_seen`, `zone_update_seen`, and `commander_tax_seen`.
-- `laterScope` remains non-empty in the gauntlet report for `mana-rock`, `commander-damage`, `blocker-flow`, and `prompt-variety`; targeted commander-damage is now separately deterministic-fixture proven, while real blocker assignment and prompt-variety are still not green.
+- `laterScope` remains non-empty in the gauntlet report for `mana-rock`, `commander-damage`, `blocker-flow`, and `prompt-variety`; the gauntlet itself proved `commander-gauntlet:castManaRock`, targeted commander-damage is separately deterministic-fixture proven, while real blocker assignment and prompt-variety are still not green.
 - Historical generated reports must be treated as artifacts only; new reports are written under `build_output/smoke/*.json` and ignored by git.
 - Added a dev-only fixture harness route at `POST /dev/xmage-fixtures/commander`, guarded by `ENABLE_XMAGE_FIXTURES=true` and disabled when `NODE_ENV=production`.
 - Fixture smoke can now be invoked with `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage`.
@@ -163,7 +163,7 @@ pnpm smoke:xmage
 2. **Advanced UI Prompts**: Render and handle reordering triggers/items, mode/ability/pile/amount choices, commander replacement, and blockers directly in UI components.
 3. **Card Art fallback**: Handle missing image urls smoothly without throwing render errors.
 4. **Casting/payment manual QA**: The live gauntlet proves land, mana, spell, search, commander replacement, and payment prompt flow, but iPhone/web still need manual regression coverage for the two-lands-into-`Arcane Signet` case documented in [CASTING_AND_MANA_FLOW.md](CASTING_AND_MANA_FLOW.md).
-5. **Long AI endurance**: Some runs still expose AI waiting/stall behavior, especially with weaker fixture AI or awkward fixture decks. The app must continue surfacing AI thinking/stalled states honestly while targeted fixtures keep the core loop deterministic.
+5. **Long AI endurance**: Some runs can still expose AI waiting/stall behavior, especially with weaker fixture AI or awkward fixture decks. The bridge now pings the XMage remoting session and the smoke harness fails as `bridge-disconnected` if health drops; the app must continue surfacing AI thinking/stalled states honestly while targeted fixtures keep the core loop deterministic.
 6. **Later-scope fixture expansion**: Add targeted deterministic scenarios for mana-rock activation, blocker assignment, and prompt-variety once those are explicitly in alpha scope.
 
 ### Exact blockers before iPhone alpha:

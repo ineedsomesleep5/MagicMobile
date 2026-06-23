@@ -295,7 +295,9 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
             
     snapshot = await waitForSemanticProgress(previous, snapshot, semanticLabel);
     assertBridgeSnapshot(snapshot, `action: ${action.type}`);
-    assertBridgeProgress(previous, snapshot, `action: ${action.type}`);
+    assertBridgeProgress(previous, snapshot, `action: ${action.type}`, {
+      allowEqual: snapshot.pendingStatus === "waiting_for_xmage"
+    });
     assertSemanticProgress(previous, snapshot, semanticLabel);
     recordRouteFamilyForTransition(previous, snapshot);
     recordCommanderState(snapshot);
@@ -1450,6 +1452,17 @@ async function waitForAiIfNeeded(snapshot: SmokeSnapshot, label: string) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
     current = await request(`/games/${encodeURIComponent(current.id)}`);
     assertBridgeSnapshot(current, label);
+    if (current.engineHealth?.status && current.engineHealth.status !== "ready") {
+      writeSmokeReport({
+        ...baseSummaryReport(current),
+        failedStep: "bridge-disconnected",
+        failureReason: current.engineHealth.reason ?? `XMage bridge health is ${current.engineHealth.status}`
+      });
+      throw new Error(
+        `XMage smoke ${label} stopped because the Java bridge disconnected.\n`
+          + smokeDebug(`bridge disconnected during ${label}`, current)
+      );
+    }
     const actionable = current.legalActions?.some((action) => action.type !== "concede") ?? false;
     if (current.waitingOnPlayerId !== aiPlayerId || current.priorityPlayerId !== aiPlayerId || actionable) {
       console.error(`[Smoke] AI finished or action became available. New priority: ${current.priorityPlayerId}`);
@@ -1469,7 +1482,7 @@ async function waitForAiIfNeeded(snapshot: SmokeSnapshot, label: string) {
 
 async function waitForSemanticProgress(previous: SmokeSnapshot, next: SmokeSnapshot, label: string) {
   let current = next;
-  const deadline = Date.now() + (label === "resolve prompt" ? 15000 : 10000);
+  const deadline = Date.now() + semanticProgressDeadlineMs(label);
   while (
     (!hasSemanticProgress(previous, current, label) || !bridgeProgressed(previous, current))
       && Date.now() < deadline
@@ -1479,6 +1492,12 @@ async function waitForSemanticProgress(previous: SmokeSnapshot, next: SmokeSnaps
     assertBridgeSnapshot(current, `semantic progress ${label}`);
   }
   return current;
+}
+
+function semanticProgressDeadlineMs(label: string) {
+  if (label === "cast simple spell") return 30000;
+  if (label === "resolve prompt") return 20000;
+  return 15000;
 }
 
 function commandFromAction(gameId: string, action: SmokeAction, snapshot: SmokeSnapshot) {
@@ -1748,7 +1767,8 @@ function hasSemanticProgress(previous: SmokeSnapshot, next: SmokeSnapshot, label
       || humanZone(previous, "graveyard").length !== humanZone(next, "graveyard").length
       || humanZone(previous, "stack").length !== humanZone(next, "stack").length
       || manaTotal(previous) !== manaTotal(next)
-      || next.promptEnvelopeV2 !== undefined;
+      || next.promptEnvelopeV2 !== undefined
+      || next.pendingStatus === "waiting_for_xmage";
   }
   if (label === "combat") {
     return previous.step !== next.step

@@ -1155,6 +1155,18 @@ describe("xmage gateway", () => {
     assert.ok(bridgeSource.includes("pair.addProperty(\"blockerId\", permanent.getId().toString());"));
     assert.ok(bridgeSource.includes("pair.addProperty(\"attackerId\", attackerId);"));
   });
+
+  it("keeps the Java bridge remoting session alive and reports disconnects explicitly", () => {
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+    const smokeSource = readFileSync(new URL("./scripts/smoke-create-commander-game.ts", import.meta.url), "utf8");
+
+    assert.match(bridgeSource, /keepAliveExecutor\.scheduleAtFixedRate\(this::pingIfConnected/);
+    assert.match(bridgeSource, /current\.ping\(\)/);
+    assert.ok(bridgeSource.includes("lastError = \"XMage bridge disconnected\";"));
+    assert.ok(smokeSource.includes("failedStep: \"bridge-disconnected\""));
+    assert.ok(smokeSource.includes("if (label === \"cast simple spell\") return 30000;"));
+    assert.ok(smokeSource.includes("allowEqual: snapshot.pendingStatus === \"waiting_for_xmage\""));
+  });
 });
 
 function fixtureProofRequest() {
