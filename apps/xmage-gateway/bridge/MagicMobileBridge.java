@@ -3045,7 +3045,7 @@ public final class MagicMobileBridge implements MageClient {
             defaultCards(schema, "humanHand", "Plains");
             defaultBattlefield(schema, "humanBattlefield", "Silvercoat Lion", "Plains");
             defaultCards(schema, "humanLibraryTop", "Plains");
-            defaultBattlefield(schema, "aiBattlefield", "Grizzly Bears");
+            defaultBattlefield(schema, "aiBattlefield", "Memnite");
             defaultString(schema, "phase", "combat");
             defaultString(schema, "step", "declare-blockers");
             defaultString(schema, "activePlayerId", "ai-1");
@@ -3145,7 +3145,7 @@ public final class MagicMobileBridge implements MageClient {
             unsupported.add("combat seed: missing AI player id");
             return;
         }
-        Permanent attacker = battlefieldPermanentByName(game, aiPlayerId, "Grizzly Bears");
+        Permanent attacker = battlefieldPermanentByName(game, aiPlayerId, "Memnite");
         Permanent blocker = battlefieldPermanentByName(game, humanPlayerId, "Silvercoat Lion");
         if (attacker == null || blocker == null) {
             unsupported.add("combat seed: missing seeded attacker or blocker permanent");

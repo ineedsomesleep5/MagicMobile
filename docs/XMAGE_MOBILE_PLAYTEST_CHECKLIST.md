@@ -18,13 +18,14 @@ Latest CI/docs validation pass on June 23, 2026. Treat the smoke details below a
 - Normal real-XMage smoke remains diagnostic only. The latest non-fixtured `core-flow` used `source: "xmage-java-bridge"` and failed honestly because that random legal-deck state observed only part of the requested turn coverage.
 - A dev-only fixture harness route exists at `POST /dev/xmage-fixtures/commander`. It requires `ENABLE_XMAGE_FIXTURES=true`, is disabled in production, reports `fixtureHarness` metadata, and now has an embedded same-JVM setup path that can reach server-owned `GameController` / `Game.cheat(...)`.
 - The deterministic fixture gauntlet passed after the latest bridge rebuild with real `source: "xmage-java-bridge"`, direct server-side fixture seeding, final `bridgeRevision: 133`, final `xmageCycle: 223`, and empty top-level `stepsBlocked`.
-- `XMAGE_SMOKE_SCENARIO=blocker-flow` passed with a real `declare_blockers` payload after the targeted combat fixture seeded an XMage-owned attacker/combat state.
+- `XMAGE_SMOKE_SCENARIO=blocker-flow` passed with a real `declare_blockers` payload after the targeted combat fixture seeded an XMage-owned attacker/combat state. The AI proof attacker is now `Memnite` so the Kozilek Commander deck remains legal.
 - `XMAGE_SMOKE_SCENARIO=commander-damage` passed after the combat-selection bridge fix with direct server-side fixture seeding and non-empty commander-damage evidence.
 - `XMAGE_SMOKE_SCENARIO=commander-replacement-tax` reproved commander tax. Commander damage is separately covered by the targeted `commander-damage` fixture.
 - `XMAGE_SMOKE_SCENARIO=triggered-ability-stack` passed with direct server-side fixture seeding, `routeFamiliesMissing: []`, and empty `stepsBlocked`.
 - `XMAGE_SMOKE_SCENARIO=mana-rock` now uses a Commander-legal singleton fixture deck (`Sol Ring` x1, `Plains` x98), direct server-side seeding, and passed with real `source: "xmage-java-bridge"`, `directStateSeeded: true`, final `bridgeRevision: 15`, final `xmageCycle: 24`, and `stepsBlocked: []`.
-- `XMAGE_SMOKE_SCENARIO=prompt-variety` is still not green. It produced useful later-scope evidence, including commander damage, then exposed a game-over stale-action bug that has now been fixed in the bridge.
-- XcodeBuildMCP simulator tests passed after enabling generated Info.plist for the `MagicMobileTests` target: 4 tests passed, 0 failed. This is not real iPhone product success.
+- `XMAGE_SMOKE_SCENARIO=prompt-variety` is still not green. Current fixture-gated smoke uses real XMage and direct seeding, but reports missing `activate_ability`, `choose_ability`, `choose_mode`, `order_triggers/order_items`, `choose_amount`, `choose_multi_amount`, and `choose_pile`.
+- `XMAGE_SMOKE_MANA_ROCK_CARD="Arcane Signet" pnpm smoke:xmage:mana-rock` passed with real cast/payment/resolution evidence. Keep this as generic routing proof, not a card-specific production path.
+- `xcodebuild test -project apps/ios/MagicMobileiOS.xcodeproj -scheme MagicMobile -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' -only-testing:MagicMobileTests -quiet` exited 0 for the iOS unit test target. This is not real iPhone product success.
 
 Latest incremental verification against the local Docker gateway at `http://localhost:17171`:
 
@@ -84,6 +85,9 @@ Current pause blocker:
   ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=triggered-ability-stack XMAGE_USE_FIXTURE=true pnpm smoke:xmage
   ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-damage XMAGE_USE_FIXTURE=true pnpm smoke:xmage
   ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage
+  ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=activated-ability-stack XMAGE_USE_FIXTURE=true pnpm smoke:xmage
+  ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=triggered-ability-stack XMAGE_USE_FIXTURE=true pnpm smoke:xmage
+  ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=prompt-variety XMAGE_USE_FIXTURE=true pnpm smoke:xmage
   ```
 
 Expected result: health reports `ready`, the smoke output includes a game id, source, completed play-loop steps, and advancing `bridgeRevision` / `xmageCycle` when the Java bridge is active.
@@ -171,7 +175,7 @@ Remaining live-coverage gaps:
 - Deterministic fixture setup is no longer the current `commander-gauntlet` blocker. The same-JVM seeding hook reached ready and produced refreshed real-XMage snapshot proof. Real iPhone manual QA remains the main product blocker.
 - player-scoped snapshots are still required before human-vs-human or pods.
 - damage assignment prompts have not been live-fixtured yet because the current Commander fixture does not produce a manual damage-assignment prompt.
-- `mana-rock` is targeted-fixture proven with `Sol Ring`. The separate `Arcane Signet` two-lands regression remains a useful manual/debug case: the earlier Arcane attempt returned to priority with the card still in hand after `Cast Arcane Signet`, so do not claim Arcane-specific behavior is fixed until rerun with `XMAGE_SMOKE_MANA_ROCK_CARD="Arcane Signet"` or a manual phone pass proves it.
+- `mana-rock` is targeted-fixture proven with `Sol Ring`, and the optional `Arcane Signet` variant now passes as generic route proof. Manual phone QA still needs to confirm the same flow through the iOS UI.
 - full `commander-gauntlet` now has deterministic real-XMage setup support for singleton test cards and reached commander cast, replacement, and recast-with-tax. Commander damage, blocker assignment, and prompt-variety remain later-scope unless explicitly moved into the alpha gate, with commander damage and blocker assignment separately targeted-fixture proven.
 
 ## Commander Gauntlet Acceptance Loop

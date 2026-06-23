@@ -267,6 +267,101 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(object.displayMetadata, "Controller: human | From: battlefield | Targets: 2")
     }
 
+    func testPromptCommandBuilderPreservesResponsePromptAndMessageId() throws {
+        let prompt = try promptEnvelopeV2(responseType: "choose_mode", responsePromptId: "response-prompt-9", responseMessageId: 91)
+
+        let mode = try payload(
+            for: PromptCommandBuilder.command(
+                gameId: "game-1",
+                promptEnvelope: prompt,
+                type: "choose_mode",
+                promptId: "response-prompt-9",
+                playerId: "human",
+                ids: ["mode-1"]
+            )
+        )
+        let ability = try payload(
+            for: PromptCommandBuilder.command(
+                gameId: "game-1",
+                promptEnvelope: prompt,
+                type: "choose_ability",
+                promptId: "response-prompt-9",
+                playerId: "human",
+                ids: ["ability-1"]
+            )
+        )
+        let replacement = try payload(
+            for: PromptCommandBuilder.command(
+                gameId: "game-1",
+                promptEnvelope: prompt,
+                type: "commander_replacement",
+                promptId: "response-prompt-9",
+                playerId: "human",
+                useCommandZone: true
+            )
+        )
+
+        XCTAssertEqual(mode["promptId"] as? String, "response-prompt-9")
+        XCTAssertEqual(mode["messageId"] as? Int, 91)
+        XCTAssertEqual(mode["modeIds"] as? [String], ["mode-1"])
+        XCTAssertEqual(ability["abilityId"] as? String, "ability-1")
+        XCTAssertEqual(ability["messageId"] as? Int, 91)
+        XCTAssertEqual(replacement["useCommandZone"] as? Bool, true)
+        XCTAssertEqual(replacement["messageId"] as? Int, 91)
+    }
+
+    func testPromptCommandBuilderBuildsOrderedAndAmountCommands() throws {
+        let prompt = try promptEnvelopeV2(responseType: "order_triggers", responsePromptId: "prompt-order", responseMessageId: 12)
+
+        let ordered = try payload(
+            for: PromptCommandBuilder.command(
+                gameId: "game-1",
+                promptEnvelope: prompt,
+                type: "order_triggers",
+                promptId: "prompt-order",
+                playerId: "human",
+                ids: ["trigger-2", "trigger-1"]
+            )
+        )
+        let amount = try payload(
+            for: PromptCommandBuilder.command(
+                gameId: "game-1",
+                promptEnvelope: prompt,
+                type: "choose_amount",
+                promptId: "prompt-order",
+                playerId: "human",
+                amount: 3
+            )
+        )
+        let multiAmount = try payload(
+            for: PromptCommandBuilder.command(
+                gameId: "game-1",
+                promptEnvelope: prompt,
+                type: "choose_multi_amount",
+                promptId: "prompt-order",
+                playerId: "human",
+                amounts: [1, 2]
+            )
+        )
+
+        XCTAssertEqual(ordered["orderedIds"] as? [String], ["trigger-2", "trigger-1"])
+        XCTAssertEqual(ordered["messageId"] as? Int, 12)
+        XCTAssertEqual(amount["amount"] as? Int, 3)
+        XCTAssertEqual(multiAmount["amounts"] as? [Int], [1, 2])
+    }
+
+    func testPromptCommandBuilderFailsClosedForUnsafePrompts() {
+        XCTAssertNil(PromptCommandBuilder.command(gameId: "game-1", promptEnvelope: nil, type: "choose_pile", promptId: "prompt-1", playerId: "human"))
+        XCTAssertNil(PromptCommandBuilder.command(gameId: "game-1", promptEnvelope: nil, type: "choose_pile", promptId: "prompt-1", playerId: "human", pile: 3))
+        XCTAssertNil(PromptCommandBuilder.command(gameId: "game-1", promptEnvelope: nil, type: "choose_amount", promptId: "prompt-1", playerId: "human"))
+        XCTAssertNil(PromptCommandBuilder.command(gameId: "game-1", promptEnvelope: nil, type: "choose_multi_amount", promptId: "prompt-1", playerId: "human", ids: []))
+        XCTAssertNil(PromptCommandBuilder.command(gameId: "game-1", promptEnvelope: nil, type: "play_mana", promptId: "prompt-1", playerId: "human"))
+        XCTAssertNil(PromptCommandBuilder.command(gameId: "game-1", promptEnvelope: nil, type: "play_mana", promptId: "prompt-1", playerId: "human", manaType: "Colorless"))
+        XCTAssertNil(PromptCommandBuilder.command(gameId: "game-1", promptEnvelope: nil, type: "answer_yes_no", promptId: "prompt-1", playerId: "human"))
+        XCTAssertNil(PromptCommandBuilder.command(gameId: "game-1", promptEnvelope: nil, type: "commander_replacement", promptId: "prompt-1", playerId: "human"))
+        XCTAssertNil(PromptCommandBuilder.command(gameId: "game-1", promptEnvelope: nil, type: "choose_ability", promptId: "prompt-1", playerId: "human", ids: []))
+    }
+
     private func decodeAction(type: String, extra: String? = nil) throws -> LegalAction {
         let extraFields = extra.map { ",\n          \($0)" } ?? ""
         let data = """
@@ -320,5 +415,29 @@ final class MagicMobileTests: XCTestCase {
           "pendingStatus": null
         }
         """.data(using: .utf8)!
+    }
+
+    private func promptEnvelopeV2(responseType: String, responsePromptId: String, responseMessageId: Int) throws -> PromptEnvelopeV2 {
+        let data = """
+        {
+          "id": "visible-prompt-1",
+          "method": "GAME_CHOOSE",
+          "messageId": 11,
+          "playerId": "human",
+          "responseKind": "\(responseType)",
+          "message": "Choose",
+          "responseCommand": {
+            "type": "\(responseType)",
+            "promptId": "\(responsePromptId)",
+            "messageId": \(responseMessageId)
+          }
+        }
+        """.data(using: .utf8)!
+        return try JSONDecoder.magicMobile.decode(PromptEnvelopeV2.self, from: data)
+    }
+
+    private func payload(for command: GameCommand?) throws -> [String: Any] {
+        let command = try XCTUnwrap(command)
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder.magicMobile.encode(command)) as? [String: Any])
     }
 }

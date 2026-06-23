@@ -22,7 +22,7 @@ const activatedAbilityScenario = scenario === "activated-ability-stack";
 const triggeredAbilityScenario = scenario === "triggered-ability-stack";
 const fixtureScenario = scenarioModule.usesFixture;
 const useFixtureHarness = process.env.XMAGE_USE_FIXTURE === "true";
-const fixtureCallRequired = commanderGauntletScenario || activatedAbilityScenario || triggeredAbilityScenario;
+const fixtureCallRequired = commanderGauntletScenario || activatedAbilityScenario || triggeredAbilityScenario || scenario === "prompt-variety";
 const fixtureGateRequired = useFixtureHarness || fixtureCallRequired;
 const aiDifficulty = process.env.XMAGE_SMOKE_AI_DIFFICULTY ?? "normal";
 const routeFamiliesRequired = routeFamiliesRequiredForScenario(scenario);
@@ -674,7 +674,7 @@ function fixtureSeedSchema() {
     libraryTop,
     graveyard: [],
     exile: [],
-    aiBattlefield: [blockerFlowScenario ? "Grizzly Bears" : activatedAbilityScenario ? "Sol Ring" : commanderGauntletScenario ? "Plains" : "Wastes"],
+    aiBattlefield: [blockerFlowScenario ? "Memnite" : activatedAbilityScenario ? "Sol Ring" : commanderGauntletScenario ? "Plains" : "Wastes"],
     phase: blockerFlowScenario ? "combat" : "precombat-main",
     step: blockerFlowScenario ? "declare-blockers" : "precombat-main",
     activePlayerId: blockerFlowScenario ? aiPlayerId : humanPlayerId,
@@ -1079,6 +1079,9 @@ function chooseBestAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
     const expected = snapshot.promptEnvelopeV2.responseCommand?.type ?? snapshot.promptEnvelopeV2.responseKind;
     console.error(`[Smoke] Prompt envelope active: ${snapshot.promptEnvelopeV2.method} expecting ${expected}`);
 
+    const keepHand = snapshot.legalActions.find(a => a.type === "keep_hand");
+    if (keepHand) return keepHand;
+
     // Order items/triggers
     const orderAction = snapshot.legalActions.find(a => a.type === "order_triggers" || a.type === "order_items");
     if (orderAction) return orderAction;
@@ -1224,6 +1227,20 @@ function chooseFixtureAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
       action.type === "activate_ability" && !looksLikeManaAction(action)
     );
     if (nonManaAbility) return nonManaAbility;
+  }
+
+  if (triggeredAbilityScenario) {
+    const castCompanion = actions.find((action) =>
+      action.type === "cast_spell" && /spirited companion/i.test(action.cardName ?? action.label ?? "")
+    );
+    if (castCompanion) return castCompanion;
+
+    const makeWhite = actions.find((action) =>
+      action.type === "make_mana"
+      && ((action.producedMana ?? action.commandTemplate?.producedMana ?? []).includes("W")
+        || /plains|white|\{w\}/i.test(action.cardName ?? action.label ?? ""))
+    );
+    if (makeWhite) return makeWhite;
   }
 
   const battlefieldNames = humanZone(snapshot, "battlefield").map((entry) => entry.card?.name ?? "");

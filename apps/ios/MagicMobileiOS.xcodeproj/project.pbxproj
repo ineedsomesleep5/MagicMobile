@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0177F7BB151A10AEDA526F73 /* PreconCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EC7F366BBFC899D5DD7671C /* PreconCatalog.swift */; };
 		037F8C88A7F2DD19D445DEE4 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6872434C0866DDE9DEF3FB8C /* Models.swift */; };
+		3E8B2B4964B34D0F9B57D133 /* PromptCommandBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81D24D11B68146B6B4C2F52C /* PromptCommandBuilder.swift */; };
 		551A8C60BC9EF53BC42CE492 /* MagicMobileAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5880A440F12FAFCB5E9DB6 /* MagicMobileAPI.swift */; };
 		5E56D36ECA96BCF27A83C003 /* MagicMobileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8847ABC91603BF5DA5F4CE5 /* MagicMobileTests.swift */; };
 		752C5EFA30A506F19E13681B /* MagicMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69B2CFE17C03F7A7CC6CFEC3 /* MagicMobileApp.swift */; };
@@ -35,6 +36,7 @@
 		6872434C0866DDE9DEF3FB8C /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		69B2CFE17C03F7A7CC6CFEC3 /* MagicMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MagicMobileApp.swift; sourceTree = "<group>"; };
 		7310F972E936D7992D841C36 /* MagicMobileTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MagicMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		81D24D11B68146B6B4C2F52C /* PromptCommandBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptCommandBuilder.swift; sourceTree = "<group>"; };
 		A8847ABC91603BF5DA5F4CE5 /* MagicMobileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MagicMobileTests.swift; sourceTree = "<group>"; };
 		FF4EE202904EFC97FF10F5D0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -50,6 +52,7 @@
 				69B2CFE17C03F7A7CC6CFEC3 /* MagicMobileApp.swift */,
 				6872434C0866DDE9DEF3FB8C /* Models.swift */,
 				1EC7F366BBFC899D5DD7671C /* PreconCatalog.swift */,
+				81D24D11B68146B6B4C2F52C /* PromptCommandBuilder.swift */,
 			);
 			path = MagicMobile;
 			sourceTree = "<group>";
@@ -179,6 +182,7 @@
 				752C5EFA30A506F19E13681B /* MagicMobileApp.swift in Sources */,
 				037F8C88A7F2DD19D445DEE4 /* Models.swift in Sources */,
 				0177F7BB151A10AEDA526F73 /* PreconCatalog.swift in Sources */,
+				3E8B2B4964B34D0F9B57D133 /* PromptCommandBuilder.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

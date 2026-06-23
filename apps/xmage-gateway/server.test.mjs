@@ -571,6 +571,7 @@ describe("xmage gateway", () => {
     assert.match(smokeSource, /directStateSeeded/);
     assert.match(smokeSource, /seededStateVerified/);
     assert.match(smokeSource, /verifySeededStateFromSnapshot/);
+    assert.match(smokeSource, /a\.type === "keep_hand"/);
     assert.match(
       smokeSource,
       /const yesNo = snapshot\.legalActions\.find\(a =>\s+a\.type === "answer_yes_no" \|\|\s+a\.type === "commander_replacement" \|\|\s+a\.type === "pay_cost"\s+\);/
@@ -585,6 +586,7 @@ describe("xmage gateway", () => {
     assert.match(smokeSource, /directStateSeeded/);
     assert.match(smokeSource, /seededStateVerified/);
     assert.match(smokeSource, /fixtureCallRequired/);
+    assert.match(smokeSource, /scenario === "prompt-variety"/);
     assert.match(smokeSource, /activated-ability-stack/);
     assert.match(smokeSource, /triggered-ability-stack/);
     assert.match(smokeSource, /activatedAbilityFixtureDeck/);

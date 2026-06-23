@@ -73,9 +73,25 @@ jobs:
         continue-on-error: true
         run: XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage:commander-state
 
+      - name: Commander-damage real XMage fixture diagnostic
+        continue-on-error: true
+        run: XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage:commander-damage
+
+      - name: Mana-rock real XMage fixture diagnostic
+        continue-on-error: true
+        run: XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage:mana-rock
+
+      - name: Activated ability stack real XMage fixture diagnostic
+        continue-on-error: true
+        run: XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage:activated-stack
+
       - name: Triggered stack real XMage fixture diagnostic
         continue-on-error: true
         run: XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage:triggered-stack
+
+      - name: Prompt-variety real XMage fixture diagnostic
+        continue-on-error: true
+        run: XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage:prompt-variety
 
       - name: Upload smoke reports
         if: always()

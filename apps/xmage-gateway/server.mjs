@@ -537,7 +537,7 @@ function fixtureAiDeck(scenario) {
       name: "Blocker Flow AI Fixture",
       commander: { cardName: "Kozilek, Butcher of Truth", quantity: 1, section: "commander" },
       entries: [
-        { cardName: "Grizzly Bears", quantity: 1, section: "deck" },
+        { cardName: "Memnite", quantity: 1, section: "deck" },
         { cardName: "Wastes", quantity: 98, section: "deck" }
       ]
     };
