@@ -68,7 +68,8 @@ All commands below were run locally on macOS on June 23, 2026 against the curren
 
 ### Key Smoke Test Verification Points:
 - The bridge image was rebuilt after the source-UUID `make_mana` fix and after the activation-dispatch/commander prompt classifier fixes in this pass.
-- Final deterministic smoke evidence from this pass after the latest bridge rebuild: game `e9478822-a5fd-4b04-a691-2c2da193b3ac`, `source: "xmage-java-bridge"`, final `bridgeRevision: 115`, final `xmageCycle: 196`, `fixtureHarness.directStateSeeded: true`, `seededStateVerified: true`, and `stepsBlocked: []`.
+- Final deterministic smoke evidence from this pass after the latest bridge rebuild: game `139255f5-8d6e-4e25-b284-653949456092`, `source: "xmage-java-bridge"`, final `bridgeRevision: 115`, final `xmageCycle: 196`, `fixtureHarness.directStateSeeded: true`, `seededStateVerified: true`, and `stepsBlocked: []`.
+- Focused activated-ability fixture evidence from the same pass: `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=activated-ability-stack XMAGE_USE_FIXTURE=true pnpm smoke:xmage` passed against game `56dcbd20-a8f6-4574-a77a-dd4bdea27d4a`, `source: "xmage-java-bridge"`, final `bridgeRevision: 14`, final `xmageCycle: 22`, `directStateSeeded: true`, `seededStateVerified: true`, `routeFamiliesMissing: []`, and `stepsBlocked: []`.
 - The successful gauntlet used `setupMethod: "in_server_game_cheat"` and `source: "xmage-server-fixture-service"` for setup metadata, then all gameplay actions went through the real Java bridge command path.
 - Live route-family evidence in the passing report: `play_land`, `cast_spell`, `make_mana`, `activate_ability`, `search_select/choose_card` via XMage `GAME_TARGET` search selection, `choose_target`, `answer_yes_no`, `pay_cost` via `GAME_PLAY_MANA`, `commander_replacement`, `pass_priority`, `stack_object_seen`, `trigger_seen`, `zone_update_seen`, and `commander_tax_seen`.
 - `laterScope` remains non-empty for `mana-rock`, `commander-damage`, `blocker-flow`, and `prompt-variety`; these are not current iOS Commander alpha release blockers unless the alpha scope is expanded.
@@ -76,7 +77,7 @@ All commands below were run locally on macOS on June 23, 2026 against the curren
 - Added a dev-only fixture harness route at `POST /dev/xmage-fixtures/commander`, guarded by `ENABLE_XMAGE_FIXTURES=true` and disabled when `NODE_ENV=production`.
 - Fixture smoke can now be invoked with `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage`.
 - Current fixture harness implementation includes a dev/test-only embedded same-JVM startup path. In fixture mode, `MagicMobileEmbeddedServerBridge` starts `mage.server.Main.main(args)` and gives `MagicMobileBridge` access to the server-side manager factory so the route can seed through XMage-owned `GameController` / `Game.cheat(...)`.
-- June 23 bridge fix: default XMage card-click actions now send source card UUIDs for `play_land`, normal `cast_spell`, and basic `make_mana`; non-mana `activate_ability` carries an explicit activation dispatch hint so targeted activations use ability UUIDs while no-target source-click activations still validate the selected ability id.
+- June 23 bridge fix: default XMage card-click actions now send source card UUIDs for `play_land`, normal `cast_spell`, basic `make_mana`, and playable-object `activate_ability`; non-mana `activate_ability` still requires the selected ability UUID for stale-action validation before dispatch.
 - Performed opening hand keep (`keep_hand`).
 - Played a Forest land card from hand (`play_land`).
 - Tapped land to generate green mana (`make_mana`).

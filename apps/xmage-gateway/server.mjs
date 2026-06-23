@@ -461,11 +461,11 @@ function zoneCardNames(player, zone) {
 
 function fixtureExpectedRouteCoverage(scenario) {
   const common = ["keep_hand", "mulligan", "play_land", "cast_spell", "make_mana", "pass_priority"];
-  if (scenario === "search-library") return [...common, "activate_ability", "search_select", "choose_card", "zone_updates"];
-  if (scenario === "commander-replacement") return [...common, "choose_target", "commander_replacement", "commander_tax", "command_zone"];
+  if (scenario === "search-library" || scenario === "search-select") return [...common, "activate_ability", "search_select", "choose_card", "zone_updates"];
+  if (scenario === "commander-replacement" || scenario === "commander-replacement-tax") return [...common, "choose_target", "commander_replacement", "commander_tax", "command_zone"];
   if (scenario === "activated-ability-stack") return [...common, "activate_ability", "choose_player", "stack_objects"];
-  if (scenario === "triggered-ability") return [...common, "triggered_ability", "order_triggers", "stack_objects"];
-  if (scenario === "combat-blockers") return [...common, "declare_attackers", "declare_blockers"];
+  if (scenario === "triggered-ability" || scenario === "triggered-ability-stack") return [...common, "triggered_ability", "order_triggers", "stack_objects"];
+  if (scenario === "combat-blockers" || scenario === "blocker-flow") return [...common, "declare_attackers", "declare_blockers"];
   if (scenario === "damage-assignment") return [...common, "declare_attackers", "declare_blockers", "damage_assignment"];
   return [
     ...common,
@@ -494,6 +494,17 @@ function fixtureHumanDeck(scenario) {
         { cardName: "Fateful Absence", quantity: 1, section: "deck" },
         { cardName: "Spirited Companion", quantity: 1, section: "deck" },
         { cardName: "Plains", quantity: 93, section: "deck" }
+      ]
+    };
+  }
+  if (scenario === "activated-ability-stack") {
+    return {
+      name: "Activated Ability Stack Fixture",
+      commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
+      entries: [
+        { cardName: "Seal of Cleansing", quantity: 1, section: "deck" },
+        { cardName: "Sol Ring", quantity: 1, section: "deck" },
+        { cardName: "Plains", quantity: 97, section: "deck" }
       ]
     };
   }

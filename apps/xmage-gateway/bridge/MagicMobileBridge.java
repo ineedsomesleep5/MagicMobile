@@ -331,16 +331,11 @@ public final class MagicMobileBridge implements MageClient {
             // Casts from hand/command also submit the source card UUID, not an ability UUID.
             session.sendPlayerUUID(xmageGameId, playableSourceUuid(gameId, command));
         } else if ("activate_ability".equals(type)) {
-            // Targeted/non-mana activations are routed by selected ability UUID. Some
-            // no-target utility activations still use XMage's source-click command path.
-            boolean sourceDispatch = "source".equals(string(command, "activationDispatch", ""));
-            if (sourceDispatch) {
-                playableCommandUuid(gameId, command);
-            }
-            UUID activationUuid = sourceDispatch
-                    ? playableSourceUuid(gameId, command)
-                    : playableCommandUuid(gameId, command);
-            session.sendPlayerUUID(xmageGameId, activationUuid);
+            // Validate the selected ability UUID, then use XMage's source-click
+            // activation path. Real XMage desktop playables expose ability ids for
+            // legality, but the callback advances when the source object is clicked.
+            playableCommandUuid(gameId, command);
+            session.sendPlayerUUID(xmageGameId, playableSourceUuid(gameId, command));
         } else if ("make_mana".equals(type)) {
             // Basic mana activation follows card-click behavior and submits the source card UUID.
             session.sendPlayerUUID(xmageGameId, playableSourceUuid(gameId, command));
@@ -2627,9 +2622,10 @@ public final class MagicMobileBridge implements MageClient {
             return report;
         }
 
-        JsonObject seededSnapshot = waitForUpdatedSnapshot(gameId, "fixture_seed", startRevision, startCycle);
+        JsonArray proofCardNames = array(report, "proofCardNames");
+        JsonObject seededSnapshot = waitForFixtureProofSnapshot(gameId, startRevision, startCycle, proofCardNames);
         boolean snapshotAdvanced = record.bridgeRevision.get() > startRevision || record.latestCycle > startCycle;
-        boolean proofFound = snapshotContainsProof(seededSnapshot, array(report, "proofCardNames"));
+        boolean proofFound = snapshotContainsProof(seededSnapshot, proofCardNames);
         boolean directStateSeeded = snapshotAdvanced && proofFound;
         if (!directStateSeeded) {
             report.addProperty("error", "xmage_fixture_snapshot_proof_failed");
@@ -2653,7 +2649,24 @@ public final class MagicMobileBridge implements MageClient {
         return seededSnapshot;
     }
 
+    private JsonObject waitForFixtureProofSnapshot(String gameId, long startRevision, int startCycle, JsonArray proofCardNames) throws InterruptedException {
+        JsonObject latest = waitForUpdatedSnapshot(gameId, "fixture_seed", startRevision, startCycle);
+        if (snapshotContainsProof(latest, proofCardNames)) {
+            return latest;
+        }
+        long deadline = System.currentTimeMillis() + 3000;
+        while (System.currentTimeMillis() < deadline) {
+            Thread.sleep(250);
+            latest = snapshot(gameId);
+            if (snapshotContainsProof(latest, proofCardNames)) {
+                return latest;
+            }
+        }
+        return latest;
+    }
+
     private void drainFixtureOpeningPrompts(String gameId, JsonArray applied, JsonArray errors) {
+        boolean startingChoiceAnswered = false;
         for (int attempt = 0; attempt < 8; attempt++) {
             try {
                 JsonObject current = snapshot(gameId);
@@ -2666,8 +2679,17 @@ public final class MagicMobileBridge implements MageClient {
                     return;
                 }
                 String type = string(action, "type", "opening_prompt");
+                if (("choose_target".equals(type) || "choose_player".equals(type) || "resolve_choice".equals(type)) && startingChoiceAnswered) {
+                    return;
+                }
                 submitCommand(gameId, commandFromLegalAction(gameId, current, action));
                 applied.add("pre_seed_opening_prompt:" + type);
+                if ("keep_hand".equals(type) || "mulligan".equals(type)) {
+                    return;
+                }
+                if ("choose_target".equals(type) || "choose_player".equals(type) || "resolve_choice".equals(type)) {
+                    startingChoiceAnswered = true;
+                }
             } catch (Exception error) {
                 errors.add("pre_seed_opening_prompt: " + error.getClass().getName() + ": " + error.getMessage());
                 return;
@@ -2765,7 +2787,7 @@ public final class MagicMobileBridge implements MageClient {
         try {
             UUID gameId = UUID.fromString(string(request, "gameId", ""));
             UUID humanPlayerId = UUID.fromString(string(request, "humanXmagePlayerId", ""));
-            GameController controller = managerFactory.gameManager().getGameController().get(gameId);
+            GameController controller = waitForGameController(managerFactory, gameId);
             if (controller == null) {
                 errors.add("GameController not found for " + gameId);
                 report.addProperty("setupMethod", "game_controller_not_found");
@@ -2983,6 +3005,18 @@ public final class MagicMobileBridge implements MageClient {
         return value == null ? "" : value.trim().replace('-', '_').replace(' ', '_').toUpperCase();
     }
 
+    private GameController waitForGameController(ManagerFactory managerFactory, UUID gameId) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 10000;
+        while (System.currentTimeMillis() < deadline) {
+            GameController controller = managerFactory.gameManager().getGameController().get(gameId);
+            if (controller != null) {
+                return controller;
+            }
+            Thread.sleep(250);
+        }
+        return managerFactory.gameManager().getGameController().get(gameId);
+    }
+
     private Game gameFromController(GameController controller) throws Exception {
         Field gameField = GameController.class.getDeclaredField("game");
         gameField.setAccessible(true);
@@ -3000,6 +3034,21 @@ public final class MagicMobileBridge implements MageClient {
     }
 
     private void applyCommanderFixtureDefaults(String fixtureName, JsonObject schema) {
+        if ("activated-ability-stack".equals(fixtureName)) {
+            defaultCards(schema, "humanHand", "Plains");
+            defaultBattlefield(schema, "humanBattlefield", "Seal of Cleansing", "Plains");
+            defaultCards(schema, "humanLibraryTop", "Plains");
+            defaultBattlefield(schema, "aiBattlefield", "Sol Ring");
+            schema.addProperty("turn", 1);
+            return;
+        }
+        if ("triggered-ability-stack".equals(fixtureName)) {
+            defaultCards(schema, "humanHand", "Spirited Companion", "Plains");
+            defaultBattlefield(schema, "humanBattlefield", "Plains", "Plains");
+            defaultCards(schema, "humanLibraryTop", "Plains");
+            schema.addProperty("turn", 1);
+            return;
+        }
         if (!"commander-gauntlet".equals(fixtureName)) {
             return;
         }

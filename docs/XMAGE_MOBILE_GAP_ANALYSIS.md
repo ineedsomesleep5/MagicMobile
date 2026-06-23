@@ -7,8 +7,9 @@ This analysis is tied to the current repo shape and Commander-only product scope
 Latest continuation on June 23, 2026:
 
 - The dev-only fixture harness is still disabled by default and production-disabled. Fixture mode now has an embedded same-JVM startup path that can reach XMage's server-side `GameController` / `Game.cheat(...)`, and the rebuilt fixture-mode stack reached ready locally.
-- Bridge command routing was corrected to mirror XMage desktop default card-click behavior: `play_land`, normal `cast_spell`, and basic `make_mana` submit the source card UUID; `activate_ability` still submits the selected ability UUID. This is a generic playable-object route fix, not card-specific logic.
+- Bridge command routing was corrected to mirror XMage desktop default card-click behavior: `play_land`, normal `cast_spell`, basic `make_mana`, and playable-object `activate_ability` submit the source card UUID, while `activate_ability` still validates the selected ability UUID. This is a generic playable-object route fix, not card-specific logic.
 - The latest focused `commander-gauntlet` run passes on the real bridge path with deterministic same-JVM fixture setup, `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, and `stepsBlocked: []`.
+- The focused `activated-ability-stack` fixture also passed live against real XMage after the latest bridge rebuild. It proved Seal of Cleansing activation, `GAME_CHOOSE_ABILITY`, `GAME_TARGET`, Sol Ring target selection, stack observation, and pass priority with `routeFamiliesMissing: []` and `stepsBlocked: []`.
 - Do not mark real iPhone alpha ready yet. The backend gauntlet is green, but commander damage, real blocker assignment, and prompt-variety are later-scope unless explicitly moved into the alpha gate, and real iPhone manual QA is still unchecked.
 
 Latest follow-up on June 22, 2026:

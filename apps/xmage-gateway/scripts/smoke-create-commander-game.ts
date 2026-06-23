@@ -608,16 +608,18 @@ function fixtureSeedSchema() {
   const expectedRoutes = routeFamiliesRequired.length > 0 ? routeFamiliesRequired : scenarioModule.requiredSteps;
   const hand = commanderGauntletScenario
     ? ["Sol Ring", "Arcane Signet", "Terramorphic Expanse", "Swords to Plowshares", "Spirited Companion", "Plains", "Plains"]
+    : activatedAbilityScenario
+    ? ["Plains"]
     : triggeredAbilityScenario
     ? ["Spirited Companion", "Plains"]
     : [basic];
   const libraryTop = commanderGauntletScenario ? Array.from({ length: 24 }, () => "Plains") : [basic];
   const battlefield = activatedAbilityScenario
-    ? ["Loran of the Third Path", basic]
+    ? ["Seal of Cleansing", basic]
     : triggeredAbilityScenario
     ? [basic, basic]
     : [basic];
-  const commandZone = activatedAbilityScenario ? [] : [commander];
+  const commandZone = [commander];
   return {
     gameId: `fixture-${scenario}-${seed}`,
     commander,
@@ -627,7 +629,7 @@ function fixtureSeedSchema() {
     libraryTop,
     graveyard: [],
     exile: [],
-    aiBattlefield: [commanderGauntletScenario ? "Plains" : "Wastes"],
+    aiBattlefield: [activatedAbilityScenario ? "Sol Ring" : commanderGauntletScenario ? "Plains" : "Wastes"],
     phase: "precombat-main",
     step: "precombat-main",
     activePlayerId: humanPlayerId,
@@ -678,6 +680,9 @@ function containsAll(actual: string[], expected: string[]) {
 
 function completedScenarioSteps() {
   const steps = new Set<string>();
+  if (useFixtureHarness) steps.add("fixture_call");
+  if (directStateSeeded) steps.add("direct_state_seeded");
+  if (seededStateVerified) steps.add("seeded_state_verified");
   if (actionsByType.keep_hand || actionsByType.mulligan) steps.add("opening-hand-decision");
   if (actionsByType.play_land) steps.add("play-land");
   if (actionsByType.make_mana) steps.add("make-mana");
@@ -971,10 +976,11 @@ function arcaneSignetFixtureDeck() {
 function activatedAbilityFixtureDeck() {
   return {
     name: "Activated Ability Stack Fixture",
-    commander: { cardName: "Loran of the Third Path", quantity: 1, section: "commander" },
+    commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
     entries: [
+      { cardName: "Seal of Cleansing", quantity: 1, section: "deck" },
       { cardName: "Sol Ring", quantity: 1, section: "deck" },
-      { cardName: "Plains", quantity: 98, section: "deck" }
+      { cardName: "Plains", quantity: 97, section: "deck" }
     ]
   };
 }
@@ -1059,7 +1065,6 @@ function chooseBestAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
     if (expected === "answer_yes_no" || expected === "pay_cost" || expected === "confirmation" || expected === "commander_replacement") {
       const yesNo = snapshot.legalActions.find(a => 
         a.type === "answer_yes_no" || 
-        a.type === "keep_hand" || 
         a.type === "commander_replacement" || 
         a.type === "pay_cost"
       );
@@ -1097,6 +1102,8 @@ function chooseBestAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
     // If there is any legal action that matches type or responseKind directly
     const directMatch = snapshot.legalActions.find(a => a.type === expected || a.responseKind === expected);
     if (directMatch) return directMatch;
+
+    return undefined;
   }
 
   // 2. Keep opening hand
@@ -1159,6 +1166,19 @@ function chooseFixtureAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
   }
 
   const actions = snapshot.legalActions ?? [];
+  if (activatedAbilityScenario) {
+    const sealActivation = actions.find((action) =>
+      action.type === "activate_ability"
+        && /seal of cleansing/i.test(action.cardName ?? action.label ?? "")
+    );
+    if (sealActivation) return sealActivation;
+
+    const nonManaAbility = actions.find((action) =>
+      action.type === "activate_ability" && !looksLikeManaAction(action)
+    );
+    if (nonManaAbility) return nonManaAbility;
+  }
+
   const battlefieldNames = humanZone(snapshot, "battlefield").map((entry) => entry.card?.name ?? "");
   const hasIsamaru = battlefieldNames.includes("Isamaru, Hound of Konda");
   const hasLand = humanZone(snapshot, "battlefield").some((entry) => /plains/i.test(entry.card?.name ?? ""));
@@ -1445,8 +1465,11 @@ async function waitForAiIfNeeded(snapshot: SmokeSnapshot, label: string) {
 
 async function waitForSemanticProgress(previous: SmokeSnapshot, next: SmokeSnapshot, label: string) {
   let current = next;
-  const deadline = Date.now() + 10000;
-  while (!hasSemanticProgress(previous, current, label) && Date.now() < deadline) {
+  const deadline = Date.now() + (label === "resolve prompt" ? 15000 : 10000);
+  while (
+    (!hasSemanticProgress(previous, current, label) || !bridgeProgressed(previous, current))
+      && Date.now() < deadline
+  ) {
     await new Promise((resolve) => setTimeout(resolve, 750));
     current = await request(`/games/${encodeURIComponent(current.id)}`);
     assertBridgeSnapshot(current, `semantic progress ${label}`);
@@ -1755,10 +1778,21 @@ function hasSemanticProgress(previous: SmokeSnapshot, next: SmokeSnapshot, label
   if (label === "resolve prompt") {
     return previous.promptEnvelopeV2?.id !== next.promptEnvelopeV2?.id
       || previous.promptEnvelopeV2?.messageId !== next.promptEnvelopeV2?.messageId
+      || previous.promptEnvelopeV2?.method !== next.promptEnvelopeV2?.method
+      || previous.promptEnvelopeV2?.responseKind !== next.promptEnvelopeV2?.responseKind
+      || previous.promptText !== next.promptText
       || formatActions(previous) !== formatActions(next)
-      || zonesChanged(previous, next);
+      || zonesChanged(previous, next)
+      || humanZone(previous, "stack").length !== humanZone(next, "stack").length
+      || previous.step !== next.step
+      || previous.phase !== next.phase
+      || next.pendingStatus !== undefined;
   }
   return true;
+}
+
+function bridgeProgressed(previous: SmokeSnapshot, next: SmokeSnapshot) {
+  return advanced(previous.bridgeRevision, next.bridgeRevision) || advanced(previous.xmageCycle, next.xmageCycle);
 }
 
 function advanced(before: unknown, after: unknown, allowEqual = false) {

@@ -538,6 +538,19 @@ describe("xmage gateway", () => {
     assert.equal(fixture.schema.expectedRouteCoverage.includes("commander_replacement"), true);
   });
 
+  it("builds activated-ability stack fixtures with a legal singleton proof permanent", () => {
+    const fixture = commanderFixtureConfig("activated-ability-stack", { seed: "unit" });
+    const entries = fixture.config.humanDeck.entries;
+
+    assert.equal(fixture.schema.scenarioName, "activated-ability-stack");
+    assert.equal(fixture.config.humanDeck.commander.cardName, "Isamaru, Hound of Konda");
+    assert.equal(entries.find((entry) => entry.cardName === "Seal of Cleansing").quantity, 1);
+    assert.equal(entries.find((entry) => entry.cardName === "Sol Ring").quantity, 1);
+    assert.equal(entries.find((entry) => entry.cardName === "Plains").quantity, 97);
+    assert.equal(fixture.schema.expectedRouteCoverage.includes("activate_ability"), true);
+    assert.equal(fixture.schema.expectedRouteCoverage.includes("stack_objects"), true);
+  });
+
   it("keeps the fixture smoke gate report-shaped and fail-fast", () => {
     const smokeSource = readFileSync(new URL("./scripts/smoke-create-commander-game.ts", import.meta.url), "utf8");
 
@@ -548,6 +561,10 @@ describe("xmage gateway", () => {
     assert.match(smokeSource, /directStateSeeded/);
     assert.match(smokeSource, /seededStateVerified/);
     assert.match(smokeSource, /verifySeededStateFromSnapshot/);
+    assert.match(
+      smokeSource,
+      /const yesNo = snapshot\.legalActions\.find\(a =>\s+a\.type === "answer_yes_no" \|\|\s+a\.type === "commander_replacement" \|\|\s+a\.type === "pay_cost"\s+\);/
+    );
   });
 
   it("keeps commander gauntlet smoke reports route-family based with direct seed proof", () => {
@@ -562,7 +579,8 @@ describe("xmage gateway", () => {
     assert.match(smokeSource, /triggered-ability-stack/);
     assert.match(smokeSource, /activatedAbilityFixtureDeck/);
     assert.match(smokeSource, /triggeredAbilityFixtureDeck/);
-    assert.match(smokeSource, /Loran of the Third Path/);
+    assert.match(smokeSource, /Seal of Cleansing/);
+    assert.match(smokeSource, /Isamaru, Hound of Konda/);
     assert.match(smokeSource, /Spirited Companion/);
     for (const family of [
       "play_land",
@@ -958,7 +976,9 @@ describe("xmage gateway", () => {
     assert.match(bridgeSource, /seedFixtureInServerProcess\(JsonObject request, ManagerFactory managerFactory\)/);
     assert.match(bridgeSource, /managerFactory\.gameManager\(\)\.getGameController\(\)\.get\(gameId\)/);
     assert.match(bridgeSource, /game\.cheat\(humanPlayerId/);
+    assert.match(bridgeSource, /if \("keep_hand"\.equals\(type\) \|\| "mulligan"\.equals\(type\)\) \{\s*return;\s*\}/);
     assert.match(bridgeSource, /snapshotContainsProof/);
+    assert.match(bridgeSource, /waitForFixtureProofSnapshot\(gameId, startRevision, startCycle, proofCardNames\)/);
     assert.match(bridgeSource, /directStateSeeded = snapshotAdvanced && proofFound/);
     assert.doesNotMatch(bridgeSource, /directStateSeeded", true\);[\s\S]{0,240}return report/);
   });

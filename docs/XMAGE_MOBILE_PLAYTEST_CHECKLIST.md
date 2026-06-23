@@ -159,7 +159,7 @@ Confirmed live steps across the local verification run:
 
 Failures fixed during this verification:
 
-- June 23: `make_mana` and command-zone `cast_spell` could silently no-op because the bridge sent only the source UUID even when XMage exposed a playable ability UUID. Both routes now submit the playable `abilityId` when present and keep source UUID fallback for actions without an ability id.
+- June 23: `make_mana`, command-zone `cast_spell`, and playable-object `activate_ability` can silently no-op if the bridge sends the wrong XMage UUID. These routes now validate the selected playable ability where needed, then dispatch through XMage's source-card click path.
 - Earlier: `make_mana` advanced the revision but did not add mana because the bridge sent the wrong playable UUID for that action shape.
 - command responses that advanced only `xmageCycle` were incorrectly returned as pending, leaving clients with only `concede` legal actions.
 - mana-payment prompts exposed only generic `play_mana` choices and did not expose real untapped battlefield mana sources.

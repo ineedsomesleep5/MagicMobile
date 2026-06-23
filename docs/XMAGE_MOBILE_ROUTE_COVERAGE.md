@@ -37,12 +37,12 @@ If any step is missing, the UI should show an unsupported/incomplete state and r
 | play mana | `GAME_PLAY_MANA` | Yes; emits prompt `manaChoices` and accepts `play_mana` | Yes | Yes | Yes | Yes, mana picker | Yes, commander-gauntlet | Yes | deterministic fixture-proven | Keep payment prompt proof current. |
 | choose mana | Mana choice prompt / bridge response kind `mana` | Yes for `choose_mana`, but `GAME_PLAY_MANA` maps primarily to `play_mana` | Yes | Yes | Yes | Yes, mana choice picker | No targeted live case | No | fixture missing | Add explicit color-choice fixture. |
 | pay cost | `GAME_ASK` classified as pay/cost, payment prompt | Yes; explicit `pay` boolean required; `GAME_PLAY_MANA` covers mana payment prompts | Yes | Yes | Yes | Yes, confirmation/payment buttons and source mana panel | Yes, commander-gauntlet payment prompt | Yes for payment prompt | deterministic fixture-proven | Add explicit decline fixture later. |
-| activate ability | Playable object ability id | Yes; emits `activate_ability` with activation dispatch metadata; no-target activations validate ability id before source-click dispatch | Yes | Yes | Yes | Yes as generic action button | Yes, Terramorphic Expanse in commander-gauntlet | Yes | deterministic fixture-proven | Add targeted non-mana ability stack proof later. |
-| target prompt | `GAME_TARGET` | Yes; emits `choose_target` options | Yes | Yes | Yes | Yes, option grid/target action | Partial; target/search style historical proof | No | wired but unproven | Add targeted spell and ability target fixtures. |
+| activate ability | Playable object ability id | Yes; emits `activate_ability`, requires the selected ability id for validation, then dispatches through XMage's source-click playable path | Yes | Yes | Yes | Yes as generic action button | Yes, `activated-ability-stack` and Terramorphic Expanse in commander-gauntlet | Yes | deterministic fixture-proven | Keep source-click plus ability-id validation regression tests. |
+| target prompt | `GAME_TARGET` | Yes; emits `choose_target` options | Yes | Yes | Yes | Yes, option grid/target action | Yes, `activated-ability-stack` target selection | Yes for targeted activated ability | deterministic fixture-proven | Add targeted spell fixture later. |
 | card prompt | `GAME_SELECT` / card list prompt | Yes; emits `choose_card` or `search_select` | Yes | Yes | Yes | Yes, card picker | Partial through search-like callbacks | No | fixture missing | Add explicit choose-card fixture. |
 | player prompt | `GAME_TARGET` with player UUID | Yes; emits player options / `choose_player` | Yes | Yes | Yes | Yes, player option grid | Partial through target/player callbacks | No | fixture missing | Add explicit choose-player fixture. |
 | mode prompt | `GAME_CHOOSE_CHOICE` message containing mode | Yes; emits `choose_mode` | Yes | Yes | Yes | Yes, option grid | No | No | fixture missing | Add modal spell fixture. |
-| ability prompt | `GAME_CHOOSE_ABILITY` / `AbilityPickerView` | Yes; emits `choose_ability` | Yes | Yes | Yes | Yes, ability picker | No | No | fixture missing | Add ability-choice fixture. |
+| ability prompt | `GAME_CHOOSE_ABILITY` / `AbilityPickerView` | Yes; emits `choose_ability` | Yes | Yes | Yes | Yes, ability picker | Yes, `activated-ability-stack` | Yes | deterministic fixture-proven | Add more multi-ability fixtures later. |
 | amount prompt | `GAME_GET_AMOUNT` / `GAME_PLAY_XMANA` | Yes; emits `choose_amount` / `play_x_mana` | Yes | Yes | Yes | Yes, amount picker | No | No | fixture missing | Add bounded numeric prompt fixture. |
 | multi amount prompt | `GAME_GET_MULTI_AMOUNT` | Yes; emits `choose_multi_amount` | Yes | Yes | Yes | Partial; amount picker submits shown values, no multi-field editor | No | No | UI missing | Build real multi-amount UI and fixture. |
 | pile prompt | `GAME_CHOOSE_PILE` | Yes; emits pile choices/cards | Yes | Yes | Yes | Yes, pile buttons with counts | No | No | fixture missing | Add split-pile fixture. |
@@ -103,7 +103,7 @@ Current bridge and iOS behavior should stay fail-closed:
 - `answer_yes_no`, `pay_cost`, and `commander_replacement` require an explicit boolean or exact replacement target.
 - Prompt replies with stale `promptId`, `messageId`, or `expectedBridgeRevision` are rejected.
 - Prompt choices not exposed by XMage, duplicate selections, and disabled choices are rejected.
-- `play_land`, normal `cast_spell`, and basic `make_mana` submit source card UUIDs; non-mana `activate_ability` validates the selected ability UUID and uses explicit dispatch metadata for the XMage command path.
+- `play_land`, normal `cast_spell`, basic `make_mana`, and playable-object `activate_ability` submit source card UUIDs to XMage; `activate_ability` still requires and validates the selected ability UUID before dispatch.
 - Unknown action types are unsupported until bridge/shared/Swift/iOS define them.
 
 A visible unsupported prompt is better than a wrong game action.
