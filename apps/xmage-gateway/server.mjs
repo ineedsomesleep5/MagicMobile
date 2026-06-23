@@ -533,7 +533,7 @@ function fixtureHumanDeck(scenario) {
       name: "Prompt Mode Fixture",
       commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
       entries: [
-        { cardName: "Austere Command", quantity: 1, section: "deck" },
+        { cardName: "Lavabrink Venturer", quantity: 1, section: "deck" },
         { cardName: "Plains", quantity: 98, section: "deck" }
       ]
     };

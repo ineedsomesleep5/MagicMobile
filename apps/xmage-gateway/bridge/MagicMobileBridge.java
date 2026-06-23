@@ -3062,8 +3062,8 @@ public final class MagicMobileBridge implements MageClient {
             return;
         }
         if ("prompt-mode".equals(fixtureName)) {
-            defaultCards(schema, "humanHand", "Austere Command");
-            defaultBattlefield(schema, "humanBattlefield", "Plains", "Plains", "Plains", "Plains", "Plains", "Plains");
+            defaultCards(schema, "humanHand", "Lavabrink Venturer");
+            defaultBattlefield(schema, "humanBattlefield", "Plains", "Plains", "Plains");
             defaultCards(schema, "humanLibraryTop", "Plains");
             defaultBattlefield(schema, "aiBattlefield", "Wastes");
             schema.addProperty("turn", 1);
@@ -3518,7 +3518,10 @@ public final class MagicMobileBridge implements MageClient {
             prompt.add("piles", piles);
         } else if (method == ClientCallbackMethod.GAME_CHOOSE_CHOICE && message.getChoice() != null) {
             addChoiceOptions(choices, message.getChoice());
-            if ("order".equals(string(prompt, "responseKind", ""))) {
+            if (isKnownModeChoice(message.getChoice())) {
+                setPromptResponseKind(prompt, "mode");
+                prompt.add("modes", choices.deepCopy());
+            } else if ("order".equals(string(prompt, "responseKind", ""))) {
                 prompt.add("orderedItems", choices.deepCopy());
             } else {
                 prompt.add("modes", choices.deepCopy());
@@ -3741,6 +3744,9 @@ public final class MagicMobileBridge implements MageClient {
         if (method == ClientCallbackMethod.GAME_CHOOSE_CHOICE && (normalizedMessage.contains("order") || normalizedMessage.contains("stack"))) {
             return "order";
         }
+        if (method == ClientCallbackMethod.GAME_CHOOSE_CHOICE && isKnownModeChoiceMessage(normalizedMessage)) {
+            return "mode";
+        }
         if (method == ClientCallbackMethod.GAME_CHOOSE_CHOICE && normalizedMessage.contains("mode")) return "mode";
         if (method == ClientCallbackMethod.GAME_PLAY_MANA) return "mana";
         if (method == ClientCallbackMethod.GAME_PLAY_XMANA) return "x_mana";
@@ -3756,6 +3762,50 @@ public final class MagicMobileBridge implements MageClient {
         }
         if (method == ClientCallbackMethod.GAME_ASK) return "confirmation";
         return "resolve_choice";
+    }
+
+    private boolean isKnownModeChoiceMessage(String normalizedMessage) {
+        if (normalizedMessage == null || normalizedMessage.isEmpty()) {
+            return false;
+        }
+        return normalizedMessage.contains("odd or even")
+                || normalizedMessage.contains("even or odd")
+                || normalizedMessage.contains("khans or dragons")
+                || normalizedMessage.contains("dragons or khans")
+                || normalizedMessage.contains("sultai or abzan")
+                || normalizedMessage.contains("abzan or sultai")
+                || normalizedMessage.contains("mardu or jeskai")
+                || normalizedMessage.contains("jeskai or mardu")
+                || normalizedMessage.contains("believe or doubt")
+                || normalizedMessage.contains("doubt or believe");
+    }
+
+    private boolean isKnownModeChoice(Choice choice) {
+        if (choice == null || choice.getChoices() == null) {
+            return false;
+        }
+        HashSet<String> normalized = new HashSet<>();
+        for (String value : choice.getChoices()) {
+            if (value != null) {
+                normalized.add(value.toLowerCase());
+            }
+        }
+        return containsPair(normalized, "odd", "even")
+                || containsPair(normalized, "khans", "dragons")
+                || containsPair(normalized, "sultai", "abzan")
+                || containsPair(normalized, "mardu", "jeskai")
+                || containsPair(normalized, "believe", "doubt");
+    }
+
+    private boolean containsPair(HashSet<String> values, String first, String second) {
+        return values.contains(first) && values.contains(second);
+    }
+
+    private void setPromptResponseKind(JsonObject prompt, String responseKind) {
+        prompt.addProperty("responseKind", responseKind);
+        JsonObject responseCommand = object(prompt, "responseCommand", new JsonObject());
+        responseCommand.addProperty("type", commandTypeForResponseKind(responseKind));
+        prompt.add("responseCommand", responseCommand);
     }
 
     private void addCardChoices(JsonArray choices, CardsView cards) {

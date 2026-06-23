@@ -802,7 +802,7 @@ function fixtureSeedSchema() {
     : activatedAbilityScenario
     ? ["Plains"]
     : promptModeScenario
-    ? ["Austere Command"]
+    ? ["Lavabrink Venturer"]
     : triggeredAbilityScenario
     ? ["Spirited Companion", "Plains"]
     : [basic];
@@ -814,7 +814,7 @@ function fixtureSeedSchema() {
     : activatedAbilityScenario
     ? ["Seal of Cleansing", basic]
     : promptModeScenario
-    ? [basic, basic, basic, basic, basic, basic]
+    ? [basic, basic, basic]
     : triggeredAbilityScenario
     ? [basic, basic]
     : [basic];
@@ -1214,7 +1214,7 @@ function promptModeFixtureDeck() {
     name: "Prompt Mode Fixture",
     commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
     entries: [
-      { cardName: "Austere Command", quantity: 1, section: "deck" },
+      { cardName: "Lavabrink Venturer", quantity: 1, section: "deck" },
       { cardName: "Plains", quantity: 98, section: "deck" }
     ]
   };
