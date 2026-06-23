@@ -582,6 +582,8 @@ describe("xmage gateway", () => {
     assert.match(smokeSource, /Seal of Cleansing/);
     assert.match(smokeSource, /Isamaru, Hound of Konda/);
     assert.match(smokeSource, /Spirited Companion/);
+    assert.match(smokeSource, /function isGameOverSnapshot/);
+    assert.match(smokeSource, /Game ended: XMage reported GAME_OVER/);
     for (const family of [
       "play_land",
       "cast_spell",

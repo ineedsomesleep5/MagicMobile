@@ -215,6 +215,10 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
     console.error(`[Smoke] ${scenario} scenario satisfied at turn ${snapshot.turn}, step ${snapshot.step}`);
     break;
   }
+  if (isGameOverSnapshot(snapshot)) {
+    console.error(`[Smoke] Game ended: XMage reported GAME_OVER`);
+    break;
+  }
 
   // 3. Check if human has legal actions
   const actionable = snapshot.legalActions?.some(a => a.type !== "concede") ?? false;
@@ -2105,6 +2109,14 @@ function isManaOrPaymentPrompt(snapshot: SmokeSnapshot) {
   if (!prompt) return false;
   const expected = `${prompt.responseCommand?.type ?? ""} ${prompt.responseKind ?? ""} ${prompt.method ?? ""} ${prompt.message ?? ""}`.toLowerCase();
   return expected.includes("mana") || expected.includes("pay") || expected.includes("cost");
+}
+
+function isGameOverSnapshot(snapshot: SmokeSnapshot) {
+  const prompt = snapshot.promptEnvelopeV2;
+  if (!prompt) return false;
+  return prompt.method === "GAME_OVER"
+    || prompt.responseKind === "game_over"
+    || prompt.responseCommand?.type === "game_over";
 }
 
 function formatActions(snapshot: SmokeSnapshot) {

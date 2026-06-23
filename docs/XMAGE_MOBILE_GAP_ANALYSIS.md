@@ -10,6 +10,7 @@ Latest continuation on June 23, 2026:
 - Bridge command routing was corrected to mirror XMage desktop default card-click behavior: `play_land`, normal `cast_spell`, basic `make_mana`, and playable-object `activate_ability` submit the source card UUID, while `activate_ability` still validates the selected ability UUID. This is a generic playable-object route fix, not card-specific logic.
 - The latest focused `commander-gauntlet` run passes on the real bridge path with deterministic same-JVM fixture setup, `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, and `stepsBlocked: []`.
 - The focused `activated-ability-stack` fixture also passed live against real XMage after the latest bridge rebuild. It proved Seal of Cleansing activation, `GAME_CHOOSE_ABILITY`, `GAME_TARGET`, Sol Ring target selection, stack observation, and pass priority with `routeFamiliesMissing: []` and `stepsBlocked: []`.
+- A follow-up `commander-damage` diagnostic no longer loops forever on terminal `GAME_OVER` prompts, but still failed as later-scope evidence because XMage AI stalled after real attacker declarations at turn 2 postcombat-main (`bridgeRevision: 55`, `xmageCycle: 94`) before the smoke could assert a non-empty commander-damage matrix.
 - Do not mark real iPhone alpha ready yet. The backend gauntlet is green, but commander damage, real blocker assignment, and prompt-variety are later-scope unless explicitly moved into the alpha gate, and real iPhone manual QA is still unchecked.
 
 Latest follow-up on June 22, 2026:
