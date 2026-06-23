@@ -2744,16 +2744,25 @@ struct UniversalPromptActionPanel: View {
 
     @ViewBuilder
     private func amountPicker(amounts: [Int], prompt: PromptEnvelopeV2) -> some View {
-        PromptMiniLabel("Amount")
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 44), spacing: 6)], spacing: 6) {
-            ForEach(amounts, id: \.self) { amount in
-                let type = amountCommandType(preferred: prompt.responseCommand?.type)
-                promptButton(
-                    label: "\(amount)",
-                    systemImage: "number",
-                    pendingId: "\(prompt.id)-amount-\(amount)",
-                    command: command(type: type, promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, amount: amount, amounts: [amount])
-                )
+        let type = amountCommandType(preferred: prompt.responseCommand?.type)
+        if type == "choose_multi_amount" {
+            PromptMiniLabel("Multi Amount")
+            Text("Unsupported prompt/action: XMage exposed multiple amount slots, but this build does not yet have a mobile-safe multi-amount editor.")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.orange.opacity(0.86))
+                .lineLimit(3)
+                .minimumScaleFactor(0.72)
+        } else {
+            PromptMiniLabel("Amount")
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 44), spacing: 6)], spacing: 6) {
+                ForEach(amounts, id: \.self) { amount in
+                    promptButton(
+                        label: "\(amount)",
+                        systemImage: "number",
+                        pendingId: "\(prompt.id)-amount-\(amount)",
+                        command: command(type: type, promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, amount: amount, amounts: [amount])
+                    )
+                }
             }
         }
     }
