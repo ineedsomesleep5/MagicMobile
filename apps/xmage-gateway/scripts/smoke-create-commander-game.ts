@@ -150,6 +150,7 @@ if (fixtureGateRequired && (!directStateSeeded || !seededStateVerified)) {
 const completed: string[] = [];
 const promptChecks: string[] = [];
 let combatExercised = false;
+let blockerAssignmentExercised = false;
 let combatStepSeen = false;
 let aiWaits = 0;
 let staleActionRecoveries = 0;
@@ -244,6 +245,9 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
     if (action.type === "declare_attackers" || action.type === "declare_blockers") {
       combatExercised = true;
     }
+    if (action.type === "declare_blockers") {
+      blockerAssignmentExercised = true;
+    }
     if (arcaneSignetScenario && action.type === "cast_spell" && /arcane signet/i.test(action.label ?? action.cardName ?? "")) {
       arcaneCastSeen = true;
     }
@@ -326,9 +330,9 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
 recordCommanderState(snapshot);
 recordCoverage(snapshot);
 
-if (scenario === "blocker-flow" && !combatExercised) {
+if (scenario === "blocker-flow" && !blockerAssignmentExercised) {
   throw new Error(
-    "[Smoke] combat scenario did not exercise real declare_attackers/declare_blockers actions.\n"
+    "[Smoke] blocker-flow scenario did not exercise a real declare_blockers action.\n"
       + smokeDebug("combat scenario final snapshot", snapshot)
   );
 }
@@ -501,6 +505,7 @@ function baseSummaryReport(snapshot: SmokeSnapshot) {
     stackSeen,
     combatStepSeen,
     combatExercised,
+    blockerAssignmentExercised,
     arcaneSignet: {
       castSeen: arcaneCastSeen,
       paymentSourceSeen: arcanePaymentSourceSeen,
@@ -569,6 +574,7 @@ function fixtureUnavailableReport(fixtureHarness: SmokeSnapshot["fixtureHarness"
     stackSeen: safeReportValue(() => stackSeen, false),
     combatStepSeen: safeReportValue(() => combatStepSeen, false),
     combatExercised: safeReportValue(() => combatExercised, false),
+    blockerAssignmentExercised: safeReportValue(() => blockerAssignmentExercised, false),
     stepsCompleted,
     stepsBlocked: [
       ...(safeReportValue(() => useFixtureHarness, false) ? [] : ["fixture_call"]),
@@ -2113,7 +2119,7 @@ function scenarioSatisfied() {
       && combatStepSeen
       && realGameActionSeen;
   }
-  if (scenario === "blocker-flow") return combatExercised;
+  if (scenario === "blocker-flow") return blockerAssignmentExercised;
   if (scenario === "commander-replacement-tax") return commanderTaxChanges.length > 0;
   if (scenario === "commander-damage") return commanderDamageChanges.length > 0;
   if (scenario === "mana-rock") return arcaneCastSeen && arcanePaymentSourceSeen && arcaneResolvedSeen;

@@ -111,6 +111,26 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(payload?["abilityId"] as? String, "ability-1")
     }
 
+    func testPromptPileRequiresExplicitPileNumber() throws {
+        let explicit = try JSONDecoder.magicMobile.decode(XmagePromptPile.self, from: #"""
+        {
+          "id": "pile-2",
+          "label": "Pile 2",
+          "cards": []
+        }
+        """#.data(using: .utf8)!)
+        let ambiguous = try JSONDecoder.magicMobile.decode(XmagePromptPile.self, from: #"""
+        {
+          "id": "choice-alpha",
+          "label": "Take this pile",
+          "cards": []
+        }
+        """#.data(using: .utf8)!)
+
+        XCTAssertEqual(explicit.explicitPileNumber, 2)
+        XCTAssertNil(ambiguous.explicitPileNumber)
+    }
+
     func testBlockedCommanderFixtureResponseIsNotPlayable() throws {
         let data = """
         {
@@ -148,6 +168,34 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertNil(object.sourceCard)
         XCTAssertEqual(object.displayName, "Activated ability")
         XCTAssertEqual(object.displaySourceName, "Source unavailable")
+    }
+
+    func testStackObjectDecodesControllerSourceAndTargets() throws {
+        let data = """
+        {
+          "id": "stack-2",
+          "name": "Activated ability",
+          "rulesText": "Destroy target artifact.",
+          "sourceInstanceId": "source-1",
+          "sourceName": "Seal of Cleansing",
+          "sourceZone": "battlefield",
+          "controllerId": "human",
+          "controllerXmageId": "controller-xmage-1",
+          "targetIds": ["target-1", "target-2"],
+          "paid": true
+        }
+        """.data(using: .utf8)!
+
+        let object = try JSONDecoder.magicMobile.decode(XmageStackObject.self, from: data)
+
+        XCTAssertEqual(object.displayName, "Activated ability")
+        XCTAssertEqual(object.displaySourceName, "Seal of Cleansing")
+        XCTAssertEqual(object.sourceInstanceId, "source-1")
+        XCTAssertEqual(object.sourceZone, "battlefield")
+        XCTAssertEqual(object.controllerId, "human")
+        XCTAssertEqual(object.controllerXmageId, "controller-xmage-1")
+        XCTAssertEqual(object.targetIds ?? [], ["target-1", "target-2"])
+        XCTAssertEqual(object.displayMetadata, "Controller: human | From: battlefield | Targets: 2")
     }
 
     private func decodeAction(type: String, extra: String? = nil) throws -> LegalAction {

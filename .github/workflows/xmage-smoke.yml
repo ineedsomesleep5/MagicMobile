@@ -28,10 +28,10 @@ jobs:
       - name: Build bridge image
         run: docker build -t magicmobile-xmage-bridge-check apps/xmage-gateway/bridge
 
-      - name: Start XMage bridge and gateway
-        run: ENABLE_XMAGE_FIXTURES=true NODE_ENV=test docker compose up -d --build xmage-bridge xmage-gateway
+      - name: Start XMage bridge and gateway without fixtures
+        run: docker compose up -d --build xmage-bridge xmage-gateway
 
-      - name: Wait for gateway health
+      - name: Wait for gateway health without fixtures
         run: |
           for attempt in $(seq 1 60); do
             if curl -fsS http://localhost:17171/health | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"'; then
@@ -53,6 +53,22 @@ jobs:
       - name: Commander-state real XMage smoke diagnostic
         continue-on-error: true
         run: XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage:commander-state
+
+      - name: Restart XMage bridge and gateway with fixtures
+        run: |
+          docker compose down --remove-orphans
+          ENABLE_XMAGE_FIXTURES=true NODE_ENV=test docker compose up -d --build xmage-bridge xmage-gateway
+
+      - name: Wait for fixture gateway health
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://localhost:17171/health | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"'; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose logs xmage-bridge xmage-gateway
+          exit 1
 
       - name: Commander gauntlet real XMage smoke gate
         run: XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage:gauntlet

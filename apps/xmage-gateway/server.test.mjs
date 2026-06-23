@@ -1166,6 +1166,8 @@ describe("xmage gateway", () => {
     assert.ok(smokeSource.includes("failedStep: \"bridge-disconnected\""));
     assert.ok(smokeSource.includes("if (label === \"cast simple spell\") return 30000;"));
     assert.ok(smokeSource.includes("allowEqual: snapshot.pendingStatus === \"waiting_for_xmage\""));
+    assert.ok(smokeSource.includes("if (scenario === \"blocker-flow\") return blockerAssignmentExercised;"));
+    assert.ok(smokeSource.includes("blocker-flow scenario did not exercise a real declare_blockers action."));
   });
 });
 

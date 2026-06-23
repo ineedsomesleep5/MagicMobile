@@ -2096,6 +2096,19 @@ struct XmageStackPeek: View {
                         .foregroundStyle(.white.opacity(0.70))
                         .lineLimit(1)
                         .minimumScaleFactor(0.62)
+                } else if let source = topObject?.sourceName, !source.isEmpty, source != topObject?.name {
+                    Text("Source: \(source)")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.70))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.62)
+                }
+                if let metadata = topObject?.displayMetadata {
+                    Text(metadata)
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.64))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.58)
                 }
                 if let text = topObject?.rulesText, !text.isEmpty {
                     Text(text)
@@ -2723,7 +2736,7 @@ struct UniversalPromptActionPanel: View {
                     subtitle: "\(pile.cards.count) cards",
                     systemImage: "tray.full",
                     pendingId: "\(prompt.id)-pile-\(pile.id)",
-                    command: command(type: "choose_pile", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, pile: Int(pile.id) ?? 1)
+                    command: command(type: "choose_pile", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, pile: pile.explicitPileNumber)
                 )
             }
         }

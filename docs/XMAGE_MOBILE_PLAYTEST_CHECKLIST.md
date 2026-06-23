@@ -129,7 +129,7 @@ Historical broad smoke output showed `source: "xmage-java-bridge"`, advancing br
 
 Targeted fixture smoke outputs:
 
-- `XMAGE_SMOKE_SCENARIO=blocker-flow`: passed with `combatExercised: true` after submitting `declare_attackers: Attack Noaddrag with Isamaru, Hound of Konda`.
+- `XMAGE_SMOKE_SCENARIO=blocker-flow`: attacker-only evidence is no longer accepted as blocker proof. The smoke gate now requires a real `declare_blockers` action before this scenario can pass.
 - `XMAGE_SMOKE_SCENARIO=commander-replacement-tax`: older artifacts observed commander tax and damage, but this must be reproved on the current bridge before it is treated as release-gate green.
 - `XMAGE_SMOKE_SCENARIO=arcane-signet`: intentionally not counted as passing. The current fixture with repeated `Arcane Signet` was rejected by XMage Commander legality, so the next version needs a Commander-legal deterministic payment-source fixture.
 - `XMAGE_SMOKE_SCENARIO=commander-gauntlet` with `XMAGE_USE_FIXTURE=true`: passed after the latest bridge rebuild with direct server-side fixture seeding, final `bridgeRevision: 133`, final `xmageCycle: 223`, and `stepsBlocked: []`.

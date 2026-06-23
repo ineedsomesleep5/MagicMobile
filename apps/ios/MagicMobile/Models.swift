@@ -335,6 +335,32 @@ struct XmagePromptPile: Decodable, Identifiable {
     let cards: [ZoneCard]
 }
 
+extension XmagePromptPile {
+    var explicitPileNumber: Int? {
+        if id == "1" || id == "2" {
+            return Int(id)
+        }
+
+        let normalizedId = id.lowercased()
+        if normalizedId == "pile-1" || normalizedId == "pile_1" || normalizedId == "pile 1" {
+            return 1
+        }
+        if normalizedId == "pile-2" || normalizedId == "pile_2" || normalizedId == "pile 2" {
+            return 2
+        }
+
+        let normalizedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalizedLabel == "pile 1" || normalizedLabel == "pile-1" || normalizedLabel == "pile_1" {
+            return 1
+        }
+        if normalizedLabel == "pile 2" || normalizedLabel == "pile-2" || normalizedLabel == "pile_2" {
+            return 2
+        }
+
+        return nil
+    }
+}
+
 struct XmagePromptAbility: Decodable, Identifiable {
     let id: String
     let label: String
@@ -426,7 +452,13 @@ struct XmageStackObject: Decodable, Identifiable {
     let id: String
     let name: String
     let rulesText: String?
+    let sourceInstanceId: String?
+    let sourceName: String?
+    let sourceZone: String?
     let sourceCard: ZoneCard?
+    let controllerId: String?
+    let controllerXmageId: String?
+    let targetIds: [String]?
     let paid: Bool?
 
     var displayName: String {
@@ -434,7 +466,21 @@ struct XmageStackObject: Decodable, Identifiable {
     }
 
     var displaySourceName: String {
-        sourceCard?.card.name ?? "Source unavailable"
+        sourceCard?.card.name ?? sourceName ?? "Source unavailable"
+    }
+
+    var displayMetadata: String? {
+        var parts: [String] = []
+        if let controllerId, !controllerId.isEmpty {
+            parts.append("Controller: \(controllerId)")
+        }
+        if let sourceZone, !sourceZone.isEmpty {
+            parts.append("From: \(sourceZone)")
+        }
+        if let targetIds, !targetIds.isEmpty {
+            parts.append("Targets: \(targetIds.count)")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " | ")
     }
 }
 

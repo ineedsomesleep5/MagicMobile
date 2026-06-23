@@ -24,10 +24,11 @@ We inspected the CI configuration file [ci.yml](../.github/workflows/ci.yml).
   6. **Lint**: `pnpm lint`
   7. **Test**: `pnpm test`
   8. **Build**: `pnpm build`
+  9. **Compose config**: `docker compose config --quiet`
 
-Normal CI is intentionally limited to install/typecheck/lint/test/build. Live XMage smoke is not required for normal PRs because Docker/XMage startup is not reliable enough for a required gate yet.
+Normal CI is intentionally limited to install/typecheck/lint/test/build plus Docker Compose config rendering. Live XMage smoke is not required for normal PRs because Docker/XMage startup is not reliable enough for a required gate yet.
 
-Manual live smoke is available in `.github/workflows/xmage-smoke.yml` through `workflow_dispatch`. It rebuilds the bridge image, starts `xmage-bridge` and `xmage-gateway` with `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test` for gauntlet coverage, runs `pnpm smoke:xmage`, runs `pnpm smoke:xmage:gauntlet`, and uploads `build_output/smoke/*.json`.
+Manual live smoke is available in `.github/workflows/xmage-smoke.yml` through `workflow_dispatch`. It rebuilds the bridge image, starts `xmage-bridge` and `xmage-gateway` with fixtures disabled for broad diagnostic smokes, then restarts with `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test` only for the deterministic gauntlet gate. Reports are uploaded from `build_output/smoke/*.json`.
 
 If GitHub Actions does not appear in the repository UI after these files are pushed, the usual reason is that workflow files are not present on the default branch yet or Actions are disabled for the repository. Exact fix: push `.github/workflows/ci.yml` and `.github/workflows/xmage-smoke.yml` to the default branch or merge a PR containing them, then enable Actions under repository Settings if the Actions tab is disabled.
 

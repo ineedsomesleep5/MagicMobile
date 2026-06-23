@@ -109,6 +109,6 @@ On June 23, 2026, the embedded fixture hook reached ready locally after XMage ca
 - `seededZones`: `human.hand`, `human.battlefield`, `human.commandZone`, `human.libraryTopHidden:24`, `ai-1.aiBattlefield`
 - `stepsBlocked: []` in `build_output/smoke/smoke-report-commander-gauntlet.json`
 
-The latest successful local gauntlet used game `139255f5-8d6e-4e25-b284-653949456092`, final `bridgeRevision: 115`, and final `xmageCycle: 196`.
+The latest successful local gauntlet used game `be79e0b6-eec6-4a42-99f3-d62cd200879c`, final `bridgeRevision: 133`, and final `xmageCycle: 223`.
 
 If fixture mutation happens but refreshed snapshot proof does not arrive quickly, the gateway now polls the real bridge snapshot for up to 20 seconds before returning `xmage_fixture_snapshot_proof_failed`. Do not weaken this proof gate; a fixture only counts when the refreshed real XMage snapshot proves the seed.
