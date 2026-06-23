@@ -112,3 +112,20 @@ On June 23, 2026, the embedded fixture hook reached ready locally after XMage ca
 The latest successful local gauntlet used game `be79e0b6-eec6-4a42-99f3-d62cd200879c`, final `bridgeRevision: 133`, and final `xmageCycle: 223`.
 
 If fixture mutation happens but refreshed snapshot proof does not arrive quickly, the gateway now polls the real bridge snapshot for up to 20 seconds before returning `xmage_fixture_snapshot_proof_failed`. Do not weaken this proof gate; a fixture only counts when the refreshed real XMage snapshot proves the seed.
+
+## Full Commander vs AI Gate
+
+The narrower `commander-gauntlet` route proves the current core Commander flow, but full Commander vs AI must use the aggregate gate:
+
+```sh
+ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-full-ai XMAGE_USE_FIXTURE=true pnpm smoke:xmage
+```
+
+`commander-full-ai` runs the deterministic fixture scenarios as separate real-XMage smokes and writes `build_output/smoke/smoke-report-commander-full-ai.json`. It should report `source: "xmage-java-bridge"`, `directStateSeeded: true`, and `seededStateVerified: true` for all passing fixture scenarios, then fail the readiness verdict if any required scenario still has `stepsBlocked`.
+
+Current full-AI blockers:
+
+- `prompt-variety`: still missing deterministic real-XMage proof for `choose_mode`, `order_triggers/order_items`, `choose_amount`, `choose_multi_amount`, and `choose_pile`.
+- `damage-assignment`: probe fixture exists, but no bridge/shared/Swift/iOS `damage_assignment` route is implemented or live-proven.
+
+Representative fixture candidates for the next prompt-variety slices are `Austere Command` for mode choice, `Wheel of Misfortune` for amount choice, `Manamorphose` for multi-amount, `Fact or Fiction` for piles, and Soul Warden plus Spirited Companion for trigger ordering. Use a Commander-legal fixture shell, such as a five-color commander, and keep production routing generic.

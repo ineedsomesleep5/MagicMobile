@@ -3041,7 +3041,7 @@ public final class MagicMobileBridge implements MageClient {
     }
 
     private void applyCommanderFixtureDefaults(String fixtureName, JsonObject schema) {
-        if ("blocker-flow".equals(fixtureName)) {
+        if ("blocker-flow".equals(fixtureName) || "damage-assignment".equals(fixtureName)) {
             defaultCards(schema, "humanHand", "Plains");
             defaultBattlefield(schema, "humanBattlefield", "Silvercoat Lion", "Plains");
             defaultCards(schema, "humanLibraryTop", "Plains");
@@ -3138,7 +3138,7 @@ public final class MagicMobileBridge implements MageClient {
             JsonArray unsupported,
             JsonArray errors
     ) {
-        if (!"blocker-flow".equals(fixtureName)) {
+        if (!"blocker-flow".equals(fixtureName) && !"damage-assignment".equals(fixtureName)) {
             return;
         }
         if (aiPlayerId == null) {

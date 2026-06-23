@@ -1,6 +1,7 @@
 import { generateBracketThreeCommanderDeck } from "../../../packages/deck/src";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const endpoint = (process.env.XMAGE_GATEWAY_URL ?? "http://localhost:17171").replace(/\/$/, "");
@@ -11,6 +12,17 @@ const seed = process.env.XMAGE_SMOKE_SEED ?? "bridge-smoke";
 const humanPlayerId = process.env.XMAGE_SMOKE_HUMAN_ID ?? "human";
 const aiPlayerId = process.env.XMAGE_SMOKE_AI_ID ?? "ai-1";
 const requestedScenario = process.env.XMAGE_SMOKE_SCENARIO ?? "core-flow";
+if (requestedScenario === "commander-full-ai") {
+  const report = await runCommanderFullAiGate();
+  writeSmokeReportForScenario(report, "commander-full-ai");
+  console.log(JSON.stringify(report, null, 2));
+  if (!report.allRequiredScenariosPassed) {
+    throw new Error(
+      `[Smoke] commander-full-ai is not ready: ${report.stepsBlocked.join(", ") || "unknown blocker"}`
+    );
+  }
+  process.exit(0);
+}
 const scenarioModule = scenarioModuleFor(requestedScenario);
 const scenario = scenarioModule.id;
 const manaRockScenario = scenario === "mana-rock";
@@ -18,11 +30,16 @@ const manaRockCardName = process.env.XMAGE_SMOKE_MANA_ROCK_CARD ?? "Sol Ring";
 const alphaGameScenario = scenario === "core-flow";
 const commanderGauntletScenario = scenario === "commander-gauntlet";
 const blockerFlowScenario = scenario === "blocker-flow";
+const damageAssignmentScenario = scenario === "damage-assignment";
 const activatedAbilityScenario = scenario === "activated-ability-stack";
 const triggeredAbilityScenario = scenario === "triggered-ability-stack";
 const fixtureScenario = scenarioModule.usesFixture;
 const useFixtureHarness = process.env.XMAGE_USE_FIXTURE === "true";
-const fixtureCallRequired = commanderGauntletScenario || activatedAbilityScenario || triggeredAbilityScenario || scenario === "prompt-variety";
+const fixtureCallRequired = commanderGauntletScenario
+  || activatedAbilityScenario
+  || triggeredAbilityScenario
+  || scenario === "prompt-variety"
+  || scenario === "damage-assignment";
 const fixtureGateRequired = useFixtureHarness || fixtureCallRequired;
 const aiDifficulty = process.env.XMAGE_SMOKE_AI_DIFFICULTY ?? "normal";
 const routeFamiliesRequired = routeFamiliesRequiredForScenario(scenario);
@@ -431,7 +448,7 @@ if (scenario === "commander-gauntlet") {
   }
 }
 
-if (activatedAbilityScenario || triggeredAbilityScenario) {
+if (activatedAbilityScenario || triggeredAbilityScenario || scenario === "prompt-variety" || scenario === "damage-assignment") {
   const missing = missingRouteFamilies();
   if (missing.length > 0) {
     writeSmokeReport({
@@ -467,12 +484,140 @@ function writeSmokeReport(report: unknown) {
   const reportScenario = typeof report === "object" && report !== null && "scenario" in report
     ? String((report as { scenario?: unknown }).scenario ?? scenario)
     : scenario;
+  writeSmokeReportForScenario(report, reportScenario);
+}
+
+function writeSmokeReportForScenario(report: unknown, reportScenario: string) {
   const scenarioReportPath = path.join(reportDirectory, `smoke-report-${reportScenario}.json`);
   fs.mkdirSync(reportDirectory, { recursive: true });
   fs.writeFileSync(latestReportPath, JSON.stringify(report, null, 2), "utf8");
   fs.writeFileSync(scenarioReportPath, JSON.stringify(report, null, 2), "utf8");
   console.error(`[Smoke] Report saved to ${latestReportPath}`);
   console.error(`[Smoke] Scenario report saved to ${scenarioReportPath}`);
+}
+
+async function runCommanderFullAiGate() {
+  const requiredScenarios = [
+    "commander-gauntlet",
+    "mana-rock",
+    "commander-damage",
+    "blocker-flow",
+    "activated-ability-stack",
+    "triggered-ability-stack",
+    "prompt-variety",
+    "damage-assignment"
+  ];
+  const scenarioResults: Array<Record<string, unknown>> = [];
+
+  for (const childScenario of requiredScenarios) {
+    console.error(`[Smoke] commander-full-ai running ${childScenario}`);
+    const result = spawnSync("pnpm", ["smoke:xmage"], {
+      cwd: workspaceRoot,
+      env: {
+        ...process.env,
+        ENABLE_XMAGE_FIXTURES: "true",
+        NODE_ENV: "test",
+        XMAGE_SMOKE_SCENARIO: childScenario,
+        XMAGE_USE_FIXTURE: "true"
+      },
+      encoding: "utf8"
+    });
+    if (result.stdout) process.stdout.write(result.stdout);
+    if (result.stderr) process.stderr.write(result.stderr);
+
+    const reportPath = path.join(reportDirectory, `smoke-report-${childScenario}.json`);
+    const childReport = readReportIfPresent(reportPath);
+    scenarioResults.push({
+      scenario: childScenario,
+      passed: result.status === 0,
+      exitCode: result.status,
+      reportPath,
+      ...(childReport ?? {
+        failedStep: "report-missing",
+        failureReason: `No scenario report was written for ${childScenario}.`
+      })
+    });
+  }
+
+  const routeFamiliesCovered = unionReportStrings(scenarioResults, "routeFamiliesSeen")
+    .filter((family) => !unionReportStrings(scenarioResults, "routeFamiliesMissing").includes(family))
+    .sort();
+  const routeFamiliesMissing = unionReportStrings(scenarioResults, "routeFamiliesMissing").sort();
+  const iOSRequiredRoutesMissing = routeFamiliesMissing.filter((family) => ![
+    "fixture_call",
+    "direct_state_seeded",
+    "seeded_state_verified"
+  ].includes(family));
+  const failedScenarios = scenarioResults
+    .filter((result) => result.passed !== true)
+    .map((result) => String(result.scenario));
+  const scenarioStepsBlocked = scenarioResults.flatMap((result) => {
+    const blocks = Array.isArray(result.stepsBlocked) ? result.stepsBlocked.map(String) : [];
+    return blocks.map((block) => `${String(result.scenario)}:${block}`);
+  });
+  const stepsBlocked = Array.from(new Set([
+    ...failedScenarios.map((name) => `scenario:${name}`),
+    ...scenarioStepsBlocked,
+    ...routeFamiliesMissing.map((family) => `route_family:${family}`)
+  ])).sort();
+  const allRequiredScenariosPassed = scenarioResults.every((result) => result.passed === true)
+    && routeFamiliesMissing.length === 0
+    && iOSRequiredRoutesMissing.length === 0;
+
+  return {
+    endpoint,
+    scenario: "commander-full-ai",
+    fixtureRequested: true,
+    fixtureCallRequired: true,
+    requiredScenarios,
+    allRequiredScenariosPassed,
+    source: scenarioResults.every((result) => result.source === "xmage-java-bridge") ? "xmage-java-bridge" : "mixed-or-missing",
+    directStateSeeded: scenarioResults.every((result) => result.directStateSeeded === true),
+    seededStateVerified: scenarioResults.every((result) => result.seededStateVerified === true),
+    productionDisabled: scenarioResults.every((result) => {
+      const harness = result.fixtureHarness as { productionDisabled?: unknown } | undefined;
+      return harness?.productionDisabled === true;
+    }),
+    routeFamiliesCovered,
+    routeFamiliesMissing,
+    stepsBlocked,
+    iOSRequiredRoutesMissing,
+    scenarioResults: scenarioResults.map((result) => ({
+      scenario: result.scenario,
+      passed: result.passed,
+      source: result.source,
+      directStateSeeded: result.directStateSeeded,
+      seededStateVerified: result.seededStateVerified,
+      bridgeRevision: result.bridgeRevision,
+      xmageCycle: result.xmageCycle,
+      routeFamiliesMissing: result.routeFamiliesMissing,
+      stepsBlocked: result.stepsBlocked,
+      failedStep: result.failedStep,
+      failureReason: result.failureReason,
+      reportPath: result.reportPath
+    })),
+    readinessVerdict: allRequiredScenariosPassed
+      ? "full-commander-vs-ai-ready"
+      : "not-ready-full-commander-vs-ai",
+    failureReason: allRequiredScenariosPassed
+      ? null
+      : "Full Commander vs AI requires every listed deterministic scenario to pass and every required route family to be covered by real XMage."
+  };
+}
+
+function readReportIfPresent(reportPath: string) {
+  try {
+    return JSON.parse(fs.readFileSync(reportPath, "utf8")) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function unionReportStrings(reports: Array<Record<string, unknown>>, key: string) {
+  return Array.from(new Set(reports.flatMap((report) => {
+    const value = report[key];
+    return Array.isArray(value) ? value.map(String) : [];
+  })));
 }
 
 function baseSummaryReport(snapshot: SmokeSnapshot) {
@@ -643,7 +788,7 @@ function fixtureSeedSchema() {
   const commander = commanderGauntletScenario ? "Isamaru, Hound of Konda" : human.commander.cardName;
   const basic = commanderGauntletScenario ? "Plains" : "Plains";
   const expectedRoutes = routeFamiliesRequired.length > 0 ? routeFamiliesRequired : scenarioModule.requiredSteps;
-  const hand = blockerFlowScenario
+  const hand = blockerFlowScenario || damageAssignmentScenario
     ? [basic]
     : manaRockScenario
     ? [manaRockCardName]
@@ -655,7 +800,7 @@ function fixtureSeedSchema() {
     ? ["Spirited Companion", "Plains"]
     : [basic];
   const libraryTop = commanderGauntletScenario ? Array.from({ length: 24 }, () => "Plains") : [basic];
-  const battlefield = blockerFlowScenario
+  const battlefield = blockerFlowScenario || damageAssignmentScenario
     ? ["Silvercoat Lion", basic]
     : manaRockScenario
     ? [basic, basic]
@@ -674,10 +819,10 @@ function fixtureSeedSchema() {
     libraryTop,
     graveyard: [],
     exile: [],
-    aiBattlefield: [blockerFlowScenario ? "Memnite" : activatedAbilityScenario ? "Sol Ring" : commanderGauntletScenario ? "Plains" : "Wastes"],
-    phase: blockerFlowScenario ? "combat" : "precombat-main",
-    step: blockerFlowScenario ? "declare-blockers" : "precombat-main",
-    activePlayerId: blockerFlowScenario ? aiPlayerId : humanPlayerId,
+    aiBattlefield: [blockerFlowScenario || damageAssignmentScenario ? "Memnite" : activatedAbilityScenario ? "Sol Ring" : commanderGauntletScenario ? "Plains" : "Wastes"],
+    phase: blockerFlowScenario || damageAssignmentScenario ? "combat" : "precombat-main",
+    step: blockerFlowScenario || damageAssignmentScenario ? "declare-blockers" : "precombat-main",
+    activePlayerId: blockerFlowScenario || damageAssignmentScenario ? aiPlayerId : humanPlayerId,
     priorityPlayerId: humanPlayerId,
     expectedRoutes,
     expectedRouteCoverage: expectedRoutes
@@ -774,6 +919,7 @@ function laterScopeSteps(stepsCompleted: string[]) {
 function routeFamiliesRequiredForScenario(input: string) {
   if (input === "commander-gauntlet") return commanderGauntletRouteFamiliesRequired();
   if (input === "prompt-variety") return promptVarietyRouteFamiliesRequired();
+  if (input === "damage-assignment") return ["damage_assignment"];
   if (input === "activated-ability-stack") return ["activate_ability", "stack_object_seen", "pass_priority"];
   if (input === "triggered-ability-stack") return ["trigger_seen", "stack_object_seen", "pass_priority"];
   return [];
@@ -903,6 +1049,18 @@ function scenarioModuleFor(input: string): ScenarioModule {
         scenarioSet: ["prompt-variety"],
         requiredSteps: ["prompt-variety"]
       };
+    case "damage-assignment":
+      return {
+        id: "damage-assignment",
+        usesFixture: true,
+        scenarioSet: ["damage-assignment"],
+        requiredSteps: [
+          "fixture_call",
+          "direct_state_seeded",
+          "seeded_state_verified",
+          "route-family:damage_assignment"
+        ]
+      };
     case "activated-ability":
     case "activated-ability-stack":
       return {
@@ -955,7 +1113,8 @@ function scenarioModuleFor(input: string): ScenarioModule {
       throw new Error(
         `Unknown XMAGE_SMOKE_SCENARIO "${input}". Expected core-flow, mana-rock, search-select, `
           + "commander-replacement-tax, commander-damage, blocker-flow, prompt-variety, "
-          + "activated-ability-stack, triggered-ability-stack, fixture-smoke, or commander-gauntlet."
+          + "activated-ability-stack, triggered-ability-stack, damage-assignment, fixture-smoke, "
+          + "commander-gauntlet, or commander-full-ai."
       );
   }
 }

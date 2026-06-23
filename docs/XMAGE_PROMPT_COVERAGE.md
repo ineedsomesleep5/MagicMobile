@@ -23,6 +23,7 @@ This matrix maps each MagicMobile/XMage prompt family to its implementation, uni
 | **Concede** | `concede` | Yes | Yes | Yes | None. Concede action is always safe. |
 | **Combat Attackers** | `declare_attackers` | Yes | Yes | Yes | Deterministic `commander-damage` fixture proves attacker-to-defender mapping and combat damage after the combat-selection Done response fix. |
 | **Combat Blockers** | `declare_blockers` | Yes | Yes | Yes | Targeted `blocker-flow` fixture proved a real blocker prompt and submitted a blocker/attacker pair. Multi-attacker/blocker UI polish remains later scope. |
+| **Damage Assignment** | `damage_assignment` | No | No | No | Active full-AI blocker. A probe scenario exists, but bridge emission/command handling, shared types, Swift decode, iOS UI, and real fixture proof are still missing. |
 
 ## Verification Details
 
@@ -42,6 +43,8 @@ The passing gauntlet report used real `source: "xmage-java-bridge"`, `fixtureCal
 
 `commander-gauntlet` reports route-family evidence directly through `routeFamiliesRequired`, `routeFamiliesSeen`, and `routeFamiliesMissing`. Its required families are `play_land`, `cast_spell`, `make_mana`, `activate_ability`, `search_select/choose_card`, `choose_target`, `answer_yes_no`, `pay_cost`, `commander_replacement`, `pass_priority`, `stack_object_seen`, `trigger_seen`, `zone_update_seen`, and `commander_tax_seen`.
 
-`prompt-variety` is a route-family proof, not a count of any three prompts. It requires real XMage evidence for `stack_object_seen`, `activate_ability`, `choose_ability`, `choose_mode`, `order_triggers/order_items`, `choose_amount`, `choose_multi_amount`, and `choose_pile`. The current fixture-gated `prompt-variety` run used real `source: "xmage-java-bridge"` and `directStateSeeded: true`, but still reported `stepsBlocked: ["prompt-variety"]` and missing `activate_ability`, `choose_ability`, `choose_mode`, `order_triggers/order_items`, `choose_amount`, `choose_multi_amount`, and `choose_pile`. It remains later scope until targeted fixture reports prove those prompt families.
+`prompt-variety` is a route-family proof, not a count of any three prompts. It requires real XMage evidence for `stack_object_seen`, `activate_ability`, `choose_ability`, `choose_mode`, `order_triggers/order_items`, `choose_amount`, `choose_multi_amount`, and `choose_pile`. The current fixture-gated `prompt-variety` run used real `source: "xmage-java-bridge"` and `directStateSeeded: true`, but still reported `stepsBlocked: ["prompt-variety"]` and missing `activate_ability`, `choose_ability`, `choose_mode`, `order_triggers/order_items`, `choose_amount`, `choose_multi_amount`, and `choose_pile`. It is now part of the stricter `commander-full-ai` gate and must not be described as full-product ready until targeted fixture reports prove those prompt families.
+
+`damage-assignment` is also part of the stricter full-AI gate. The current probe starts from a deterministic combat fixture, but no inspected bridge path emits or accepts a `damage_assignment` command yet. A passing blocker-flow or commander-damage report does not prove manual damage assignment.
 
 Stack snapshots now carry source name/id, paid status, and rules text from `GameView.getStack()`. Controller and target ids are emitted only when the XMage stack `CardView` exposes them; iOS needs its Swift model widened before those optional controller/target fields can be shown on device.

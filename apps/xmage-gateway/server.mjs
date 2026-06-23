@@ -482,9 +482,9 @@ function fixtureExpectedRouteCoverage(scenario) {
 }
 
 function fixtureHumanDeck(scenario) {
-  if (scenario === "blocker-flow") {
+  if (scenario === "blocker-flow" || scenario === "damage-assignment") {
     return {
-      name: "Blocker Flow Human Fixture",
+      name: scenario === "damage-assignment" ? "Damage Assignment Human Fixture" : "Blocker Flow Human Fixture",
       commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
       entries: [
         { cardName: "Silvercoat Lion", quantity: 1, section: "deck" },
@@ -532,9 +532,9 @@ function fixtureHumanDeck(scenario) {
 }
 
 function fixtureAiDeck(scenario) {
-  if (scenario === "blocker-flow") {
+  if (scenario === "blocker-flow" || scenario === "damage-assignment") {
     return {
-      name: "Blocker Flow AI Fixture",
+      name: scenario === "damage-assignment" ? "Damage Assignment AI Fixture" : "Blocker Flow AI Fixture",
       commander: { cardName: "Kozilek, Butcher of Truth", quantity: 1, section: "commander" },
       entries: [
         { cardName: "Memnite", quantity: 1, section: "deck" },
