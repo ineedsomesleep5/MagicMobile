@@ -44,7 +44,8 @@ struct MagicMobileAPI {
     }
 
     func startCommanderFixture(scenario: String = "commander-gauntlet") async throws -> GameSnapshot {
-        try await post("/dev/xmage-fixtures/commander", body: CommanderFixtureRequest(scenario: scenario))
+        let data = try await postData("/dev/xmage-fixtures/commander", body: CommanderFixtureRequest(scenario: scenario))
+        return try Self.decodeCommanderFixtureSnapshot(from: data)
     }
 
     func snapshot(gameId: String) async throws -> GameSnapshot {
@@ -600,6 +601,11 @@ struct MagicMobileAPI {
     }
 
     private func post<Body: Encodable, T: Decodable>(_ path: String, body: Body) async throws -> T {
+        let data = try await postData(path, body: body)
+        return try JSONDecoder.magicMobile.decode(T.self, from: data)
+    }
+
+    private func postData<Body: Encodable>(_ path: String, body: Body) async throws -> Data {
         var request = URLRequest(url: url(path))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -607,7 +613,18 @@ struct MagicMobileAPI {
         request.httpBody = try JSONEncoder.magicMobile.encode(body)
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
-        return try JSONDecoder.magicMobile.decode(T.self, from: data)
+        return data
+    }
+
+    static func decodeCommanderFixtureSnapshot(from data: Data) throws -> GameSnapshot {
+        if let snapshot = try? JSONDecoder.magicMobile.decode(GameSnapshot.self, from: data) {
+            return snapshot
+        }
+        let response = try JSONDecoder.magicMobile.decode(CommanderFixtureResponse.self, from: data)
+        guard let snapshot = response.playableSnapshot else {
+            throw MagicMobileError.server(response.statusMessage)
+        }
+        return snapshot
     }
 
     private func url(_ path: String) -> URL {

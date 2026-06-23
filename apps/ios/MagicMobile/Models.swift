@@ -148,6 +148,31 @@ struct CommanderFixtureResponse: Decodable {
     let snapshot: GameSnapshot?
     let latestSnapshot: GameSnapshot?
 
+    enum CodingKeys: String, CodingKey {
+        case error
+        case fixtureName
+        case productionDisabled
+        case directStateSeeded
+        case setupMethod
+        case blockedReason
+        case nextImplementationStep
+        case snapshot
+        case latestSnapshot
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        error = try container.decodeIfPresent(String.self, forKey: .error)
+        fixtureName = try container.decodeIfPresent(String.self, forKey: .fixtureName)
+        productionDisabled = try container.decodeIfPresent(Bool.self, forKey: .productionDisabled) ?? false
+        directStateSeeded = try container.decodeIfPresent(Bool.self, forKey: .directStateSeeded) ?? false
+        setupMethod = try container.decodeIfPresent(String.self, forKey: .setupMethod)
+        blockedReason = try container.decodeIfPresent(String.self, forKey: .blockedReason)
+        nextImplementationStep = try container.decodeIfPresent(String.self, forKey: .nextImplementationStep)
+        snapshot = try container.decodeIfPresent(GameSnapshot.self, forKey: .snapshot)
+        latestSnapshot = try container.decodeIfPresent(GameSnapshot.self, forKey: .latestSnapshot)
+    }
+
     var playableSnapshot: GameSnapshot? {
         guard directStateSeeded else { return nil }
         return snapshot ?? latestSnapshot

@@ -153,6 +153,75 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertTrue(response.productionDisabled)
     }
 
+    func testCommanderFixtureDecoderAcceptsRawSnapshotSuccess() throws {
+        let snapshot = try MagicMobileAPI.decodeCommanderFixtureSnapshot(from: minimalSnapshotJSON(id: "fixture-game-1"))
+
+        XCTAssertEqual(snapshot.id, "fixture-game-1")
+        XCTAssertEqual(snapshot.source, "xmage-java-bridge")
+        XCTAssertEqual(snapshot.bridgeRevision, 7)
+    }
+
+    func testCommanderFixtureDecoderRejectsBlockedResponseWithClearMessage() throws {
+        let data = """
+        {
+          "error": "xmage_fixture_state_seeding_unavailable",
+          "fixtureName": "commander-gauntlet",
+          "directStateSeeded": false,
+          "blockedReason": "Fixture endpoint did not return seed proof.",
+          "nextImplementationStep": "Run the fixture inside XMage."
+        }
+        """.data(using: .utf8)!
+
+        XCTAssertThrowsError(try MagicMobileAPI.decodeCommanderFixtureSnapshot(from: data)) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                "Fixture blocked: Fixture endpoint did not return seed proof."
+            )
+        }
+    }
+
+    func testDeclareAttackersCommandPreservesTypedPayload() throws {
+        let action = try decodeAction(
+            type: "declare_attackers",
+            extra: #"""
+            "commandTemplate": {
+              "type": "declare_attackers",
+              "attackers": [{ "attackerId": "attacker-1", "defenderId": "ai-1" }]
+            }
+            """#
+        )
+
+        let command = try MagicMobileAPI(baseURL: URL(string: "http://localhost")!)
+            .command(for: action, gameId: "game-1")
+        let payload = try JSONSerialization.jsonObject(with: JSONEncoder.magicMobile.encode(command)) as? [String: Any]
+        let attackers = payload?["attackers"] as? [[String: Any]]
+
+        XCTAssertEqual(attackers?.count, 1)
+        XCTAssertEqual(attackers?.first?["attackerId"] as? String, "attacker-1")
+        XCTAssertEqual(attackers?.first?["defenderId"] as? String, "ai-1")
+    }
+
+    func testDeclareBlockersCommandPreservesTypedPayload() throws {
+        let action = try decodeAction(
+            type: "declare_blockers",
+            extra: #"""
+            "commandTemplate": {
+              "type": "declare_blockers",
+              "blockers": [{ "blockerId": "blocker-1", "attackerId": "attacker-1" }]
+            }
+            """#
+        )
+
+        let command = try MagicMobileAPI(baseURL: URL(string: "http://localhost")!)
+            .command(for: action, gameId: "game-1")
+        let payload = try JSONSerialization.jsonObject(with: JSONEncoder.magicMobile.encode(command)) as? [String: Any]
+        let blockers = payload?["blockers"] as? [[String: Any]]
+
+        XCTAssertEqual(blockers?.count, 1)
+        XCTAssertEqual(blockers?.first?["blockerId"] as? String, "blocker-1")
+        XCTAssertEqual(blockers?.first?["attackerId"] as? String, "attacker-1")
+    }
+
     func testStackObjectWithoutSourceCardKeepsDisplayText() throws {
         let data = """
         {
@@ -211,5 +280,45 @@ final class MagicMobileTests: XCTestCase {
         }
         """.data(using: .utf8)!
         return try JSONDecoder.magicMobile.decode(LegalAction.self, from: data)
+    }
+
+    private func minimalSnapshotJSON(id: String) throws -> Data {
+        """
+        {
+          "id": "\(id)",
+          "source": "xmage-java-bridge",
+          "activePlayerId": "human",
+          "phase": "precombat-main",
+          "step": "precombat-main",
+          "turn": 1,
+          "priorityPlayerId": "human",
+          "waitingOnPlayerId": "human",
+          "promptText": "Your priority",
+          "players": [
+            {
+              "playerId": "human",
+              "life": 40,
+              "poison": 0,
+              "commanderTax": 0,
+              "manaPool": { "W": 0, "U": 0, "B": 0, "R": 0, "G": 0, "C": 0 },
+              "zones": {
+                "library": [],
+                "hand": [],
+                "battlefield": [],
+                "graveyard": [],
+                "exile": [],
+                "command": [],
+                "stack": []
+              },
+              "commanderDamage": {}
+            }
+          ],
+          "log": [],
+          "legalActions": [],
+          "bridgeRevision": 7,
+          "xmageCycle": 11,
+          "pendingStatus": null
+        }
+        """.data(using: .utf8)!
     }
 }
