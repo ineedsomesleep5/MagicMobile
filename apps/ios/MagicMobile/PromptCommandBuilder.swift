@@ -97,6 +97,16 @@ enum PromptCommandBuilder {
         ids.count == 1
     }
 
+    static func movedOrder(ids: [String], from sourceIndex: Int, to destinationIndex: Int) -> [String] {
+        guard ids.indices.contains(sourceIndex), ids.indices.contains(destinationIndex), sourceIndex != destinationIndex else {
+            return ids
+        }
+        var next = ids
+        let item = next.remove(at: sourceIndex)
+        next.insert(item, at: destinationIndex)
+        return next
+    }
+
     static func hasPrebuiltCombatPayload(_ action: LegalAction) -> Bool {
         switch action.type {
         case "declare_attackers":

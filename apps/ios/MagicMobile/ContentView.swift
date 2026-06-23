@@ -2306,6 +2306,8 @@ struct UniversalPromptActionPanel: View {
     let selectedCardActions: [LegalAction]
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
+    @State private var orderPromptId: String?
+    @State private var orderedIds: [String] = []
     let pendingActionId: String?
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
@@ -2483,12 +2485,11 @@ struct UniversalPromptActionPanel: View {
             }
 
             if let orderedItems = prompt.orderedItems, !orderedItems.isEmpty {
-                placeholderSubmit(
+                orderPicker(
                     title: "Order",
-                    button: PromptCommandBuilder.canSubmitShownOrder(ids: orderedItems.map(\.id)) ? "Submit only item" : "Reorder UI needed",
                     prompt: prompt,
                     type: "order_items",
-                    ids: orderedItems.map(\.id)
+                    options: orderedItems.map { ($0.id, $0.label) }
                 )
             }
 
@@ -2501,13 +2502,11 @@ struct UniversalPromptActionPanel: View {
             }
 
             if isTriggerOrderPrompt(prompt) {
-                let orderedIds = prompt.cards?.map(\.id) ?? prompt.targets?.map(\.id) ?? prompt.choices?.map(\.id) ?? []
-                placeholderSubmit(
+                orderPicker(
                     title: "Trigger order",
-                    button: PromptCommandBuilder.canSubmitShownOrder(ids: orderedIds) ? "Submit only trigger" : "Reorder UI needed",
                     prompt: prompt,
                     type: "order_triggers",
-                    ids: orderedIds
+                    options: orderOptions(for: prompt)
                 )
             }
 
@@ -2861,6 +2860,69 @@ struct UniversalPromptActionPanel: View {
     }
 
     @ViewBuilder
+    private func orderPicker(title: String, prompt: PromptEnvelopeV2, type: String, options: [(String, String)]) -> some View {
+        let defaultIds = options.map(\.0)
+        let currentIds = currentOrder(promptId: prompt.id, defaultIds: defaultIds)
+        let labelById = Dictionary(uniqueKeysWithValues: options)
+        let canSubmit = !currentIds.isEmpty && Set(currentIds) == Set(defaultIds) && currentIds.count == defaultIds.count
+
+        PromptMiniLabel(title)
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(currentIds.enumerated()), id: \.element) { index, id in
+                HStack(spacing: 6) {
+                    Text("\(index + 1)")
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundStyle(MagicPalette.antiqueGold)
+                        .frame(width: 18, height: 24)
+                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+
+                    Text(labelById[id] ?? id)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.84))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.7)
+
+                    Spacer(minLength: 4)
+
+                    Button {
+                        moveOrder(promptId: prompt.id, defaultIds: defaultIds, from: index, delta: -1)
+                    } label: {
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 11, weight: .black))
+                            .frame(width: 28, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(index == 0 ? .white.opacity(0.24) : MagicPalette.parchment)
+                    .disabled(pendingActionId != nil || index == 0)
+
+                    Button {
+                        moveOrder(promptId: prompt.id, defaultIds: defaultIds, from: index, delta: 1)
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 11, weight: .black))
+                            .frame(width: 28, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(index == currentIds.count - 1 ? .white.opacity(0.24) : MagicPalette.parchment)
+                    .disabled(pendingActionId != nil || index == currentIds.count - 1)
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 5)
+                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.08)))
+            }
+
+            promptButton(
+                label: "Submit order",
+                subtitle: canSubmit ? "\(currentIds.count) items" : "Order incomplete",
+                systemImage: "arrow.up.arrow.down",
+                pendingId: "\(prompt.id)-\(type)-ordered",
+                command: canSubmit ? command(type: type, promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: currentIds) : nil
+            )
+        }
+    }
+
+    @ViewBuilder
     private func promptButton(label: String, subtitle: String? = nil, systemImage: String? = nil, pendingId: String, command: GameCommand?) -> some View {
         Button {
             if let command {
@@ -3023,6 +3085,31 @@ struct UniversalPromptActionPanel: View {
 
     private func isOrderCommand(_ type: String) -> Bool {
         type == "order_triggers" || type == "order_items"
+    }
+
+    private func orderOptions(for prompt: PromptEnvelopeV2) -> [(String, String)] {
+        if let cards = prompt.cards, !cards.isEmpty {
+            return cards.map { ($0.id, $0.card.name) }
+        }
+        if let targets = prompt.targets, !targets.isEmpty {
+            return targets.map { ($0.id, $0.label) }
+        }
+        if let choices = prompt.choices, !choices.isEmpty {
+            return choices.map { ($0.id, $0.label) }
+        }
+        return []
+    }
+
+    private func currentOrder(promptId: String, defaultIds: [String]) -> [String] {
+        orderPromptId == promptId && !orderedIds.isEmpty ? orderedIds : defaultIds
+    }
+
+    private func moveOrder(promptId: String, defaultIds: [String], from index: Int, delta: Int) {
+        if orderPromptId != promptId || orderedIds.isEmpty {
+            orderPromptId = promptId
+            orderedIds = defaultIds
+        }
+        orderedIds = PromptCommandBuilder.movedOrder(ids: orderedIds, from: index, to: index + delta)
     }
 
     private func placeholderSubmitSubtitle(type: String, ids: [String]) -> String {

@@ -47,8 +47,8 @@ If any step is missing, the UI should show an unsupported/incomplete state and r
 | multi amount prompt | `GAME_GET_MULTI_AMOUNT` | Yes; emits `choose_multi_amount` | Yes | Yes | Yes | Partial; amount picker submits shown values, no multi-field editor | No | No | UI missing | Build real multi-amount UI and fixture. |
 | pile prompt | `GAME_CHOOSE_PILE` | Yes; emits pile choices/cards | Yes | Yes | Yes | Yes, pile buttons with counts | No | No | fixture missing | Add split-pile fixture. |
 | search select | Search/select callbacks; XMage may expose this as `GAME_TARGET`/`choose_target` for library choices | Yes; emits `search_select` when exposed and preserves `choose_target` search prompts when XMage uses target callback | Yes | Yes | Yes | Partial; card picker or exposed-selection fallback | Yes, commander-gauntlet Terramorphic search | Yes | deterministic fixture-proven | Add explicit `search_select` callback fixture later. |
-| order triggers | `GAME_CHOOSE_CHOICE` order/stack prompt | Yes; maps order response to `order_items`; shared also has `order_triggers` | Yes | Yes | Yes | Partial; single exposed trigger can submit, multi-trigger ordering is disabled with an unsupported state | No | No | UI missing | Add reorderable trigger UI and fixture. |
-| order items | `GAME_CHOOSE_CHOICE` order/stack prompt | Yes; emits `orderedItems` / `order_items` | Yes | Yes | Yes | Partial; single exposed item can submit, multi-item ordering is disabled with an unsupported state | No | No | UI missing | Add reorderable item UI and fixture. |
+| order triggers | `GAME_CHOOSE_CHOICE` order/stack prompt | Yes; maps order response to `order_items`; shared also has `order_triggers` | Yes | Yes | Yes | Yes, basic up/down ordering control submits exact `orderedIds` | No | No | fixture missing | Add targeted trigger-order fixture and bridge classifier if XMage exposes ordering through `GAME_TARGET`. |
+| order items | `GAME_CHOOSE_CHOICE` order/stack prompt | Yes; emits `orderedItems` / `order_items` | Yes | Yes | Yes | Yes, basic up/down ordering control submits exact `orderedIds` | No | No | fixture missing | Add targeted order-items fixture. |
 | commander replacement | `GAME_ASK` mentioning commander/command zone | Yes; emits `commander_replacement` | Yes | Yes | Yes | Yes, command-zone/original-zone buttons | Yes, commander-gauntlet | Yes | deterministic fixture-proven | Keep no-default-command-zone tests. |
 | answer yes/no | `GAME_ASK` confirmation | Yes; explicit `confirmed` required | Yes | Yes | Yes | Yes, confirmation buttons | Partial | No | wired but unproven | Add generic yes/no fixture beyond commander/payment. |
 | declare attackers | Combat step `declare-attackers` | Yes; emits attacker/defender pair payloads | Yes | Yes | Yes | Partial; action button submits pair, no full combat assignment UI | Yes, `commander-damage` | Yes | deterministic fixture-proven | Improve combat picker UI and add blocker-pair proof. |
@@ -115,7 +115,7 @@ Current bridge and iOS behavior should stay fail-closed:
 - `choose_mana` and `play_mana` require `W`, `U`, `B`, `R`, `G`, or `C`.
 - `choose_ability` requires an explicit ability id unless XMage marks the prompt optional.
 - `answer_yes_no`, `pay_cost`, and `commander_replacement` require an explicit boolean or exact replacement target.
-- iOS does not auto-submit multi-item trigger/item ordering; it only submits a single exposed item and otherwise waits for a real reorder UI.
+- iOS does not auto-submit multi-item trigger/item ordering; it renders an up/down order list and submits only the displayed `orderedIds`.
 - iOS only renders generic `play_mana` color buttons from explicit `manaChoices` or currently visible floating mana, not a guessed six-color palette.
 - Prompt replies with stale `promptId`, `messageId`, or `expectedBridgeRevision` are rejected.
 - Prompt choices not exposed by XMage, duplicate selections, and disabled choices are rejected.

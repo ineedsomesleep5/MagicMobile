@@ -368,6 +368,15 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertFalse(PromptCommandBuilder.canSubmitShownOrder(ids: ["trigger-1", "trigger-2"]))
     }
 
+    func testPromptCommandBuilderMovesOrderedIdsWithoutInventingChoices() {
+        let ids = ["trigger-1", "trigger-2", "trigger-3"]
+
+        XCTAssertEqual(PromptCommandBuilder.movedOrder(ids: ids, from: 2, to: 1), ["trigger-1", "trigger-3", "trigger-2"])
+        XCTAssertEqual(PromptCommandBuilder.movedOrder(ids: ids, from: 0, to: 2), ["trigger-2", "trigger-3", "trigger-1"])
+        XCTAssertEqual(PromptCommandBuilder.movedOrder(ids: ids, from: -1, to: 1), ids)
+        XCTAssertEqual(PromptCommandBuilder.movedOrder(ids: ids, from: 0, to: 3), ids)
+    }
+
     func testPromptCommandBuilderRecognizesPrebuiltCombatPayloads() throws {
         let attackerAction = try decodeAction(
             type: "declare_attackers",
