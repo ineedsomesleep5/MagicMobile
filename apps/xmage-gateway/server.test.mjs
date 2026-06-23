@@ -551,6 +551,16 @@ describe("xmage gateway", () => {
     assert.equal(fixture.schema.expectedRouteCoverage.includes("stack_objects"), true);
   });
 
+  it("builds mana-rock fixtures with a legal singleton proof rock", () => {
+    const fixture = commanderFixtureConfig("mana-rock", { seed: "unit" });
+    const entries = fixture.config.humanDeck.entries;
+
+    assert.equal(fixture.schema.scenarioName, "mana-rock");
+    assert.equal(fixture.config.humanDeck.commander.cardName, "Isamaru, Hound of Konda");
+    assert.equal(entries.find((entry) => entry.cardName === "Arcane Signet").quantity, 1);
+    assert.equal(entries.find((entry) => entry.cardName === "Plains").quantity, 98);
+  });
+
   it("keeps the fixture smoke gate report-shaped and fail-fast", () => {
     const smokeSource = readFileSync(new URL("./scripts/smoke-create-commander-game.ts", import.meta.url), "utf8");
 

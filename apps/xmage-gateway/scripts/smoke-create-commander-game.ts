@@ -237,6 +237,19 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
       continue;
     }
 
+    if (arcaneSignetScenario && action.type === "cast_spell" && /arcane signet/i.test(action.label ?? action.cardName ?? "") && arcaneCastSeen) {
+      const report = {
+        ...baseSummaryReport(snapshot),
+        failedStep: "mana-rock-cast-no-progress",
+        failureReason: "Arcane Signet remained in hand and castable after a prior real XMage cast attempt; payment/resolution did not progress."
+      };
+      writeSmokeReport(report);
+      throw new Error(
+        "[Smoke] refusing repeated Arcane Signet cast with no payment or zone progress.\n"
+          + smokeDebug("repeated Arcane Signet cast snapshot", snapshot)
+      );
+    }
+
     console.error(`[Smoke] Turn ${snapshot.turn} (${snapshot.phase} - ${snapshot.step}): Executing human action: ${action.type} (label: ${action.label ?? "none"})`);
     actionsByType[action.type] = (actionsByType[action.type] ?? 0) + 1;
     markRouteFamily(action.type);
@@ -299,6 +312,9 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
                 : "resolve prompt";
             
     snapshot = await waitForSemanticProgress(previous, snapshot, semanticLabel);
+    if (arcaneSignetScenario && action.type === "cast_spell" && /arcane signet/i.test(action.label ?? action.cardName ?? "")) {
+      assertArcaneCastProgress(previous, snapshot);
+    }
     assertBridgeSnapshot(snapshot, `action: ${action.type}`);
     assertBridgeProgress(previous, snapshot, `action: ${action.type}`, {
       allowEqual: snapshot.pendingStatus === "waiting_for_xmage"
@@ -621,6 +637,8 @@ function fixtureSeedSchema() {
   const expectedRoutes = routeFamiliesRequired.length > 0 ? routeFamiliesRequired : scenarioModule.requiredSteps;
   const hand = blockerFlowScenario
     ? [basic]
+    : arcaneSignetScenario
+    ? ["Arcane Signet"]
     : commanderGauntletScenario
     ? ["Sol Ring", "Arcane Signet", "Terramorphic Expanse", "Swords to Plowshares", "Spirited Companion", "Plains", "Plains"]
     : activatedAbilityScenario
@@ -631,6 +649,8 @@ function fixtureSeedSchema() {
   const libraryTop = commanderGauntletScenario ? Array.from({ length: 24 }, () => "Plains") : [basic];
   const battlefield = blockerFlowScenario
     ? ["Silvercoat Lion", basic]
+    : arcaneSignetScenario
+    ? [basic, basic]
     : activatedAbilityScenario
     ? ["Seal of Cleansing", basic]
     : triggeredAbilityScenario
@@ -980,12 +1000,9 @@ function arcaneSignetFixtureDeck() {
   return {
     name: "Arcane Signet Payment Fixture",
     commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
-    // Smoke-only bridge stress fixture. Product deck legality remains validated
-    // through the normal Commander import/build path; this keeps the payment
-    // scenario deterministic enough to catch command-flow regressions.
     entries: [
-      { cardName: "Arcane Signet", quantity: 24, section: "deck" },
-      { cardName: "Plains", quantity: 75, section: "deck" }
+      { cardName: "Arcane Signet", quantity: 1, section: "deck" },
+      { cardName: "Plains", quantity: 98, section: "deck" }
     ]
   };
 }
@@ -1511,6 +1528,7 @@ async function waitForSemanticProgress(previous: SmokeSnapshot, next: SmokeSnaps
 }
 
 function semanticProgressDeadlineMs(label: string) {
+  if (arcaneSignetScenario && label === "cast simple spell") return 5000;
   if (label === "cast simple spell") return 30000;
   if (label === "resolve prompt") return 20000;
   return 15000;
@@ -1751,6 +1769,33 @@ function assertSemanticProgress(previous: SmokeSnapshot, next: SmokeSnapshot, la
         + smokeDebug("after pass_priority", next)
     );
   }
+}
+
+function assertArcaneCastProgress(previous: SmokeSnapshot, next: SmokeSnapshot) {
+  if (arcaneCastMadeProgress(previous, next)) return;
+  const report = {
+    ...baseSummaryReport(next),
+    failedStep: "mana-rock-cast-no-progress",
+    failureReason: "Arcane Signet cast action returned a real XMage snapshot but did not open a payment prompt, expose source make_mana actions, move the card, use mana, or put an object on the stack."
+  };
+  writeSmokeReport(report);
+  throw new Error(
+    "[Smoke] mana-rock cast did not make real XMage gameplay progress.\n"
+      + smokeDebug("before Arcane Signet cast", previous)
+      + "\n"
+      + smokeDebug("after Arcane Signet cast", next)
+  );
+}
+
+function arcaneCastMadeProgress(previous: SmokeSnapshot, next: SmokeSnapshot) {
+  return humanZone(next, "hand").filter((entry) => /arcane signet/i.test(entry.card?.name ?? "")).length
+      < humanZone(previous, "hand").filter((entry) => /arcane signet/i.test(entry.card?.name ?? "")).length
+    || humanZone(next, "battlefield").some((entry) => /arcane signet/i.test(entry.card?.name ?? ""))
+    || humanZone(next, "stack").length > humanZone(previous, "stack").length
+    || snapshotHasStackObject(next)
+    || next.promptEnvelopeV2 !== undefined
+    || manaTotal(previous) !== manaTotal(next)
+    || (next.legalActions ?? []).some((action) => action.type === "make_mana" && next.promptEnvelopeV2 && isManaOrPaymentPrompt(next));
 }
 
 function hasSemanticProgress(previous: SmokeSnapshot, next: SmokeSnapshot, label: string) {

@@ -3068,6 +3068,13 @@ public final class MagicMobileBridge implements MageClient {
             schema.addProperty("turn", 1);
             return;
         }
+        if ("mana-rock".equals(fixtureName)) {
+            defaultCards(schema, "humanHand", "Arcane Signet");
+            defaultBattlefield(schema, "humanBattlefield", "Plains", "Plains");
+            defaultCards(schema, "humanLibraryTop", "Plains");
+            schema.addProperty("turn", 1);
+            return;
+        }
         if (!"commander-gauntlet".equals(fixtureName)) {
             return;
         }

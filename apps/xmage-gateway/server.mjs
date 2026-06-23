@@ -507,6 +507,16 @@ function fixtureHumanDeck(scenario) {
       ]
     };
   }
+  if (scenario === "mana-rock") {
+    return {
+      name: "Mana Rock Fixture",
+      commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
+      entries: [
+        { cardName: "Arcane Signet", quantity: 1, section: "deck" },
+        { cardName: "Plains", quantity: 98, section: "deck" }
+      ]
+    };
+  }
   if (scenario === "activated-ability-stack") {
     return {
       name: "Activated Ability Stack Fixture",
