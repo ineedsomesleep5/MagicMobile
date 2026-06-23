@@ -24,6 +24,7 @@ Latest CI/docs validation pass on June 23, 2026. Treat the smoke details below a
 - `XMAGE_SMOKE_SCENARIO=triggered-ability-stack` passed with direct server-side fixture seeding, `routeFamiliesMissing: []`, and empty `stepsBlocked`.
 - `XMAGE_SMOKE_SCENARIO=mana-rock` now uses a Commander-legal singleton fixture deck (`Sol Ring` x1, `Plains` x98), direct server-side seeding, and passed with real `source: "xmage-java-bridge"`, `directStateSeeded: true`, final `bridgeRevision: 15`, final `xmageCycle: 24`, and `stepsBlocked: []`.
 - `XMAGE_SMOKE_SCENARIO=prompt-variety` is still not green. Current fixture-gated smoke uses real XMage and direct seeding, but reports missing `activate_ability`, `choose_ability`, `choose_mode`, `order_triggers/order_items`, `choose_amount`, `choose_multi_amount`, and `choose_pile`.
+- `XMAGE_SMOKE_SCENARIO=prompt-mode` is a targeted red probe, not a pass yet. The June 23, 2026 run used real XMage and `directStateSeeded: true`, but Austere Command surfaced as `GAME_CHOOSE_ABILITY:ability`, leaving `routeFamiliesMissing: ["choose_mode"]`.
 - `XMAGE_SMOKE_SCENARIO=commander-full-ai` is the full Commander vs AI truth gate. It must fail until prompt-variety and damage-assignment are implemented/proven or explicitly excluded with safe fallbacks.
 - `XMAGE_SMOKE_MANA_ROCK_CARD="Arcane Signet" pnpm smoke:xmage:mana-rock` passed with real cast/payment/resolution evidence. Keep this as generic routing proof, not a card-specific production path.
 - `xcodebuild test -project apps/ios/MagicMobileiOS.xcodeproj -scheme MagicMobile -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' -only-testing:MagicMobileTests -quiet` exited 0 for the iOS unit test target. This is not real iPhone product success.
@@ -88,6 +89,7 @@ Current pause blocker:
   ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage
   ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=activated-ability-stack XMAGE_USE_FIXTURE=true pnpm smoke:xmage
   ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=triggered-ability-stack XMAGE_USE_FIXTURE=true pnpm smoke:xmage
+  ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=prompt-mode XMAGE_USE_FIXTURE=true pnpm smoke:xmage
   ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=prompt-variety XMAGE_USE_FIXTURE=true pnpm smoke:xmage
   ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=damage-assignment XMAGE_USE_FIXTURE=true pnpm smoke:xmage
   ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-full-ai XMAGE_USE_FIXTURE=true pnpm smoke:xmage

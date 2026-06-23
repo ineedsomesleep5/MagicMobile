@@ -528,6 +528,16 @@ function fixtureHumanDeck(scenario) {
       ]
     };
   }
+  if (scenario === "prompt-mode") {
+    return {
+      name: "Prompt Mode Fixture",
+      commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
+      entries: [
+        { cardName: "Austere Command", quantity: 1, section: "deck" },
+        { cardName: "Plains", quantity: 98, section: "deck" }
+      ]
+    };
+  }
   return fixtureCommanderDeck("Isamaru, Hound of Konda", "Plains", `${scenario} Human Fixture`);
 }
 

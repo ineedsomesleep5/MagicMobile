@@ -3061,6 +3061,14 @@ public final class MagicMobileBridge implements MageClient {
             schema.addProperty("turn", 1);
             return;
         }
+        if ("prompt-mode".equals(fixtureName)) {
+            defaultCards(schema, "humanHand", "Austere Command");
+            defaultBattlefield(schema, "humanBattlefield", "Plains", "Plains", "Plains", "Plains", "Plains", "Plains");
+            defaultCards(schema, "humanLibraryTop", "Plains");
+            defaultBattlefield(schema, "aiBattlefield", "Wastes");
+            schema.addProperty("turn", 1);
+            return;
+        }
         if ("triggered-ability-stack".equals(fixtureName)) {
             defaultCards(schema, "humanHand", "Spirited Companion", "Plains");
             defaultBattlefield(schema, "humanBattlefield", "Plains", "Plains");

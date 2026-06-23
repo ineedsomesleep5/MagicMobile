@@ -125,7 +125,7 @@ ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:1717
 
 Current full-AI blockers:
 
-- `prompt-variety`: still missing deterministic real-XMage proof for `choose_mode`, `order_triggers/order_items`, `choose_amount`, `choose_multi_amount`, and `choose_pile`.
+- `prompt-variety`: still missing deterministic real-XMage proof for `choose_mode`, `order_triggers/order_items`, `choose_amount`, `choose_multi_amount`, and `choose_pile`. `prompt-mode` now exists as a targeted Austere Command fixture probe, but the current real smoke stayed red because XMage surfaced the modal selection as `GAME_CHOOSE_ABILITY:ability` instead of a bridge `choose_mode` action.
 - `damage-assignment`: probe fixture exists, but no bridge/shared/Swift/iOS `damage_assignment` route is implemented or live-proven.
 
 Representative fixture candidates for the next prompt-variety slices are `Austere Command` for mode choice, `Wheel of Misfortune` for amount choice, `Manamorphose` for multi-amount, `Fact or Fiction` for piles, and Soul Warden plus Spirited Companion for trigger ordering. Use a Commander-legal fixture shell, such as a five-color commander, and keep production routing generic.

@@ -31,6 +31,7 @@ const alphaGameScenario = scenario === "core-flow";
 const commanderGauntletScenario = scenario === "commander-gauntlet";
 const blockerFlowScenario = scenario === "blocker-flow";
 const damageAssignmentScenario = scenario === "damage-assignment";
+const promptModeScenario = scenario === "prompt-mode";
 const activatedAbilityScenario = scenario === "activated-ability-stack";
 const triggeredAbilityScenario = scenario === "triggered-ability-stack";
 const fixtureScenario = scenarioModule.usesFixture;
@@ -39,7 +40,8 @@ const fixtureCallRequired = commanderGauntletScenario
   || activatedAbilityScenario
   || triggeredAbilityScenario
   || scenario === "prompt-variety"
-  || scenario === "damage-assignment";
+  || scenario === "damage-assignment"
+  || promptModeScenario;
 const fixtureGateRequired = useFixtureHarness || fixtureCallRequired;
 const aiDifficulty = process.env.XMAGE_SMOKE_AI_DIFFICULTY ?? "normal";
 const routeFamiliesRequired = routeFamiliesRequiredForScenario(scenario);
@@ -113,6 +115,8 @@ const human = fixtureScenario
     ? triggeredAbilityFixtureDeck()
     : manaRockScenario
     ? manaRockFixtureDeck()
+    : promptModeScenario
+    ? promptModeFixtureDeck()
     : commanderFixtureDeck("Isamaru, Hound of Konda", "Plains")
   : generateBracketThreeCommanderDeck({ seed: `${seed}:human`, playerId: humanPlayerId }).deck;
 const ai = fixtureScenario
@@ -448,7 +452,7 @@ if (scenario === "commander-gauntlet") {
   }
 }
 
-if (activatedAbilityScenario || triggeredAbilityScenario || scenario === "prompt-variety" || scenario === "damage-assignment") {
+if (activatedAbilityScenario || triggeredAbilityScenario || promptModeScenario || scenario === "prompt-variety" || scenario === "damage-assignment") {
   const missing = missingRouteFamilies();
   if (missing.length > 0) {
     writeSmokeReport({
@@ -504,6 +508,7 @@ async function runCommanderFullAiGate() {
     "blocker-flow",
     "activated-ability-stack",
     "triggered-ability-stack",
+    "prompt-mode",
     "prompt-variety",
     "damage-assignment"
   ];
@@ -796,6 +801,8 @@ function fixtureSeedSchema() {
     ? ["Sol Ring", "Arcane Signet", "Terramorphic Expanse", "Swords to Plowshares", "Spirited Companion", "Plains", "Plains"]
     : activatedAbilityScenario
     ? ["Plains"]
+    : promptModeScenario
+    ? ["Austere Command"]
     : triggeredAbilityScenario
     ? ["Spirited Companion", "Plains"]
     : [basic];
@@ -806,6 +813,8 @@ function fixtureSeedSchema() {
     ? [basic, basic]
     : activatedAbilityScenario
     ? ["Seal of Cleansing", basic]
+    : promptModeScenario
+    ? [basic, basic, basic, basic, basic, basic]
     : triggeredAbilityScenario
     ? [basic, basic]
     : [basic];
@@ -919,6 +928,7 @@ function laterScopeSteps(stepsCompleted: string[]) {
 function routeFamiliesRequiredForScenario(input: string) {
   if (input === "commander-gauntlet") return commanderGauntletRouteFamiliesRequired();
   if (input === "prompt-variety") return promptVarietyRouteFamiliesRequired();
+  if (input === "prompt-mode") return ["cast_spell", "choose_mode"];
   if (input === "damage-assignment") return ["damage_assignment"];
   if (input === "activated-ability-stack") return ["activate_ability", "stack_object_seen", "pass_priority"];
   if (input === "triggered-ability-stack") return ["trigger_seen", "stack_object_seen", "pass_priority"];
@@ -1048,6 +1058,19 @@ function scenarioModuleFor(input: string): ScenarioModule {
         usesFixture: true,
         scenarioSet: ["prompt-variety"],
         requiredSteps: ["prompt-variety"]
+      };
+    case "prompt-mode":
+      return {
+        id: "prompt-mode",
+        usesFixture: true,
+        scenarioSet: ["prompt-mode"],
+        requiredSteps: [
+          "fixture_call",
+          "direct_state_seeded",
+          "seeded_state_verified",
+          "route-family:cast_spell",
+          "route-family:choose_mode"
+        ]
       };
     case "damage-assignment":
       return {
@@ -1182,6 +1205,17 @@ function activatedAbilityFixtureDeck() {
       { cardName: "Seal of Cleansing", quantity: 1, section: "deck" },
       { cardName: "Sol Ring", quantity: 1, section: "deck" },
       { cardName: "Plains", quantity: 97, section: "deck" }
+    ]
+  };
+}
+
+function promptModeFixtureDeck() {
+  return {
+    name: "Prompt Mode Fixture",
+    commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
+    entries: [
+      { cardName: "Austere Command", quantity: 1, section: "deck" },
+      { cardName: "Plains", quantity: 98, section: "deck" }
     ]
   };
 }
@@ -2386,7 +2420,7 @@ function scenarioSatisfied() {
   if (scenario === "mana-rock") return manaRockCastSeen && manaRockPaymentSourceSeen && manaRockResolvedSeen;
   if (scenario === "search-select") return gauntlet.searchResolved || actionsByType.search_select > 0;
   if (scenario === "prompt-variety") return promptVarietyRouteFamiliesSatisfied();
-  if (scenario === "activated-ability-stack" || scenario === "triggered-ability-stack") return missingRouteFamilies().length === 0;
+  if (scenario === "activated-ability-stack" || scenario === "triggered-ability-stack" || scenario === "prompt-mode") return missingRouteFamilies().length === 0;
   if (scenario === "commander-gauntlet") return commanderGauntletMissingSteps().length === 0;
   return false;
 }
