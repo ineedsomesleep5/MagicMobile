@@ -1,27 +1,53 @@
 {
   "endpoint": "http://localhost:17171",
-  "scenario": "commander-state",
+  "scenario": "commander-gauntlet",
+  "fixtureRequested": true,
+  "fixtureHarness": {
+    "enabled": true,
+    "fixtureName": "commander-gauntlet",
+    "schemaVersion": 1,
+    "directStateSeeded": false,
+    "fallback": "deterministic_real_xmage_decks",
+    "reason": "MagicMobileBridge is a remote XMage Session client and cannot call server-side Game.cheat(...) from this JVM.",
+    "productionDisabled": true,
+    "expectedRouteCoverage": [
+      "keep_hand",
+      "mulligan",
+      "play_land",
+      "cast_spell",
+      "make_mana",
+      "pass_priority",
+      "activate_ability",
+      "search_select",
+      "choose_card",
+      "choose_target",
+      "commander_replacement",
+      "commander_tax",
+      "commander_damage",
+      "stack_objects",
+      "zone_updates"
+    ]
+  },
   "health": {
     "status": "ready",
     "reason": "XMage Java bridge connected to 127.0.0.1:17171.",
-    "checkedAt": "2026-06-22T18:30:32.528Z",
+    "checkedAt": "2026-06-23T04:05:49.752Z",
     "recoveryAction": "wait"
   },
-  "gameId": "f1a291eb-3ffb-4055-8785-40fb0322f4ec",
+  "gameId": "15703810-121a-4d05-a498-39017d4afd4f",
   "source": "xmage-java-bridge",
-  "bridgeRevision": 91,
-  "xmageCycle": 145,
-  "phase": "combat",
-  "step": "combat-damage",
-  "turn": 4,
+  "bridgeRevision": 314,
+  "xmageCycle": 505,
+  "phase": "precombat-main",
+  "step": "precombat-main",
+  "turn": 16,
   "promptText": "Your priority",
   "promptChecks": [
     "GAME_ASK:confirmation",
-    "GAME_PLAY_MANA:mana"
+    "GAME_TARGET:target"
   ],
   "completed": [
     "[Turn 1 beginning] keep_hand: Keep",
-    "[Turn 1 precombat-main] pass_priority: Done",
     "[Turn 1 precombat-main] pass_priority: Done",
     "[Turn 1 combat] pass_priority: Done",
     "[Turn 1 postcombat-main] pass_priority: Done",
@@ -35,82 +61,141 @@
     "[Turn 3 precombat-main] pass_priority: Done",
     "[Turn 3 combat] pass_priority: Done",
     "[Turn 3 postcombat-main] pass_priority: Done",
-    "[Turn 4 precombat-main] play_land: Play Plains",
-    "[Turn 4 precombat-main] make_mana: Tap Plains",
-    "[Turn 4 precombat-main] make_mana: Tap Plains",
     "[Turn 4 precombat-main] pass_priority: Done",
-    "[Turn 4 precombat-main] answer_yes_no: Choose Yes",
-    "[Turn 4 combat] declare_attackers: Attack Noaddrag with Isamaru, Hound of Konda",
     "[Turn 4 combat] pass_priority: Done",
-    "[Turn 4 combat] pass_priority: Done"
+    "[Turn 4 postcombat-main] pass_priority: Done",
+    "[Turn 4 ending] choose_target: Choose Plains",
+    "[Turn 5 precombat-main] pass_priority: Done",
+    "[Turn 5 combat] pass_priority: Done",
+    "[Turn 5 postcombat-main] pass_priority: Done",
+    "[Turn 6 precombat-main] pass_priority: Done",
+    "[Turn 6 combat] pass_priority: Done",
+    "[Turn 6 postcombat-main] pass_priority: Done",
+    "[Turn 6 ending] choose_target: Choose Plains",
+    "[Turn 7 precombat-main] pass_priority: Done",
+    "[Turn 7 combat] pass_priority: Done",
+    "[Turn 7 postcombat-main] pass_priority: Done",
+    "[Turn 8 precombat-main] pass_priority: Done",
+    "[Turn 8 combat] pass_priority: Done",
+    "[Turn 8 postcombat-main] pass_priority: Done",
+    "[Turn 8 ending] choose_target: Choose Plains",
+    "[Turn 9 precombat-main] pass_priority: Done",
+    "[Turn 9 combat] pass_priority: Done",
+    "[Turn 9 postcombat-main] pass_priority: Done",
+    "[Turn 10 precombat-main] pass_priority: Done",
+    "[Turn 10 combat] pass_priority: Done",
+    "[Turn 10 postcombat-main] pass_priority: Done",
+    "[Turn 10 ending] choose_target: Choose Plains",
+    "[Turn 11 precombat-main] pass_priority: Done",
+    "[Turn 11 combat] pass_priority: Done",
+    "[Turn 11 postcombat-main] pass_priority: Done",
+    "[Turn 12 precombat-main] pass_priority: Done",
+    "[Turn 12 combat] pass_priority: Done",
+    "[Turn 12 postcombat-main] pass_priority: Done",
+    "[Turn 12 ending] choose_target: Choose Plains",
+    "[Turn 13 beginning] pass_priority: Done",
+    "[Turn 13 precombat-main] pass_priority: Done",
+    "[Turn 13 combat] pass_priority: Done",
+    "[Turn 13 combat] pass_priority: Done",
+    "[Turn 13 postcombat-main] pass_priority: Done",
+    "[Turn 14 precombat-main] pass_priority: Done",
+    "[Turn 14 combat] pass_priority: Done",
+    "[Turn 14 postcombat-main] pass_priority: Done",
+    "[Turn 14 ending] choose_target: Choose Plains",
+    "[Turn 15 precombat-main] pass_priority: Done",
+    "[Turn 15 combat] pass_priority: Done",
+    "[Turn 15 postcombat-main] pass_priority: Done"
   ],
   "turnsObserved": [
     1,
     2,
     3,
-    4
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16
   ],
   "actionsByType": {
     "keep_hand": 1,
-    "pass_priority": 14,
-    "play_land": 2,
+    "pass_priority": 48,
+    "play_land": 1,
     "cast_spell": 1,
-    "make_mana": 3,
-    "answer_yes_no": 1,
-    "declare_attackers": 1
+    "make_mana": 1,
+    "choose_target": 6
   },
   "staleActionRecoveries": 0,
-  "aiWaits": 0,
+  "aiWaits": 15,
   "stackSeen": true,
   "combatStepSeen": true,
-  "combatExercised": true,
+  "combatExercised": false,
   "arcaneSignet": {
     "castSeen": false,
     "paymentSourceSeen": false,
     "resolvedSeen": false
   },
-  "commanderTaxChanges": [
-    {
-      "playerId": "human",
-      "tax": 2,
-      "turn": 2
-    }
-  ],
-  "commanderDamageChanges": [
-    {
-      "recipient": "ai-1",
-      "attacker": "human",
-      "damage": 2,
-      "turn": 4
-    }
-  ],
+  "commanderGauntlet": {
+    "stepsCompleted": [
+      "playedLand",
+      "tappedManaSource",
+      "commanderCast",
+      "stackObjectSeen",
+      "aiTurnContinued"
+    ],
+    "stepsBlocked": [
+      "castManaRock",
+      "fetchActivated",
+      "searchResolved",
+      "etbOrTriggerSeen",
+      "activatedAbilityUsed",
+      "commanderRemoved",
+      "commanderReplacementAnswered",
+      "commanderRecastWithTax"
+    ],
+    "promptFamiliesSeen": [
+      "GAME_ASK:confirmation",
+      "GAME_TARGET:target"
+    ]
+  },
+  "commanderTaxChanges": [],
+  "commanderDamageChanges": [],
   "players": [
     {
-      "playerId": "human",
+      "playerId": "ai-1",
       "life": 40,
-      "commanderTax": 2,
+      "commanderTax": 0,
       "commanderDamage": {
         "human": 0,
         "ai-1": 0
       },
-      "library": 90,
-      "hand": 7,
-      "battlefield": 3,
-      "command": []
-    },
-    {
-      "playerId": "ai-1",
-      "life": 38,
-      "commanderTax": 0,
-      "commanderDamage": {
-        "human": 2,
-        "ai-1": 0
-      },
-      "library": 93,
+      "library": 87,
       "hand": 4,
-      "battlefield": 2,
+      "battlefield": 8,
       "command": [
         "Kozilek, Butcher of Truth"
+      ]
+    },
+    {
+      "playerId": "human",
+      "life": 40,
+      "commanderTax": 0,
+      "commanderDamage": {
+        "human": 0,
+        "ai-1": 0
+      },
+      "library": 84,
+      "hand": 8,
+      "battlefield": 1,
+      "command": [
+        "Isamaru, Hound of Konda"
       ]
     }
   ],
@@ -118,6 +203,16 @@
     "pass_priority",
     "pass_until_response",
     "pass_until_next_turn",
-    "concede"
-  ]
+    "concede",
+    "make_mana",
+    "cast_spell",
+    "play_land",
+    "play_land",
+    "play_land",
+    "play_land",
+    "play_land",
+    "play_land"
+  ],
+  "failedStep": "commander-gauntlet",
+  "failureReason": "Missing required gauntlet steps: castManaRock, fetchActivated, searchResolved, etbOrTriggerSeen, activatedAbilityUsed, commanderRemoved, commanderReplacementAnswered, commanderRecastWithTax"
 }

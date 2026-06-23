@@ -222,6 +222,7 @@ struct LegalAction: Decodable, Identifiable {
     let pile: String?
     let confirmed: Bool?
     let pay: Bool?
+    let useCommandZone: Bool?
     let isPrimary: Bool?
     let requiresTarget: Bool?
     let requiresPayment: Bool?
@@ -233,6 +234,8 @@ struct LegalAction: Decodable, Identifiable {
     let zoneContext: String?
     let shortLabel: String?
     let commandTemplate: [String: JSONValue]?
+    let attackers: [AttackDeclaration]?
+    let blockers: [BlockDeclaration]?
 }
 
 struct ChoicePrompt: Decodable, Identifiable {
@@ -331,6 +334,16 @@ struct XmagePromptConfirmation: Decodable {
     let defaultValue: Bool?
     let yesCommand: XmageResponseCommand?
     let noCommand: XmageResponseCommand?
+}
+
+struct AttackDeclaration: Codable {
+    let attackerId: String
+    let defenderId: String?
+}
+
+struct BlockDeclaration: Codable {
+    let blockerId: String
+    let attackerId: String?
 }
 
 struct XmageMobileSnapshot: Decodable {
@@ -524,6 +537,11 @@ struct GameCommand: Encodable {
     let playerIds: [String]?
     let confirmed: Bool?
     let pay: Bool?
+    let sourceZone: String?
+    let fromZone: String?
+    let cardName: String?
+    let attackers: [AttackDeclaration]?
+    let blockers: [BlockDeclaration]?
     let expectedBridgeRevision: Int?
 
     init(
@@ -552,6 +570,11 @@ struct GameCommand: Encodable {
         playerIds: [String]? = nil,
         confirmed: Bool? = nil,
         pay: Bool? = nil,
+        sourceZone: String? = nil,
+        fromZone: String? = nil,
+        cardName: String? = nil,
+        attackers: [AttackDeclaration]? = nil,
+        blockers: [BlockDeclaration]? = nil,
         expectedBridgeRevision: Int? = nil
     ) {
         self.type = type
@@ -579,6 +602,11 @@ struct GameCommand: Encodable {
         self.playerIds = playerIds
         self.confirmed = confirmed
         self.pay = pay
+        self.sourceZone = sourceZone
+        self.fromZone = fromZone
+        self.cardName = cardName
+        self.attackers = attackers
+        self.blockers = blockers
         self.expectedBridgeRevision = expectedBridgeRevision
     }
 }

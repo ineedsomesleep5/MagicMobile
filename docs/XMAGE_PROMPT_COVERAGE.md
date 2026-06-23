@@ -36,6 +36,9 @@ Latest real bridge evidence from June 22, 2026:
 XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage
 XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=combat pnpm smoke:xmage
 XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-state pnpm smoke:xmage
+XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet pnpm smoke:xmage
 ```
 
-The broad smoke reached turn 5 on source `xmage-java-bridge` and exercised keep, land play, mana, spell casting, pay-mana prompts, pass priority, stack presence, combat steps, and AI waiting/progress. The `combat` fixture exposed and submitted typed `declare_attackers`. The `commander-state` fixture proved commander tax and commander damage through XMage snapshots. The attempted `arcane-signet` fixture is not counted because XMage correctly rejected its repeated nonbasic cards under Commander legality.
+The broad smoke previously reached turn 5 on source `xmage-java-bridge` and exercised keep, land play, mana, spell casting, pay-mana prompts, pass priority, stack presence, combat steps, and AI waiting/progress. The `combat` fixture exposed and submitted typed `declare_attackers`. The attempted `arcane-signet` fixture is not counted because XMage correctly rejected its repeated nonbasic cards under Commander legality.
+
+`commander-gauntlet` now exists as the full acceptance gate and uses a legal singleton Commander fixture. It must not be marked live-verified until its JSON report has no `commanderGauntlet.stepsBlocked` entries. The latest fixture-harness run proved the route metadata and real bridge startup, then failed with `failedStep: "ai-priority-stall"` after AI started, played a Wastes, and stopped at turn 1 precombat main. Current known blockers are AI-start/pass-yield stability and deterministic setup: the real bridge can start a legal XMage game and submit legal actions, but cannot yet seed opening hand/library/battlefield after XMage shuffles.

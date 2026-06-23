@@ -377,6 +377,40 @@ describe("GameController command mapping and state integration", () => {
       });
     });
 
+    it("does not invent prompt responses when XMage did not expose exact values", () => {
+      const missingPile: LegalAction = {
+        id: "pile-missing",
+        type: "choose_pile",
+        playerId: "human",
+        label: "Choose pile"
+      };
+      expect(toCommand(missingPile, snapshot, undefined, "opponent")).toBeUndefined();
+
+      const missingAmount: LegalAction = {
+        id: "amount-missing",
+        type: "choose_amount",
+        playerId: "human",
+        label: "Choose amount"
+      };
+      expect(toCommand(missingAmount, snapshot, undefined, "opponent")).toBeUndefined();
+
+      const missingConfirmation: LegalAction = {
+        id: "yes-no-missing",
+        type: "answer_yes_no",
+        playerId: "human",
+        label: "Confirm"
+      };
+      expect(toCommand(missingConfirmation, snapshot, undefined, "opponent")).toBeUndefined();
+
+      const missingCommanderChoice: LegalAction = {
+        id: "commander-missing",
+        type: "commander_replacement",
+        playerId: "human",
+        label: "Commander replacement"
+      };
+      expect(toCommand(missingCommanderChoice, snapshot, undefined, "opponent")).toBeUndefined();
+    });
+
     it("maps resolve_choice correctly", () => {
       const action: LegalAction = {
         id: "resolve-choice-1",

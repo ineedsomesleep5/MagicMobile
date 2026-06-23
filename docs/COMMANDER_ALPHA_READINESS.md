@@ -52,12 +52,17 @@ All performance tests and builds were run locally on macOS.
 | `pnpm test` | Package-wide test suites | **28.9s** | Pass |
 | `pnpm typecheck` | TypeScript compiler check | **13.6s** | Pass |
 | `pnpm build` | Production packages & Next.js build | **~60s** | Pass |
-| `XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage` | Live gateway & Java bridge play loop | **~60s** | Pass (core loop through turn 5) |
+| `XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage` | Live gateway & Java bridge play loop | **~60s** | Not current gate-green after latest bridge work; rerun after rebuilding bridge image with source-UUID `make_mana` fix |
 | `XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=combat pnpm smoke:xmage` | Typed combat fixture | **~30s** | Pass (`declare_attackers`) |
-| `XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-state pnpm smoke:xmage` | Commander tax/damage fixture | **18.3s** | Pass (tax and damage observed) |
+| `XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-state pnpm smoke:xmage` | Commander tax/damage fixture | varies | Not current gate-green; older artifacts observed tax/damage, but latest targeted work moved the blocker to AI-start/pass-yield stability |
+| `ENABLE_XMAGE_FIXTURES=true XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage` | Full Commander Gauntlet fixture through dev-only fixture harness | ~1-2m | Fails honestly; latest normal-AI run proved land, mana, command-zone cast, pass priority, and AI continuation, but cannot deterministically hit one-of proof cards without server-side fixture seeding |
 
 ### Key Smoke Test Verification Points:
 - Created a game via HTTP client against the live Java bridge.
+- Added a dev-only fixture harness route at `POST /dev/xmage-fixtures/commander`, guarded by `ENABLE_XMAGE_FIXTURES=true` and disabled when `NODE_ENV=production`.
+- Fixture smoke can now be invoked with `ENABLE_XMAGE_FIXTURES=true XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage`.
+- Current fixture harness metadata is honest: it reports `directStateSeeded: false` and `fallback: "deterministic_real_xmage_decks"` because the remote bridge cannot call XMage server-side `Game.cheat(...)` yet.
+- June 23 bridge fix: default XMage card-click actions now send source card UUIDs for `play_land`, normal `cast_spell`, and basic `make_mana`; explicit `activate_ability` still sends the selected ability UUID. This is a generic playable-object routing fix, not card-specific logic.
 - Performed opening hand keep (`keep_hand`).
 - Played a Forest land card from hand (`play_land`).
 - Tapped land to generate green mana (`make_mana`).
@@ -66,6 +71,8 @@ All performance tests and builds were run locally on macOS.
 - Passed priority to the AI (`pass_priority`) and verified AI response execution.
 - Submitted typed combat attacker payloads in the combat fixture.
 - Parsed commander tax and commander damage from real XMage snapshots in the commander-state fixture.
+- Added a legal singleton `commander-gauntlet` smoke scenario that reports completed and blocked gauntlet steps from real XMage state. This is the new alpha milestone gate, but it is not yet a passing release gate because the Java bridge cannot currently seed a deterministic hand/library/battlefield after XMage shuffles.
+- Latest `commander-gauntlet` evidence after the June 23 routing fixes: `source: xmage-java-bridge`, fixture metadata present, `directStateSeeded: false`, normal XMage AI progressed repeatedly, and the smoke proved `play_land`, command-zone cast, `make_mana`, pass priority, and AI continuation. Treat the remaining deterministic fixture coverage as blocked until a real server-side setup hook or equivalent path can seed exact proof cards/zones without faking gameplay.
 
 ---
 
@@ -119,12 +126,14 @@ pnpm smoke:xmage
 - Monorepo package versions are locked at Node 22 and pnpm 10.12.4.
 
 ### Blockers:
-- No critical blockers prevent the current real-XMage core smoke loop.
+- A real-XMage blocker remains: the current bridge can create and advance real games, but smoke fixtures are not deterministic enough to prove every required Commander route in one run. The app must keep showing AI thinking/stalled honestly, and the release gate should not pass until the bridge/smoke can reliably progress through AI priority and all targeted proof routes.
 - The attempted `arcane-signet` fixture is not a valid release gate yet because XMage correctly rejects repeated nonbasic `Arcane Signet` copies under Commander legality.
+- The full Commander Gauntlet cannot be deterministic from a legal singleton deck alone. The dev-only fixture harness route exists and is production-disabled, but the real Java bridge can only choose decks and submit legal XMage actions today; it cannot currently seed opening hand, library order, battlefield, or turn state. A future in-server real-XMage setup hook is needed before `commander-gauntlet` can reliably prove Sol Ring/payment, fetch/search, commander replacement, recast tax, and commander damage in one run.
 
 ### Remaining TODOs / Gaps:
 1. **Viewer-scoped Snapshots**: Multiplayer human pods need snapshot filtering so opponents cannot inspect other players' libraries or hands.
 2. **Advanced UI Prompts**: Render and handle reordering triggers/items, mode/ability/pile/amount choices, commander replacement, and blockers directly in UI components.
 3. **Card Art fallback**: Handle missing image urls smoothly without throwing render errors.
 4. **Casting/payment manual QA**: The live smoke proves land, mana, spell, and prompt flow, but iPhone/web still need manual regression coverage for the two-lands-into-`Arcane Signet` case documented in [CASTING_AND_MANA_FLOW.md](file:///Users/calebfeliciano/Documents/MagicMobile/docs/CASTING_AND_MANA_FLOW.md).
-5. **Long AI endurance**: A previous long random-deck smoke exposed an AI waiting stall on turn 7. The app must continue surfacing AI thinking/stalled states honestly while targeted fixtures keep the core loop deterministic.
+5. **Long AI endurance**: Some runs still expose AI waiting/stall behavior, especially with weaker fixture AI or awkward fixture decks. The app must continue surfacing AI thinking/stalled states honestly while targeted fixtures keep the core loop deterministic.
+6. **Commander Gauntlet setup**: Add a disabled-by-default, smoke-only real-XMage setup path or another upstream-supported deterministic setup method so the legal singleton fixture can reliably start with Sol Ring, Evolving Wilds, Swords to Plowshares, and Spirited Companion available for the full acceptance loop.

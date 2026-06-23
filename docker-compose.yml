@@ -33,6 +33,7 @@ services:
       SCRYFALL_CACHE_DIR: /workspace/.cache/scryfall
       XMAGE_AI_STALL_MS: 45000
       XMAGE_BRIDGE_URL: http://xmage-bridge:17172
+      ENABLE_XMAGE_FIXTURES: ${ENABLE_XMAGE_FIXTURES:-false}
     ports:
       - "17171:17171"
     volumes:
@@ -53,6 +54,7 @@ services:
       XMAGE_HOST: 127.0.0.1
       XMAGE_PORT: 17171
       GATEWAY_URL: http://xmage-gateway:17171
+      ENABLE_XMAGE_FIXTURES: ${ENABLE_XMAGE_FIXTURES:-false}
     ports:
       - "17172:17172"
       - "17179:17179"

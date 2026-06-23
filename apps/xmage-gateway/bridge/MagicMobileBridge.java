@@ -55,6 +55,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -133,6 +134,25 @@ public final class MagicMobileBridge implements MageClient {
 
             if ("POST".equals(method) && "/games/commander".equals(path)) {
                 writeJson(exchange, 201, createCommanderGame(readJson(exchange)));
+                return;
+            }
+
+            if ("POST".equals(method) && "/dev/xmage-fixtures/commander".equals(path)) {
+                if (!fixturesEnabled()) {
+                    JsonObject body = new JsonObject();
+                    body.addProperty("error", "xmage_fixtures_disabled");
+                    writeJson(exchange, 404, body);
+                    return;
+                }
+                readJson(exchange);
+                JsonObject body = new JsonObject();
+                body.addProperty("error", "xmage_fixture_state_seeding_unavailable");
+                body.addProperty(
+                        "message",
+                        "MagicMobileBridge is a remote XMage Session client and cannot call server-side Game.cheat(...) from this JVM."
+                );
+                body.addProperty("directStateSeeded", false);
+                writeJson(exchange, 501, body);
                 return;
             }
 
@@ -290,9 +310,7 @@ public final class MagicMobileBridge implements MageClient {
         } else if ("activate_ability".equals(type)) {
             session.sendPlayerUUID(xmageGameId, playableCommandUuid(gameId, command));
         } else if ("make_mana".equals(type)) {
-            UUID sourceUuid = playableSourceUuid(gameId, command);
-            playableCommandUuid(gameId, command);
-            session.sendPlayerUUID(xmageGameId, sourceUuid);
+            session.sendPlayerUUID(xmageGameId, playableSourceUuid(gameId, command));
         } else if ("pass_priority".equals(type)) {
             session.sendPlayerBoolean(xmageGameId, false);
         } else if ("keep_hand".equals(type)) {
@@ -447,6 +465,10 @@ public final class MagicMobileBridge implements MageClient {
             throw new ActionNoLongerLegalException(gameId, "Ability is no longer legal for " + sourceId);
         }
         return abilityUuid;
+    }
+
+    private boolean hasText(JsonObject object, String key) {
+        return object != null && object.has(key) && !object.get(key).isJsonNull() && !object.get(key).getAsString().isBlank();
     }
 
     private ManaType manaTypeForCommand(String gameId, JsonObject command) {
@@ -750,9 +772,6 @@ public final class MagicMobileBridge implements MageClient {
             }
             session.sendPlayerUUID(xmageGameId, UUID.fromString(value));
         }
-        if (isConfirmableSelectionPrompt(prompt)) {
-            session.sendPlayerBoolean(xmageGameId, true);
-        }
     }
 
     private void sendPromptStringsOrUuids(String bridgeGameId, UUID xmageGameId, JsonObject prompt, JsonArray ids) {
@@ -769,14 +788,6 @@ public final class MagicMobileBridge implements MageClient {
                 session.sendPlayerString(xmageGameId, value);
             }
         }
-    }
-
-    private boolean isConfirmableSelectionPrompt(JsonObject prompt) {
-        if (prompt == null) {
-            return false;
-        }
-        String method = string(prompt, "method", "");
-        return "GAME_TARGET".equals(method) || "GAME_SELECT".equals(method);
     }
 
     private void sendEmptyPromptSelection(String bridgeGameId, UUID xmageGameId, JsonObject prompt) {
@@ -999,13 +1010,17 @@ public final class MagicMobileBridge implements MageClient {
                     if (manaOnly && !isManaAbility(card, abilityLabel)) {
                         continue;
                     }
+                    boolean playableFromHiddenZone = handIds.contains(objectId) || inCommand;
+                    String abilityType = manaOnly || (!playableFromHiddenZone && isManaAbility(card, abilityLabel))
+                            ? "make_mana"
+                            : actionType(card, handIds.contains(objectId), inCommand, false);
                     UUID abilityUuid = abilityIds.get(index);
                     String abilityId = abilityUuid.toString();
                     actions.add(action(
                             abilityId,
-                            type,
+                            abilityType,
                             humanId,
-                            labelFor(type, card.getName()),
+                            labelFor(abilityType, card.getName()),
                             objectId.toString(),
                             sourceZone,
                             abilityId,
@@ -1179,7 +1194,7 @@ public final class MagicMobileBridge implements MageClient {
     }
 
     private boolean hasManaPlayable(CardView card, PlayableObjectStats stats) {
-        if (card.isLand() || producedManaHint(card).size() > 0) {
+        if (producedManaHint(card).size() > 0) {
             return true;
         }
         List<String> labels = stats.getPlayableAbilityNames();
@@ -1702,13 +1717,17 @@ public final class MagicMobileBridge implements MageClient {
     }
 
     private String actionType(CardView card, boolean inHand, boolean inCommand) {
+        return actionType(card, inHand, inCommand, true);
+    }
+
+    private String actionType(CardView card, boolean inHand, boolean inCommand, boolean landManaDefault) {
         if (inHand && card.isLand()) {
             return "play_land";
         }
         if (inHand || inCommand) {
             return "cast_spell";
         }
-        if (card.isLand()) {
+        if (landManaDefault && card.isLand()) {
             return "make_mana";
         }
         return "activate_ability";
@@ -2294,6 +2313,11 @@ public final class MagicMobileBridge implements MageClient {
         return health(false);
     }
 
+    private boolean fixturesEnabled() {
+        return "true".equalsIgnoreCase(env("ENABLE_XMAGE_FIXTURES", "false"))
+                && !"production".equalsIgnoreCase(env("NODE_ENV", ""));
+    }
+
     private JsonObject health(boolean reconnectIfNeeded) {
         JsonObject health = new JsonObject();
         boolean ready = false;
@@ -2388,6 +2412,9 @@ public final class MagicMobileBridge implements MageClient {
                 TableClientMessage message = (TableClientMessage) data;
                 lastStartedGameId = message.getGameId();
                 lastStartedHumanPlayerId = message.getPlayerId();
+                if (!session.joinGame(message.getGameId())) {
+                    lastError = "XMage rejected game join for " + message.getGameId();
+                }
             }
             if (data instanceof GameView) {
                 updateRecord(callback.getObjectId(), (GameView) data, null, null, null);
@@ -2475,11 +2502,12 @@ public final class MagicMobileBridge implements MageClient {
             }
         } else if (method == ClientCallbackMethod.GAME_PLAY_MANA) {
             JsonArray manaChoices = new JsonArray();
-            for (String symbol : new String[]{"W", "U", "B", "R", "G", "C"}) {
-                choices.add(promptChoice(symbol, "Pay {" + symbol + "}", null));
+            for (String symbol : manaChoicesForPrompt(callback.getObjectId(), message)) {
+                String label = "Pay {" + symbol + "}";
+                choices.add(promptChoice(symbol, label, null));
                 JsonObject manaChoice = new JsonObject();
                 manaChoice.addProperty("id", symbol);
-                manaChoice.addProperty("label", "Pay {" + symbol + "}");
+                manaChoice.addProperty("label", label);
                 manaChoice.addProperty("manaType", symbol);
                 JsonObject responseCommand = new JsonObject();
                 responseCommand.addProperty("type", "play_mana");
@@ -2538,6 +2566,56 @@ public final class MagicMobileBridge implements MageClient {
             prompt.add("choices", choices);
         }
         return prompt;
+    }
+
+    private String[] manaChoicesForPrompt(UUID gameId, GameClientMessage message) {
+        List<String> available = availableManaSymbols(gameId, message == null ? null : message.getGameView());
+        if (available.isEmpty()) {
+            return new String[0];
+        }
+        HashSet<String> symbols = new HashSet<>();
+        String text = message == null || message.getMessage() == null ? "" : message.getMessage().toUpperCase();
+        for (String symbol : new String[]{"W", "U", "B", "R", "G"}) {
+            if (text.contains("{" + symbol + "}")) {
+                symbols.add(symbol);
+            }
+        }
+        if (text.matches(".*\\{(C|X|[0-9]+)\\}.*")) {
+            symbols.addAll(available);
+        }
+        if (symbols.isEmpty()) {
+            symbols.addAll(available);
+        }
+        return List.of("W", "U", "B", "R", "G", "C").stream()
+                .filter(symbol -> symbols.contains(symbol) && available.contains(symbol))
+                .toArray(String[]::new);
+    }
+
+    private List<String> availableManaSymbols(UUID gameId, GameView view) {
+        if (gameId == null || view == null) {
+            return List.of();
+        }
+        GameRecord record = games.get(gameId.toString());
+        UUID humanId = record == null ? null : record.humanXmagePlayerId;
+        Map<UUID, String> playerIds = record == null ? Map.of() : externalPlayerIds(record, view);
+        for (PlayerView player : view.getPlayers()) {
+            boolean isHuman = humanId != null
+                    ? humanId.equals(player.getPlayerId())
+                    : record != null && record.humanExternalId.equals(playerIds.get(player.getPlayerId()));
+            if (!isHuman) {
+                continue;
+            }
+            ManaPoolView pool = player.getManaPool();
+            List<String> symbols = new ArrayList<>();
+            if (pool.getWhite() > 0) symbols.add("W");
+            if (pool.getBlue() > 0) symbols.add("U");
+            if (pool.getBlack() > 0) symbols.add("B");
+            if (pool.getRed() > 0) symbols.add("R");
+            if (pool.getGreen() > 0) symbols.add("G");
+            if (pool.getColorless() > 0) symbols.add("C");
+            return symbols;
+        }
+        return List.of();
     }
 
     private int inferredMaxChoices(String message) {

@@ -561,26 +561,34 @@ export function toCommand(
         : undefined;
       break;
     case "play_mana":
-      command = {
-        type: "play_mana",
-        gameId: snapshot.id,
-        playerId: action.playerId,
-        promptId: promptId(snapshot, action),
-        manaType: manaType(action.manaType ?? action.targetIds?.[0] ?? action.validTargetIds?.[0])
-      };
+      {
+        const chosenManaType = explicitManaType(action);
+        command = chosenManaType
+          ? {
+              type: "play_mana",
+              gameId: snapshot.id,
+              playerId: action.playerId,
+              promptId: promptId(snapshot, action),
+              manaType: chosenManaType
+            }
+          : undefined;
+      }
       break;
     case "pay_cost": {
       const paymentId = stringTemplateValue(action, "paymentId");
       const sourceInstanceIds = action.targetIds ?? action.validTargetIds;
-      command = {
-        type: "pay_cost",
-        gameId: snapshot.id,
-        playerId: action.playerId,
-        promptId: promptId(snapshot, action),
-        pay: action.confirmed ?? booleanTemplateValue(action, "pay") ?? booleanTemplateValue(action, "confirmed") ?? true,
-        ...(paymentId ? { paymentId } : {}),
-        ...(sourceInstanceIds ? { sourceInstanceIds } : {})
-      };
+      const pay = action.pay ?? action.confirmed ?? booleanTemplateValue(action, "pay") ?? booleanTemplateValue(action, "confirmed");
+      command = pay === undefined
+        ? undefined
+        : {
+            type: "pay_cost",
+            gameId: snapshot.id,
+            playerId: action.playerId,
+            promptId: promptId(snapshot, action),
+            pay,
+            ...(paymentId ? { paymentId } : {}),
+            ...(sourceInstanceIds ? { sourceInstanceIds } : {})
+          };
       break;
     }
     case "activate_ability":
@@ -640,50 +648,74 @@ export function toCommand(
       };
       break;
     case "choose_pile":
-      command = {
-        type: "choose_pile",
-        gameId: snapshot.id,
-        playerId: action.playerId,
-        promptId: promptId(snapshot, action),
-        pile: action.targetIds?.[0] === "2" || action.validTargetIds?.[0] === "2" ? 2 : 1
-      };
+      {
+        const pile = explicitPile(action);
+        command = pile
+          ? {
+              type: "choose_pile",
+              gameId: snapshot.id,
+              playerId: action.playerId,
+              promptId: promptId(snapshot, action),
+              pile
+            }
+          : undefined;
+      }
       break;
     case "choose_amount":
-    case "play_x_mana":
-      command = {
-        type: action.type,
-        gameId: snapshot.id,
-        playerId: action.playerId,
-        promptId: promptId(snapshot, action),
-        amount: Number(action.targetIds?.[0] ?? action.validTargetIds?.[0] ?? 0)
-      };
+    case "play_x_mana": {
+      const amount = explicitNumber(action, "amount");
+      command = amount === undefined
+        ? undefined
+        : {
+            type: action.type,
+            gameId: snapshot.id,
+            playerId: action.playerId,
+            promptId: promptId(snapshot, action),
+            amount
+          };
       break;
+    }
     case "choose_multi_amount":
-      command = {
-        type: "choose_multi_amount",
-        gameId: snapshot.id,
-        playerId: action.playerId,
-        promptId: promptId(snapshot, action),
-        amounts: (action.targetIds ?? action.validTargetIds ?? []).map(Number).filter(Number.isFinite)
-      };
+      {
+        const amounts = explicitAmounts(action);
+        command = amounts.length
+          ? {
+              type: "choose_multi_amount",
+              gameId: snapshot.id,
+              playerId: action.playerId,
+              promptId: promptId(snapshot, action),
+              amounts
+            }
+          : undefined;
+      }
       break;
     case "choose_mana":
-      command = {
-        type: "choose_mana",
-        gameId: snapshot.id,
-        playerId: action.playerId,
-        promptId: promptId(snapshot, action),
-        manaTypes: action.manaTypes ?? [action.manaType ?? manaType(action.choiceIds?.[0] ?? action.targetIds?.[0] ?? action.validTargetIds?.[0])]
-      };
+      {
+        const manaTypes = explicitManaTypes(action);
+        command = manaTypes.length
+          ? {
+              type: "choose_mana",
+              gameId: snapshot.id,
+              playerId: action.playerId,
+              promptId: promptId(snapshot, action),
+              manaTypes
+            }
+          : undefined;
+      }
       break;
     case "answer_yes_no":
-      command = {
-        type: "answer_yes_no",
-        gameId: snapshot.id,
-        playerId: action.playerId,
-        promptId: promptId(snapshot, action),
-        confirmed: action.confirmed ?? action.targetIds?.[0] !== "false"
-      };
+      {
+        const confirmed = explicitBooleanChoice(action, "confirmed");
+        command = confirmed === undefined
+          ? undefined
+          : {
+              type: "answer_yes_no",
+              gameId: snapshot.id,
+              playerId: action.playerId,
+              promptId: promptId(snapshot, action),
+              confirmed
+            };
+      }
       break;
     case "order_triggers":
       command = {
@@ -713,13 +745,18 @@ export function toCommand(
       };
       break;
     case "commander_replacement":
-      command = {
-        type: "commander_replacement",
-        gameId: snapshot.id,
-        playerId: action.playerId,
-        promptId: promptId(snapshot, action),
-        useCommandZone: action.targetIds?.[0] !== "graveyard" && action.validTargetIds?.[0] !== "graveyard"
-      };
+      {
+        const useCommandZone = explicitCommanderReplacementChoice(action);
+        command = useCommandZone === undefined
+          ? undefined
+          : {
+              type: "commander_replacement",
+              gameId: snapshot.id,
+              playerId: action.playerId,
+              promptId: promptId(snapshot, action),
+              useCommandZone
+            };
+      }
       break;
     case "resolve_choice":
       command = {
@@ -777,6 +814,21 @@ function booleanTemplateValue(action: LegalAction, key: string): boolean | undef
   return typeof value === "boolean" ? value : undefined;
 }
 
+function numberTemplateValue(action: LegalAction, key: string): number | undefined {
+  const value = action.commandTemplate?.[key as keyof GameCommand];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function numberArrayTemplateValue(action: LegalAction, key: string): number[] | undefined {
+  const value = action.commandTemplate?.[key as keyof GameCommand];
+  return Array.isArray(value) && value.every((item) => typeof item === "number" && Number.isFinite(item)) ? value : undefined;
+}
+
+function stringArrayTemplateValue(action: LegalAction, key: string): string[] | undefined {
+  const value = action.commandTemplate?.[key as keyof GameCommand];
+  return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
+}
+
 function mergeCommandTemplate(command: GameCommand, action: LegalAction): GameCommand {
   const template = action.commandTemplate;
   if (!template) return command;
@@ -794,6 +846,71 @@ function withExpectedBridgeRevision(command: GameCommand, bridgeRevision: number
   return { ...command, expectedBridgeRevision: bridgeRevision };
 }
 
-function manaType(value: string | undefined): "W" | "U" | "B" | "R" | "G" | "C" {
-  return value === "W" || value === "U" || value === "B" || value === "R" || value === "G" || value === "C" ? value : "C";
+function explicitPile(action: LegalAction): 1 | 2 | undefined {
+  const templatePile = numberTemplateValue(action, "pile");
+  if (templatePile === 1 || templatePile === 2) return templatePile;
+  const rawPile = action.pile ?? action.targetIds?.[0] ?? action.validTargetIds?.[0];
+  if (rawPile === 1 || rawPile === "1") return 1;
+  if (rawPile === 2 || rawPile === "2") return 2;
+  return undefined;
+}
+
+function explicitNumber(action: LegalAction, templateKey: string): number | undefined {
+  const templateNumber = numberTemplateValue(action, templateKey);
+  if (templateNumber !== undefined) return templateNumber;
+  if (typeof action.amount === "number" && Number.isFinite(action.amount)) return action.amount;
+  const raw = action.targetIds?.[0] ?? action.validTargetIds?.[0] ?? action.choiceIds?.[0];
+  if (raw === undefined) return undefined;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function explicitAmounts(action: LegalAction): number[] {
+  const templateAmounts = numberArrayTemplateValue(action, "amounts");
+  if (templateAmounts) return templateAmounts;
+  if (action.amounts?.every((amount) => Number.isFinite(amount))) return action.amounts;
+  const rawAmounts = action.targetIds ?? action.validTargetIds ?? action.choiceIds;
+  if (!rawAmounts?.length) return [];
+  const amounts = rawAmounts.map(Number);
+  return amounts.every(Number.isFinite) ? amounts : [];
+}
+
+function explicitManaType(action: LegalAction): "W" | "U" | "B" | "R" | "G" | "C" | undefined {
+  return parseManaType(stringTemplateValue(action, "manaType") ?? action.manaType ?? action.targetIds?.[0] ?? action.validTargetIds?.[0] ?? action.choiceIds?.[0]);
+}
+
+function explicitManaTypes(action: LegalAction): Array<"W" | "U" | "B" | "R" | "G" | "C"> {
+  const templateTypes = stringArrayTemplateValue(action, "manaTypes")?.map(parseManaType).filter((type): type is "W" | "U" | "B" | "R" | "G" | "C" => type !== undefined);
+  if (templateTypes?.length) return templateTypes;
+  const actionTypes = action.manaTypes?.map(parseManaType).filter((type): type is "W" | "U" | "B" | "R" | "G" | "C" => type !== undefined);
+  if (actionTypes?.length) return actionTypes;
+  const singleType = explicitManaType(action);
+  return singleType ? [singleType] : [];
+}
+
+function explicitBooleanChoice(action: LegalAction, templateKey: string): boolean | undefined {
+  return action.confirmed
+    ?? booleanTemplateValue(action, templateKey)
+    ?? booleanTemplateValue(action, "confirmed")
+    ?? booleanTemplateValue(action, "pay")
+    ?? parseBooleanChoice(action.targetIds?.[0] ?? action.validTargetIds?.[0] ?? action.choiceIds?.[0]);
+}
+
+function explicitCommanderReplacementChoice(action: LegalAction): boolean | undefined {
+  const explicit = action.useCommandZone ?? booleanTemplateValue(action, "useCommandZone") ?? booleanTemplateValue(action, "confirmed");
+  if (explicit !== undefined) return explicit;
+  const raw = action.targetIds?.[0] ?? action.validTargetIds?.[0] ?? action.choiceIds?.[0];
+  if (raw === "command_zone" || raw === "command" || raw === "true") return true;
+  if (raw === "graveyard" || raw === "original_zone" || raw === "false") return false;
+  return undefined;
+}
+
+function parseBooleanChoice(value: string | undefined): boolean | undefined {
+  if (value === "true" || value === "yes") return true;
+  if (value === "false" || value === "no") return false;
+  return undefined;
+}
+
+function parseManaType(value: string | undefined): "W" | "U" | "B" | "R" | "G" | "C" | undefined {
+  return value === "W" || value === "U" || value === "B" || value === "R" || value === "G" || value === "C" ? value : undefined;
 }

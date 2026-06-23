@@ -50,6 +50,60 @@ export function createGatewayHandler(state = games, options = {}) {
         return sendJson(response, snapshot, 201);
       }
 
+      const fixtureMatch = url.pathname?.match(/^\/dev\/xmage-fixtures\/([^/]+)$/);
+      if (method === "POST" && fixtureMatch) {
+        if (!xmageFixturesEnabled()) {
+          return sendJson(response, { error: "xmage_fixtures_disabled" }, 404);
+        }
+        if (!bridgeClient) {
+          return sendJson(
+            response,
+            {
+              error: "xmage_fixture_bridge_required",
+              message: "XMage fixtures require the real Java bridge; simulator fallback is disabled."
+            },
+            503
+          );
+        }
+
+        const body = await readJson(request);
+        const fixtureName = decodeURIComponent(fixtureMatch[1]);
+        const fixture = commanderFixtureConfig(fixtureName, body);
+        let snapshot;
+        let fixtureFallbackReason = "Java bridge fixture endpoint is not available from the current remote Session client.";
+
+        if (typeof bridgeClient.createCommanderFixtureGame === "function") {
+          try {
+            snapshot = await bridgeClient.createCommanderFixtureGame(fixture);
+          } catch (error) {
+            if (!(error instanceof BridgeRequestError) || ![404, 501].includes(error.status)) {
+              throw error;
+            }
+            fixtureFallbackReason = error.body?.message ?? error.body?.error ?? fixtureFallbackReason;
+          }
+        }
+
+        if (!snapshot) {
+          snapshot = await bridgeClient.createCommanderGame(fixture.config);
+        }
+
+        const directStateSeeded = snapshot.fixtureHarness?.directStateSeeded === true;
+        snapshot.fixtureHarness = {
+          ...(snapshot.fixtureHarness ?? {}),
+          enabled: true,
+          fixtureName: fixture.fixtureName,
+          schemaVersion: 1,
+          directStateSeeded,
+          fallback: directStateSeeded ? null : "deterministic_real_xmage_decks",
+          reason: directStateSeeded ? snapshot.fixtureHarness?.reason : fixtureFallbackReason,
+          productionDisabled: true,
+          expectedRouteCoverage: fixture.schema.expectedRouteCoverage
+        };
+        lastAiProgressAt = Date.now();
+        state.set(snapshot.id, snapshot);
+        return sendJson(response, snapshot, 201);
+      }
+
       const updatesMatch = url.pathname?.match(/^\/api\/engine\/games\/([^/]+)\/updates$/);
       if (method === "POST" && updatesMatch) {
         const gameId = decodeURIComponent(updatesMatch[1]);
@@ -146,6 +200,13 @@ export function createHttpBridgeClient(endpoint, fetchImpl = fetch) {
     async createCommanderGame(config) {
       return requestBridge(fetchImpl, baseUrl, "/games/commander", { method: "POST", body: config, timeoutMs: 120_000 });
     },
+    async createCommanderFixtureGame(fixture) {
+      return requestBridge(fetchImpl, baseUrl, "/dev/xmage-fixtures/commander", {
+        method: "POST",
+        body: fixture,
+        timeoutMs: 120_000
+      });
+    },
     async getSnapshot(gameId, playerId) {
       const query = playerId ? `?playerId=${encodeURIComponent(playerId)}` : "";
       return requestBridge(fetchImpl, baseUrl, `/games/${encodeURIComponent(gameId)}${query}`);
@@ -163,6 +224,108 @@ export function createHttpBridgeClient(endpoint, fetchImpl = fetch) {
         body: command
       });
     }
+  };
+}
+
+export function xmageFixturesEnabled(env = process.env) {
+  return env.ENABLE_XMAGE_FIXTURES === "true" && env.NODE_ENV !== "production";
+}
+
+export function commanderFixtureConfig(fixtureName, body = {}) {
+  const scenario = body.scenario ?? fixtureName;
+  const humanPlayerId = body.humanPlayerId ?? "human";
+  const aiPlayerId = body.aiPlayerId ?? "ai-1";
+  const seed = body.seed ?? "fixture";
+  const aiDifficulty = body.aiDifficulty ?? "normal";
+  const humanDeck = body.humanDeck ?? fixtureHumanDeck(scenario);
+  const aiDeck = body.aiDeck ?? fixtureAiDeck(scenario);
+  const schema = {
+    name: scenario,
+    format: "commander",
+    humanCommander: humanDeck.commander?.cardName,
+    aiCommander: aiDeck.commander?.cardName,
+    humanHand: [],
+    humanBattlefield: [],
+    humanCommandZone: [humanDeck.commander?.cardName].filter(Boolean),
+    humanGraveyard: [],
+    humanExile: [],
+    humanLibraryTop: [],
+    searchableLibraryContents: humanDeck.entries?.map((entry) => entry.cardName) ?? [],
+    aiBattlefield: [],
+    activePlayer: humanPlayerId,
+    priorityPlayer: humanPlayerId,
+    phase: "precombat-main",
+    step: "precombat-main",
+    expectedRouteCoverage: fixtureExpectedRouteCoverage(scenario),
+    expectedFirstLegalActions: ["keep_hand", "mulligan"]
+  };
+
+  return {
+    fixtureName: scenario,
+    schemaVersion: 1,
+    schema,
+    config: {
+      roomId: body.roomId ?? `fixture-${scenario}-${seed}`,
+      humanPlayerId,
+      humanDeck,
+      aiPlayers: [{ playerId: aiPlayerId, displayName: body.aiDisplayName ?? "Noaddrag", difficulty: aiDifficulty, deck: aiDeck }],
+      startingLife: body.startingLife ?? 40,
+      commanderDamageEnabled: body.commanderDamageEnabled ?? true,
+      fixture: schema
+    }
+  };
+}
+
+function fixtureExpectedRouteCoverage(scenario) {
+  const common = ["keep_hand", "mulligan", "play_land", "cast_spell", "make_mana", "pass_priority"];
+  if (scenario === "search-library") return [...common, "activate_ability", "search_select", "choose_card", "zone_updates"];
+  if (scenario === "commander-replacement") return [...common, "choose_target", "commander_replacement", "commander_tax", "command_zone"];
+  if (scenario === "activated-ability-stack") return [...common, "activate_ability", "choose_player", "stack_objects"];
+  if (scenario === "triggered-ability") return [...common, "triggered_ability", "order_triggers", "stack_objects"];
+  if (scenario === "combat-blockers") return [...common, "declare_attackers", "declare_blockers"];
+  if (scenario === "damage-assignment") return [...common, "declare_attackers", "declare_blockers", "damage_assignment"];
+  return [
+    ...common,
+    "activate_ability",
+    "search_select",
+    "choose_card",
+    "choose_target",
+    "commander_replacement",
+    "commander_tax",
+    "commander_damage",
+    "stack_objects",
+    "zone_updates"
+  ];
+}
+
+function fixtureHumanDeck(scenario) {
+  if (scenario === "commander-gauntlet") {
+    return {
+      name: "Commander Gauntlet Fixture",
+      commander: { cardName: "Loran of the Third Path", quantity: 1, section: "commander" },
+      entries: [
+        { cardName: "Sol Ring", quantity: 1, section: "deck" },
+        { cardName: "Arcane Signet", quantity: 1, section: "deck" },
+        { cardName: "Evolving Wilds", quantity: 1, section: "deck" },
+        { cardName: "Terramorphic Expanse", quantity: 1, section: "deck" },
+        { cardName: "Fateful Absence", quantity: 1, section: "deck" },
+        { cardName: "Spirited Companion", quantity: 1, section: "deck" },
+        { cardName: "Plains", quantity: 93, section: "deck" }
+      ]
+    };
+  }
+  return fixtureCommanderDeck("Isamaru, Hound of Konda", "Plains", `${scenario} Human Fixture`);
+}
+
+function fixtureAiDeck(_scenario) {
+  return fixtureCommanderDeck("Kozilek, Butcher of Truth", "Wastes", "Fixture AI Deck");
+}
+
+function fixtureCommanderDeck(commander, basic, name) {
+  return {
+    name,
+    commander: { cardName: commander, quantity: 1, section: "commander" },
+    entries: [{ cardName: basic, quantity: 99, section: "deck" }]
   };
 }
 

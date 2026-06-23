@@ -14,3 +14,4 @@ build_output/
 .DS_Store
 *.log
 *.tsbuildinfo
+apps/xmage-gateway/smoke-report-*.json

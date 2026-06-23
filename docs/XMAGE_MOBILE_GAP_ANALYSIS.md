@@ -2,6 +2,51 @@
 
 This analysis is tied to the current repo shape and Commander-only product scope. The goal is a polished mobile/web Commander client powered by XMage, not a separate Magic rules implementation.
 
+## Current Pause State - June 22, 2026
+
+Latest continuation on June 23, 2026:
+
+- The dev-only fixture harness was verified through the real Docker gateway/Java bridge path with `ENABLE_XMAGE_FIXTURES=true XMAGE_USE_FIXTURE=true`. It correctly reports `directStateSeeded: false`, `fallback: "deterministic_real_xmage_decks"`, and remains production-disabled.
+- Bridge command routing was corrected to mirror XMage desktop default card-click behavior: `play_land`, normal `cast_spell`, and basic `make_mana` submit the source card UUID; `activate_ability` still submits the selected ability UUID. This is a generic playable-object route fix, not card-specific logic.
+- The latest focused `commander-gauntlet` run still fails honestly on the real bridge path, but it now proves more of the route with normal XMage AI: keep hand, AI priority return, `play_land`, command-zone commander cast, `make_mana`, pass priority, and repeated AI continuation.
+- Do not mark commander combat, full commander replacement, full search, or the complete gauntlet as live-verified from this latest run. Commander tax/damage parsing exists, but the release gate remains blocked until deterministic fixture seeding or an equivalent upstream-supported setup path can drive land -> mana -> spell/stack -> search -> commander removal/replacement -> recast tax -> combat damage in one real-XMage loop.
+
+Latest follow-up on June 22, 2026:
+
+- Native iOS command encoding was fixed for the core `LegalAction` routes already exposed by XMage: keep, mulligan, play land, cast spell, pass/yield, concede, tap/untap, make mana, activate ability, and typed declare-attacker/blocker payloads. The phone client now preserves `commandTemplate` metadata such as source zone, card name, and combat pairs instead of dropping it before submission.
+- Verified after that iOS fix with `pnpm typecheck`, `xcodegen generate --spec apps/ios/project.yml`, a generic iOS `xcodebuild` with signing disabled, and `pnpm --filter @magicmobile/xmage-gateway test`.
+- A dev-only fixture harness route exists at `POST /dev/xmage-fixtures/commander`, guarded by `ENABLE_XMAGE_FIXTURES=true` and `NODE_ENV !== production`. It reports fixture metadata and currently falls back to deterministic real-XMage deck creation.
+- Deterministic real-XMage state seeding is still not implemented. The bridge currently talks to XMage through the remote `Session` API in a separate JVM, while XMage's useful `Game.cheat(...)` setup API lives inside the server game process. A future in-server hook or equivalent upstream-supported setup path is needed; until then, gauntlet fixtures remain legal-deck/scripted-smoke based and can fail from shuffle/AI variance.
+
+The latest real-XMage general smoke now passes on the local Docker stack after two generic bridge fixes:
+
+- `GAME_TARGET` / `GAME_SELECT` UUID actions no longer auto-send a boolean immediately after the UUID. XMage desktop sends the UUID for normal clicks and uses `false` only for the explicit Done/OK button; auto-sending a boolean could race and overwrite the UUID response.
+- `GAME_PLAY_MANA` choices are derived from the human player's actual `ManaPoolView`, so generic costs use available floating mana instead of exposing fake choices.
+
+The current confirmed command path is:
+
+```sh
+XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage
+```
+
+Latest June 23 evidence: the broad smoke starts a real `xmage-java-bridge` game, keeps, passes priority, waits for AI, plays a Forest, and exposes real cast actions. Before the final `make_mana` source-UUID fix in this pause, it looped on `Tap Forest` because XMage did not treat the submitted ability UUID as the default land click. The bridge has now been patched so basic mana uses the source card UUID; rerun this smoke after rebuilding the bridge image.
+
+The next blocker is targeted fixture startup reliability. A follow-up run of:
+
+```sh
+XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=combat pnpm smoke:xmage
+```
+
+initially failed before gameplay with `Timed out waiting for XMage game snapshot` after XMage reported a disconnect/reconnect and forced join for a disconnected human. A rerun after the bridge settled passed and reported `combatExercised: true`.
+
+The current blocker has moved to the commander-state fixture:
+
+```sh
+XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-state pnpm smoke:xmage
+```
+
+The latest run reproved commander tax after casting Isamaru, but failed before commander damage because XMage AI stalled at turn 3 precombat main with priority on `ai-1`. Do not mark commander damage live-verified from the latest run until this smoke reports a non-empty `commanderDamageChanges` array.
+
 | Feature | Current repo status | Needed for real XMage mobile play | Gap severity | Files involved | Recommended next step |
 |---|---|---|---|---|---|
 | XMage bridge health | Gateway and Java bridge expose health; Docker compose wires bridge/gateway/web. Local Docker health was verified ready on June 22, 2026. | Health must also be proven on production hosts. | small | `apps/xmage-gateway/server.mjs`, `apps/xmage-gateway/bridge/MagicMobileBridge.java`, `docker-compose.yml` | Keep live health evidence in playtest notes and add production smoke evidence separately. |
@@ -13,7 +58,8 @@ This analysis is tied to the current repo shape and Commander-only product scope
 | Full zones | Shared zones include library, hand, battlefield, graveyard, exile, command, stack. | Mobile drawers for all public/owned zones and searched/revealed/looked-at zones. | small | `types.ts`, `ContentView.swift`, `ArenaBattlefield.tsx` | Finish zone drawers and manual checklist coverage. |
 | Command zone | Rendered from command objects/zones. | Commander replacement prompts and commander tax must stay authoritative. | medium | `MagicMobileBridge.java`, iOS/web play UI | Live test command-zone replacement. |
 | Commander tax | Live verified on June 22, 2026 through real `XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-state pnpm smoke:xmage`; bridge parses XMage command-card rules such as `1 time played from the command zone`. | Keep regression fixture green and render tax from XMage only. | small | `MagicMobileBridge.java`, smoke runner, iOS/web HUDs | Keep targeted `commander-state` smoke as release gate. |
-| Commander damage | Live verified on June 22, 2026 through real `commander-state` fixture: Isamaru dealt 2 commander damage to AI and AI life dropped to 38. | Keep damage matrix tied to XMage rules text; do not fabricate if missing. | small | `MagicMobileBridge.java`, smoke runner, iOS/web HUDs | Keep targeted `commander-state` smoke as release gate. |
+| Commander damage | Previously live-verified on June 22, 2026, but not reproven in the latest run. Latest `commander-state` reached commander tax, then XMage AI stalled before combat damage. | Keep damage matrix tied to XMage rules text; do not fabricate if missing. | medium | `MagicMobileBridge.java`, smoke runner, iOS/web HUDs | Make `commander-state` AI-stall-resistant and require non-empty `commanderDamageChanges`. |
+| Commander Gauntlet | A real `XMAGE_SMOKE_SCENARIO=commander-gauntlet` gate now exists with a legal singleton deck and reports completed/blocked steps from the real bridge. Latest run proved land, mana, command-zone commander cast, pass priority, and AI continuation, but still failed on unavailable one-of proof cards. | A passing full acceptance loop: mana rock, fetch/search, commander cast, stack/trigger/ability, commander removal/replacement, recast tax, and AI continuation. | large | `apps/xmage-gateway/scripts/smoke-create-commander-game.ts`, `MagicMobileBridge.java`, docs | Add a smoke-only real-XMage setup hook or equivalent upstream-supported deterministic setup so singleton test cards are available after shuffling. |
 | Stack | Bridge exposes stack objects; UI renders stack details. Live smoke cast a simple spell and passed priority, but does not yet assert full stack detail shape. | Paid/unpaid status, source/controller, and resolution must be live-verified. | medium | `MagicMobileBridge.java`, `ArenaBattlefield.tsx`, `ContentView.swift` | Add cast/pass/resolve stack assertions to smoke. |
 | Priority | Snapshot exposes active/priority/waiting player; live smoke verified `pass_priority` moves into an AI-waiting state without simulator fallback. | More pass/yield variants must be proven, including response windows and next-turn skip. | medium | `MagicMobileBridge.java` | Add dedicated pass-until-response and pass-until-next-turn assertions. |
 | Legal actions | Bridge maps playable objects; UI glows/renders actions. Pending command snapshots now expose only pending-safe actions to avoid stale duplicate submissions. | Every action must carry enough command template data to avoid client guessing. | medium | `types.ts`, `MagicMobileBridge.java`, `GameController.tsx`, `MagicMobileAPI.swift` | Make XMage legal actions template-complete over time. |
@@ -23,7 +69,7 @@ This analysis is tied to the current repo shape and Commander-only product scope
 | Cost payment | Transport exists; UI is basic; pay/decline command templates now preserve explicit `pay: true/false`. | Clear pay/decline and mana payment prompts. | medium | `MagicMobileBridge.java`, iOS/web prompt panels | Add explicit pay-cost UI and smoke fixture. |
 | Trigger/replacement ordering | Modeled as ordered items; UI placeholders exist. | Reorderable mobile/web surfaces. | medium | `types.ts`, `ContentView.swift`, `ArenaBattlefield.tsx` | Add reorder UI once bridge exposes real ordered items. |
 | Commander replacement | Modeled; bridge requires explicit boolean. | Clear command-zone/original-zone choices. | medium | `MagicMobileBridge.java`, iOS/web prompt panels | Add live commander death/exile test. |
-| Attack/block/combat damage | Partially live verified on June 22, 2026 through real smokes. `XMAGE_SMOKE_SCENARIO=combat` exposed and submitted typed `declare_attackers`; `commander-state` reached combat damage and proved commander damage. | Typed blockers and damage-assignment prompts still need deterministic live fixtures; UI still needs better combat picker polish. | medium | `MagicMobileBridge.java`, iOS/web play UI | Keep combat fixture as release gate; add blocker and damage-assignment fixtures when available. |
+| Attack/block/combat damage | Partially live verified on June 22, 2026 through real smokes. `XMAGE_SMOKE_SCENARIO=combat` exposed and submitted typed `declare_attackers`; the latest `commander-state` run stalled before reproving combat damage. | Typed blockers, combat damage, and damage-assignment prompts still need deterministic live fixtures; UI still needs better combat picker polish. | medium | `MagicMobileBridge.java`, iOS/web play UI | Keep combat fixture as release gate; make commander-state AI-stall-resistant, then add blocker and damage-assignment fixtures. |
 | Pass/yield actions | Pass-until actions exist; `pass_priority` has live smoke proof. | Clear Done/Pass/Skip states and exact bridge mapping for all pass variants. | medium | `MagicMobileBridge.java`, iOS/web action docks | Add targeted smoke for `pass_until_response` and `pass_until_next_turn`. |
 | Reconnect snapshots | iOS has WebSocket/polling behavior; gateway broadcasts snapshots. | Player-scoped reconnect and stale revision handling for human games. | medium | `ContentView.swift`, `server.mjs`, shared contracts | Add manual reconnect button/test. |
 | `/play` real XMage | Web `/play` uses XMage and shows setup when unavailable. | Preserve fail-closed behavior. | none | `apps/web/src/app/play/page.tsx`, `apps/web/src/lib/engine.ts` | Keep regression tests. |

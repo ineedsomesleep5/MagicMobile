@@ -63,7 +63,7 @@ struct MagicMobileAPI {
 
     func submit(action: LegalAction, gameId: String, expectedBridgeRevision: Int?) async throws -> GameSnapshot {
         let command = withExpectedBridgeRevision(
-            mergeCommandTemplate(command(for: action, gameId: gameId), action: action, gameId: gameId),
+            mergeCommandTemplate(try command(for: action, gameId: gameId), action: action, gameId: gameId),
             expectedBridgeRevision: expectedBridgeRevision
         )
         return try await post("/api/engine/games/\(gameId)/commands", body: command)
@@ -76,8 +76,75 @@ struct MagicMobileAPI {
         )
     }
 
-    private func command(for action: LegalAction, gameId: String) -> GameCommand {
+    private func command(for action: LegalAction, gameId: String) throws -> GameCommand {
         let promptId = promptId(for: action)
+        if ["keep_hand", "mulligan", "pass_priority", "pass_until_response", "pass_until_next_turn", "advance_phase", "concede"].contains(action.type) {
+            return GameCommand(type: action.type, gameId: gameId, playerId: action.playerId)
+        }
+
+        if action.type == "play_land" || action.type == "cast_spell" {
+            let cardInstanceId = templateString(action, "cardInstanceId") ?? action.cardInstanceId ?? action.sourceInstanceId
+            let sourceInstanceId = templateString(action, "sourceInstanceId") ?? action.sourceInstanceId ?? cardInstanceId
+            let cardName = templateString(action, "cardName") ?? action.cardName
+            guard cardInstanceId != nil || sourceInstanceId != nil || cardName != nil else {
+                throw missingActionData(action, "card id")
+            }
+            return GameCommand(
+                type: action.type,
+                gameId: gameId,
+                playerId: action.playerId,
+                cardInstanceId: cardInstanceId,
+                sourceInstanceId: sourceInstanceId,
+                abilityId: templateString(action, "abilityId") ?? action.abilityId,
+                sourceZone: templateString(action, "sourceZone") ?? action.sourceZone,
+                fromZone: templateString(action, "fromZone") ?? action.sourceZone,
+                cardName: cardName
+            )
+        }
+
+        if action.type == "tap_permanent" || action.type == "untap_permanent" {
+            guard let cardInstanceId = templateString(action, "cardInstanceId") ?? action.cardInstanceId ?? action.sourceInstanceId else {
+                throw missingActionData(action, "card id")
+            }
+            return GameCommand(
+                type: action.type,
+                gameId: gameId,
+                playerId: action.playerId,
+                cardInstanceId: cardInstanceId,
+                sourceInstanceId: templateString(action, "sourceInstanceId") ?? action.sourceInstanceId
+            )
+        }
+
+        if action.type == "declare_attackers" {
+            let attackers = action.attackers ?? templateAttackers(action)
+            guard let attackers, !attackers.isEmpty else {
+                throw missingActionData(action, "attacker pair")
+            }
+            return GameCommand(
+                type: action.type,
+                gameId: gameId,
+                playerId: action.playerId,
+                cardInstanceId: templateString(action, "cardInstanceId") ?? action.cardInstanceId,
+                sourceInstanceId: templateString(action, "sourceInstanceId") ?? action.sourceInstanceId,
+                attackers: attackers
+            )
+        }
+
+        if action.type == "declare_blockers" {
+            let blockers = action.blockers ?? templateBlockers(action)
+            guard let blockers, !blockers.isEmpty else {
+                throw missingActionData(action, "blocker pair")
+            }
+            return GameCommand(
+                type: action.type,
+                gameId: gameId,
+                playerId: action.playerId,
+                cardInstanceId: templateString(action, "cardInstanceId") ?? action.cardInstanceId,
+                sourceInstanceId: templateString(action, "sourceInstanceId") ?? action.sourceInstanceId,
+                blockers: blockers
+            )
+        }
+
         if action.type == "resolve_choice" {
             return GameCommand(
                 type: action.type,
@@ -129,18 +196,24 @@ struct MagicMobileAPI {
         }
 
         if action.type == "play_mana" {
+            guard let manaType = exactManaType(templateString(action, "manaType") ?? action.manaType ?? action.targetIds?.first ?? action.validTargetIds?.first ?? action.choiceIds?.first) else {
+                throw missingActionData(action, "mana type")
+            }
             return GameCommand(
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
-                manaType: action.manaType ?? action.targetIds?.first
+                manaType: manaType
             )
         }
 
         if action.type == "choose_mana" {
-            let manaTypes = action.manaTypes
-                ?? (action.manaType ?? action.choiceIds?.first ?? action.targetIds?.first).map { [$0] }
+            let manaTypes = exactManaTypes(action.manaTypes ?? templateStringArray(action, "manaTypes"))
+                ?? exactManaType(templateString(action, "manaType") ?? action.manaType ?? action.choiceIds?.first ?? action.targetIds?.first ?? action.validTargetIds?.first).map { [$0] }
+            guard let manaTypes, !manaTypes.isEmpty else {
+                throw missingActionData(action, "mana choice")
+            }
             return GameCommand(
                 type: action.type,
                 gameId: gameId,
@@ -161,32 +234,42 @@ struct MagicMobileAPI {
         }
 
         if action.type == "choose_pile" {
+            guard let pile = exactPile(action) else {
+                throw missingActionData(action, "pile choice")
+            }
             return GameCommand(
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
-                pile: action.targetIds?.first.flatMap(Int.init)
+                pile: pile
             )
         }
 
         if action.type == "choose_amount" || action.type == "play_x_mana" {
+            guard let amount = action.amount ?? templateInt(action, "amount") ?? (action.targetIds?.first ?? action.validTargetIds?.first ?? action.choiceIds?.first).flatMap(Int.init) else {
+                throw missingActionData(action, "amount")
+            }
             return GameCommand(
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
-                amount: (action.targetIds?.first ?? action.validTargetIds?.first).flatMap(Int.init)
+                amount: amount
             )
         }
 
         if action.type == "choose_multi_amount" {
+            let amounts = action.amounts ?? templateIntArray(action, "amounts") ?? (action.targetIds ?? action.validTargetIds ?? action.choiceIds ?? []).compactMap(Int.init)
+            guard !amounts.isEmpty else {
+                throw missingActionData(action, "amount choices")
+            }
             return GameCommand(
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
-                amounts: (action.targetIds ?? []).compactMap(Int.init)
+                amounts: amounts
             )
         }
 
@@ -202,26 +285,35 @@ struct MagicMobileAPI {
         }
 
         if action.type == "answer_yes_no" {
+            guard let confirmed = action.confirmed ?? templateBool(action, "confirmed") ?? boolFromTarget(action.targetIds?.first ?? action.validTargetIds?.first ?? action.choiceIds?.first) else {
+                throw missingActionData(action, "yes/no choice")
+            }
             return GameCommand(
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
-                confirmed: action.confirmed ?? templateBool(action, "confirmed") ?? boolFromTarget(action.targetIds?.first)
+                confirmed: confirmed
             )
         }
 
         if action.type == "commander_replacement" {
+            guard let useCommandZone = action.useCommandZone ?? templateBool(action, "useCommandZone") ?? templateBool(action, "confirmed") ?? boolFromCommanderReplacementChoice(action.targetIds?.first ?? action.validTargetIds?.first ?? action.choiceIds?.first) else {
+                throw missingActionData(action, "commander replacement choice")
+            }
             return GameCommand(
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
-                useCommandZone: action.confirmed ?? templateBool(action, "useCommandZone") ?? templateBool(action, "confirmed") ?? boolFromTarget(action.targetIds?.first)
+                useCommandZone: useCommandZone
             )
         }
 
         if action.type == "pay_cost" {
+            guard let pay = action.pay ?? action.confirmed ?? templateBool(action, "pay") ?? templateBool(action, "confirmed") else {
+                throw missingActionData(action, "payment choice")
+            }
             return GameCommand(
                 type: action.type,
                 gameId: gameId,
@@ -230,7 +322,7 @@ struct MagicMobileAPI {
                 sourceInstanceIds: action.targetIds ?? [],
                 paymentId: action.id,
                 confirmed: action.confirmed ?? templateBool(action, "confirmed") ?? templateBool(action, "pay"),
-                pay: action.pay ?? templateBool(action, "pay") ?? templateBool(action, "confirmed") ?? action.confirmed ?? true
+                pay: pay
             )
         }
 
@@ -239,19 +331,12 @@ struct MagicMobileAPI {
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
-                sourceInstanceId: action.sourceInstanceId ?? action.cardInstanceId,
+                sourceInstanceId: templateString(action, "sourceInstanceId") ?? action.sourceInstanceId ?? action.cardInstanceId,
                 abilityId: action.abilityId ?? templateString(action, "abilityId") ?? action.id
             )
         }
 
-        return GameCommand(
-            type: action.type,
-            gameId: gameId,
-            playerId: action.playerId,
-            cardInstanceId: action.cardInstanceId,
-            sourceInstanceId: action.sourceInstanceId,
-            abilityId: action.abilityId ?? templateString(action, "abilityId")
-        )
+        throw MagicMobileError.server("Unsupported XMage action route: \(action.type). Refresh the game state and try again.")
     }
 
     private func mergeCommandTemplate(_ command: GameCommand, action: LegalAction, gameId: String) -> GameCommand {
@@ -282,6 +367,11 @@ struct MagicMobileAPI {
             playerIds: templateStringArray(action, "playerIds") ?? command.playerIds,
             confirmed: templateBool(action, "confirmed") ?? command.confirmed,
             pay: templateBool(action, "pay") ?? command.pay,
+            sourceZone: templateString(action, "sourceZone") ?? command.sourceZone,
+            fromZone: templateString(action, "fromZone") ?? command.fromZone,
+            cardName: templateString(action, "cardName") ?? command.cardName,
+            attackers: templateAttackers(action) ?? action.attackers ?? command.attackers,
+            blockers: templateBlockers(action) ?? action.blockers ?? command.blockers,
             expectedBridgeRevision: templateInt(action, "expectedBridgeRevision") ?? command.expectedBridgeRevision
         )
     }
@@ -314,6 +404,11 @@ struct MagicMobileAPI {
             playerIds: command.playerIds,
             confirmed: command.confirmed,
             pay: command.pay,
+            sourceZone: command.sourceZone,
+            fromZone: command.fromZone,
+            cardName: command.cardName,
+            attackers: command.attackers,
+            blockers: command.blockers,
             expectedBridgeRevision: expectedBridgeRevision
         )
     }
@@ -376,12 +471,73 @@ struct MagicMobileAPI {
         action.commandTemplate?[key]?.boolValue
     }
 
+    private func templateAttackers(_ action: LegalAction) -> [AttackDeclaration]? {
+        guard let value = action.commandTemplate?["attackers"] else { return nil }
+        return attackDeclarations(from: value)
+    }
+
+    private func templateBlockers(_ action: LegalAction) -> [BlockDeclaration]? {
+        guard let value = action.commandTemplate?["blockers"] else { return nil }
+        return blockDeclarations(from: value)
+    }
+
+    private func attackDeclarations(from value: JSONValue) -> [AttackDeclaration]? {
+        guard case .array(let values) = value else { return nil }
+        let declarations = values.compactMap { item -> AttackDeclaration? in
+            guard case .object(let object) = item,
+                  let attackerId = object["attackerId"]?.stringValue
+            else { return nil }
+            return AttackDeclaration(attackerId: attackerId, defenderId: object["defenderId"]?.stringValue)
+        }
+        return declarations.count == values.count ? declarations : nil
+    }
+
+    private func blockDeclarations(from value: JSONValue) -> [BlockDeclaration]? {
+        guard case .array(let values) = value else { return nil }
+        let declarations = values.compactMap { item -> BlockDeclaration? in
+            guard case .object(let object) = item,
+                  let blockerId = object["blockerId"]?.stringValue
+            else { return nil }
+            return BlockDeclaration(blockerId: blockerId, attackerId: object["attackerId"]?.stringValue)
+        }
+        return declarations.count == values.count ? declarations : nil
+    }
+
     private func boolFromTarget(_ value: String?) -> Bool? {
         guard let value else { return nil }
         let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if ["true", "yes", "command", "command_zone", "command-zone"].contains(normalized) { return true }
         if ["false", "no", "original", "original_zone", "original-zone"].contains(normalized) { return false }
         return nil
+    }
+
+    private func boolFromCommanderReplacementChoice(_ value: String?) -> Bool? {
+        guard let value else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if ["true", "yes", "command", "command_zone", "command-zone"].contains(normalized) { return true }
+        if ["false", "no", "graveyard", "original", "original_zone", "original-zone"].contains(normalized) { return false }
+        return nil
+    }
+
+    private func exactPile(_ action: LegalAction) -> Int? {
+        let raw = action.pile ?? action.targetIds?.first ?? action.validTargetIds?.first ?? action.choiceIds?.first
+        let pile = templateInt(action, "pile") ?? raw.flatMap(Int.init)
+        return pile == 1 || pile == 2 ? pile : nil
+    }
+
+    private func exactManaType(_ value: String?) -> String? {
+        guard let value else { return nil }
+        return ["W", "U", "B", "R", "G", "C"].contains(value) ? value : nil
+    }
+
+    private func exactManaTypes(_ values: [String]?) -> [String]? {
+        guard let values, !values.isEmpty else { return nil }
+        let parsed = values.compactMap(exactManaType)
+        return parsed.count == values.count ? parsed : nil
+    }
+
+    private func missingActionData(_ action: LegalAction, _ field: String) -> MagicMobileError {
+        MagicMobileError.server("XMage action \(action.type) is missing \(field). Refresh the game state and try again.")
     }
 
     private var session: URLSession {

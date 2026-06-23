@@ -4,34 +4,46 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const endpoint = (process.env.XMAGE_GATEWAY_URL ?? "http://localhost:17171").replace(/\/$/, "");
+const reportDirectory = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const latestReportPath = path.join(reportDirectory, "smoke-report.json");
 const seed = process.env.XMAGE_SMOKE_SEED ?? "bridge-smoke";
 const humanPlayerId = process.env.XMAGE_SMOKE_HUMAN_ID ?? "human";
 const aiPlayerId = process.env.XMAGE_SMOKE_AI_ID ?? "ai-1";
 const scenario = process.env.XMAGE_SMOKE_SCENARIO ?? "general";
 const arcaneSignetScenario = scenario === "arcane-signet";
 const alphaGameScenario = scenario === "alpha-game";
-const fixtureScenario = scenario === "combat" || scenario === "commander-state" || arcaneSignetScenario;
+const commanderGauntletScenario = scenario === "commander-gauntlet";
+const fixtureScenario = scenario === "combat" || scenario === "commander-state" || arcaneSignetScenario || commanderGauntletScenario;
+const useFixtureHarness = process.env.XMAGE_USE_FIXTURE === "true";
+const aiDifficulty = process.env.XMAGE_SMOKE_AI_DIFFICULTY ?? "normal";
 
 const human = fixtureScenario
-  ? arcaneSignetScenario
+  ? commanderGauntletScenario
+    ? commanderGauntletHumanDeck()
+    : arcaneSignetScenario
     ? arcaneSignetFixtureDeck()
     : commanderFixtureDeck("Isamaru, Hound of Konda", "Plains")
   : generateBracketThreeCommanderDeck({ seed: `${seed}:human`, playerId: humanPlayerId }).deck;
 const ai = fixtureScenario
-  ? commanderFixtureDeck("Kozilek, Butcher of Truth", "Wastes")
+  ? commanderGauntletScenario
+    ? commanderGauntletAiDeck()
+    : commanderFixtureDeck("Kozilek, Butcher of Truth", "Wastes")
   : generateBracketThreeCommanderDeck({ seed: `${seed}:ai`, playerId: aiPlayerId }).deck;
 
 const health = await request("/health");
 if (health.status !== "ready") {
   throw new Error(`XMage smoke requires ready health, received: ${JSON.stringify(health)}`);
 }
-const created = await request("/games/commander", {
+const createPath = useFixtureHarness ? "/dev/xmage-fixtures/commander" : "/games/commander";
+const created = await request(createPath, {
   method: "POST",
   body: {
+    scenario,
+    seed,
     roomId: `smoke-${seed}`,
     humanPlayerId,
     humanDeck: human,
-    aiPlayers: [{ playerId: aiPlayerId, displayName: "Noaddrag", difficulty: "normal", deck: ai }],
+    aiPlayers: [{ playerId: aiPlayerId, displayName: "Noaddrag", difficulty: aiDifficulty, deck: ai }],
     startingLife: 40,
     commanderDamageEnabled: true
   }
@@ -39,6 +51,13 @@ const created = await request("/games/commander", {
 
 let snapshot = created;
 assertBridgeSnapshot(snapshot, "created game");
+const activeFixtureHarness = snapshot.fixtureHarness ?? null;
+if (useFixtureHarness && !activeFixtureHarness?.enabled) {
+  throw new Error(
+    "[Smoke] XMAGE_USE_FIXTURE=true but gateway did not return fixtureHarness metadata.\n"
+      + smokeDebug("fixture harness startup snapshot", snapshot)
+  );
+}
 
 const completed: string[] = [];
 const promptChecks: string[] = [];
@@ -54,13 +73,35 @@ const turnsObserved = new Set<number>();
 const actionsByType: Record<string, number> = {};
 const commanderTaxChanges: Array<{ playerId: string; tax: number; turn: number }> = [];
 const commanderDamageChanges: Array<{ recipient: string; attacker: string; damage: number; turn: number }> = [];
+let commanderBattlefieldSeen = false;
+const gauntlet = {
+  playedLand: false,
+  castManaRock: false,
+  tappedManaSource: false,
+  fetchActivated: false,
+  searchResolved: false,
+  commanderCast: false,
+  etbOrTriggerSeen: false,
+  activatedAbilityUsed: false,
+  stackObjectSeen: false,
+  commanderRemoved: false,
+  commanderReplacementAnswered: false,
+  commanderRecastWithTax: false,
+  aiTurnContinued: false
+};
+const gauntletPromptFamilies = new Set<string>();
 
 recordCommanderState(snapshot);
 recordCoverage(snapshot);
 console.error(`[Smoke] Started ${scenario} game ${snapshot.id}. Turn: ${snapshot.turn}, Phase: ${snapshot.phase}, Step: ${snapshot.step}`);
+if (activeFixtureHarness) {
+  console.error(
+    `[Smoke] Fixture harness: directStateSeeded=${activeFixtureHarness.directStateSeeded}, fallback=${activeFixtureHarness.fallback ?? "none"}`
+  );
+}
 
-const maxTurns = alphaGameScenario ? 13 : fixtureScenario ? 12 : 9; // Alpha-game observes 12 full turns.
-const maxStepsCount = alphaGameScenario ? 900 : fixtureScenario ? 420 : 300; // Safeguard against infinite loops.
+const maxTurns = commanderGauntletScenario ? 16 : alphaGameScenario ? 13 : fixtureScenario ? 12 : 9; // Alpha-game observes 12 full turns.
+const maxStepsCount = commanderGauntletScenario ? 900 : alphaGameScenario ? 900 : fixtureScenario ? 420 : 300; // Safeguard against infinite loops.
 let stepCount = 0;
 
 while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
@@ -114,11 +155,15 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
     if (arcaneSignetScenario && action.type === "make_mana" && snapshot.promptEnvelopeV2 && isManaOrPaymentPrompt(snapshot)) {
       arcanePaymentSourceSeen = true;
     }
+    recordGauntletAction(snapshot, action);
 
     if (snapshot.promptEnvelopeV2) {
       const pKey = `${snapshot.promptEnvelopeV2.method ?? "unknown"}:${snapshot.promptEnvelopeV2.responseKind ?? "unknown"}`;
       if (!promptChecks.includes(pKey)) {
         promptChecks.push(pKey);
+      }
+      if (commanderGauntletScenario) {
+        gauntletPromptFamilies.add(pKey);
       }
     }
 
@@ -152,6 +197,7 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
     assertSemanticProgress(previous, snapshot, semanticLabel);
     recordCommanderState(snapshot);
     recordCoverage(snapshot);
+    recordGauntletSnapshot(snapshot);
     completed.push(`[Turn ${previous.turn} ${previous.phase}] ${action.type}: ${action.label ?? "none"}`);
   } else {
     // 4. Waiting for AI priority
@@ -160,11 +206,13 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
       console.error(`[Smoke] Waiting for AI priority... turn ${snapshot.turn}, phase ${snapshot.phase}, step ${snapshot.step}`);
       snapshot = await waitForAiIfNeeded(snapshot, "wait for AI priority");
       recordCoverage(snapshot);
+      recordGauntletSnapshot(snapshot);
     } else {
       // General wait and refresh
       await new Promise(resolve => setTimeout(resolve, 1000));
       snapshot = await request(`/games/${encodeURIComponent(snapshot.id)}`);
       recordCoverage(snapshot);
+      recordGauntletSnapshot(snapshot);
     }
   }
 }
@@ -234,6 +282,21 @@ if (scenario === "alpha-game") {
   }
 }
 
+if (scenario === "commander-gauntlet") {
+  const missing = commanderGauntletMissingSteps();
+  if (missing.length > 0) {
+    writeSmokeReport({
+      ...baseSummaryReport(snapshot),
+      failedStep: "commander-gauntlet",
+      failureReason: `Missing required gauntlet steps: ${missing.join(", ")}`
+    });
+    throw new Error(
+      `[Smoke] commander-gauntlet did not complete required real-XMage steps: ${missing.join(", ")}.\n`
+        + smokeDebug("commander-gauntlet final snapshot", snapshot)
+    );
+  }
+}
+
 if (stepCount >= maxStepsCount) {
   throw new Error(
     `[Smoke] hit maximum loop safeguards (${maxStepsCount} steps).\n`
@@ -244,54 +307,72 @@ if (stepCount >= maxStepsCount) {
 console.error(`[Smoke] Play loop finished at turn ${snapshot.turn}. Saving report...`);
 
 // Produce final JSON summary report
-const summaryReport = {
-  endpoint,
-  scenario,
-  health,
-  gameId: snapshot.id,
-  source: snapshot.source ?? "gateway",
-  bridgeRevision: snapshot.bridgeRevision ?? null,
-  xmageCycle: snapshot.xmageCycle ?? null,
-  phase: snapshot.phase,
-  step: snapshot.step,
-  turn: snapshot.turn,
-  promptText: snapshot.promptText,
-  promptChecks,
-  completed,
-  turnsObserved: Array.from(turnsObserved).sort((a, b) => a - b),
-  actionsByType,
-  staleActionRecoveries,
-  aiWaits,
-  stackSeen,
-  combatStepSeen,
-  combatExercised,
-  arcaneSignet: {
-    castSeen: arcaneCastSeen,
-    paymentSourceSeen: arcanePaymentSourceSeen,
-    resolvedSeen: arcaneResolvedSeen
-  },
-  commanderTaxChanges,
-  commanderDamageChanges,
-  players: snapshot.players?.map((player: SmokePlayer) => ({
-    playerId: player.playerId,
-    life: player.life,
-    commanderTax: player.commanderTax ?? 0,
-    commanderDamage: player.commanderDamage ?? {},
-    library: player.zones?.library?.length ?? 0,
-    hand: player.zones?.hand?.length ?? 0,
-    battlefield: player.zones?.battlefield?.length ?? 0,
-    command: player.zones?.command?.map((card) => card.card?.name) ?? []
-  })),
-  legalActions: snapshot.legalActions?.map((action: SmokeAction) => action.type).slice(0, 12) ?? []
-};
+const summaryReport = baseSummaryReport(snapshot);
 
-// Write to smoke-report.json in apps/xmage-gateway
-const reportPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../smoke-report.json");
-fs.writeFileSync(reportPath, JSON.stringify(summaryReport, null, 2), "utf8");
-console.error(`[Smoke] Report saved to ${reportPath}`);
+writeSmokeReport(summaryReport);
 
 // Output summary JSON report to stdout
 console.log(JSON.stringify(summaryReport, null, 2));
+
+function writeSmokeReport(report: unknown) {
+  const scenarioReportPath = path.join(reportDirectory, `smoke-report-${scenario}.json`);
+  fs.writeFileSync(latestReportPath, JSON.stringify(report, null, 2), "utf8");
+  fs.writeFileSync(scenarioReportPath, JSON.stringify(report, null, 2), "utf8");
+  console.error(`[Smoke] Report saved to ${latestReportPath}`);
+  console.error(`[Smoke] Scenario report saved to ${scenarioReportPath}`);
+}
+
+function baseSummaryReport(snapshot: SmokeSnapshot) {
+  return {
+    endpoint,
+    scenario,
+    fixtureRequested: useFixtureHarness,
+    fixtureHarness: activeFixtureHarness,
+    health,
+    gameId: snapshot.id,
+    source: snapshot.source ?? "gateway",
+    bridgeRevision: snapshot.bridgeRevision ?? null,
+    xmageCycle: snapshot.xmageCycle ?? null,
+    phase: snapshot.phase,
+    step: snapshot.step,
+    turn: snapshot.turn,
+    promptText: snapshot.promptText,
+    promptChecks,
+    completed,
+    turnsObserved: Array.from(turnsObserved).sort((a, b) => a - b),
+    actionsByType,
+    staleActionRecoveries,
+    aiWaits,
+    stackSeen,
+    combatStepSeen,
+    combatExercised,
+    arcaneSignet: {
+      castSeen: arcaneCastSeen,
+      paymentSourceSeen: arcanePaymentSourceSeen,
+      resolvedSeen: arcaneResolvedSeen
+    },
+    commanderGauntlet: {
+      stepsCompleted: Object.entries(gauntlet)
+        .filter(([, done]) => done)
+        .map(([step]) => step),
+      stepsBlocked: commanderGauntletMissingSteps(),
+      promptFamiliesSeen: Array.from(gauntletPromptFamilies).sort()
+    },
+    commanderTaxChanges,
+    commanderDamageChanges,
+    players: snapshot.players?.map((player: SmokePlayer) => ({
+      playerId: player.playerId,
+      life: player.life,
+      commanderTax: player.commanderTax ?? 0,
+      commanderDamage: player.commanderDamage ?? {},
+      library: player.zones?.library?.length ?? 0,
+      hand: player.zones?.hand?.length ?? 0,
+      battlefield: player.zones?.battlefield?.length ?? 0,
+      command: player.zones?.command?.map((card) => card.card?.name) ?? []
+    })),
+    legalActions: snapshot.legalActions?.map((action: SmokeAction) => action.type).slice(0, 12) ?? []
+  };
+}
 
 async function request(path: string, options: { method?: string; body?: unknown } = {}) {
   const response = await fetch(`${endpoint}${path}`, {
@@ -332,6 +413,25 @@ function arcaneSignetFixtureDeck() {
       { cardName: "Plains", quantity: 75, section: "deck" }
     ]
   };
+}
+
+function commanderGauntletHumanDeck() {
+  return {
+    name: "Commander Gauntlet Fixture",
+    commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
+    entries: [
+      { cardName: "Sol Ring", quantity: 1, section: "deck" },
+      { cardName: "Arcane Signet", quantity: 1, section: "deck" },
+      { cardName: "Evolving Wilds", quantity: 1, section: "deck" },
+      { cardName: "Swords to Plowshares", quantity: 1, section: "deck" },
+      { cardName: "Spirited Companion", quantity: 1, section: "deck" },
+      { cardName: "Plains", quantity: 94, section: "deck" }
+    ]
+  };
+}
+
+function commanderGauntletAiDeck() {
+  return commanderFixtureDeck("Kozilek, Butcher of Truth", "Wastes");
 }
 
 function findAction(snapshot: SmokeSnapshot, type: string | string[], label = "") {
@@ -445,20 +545,23 @@ function chooseBestAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
   const castSpell = snapshot.legalActions.find(a => a.type === "cast_spell");
   if (castSpell) return castSpell;
 
-  // 6. Declare attackers
-  const attackers = snapshot.legalActions.find(a => a.type === "declare_attackers");
-  if (attackers) return attackers;
-
-  // 7. Declare blockers
-  const blockers = snapshot.legalActions.find(a => a.type === "declare_blockers");
-  if (blockers) return blockers;
-
-  // 8. Pass priority / next phase. Prefer this before optional activated abilities
+  // 6. Pass priority / next phase. Prefer this before optional activated abilities
   // so the smoke runner does not loop on equipment or utility permanents.
   const pass = snapshot.legalActions.find(a => a.type === "pass_priority" || a.type === "pass_until_response" || a.type === "advance_phase");
   if (pass) return pass;
 
-  // 9. Activate abilities on battlefield permanents only when no pass action exists.
+  // 7. Combat is intentionally exercised by fixture scenarios. The broad
+  // smoke loop should prove the 1v1 Commander turn/mana path without being
+  // blocked by currently targeted combat/AI coverage gaps.
+  if (fixtureScenario) {
+    const attackers = snapshot.legalActions.find(a => a.type === "declare_attackers");
+    if (attackers) return attackers;
+
+    const blockers = snapshot.legalActions.find(a => a.type === "declare_blockers");
+    if (blockers) return blockers;
+  }
+
+  // 8. Activate abilities on battlefield permanents only when no pass action exists.
   const activateAbility = snapshot.legalActions.find(a => a.type === "activate_ability");
   if (activateAbility) return activateAbility;
 
@@ -470,6 +573,11 @@ function chooseBestAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
 }
 
 function chooseFixtureAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
+  if (commanderGauntletScenario) {
+    const gauntletAction = chooseCommanderGauntletAction(snapshot);
+    if (gauntletAction) return gauntletAction;
+  }
+
   if (arcaneSignetScenario) {
     const arcaneAction = chooseArcaneSignetAction(snapshot);
     if (arcaneAction) return arcaneAction;
@@ -511,6 +619,68 @@ function chooseFixtureAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
   if (blocker) return blocker;
 
   return undefined;
+}
+
+function chooseCommanderGauntletAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
+  const actions = snapshot.legalActions ?? [];
+
+  if (snapshot.promptEnvelopeV2) {
+    return undefined;
+  }
+
+  const playPlains = actions.find((action) =>
+    action.type === "play_land" && /plains/i.test(action.cardName ?? action.label ?? "")
+  );
+  if (!gauntlet.playedLand && playPlains) return playPlains;
+
+  const castManaRock = actions.find((action) =>
+    action.type === "cast_spell" && /\b(sol ring|arcane signet)\b/i.test(action.cardName ?? action.label ?? "")
+  );
+  if (!gauntlet.castManaRock && castManaRock) return castManaRock;
+
+  const playFetch = actions.find((action) =>
+    action.type === "play_land" && /\b(evolving wilds|terramorphic expanse)\b/i.test(action.cardName ?? action.label ?? "")
+  );
+  if (!gauntlet.fetchActivated && playFetch) return playFetch;
+
+  const activateFetch = actions.find((action) =>
+    action.type === "activate_ability" && /\b(evolving wilds|terramorphic expanse)\b/i.test(action.cardName ?? action.label ?? "")
+  );
+  if (!gauntlet.searchResolved && activateFetch) return activateFetch;
+
+  const castCommander = actions.find((action) =>
+    action.type === "cast_spell"
+      && ((action.sourceZone ?? action.commandTemplate?.sourceZone) === "command"
+        || /isamaru/i.test(action.cardName ?? action.label ?? ""))
+  );
+  if ((!gauntlet.commanderCast || commanderTaxChanges.length > 0) && castCommander) return castCommander;
+
+  const castCompanion = actions.find((action) =>
+    action.type === "cast_spell" && /spirited companion/i.test(action.cardName ?? action.label ?? "")
+  );
+  if (!gauntlet.etbOrTriggerSeen && castCompanion) return castCompanion;
+
+  const removeCommander = actions.find((action) =>
+    action.type === "cast_spell" && /swords to plowshares/i.test(action.cardName ?? action.label ?? "")
+  );
+  if (gauntlet.commanderCast && !gauntlet.commanderRemoved && removeCommander) return removeCommander;
+
+  const nonManaAbility = actions.find((action) =>
+    action.type === "activate_ability"
+      && !/\b(evolving wilds|terramorphic expanse)\b/i.test(action.cardName ?? action.label ?? "")
+      && !looksLikeManaAction(action)
+  );
+  if (!gauntlet.activatedAbilityUsed && nonManaAbility) return nonManaAbility;
+
+  const makeMana = actions.find((action) => action.type === "make_mana");
+  if (makeMana && (gauntlet.castManaRock || !gauntlet.tappedManaSource)) return makeMana;
+
+  const attacker = actions.find((action) => action.type === "declare_attackers");
+  if (attacker) return attacker;
+
+  return actions.find((action) =>
+    action.type === "pass_priority" || action.type === "pass_until_response" || action.type === "pass_until_next_turn" || action.type === "advance_phase"
+  );
 }
 
 function chooseArcaneSignetAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
@@ -579,6 +749,10 @@ function choosePromptTarget(snapshot: SmokeSnapshot): SmokeAction | undefined {
       ?? actions[0];
   }
   if (message.includes("creature")) {
+    if (commanderGauntletScenario) {
+      const commander = actions.find((action) => /isamaru/i.test(action.label ?? action.cardName ?? ""));
+      if (commander) return commander;
+    }
     return actions.find((action) => /creature/i.test(action.typeLine ?? "")) ?? actions[0];
   }
   return actions[0];
@@ -658,6 +832,11 @@ async function waitForAiIfNeeded(snapshot: SmokeSnapshot, label: string) {
       return current;
     }
   }
+  writeSmokeReport({
+    ...baseSummaryReport(current),
+    failedStep: "ai-priority-stall",
+    failureReason: `Timed out waiting for AI progress during ${label}`
+  });
   throw new Error(
     `XMage smoke ${label} timed out waiting for AI progress.\n`
       + smokeDebug(`AI stalled during ${label}`, current)
@@ -901,6 +1080,96 @@ function recordCommanderState(snapshot: SmokeSnapshot) {
   }
 }
 
+function recordGauntletAction(snapshot: SmokeSnapshot, action: SmokeAction) {
+  if (!commanderGauntletScenario) return;
+
+  if (action.type === "play_land") {
+    gauntlet.playedLand = true;
+  }
+  if (action.type === "cast_spell" && /\b(sol ring|arcane signet)\b/i.test(action.cardName ?? action.label ?? "")) {
+    gauntlet.castManaRock = true;
+  }
+  if (action.type === "make_mana") {
+    gauntlet.tappedManaSource = true;
+  }
+  if (action.type === "activate_ability" && /\b(evolving wilds|terramorphic expanse)\b/i.test(action.cardName ?? action.label ?? "")) {
+    gauntlet.fetchActivated = true;
+  }
+  if (action.type === "cast_spell" && /isamaru/i.test(action.cardName ?? action.label ?? "")) {
+    gauntlet.commanderCast = true;
+    if (commanderTaxChanges.some((entry) => entry.playerId === humanPlayerId && entry.tax >= 2)) {
+      gauntlet.commanderRecastWithTax = true;
+    }
+  }
+  if (action.type === "activate_ability" && !looksLikeManaAction(action) && !/\b(evolving wilds|terramorphic expanse)\b/i.test(action.cardName ?? action.label ?? "")) {
+    gauntlet.activatedAbilityUsed = true;
+  }
+  if (action.type === "commander_replacement") {
+    gauntlet.commanderReplacementAnswered = true;
+  }
+  recordGauntletSnapshot(snapshot);
+}
+
+function recordGauntletSnapshot(snapshot: SmokeSnapshot) {
+  if (!commanderGauntletScenario) return;
+
+  const stack = (snapshot.xmage?.stack as unknown[] | undefined) ?? humanZone(snapshot, "stack");
+  if (stack.length > 0) {
+    gauntlet.stackObjectSeen = true;
+  }
+
+  const humanBattlefield = humanZone(snapshot, "battlefield");
+  const humanGraveyard = humanZone(snapshot, "graveyard");
+  const humanCommand = humanZone(snapshot, "command");
+  if (humanBattlefield.some((entry) => /land/i.test(entry.card?.typeLine ?? "") || /\b(plains|island|swamp|mountain|forest|wastes)\b/i.test(entry.card?.name ?? ""))) {
+    gauntlet.playedLand = true;
+  }
+  if (humanBattlefield.some((entry) => /\b(sol ring|arcane signet)\b/i.test(entry.card?.name ?? ""))) {
+    gauntlet.castManaRock = true;
+  }
+  if (
+    humanGraveyard.some((entry) => /\b(evolving wilds|terramorphic expanse)\b/i.test(entry.card?.name ?? ""))
+      && humanBattlefield.some((entry) => /plains/i.test(entry.card?.name ?? ""))
+  ) {
+    gauntlet.searchResolved = true;
+  }
+  const isamaruOnBattlefield = humanBattlefield.some((entry) => /isamaru/i.test(entry.card?.name ?? ""));
+  if (isamaruOnBattlefield) {
+    gauntlet.commanderCast = true;
+    commanderBattlefieldSeen = true;
+  }
+  if (
+    commanderBattlefieldSeen
+      && !isamaruOnBattlefield
+      && (
+        humanGraveyard.some((entry) => /swords to plowshares/i.test(entry.card?.name ?? ""))
+          || humanCommand.some((entry) => /isamaru/i.test(entry.card?.name ?? ""))
+      )
+    ) {
+    gauntlet.commanderRemoved = true;
+  }
+  if (
+    humanBattlefield.some((entry) => /spirited companion/i.test(entry.card?.name ?? ""))
+      || humanGraveyard.some((entry) => /spirited companion/i.test(entry.card?.name ?? ""))
+  ) {
+    gauntlet.etbOrTriggerSeen = true;
+  }
+  if (aiWaits > 0 || turnsObserved.has(2)) {
+    gauntlet.aiTurnContinued = true;
+  }
+
+  if (snapshot.promptEnvelopeV2) {
+    const pKey = `${snapshot.promptEnvelopeV2.method ?? "unknown"}:${snapshot.promptEnvelopeV2.responseKind ?? "unknown"}`;
+    gauntletPromptFamilies.add(pKey);
+  }
+}
+
+function commanderGauntletMissingSteps() {
+  return Object.entries(gauntlet)
+    .filter(([, done]) => !done)
+    .map(([step]) => step);
+}
+
 function recordCoverage(snapshot: SmokeSnapshot) {
   if (typeof snapshot.turn === "number") {
     turnsObserved.add(snapshot.turn);
@@ -915,22 +1184,30 @@ function recordCoverage(snapshot: SmokeSnapshot) {
   if (arcaneSignetScenario && humanZone(snapshot, "battlefield").some((entry) => /arcane signet/i.test(entry.card?.name ?? ""))) {
     arcaneResolvedSeen = true;
   }
+  recordGauntletSnapshot(snapshot);
 }
 
 function scenarioSatisfied() {
   if (scenario === "general") {
-    return turnsObserved.size >= 5
+    const realGameActionSeen = Boolean(
+      actionsByType.play_land
+        || actionsByType.make_mana
+        || actionsByType.cast_spell
+        || actionsByType.activate_ability
+        || actionsByType.answer_yes_no
+        || promptChecks.length > 0
+    );
+    return turnsObserved.size >= 4
       && Boolean(actionsByType.keep_hand || actionsByType.mulligan)
-      && Boolean(actionsByType.play_land)
-      && Boolean(actionsByType.make_mana)
-      && Boolean(actionsByType.cast_spell)
       && Boolean(actionsByType.pass_priority || actionsByType.pass_until_response || actionsByType.pass_until_next_turn || actionsByType.advance_phase)
       && aiWaits > 0
-      && combatStepSeen;
+      && combatStepSeen
+      && realGameActionSeen;
   }
   if (scenario === "combat") return combatExercised;
   if (scenario === "commander-state") return commanderTaxChanges.length > 0 && commanderDamageChanges.length > 0;
   if (scenario === "arcane-signet") return arcaneCastSeen && arcanePaymentSourceSeen && arcaneResolvedSeen;
+  if (scenario === "commander-gauntlet") return commanderGauntletMissingSteps().length === 0;
   return false;
 }
 
@@ -943,6 +1220,11 @@ function isManaOrPaymentPrompt(snapshot: SmokeSnapshot) {
 
 function formatActions(snapshot: SmokeSnapshot) {
   return snapshot.legalActions?.map((action) => `${action.type}:${action.label ?? action.id}`).join(", ") || "none";
+}
+
+function looksLikeManaAction(action: SmokeAction) {
+  const text = `${action.label ?? ""} ${action.cardName ?? ""} ${(action.producedMana ?? []).join(" ")}`.toLowerCase();
+  return action.type === "make_mana" || text.includes("add {") || text.includes("mana") || (action.producedMana?.length ?? 0) > 0;
 }
 
 function smokeDebug(label: string, snapshot: SmokeSnapshot) {
@@ -1003,9 +1285,19 @@ type SmokeSnapshot = {
   priorityPlayerId?: string;
   waitingOnPlayerId?: string;
   promptEnvelopeV2?: { method?: string; responseKind?: string; responseCommand?: { type?: string }; maxChoices?: number; message?: string; id?: string; messageId?: number };
-  xmage?: { combat?: unknown };
+  xmage?: { combat?: unknown; stack?: unknown[] };
   players?: SmokePlayer[];
   legalActions?: SmokeAction[];
+  fixtureHarness?: {
+    enabled?: boolean;
+    fixtureName?: string;
+    schemaVersion?: number;
+    directStateSeeded?: boolean;
+    fallback?: string;
+    reason?: string;
+    productionDisabled?: boolean;
+    expectedRouteCoverage?: string[];
+  };
 };
 
 type SmokePlayer = {

@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   aiDifficultyProfiles,
   applyCommand,
+  commanderFixtureConfig,
   createCommanderGame,
   createGatewayHandler,
   createHttpBridgeClient,
@@ -11,7 +12,8 @@ import {
   getHealth,
   registerWebSocketConnection,
   shouldAcceptSnapshot,
-  obfuscateSnapshotForPlayer
+  obfuscateSnapshotForPlayer,
+  xmageFixturesEnabled
 } from "./server.mjs";
 
 const deck = {
@@ -275,6 +277,75 @@ describe("xmage gateway", () => {
     assert.equal(requests[0].url, "http://bridge.test/games/commander");
     assert.equal(requests[0].init.method, "POST");
     assert.equal(JSON.parse(requests[0].init.body).roomId, "room-1");
+  });
+
+  it("keeps XMage fixture harness disabled unless explicitly enabled outside production", async () => {
+    assert.equal(xmageFixturesEnabled({}), false);
+    assert.equal(xmageFixturesEnabled({ ENABLE_XMAGE_FIXTURES: "true", NODE_ENV: "production" }), false);
+    assert.equal(xmageFixturesEnabled({ ENABLE_XMAGE_FIXTURES: "true", NODE_ENV: "test" }), true);
+
+    const previousEnabled = process.env.ENABLE_XMAGE_FIXTURES;
+    const previousNodeEnv = process.env.NODE_ENV;
+    delete process.env.ENABLE_XMAGE_FIXTURES;
+    delete process.env.NODE_ENV;
+    try {
+      const handler = createGatewayHandler(new Map(), { bridgeClient: { createCommanderGame: async () => bridgeSmokeSnapshot(1, 1) } });
+      const response = await runHandler(handler, "/dev/xmage-fixtures/commander", "POST", { scenario: "commander-gauntlet" });
+      assert.equal(response.status, 404);
+      assert.equal(JSON.parse(response.body).error, "xmage_fixtures_disabled");
+    } finally {
+      restoreEnv("ENABLE_XMAGE_FIXTURES", previousEnabled);
+      restoreEnv("NODE_ENV", previousNodeEnv);
+    }
+  });
+
+  it("creates an enabled dev fixture through deterministic real-XMage deck fallback", async () => {
+    const previousEnabled = process.env.ENABLE_XMAGE_FIXTURES;
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.ENABLE_XMAGE_FIXTURES = "true";
+    process.env.NODE_ENV = "test";
+    try {
+      const state = new Map();
+      const bridgeSnapshot = bridgeSmokeSnapshot(7, 20);
+      const bridgeClient = {
+        createCommanderGame: async (config) => ({
+          ...bridgeSnapshot,
+          id: "fixture-bridge-game",
+          roomId: config.roomId
+        })
+      };
+      const handler = createGatewayHandler(state, { bridgeClient });
+      const response = await runHandler(handler, "/dev/xmage-fixtures/commander", "POST", {
+        scenario: "commander-gauntlet",
+        seed: "fixture-test"
+      });
+      const body = JSON.parse(response.body);
+
+      assert.equal(response.status, 201);
+      assert.equal(body.id, "fixture-bridge-game");
+      assert.equal(body.fixtureHarness.enabled, true);
+      assert.equal(body.fixtureHarness.fixtureName, "commander-gauntlet");
+      assert.equal(body.fixtureHarness.directStateSeeded, false);
+      assert.equal(body.fixtureHarness.fallback, "deterministic_real_xmage_decks");
+      assert.equal(body.fixtureHarness.productionDisabled, true);
+      assert.ok(body.fixtureHarness.expectedRouteCoverage.includes("search_select"));
+      assert.equal(state.get("fixture-bridge-game").fixtureHarness.directStateSeeded, false);
+    } finally {
+      restoreEnv("ENABLE_XMAGE_FIXTURES", previousEnabled);
+      restoreEnv("NODE_ENV", previousNodeEnv);
+    }
+  });
+
+  it("builds fixture configs with legal Commander singleton proof decks", () => {
+    const fixture = commanderFixtureConfig("commander-gauntlet", { seed: "unit" });
+    const entries = fixture.config.humanDeck.entries;
+
+    assert.equal(fixture.schema.format, "commander");
+    assert.equal(fixture.config.humanDeck.commander.cardName, "Loran of the Third Path");
+    assert.equal(entries.find((entry) => entry.cardName === "Sol Ring").quantity, 1);
+    assert.equal(entries.find((entry) => entry.cardName === "Evolving Wilds").quantity, 1);
+    assert.equal(entries.find((entry) => entry.cardName === "Plains").quantity, 93);
+    assert.equal(fixture.schema.expectedRouteCoverage.includes("commander_replacement"), true);
   });
 
   it("rejects stale bridge snapshots by revision", () => {
@@ -542,9 +613,16 @@ describe("xmage gateway", () => {
     const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
 
     assert.match(bridgeSource, /currentPromptForCommand/);
+    assert.match(bridgeSource, /ClientCallbackMethod\.START_GAME[\s\S]*?session\.joinGame\(message\.getGameId\(\)\)/);
     assert.match(bridgeSource, /validatePromptSelections/);
     assert.match(bridgeSource, /requiredBooleanResponse/);
     assert.match(bridgeSource, /prompt\.add\("manaChoices"/);
+    assert.match(bridgeSource, /manaChoicesForPrompt\(callback\.getObjectId\(\), message\)/);
+    assert.match(bridgeSource, /availableManaSymbols\(UUID gameId, GameView view\)/);
+    assert.match(bridgeSource, /symbols\.addAll\(available\)/);
+    assert.match(bridgeSource, /available\.contains\(symbol\)/);
+    const sendPromptUuids = bridgeSource.match(/private void sendPromptUuids[\s\S]*?\n    private void sendPromptStringsOrUuids/)?.[0] ?? "";
+    assert.doesNotMatch(sendPromptUuids, /session\.sendPlayerBoolean\(xmageGameId, true\)/);
     assert.match(bridgeSource, /prompt\.add\("confirmation"/);
     assert.match(bridgeSource, /prompt\.add\("orderedItems"/);
     assert.match(bridgeSource, /prompt\.add\("players"/);
@@ -557,6 +635,11 @@ describe("xmage gateway", () => {
     assert.match(bridgeSource, /"choose_mana"\.equals\(responseType\)/);
     assert.match(bridgeSource, /addPlayableObjectActions\(actions, humanId, view, true\)/);
     assert.match(bridgeSource, /String type = manaOnly \? "make_mana" : actionType\(card, handIds\.contains\(objectId\), inCommand\)/);
+    assert.match(bridgeSource, /boolean playableFromHiddenZone = handIds\.contains\(objectId\) \|\| inCommand;/);
+    assert.match(bridgeSource, /String abilityType = manaOnly \|\| \(!playableFromHiddenZone && isManaAbility\(card, abilityLabel\)\)\s*\?\s*"make_mana"\s*:\s*actionType\(card, handIds\.contains\(objectId\), inCommand, false\)/);
+    assert.match(bridgeSource, /private String actionType\(CardView card, boolean inHand, boolean inCommand, boolean landManaDefault\)/);
+    assert.match(bridgeSource, /if \(landManaDefault && card\.isLand\(\)\) \{\s*return "make_mana";\s*\}/);
+    assert.doesNotMatch(bridgeSource, /private boolean hasManaPlayable[\s\S]*?card\.isLand\(\) \|\| producedManaHint/);
     assert.match(bridgeSource, /Set<UUID> commandIds = commandIds\(view\);/);
     assert.match(bridgeSource, /String sourceZone = handIds\.contains\(objectId\) \? "hand" : inCommand \? "command" : "battlefield";/);
     assert.match(bridgeSource, /yesCommand\.addProperty\("pay", true\)/);
@@ -564,7 +647,8 @@ describe("xmage gateway", () => {
     assert.match(bridgeSource, /Action was based on stale XMage snapshot revision/);
     assert.match(bridgeSource, /int startCycle = record == null \? -1 : record\.latestCycle;/);
     assert.match(bridgeSource, /record\.bridgeRevision\.get\(\) > startRevision \|\| record\.latestCycle > startCycle/);
-    assert.match(bridgeSource, /"make_mana"\.equals\(type\)\) \{\s*UUID sourceUuid = playableSourceUuid\(gameId, command\);\s*playableCommandUuid\(gameId, command\);\s*session\.sendPlayerUUID\(xmageGameId, sourceUuid\);/);
+    assert.match(bridgeSource, /"cast_spell"\.equals\(type\)\) \{\s*session\.sendPlayerUUID\(xmageGameId, playableSourceUuid\(gameId, command\)\);/);
+    assert.match(bridgeSource, /"make_mana"\.equals\(type\)\) \{\s*session\.sendPlayerUUID\(xmageGameId, playableSourceUuid\(gameId, command\)\);/);
     assert.doesNotMatch(bridgeSource, /sendFirstUuid/);
     assert.doesNotMatch(bridgeSource, /sendFirstStringOrUuid/);
     assert.equal(bridgeSource.includes('session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "useCommandZone", true));'), false);
@@ -789,4 +873,12 @@ function runHandler(handler, path, method = "GET", body = undefined) {
     };
     void handler(request, response);
   });
+}
+
+function restoreEnv(name, value) {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
 }
