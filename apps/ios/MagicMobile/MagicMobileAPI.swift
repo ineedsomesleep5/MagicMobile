@@ -43,6 +43,10 @@ struct MagicMobileAPI {
         try await get("/api/engine/commander/start/\(startupId)")
     }
 
+    func startCommanderFixture(scenario: String = "commander-gauntlet") async throws -> GameSnapshot {
+        try await post("/dev/xmage-fixtures/commander", body: CommanderFixtureRequest(scenario: scenario))
+    }
+
     func snapshot(gameId: String) async throws -> GameSnapshot {
         try await get("/api/engine/games/\(gameId)")
     }
@@ -232,11 +236,14 @@ struct MagicMobileAPI {
         }
 
         if action.type == "choose_ability" {
+            guard let abilityId = action.abilityId ?? templateString(action, "abilityId") ?? action.targetIds?.first ?? action.validTargetIds?.first else {
+                throw missingActionData(action, "ability id")
+            }
             return GameCommand(
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
-                abilityId: action.targetIds?.first ?? action.validTargetIds?.first ?? action.id,
+                abilityId: abilityId,
                 promptId: promptId,
                 messageId: messageId
             )
@@ -609,7 +616,7 @@ struct MagicMobileAPI {
 
     private func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            let message = (try? JSONDecoder.magicMobile.decode(APIError.self, from: data).error)
+            let message = (try? JSONDecoder.magicMobile.decode(APIError.self, from: data).message)
                 ?? String(data: data, encoding: .utf8)
                 ?? "Unknown server error"
             throw MagicMobileError.server(message)
@@ -679,8 +686,21 @@ private struct GenerateDeckRequest: Encodable {
     let playerId: String
 }
 
+private struct CommanderFixtureRequest: Encodable {
+    let scenario: String
+}
+
 private struct APIError: Decodable {
-    let error: String
+    let error: String?
+    let blockedReason: String?
+    let nextImplementationStep: String?
+
+    var message: String? {
+        if let blockedReason, !blockedReason.isEmpty {
+            return nextImplementationStep.map { "\(blockedReason) Next: \($0)" } ?? blockedReason
+        }
+        return error
+    }
 }
 
 struct EmptyRequest: Encodable {}

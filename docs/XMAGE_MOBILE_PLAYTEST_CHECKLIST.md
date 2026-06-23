@@ -4,7 +4,7 @@ Use this checklist when validating the XMage-backed Commander play loop from Doc
 
 ## Current Pause State - June 23, 2026
 
-Latest CI/docs validation pass on June 23, 2026:
+Latest CI/docs validation pass on June 23, 2026. Treat the smoke details below as local artifact summaries only; rerun the commands on the current checkout before using them as release evidence. Generated JSON reports belong under `build_output/smoke/*.json`, not in docs.
 
 - `pnpm --filter @magicmobile/xmage-gateway test` passed.
 - `docker build -t magicmobile-xmage-bridge-check apps/xmage-gateway/bridge` passed.
@@ -15,12 +15,12 @@ Latest CI/docs validation pass on June 23, 2026:
 - `pnpm build` passed.
 - `docker compose up -d --build xmage-bridge xmage-gateway` rebuilt the bridge image and started both containers.
 - Gateway health initially returned `starting`, then reached `status: "ready"` with reason `XMage Java bridge connected to 127.0.0.1:17171.`
-- Normal real-XMage smoke remains diagnostic only. The latest non-fixtured `core-flow` created game `dcb04105-3df2-4a9b-896b-4121af2c3b19` with `source: "xmage-java-bridge"`, `bridgeRevision: 90`, and `xmageCycle: 158`, then failed honestly because that random legal-deck state observed only 4 of 12 requested turns.
+- Normal real-XMage smoke remains diagnostic only. The latest non-fixtured `core-flow` used `source: "xmage-java-bridge"` and failed honestly because that random legal-deck state observed only part of the requested turn coverage.
 - A dev-only fixture harness route exists at `POST /dev/xmage-fixtures/commander`. It requires `ENABLE_XMAGE_FIXTURES=true`, is disabled in production, reports `fixtureHarness` metadata, and now has an embedded same-JVM setup path that can reach server-owned `GameController` / `Game.cheat(...)`.
-- The deterministic fixture gauntlet passed after the latest bridge rebuild. Current report: game `139255f5-8d6e-4e25-b284-653949456092`, `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, final `bridgeRevision: 115`, final `xmageCycle: 196`, and top-level `stepsBlocked: []`.
-- `XMAGE_SMOKE_SCENARIO=blocker-flow` passed on game `7524436b-3c7a-48ad-84ec-5a95574f6302` with `declare_attackers` evidence. It did not prove a real `declare_blockers` payload.
-- `XMAGE_SMOKE_SCENARIO=commander-damage` passed after the combat-selection bridge fix. Current report: game `26816c39-99a2-478f-abb8-e17065c784e0`, `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, final `bridgeRevision: 56`, final `xmageCycle: 94`, `commanderDamageChanges: [{ recipient: "ai-1", attacker: "human", damage: 2 }]`, AI life `38`, and `stepsBlocked: []`.
-- `XMAGE_SMOKE_SCENARIO=commander-replacement-tax` reproved commander tax on game `45d5a195-666d-4ae0-8112-a51c375658f3`. Commander damage is now separately proven by the targeted `commander-damage` fixture.
+- The deterministic fixture gauntlet passed after the latest bridge rebuild with real `source: "xmage-java-bridge"`, direct server-side fixture seeding, and empty top-level `stepsBlocked`.
+- `XMAGE_SMOKE_SCENARIO=blocker-flow` produced `declare_attackers` evidence. It did not prove a real `declare_blockers` payload.
+- `XMAGE_SMOKE_SCENARIO=commander-damage` passed after the combat-selection bridge fix with direct server-side fixture seeding and non-empty commander-damage evidence.
+- `XMAGE_SMOKE_SCENARIO=commander-replacement-tax` reproved commander tax. Commander damage is separately covered by the targeted `commander-damage` fixture.
 - `XMAGE_SMOKE_SCENARIO=prompt-variety` is still not green. It produced useful later-scope evidence, including commander damage, then exposed a game-over stale-action bug that has now been fixed in the bridge.
 - XcodeBuildMCP simulator tests passed after enabling generated Info.plist for the `MagicMobileTests` target: 4 tests passed, 0 failed. This is not real iPhone product success.
 
@@ -34,17 +34,17 @@ XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=blocker-flow pnpm 
 XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-replacement-tax pnpm smoke:xmage
 ```
 
-Historical/local results from earlier runs:
+Historical/local notes from earlier runs; rerun before treating any item as current proof:
 
 - Gateway unit tests passed.
 - Docker rebuild of `xmage-bridge` and `xmage-gateway` succeeded.
 - Health returned `ready` after the bridge reconnected to XMage.
-- General real-XMage smoke passed with `source: "xmage-java-bridge"`, `bridgeRevision: 88`, `xmageCycle: 149`, and game `60c367db-ebb0-489d-9297-327dc8d898bf`.
+- A prior general real-XMage smoke passed with `source: "xmage-java-bridge"` and advancing bridge state.
 - The general smoke proved keep, repeated pass priority, AI wait/return, real `make_mana`, combat-step traversal, and four observed turns without simulator fallback.
 - The bridge fix in this pass corrected generic prompt UUID routing: `GAME_TARGET` / `GAME_SELECT` UUID clicks now send only the UUID, matching XMage desktop behavior, instead of immediately sending a boolean cancel/done response that could overwrite the UUID before XMage read it.
 - The previous mana-payment loop was also fixed: `GAME_PLAY_MANA` choices are now derived from the human player's real floating mana pool, so a generic `{1}` cost uses available mana such as `{G}` instead of inventing `{C}` when no colorless mana is floating.
-- Targeted `XMAGE_SMOKE_SCENARIO=blocker-flow` initially failed during game creation with `Timed out waiting for XMage game snapshot` after a reconnect, but passed when rerun after the bridge settled. The passing run used game `916cf947-3084-415d-b27d-4bc43da5dc8c`, reached turn 4, submitted `declare_attackers`, and reported `combatExercised: true`.
-- Targeted `XMAGE_SMOKE_SCENARIO=commander-replacement-tax` reached game `cf52aebe-0b08-42ae-8e4c-c58b4c95728e` and reproved commander tax (`human tax is now 2`) after casting Isamaru from the command zone. The separate `commander-damage` fixture now proves commander damage with a non-empty `commanderDamageChanges` array.
+- Targeted `XMAGE_SMOKE_SCENARIO=blocker-flow` initially failed during game creation after a reconnect, then produced `declare_attackers` evidence when rerun after the bridge settled.
+- Targeted `XMAGE_SMOKE_SCENARIO=commander-replacement-tax` reproved commander tax after casting Isamaru from the command zone. The separate `commander-damage` fixture covers commander damage with non-empty commander-damage evidence.
 
 Current pause blocker:
 
@@ -82,17 +82,17 @@ Current pause blocker:
 
 Expected result: health reports `ready`, the smoke output includes a game id, source, completed play-loop steps, and advancing `bridgeRevision` / `xmageCycle` when the Java bridge is active.
 
-`commander-gauntlet` is the current backend alpha acceptance gate. It must use `XMAGE_USE_FIXTURE=true`, `source: "xmage-java-bridge"`, and report top-level `stepsCompleted` / `stepsBlocked`. The current local report has deterministic real-XMage fixture proof and empty `stepsBlocked`; simulator success and non-fixtured legal-deck gauntlets do not satisfy it.
+`commander-gauntlet` is the current backend alpha acceptance gate. It must use `XMAGE_USE_FIXTURE=true`, `source: "xmage-java-bridge"`, and report top-level `stepsCompleted` / `stepsBlocked`. A passing release-gate report must show deterministic real-XMage fixture proof and empty `stepsBlocked`; simulator success and non-fixtured legal-deck gauntlets do not satisfy it.
 
 When `XMAGE_USE_FIXTURE=true`, the smoke must also report `fixtureHarness.enabled: true`, `fixtureHarness.directStateSeeded: true`, `seededStateVerified: true`, and `setupMethod: "in_server_game_cheat"`. Legal-deck gauntlet evidence remains diagnostic only, not release proof.
 
 If the live smoke fails, capture the exact failing step instead of treating simulator success as product success. Current high-value failures are usually in pass priority, AI waiting, stale prompt answers, or a missing legal action after XMage changes state.
 
-## Latest Verified Local Smoke
+## Historical Local Smoke Notes
 
 Historical: verified on June 22, 2026 against the local Docker gateway at `http://localhost:17171`.
 
-Current June 23, 2026 attempt: bridge/gateway containers started after rebuild and gateway health reached `ready`. The normal live smoke produced real bridge evidence but did not pass because a non-fixtured game state missed `cast_spell`. The fixture gauntlet passed with deterministic server-side setup proof, but this is backend evidence only; real iPhone manual QA remains unchecked.
+Current June 23, 2026 attempt: bridge/gateway containers started after rebuild and gateway health reached `ready`. The normal live smoke produced real bridge evidence but did not pass because a non-fixtured game state missed `cast_spell`. The fixture gauntlet passed with deterministic server-side setup proof, but this is backend evidence only; real iPhone manual QA remains unchecked. Do not paste generated smoke report bodies here as release proof.
 
 Commands run:
 
@@ -124,26 +124,14 @@ Current bridge health during smoke:
 }
 ```
 
-Smoke result: passed.
-
-Final broad smoke output:
-
-- `gameId`: `25ce583a-02cb-4acf-95d9-d74694192724`
-- `source`: `xmage-java-bridge`
-- `bridgeRevision`: `112`
-- `xmageCycle`: `201`
-- `phase` / `step`: `precombat-main`
-- `turn`: `5`
-- `promptText`: `Your priority`
-- `promptChecks`: `GAME_ASK:confirmation`, `GAME_PLAY_MANA:mana`
-- `actionsByType`: `keep_hand`, `play_land`, `make_mana`, `cast_spell`, `play_mana`, `pass_priority`, `answer_yes_no`
+Historical broad smoke output showed `source: "xmage-java-bridge"`, advancing bridge state, and core actions including hand keep, land, mana, spell casting, mana payment, priority pass, and yes/no prompts. Rerun `pnpm smoke:xmage` for current evidence instead of relying on this historical summary.
 
 Targeted fixture smoke outputs:
 
 - `XMAGE_SMOKE_SCENARIO=blocker-flow`: passed with `combatExercised: true` after submitting `declare_attackers: Attack Noaddrag with Isamaru, Hound of Konda`.
 - `XMAGE_SMOKE_SCENARIO=commander-replacement-tax`: older artifacts observed commander tax and damage, but this must be reproved on the current bridge before it is treated as release-gate green.
 - `XMAGE_SMOKE_SCENARIO=arcane-signet`: intentionally not counted as passing. The current fixture with repeated `Arcane Signet` was rejected by XMage Commander legality, so the next version needs a Commander-legal deterministic payment-source fixture.
-- `XMAGE_SMOKE_SCENARIO=commander-gauntlet` with `XMAGE_USE_FIXTURE=true`: passed after the latest bridge rebuild with `directStateSeeded: true`, `seededStateVerified: true`, final `bridgeRevision: 115`, final `xmageCycle: 196`, and `stepsBlocked: []`.
+- `XMAGE_SMOKE_SCENARIO=commander-gauntlet` with `XMAGE_USE_FIXTURE=true`: passed after the latest bridge rebuild with direct server-side fixture seeding and `stepsBlocked: []`.
 
 Confirmed live steps across the local verification run:
 

@@ -140,7 +140,8 @@ struct ContentView: View {
                 syncCardCache: { Task { await syncCardCache() } },
                 checkBridge: { Task { await checkBridge() } },
                 openDecks: { screen = .decks },
-                startGame: { Task { await startGame() } }
+                startGame: { Task { await startGame() } },
+                startFixtureGame: { Task { await startFixtureGame() } }
             )
         case .decks:
             DeckBuilderView(
@@ -293,6 +294,57 @@ struct ContentView: View {
         }
 
         isLoading = false
+    }
+
+    private func startFixtureGame() async {
+        #if DEBUG
+        guard let api else {
+            errorMessage = MagicMobileError.invalidServerURL.localizedDescription
+            status = MagicMobileError.invalidServerURL.localizedDescription
+            return
+        }
+
+        isLoading = true
+        snapshot = nil
+        selectedCard = nil
+        inspectedCard = nil
+        pendingActionId = nil
+        pendingCardInstanceId = nil
+        lastSubmittedActionId = nil
+        lastSubmittedSnapshotSignature = nil
+        liveUpdateStatus = "Idle"
+        startupStatus = CommanderStartupResponse(
+            startupId: "dev-fixture",
+            status: "starting",
+            snapshot: nil,
+            message: "Requesting dev-only XMage commander gauntlet fixture.",
+            error: nil
+        )
+        screen = .play
+        status = "Requesting dev-only XMage fixture"
+
+        do {
+            let nextSnapshot = try await api.startCommanderFixture()
+            applySnapshot(nextSnapshot)
+            startupStatus = nil
+            status = "Dev XMage fixture started"
+            startWebSocket(gameId: nextSnapshot.id)
+        } catch {
+            startupStatus = CommanderStartupResponse(
+                startupId: "dev-fixture",
+                status: "failed",
+                snapshot: nil,
+                message: nil,
+                error: error.localizedDescription
+            )
+            errorMessage = error.localizedDescription
+            status = error.localizedDescription
+        }
+        isLoading = false
+        #else
+        errorMessage = "XMage fixtures are only available in debug builds."
+        status = "XMage fixtures are debug-only"
+        #endif
     }
 
     private func pollStartup(api: MagicMobileAPI, startupId: String, deckName: String) async throws {
@@ -754,6 +806,7 @@ struct SetupView: View {
     let checkBridge: () -> Void
     let openDecks: () -> Void
     let startGame: () -> Void
+    let startFixtureGame: () -> Void
 
     var body: some View {
         GeometryReader { proxy in
@@ -834,6 +887,15 @@ struct SetupView: View {
                         Button("Start vs AI", action: startGame)
                             .buttonStyle(PrimaryButtonStyle())
                     }
+
+                    #if DEBUG
+                    Button("Start XMage gauntlet fixture", action: startFixtureGame)
+                        .buttonStyle(SecondaryButtonStyle())
+                    Text("Debug only. Requires ENABLE_XMAGE_FIXTURES=true and a non-production gateway.")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(MagicPalette.antiqueGold.opacity(0.82))
+                        .lineLimit(2)
+                    #endif
                 }
                 .frame(width: rightWidth)
             }
@@ -2023,7 +2085,7 @@ struct XmageStackPeek: View {
                         .font(.system(size: 8, weight: .black))
                         .foregroundStyle(passAvailable ? .green : .white.opacity(0.62))
                 }
-                Text(topObject?.name ?? "Resolving")
+                Text(topObject?.displayName ?? "Resolving")
                     .font(.system(size: 11, weight: .black))
                     .foregroundStyle(.white)
                     .lineLimit(1)
@@ -3039,7 +3101,7 @@ struct MobileSurfacesPanel: View {
     var body: some View {
         PromptPanelSection(title: "Surfaces", detail: surfaceSummary) {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 76), spacing: 5)], spacing: 5) {
-                SurfaceChip(title: "Stack", value: "\(stackCards.count)")
+                SurfaceChip(title: "Stack", value: "\(stackObjectCount)")
                     .onTapGesture {
                         if !stackCards.isEmpty { viewZone("Stack", stackCards) }
                     }
@@ -3063,6 +3125,12 @@ struct MobileSurfacesPanel: View {
                 MiniZoneRow(title: "Stack", cards: stackCards, selectedCard: $selectedCard, inspectedCard: $inspectedCard) {
                     viewZone("Stack", stackCards)
                 }
+            } else if !stackObjectNames.isEmpty {
+                Text("Stack: \(stackObjectNames.joined(separator: ", "))")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.64)
             }
             if !commandCards.isEmpty {
                 MiniZoneRow(title: "Command", cards: commandCards, selectedCard: $selectedCard, inspectedCard: $inspectedCard) {
@@ -3100,6 +3168,15 @@ struct MobileSurfacesPanel: View {
         let xmageCards = snapshot.xmage?.stack.compactMap(\.sourceCard) ?? []
         if !xmageCards.isEmpty { return xmageCards }
         return snapshot.players.flatMap(\.zones.stack)
+    }
+
+    private var stackObjectCount: Int {
+        let xmageCount = snapshot.xmage?.stack.count ?? 0
+        return max(xmageCount, stackCards.count)
+    }
+
+    private var stackObjectNames: [String] {
+        snapshot.xmage?.stack.map(\.displayName).filter { !$0.isEmpty } ?? []
     }
 
     private var commandCards: [ZoneCard] {

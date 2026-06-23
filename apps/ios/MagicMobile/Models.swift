@@ -137,6 +137,33 @@ struct CommanderStartupResponse: Decodable {
     let error: String?
 }
 
+struct CommanderFixtureResponse: Decodable {
+    let error: String?
+    let fixtureName: String?
+    let productionDisabled: Bool
+    let directStateSeeded: Bool
+    let setupMethod: String?
+    let blockedReason: String?
+    let nextImplementationStep: String?
+    let snapshot: GameSnapshot?
+    let latestSnapshot: GameSnapshot?
+
+    var playableSnapshot: GameSnapshot? {
+        guard directStateSeeded else { return nil }
+        return snapshot ?? latestSnapshot
+    }
+
+    var statusMessage: String {
+        if let blockedReason, !blockedReason.isEmpty {
+            return "Fixture blocked: \(blockedReason)"
+        }
+        if let error, !error.isEmpty {
+            return "Fixture blocked: \(error)"
+        }
+        return directStateSeeded ? "Fixture seeded in XMage" : "Fixture blocked"
+    }
+}
+
 struct GameLogEntry: Decodable, Identifiable {
     let id: String
     let message: String
@@ -401,6 +428,14 @@ struct XmageStackObject: Decodable, Identifiable {
     let rulesText: String?
     let sourceCard: ZoneCard?
     let paid: Bool?
+
+    var displayName: String {
+        name.isEmpty ? "Stack object" : name
+    }
+
+    var displaySourceName: String {
+        sourceCard?.card.name ?? "Source unavailable"
+    }
 }
 
 struct XmageCombatGroup: Decodable, Identifiable {

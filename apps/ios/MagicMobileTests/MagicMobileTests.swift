@@ -90,4 +90,78 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(payload?["messageId"] as? Int, 77)
         XCTAssertEqual(payload?["targetIds"] as? [String], ["target-1"])
     }
+
+    func testPromptActionsFailClosedWhenRequiredValuesAreMissing() throws {
+        let api = MagicMobileAPI(baseURL: URL(string: "http://localhost")!)
+        for type in ["choose_pile", "choose_amount", "play_x_mana", "play_mana", "choose_mana", "answer_yes_no", "commander_replacement", "choose_ability"] {
+            let action = try decodeAction(type: type)
+            XCTAssertThrowsError(try api.command(for: action, gameId: "game-1"), "Expected \(type) to require explicit XMage prompt data")
+        }
+    }
+
+    func testChooseAbilityUsesExplicitAbilityIdOnly() throws {
+        let action = try decodeAction(
+            type: "choose_ability",
+            extra: #""abilityId": "ability-1""#
+        )
+        let command = try MagicMobileAPI(baseURL: URL(string: "http://localhost")!)
+            .command(for: action, gameId: "game-1")
+        let payload = try JSONSerialization.jsonObject(with: JSONEncoder.magicMobile.encode(command)) as? [String: Any]
+
+        XCTAssertEqual(payload?["abilityId"] as? String, "ability-1")
+    }
+
+    func testBlockedCommanderFixtureResponseIsNotPlayable() throws {
+        let data = """
+        {
+          "error": "xmage_fixture_state_seeding_unavailable",
+          "enabled": true,
+          "fixtureName": "commander-gauntlet",
+          "productionDisabled": true,
+          "directStateSeeded": false,
+          "setupMethod": "bridge_fixture_without_real_seed_proof",
+          "blockedReason": "Fixture endpoint did not return seed proof.",
+          "nextImplementationStep": "Add an in-server fixture hook."
+        }
+        """.data(using: .utf8)!
+
+        let response = try JSONDecoder.magicMobile.decode(CommanderFixtureResponse.self, from: data)
+
+        XCTAssertNil(response.playableSnapshot)
+        XCTAssertEqual(response.statusMessage, "Fixture blocked: Fixture endpoint did not return seed proof.")
+        XCTAssertEqual(response.fixtureName, "commander-gauntlet")
+        XCTAssertTrue(response.productionDisabled)
+    }
+
+    func testStackObjectWithoutSourceCardKeepsDisplayText() throws {
+        let data = """
+        {
+          "id": "stack-1",
+          "name": "Activated ability",
+          "rulesText": "Draw a card.",
+          "paid": false
+        }
+        """.data(using: .utf8)!
+
+        let object = try JSONDecoder.magicMobile.decode(XmageStackObject.self, from: data)
+
+        XCTAssertNil(object.sourceCard)
+        XCTAssertEqual(object.displayName, "Activated ability")
+        XCTAssertEqual(object.displaySourceName, "Source unavailable")
+    }
+
+    private func decodeAction(type: String, extra: String? = nil) throws -> LegalAction {
+        let extraFields = extra.map { ",\n          \($0)" } ?? ""
+        let data = """
+        {
+          "id": "\(type)-action",
+          "type": "\(type)",
+          "playerId": "human",
+          "label": "\(type)",
+          "promptId": "prompt-1",
+          "messageId": 1\(extraFields)
+        }
+        """.data(using: .utf8)!
+        return try JSONDecoder.magicMobile.decode(LegalAction.self, from: data)
+    }
 }

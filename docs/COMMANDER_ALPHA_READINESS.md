@@ -4,6 +4,7 @@ This document outlines the CI configuration status, Docker environment verificat
 
 > [!IMPORTANT]
 > The production gameplay path at `/play` strictly requires a healthy XMage gateway and Java bridge. The simulator mode is kept isolated at `/dev/play-simulator` for UI and component development.
+> Smoke reports are local artifacts, not evergreen release proof. Keep generated JSON under `build_output/smoke/*.json` and rerun the relevant smoke command on the current checkout before citing a pass.
 
 ---
 
@@ -50,7 +51,7 @@ Local Docker compose rendered successfully on June 23, 2026. The bridge image re
 
 ## 3. Command Latency & Performance Measurements
 
-All commands below were run locally on macOS on June 23, 2026 against the current shared checkout.
+All commands below were run locally on macOS on June 23, 2026 against the shared checkout from that pass. Treat them as historical local evidence until rerun on the current checkout.
 
 | Command | Purpose | Duration (s) | Result |
 |---|---|---|---|
@@ -64,14 +65,14 @@ All commands below were run locally on macOS on June 23, 2026 against the curren
 | `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test docker compose up -d --build xmage-bridge xmage-gateway` | Embedded same-JVM fixture startup | ~2-3m to ready after cached rebuild | Pass: gateway health reached `status: "ready"` after XMage card/server startup |
 | `curl http://localhost:17171/health` | Gateway/bridge health | Ready after startup polling | Pass: `status: "ready"`, `reason: "XMage Java bridge connected to 127.0.0.1:17171."` |
 | `XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage` | Live gateway & Java bridge non-fixtured play loop | Diagnostic only | Not a release gate; nondeterministic legal-deck state can miss required proof routes |
-| `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage` | Full deterministic Commander gauntlet smoke | ~90s after services ready | Pass: real `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, `stepsBlocked: []` |
-| `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-damage XMAGE_USE_FIXTURE=true pnpm smoke:xmage` | Targeted deterministic commander damage smoke | ~40s after services ready | Pass: real `source: "xmage-java-bridge"`, `commanderDamageChanges` non-empty, AI life changed, `stepsBlocked: []` |
+| `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage` | Full deterministic Commander gauntlet smoke | ~90s after services ready | Historical pass: real `source: "xmage-java-bridge"`, direct fixture seeding, `stepsBlocked: []` |
+| `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-damage XMAGE_USE_FIXTURE=true pnpm smoke:xmage` | Targeted deterministic commander damage smoke | ~40s after services ready | Historical pass: real `source: "xmage-java-bridge"`, commander-damage evidence, `stepsBlocked: []` |
 
 ### Key Smoke Test Verification Points:
 - The bridge image was rebuilt after the source-UUID `make_mana` fix and after the activation-dispatch/commander prompt classifier fixes in this pass.
-- Final deterministic smoke evidence from this pass after the latest bridge rebuild: game `139255f5-8d6e-4e25-b284-653949456092`, `source: "xmage-java-bridge"`, final `bridgeRevision: 115`, final `xmageCycle: 196`, `fixtureHarness.directStateSeeded: true`, `seededStateVerified: true`, and `stepsBlocked: []`.
-- Focused activated-ability fixture evidence from the same pass: `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=activated-ability-stack XMAGE_USE_FIXTURE=true pnpm smoke:xmage` passed against game `56dcbd20-a8f6-4574-a77a-dd4bdea27d4a`, `source: "xmage-java-bridge"`, final `bridgeRevision: 14`, final `xmageCycle: 22`, `directStateSeeded: true`, `seededStateVerified: true`, `routeFamiliesMissing: []`, and `stepsBlocked: []`.
-- Focused commander-damage fixture evidence from the same pass after the combat-selection bridge fix: `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-damage XMAGE_USE_FIXTURE=true pnpm smoke:xmage` passed against game `26816c39-99a2-478f-abb8-e17065c784e0`, `source: "xmage-java-bridge"`, final `bridgeRevision: 56`, final `xmageCycle: 94`, `commanderDamageChanges: [{ recipient: "ai-1", attacker: "human", damage: 2 }]`, AI life changed to `38`, and `stepsBlocked: []`.
+- Final deterministic smoke evidence from this pass used `source: "xmage-java-bridge"`, direct fixture seeding, seeded-state verification, and `stepsBlocked: []`.
+- Focused activated-ability fixture evidence from the same pass used `source: "xmage-java-bridge"`, direct fixture seeding, no missing route families, and `stepsBlocked: []`.
+- Focused commander-damage fixture evidence from the same pass used `source: "xmage-java-bridge"` and non-empty commander-damage evidence after the combat-selection bridge fix.
 - The successful gauntlet used `setupMethod: "in_server_game_cheat"` and `source: "xmage-server-fixture-service"` for setup metadata, then all gameplay actions went through the real Java bridge command path.
 - Live route-family evidence in the passing report: `play_land`, `cast_spell`, `make_mana`, `activate_ability`, `search_select/choose_card` via XMage `GAME_TARGET` search selection, `choose_target`, `answer_yes_no`, `pay_cost` via `GAME_PLAY_MANA`, `commander_replacement`, `pass_priority`, `stack_object_seen`, `trigger_seen`, `zone_update_seen`, and `commander_tax_seen`.
 - `laterScope` remains non-empty in the gauntlet report for `mana-rock`, `commander-damage`, `blocker-flow`, and `prompt-variety`; targeted commander-damage is now separately deterministic-fixture proven, while real blocker assignment and prompt-variety are still not green.
@@ -140,7 +141,7 @@ With services up and healthy, run the smoke test:
 ```sh
 pnpm smoke:xmage
 ```
-**Expected output:** A JSON snapshot containing final game state, showing the core loop progressed through keep, land, mana, cast, payment, AI wait/progress, combat step, and final revision status.
+**Expected output:** A JSON snapshot containing final game state, showing the core loop progressed through keep, land, mana, cast, payment, AI wait/progress, combat step, and final revision status. Non-fixtured smoke remains diagnostic; use the fixture gauntlet for release-gate evidence.
 
 ---
 
