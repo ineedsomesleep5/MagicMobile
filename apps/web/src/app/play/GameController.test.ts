@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { GameSnapshot, LegalAction } from "@magicmobile/shared";
-import { gameWebSocketUrl, latestSnapshot, toCommand } from "./GameController";
+import { gameWebSocketUrl, latestSnapshot, shouldClearPendingAfterSnapshot, staleCommandSnapshot, toCommand } from "./GameController";
 import { narrowCommandTemplate, narrowPromptAction } from "./ArenaBattlefield";
+import PlaySimulatorPage from "../dev/play-simulator/page";
 
 const snapshot: GameSnapshot = {
   id: "game-1",
@@ -33,6 +34,27 @@ describe("GameController command mapping and state integration", () => {
       sourceInstanceId: "forest-instance",
       abilityId: "mana-ability",
       expectedBridgeRevision: 12
+    });
+  });
+
+  it("uses the selected ability UUID for explicit non-mana ability activations", () => {
+    const action: LegalAction = {
+      id: "ability-action",
+      type: "activate_ability",
+      playerId: "human",
+      label: "Activate",
+      cardInstanceId: "source-card",
+      sourceInstanceId: "source-card",
+      abilityId: "selected-ability"
+    };
+
+    expect(toCommand(action, { ...snapshot, bridgeRevision: 14 }, undefined, "ai-1")).toMatchObject({
+      type: "activate_ability",
+      gameId: "game-1",
+      playerId: "human",
+      sourceInstanceId: "source-card",
+      abilityId: "selected-ability",
+      expectedBridgeRevision: 14
     });
   });
 
@@ -409,6 +431,14 @@ describe("GameController command mapping and state integration", () => {
         label: "Commander replacement"
       };
       expect(toCommand(missingCommanderChoice, snapshot, undefined, "opponent")).toBeUndefined();
+
+      const missingAbility: LegalAction = {
+        id: "ability-missing",
+        type: "choose_ability",
+        playerId: "human",
+        label: "Choose ability"
+      };
+      expect(toCommand(missingAbility, snapshot, undefined, "opponent")).toBeUndefined();
     });
 
     it("maps resolve_choice correctly", () => {
@@ -494,6 +524,11 @@ describe("GameController command mapping and state integration", () => {
         type: "play_mana",
         manaType: "G"
       });
+
+      const invalid = narrowCommandTemplate(template, "play_mana", "invalid");
+      expect(invalid).toEqual({
+        type: "play_mana"
+      });
     });
   });
 
@@ -503,6 +538,33 @@ describe("GameController command mapping and state integration", () => {
       const nextNoRevision = { ...snapshot }; // undefined bridgeRevision
 
       expect(latestSnapshot(current, nextNoRevision)).toBe(nextNoRevision);
+    });
+
+    it("keeps pending actions until XMage returns a newer authoritative snapshot", () => {
+      const current = { ...snapshot, bridgeRevision: 10, xmageCycle: 20 };
+      const waiting = { ...snapshot, bridgeRevision: 11, xmageCycle: 21, pendingStatus: "waiting_for_xmage" as const };
+      const accepted = { ...snapshot, bridgeRevision: 12, xmageCycle: 22, pendingStatus: "accepted" as const };
+      const stale = { ...snapshot, bridgeRevision: 9, xmageCycle: 19, pendingStatus: "accepted" as const };
+
+      expect(shouldClearPendingAfterSnapshot(current, waiting)).toBe(false);
+      expect(shouldClearPendingAfterSnapshot(current, accepted)).toBe(true);
+      expect(shouldClearPendingAfterSnapshot(current, stale)).toBe(false);
+    });
+
+    it("extracts a gateway stale-action snapshot for refresh-and-retry recovery", () => {
+      const fresh = { ...snapshot, bridgeRevision: 14, xmageCycle: 30, promptText: "fresh prompt" };
+      const body = {
+        error: "action_no_longer_legal",
+        snapshot: fresh
+      };
+
+      expect(staleCommandSnapshot(409, body)).toBe(fresh);
+      expect(staleCommandSnapshot(500, body)).toBeUndefined();
+      expect(staleCommandSnapshot(409, { error: "other", snapshot: fresh })).toBeUndefined();
+    });
+
+    it("keeps the simulator route unavailable outside development", async () => {
+      await expect(PlaySimulatorPage()).rejects.toThrow("NEXT_HTTP_ERROR_FALLBACK;404");
     });
   });
 });

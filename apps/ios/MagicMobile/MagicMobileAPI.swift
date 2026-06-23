@@ -76,8 +76,9 @@ struct MagicMobileAPI {
         )
     }
 
-    private func command(for action: LegalAction, gameId: String) throws -> GameCommand {
+    func command(for action: LegalAction, gameId: String) throws -> GameCommand {
         let promptId = promptId(for: action)
+        let messageId = messageId(for: action)
         if ["keep_hand", "mulligan", "pass_priority", "pass_until_response", "pass_until_next_turn", "advance_phase", "concede"].contains(action.type) {
             return GameCommand(type: action.type, gameId: gameId, playerId: action.playerId)
         }
@@ -151,6 +152,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
+                messageId: messageId,
                 choiceIds: action.targetIds ?? []
             )
         }
@@ -161,6 +163,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
+                messageId: messageId,
                 targetIds: action.targetIds ?? action.validTargetIds ?? []
             )
         }
@@ -171,6 +174,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
+                messageId: messageId,
                 cardInstanceIds: action.cardInstanceIds ?? action.validCardInstanceIds ?? action.targetIds ?? action.validTargetIds ?? templateStringArray(action, "cardInstanceIds") ?? []
             )
         }
@@ -181,6 +185,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
+                messageId: messageId,
                 playerIds: action.playerIds ?? action.validPlayerIds ?? action.targetIds ?? action.validTargetIds ?? []
             )
         }
@@ -191,6 +196,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
+                messageId: messageId,
                 modeIds: action.modeIds ?? action.targetIds ?? []
             )
         }
@@ -204,6 +210,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
+                messageId: messageId,
                 manaType: manaType
             )
         }
@@ -219,6 +226,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
+                messageId: messageId,
                 manaTypes: manaTypes
             )
         }
@@ -229,7 +237,8 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 abilityId: action.targetIds?.first ?? action.validTargetIds?.first ?? action.id,
-                promptId: promptId
+                promptId: promptId,
+                messageId: messageId
             )
         }
 
@@ -242,6 +251,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
+                messageId: messageId,
                 pile: pile
             )
         }
@@ -255,6 +265,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
+                messageId: messageId,
                 amount: amount
             )
         }
@@ -269,6 +280,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
+                messageId: messageId,
                 amounts: amounts
             )
         }
@@ -279,6 +291,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
+                messageId: messageId,
                 cardInstanceIds: action.type == "search_select" ? action.cardInstanceIds ?? action.validCardInstanceIds ?? action.targetIds : nil,
                 orderedIds: action.type == "order_triggers" || action.type == "order_items" ? action.orderedIds ?? action.targetIds : nil
             )
@@ -293,6 +306,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
+                messageId: messageId,
                 confirmed: confirmed
             )
         }
@@ -306,6 +320,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
+                messageId: messageId,
                 useCommandZone: useCommandZone
             )
         }
@@ -319,6 +334,7 @@ struct MagicMobileAPI {
                 gameId: gameId,
                 playerId: action.playerId,
                 promptId: promptId,
+                messageId: messageId,
                 sourceInstanceIds: action.targetIds ?? [],
                 paymentId: action.id,
                 confirmed: action.confirmed ?? templateBool(action, "confirmed") ?? templateBool(action, "pay"),
@@ -326,13 +342,32 @@ struct MagicMobileAPI {
             )
         }
 
-        if action.type == "activate_ability" || action.type == "make_mana" {
+        if action.type == "make_mana" {
+            guard let sourceInstanceId = templateString(action, "sourceInstanceId") ?? action.sourceInstanceId ?? action.cardInstanceId else {
+                throw missingActionData(action, "mana source id")
+            }
             return GameCommand(
                 type: action.type,
                 gameId: gameId,
                 playerId: action.playerId,
-                sourceInstanceId: templateString(action, "sourceInstanceId") ?? action.sourceInstanceId ?? action.cardInstanceId,
-                abilityId: action.abilityId ?? templateString(action, "abilityId") ?? action.id
+                sourceInstanceId: sourceInstanceId,
+                abilityId: action.abilityId ?? templateString(action, "abilityId")
+            )
+        }
+
+        if action.type == "activate_ability" {
+            guard let sourceInstanceId = templateString(action, "sourceInstanceId") ?? action.sourceInstanceId ?? action.cardInstanceId else {
+                throw missingActionData(action, "source id")
+            }
+            guard let abilityId = action.abilityId ?? templateString(action, "abilityId") else {
+                throw missingActionData(action, "ability id")
+            }
+            return GameCommand(
+                type: action.type,
+                gameId: gameId,
+                playerId: action.playerId,
+                sourceInstanceId: sourceInstanceId,
+                abilityId: abilityId
             )
         }
 
@@ -349,7 +384,7 @@ struct MagicMobileAPI {
             sourceInstanceId: templateString(action, "sourceInstanceId") ?? command.sourceInstanceId,
             abilityId: templateString(action, "abilityId") ?? command.abilityId,
             promptId: templateString(action, "promptId") ?? command.promptId,
-            messageId: templateInt(action, "messageId") ?? command.messageId,
+            messageId: templateInt(action, "messageId") ?? action.messageId ?? command.messageId,
             choiceIds: templateStringArray(action, "choiceIds") ?? command.choiceIds,
             targetIds: templateStringArray(action, "targetIds") ?? command.targetIds,
             cardInstanceIds: templateStringArray(action, "cardInstanceIds") ?? command.cardInstanceIds,
@@ -415,6 +450,10 @@ struct MagicMobileAPI {
 
     private func promptId(for action: LegalAction) -> String {
         templateString(action, "promptId") ?? action.promptId ?? action.id
+    }
+
+    private func messageId(for action: LegalAction) -> Int? {
+        templateInt(action, "messageId") ?? action.messageId
     }
 
     private func templateString(_ action: LegalAction, _ key: String) -> String? {

@@ -18,8 +18,8 @@ $$\text{Commander Tax} = \text{Plays Count} \times 2$$
 
 This is mapped directly to the `commanderTax` property on each `PlayerGameState` object.
 
-Live verification: on June 22, 2026, the real bridge smoke
-`XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-state pnpm smoke:xmage`
+Historical live verification: on June 22, 2026, the real bridge smoke
+`XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-replacement-tax pnpm smoke:xmage`
 cast `Isamaru, Hound of Konda` from the command zone and reported:
 ```json
 "commanderTaxChanges": [
@@ -44,12 +44,14 @@ It extracts the damage total and resolves the recipient player's name back to th
 }
 ```
 
-Live verification: the same real `commander-state` smoke attacked with Isamaru, reached combat damage, dropped the AI life total to 38, and reported:
+Historical live verification: the same real `commander-state` smoke attacked with Isamaru, reached combat damage, dropped the AI life total to 38, and reported:
 ```json
 "commanderDamageChanges": [
   { "recipient": "ai-1", "attacker": "human", "damage": 2, "turn": 4 }
 ]
 ```
+
+Current release-evidence rule: commander tax/damage remain implemented from real XMage snapshot data, but they are not current gate-green unless a fresh `commander-state` or gauntlet report from `source: "xmage-java-bridge"` includes non-empty `commanderTaxChanges` and `commanderDamageChanges`. Simulator-only or older artifacts are useful diagnostics, not final alpha proof.
 
 ## Command Zone UI Representation
 

@@ -11,12 +11,12 @@ MagicMobile uses a thin gateway and Java bridge to run XMage server-side while i
 ## Current Strengths
 
 - **Healthy Dockerized Java Bridge**: Starts upstream XMage and exposes HTTP endpoints behind `apps/xmage-gateway`.
-- **Green Live Smoke Test**: The live smoke play loop (`pnpm smoke:xmage`) runs through the core 1v1 Commander vs AI loop, validating hand keeping, land play, mana generation, mana payment, spell casting, stack presence, AI waiting/progress, combat steps, and priority passing on the real Java bridge.
+- **Live Smoke Coverage Exists, Not a Required CI Gate**: The live smoke play loop (`pnpm smoke:xmage`) is available for Docker/XMage validation and writes reports to `build_output/smoke/*.json`. It must report `source: "xmage-java-bridge"` to count as real evidence. Normal CI does not require live smoke.
 - **BridgeRevision and Cycle Rejection**: Fully enforced at both gateway (`server.mjs`) and client levels (Swift/Next.js), preventing stale updates or websocket snap-backs.
 - **Strict Command Mapping**: The bridge throws an `IllegalArgumentException` for unknown command types rather than silently mapping to random UUID sends.
 - **Parsed Commander Tax**: Real casting counts are extracted from commander card rules text (e.g. `"played from the command zone"`) and parsed to calculate commander tax:
   $$\text{Tax} = \text{Casts} \times 2$$
-- **Parsed Commander Damage Matrix**: Real combat damage is parsed from commander rules (e.g. `"did X combat damage to player Y"`) and mapped to the correct players in the snapshot.
+- **Parsed Commander Damage Matrix**: Real combat damage is parsed from commander rules (e.g. `"did X combat damage to player Y"`) and mapped to the correct players in the snapshot. This parser is implemented, but commander damage is later-scope for the current gauntlet gate.
 - **Clean Dev/Simulator Separation**: Web `/play` requires a healthy XMage gateway; `/dev/play-simulator` is labeled preview-only.
 
 ## Gaps & Next Steps
@@ -24,7 +24,8 @@ MagicMobile uses a thin gateway and Java bridge to run XMage server-side while i
 | Area | Status | Gaps & Next Step |
 |---|---|---|
 | **Human Multiplayer** | Modeled but unproven | Viewer-scoped snapshot routing is required to hide hands and library cards before human-vs-human or 3-4 player pods. |
-| **Advanced prompt fixtures** | Partially live-smoked | Mode/ability/pile/amount/order/commander-replacement prompts are mapped but need deterministic real-XMage fixtures. |
+| **Advanced prompt fixtures** | Unit/bridge-source tested; live-smoked only for some prompt families | Mode/ability/pile/amount/order/commander-replacement prompts are mapped. The dev/test-only embedded same-JVM fixture hook now reaches the XMage server process that owns `GameController` and `Game.cheat(...)`; prompt-variety still needs targeted fixture states before those families are live-proven. |
+| **Commander gauntlet** | Passing as the backend release gate | Current deterministic report uses `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, and `stepsBlocked: []`. This is backend proof only; real iPhone manual QA is still required before phone alpha. |
 | **Webcam / Hybrid paper** | Out of scope | Postponed until after the digital mobile alpha playtest. |
 
 ## Bridge Invariants

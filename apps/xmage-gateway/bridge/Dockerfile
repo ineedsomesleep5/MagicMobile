@@ -12,12 +12,14 @@ RUN mkdir -p /opt/xmage /opt/magicmobile/classes /opt/magicmobile/src \
   && rm /tmp/xmage.zip
 
 COPY MagicMobileBridge.java /opt/magicmobile/src/MagicMobileBridge.java
+COPY MagicMobileEmbeddedServerBridge.java /opt/magicmobile/src/MagicMobileEmbeddedServerBridge.java
 COPY start.sh /opt/magicmobile/start.sh
 
 RUN javac \
     -cp "/opt/xmage/xmage/mage-client/lib/*:/opt/xmage/xmage/mage-client/plugins/*:/opt/xmage/xmage/mage-server/lib/*:/opt/xmage/xmage/mage-server/plugins/*" \
     -d /opt/magicmobile/classes \
     /opt/magicmobile/src/MagicMobileBridge.java \
+    /opt/magicmobile/src/MagicMobileEmbeddedServerBridge.java \
   && chmod +x /opt/magicmobile/start.sh
 
 ENV XMAGE_HOME=/opt/xmage/xmage \

@@ -444,6 +444,12 @@ export interface XmageMobilePlayer {
 export interface XmageStackObject {
   id: string;
   name: string;
+  sourceInstanceId?: string;
+  sourceName?: string;
+  sourceZone?: ZoneName | "command" | "stack";
+  controllerId?: PlayerId;
+  controllerXmageId?: string;
+  targetIds?: string[];
   rulesText?: string;
   sourceCard?: ZoneCard;
   paid?: boolean;

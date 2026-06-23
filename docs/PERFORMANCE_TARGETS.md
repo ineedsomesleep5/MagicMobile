@@ -18,7 +18,7 @@ MagicMobile should feel like a smooth mobile Commander client powered by XMage, 
 - AI thinking: may take longer, but the UI must show a specific AI thinking or waiting state.
 - Game startup: may be slower, but the user should enter the battlefield/progress state immediately and see clear status.
 
-These are alpha targets. Live smoke tests should report actual timings so we can separate UI latency from Next.js, gateway, Java bridge, XMage, AI, WebSocket, and image-loading delays.
+These are alpha targets. Live smoke tests should report actual timings so we can separate UI latency from Next.js, gateway, Java bridge, XMage, AI, WebSocket, and image-loading delays. Generated smoke reports belong under `build_output/smoke/*.json` and should be kept as local/CI artifacts, not committed proof.
 
 ## Client Behavior
 

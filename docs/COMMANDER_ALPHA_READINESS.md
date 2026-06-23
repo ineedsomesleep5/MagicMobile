@@ -9,7 +9,7 @@ This document outlines the CI configuration status, Docker environment verificat
 
 ## 1. CI Workflow Status
 
-We inspected the CI configuration file [ci.yml](file:///Users/calebfeliciano/Documents/MagicMobile/.github/workflows/ci.yml). 
+We inspected the CI configuration file [ci.yml](../.github/workflows/ci.yml).
 
 ### Key Properties:
 - **Environment**: Node.js `22`, pnpm `10.12.4`
@@ -24,11 +24,17 @@ We inspected the CI configuration file [ci.yml](file:///Users/calebfeliciano/Doc
   7. **Test**: `pnpm test`
   8. **Build**: `pnpm build`
 
+Normal CI is intentionally limited to install/typecheck/lint/test/build. Live XMage smoke is not required for normal PRs because Docker/XMage startup is not reliable enough for a required gate yet.
+
+Manual live smoke is available in `.github/workflows/xmage-smoke.yml` through `workflow_dispatch`. It rebuilds the bridge image, starts `xmage-bridge` and `xmage-gateway` with `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test` for gauntlet coverage, runs `pnpm smoke:xmage`, runs `pnpm smoke:xmage:gauntlet`, and uploads `build_output/smoke/*.json`.
+
+If GitHub Actions does not appear in the repository UI after these files are pushed, the usual reason is that workflow files are not present on the default branch yet or Actions are disabled for the repository. Exact fix: push `.github/workflows/ci.yml` and `.github/workflows/xmage-smoke.yml` to the default branch or merge a PR containing them, then enable Actions under repository Settings if the Actions tab is disabled.
+
 ---
 
 ## 2. Docker Architecture Status
 
-The project runs on a 5-tier architecture defined in [docker-compose.yml](file:///Users/calebfeliciano/Documents/MagicMobile/docker-compose.yml):
+The project runs on a 5-tier architecture defined in [docker-compose.yml](../docker-compose.yml):
 
 | Service | Image/Context | Port(s) | Health Check Status | Description |
 |---|---|---|---|---|
@@ -38,31 +44,39 @@ The project runs on a 5-tier architecture defined in [docker-compose.yml](file:/
 | `xmage-gateway` | `node:22-bookworm-slim` | `17171` | N/A (Starts after bridge) | Node proxy gateway managing AI game creation and websocket broadcasts |
 | `web` | `node:22-bookworm-slim` | `3000` | N/A (Starts after postgres/redis/gateway) | Next.js production web server rendering the UI |
 
-Local Docker services were verified as running and healthy on June 22, 2026.
+Local Docker compose rendered successfully on June 23, 2026. The bridge image rebuilt successfully after the source-UUID `make_mana` routing work, and the local gateway health reached `ready` after the bridge finished starting XMage.
 
 ---
 
 ## 3. Command Latency & Performance Measurements
 
-All performance tests and builds were run locally on macOS. 
+All commands below were run locally on macOS on June 23, 2026 against the current shared checkout.
 
 | Command | Purpose | Duration (s) | Result |
 |---|---|---|---|
-| `pnpm lint` | Workspace lint/type checks | **28.3s** | Pass |
-| `pnpm test` | Package-wide test suites | **28.9s** | Pass |
-| `pnpm typecheck` | TypeScript compiler check | **13.6s** | Pass |
-| `pnpm build` | Production packages & Next.js build | **~60s** | Pass |
-| `XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage` | Live gateway & Java bridge play loop | **~60s** | Not current gate-green after latest bridge work; rerun after rebuilding bridge image with source-UUID `make_mana` fix |
-| `XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=combat pnpm smoke:xmage` | Typed combat fixture | **~30s** | Pass (`declare_attackers`) |
-| `XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-state pnpm smoke:xmage` | Commander tax/damage fixture | varies | Not current gate-green; older artifacts observed tax/damage, but latest targeted work moved the blocker to AI-start/pass-yield stability |
-| `ENABLE_XMAGE_FIXTURES=true XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage` | Full Commander Gauntlet fixture through dev-only fixture harness | ~1-2m | Fails honestly; latest normal-AI run proved land, mana, command-zone cast, pass priority, and AI continuation, but cannot deterministically hit one-of proof cards without server-side fixture seeding |
+| `pnpm --filter @magicmobile/xmage-gateway test` | Gateway unit/bridge-source tests | <2s | Pass: 35 tests passed |
+| `docker build -t magicmobile-xmage-bridge-check apps/xmage-gateway/bridge` | Bridge Java image compile check | ~15s cached / Java compile path verified | Pass |
+| `docker compose config` | Compose syntax/render check | ~3s | Pass |
+| `pnpm typecheck` | Workspace TypeScript compiler check | ~30s | Pass |
+| `pnpm lint` | Workspace lint/type checks | ~30s | Pass |
+| `pnpm test` | Package-wide test suites | ~30s | Pass: gateway, packages, engine-worker, and web tests completed |
+| `pnpm build` | Production packages & Next.js build | ~34s | Pass |
+| `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test docker compose up -d --build xmage-bridge xmage-gateway` | Embedded same-JVM fixture startup | ~2-3m to ready after cached rebuild | Pass: gateway health reached `status: "ready"` after XMage card/server startup |
+| `curl http://localhost:17171/health` | Gateway/bridge health | Ready after startup polling | Pass: `status: "ready"`, `reason: "XMage Java bridge connected to 127.0.0.1:17171."` |
+| `XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage` | Live gateway & Java bridge non-fixtured play loop | Diagnostic only | Not a release gate; nondeterministic legal-deck state can miss required proof routes |
+| `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage` | Full deterministic Commander gauntlet smoke | ~90s after services ready | Pass: real `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, `stepsBlocked: []` |
 
 ### Key Smoke Test Verification Points:
-- Created a game via HTTP client against the live Java bridge.
+- The bridge image was rebuilt after the source-UUID `make_mana` fix and after the activation-dispatch/commander prompt classifier fixes in this pass.
+- Final deterministic smoke evidence from this pass after the latest bridge rebuild: game `e9478822-a5fd-4b04-a691-2c2da193b3ac`, `source: "xmage-java-bridge"`, final `bridgeRevision: 115`, final `xmageCycle: 196`, `fixtureHarness.directStateSeeded: true`, `seededStateVerified: true`, and `stepsBlocked: []`.
+- The successful gauntlet used `setupMethod: "in_server_game_cheat"` and `source: "xmage-server-fixture-service"` for setup metadata, then all gameplay actions went through the real Java bridge command path.
+- Live route-family evidence in the passing report: `play_land`, `cast_spell`, `make_mana`, `activate_ability`, `search_select/choose_card` via XMage `GAME_TARGET` search selection, `choose_target`, `answer_yes_no`, `pay_cost` via `GAME_PLAY_MANA`, `commander_replacement`, `pass_priority`, `stack_object_seen`, `trigger_seen`, `zone_update_seen`, and `commander_tax_seen`.
+- `laterScope` remains non-empty for `mana-rock`, `commander-damage`, `blocker-flow`, and `prompt-variety`; these are not current iOS Commander alpha release blockers unless the alpha scope is expanded.
+- Historical generated reports must be treated as artifacts only; new reports are written under `build_output/smoke/*.json` and ignored by git.
 - Added a dev-only fixture harness route at `POST /dev/xmage-fixtures/commander`, guarded by `ENABLE_XMAGE_FIXTURES=true` and disabled when `NODE_ENV=production`.
-- Fixture smoke can now be invoked with `ENABLE_XMAGE_FIXTURES=true XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage`.
-- Current fixture harness metadata is honest: it reports `directStateSeeded: false` and `fallback: "deterministic_real_xmage_decks"` because the remote bridge cannot call XMage server-side `Game.cheat(...)` yet.
-- June 23 bridge fix: default XMage card-click actions now send source card UUIDs for `play_land`, normal `cast_spell`, and basic `make_mana`; explicit `activate_ability` still sends the selected ability UUID. This is a generic playable-object routing fix, not card-specific logic.
+- Fixture smoke can now be invoked with `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage`.
+- Current fixture harness implementation includes a dev/test-only embedded same-JVM startup path. In fixture mode, `MagicMobileEmbeddedServerBridge` starts `mage.server.Main.main(args)` and gives `MagicMobileBridge` access to the server-side manager factory so the route can seed through XMage-owned `GameController` / `Game.cheat(...)`.
+- June 23 bridge fix: default XMage card-click actions now send source card UUIDs for `play_land`, normal `cast_spell`, and basic `make_mana`; non-mana `activate_ability` carries an explicit activation dispatch hint so targeted activations use ability UUIDs while no-target source-click activations still validate the selected ability id.
 - Performed opening hand keep (`keep_hand`).
 - Played a Forest land card from hand (`play_land`).
 - Tapped land to generate green mana (`make_mana`).
@@ -70,9 +84,11 @@ All performance tests and builds were run locally on macOS.
 - Resolved the mana-payment prompt (`GAME_PLAY_MANA` prompt envelope).
 - Passed priority to the AI (`pass_priority`) and verified AI response execution.
 - Submitted typed combat attacker payloads in the combat fixture.
-- Parsed commander tax and commander damage from real XMage snapshots in the commander-state fixture.
-- Added a legal singleton `commander-gauntlet` smoke scenario that reports completed and blocked gauntlet steps from real XMage state. This is the new alpha milestone gate, but it is not yet a passing release gate because the Java bridge cannot currently seed a deterministic hand/library/battlefield after XMage shuffles.
-- Latest `commander-gauntlet` evidence after the June 23 routing fixes: `source: xmage-java-bridge`, fixture metadata present, `directStateSeeded: false`, normal XMage AI progressed repeatedly, and the smoke proved `play_land`, command-zone cast, `make_mana`, pass priority, and AI continuation. Treat the remaining deterministic fixture coverage as blocked until a real server-side setup hook or equivalent path can seed exact proof cards/zones without faking gameplay.
+- Parsed commander tax from real XMage snapshots in the current gauntlet and commander-state smoke. Commander damage parsing exists and was observed during a later-scope prompt-variety run, but commander damage is not part of the current gauntlet release gate because the targeted commander-state smoke still fails before non-empty `commanderDamageChanges`.
+- Added a legal singleton `commander-gauntlet` smoke scenario that reports completed and blocked gauntlet steps from real XMage state. This is the current alpha milestone gate and passed locally with no `stepsBlocked`.
+- Fixed player-only `GAME_TARGET` prompts so starting-player selection is exposed as `choose_player` and submitted with XMage player UUIDs, not the local actor alias.
+- Fixed `GAME_OVER` prompt snapshots to fail closed by exposing only terminal-safe actions instead of stale playable battlefield actions.
+- iOS simulator tests now pass through XcodeBuildMCP: `MagicMobileTests` ran 4 tests, 0 failures, after enabling generated Info.plist for the test target. This does not count as real phone product success.
 
 ---
 
@@ -95,6 +111,12 @@ Start the localized Docker containers:
 pnpm dev:xmage
 ```
 *(Alternatively, target only the bridge and gateway services: `docker compose up --build xmage-bridge xmage-gateway`)*
+
+For gauntlet fixture coverage, start the targeted stack with fixture mode enabled:
+
+```sh
+ENABLE_XMAGE_FIXTURES=true NODE_ENV=test docker compose up --build xmage-bridge xmage-gateway
+```
 
 ### Step 3: Verify Gateway Health
 Query the gateway health endpoint:
@@ -126,14 +148,22 @@ pnpm smoke:xmage
 - Monorepo package versions are locked at Node 22 and pnpm 10.12.4.
 
 ### Blockers:
-- A real-XMage blocker remains: the current bridge can create and advance real games, but smoke fixtures are not deterministic enough to prove every required Commander route in one run. The app must keep showing AI thinking/stalled honestly, and the release gate should not pass until the bridge/smoke can reliably progress through AI priority and all targeted proof routes.
-- The attempted `arcane-signet` fixture is not a valid release gate yet because XMage correctly rejects repeated nonbasic `Arcane Signet` copies under Commander legality.
-- The full Commander Gauntlet cannot be deterministic from a legal singleton deck alone. The dev-only fixture harness route exists and is production-disabled, but the real Java bridge can only choose decks and submit legal XMage actions today; it cannot currently seed opening hand, library order, battlefield, or turn state. A future in-server real-XMage setup hook is needed before `commander-gauntlet` can reliably prove Sol Ring/payment, fetch/search, commander replacement, recast tax, and commander damage in one run.
+- Normal CI checks are green in this pass.
+- The deterministic real-XMage Commander gauntlet is green for the current alpha route-family gate: `stepsBlocked: []`.
+- Non-fixtured `core-flow` remains diagnostic only because legal-deck draw/order is nondeterministic.
+- `mana-rock`, `commander-damage`, `blocker-flow`, and `prompt-variety` are still `laterScope` in the latest gauntlet report. A separate `blocker-flow` smoke passed with `declare_attackers` evidence, but it did not prove a real blocker assignment. Do not claim later-scope routes as alpha-proven unless fresh reports move them into the required gate and prove them with real XMage.
+- Prompt-variety is not green until real XMage proof covers `stack_object_seen`, `activate_ability`, `choose_ability`, `choose_mode`, `order_triggers/order_items`, `choose_amount`, `choose_multi_amount`, and `choose_pile`.
 
 ### Remaining TODOs / Gaps:
 1. **Viewer-scoped Snapshots**: Multiplayer human pods need snapshot filtering so opponents cannot inspect other players' libraries or hands.
 2. **Advanced UI Prompts**: Render and handle reordering triggers/items, mode/ability/pile/amount choices, commander replacement, and blockers directly in UI components.
 3. **Card Art fallback**: Handle missing image urls smoothly without throwing render errors.
-4. **Casting/payment manual QA**: The live smoke proves land, mana, spell, and prompt flow, but iPhone/web still need manual regression coverage for the two-lands-into-`Arcane Signet` case documented in [CASTING_AND_MANA_FLOW.md](file:///Users/calebfeliciano/Documents/MagicMobile/docs/CASTING_AND_MANA_FLOW.md).
+4. **Casting/payment manual QA**: The live gauntlet proves land, mana, spell, search, commander replacement, and payment prompt flow, but iPhone/web still need manual regression coverage for the two-lands-into-`Arcane Signet` case documented in [CASTING_AND_MANA_FLOW.md](CASTING_AND_MANA_FLOW.md).
 5. **Long AI endurance**: Some runs still expose AI waiting/stall behavior, especially with weaker fixture AI or awkward fixture decks. The app must continue surfacing AI thinking/stalled states honestly while targeted fixtures keep the core loop deterministic.
-6. **Commander Gauntlet setup**: Add a disabled-by-default, smoke-only real-XMage setup path or another upstream-supported deterministic setup method so the legal singleton fixture can reliably start with Sol Ring, Evolving Wilds, Swords to Plowshares, and Spirited Companion available for the full acceptance loop.
+6. **Later-scope fixture expansion**: Add targeted deterministic scenarios for mana-rock activation, commander damage, blocker assignment, and prompt-variety once those are explicitly in alpha scope.
+
+### Exact blockers before iPhone alpha:
+1. Run the full validation set on the final checkout after doc updates.
+2. Perform real iPhone manual QA against the same fixture-ready gateway; simulator success still does not count.
+3. Confirm the iOS `/play` experience surfaces source, bridge health, revision/cycle, priority, pending status, unsupported prompts, and failed commands without falling back to simulator.
+4. Decide whether `mana-rock`, `commander-damage`, `blocker-flow`, or `prompt-variety` must move from `laterScope` into the iPhone alpha gate. If yes, add targeted real-XMage fixture proof before marking alpha ready.

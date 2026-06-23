@@ -22,4 +22,4 @@ This document outlines the architectural patterns used by the Forge mobile/deskt
 
 ### 4. Deterministic Test Fixtures
 * **Forge Pattern**: Forge uses scripted test games to walk complex card interactions deterministically.
-* **MagicMobile Alignment**: Our gateway test suite (`server.test.mjs`) and live smoke script (`smoke-create-commander-game.ts`) automate full games through setup, mulligan, land, mana, and casting sequences to regression test prompt matching and cycle progressions.
+* **MagicMobile Alignment**: Our gateway test suite (`server.test.mjs`) covers deterministic bridge/source behavior, and the live smoke script (`smoke-create-commander-game.ts`) attempts real XMage games through setup, mulligan, land, mana, and casting sequences. The live script is evidence only when it reports `source: "xmage-java-bridge"`; simulator-only runs and generated JSON reports are not committed release proof.

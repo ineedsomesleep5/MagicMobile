@@ -1,0 +1,74 @@
+name: XMage Smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  real-xmage-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build bridge image
+        run: docker build -t magicmobile-xmage-bridge-check apps/xmage-gateway/bridge
+
+      - name: Start XMage bridge and gateway
+        run: ENABLE_XMAGE_FIXTURES=true NODE_ENV=test docker compose up -d --build xmage-bridge xmage-gateway
+
+      - name: Wait for gateway health
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://localhost:17171/health | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"'; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose logs xmage-bridge xmage-gateway
+          exit 1
+
+      - name: Core real XMage smoke diagnostic
+        continue-on-error: true
+        run: XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage
+
+      - name: Blocker-flow real XMage smoke diagnostic
+        continue-on-error: true
+        run: XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage:combat
+
+      - name: Commander-state real XMage smoke diagnostic
+        continue-on-error: true
+        run: XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage:commander-state
+
+      - name: Commander gauntlet real XMage smoke gate
+        run: XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage:gauntlet
+
+      - name: Upload smoke reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xmage-smoke-reports
+          path: build_output/smoke/*.json
+          if-no-files-found: warn
+
+      - name: Show service logs on failure
+        if: failure()
+        run: docker compose logs xmage-bridge xmage-gateway
+
+      - name: Stop services
+        if: always()
+        run: docker compose down --remove-orphans

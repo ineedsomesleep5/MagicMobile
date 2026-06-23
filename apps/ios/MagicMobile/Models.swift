@@ -100,6 +100,7 @@ struct AiPlayerConfig: Encodable {
 
 struct GameSnapshot: Decodable {
     let id: String
+    let source: String?
     let activePlayerId: String?
     let phase: String
     let step: String?

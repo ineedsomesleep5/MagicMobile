@@ -932,7 +932,7 @@ function ArenaCardButton({
       type="button"
       aria-label={`${card.name} card`}
     >
-      {card.imageUrl ? <img alt="" draggable={false} src={card.imageUrl} /> : <span className="battle-card-fallback">{card.name}</span>}
+      <CardArtFallback imageUrl={card.imageUrl} name={card.name} typeLine={card.typeLine} />
       {card.quantity > 1 ? <span className="battle-card-quantity">x{card.quantity}</span> : null}
       {card.power !== undefined && card.toughness !== undefined ? (
         <span className="battle-card-stat">{card.power}/{card.toughness}</span>
@@ -952,11 +952,36 @@ function CardInspector({ card, pinned }: { card: BattlefieldCardView; pinned: bo
   return (
     <aside className={pinned ? "arena-card-inspector is-pinned" : "arena-card-inspector"} aria-label="Card inspector">
       <span>Card inspector</span>
-      {card.imageUrl ? <img alt="" src={card.imageUrl} /> : <div className="arena-card-inspector-fallback">{card.name}</div>}
+      <CardArtFallback imageUrl={card.imageUrl} name={card.name} typeLine={card.typeLine} inspector />
       <strong>{card.name}</strong>
       <small>{card.manaCost ? `${card.manaCost} · ` : ""}{card.typeLine}</small>
       {card.oracleText ? <p>{card.oracleText}</p> : null}
     </aside>
+  );
+}
+
+function CardArtFallback({
+  imageUrl,
+  inspector = false,
+  name,
+  typeLine
+}: {
+  imageUrl?: string | undefined;
+  inspector?: boolean;
+  name: string;
+  typeLine: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (imageUrl && !failed) {
+    return <img alt="" draggable={false} onError={() => setFailed(true)} src={imageUrl} />;
+  }
+
+  const className = inspector ? "arena-card-inspector-fallback" : "battle-card-fallback";
+  return (
+    <span className={className}>
+      <strong>{name}</strong>
+      <small>{typeLine}</small>
+    </span>
   );
 }
 
@@ -1114,10 +1139,14 @@ export function narrowPromptAction(action: LegalAction, type: LegalAction["type"
     case "choose_amount":
     case "play_x_mana":
       return { ...narrowed, amount: Number(choiceId), targetIds: [choiceId] };
-    case "play_mana":
-      return { ...narrowed, manaType: promptManaType(choiceId) };
-    case "choose_mana":
-      return { ...narrowed, manaTypes: [promptManaType(choiceId)] };
+    case "play_mana": {
+      const manaType = promptManaType(choiceId);
+      return manaType ? { ...narrowed, manaType } : narrowed;
+    }
+    case "choose_mana": {
+      const manaType = promptManaType(choiceId);
+      return manaType ? { ...narrowed, manaTypes: [manaType] } : narrowed;
+    }
     case "answer_yes_no":
       return { ...narrowed, confirmed: choiceId !== "false", targetIds: [choiceId] };
     case "pay_cost":
@@ -1153,10 +1182,14 @@ export function narrowCommandTemplate(command: LegalAction["commandTemplate"], t
     case "choose_amount":
     case "play_x_mana":
       return { ...narrowed, amount: Number(choiceId) };
-    case "play_mana":
-      return { ...narrowed, manaType: promptManaType(choiceId) };
-    case "choose_mana":
-      return { ...narrowed, manaTypes: [promptManaType(choiceId)] };
+    case "play_mana": {
+      const manaType = promptManaType(choiceId);
+      return manaType ? { ...narrowed, manaType } : narrowed;
+    }
+    case "choose_mana": {
+      const manaType = promptManaType(choiceId);
+      return manaType ? { ...narrowed, manaTypes: [manaType] } : narrowed;
+    }
     case "answer_yes_no":
       return { ...narrowed, confirmed: choiceId !== "false" };
     case "pay_cost":
@@ -1173,8 +1206,8 @@ export function narrowCommandTemplate(command: LegalAction["commandTemplate"], t
   }
 }
 
-function promptManaType(value: string): "W" | "U" | "B" | "R" | "G" | "C" {
-  return value === "W" || value === "U" || value === "B" || value === "R" || value === "G" || value === "C" ? value : "C";
+function promptManaType(value: string): "W" | "U" | "B" | "R" | "G" | "C" | undefined {
+  return value === "W" || value === "U" || value === "B" || value === "R" || value === "G" || value === "C" ? value : undefined;
 }
 
 function formatPromptMethod(method: string): string {

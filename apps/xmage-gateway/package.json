@@ -9,7 +9,13 @@
     "build": "node --check ./server.mjs",
     "test": "node --test ./server.test.mjs",
     "lint": "node --check ./server.mjs && node --check ./server.test.mjs",
-    "typecheck": "node --check ./server.mjs && node --check ./server.test.mjs"
+    "typecheck": "node --check ./server.mjs && node --check ./server.test.mjs",
+    "smoke:xmage": "vite-node ./scripts/smoke-create-commander-game.ts",
+    "smoke:xmage:gauntlet": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
+    "smoke:xmage:fixture-smoke": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=fixture-smoke XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
+    "smoke:xmage:core": "XMAGE_SMOKE_SCENARIO=core-flow pnpm smoke:xmage",
+    "smoke:xmage:combat": "XMAGE_SMOKE_SCENARIO=blocker-flow pnpm smoke:xmage",
+    "smoke:xmage:commander-state": "XMAGE_SMOKE_SCENARIO=commander-replacement-tax pnpm smoke:xmage"
   },
   "dependencies": {
     "ws": "^8.21.0"

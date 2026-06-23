@@ -4,22 +4,94 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const endpoint = (process.env.XMAGE_GATEWAY_URL ?? "http://localhost:17171").replace(/\/$/, "");
-const reportDirectory = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const reportDirectory = path.join(workspaceRoot, "build_output", "smoke");
 const latestReportPath = path.join(reportDirectory, "smoke-report.json");
 const seed = process.env.XMAGE_SMOKE_SEED ?? "bridge-smoke";
 const humanPlayerId = process.env.XMAGE_SMOKE_HUMAN_ID ?? "human";
 const aiPlayerId = process.env.XMAGE_SMOKE_AI_ID ?? "ai-1";
-const scenario = process.env.XMAGE_SMOKE_SCENARIO ?? "general";
-const arcaneSignetScenario = scenario === "arcane-signet";
-const alphaGameScenario = scenario === "alpha-game";
+const requestedScenario = process.env.XMAGE_SMOKE_SCENARIO ?? "core-flow";
+const scenarioModule = scenarioModuleFor(requestedScenario);
+const scenario = scenarioModule.id;
+const arcaneSignetScenario = scenario === "mana-rock";
+const alphaGameScenario = scenario === "core-flow";
 const commanderGauntletScenario = scenario === "commander-gauntlet";
-const fixtureScenario = scenario === "combat" || scenario === "commander-state" || arcaneSignetScenario || commanderGauntletScenario;
+const activatedAbilityScenario = scenario === "activated-ability-stack";
+const triggeredAbilityScenario = scenario === "triggered-ability-stack";
+const fixtureScenario = scenarioModule.usesFixture;
 const useFixtureHarness = process.env.XMAGE_USE_FIXTURE === "true";
+const fixtureCallRequired = commanderGauntletScenario || activatedAbilityScenario || triggeredAbilityScenario;
+const fixtureGateRequired = useFixtureHarness || fixtureCallRequired;
 const aiDifficulty = process.env.XMAGE_SMOKE_AI_DIFFICULTY ?? "normal";
+const routeFamiliesRequired = routeFamiliesRequiredForScenario(scenario);
+const routeFamiliesSeen = new Set<string>();
+let directStateSeeded = false;
+let seededStateVerified = false;
+let lastBridgeRevision: number | undefined;
+let lastXmageCycle: number | undefined;
+let health: any = null;
+
+if (process.env.XMAGE_SMOKE_SELFTEST === "fixture-unavailable") {
+  const selfTestReport = fixtureUnavailableReport({
+    enabled: true,
+    fixtureName: "commander-gauntlet",
+    schemaVersion: 1,
+    directStateSeeded: false,
+    reason: "self-test deterministic fixture unavailable",
+    productionDisabled: true,
+    expectedRouteCoverage: commanderGauntletRouteFamiliesRequired()
+  });
+  writeSmokeReport(selfTestReport);
+  console.log(JSON.stringify(selfTestReport, null, 2));
+  console.error("[Smoke] deterministic fixture unavailable self-test");
+  process.exit(1);
+}
+
+if (fixtureCallRequired && !useFixtureHarness) {
+  const report = fixtureUnavailableReport({
+    enabled: false,
+    fixtureName: scenario,
+    schemaVersion: 1,
+    directStateSeeded: false,
+    reason: `${scenario} requires the deterministic /dev/xmage-fixtures/commander setup route; run with XMAGE_USE_FIXTURE=true.`,
+    productionDisabled: true,
+    expectedRouteCoverage: routeFamiliesRequired
+  });
+  const blockedReport = {
+    ...report,
+    failedStep: "fixture-call-required",
+    failureReason: `${scenario} must call the deterministic fixture route before submitting bridge commands.`
+  };
+  writeSmokeReport(blockedReport);
+  console.log(JSON.stringify(blockedReport, null, 2));
+  throw new Error(`[Smoke] ${scenario} requires XMAGE_USE_FIXTURE=true so setup uses the deterministic fixture route.`);
+}
+
+const fixtureEnvFailure = fixtureGateRequired ? fixtureEnvCheck() : null;
+if (fixtureEnvFailure) {
+  const report = fixtureUnavailableReport({
+    enabled: true,
+    fixtureName: scenario,
+    schemaVersion: 1,
+    directStateSeeded: false,
+    reason: fixtureEnvFailure,
+    productionDisabled: true,
+    setupMethod: "fixture_env_check_failed",
+    expectedRoutes: routeFamiliesRequired,
+    expectedRouteCoverage: routeFamiliesRequired
+  });
+  writeSmokeReport(report);
+  console.log(JSON.stringify(report, null, 2));
+  throw new Error(`[Smoke] deterministic fixture unavailable: ${fixtureEnvFailure}`);
+}
 
 const human = fixtureScenario
   ? commanderGauntletScenario
     ? commanderGauntletHumanDeck()
+    : activatedAbilityScenario
+    ? activatedAbilityFixtureDeck()
+    : triggeredAbilityScenario
+    ? triggeredAbilityFixtureDeck()
     : arcaneSignetScenario
     ? arcaneSignetFixtureDeck()
     : commanderFixtureDeck("Isamaru, Hound of Konda", "Plains")
@@ -29,33 +101,49 @@ const ai = fixtureScenario
     ? commanderGauntletAiDeck()
     : commanderFixtureDeck("Kozilek, Butcher of Truth", "Wastes")
   : generateBracketThreeCommanderDeck({ seed: `${seed}:ai`, playerId: aiPlayerId }).deck;
+const fixtureSeed = fixtureGateRequired ? fixtureSeedSchema() : null;
 
-const health = await request("/health");
+health = await request("/health");
 if (health.status !== "ready") {
   throw new Error(`XMage smoke requires ready health, received: ${JSON.stringify(health)}`);
 }
-const createPath = useFixtureHarness ? "/dev/xmage-fixtures/commander" : "/games/commander";
+const createPath = fixtureGateRequired ? "/dev/xmage-fixtures/commander" : "/games/commander";
 const created = await request(createPath, {
   method: "POST",
   body: {
     scenario,
+    scenarioName: scenario,
     seed,
     roomId: `smoke-${seed}`,
     humanPlayerId,
     humanDeck: human,
     aiPlayers: [{ playerId: aiPlayerId, displayName: "Noaddrag", difficulty: aiDifficulty, deck: ai }],
     startingLife: 40,
-    commanderDamageEnabled: true
+    commanderDamageEnabled: true,
+    ...(fixtureSeed ?? {})
   }
 });
 
 let snapshot = created;
 assertBridgeSnapshot(snapshot, "created game");
 const activeFixtureHarness = snapshot.fixtureHarness ?? null;
-if (useFixtureHarness && !activeFixtureHarness?.enabled) {
+directStateSeeded = activeFixtureHarness?.directStateSeeded === true;
+seededStateVerified = verifySeededStateFromSnapshot(snapshot);
+if (fixtureGateRequired && !activeFixtureHarness?.enabled) {
   throw new Error(
     "[Smoke] XMAGE_USE_FIXTURE=true but gateway did not return fixtureHarness metadata.\n"
       + smokeDebug("fixture harness startup snapshot", snapshot)
+  );
+}
+if (fixtureGateRequired && (!directStateSeeded || !seededStateVerified)) {
+  const report = fixtureUnavailableReport(activeFixtureHarness, snapshot);
+  writeSmokeReport(report);
+  console.log(JSON.stringify(report, null, 2));
+  throw new Error(
+    "[Smoke] fixture smoke requires deterministic real-XMage fixture seeding, "
+      + `but fixtureHarness.directStateSeeded=${String(activeFixtureHarness?.directStateSeeded)} `
+      + `and seededStateVerified=${String(seededStateVerified)}.\n`
+      + smokeDebug("deterministic fixture unavailable", snapshot)
   );
 }
 
@@ -100,7 +188,7 @@ if (activeFixtureHarness) {
   );
 }
 
-const maxTurns = commanderGauntletScenario ? 16 : alphaGameScenario ? 13 : fixtureScenario ? 12 : 9; // Alpha-game observes 12 full turns.
+const maxTurns = commanderGauntletScenario ? 16 : alphaGameScenario ? 13 : fixtureScenario ? 12 : 9; // Core flow observes 12 full turns.
 const maxStepsCount = commanderGauntletScenario ? 900 : alphaGameScenario ? 900 : fixtureScenario ? 420 : 300; // Safeguard against infinite loops.
 let stepCount = 0;
 
@@ -139,11 +227,14 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
       // Fallback: wait a bit and refresh
       await new Promise(resolve => setTimeout(resolve, 1000));
       snapshot = await request(`/games/${encodeURIComponent(snapshot.id)}`);
+      assertBridgeSnapshot(snapshot, "refresh after no best action");
       continue;
     }
 
     console.error(`[Smoke] Turn ${snapshot.turn} (${snapshot.phase} - ${snapshot.step}): Executing human action: ${action.type} (label: ${action.label ?? "none"})`);
     actionsByType[action.type] = (actionsByType[action.type] ?? 0) + 1;
+    markRouteFamily(action.type);
+    recordRouteFamilyForAction(action);
     
     // Check if combat is exercised
     if (action.type === "declare_attackers" || action.type === "declare_blockers") {
@@ -162,17 +253,22 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
       if (!promptChecks.includes(pKey)) {
         promptChecks.push(pKey);
       }
+      recordRouteFamilyForPrompt(snapshot);
       if (commanderGauntletScenario) {
         gauntletPromptFamilies.add(pKey);
       }
     }
 
     const previous = snapshot;
+    assertLegalActionBeforeSubmit(snapshot, action);
+    const command = commandFromAction(snapshot.id, action, snapshot);
+    assertCommandUsesLegalAction(action, command);
     snapshot = await request(`/games/${encodeURIComponent(snapshot.id)}/commands`, {
       method: "POST",
-      body: commandFromAction(snapshot.id, action, snapshot)
+      body: command
     });
     if (snapshot.staleActionRecovered) {
+      assertBridgeSnapshot(snapshot, `stale action recovery: ${action.type}`);
       delete snapshot.staleActionRecovered;
       staleActionRecoveries++;
       console.error(`[Smoke] Refreshed after stale ${action.type}; choosing next live action.`);
@@ -183,18 +279,21 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
       ? "play land"
       : action.type === "make_mana"
         ? "make mana"
-        : action.type === "cast_spell"
-          ? "cast simple spell"
-          : action.type === "declare_attackers" || action.type === "declare_blockers"
-            ? "combat"
-          : action.type === "pass_priority" || action.type === "pass_until_response" || action.type === "pass_until_next_turn"
-            ? "pass priority"
-            : "resolve prompt";
+        : action.type === "activate_ability"
+          ? "activate ability"
+          : action.type === "cast_spell"
+            ? "cast simple spell"
+            : action.type === "declare_attackers" || action.type === "declare_blockers"
+              ? "combat"
+              : action.type === "pass_priority" || action.type === "pass_until_response" || action.type === "pass_until_next_turn"
+                ? "pass priority"
+                : "resolve prompt";
             
     snapshot = await waitForSemanticProgress(previous, snapshot, semanticLabel);
     assertBridgeSnapshot(snapshot, `action: ${action.type}`);
     assertBridgeProgress(previous, snapshot, `action: ${action.type}`);
     assertSemanticProgress(previous, snapshot, semanticLabel);
+    recordRouteFamilyForTransition(previous, snapshot);
     recordCommanderState(snapshot);
     recordCoverage(snapshot);
     recordGauntletSnapshot(snapshot);
@@ -211,6 +310,7 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
       // General wait and refresh
       await new Promise(resolve => setTimeout(resolve, 1000));
       snapshot = await request(`/games/${encodeURIComponent(snapshot.id)}`);
+      assertBridgeSnapshot(snapshot, "general refresh");
       recordCoverage(snapshot);
       recordGauntletSnapshot(snapshot);
     }
@@ -220,14 +320,14 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
 recordCommanderState(snapshot);
 recordCoverage(snapshot);
 
-if (scenario === "combat" && !combatExercised) {
+if (scenario === "blocker-flow" && !combatExercised) {
   throw new Error(
     "[Smoke] combat scenario did not exercise real declare_attackers/declare_blockers actions.\n"
       + smokeDebug("combat scenario final snapshot", snapshot)
   );
 }
 
-if (scenario === "commander-state") {
+if (scenario === "commander-replacement-tax" || scenario === "commander-damage") {
   if (commanderTaxChanges.length === 0) {
     throw new Error(
       "[Smoke] commander-state scenario did not observe commander tax from XMage rules text.\n"
@@ -242,7 +342,7 @@ if (scenario === "commander-state") {
   }
 }
 
-if (scenario === "arcane-signet") {
+if (scenario === "mana-rock") {
   if (!arcaneCastSeen) {
     throw new Error(
       "[Smoke] arcane-signet scenario did not cast Arcane Signet from an XMage legal action.\n"
@@ -263,7 +363,7 @@ if (scenario === "arcane-signet") {
   }
 }
 
-if (scenario === "alpha-game") {
+if (scenario === "core-flow") {
   const alphaFailures = [
     turnsObserved.size >= 12 ? "" : `observed ${turnsObserved.size}/12 turns`,
     actionsByType.keep_hand || actionsByType.mulligan ? "" : "opening-hand decision missing",
@@ -275,6 +375,11 @@ if (scenario === "alpha-game") {
     combatStepSeen ? "" : "combat step not observed"
   ].filter(Boolean);
   if (alphaFailures.length > 0) {
+    writeSmokeReport({
+      ...baseSummaryReport(snapshot),
+      failedStep: "core-flow",
+      failureReason: alphaFailures.join(", ")
+    });
     throw new Error(
       `[Smoke] alpha-game scenario did not satisfy real-game coverage: ${alphaFailures.join(", ")}.\n`
         + smokeDebug("alpha-game final snapshot", snapshot)
@@ -297,6 +402,21 @@ if (scenario === "commander-gauntlet") {
   }
 }
 
+if (activatedAbilityScenario || triggeredAbilityScenario) {
+  const missing = missingRouteFamilies();
+  if (missing.length > 0) {
+    writeSmokeReport({
+      ...baseSummaryReport(snapshot),
+      failedStep: scenario,
+      failureReason: `Missing required route families: ${missing.join(", ")}`
+    });
+    throw new Error(
+      `[Smoke] ${scenario} did not complete required real-XMage route families: ${missing.join(", ")}.\n`
+        + smokeDebug(`${scenario} final snapshot`, snapshot)
+    );
+  }
+}
+
 if (stepCount >= maxStepsCount) {
   throw new Error(
     `[Smoke] hit maximum loop safeguards (${maxStepsCount} steps).\n`
@@ -315,7 +435,11 @@ writeSmokeReport(summaryReport);
 console.log(JSON.stringify(summaryReport, null, 2));
 
 function writeSmokeReport(report: unknown) {
-  const scenarioReportPath = path.join(reportDirectory, `smoke-report-${scenario}.json`);
+  const reportScenario = typeof report === "object" && report !== null && "scenario" in report
+    ? String((report as { scenario?: unknown }).scenario ?? scenario)
+    : scenario;
+  const scenarioReportPath = path.join(reportDirectory, `smoke-report-${reportScenario}.json`);
+  fs.mkdirSync(reportDirectory, { recursive: true });
   fs.writeFileSync(latestReportPath, JSON.stringify(report, null, 2), "utf8");
   fs.writeFileSync(scenarioReportPath, JSON.stringify(report, null, 2), "utf8");
   console.error(`[Smoke] Report saved to ${latestReportPath}`);
@@ -323,10 +447,28 @@ function writeSmokeReport(report: unknown) {
 }
 
 function baseSummaryReport(snapshot: SmokeSnapshot) {
+  const stepsCompleted = completedScenarioSteps();
+  const stepsBlocked = blockedScenarioSteps(stepsCompleted);
+  const promptFamiliesSeen = Array.from(new Set([...promptChecks, ...gauntletPromptFamilies])).sort();
   return {
     endpoint,
     scenario,
+    scenarioSet: scenarioModule.scenarioSet,
+    objective: commanderGauntletScenario
+      ? {
+          fixtureCallRequired,
+          directStateSeededRequired: true,
+          seededStateVerifiedRequired: true,
+          realCommanderGameRequired: true,
+          postSetupCommandPath: "bridge-command-endpoints-only"
+        }
+      : undefined,
     fixtureRequested: useFixtureHarness,
+    fixtureCallRequired,
+    fixtureCallUsed: createPath === "/dev/xmage-fixtures/commander",
+    realCommanderGame: isRealCommanderSnapshot(snapshot),
+    directStateSeeded,
+    seededStateVerified,
     fixtureHarness: activeFixtureHarness,
     health,
     gameId: snapshot.id,
@@ -338,7 +480,14 @@ function baseSummaryReport(snapshot: SmokeSnapshot) {
     turn: snapshot.turn,
     promptText: snapshot.promptText,
     promptChecks,
+    promptFamiliesSeen,
+    routeFamiliesRequired,
+    routeFamiliesSeen: sortedRouteFamiliesSeen(),
+    routeFamiliesMissing: missingRouteFamilies(),
     completed,
+    stepsCompleted,
+    stepsBlocked,
+    laterScope: laterScopeSteps(stepsCompleted),
     turnsObserved: Array.from(turnsObserved).sort((a, b) => a - b),
     actionsByType,
     staleActionRecoveries,
@@ -350,13 +499,6 @@ function baseSummaryReport(snapshot: SmokeSnapshot) {
       castSeen: arcaneCastSeen,
       paymentSourceSeen: arcanePaymentSourceSeen,
       resolvedSeen: arcaneResolvedSeen
-    },
-    commanderGauntlet: {
-      stepsCompleted: Object.entries(gauntlet)
-        .filter(([, done]) => done)
-        .map(([step]) => step),
-      stepsBlocked: commanderGauntletMissingSteps(),
-      promptFamiliesSeen: Array.from(gauntletPromptFamilies).sort()
     },
     commanderTaxChanges,
     commanderDamageChanges,
@@ -374,6 +516,400 @@ function baseSummaryReport(snapshot: SmokeSnapshot) {
   };
 }
 
+function fixtureUnavailableReport(fixtureHarness: SmokeSnapshot["fixtureHarness"], snapshot?: SmokeSnapshot) {
+  const promptFamiliesSeen = safeReportValue(() => Array.from(new Set([...promptChecks, ...gauntletPromptFamilies])).sort(), []);
+  const stepsCompleted = safeReportValue(() => completedScenarioSteps(), []);
+  const reportScenario = fixtureHarness?.fixtureName ?? scenario;
+  const reportModule = scenarioModuleFor(reportScenario);
+  const requiredRouteFamilies = routeFamiliesRequiredForScenario(reportScenario);
+  const routeFamilies = safeReportValue(() => sortedRouteFamiliesSeen(), []);
+  const routeMissing = safeReportValue(
+    () => requiredRouteFamilies.filter((family) => !routeFamilySeen(family)),
+    requiredRouteFamilies
+  );
+  return {
+    endpoint,
+    scenario: reportScenario,
+    scenarioSet: reportModule.scenarioSet,
+    objective: {
+      fixtureCallRequired: true,
+      directStateSeededRequired: true,
+      seededStateVerifiedRequired: true,
+      realCommanderGameRequired: true,
+      postSetupCommandPath: "bridge-command-endpoints-only"
+    },
+    fixtureRequested: true,
+    fixtureCallRequired: true,
+    fixtureCallUsed: useFixtureHarness,
+    realCommanderGame: snapshot ? isRealCommanderSnapshot(snapshot) : false,
+    directStateSeeded: safeReportValue(() => directStateSeeded, false),
+    seededStateVerified: safeReportValue(() => seededStateVerified, false),
+    fixtureHarness,
+    health,
+    gameId: snapshot?.id ?? null,
+    source: snapshot?.source ?? "xmage-java-bridge",
+    bridgeRevision: snapshot?.bridgeRevision ?? null,
+    xmageCycle: snapshot?.xmageCycle ?? null,
+    phase: snapshot?.phase ?? null,
+    step: snapshot?.step ?? null,
+    turn: snapshot?.turn ?? null,
+    promptFamiliesSeen,
+    routeFamiliesRequired: requiredRouteFamilies,
+    routeFamiliesSeen: routeFamilies,
+    routeFamiliesMissing: routeMissing,
+    actionsByType: safeReportValue(() => actionsByType, {}),
+    commanderTaxChanges: safeReportValue(() => commanderTaxChanges, []),
+    commanderDamageChanges: safeReportValue(() => commanderDamageChanges, []),
+    stackSeen: safeReportValue(() => stackSeen, false),
+    combatStepSeen: safeReportValue(() => combatStepSeen, false),
+    combatExercised: safeReportValue(() => combatExercised, false),
+    stepsCompleted,
+    stepsBlocked: [
+      ...(safeReportValue(() => useFixtureHarness, false) ? [] : ["fixture_call"]),
+      ...(safeReportValue(() => directStateSeeded, false) ? [] : ["direct_state_seeded"]),
+      ...(safeReportValue(() => seededStateVerified, false) ? [] : ["seeded_state_verified"]),
+      ...routeMissing.map((family) => `route_family:${family}`)
+    ],
+    laterScope: reportModule.scenarioSet
+      .filter((step) => step !== "core-flow" && step !== "commander-gauntlet")
+      .filter((step) => !reportModule.requiredSteps.includes(step))
+      .filter((step) => !stepsCompleted.includes(step)),
+    staleActionRecoveries: safeReportValue(() => staleActionRecoveries, 0),
+    failedStep: "deterministic-fixture-unavailable",
+    failureReason: fixtureHarness?.reason
+      ?? `XMage fixture harness did not seed deterministic state; release gate cannot prove ${reportScenario} routes.`
+  };
+}
+
+function safeReportValue<T>(factory: () => T, fallback: T) {
+  try {
+    return factory();
+  } catch {
+    return fallback;
+  }
+}
+
+function fixtureEnvCheck() {
+  if (process.env.ENABLE_XMAGE_FIXTURES !== "true") {
+    return "Fixture smoke requires ENABLE_XMAGE_FIXTURES=true so /dev/xmage-fixtures/commander is explicitly enabled.";
+  }
+  if (!process.env.NODE_ENV) {
+    return "Fixture smoke requires NODE_ENV to be set to a non-production value.";
+  }
+  if (process.env.NODE_ENV === "production") {
+    return "Fixture smoke is disabled when NODE_ENV=production.";
+  }
+  return null;
+}
+
+function fixtureSeedSchema() {
+  const commander = commanderGauntletScenario ? "Isamaru, Hound of Konda" : human.commander.cardName;
+  const basic = commanderGauntletScenario ? "Plains" : "Plains";
+  const expectedRoutes = routeFamiliesRequired.length > 0 ? routeFamiliesRequired : scenarioModule.requiredSteps;
+  const hand = commanderGauntletScenario
+    ? ["Sol Ring", "Arcane Signet", "Terramorphic Expanse", "Swords to Plowshares", "Spirited Companion", "Plains", "Plains"]
+    : triggeredAbilityScenario
+    ? ["Spirited Companion", "Plains"]
+    : [basic];
+  const libraryTop = commanderGauntletScenario ? Array.from({ length: 24 }, () => "Plains") : [basic];
+  const battlefield = activatedAbilityScenario
+    ? ["Loran of the Third Path", basic]
+    : triggeredAbilityScenario
+    ? [basic, basic]
+    : [basic];
+  const commandZone = activatedAbilityScenario ? [] : [commander];
+  return {
+    gameId: `fixture-${scenario}-${seed}`,
+    commander,
+    hand,
+    battlefield,
+    commandZone,
+    libraryTop,
+    graveyard: [],
+    exile: [],
+    aiBattlefield: [commanderGauntletScenario ? "Plains" : "Wastes"],
+    phase: "precombat-main",
+    step: "precombat-main",
+    activePlayerId: humanPlayerId,
+    priorityPlayerId: humanPlayerId,
+    expectedRoutes,
+    expectedRouteCoverage: expectedRoutes
+  };
+}
+
+function verifySeededStateFromSnapshot(snapshot: SmokeSnapshot) {
+  if (!fixtureSeed || !isRealCommanderSnapshot(snapshot)) return false;
+  if (snapshot.phase !== fixtureSeed.phase || snapshot.step !== fixtureSeed.step) return false;
+  if (snapshot.activePlayerId !== fixtureSeed.activePlayerId || snapshot.priorityPlayerId !== fixtureSeed.priorityPlayerId) return false;
+
+  const human = humanPlayer(snapshot);
+  const ai = snapshot.players?.find((player) => player.playerId === aiPlayerId);
+  if (!human || !ai) return false;
+
+  const libraryNames = zoneNames(human, "library");
+  const libraryTopVisible = fixtureSeed.libraryTop.every((cardName, index) => libraryNames[index] === cardName);
+  const libraryTopHidden = libraryNames.length >= fixtureSeed.libraryTop.length
+    && libraryNames.slice(0, fixtureSeed.libraryTop.length).every((cardName) => /hidden/i.test(cardName));
+
+  return containsAll(zoneNames(human, "hand"), fixtureSeed.hand)
+    && containsAll(zoneNames(human, "battlefield"), fixtureSeed.battlefield)
+    && containsAll(zoneNames(human, "command"), fixtureSeed.commandZone)
+    && containsAll(zoneNames(human, "graveyard"), fixtureSeed.graveyard)
+    && containsAll(zoneNames(human, "exile"), fixtureSeed.exile)
+    && (libraryTopVisible || libraryTopHidden)
+    && containsAll(zoneNames(ai, "battlefield"), fixtureSeed.aiBattlefield);
+}
+
+function isRealCommanderSnapshot(snapshot: SmokeSnapshot) {
+  return snapshot.source === "xmage-java-bridge"
+    && typeof snapshot.bridgeRevision === "number"
+    && !/simulator/i.test(snapshot.source ?? "")
+    && Boolean(snapshot.players?.some((player) => player.playerId === humanPlayerId))
+    && Boolean(snapshot.players?.some((player) => player.playerId === aiPlayerId));
+}
+
+function zoneNames(player: SmokePlayer, zone: string) {
+  return (player.zones?.[zone] ?? []).map((entry) => entry.card?.name).filter((name): name is string => Boolean(name));
+}
+
+function containsAll(actual: string[], expected: string[]) {
+  return expected.every((cardName) => actual.includes(cardName));
+}
+
+function completedScenarioSteps() {
+  const steps = new Set<string>();
+  if (actionsByType.keep_hand || actionsByType.mulligan) steps.add("opening-hand-decision");
+  if (actionsByType.play_land) steps.add("play-land");
+  if (actionsByType.make_mana) steps.add("make-mana");
+  if (actionsByType.cast_spell) steps.add("cast-spell");
+  if (actionsByType.pass_priority || actionsByType.pass_until_response || actionsByType.pass_until_next_turn || actionsByType.advance_phase) {
+    steps.add("pass-priority");
+  }
+  if (aiWaits > 0) steps.add("ai-progress");
+  if (combatStepSeen) steps.add("combat-step-seen");
+  if (stackSeen) steps.add("stack-seen");
+  if (combatExercised) steps.add("combat-exercised");
+  if (arcaneCastSeen && arcanePaymentSourceSeen && arcaneResolvedSeen) steps.add("mana-rock");
+  if (gauntlet.searchResolved || actionsByType.search_select) steps.add("search-select");
+  if (gauntlet.commanderReplacementAnswered || commanderTaxChanges.length > 0) steps.add("commander-replacement-tax");
+  if (commanderDamageChanges.length > 0) steps.add("commander-damage");
+  if (actionsByType.declare_blockers) steps.add("blocker-flow");
+  if (promptVarietyRouteFamiliesSatisfied()) steps.add("prompt-variety");
+  for (const family of sortedRouteFamiliesSeen()) {
+    steps.add(`route-family:${family}`);
+  }
+  for (const [step, done] of Object.entries(gauntlet)) {
+    if (done) steps.add(`commander-gauntlet:${step}`);
+  }
+  return Array.from(steps).sort();
+}
+
+function blockedScenarioSteps(stepsCompleted: string[]) {
+  if (commanderGauntletScenario) {
+    return commanderGauntletMissingSteps();
+  }
+  const completedSet = new Set(stepsCompleted);
+  return scenarioModule.requiredSteps.filter((step) => !completedSet.has(step));
+}
+
+function laterScopeSteps(stepsCompleted: string[]) {
+  if (!commanderGauntletScenario) return [];
+  const completedSet = new Set(stepsCompleted);
+  return scenarioModule.scenarioSet
+    .filter((step) => step !== "core-flow" && step !== "commander-gauntlet")
+    .filter((step) => !scenarioModule.requiredSteps.includes(step))
+    .filter((step) => !completedSet.has(step));
+}
+
+function routeFamiliesRequiredForScenario(input: string) {
+  if (input === "commander-gauntlet") return commanderGauntletRouteFamiliesRequired();
+  if (input === "prompt-variety") return promptVarietyRouteFamiliesRequired();
+  if (input === "activated-ability-stack") return ["activate_ability", "stack_object_seen", "pass_priority"];
+  if (input === "triggered-ability-stack") return ["trigger_seen", "stack_object_seen", "pass_priority"];
+  return [];
+}
+
+function promptVarietyRouteFamiliesRequired() {
+  return [
+    "stack_object_seen",
+    "activate_ability",
+    "choose_ability",
+    "choose_mode",
+    "order_triggers/order_items",
+    "choose_amount",
+    "choose_multi_amount",
+    "choose_pile"
+  ];
+}
+
+function commanderGauntletRouteFamiliesRequired() {
+  return Array.from(new Set([
+    "play_land",
+    "cast_spell",
+    "make_mana",
+    "activate_ability",
+    "search_select/choose_card",
+    "choose_target",
+    "answer_yes_no",
+    "pay_cost",
+    "commander_replacement",
+    "pass_priority",
+    "stack_object_seen",
+    "trigger_seen",
+    "zone_update_seen",
+    "commander_tax_seen"
+  ]));
+}
+
+function sortedRouteFamiliesSeen() {
+  return Array.from(routeFamiliesSeen).sort();
+}
+
+function missingRouteFamilies() {
+  return routeFamiliesRequired.filter((family) => !routeFamilySeen(family));
+}
+
+function routeFamilySeen(family: string) {
+  if (family === "search_select/choose_card") {
+    return routeFamiliesSeen.has("search_select") || routeFamiliesSeen.has("choose_card") || routeFamiliesSeen.has(family);
+  }
+  if (family === "order_triggers/order_items") {
+    return routeFamiliesSeen.has("order_triggers") || routeFamiliesSeen.has("order_items") || routeFamiliesSeen.has(family);
+  }
+  return routeFamiliesSeen.has(family);
+}
+
+function markRouteFamily(family: string) {
+  if (routeFamiliesRequired.length > 0) {
+    routeFamiliesSeen.add(family);
+  }
+}
+
+function promptVarietyRouteFamiliesSatisfied() {
+  return promptVarietyRouteFamiliesRequired().every(routeFamilySeen);
+}
+
+function scenarioModuleFor(input: string): ScenarioModule {
+  switch (input) {
+    case "general":
+    case "alpha-game":
+    case "core-flow":
+      return {
+        id: "core-flow",
+        usesFixture: false,
+        scenarioSet: ["core-flow"],
+        requiredSteps: [
+          "opening-hand-decision",
+          "play-land",
+          "make-mana",
+          "cast-spell",
+          "pass-priority",
+          "ai-progress",
+          "combat-step-seen"
+        ]
+      };
+    case "arcane-signet":
+    case "mana-rock":
+      return {
+        id: "mana-rock",
+        usesFixture: true,
+        scenarioSet: ["mana-rock"],
+        requiredSteps: ["mana-rock"]
+      };
+    case "search-select":
+      return {
+        id: "search-select",
+        usesFixture: true,
+        scenarioSet: ["search-select"],
+        requiredSteps: ["search-select"]
+      };
+    case "commander-state":
+    case "commander-replacement-tax":
+      return {
+        id: "commander-replacement-tax",
+        usesFixture: true,
+        scenarioSet: ["commander-replacement-tax"],
+        requiredSteps: ["commander-replacement-tax"]
+      };
+    case "commander-damage":
+      return {
+        id: "commander-damage",
+        usesFixture: true,
+        scenarioSet: ["commander-damage"],
+        requiredSteps: ["commander-damage"]
+      };
+    case "combat":
+    case "blocker-flow":
+      return {
+        id: "blocker-flow",
+        usesFixture: true,
+        scenarioSet: ["blocker-flow"],
+        requiredSteps: ["combat-exercised"]
+      };
+    case "prompt-variety":
+      return {
+        id: "prompt-variety",
+        usesFixture: true,
+        scenarioSet: ["prompt-variety"],
+        requiredSteps: ["prompt-variety"]
+      };
+    case "activated-ability":
+    case "activated-ability-stack":
+      return {
+        id: "activated-ability-stack",
+        usesFixture: true,
+        scenarioSet: ["activated-ability-stack"],
+        requiredSteps: [
+          "fixture_call",
+          "direct_state_seeded",
+          "seeded_state_verified",
+          ...routeFamiliesRequiredForScenario("activated-ability-stack").map((family) => `route-family:${family}`)
+        ]
+      };
+    case "triggered-ability":
+    case "triggered-ability-stack":
+      return {
+        id: "triggered-ability-stack",
+        usesFixture: true,
+        scenarioSet: ["triggered-ability-stack"],
+        requiredSteps: [
+          "fixture_call",
+          "direct_state_seeded",
+          "seeded_state_verified",
+          ...routeFamiliesRequiredForScenario("triggered-ability-stack").map((family) => `route-family:${family}`)
+        ]
+      };
+    case "fixture-smoke":
+    case "commander-gauntlet":
+      return {
+        id: "commander-gauntlet",
+        usesFixture: true,
+        scenarioSet: [
+          "core-flow",
+          "mana-rock",
+          "search-select",
+          "commander-replacement-tax",
+          "commander-damage",
+          "blocker-flow",
+          "prompt-variety",
+          "commander-gauntlet"
+        ],
+        requiredSteps: [
+          "fixture_call",
+          "direct_state_seeded",
+          "seeded_state_verified",
+          ...commanderGauntletRouteFamiliesRequired().map((family) => `route-family:${family}`)
+        ]
+      };
+    default:
+      throw new Error(
+        `Unknown XMAGE_SMOKE_SCENARIO "${input}". Expected core-flow, mana-rock, search-select, `
+          + "commander-replacement-tax, commander-damage, blocker-flow, prompt-variety, "
+          + "activated-ability-stack, triggered-ability-stack, fixture-smoke, or commander-gauntlet."
+      );
+  }
+}
+
 async function request(path: string, options: { method?: string; body?: unknown } = {}) {
   const response = await fetch(`${endpoint}${path}`, {
     method: options.method ?? "GET",
@@ -387,6 +923,23 @@ async function request(path: string, options: { method?: string; body?: unknown 
       console.error(`[Smoke] Recovered from stale action on ${path}: ${body.message ?? body.error}`);
       body.snapshot.staleActionRecovered = true;
       return body.snapshot;
+    }
+    const fixtureHarnessBody = body?.fixtureHarness ?? body;
+    if (path.startsWith("/dev/xmage-fixtures/") && fixtureHarnessBody?.directStateSeeded === false) {
+      const fixtureHarness = {
+        ...fixtureHarnessBody,
+        reason: fixtureHarnessBody.blockedReason
+          ?? body.blockedReason
+          ?? body.message
+          ?? body.error
+          ?? "deterministic fixture unavailable"
+      };
+      const report = fixtureUnavailableReport(fixtureHarness);
+      writeSmokeReport(report);
+      console.log(JSON.stringify(report, null, 2));
+      throw new Error(
+        `[Smoke] deterministic fixture unavailable: ${fixtureHarness.reason}`
+      );
     }
     throw new Error(`XMage smoke request failed (${response.status}) ${path}: ${text}`);
   }
@@ -415,6 +968,28 @@ function arcaneSignetFixtureDeck() {
   };
 }
 
+function activatedAbilityFixtureDeck() {
+  return {
+    name: "Activated Ability Stack Fixture",
+    commander: { cardName: "Loran of the Third Path", quantity: 1, section: "commander" },
+    entries: [
+      { cardName: "Sol Ring", quantity: 1, section: "deck" },
+      { cardName: "Plains", quantity: 98, section: "deck" }
+    ]
+  };
+}
+
+function triggeredAbilityFixtureDeck() {
+  return {
+    name: "Triggered Ability Stack Fixture",
+    commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
+    entries: [
+      { cardName: "Spirited Companion", quantity: 1, section: "deck" },
+      { cardName: "Plains", quantity: 98, section: "deck" }
+    ]
+  };
+}
+
 function commanderGauntletHumanDeck() {
   return {
     name: "Commander Gauntlet Fixture",
@@ -422,7 +997,7 @@ function commanderGauntletHumanDeck() {
     entries: [
       { cardName: "Sol Ring", quantity: 1, section: "deck" },
       { cardName: "Arcane Signet", quantity: 1, section: "deck" },
-      { cardName: "Evolving Wilds", quantity: 1, section: "deck" },
+      { cardName: "Terramorphic Expanse", quantity: 1, section: "deck" },
       { cardName: "Swords to Plowshares", quantity: 1, section: "deck" },
       { cardName: "Spirited Companion", quantity: 1, section: "deck" },
       { cardName: "Plains", quantity: 94, section: "deck" }
@@ -431,7 +1006,7 @@ function commanderGauntletHumanDeck() {
 }
 
 function commanderGauntletAiDeck() {
-  return commanderFixtureDeck("Kozilek, Butcher of Truth", "Wastes");
+  return commanderFixtureDeck("Isamaru, Hound of Konda", "Plains");
 }
 
 function findAction(snapshot: SmokeSnapshot, type: string | string[], label = "") {
@@ -639,19 +1214,19 @@ function chooseCommanderGauntletAction(snapshot: SmokeSnapshot): SmokeAction | u
   if (!gauntlet.castManaRock && castManaRock) return castManaRock;
 
   const playFetch = actions.find((action) =>
-    action.type === "play_land" && /\b(evolving wilds|terramorphic expanse)\b/i.test(action.cardName ?? action.label ?? "")
+    action.type === "play_land" && /\b(evolving wilds|terramorphic expanse|fabled passage)\b/i.test(action.cardName ?? action.label ?? "")
   );
   if (!gauntlet.fetchActivated && playFetch) return playFetch;
 
   const activateFetch = actions.find((action) =>
-    action.type === "activate_ability" && /\b(evolving wilds|terramorphic expanse)\b/i.test(action.cardName ?? action.label ?? "")
+    action.type === "activate_ability" && /\b(evolving wilds|terramorphic expanse|fabled passage)\b/i.test(action.cardName ?? action.label ?? "")
   );
   if (!gauntlet.searchResolved && activateFetch) return activateFetch;
 
   const castCommander = actions.find((action) =>
     action.type === "cast_spell"
       && ((action.sourceZone ?? action.commandTemplate?.sourceZone) === "command"
-        || /isamaru/i.test(action.cardName ?? action.label ?? ""))
+        || isKnownCommanderText(action.cardName ?? action.label ?? ""))
   );
   if ((!gauntlet.commanderCast || commanderTaxChanges.length > 0) && castCommander) return castCommander;
 
@@ -748,9 +1323,14 @@ function choosePromptTarget(snapshot: SmokeSnapshot): SmokeAction | undefined {
       ?? actions.find((action) => /\b(forest|island|mountain|plains|swamp|wastes)\b/i.test(action.label ?? action.cardName ?? ""))
       ?? actions[0];
   }
+  if (message.includes("artifact") || message.includes("enchantment")) {
+    return actions.find((action) => /sol ring|arcane signet/i.test(action.label ?? action.cardName ?? ""))
+      ?? actions.find((action) => /artifact|enchantment/i.test(action.typeLine ?? ""))
+      ?? actions[0];
+  }
   if (message.includes("creature")) {
     if (commanderGauntletScenario) {
-      const commander = actions.find((action) => /isamaru/i.test(action.label ?? action.cardName ?? ""));
+      const commander = actions.find((action) => isKnownCommanderText(action.label ?? action.cardName ?? ""));
       if (commander) return commander;
     }
     return actions.find((action) => /creature/i.test(action.typeLine ?? "")) ?? actions[0];
@@ -797,6 +1377,24 @@ function actionName(action: SmokeAction) {
   return action.cardName ?? action.label ?? "";
 }
 
+function knownCommanderName() {
+  return human.commander?.cardName ?? "";
+}
+
+function isKnownCommanderText(text: string) {
+  const name = knownCommanderName();
+  return Boolean(name) && text.toLowerCase().includes(name.toLowerCase());
+}
+
+function isKnownCommanderAction(action: SmokeAction) {
+  return (action.sourceZone ?? action.commandTemplate?.sourceZone) === "command"
+    || isKnownCommanderText(action.cardName ?? action.label ?? "");
+}
+
+function isKnownCommanderEntry(entry: { card?: { name?: string } }) {
+  return isKnownCommanderText(entry.card?.name ?? "");
+}
+
 function isBasicLandAction(action: SmokeAction) {
   if (action.isBasicLand) return true;
   return /basic land/i.test(action.typeLine ?? "")
@@ -813,6 +1411,7 @@ async function waitForAction(snapshot: SmokeSnapshot, type: string | string[], o
     }
     await new Promise((resolve) => setTimeout(resolve, 750));
     current = await request(`/games/${encodeURIComponent(current.id)}`);
+    assertBridgeSnapshot(current, `wait for action ${Array.isArray(type) ? type.join("/") : type}`);
   }
 }
 
@@ -826,6 +1425,7 @@ async function waitForAiIfNeeded(snapshot: SmokeSnapshot, label: string) {
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
     current = await request(`/games/${encodeURIComponent(current.id)}`);
+    assertBridgeSnapshot(current, label);
     const actionable = current.legalActions?.some((action) => action.type !== "concede") ?? false;
     if (current.waitingOnPlayerId !== aiPlayerId || current.priorityPlayerId !== aiPlayerId || actionable) {
       console.error(`[Smoke] AI finished or action became available. New priority: ${current.priorityPlayerId}`);
@@ -849,6 +1449,7 @@ async function waitForSemanticProgress(previous: SmokeSnapshot, next: SmokeSnaps
   while (!hasSemanticProgress(previous, current, label) && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 750));
     current = await request(`/games/${encodeURIComponent(current.id)}`);
+    assertBridgeSnapshot(current, `semantic progress ${label}`);
   }
   return current;
 }
@@ -864,14 +1465,14 @@ function commandFromAction(gameId: string, action: SmokeAction, snapshot: SmokeS
 
   // Helper to slice array to maxChoices if needed
   const sliceToMax = (arr: string[] | undefined) => {
-    if (!arr) return [];
+    if (!arr) return undefined;
     if (maxChoices > 0 && arr.length > maxChoices) {
       return arr.slice(0, maxChoices);
     }
     return arr;
   };
 
-  const rawTargetIds = action.targetIds ?? action.validTargetIds ?? template.targetIds ?? template.choiceIds ?? [];
+  const rawTargetIds = action.targetIds ?? action.validTargetIds ?? template.targetIds ?? template.choiceIds;
   const targetIds = sliceToMax(rawTargetIds);
 
   const rawCardInstanceIds = action.cardInstanceIds ?? action.validCardInstanceIds ?? template.cardInstanceIds ?? rawTargetIds;
@@ -880,13 +1481,15 @@ function commandFromAction(gameId: string, action: SmokeAction, snapshot: SmokeS
   const rawPlayerIds = action.playerIds ?? action.validPlayerIds ?? template.playerIds ?? rawTargetIds;
   const playerIds = sliceToMax(rawPlayerIds);
 
-  const rawChoiceIds = action.choiceIds ?? template.choiceIds ?? rawTargetIds;
+  const rawChoiceIds = action.choiceIds
+    ?? template.choiceIds
+    ?? (action.type === "resolve_choice" ? rawTargetIds : undefined);
   const choiceIds = sliceToMax(rawChoiceIds);
 
   const rawModeIds = action.modeIds ?? template.modeIds ?? rawTargetIds;
   const modeIds = sliceToMax(rawModeIds);
 
-  return {
+  const command: SmokeCommandTemplate & { gameId: string } = {
     ...template,
     type: action.type ?? template.type,
     gameId,
@@ -904,8 +1507,8 @@ function commandFromAction(gameId: string, action: SmokeAction, snapshot: SmokeS
     manaType: action.manaType ?? template.manaType,
     manaTypes: action.manaTypes ?? template.manaTypes,
     orderedIds: action.orderedIds ?? template.orderedIds ?? targetIds,
-    confirmed: action.confirmed ?? template.confirmed ?? true,
-    pay: action.pay ?? template.pay ?? action.confirmed ?? template.confirmed ?? true,
+    confirmed: action.confirmed ?? template.confirmed,
+    pay: action.pay ?? template.pay,
     amount: action.amount ?? template.amount,
     amounts: action.amounts ?? template.amounts,
     pile: action.pile ?? template.pile,
@@ -913,6 +1516,98 @@ function commandFromAction(gameId: string, action: SmokeAction, snapshot: SmokeS
     attackers: action.attackers ?? template.attackers,
     blockers: action.blockers ?? template.blockers
   };
+  return pruneUndefined(command);
+}
+
+function assertLegalActionBeforeSubmit(snapshot: SmokeSnapshot, action: SmokeAction) {
+  const legalActions = snapshot.legalActions ?? [];
+  const legal = legalActions.some((candidate) =>
+    candidate === action
+      || (action.id !== undefined && candidate.id === action.id)
+      || (
+        candidate.type === action.type
+          && candidate.label === action.label
+          && candidate.cardInstanceId === action.cardInstanceId
+          && candidate.sourceInstanceId === action.sourceInstanceId
+      )
+  );
+  if (!legal) {
+    throw new Error(
+      `[Smoke] refusing to submit ${action.type}; action is not present in current legalActions.\n`
+        + smokeDebug("illegal submit snapshot", snapshot)
+    );
+  }
+}
+
+function assertCommandUsesLegalAction(action: SmokeAction, command: Record<string, unknown>) {
+  const template = action.commandTemplate ?? {};
+  const allowedSources = [action, template];
+  const equivalentSelectionFields = [
+    "choiceIds",
+    "targetIds",
+    "validTargetIds",
+    "cardInstanceIds",
+    "validCardInstanceIds",
+    "playerIds",
+    "validPlayerIds",
+    "modeIds",
+    "orderedIds"
+  ];
+  const exactFieldNames = [
+    "type",
+    "playerId",
+    "promptId",
+    "messageId",
+    "cardInstanceId",
+    "sourceInstanceId",
+    "abilityId",
+    "choiceIds",
+    "targetIds",
+    "cardInstanceIds",
+    "modeIds",
+    "playerIds",
+    "manaType",
+    "manaTypes",
+    "orderedIds",
+    "confirmed",
+    "pay",
+    "amount",
+    "amounts",
+    "pile",
+    "useCommandZone",
+    "attackers",
+    "blockers"
+  ];
+  for (const field of exactFieldNames) {
+    if (!(field in command)) continue;
+    const value = command[field];
+    if (field === "playerId" && value === humanPlayerId && action.playerId === undefined && template.playerId === undefined) continue;
+    if (
+      allowedSources.some((source) => field in source && JSON.stringify((source as Record<string, unknown>)[field]) === JSON.stringify(value))
+        || (field === "sourceInstanceId" && value === action.cardInstanceId)
+        || (field === "orderedIds" && JSON.stringify(value) === JSON.stringify(command.targetIds))
+        || (equivalentSelectionFields.includes(field) && selectionValueDerived(value, allowedSources, equivalentSelectionFields))
+    ) {
+      continue;
+    }
+    throw new Error(`[Smoke] command field ${field} was not derived from the LegalAction or commandTemplate.`);
+  }
+}
+
+function selectionValueDerived(
+  value: unknown,
+  sources: Record<string, unknown>[],
+  fields: string[]
+) {
+  return sources.some((source) =>
+    fields.some((field) =>
+      field in source && JSON.stringify(source[field]) === JSON.stringify(value)
+    )
+  );
+}
+
+function pruneUndefined<T extends Record<string, unknown>>(value: T) {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as Partial<T>;
 }
 
 function assertBridgeProgress(
@@ -936,13 +1631,32 @@ function assertBridgeSnapshot(snapshot: SmokeSnapshot, label: string) {
   if (snapshot.source !== "xmage-java-bridge") {
     throw new Error(`XMage smoke ${label} did not return a Java bridge snapshot. Source: ${snapshot.source ?? "missing"}`);
   }
+  if (/simulator/i.test(snapshot.source ?? "")) {
+    throw new Error(`XMage smoke ${label} returned simulator source, which cannot count as product success.`);
+  }
   if (typeof snapshot.bridgeRevision !== "number") {
     throw new Error(`XMage smoke ${label} did not include numeric bridgeRevision.`);
+  }
+  if (snapshot.xmageCycle !== undefined && typeof snapshot.xmageCycle !== "number") {
+    throw new Error(`XMage smoke ${label} returned non-numeric xmageCycle.`);
+  }
+  if (lastBridgeRevision !== undefined && snapshot.bridgeRevision < lastBridgeRevision) {
+    throw new Error(`XMage smoke ${label} bridgeRevision went backward: ${lastBridgeRevision} -> ${snapshot.bridgeRevision}`);
+  }
+  if (lastXmageCycle !== undefined && snapshot.xmageCycle !== undefined && snapshot.xmageCycle < lastXmageCycle) {
+    throw new Error(`XMage smoke ${label} xmageCycle went backward: ${lastXmageCycle} -> ${snapshot.xmageCycle}`);
+  }
+  lastBridgeRevision = snapshot.bridgeRevision;
+  if (snapshot.xmageCycle !== undefined) {
+    lastXmageCycle = snapshot.xmageCycle;
   }
 }
 
 function assertSemanticProgress(previous: SmokeSnapshot, next: SmokeSnapshot, label: string) {
   if (hasSemanticProgress(previous, next, label)) {
+    return;
+  }
+  if (next.pendingStatus) {
     return;
   }
   if (label === "play land") {
@@ -958,6 +1672,14 @@ function assertSemanticProgress(previous: SmokeSnapshot, next: SmokeSnapshot, la
   }
   if (label === "cast simple spell") {
     throw new Error("XMage smoke cast simple spell did not change hand, board, graveyard, stack, mana, or prompt state.");
+  }
+  if (label === "activate ability") {
+    throw new Error(
+      "XMage smoke activate ability did not change prompt, stack, zones, action list, or tapped state.\n"
+        + smokeDebug("before activate_ability", previous)
+        + "\n"
+        + smokeDebug("after activate_ability", next)
+    );
   }
   if (label === "pass priority") {
     throw new Error(
@@ -980,9 +1702,18 @@ function hasSemanticProgress(previous: SmokeSnapshot, next: SmokeSnapshot, label
         return beforeCard.tapped !== true && afterCard?.tapped === true;
       })
       || previous.promptEnvelopeV2?.id !== next.promptEnvelopeV2?.id
+      || humanZone(previous, "stack").length !== humanZone(next, "stack").length;
+  }
+  if (label === "activate ability") {
+    return previous.promptEnvelopeV2?.id !== next.promptEnvelopeV2?.id
+      || next.promptEnvelopeV2 !== undefined
       || humanZone(previous, "stack").length !== humanZone(next, "stack").length
-      || previous.bridgeRevision !== next.bridgeRevision
-      || previous.xmageCycle !== next.xmageCycle;
+      || zonesChanged(previous, next)
+      || formatActions(previous) !== formatActions(next)
+      || humanZone(previous, "battlefield").some((beforeCard) => {
+        const afterCard = humanZone(next, "battlefield").find((card) => card.instanceId === beforeCard.instanceId);
+        return beforeCard.tapped !== afterCard?.tapped;
+      });
   }
   if (label === "cast simple spell") {
     return humanZone(previous, "hand").length !== humanZone(next, "hand").length
@@ -1025,8 +1756,7 @@ function hasSemanticProgress(previous: SmokeSnapshot, next: SmokeSnapshot, label
     return previous.promptEnvelopeV2?.id !== next.promptEnvelopeV2?.id
       || previous.promptEnvelopeV2?.messageId !== next.promptEnvelopeV2?.messageId
       || formatActions(previous) !== formatActions(next)
-      || previous.bridgeRevision !== next.bridgeRevision
-      || previous.xmageCycle !== next.xmageCycle;
+      || zonesChanged(previous, next);
   }
   return true;
 }
@@ -1061,11 +1791,35 @@ function manaTotal(snapshot: SmokeSnapshot) {
   return Object.values(pool).reduce((total, value) => total + (typeof value === "number" ? value : 0), 0);
 }
 
+function snapshotHasStackObject(snapshot: SmokeSnapshot) {
+  return ((snapshot.xmage?.stack as unknown[] | undefined)?.length ?? 0) > 0
+    || humanZone(snapshot, "stack").length > 0
+    || (snapshot.players ?? []).some((player) => (player.zones?.stack?.length ?? 0) > 0);
+}
+
+function zonesChanged(previous: SmokeSnapshot, next: SmokeSnapshot) {
+  return JSON.stringify(zoneCounts(previous)) !== JSON.stringify(zoneCounts(next));
+}
+
+function zoneCounts(snapshot: SmokeSnapshot) {
+  return (snapshot.players ?? []).map((player) => ({
+    playerId: player.playerId,
+    hand: player.zones?.hand?.length ?? 0,
+    library: player.zones?.library?.length ?? 0,
+    battlefield: player.zones?.battlefield?.length ?? 0,
+    graveyard: player.zones?.graveyard?.length ?? 0,
+    exile: player.zones?.exile?.length ?? 0,
+    command: player.zones?.command?.length ?? 0,
+    stack: player.zones?.stack?.length ?? 0
+  }));
+}
+
 function recordCommanderState(snapshot: SmokeSnapshot) {
   for (const player of snapshot.players ?? []) {
     if (player.commanderTax !== undefined && player.commanderTax > 0) {
       if (!commanderTaxChanges.some(t => t.playerId === player.playerId && t.tax === player.commanderTax)) {
         commanderTaxChanges.push({ playerId: player.playerId, tax: player.commanderTax, turn: snapshot.turn ?? 1 });
+        markRouteFamily("commander_tax_seen");
         console.error(`[Smoke] Witnessed Commander Tax: ${player.playerId} tax is now ${player.commanderTax} on turn ${snapshot.turn}`);
       }
     }
@@ -1077,6 +1831,79 @@ function recordCommanderState(snapshot: SmokeSnapshot) {
         }
       }
     }
+  }
+}
+
+function recordRouteFamilyForAction(action: SmokeAction) {
+  if (routeFamiliesRequired.length === 0) return;
+  if (action.type === "play_land") markRouteFamily("play_land");
+  if (action.type === "cast_spell") markRouteFamily("cast_spell");
+  if (action.type === "make_mana") markRouteFamily("make_mana");
+  if (action.type === "activate_ability") markRouteFamily("activate_ability");
+  if (action.type === "choose_ability") markRouteFamily("choose_ability");
+  if (action.type === "choose_mode") markRouteFamily("choose_mode");
+  if (action.type === "choose_amount") markRouteFamily("choose_amount");
+  if (action.type === "choose_multi_amount") markRouteFamily("choose_multi_amount");
+  if (action.type === "choose_pile") markRouteFamily("choose_pile");
+  if (action.type === "search_select" || action.type === "choose_card") markRouteFamily(action.type);
+  if (action.type === "choose_target") markRouteFamily("choose_target");
+  if (action.type === "answer_yes_no") markRouteFamily("answer_yes_no");
+  if (action.type === "pay_cost") markRouteFamily("pay_cost");
+  if (action.type === "commander_replacement") markRouteFamily("commander_replacement");
+  if (action.type === "play_mana" || action.type === "choose_mana") markRouteFamily("pay_cost");
+  if (["pass_priority", "pass_until_response", "pass_until_next_turn", "advance_phase"].includes(action.type)) {
+    markRouteFamily("pass_priority");
+  }
+  if (action.type === "order_triggers" || action.type === "order_items") {
+    markRouteFamily(action.type);
+    markRouteFamily("trigger_seen");
+  }
+}
+
+function recordRouteFamilyForPrompt(snapshot: SmokeSnapshot) {
+  if (routeFamiliesRequired.length === 0 || !snapshot.promptEnvelopeV2) return;
+  const expected = `${snapshot.promptEnvelopeV2.responseCommand?.type ?? ""} ${snapshot.promptEnvelopeV2.responseKind ?? ""}`.toLowerCase();
+  const promptText = `${snapshot.promptEnvelopeV2.method ?? ""} ${snapshot.promptEnvelopeV2.message ?? ""} ${snapshot.promptText ?? ""}`.toLowerCase();
+  if (expected.includes("target")) markRouteFamily("choose_target");
+  if (expected.includes("card")) markRouteFamily("choose_card");
+  if (expected.includes("search")) markRouteFamily("search_select");
+  if (expected.includes("ability")) markRouteFamily("choose_ability");
+  if (expected.includes("mode")) markRouteFamily("choose_mode");
+  if (expected.includes("multi_amount")) markRouteFamily("choose_multi_amount");
+  if (expected.includes("amount")) markRouteFamily("choose_amount");
+  if (expected.includes("pile")) markRouteFamily("choose_pile");
+  if (expected.includes("yes") || expected.includes("confirmation")) markRouteFamily("answer_yes_no");
+  if (expected.includes("pay") || expected.includes("mana") || promptText.includes("pay")) markRouteFamily("pay_cost");
+  if (
+    expected.includes("commander")
+      || promptText.includes("commander replacement")
+      || promptText.includes("command zone")
+      || (promptText.includes("commander") && promptText.includes("command"))
+  ) {
+    markRouteFamily("commander_replacement");
+  }
+  if (expected.includes("trigger")) markRouteFamily("order_triggers");
+  if (expected.includes("order")) markRouteFamily("order_items");
+  if (expected.includes("trigger") || expected.includes("order")) markRouteFamily("trigger_seen");
+}
+
+function recordRouteFamilyForTransition(previous: SmokeSnapshot, next: SmokeSnapshot) {
+  if (routeFamiliesRequired.length === 0) return;
+  if (snapshotHasStackObject(next)) {
+    markRouteFamily("stack_object_seen");
+  }
+  if (zonesChanged(previous, next)) {
+    markRouteFamily("zone_update_seen");
+  }
+  const promptText = `${next.promptText ?? ""} ${next.promptEnvelopeV2?.method ?? ""} ${next.promptEnvelopeV2?.responseKind ?? ""} ${next.promptEnvelopeV2?.message ?? ""}`.toLowerCase();
+  if (promptText.includes("trigger") || promptText.includes("order")) {
+    markRouteFamily("trigger_seen");
+  }
+  if (promptText.includes("command zone") || (promptText.includes("commander") && promptText.includes("command"))) {
+    markRouteFamily("commander_replacement");
+  }
+  if (promptText.includes("pay") || promptText.includes("mana")) {
+    markRouteFamily("pay_cost");
   }
 }
 
@@ -1092,19 +1919,26 @@ function recordGauntletAction(snapshot: SmokeSnapshot, action: SmokeAction) {
   if (action.type === "make_mana") {
     gauntlet.tappedManaSource = true;
   }
-  if (action.type === "activate_ability" && /\b(evolving wilds|terramorphic expanse)\b/i.test(action.cardName ?? action.label ?? "")) {
+  if (action.type === "activate_ability" && /\b(evolving wilds|terramorphic expanse|fabled passage)\b/i.test(action.cardName ?? action.label ?? "")) {
     gauntlet.fetchActivated = true;
   }
-  if (action.type === "cast_spell" && /isamaru/i.test(action.cardName ?? action.label ?? "")) {
+  if (action.type === "cast_spell" && isKnownCommanderAction(action)) {
     gauntlet.commanderCast = true;
     if (commanderTaxChanges.some((entry) => entry.playerId === humanPlayerId && entry.tax >= 2)) {
       gauntlet.commanderRecastWithTax = true;
     }
   }
-  if (action.type === "activate_ability" && !looksLikeManaAction(action) && !/\b(evolving wilds|terramorphic expanse)\b/i.test(action.cardName ?? action.label ?? "")) {
+  if (action.type === "activate_ability" && !looksLikeManaAction(action)) {
     gauntlet.activatedAbilityUsed = true;
   }
-  if (action.type === "commander_replacement") {
+  if (
+    action.type === "commander_replacement"
+      || (
+        action.type === "answer_yes_no"
+          && snapshot.promptEnvelopeV2
+          && `${snapshot.promptEnvelopeV2.responseKind ?? ""} ${snapshot.promptEnvelopeV2.message ?? ""} ${snapshot.promptText ?? ""}`.toLowerCase().includes("command")
+      )
+  ) {
     gauntlet.commanderReplacementAnswered = true;
   }
   recordGauntletSnapshot(snapshot);
@@ -1128,22 +1962,23 @@ function recordGauntletSnapshot(snapshot: SmokeSnapshot) {
     gauntlet.castManaRock = true;
   }
   if (
-    humanGraveyard.some((entry) => /\b(evolving wilds|terramorphic expanse)\b/i.test(entry.card?.name ?? ""))
+    humanGraveyard.some((entry) => /\b(evolving wilds|terramorphic expanse|fabled passage)\b/i.test(entry.card?.name ?? ""))
       && humanBattlefield.some((entry) => /plains/i.test(entry.card?.name ?? ""))
   ) {
     gauntlet.searchResolved = true;
+    markRouteFamily("search_select/choose_card");
   }
-  const isamaruOnBattlefield = humanBattlefield.some((entry) => /isamaru/i.test(entry.card?.name ?? ""));
-  if (isamaruOnBattlefield) {
+  const commanderOnBattlefield = humanBattlefield.some(isKnownCommanderEntry);
+  if (commanderOnBattlefield) {
     gauntlet.commanderCast = true;
     commanderBattlefieldSeen = true;
   }
   if (
     commanderBattlefieldSeen
-      && !isamaruOnBattlefield
+      && !commanderOnBattlefield
       && (
         humanGraveyard.some((entry) => /swords to plowshares/i.test(entry.card?.name ?? ""))
-          || humanCommand.some((entry) => /isamaru/i.test(entry.card?.name ?? ""))
+          || humanCommand.some(isKnownCommanderEntry)
       )
     ) {
     gauntlet.commanderRemoved = true;
@@ -1153,6 +1988,7 @@ function recordGauntletSnapshot(snapshot: SmokeSnapshot) {
       || humanGraveyard.some((entry) => /spirited companion/i.test(entry.card?.name ?? ""))
   ) {
     gauntlet.etbOrTriggerSeen = true;
+    markRouteFamily("trigger_seen");
   }
   if (aiWaits > 0 || turnsObserved.has(2)) {
     gauntlet.aiTurnContinued = true;
@@ -1165,21 +2001,36 @@ function recordGauntletSnapshot(snapshot: SmokeSnapshot) {
 }
 
 function commanderGauntletMissingSteps() {
-  return Object.entries(gauntlet)
+  const missing = Object.entries(gauntlet)
     .filter(([, done]) => !done)
     .map(([step]) => step);
+  if (!useFixtureHarness) {
+    missing.unshift("fixture_call");
+  }
+  if (!directStateSeeded) {
+    missing.unshift("direct_state_seeded");
+  }
+  if (!seededStateVerified) {
+    missing.unshift("seeded_state_verified");
+  }
+  for (const family of missingRouteFamilies()) {
+    missing.push(`route_family:${family}`);
+  }
+  return Array.from(new Set(missing));
 }
 
 function recordCoverage(snapshot: SmokeSnapshot) {
   if (typeof snapshot.turn === "number") {
     turnsObserved.add(snapshot.turn);
   }
+  recordRouteFamilyForPrompt(snapshot);
   const phaseStep = `${snapshot.phase ?? ""} ${snapshot.step ?? ""}`.toLowerCase();
   if (phaseStep.includes("combat") || phaseStep.includes("attack") || phaseStep.includes("block")) {
     combatStepSeen = true;
   }
-  if ((snapshot.xmage?.stack as unknown[] | undefined)?.length || humanZone(snapshot, "stack").length > 0) {
+  if (snapshotHasStackObject(snapshot)) {
     stackSeen = true;
+    markRouteFamily("stack_object_seen");
   }
   if (arcaneSignetScenario && humanZone(snapshot, "battlefield").some((entry) => /arcane signet/i.test(entry.card?.name ?? ""))) {
     arcaneResolvedSeen = true;
@@ -1188,7 +2039,7 @@ function recordCoverage(snapshot: SmokeSnapshot) {
 }
 
 function scenarioSatisfied() {
-  if (scenario === "general") {
+  if (scenario === "core-flow") {
     const realGameActionSeen = Boolean(
       actionsByType.play_land
         || actionsByType.make_mana
@@ -1204,9 +2055,13 @@ function scenarioSatisfied() {
       && combatStepSeen
       && realGameActionSeen;
   }
-  if (scenario === "combat") return combatExercised;
-  if (scenario === "commander-state") return commanderTaxChanges.length > 0 && commanderDamageChanges.length > 0;
-  if (scenario === "arcane-signet") return arcaneCastSeen && arcanePaymentSourceSeen && arcaneResolvedSeen;
+  if (scenario === "blocker-flow") return combatExercised;
+  if (scenario === "commander-replacement-tax") return commanderTaxChanges.length > 0;
+  if (scenario === "commander-damage") return commanderDamageChanges.length > 0;
+  if (scenario === "mana-rock") return arcaneCastSeen && arcanePaymentSourceSeen && arcaneResolvedSeen;
+  if (scenario === "search-select") return gauntlet.searchResolved || actionsByType.search_select > 0;
+  if (scenario === "prompt-variety") return promptVarietyRouteFamiliesSatisfied();
+  if (scenario === "activated-ability-stack" || scenario === "triggered-ability-stack") return missingRouteFamilies().length === 0;
   if (scenario === "commander-gauntlet") return commanderGauntletMissingSteps().length === 0;
   return false;
 }
@@ -1282,6 +2137,7 @@ type SmokeSnapshot = {
   promptText?: string;
   pendingStatus?: string;
   staleActionRecovered?: boolean;
+  activePlayerId?: string;
   priorityPlayerId?: string;
   waitingOnPlayerId?: string;
   promptEnvelopeV2?: { method?: string; responseKind?: string; responseCommand?: { type?: string }; maxChoices?: number; message?: string; id?: string; messageId?: number };
@@ -1296,7 +2152,17 @@ type SmokeSnapshot = {
     fallback?: string;
     reason?: string;
     productionDisabled?: boolean;
+    setupMethod?: string;
+    source?: string;
+    gameId?: string | null;
+    bridgeRevision?: number | null;
+    xmageCycle?: number | null;
+    seededZones?: string[];
+    blockedReason?: string;
+    classProcessBoundary?: string;
+    nextImplementationStep?: string;
     expectedRouteCoverage?: string[];
+    expectedRoutes?: string[];
   };
 };
 
@@ -1373,4 +2239,11 @@ type SmokeCommandTemplate = {
   useCommandZone?: boolean;
   attackers?: Array<{ attackerId: string; defenderId: string }>;
   blockers?: Array<{ blockerId: string; attackerId: string }>;
+};
+
+type ScenarioModule = {
+  id: string;
+  usesFixture: boolean;
+  scenarioSet: string[];
+  requiredSteps: string[];
 };

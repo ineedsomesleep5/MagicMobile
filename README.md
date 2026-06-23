@@ -33,6 +33,7 @@ pnpm sync:scryfall
 Useful checks:
 
 ```sh
+pnpm typecheck
 pnpm lint
 pnpm test
 pnpm build
@@ -44,6 +45,15 @@ Local XMage services:
 ```sh
 docker compose up --build xmage-bridge xmage-gateway
 ```
+
+Live XMage smoke is intentionally separate from normal CI because it depends on Docker and a healthy XMage runtime:
+
+```sh
+XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage
+XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage:gauntlet
+```
+
+Smoke reports are generated under `build_output/smoke/*.json` and are ignored by git. Treat them as local or CI artifacts, not committed proof. Simulator/dev-route success does not count as real gameplay evidence.
 
 ## Environment
 
@@ -59,6 +69,10 @@ Copy `.env.example` into a local `.env` file when a package needs runtime config
 - The production `/play` route must use XMage through the gateway and Java bridge. It must not silently fall back to simulator mode.
 - The simulator remains available only for fast UI development and should stay clearly labeled under dev-only routes such as `/dev/play-simulator`.
 - The current integration hardening focus is prompt/action parity: every XMage prompt should render in iOS/web, respond with exact prompt metadata, reject stale prompts, and reconcile through server-authoritative snapshots.
+
+## CI and Release Evidence
+
+Normal GitHub Actions CI runs on `pull_request` and pushes to `main`, and covers `pnpm install`, `pnpm typecheck`, `pnpm lint`, `pnpm test`, and `pnpm build`. Live XMage smoke is available as a manual workflow (`XMage Smoke`) and should not be required for ordinary PRs until Docker/XMage startup is reliable enough for a required gate.
 
 ## Performance Goals
 

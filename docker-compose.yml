@@ -34,6 +34,7 @@ services:
       XMAGE_AI_STALL_MS: 45000
       XMAGE_BRIDGE_URL: http://xmage-bridge:17172
       ENABLE_XMAGE_FIXTURES: ${ENABLE_XMAGE_FIXTURES:-false}
+      NODE_ENV: ${NODE_ENV:-production}
     ports:
       - "17171:17171"
     volumes:
@@ -55,6 +56,7 @@ services:
       XMAGE_PORT: 17171
       GATEWAY_URL: http://xmage-gateway:17171
       ENABLE_XMAGE_FIXTURES: ${ENABLE_XMAGE_FIXTURES:-false}
+      NODE_ENV: ${NODE_ENV:-production}
     ports:
       - "17172:17172"
       - "17179:17179"

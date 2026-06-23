@@ -14,7 +14,12 @@
     "db:migrate": "pnpm --filter @magicmobile/shared db:migrate",
     "db:seed": "pnpm --filter @magicmobile/card-data db:seed",
     "sync:scryfall": "pnpm --filter @magicmobile/card-data sync:scryfall",
-    "smoke:xmage": "vite-node apps/xmage-gateway/scripts/smoke-create-commander-game.ts"
+    "smoke:xmage": "vite-node apps/xmage-gateway/scripts/smoke-create-commander-game.ts",
+    "smoke:xmage:gauntlet": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
+    "smoke:xmage:fixture-smoke": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=fixture-smoke XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
+    "smoke:xmage:core": "XMAGE_SMOKE_SCENARIO=core-flow pnpm smoke:xmage",
+    "smoke:xmage:combat": "XMAGE_SMOKE_SCENARIO=blocker-flow pnpm smoke:xmage",
+    "smoke:xmage:commander-state": "XMAGE_SMOKE_SCENARIO=commander-replacement-tax pnpm smoke:xmage"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

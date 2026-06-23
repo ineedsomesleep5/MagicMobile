@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { CommanderGameConfig, EngineHealth, GameCommand, GameSnapshot, LegalAction, ManaPool } from "@magicmobile/shared";
 import { ArenaBattlefield } from "./ArenaBattlefield";
 import { buildBattlefieldViewModel, type BattlefieldCardView, type VisualCardRecord } from "./battlefield-view-model";
@@ -21,8 +21,27 @@ export function GameController({ config, initialHealth, requireXmage = false, si
   const [pendingActionId, setPendingActionId] = useState<string | undefined>();
   const [pendingActionLabel, setPendingActionLabel] = useState<string | undefined>();
   const [socketStatus, setSocketStatus] = useState<"idle" | "connecting" | "live" | "unavailable">("idle");
+  const snapshotRef = useRef<GameSnapshot | null>(null);
+  const pendingActionIdRef = useRef<string | undefined>(undefined);
 
   const finalRequireXmage = requireXmage || !simulatorMode;
+
+  const clearPendingAction = () => {
+    pendingActionIdRef.current = undefined;
+    setPendingActionId(undefined);
+    setPendingActionLabel(undefined);
+  };
+
+  const acceptSnapshot = (nextSnapshot: GameSnapshot) => {
+    const current = snapshotRef.current;
+    const accepted = latestSnapshot(current, nextSnapshot);
+    if (accepted === current) return;
+    snapshotRef.current = accepted;
+    setSnapshot(accepted);
+    if (current && pendingActionIdRef.current && shouldClearPendingAfterSnapshot(current, accepted)) {
+      clearPendingAction();
+    }
+  };
 
   useEffect(() => {
     if (finalRequireXmage && initialHealth.status !== "ready") {
@@ -42,6 +61,7 @@ export function GameController({ config, initialHealth, requireXmage = false, si
       })
       .then((nextSnapshot) => {
         if (active) {
+          snapshotRef.current = nextSnapshot;
           setSnapshot(nextSnapshot);
           setSelectedInstanceId(undefined);
         }
@@ -71,7 +91,7 @@ export function GameController({ config, initialHealth, requireXmage = false, si
     socket.addEventListener("message", (event) => {
       try {
         const nextSnapshot = JSON.parse(String(event.data)) as GameSnapshot;
-        if (active) setSnapshot((current) => latestSnapshot(current, nextSnapshot));
+        if (active) acceptSnapshot(nextSnapshot);
       } catch {
         if (active) setError("Received an unreadable XMage live update.");
       }
@@ -104,6 +124,7 @@ export function GameController({ config, initialHealth, requireXmage = false, si
 
   const modeLabel = simulatorMode ? "DEVELOPMENT ONLY - Simulator Preview" : "XMage rules";
   const actionPending = pendingActionId !== undefined;
+  const statusLines = snapshot ? gameStatusLines(snapshot, health, socketStatus, simulatorMode) : [];
 
   const connectionFailed = (finalRequireXmage && health.status !== "ready") || (finalRequireXmage && socketStatus === "unavailable");
 
@@ -120,9 +141,13 @@ export function GameController({ config, initialHealth, requireXmage = false, si
     if (!snapshot || !viewModel || actionPending) return;
     const actionCard = selectedCard ?? findActionCard(viewModel, action.cardInstanceId);
     const command = toCommand(action, snapshot, actionCard, viewModel.opponent.playerId);
-    if (!command) return;
+    if (!command) {
+      setError(`Unsupported prompt/action: ${actionLabel(action)}. XMage did not expose enough data for this route.`);
+      return;
+    }
 
     setError(undefined);
+    pendingActionIdRef.current = action.id;
     setPendingActionId(action.id);
     setPendingActionLabel(actionLabel(action));
     fetch(`/api/engine/games/${encodeURIComponent(snapshot.id)}/commands`, {
@@ -131,14 +156,20 @@ export function GameController({ config, initialHealth, requireXmage = false, si
       body: JSON.stringify(command)
     })
       .then(async (response) => {
-        if (!response.ok) throw new Error(await errorMessage(response, "Command failed"));
-        return response.json() as Promise<GameSnapshot>;
+        const result = await commandResponse(response);
+        if (result.stale) {
+          setError(result.message ?? "That action was already replaced by a newer XMage state. Refreshed to the latest snapshot.");
+        }
+        return result.snapshot;
       })
-      .then((nextSnapshot) => setSnapshot((current) => latestSnapshot(current, nextSnapshot)))
-      .catch((caughtError) => setError(caughtError instanceof Error ? caughtError.message : "Command failed"))
-      .finally(() => {
-        setPendingActionId(undefined);
-        setPendingActionLabel(undefined);
+      .then((nextSnapshot) => acceptSnapshot(nextSnapshot))
+      .catch(async (caughtError) => {
+        if (isStaleCommandError(caughtError) && snapshotRef.current?.id) {
+          const refreshed = await fetchLatestSnapshot(snapshotRef.current.id).catch(() => undefined);
+          if (refreshed) acceptSnapshot(refreshed);
+        }
+        setError(caughtError instanceof Error ? caughtError.message : "Command failed");
+        clearPendingAction();
       });
   };
 
@@ -195,6 +226,7 @@ export function GameController({ config, initialHealth, requireXmage = false, si
           <strong>{viewModel?.phase ?? "starting"}</strong>
           <span>{modeLabel}</span>
           <small>{health.status}: {simulatorMode ? "UI mechanics only; full rules require XMage bridge." : health.reason}</small>
+          {statusLines.map((line) => <small key={line}>{line}</small>)}
           {!simulatorMode ? <small>Live updates: {socketStatus}</small> : null}
           {pendingActionLabel ? <small>Action sent: {pendingActionLabel}. Waiting for XMage.</small> : null}
           {error ? <small role="alert">Command error: {error}</small> : null}
@@ -271,6 +303,64 @@ async function errorMessage(response: Response, fallback: string): Promise<strin
   }
 }
 
+async function commandResponse(response: Response): Promise<{ snapshot: GameSnapshot; stale: boolean; message?: string }> {
+  const body = await response.json().catch(() => undefined) as unknown;
+  if (response.ok && isGameSnapshot(body)) {
+    return { snapshot: body, stale: false };
+  }
+
+  const staleSnapshot = staleCommandSnapshot(response.status, body);
+  if (staleSnapshot) {
+    const message = typeof body === "object" && body && "message" in body && typeof body.message === "string"
+      ? body.message
+      : undefined;
+    return { snapshot: staleSnapshot, stale: true, ...(message ? { message } : {}) };
+  }
+
+  const fallback = response.ok ? "Command returned an unreadable snapshot" : `Command failed (${response.status})`;
+  const message = typeof body === "object" && body
+    ? [stringProperty(body, "error"), stringProperty(body, "message")].find(Boolean)
+    : undefined;
+  throw new StaleCommandError(response.status === 409 && stringProperty(body, "error") === "action_no_longer_legal", message ? `${fallback}: ${message}` : fallback);
+}
+
+async function fetchLatestSnapshot(gameId: string): Promise<GameSnapshot> {
+  const response = await fetch(`/api/engine/games/${encodeURIComponent(gameId)}`);
+  if (!response.ok) throw new Error(await errorMessage(response, "Snapshot refresh failed"));
+  return response.json() as Promise<GameSnapshot>;
+}
+
+class StaleCommandError extends Error {
+  constructor(readonly isStaleCommand: boolean, message: string) {
+    super(message);
+  }
+}
+
+function isStaleCommandError(error: unknown): boolean {
+  return error instanceof StaleCommandError && error.isStaleCommand;
+}
+
+export function staleCommandSnapshot(status: number, body: unknown): GameSnapshot | undefined {
+  if (status !== 409 || !body || typeof body !== "object") return undefined;
+  if (stringProperty(body, "error") !== "action_no_longer_legal") return undefined;
+  const snapshot = "snapshot" in body ? body.snapshot : undefined;
+  return isGameSnapshot(snapshot) ? snapshot : undefined;
+}
+
+function isGameSnapshot(value: unknown): value is GameSnapshot {
+  return !!value
+    && typeof value === "object"
+    && stringProperty(value, "id") !== undefined
+    && stringProperty(value, "roomId") !== undefined
+    && typeof (value as { turn?: unknown }).turn === "number";
+}
+
+function stringProperty(value: unknown, key: string): string | undefined {
+  return value && typeof value === "object" && key in value && typeof value[key as keyof typeof value] === "string"
+    ? value[key as keyof typeof value] as string
+    : undefined;
+}
+
 function XmageSetupRequired({ health, reason }: { health: EngineHealth; reason?: string | undefined }) {
   const displayReason = reason ?? health.reason ?? "XMage rules engine is not reachable.";
   return (
@@ -331,6 +421,44 @@ export function latestSnapshot(current: GameSnapshot | null, next: GameSnapshot)
   }
 
   return next;
+}
+
+export function shouldClearPendingAfterSnapshot(current: GameSnapshot, next: GameSnapshot): boolean {
+  if (latestSnapshot(current, next) === current) return false;
+  return next.pendingStatus !== "waiting_for_xmage";
+}
+
+function gameStatusLines(
+  snapshot: GameSnapshot,
+  health: EngineHealth,
+  socketStatus: "idle" | "connecting" | "live" | "unavailable",
+  simulatorMode: boolean
+): string[] {
+  const source = snapshotSource(snapshot, simulatorMode);
+  const active = snapshot.activePlayerId ?? "unknown";
+  const priority = snapshot.priorityPlayerId ?? snapshot.waitingOnPlayerId ?? "unknown";
+  const phase = snapshot.step ? `${snapshot.phase}/${snapshot.step}` : snapshot.phase;
+  const lines = [
+    `Source: ${source} · Bridge: ${health.status} · rev ${snapshot.bridgeRevision ?? "n/a"} · cycle ${snapshot.xmageCycle ?? "n/a"}`,
+    `Turn ${snapshot.turn} · ${phase} · active ${active} · priority ${priority}`,
+    `WebSocket: ${socketStatus} · pendingStatus: ${snapshot.pendingStatus ?? "none"}`
+  ];
+  if (snapshot.priorityPlayerId === "human" || snapshot.waitingOnPlayerId === "human") {
+    lines.push("Your priority");
+  } else if (snapshot.priorityPlayerId || snapshot.waitingOnPlayerId) {
+    lines.push("AI thinking");
+  }
+  if (snapshot.pendingStatus === "waiting_for_xmage") lines.push("Waiting for XMage");
+  if (snapshot.pendingStatus === "stalled" || health.status === "stalled") lines.push("XMage stalled");
+  return lines;
+}
+
+function snapshotSource(snapshot: GameSnapshot, simulatorMode: boolean): string {
+  const source = (snapshot as GameSnapshot & { source?: string }).source;
+  if (source) return source;
+  if (simulatorMode) return "simulator";
+  if (snapshot.xmage) return "xmage-java-bridge";
+  return "xmage";
 }
 
 function ManaPoolView({ manaPool }: { manaPool?: ManaPool | undefined }) {
@@ -592,15 +720,18 @@ export function toCommand(
       break;
     }
     case "activate_ability":
-      command = action.cardInstanceId ?? action.sourceInstanceId
+      {
+        const abilityId = action.abilityId ?? abilityTemplate(action).abilityId;
+        command = (action.cardInstanceId ?? action.sourceInstanceId) && abilityId
         ? {
             type: "activate_ability",
             gameId: snapshot.id,
             playerId: action.playerId,
             sourceInstanceId: action.sourceInstanceId ?? action.cardInstanceId ?? "",
-            abilityId: abilityTemplate(action).abilityId ?? action.id
+            abilityId
           }
         : undefined;
+      }
       break;
     case "choose_target":
       command = {
@@ -639,13 +770,18 @@ export function toCommand(
       };
       break;
     case "choose_ability":
-      command = {
-        type: "choose_ability",
-        gameId: snapshot.id,
-        playerId: action.playerId,
-        promptId: promptId(snapshot, action),
-        abilityId: action.targetIds?.[0] ?? action.validTargetIds?.[0] ?? action.abilityId ?? action.id
-      };
+      {
+        const abilityId = action.targetIds?.[0] ?? action.validTargetIds?.[0] ?? action.abilityId ?? abilityTemplate(action).abilityId;
+        command = abilityId
+          ? {
+              type: "choose_ability",
+              gameId: snapshot.id,
+              playerId: action.playerId,
+              promptId: promptId(snapshot, action),
+              abilityId
+            }
+          : undefined;
+      }
       break;
     case "choose_pile":
       {

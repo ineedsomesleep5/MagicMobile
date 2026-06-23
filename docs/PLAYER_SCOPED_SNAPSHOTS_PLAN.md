@@ -19,7 +19,7 @@ In 1v1 vs AI, exposing all zones to the human player is acceptable since the AI 
 
 ## Current Implementation (Alpha)
 
-The gateway now has `obfuscateSnapshotForPlayer(snapshot, targetPlayerId)` in [server.mjs](file:///Users/calebfeliciano/Documents/MagicMobile/apps/xmage-gateway/server.mjs) and the Java bridge in [MagicMobileBridge.java](file:///Users/calebfeliciano/Documents/MagicMobile/apps/xmage-gateway/bridge/MagicMobileBridge.java).
+The gateway now has `obfuscateSnapshotForPlayer(snapshot, targetPlayerId)` in [server.mjs](../apps/xmage-gateway/server.mjs) and the Java bridge in [MagicMobileBridge.java](../apps/xmage-gateway/bridge/MagicMobileBridge.java).
 
 **What it does today:**
 - Replaces opponent hand card details with `{ name: "Hidden card" }` placeholders
@@ -33,6 +33,18 @@ The gateway now has `obfuscateSnapshotForPlayer(snapshot, targetPlayerId)` in [s
 3. XMage "revealed" card state needs to be forwarded (e.g., when a card is revealed from hand)
 4. Sideboard/outside-game zones need obfuscation rules
 5. Spectator mode needs its own obfuscation profile
+
+## Required Before Human Multiplayer
+
+Human-vs-human and 3-4 player pods are later milestones. Before either mode is enabled:
+
+- `GET /games/:id` snapshots must be scoped by `playerId` or another authenticated viewer identity.
+- WebSocket broadcasts must be scoped per connection and per player; one shared broadcast payload is not acceptable for human pods.
+- Opponent hands and libraries must stay hidden by default, with only counts exposed.
+- Legal actions must be filtered per viewer so a client cannot see or submit another player's private actions.
+- Revealed, looked-at, and temporarily visible cards need explicit metadata from XMage and must be shown only to the viewers allowed by the game rules.
+- Spectator mode needs a separate profile that defines what public zones, revealed cards, logs, and hidden-zone counts a spectator can see.
+- Tests must cover at least two human viewers receiving different snapshots for the same game state.
 
 ## Proposed Contract
 
@@ -58,3 +70,4 @@ interface PlayerScopedSnapshot extends GameSnapshot {
 2. Implement per-connection WebSocket filtering in the gateway
 3. Add integration tests with 2+ human players
 4. Test with XMage's reveal/look-at mechanics
+5. Define and test spectator obfuscation separately from player obfuscation

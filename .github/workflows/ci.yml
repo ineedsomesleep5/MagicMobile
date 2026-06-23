@@ -22,6 +22,8 @@ jobs:
           cache: pnpm
       - name: Install
         run: pnpm install --no-frozen-lockfile
+      - name: Compose config
+        run: docker compose config --quiet
       - name: Typecheck
         run: pnpm typecheck
       - name: Lint

@@ -228,6 +228,21 @@ describe("shared contracts", () => {
       confirmed: false
     };
 
+    const makeManaCommand: GameCommand = {
+      type: "make_mana",
+      gameId: "game-1",
+      playerId: "player-1",
+      sourceInstanceId: "source-card-1"
+    };
+
+    const activateAbilityCommand: GameCommand = {
+      type: "activate_ability",
+      gameId: "game-1",
+      playerId: "player-1",
+      sourceInstanceId: "source-card-1",
+      abilityId: "ability-1"
+    };
+
     expect(prompt.players?.[0]?.playerId).toBe("player-2");
     expect(legalAction.commandTemplate?.type).toBe("choose_mana");
     expect(legalAction.cardName).toBe("Forest");
@@ -237,5 +252,7 @@ describe("shared contracts", () => {
     expect(prompt.confirmation?.noCommand?.pay).toBe(false);
     expect(command.confirmed).toBe(true);
     expect(payCommand.pay).toBe(false);
+    expect(makeManaCommand.sourceInstanceId).toBe("source-card-1");
+    expect(activateAbilityCommand.abilityId).toBe("ability-1");
   });
 });

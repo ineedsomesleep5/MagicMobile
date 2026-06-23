@@ -1051,8 +1051,14 @@ struct NativeGameView: View {
                         .position(x: metrics.playCenterX, y: metrics.playerLandsY)
 
                     if let xmageStack = snapshot.xmage?.stack, !xmageStack.isEmpty {
-                        XmageStackPeek(objects: xmageStack, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
-                            .frame(width: min(metrics.playWidth * 0.40, 320), height: 92)
+                        XmageStackPeek(
+                            objects: xmageStack,
+                            legalActions: allActions,
+                            promptText: snapshot.promptEnvelopeV2?.message ?? snapshot.promptText,
+                            selectedCard: $selectedCard,
+                            inspectedCard: $inspectedCard
+                        )
+                            .frame(width: min(metrics.playWidth * 0.44, 350), height: 112)
                             .position(x: metrics.stackX, y: metrics.stackY)
                     } else if !human.zones.stack.isEmpty {
                         StackPeek(cards: human.zones.stack, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
@@ -1094,6 +1100,10 @@ struct NativeGameView: View {
                     LiveUpdateBadge(status: liveUpdateStatus)
                         .frame(width: min(metrics.turnBadgeWidth * 0.46, 170), height: 28)
                         .position(x: metrics.liveStatusX, y: metrics.topHUDY + 40)
+
+                    GameDiagnosticsBadge(snapshot: snapshot, liveUpdateStatus: liveUpdateStatus)
+                        .frame(width: min(metrics.turnBadgeWidth * 0.72, 230))
+                        .position(x: metrics.liveStatusX, y: metrics.topHUDY + 74)
 
                     PlayerHeroHUD(name: "Noaddrag", player: opponent, avatarData: nil, active: snapshot.activePlayerId == opponent.playerId, opponentId: human.playerId, compact: true, tiny: true)
                         .frame(width: metrics.opponentHUDWidth, height: 38)
@@ -1751,6 +1761,62 @@ struct LiveUpdateBadge: View {
     }
 }
 
+struct GameDiagnosticsBadge: View {
+    let snapshot: GameSnapshot
+    let liveUpdateStatus: String
+
+    private var source: String {
+        snapshot.source ?? (snapshot.xmage == nil ? "xmage" : "xmage-java-bridge")
+    }
+
+    private var phaseStep: String {
+        snapshot.step.map { "\(snapshot.phase)/\($0)" } ?? snapshot.phase
+    }
+
+    private var waitState: String {
+        if snapshot.pendingStatus == "stalled" || snapshot.engineHealth?.status == "stalled" {
+            return "XMage stalled"
+        }
+        if snapshot.pendingStatus == "waiting_for_xmage" {
+            return "Waiting for XMage"
+        }
+        if snapshot.priorityPlayerId == "human" || snapshot.waitingOnPlayerId == "human" {
+            return "Your priority"
+        }
+        if snapshot.priorityPlayerId != nil || snapshot.waitingOnPlayerId != nil {
+            return "AI thinking"
+        }
+        return "Waiting for XMage"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(waitState.uppercased())
+                .font(.system(size: 7, weight: .black))
+                .foregroundStyle(waitState == "Your priority" ? .green : MagicPalette.antiqueGold)
+            Text("\(source) · \(snapshot.engineHealth?.status ?? "bridge") · ws \(liveUpdateStatus)")
+                .font(.system(size: 7, weight: .bold))
+                .foregroundStyle(.white.opacity(0.72))
+                .lineLimit(1)
+                .minimumScaleFactor(0.58)
+            Text("rev \(snapshot.bridgeRevision.map(String.init) ?? "n/a") · cycle \(snapshot.xmageCycle.map(String.init) ?? "n/a") · pending \(snapshot.pendingStatus ?? "none")")
+                .font(.system(size: 7, weight: .bold))
+                .foregroundStyle(.white.opacity(0.62))
+                .lineLimit(1)
+                .minimumScaleFactor(0.58)
+            Text("turn \(snapshot.turn) · \(phaseStep) · active \(snapshot.activePlayerId ?? "-") · priority \(snapshot.priorityPlayerId ?? snapshot.waitingOnPlayerId ?? "-")")
+                .font(.system(size: 7, weight: .bold))
+                .foregroundStyle(.white.opacity(0.62))
+                .lineLimit(1)
+                .minimumScaleFactor(0.58)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(.black.opacity(0.54), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.antiqueGold.opacity(0.24), lineWidth: 1))
+    }
+}
+
 struct PlayerAvatar: View {
     let data: Data?
     let size: CGFloat
@@ -1911,8 +1977,18 @@ struct StackPeek: View {
 
 struct XmageStackPeek: View {
     let objects: [XmageStackObject]
+    let legalActions: [LegalAction]
+    let promptText: String?
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
+
+    private var topObject: XmageStackObject? {
+        objects.last
+    }
+
+    private var passAvailable: Bool {
+        legalActions.contains { ["pass_priority", "pass_until_response", "advance_phase"].contains($0.type) }
+    }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -1939,19 +2015,40 @@ struct XmageStackPeek: View {
             }
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(objects.last?.name ?? "Resolving")
+                HStack(spacing: 5) {
+                    Text("TOP \(objects.count)")
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundStyle(MagicPalette.antiqueGold)
+                    Text(passAvailable ? "RESPOND/PASS" : "WAIT")
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundStyle(passAvailable ? .green : .white.opacity(0.62))
+                }
+                Text(topObject?.name ?? "Resolving")
                     .font(.system(size: 11, weight: .black))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.65)
-                if let text = objects.last?.rulesText, !text.isEmpty {
+                if let source = topObject?.sourceCard?.card.name, source != topObject?.name {
+                    Text("Source: \(source)")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.70))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.62)
+                }
+                if let text = topObject?.rulesText, !text.isEmpty {
                     Text(text)
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(.white.opacity(0.72))
                         .lineLimit(2)
                         .minimumScaleFactor(0.62)
                 }
-                if let paid = objects.last?.paid {
+                if let promptText, !promptText.isEmpty {
+                    Text("Prompt: \(promptText)")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(MagicPalette.antiqueGold.opacity(0.82))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.58)
+                } else if let paid = topObject?.paid {
                     Text(paid ? "Paid" : "Pending payment")
                         .font(.system(size: 8, weight: .black))
                         .foregroundStyle(paid ? MagicPalette.parchment.opacity(0.7) : MagicPalette.antiqueGold)
@@ -2347,6 +2444,14 @@ struct UniversalPromptActionPanel: View {
                     ids: prompt.targetIds ?? []
                 )
             }
+
+            if !hasRenderablePromptControls(prompt) {
+                Text("Unsupported prompt/action: XMage has not exposed a mobile-safe control for this route yet.")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.orange.opacity(0.86))
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.72)
+            }
         }
     }
 
@@ -2735,16 +2840,23 @@ struct UniversalPromptActionPanel: View {
             guard let abilityId = ids.first else { return nil }
             return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, abilityId: abilityId, promptId: promptId, messageId: promptMessageId)
         case "choose_pile":
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, pile: pile ?? Int(ids.first ?? "1") ?? 1)
+            guard let pileChoice = pile ?? ids.first.flatMap(Int.init), [1, 2].contains(pileChoice) else { return nil }
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, pile: pileChoice)
         case "choose_amount", "play_x_mana":
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, amount: amount ?? Int(ids.first ?? "0") ?? 0)
+            guard let amountChoice = amount ?? ids.first.flatMap(Int.init) else { return nil }
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, amount: amountChoice)
         case "choose_multi_amount":
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, amounts: amounts ?? ids.compactMap(Int.init))
+            let amountChoices = amounts ?? ids.compactMap(Int.init)
+            guard !amountChoices.isEmpty, amounts != nil || amountChoices.count == ids.count else { return nil }
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, amounts: amountChoices)
         case "play_mana":
-            guard let manaType else { return nil }
+            guard let manaType = exactManaSymbol(manaType) else { return nil }
             return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, manaType: manaType)
         case "choose_mana":
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, manaTypes: manaType.map { [$0] } ?? ids)
+            let manaChoices = manaType.map { [$0] } ?? ids
+            let exactChoices = manaChoices.compactMap(exactManaSymbol)
+            guard !exactChoices.isEmpty, exactChoices.count == manaChoices.count else { return nil }
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, manaTypes: exactChoices)
         case "search_select":
             return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, cardInstanceIds: ids)
         case "order_triggers", "order_items":
@@ -2753,10 +2865,11 @@ struct UniversalPromptActionPanel: View {
             guard let useCommandZone else { return nil }
             return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, useCommandZone: useCommandZone)
         case "pay_cost":
-            let shouldPay = pay ?? (ids.first != "false")
+            guard let shouldPay = pay ?? boolChoice(ids.first) else { return nil }
             return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, confirmed: shouldPay, pay: shouldPay)
         case "answer_yes_no":
-            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, confirmed: ids.first != "false")
+            guard let confirmed = boolChoice(ids.first) else { return nil }
+            return GameCommand(type: type, gameId: snapshot.id, playerId: playerId, promptId: promptId, messageId: promptMessageId, confirmed: confirmed)
         default:
             return nil
         }
@@ -2781,6 +2894,19 @@ struct UniversalPromptActionPanel: View {
     private func amountCommandType(preferred: String?) -> String {
         guard let preferred = preferred?.lowercased() else { return "choose_amount" }
         return ["choose_amount", "choose_multi_amount", "play_x_mana"].contains(preferred) ? preferred : "choose_amount"
+    }
+
+    private func exactManaSymbol(_ value: String?) -> String? {
+        guard let value, ["W", "U", "B", "R", "G", "C"].contains(value) else { return nil }
+        return value
+    }
+
+    private func boolChoice(_ value: String?) -> Bool? {
+        guard let value else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if ["true", "yes"].contains(normalized) { return true }
+        if ["false", "no"].contains(normalized) { return false }
+        return nil
     }
 
     private func playerPromptLabel(_ player: XmagePromptPlayer) -> String {
@@ -2820,6 +2946,15 @@ struct UniversalPromptActionPanel: View {
     private func isSearchPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
         let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
         return type == "search_select" || prompt.method.localizedCaseInsensitiveContains("search")
+    }
+
+    private func hasRenderablePromptControls(_ prompt: PromptEnvelopeV2) -> Bool {
+        if isManaOrPaymentPrompt(prompt), !sourceManaActions.isEmpty { return true }
+        if isCommanderReplacement(prompt) || isConfirmationPrompt(prompt) || isManaPrompt(prompt) || isTriggerOrderPrompt(prompt) || isSearchPrompt(prompt) { return true }
+        if prompt.choices?.isEmpty == false || prompt.targets?.isEmpty == false || prompt.players?.isEmpty == false { return true }
+        if prompt.cards?.isEmpty == false || prompt.modes?.isEmpty == false || prompt.abilities?.isEmpty == false { return true }
+        if prompt.piles?.isEmpty == false || prompt.amounts?.isEmpty == false || prompt.orderedItems?.isEmpty == false || prompt.manaChoices?.isEmpty == false { return true }
+        return false
     }
 
     private func yesNoIcon(_ label: String) -> String? {

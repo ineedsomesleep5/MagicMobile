@@ -52,53 +52,88 @@ export function createGatewayHandler(state = games, options = {}) {
 
       const fixtureMatch = url.pathname?.match(/^\/dev\/xmage-fixtures\/([^/]+)$/);
       if (method === "POST" && fixtureMatch) {
+        const fixtureName = decodeURIComponent(fixtureMatch[1]);
         if (!xmageFixturesEnabled()) {
           return sendJson(response, { error: "xmage_fixtures_disabled" }, 404);
         }
+        const body = await readJson(request);
+        const fixture = commanderFixtureConfig(fixtureName, body);
         if (!bridgeClient) {
           return sendJson(
             response,
-            {
+            fixtureBlockedResponse(fixture, {
               error: "xmage_fixture_bridge_required",
-              message: "XMage fixtures require the real Java bridge; simulator fallback is disabled."
-            },
+              setupMethod: "bridge_required",
+              source: "xmage-gateway",
+              blockedReason: "XMage fixtures require the real Java bridge; simulator fallback is disabled."
+            }),
             503
           );
         }
+        if (typeof bridgeClient.createCommanderFixtureGame !== "function") {
+          return sendJson(
+            response,
+            fixtureBlockedResponse(fixture, {
+              error: "xmage_fixture_bridge_endpoint_missing",
+              setupMethod: "bridge_fixture_endpoint_missing",
+              source: "xmage-gateway",
+              blockedReason: "The configured bridge client does not expose createCommanderFixtureGame."
+            }),
+            501
+          );
+        }
 
-        const body = await readJson(request);
-        const fixtureName = decodeURIComponent(fixtureMatch[1]);
-        const fixture = commanderFixtureConfig(fixtureName, body);
-        let snapshot;
-        let fixtureFallbackReason = "Java bridge fixture endpoint is not available from the current remote Session client.";
-
-        if (typeof bridgeClient.createCommanderFixtureGame === "function") {
-          try {
-            snapshot = await bridgeClient.createCommanderFixtureGame(fixture);
-          } catch (error) {
-            if (!(error instanceof BridgeRequestError) || ![404, 501].includes(error.status)) {
-              throw error;
+        const fixtureResponse = await bridgeClient.createCommanderFixtureGame(fixture);
+        let snapshot = latestFixtureSnapshot(fixtureResponse);
+        const serviceHarness = fixtureResponse?.fixtureHarness ?? snapshot?.fixtureHarness ?? fixtureResponse;
+        let proof = fixtureSnapshotProof(snapshot, fixture);
+        if (serviceHarness?.directStateSeeded === true && !proof.ok && snapshot?.id && typeof bridgeClient.getSnapshot === "function") {
+          for (let attempt = 0; attempt < 40 && !proof.ok; attempt++) {
+            await delay(500);
+            const refreshed = await bridgeClient.getSnapshot(snapshot.id);
+            if (isRealBridgeSnapshot(refreshed)) {
+              snapshot = refreshed;
+              proof = fixtureSnapshotProof(snapshot, fixture);
             }
-            fixtureFallbackReason = error.body?.message ?? error.body?.error ?? fixtureFallbackReason;
           }
         }
-
-        if (!snapshot) {
-          snapshot = await bridgeClient.createCommanderGame(fixture.config);
-        }
-
-        const directStateSeeded = snapshot.fixtureHarness?.directStateSeeded === true;
-        snapshot.fixtureHarness = {
-          ...(snapshot.fixtureHarness ?? {}),
+        const directStateSeeded = serviceHarness?.directStateSeeded === true && proof.ok;
+        const fixtureHarness = {
+          ...(serviceHarness ?? {}),
           enabled: true,
           fixtureName: fixture.fixtureName,
           schemaVersion: 1,
           directStateSeeded,
-          fallback: directStateSeeded ? null : "deterministic_real_xmage_decks",
-          reason: directStateSeeded ? snapshot.fixtureHarness?.reason : fixtureFallbackReason,
+          fallback: directStateSeeded ? null : "fixture_endpoint_returned_without_direct_state",
+          reason: directStateSeeded ? serviceHarness?.reason : proof.reason,
           productionDisabled: true,
-          expectedRouteCoverage: fixture.schema.expectedRouteCoverage
+          expectedRoutes: fixture.schema.expectedRoutes,
+          expectedRouteCoverage: fixture.schema.expectedRouteCoverage,
+          seededZones: directStateSeeded ? proof.seededZones : []
         };
+        if (!directStateSeeded) {
+          return sendJson(
+            response,
+            fixtureBlockedResponse(fixture, {
+              error: fixtureResponse?.error ?? "xmage_fixture_state_seeding_unavailable",
+              setupMethod: serviceHarness?.setupMethod ?? "bridge_fixture_without_real_seed_proof",
+              source: serviceHarness?.source ?? snapshot?.source ?? "xmage-java-bridge",
+              gameId: snapshot?.id ?? fixtureResponse?.gameId ?? null,
+              bridgeRevision: snapshot?.bridgeRevision ?? fixtureResponse?.bridgeRevision ?? null,
+              xmageCycle: snapshot?.xmageCycle ?? fixtureResponse?.xmageCycle ?? null,
+              seededZones: [],
+              blockedReason: proof.reason,
+              fixtureHarness,
+              latestSnapshot: isRealBridgeSnapshot(snapshot) ? snapshot : undefined
+            }),
+            503
+          );
+        }
+
+        snapshot.fixtureHarness = fixtureHarness;
+        if (fixtureResponse !== snapshot) {
+          snapshot.fixtureService = fixtureServiceSummary(fixtureResponse);
+        }
         lastAiProgressAt = Date.now();
         state.set(snapshot.id, snapshot);
         return sendJson(response, snapshot, 201);
@@ -228,35 +263,52 @@ export function createHttpBridgeClient(endpoint, fetchImpl = fetch) {
 }
 
 export function xmageFixturesEnabled(env = process.env) {
-  return env.ENABLE_XMAGE_FIXTURES === "true" && env.NODE_ENV !== "production";
+  return env.ENABLE_XMAGE_FIXTURES === "true" && Boolean(env.NODE_ENV) && env.NODE_ENV !== "production";
 }
 
 export function commanderFixtureConfig(fixtureName, body = {}) {
-  const scenario = body.scenario ?? fixtureName;
+  const schemaInput = body.fixture ?? body;
+  const scenario = schemaInput.scenarioName ?? body.scenario ?? fixtureName;
   const humanPlayerId = body.humanPlayerId ?? "human";
   const aiPlayerId = body.aiPlayerId ?? "ai-1";
   const seed = body.seed ?? "fixture";
   const aiDifficulty = body.aiDifficulty ?? "normal";
   const humanDeck = body.humanDeck ?? fixtureHumanDeck(scenario);
   const aiDeck = body.aiDeck ?? fixtureAiDeck(scenario);
+  const commander = schemaInput.commander ?? humanDeck.commander?.cardName;
+  const commandZone = schemaInput.commandZone ?? [commander].filter(Boolean);
+  const expectedRoutes = schemaInput.expectedRoutes ?? schemaInput.expectedRouteCoverage ?? fixtureExpectedRouteCoverage(scenario);
   const schema = {
+    scenarioName: scenario,
     name: scenario,
+    gameId: schemaInput.gameId ?? null,
     format: "commander",
-    humanCommander: humanDeck.commander?.cardName,
+    playerIds: { human: humanPlayerId, ai: [aiPlayerId] },
+    commander,
+    hand: schemaInput.hand ?? schemaInput.humanHand ?? [],
+    battlefield: schemaInput.battlefield ?? schemaInput.humanBattlefield ?? [],
+    commandZone,
+    libraryTop: schemaInput.libraryTop ?? schemaInput.humanLibraryTop ?? [],
+    graveyard: schemaInput.graveyard ?? schemaInput.humanGraveyard ?? [],
+    exile: schemaInput.exile ?? schemaInput.humanExile ?? [],
+    aiBattlefield: schemaInput.aiBattlefield ?? [],
+    phase: schemaInput.phase ?? "precombat-main",
+    step: schemaInput.step ?? "precombat-main",
+    activePlayerId: schemaInput.activePlayerId ?? humanPlayerId,
+    priorityPlayerId: schemaInput.priorityPlayerId ?? humanPlayerId,
+    expectedRoutes,
+    humanCommander: commander,
     aiCommander: aiDeck.commander?.cardName,
-    humanHand: [],
-    humanBattlefield: [],
-    humanCommandZone: [humanDeck.commander?.cardName].filter(Boolean),
-    humanGraveyard: [],
-    humanExile: [],
-    humanLibraryTop: [],
+    humanHand: schemaInput.hand ?? schemaInput.humanHand ?? [],
+    humanBattlefield: schemaInput.battlefield ?? schemaInput.humanBattlefield ?? [],
+    humanCommandZone: commandZone,
+    humanGraveyard: schemaInput.graveyard ?? schemaInput.humanGraveyard ?? [],
+    humanExile: schemaInput.exile ?? schemaInput.humanExile ?? [],
+    humanLibraryTop: schemaInput.libraryTop ?? schemaInput.humanLibraryTop ?? [],
     searchableLibraryContents: humanDeck.entries?.map((entry) => entry.cardName) ?? [],
-    aiBattlefield: [],
-    activePlayer: humanPlayerId,
-    priorityPlayer: humanPlayerId,
-    phase: "precombat-main",
-    step: "precombat-main",
-    expectedRouteCoverage: fixtureExpectedRouteCoverage(scenario),
+    activePlayer: schemaInput.activePlayerId ?? humanPlayerId,
+    priorityPlayer: schemaInput.priorityPlayerId ?? humanPlayerId,
+    expectedRouteCoverage: expectedRoutes,
     expectedFirstLegalActions: ["keep_hand", "mulligan"]
   };
 
@@ -274,6 +326,137 @@ export function commanderFixtureConfig(fixtureName, body = {}) {
       fixture: schema
     }
   };
+}
+
+function fixtureBlockedResponse(fixture, overrides = {}) {
+  return {
+    error: overrides.error ?? "xmage_fixture_state_seeding_unavailable",
+    enabled: true,
+    fixtureName: fixture.fixtureName,
+    schemaVersion: fixture.schemaVersion,
+    productionDisabled: true,
+    directStateSeeded: false,
+    setupMethod: overrides.setupMethod ?? "blocked_before_bridge",
+    gameId: overrides.gameId ?? null,
+    source: overrides.source ?? "xmage-gateway",
+    bridgeRevision: overrides.bridgeRevision ?? null,
+    xmageCycle: overrides.xmageCycle ?? null,
+    seededZones: overrides.seededZones ?? [],
+    fixtureHarness: overrides.fixtureHarness,
+    latestSnapshot: overrides.latestSnapshot,
+    blockedReason: overrides.blockedReason ?? "Fixture setup could not reach a real XMage in-process seeding hook.",
+    classProcessBoundary:
+      overrides.classProcessBoundary
+      ?? "Node gateway -> Java bridge HTTP route -> separate XMage server JVM; direct Game.cheat(...) is only available inside the server process.",
+    nextImplementationStep:
+      overrides.nextImplementationStep
+      ?? "Add a dev/test-only fixture hook inside the XMage server process and call it from the bridge route."
+  };
+}
+
+function latestFixtureSnapshot(fixtureResponse) {
+  if (!fixtureResponse || typeof fixtureResponse !== "object") return null;
+  if (fixtureResponse.snapshot && typeof fixtureResponse.snapshot === "object") return fixtureResponse.snapshot;
+  if (fixtureResponse.latestSnapshot && typeof fixtureResponse.latestSnapshot === "object") return fixtureResponse.latestSnapshot;
+  if (fixtureResponse.id || fixtureResponse.source || fixtureResponse.players) return fixtureResponse;
+  return null;
+}
+
+function fixtureServiceSummary(fixtureResponse) {
+  if (!fixtureResponse || typeof fixtureResponse !== "object") return null;
+  const { snapshot, latestSnapshot, ...summary } = fixtureResponse;
+  return summary;
+}
+
+function fixtureSnapshotProof(snapshot, fixture) {
+  if (!isRealBridgeSnapshot(snapshot)) {
+    return {
+      ok: false,
+      reason: "Fixture endpoint did not return a real Java bridge snapshot with numeric bridgeRevision.",
+      seededZones: []
+    };
+  }
+
+  const schema = fixture.schema ?? {};
+  const humanPlayer = snapshot.players?.find((player) => player.playerId === schema.playerIds?.human);
+  const aiPlayerId = schema.playerIds?.ai?.[0];
+  const aiPlayer = snapshot.players?.find((player) => player.playerId === aiPlayerId);
+  const mismatches = [];
+  const seededZones = [];
+
+  if (!humanPlayer) mismatches.push(`missing human player ${schema.playerIds?.human}`);
+  if (aiPlayerId && !aiPlayer) mismatches.push(`missing AI player ${aiPlayerId}`);
+  if (schema.phase && snapshot.phase !== schema.phase) mismatches.push(`phase ${snapshot.phase ?? "missing"} != ${schema.phase}`);
+  if (schema.step && snapshot.step !== schema.step) mismatches.push(`step ${snapshot.step ?? "missing"} != ${schema.step}`);
+  if (schema.activePlayerId && snapshot.activePlayerId !== schema.activePlayerId) {
+    mismatches.push(`activePlayerId ${snapshot.activePlayerId ?? "missing"} != ${schema.activePlayerId}`);
+  }
+  if (schema.priorityPlayerId && snapshot.priorityPlayerId !== schema.priorityPlayerId) {
+    mismatches.push(`priorityPlayerId ${snapshot.priorityPlayerId ?? "missing"} != ${schema.priorityPlayerId}`);
+  }
+
+  if (humanPlayer) {
+    verifyZoneContains(mismatches, seededZones, humanPlayer, "hand", schema.hand);
+    verifyZoneContains(mismatches, seededZones, humanPlayer, "battlefield", schema.battlefield);
+    verifyZoneContains(mismatches, seededZones, humanPlayer, "command", schema.commandZone, "commandZone");
+    verifyZoneContains(mismatches, seededZones, humanPlayer, "graveyard", schema.graveyard);
+    verifyZoneContains(mismatches, seededZones, humanPlayer, "exile", schema.exile);
+    verifyLibraryTop(mismatches, seededZones, humanPlayer, schema.libraryTop);
+  }
+  if (aiPlayer) {
+    verifyZoneContains(mismatches, seededZones, aiPlayer, "battlefield", schema.aiBattlefield, "aiBattlefield");
+  }
+
+  return {
+    ok: mismatches.length === 0,
+    reason: mismatches.length === 0
+      ? "Fixture endpoint returned a direct server-side seeded XMage snapshot."
+      : `Fixture endpoint returned directStateSeeded=true without matching requested seed proof: ${mismatches.join("; ")}.`,
+    seededZones
+  };
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function verifyZoneContains(mismatches, seededZones, player, zone, expectedCards, label = zone) {
+  const expected = cardNames(expectedCards);
+  if (expected.length === 0) return;
+  const actual = zoneCardNames(player, zone);
+  const missing = expected.filter((cardName) => !actual.includes(cardName));
+  if (missing.length > 0) {
+    mismatches.push(`${player.playerId}.${label} missing ${missing.join(", ")}`);
+    return;
+  }
+  seededZones.push(`${player.playerId}.${label}`);
+}
+
+function verifyLibraryTop(mismatches, seededZones, player, expectedCards) {
+  const expected = cardNames(expectedCards);
+  if (expected.length === 0) return;
+  const actual = zoneCardNames(player, "library").slice(0, expected.length);
+  const hidden = actual.length >= expected.length && actual.every((name) => /hidden/i.test(name));
+  if (hidden) {
+    seededZones.push(`${player.playerId}.libraryTopHidden:${expected.length}`);
+    return;
+  }
+  const mismatched = expected.filter((cardName, index) => actual[index] !== cardName);
+  if (mismatched.length > 0) {
+    mismatches.push(`${player.playerId}.libraryTop expected ${expected.join(", ")} but saw ${actual.join(", ") || "empty"}`);
+    return;
+  }
+  seededZones.push(`${player.playerId}.libraryTop`);
+}
+
+function cardNames(cards) {
+  return (cards ?? [])
+    .map((entry) => typeof entry === "string" ? entry : entry?.cardName ?? entry?.name ?? entry?.card?.name)
+    .filter(Boolean);
+}
+
+function zoneCardNames(player, zone) {
+  return (player.zones?.[zone] ?? []).map((entry) => entry.card?.name ?? entry.cardName ?? entry.name).filter(Boolean);
 }
 
 function fixtureExpectedRouteCoverage(scenario) {
@@ -482,6 +665,10 @@ async function requestBridge(fetchImpl, baseUrl, path, options = {}) {
 
 function isBridgeSnapshot(snapshot) {
   return snapshot?.source === "xmage-java-bridge" || String(snapshot?.id ?? "").startsWith("xmage-bridge-");
+}
+
+function isRealBridgeSnapshot(snapshot) {
+  return snapshot?.source === "xmage-java-bridge" && typeof snapshot.bridgeRevision === "number";
 }
 
 export function applyCommand(snapshot, command) {
