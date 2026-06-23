@@ -51,6 +51,8 @@ let seededStateVerified = false;
 let lastBridgeRevision: number | undefined;
 let lastXmageCycle: number | undefined;
 let health: any = null;
+let promptModeChoiceSubmitted = false;
+let promptModeChoiceResolved = false;
 
 if (process.env.XMAGE_SMOKE_SELFTEST === "fixture-unavailable") {
   const selfTestReport = fixtureUnavailableReport({
@@ -343,6 +345,9 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
       allowEqual: snapshot.pendingStatus === "waiting_for_xmage"
     });
     assertSemanticProgress(previous, snapshot, semanticLabel);
+    if (promptModeScenario && action.type === "choose_mode") {
+      promptModeChoiceSubmitted = true;
+    }
     recordRouteFamilyForTransition(previous, snapshot);
     recordCommanderState(snapshot);
     recordCoverage(snapshot);
@@ -462,9 +467,21 @@ if (activatedAbilityScenario || triggeredAbilityScenario || promptModeScenario |
     });
     throw new Error(
       `[Smoke] ${scenario} did not complete required real-XMage route families: ${missing.join(", ")}.\n`
-        + smokeDebug(`${scenario} final snapshot`, snapshot)
+      + smokeDebug(`${scenario} final snapshot`, snapshot)
     );
   }
+}
+
+if (promptModeScenario && (!promptModeChoiceSubmitted || !promptModeChoiceResolved)) {
+  writeSmokeReport({
+    ...baseSummaryReport(snapshot),
+    failedStep: "prompt-mode",
+    failureReason: `choose_mode ${promptModeChoiceSubmitted ? "was submitted" : "was not submitted"}; resolved proof ${promptModeChoiceResolved ? "was observed" : "was not observed"}.`
+  });
+  throw new Error(
+    "[Smoke] prompt-mode did not submit and resolve a real XMage choose_mode response.\n"
+      + smokeDebug("prompt-mode final snapshot", snapshot)
+  );
 }
 
 if (stepCount >= maxStepsCount) {
@@ -544,10 +561,11 @@ async function runCommanderFullAiGate() {
     });
   }
 
-  const routeFamiliesCovered = unionReportStrings(scenarioResults, "routeFamiliesSeen")
-    .filter((family) => !unionReportStrings(scenarioResults, "routeFamiliesMissing").includes(family))
+  const routeFamiliesCovered = unionReportStrings(scenarioResults, "routeFamiliesSeen").sort();
+  const routeFamiliesRequired = unionReportStrings(scenarioResults, "routeFamiliesRequired").sort();
+  const routeFamiliesMissing = routeFamiliesRequired
+    .filter((family) => !routeFamiliesCovered.includes(family))
     .sort();
-  const routeFamiliesMissing = unionReportStrings(scenarioResults, "routeFamiliesMissing").sort();
   const iOSRequiredRoutesMissing = routeFamiliesMissing.filter((family) => ![
     "fixture_call",
     "direct_state_seeded",
@@ -583,6 +601,7 @@ async function runCommanderFullAiGate() {
       const harness = result.fixtureHarness as { productionDisabled?: unknown } | undefined;
       return harness?.productionDisabled === true;
     }),
+    routeFamiliesRequired,
     routeFamiliesCovered,
     routeFamiliesMissing,
     stepsBlocked,
@@ -595,6 +614,7 @@ async function runCommanderFullAiGate() {
       seededStateVerified: result.seededStateVerified,
       bridgeRevision: result.bridgeRevision,
       xmageCycle: result.xmageCycle,
+      routeFamiliesRequired: result.routeFamiliesRequired,
       routeFamiliesMissing: result.routeFamiliesMissing,
       stepsBlocked: result.stepsBlocked,
       failedStep: result.failedStep,
@@ -685,6 +705,10 @@ function baseSummaryReport(snapshot: SmokeSnapshot) {
       castSeen: manaRockCastSeen,
       paymentSourceSeen: manaRockPaymentSourceSeen,
       resolvedSeen: manaRockResolvedSeen
+    } : undefined,
+    promptMode: promptModeScenario ? {
+      choiceSubmitted: promptModeChoiceSubmitted,
+      choiceResolved: promptModeChoiceResolved
     } : undefined,
     commanderTaxChanges,
     commanderDamageChanges,
@@ -2394,6 +2418,10 @@ function recordCoverage(snapshot: SmokeSnapshot) {
   ) {
     markRouteFamily("trigger_seen");
   }
+  if (promptModeScenario && promptModeResolvedFromSnapshot(snapshot)) {
+    promptModeChoiceResolved = true;
+    markRouteFamily("choose_mode");
+  }
   recordGauntletSnapshot(snapshot);
 }
 
@@ -2420,9 +2448,18 @@ function scenarioSatisfied() {
   if (scenario === "mana-rock") return manaRockCastSeen && manaRockPaymentSourceSeen && manaRockResolvedSeen;
   if (scenario === "search-select") return gauntlet.searchResolved || actionsByType.search_select > 0;
   if (scenario === "prompt-variety") return promptVarietyRouteFamiliesSatisfied();
-  if (scenario === "activated-ability-stack" || scenario === "triggered-ability-stack" || scenario === "prompt-mode") return missingRouteFamilies().length === 0;
+  if (scenario === "prompt-mode") return missingRouteFamilies().length === 0 && promptModeChoiceSubmitted && promptModeChoiceResolved;
+  if (scenario === "activated-ability-stack" || scenario === "triggered-ability-stack") return missingRouteFamilies().length === 0;
   if (scenario === "commander-gauntlet") return commanderGauntletMissingSteps().length === 0;
   return false;
+}
+
+function promptModeResolvedFromSnapshot(snapshot: SmokeSnapshot) {
+  return humanZone(snapshot, "battlefield").some((entry) => {
+    const name = entry.card?.name ?? "";
+    const oracleText = entry.card?.oracleText ?? "";
+    return /lavabrink venturer/i.test(name) && /chosen mode:/i.test(oracleText);
+  });
 }
 
 function isManaOrPaymentPrompt(snapshot: SmokeSnapshot) {
