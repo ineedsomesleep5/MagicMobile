@@ -51,7 +51,7 @@ Historical live verification: the same real `commander-state` smoke attacked wit
 ]
 ```
 
-Current release-evidence rule: commander tax/damage remain implemented from real XMage snapshot data, but they are not current gate-green unless a fresh `commander-state` or gauntlet report from `source: "xmage-java-bridge"` includes non-empty `commanderTaxChanges` and `commanderDamageChanges`. Simulator-only or older artifacts are useful diagnostics, not final alpha proof.
+Current release-evidence rule: commander tax remains proven by the deterministic gauntlet, and commander damage is separately proven by the targeted `commander-damage` fixture from `source: "xmage-java-bridge"` with non-empty `commanderDamageChanges`. Simulator-only or older artifacts are useful diagnostics, not final alpha proof.
 
 ## Command Zone UI Representation
 

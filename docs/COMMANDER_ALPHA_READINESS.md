@@ -65,19 +65,21 @@ All commands below were run locally on macOS on June 23, 2026 against the curren
 | `curl http://localhost:17171/health` | Gateway/bridge health | Ready after startup polling | Pass: `status: "ready"`, `reason: "XMage Java bridge connected to 127.0.0.1:17171."` |
 | `XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage` | Live gateway & Java bridge non-fixtured play loop | Diagnostic only | Not a release gate; nondeterministic legal-deck state can miss required proof routes |
 | `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage` | Full deterministic Commander gauntlet smoke | ~90s after services ready | Pass: real `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, `stepsBlocked: []` |
+| `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-damage XMAGE_USE_FIXTURE=true pnpm smoke:xmage` | Targeted deterministic commander damage smoke | ~40s after services ready | Pass: real `source: "xmage-java-bridge"`, `commanderDamageChanges` non-empty, AI life changed, `stepsBlocked: []` |
 
 ### Key Smoke Test Verification Points:
 - The bridge image was rebuilt after the source-UUID `make_mana` fix and after the activation-dispatch/commander prompt classifier fixes in this pass.
 - Final deterministic smoke evidence from this pass after the latest bridge rebuild: game `139255f5-8d6e-4e25-b284-653949456092`, `source: "xmage-java-bridge"`, final `bridgeRevision: 115`, final `xmageCycle: 196`, `fixtureHarness.directStateSeeded: true`, `seededStateVerified: true`, and `stepsBlocked: []`.
 - Focused activated-ability fixture evidence from the same pass: `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=activated-ability-stack XMAGE_USE_FIXTURE=true pnpm smoke:xmage` passed against game `56dcbd20-a8f6-4574-a77a-dd4bdea27d4a`, `source: "xmage-java-bridge"`, final `bridgeRevision: 14`, final `xmageCycle: 22`, `directStateSeeded: true`, `seededStateVerified: true`, `routeFamiliesMissing: []`, and `stepsBlocked: []`.
+- Focused commander-damage fixture evidence from the same pass after the combat-selection bridge fix: `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-damage XMAGE_USE_FIXTURE=true pnpm smoke:xmage` passed against game `26816c39-99a2-478f-abb8-e17065c784e0`, `source: "xmage-java-bridge"`, final `bridgeRevision: 56`, final `xmageCycle: 94`, `commanderDamageChanges: [{ recipient: "ai-1", attacker: "human", damage: 2 }]`, AI life changed to `38`, and `stepsBlocked: []`.
 - The successful gauntlet used `setupMethod: "in_server_game_cheat"` and `source: "xmage-server-fixture-service"` for setup metadata, then all gameplay actions went through the real Java bridge command path.
 - Live route-family evidence in the passing report: `play_land`, `cast_spell`, `make_mana`, `activate_ability`, `search_select/choose_card` via XMage `GAME_TARGET` search selection, `choose_target`, `answer_yes_no`, `pay_cost` via `GAME_PLAY_MANA`, `commander_replacement`, `pass_priority`, `stack_object_seen`, `trigger_seen`, `zone_update_seen`, and `commander_tax_seen`.
-- `laterScope` remains non-empty for `mana-rock`, `commander-damage`, `blocker-flow`, and `prompt-variety`; these are not current iOS Commander alpha release blockers unless the alpha scope is expanded.
+- `laterScope` remains non-empty in the gauntlet report for `mana-rock`, `commander-damage`, `blocker-flow`, and `prompt-variety`; targeted commander-damage is now separately deterministic-fixture proven, while real blocker assignment and prompt-variety are still not green.
 - Historical generated reports must be treated as artifacts only; new reports are written under `build_output/smoke/*.json` and ignored by git.
 - Added a dev-only fixture harness route at `POST /dev/xmage-fixtures/commander`, guarded by `ENABLE_XMAGE_FIXTURES=true` and disabled when `NODE_ENV=production`.
 - Fixture smoke can now be invoked with `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage`.
 - Current fixture harness implementation includes a dev/test-only embedded same-JVM startup path. In fixture mode, `MagicMobileEmbeddedServerBridge` starts `mage.server.Main.main(args)` and gives `MagicMobileBridge` access to the server-side manager factory so the route can seed through XMage-owned `GameController` / `Game.cheat(...)`.
-- June 23 bridge fix: default XMage card-click actions now send source card UUIDs for `play_land`, normal `cast_spell`, basic `make_mana`, and playable-object `activate_ability`; non-mana `activate_ability` still requires the selected ability UUID for stale-action validation before dispatch.
+- June 23 bridge fix: default XMage card-click actions now send source card UUIDs for `play_land`, normal `cast_spell`, basic `make_mana`, and playable-object `activate_ability`; non-mana `activate_ability` still requires the selected ability UUID for stale-action validation before dispatch. Combat selections now finish attacker/blocker UUID submission with XMage's explicit Done/OK boolean (`false`) instead of the previous cancel-like `true`.
 - Performed opening hand keep (`keep_hand`).
 - Played a Forest land card from hand (`play_land`).
 - Tapped land to generate green mana (`make_mana`).
@@ -85,7 +87,7 @@ All commands below were run locally on macOS on June 23, 2026 against the curren
 - Resolved the mana-payment prompt (`GAME_PLAY_MANA` prompt envelope).
 - Passed priority to the AI (`pass_priority`) and verified AI response execution.
 - Submitted typed combat attacker payloads in the combat fixture.
-- Parsed commander tax from real XMage snapshots in the current gauntlet and commander-state smoke. Commander damage parsing exists and was observed during a later-scope prompt-variety run, but commander damage is not part of the current gauntlet release gate because the targeted commander-state smoke still fails before non-empty `commanderDamageChanges`.
+- Parsed commander tax from real XMage snapshots in the current gauntlet and commander-state smoke. Commander damage is now separately deterministic-fixture proven by `commander-damage` with a non-empty `commanderDamageChanges` array; it is still not required by the current gauntlet release gate.
 - Added a legal singleton `commander-gauntlet` smoke scenario that reports completed and blocked gauntlet steps from real XMage state. This is the current alpha milestone gate and passed locally with no `stepsBlocked`.
 - Fixed player-only `GAME_TARGET` prompts so starting-player selection is exposed as `choose_player` and submitted with XMage player UUIDs, not the local actor alias.
 - Fixed `GAME_OVER` prompt snapshots to fail closed by exposing only terminal-safe actions instead of stale playable battlefield actions.
@@ -152,7 +154,7 @@ pnpm smoke:xmage
 - Normal CI checks are green in this pass.
 - The deterministic real-XMage Commander gauntlet is green for the current alpha route-family gate: `stepsBlocked: []`.
 - Non-fixtured `core-flow` remains diagnostic only because legal-deck draw/order is nondeterministic.
-- `mana-rock`, `commander-damage`, `blocker-flow`, and `prompt-variety` are still `laterScope` in the latest gauntlet report. A separate `blocker-flow` smoke passed with `declare_attackers` evidence, but it did not prove a real blocker assignment. Do not claim later-scope routes as alpha-proven unless fresh reports move them into the required gate and prove them with real XMage.
+- `mana-rock`, `commander-damage`, `blocker-flow`, and `prompt-variety` are still `laterScope` in the latest gauntlet report. Targeted commander damage is now separately proven, and a separate `blocker-flow` smoke passed with `declare_attackers` evidence, but real blocker assignment is still unproven. Do not claim later-scope routes as part of the gauntlet gate unless fresh reports move them into the required gate and prove them with real XMage.
 - Prompt-variety is not green until real XMage proof covers `stack_object_seen`, `activate_ability`, `choose_ability`, `choose_mode`, `order_triggers/order_items`, `choose_amount`, `choose_multi_amount`, and `choose_pile`.
 
 ### Remaining TODOs / Gaps:
@@ -161,10 +163,10 @@ pnpm smoke:xmage
 3. **Card Art fallback**: Handle missing image urls smoothly without throwing render errors.
 4. **Casting/payment manual QA**: The live gauntlet proves land, mana, spell, search, commander replacement, and payment prompt flow, but iPhone/web still need manual regression coverage for the two-lands-into-`Arcane Signet` case documented in [CASTING_AND_MANA_FLOW.md](CASTING_AND_MANA_FLOW.md).
 5. **Long AI endurance**: Some runs still expose AI waiting/stall behavior, especially with weaker fixture AI or awkward fixture decks. The app must continue surfacing AI thinking/stalled states honestly while targeted fixtures keep the core loop deterministic.
-6. **Later-scope fixture expansion**: Add targeted deterministic scenarios for mana-rock activation, commander damage, blocker assignment, and prompt-variety once those are explicitly in alpha scope.
+6. **Later-scope fixture expansion**: Add targeted deterministic scenarios for mana-rock activation, blocker assignment, and prompt-variety once those are explicitly in alpha scope.
 
 ### Exact blockers before iPhone alpha:
 1. Run the full validation set on the final checkout after doc updates.
 2. Perform real iPhone manual QA against the same fixture-ready gateway; simulator success still does not count.
 3. Confirm the iOS `/play` experience surfaces source, bridge health, revision/cycle, priority, pending status, unsupported prompts, and failed commands without falling back to simulator.
-4. Decide whether `mana-rock`, `commander-damage`, `blocker-flow`, or `prompt-variety` must move from `laterScope` into the iPhone alpha gate. If yes, add targeted real-XMage fixture proof before marking alpha ready.
+4. Decide whether `mana-rock`, `blocker-flow`, or `prompt-variety` must move from `laterScope` into the iPhone alpha gate. Commander damage already has targeted real-XMage fixture proof, but it is not part of the current gauntlet gate.

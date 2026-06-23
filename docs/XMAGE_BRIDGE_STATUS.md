@@ -16,7 +16,7 @@ MagicMobile uses a thin gateway and Java bridge to run XMage server-side while i
 - **Strict Command Mapping**: The bridge throws an `IllegalArgumentException` for unknown command types rather than silently mapping to random UUID sends.
 - **Parsed Commander Tax**: Real casting counts are extracted from commander card rules text (e.g. `"played from the command zone"`) and parsed to calculate commander tax:
   $$\text{Tax} = \text{Casts} \times 2$$
-- **Parsed Commander Damage Matrix**: Real combat damage is parsed from commander rules (e.g. `"did X combat damage to player Y"`) and mapped to the correct players in the snapshot. This parser is implemented, but commander damage is later-scope for the current gauntlet gate.
+- **Parsed Commander Damage Matrix**: Real combat damage is parsed from commander rules (e.g. `"did X combat damage to player Y"`) and mapped to the correct players in the snapshot. The targeted `commander-damage` fixture is live-proven with a non-empty commander damage matrix, while commander damage remains outside the current gauntlet gate.
 - **Clean Dev/Simulator Separation**: Web `/play` requires a healthy XMage gateway; `/dev/play-simulator` is labeled preview-only.
 
 ## Gaps & Next Steps

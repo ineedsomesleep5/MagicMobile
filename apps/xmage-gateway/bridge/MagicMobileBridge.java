@@ -965,7 +965,7 @@ public final class MagicMobileBridge implements MageClient {
         }
         addSelections(ids, command, attackers ? "attackerIds" : "blockerIds");
         if (ids.size() == 0) {
-            session.sendPlayerBoolean(xmageGameId, true);
+            session.sendPlayerBoolean(xmageGameId, false);
             return;
         }
         for (JsonElement id : ids) {
@@ -975,7 +975,7 @@ public final class MagicMobileBridge implements MageClient {
             }
             session.sendPlayerUUID(xmageGameId, UUID.fromString(value));
         }
-        session.sendPlayerBoolean(xmageGameId, true);
+        session.sendPlayerBoolean(xmageGameId, false);
     }
 
     private JsonObject waitForUpdatedSnapshot(String gameId, String commandType, long startRevision, int startCycle) throws InterruptedException {

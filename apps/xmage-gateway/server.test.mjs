@@ -951,6 +951,10 @@ describe("xmage gateway", () => {
     assert.match(bridgeSource, /"cast_spell"\.equals\(type\)\) \{[\s\S]*?session\.sendPlayerUUID\(xmageGameId, playableSourceUuid\(gameId, command\)\);/);
     assert.match(bridgeSource, /"make_mana"\.equals\(type\)\) \{[\s\S]*?session\.sendPlayerUUID\(xmageGameId, playableSourceUuid\(gameId, command\)\);/);
     assert.match(bridgeSource, /"activate_ability"\.equals\(type\)\) \{[\s\S]*?playableCommandUuid\(gameId, command\);[\s\S]*?session\.sendPlayerUUID\(xmageGameId, playableSourceUuid\(gameId, command\)\);/);
+    const sendCombatSelection = bridgeSource.match(/private void sendCombatSelection[\s\S]*?\n    private JsonObject waitForUpdatedSnapshot/)?.[0] ?? "";
+    assert.match(sendCombatSelection, /session\.sendPlayerUUID\(xmageGameId, UUID\.fromString\(value\)\);/);
+    assert.doesNotMatch(sendCombatSelection, /session\.sendPlayerBoolean\(xmageGameId, true\)/);
+    assert.match(sendCombatSelection, /session\.sendPlayerBoolean\(xmageGameId, false\);/);
     assert.match(bridgeSource, /stackObjects\(view\.getStack\(\), playerIds\)/);
     assert.match(bridgeSource, /item\.addProperty\("sourceInstanceId", card\.getId\(\)\.toString\(\)\)/);
     assert.match(bridgeSource, /item\.addProperty\("sourceName", card\.getName\(\)\)/);

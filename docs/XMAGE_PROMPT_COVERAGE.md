@@ -9,9 +9,9 @@ This matrix maps each MagicMobile/XMage prompt family to its implementation, uni
 | **Make Mana** | `make_mana` | Yes | Yes | Yes | None. Verified against real land taps and mana pool adjustments. |
 | **Play Mana / Choose Mana** | `play_mana`, `choose_mana` | Yes | Yes | Partial | `play_mana` is deterministic-fixture proven through `GAME_PLAY_MANA`; explicit color-choice `choose_mana` needs targeted fixture proof. |
 | **Cast Spell** | `cast_spell` | Yes | Yes | Yes | None. Casting simple spells from hand is covered. |
-| **Activate Ability** | `activate_ability` | Yes | Yes | Partial | Deterministic gauntlet proves no-target activation through Terramorphic Expanse; targeted activated-ability stack proof remains later scope. |
-| **Choose Target** | `choose_target` | Yes | Yes | Yes | Live-smoked for starting-player/combat/search-style target callbacks; more targeted spell prompts still need fixture coverage. |
-| **Choose Mode / Ability** | `choose_mode`, `choose_ability` | Yes | Yes | Partial | `choose_ability` is live-proven through Terramorphic Expanse; `choose_mode` still needs targeted fixture proof. |
+| **Activate Ability** | `activate_ability` | Yes | Yes | Yes | Deterministic gauntlet proves activation through Terramorphic Expanse, and `activated-ability-stack` proves targeted non-mana activation with `GAME_CHOOSE_ABILITY`, `GAME_TARGET`, stack observation, and resolution. |
+| **Choose Target** | `choose_target` | Yes | Yes | Yes | Live-smoked for starting-player/combat/search-style callbacks and targeted activated ability selection; more targeted spell prompts still need fixture coverage. |
+| **Choose Mode / Ability** | `choose_mode`, `choose_ability` | Yes | Yes | Partial | `choose_ability` is deterministic-fixture proven through Terramorphic Expanse and `activated-ability-stack`; `choose_mode` still needs targeted fixture proof. |
 | **Choose Card / Player** | `choose_card`, `choose_player` | Yes | Yes | Partial | Player/target-style choices were live-smoked; explicit `choose_card` fixture still needed. |
 | **Choose Pile** | `choose_pile` | Yes | Yes | No | Mapped and unit-tested, but not live-smoked yet. |
 | **Choose Amount** | `choose_amount`, `play_x_mana` | Yes | Yes | No | Mapped and unit-tested, but not live-smoked yet. |
@@ -21,7 +21,7 @@ This matrix maps each MagicMobile/XMage prompt family to its implementation, uni
 | **Commander Zone Choice** | `commander_replacement` | Yes | Yes | Yes | Deterministic gauntlet proves Swords-to-commander replacement and command-zone response. |
 | **Answer Yes/No / Pay Cost** | `answer_yes_no`, `pay_cost` | Yes | Yes | Partial | Boolean confirmations and payment prompts are deterministic-fixture proven; add explicit pay-decline fixtures later. |
 | **Concede** | `concede` | Yes | Yes | Yes | None. Concede action is always safe. |
-| **Combat Attackers** | `declare_attackers` | Yes | Yes | Yes | None. Pair-payload attacker-to-defender mapping verified. |
+| **Combat Attackers** | `declare_attackers` | Yes | Yes | Yes | Deterministic `commander-damage` fixture proves attacker-to-defender mapping and combat damage after the combat-selection Done response fix. |
 | **Combat Blockers** | `declare_blockers` | Yes | Yes | No | Pair payload exists; no live fixture forced a real blocker prompt yet. |
 
 ## Verification Details
@@ -36,7 +36,7 @@ Latest deterministic real bridge evidence from June 23, 2026:
 ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage
 ```
 
-The passing report used game `e9478822-a5fd-4b04-a691-2c2da193b3ac`, `source: "xmage-java-bridge"`, `fixtureCallUsed: true`, `directStateSeeded: true`, `seededStateVerified: true`, final `bridgeRevision: 115`, final `xmageCycle: 196`, and `stepsBlocked: []`. It exercised land play, mana, spell casting, pay-mana prompts, search selection through XMage's target callback, commander replacement, commander recast tax, stack presence, and AI waiting/progress.
+The passing gauntlet report used game `139255f5-8d6e-4e25-b284-653949456092`, `source: "xmage-java-bridge"`, `fixtureCallUsed: true`, `directStateSeeded: true`, `seededStateVerified: true`, final `bridgeRevision: 115`, final `xmageCycle: 196`, and `stepsBlocked: []`. It exercised land play, mana, spell casting, pay-mana prompts, search selection through XMage's target callback, commander replacement, commander recast tax, stack presence, and AI waiting/progress. A later targeted `commander-damage` fixture passed on game `26816c39-99a2-478f-abb8-e17065c784e0` with final `bridgeRevision: 56`, final `xmageCycle: 94`, `commanderDamageChanges: [{ recipient: "ai-1", attacker: "human", damage: 2 }]`, and `stepsBlocked: []`.
 
 `commander-gauntlet` is the current full acceptance gate and uses the deterministic fixture route. It should only be marked live-verified when the JSON report has real gameplay proof, `source: "xmage-java-bridge"`, `fixtureCallUsed: true`, `directStateSeeded: true`, `seededStateVerified: true`, and no release-gate blockers.
 
