@@ -18,7 +18,7 @@ Latest CI/docs validation pass on June 23, 2026. Treat the smoke details below a
 - Normal real-XMage smoke remains diagnostic only. The latest non-fixtured `core-flow` used `source: "xmage-java-bridge"` and failed honestly because that random legal-deck state observed only part of the requested turn coverage.
 - A dev-only fixture harness route exists at `POST /dev/xmage-fixtures/commander`. It requires `ENABLE_XMAGE_FIXTURES=true`, is disabled in production, reports `fixtureHarness` metadata, and now has an embedded same-JVM setup path that can reach server-owned `GameController` / `Game.cheat(...)`.
 - The deterministic fixture gauntlet passed after the latest bridge rebuild with real `source: "xmage-java-bridge"`, direct server-side fixture seeding, final `bridgeRevision: 133`, final `xmageCycle: 223`, and empty top-level `stepsBlocked`.
-- `XMAGE_SMOKE_SCENARIO=blocker-flow` produced `declare_attackers` evidence. It did not prove a real `declare_blockers` payload.
+- `XMAGE_SMOKE_SCENARIO=blocker-flow` passed with a real `declare_blockers` payload after the targeted combat fixture seeded an XMage-owned attacker/combat state.
 - `XMAGE_SMOKE_SCENARIO=commander-damage` passed after the combat-selection bridge fix with direct server-side fixture seeding and non-empty commander-damage evidence.
 - `XMAGE_SMOKE_SCENARIO=commander-replacement-tax` reproved commander tax. Commander damage is separately covered by the targeted `commander-damage` fixture.
 - `XMAGE_SMOKE_SCENARIO=prompt-variety` is still not green. It produced useful later-scope evidence, including commander damage, then exposed a game-over stale-action bug that has now been fixed in the bridge.
@@ -48,7 +48,7 @@ Historical/local notes from earlier runs; rerun before treating any item as curr
 
 Current pause blocker:
 
-- Commander damage is now live-verified by the targeted `commander-damage` smoke, but real blocker assignment and prompt-variety remain unproven. Real iPhone manual QA is still unchecked.
+- Commander damage and blocker assignment are now live-verified by targeted fixtures, but prompt-variety remains unproven. Real iPhone manual QA is still unchecked.
 - Earlier AI-priority stalls are now sharper: the bridge keeps the XMage remoting session warm with periodic `Session.ping()`, and the smoke harness fails as `bridge-disconnected` if health drops while waiting for AI.
 
 ## Preflight
@@ -129,7 +129,7 @@ Historical broad smoke output showed `source: "xmage-java-bridge"`, advancing br
 
 Targeted fixture smoke outputs:
 
-- `XMAGE_SMOKE_SCENARIO=blocker-flow`: attacker-only evidence is no longer accepted as blocker proof. The smoke gate now requires a real `declare_blockers` action before this scenario can pass.
+- `XMAGE_SMOKE_SCENARIO=blocker-flow`: passed on game `51ea0b22-dbdc-45cf-850d-d11c3d5329a6` with real `source: "xmage-java-bridge"`, `directStateSeeded: true`, one submitted `declare_blockers` action, `blockerAssignmentExercised: true`, final `bridgeRevision: 11`, final `xmageCycle: 14`, and `stepsBlocked: []`.
 - `XMAGE_SMOKE_SCENARIO=commander-replacement-tax`: older artifacts observed commander tax and damage, but this must be reproved on the current bridge before it is treated as release-gate green.
 - `XMAGE_SMOKE_SCENARIO=arcane-signet`: intentionally not counted as passing. The current fixture with repeated `Arcane Signet` was rejected by XMage Commander legality, so the next version needs a Commander-legal deterministic payment-source fixture.
 - `XMAGE_SMOKE_SCENARIO=commander-gauntlet` with `XMAGE_USE_FIXTURE=true`: passed after the latest bridge rebuild with direct server-side fixture seeding, final `bridgeRevision: 133`, final `xmageCycle: 223`, and `stepsBlocked: []`.
@@ -166,7 +166,7 @@ Remaining live-coverage gaps:
 - player-scoped snapshots are still required before human-vs-human or pods.
 - damage assignment prompts have not been live-fixtured yet because the current Commander fixture does not produce a manual damage-assignment prompt.
 - `Arcane Signet` payment-source smoke needs a Commander-legal deterministic fixture; repeated nonbasic copies are correctly rejected by XMage.
-- full `commander-gauntlet` now has deterministic real-XMage setup support for singleton test cards and reached commander cast, replacement, and recast-with-tax. Commander damage, blocker assignment, and prompt-variety remain later-scope unless explicitly moved into the alpha gate.
+- full `commander-gauntlet` now has deterministic real-XMage setup support for singleton test cards and reached commander cast, replacement, and recast-with-tax. Commander damage, blocker assignment, and prompt-variety remain later-scope unless explicitly moved into the alpha gate, with commander damage and blocker assignment separately targeted-fixture proven.
 
 ## Commander Gauntlet Acceptance Loop
 

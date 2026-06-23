@@ -22,7 +22,7 @@ This matrix maps each MagicMobile/XMage prompt family to its implementation, uni
 | **Answer Yes/No / Pay Cost** | `answer_yes_no`, `pay_cost` | Yes | Yes | Partial | Boolean confirmations and payment prompts are deterministic-fixture proven; add explicit pay-decline fixtures later. |
 | **Concede** | `concede` | Yes | Yes | Yes | None. Concede action is always safe. |
 | **Combat Attackers** | `declare_attackers` | Yes | Yes | Yes | Deterministic `commander-damage` fixture proves attacker-to-defender mapping and combat damage after the combat-selection Done response fix. |
-| **Combat Blockers** | `declare_blockers` | Yes | Yes | No | Pair payload exists; no live fixture forced a real blocker prompt yet. |
+| **Combat Blockers** | `declare_blockers` | Yes | Yes | Yes | Targeted `blocker-flow` fixture proved a real blocker prompt and submitted a blocker/attacker pair. Multi-attacker/blocker UI polish remains later scope. |
 
 ## Verification Details
 

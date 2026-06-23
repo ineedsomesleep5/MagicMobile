@@ -27,6 +27,7 @@ import mage.constants.Zone;
 import mage.game.Game;
 import mage.game.GameState;
 import mage.game.PutToBattlefieldInfo;
+import mage.game.permanent.Permanent;
 import mage.game.match.MatchOptions;
 import mage.game.turn.Phase;
 import mage.game.turn.Step;
@@ -2856,12 +2857,15 @@ public final class MagicMobileBridge implements MageClient {
 
             attempted.add("turn_priority");
             GameState state = game.getState();
-            state.setActivePlayerId(humanPlayerId);
-            state.setPriorityPlayerId(humanPlayerId);
+            UUID activePlayerId = fixturePlayerId(schema, string(schema, "activePlayerId", "human"), humanPlayerId, aiPlayerId);
+            UUID priorityPlayerId = fixturePlayerId(schema, string(schema, "priorityPlayerId", "human"), humanPlayerId, aiPlayerId);
+            state.setActivePlayerId(activePlayerId);
+            state.setPriorityPlayerId(priorityPlayerId);
             state.setTurnNum(integer(schema, "turn", 1));
             applied.add("set_active_player");
             applied.add("set_priority_player");
             applied.add("set_turn");
+            seedFixtureCombat(fixtureName, game, humanPlayerId, aiPlayerId, applied, unsupported, errors);
             setFixturePhaseStep(game, state, schema, applied, unsupported, errors);
 
             game.applyEffects();
@@ -3037,6 +3041,18 @@ public final class MagicMobileBridge implements MageClient {
     }
 
     private void applyCommanderFixtureDefaults(String fixtureName, JsonObject schema) {
+        if ("blocker-flow".equals(fixtureName)) {
+            defaultCards(schema, "humanHand", "Plains");
+            defaultBattlefield(schema, "humanBattlefield", "Silvercoat Lion", "Plains");
+            defaultCards(schema, "humanLibraryTop", "Plains");
+            defaultBattlefield(schema, "aiBattlefield", "Grizzly Bears");
+            defaultString(schema, "phase", "combat");
+            defaultString(schema, "step", "declare-blockers");
+            defaultString(schema, "activePlayerId", "ai-1");
+            defaultString(schema, "priorityPlayerId", "human");
+            schema.addProperty("turn", 1);
+            return;
+        }
         if ("activated-ability-stack".equals(fixtureName)) {
             defaultCards(schema, "humanHand", "Plains");
             defaultBattlefield(schema, "humanBattlefield", "Seal of Cleansing", "Plains");
@@ -3071,6 +3087,93 @@ public final class MagicMobileBridge implements MageClient {
             cards.add(name);
         }
         schema.add(key, cards);
+    }
+
+    private void defaultString(JsonObject schema, String key, String value) {
+        if (!schema.has(key) || schema.get(key).isJsonNull() || string(schema, key, "").isEmpty()) {
+            schema.addProperty(key, value);
+        }
+    }
+
+    private UUID fixturePlayerId(JsonObject schema, String externalId, UUID humanPlayerId, UUID aiPlayerId) {
+        if (externalId == null || externalId.isEmpty()) {
+            return humanPlayerId;
+        }
+        JsonObject playerIds = object(schema, "playerIds");
+        String humanExternalId = string(playerIds, "human", "human");
+        if (externalId.equals(humanExternalId) || "human".equals(externalId)) {
+            return humanPlayerId;
+        }
+        JsonArray aiExternalIds = array(playerIds, "ai");
+        if (aiPlayerId != null) {
+            for (JsonElement element : aiExternalIds) {
+                if (element.isJsonPrimitive() && externalId.equals(element.getAsString())) {
+                    return aiPlayerId;
+                }
+            }
+            if ("ai".equals(externalId) || "ai-1".equals(externalId)) {
+                return aiPlayerId;
+            }
+        }
+        UUID parsed = parseUuid(externalId);
+        if (parsed != null) {
+            return parsed;
+        }
+        return humanPlayerId;
+    }
+
+    private void seedFixtureCombat(
+            String fixtureName,
+            Game game,
+            UUID humanPlayerId,
+            UUID aiPlayerId,
+            JsonArray applied,
+            JsonArray unsupported,
+            JsonArray errors
+    ) {
+        if (!"blocker-flow".equals(fixtureName)) {
+            return;
+        }
+        if (aiPlayerId == null) {
+            unsupported.add("combat seed: missing AI player id");
+            return;
+        }
+        Permanent attacker = battlefieldPermanentByName(game, aiPlayerId, "Grizzly Bears");
+        Permanent blocker = battlefieldPermanentByName(game, humanPlayerId, "Silvercoat Lion");
+        if (attacker == null || blocker == null) {
+            unsupported.add("combat seed: missing seeded attacker or blocker permanent");
+            return;
+        }
+        try {
+            game.getState().getCombat().clear();
+            game.getState().getCombat().setAttacker(aiPlayerId);
+            game.getState().getCombat().setDefenders(game);
+            boolean added = game.getState().getCombat().addAttackingCreature(attacker.getId(), game, humanPlayerId);
+            if (!added) {
+                added = game.getState().getCombat().declareAttacker(attacker.getId(), humanPlayerId, aiPlayerId, game);
+            }
+            if (!added) {
+                added = game.getState().getCombat().addAttackerToCombat(attacker.getId(), humanPlayerId, game);
+            }
+            if (added) {
+                attacker.setTapped(true);
+                applied.add("seed_combat_attacker:" + attacker.getName());
+            } else {
+                unsupported.add("combat seed: XMage rejected seeded attacker");
+            }
+        } catch (Exception error) {
+            errors.add("combat_seed: " + error.getClass().getName() + ": " + error.getMessage());
+            unsupported.add("combat seed failed");
+        }
+    }
+
+    private Permanent battlefieldPermanentByName(Game game, UUID controllerId, String name) {
+        for (Permanent permanent : game.getBattlefield().getAllActivePermanents(controllerId)) {
+            if (name.equalsIgnoreCase(permanent.getName())) {
+                return permanent;
+            }
+        }
+        return null;
     }
 
     private void defaultBattlefield(JsonObject schema, String key, String... names) {

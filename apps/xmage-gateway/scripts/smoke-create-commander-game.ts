@@ -16,6 +16,7 @@ const scenario = scenarioModule.id;
 const arcaneSignetScenario = scenario === "mana-rock";
 const alphaGameScenario = scenario === "core-flow";
 const commanderGauntletScenario = scenario === "commander-gauntlet";
+const blockerFlowScenario = scenario === "blocker-flow";
 const activatedAbilityScenario = scenario === "activated-ability-stack";
 const triggeredAbilityScenario = scenario === "triggered-ability-stack";
 const fixtureScenario = scenarioModule.usesFixture;
@@ -618,7 +619,9 @@ function fixtureSeedSchema() {
   const commander = commanderGauntletScenario ? "Isamaru, Hound of Konda" : human.commander.cardName;
   const basic = commanderGauntletScenario ? "Plains" : "Plains";
   const expectedRoutes = routeFamiliesRequired.length > 0 ? routeFamiliesRequired : scenarioModule.requiredSteps;
-  const hand = commanderGauntletScenario
+  const hand = blockerFlowScenario
+    ? [basic]
+    : commanderGauntletScenario
     ? ["Sol Ring", "Arcane Signet", "Terramorphic Expanse", "Swords to Plowshares", "Spirited Companion", "Plains", "Plains"]
     : activatedAbilityScenario
     ? ["Plains"]
@@ -626,7 +629,9 @@ function fixtureSeedSchema() {
     ? ["Spirited Companion", "Plains"]
     : [basic];
   const libraryTop = commanderGauntletScenario ? Array.from({ length: 24 }, () => "Plains") : [basic];
-  const battlefield = activatedAbilityScenario
+  const battlefield = blockerFlowScenario
+    ? ["Silvercoat Lion", basic]
+    : activatedAbilityScenario
     ? ["Seal of Cleansing", basic]
     : triggeredAbilityScenario
     ? [basic, basic]
@@ -641,10 +646,10 @@ function fixtureSeedSchema() {
     libraryTop,
     graveyard: [],
     exile: [],
-    aiBattlefield: [activatedAbilityScenario ? "Sol Ring" : commanderGauntletScenario ? "Plains" : "Wastes"],
-    phase: "precombat-main",
-    step: "precombat-main",
-    activePlayerId: humanPlayerId,
+    aiBattlefield: [blockerFlowScenario ? "Grizzly Bears" : activatedAbilityScenario ? "Sol Ring" : commanderGauntletScenario ? "Plains" : "Wastes"],
+    phase: blockerFlowScenario ? "combat" : "precombat-main",
+    step: blockerFlowScenario ? "declare-blockers" : "precombat-main",
+    activePlayerId: blockerFlowScenario ? aiPlayerId : humanPlayerId,
     priorityPlayerId: humanPlayerId,
     expectedRoutes,
     expectedRouteCoverage: expectedRoutes
@@ -1167,6 +1172,11 @@ function chooseBestAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
 }
 
 function chooseFixtureAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
+  if (blockerFlowScenario) {
+    const blocker = snapshot.legalActions?.find((action) => action.type === "declare_blockers");
+    if (blocker) return blocker;
+  }
+
   if (commanderGauntletScenario) {
     const gauntletAction = chooseCommanderGauntletAction(snapshot);
     if (gauntletAction) return gauntletAction;

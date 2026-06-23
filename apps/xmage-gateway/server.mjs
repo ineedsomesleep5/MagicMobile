@@ -482,6 +482,16 @@ function fixtureExpectedRouteCoverage(scenario) {
 }
 
 function fixtureHumanDeck(scenario) {
+  if (scenario === "blocker-flow") {
+    return {
+      name: "Blocker Flow Human Fixture",
+      commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
+      entries: [
+        { cardName: "Silvercoat Lion", quantity: 1, section: "deck" },
+        { cardName: "Plains", quantity: 98, section: "deck" }
+      ]
+    };
+  }
   if (scenario === "commander-gauntlet") {
     return {
       name: "Commander Gauntlet Fixture",
@@ -511,7 +521,17 @@ function fixtureHumanDeck(scenario) {
   return fixtureCommanderDeck("Isamaru, Hound of Konda", "Plains", `${scenario} Human Fixture`);
 }
 
-function fixtureAiDeck(_scenario) {
+function fixtureAiDeck(scenario) {
+  if (scenario === "blocker-flow") {
+    return {
+      name: "Blocker Flow AI Fixture",
+      commander: { cardName: "Kozilek, Butcher of Truth", quantity: 1, section: "commander" },
+      entries: [
+        { cardName: "Grizzly Bears", quantity: 1, section: "deck" },
+        { cardName: "Wastes", quantity: 98, section: "deck" }
+      ]
+    };
+  }
   return fixtureCommanderDeck("Kozilek, Butcher of Truth", "Wastes", "Fixture AI Deck");
 }
 
