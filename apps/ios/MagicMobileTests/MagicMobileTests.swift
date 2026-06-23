@@ -362,6 +362,12 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertNil(PromptCommandBuilder.command(gameId: "game-1", promptEnvelope: nil, type: "choose_ability", promptId: "prompt-1", playerId: "human", ids: []))
     }
 
+    func testPromptCommandBuilderAllowsOnlySingleShownOrderSubmissionFromIOSPlaceholder() {
+        XCTAssertFalse(PromptCommandBuilder.canSubmitShownOrder(ids: []))
+        XCTAssertTrue(PromptCommandBuilder.canSubmitShownOrder(ids: ["trigger-1"]))
+        XCTAssertFalse(PromptCommandBuilder.canSubmitShownOrder(ids: ["trigger-1", "trigger-2"]))
+    }
+
     private func decodeAction(type: String, extra: String? = nil) throws -> LegalAction {
         let extraFields = extra.map { ",\n          \($0)" } ?? ""
         let data = """

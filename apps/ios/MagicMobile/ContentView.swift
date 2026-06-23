@@ -2485,7 +2485,7 @@ struct UniversalPromptActionPanel: View {
             if let orderedItems = prompt.orderedItems, !orderedItems.isEmpty {
                 placeholderSubmit(
                     title: "Order",
-                    button: "Submit shown order",
+                    button: PromptCommandBuilder.canSubmitShownOrder(ids: orderedItems.map(\.id)) ? "Submit only item" : "Reorder UI needed",
                     prompt: prompt,
                     type: "order_items",
                     ids: orderedItems.map(\.id)
@@ -2496,17 +2496,18 @@ struct UniversalPromptActionPanel: View {
                 manaChoicePicker(choices: manaChoices, prompt: prompt)
             }
 
-            if prompt.manaChoices?.isEmpty != false && isManaPrompt(prompt) {
+            if prompt.manaChoices?.isEmpty != false && isManaPrompt(prompt) && !availableManaSymbols.isEmpty {
                 manaPicker(prompt: prompt)
             }
 
             if isTriggerOrderPrompt(prompt) {
+                let orderedIds = prompt.cards?.map(\.id) ?? prompt.targets?.map(\.id) ?? prompt.choices?.map(\.id) ?? []
                 placeholderSubmit(
                     title: "Trigger order",
-                    button: "Submit shown order",
+                    button: PromptCommandBuilder.canSubmitShownOrder(ids: orderedIds) ? "Submit only trigger" : "Reorder UI needed",
                     prompt: prompt,
                     type: "order_triggers",
-                    ids: prompt.cards?.map(\.id) ?? prompt.targets?.map(\.id) ?? prompt.choices?.map(\.id) ?? []
+                    ids: orderedIds
                 )
             }
 
@@ -2762,7 +2763,7 @@ struct UniversalPromptActionPanel: View {
     private func manaPicker(prompt: PromptEnvelopeV2) -> some View {
         PromptMiniLabel("Mana")
         HStack(spacing: 6) {
-            ForEach(["W", "U", "B", "R", "G", "C"], id: \.self) { mana in
+            ForEach(availableManaSymbols, id: \.self) { mana in
                 Button {
                     if let command = command(type: "play_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, manaType: mana) {
                         runCommand(command, mana, "\(prompt.id)-mana-\(mana)")
@@ -2848,13 +2849,14 @@ struct UniversalPromptActionPanel: View {
 
     @ViewBuilder
     private func placeholderSubmit(title: String, button: String, prompt: PromptEnvelopeV2, type: String, ids: [String]) -> some View {
+        let canSubmit = isOrderCommand(type) ? PromptCommandBuilder.canSubmitShownOrder(ids: ids) : !ids.isEmpty
         PromptMiniLabel(title)
         promptButton(
             label: button,
-            subtitle: ids.isEmpty ? "Waiting for exposed ids" : "\(ids.count) ids",
+            subtitle: placeholderSubmitSubtitle(type: type, ids: ids),
             systemImage: type == "order_triggers" ? "arrow.up.arrow.down" : "magnifyingglass",
             pendingId: "\(prompt.id)-\(type)",
-            command: ids.isEmpty ? nil : command(type: type, promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: ids)
+            command: canSubmit ? command(type: type, promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: ids) : nil
         )
     }
 
@@ -2989,11 +2991,48 @@ struct UniversalPromptActionPanel: View {
             return singleCount(action.modeIds) || singleCount(action.targetIds) || singleCount(action.validTargetIds)
         case "resolve_choice":
             return singleCount(action.choiceIds) || singleCount(action.targetIds) || singleCount(action.validTargetIds)
-        case "choose_multi_amount", "order_triggers", "order_items", "declare_attackers", "declare_blockers":
+        case "declare_attackers":
+            return action.attackers?.isEmpty == false
+        case "declare_blockers":
+            return action.blockers?.isEmpty == false
+        case "choose_multi_amount", "order_triggers", "order_items":
             return false
         default:
             return true
         }
+    }
+
+    private var availableManaSymbols: [String] {
+        let pool = snapshot.human?.manaPool
+        return ["W", "U", "B", "R", "G", "C"].filter { symbol in
+            manaPoolValue(pool, symbol: symbol) > 0
+        }
+    }
+
+    private func manaPoolValue(_ pool: ManaPool?, symbol: String) -> Int {
+        switch symbol {
+        case "W": return pool?.W ?? 0
+        case "U": return pool?.U ?? 0
+        case "B": return pool?.B ?? 0
+        case "R": return pool?.R ?? 0
+        case "G": return pool?.G ?? 0
+        case "C": return pool?.C ?? 0
+        default: return 0
+        }
+    }
+
+    private func isOrderCommand(_ type: String) -> Bool {
+        type == "order_triggers" || type == "order_items"
+    }
+
+    private func placeholderSubmitSubtitle(type: String, ids: [String]) -> String {
+        if ids.isEmpty {
+            return "Waiting for exposed ids"
+        }
+        if isOrderCommand(type), !PromptCommandBuilder.canSubmitShownOrder(ids: ids) {
+            return "No auto-order"
+        }
+        return "\(ids.count) ids"
     }
 
     private func singleCount(_ values: [String]?) -> Bool {

@@ -93,6 +93,10 @@ enum PromptCommandBuilder {
         return nil
     }
 
+    static func canSubmitShownOrder(ids: [String]) -> Bool {
+        ids.count == 1
+    }
+
     private static func resolvedMessageId(promptEnvelope: PromptEnvelopeV2?, promptId: String) -> Int? {
         guard let prompt = promptEnvelope else { return nil }
         if prompt.id == promptId || prompt.responseCommand?.promptId == promptId {
