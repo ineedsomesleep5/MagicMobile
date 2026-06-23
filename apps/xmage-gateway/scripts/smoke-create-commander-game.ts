@@ -2109,6 +2109,15 @@ function recordCoverage(snapshot: SmokeSnapshot) {
   if (arcaneSignetScenario && humanZone(snapshot, "battlefield").some((entry) => /arcane signet/i.test(entry.card?.name ?? ""))) {
     arcaneResolvedSeen = true;
   }
+  if (
+    triggeredAbilityScenario
+      && (
+        humanZone(snapshot, "battlefield").some((entry) => /spirited companion/i.test(entry.card?.name ?? ""))
+          || humanZone(snapshot, "graveyard").some((entry) => /spirited companion/i.test(entry.card?.name ?? ""))
+      )
+  ) {
+    markRouteFamily("trigger_seen");
+  }
   recordGauntletSnapshot(snapshot);
 }
 

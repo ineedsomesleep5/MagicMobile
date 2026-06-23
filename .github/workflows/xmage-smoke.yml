@@ -46,14 +46,6 @@ jobs:
         continue-on-error: true
         run: XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage
 
-      - name: Blocker-flow real XMage smoke diagnostic
-        continue-on-error: true
-        run: XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage:combat
-
-      - name: Commander-state real XMage smoke diagnostic
-        continue-on-error: true
-        run: XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage:commander-state
-
       - name: Restart XMage bridge and gateway with fixtures
         run: |
           docker compose down --remove-orphans
@@ -72,6 +64,18 @@ jobs:
 
       - name: Commander gauntlet real XMage smoke gate
         run: XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage:gauntlet
+
+      - name: Blocker-flow real XMage fixture diagnostic
+        continue-on-error: true
+        run: XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage:combat
+
+      - name: Commander-state real XMage fixture diagnostic
+        continue-on-error: true
+        run: XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage:commander-state
+
+      - name: Triggered stack real XMage fixture diagnostic
+        continue-on-error: true
+        run: XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage:triggered-stack
 
       - name: Upload smoke reports
         if: always()

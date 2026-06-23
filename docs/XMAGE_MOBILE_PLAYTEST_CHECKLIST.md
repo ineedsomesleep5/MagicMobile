@@ -21,6 +21,7 @@ Latest CI/docs validation pass on June 23, 2026. Treat the smoke details below a
 - `XMAGE_SMOKE_SCENARIO=blocker-flow` passed with a real `declare_blockers` payload after the targeted combat fixture seeded an XMage-owned attacker/combat state.
 - `XMAGE_SMOKE_SCENARIO=commander-damage` passed after the combat-selection bridge fix with direct server-side fixture seeding and non-empty commander-damage evidence.
 - `XMAGE_SMOKE_SCENARIO=commander-replacement-tax` reproved commander tax. Commander damage is separately covered by the targeted `commander-damage` fixture.
+- `XMAGE_SMOKE_SCENARIO=triggered-ability-stack` passed with direct server-side fixture seeding, `routeFamiliesMissing: []`, and empty `stepsBlocked`.
 - `XMAGE_SMOKE_SCENARIO=prompt-variety` is still not green. It produced useful later-scope evidence, including commander damage, then exposed a game-over stale-action bug that has now been fixed in the bridge.
 - XcodeBuildMCP simulator tests passed after enabling generated Info.plist for the `MagicMobileTests` target: 4 tests passed, 0 failed. This is not real iPhone product success.
 
@@ -30,8 +31,9 @@ Latest incremental verification against the local Docker gateway at `http://loca
 pnpm --filter @magicmobile/xmage-gateway test
 docker compose up -d --build xmage-bridge xmage-gateway
 XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage
-XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=blocker-flow pnpm smoke:xmage
-XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-replacement-tax pnpm smoke:xmage
+ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=blocker-flow XMAGE_USE_FIXTURE=true pnpm smoke:xmage
+ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-replacement-tax XMAGE_USE_FIXTURE=true pnpm smoke:xmage
+ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=triggered-ability-stack XMAGE_USE_FIXTURE=true pnpm smoke:xmage
 ```
 
 Historical/local notes from earlier runs; rerun before treating any item as current proof:
@@ -75,8 +77,9 @@ Current pause blocker:
 
   ```sh
   XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage
-  XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=blocker-flow pnpm smoke:xmage
-  XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-replacement-tax pnpm smoke:xmage
+  ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=blocker-flow XMAGE_USE_FIXTURE=true pnpm smoke:xmage
+  ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-replacement-tax XMAGE_USE_FIXTURE=true pnpm smoke:xmage
+  ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=triggered-ability-stack XMAGE_USE_FIXTURE=true pnpm smoke:xmage
   ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-damage XMAGE_USE_FIXTURE=true pnpm smoke:xmage
   ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage
   ```
@@ -105,9 +108,9 @@ pnpm --filter @magicmobile/web test -- apps/web/src/app/play
 pnpm typecheck
 docker compose up -d --build xmage-bridge xmage-gateway
 XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage
-XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=blocker-flow pnpm smoke:xmage
-XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-replacement-tax pnpm smoke:xmage
-XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet pnpm smoke:xmage
+ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=blocker-flow XMAGE_USE_FIXTURE=true pnpm smoke:xmage
+ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-replacement-tax XMAGE_USE_FIXTURE=true pnpm smoke:xmage
+ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage
 pnpm lint
 pnpm test
 pnpm build
@@ -133,6 +136,7 @@ Targeted fixture smoke outputs:
 - `XMAGE_SMOKE_SCENARIO=commander-replacement-tax`: older artifacts observed commander tax and damage, but this must be reproved on the current bridge before it is treated as release-gate green.
 - `XMAGE_SMOKE_SCENARIO=arcane-signet`: intentionally not counted as passing. The current fixture with repeated `Arcane Signet` was rejected by XMage Commander legality, so the next version needs a Commander-legal deterministic payment-source fixture.
 - `XMAGE_SMOKE_SCENARIO=commander-gauntlet` with `XMAGE_USE_FIXTURE=true`: passed after the latest bridge rebuild with direct server-side fixture seeding, final `bridgeRevision: 133`, final `xmageCycle: 223`, and `stepsBlocked: []`.
+- `XMAGE_SMOKE_SCENARIO=triggered-ability-stack` with `XMAGE_USE_FIXTURE=true`: passed on game `578bbd14-38ce-44c9-83a5-d8de64af28ea` with real `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, final `bridgeRevision: 27`, final `xmageCycle: 51`, `routeFamiliesMissing: []`, and `stepsBlocked: []`.
 
 Confirmed live steps across the local verification run:
 
