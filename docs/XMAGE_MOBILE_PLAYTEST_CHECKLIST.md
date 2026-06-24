@@ -6,6 +6,27 @@ Use this checklist when validating the XMage-backed Commander play loop from Doc
 
 Latest CI/docs validation pass on June 24, 2026. Treat the smoke details below as local artifact summaries only; rerun the commands on the current checkout before using them as release evidence. Generated JSON reports belong under `build_output/smoke/*.json`, not in docs.
 
+Latest iOS product-readiness pass on June 24, 2026:
+
+- Backend route gate was rerun on the current checkout with `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-full-ai XMAGE_USE_FIXTURE=true pnpm smoke:xmage`.
+- `commander-full-ai` passed with `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, `allRequiredScenariosPassed: true`, `routeFamiliesMissing: []`, `stepsBlocked: []`, `iOSRequiredRoutesMissing: []`, and `readinessVerdict: "full-commander-vs-ai-ready"`.
+- iOS generic hardware build passed with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project apps/ios/MagicMobileiOS.xcodeproj -scheme MagicMobile -configuration Debug -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build`.
+- iPhone 16 Pro Max Simulator was unavailable, so layout QA used iPhone 17 Pro Max Simulator, iOS 26.5, in landscape. Simulator evidence is layout/build evidence only, not real iPhone product success.
+- Captured simulator screenshots under `build_output/ios-screenshots/`: `iphone-17-pro-max-fixture-board-normalized-readable.jpg`, `iphone-17-pro-max-creating-table.jpg`, `iphone-17-pro-max-deck-validation-failed.jpg`, and `iphone-17-pro-max-fixture-timeout.jpg`.
+- The iOS setup screen now scrolls in landscape so the debug fixture control and start controls remain reachable on Pro Max.
+- The iOS API timeout is now long enough for real XMage table/fixture startup instead of failing at 15 seconds.
+- The iOS gameplay surface has a rustic leather/parchment/wood treatment, compact non-blocking waiting toast, visible source/bridge/revision/cycle/priority/pending/phase state, stable missing-art placeholders, and readable stack/command/graveyard/exile access without debug JSON.
+- Real iPhone install/play QA is still pending. Product release remains blocked until a physical iPhone can start a local-gateway Commander game, exercise the fixture/normal play loop, and capture bridgeRevision/xmageCycle evidence.
+
+Local iOS simulator setup used for this pass:
+
+```sh
+ENABLE_XMAGE_FIXTURES=true NODE_ENV=test docker compose up -d --build xmage-bridge xmage-gateway
+ENGINE_MODE=xmage XMAGE_GATEWAY_URL=http://localhost:17171 ENABLE_XMAGE_FIXTURES=true NODE_ENV=development pnpm --filter @magicmobile/web exec next dev --hostname 0.0.0.0
+```
+
+The web API layer exposed `/api/engine/*` for the iOS client and forwarded to the raw gateway at `http://localhost:17171`. The debug fixture button uses the dev-only `/dev/xmage-fixtures/commander` proxy on the local web API; this remains gated by `ENABLE_XMAGE_FIXTURES=true` and disabled in production.
+
 - `pnpm --filter @magicmobile/xmage-gateway test` passed.
 - `docker build -t magicmobile-xmage-bridge-check apps/xmage-gateway/bridge` passed.
 - `docker compose config` passed.
@@ -81,6 +102,14 @@ Current pause blocker:
   ```sh
   curl -fsS http://localhost:17171/health
   ```
+
+- [ ] For iPhone or simulator app testing, start the local web API layer that the iOS client expects:
+
+  ```sh
+  ENGINE_MODE=xmage XMAGE_GATEWAY_URL=http://localhost:17171 ENABLE_XMAGE_FIXTURES=true NODE_ENV=development pnpm --filter @magicmobile/web exec next dev --hostname 0.0.0.0
+  ```
+
+  Use `http://localhost:3000` or the printed fallback port in Simulator. On a physical iPhone, use `http://<Mac-LAN-IP>:<printed-port>` and keep the Mac and iPhone on the same local network. The raw gateway health URL stays `http://<Mac-LAN-IP>:17171/health`; the app URL should point at the web API port, not the raw gateway, for normal `/api/engine/*` play.
 
 - [ ] Run the gateway smoke script against the live stack:
 
@@ -238,6 +267,30 @@ If the gauntlet fails, keep the generated JSON report as a local/CI artifact und
 - [ ] When XMage asks for a choice, confirm `promptEnvelopeV2` appears in the debug view and the UI exposes a matching response action.
 - [ ] Confirm `pendingStatus: "waiting_for_xmage"` shows a waiting state instead of freezing the UI.
 - [ ] Confirm AI turns show AI waiting/thinking rather than a dead screen.
+
+## iPhone Manual QA Checklist
+
+Real iPhone QA is required before product release. Simulator screenshots and generic iPhoneOS builds do not count as product success.
+
+- [ ] Start Docker with fixtures enabled: `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test docker compose up -d --build xmage-bridge xmage-gateway`.
+- [ ] Start the local web API: `ENGINE_MODE=xmage XMAGE_GATEWAY_URL=http://localhost:17171 ENABLE_XMAGE_FIXTURES=true NODE_ENV=development pnpm --filter @magicmobile/web exec next dev --hostname 0.0.0.0`.
+- [ ] On the iPhone, set the server URL to `http://<Mac-LAN-IP>:<web-port>`, not `localhost`.
+- [ ] Confirm the setup health line says `ready: XMage Java bridge connected to 127.0.0.1:17171.`
+- [ ] Start the debug fixture and confirm the play screen shows `source: xmage-java-bridge`, numeric `bridgeRevision`, numeric `xmageCycle`, active/priority player, phase/step/turn, pending status, and WebSocket status.
+- [ ] Confirm hand, battlefield, stack count, command zone, graveyard, exile, mana pool, commander tax, and commander damage are reachable without debug JSON.
+- [ ] Try keep hand, play land, make mana, cast/pay for a spell, pass priority, open stack, open command zone, and answer any visible prompt with explicit controls.
+- [ ] Confirm unknown/unsupported prompts never auto-pick yes, colorless, 0, pile 1, first choice, or command zone.
+- [ ] If frozen, capture a screenshot plus the visible `bridgeRevision`, `xmageCycle`, WebSocket state, pending status, and Mac logs from Docker and the web API terminal.
+- [ ] Pass/fail: pass only if the physical iPhone can continue a real XMage Commander vs AI game without simulator fallback or debug JSON. Fail if startup hangs without status, controls overlap, fixture mode is production-accessible, or actions mutate local UI without an authoritative XMage snapshot.
+
+## Pro Max Simulator Checklist
+
+- [x] iPhone 16 Pro Max Simulator was not installed; used iPhone 17 Pro Max Simulator, iOS 26.5.
+- [x] Landscape build/run passed through XcodeBuildMCP.
+- [x] Setup screen scrollability fixed so the debug fixture control is reachable.
+- [x] Fixture board screenshot captured at `build_output/ios-screenshots/iphone-17-pro-max-fixture-board-normalized-readable.jpg`.
+- [x] Waiting/failure screenshots captured for `Creating XMage table`, fixture timeout before timeout fix, and default-deck validation failure.
+- [ ] Simulator result is not release approval; repeat on a physical iPhone before product release.
 - [ ] Confirm missing card art renders a placeholder and does not block gameplay.
 
 ### Casting And Mana Payment Regression

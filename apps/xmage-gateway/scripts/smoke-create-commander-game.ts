@@ -2622,7 +2622,12 @@ function assertSemanticProgress(previous: SmokeSnapshot, next: SmokeSnapshot, la
     );
   }
   if (label === "cast simple spell") {
-    throw new Error("XMage smoke cast simple spell did not change hand, board, graveyard, stack, mana, or prompt state.");
+    throw new Error(
+      "XMage smoke cast simple spell did not change hand, board, graveyard, stack, mana, or prompt state.\n"
+        + smokeDebug("before cast_spell", previous)
+        + "\n"
+        + smokeDebug("after cast_spell", next)
+    );
   }
   if (label === "activate ability") {
     throw new Error(

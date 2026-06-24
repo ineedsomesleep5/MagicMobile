@@ -589,8 +589,8 @@ struct MagicMobileAPI {
 
     private var session: URLSession {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 15.0
-        config.timeoutIntervalForResource = 30.0
+        config.timeoutIntervalForRequest = 120.0
+        config.timeoutIntervalForResource = 180.0
         return URLSession(configuration: config)
     }
 

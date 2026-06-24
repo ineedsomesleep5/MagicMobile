@@ -52,7 +52,7 @@ Local Docker compose rendered successfully on June 23, 2026. The bridge image re
 
 ## 3. Command Latency & Performance Measurements
 
-All commands below were run locally on macOS on June 23, 2026 against the shared checkout from that pass. Treat them as historical local evidence until rerun on the current checkout.
+Commands below were refreshed locally on macOS on June 24, 2026 where noted. Treat generated smoke reports as local artifacts until rerun on the current checkout.
 
 | Command | Purpose | Duration (s) | Result |
 |---|---|---|---|
@@ -71,6 +71,7 @@ All commands below were run locally on macOS on June 23, 2026 against the shared
 | `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=mana-rock XMAGE_USE_FIXTURE=true pnpm smoke:xmage` | Targeted mana-rock payment-source smoke | ~35s after services ready | Current pass with default Sol Ring: real `source: "xmage-java-bridge"`, direct fixture seeding, `stepsBlocked: []`. Optional `XMAGE_SMOKE_MANA_ROCK_CARD="Arcane Signet"` also passed with cast/payment/resolution all true, final `bridgeRevision: 17`, final `xmageCycle: 29`. |
 | `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-full-ai XMAGE_USE_FIXTURE=true pnpm smoke:xmage` | Full Commander vs AI aggregate gate | Pass | Latest local Docker run used real `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, `allRequiredScenariosPassed: true`, `routeFamiliesMissing: []`, `stepsBlocked: []`, `iOSRequiredRoutesMissing: []`, and `readinessVerdict: "full-commander-vs-ai-ready"`. |
 | `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project apps/ios/MagicMobileiOS.xcodeproj -scheme MagicMobile -configuration Debug -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build` | Native iPhoneOS hardware build | ~30s | Pass: current Swift app builds for `arm64` iPhone hardware with signing disabled. This is compile evidence only; it is not install/play QA on a real iPhone. |
+| XcodeBuildMCP simulator build/run | iOS landscape layout check | Pass | iPhone 16 Pro Max Simulator was unavailable, so the pass used iPhone 17 Pro Max Simulator on iOS 26.5. The debug fixture board loaded from `source: "xmage-java-bridge"` and showed `bridgeRevision: 9`, `xmageCycle: 14`, priority, phase, mana, hand, stack/surfaces, and command access without debug JSON. Screenshot: `build_output/ios-screenshots/iphone-17-pro-max-fixture-board-normalized-readable.jpg`. |
 
 ### Key Smoke Test Verification Points:
 - The bridge image was rebuilt after the source-UUID `make_mana` fix, after the activation-dispatch/commander prompt classifier fixes, and after the bridge keepalive/error-reporting fix in this pass.
@@ -100,6 +101,7 @@ All commands below were run locally on macOS on June 23, 2026 against the shared
 - Fixed player-only `GAME_TARGET` prompts so starting-player selection is exposed as `choose_player` and submitted with XMage player UUIDs, not the local actor alias.
 - Fixed `GAME_OVER` prompt snapshots to fail closed by exposing only terminal-safe actions instead of stale playable battlefield actions.
 - iOS simulator unit tests passed through `xcodebuild test -project apps/ios/MagicMobileiOS.xcodeproj -scheme MagicMobile -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' -only-testing:MagicMobileTests -quiet` on the current checkout. This does not count as real phone product success.
+- iOS landscape product pass now includes a scrollable setup surface, local web API fixture proxy for `/dev/xmage-fixtures/commander`, a longer client request timeout for real XMage startup, rustic leather/parchment/wood gameplay styling, a non-blocking waiting toast, and stable missing-art placeholders. These are simulator/build/layout improvements only until physical iPhone QA passes.
 
 ---
 
@@ -175,7 +177,7 @@ pnpm smoke:xmage
 ### Remaining TODOs / Gaps:
 1. **Viewer-scoped Snapshots**: Multiplayer human pods need snapshot filtering so opponents cannot inspect other players' libraries or hands.
 2. **Advanced UI Prompts**: Mode, ability, pile, amount, multi-amount, order, commander replacement, and damage-assignment-as-multi-amount now have touch controls. Damage assignment labels the combat-damage `GAME_GET_MULTI_AMOUNT` prompt as an explicit allocation UI when XMage exposes per-blocker metadata. These still need real iPhone QA.
-3. **Card Art fallback**: Handle missing image urls smoothly without throwing render errors.
+3. **Card Art fallback**: Missing image URLs now render stable parchment-style placeholders with card name/type text and do not collapse layout while images load. Keep this under real iPhone QA with slow/missing Scryfall art.
 4. **Casting/payment manual QA**: The live gauntlet proves land, mana, spell, search, commander replacement, and payment prompt flow, but iPhone/web still need manual regression coverage for the two-lands-into-`Arcane Signet` case documented in [CASTING_AND_MANA_FLOW.md](CASTING_AND_MANA_FLOW.md).
 5. **Long AI endurance**: Some runs can still expose AI waiting/stall behavior, especially with weaker fixture AI or awkward fixture decks. The bridge now pings the XMage remoting session and the smoke harness fails as `bridge-disconnected` if health drops; the app must continue surfacing AI thinking/stalled states honestly while targeted fixtures keep the core loop deterministic.
 6. **Full-AI fixture upkeep**: Keep the green `commander-full-ai` aggregate current whenever bridge, fixture, prompt, or iOS command models change.
@@ -184,4 +186,4 @@ pnpm smoke:xmage
 1. Run the full validation set on the final checkout after doc updates.
 2. Perform real iPhone manual QA against the same fixture-ready gateway; simulator success and generic iPhoneOS builds still do not count. Current device check showed Caleb's iPhone 16 Pro Max as `unavailable`, so install/launch/play QA could not run.
 3. Confirm the iOS `/play` experience surfaces source, bridge health, revision/cycle, priority, pending status, unsupported prompts, and failed commands without falling back to simulator.
-4. Automated full Commander vs AI route proof is green through `commander-full-ai`, but product readiness still requires real iPhone manual QA against the same gateway and a final confirmation that the iOS client can play without debug JSON or simulator fallback.
+4. Automated full Commander vs AI route proof is green through `commander-full-ai`, and simulator fixture layout is green, but product readiness still requires real iPhone manual QA against the same gateway and a final confirmation that the iOS client can play without debug JSON or simulator fallback.

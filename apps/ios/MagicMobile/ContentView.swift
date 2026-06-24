@@ -848,90 +848,93 @@ struct SetupView: View {
             let leftWidth = min(max(proxy.size.width * 0.32, 278), 330)
             let rightWidth = max(proxy.size.width - leftWidth - gap, 430)
 
-            HStack(spacing: gap) {
-                Panel(title: "Connection") {
-                    TextField("Server URL", text: $serverURLText)
-                        .textInputAutocapitalization(.never)
-                        .keyboardType(.URL)
-                        .textFieldStyle(GameTextFieldStyle())
-                    Text("iPhone client. XMage, Docker, card cache, symbols, and rules bridge run on this server.")
-                        .foregroundStyle(.white.opacity(0.68))
-                        .font(.system(size: 12, weight: .semibold))
-                        .lineLimit(3)
-                    Button("Check XMage bridge", action: checkBridge)
-                        .buttonStyle(SecondaryButtonStyle())
-                    CardCachePanel(
-                        metadata: cardCacheMetadata,
-                        isSyncing: isSyncingCardCache,
-                        phoneImageCacheCount: phoneImageCacheCount,
-                        phoneSymbolCacheCount: phoneSymbolCacheCount,
-                        downloadProgress: phoneImageDownloadProgress,
-                        sync: syncCardCache
-                    )
-                }
-                .frame(width: leftWidth)
-
-                Panel(title: "Commander vs AI") {
-                    HStack(alignment: .top, spacing: 10) {
-                        PreconPicker(title: "Your precon", selection: $selectedHumanPrecon)
-                        PreconPicker(title: "AI deck", selection: $selectedAIPrecon)
-                    }
-
-                    Text(deckSummary)
-                        .font(.system(size: 18, weight: .black, design: .rounded))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.62)
-
-                    HStack(spacing: 10) {
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text("AI skill")
-                                .font(.caption.weight(.black))
-                                .foregroundStyle(MagicPalette.antiqueGold)
-                            Picker("AI skill", selection: $difficulty) {
-                                ForEach(AiDifficulty.allCases) { difficulty in
-                                    Text(difficulty.menuLabel).tag(difficulty)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                        }
-
-                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                            AvatarPreview(data: avatarData)
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    HStack(spacing: 7) {
-                        SetupRuleChip(title: "Format", value: "Commander")
-                        SetupRuleChip(title: "Players", value: "1v1 AI")
-                        SetupRuleChip(title: "Life", value: "40")
-                        SetupRuleChip(title: "Mulligan", value: "XMage")
-                        SetupRuleChip(title: "Start", value: "Prompt")
-                    }
-
-                    Text("XMage controls rules, mulligans, priority, mana, and legal actions.")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.58))
-                        .lineLimit(1)
-
-                    HStack {
-                        Button("Deck upload", action: openDecks)
+            ScrollView(.vertical, showsIndicators: false) {
+                HStack(spacing: gap) {
+                    Panel(title: "Connection") {
+                        TextField("Server URL", text: $serverURLText)
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.URL)
+                            .textFieldStyle(GameTextFieldStyle())
+                        Text("iPhone client. XMage, Docker, card cache, symbols, and rules bridge run on this server.")
+                            .foregroundStyle(.white.opacity(0.68))
+                            .font(.system(size: 12, weight: .semibold))
+                            .lineLimit(3)
+                        Button("Check XMage bridge", action: checkBridge)
                             .buttonStyle(SecondaryButtonStyle())
-                        Button("Start vs AI", action: startGame)
-                            .buttonStyle(PrimaryButtonStyle())
+                        CardCachePanel(
+                            metadata: cardCacheMetadata,
+                            isSyncing: isSyncingCardCache,
+                            phoneImageCacheCount: phoneImageCacheCount,
+                            phoneSymbolCacheCount: phoneSymbolCacheCount,
+                            downloadProgress: phoneImageDownloadProgress,
+                            sync: syncCardCache
+                        )
                     }
+                    .frame(width: leftWidth)
 
-                    #if DEBUG
-                    Button("Start XMage gauntlet fixture", action: startFixtureGame)
-                        .buttonStyle(SecondaryButtonStyle())
-                    Text("Debug only. Requires ENABLE_XMAGE_FIXTURES=true and a non-production gateway.")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(MagicPalette.antiqueGold.opacity(0.82))
-                        .lineLimit(2)
-                    #endif
+                    Panel(title: "Commander vs AI") {
+                        HStack(alignment: .top, spacing: 10) {
+                            PreconPicker(title: "Your precon", selection: $selectedHumanPrecon)
+                            PreconPicker(title: "AI deck", selection: $selectedAIPrecon)
+                        }
+
+                        Text(deckSummary)
+                            .font(.system(size: 18, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.62)
+
+                        HStack(spacing: 10) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text("AI skill")
+                                    .font(.caption.weight(.black))
+                                    .foregroundStyle(MagicPalette.antiqueGold)
+                                Picker("AI skill", selection: $difficulty) {
+                                    ForEach(AiDifficulty.allCases) { difficulty in
+                                        Text(difficulty.menuLabel).tag(difficulty)
+                                    }
+                                }
+                                .pickerStyle(.segmented)
+                            }
+
+                            PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                                AvatarPreview(data: avatarData)
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        HStack(spacing: 7) {
+                            SetupRuleChip(title: "Format", value: "Commander")
+                            SetupRuleChip(title: "Players", value: "1v1 AI")
+                            SetupRuleChip(title: "Life", value: "40")
+                            SetupRuleChip(title: "Mulligan", value: "XMage")
+                            SetupRuleChip(title: "Start", value: "Prompt")
+                        }
+
+                        Text("XMage controls rules, mulligans, priority, mana, and legal actions.")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.58))
+                            .lineLimit(1)
+
+                        HStack {
+                            Button("Deck upload", action: openDecks)
+                                .buttonStyle(SecondaryButtonStyle())
+                            Button("Start vs AI", action: startGame)
+                                .buttonStyle(PrimaryButtonStyle())
+                        }
+
+                        #if DEBUG
+                        Button("Start XMage gauntlet fixture", action: startFixtureGame)
+                            .buttonStyle(SecondaryButtonStyle())
+                        Text("Debug only. Requires ENABLE_XMAGE_FIXTURES=true and a non-production gateway.")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(MagicPalette.antiqueGold.opacity(0.82))
+                            .lineLimit(2)
+                        #endif
+                    }
+                    .frame(width: rightWidth)
                 }
-                .frame(width: rightWidth)
+                .frame(maxWidth: .infinity, alignment: .top)
             }
         }
     }
@@ -1260,21 +1263,29 @@ struct NativeGameView: View {
                     }
 
                     if pendingActionId != nil {
-                        ZStack {
-                            Color.black.opacity(0.35)
-                                .ignoresSafeArea()
-                            VStack(spacing: 8) {
-                                ProgressView()
-                                    .tint(.white)
-                                    .scaleEffect(1.3)
-                                Text("Waiting for XMage...")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundStyle(.white)
+                        HStack(spacing: 10) {
+                            ProgressView()
+                                .tint(MagicPalette.arcaneBlue)
+                                .scaleEffect(0.9)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Waiting for XMage")
+                                    .font(.system(size: 11, weight: .black))
+                                    .foregroundStyle(MagicPalette.antiqueGold)
+                                Text("Action sent. Board updates only after the next authoritative snapshot.")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(MagicPalette.parchment.opacity(0.72))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.62)
                             }
-                            .padding(14)
-                            .background(.black.opacity(0.75), in: RoundedRectangle(cornerRadius: 10))
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.12)))
                         }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .frame(width: min(metrics.playWidth * 0.62, 430), alignment: .leading)
+                        .background(MagicPalette.iron.opacity(0.88), in: RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.arcaneBlue.opacity(0.46), lineWidth: 1.3))
+                        .shadow(color: MagicPalette.arcaneBlue.opacity(0.20), radius: 16, y: 6)
+                        .position(x: metrics.playCenterX, y: metrics.promptY + 42)
+                        .allowsHitTesting(false)
                         .transition(.opacity)
                     }
                 }
@@ -1308,11 +1319,11 @@ struct BattlefieldLayoutMetrics {
     }
 
     var railWidth: CGFloat {
-        min(max(size.width * 0.075, 64), 92)
+        min(max(size.width * 0.065, 58), 82)
     }
 
     var leftInset: CGFloat {
-        max(safeArea.leading + 54, 64)
+        max(safeArea.leading + 46, 56)
     }
 
     var railLeftX: CGFloat {
@@ -1320,11 +1331,11 @@ struct BattlefieldLayoutMetrics {
     }
 
     var actionDockWidth: CGFloat {
-        min(max(size.width * 0.16, 220), 292)
+        min(max(size.width * 0.15, 214), 276)
     }
 
     var actionPanelHeight: CGFloat {
-        min(max(size.height * 0.54, 250), 390)
+        min(max(size.height * 0.48, 232), 340)
     }
 
     var actionDockRightX: CGFloat {
@@ -1505,7 +1516,7 @@ struct BattlefieldLayoutMetrics {
     }
 
     var handCardWidth: CGFloat {
-        min(max(playWidth / 10.8, 50), 74)
+        min(max(playWidth / 11.4, 48), 70)
     }
 
     var handCardHeight: CGFloat {
@@ -1541,11 +1552,11 @@ struct BattlefieldLayoutMetrics {
     }
 
     private var basePermanentCardWidth: CGFloat {
-        min(max(playWidth / 15.5, 40), 58)
+        min(max(playWidth / 16.2, 38), 56)
     }
 
     private var baseLandCardWidth: CGFloat {
-        min(max(playWidth / 19.5, 32), 48)
+        min(max(playWidth / 20.5, 31), 45)
     }
 
     private var naturalPermanentRowHeight: CGFloat {
@@ -1615,13 +1626,18 @@ struct LoadingGameView: View {
 }
 
 enum MagicPalette {
-    static let antiqueGold = Color(red: 0.78, green: 0.58, blue: 0.24)
-    static let moss = Color(red: 0.18, green: 0.27, blue: 0.15)
-    static let deepMoss = Color(red: 0.06, green: 0.14, blue: 0.08)
-    static let iron = Color(red: 0.10, green: 0.09, blue: 0.08)
-    static let parchment = Color(red: 0.82, green: 0.73, blue: 0.55)
-    static let oxblood = Color(red: 0.38, green: 0.08, blue: 0.06)
-    static let leather = Color(red: 0.25, green: 0.14, blue: 0.07)
+    static let antiqueGold = Color(red: 0.82, green: 0.62, blue: 0.27)
+    static let brass = Color(red: 0.62, green: 0.44, blue: 0.18)
+    static let moss = Color(red: 0.16, green: 0.25, blue: 0.14)
+    static let deepMoss = Color(red: 0.04, green: 0.10, blue: 0.07)
+    static let iron = Color(red: 0.11, green: 0.10, blue: 0.09)
+    static let parchment = Color(red: 0.84, green: 0.75, blue: 0.57)
+    static let parchmentShadow = Color(red: 0.46, green: 0.34, blue: 0.20)
+    static let oxblood = Color(red: 0.39, green: 0.08, blue: 0.06)
+    static let leather = Color(red: 0.23, green: 0.13, blue: 0.08)
+    static let carvedWood = Color(red: 0.30, green: 0.17, blue: 0.09)
+    static let emerald = Color(red: 0.18, green: 0.56, blue: 0.34)
+    static let arcaneBlue = Color(red: 0.22, green: 0.57, blue: 0.78)
 }
 
 struct BattlefieldSurface: View {
@@ -1630,18 +1646,32 @@ struct BattlefieldSurface: View {
             LinearGradient(
                 colors: [
                     MagicPalette.deepMoss,
-                    MagicPalette.moss,
-                    MagicPalette.leather
+                    MagicPalette.leather,
+                    MagicPalette.carvedWood,
+                    MagicPalette.moss
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            RadialGradient(colors: [MagicPalette.antiqueGold.opacity(0.24), .clear], center: .bottomTrailing, startRadius: 20, endRadius: 420)
-            RadialGradient(colors: [MagicPalette.oxblood.opacity(0.18), .clear], center: .topLeading, startRadius: 20, endRadius: 390)
+            RadialGradient(colors: [MagicPalette.antiqueGold.opacity(0.18), .clear], center: .bottomTrailing, startRadius: 20, endRadius: 430)
+            RadialGradient(colors: [MagicPalette.arcaneBlue.opacity(0.12), .clear], center: .topTrailing, startRadius: 18, endRadius: 360)
+            RadialGradient(colors: [MagicPalette.oxblood.opacity(0.16), .clear], center: .topLeading, startRadius: 20, endRadius: 390)
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            .black.opacity(0.28),
+                            .clear,
+                            .black.opacity(0.18)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
             VStack {
                 Spacer()
                 Capsule()
-                    .fill(MagicPalette.iron.opacity(0.34))
+                    .fill(MagicPalette.iron.opacity(0.42))
                     .frame(height: 54)
                     .padding(.horizontal, 42)
                     .blur(radius: 18)
@@ -1739,8 +1769,18 @@ struct PlayerHeroHUD: View {
         }
         .padding(.horizontal, tiny ? 6 : (compact ? 8 : 10))
         .padding(.vertical, tiny ? 3 : (compact ? 4 : 5))
-        .background(.black.opacity(active ? 0.58 : 0.34), in: Capsule())
-        .overlay(Capsule().stroke(active ? MagicPalette.antiqueGold.opacity(0.9) : MagicPalette.parchment.opacity(0.14), lineWidth: active ? 2 : 1))
+        .background(
+            LinearGradient(
+                colors: [
+                    MagicPalette.iron.opacity(active ? 0.86 : 0.68),
+                    MagicPalette.leather.opacity(active ? 0.78 : 0.50)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: Capsule()
+        )
+        .overlay(Capsule().stroke(active ? MagicPalette.antiqueGold.opacity(0.9) : MagicPalette.parchment.opacity(0.18), lineWidth: active ? 2 : 1))
         .shadow(color: active ? MagicPalette.antiqueGold.opacity(0.34) : .black.opacity(0.22), radius: active ? 14 : 12, y: 5)
     }
 }
@@ -1759,8 +1799,8 @@ struct CommanderBadge: View {
         }
         .foregroundStyle(MagicPalette.antiqueGold)
         .frame(width: 38, height: 28)
-        .background(MagicPalette.iron.opacity(0.62), in: RoundedRectangle(cornerRadius: 7))
-        .overlay(RoundedRectangle(cornerRadius: 7).stroke(MagicPalette.antiqueGold.opacity(0.28)))
+        .background(MagicPalette.iron.opacity(0.72), in: RoundedRectangle(cornerRadius: 7))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(MagicPalette.antiqueGold.opacity(0.38)))
     }
 }
 
@@ -1988,8 +2028,8 @@ struct ManaPoolHUD: View {
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
-        .background(MagicPalette.iron.opacity(0.68), in: Capsule())
-        .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.30), lineWidth: 1))
+        .background(MagicPalette.iron.opacity(0.76), in: Capsule())
+        .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.38), lineWidth: 1))
         .shadow(color: .black.opacity(0.30), radius: 10, y: 5)
     }
 }
@@ -2181,16 +2221,16 @@ struct PromptPill: View {
     var body: some View {
         HStack(spacing: 10) {
             Circle()
-                .fill(isWaitingOnHuman ? Color.orange : Color.blue)
+                .fill(isWaitingOnHuman ? MagicPalette.emerald : MagicPalette.arcaneBlue)
                 .frame(width: 8, height: 8)
-                .shadow(color: (isWaitingOnHuman ? Color.orange : Color.blue).opacity(0.8), radius: 5)
+                .shadow(color: (isWaitingOnHuman ? MagicPalette.emerald : MagicPalette.arcaneBlue).opacity(0.8), radius: 5)
             
             Text(isWaitingOnHuman ? "YOUR DECISION" : "AI DECISION")
                 .font(.system(size: 9, weight: .black))
-                .foregroundStyle(isWaitingOnHuman ? .orange : .blue)
+                .foregroundStyle(isWaitingOnHuman ? MagicPalette.emerald : MagicPalette.arcaneBlue)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
-                .background((isWaitingOnHuman ? Color.orange : Color.blue).opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
+                .background((isWaitingOnHuman ? MagicPalette.emerald : MagicPalette.arcaneBlue).opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
 
             Text(snapshot.promptText ?? "Waiting for XMage")
                 .font(.system(size: 11, weight: .black))
@@ -2203,8 +2243,8 @@ struct PromptPill: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
-        .background(.black.opacity(0.68), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(isWaitingOnHuman ? Color.orange.opacity(0.5) : Color.white.opacity(0.12), lineWidth: 1.5))
+        .background(MagicPalette.iron.opacity(0.74), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(isWaitingOnHuman ? MagicPalette.emerald.opacity(0.5) : MagicPalette.arcaneBlue.opacity(0.26), lineWidth: 1.5))
     }
 }
 
@@ -2445,8 +2485,16 @@ struct UniversalPromptActionPanel: View {
             }
         }
         .padding(9)
-        .background(MagicPalette.iron.opacity(0.78), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.antiqueGold.opacity(0.30)))
+        .background(
+            LinearGradient(
+                colors: [MagicPalette.iron.opacity(0.90), MagicPalette.leather.opacity(0.82)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 8)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.antiqueGold.opacity(0.36), lineWidth: 1.2))
+        .shadow(color: .black.opacity(0.34), radius: 14, y: 8)
     }
 
     private var priorityLabel: String {
@@ -3804,37 +3852,9 @@ struct CardTile: View {
                         .resizable()
                         .scaledToFill()
                 case .empty:
-                    ZStack {
-                        Color(red: 0.15, green: 0.15, blue: 0.15)
-                        ProgressView()
-                            .tint(.white.opacity(0.6))
-                    }
+                    CardArtPlaceholder(card: card, width: width, height: height, loading: true)
                 case .failure, _:
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(card.card.name)
-                            .font(.system(size: 7, weight: .black))
-                            .foregroundStyle(MagicPalette.oxblood)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.7)
-                        
-                        ZStack {
-                            Color(red: 0.22, green: 0.22, blue: 0.22)
-                            Image(systemName: "photo.fill")
-                                .font(.system(size: 14))
-                                .foregroundStyle(.white.opacity(0.18))
-                        }
-                        .cornerRadius(3)
-                        
-                        Spacer(minLength: 1)
-                        
-                        Text(card.card.typeLine)
-                            .font(.system(size: 5.5, weight: .bold))
-                            .foregroundStyle(.black.opacity(0.75))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
-                    .padding(4)
-                    .background(Color(red: 0.86, green: 0.78, blue: 0.62))
+                    CardArtPlaceholder(card: card, width: width, height: height)
                 }
             }
             .frame(width: width, height: height)
@@ -3874,7 +3894,7 @@ struct CardTile: View {
             return MagicPalette.antiqueGold
         }
         if legal {
-            return Color(red: 0.55, green: 0.28, blue: 0.72)
+            return MagicPalette.emerald
         }
         return .black.opacity(0.55)
     }
@@ -3887,9 +3907,78 @@ struct CardTile: View {
             return MagicPalette.antiqueGold.opacity(0.55)
         }
         if legal {
-            return Color(red: 0.55, green: 0.28, blue: 0.72).opacity(0.55)
+            return MagicPalette.emerald.opacity(0.58)
         }
         return .clear
+    }
+}
+
+struct CardArtPlaceholder: View {
+    let card: ZoneCard
+    let width: CGFloat
+    let height: CGFloat
+    var loading = false
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    MagicPalette.parchment,
+                    Color(red: 0.72, green: 0.59, blue: 0.38),
+                    MagicPalette.parchmentShadow
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            VStack(spacing: max(height * 0.025, 2)) {
+                HStack(alignment: .top, spacing: 3) {
+                    Text(card.card.name)
+                        .font(.system(size: max(width * 0.115, 6), weight: .black, design: .serif))
+                        .foregroundStyle(MagicPalette.iron)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.58)
+                    Spacer(minLength: 2)
+                }
+
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    MagicPalette.leather.opacity(0.78),
+                                    MagicPalette.moss.opacity(0.62),
+                                    MagicPalette.iron.opacity(0.86)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                    Image(systemName: loading ? "hourglass" : "sparkles")
+                        .font(.system(size: max(width * 0.22, 12), weight: .black))
+                        .foregroundStyle(MagicPalette.antiqueGold.opacity(loading ? 0.42 : 0.58))
+                }
+                .frame(height: max(height * 0.38, 22))
+
+                Text(card.card.typeLine.isEmpty ? "Card" : card.card.typeLine)
+                    .font(.system(size: max(width * 0.075, 5), weight: .bold, design: .serif))
+                    .foregroundStyle(MagicPalette.iron.opacity(0.78))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.55)
+
+                Spacer(minLength: 0)
+            }
+            .padding(max(width * 0.07, 3.5))
+
+            if loading {
+                ProgressView()
+                    .tint(MagicPalette.antiqueGold)
+                    .scaleEffect(0.58)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .padding(max(width * 0.07, 4))
+            }
+        }
+        .frame(width: width, height: height)
     }
 }
 

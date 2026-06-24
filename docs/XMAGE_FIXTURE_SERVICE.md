@@ -99,6 +99,14 @@ ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:1717
 
 The smoke is only release-proof when the report has `source: "xmage-java-bridge"` and `fixtureHarness.directStateSeeded: true`.
 
+For iOS simulator or physical-device debug fixture testing, start the local web API layer as well:
+
+```sh
+ENGINE_MODE=xmage XMAGE_GATEWAY_URL=http://localhost:17171 ENABLE_XMAGE_FIXTURES=true NODE_ENV=development pnpm --filter @magicmobile/web exec next dev --hostname 0.0.0.0
+```
+
+Point the iOS app at the printed web port, such as `http://localhost:3000` in Simulator or `http://<Mac-LAN-IP>:3000` on a physical iPhone. The web app exposes a dev-only `/dev/xmage-fixtures/commander` proxy for the iOS debug button and forwards it to the raw gateway. The proxy is disabled in production and still requires `ENABLE_XMAGE_FIXTURES=true`.
+
 ## Current Live Evidence
 
 On June 23, 2026, the embedded fixture hook reached ready locally after XMage card/server startup, seeded a real Commander game in the server JVM, and returned a refreshed `source: "xmage-java-bridge"` snapshot with:
