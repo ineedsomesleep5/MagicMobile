@@ -5,6 +5,7 @@ This document outlines the CI configuration status, Docker environment verificat
 > [!IMPORTANT]
 > The production gameplay path at `/play` strictly requires a healthy XMage gateway and Java bridge. The simulator mode is kept isolated at `/dev/play-simulator` for UI and component development.
 > Smoke reports are local artifacts, not evergreen release proof. Keep generated JSON under `build_output/smoke/*.json` and rerun the relevant smoke command on the current checkout before citing a pass.
+> Proof is split into four buckets: backend route proof (`commander-full-ai`), simulator visual/layout proof, generic iPhoneOS compile proof, and physical iPhone install/play QA. Only the last bucket can clear product release readiness.
 
 ---
 
@@ -71,7 +72,7 @@ Commands below were refreshed locally on macOS on June 24, 2026 where noted. Tre
 | `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=mana-rock XMAGE_USE_FIXTURE=true pnpm smoke:xmage` | Targeted mana-rock payment-source smoke | ~35s after services ready | Current pass with default Sol Ring: real `source: "xmage-java-bridge"`, direct fixture seeding, `stepsBlocked: []`. Optional `XMAGE_SMOKE_MANA_ROCK_CARD="Arcane Signet"` also passed with cast/payment/resolution all true, final `bridgeRevision: 17`, final `xmageCycle: 29`. |
 | `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-full-ai XMAGE_USE_FIXTURE=true pnpm smoke:xmage` | Full Commander vs AI aggregate gate | Pass | Latest local Docker run used real `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, `allRequiredScenariosPassed: true`, `routeFamiliesMissing: []`, `stepsBlocked: []`, `iOSRequiredRoutesMissing: []`, and `readinessVerdict: "full-commander-vs-ai-ready"`. |
 | `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project apps/ios/MagicMobileiOS.xcodeproj -scheme MagicMobile -configuration Debug -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build` | Native iPhoneOS hardware build | ~30s | Pass: current Swift app builds for `arm64` iPhone hardware with signing disabled. This is compile evidence only; it is not install/play QA on a real iPhone. |
-| XcodeBuildMCP simulator build/run | iOS landscape layout check | Pass | iPhone 16 Pro Max Simulator was unavailable, so the pass used iPhone 17 Pro Max Simulator on iOS 26.5. The debug fixture board loaded from `source: "xmage-java-bridge"` and showed `bridgeRevision: 9`, `xmageCycle: 14`, priority, phase, mana, hand, stack/surfaces, and command access without debug JSON. Screenshot: `build_output/ios-screenshots/iphone-17-pro-max-fixture-board-normalized-readable.jpg`. |
+| XcodeBuildMCP simulator build/run | iOS landscape layout check | Pass | iPhone 16 Pro Max Simulator was unavailable, so the pass used iPhone 17 Pro Max Simulator on iOS 26.5. The app declares landscape-only orientations and rendered the landscape board, but this CoreSimulator runtime emitted a rotated portrait framebuffer. The debug fixture board loaded from `source: "xmage-java-bridge"` and showed `bridgeRevision: 9`, `xmageCycle: 14`, priority, phase, mana, hand, stack/surfaces, and command access without debug JSON. Readable screenshot: `build_output/ios-screenshots/iphone-17-pro-max-fixture-board-rustic-landscape-readable.jpg`. |
 
 ### Key Smoke Test Verification Points:
 - The bridge image was rebuilt after the source-UUID `make_mana` fix, after the activation-dispatch/commander prompt classifier fixes, and after the bridge keepalive/error-reporting fix in this pass.
@@ -184,6 +185,6 @@ pnpm smoke:xmage
 
 ### Exact blockers before iPhone alpha:
 1. Run the full validation set on the final checkout after doc updates.
-2. Perform real iPhone manual QA against the same fixture-ready gateway; simulator success and generic iPhoneOS builds still do not count. Current device check showed Caleb's iPhone 16 Pro Max as `unavailable`, so install/launch/play QA could not run.
+2. Perform real iPhone manual QA against the same fixture-ready gateway using [XMAGE_MOBILE_PLAYTEST_CHECKLIST.md](XMAGE_MOBILE_PLAYTEST_CHECKLIST.md) and [IOS_VISUAL_QA_CHECKLIST.md](IOS_VISUAL_QA_CHECKLIST.md); simulator success and generic iPhoneOS builds still do not count. Current device check showed Caleb's iPhone 16 Pro Max as `unavailable`, so install/launch/play QA could not run.
 3. Confirm the iOS `/play` experience surfaces source, bridge health, revision/cycle, priority, pending status, unsupported prompts, and failed commands without falling back to simulator.
 4. Automated full Commander vs AI route proof is green through `commander-full-ai`, and simulator fixture layout is green, but product readiness still requires real iPhone manual QA against the same gateway and a final confirmation that the iOS client can play without debug JSON or simulator fallback.

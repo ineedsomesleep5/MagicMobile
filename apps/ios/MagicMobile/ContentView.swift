@@ -37,7 +37,7 @@ enum UniversalPromptResponseCommandBuilder {
 }
 
 struct ContentView: View {
-    @State private var serverURLText = "https://magicmobile.openclaw-is3w.srv1420950.hstgr.cloud"
+    @State private var serverURLText = ProcessInfo.processInfo.environment["MAGICMOBILE_SERVER_URL"] ?? "https://magicmobile.openclaw-is3w.srv1420950.hstgr.cloud"
     @State private var status = "Not connected"
     @State private var screen: AppScreen = .menu
     @State private var difficulty: AiDifficulty = .normal
@@ -1128,46 +1128,47 @@ struct NativeGameView: View {
                     BattlefieldSurface()
                         .ignoresSafeArea()
 
-                    BattlefieldRow(title: "Opponent board", cards: nonLandPermanents(opponent.zones.battlefield), legalActions: snapshot.legalActions ?? [], selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.permanentCardWidth, rowWidth: metrics.playWidth, runAction: runAction)
-                        .frame(width: metrics.playWidth, height: metrics.compactRowHeight)
-                        .position(x: metrics.playCenterX, y: metrics.opponentBoardY)
+                    BattlefieldRow(title: "Opponent board", cards: nonLandPermanents(opponent.zones.battlefield), legalActions: snapshot.legalActions ?? [], selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.boardColumnRect.width, runAction: runAction)
+                        .frame(width: metrics.opponentBattlefieldRect.width, height: metrics.opponentBattlefieldRect.height)
+                        .position(x: metrics.opponentBattlefieldRect.midX, y: metrics.opponentBattlefieldRect.midY)
 
-                    BattlefieldRow(title: "Opponent lands", cards: landPermanents(opponent.zones.battlefield), legalActions: snapshot.legalActions ?? [], selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.landCardWidth, rowWidth: metrics.playWidth, runAction: runAction)
-                        .frame(width: metrics.playWidth, height: metrics.landRowHeight)
-                        .position(x: metrics.playCenterX, y: metrics.opponentLandsY)
+                    BattlefieldRow(title: "Opponent lands", cards: landPermanents(opponent.zones.battlefield), legalActions: snapshot.legalActions ?? [], selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.boardColumnRect.width, runAction: runAction)
+                        .frame(width: metrics.opponentLandsRect.width, height: metrics.opponentLandsRect.height)
+                        .position(x: metrics.opponentLandsRect.midX, y: metrics.opponentLandsRect.midY)
 
                     Rectangle()
                         .fill(.white.opacity(0.13))
-                        .frame(width: max(metrics.playWidth - 28, 80), height: 1.5)
-                        .position(x: metrics.playCenterX, y: metrics.centerLineY)
+                        .frame(width: max(metrics.centerStripRect.width - 28, 80), height: 1.5)
+                        .position(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.midY)
 
-                    BattlefieldRow(title: "Your board", cards: nonLandPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.permanentCardWidth, rowWidth: metrics.playWidth, runAction: runAction)
-                        .frame(width: metrics.playWidth, height: metrics.compactRowHeight)
-                        .position(x: metrics.playCenterX, y: metrics.playerBoardY)
+                    BattlefieldRow(title: "Your board", cards: nonLandPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.boardColumnRect.width, runAction: runAction)
+                        .frame(width: metrics.playerBattlefieldRect.width, height: metrics.playerBattlefieldRect.height)
+                        .position(x: metrics.playerBattlefieldRect.midX, y: metrics.playerBattlefieldRect.midY)
 
-                    BattlefieldRow(title: "Your lands", cards: landPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.landCardWidth, rowWidth: metrics.playWidth, runAction: runAction)
-                        .frame(width: metrics.playWidth, height: metrics.landRowHeight)
-                        .position(x: metrics.playCenterX, y: metrics.playerLandsY)
+                    BattlefieldRow(title: "Your lands", cards: landPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.boardColumnRect.width, runAction: runAction)
+                        .frame(width: metrics.playerLandsRect.width, height: metrics.playerLandsRect.height)
+                        .position(x: metrics.playerLandsRect.midX, y: metrics.playerLandsRect.midY)
 
-                    if let xmageStack = snapshot.xmage?.stack, !xmageStack.isEmpty {
-                        XmageStackPeek(
-                            objects: xmageStack,
-                            legalActions: allActions,
-                            promptText: snapshot.promptEnvelopeV2?.message ?? snapshot.promptText,
-                            selectedCard: $selectedCard,
-                            inspectedCard: $inspectedCard
-                        )
-                            .frame(width: min(metrics.playWidth * 0.44, 350), height: 112)
-                            .position(x: metrics.stackX, y: metrics.stackY)
-                    } else if !human.zones.stack.isEmpty {
-                        StackPeek(cards: human.zones.stack, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
-                            .frame(width: min(metrics.playWidth * 0.36, 280), height: 74)
-                            .position(x: metrics.stackX, y: metrics.stackY)
+                    HStack(spacing: 8) {
+                        if let xmageStack = snapshot.xmage?.stack, !xmageStack.isEmpty {
+                            XmageStackPeek(
+                                objects: xmageStack,
+                                legalActions: allActions,
+                                promptText: snapshot.promptEnvelopeV2?.message ?? snapshot.promptText,
+                                selectedCard: $selectedCard,
+                                inspectedCard: $inspectedCard
+                            )
+                            .frame(width: metrics.stackPeekWidth, height: max(metrics.centerStripRect.height - 6, 54))
+                        } else if !human.zones.stack.isEmpty {
+                            StackPeek(cards: human.zones.stack, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+                                .frame(width: min(metrics.stackPeekWidth, 280), height: max(metrics.centerStripRect.height - 6, 54))
+                        }
+
+                        PromptPill(snapshot: snapshot)
+                            .frame(maxWidth: .infinity)
                     }
-
-                    PromptPill(snapshot: snapshot)
-                        .frame(width: min(metrics.playWidth * 0.82, 560))
-                        .position(x: metrics.playCenterX, y: metrics.promptY)
+                    .frame(width: metrics.centerStripRect.width, height: metrics.centerStripRect.height)
+                    .position(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.midY)
 
                     if isOverPlayerDropZone {
                         RoundedRectangle(cornerRadius: 14)
@@ -1189,24 +1190,24 @@ struct NativeGameView: View {
                         onDropFeedback: onInteractionFeedback,
                         runAction: runAction
                     )
-                        .frame(width: metrics.playWidth, height: metrics.handFrameHeight)
-                        .position(x: metrics.playCenterX, y: metrics.handY)
+                        .frame(width: metrics.handRect.width, height: metrics.handRect.height)
+                        .position(x: metrics.handRect.midX, y: metrics.handRect.midY)
 
                     TurnStatusBadge(snapshot: snapshot, human: human, opponent: opponent)
                         .frame(width: metrics.turnBadgeWidth, height: 34)
-                        .position(x: metrics.playCenterX, y: metrics.topHUDY)
+                        .position(x: metrics.topStatusRect.midX, y: metrics.topStatusRect.midY)
 
                     LiveUpdateBadge(status: liveUpdateStatus)
                         .frame(width: min(metrics.turnBadgeWidth * 0.46, 170), height: 28)
-                        .position(x: metrics.liveStatusX, y: metrics.topHUDY + 40)
+                        .position(x: metrics.liveStatusX, y: metrics.topStatusRect.midY)
 
                     GameDiagnosticsBadge(snapshot: snapshot, liveUpdateStatus: liveUpdateStatus)
-                        .frame(width: min(metrics.turnBadgeWidth * 0.72, 230))
-                        .position(x: metrics.liveStatusX, y: metrics.topHUDY + 74)
+                        .frame(width: metrics.rightDockRect.width)
+                        .position(x: metrics.rightDockRect.midX, y: metrics.diagnosticsY)
 
                     PlayerHeroHUD(name: "Noaddrag", player: opponent, avatarData: nil, active: snapshot.activePlayerId == opponent.playerId, opponentId: human.playerId, compact: true, tiny: true)
                         .frame(width: metrics.opponentHUDWidth, height: 38)
-                        .position(x: metrics.opponentHUDX, y: metrics.topHUDY)
+                        .position(x: metrics.opponentHUDX, y: metrics.topStatusRect.midY)
 
                     PlayerHeroHUD(name: "TabletopPolish", player: human, avatarData: avatarData, active: snapshot.activePlayerId == human.playerId, opponentId: opponent.playerId, compact: true)
                         .frame(width: metrics.hudWidth, height: 48)
@@ -1230,7 +1231,7 @@ struct NativeGameView: View {
                         .buttonStyle(IconButtonStyle())
                     }
                     .frame(width: metrics.railWidth)
-                    .position(x: metrics.railCenterX, y: metrics.railY)
+                    .position(x: metrics.phaseRailRect.midX, y: metrics.phaseRailRect.midY)
 
                     if !allActions.isEmpty || snapshot.choicePrompt != nil || snapshot.promptEnvelope != nil || snapshot.promptEnvelopeV2 != nil {
                         UniversalPromptActionPanel(
@@ -1243,22 +1244,21 @@ struct NativeGameView: View {
                             runCommand: runCommand,
                             viewZone: viewZone
                         )
-                            .frame(width: metrics.actionDockWidth)
-                            .frame(maxHeight: metrics.actionPanelHeight)
-                            .position(x: metrics.actionDockX, y: metrics.actionY)
+                            .frame(width: metrics.bottomActionRect.width, height: metrics.bottomActionRect.height)
+                            .position(x: metrics.bottomActionRect.midX, y: metrics.bottomActionRect.midY)
                     }
 
                     if let inspectedCard {
                         CardInspector(card: inspectedCard)
-                            .frame(width: min(metrics.playWidth * 0.36, 250), height: min(metrics.size.height * 0.43, 220))
-                            .position(x: metrics.inspectorX, y: metrics.inspectorY)
+                            .frame(width: metrics.detailSheetRect.width, height: metrics.detailSheetRect.height)
+                            .position(x: metrics.detailSheetRect.midX, y: metrics.detailSheetRect.midY)
                     }
 
                     if isLogOpen {
                         GameLogDrawer(log: snapshot.log) {
                             isLogOpen = false
                         }
-                        .frame(width: min(metrics.playWidth * 0.42, 320), height: min(metrics.size.height * 0.55, 260))
+                        .frame(width: min(metrics.detailSheetRect.width + 42, 340), height: min(metrics.size.height * 0.55, 260))
                         .position(x: metrics.logX, y: metrics.logY)
                     }
 
@@ -1284,7 +1284,7 @@ struct NativeGameView: View {
                         .background(MagicPalette.iron.opacity(0.88), in: RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.arcaneBlue.opacity(0.46), lineWidth: 1.3))
                         .shadow(color: MagicPalette.arcaneBlue.opacity(0.20), radius: 16, y: 6)
-                        .position(x: metrics.playCenterX, y: metrics.promptY + 42)
+                        .position(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.maxY + 22)
                         .allowsHitTesting(false)
                         .transition(.opacity)
                     }
@@ -1318,197 +1318,188 @@ struct BattlefieldLayoutMetrics {
         safeArea = proxy.safeAreaInsets
     }
 
-    var railWidth: CGFloat {
-        min(max(size.width * 0.065, 58), 82)
+    init(size: CGSize, safeArea: EdgeInsets = EdgeInsets()) {
+        self.size = size
+        self.safeArea = safeArea
     }
 
-    var leftInset: CGFloat {
-        max(safeArea.leading + 46, 56)
+    var safeFrame: CGRect {
+        let margin: CGFloat = 10
+        let x = safeArea.leading + margin
+        let y = safeArea.top + 8
+        let width = max(size.width - safeArea.leading - safeArea.trailing - margin * 2, 320)
+        let height = max(size.height - safeArea.top - safeArea.bottom - 16, 300)
+        return CGRect(x: x, y: y, width: width, height: height)
     }
 
-    var railLeftX: CGFloat {
-        size.width - safeArea.trailing - 8 - railWidth
+    var topStatusRect: CGRect {
+        CGRect(x: safeFrame.minX, y: safeFrame.minY, width: safeFrame.width, height: 40)
     }
 
-    var actionDockWidth: CGFloat {
-        min(max(size.width * 0.15, 214), 276)
+    var rightDockRect: CGRect {
+        let width = min(max(safeFrame.width * 0.22, 226), 292)
+        let top = topStatusRect.maxY + 8
+        return CGRect(x: safeFrame.maxX - width, y: top, width: width, height: max(safeFrame.maxY - top, 220))
     }
 
-    var actionPanelHeight: CGFloat {
-        min(max(size.height * 0.48, 232), 340)
+    var boardColumnRect: CGRect {
+        let gap: CGFloat = 12
+        let top = topStatusRect.maxY + 4
+        return CGRect(
+            x: safeFrame.minX,
+            y: top,
+            width: max(rightDockRect.minX - safeFrame.minX - gap, 320),
+            height: max(safeFrame.maxY - top, 260)
+        )
     }
 
-    var actionDockRightX: CGFloat {
-        railLeftX - 12
+    var handRect: CGRect {
+        CGRect(
+            x: boardColumnRect.minX,
+            y: boardColumnRect.maxY - handFrameHeight,
+            width: boardColumnRect.width,
+            height: handFrameHeight
+        )
     }
 
-    var playRightX: CGFloat {
-        actionDockRightX - actionDockWidth - 16
+    var opponentBattlefieldRect: CGRect {
+        laneRects[0]
+    }
+
+    var opponentLandsRect: CGRect {
+        laneRects[1]
+    }
+
+    var centerStripRect: CGRect {
+        laneRects[2]
+    }
+
+    var playerBattlefieldRect: CGRect {
+        laneRects[3]
+    }
+
+    var playerLandsRect: CGRect {
+        laneRects[4]
+    }
+
+    var bottomActionRect: CGRect {
+        let height = min(max(safeFrame.height * 0.54, 232), max(rightDockRect.height - 118, 190))
+        return CGRect(
+            x: rightDockRect.minX,
+            y: rightDockRect.maxY - height,
+            width: rightDockRect.width,
+            height: height
+        )
+    }
+
+    var detailSheetRect: CGRect {
+        let width = min(max(boardColumnRect.width * 0.33, 220), 292)
+        let height = min(max(safeFrame.height * 0.40, 184), 240)
+        return CGRect(
+            x: boardColumnRect.minX + 8,
+            y: max(topStatusRect.maxY + 12, centerStripRect.maxY - height * 0.34),
+            width: width,
+            height: height
+        )
+    }
+
+    var phaseRailRect: CGRect {
+        let height = min(max(rightDockRect.height - bottomActionRect.height - 50, 98), 154)
+        return CGRect(
+            x: rightDockRect.minX + (rightDockRect.width - railWidth) / 2,
+            y: diagnosticsY + 36,
+            width: railWidth,
+            height: height
+        )
     }
 
     var playWidth: CGFloat {
-        max(playRightX - leftInset, 280)
+        boardColumnRect.width
     }
 
     var playCenterX: CGFloat {
-        leftInset + playWidth / 2
+        boardColumnRect.midX
     }
 
-    var railCenterX: CGFloat {
-        railLeftX + railWidth / 2
+    var leftInset: CGFloat {
+        boardColumnRect.minX
     }
 
-    var railY: CGFloat {
-        max(safeArea.top + 112, 112)
+    var railWidth: CGFloat {
+        min(max(rightDockRect.width * 0.34, 64), 82)
     }
 
     var hudWidth: CGFloat {
-        min(playWidth * 0.36, 230)
+        min(boardColumnRect.width * 0.34, 230)
     }
 
     var opponentHUDWidth: CGFloat {
-        min(playWidth * 0.23, 154)
+        min(boardColumnRect.width * 0.24, 168)
     }
 
     var turnBadgeWidth: CGFloat {
-        min(playWidth * 0.40, 310)
+        min(boardColumnRect.width * 0.44, 320)
     }
 
     var liveStatusX: CGFloat {
-        min(playCenterX + turnBadgeWidth * 0.42, actionDockX - actionDockWidth / 2 - 82)
+        min(topStatusRect.midX + turnBadgeWidth * 0.48, rightDockRect.minX - 92)
     }
 
     var opponentHUDX: CGFloat {
-        leftInset + opponentHUDWidth / 2
+        boardColumnRect.minX + opponentHUDWidth / 2
     }
 
     var playerHUDX: CGFloat {
-        leftInset + hudWidth / 2
-    }
-
-    var manaHUDX: CGFloat {
-        leftInset + 102
-    }
-
-    var manaHUDY: CGFloat {
-        playerLandsY - landRowHeight / 2 - 18
-    }
-
-    var topHUDY: CGFloat {
-        max(safeArea.top + 24, 24)
+        boardColumnRect.minX + hudWidth / 2
     }
 
     var bottomHUDY: CGFloat {
-        min(handVisualTopY - 30, size.height - max(safeArea.bottom + handFrameHeight + 18, handFrameHeight + 20))
+        max(handRect.minY - 16, playerLandsRect.maxY + 18)
     }
 
-    var battlefieldTopY: CGFloat {
-        max(safeArea.top + 58, topHUDY + 42)
+    var manaHUDX: CGFloat {
+        boardColumnRect.minX + 102
     }
 
-    var battlefieldBottomY: CGFloat {
-        handVisualTopY - 14
+    var manaHUDY: CGFloat {
+        playerLandsRect.minY - 14
     }
 
-    var battlefieldAvailableHeight: CGFloat {
-        max(battlefieldBottomY - battlefieldTopY, 180)
+    var topHUDY: CGFloat {
+        topStatusRect.midY
     }
 
-    var rowsTopY: CGFloat {
-        battlefieldTopY + max((battlefieldAvailableHeight - battlefieldRowsHeight) / 2, 0)
+    var diagnosticsY: CGFloat {
+        rightDockRect.minY + 28
     }
 
-    var laneGap: CGFloat {
-        5
-    }
-
-    var centerGap: CGFloat {
-        12
-    }
-
-    var opponentBoardY: CGFloat {
-        rowsTopY + compactRowHeight / 2
-    }
-
-    var opponentLandsY: CGFloat {
-        opponentBoardY + compactRowHeight / 2 + laneGap + landRowHeight / 2
-    }
-
-    var centerLineY: CGFloat {
-        opponentLandsY + landRowHeight / 2 + centerGap / 2
-    }
-
-    var playerBoardY: CGFloat {
-        centerLineY + centerGap / 2 + compactRowHeight / 2
-    }
-
-    var playerLandsY: CGFloat {
-        playerBoardY + compactRowHeight / 2 + laneGap + landRowHeight / 2
+    var stackPeekWidth: CGFloat {
+        min(max(centerStripRect.width * 0.32, 190), 330)
     }
 
     var promptY: CGFloat {
-        centerLineY
-    }
-
-    var stackX: CGFloat {
-        playCenterX + min(playWidth * 0.18, 150)
-    }
-
-    var stackY: CGFloat {
-        max(opponentLandsY + landRowHeight / 2 + 20, centerLineY - 34)
-    }
-
-    var choicePanelX: CGFloat {
-        actionDockX - actionDockWidth / 2 - min(playWidth * 0.23, 180)
-    }
-
-    var choicePanelY: CGFloat {
-        min(actionY - 88, handVisualTopY - 78)
-    }
-
-    var promptBadgeX: CGFloat {
-        max(leftInset + 140, min(playCenterX + playWidth * 0.25, actionDockX - actionDockWidth / 2 - 150))
-    }
-
-    var promptBadgeY: CGFloat {
-        max(promptY - 44, battlefieldTopY + 34)
-    }
-
-    var handY: CGFloat {
-        size.height - max(safeArea.bottom + handFrameHeight / 2 + 2, handFrameHeight / 2 + 4)
-    }
-
-    var handVisualTopY: CGFloat {
-        handY - handFrameHeight / 2 - 38
-    }
-
-    var actionY: CGFloat {
-        size.height - max(safeArea.bottom + 92, 96)
-    }
-
-    var actionDockX: CGFloat {
-        actionDockRightX - actionDockWidth / 2
+        centerStripRect.midY
     }
 
     var playerDropZone: CGRect {
         CGRect(
-            x: leftInset,
-            y: playerBoardY - compactRowHeight / 2 - 10,
-            width: playWidth,
-            height: compactRowHeight + landRowHeight + laneGap + 24
+            x: playerBattlefieldRect.minX,
+            y: playerBattlefieldRect.minY - 6,
+            width: playerBattlefieldRect.width,
+            height: playerLandsRect.maxY - playerBattlefieldRect.minY + 14
         )
     }
 
     var inspectorX: CGFloat {
-        leftInset + min(playWidth * 0.18, 158)
+        detailSheetRect.midX
     }
 
     var inspectorY: CGFloat {
-        min(handVisualTopY - 96, size.height * 0.56)
+        detailSheetRect.midY
     }
 
     var logX: CGFloat {
-        railCenterX - railWidth / 2 - min(playWidth * 0.21, 160) - 10
+        detailSheetRect.maxX + 22
     }
 
     var logY: CGFloat {
@@ -1516,7 +1507,9 @@ struct BattlefieldLayoutMetrics {
     }
 
     var handCardWidth: CGFloat {
-        min(max(playWidth / 11.4, 48), 70)
+        let horizontalFit = boardColumnRect.width / 8.8
+        let verticalFit = max((safeFrame.height * 0.24) / 1.40, 58)
+        return min(max(horizontalFit, 68), min(verticalFit, 86))
     }
 
     var handCardHeight: CGFloat {
@@ -1524,61 +1517,95 @@ struct BattlefieldLayoutMetrics {
     }
 
     var handFrameHeight: CGFloat {
-        handCardHeight + 38
+        handCardHeight + 14
+    }
+
+    var handY: CGFloat {
+        handRect.midY
+    }
+
+    var handVisualTopY: CGFloat {
+        handRect.minY - 24
     }
 
     var permanentCardWidth: CGFloat {
-        basePermanentCardWidth * battlefieldScale
+        min(max(boardColumnRect.width / 10.2, 50), 72) * battlefieldScale
+    }
+
+    var permanentCardHeight: CGFloat {
+        permanentCardWidth * 1.40
     }
 
     var landCardWidth: CGFloat {
-        baseLandCardWidth * battlefieldScale
+        min(max(boardColumnRect.width / 13.8, 44), 56) * landScale
+    }
+
+    var landCardHeight: CGFloat {
+        max(44, landCardWidth * 1.12)
     }
 
     var landRowHeight: CGFloat {
-        landCardWidth * 1.40 + rowPadding
+        landCardHeight + 8
     }
 
     var compactRowHeight: CGFloat {
-        permanentCardWidth * 1.40 + rowPadding
+        permanentCardHeight + 8
     }
 
     var rowHeight: CGFloat {
-        permanentCardWidth * 1.40 + rowPadding
+        compactRowHeight
     }
 
     var battlefieldRowsHeight: CGFloat {
-        compactRowHeight * 2 + landRowHeight * 2 + laneGap * 3 + centerGap
+        compactRowHeight * 2 + landRowHeight * 2 + centerStripHeight + laneGap * 4
     }
 
-    private var basePermanentCardWidth: CGFloat {
-        min(max(playWidth / 16.2, 38), 56)
+    private var battlefieldRect: CGRect {
+        let top = boardColumnRect.minY + 2
+        let bottom = handRect.minY - 4
+        return CGRect(x: boardColumnRect.minX, y: top, width: boardColumnRect.width, height: max(bottom - top, 190))
     }
 
-    private var baseLandCardWidth: CGFloat {
-        min(max(playWidth / 20.5, 31), 45)
+    private var laneRects: [CGRect] {
+        let totalGap = laneGap * 4
+        let available = max(battlefieldRect.height - centerStripHeight - totalGap, 160)
+        let landHeight = min(max(available * 0.18, 44), 58)
+        let battleHeight = max((available - landHeight * 2) / 2, 52)
+        var y = battlefieldRect.minY
+        let opponentBattle = CGRect(x: battlefieldRect.minX, y: y, width: battlefieldRect.width, height: battleHeight)
+        y += battleHeight + laneGap
+        let opponentLands = CGRect(x: battlefieldRect.minX, y: y, width: battlefieldRect.width, height: landHeight)
+        y += landHeight + laneGap
+        let center = CGRect(x: battlefieldRect.minX, y: y, width: battlefieldRect.width, height: centerStripHeight)
+        y += centerStripHeight + laneGap
+        let playerBattle = CGRect(x: battlefieldRect.minX, y: y, width: battlefieldRect.width, height: battleHeight)
+        y += battleHeight + laneGap
+        let playerLands = CGRect(x: battlefieldRect.minX, y: y, width: battlefieldRect.width, height: landHeight)
+        return [opponentBattle, opponentLands, center, playerBattle, playerLands]
     }
 
-    private var naturalPermanentRowHeight: CGFloat {
-        basePermanentCardWidth * 1.40 + rowPadding
+    private var laneGap: CGFloat {
+        3
     }
 
-    private var naturalLandRowHeight: CGFloat {
-        baseLandCardWidth * 1.40 + rowPadding
-    }
-
-    private var naturalRowsHeight: CGFloat {
-        naturalPermanentRowHeight * 2 + naturalLandRowHeight * 2 + laneGap * 3 + centerGap
-    }
-
-    private var rowPadding: CGFloat {
-        12
+    private var centerStripHeight: CGFloat {
+        min(max(battlefieldRect.height * 0.11, 24), 38)
     }
 
     private var battlefieldScale: CGFloat {
-        let fixedHeight = rowPadding * 4 + laneGap * 3 + centerGap
-        let scalableHeight = basePermanentCardWidth * 1.40 * 2 + baseLandCardWidth * 1.40 * 2
-        return min(1, max(0.42, (battlefieldAvailableHeight - fixedHeight) / max(scalableHeight, 1)))
+        min(1, max(0.78, (opponentBattlefieldRect.height - 8) / max(naturalPermanentCardHeight, 1)))
+    }
+
+    private var landScale: CGFloat {
+        min(1, max(0.84, (opponentLandsRect.height - 8) / max(naturalLandCardHeight, 1)))
+    }
+
+    private var naturalPermanentCardHeight: CGFloat {
+        min(max(boardColumnRect.width / 10.2, 50), 72) * 1.40
+    }
+
+    private var naturalLandCardHeight: CGFloat {
+        max(44, min(max(boardColumnRect.width / 13.8, 44), 56) * 1.12)
     }
 }
 
@@ -1628,6 +1655,7 @@ struct LoadingGameView: View {
 enum MagicPalette {
     static let antiqueGold = Color(red: 0.82, green: 0.62, blue: 0.27)
     static let brass = Color(red: 0.62, green: 0.44, blue: 0.18)
+    static let warningAmber = Color(red: 0.95, green: 0.63, blue: 0.20)
     static let moss = Color(red: 0.16, green: 0.25, blue: 0.14)
     static let deepMoss = Color(red: 0.04, green: 0.10, blue: 0.07)
     static let iron = Color(red: 0.11, green: 0.10, blue: 0.09)
@@ -1638,6 +1666,12 @@ enum MagicPalette {
     static let carvedWood = Color(red: 0.30, green: 0.17, blue: 0.09)
     static let emerald = Color(red: 0.18, green: 0.56, blue: 0.34)
     static let arcaneBlue = Color(red: 0.22, green: 0.57, blue: 0.78)
+    static let legalEmerald = emerald
+    static let priorityArcane = arcaneBlue
+    static let panelParchment = Color(red: 0.70, green: 0.57, blue: 0.36)
+    static let borderBronze = Color(red: 0.58, green: 0.39, blue: 0.15)
+    static let borderIron = Color(red: 0.20, green: 0.18, blue: 0.15)
+    static let laneWood = Color(red: 0.22, green: 0.13, blue: 0.07)
 }
 
 struct BattlefieldSurface: View {
@@ -1859,7 +1893,7 @@ struct TurnStatusBadge: View {
                     .foregroundStyle(.white.opacity(0.6))
                 Text(priorityText)
                     .font(.system(size: 10, weight: .black))
-                    .foregroundStyle(snapshot.priorityPlayerId == "human" ? .green : (snapshot.priorityPlayerId != nil ? .orange : .white.opacity(0.4)))
+                    .foregroundStyle(snapshot.priorityPlayerId == "human" ? MagicPalette.legalEmerald : (snapshot.priorityPlayerId != nil ? MagicPalette.warningAmber : .white.opacity(0.4)))
             }
         }
         .padding(.horizontal, 12)
@@ -1880,9 +1914,9 @@ struct LiveUpdateBadge: View {
     var body: some View {
         HStack(spacing: 5) {
             Circle()
-                .fill(isLive ? Color.green : MagicPalette.antiqueGold)
+                .fill(isLive ? MagicPalette.legalEmerald : MagicPalette.antiqueGold)
                 .frame(width: 7, height: 7)
-                .shadow(color: (isLive ? Color.green : MagicPalette.antiqueGold).opacity(0.75), radius: 5)
+                .shadow(color: (isLive ? MagicPalette.legalEmerald : MagicPalette.antiqueGold).opacity(0.75), radius: 5)
             Text(status.uppercased())
                 .font(.system(size: 8, weight: .black))
                 .foregroundStyle(.white.opacity(0.82))
@@ -1893,7 +1927,7 @@ struct LiveUpdateBadge: View {
         .padding(.vertical, 5)
         .frame(maxWidth: .infinity)
         .background(.black.opacity(0.42), in: Capsule())
-        .overlay(Capsule().stroke((isLive ? Color.green : MagicPalette.antiqueGold).opacity(0.36), lineWidth: 1))
+        .overlay(Capsule().stroke((isLive ? MagicPalette.legalEmerald : MagicPalette.antiqueGold).opacity(0.36), lineWidth: 1))
     }
 }
 
@@ -1929,7 +1963,7 @@ struct GameDiagnosticsBadge: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(waitState.uppercased())
                 .font(.system(size: 7, weight: .black))
-                .foregroundStyle(waitState == "Your priority" ? .green : MagicPalette.antiqueGold)
+                .foregroundStyle(waitState == "Your priority" ? MagicPalette.legalEmerald : (waitState.contains("stalled") ? MagicPalette.warningAmber : MagicPalette.priorityArcane))
             Text("\(source) · \(snapshot.engineHealth?.status ?? "bridge") · ws \(liveUpdateStatus)")
                 .font(.system(size: 7, weight: .bold))
                 .foregroundStyle(.white.opacity(0.72))
@@ -1948,8 +1982,8 @@ struct GameDiagnosticsBadge: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(.black.opacity(0.54), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.antiqueGold.opacity(0.24), lineWidth: 1))
+        .background(MagicPalette.iron.opacity(0.62), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.borderBronze.opacity(0.38), lineWidth: 1))
     }
 }
 
@@ -2441,13 +2475,6 @@ struct UniversalPromptActionPanel: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
-                    MobileSurfacesPanel(
-                        snapshot: snapshot,
-                        selectedCard: $selectedCard,
-                        inspectedCard: $inspectedCard,
-                        viewZone: viewZone
-                    )
-
                     if let prompt = snapshot.promptEnvelopeV2 {
                         promptEnvelopeV2Section(prompt)
                     } else if let prompt = snapshot.promptEnvelope {
@@ -2480,6 +2507,13 @@ struct UniversalPromptActionPanel: View {
                     if !otherActions.isEmpty {
                         actionSection(title: "Other Actions", detail: "\(otherActions.count)", actions: otherActions)
                     }
+
+                    MobileSurfacesPanel(
+                        snapshot: snapshot,
+                        selectedCard: $selectedCard,
+                        inspectedCard: $inspectedCard,
+                        viewZone: viewZone
+                    )
                 }
                 .padding(.vertical, 1)
             }
@@ -2487,13 +2521,13 @@ struct UniversalPromptActionPanel: View {
         .padding(9)
         .background(
             LinearGradient(
-                colors: [MagicPalette.iron.opacity(0.90), MagicPalette.leather.opacity(0.82)],
+                colors: [MagicPalette.iron.opacity(0.94), MagicPalette.leather.opacity(0.88), MagicPalette.laneWood.opacity(0.78)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             ),
             in: RoundedRectangle(cornerRadius: 8)
         )
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.antiqueGold.opacity(0.36), lineWidth: 1.2))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.borderBronze.opacity(0.66), lineWidth: 1.2))
         .shadow(color: .black.opacity(0.34), radius: 14, y: 8)
     }
 
@@ -2613,7 +2647,7 @@ struct UniversalPromptActionPanel: View {
             if !hasRenderablePromptControls(prompt) {
                 Text("Unsupported prompt/action: XMage has not exposed a mobile-safe control for this route yet.")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.orange.opacity(0.86))
+                    .foregroundStyle(MagicPalette.warningAmber.opacity(0.90))
                     .lineLimit(3)
                     .minimumScaleFactor(0.72)
             }
@@ -2842,7 +2876,7 @@ struct UniversalPromptActionPanel: View {
                 PromptMiniLabel("Multi Amount")
                 Text("Unsupported prompt/action: XMage did not expose slot metadata for this multi-amount prompt.")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.orange.opacity(0.86))
+                    .foregroundStyle(MagicPalette.warningAmber.opacity(0.90))
                     .lineLimit(3)
                     .minimumScaleFactor(0.72)
             }
@@ -3403,53 +3437,34 @@ struct MobileSurfacesPanel: View {
     let viewZone: (String, [ZoneCard]) -> Void
 
     var body: some View {
-        PromptPanelSection(title: "Surfaces", detail: surfaceSummary) {
+        PromptPanelSection(title: "Zones", detail: surfaceSummary) {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 76), spacing: 5)], spacing: 5) {
-                SurfaceChip(title: "Stack", value: "\(stackObjectCount)")
+                SurfaceChip(title: "Stack", value: "\(stackObjectCount)", systemImage: "sparkles")
                     .onTapGesture {
                         if !stackCards.isEmpty { viewZone("Stack", stackCards) }
                     }
-                SurfaceChip(title: "Command", value: "\(commandCards.count)")
+                SurfaceChip(title: "Command", value: "\(commandCards.count)", systemImage: "crown")
                     .onTapGesture {
                         if !commandCards.isEmpty { viewZone("Command", commandCards) }
                     }
-                SurfaceChip(title: "Grave", value: "\(graveyardCards.count)")
+                SurfaceChip(title: "Grave", value: "\(graveyardCards.count)", systemImage: "archivebox")
                     .onTapGesture {
                         if !graveyardCards.isEmpty { viewZone("Graveyard", graveyardCards) }
                     }
-                SurfaceChip(title: "Exile", value: "\(exileCards.count)")
+                SurfaceChip(title: "Exile", value: "\(exileCards.count)", systemImage: "moon.stars")
                     .onTapGesture {
                         if !exileCards.isEmpty { viewZone("Exile", exileCards) }
                     }
-                SurfaceChip(title: "Priority", value: priorityOwner)
-                SurfaceChip(title: "Actions", value: "\((snapshot.legalActions ?? []).count)")
+                SurfaceChip(title: "Priority", value: priorityOwner, systemImage: "hand.raised")
+                SurfaceChip(title: "Actions", value: "\((snapshot.legalActions ?? []).count)", systemImage: "bolt")
             }
 
-            if !stackCards.isEmpty {
-                MiniZoneRow(title: "Stack", cards: stackCards, selectedCard: $selectedCard, inspectedCard: $inspectedCard) {
-                    viewZone("Stack", stackCards)
-                }
-            } else if !stackObjectNames.isEmpty {
-                Text("Stack: \(stackObjectNames.joined(separator: ", "))")
+            if let topStackObject = stackObjectNames.first {
+                Text("Stack top: \(topStackObject)")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.72))
-                    .lineLimit(2)
+                    .foregroundStyle(MagicPalette.priorityArcane.opacity(0.88))
+                    .lineLimit(1)
                     .minimumScaleFactor(0.64)
-            }
-            if !commandCards.isEmpty {
-                MiniZoneRow(title: "Command", cards: commandCards, selectedCard: $selectedCard, inspectedCard: $inspectedCard) {
-                    viewZone("Command", commandCards)
-                }
-            }
-            if !graveyardCards.isEmpty {
-                MiniZoneRow(title: "Graveyard", cards: Array(graveyardCards.suffix(8)), selectedCard: $selectedCard, inspectedCard: $inspectedCard, onViewAll: {
-                    viewZone("Graveyard", graveyardCards)
-                })
-            }
-            if !exileCards.isEmpty {
-                MiniZoneRow(title: "Exile", cards: Array(exileCards.suffix(8)), selectedCard: $selectedCard, inspectedCard: $inspectedCard, onViewAll: {
-                    viewZone("Exile", exileCards)
-                })
             }
         }
     }
@@ -3507,21 +3522,24 @@ struct PromptPanelSection<Content: View>: View {
             HStack(spacing: 5) {
                 Text(title.uppercased())
                     .font(.system(size: 8, weight: .black))
-                    .foregroundStyle(isHighlighted ? .orange : MagicPalette.antiqueGold)
+                    .foregroundStyle(isHighlighted ? MagicPalette.warningAmber : MagicPalette.antiqueGold)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 Spacer(minLength: 3)
                 Text(detail.uppercased())
                     .font(.system(size: 7, weight: .black))
-                    .foregroundStyle(isHighlighted ? .orange.opacity(0.8) : .white.opacity(0.50))
+                    .foregroundStyle(isHighlighted ? MagicPalette.warningAmber.opacity(0.86) : MagicPalette.parchment.opacity(0.58))
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
             }
             content
         }
         .padding(7)
-        .background(isHighlighted ? Color.orange.opacity(0.08) : .black.opacity(0.32), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(isHighlighted ? Color.orange.opacity(0.4) : .white.opacity(0.10), lineWidth: isHighlighted ? 1.5 : 1))
+        .background(
+            isHighlighted ? MagicPalette.warningAmber.opacity(0.10) : MagicPalette.iron.opacity(0.42),
+            in: RoundedRectangle(cornerRadius: 8)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(isHighlighted ? MagicPalette.warningAmber.opacity(0.48) : MagicPalette.borderBronze.opacity(0.28), lineWidth: isHighlighted ? 1.5 : 1))
     }
 }
 
@@ -3590,33 +3608,45 @@ struct PanelActionButtonStyle: ButtonStyle {
 
     private func backgroundColor(isPressed: Bool) -> Color {
         if isDanger {
-            return isPressed ? Color.red.opacity(0.58) : Color.red.opacity(0.72)
+            return isPressed ? MagicPalette.oxblood.opacity(0.68) : MagicPalette.oxblood.opacity(0.86)
         }
         if isPrimary {
-            return isPressed ? Color.orange.opacity(0.64) : Color.orange.opacity(0.82)
+            return isPressed ? MagicPalette.brass.opacity(0.70) : MagicPalette.antiqueGold.opacity(0.82)
         }
-        return isPressed ? Color.white.opacity(0.16) : Color.white.opacity(0.08)
+        return isPressed ? MagicPalette.panelParchment.opacity(0.18) : MagicPalette.iron.opacity(0.58)
     }
 }
 
 struct SurfaceChip: View {
     let title: String
     let value: String
+    var systemImage: String? = nil
 
     var body: some View {
-        VStack(spacing: 1) {
-            Text(value)
-                .font(.system(size: 10, weight: .black))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-            Text(title.uppercased())
-                .font(.system(size: 6, weight: .black))
-                .foregroundStyle(.white.opacity(0.55))
-                .lineLimit(1)
+        HStack(spacing: 4) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundStyle(MagicPalette.antiqueGold.opacity(0.86))
+                    .frame(width: 10)
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                Text(value)
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundStyle(MagicPalette.parchment)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Text(title.uppercased())
+                    .font(.system(size: 6, weight: .black))
+                    .foregroundStyle(MagicPalette.parchment.opacity(0.56))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, minHeight: 30)
-        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 7))
+        .padding(.horizontal, 6)
+        .frame(maxWidth: .infinity, minHeight: 32)
+        .background(MagicPalette.iron.opacity(0.54), in: RoundedRectangle(cornerRadius: 7))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(MagicPalette.borderBronze.opacity(0.34), lineWidth: 1))
     }
 }
 
@@ -3669,32 +3699,35 @@ struct BattlefieldRow: View {
     @Binding var inspectedCard: ZoneCard?
     var flipped = false
     let cardWidth: CGFloat
+    let cardHeight: CGFloat
     let rowWidth: CGFloat
     let runAction: (LegalAction) -> Void
 
     var body: some View {
-        VStack(alignment: .center, spacing: 4) {
-            HStack {
-                Text(title.uppercased())
-                    .font(.system(size: 9, weight: .black))
-                    .foregroundStyle(.white.opacity(0.65))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(.black.opacity(0.4), in: RoundedRectangle(cornerRadius: 4))
-                Spacer()
+        ZStack(alignment: .topLeading) {
+            HStack(spacing: max(cardWidth * 0.28, 14)) {
+                ForEach(0..<8, id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: 5)
+                        .stroke(MagicPalette.borderBronze.opacity(0.12), lineWidth: 1)
+                        .frame(width: max(cardWidth * 0.72, 32), height: max(cardHeight * 0.82, 36))
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
+            .allowsHitTesting(false)
+
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .center, spacing: -10) {
                     if cards.isEmpty {
-                        Text("No permanents")
+                        Text("Open field")
                             .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(MagicPalette.parchment.opacity(0.35))
+                            .foregroundStyle(MagicPalette.parchment.opacity(0.24))
                             .padding(.horizontal, 12)
-                            .frame(minWidth: rowWidth, minHeight: cardWidth * 1.40, alignment: .center)
+                            .frame(minWidth: rowWidth, minHeight: max(cardHeight, 44), alignment: .center)
                     }
                     ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
                         let action = legalAction(for: card)
-                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: action != nil, width: cardWidth, height: cardWidth * 1.40)
+                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: action != nil, width: cardWidth, height: cardHeight)
                             .offset(y: card.tapped == true ? 5 : 0)
                             .zIndex(Double(index))
                             .onTapGesture {
@@ -3709,11 +3742,25 @@ struct BattlefieldRow: View {
                     }
                 }
                 .padding(.horizontal, 8)
-                .frame(minWidth: rowWidth, minHeight: cardWidth * 1.40 + 6, alignment: .center)
+                .frame(minWidth: rowWidth, minHeight: max(cardHeight + 6, 44), alignment: .center)
             }
-            .background(.black.opacity(0.18))
+            .background(
+                LinearGradient(
+                    colors: [MagicPalette.laneWood.opacity(0.58), MagicPalette.iron.opacity(0.42)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
             .cornerRadius(8)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.08), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.borderBronze.opacity(0.22), lineWidth: 1))
+
+            Text(title.uppercased())
+                .font(.system(size: 8, weight: .black))
+                .foregroundStyle(MagicPalette.parchment.opacity(cards.isEmpty ? 0.36 : 0.68))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(MagicPalette.iron.opacity(0.56), in: RoundedRectangle(cornerRadius: 4))
+                .padding(5)
         }
     }
 
@@ -3888,26 +3935,26 @@ struct CardTile: View {
 
     private var strokeColor: Color {
         if pending {
-            return .orange
+            return MagicPalette.warningAmber
         }
         if selected {
             return MagicPalette.antiqueGold
         }
         if legal {
-            return MagicPalette.emerald
+            return MagicPalette.legalEmerald
         }
         return .black.opacity(0.55)
     }
 
     private var shadowColor: Color {
         if pending {
-            return .orange.opacity(0.75)
+            return MagicPalette.warningAmber.opacity(0.75)
         }
         if selected {
             return MagicPalette.antiqueGold.opacity(0.55)
         }
         if legal {
-            return MagicPalette.emerald.opacity(0.58)
+            return MagicPalette.legalEmerald.opacity(0.58)
         }
         return .clear
     }
@@ -3979,6 +4026,17 @@ struct CardArtPlaceholder: View {
             }
         }
         .frame(width: width, height: height)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(
+                    LinearGradient(
+                        colors: [MagicPalette.borderBronze.opacity(0.70), MagicPalette.borderIron.opacity(0.62)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: max(width * 0.035, 1)
+                )
+        )
     }
 }
 
@@ -3994,7 +4052,7 @@ struct CompactPhaseRail: View {
         VStack(alignment: .leading, spacing: 5) {
             Image(systemName: "hourglass")
                 .font(.system(size: 15, weight: .black))
-                .foregroundStyle(.orange)
+                .foregroundStyle(MagicPalette.warningAmber)
                 .frame(maxWidth: .infinity)
             PhaseChip(label: "Prev", phase: previous, active: false)
             PhaseChip(label: "Now", phase: current, active: true)
@@ -4006,8 +4064,8 @@ struct CompactPhaseRail: View {
                 .frame(maxWidth: .infinity)
         }
         .padding(6)
-        .background(.black.opacity(0.44), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.12)))
+        .background(MagicPalette.iron.opacity(0.58), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.borderBronze.opacity(0.30)))
     }
 }
 
@@ -4029,7 +4087,8 @@ struct PhaseChip: View {
         }
         .padding(5)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(active ? Color.orange : Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+        .background(active ? MagicPalette.antiqueGold : MagicPalette.iron.opacity(0.50), in: RoundedRectangle(cornerRadius: 7))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(active ? MagicPalette.brass.opacity(0.55) : MagicPalette.borderBronze.opacity(0.20)))
     }
 }
 
@@ -4266,7 +4325,8 @@ struct PrimaryButtonStyle: ButtonStyle {
             .padding(.horizontal, 15)
             .padding(.vertical, 11)
             .frame(minHeight: 42)
-            .background(configuration.isPressed ? Color.orange.opacity(0.65) : Color.orange, in: RoundedRectangle(cornerRadius: 8))
+            .background(configuration.isPressed ? MagicPalette.brass.opacity(0.70) : MagicPalette.antiqueGold.opacity(0.88), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.borderBronze.opacity(0.50)))
     }
 }
 
@@ -4302,12 +4362,12 @@ struct CompactActionButtonStyle: ButtonStyle {
 
     private func backgroundColor(isPressed: Bool) -> Color {
         if isDanger {
-            return isPressed ? Color.red.opacity(0.62) : Color.red.opacity(0.78)
+            return isPressed ? MagicPalette.oxblood.opacity(0.66) : MagicPalette.oxblood.opacity(0.84)
         }
         if isPrimary {
-            return isPressed ? Color.orange.opacity(0.68) : Color.orange
+            return isPressed ? MagicPalette.brass.opacity(0.70) : MagicPalette.antiqueGold.opacity(0.88)
         }
-        return isPressed ? Color.white.opacity(0.18) : Color.black.opacity(0.52)
+        return isPressed ? MagicPalette.panelParchment.opacity(0.18) : MagicPalette.iron.opacity(0.58)
     }
 }
 
