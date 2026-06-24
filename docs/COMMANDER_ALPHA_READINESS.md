@@ -70,6 +70,7 @@ All commands below were run locally on macOS on June 23, 2026 against the shared
 | `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-damage XMAGE_USE_FIXTURE=true pnpm smoke:xmage` | Targeted deterministic commander damage smoke | ~40s after services ready | Current pass: real `source: "xmage-java-bridge"`, direct fixture seeding, final `bridgeRevision: 74`, final `xmageCycle: 122`, commander damage `2` from human to AI, `stepsBlocked: []` |
 | `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=mana-rock XMAGE_USE_FIXTURE=true pnpm smoke:xmage` | Targeted mana-rock payment-source smoke | ~35s after services ready | Current pass with default Sol Ring: real `source: "xmage-java-bridge"`, direct fixture seeding, `stepsBlocked: []`. Optional `XMAGE_SMOKE_MANA_ROCK_CARD="Arcane Signet"` also passed with cast/payment/resolution all true, final `bridgeRevision: 17`, final `xmageCycle: 29`. |
 | `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-full-ai XMAGE_USE_FIXTURE=true pnpm smoke:xmage` | Full Commander vs AI aggregate gate | Pass | Latest local Docker run used real `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, `allRequiredScenariosPassed: true`, `routeFamiliesMissing: []`, `stepsBlocked: []`, `iOSRequiredRoutesMissing: []`, and `readinessVerdict: "full-commander-vs-ai-ready"`. |
+| `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project apps/ios/MagicMobileiOS.xcodeproj -scheme MagicMobile -configuration Debug -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build` | Native iPhoneOS hardware build | ~30s | Pass: current Swift app builds for `arm64` iPhone hardware with signing disabled. This is compile evidence only; it is not install/play QA on a real iPhone. |
 
 ### Key Smoke Test Verification Points:
 - The bridge image was rebuilt after the source-UUID `make_mana` fix, after the activation-dispatch/commander prompt classifier fixes, and after the bridge keepalive/error-reporting fix in this pass.
@@ -181,6 +182,6 @@ pnpm smoke:xmage
 
 ### Exact blockers before iPhone alpha:
 1. Run the full validation set on the final checkout after doc updates.
-2. Perform real iPhone manual QA against the same fixture-ready gateway; simulator success still does not count.
+2. Perform real iPhone manual QA against the same fixture-ready gateway; simulator success and generic iPhoneOS builds still do not count. Current device check showed Caleb's iPhone 16 Pro Max as `unavailable`, so install/launch/play QA could not run.
 3. Confirm the iOS `/play` experience surfaces source, bridge health, revision/cycle, priority, pending status, unsupported prompts, and failed commands without falling back to simulator.
 4. Automated full Commander vs AI route proof is green through `commander-full-ai`, but product readiness still requires real iPhone manual QA against the same gateway and a final confirmation that the iOS client can play without debug JSON or simulator fallback.
