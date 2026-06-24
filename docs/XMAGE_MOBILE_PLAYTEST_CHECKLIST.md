@@ -2,7 +2,7 @@
 
 Use this checklist when validating the XMage-backed Commander play loop from Docker, web, or an iPhone build. The current product scope is Commander-only digital play. The production play route must use XMage through the gateway and Java bridge; the simulator is only for `/dev/play-simulator`.
 
-## Current Pause State - June 23, 2026
+## Current Pause State - June 24, 2026
 
 Latest CI/docs validation pass on June 23, 2026. Treat the smoke details below as local artifact summaries only; rerun the commands on the current checkout before using them as release evidence. Generated JSON reports belong under `build_output/smoke/*.json`, not in docs.
 
@@ -23,13 +23,13 @@ Latest CI/docs validation pass on June 23, 2026. Treat the smoke details below a
 - `XMAGE_SMOKE_SCENARIO=commander-replacement-tax` reproved commander tax. Commander damage is separately covered by the targeted `commander-damage` fixture.
 - `XMAGE_SMOKE_SCENARIO=triggered-ability-stack` passed with direct server-side fixture seeding, `routeFamiliesMissing: []`, and empty `stepsBlocked`.
 - `XMAGE_SMOKE_SCENARIO=mana-rock` now uses a Commander-legal singleton fixture deck (`Sol Ring` x1, `Plains` x98), direct server-side seeding, and passed with real `source: "xmage-java-bridge"`, `directStateSeeded: true`, final `bridgeRevision: 15`, final `xmageCycle: 24`, and `stepsBlocked: []`.
-- `XMAGE_SMOKE_SCENARIO=prompt-variety` is still not green as an aggregate. Current fixture-gated targeted prompt smokes use real XMage and direct seeding; amount is separately proven by `XMAGE_SMOKE_SCENARIO=prompt-amount`, multi-amount by `XMAGE_SMOKE_SCENARIO=prompt-multi-amount`, and pile by `XMAGE_SMOKE_SCENARIO=prompt-pile`.
+- `XMAGE_SMOKE_SCENARIO=prompt-variety` is now green as an aggregate. The latest June 24, 2026 run used real `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, `allRequiredScenariosPassed: true`, `routeFamiliesMissing: []`, and empty `stepsBlocked` across activated-stack, triggered-stack, mode, order, amount, multi-amount, and pile child scenarios.
 - `XMAGE_SMOKE_SCENARIO=prompt-mode` is a targeted mode-choice proof. The latest June 23, 2026 run used real XMage, `directStateSeeded: true`, `seededStateVerified: true`, `actionsByType.choose_mode: 1`, final `bridgeRevision: 51`, final `xmageCycle: 91`, and empty `stepsBlocked` with Lavabrink Venturer's upstream `ChooseModeEffect`.
 - `XMAGE_SMOKE_SCENARIO=prompt-order` is a targeted trigger/item ordering proof. The latest June 24, 2026 run used real XMage, `directStateSeeded: true`, `seededStateVerified: true`, `promptFamiliesSeen: ["GAME_PLAY_MANA:mana", "GAME_TARGET:order"]`, `actionsByType.order_items: 1`, final `bridgeRevision: 29`, final `xmageCycle: 50`, and empty `stepsBlocked` with Soul Warden plus Spirited Companion.
 - `XMAGE_SMOKE_SCENARIO=prompt-amount` is a targeted amount-choice proof. The latest June 24, 2026 run used real XMage, `directStateSeeded: true`, `seededStateVerified: true`, `promptFamiliesSeen: ["GAME_GET_AMOUNT:amount"]`, `actionsByType.choose_amount: 1`, final `bridgeRevision: 18`, final `xmageCycle: 24`, and empty `stepsBlocked` with Wheel of Misfortune's upstream `Player.getAmount(...)` callback.
 - `XMAGE_SMOKE_SCENARIO=prompt-multi-amount` is a targeted multi-amount proof. The latest June 24, 2026 run used real XMage, `directStateSeeded: true`, `seededStateVerified: true`, `promptFamiliesSeen: ["GAME_GET_MULTI_AMOUNT:multi_amount"]`, `actionsByType.choose_multi_amount: 1`, final `bridgeRevision: 18`, final `xmageCycle: 29`, and empty `stepsBlocked` with Manamorphose's upstream `AddManaInAnyCombinationEffect`.
 - `XMAGE_SMOKE_SCENARIO=prompt-pile` is a targeted pile proof. The latest June 24, 2026 run used real XMage, `directStateSeeded: true`, `seededStateVerified: true`, `promptFamiliesSeen: ["GAME_CHOOSE_PILE:pile"]`, `actionsByType.choose_pile: 1`, final `bridgeRevision: 20`, final `xmageCycle: 33`, and empty `stepsBlocked` with Fact or Fiction's upstream `RevealAndSeparatePilesEffect`.
-- `XMAGE_SMOKE_SCENARIO=commander-full-ai` is the full Commander vs AI truth gate. It must fail until prompt-variety and damage-assignment are implemented/proven or explicitly excluded with safe fallbacks.
+- `XMAGE_SMOKE_SCENARIO=commander-full-ai` is the full Commander vs AI truth gate. The latest June 24, 2026 run failed honestly with `readinessVerdict: "not-ready-full-commander-vs-ai"`: commander-gauntlet, mana-rock, commander-damage, and blocker-flow passed, then later fixture-created games failed direct seeded proof because the command zone was missing. It must fail until the repeated-fixture lifecycle and damage-assignment blockers are fixed or formally excluded with safe fallbacks.
 - `XMAGE_SMOKE_MANA_ROCK_CARD="Arcane Signet" pnpm smoke:xmage:mana-rock` passed with real cast/payment/resolution evidence. Keep this as generic routing proof, not a card-specific production path.
 - `xcodebuild test -project apps/ios/MagicMobileiOS.xcodeproj -scheme MagicMobile -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' -only-testing:MagicMobileTests -quiet` exited 0 for the iOS unit test target. This is not real iPhone product success.
 
@@ -59,7 +59,7 @@ Historical/local notes from earlier runs; rerun before treating any item as curr
 
 Current pause blocker:
 
-- Commander damage, blocker assignment, and targeted prompt slices are now live-verified by targeted fixtures, but aggregate prompt-variety and damage assignment remain incomplete. Real iPhone manual QA is still unchecked.
+- Commander damage, blocker assignment, and standalone aggregate prompt-variety are now live-verified by deterministic fixtures, but the full aggregate currently exposes repeated-fixture command-zone proof instability, and damage assignment remains incomplete. Real iPhone manual QA is still unchecked.
 - Earlier AI-priority stalls are now sharper: the bridge keeps the XMage remoting session warm with periodic `Session.ping()`, and the smoke harness fails as `bridge-disconnected` if health drops while waiting for AI.
 
 ## Preflight
@@ -189,7 +189,7 @@ Remaining live-coverage gaps:
 - player-scoped snapshots are still required before human-vs-human or pods.
 - damage assignment prompts have not been live-fixtured yet. The current probe can seed a combat state, but the bridge/shared/Swift/iOS `damage_assignment` route is not implemented and must be treated as a full-AI blocker.
 - `mana-rock` is targeted-fixture proven with `Sol Ring`, and the optional `Arcane Signet` variant now passes as generic route proof. Manual phone QA still needs to confirm the same flow through the iOS UI.
-- full `commander-gauntlet` now has deterministic real-XMage setup support for singleton test cards and reached commander cast, replacement, and recast-with-tax. Commander damage, blocker assignment, and prompt-variety remain later-scope unless explicitly moved into the alpha gate, with commander damage, blocker assignment, and targeted prompt-mode/order/amount/multi-amount/pile slices separately targeted-fixture proven.
+- full `commander-gauntlet` now has deterministic real-XMage setup support for singleton test cards and reached commander cast, replacement, and recast-with-tax. Commander damage, blocker assignment, and prompt-variety remain outside the narrower gauntlet, with separate deterministic fixture proof for commander damage, blocker assignment, and standalone aggregate prompt-variety. The full `commander-full-ai` aggregate must still fail while repeated fixture-created games can lose command-zone proof.
 
 ## Commander Gauntlet Acceptance Loop
 

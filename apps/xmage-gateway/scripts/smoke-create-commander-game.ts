@@ -23,6 +23,17 @@ if (requestedScenario === "commander-full-ai") {
   }
   process.exit(0);
 }
+if (requestedScenario === "prompt-variety") {
+  const report = await runPromptVarietyGate();
+  writeSmokeReportForScenario(report, "prompt-variety");
+  console.log(JSON.stringify(report, null, 2));
+  if (!report.allRequiredScenariosPassed) {
+    throw new Error(
+      `[Smoke] prompt-variety is not ready: ${report.stepsBlocked.join(", ") || "unknown blocker"}`
+    );
+  }
+  process.exit(0);
+}
 const scenarioModule = scenarioModuleFor(requestedScenario);
 const scenario = scenarioModule.id;
 const manaRockScenario = scenario === "mana-rock";
@@ -675,7 +686,7 @@ async function runCommanderFullAiGate() {
   const routeFamiliesCovered = unionReportStrings(scenarioResults, "routeFamiliesSeen").sort();
   const routeFamiliesRequired = unionReportStrings(scenarioResults, "routeFamiliesRequired").sort();
   const routeFamiliesMissing = routeFamiliesRequired
-    .filter((family) => !routeFamiliesCovered.includes(family))
+    .filter((family) => !routeFamilyCoveredByReports(family, routeFamiliesCovered))
     .sort();
   const iOSRequiredRoutesMissing = routeFamiliesMissing.filter((family) => ![
     "fixture_call",
@@ -685,17 +696,32 @@ async function runCommanderFullAiGate() {
   const failedScenarios = scenarioResults
     .filter((result) => result.passed !== true)
     .map((result) => String(result.scenario));
+  const sourceFailures = scenarioResults
+    .filter((result) => result.source !== "xmage-java-bridge")
+    .map((result) => String(result.scenario));
+  const directSeedFailures = scenarioResults
+    .filter((result) => result.directStateSeeded !== true)
+    .map((result) => String(result.scenario));
+  const seededVerificationFailures = scenarioResults
+    .filter((result) => result.seededStateVerified !== true)
+    .map((result) => String(result.scenario));
+  const productionGateFailures = scenarioResults
+    .filter((result) => !resultProductionDisabled(result))
+    .map((result) => String(result.scenario));
   const scenarioStepsBlocked = scenarioResults.flatMap((result) => {
     const blocks = Array.isArray(result.stepsBlocked) ? result.stepsBlocked.map(String) : [];
     return blocks.map((block) => `${String(result.scenario)}:${block}`);
   });
   const stepsBlocked = Array.from(new Set([
     ...failedScenarios.map((name) => `scenario:${name}`),
+    ...sourceFailures.map((name) => `source:${name}`),
+    ...directSeedFailures.map((name) => `direct_state_seeded:${name}`),
+    ...seededVerificationFailures.map((name) => `seeded_state_verified:${name}`),
+    ...productionGateFailures.map((name) => `production_disabled:${name}`),
     ...scenarioStepsBlocked,
     ...routeFamiliesMissing.map((family) => `route_family:${family}`)
   ])).sort();
-  const allRequiredScenariosPassed = scenarioResults.every((result) => result.passed === true)
-    && routeFamiliesMissing.length === 0
+  const allRequiredScenariosPassed = stepsBlocked.length === 0
     && iOSRequiredRoutesMissing.length === 0;
 
   return {
@@ -708,10 +734,7 @@ async function runCommanderFullAiGate() {
     source: scenarioResults.every((result) => result.source === "xmage-java-bridge") ? "xmage-java-bridge" : "mixed-or-missing",
     directStateSeeded: scenarioResults.every((result) => result.directStateSeeded === true),
     seededStateVerified: scenarioResults.every((result) => result.seededStateVerified === true),
-    productionDisabled: scenarioResults.every((result) => {
-      const harness = result.fixtureHarness as { productionDisabled?: unknown } | undefined;
-      return harness?.productionDisabled === true;
-    }),
+    productionDisabled: scenarioResults.every(resultProductionDisabled),
     routeFamiliesRequired,
     routeFamiliesCovered,
     routeFamiliesMissing,
@@ -741,12 +764,156 @@ async function runCommanderFullAiGate() {
   };
 }
 
+async function runPromptVarietyGate() {
+  const requiredScenarios = [
+    "activated-ability-stack",
+    "triggered-ability-stack",
+    "prompt-mode",
+    "prompt-order",
+    "prompt-amount",
+    "prompt-multi-amount",
+    "prompt-pile"
+  ];
+  const scenarioResults = runChildSmokeScenarios("prompt-variety", requiredScenarios);
+  const routeFamiliesRequired = promptVarietyRouteFamiliesRequired();
+  const routeFamiliesCovered = unionReportStrings(scenarioResults, "routeFamiliesSeen").sort();
+  const routeFamiliesMissing = routeFamiliesRequired
+    .filter((family) => !routeFamilyCoveredByReports(family, routeFamiliesCovered))
+    .sort();
+  const failedScenarios = scenarioResults
+    .filter((result) => result.passed !== true)
+    .map((result) => String(result.scenario));
+  const sourceFailures = scenarioResults
+    .filter((result) => result.source !== "xmage-java-bridge")
+    .map((result) => String(result.scenario));
+  const directSeedFailures = scenarioResults
+    .filter((result) => result.directStateSeeded !== true)
+    .map((result) => String(result.scenario));
+  const seededVerificationFailures = scenarioResults
+    .filter((result) => result.seededStateVerified !== true)
+    .map((result) => String(result.scenario));
+  const productionGateFailures = scenarioResults
+    .filter((result) => {
+      const harness = result.fixtureHarness as { productionDisabled?: unknown } | undefined;
+      return harness?.productionDisabled !== true;
+    })
+    .map((result) => String(result.scenario));
+  const scenarioStepsBlocked = scenarioResults.flatMap((result) => {
+    const blocks = Array.isArray(result.stepsBlocked) ? result.stepsBlocked.map(String) : [];
+    return blocks.map((block) => `${String(result.scenario)}:${block}`);
+  });
+  const stepsBlocked = Array.from(new Set([
+    ...failedScenarios.map((name) => `scenario:${name}`),
+    ...sourceFailures.map((name) => `source:${name}`),
+    ...directSeedFailures.map((name) => `direct_state_seeded:${name}`),
+    ...seededVerificationFailures.map((name) => `seeded_state_verified:${name}`),
+    ...productionGateFailures.map((name) => `production_disabled:${name}`),
+    ...scenarioStepsBlocked,
+    ...routeFamiliesMissing.map((family) => `route_family:${family}`)
+  ])).sort();
+  const allRequiredScenariosPassed = stepsBlocked.length === 0;
+
+  return {
+    endpoint,
+    scenario: "prompt-variety",
+    fixtureRequested: true,
+    fixtureCallRequired: true,
+    requiredScenarios,
+    allRequiredScenariosPassed,
+    source: scenarioResults.every((result) => result.source === "xmage-java-bridge") ? "xmage-java-bridge" : "mixed-or-missing",
+    directStateSeeded: scenarioResults.every((result) => result.directStateSeeded === true),
+    seededStateVerified: scenarioResults.every((result) => result.seededStateVerified === true),
+    productionDisabled: scenarioResults.every((result) => {
+      const harness = result.fixtureHarness as { productionDisabled?: unknown } | undefined;
+      return harness?.productionDisabled === true;
+    }),
+    routeFamiliesRequired,
+    routeFamiliesSeen: routeFamiliesCovered,
+    routeFamiliesCovered,
+    routeFamiliesMissing,
+    stepsCompleted: allRequiredScenariosPassed ? ["prompt-variety"] : [],
+    stepsBlocked,
+    scenarioResults: scenarioResults.map((result) => ({
+      scenario: result.scenario,
+      passed: result.passed,
+      source: result.source,
+      directStateSeeded: result.directStateSeeded,
+      seededStateVerified: result.seededStateVerified,
+      bridgeRevision: result.bridgeRevision,
+      xmageCycle: result.xmageCycle,
+      routeFamiliesSeen: result.routeFamiliesSeen,
+      routeFamiliesRequired: result.routeFamiliesRequired,
+      routeFamiliesMissing: result.routeFamiliesMissing,
+      stepsBlocked: result.stepsBlocked,
+      failedStep: result.failedStep,
+      failureReason: result.failureReason,
+      reportPath: result.reportPath
+    })),
+    failureReason: allRequiredScenariosPassed
+      ? null
+      : "Prompt variety requires every targeted real-XMage prompt scenario to pass and cover every required prompt route family."
+  };
+}
+
+function runChildSmokeScenarios(parentScenario: string, requiredScenarios: string[]) {
+  const scenarioResults: Array<Record<string, unknown>> = [];
+
+  for (const childScenario of requiredScenarios) {
+    console.error(`[Smoke] ${parentScenario} running ${childScenario}`);
+    const result = spawnSync("pnpm", ["smoke:xmage"], {
+      cwd: workspaceRoot,
+      env: {
+        ...process.env,
+        ENABLE_XMAGE_FIXTURES: "true",
+        NODE_ENV: "test",
+        XMAGE_SMOKE_SCENARIO: childScenario,
+        XMAGE_USE_FIXTURE: "true"
+      },
+      encoding: "utf8"
+    });
+    if (result.stdout) process.stdout.write(result.stdout);
+    if (result.stderr) process.stderr.write(result.stderr);
+
+    const reportPath = path.join(reportDirectory, `smoke-report-${childScenario}.json`);
+    const childReport = readReportIfPresent(reportPath);
+    scenarioResults.push({
+      scenario: childScenario,
+      passed: result.status === 0,
+      exitCode: result.status,
+      reportPath,
+      ...(childReport ?? {
+        failedStep: "report-missing",
+        failureReason: `No scenario report was written for ${childScenario}.`
+      })
+    });
+  }
+
+  return scenarioResults;
+}
+
 function readReportIfPresent(reportPath: string) {
   try {
     return JSON.parse(fs.readFileSync(reportPath, "utf8")) as Record<string, unknown>;
   } catch {
     return null;
   }
+}
+
+function routeFamilyCoveredByReports(family: string, coveredFamilies: string[]) {
+  const covered = new Set(coveredFamilies);
+  if (family === "search_select/choose_card") {
+    return covered.has("search_select") || covered.has("choose_card") || covered.has(family);
+  }
+  if (family === "order_triggers/order_items") {
+    return covered.has("order_triggers") || covered.has("order_items") || covered.has(family);
+  }
+  return covered.has(family);
+}
+
+function resultProductionDisabled(result: Record<string, unknown>) {
+  if (result.productionDisabled === true) return true;
+  const harness = result.fixtureHarness as { productionDisabled?: unknown } | undefined;
+  return harness?.productionDisabled === true;
 }
 
 function unionReportStrings(reports: Array<Record<string, unknown>>, key: string) {
