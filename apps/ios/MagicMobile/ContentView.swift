@@ -2558,7 +2558,7 @@ struct UniversalPromptActionPanel: View {
                 )
             }
 
-            if isDamageAssignmentPrompt(prompt) {
+            if isDamageAssignmentPrompt(prompt), prompt.multiAmounts?.isEmpty != false {
                 unsupportedDamageAssignment(prompt)
             }
 
@@ -2818,8 +2818,9 @@ struct UniversalPromptActionPanel: View {
         let values = multiAmountArray(for: slots, promptId: prompt.id)
         let total = values.reduce(0, +)
         let valid = PromptCommandBuilder.isValidMultiAmountValues(values, slots: slots, totalMin: prompt.totalMin, totalMax: prompt.totalMax)
+        let isDamageAllocation = isDamageAssignmentPrompt(prompt)
 
-        PromptMiniLabel("Multi Amount")
+        PromptMiniLabel(isDamageAllocation ? "Damage Assignment" : "Multi Amount")
         VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(slots.enumerated()), id: \.element.id) { index, slot in
                 let value = values[index]
@@ -2867,7 +2868,7 @@ struct UniversalPromptActionPanel: View {
             }
 
             promptButton(
-                label: "Submit amounts",
+                label: isDamageAllocation ? "Assign damage" : "Submit amounts",
                 subtitle: multiAmountSummary(total: total, prompt: prompt, valid: valid),
                 systemImage: "number",
                 pendingId: "\(prompt.id)-choose-multi-amount",
@@ -3171,12 +3172,7 @@ struct UniversalPromptActionPanel: View {
     }
 
     private func isDamageAssignmentPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
-        let type = prompt.responseCommand?.type?.lowercased() ?? ""
-        let kind = prompt.responseKind.lowercased()
-        return type == "damage_assignment"
-            || kind == "damage_assignment"
-            || prompt.method.localizedCaseInsensitiveContains("damage")
-            || prompt.message.localizedCaseInsensitiveContains("assign damage")
+        PromptCommandBuilder.isCombatDamageAllocationPrompt(prompt, phase: snapshot.phase, step: snapshot.step)
     }
 
     private func hasRenderablePromptControls(_ prompt: PromptEnvelopeV2) -> Bool {

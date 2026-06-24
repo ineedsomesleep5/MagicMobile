@@ -173,7 +173,7 @@ pnpm smoke:xmage
 
 ### Remaining TODOs / Gaps:
 1. **Viewer-scoped Snapshots**: Multiplayer human pods need snapshot filtering so opponents cannot inspect other players' libraries or hands.
-2. **Advanced UI Prompts**: Render and handle richer blocker/damage assignment directly in UI components; mode/ability/pile/amount/multi-amount/order/commander replacement now have touch controls, but still need real iPhone QA.
+2. **Advanced UI Prompts**: Mode, ability, pile, amount, multi-amount, order, commander replacement, and damage-assignment-as-multi-amount now have touch controls. Damage assignment labels the combat-damage `GAME_GET_MULTI_AMOUNT` prompt as an explicit allocation UI when XMage exposes per-blocker metadata. These still need real iPhone QA.
 3. **Card Art fallback**: Handle missing image urls smoothly without throwing render errors.
 4. **Casting/payment manual QA**: The live gauntlet proves land, mana, spell, search, commander replacement, and payment prompt flow, but iPhone/web still need manual regression coverage for the two-lands-into-`Arcane Signet` case documented in [CASTING_AND_MANA_FLOW.md](CASTING_AND_MANA_FLOW.md).
 5. **Long AI endurance**: Some runs can still expose AI waiting/stall behavior, especially with weaker fixture AI or awkward fixture decks. The bridge now pings the XMage remoting session and the smoke harness fails as `bridge-disconnected` if health drops; the app must continue surfacing AI thinking/stalled states honestly while targeted fixtures keep the core loop deterministic.

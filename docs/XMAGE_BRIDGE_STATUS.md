@@ -17,7 +17,7 @@ MagicMobile uses a thin gateway and Java bridge to run XMage server-side while i
 - **Strict Command Mapping**: The bridge throws an `IllegalArgumentException` for unknown command types rather than silently mapping to random UUID sends.
 - **Parsed Commander Tax**: Real casting counts are extracted from commander card rules text (e.g. `"played from the command zone"`) and parsed to calculate commander tax:
   $$\text{Tax} = \text{Casts} \times 2$$
-- **Parsed Commander Damage Matrix**: Real combat damage is parsed from commander rules (e.g. `"did X combat damage to player Y"`) and mapped to the correct players in the snapshot. The targeted `commander-damage` fixture is live-proven with a non-empty commander damage matrix, while commander damage remains outside the current gauntlet gate.
+- **Parsed Commander Damage Matrix**: Real combat damage is parsed from commander rules (e.g. `"did X combat damage to player Y"`) and mapped to the correct players in the snapshot. The targeted `commander-damage` fixture is live-proven with a non-empty commander damage matrix, and the aggregate `commander-full-ai` gate ties that proof to the other required Commander-vs-AI scenarios.
 - **Clean Dev/Simulator Separation**: Web `/play` requires a healthy XMage gateway; `/dev/play-simulator` is labeled preview-only.
 
 ## Gaps & Next Steps
@@ -25,7 +25,7 @@ MagicMobile uses a thin gateway and Java bridge to run XMage server-side while i
 | Area | Status | Gaps & Next Step |
 |---|---|---|
 | **Human Multiplayer** | Modeled but unproven | Viewer-scoped snapshot routing is required to hide hands and library cards before human-vs-human or 3-4 player pods. |
-| **Advanced prompt fixtures** | Unit/bridge-source tested; live-smoked only for some prompt families | Mode/ability/pile/amount/order/commander-replacement prompts are mapped. The dev/test-only embedded same-JVM fixture hook now reaches the XMage server process that owns `GameController` and `Game.cheat(...)`; prompt-variety still needs targeted fixture states before those families are live-proven. |
+| **Advanced prompt fixtures** | Deterministic-fixture proven for the current prompt-variety gate | Mode, ability, pile, amount, multi-amount, order, commander replacement, and damage-assignment-as-multi-amount prompts are mapped through the dev/test-only embedded same-JVM fixture hook that reaches the XMage server process owning `GameController` and `Game.cheat(...)`. Remaining gaps are real iPhone QA and any explicitly unproven prompt family outside the current full-AI gate. |
 | **Commander gauntlet** | Passing as the backend release gate | Current deterministic report uses `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, and `stepsBlocked: []`. This is backend proof only; real iPhone manual QA is still required before phone alpha. |
 | **Webcam / Hybrid paper** | Out of scope | Postponed until after the digital mobile alpha playtest. |
 

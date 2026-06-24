@@ -131,6 +131,22 @@ enum PromptCommandBuilder {
         return next
     }
 
+    static func isCombatDamageAllocationPrompt(_ prompt: PromptEnvelopeV2, phase: String?, step: String?) -> Bool {
+        let type = prompt.responseCommand?.type?.lowercased() ?? ""
+        let kind = prompt.responseKind.lowercased()
+        let method = prompt.method.lowercased()
+        let message = prompt.message.lowercased()
+        if type == "damage_assignment" || kind == "damage_assignment" || message.contains("assign damage") {
+            return true
+        }
+        let phaseStep = "\(phase ?? "") \(step ?? "")".lowercased()
+        return method == "game_get_multi_amount"
+            && type == "choose_multi_amount"
+            && phaseStep.contains("combat")
+            && phaseStep.contains("damage")
+            && prompt.multiAmounts?.isEmpty == false
+    }
+
     static func hasPrebuiltCombatPayload(_ action: LegalAction) -> Bool {
         switch action.type {
         case "declare_attackers":

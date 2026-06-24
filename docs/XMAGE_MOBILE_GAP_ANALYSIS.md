@@ -2,16 +2,16 @@
 
 This analysis is tied to the current repo shape and Commander-only product scope. The goal is a polished mobile/web Commander client powered by XMage, not a separate Magic rules implementation.
 
-## Current Pause State - June 22, 2026
+## Current Pause State - June 24, 2026
 
-Latest continuation on June 23, 2026:
+Latest continuation on June 24, 2026:
 
 - The dev-only fixture harness is still disabled by default and production-disabled. Fixture mode now has an embedded same-JVM startup path that can reach XMage's server-side `GameController` / `Game.cheat(...)`, and the rebuilt fixture-mode stack reached ready locally.
 - Bridge command routing was corrected to mirror XMage desktop default card-click behavior: `play_land`, normal `cast_spell`, basic `make_mana`, and playable-object `activate_ability` submit the source card UUID, while `activate_ability` still validates the selected ability UUID. Combat selection now sends attacker/blocker UUIDs and finishes with XMage's Done/OK boolean (`false`). These are generic route fixes, not card-specific logic.
 - The latest focused `commander-gauntlet` run passes on the real bridge path with deterministic same-JVM fixture setup, `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, and `stepsBlocked: []`.
 - The focused `activated-ability-stack` fixture also passed live against real XMage after the latest bridge rebuild. It proved Seal of Cleansing activation, `GAME_CHOOSE_ABILITY`, `GAME_TARGET`, Sol Ring target selection, stack observation, and pass priority with `routeFamiliesMissing: []` and `stepsBlocked: []`.
 - A follow-up `commander-damage` fixture now passes live against real XMage after the combat-selection fix. It proved real attacker declaration, combat damage, AI life change to `38`, and `commanderDamageChanges: [{ recipient: "ai-1", attacker: "human", damage: 2 }]` with final `bridgeRevision: 56`, final `xmageCycle: 94`, and `stepsBlocked: []`.
-- Do not mark real iPhone alpha ready yet. The backend gauntlet is green, commander damage is separately proven, and blocker assignment now has targeted fixture proof, but prompt-variety remains later-scope unless explicitly moved into the alpha gate, and real iPhone manual QA is still unchecked.
+- Do not mark real iPhone alpha ready yet. The backend gauntlet, commander damage, blocker assignment, prompt-variety, damage assignment, and the aggregate `commander-full-ai` fixture gate are deterministic-fixture proven with real `source: "xmage-java-bridge"`, but real iPhone manual QA is still unchecked.
 
 Latest follow-up on June 22, 2026:
 
@@ -33,21 +33,21 @@ XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage
 
 Latest June 23 evidence: the broad smoke starts a real `xmage-java-bridge` game, keeps, passes priority, waits for AI, plays a Forest, and exposes real cast actions. Before the final `make_mana` source-UUID fix in this pause, it looped on `Tap Forest` because XMage did not treat the submitted ability UUID as the default land click. The bridge has now been patched so basic mana uses the source card UUID; rerun this smoke after rebuilding the bridge image.
 
-The next blocker is targeted fixture startup reliability. A follow-up run of:
+Historical fixture-startup blocker, now resolved by targeted fixtures:
 
 ```sh
 XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=blocker-flow pnpm smoke:xmage
 ```
 
-initially failed before gameplay with `Timed out waiting for XMage game snapshot` after XMage reported a disconnect/reconnect and forced join for a disconnected human. A rerun after the bridge settled passed and reported `combatExercised: true`.
+An older run initially failed before gameplay with `Timed out waiting for XMage game snapshot` after XMage reported a disconnect/reconnect and forced join for a disconnected human. A rerun after the bridge settled passed and reported `combatExercised: true`.
 
-The current blocker has moved to the commander-state fixture:
+Current Commander-damage fixture evidence:
 
 ```sh
 ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-damage XMAGE_USE_FIXTURE=true pnpm smoke:xmage
 ```
 
-The latest targeted commander-damage run passed after the bridge combat-selection fix, with a non-empty `commanderDamageChanges` array from real XMage snapshots.
+The latest targeted commander-damage run passed after the bridge combat-selection fix, with a non-empty `commanderDamageChanges` array from real XMage snapshots. The remaining product blocker is real iPhone manual QA against the live gateway, not deterministic fixture proof.
 
 | Feature | Current repo status | Needed for real XMage mobile play | Gap severity | Files involved | Recommended next step |
 |---|---|---|---|---|---|
@@ -65,13 +65,13 @@ The latest targeted commander-damage run passed after the bridge combat-selectio
 | Stack | Bridge exposes stack objects; UI renders stack details. Live smoke cast a simple spell and passed priority, but does not yet assert full stack detail shape. | Paid/unpaid status, source/controller, and resolution must be live-verified. | medium | `MagicMobileBridge.java`, `ArenaBattlefield.tsx`, `ContentView.swift` | Add cast/pass/resolve stack assertions to smoke. |
 | Priority | Snapshot exposes active/priority/waiting player; live smoke verified `pass_priority` moves into an AI-waiting state without simulator fallback. | More pass/yield variants must be proven, including response windows and next-turn skip. | medium | `MagicMobileBridge.java` | Add dedicated pass-until-response and pass-until-next-turn assertions. |
 | Legal actions | Bridge maps playable objects; UI glows/renders actions. Pending command snapshots now expose only pending-safe actions to avoid stale duplicate submissions. | Every action must carry enough command template data to avoid client guessing. | medium | `types.ts`, `MagicMobileBridge.java`, `GameController.tsx`, `MagicMobileAPI.swift` | Make XMage legal actions template-complete over time. |
-| Prompt envelopes | PromptEnvelopeV2 is broad. Live smoke verified confirmation, target/search-style, mana-payment, and combat-attacker prompt families. | Live coverage for every common Commander prompt family. | medium | `types.ts`, `MagicMobileBridge.java`, iOS/web prompt panels | Add prompt fixture decks and tests for mode/ability/pile/amount/order/blocker/commander-replacement prompts. |
+| Prompt envelopes | PromptEnvelopeV2 is broad. Deterministic fixtures now prove confirmation, target/search-style, mana-payment, combat-attacker/blocker, mode, ability, pile, amount, multi-amount, order, commander replacement, and damage-assignment-as-multi-amount route families where listed in route coverage. | Repeated mulligan, explicit choose-card/player/color-choice edges, generic non-commander replacement effects, and real iPhone QA remain. | medium | `types.ts`, `MagicMobileBridge.java`, iOS/web prompt panels | Keep targeted prompt fixtures current and complete real phone QA. |
 | Prompt responses | Prompt id/message id and min/max validation exist; boolean prompts now fail closed when missing explicit answer. | No first-choice/default-answer fallbacks for required prompts. | small | `MagicMobileBridge.java`, iOS/web command builders | Keep fail-closed tests and remove remaining unsafe defaults. |
 | Target/card/player/mode/ability/amount/mana prompts | Modeled and mostly rendered; mana prompts were live-smoked after exposing real battlefield mana-source actions during `GAME_PLAY_MANA`; target/search-style prompts now infer `selected 0 of N` counts from XMage callback text. | Multi-select and option-specific command templates need more UI polish. | medium | `ContentView.swift`, `ArenaBattlefield.tsx` | Add prompt selection state for min/max and order. |
 | Cost payment | Transport exists; UI is basic; pay/decline command templates now preserve explicit `pay: true/false`. | Clear pay/decline and mana payment prompts. | medium | `MagicMobileBridge.java`, iOS/web prompt panels | Add explicit pay-cost UI and smoke fixture. |
 | Trigger/replacement ordering | Modeled as ordered items; UI placeholders exist. | Reorderable mobile/web surfaces. | medium | `types.ts`, `ContentView.swift`, `ArenaBattlefield.tsx` | Add reorder UI once bridge exposes real ordered items. |
 | Commander replacement | Modeled; bridge requires explicit boolean. | Clear command-zone/original-zone choices. | medium | `MagicMobileBridge.java`, iOS/web prompt panels | Add live commander death/exile test. |
-| Attack/block/combat damage | Targeted real-XMage fixtures now prove commander-damage and blocker-flow. `blocker-flow` submitted `declare_blockers` with a real blocker/attacker pair on game `51ea0b22-dbdc-45cf-850d-d11c3d5329a6`. | Damage-assignment prompts still need deterministic live fixtures; UI still needs better multi-combat picker polish. | medium | `MagicMobileBridge.java`, iOS/web play UI | Keep combat fixtures current and add damage-assignment proof when XMage exposes that prompt. |
+| Attack/block/combat damage | Targeted real-XMage fixtures now prove commander-damage, blocker-flow, and damage assignment. `damage-assignment` uses XMage's real combat-damage `GAME_GET_MULTI_AMOUNT` callback, per-blocker allocation metadata, and explicit `choose_multi_amount` submission. | iOS allocation UX still needs real device QA and polish for crowded combat states. | medium | `MagicMobileBridge.java`, iOS/web play UI | Keep combat fixtures current and run real iPhone QA against the live gateway. |
 | Pass/yield actions | Pass-until actions exist; `pass_priority` has live smoke proof. | Clear Done/Pass/Skip states and exact bridge mapping for all pass variants. | medium | `MagicMobileBridge.java`, iOS/web action docks | Add targeted smoke for `pass_until_response` and `pass_until_next_turn`. |
 | Reconnect snapshots | iOS has WebSocket/polling behavior; gateway broadcasts snapshots. | Player-scoped reconnect and stale revision handling for human games. | medium | `ContentView.swift`, `server.mjs`, shared contracts | Add manual reconnect button/test. |
 | `/play` real XMage | Web `/play` uses XMage and shows setup when unavailable. | Preserve fail-closed behavior. | none | `apps/web/src/app/play/page.tsx`, `apps/web/src/lib/engine.ts` | Keep regression tests. |

@@ -4,7 +4,7 @@ Use this checklist when validating the XMage-backed Commander play loop from Doc
 
 ## Current Pause State - June 24, 2026
 
-Latest CI/docs validation pass on June 23, 2026. Treat the smoke details below as local artifact summaries only; rerun the commands on the current checkout before using them as release evidence. Generated JSON reports belong under `build_output/smoke/*.json`, not in docs.
+Latest CI/docs validation pass on June 24, 2026. Treat the smoke details below as local artifact summaries only; rerun the commands on the current checkout before using them as release evidence. Generated JSON reports belong under `build_output/smoke/*.json`, not in docs.
 
 - `pnpm --filter @magicmobile/xmage-gateway test` passed.
 - `docker build -t magicmobile-xmage-bridge-check apps/xmage-gateway/bridge` passed.

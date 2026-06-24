@@ -415,6 +415,35 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(prompt.multiAmounts?.map(\.label), ["W", "U"])
     }
 
+    func testCombatDamageMultiAmountPromptIsRecognizedAsDamageAllocation() throws {
+        let data = """
+        {
+          "id": "damage-1",
+          "method": "GAME_GET_MULTI_AMOUNT",
+          "messageId": 460,
+          "playerId": "human",
+          "responseKind": "multi_amount",
+          "message": "GAME_GET_MULTI_AMOUNT",
+          "totalMin": 10,
+          "totalMax": 10,
+          "multiAmounts": [
+            { "id": "0", "label": "Silvercoat Lion, P/T: 2/2", "min": 0, "max": 10, "defaultValue": 9 },
+            { "id": "1", "label": "Savannah Lions, P/T: 2/1", "min": 0, "max": 10, "defaultValue": 1 }
+          ],
+          "responseCommand": {
+            "type": "choose_multi_amount",
+            "promptId": "damage-1",
+            "messageId": 460
+          }
+        }
+        """.data(using: .utf8)!
+
+        let prompt = try JSONDecoder.magicMobile.decode(PromptEnvelopeV2.self, from: data)
+
+        XCTAssertTrue(PromptCommandBuilder.isCombatDamageAllocationPrompt(prompt, phase: "Combat", step: "Combat Damage"))
+        XCTAssertFalse(PromptCommandBuilder.isCombatDamageAllocationPrompt(prompt, phase: "Main", step: "Precombat Main"))
+    }
+
     func testPromptCommandBuilderValidatesMultiAmountRangesAndTotals() {
         let slots = [
             XmagePromptMultiAmount(id: "0", label: "W", min: 0, max: 2, defaultValue: 0),
