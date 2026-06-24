@@ -125,7 +125,7 @@ ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:1717
 
 Current full-AI blockers:
 
-- `prompt-variety`: still missing deterministic real-XMage proof for `order_triggers/order_items`, `choose_amount`, `choose_multi_amount`, and `choose_pile`. `prompt-mode` now has deterministic real-XMage proof through a targeted Lavabrink Venturer fixture for XMage's upstream `ChooseModeEffect`; the earlier Austere Command attempt was intentionally left as a non-proof because XMage surfaced it as `GAME_CHOOSE_ABILITY:ability`.
+- `prompt-variety`: still missing deterministic real-XMage proof for `choose_amount`, `choose_multi_amount`, and `choose_pile`. `prompt-mode` has deterministic real-XMage proof through a targeted Lavabrink Venturer fixture for XMage's upstream `ChooseModeEffect`; `prompt-order` has deterministic real-XMage proof through Soul Warden plus Spirited Companion and XMage's target-style triggered-ability ordering prompt. The earlier Austere Command attempt was intentionally left as a non-proof because XMage surfaced it as `GAME_CHOOSE_ABILITY:ability`.
 - `damage-assignment`: probe fixture exists, but no bridge/shared/Swift/iOS `damage_assignment` route is implemented or live-proven.
 
-Representative fixture candidates for the next prompt-variety slices are `Wheel of Misfortune` for amount choice, `Manamorphose` for multi-amount, `Fact or Fiction` for piles, and Soul Warden plus Spirited Companion for trigger ordering. Use a Commander-legal fixture shell, such as a five-color commander when needed, and keep production routing generic.
+Representative fixture candidates for the next prompt-variety slices are `Wheel of Misfortune` for amount choice, `Manamorphose` for multi-amount, and `Fact or Fiction` for piles. Use a Commander-legal fixture shell, such as a five-color commander when needed, and keep production routing generic.

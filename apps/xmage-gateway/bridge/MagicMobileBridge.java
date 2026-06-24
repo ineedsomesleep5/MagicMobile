@@ -3069,6 +3069,14 @@ public final class MagicMobileBridge implements MageClient {
             schema.addProperty("turn", 1);
             return;
         }
+        if ("prompt-order".equals(fixtureName) || "prompt-variety-order".equals(fixtureName)) {
+            defaultCards(schema, "humanHand", "Spirited Companion", "Plains");
+            defaultBattlefield(schema, "humanBattlefield", "Soul Warden", "Plains", "Plains");
+            defaultCards(schema, "humanLibraryTop", "Plains");
+            defaultBattlefield(schema, "aiBattlefield", "Wastes");
+            schema.addProperty("turn", 1);
+            return;
+        }
         if ("triggered-ability-stack".equals(fixtureName)) {
             defaultCards(schema, "humanHand", "Spirited Companion", "Plains");
             defaultBattlefield(schema, "humanBattlefield", "Plains", "Plains");
@@ -3589,6 +3597,9 @@ public final class MagicMobileBridge implements MageClient {
                 responseCommand.addProperty("type", "choose_player");
                 prompt.add("responseCommand", responseCommand);
             }
+            if ("order".equals(string(prompt, "responseKind", ""))) {
+                prompt.add("orderedItems", choices.deepCopy());
+            }
         } else if (message.getCardsView1() != null && !message.getCardsView1().isEmpty()) {
             addCardChoices(choices, message.getCardsView1());
             prompt.add("cards", zoneCards(message.getCardsView1().values(), false));
@@ -3737,6 +3748,7 @@ public final class MagicMobileBridge implements MageClient {
 
     private String responseKind(ClientCallbackMethod method, String message) {
         String normalizedMessage = message == null ? "" : message.toLowerCase();
+        if (method == ClientCallbackMethod.GAME_TARGET && isTriggeredAbilityOrderTargetPrompt(normalizedMessage)) return "order";
         if (method == ClientCallbackMethod.GAME_TARGET) return "target";
         if (method == ClientCallbackMethod.GAME_SELECT) return normalizedMessage.contains("search") ? "search" : "card";
         if (method == ClientCallbackMethod.GAME_CHOOSE_ABILITY) return "ability";
@@ -3778,6 +3790,16 @@ public final class MagicMobileBridge implements MageClient {
                 || normalizedMessage.contains("jeskai or mardu")
                 || normalizedMessage.contains("believe or doubt")
                 || normalizedMessage.contains("doubt or believe");
+    }
+
+    private boolean isTriggeredAbilityOrderTargetPrompt(String normalizedMessage) {
+        if (normalizedMessage == null || normalizedMessage.isEmpty()) {
+            return false;
+        }
+        return normalizedMessage.contains("choose ability")
+                || normalizedMessage.contains("choose triggered ability")
+                || normalizedMessage.contains("pick triggered ability")
+                || (normalizedMessage.contains("triggered ability") && normalizedMessage.contains("stack first"));
     }
 
     private boolean isKnownModeChoice(Choice choice) {

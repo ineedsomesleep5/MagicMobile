@@ -2,6 +2,40 @@ import SwiftUI
 import PhotosUI
 import UIKit
 
+enum UniversalPromptResponseCommandBuilder {
+    static func command(
+        gameId: String,
+        bridgeRevision: Int?,
+        promptEnvelope: PromptEnvelopeV2?,
+        type rawType: String,
+        promptId: String,
+        playerId: String,
+        ids: [String] = [],
+        amount: Int? = nil,
+        amounts: [Int]? = nil,
+        pile: Int? = nil,
+        useCommandZone: Bool? = nil,
+        manaType: String? = nil,
+        pay: Bool? = nil
+    ) -> GameCommand? {
+        guard let command = PromptCommandBuilder.command(
+            gameId: gameId,
+            promptEnvelope: promptEnvelope,
+            type: rawType,
+            promptId: promptId,
+            playerId: playerId,
+            ids: ids,
+            amount: amount,
+            amounts: amounts,
+            pile: pile,
+            useCommandZone: useCommandZone,
+            manaType: manaType,
+            pay: pay
+        ) else { return nil }
+        return MagicMobileAPI.withExpectedBridgeRevision(command, expectedBridgeRevision: bridgeRevision)
+    }
+}
+
 struct ContentView: View {
     @State private var serverURLText = "https://magicmobile.openclaw-is3w.srv1420950.hstgr.cloud"
     @State private var status = "Not connected"
@@ -2971,8 +3005,9 @@ struct UniversalPromptActionPanel: View {
         manaType: String? = nil,
         pay: Bool? = nil
     ) -> GameCommand? {
-        PromptCommandBuilder.command(
+        UniversalPromptResponseCommandBuilder.command(
             gameId: snapshot.id,
+            bridgeRevision: snapshot.bridgeRevision,
             promptEnvelope: snapshot.promptEnvelopeV2,
             type: rawType,
             promptId: promptId,

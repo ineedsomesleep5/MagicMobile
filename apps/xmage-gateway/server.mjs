@@ -465,6 +465,7 @@ function fixtureExpectedRouteCoverage(scenario) {
   if (scenario === "commander-replacement" || scenario === "commander-replacement-tax") return [...common, "choose_target", "commander_replacement", "commander_tax", "command_zone"];
   if (scenario === "activated-ability-stack") return [...common, "activate_ability", "choose_player", "stack_objects"];
   if (scenario === "triggered-ability" || scenario === "triggered-ability-stack") return [...common, "triggered_ability", "order_triggers", "stack_objects"];
+  if (scenario === "prompt-order" || scenario === "prompt-variety-order") return [...common, "order_triggers", "order_items", "stack_objects"];
   if (scenario === "combat-blockers" || scenario === "blocker-flow") return [...common, "declare_attackers", "declare_blockers"];
   if (scenario === "damage-assignment") return [...common, "declare_attackers", "declare_blockers", "damage_assignment"];
   return [
@@ -535,6 +536,17 @@ function fixtureHumanDeck(scenario) {
       entries: [
         { cardName: "Lavabrink Venturer", quantity: 1, section: "deck" },
         { cardName: "Plains", quantity: 98, section: "deck" }
+      ]
+    };
+  }
+  if (scenario === "prompt-order" || scenario === "prompt-variety-order") {
+    return {
+      name: "Prompt Order Fixture",
+      commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
+      entries: [
+        { cardName: "Soul Warden", quantity: 1, section: "deck" },
+        { cardName: "Spirited Companion", quantity: 1, section: "deck" },
+        { cardName: "Plains", quantity: 97, section: "deck" }
       ]
     };
   }

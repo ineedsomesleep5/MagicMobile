@@ -310,6 +310,41 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(replacement["messageId"] as? Int, 91)
     }
 
+    func testUniversalPromptResponseCommandBuilderPreservesPromptEnvelopeAndBridgeRevision() throws {
+        let prompt = try promptEnvelopeV2(responseType: "choose_mode", responsePromptId: "response-prompt-9", responseMessageId: 91)
+
+        let mode = try payload(
+            for: UniversalPromptResponseCommandBuilder.command(
+                gameId: "game-1",
+                bridgeRevision: 44,
+                promptEnvelope: prompt,
+                type: "choose_mode",
+                promptId: "response-prompt-9",
+                playerId: "human",
+                ids: ["mode-1"]
+            )
+        )
+        let ability = try payload(
+            for: UniversalPromptResponseCommandBuilder.command(
+                gameId: "game-1",
+                bridgeRevision: 44,
+                promptEnvelope: prompt,
+                type: "choose_ability",
+                promptId: "response-prompt-9",
+                playerId: "human",
+                ids: ["ability-1"]
+            )
+        )
+
+        XCTAssertEqual(mode["promptId"] as? String, "response-prompt-9")
+        XCTAssertEqual(mode["messageId"] as? Int, 91)
+        XCTAssertEqual(mode["expectedBridgeRevision"] as? Int, 44)
+        XCTAssertEqual(mode["modeIds"] as? [String], ["mode-1"])
+        XCTAssertEqual(ability["abilityId"] as? String, "ability-1")
+        XCTAssertEqual(ability["messageId"] as? Int, 91)
+        XCTAssertEqual(ability["expectedBridgeRevision"] as? Int, 44)
+    }
+
     func testPromptCommandBuilderBuildsOrderedAndAmountCommands() throws {
         let prompt = try promptEnvelopeV2(responseType: "order_triggers", responsePromptId: "prompt-order", responseMessageId: 12)
 
@@ -348,6 +383,20 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(ordered["messageId"] as? Int, 12)
         XCTAssertEqual(amount["amount"] as? Int, 3)
         XCTAssertEqual(multiAmount["amounts"] as? [Int], [1, 2])
+    }
+
+    func testUniversalPromptResponseCommandBuilderFailsClosedForMissingPromptValues() {
+        XCTAssertNil(UniversalPromptResponseCommandBuilder.command(gameId: "game-1", bridgeRevision: 44, promptEnvelope: nil, type: "choose_pile", promptId: "prompt-1", playerId: "human"))
+        XCTAssertNil(UniversalPromptResponseCommandBuilder.command(gameId: "game-1", bridgeRevision: 44, promptEnvelope: nil, type: "choose_pile", promptId: "prompt-1", playerId: "human", pile: 3))
+        XCTAssertNil(UniversalPromptResponseCommandBuilder.command(gameId: "game-1", bridgeRevision: 44, promptEnvelope: nil, type: "choose_amount", promptId: "prompt-1", playerId: "human"))
+        XCTAssertNil(UniversalPromptResponseCommandBuilder.command(gameId: "game-1", bridgeRevision: 44, promptEnvelope: nil, type: "choose_multi_amount", promptId: "prompt-1", playerId: "human", ids: []))
+        XCTAssertNil(UniversalPromptResponseCommandBuilder.command(gameId: "game-1", bridgeRevision: 44, promptEnvelope: nil, type: "play_mana", promptId: "prompt-1", playerId: "human"))
+        XCTAssertNil(UniversalPromptResponseCommandBuilder.command(gameId: "game-1", bridgeRevision: 44, promptEnvelope: nil, type: "play_mana", promptId: "prompt-1", playerId: "human", manaType: "Colorless"))
+        XCTAssertNil(UniversalPromptResponseCommandBuilder.command(gameId: "game-1", bridgeRevision: 44, promptEnvelope: nil, type: "choose_mana", promptId: "prompt-1", playerId: "human", ids: []))
+        XCTAssertNil(UniversalPromptResponseCommandBuilder.command(gameId: "game-1", bridgeRevision: 44, promptEnvelope: nil, type: "answer_yes_no", promptId: "prompt-1", playerId: "human"))
+        XCTAssertNil(UniversalPromptResponseCommandBuilder.command(gameId: "game-1", bridgeRevision: 44, promptEnvelope: nil, type: "pay_cost", promptId: "prompt-1", playerId: "human"))
+        XCTAssertNil(UniversalPromptResponseCommandBuilder.command(gameId: "game-1", bridgeRevision: 44, promptEnvelope: nil, type: "commander_replacement", promptId: "prompt-1", playerId: "human"))
+        XCTAssertNil(UniversalPromptResponseCommandBuilder.command(gameId: "game-1", bridgeRevision: 44, promptEnvelope: nil, type: "choose_ability", promptId: "prompt-1", playerId: "human", ids: []))
     }
 
     func testPromptCommandBuilderFailsClosedForUnsafePrompts() {

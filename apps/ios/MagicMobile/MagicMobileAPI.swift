@@ -67,7 +67,7 @@ struct MagicMobileAPI {
     }
 
     func submit(action: LegalAction, gameId: String, expectedBridgeRevision: Int?) async throws -> GameSnapshot {
-        let command = withExpectedBridgeRevision(
+        let command = Self.withExpectedBridgeRevision(
             mergeCommandTemplate(try command(for: action, gameId: gameId), action: action, gameId: gameId),
             expectedBridgeRevision: expectedBridgeRevision
         )
@@ -77,7 +77,7 @@ struct MagicMobileAPI {
     func submit(command: GameCommand, gameId: String, expectedBridgeRevision: Int?) async throws -> GameSnapshot {
         try await post(
             "/api/engine/games/\(gameId)/commands",
-            body: withExpectedBridgeRevision(command, expectedBridgeRevision: expectedBridgeRevision)
+            body: Self.withExpectedBridgeRevision(command, expectedBridgeRevision: expectedBridgeRevision)
         )
     }
 
@@ -419,7 +419,7 @@ struct MagicMobileAPI {
         )
     }
 
-    private func withExpectedBridgeRevision(_ command: GameCommand, expectedBridgeRevision: Int?) -> GameCommand {
+    static func withExpectedBridgeRevision(_ command: GameCommand, expectedBridgeRevision: Int?) -> GameCommand {
         guard let expectedBridgeRevision else { return command }
         return GameCommand(
             type: command.type,

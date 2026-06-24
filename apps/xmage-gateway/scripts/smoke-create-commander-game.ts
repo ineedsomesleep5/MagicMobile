@@ -32,6 +32,7 @@ const commanderGauntletScenario = scenario === "commander-gauntlet";
 const blockerFlowScenario = scenario === "blocker-flow";
 const damageAssignmentScenario = scenario === "damage-assignment";
 const promptModeScenario = scenario === "prompt-mode";
+const promptOrderScenario = scenario === "prompt-order";
 const activatedAbilityScenario = scenario === "activated-ability-stack";
 const triggeredAbilityScenario = scenario === "triggered-ability-stack";
 const fixtureScenario = scenarioModule.usesFixture;
@@ -41,7 +42,8 @@ const fixtureCallRequired = commanderGauntletScenario
   || triggeredAbilityScenario
   || scenario === "prompt-variety"
   || scenario === "damage-assignment"
-  || promptModeScenario;
+  || promptModeScenario
+  || promptOrderScenario;
 const fixtureGateRequired = useFixtureHarness || fixtureCallRequired;
 const aiDifficulty = process.env.XMAGE_SMOKE_AI_DIFFICULTY ?? "normal";
 const routeFamiliesRequired = routeFamiliesRequiredForScenario(scenario);
@@ -53,6 +55,8 @@ let lastXmageCycle: number | undefined;
 let health: any = null;
 let promptModeChoiceSubmitted = false;
 let promptModeChoiceResolved = false;
+let promptOrderChoiceSubmitted = false;
+const promptSamples: any[] = [];
 
 if (process.env.XMAGE_SMOKE_SELFTEST === "fixture-unavailable") {
   const selfTestReport = fixtureUnavailableReport({
@@ -119,6 +123,8 @@ const human = fixtureScenario
     ? manaRockFixtureDeck()
     : promptModeScenario
     ? promptModeFixtureDeck()
+    : promptOrderScenario
+    ? promptOrderFixtureDeck()
     : commanderFixtureDeck("Isamaru, Hound of Konda", "Plains")
   : generateBracketThreeCommanderDeck({ seed: `${seed}:human`, playerId: humanPlayerId }).deck;
 const ai = fixtureScenario
@@ -348,6 +354,9 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
     if (promptModeScenario && action.type === "choose_mode") {
       promptModeChoiceSubmitted = true;
     }
+    if (promptOrderScenario && (action.type === "order_triggers" || action.type === "order_items")) {
+      promptOrderChoiceSubmitted = true;
+    }
     recordRouteFamilyForTransition(previous, snapshot);
     recordCommanderState(snapshot);
     recordCoverage(snapshot);
@@ -457,7 +466,7 @@ if (scenario === "commander-gauntlet") {
   }
 }
 
-if (activatedAbilityScenario || triggeredAbilityScenario || promptModeScenario || scenario === "prompt-variety" || scenario === "damage-assignment") {
+if (activatedAbilityScenario || triggeredAbilityScenario || promptModeScenario || promptOrderScenario || scenario === "prompt-variety" || scenario === "damage-assignment") {
   const missing = missingRouteFamilies();
   if (missing.length > 0) {
     writeSmokeReport({
@@ -481,6 +490,18 @@ if (promptModeScenario && (!promptModeChoiceSubmitted || !promptModeChoiceResolv
   throw new Error(
     "[Smoke] prompt-mode did not submit and resolve a real XMage choose_mode response.\n"
       + smokeDebug("prompt-mode final snapshot", snapshot)
+  );
+}
+
+if (promptOrderScenario && !promptOrderChoiceSubmitted) {
+  writeSmokeReport({
+    ...baseSummaryReport(snapshot),
+    failedStep: "prompt-order",
+    failureReason: "order_triggers/order_items was observed only as a prompt family or not observed; no real order response was submitted."
+  });
+  throw new Error(
+    "[Smoke] prompt-order did not submit a real XMage order_triggers/order_items response.\n"
+      + smokeDebug("prompt-order final snapshot", snapshot)
   );
 }
 
@@ -526,6 +547,7 @@ async function runCommanderFullAiGate() {
     "activated-ability-stack",
     "triggered-ability-stack",
     "prompt-mode",
+    "prompt-order",
     "prompt-variety",
     "damage-assignment"
   ];
@@ -679,6 +701,7 @@ function baseSummaryReport(snapshot: SmokeSnapshot) {
     turn: snapshot.turn,
     promptText: snapshot.promptText,
     promptChecks,
+    promptSamples,
     promptFamiliesSeen,
     routeFamiliesRequired,
     routeFamiliesSeen: sortedRouteFamiliesSeen(),
@@ -709,6 +732,9 @@ function baseSummaryReport(snapshot: SmokeSnapshot) {
     promptMode: promptModeScenario ? {
       choiceSubmitted: promptModeChoiceSubmitted,
       choiceResolved: promptModeChoiceResolved
+    } : undefined,
+    promptOrder: promptOrderScenario ? {
+      choiceSubmitted: promptOrderChoiceSubmitted
     } : undefined,
     commanderTaxChanges,
     commanderDamageChanges,
@@ -827,6 +853,8 @@ function fixtureSeedSchema() {
     ? ["Plains"]
     : promptModeScenario
     ? ["Lavabrink Venturer"]
+    : promptOrderScenario
+    ? ["Spirited Companion", "Plains"]
     : triggeredAbilityScenario
     ? ["Spirited Companion", "Plains"]
     : [basic];
@@ -839,6 +867,8 @@ function fixtureSeedSchema() {
     ? ["Seal of Cleansing", basic]
     : promptModeScenario
     ? [basic, basic, basic]
+    : promptOrderScenario
+    ? ["Soul Warden", basic, basic]
     : triggeredAbilityScenario
     ? [basic, basic]
     : [basic];
@@ -953,6 +983,7 @@ function routeFamiliesRequiredForScenario(input: string) {
   if (input === "commander-gauntlet") return commanderGauntletRouteFamiliesRequired();
   if (input === "prompt-variety") return promptVarietyRouteFamiliesRequired();
   if (input === "prompt-mode") return ["cast_spell", "choose_mode"];
+  if (input === "prompt-order") return ["order_triggers/order_items"];
   if (input === "damage-assignment") return ["damage_assignment"];
   if (input === "activated-ability-stack") return ["activate_ability", "stack_object_seen", "pass_priority"];
   if (input === "triggered-ability-stack") return ["trigger_seen", "stack_object_seen", "pass_priority"];
@@ -1096,6 +1127,19 @@ function scenarioModuleFor(input: string): ScenarioModule {
           "route-family:choose_mode"
         ]
       };
+    case "prompt-order":
+    case "prompt-variety-order":
+      return {
+        id: "prompt-order",
+        usesFixture: true,
+        scenarioSet: ["prompt-order"],
+        requiredSteps: [
+          "fixture_call",
+          "direct_state_seeded",
+          "seeded_state_verified",
+          "route-family:order_triggers/order_items"
+        ]
+      };
     case "damage-assignment":
       return {
         id: "damage-assignment",
@@ -1160,7 +1204,7 @@ function scenarioModuleFor(input: string): ScenarioModule {
       throw new Error(
         `Unknown XMAGE_SMOKE_SCENARIO "${input}". Expected core-flow, mana-rock, search-select, `
           + "commander-replacement-tax, commander-damage, blocker-flow, prompt-variety, "
-          + "activated-ability-stack, triggered-ability-stack, damage-assignment, fixture-smoke, "
+          + "prompt-mode, prompt-order, activated-ability-stack, triggered-ability-stack, damage-assignment, fixture-smoke, "
           + "commander-gauntlet, or commander-full-ai."
       );
   }
@@ -1240,6 +1284,18 @@ function promptModeFixtureDeck() {
     entries: [
       { cardName: "Lavabrink Venturer", quantity: 1, section: "deck" },
       { cardName: "Plains", quantity: 98, section: "deck" }
+    ]
+  };
+}
+
+function promptOrderFixtureDeck() {
+  return {
+    name: "Prompt Order Fixture",
+    commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
+    entries: [
+      { cardName: "Soul Warden", quantity: 1, section: "deck" },
+      { cardName: "Spirited Companion", quantity: 1, section: "deck" },
+      { cardName: "Plains", quantity: 97, section: "deck" }
     ]
   };
 }
@@ -2229,7 +2285,7 @@ function recordRouteFamilyForAction(action: SmokeAction) {
     markRouteFamily("pass_priority");
   }
   if (action.type === "order_triggers" || action.type === "order_items") {
-    markRouteFamily(action.type);
+    markRouteFamily("order_triggers/order_items");
     markRouteFamily("trigger_seen");
   }
 }
@@ -2246,6 +2302,7 @@ function recordRouteFamilyForPrompt(snapshot: SmokeSnapshot) {
   if (expected.includes("multi_amount")) markRouteFamily("choose_multi_amount");
   if (expected.includes("amount")) markRouteFamily("choose_amount");
   if (expected.includes("pile")) markRouteFamily("choose_pile");
+  if (expected.includes("order") || promptText.includes("order")) markRouteFamily("order_triggers/order_items");
   if (expected.includes("yes") || expected.includes("confirmation")) markRouteFamily("answer_yes_no");
   if (expected.includes("pay") || expected.includes("mana") || promptText.includes("pay")) markRouteFamily("pay_cost");
   if (
@@ -2397,6 +2454,7 @@ function recordCoverage(snapshot: SmokeSnapshot) {
   if (typeof snapshot.turn === "number") {
     turnsObserved.add(snapshot.turn);
   }
+  recordPromptSample(snapshot);
   recordRouteFamilyForPrompt(snapshot);
   const phaseStep = `${snapshot.phase ?? ""} ${snapshot.step ?? ""}`.toLowerCase();
   if (phaseStep.includes("combat") || phaseStep.includes("attack") || phaseStep.includes("block")) {
@@ -2425,6 +2483,33 @@ function recordCoverage(snapshot: SmokeSnapshot) {
   recordGauntletSnapshot(snapshot);
 }
 
+function recordPromptSample(snapshot: SmokeSnapshot) {
+  if (!(promptOrderScenario || promptModeScenario || scenario === "prompt-variety" || damageAssignmentScenario)) {
+    return;
+  }
+  if (!snapshot.promptEnvelopeV2 || promptSamples.length >= 10) {
+    return;
+  }
+  promptSamples.push({
+    turn: snapshot.turn,
+    phase: snapshot.phase,
+    step: snapshot.step,
+    promptText: snapshot.promptText,
+    promptEnvelopeV2: snapshot.promptEnvelopeV2,
+    legalActions: snapshot.legalActions?.map((action) => ({
+      type: action.type,
+      label: action.label,
+      promptId: action.promptId,
+      messageId: action.messageId,
+      targetIds: action.targetIds,
+      orderedIds: action.orderedIds,
+      choiceIds: action.choiceIds,
+      cardName: action.cardName,
+      responseKind: action.responseKind
+    }))
+  });
+}
+
 function scenarioSatisfied() {
   if (scenario === "core-flow") {
     const realGameActionSeen = Boolean(
@@ -2449,6 +2534,7 @@ function scenarioSatisfied() {
   if (scenario === "search-select") return gauntlet.searchResolved || actionsByType.search_select > 0;
   if (scenario === "prompt-variety") return promptVarietyRouteFamiliesSatisfied();
   if (scenario === "prompt-mode") return missingRouteFamilies().length === 0 && promptModeChoiceSubmitted && promptModeChoiceResolved;
+  if (scenario === "prompt-order") return missingRouteFamilies().length === 0 && promptOrderChoiceSubmitted;
   if (scenario === "activated-ability-stack" || scenario === "triggered-ability-stack") return missingRouteFamilies().length === 0;
   if (scenario === "commander-gauntlet") return commanderGauntletMissingSteps().length === 0;
   return false;
