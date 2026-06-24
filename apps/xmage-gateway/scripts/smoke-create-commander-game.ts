@@ -33,6 +33,7 @@ const blockerFlowScenario = scenario === "blocker-flow";
 const damageAssignmentScenario = scenario === "damage-assignment";
 const promptModeScenario = scenario === "prompt-mode";
 const promptOrderScenario = scenario === "prompt-order";
+const promptAmountScenario = scenario === "prompt-amount";
 const activatedAbilityScenario = scenario === "activated-ability-stack";
 const triggeredAbilityScenario = scenario === "triggered-ability-stack";
 const fixtureScenario = scenarioModule.usesFixture;
@@ -43,7 +44,8 @@ const fixtureCallRequired = commanderGauntletScenario
   || scenario === "prompt-variety"
   || scenario === "damage-assignment"
   || promptModeScenario
-  || promptOrderScenario;
+  || promptOrderScenario
+  || promptAmountScenario;
 const fixtureGateRequired = useFixtureHarness || fixtureCallRequired;
 const aiDifficulty = process.env.XMAGE_SMOKE_AI_DIFFICULTY ?? "normal";
 const routeFamiliesRequired = routeFamiliesRequiredForScenario(scenario);
@@ -56,6 +58,7 @@ let health: any = null;
 let promptModeChoiceSubmitted = false;
 let promptModeChoiceResolved = false;
 let promptOrderChoiceSubmitted = false;
+let promptAmountChoiceSubmitted = false;
 const promptSamples: any[] = [];
 
 if (process.env.XMAGE_SMOKE_SELFTEST === "fixture-unavailable") {
@@ -125,6 +128,8 @@ const human = fixtureScenario
     ? promptModeFixtureDeck()
     : promptOrderScenario
     ? promptOrderFixtureDeck()
+    : promptAmountScenario
+    ? promptAmountFixtureDeck()
     : commanderFixtureDeck("Isamaru, Hound of Konda", "Plains")
   : generateBracketThreeCommanderDeck({ seed: `${seed}:human`, playerId: humanPlayerId }).deck;
 const ai = fixtureScenario
@@ -357,6 +362,9 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
     if (promptOrderScenario && (action.type === "order_triggers" || action.type === "order_items")) {
       promptOrderChoiceSubmitted = true;
     }
+    if (promptAmountScenario && action.type === "choose_amount") {
+      promptAmountChoiceSubmitted = true;
+    }
     recordRouteFamilyForTransition(previous, snapshot);
     recordCommanderState(snapshot);
     recordCoverage(snapshot);
@@ -466,7 +474,7 @@ if (scenario === "commander-gauntlet") {
   }
 }
 
-if (activatedAbilityScenario || triggeredAbilityScenario || promptModeScenario || promptOrderScenario || scenario === "prompt-variety" || scenario === "damage-assignment") {
+if (activatedAbilityScenario || triggeredAbilityScenario || promptModeScenario || promptOrderScenario || promptAmountScenario || scenario === "prompt-variety" || scenario === "damage-assignment") {
   const missing = missingRouteFamilies();
   if (missing.length > 0) {
     writeSmokeReport({
@@ -502,6 +510,18 @@ if (promptOrderScenario && !promptOrderChoiceSubmitted) {
   throw new Error(
     "[Smoke] prompt-order did not submit a real XMage order_triggers/order_items response.\n"
       + smokeDebug("prompt-order final snapshot", snapshot)
+  );
+}
+
+if (promptAmountScenario && !promptAmountChoiceSubmitted) {
+  writeSmokeReport({
+    ...baseSummaryReport(snapshot),
+    failedStep: "prompt-amount",
+    failureReason: "choose_amount was observed only as a prompt family or not observed; no real amount response was submitted."
+  });
+  throw new Error(
+    "[Smoke] prompt-amount did not submit a real XMage choose_amount response.\n"
+      + smokeDebug("prompt-amount final snapshot", snapshot)
   );
 }
 
@@ -548,6 +568,7 @@ async function runCommanderFullAiGate() {
     "triggered-ability-stack",
     "prompt-mode",
     "prompt-order",
+    "prompt-amount",
     "prompt-variety",
     "damage-assignment"
   ];
@@ -736,6 +757,9 @@ function baseSummaryReport(snapshot: SmokeSnapshot) {
     promptOrder: promptOrderScenario ? {
       choiceSubmitted: promptOrderChoiceSubmitted
     } : undefined,
+    promptAmount: promptAmountScenario ? {
+      choiceSubmitted: promptAmountChoiceSubmitted
+    } : undefined,
     commanderTaxChanges,
     commanderDamageChanges,
     players: snapshot.players?.map((player: SmokePlayer) => ({
@@ -855,10 +879,16 @@ function fixtureSeedSchema() {
     ? ["Lavabrink Venturer"]
     : promptOrderScenario
     ? ["Spirited Companion", "Plains"]
+    : promptAmountScenario
+    ? ["Wheel of Misfortune"]
     : triggeredAbilityScenario
     ? ["Spirited Companion", "Plains"]
     : [basic];
-  const libraryTop = commanderGauntletScenario ? Array.from({ length: 24 }, () => "Plains") : [basic];
+  const libraryTop = promptAmountScenario
+    ? Array.from({ length: 7 }, () => "Mountain")
+    : commanderGauntletScenario
+    ? Array.from({ length: 24 }, () => "Plains")
+    : [basic];
   const battlefield = blockerFlowScenario || damageAssignmentScenario
     ? ["Silvercoat Lion", basic]
     : manaRockScenario
@@ -869,6 +899,8 @@ function fixtureSeedSchema() {
     ? [basic, basic, basic]
     : promptOrderScenario
     ? ["Soul Warden", basic, basic]
+    : promptAmountScenario
+    ? ["Mountain", "Mountain", "Mountain"]
     : triggeredAbilityScenario
     ? [basic, basic]
     : [basic];
@@ -984,6 +1016,7 @@ function routeFamiliesRequiredForScenario(input: string) {
   if (input === "prompt-variety") return promptVarietyRouteFamiliesRequired();
   if (input === "prompt-mode") return ["cast_spell", "choose_mode"];
   if (input === "prompt-order") return ["order_triggers/order_items"];
+  if (input === "prompt-amount") return ["cast_spell", "choose_amount"];
   if (input === "damage-assignment") return ["damage_assignment"];
   if (input === "activated-ability-stack") return ["activate_ability", "stack_object_seen", "pass_priority"];
   if (input === "triggered-ability-stack") return ["trigger_seen", "stack_object_seen", "pass_priority"];
@@ -1140,6 +1173,20 @@ function scenarioModuleFor(input: string): ScenarioModule {
           "route-family:order_triggers/order_items"
         ]
       };
+    case "prompt-amount":
+    case "prompt-variety-amount":
+      return {
+        id: "prompt-amount",
+        usesFixture: true,
+        scenarioSet: ["prompt-amount"],
+        requiredSteps: [
+          "fixture_call",
+          "direct_state_seeded",
+          "seeded_state_verified",
+          "route-family:cast_spell",
+          "route-family:choose_amount"
+        ]
+      };
     case "damage-assignment":
       return {
         id: "damage-assignment",
@@ -1204,7 +1251,7 @@ function scenarioModuleFor(input: string): ScenarioModule {
       throw new Error(
         `Unknown XMAGE_SMOKE_SCENARIO "${input}". Expected core-flow, mana-rock, search-select, `
           + "commander-replacement-tax, commander-damage, blocker-flow, prompt-variety, "
-          + "prompt-mode, prompt-order, activated-ability-stack, triggered-ability-stack, damage-assignment, fixture-smoke, "
+          + "prompt-mode, prompt-order, prompt-amount, activated-ability-stack, triggered-ability-stack, damage-assignment, fixture-smoke, "
           + "commander-gauntlet, or commander-full-ai."
       );
   }
@@ -1296,6 +1343,17 @@ function promptOrderFixtureDeck() {
       { cardName: "Soul Warden", quantity: 1, section: "deck" },
       { cardName: "Spirited Companion", quantity: 1, section: "deck" },
       { cardName: "Plains", quantity: 97, section: "deck" }
+    ]
+  };
+}
+
+function promptAmountFixtureDeck() {
+  return {
+    name: "Prompt Amount Fixture",
+    commander: { cardName: "Kenrith, the Returned King", quantity: 1, section: "commander" },
+    entries: [
+      { cardName: "Wheel of Misfortune", quantity: 1, section: "deck" },
+      { cardName: "Mountain", quantity: 98, section: "deck" }
     ]
   };
 }
@@ -1406,11 +1464,16 @@ function chooseBestAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
     }
 
     // Choose amount / multi amount
-    const amountAction = snapshot.legalActions.find(a => 
+    const amountActions = snapshot.legalActions.filter(a =>
       a.type === "choose_amount" || 
       a.type === "choose_multi_amount" || 
       a.type === "play_x_mana"
     );
+    const amountAction = promptAmountScenario
+      ? amountActions.find((a) => String(a.amount ?? a.commandTemplate?.amount ?? a.choiceIds?.[0] ?? "") === "1")
+        ?? amountActions.find((a) => String(a.amount ?? a.commandTemplate?.amount ?? a.choiceIds?.[0] ?? "") !== "0")
+        ?? amountActions[0]
+      : amountActions[0];
     if (amountAction) return amountAction;
 
     // Choose mode/ability
@@ -1514,6 +1577,20 @@ function chooseFixtureAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
         || /plains|white|\{w\}/i.test(action.cardName ?? action.label ?? ""))
     );
     if (makeWhite) return makeWhite;
+  }
+
+  if (promptAmountScenario) {
+    const castWheel = actions.find((action) =>
+      action.type === "cast_spell" && /wheel of misfortune/i.test(action.cardName ?? action.label ?? "")
+    );
+    if (castWheel) return castWheel;
+
+    const makeRed = actions.find((action) =>
+      action.type === "make_mana"
+      && ((action.producedMana ?? action.commandTemplate?.producedMana ?? []).includes("R")
+        || /mountain|red|\{r\}/i.test(action.cardName ?? action.label ?? ""))
+    );
+    if (makeRed) return makeRed;
   }
 
   const battlefieldNames = humanZone(snapshot, "battlefield").map((entry) => entry.card?.name ?? "");
@@ -2484,7 +2561,7 @@ function recordCoverage(snapshot: SmokeSnapshot) {
 }
 
 function recordPromptSample(snapshot: SmokeSnapshot) {
-  if (!(promptOrderScenario || promptModeScenario || scenario === "prompt-variety" || damageAssignmentScenario)) {
+  if (!(promptOrderScenario || promptModeScenario || promptAmountScenario || scenario === "prompt-variety" || damageAssignmentScenario)) {
     return;
   }
   if (!snapshot.promptEnvelopeV2 || promptSamples.length >= 10) {
@@ -2535,6 +2612,7 @@ function scenarioSatisfied() {
   if (scenario === "prompt-variety") return promptVarietyRouteFamiliesSatisfied();
   if (scenario === "prompt-mode") return missingRouteFamilies().length === 0 && promptModeChoiceSubmitted && promptModeChoiceResolved;
   if (scenario === "prompt-order") return missingRouteFamilies().length === 0 && promptOrderChoiceSubmitted;
+  if (scenario === "prompt-amount") return missingRouteFamilies().length === 0 && promptAmountChoiceSubmitted;
   if (scenario === "activated-ability-stack" || scenario === "triggered-ability-stack") return missingRouteFamilies().length === 0;
   if (scenario === "commander-gauntlet") return commanderGauntletMissingSteps().length === 0;
   return false;
