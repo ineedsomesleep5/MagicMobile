@@ -2558,6 +2558,10 @@ struct UniversalPromptActionPanel: View {
                 )
             }
 
+            if isDamageAssignmentPrompt(prompt) {
+                unsupportedDamageAssignment(prompt)
+            }
+
             if !hasRenderablePromptControls(prompt) {
                 Text("Unsupported prompt/action: XMage has not exposed a mobile-safe control for this route yet.")
                     .font(.system(size: 10, weight: .bold))
@@ -2974,6 +2978,32 @@ struct UniversalPromptActionPanel: View {
     }
 
     @ViewBuilder
+    private func unsupportedDamageAssignment(_ prompt: PromptEnvelopeV2) -> some View {
+        PromptMiniLabel("Damage Assignment")
+        VStack(alignment: .leading, spacing: 5) {
+            Text("Unsupported prompt/action: damage assignment is not mobile-safe yet.")
+                .font(.system(size: 10, weight: .black))
+                .foregroundStyle(.orange.opacity(0.9))
+                .lineLimit(2)
+                .minimumScaleFactor(0.72)
+            Text("No default damage split will be submitted. Refresh or reconnect after the bridge exposes attacker/blocker allocation choices.")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.white.opacity(0.68))
+                .lineLimit(3)
+                .minimumScaleFactor(0.7)
+            Text("\(prompt.method) | \(prompt.responseKind)")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(.white.opacity(0.46))
+                .lineLimit(1)
+                .minimumScaleFactor(0.64)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 6)
+        .background(.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.orange.opacity(0.22)))
+    }
+
+    @ViewBuilder
     private func orderPicker(title: String, prompt: PromptEnvelopeV2, type: String, options: [(String, String)]) -> some View {
         let defaultIds = options.map(\.0)
         let currentIds = currentOrder(promptId: prompt.id, defaultIds: defaultIds)
@@ -3140,8 +3170,18 @@ struct UniversalPromptActionPanel: View {
         return type == "search_select" || prompt.method.localizedCaseInsensitiveContains("search")
     }
 
+    private func isDamageAssignmentPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
+        let type = prompt.responseCommand?.type?.lowercased() ?? ""
+        let kind = prompt.responseKind.lowercased()
+        return type == "damage_assignment"
+            || kind == "damage_assignment"
+            || prompt.method.localizedCaseInsensitiveContains("damage")
+            || prompt.message.localizedCaseInsensitiveContains("assign damage")
+    }
+
     private func hasRenderablePromptControls(_ prompt: PromptEnvelopeV2) -> Bool {
         if isManaOrPaymentPrompt(prompt), !sourceManaActions.isEmpty { return true }
+        if isDamageAssignmentPrompt(prompt) { return true }
         if isCommanderReplacement(prompt) || isConfirmationPrompt(prompt) || isManaPrompt(prompt) || isTriggerOrderPrompt(prompt) || isSearchPrompt(prompt) { return true }
         if prompt.choices?.isEmpty == false || prompt.targets?.isEmpty == false || prompt.players?.isEmpty == false { return true }
         if prompt.cards?.isEmpty == false || prompt.modes?.isEmpty == false || prompt.abilities?.isEmpty == false { return true }
