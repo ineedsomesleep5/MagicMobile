@@ -3937,6 +3937,8 @@ struct CardTile: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(card.accessibilityLabel(zoneName: zoneName, selected: selected, legal: legal, pending: pending))
         .accessibilityIdentifier(card.accessibilityIdentifier(zoneName: zoneName))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Tap to select. Long press to inspect.")
     }
 
     private var strokeColor: Color {
