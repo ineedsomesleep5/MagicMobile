@@ -12,11 +12,11 @@ Latest iOS product-readiness pass on June 24, 2026:
 - `commander-full-ai` passed with `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, `allRequiredScenariosPassed: true`, `routeFamiliesMissing: []`, `stepsBlocked: []`, `iOSRequiredRoutesMissing: []`, and `readinessVerdict: "full-commander-vs-ai-ready"`.
 - iOS generic hardware build passed with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project apps/ios/MagicMobileiOS.xcodeproj -scheme MagicMobile -configuration Debug -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build`.
 - iPhone 16 Pro Max Simulator was unavailable, so layout QA used iPhone 17 Pro Max Simulator, iOS 26.5. The app declares landscape-only orientations and rendered the landscape board, but this CoreSimulator runtime did not expose `simctl ui ... orientation` and rejected landscape display geometry, so the raw screenshots needed readable rotation copies. Simulator evidence is layout/build evidence only, not real iPhone product success.
-- Captured simulator screenshots under `build_output/ios-screenshots/`: `iphone-17-pro-max-setup-local-api.jpg`, `iphone-17-pro-max-setup-local-api-landscape-readable.jpg`, `iphone-17-pro-max-fixture-board-rustic.jpg`, `iphone-17-pro-max-fixture-board-rustic-landscape-readable.jpg`, and `iphone-17-pro-max-hand-selected-card-targets-landscape-readable.jpg`.
+- Captured simulator screenshots under `build_output/ios-screenshots/`: `iphone-17-pro-max-setup-local-api.jpg`, `iphone-17-pro-max-setup-local-api-landscape-readable.jpg`, `iphone-17-pro-max-fixture-board-rustic.jpg`, `iphone-17-pro-max-fixture-board-rustic-landscape-readable.jpg`, `iphone-17-pro-max-hand-selected-card-targets-landscape-readable.jpg`, and `iphone-17-pro-max-missing-art-placeholders-landscape-readable.jpg`.
 - The iOS setup screen now scrolls in landscape so the debug fixture control and start controls remain reachable on Pro Max.
 - The iOS API timeout is now long enough for real XMage table/fixture startup instead of failing at 15 seconds.
 - The iOS gameplay surface has a rustic leather/parchment/wood treatment, compact non-blocking waiting toast, visible source/bridge/revision/cycle/priority/pending/phase state, stable missing-art placeholders, zone-scoped card accessibility labels/identifiers, and readable stack/command/graveyard/exile access without debug JSON.
-- Simulator QA used the `card-hand-sol-ring-<id>` accessibility target to select Sol Ring from hand and confirm the primary Cast action stays visible. Missing-art screenshot recapture remains pending because the live fixture's visible cards loaded art from the local image API during this pass.
+- Simulator QA used the `card-hand-sol-ring-<id>` accessibility target to select Sol Ring from hand and confirm the primary Cast action stays visible. A second simulator launch used `MAGICMOBILE_FORCE_CARD_PLACEHOLDERS=true` to disable only client card-image URLs while keeping the real XMage fixture snapshot, producing `build_output/screenshots/ios-missing-art.png` as missing-art placeholder evidence.
 - Real iPhone install/play QA is still pending. The June 24 device check showed Caleb's iPhone 16 Pro Max as `unavailable` and a separate physical iPhone (`Ruthie's iPhone 16`, reported as iPhone 16 Pro Max-class hardware) as `connected`; the app was not installed or launched on that device without explicit permission. Product release remains blocked until a physical iPhone can start a local-gateway Commander game, exercise the fixture/normal play loop, and capture bridgeRevision/xmageCycle evidence.
 
 Local iOS simulator setup used for this pass:
@@ -29,6 +29,8 @@ ENGINE_MODE=xmage XMAGE_GATEWAY_URL=http://localhost:17171 ENABLE_XMAGE_FIXTURES
 The web API layer exposed `/api/engine/*` for the iOS client and forwarded to the raw gateway at `http://localhost:17171`. The debug fixture button uses the dev-only `/dev/xmage-fixtures/commander` proxy on the local web API; this remains gated by `ENABLE_XMAGE_FIXTURES=true` and disabled in production.
 
 For simulator launches against a local web API, use `MAGICMOBILE_SERVER_URL=http://127.0.0.1:<web-port>` so the setup screen points at the local Next server without manual typing.
+
+For missing-art visual QA only, also launch a Debug simulator build with `MAGICMOBILE_FORCE_CARD_PLACEHOLDERS=true`. This does not alter XMage state or route proof; it only forces `CardImageURL.normal(...)` to return `nil` so the existing iOS placeholder renderer is exercised against a real fixture board. Release builds ignore this environment toggle.
 
 - `pnpm --filter @magicmobile/xmage-gateway test` passed.
 - `docker build -t magicmobile-xmage-bridge-check apps/xmage-gateway/bridge` passed.
@@ -297,9 +299,11 @@ Real iPhone QA is required before product release. Simulator screenshots, simula
 - [x] Landscape build/run passed through XcodeBuildMCP.
 - [x] Setup screen scrollability fixed so the debug fixture control is reachable.
 - [x] Fixture board screenshot captured at `build_output/ios-screenshots/iphone-17-pro-max-fixture-board-normalized-readable.jpg`.
+- [x] Missing-art placeholder screenshot captured at `build_output/ios-screenshots/iphone-17-pro-max-missing-art-placeholders-landscape-readable.jpg` using `MAGICMOBILE_FORCE_CARD_PLACEHOLDERS=true` against a real XMage fixture snapshot.
 - [x] Waiting/failure screenshots captured for `Creating XMage table`, fixture timeout before timeout fix, and default-deck validation failure.
 - [ ] Simulator result is not release approval; repeat on a physical iPhone before product release.
-- [ ] Confirm missing card art renders a placeholder and does not block gameplay.
+- [x] Confirm missing card art renders a placeholder and does not block gameplay in simulator visual QA.
+- [ ] Repeat missing-art and slow-image checks on a physical iPhone network before product release.
 
 Use [IOS_VISUAL_QA_CHECKLIST.md](IOS_VISUAL_QA_CHECKLIST.md) for the full simulator screenshot inventory, pass/fail criteria, known visual issues, and the real-device QA boundary.
 

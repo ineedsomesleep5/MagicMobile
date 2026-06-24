@@ -4406,12 +4406,22 @@ struct GameTextFieldStyle: TextFieldStyle {
 
 enum CardImageURL {
     private static let baseURLKey = "MagicMobile.cardImageBaseURL"
+    private static var shouldForcePlaceholders: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] == "true"
+        #else
+        false
+        #endif
+    }
 
     static func setBaseURL(_ value: String) {
         UserDefaults.standard.set(value.trimmingCharacters(in: .whitespacesAndNewlines), forKey: baseURLKey)
     }
 
-    static func normal(_ name: String) -> URL? {
+    static func normal(_ name: String, forcePlaceholder: Bool = shouldForcePlaceholders) -> URL? {
+        if forcePlaceholder {
+            return nil
+        }
         if name == "Hidden card" {
             return URL(string: "https://gatherer.wizards.com/Images/CardBack.jpg")
         }

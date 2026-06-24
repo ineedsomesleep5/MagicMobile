@@ -23,10 +23,12 @@ Keep captures under `build_output/ios-screenshots/` and treat them as local arti
 - `iphone-17-pro-max-fixture-board-zone-buttons-landscape-readable.jpg`: refreshed fixture board proof with Stack, Command, Grave, and Exile exposed as tappable zone buttons.
 - `iphone-17-pro-max-fixture-board-final-metrics-landscape-readable.jpg`: final board proof after layout metric minimum-size guards were added and satisfied.
 - `iphone-17-pro-max-hand-selected-card-targets-landscape-readable.jpg`: refreshed board proof after card tiles gained zone-scoped accessibility targets; Sol Ring is selected from hand and the primary Cast action remains visible without covering the board.
+- `iphone-17-pro-max-missing-art-placeholders-landscape-readable.jpg`: readable board proof from a real fixture snapshot launched in Debug with `MAGICMOBILE_FORCE_CARD_PLACEHOLDERS=true`; card art URLs are intentionally disabled on the client and parchment placeholders hold stable card dimensions.
 - `iphone-17-pro-max-zone-sheet-rustic-landscape-readable.jpg`: command-zone sheet proof.
 - `build_output/screenshots/ios-layout-after.png`: current readable board checkpoint requested by the layout milestone.
 - `build_output/screenshots/ios-prompt-active.png`: current active-prompt checkpoint; the current fixture prompt is the priority/pass prompt.
 - `build_output/screenshots/ios-hand-selected.png`: current hand-selection checkpoint using the `card-hand-sol-ring-<id>` accessibility target.
+- `build_output/screenshots/ios-missing-art.png`: current missing-art checkpoint using a real XMage fixture board and the simulator-only forced-placeholder image toggle.
 - `build_output/screenshots/ios-zone-sheet.png`: current zone-sheet checkpoint.
 - Historical troubleshooting captures may remain in the same directory, but do not use older timeout/deck-validation captures as current layout proof.
 
@@ -62,8 +64,8 @@ Next simulator run should recapture the same states after any layout edit and in
 - Dense combat states still need physical-device checks for attacker/blocker assignment and damage allocation.
 - Commander tax and commander damage decode, but their visual prominence still needs real iPhone confirmation.
 - Prompt variety controls are deterministic-fixture proven, but amount, multi-amount, pile, ordering, and damage-assignment controls still need touch QA on hardware.
-- Missing art placeholders are visually stable in simulator evidence, but slow or failed image loading needs a real phone network check.
-- Hand, battlefield, stack, prompt, zone-sheet, and inspector card tiles now expose zone-scoped accessibility labels and stable identifiers such as `card-hand-sol-ring-<id>`. Automated simulator QA used that target to recapture a hand-selected Sol Ring screenshot. Missing-art recapture is still pending because the live fixture's visible cards loaded art from the local image API during this pass.
+- Missing art placeholders are visually stable in simulator evidence through the explicit Debug-only `MAGICMOBILE_FORCE_CARD_PLACEHOLDERS=true` visual-QA launch, but slow or failed image loading still needs a real phone network check.
+- Hand, battlefield, stack, prompt, zone-sheet, and inspector card tiles now expose zone-scoped accessibility labels and stable identifiers such as `card-hand-sol-ring-<id>`. Automated simulator QA used that target to recapture a hand-selected Sol Ring screenshot, then relaunched with forced placeholders to recapture the missing-art board state without changing XMage gameplay data.
 - Layout metric tests now cover Pro Max landscape and compact landscape named-region containment, non-overlap, and minimum readable card/action sizes.
 
 ## Physical iPhone QA Separation

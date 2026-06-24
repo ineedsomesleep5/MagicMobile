@@ -65,6 +65,10 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(card.accessibilityIdentifier(zoneName: "Command Zone"), "card-command-zone-arcane-signet-abcdef12")
     }
 
+    func testCardImageURLCanForcePlaceholdersForVisualQA() {
+        XCTAssertNil(CardImageURL.normal("Sol Ring", forcePlaceholder: true))
+    }
+
     func testLegalActionPreservesCommandTemplateValues() throws {
         let data = """
         {
