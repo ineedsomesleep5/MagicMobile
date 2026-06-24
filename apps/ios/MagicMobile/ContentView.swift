@@ -68,6 +68,9 @@ struct ContentView: View {
     @State private var phoneImageCacheCount = 0
     @State private var phoneSymbolCacheCount = 0
     @State private var phoneImageDownloadProgress: String?
+    #if DEBUG
+    @State private var didAutoStartFixtureForVisualQA = false
+    #endif
 
     var body: some View {
         ZStack {
@@ -139,6 +142,9 @@ struct ContentView: View {
             await checkBridge()
             await refreshCardCacheMetadata()
             await refreshPhoneAssetCacheCounts()
+            #if DEBUG
+            await maybeAutoStartFixtureForVisualQA()
+            #endif
         }
     }
 
@@ -380,6 +386,15 @@ struct ContentView: View {
         status = "XMage fixtures are debug-only"
         #endif
     }
+
+    #if DEBUG
+    private func maybeAutoStartFixtureForVisualQA() async {
+        guard !didAutoStartFixtureForVisualQA else { return }
+        guard ProcessInfo.processInfo.environment["MAGICMOBILE_AUTO_START_FIXTURE"] == "true" else { return }
+        didAutoStartFixtureForVisualQA = true
+        await startFixtureGame()
+    }
+    #endif
 
     private func pollStartup(api: MagicMobileAPI, startupId: String, deckName: String) async throws {
         for _ in 0..<90 {
@@ -1128,6 +1143,11 @@ struct NativeGameView: View {
                     BattlefieldSurface()
                         .ignoresSafeArea()
 
+                    RightDockBackdrop()
+                        .frame(width: metrics.rightDockRect.width, height: metrics.rightDockRect.height)
+                        .position(x: metrics.rightDockRect.midX, y: metrics.rightDockRect.midY)
+                        .allowsHitTesting(false)
+
                     BattlefieldRow(title: "Opponent board", cards: nonLandPermanents(opponent.zones.battlefield), legalActions: snapshot.legalActions ?? [], selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.boardColumnRect.width, runAction: runAction)
                         .frame(width: metrics.opponentBattlefieldRect.width, height: metrics.opponentBattlefieldRect.height)
                         .position(x: metrics.opponentBattlefieldRect.midX, y: metrics.opponentBattlefieldRect.midY)
@@ -1195,7 +1215,7 @@ struct NativeGameView: View {
 
                     TurnStatusBadge(snapshot: snapshot, human: human, opponent: opponent)
                         .frame(width: metrics.turnBadgeWidth, height: 34)
-                        .position(x: metrics.topStatusRect.midX, y: metrics.topStatusRect.midY)
+                        .position(x: metrics.turnBadgeX, y: metrics.topStatusRect.midY)
 
                     LiveUpdateBadge(status: liveUpdateStatus)
                         .frame(width: min(metrics.turnBadgeWidth * 0.46, 170), height: 28)
@@ -1206,11 +1226,11 @@ struct NativeGameView: View {
                         .position(x: metrics.rightDockRect.midX, y: metrics.diagnosticsY)
 
                     PlayerHeroHUD(name: "Noaddrag", player: opponent, avatarData: nil, active: snapshot.activePlayerId == opponent.playerId, opponentId: human.playerId, compact: true, tiny: true)
-                        .frame(width: metrics.opponentHUDWidth, height: 38)
+                        .frame(width: metrics.opponentHUDWidth, height: 46)
                         .position(x: metrics.opponentHUDX, y: metrics.topStatusRect.midY)
 
                     PlayerHeroHUD(name: "TabletopPolish", player: human, avatarData: avatarData, active: snapshot.activePlayerId == human.playerId, opponentId: opponent.playerId, compact: true)
-                        .frame(width: metrics.hudWidth, height: 48)
+                        .frame(width: metrics.hudWidth, height: 58)
                         .position(x: metrics.playerHUDX, y: metrics.bottomHUDY)
 
                     ManaPoolHUD(manaPool: human.manaPool)
@@ -1244,8 +1264,8 @@ struct NativeGameView: View {
                             runCommand: runCommand,
                             viewZone: viewZone
                         )
-                            .frame(width: metrics.bottomActionRect.width, height: metrics.bottomActionRect.height)
-                            .position(x: metrics.bottomActionRect.midX, y: metrics.bottomActionRect.midY)
+                            .frame(width: metrics.rightActionPanelRect.width, height: metrics.rightActionPanelRect.height)
+                            .position(x: metrics.rightActionPanelRect.midX, y: metrics.rightActionPanelRect.midY)
                     }
 
                     if let inspectedCard {
@@ -1280,11 +1300,11 @@ struct NativeGameView: View {
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
-                        .frame(width: min(metrics.playWidth * 0.62, 430), alignment: .leading)
+                        .frame(width: metrics.bottomActionRect.width, height: metrics.bottomActionRect.height, alignment: .leading)
                         .background(MagicPalette.iron.opacity(0.88), in: RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.arcaneBlue.opacity(0.46), lineWidth: 1.3))
                         .shadow(color: MagicPalette.arcaneBlue.opacity(0.20), radius: 16, y: 6)
-                        .position(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.maxY + 22)
+                        .position(x: metrics.bottomActionRect.midX, y: metrics.bottomActionRect.midY)
                         .allowsHitTesting(false)
                         .transition(.opacity)
                     }
@@ -1337,7 +1357,7 @@ struct BattlefieldLayoutMetrics {
     }
 
     var rightDockRect: CGRect {
-        let width = min(max(safeFrame.width * 0.22, 226), 292)
+        let width = min(max(safeFrame.width * 0.20, 210), 268)
         let top = topStatusRect.maxY + 8
         return CGRect(x: safeFrame.maxX - width, y: top, width: width, height: max(safeFrame.maxY - top, 220))
     }
@@ -1383,6 +1403,17 @@ struct BattlefieldLayoutMetrics {
     }
 
     var bottomActionRect: CGRect {
+        let width = min(max(boardColumnRect.width * 0.58, 320), 460)
+        let height: CGFloat = 38
+        return CGRect(
+            x: boardColumnRect.midX - width / 2,
+            y: handRect.minY - height - 8,
+            width: width,
+            height: height
+        )
+    }
+
+    var rightActionPanelRect: CGRect {
         let height = min(max(safeFrame.height * 0.54, 232), max(rightDockRect.height - 118, 190))
         return CGRect(
             x: rightDockRect.minX,
@@ -1405,7 +1436,7 @@ struct BattlefieldLayoutMetrics {
 
     var phaseRailRect: CGRect {
         let top = diagnosticsY + 36
-        let bottom = bottomActionRect.minY - 8
+        let bottom = rightActionPanelRect.minY - 8
         let height = min(max(bottom - top, 44), 154)
         return CGRect(
             x: rightDockRect.minX + (rightDockRect.width - railWidth) / 2,
@@ -1440,23 +1471,27 @@ struct BattlefieldLayoutMetrics {
     }
 
     var turnBadgeWidth: CGFloat {
-        min(boardColumnRect.width * 0.44, 320)
+        min(boardColumnRect.width * 0.31, 236)
+    }
+
+    var turnBadgeX: CGFloat {
+        boardColumnRect.minX + turnBadgeWidth / 2
     }
 
     var liveStatusX: CGFloat {
-        min(topStatusRect.midX + turnBadgeWidth * 0.48, rightDockRect.minX - 92)
+        min(boardColumnRect.maxX - 92, rightDockRect.minX - 92)
     }
 
     var opponentHUDX: CGFloat {
-        boardColumnRect.minX + opponentHUDWidth / 2
+        boardColumnRect.midX
     }
 
     var playerHUDX: CGFloat {
-        boardColumnRect.minX + hudWidth / 2
+        boardColumnRect.midX
     }
 
     var bottomHUDY: CGFloat {
-        max(handRect.minY - 16, playerLandsRect.maxY + 18)
+        max(handRect.minY - 12, playerLandsRect.maxY + 22)
     }
 
     var manaHUDX: CGFloat {
@@ -1509,9 +1544,9 @@ struct BattlefieldLayoutMetrics {
     }
 
     var handCardWidth: CGFloat {
-        let horizontalFit = boardColumnRect.width / 8.8
+        let horizontalFit = boardColumnRect.width / 8.1
         let verticalFit = max((safeFrame.height * 0.25) / 1.40, 58)
-        return min(max(horizontalFit, 68), min(verticalFit, 86))
+        return min(max(horizontalFit, 68), min(verticalFit, 90))
     }
 
     var handCardHeight: CGFloat {
@@ -1531,7 +1566,7 @@ struct BattlefieldLayoutMetrics {
     }
 
     var permanentCardWidth: CGFloat {
-        min(max(boardColumnRect.width / 10.2, 50), 72) * battlefieldScale
+        min(max(boardColumnRect.width / 9.4, 52), 76) * battlefieldScale
     }
 
     var permanentCardHeight: CGFloat {
@@ -1539,7 +1574,7 @@ struct BattlefieldLayoutMetrics {
     }
 
     var landCardWidth: CGFloat {
-        min(max(boardColumnRect.width / 13.8, 44), 56) * landScale
+        min(max(boardColumnRect.width / 12.4, 46), 62) * landScale
     }
 
     var landCardHeight: CGFloat {
@@ -1603,11 +1638,11 @@ struct BattlefieldLayoutMetrics {
     }
 
     private var naturalPermanentCardHeight: CGFloat {
-        min(max(boardColumnRect.width / 10.2, 50), 72) * 1.40
+        min(max(boardColumnRect.width / 9.4, 52), 76) * 1.40
     }
 
     private var naturalLandCardHeight: CGFloat {
-        max(44, min(max(boardColumnRect.width / 13.8, 44), 56) * 1.12)
+        max(44, min(max(boardColumnRect.width / 12.4, 46), 62) * 1.12)
     }
 }
 
@@ -1678,42 +1713,133 @@ enum MagicPalette {
 
 struct BattlefieldSurface: View {
     var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.04, green: 0.09, blue: 0.06),
+                        MagicPalette.carvedWood,
+                        Color(red: 0.11, green: 0.16, blue: 0.10)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                RoundedRectangle(cornerRadius: 34)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.62, green: 0.48, blue: 0.31).opacity(0.82),
+                                Color(red: 0.38, green: 0.29, blue: 0.21).opacity(0.86),
+                                Color(red: 0.28, green: 0.36, blue: 0.25).opacity(0.62)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 34)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        MagicPalette.antiqueGold.opacity(0.24),
+                                        MagicPalette.borderIron.opacity(0.54)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 2
+                            )
+                    )
+                    .shadow(color: .black.opacity(0.42), radius: 28, y: 14)
+                    .padding(.horizontal, proxy.size.width * 0.035)
+                    .padding(.vertical, proxy.size.height * 0.12)
+
+                VStack(spacing: 0) {
+                    EdgeCanopy(height: proxy.size.height * 0.18, flipped: true)
+                    Spacer()
+                    EdgeCanopy(height: proxy.size.height * 0.20, flipped: false)
+                }
+
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                .black.opacity(0.42),
+                                .clear,
+                                .clear,
+                                .black.opacity(0.30)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+            }
+        }
+    }
+}
+
+struct RightDockBackdrop: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 10)
+            .fill(
+                LinearGradient(
+                    colors: [
+                        MagicPalette.iron.opacity(0.58),
+                        MagicPalette.leather.opacity(0.46),
+                        MagicPalette.carvedWood.opacity(0.38)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                MagicPalette.borderBronze.opacity(0.62),
+                                MagicPalette.borderIron.opacity(0.34)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.2
+                    )
+            )
+            .shadow(color: .black.opacity(0.22), radius: 18, x: -6, y: 8)
+    }
+}
+
+struct EdgeCanopy: View {
+    let height: CGFloat
+    let flipped: Bool
+
+    var body: some View {
         ZStack {
             LinearGradient(
                 colors: [
-                    MagicPalette.deepMoss,
-                    MagicPalette.leather,
-                    MagicPalette.carvedWood,
-                    MagicPalette.moss
+                    MagicPalette.deepMoss.opacity(0.92),
+                    MagicPalette.carvedWood.opacity(0.50),
+                    .clear
                 ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
+                startPoint: flipped ? .bottom : .top,
+                endPoint: flipped ? .top : .bottom
             )
-            RadialGradient(colors: [MagicPalette.antiqueGold.opacity(0.18), .clear], center: .bottomTrailing, startRadius: 20, endRadius: 430)
-            RadialGradient(colors: [MagicPalette.arcaneBlue.opacity(0.12), .clear], center: .topTrailing, startRadius: 18, endRadius: 360)
-            RadialGradient(colors: [MagicPalette.oxblood.opacity(0.16), .clear], center: .topLeading, startRadius: 20, endRadius: 390)
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            .black.opacity(0.28),
-                            .clear,
-                            .black.opacity(0.18)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-            VStack {
-                Spacer()
-                Capsule()
-                    .fill(MagicPalette.iron.opacity(0.42))
-                    .frame(height: 54)
-                    .padding(.horizontal, 42)
-                    .blur(radius: 18)
-                Spacer()
+            HStack(spacing: 18) {
+                ForEach(0..<9, id: \.self) { index in
+                    Capsule()
+                        .fill((index.isMultiple(of: 2) ? MagicPalette.moss : MagicPalette.carvedWood).opacity(0.22))
+                        .frame(width: CGFloat(18 + (index % 3) * 8), height: height * CGFloat(0.52 + Double(index % 4) * 0.08))
+                        .rotationEffect(.degrees(Double(index * 9 - 30)))
+                        .blur(radius: 1.2)
+                }
             }
+            .offset(y: flipped ? -height * 0.22 : height * 0.22)
         }
+        .frame(height: height)
+        .scaleEffect(y: flipped ? -1 : 1)
+        .allowsHitTesting(false)
     }
 }
 
@@ -1768,18 +1894,38 @@ struct PlayerHeroHUD: View {
     var tiny = false
 
     var body: some View {
-        HStack(spacing: tiny ? 4 : (compact ? 6 : 8)) {
-            PlayerAvatar(data: avatarData, size: tiny ? 30 : (compact ? 36 : 42), active: active)
-                .overlay(alignment: .bottomTrailing) {
-                    Text("\(player.life)")
-                        .font(.system(size: tiny ? 9 : (compact ? 11 : 12), weight: .black))
-                        .foregroundStyle(.white)
-                        .padding(tiny ? 3 : 4)
-                        .background(.black.opacity(0.78), in: Circle())
-                        .offset(x: tiny ? 4 : 5, y: tiny ? 4 : 5)
-                }
+        HStack(spacing: tiny ? 6 : 8) {
+            ZoneCounter(label: "Lib", value: player.zones.library.count, compact: true, tiny: tiny)
+            ZoneCounter(label: "Hand", value: player.zones.hand.count, compact: true, tiny: tiny)
 
-            VStack(alignment: .leading, spacing: 0) {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                MagicPalette.iron,
+                                MagicPalette.leather,
+                                MagicPalette.borderBronze.opacity(0.82)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: tiny ? 42 : 52, height: tiny ? 42 : 52)
+                    .overlay(Circle().stroke(active ? MagicPalette.antiqueGold : MagicPalette.parchment.opacity(0.36), lineWidth: active ? 2.4 : 1.3))
+                    .shadow(color: active ? MagicPalette.antiqueGold.opacity(0.42) : .black.opacity(0.34), radius: active ? 16 : 10, y: 6)
+
+                PlayerAvatar(data: avatarData, size: tiny ? 26 : 32, active: active)
+                    .offset(y: tiny ? -7 : -9)
+
+                Text("\(player.life)")
+                    .font(.system(size: tiny ? 15 : 18, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.8), radius: 2, y: 1)
+                    .offset(y: tiny ? 10 : 13)
+            }
+
+            VStack(alignment: .center, spacing: 1) {
                 Text(name)
                     .font(.system(size: tiny ? 10 : (compact ? 14 : 16), weight: .black, design: .rounded))
                     .foregroundStyle(.white)
@@ -1791,33 +1937,29 @@ struct PlayerHeroHUD: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.65)
             }
+            .frame(maxWidth: tiny ? 84 : 120)
 
-            Spacer(minLength: 2)
             if !tiny {
                 CommanderBadge(tax: player.commanderTax, damage: opponentId.flatMap { player.commanderDamage?[$0] } ?? 0)
-            }
-            ZoneCounter(label: "Lib", value: player.zones.library.count, compact: compact || tiny, tiny: tiny)
-            ZoneCounter(label: "Hand", value: player.zones.hand.count, compact: compact || tiny, tiny: tiny)
-            if !tiny {
-                ZoneCounter(label: "Grave", value: player.zones.graveyard.count, compact: compact)
-                ZoneCounter(label: "Exile", value: player.zones.exile.count, compact: compact)
+                ZoneCounter(label: "Grave", value: player.zones.graveyard.count, compact: true)
+                ZoneCounter(label: "Exile", value: player.zones.exile.count, compact: true)
             }
         }
-        .padding(.horizontal, tiny ? 6 : (compact ? 8 : 10))
-        .padding(.vertical, tiny ? 3 : (compact ? 4 : 5))
+        .padding(.horizontal, tiny ? 7 : 10)
+        .padding(.vertical, tiny ? 2 : 4)
         .background(
             LinearGradient(
                 colors: [
-                    MagicPalette.iron.opacity(active ? 0.86 : 0.68),
-                    MagicPalette.leather.opacity(active ? 0.78 : 0.50)
+                    MagicPalette.iron.opacity(active ? 0.78 : 0.52),
+                    MagicPalette.leather.opacity(active ? 0.68 : 0.42)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             ),
-            in: Capsule()
+            in: RoundedRectangle(cornerRadius: 15)
         )
-        .overlay(Capsule().stroke(active ? MagicPalette.antiqueGold.opacity(0.9) : MagicPalette.parchment.opacity(0.18), lineWidth: active ? 2 : 1))
-        .shadow(color: active ? MagicPalette.antiqueGold.opacity(0.34) : .black.opacity(0.22), radius: active ? 14 : 12, y: 5)
+        .overlay(RoundedRectangle(cornerRadius: 15).stroke(active ? MagicPalette.antiqueGold.opacity(0.78) : MagicPalette.parchment.opacity(0.15), lineWidth: active ? 1.8 : 1))
+        .shadow(color: active ? MagicPalette.antiqueGold.opacity(0.28) : .black.opacity(0.22), radius: active ? 16 : 12, y: 6)
     }
 }
 
@@ -3730,23 +3872,29 @@ struct BattlefieldRow: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            HStack(spacing: max(cardWidth * 0.28, 14)) {
-                ForEach(0..<8, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 5)
-                        .stroke(MagicPalette.borderBronze.opacity(0.12), lineWidth: 1)
-                        .frame(width: max(cardWidth * 0.72, 32), height: max(cardHeight * 0.82, 36))
+            if !cards.isEmpty {
+                HStack(spacing: max(cardWidth * 0.28, 14)) {
+                    ForEach(0..<8, id: \.self) { _ in
+                        RoundedRectangle(cornerRadius: 5)
+                            .stroke(MagicPalette.borderBronze.opacity(0.08), lineWidth: 1)
+                            .frame(width: max(cardWidth * 0.72, 32), height: max(cardHeight * 0.82, 36))
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+                .allowsHitTesting(false)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped()
-            .allowsHitTesting(false)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .center, spacing: -10) {
                     if cards.isEmpty {
-                        Text("Open field")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(MagicPalette.parchment.opacity(0.24))
+                        HStack(spacing: 6) {
+                            Image(systemName: "sparkle")
+                                .font(.system(size: 8, weight: .black))
+                            Text("Open field")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                            .foregroundStyle(MagicPalette.parchment.opacity(0.20))
                             .padding(.horizontal, 12)
                             .frame(minWidth: rowWidth, minHeight: max(cardHeight, 44), alignment: .center)
                     }

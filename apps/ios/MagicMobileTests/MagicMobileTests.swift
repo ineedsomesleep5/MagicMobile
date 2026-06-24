@@ -578,7 +578,8 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(metrics.handCardWidth, 68)
         XCTAssertGreaterThanOrEqual(metrics.permanentCardWidth, 50)
         XCTAssertGreaterThanOrEqual(metrics.landCardWidth, 44)
-        XCTAssertGreaterThanOrEqual(metrics.bottomActionRect.width, 226)
+        XCTAssertGreaterThanOrEqual(metrics.rightActionPanelRect.width, 210)
+        XCTAssertGreaterThanOrEqual(metrics.bottomActionRect.height, 38)
         XCTAssertGreaterThan(metrics.centerStripRect.height, 24)
     }
 
@@ -592,7 +593,7 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(metrics.handCardWidth, 58)
         XCTAssertGreaterThanOrEqual(metrics.permanentCardWidth, 44)
         XCTAssertGreaterThanOrEqual(metrics.landCardHeight, 44)
-        XCTAssertGreaterThanOrEqual(metrics.bottomActionRect.height, 190)
+        XCTAssertGreaterThanOrEqual(metrics.rightActionPanelRect.height, 190)
     }
 
     private func decodeAction(type: String, extra: String? = nil) throws -> LegalAction {
@@ -679,9 +680,11 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertTrue(metrics.safeFrame.contains(metrics.boardColumnRect), file: file, line: line)
         XCTAssertTrue(metrics.safeFrame.contains(metrics.handRect), file: file, line: line)
         XCTAssertTrue(metrics.safeFrame.contains(metrics.bottomActionRect), file: file, line: line)
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.rightActionPanelRect), file: file, line: line)
         XCTAssertTrue(metrics.safeFrame.contains(metrics.phaseRailRect), file: file, line: line)
 
         XCTAssertFalse(metrics.boardColumnRect.intersects(metrics.rightDockRect), file: file, line: line)
+        XCTAssertFalse(metrics.boardColumnRect.intersects(metrics.rightActionPanelRect), file: file, line: line)
         XCTAssertFalse(metrics.handRect.intersects(metrics.playerBattlefieldRect), file: file, line: line)
         XCTAssertFalse(metrics.centerStripRect.intersects(metrics.opponentBattlefieldRect), file: file, line: line)
         XCTAssertFalse(metrics.centerStripRect.intersects(metrics.opponentLandsRect), file: file, line: line)
