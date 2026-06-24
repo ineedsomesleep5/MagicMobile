@@ -317,6 +317,8 @@ struct PromptEnvelope: Decodable, Identifiable {
     let required: Bool?
     let minChoices: Int?
     let maxChoices: Int?
+    let totalMin: Int?
+    let totalMax: Int?
     let targetIds: [String]?
     let choices: [ChoicePromptOption]?
 }
@@ -331,6 +333,8 @@ struct PromptEnvelopeV2: Decodable, Identifiable {
     let required: Bool?
     let minChoices: Int?
     let maxChoices: Int?
+    let totalMin: Int?
+    let totalMax: Int?
     let targetIds: [String]?
     let choices: [ChoicePromptOption]?
     let responseCommand: XmageResponseCommand?

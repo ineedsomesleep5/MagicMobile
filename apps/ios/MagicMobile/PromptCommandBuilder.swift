@@ -97,6 +97,30 @@ enum PromptCommandBuilder {
         ids.count == 1
     }
 
+    static func defaultMultiAmountValue(for slot: XmagePromptMultiAmount) -> Int {
+        min(max(slot.defaultValue ?? slot.min, slot.min), slot.max)
+    }
+
+    static func adjustedMultiAmountValue(_ value: Int, delta: Int, slot: XmagePromptMultiAmount) -> Int {
+        min(max(value + delta, slot.min), slot.max)
+    }
+
+    static func isValidMultiAmountValues(
+        _ values: [Int],
+        slots: [XmagePromptMultiAmount],
+        totalMin: Int?,
+        totalMax: Int?
+    ) -> Bool {
+        guard values.count == slots.count, !values.isEmpty else { return false }
+        for (index, slot) in slots.enumerated() {
+            guard values[index] >= slot.min && values[index] <= slot.max else { return false }
+        }
+        let total = values.reduce(0, +)
+        if let totalMin, total < totalMin { return false }
+        if let totalMax, total > totalMax { return false }
+        return true
+    }
+
     static func movedOrder(ids: [String], from sourceIndex: Int, to destinationIndex: Int) -> [String] {
         guard ids.indices.contains(sourceIndex), ids.indices.contains(destinationIndex), sourceIndex != destinationIndex else {
             return ids

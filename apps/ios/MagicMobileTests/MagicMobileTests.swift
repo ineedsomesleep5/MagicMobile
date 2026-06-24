@@ -385,6 +385,50 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(multiAmount["amounts"] as? [Int], [1, 2])
     }
 
+    func testPromptEnvelopeV2DecodesMultiAmountBounds() throws {
+        let data = """
+        {
+          "id": "multi-1",
+          "method": "GAME_GET_MULTI_AMOUNT",
+          "messageId": 12,
+          "playerId": "human",
+          "responseKind": "multi_amount",
+          "message": "Choose mana",
+          "totalMin": 2,
+          "totalMax": 2,
+          "multiAmounts": [
+            { "id": "0", "label": "W", "min": 0, "max": 2, "defaultValue": 0 },
+            { "id": "1", "label": "U", "min": 0, "max": 2, "defaultValue": 0 }
+          ],
+          "responseCommand": {
+            "type": "choose_multi_amount",
+            "promptId": "multi-1",
+            "messageId": 12
+          }
+        }
+        """.data(using: .utf8)!
+
+        let prompt = try JSONDecoder.magicMobile.decode(PromptEnvelopeV2.self, from: data)
+
+        XCTAssertEqual(prompt.totalMin, 2)
+        XCTAssertEqual(prompt.totalMax, 2)
+        XCTAssertEqual(prompt.multiAmounts?.map(\.label), ["W", "U"])
+    }
+
+    func testPromptCommandBuilderValidatesMultiAmountRangesAndTotals() {
+        let slots = [
+            XmagePromptMultiAmount(id: "0", label: "W", min: 0, max: 2, defaultValue: 0),
+            XmagePromptMultiAmount(id: "1", label: "U", min: 0, max: 2, defaultValue: 0)
+        ]
+
+        XCTAssertEqual(PromptCommandBuilder.defaultMultiAmountValue(for: slots[0]), 0)
+        XCTAssertEqual(PromptCommandBuilder.adjustedMultiAmountValue(2, delta: 1, slot: slots[0]), 2)
+        XCTAssertTrue(PromptCommandBuilder.isValidMultiAmountValues([1, 1], slots: slots, totalMin: 2, totalMax: 2))
+        XCTAssertFalse(PromptCommandBuilder.isValidMultiAmountValues([1], slots: slots, totalMin: 2, totalMax: 2))
+        XCTAssertFalse(PromptCommandBuilder.isValidMultiAmountValues([3, 0], slots: slots, totalMin: 2, totalMax: 2))
+        XCTAssertFalse(PromptCommandBuilder.isValidMultiAmountValues([1, 0], slots: slots, totalMin: 2, totalMax: 2))
+    }
+
     func testUniversalPromptResponseCommandBuilderFailsClosedForMissingPromptValues() {
         XCTAssertNil(UniversalPromptResponseCommandBuilder.command(gameId: "game-1", bridgeRevision: 44, promptEnvelope: nil, type: "choose_pile", promptId: "prompt-1", playerId: "human"))
         XCTAssertNil(UniversalPromptResponseCommandBuilder.command(gameId: "game-1", bridgeRevision: 44, promptEnvelope: nil, type: "choose_pile", promptId: "prompt-1", playerId: "human", pile: 3))

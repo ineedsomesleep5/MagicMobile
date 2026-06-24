@@ -2342,6 +2342,8 @@ struct UniversalPromptActionPanel: View {
     @Binding var inspectedCard: ZoneCard?
     @State private var orderPromptId: String?
     @State private var orderedIds: [String] = []
+    @State private var multiAmountPromptId: String?
+    @State private var multiAmountValues: [String: Int] = [:]
     let pendingActionId: String?
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
@@ -2516,6 +2518,8 @@ struct UniversalPromptActionPanel: View {
 
             if let amounts = prompt.amounts, !amounts.isEmpty {
                 amountPicker(amounts: amounts, prompt: prompt)
+            } else if let multiAmounts = prompt.multiAmounts, !multiAmounts.isEmpty {
+                multiAmountPicker(slots: multiAmounts, prompt: prompt)
             }
 
             if let orderedItems = prompt.orderedItems, !orderedItems.isEmpty {
@@ -2780,12 +2784,16 @@ struct UniversalPromptActionPanel: View {
     private func amountPicker(amounts: [Int], prompt: PromptEnvelopeV2) -> some View {
         let type = amountCommandType(preferred: prompt.responseCommand?.type)
         if type == "choose_multi_amount" {
-            PromptMiniLabel("Multi Amount")
-            Text("Unsupported prompt/action: XMage exposed multiple amount slots, but this build does not yet have a mobile-safe multi-amount editor.")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.orange.opacity(0.86))
-                .lineLimit(3)
-                .minimumScaleFactor(0.72)
+            if let slots = prompt.multiAmounts, !slots.isEmpty {
+                multiAmountPicker(slots: slots, prompt: prompt)
+            } else {
+                PromptMiniLabel("Multi Amount")
+                Text("Unsupported prompt/action: XMage did not expose slot metadata for this multi-amount prompt.")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.orange.opacity(0.86))
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.72)
+            }
         } else {
             PromptMiniLabel("Amount")
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 44), spacing: 6)], spacing: 6) {
@@ -2798,6 +2806,69 @@ struct UniversalPromptActionPanel: View {
                     )
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func multiAmountPicker(slots: [XmagePromptMultiAmount], prompt: PromptEnvelopeV2) -> some View {
+        let values = multiAmountArray(for: slots, promptId: prompt.id)
+        let total = values.reduce(0, +)
+        let valid = PromptCommandBuilder.isValidMultiAmountValues(values, slots: slots, totalMin: prompt.totalMin, totalMax: prompt.totalMax)
+
+        PromptMiniLabel("Multi Amount")
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(slots.enumerated()), id: \.element.id) { index, slot in
+                let value = values[index]
+                HStack(spacing: 7) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(slot.label)
+                            .font(.system(size: 10, weight: .black))
+                            .foregroundStyle(.white.opacity(0.88))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        Text("\(slot.min)-\(slot.max)")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.52))
+                    }
+                    Spacer(minLength: 4)
+                    Button {
+                        adjustMultiAmount(promptId: prompt.id, slots: slots, slot: slot, delta: -1)
+                    } label: {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.system(size: 18, weight: .black))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(value <= slot.min ? .white.opacity(0.24) : MagicPalette.parchment)
+                    .disabled(pendingActionId != nil || value <= slot.min)
+
+                    Text("\(value)")
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundStyle(.white)
+                        .frame(width: 28)
+
+                    Button {
+                        adjustMultiAmount(promptId: prompt.id, slots: slots, slot: slot, delta: 1)
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 18, weight: .black))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(value >= slot.max ? .white.opacity(0.24) : MagicPalette.parchment)
+                    .disabled(pendingActionId != nil || value >= slot.max)
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 5)
+                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.08)))
+            }
+
+            promptButton(
+                label: "Submit amounts",
+                subtitle: multiAmountSummary(total: total, prompt: prompt, valid: valid),
+                systemImage: "number",
+                pendingId: "\(prompt.id)-choose-multi-amount",
+                command: valid ? command(type: "choose_multi_amount", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, amounts: values) : nil
+            )
         }
     }
 
@@ -3074,7 +3145,7 @@ struct UniversalPromptActionPanel: View {
         if isCommanderReplacement(prompt) || isConfirmationPrompt(prompt) || isManaPrompt(prompt) || isTriggerOrderPrompt(prompt) || isSearchPrompt(prompt) { return true }
         if prompt.choices?.isEmpty == false || prompt.targets?.isEmpty == false || prompt.players?.isEmpty == false { return true }
         if prompt.cards?.isEmpty == false || prompt.modes?.isEmpty == false || prompt.abilities?.isEmpty == false { return true }
-        if prompt.piles?.isEmpty == false || prompt.amounts?.isEmpty == false || prompt.orderedItems?.isEmpty == false || prompt.manaChoices?.isEmpty == false { return true }
+        if prompt.piles?.isEmpty == false || prompt.amounts?.isEmpty == false || prompt.multiAmounts?.isEmpty == false || prompt.orderedItems?.isEmpty == false || prompt.manaChoices?.isEmpty == false { return true }
         return false
     }
 
@@ -3154,6 +3225,34 @@ struct UniversalPromptActionPanel: View {
             orderedIds = defaultIds
         }
         orderedIds = PromptCommandBuilder.movedOrder(ids: orderedIds, from: index, to: index + delta)
+    }
+
+    private func multiAmountArray(for slots: [XmagePromptMultiAmount], promptId: String) -> [Int] {
+        if multiAmountPromptId == promptId {
+            return slots.map { multiAmountValues[$0.id] ?? PromptCommandBuilder.defaultMultiAmountValue(for: $0) }
+        }
+        return slots.map(PromptCommandBuilder.defaultMultiAmountValue)
+    }
+
+    private func adjustMultiAmount(promptId: String, slots: [XmagePromptMultiAmount], slot: XmagePromptMultiAmount, delta: Int) {
+        if multiAmountPromptId != promptId {
+            multiAmountPromptId = promptId
+            multiAmountValues = Dictionary(uniqueKeysWithValues: slots.map { ($0.id, PromptCommandBuilder.defaultMultiAmountValue(for: $0)) })
+        }
+        let current = multiAmountValues[slot.id] ?? PromptCommandBuilder.defaultMultiAmountValue(for: slot)
+        multiAmountValues[slot.id] = PromptCommandBuilder.adjustedMultiAmountValue(current, delta: delta, slot: slot)
+    }
+
+    private func multiAmountSummary(total: Int, prompt: PromptEnvelopeV2, valid: Bool) -> String {
+        var bounds: [String] = []
+        if let totalMin = prompt.totalMin {
+            bounds.append("min \(totalMin)")
+        }
+        if let totalMax = prompt.totalMax {
+            bounds.append("max \(totalMax)")
+        }
+        let suffix = bounds.isEmpty ? "" : " · \(bounds.joined(separator: ", "))"
+        return valid ? "total \(total)\(suffix)" : "invalid total \(total)\(suffix)"
     }
 
     private func placeholderSubmitSubtitle(type: String, ids: [String]) -> String {
