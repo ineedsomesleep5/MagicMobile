@@ -250,6 +250,7 @@ export interface LegalAction {
   orderedIds?: string[];
   amount?: number;
   amounts?: number[];
+  multiAmounts?: PromptMultiAmount[];
   manaType?: ColorSymbol;
   manaTypes?: ColorSymbol[];
   pile?: 1 | 2 | string;
@@ -376,6 +377,14 @@ export interface PromptConfirmation {
   noCommand?: GameCommandTemplate;
 }
 
+export interface PromptMultiAmount {
+  id: string;
+  label: string;
+  min: number;
+  max: number;
+  defaultValue?: number;
+}
+
 export interface PromptEnvelopeV2 extends PromptEnvelope {
   responseCommand?: GameCommandTemplate;
   cards?: ZoneCard[];
@@ -385,6 +394,7 @@ export interface PromptEnvelopeV2 extends PromptEnvelope {
   abilities?: PromptAbilityOption[];
   modes?: PromptModeOption[];
   amounts?: number[];
+  multiAmounts?: PromptMultiAmount[];
   manaChoices?: PromptManaChoice[];
   orderedItems?: PromptOrderedItem[];
   confirmation?: PromptConfirmation;
@@ -500,6 +510,7 @@ export interface GameCommandTemplate {
   manaTypes?: ColorSymbol[];
   amount?: number;
   amounts?: number[];
+  multiAmounts?: PromptMultiAmount[];
   pile?: 1 | 2 | string;
   orderedIds?: string[];
   confirmed?: boolean;

@@ -270,6 +270,7 @@ struct LegalAction: Decodable, Identifiable {
     let orderedIds: [String]?
     let amount: Int?
     let amounts: [Int]?
+    let multiAmounts: [XmagePromptMultiAmount]?
     let manaType: String?
     let manaTypes: [String]?
     let pile: String?
@@ -340,6 +341,7 @@ struct PromptEnvelopeV2: Decodable, Identifiable {
     let abilities: [XmagePromptAbility]?
     let modes: [ChoicePromptOption]?
     let amounts: [Int]?
+    let multiAmounts: [XmagePromptMultiAmount]?
     let manaChoices: [XmagePromptManaChoice]?
     let orderedItems: [ChoicePromptOption]?
     let confirmation: XmagePromptConfirmation?
@@ -390,6 +392,14 @@ struct XmagePromptAbility: Decodable, Identifiable {
     let id: String
     let label: String
     let rulesText: String?
+}
+
+struct XmagePromptMultiAmount: Decodable, Identifiable {
+    let id: String
+    let label: String
+    let min: Int
+    let max: Int
+    let defaultValue: Int?
 }
 
 struct XmagePromptPlayer: Decodable, Identifiable {

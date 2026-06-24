@@ -60,6 +60,7 @@ import mage.view.RevealedView;
 import mage.view.SimpleCardView;
 import mage.view.TableClientMessage;
 import mage.view.TableView;
+import mage.util.MultiAmountMessage;
 
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -776,6 +777,38 @@ public final class MagicMobileBridge implements MageClient {
             return;
         }
         boolean required = bool(prompt, "required", true);
+        JsonArray slots = array(prompt, "multiAmounts");
+        if (slots.size() > 0) {
+            if (!required && amounts.size() == 0) {
+                return;
+            }
+            if (amounts.size() != slots.size()) {
+                throw new ActionNoLongerLegalException(gameId, "XMage multi-amount prompt requires exactly " + slots.size() + " value(s)");
+            }
+            int total = 0;
+            for (int i = 0; i < slots.size(); i++) {
+                if (!slots.get(i).isJsonObject()) {
+                    throw new ActionNoLongerLegalException(gameId, "XMage multi-amount prompt has invalid slot metadata");
+                }
+                JsonObject slot = slots.get(i).getAsJsonObject();
+                Integer amount = exactInteger(amounts.get(i));
+                if (amount == null) {
+                    throw new ActionNoLongerLegalException(gameId, "Amount must be a finite integer");
+                }
+                int min = integer(slot, "min", 0);
+                int max = integer(slot, "max", min);
+                if (amount < min || amount > max) {
+                    throw new ActionNoLongerLegalException(gameId, "Amount is outside XMage slot bounds: " + amount);
+                }
+                total += amount;
+            }
+            int totalMin = integer(prompt, "totalMin", integer(prompt, "minChoices", 0));
+            int totalMax = integer(prompt, "totalMax", integer(prompt, "maxChoices", totalMin));
+            if (total < totalMin || total > totalMax) {
+                throw new ActionNoLongerLegalException(gameId, "XMage multi-amount total must be between " + totalMin + " and " + totalMax);
+            }
+            return;
+        }
         int min = integer(prompt, "minChoices", required ? 1 : 0);
         int max = integer(prompt, "maxChoices", min);
         if (!required && amounts.size() == 0) {
@@ -1106,12 +1139,16 @@ public final class MagicMobileBridge implements MageClient {
 
         if (record.choicePrompt != null && record.choicePrompt.has("choices")) {
             String choiceActionType = promptActionType(record);
-            for (JsonElement choiceElement : record.choicePrompt.getAsJsonArray("choices")) {
-                if (!choiceElement.isJsonObject()) continue;
-                JsonObject choice = choiceElement.getAsJsonObject();
-                String choiceId = string(choice, "id", "");
-                if (choiceId.isEmpty()) continue;
-                actions.add(choiceAction(record, choiceId, choiceActionType, humanId, labelForChoice(record, playerIds, choiceId)));
+            if ("choose_multi_amount".equals(choiceActionType) && array(record.promptEnvelope, "multiAmounts").size() > 0) {
+                actions.add(multiAmountAction(record, humanId));
+            } else {
+                for (JsonElement choiceElement : record.choicePrompt.getAsJsonArray("choices")) {
+                    if (!choiceElement.isJsonObject()) continue;
+                    JsonObject choice = choiceElement.getAsJsonObject();
+                    String choiceId = string(choice, "id", "");
+                    if (choiceId.isEmpty()) continue;
+                    actions.add(choiceAction(record, choiceId, choiceActionType, humanId, labelForChoice(record, playerIds, choiceId)));
+                }
             }
             if (isManaPaymentPrompt(record)) {
                 addPlayableObjectActions(actions, humanId, view, true);
@@ -1774,6 +1811,36 @@ public final class MagicMobileBridge implements MageClient {
 
     private boolean requiresTarget(String type) {
         return "choose_target".equals(type) || "declare_attackers".equals(type) || "declare_blockers".equals(type);
+    }
+
+    private JsonObject multiAmountAction(GameRecord record, String playerId) {
+        JsonObject action = action("xmage-choice-multi-amount", "choose_multi_amount", playerId, "Choose amounts", null, null, null);
+        JsonObject template = new JsonObject();
+        template.addProperty("type", "choose_multi_amount");
+        if (record.promptEnvelope != null) {
+            String promptId = string(record.promptEnvelope, "id", "");
+            int messageId = integer(record.promptEnvelope, "messageId", -1);
+            if (!promptId.isEmpty()) {
+                action.addProperty("promptId", promptId);
+                template.addProperty("promptId", promptId);
+            }
+            if (messageId >= 0) {
+                action.addProperty("messageId", messageId);
+                template.addProperty("messageId", messageId);
+            }
+            action.addProperty("required", bool(record.promptEnvelope, "required", true));
+            action.addProperty("minChoices", integer(record.promptEnvelope, "minChoices", 1));
+            action.addProperty("maxChoices", integer(record.promptEnvelope, "maxChoices", 1));
+            JsonArray slots = array(record.promptEnvelope, "multiAmounts");
+            if (slots.size() > 0) {
+                action.add("multiAmounts", slots.deepCopy());
+                template.add("multiAmounts", slots.deepCopy());
+            }
+        }
+        action.addProperty("zoneContext", "prompt");
+        action.addProperty("responseKind", "choose_multi_amount");
+        action.add("commandTemplate", template);
+        return action;
     }
 
     private JsonObject choiceAction(GameRecord record, String choiceId, String type, String playerId, String label) {
@@ -3085,6 +3152,14 @@ public final class MagicMobileBridge implements MageClient {
             schema.addProperty("turn", 1);
             return;
         }
+        if ("prompt-multi-amount".equals(fixtureName) || "prompt-variety-multi-amount".equals(fixtureName)) {
+            defaultCards(schema, "humanHand", "Manamorphose");
+            defaultBattlefield(schema, "humanBattlefield", "Mountain", "Mountain");
+            defaultCards(schema, "humanLibraryTop", "Mountain");
+            defaultBattlefield(schema, "aiBattlefield", "Wastes");
+            schema.addProperty("turn", 1);
+            return;
+        }
         if ("triggered-ability-stack".equals(fixtureName)) {
             defaultCards(schema, "humanHand", "Spirited Companion", "Plains");
             defaultBattlefield(schema, "humanBattlefield", "Plains", "Plains");
@@ -3565,6 +3640,25 @@ public final class MagicMobileBridge implements MageClient {
             int min = message.getMin();
             int max = message.getMax();
             int cappedMax = Math.min(max, min + 20);
+            if (method == ClientCallbackMethod.GAME_GET_MULTI_AMOUNT) {
+                prompt.addProperty("totalMin", min);
+                prompt.addProperty("totalMax", max);
+                JsonArray multiAmounts = new JsonArray();
+                List<MultiAmountMessage> amountMessages = message.getMessages();
+                if (amountMessages != null) {
+                    for (int i = 0; i < amountMessages.size(); i++) {
+                        MultiAmountMessage amountMessage = amountMessages.get(i);
+                        JsonObject slot = new JsonObject();
+                        slot.addProperty("id", Integer.toString(i));
+                        slot.addProperty("label", cleanText(amountMessage.message));
+                        slot.addProperty("min", amountMessage.min);
+                        slot.addProperty("max", amountMessage.max);
+                        slot.addProperty("defaultValue", amountMessage.defaultValue);
+                        multiAmounts.add(slot);
+                    }
+                }
+                prompt.add("multiAmounts", multiAmounts);
+            }
             JsonArray amounts = new JsonArray();
             for (int value = min; value <= cappedMax; value++) {
                 choices.add(promptChoice(Integer.toString(value), Integer.toString(value), null));
@@ -3960,7 +4054,7 @@ public final class MagicMobileBridge implements MageClient {
         if (prompt == null) {
             return false;
         }
-        for (String key : new String[]{"choices", "cards", "targets", "players", "piles", "abilities", "modes", "amounts", "manaChoices", "orderedItems"}) {
+        for (String key : new String[]{"choices", "cards", "targets", "players", "piles", "abilities", "modes", "amounts", "multiAmounts", "manaChoices", "orderedItems"}) {
             if (prompt.has(key) && prompt.get(key).isJsonArray() && prompt.getAsJsonArray(key).size() > 0) {
                 return true;
             }
@@ -4055,7 +4149,7 @@ public final class MagicMobileBridge implements MageClient {
         StringBuilder out = new StringBuilder();
         for (JsonElement value : values) {
             if (out.length() > 0) {
-                out.append(',');
+                out.append(' ');
             }
             out.append(value.getAsInt());
         }

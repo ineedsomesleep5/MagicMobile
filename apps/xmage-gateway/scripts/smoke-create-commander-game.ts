@@ -34,6 +34,7 @@ const damageAssignmentScenario = scenario === "damage-assignment";
 const promptModeScenario = scenario === "prompt-mode";
 const promptOrderScenario = scenario === "prompt-order";
 const promptAmountScenario = scenario === "prompt-amount";
+const promptMultiAmountScenario = scenario === "prompt-multi-amount" || scenario === "prompt-variety-multi-amount";
 const activatedAbilityScenario = scenario === "activated-ability-stack";
 const triggeredAbilityScenario = scenario === "triggered-ability-stack";
 const fixtureScenario = scenarioModule.usesFixture;
@@ -45,7 +46,8 @@ const fixtureCallRequired = commanderGauntletScenario
   || scenario === "damage-assignment"
   || promptModeScenario
   || promptOrderScenario
-  || promptAmountScenario;
+  || promptAmountScenario
+  || promptMultiAmountScenario;
 const fixtureGateRequired = useFixtureHarness || fixtureCallRequired;
 const aiDifficulty = process.env.XMAGE_SMOKE_AI_DIFFICULTY ?? "normal";
 const routeFamiliesRequired = routeFamiliesRequiredForScenario(scenario);
@@ -59,6 +61,8 @@ let promptModeChoiceSubmitted = false;
 let promptModeChoiceResolved = false;
 let promptOrderChoiceSubmitted = false;
 let promptAmountChoiceSubmitted = false;
+let promptMultiAmountChoiceSubmitted = false;
+let promptMultiAmountChoiceResolved = false;
 const promptSamples: any[] = [];
 
 if (process.env.XMAGE_SMOKE_SELFTEST === "fixture-unavailable") {
@@ -130,6 +134,8 @@ const human = fixtureScenario
     ? promptOrderFixtureDeck()
     : promptAmountScenario
     ? promptAmountFixtureDeck()
+    : promptMultiAmountScenario
+    ? promptMultiAmountFixtureDeck()
     : commanderFixtureDeck("Isamaru, Hound of Konda", "Plains")
   : generateBracketThreeCommanderDeck({ seed: `${seed}:human`, playerId: humanPlayerId }).deck;
 const ai = fixtureScenario
@@ -365,6 +371,9 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
     if (promptAmountScenario && action.type === "choose_amount") {
       promptAmountChoiceSubmitted = true;
     }
+    if (promptMultiAmountScenario && action.type === "choose_multi_amount") {
+      promptMultiAmountChoiceSubmitted = true;
+    }
     recordRouteFamilyForTransition(previous, snapshot);
     recordCommanderState(snapshot);
     recordCoverage(snapshot);
@@ -474,7 +483,7 @@ if (scenario === "commander-gauntlet") {
   }
 }
 
-if (activatedAbilityScenario || triggeredAbilityScenario || promptModeScenario || promptOrderScenario || promptAmountScenario || scenario === "prompt-variety" || scenario === "damage-assignment") {
+if (activatedAbilityScenario || triggeredAbilityScenario || promptModeScenario || promptOrderScenario || promptAmountScenario || promptMultiAmountScenario || scenario === "prompt-variety" || scenario === "damage-assignment") {
   const missing = missingRouteFamilies();
   if (missing.length > 0) {
     writeSmokeReport({
@@ -525,6 +534,30 @@ if (promptAmountScenario && !promptAmountChoiceSubmitted) {
   );
 }
 
+if (promptMultiAmountScenario && !promptMultiAmountChoiceSubmitted) {
+  writeSmokeReport({
+    ...baseSummaryReport(snapshot),
+    failedStep: "prompt-multi-amount",
+    failureReason: "choose_multi_amount was observed only as a prompt family or not observed; no real multi-amount response was submitted."
+  });
+  throw new Error(
+    "[Smoke] prompt-multi-amount did not submit a real XMage choose_multi_amount response.\n"
+      + smokeDebug("prompt-multi-amount final snapshot", snapshot)
+  );
+}
+
+if (promptMultiAmountScenario && !promptMultiAmountChoiceResolved) {
+  writeSmokeReport({
+    ...baseSummaryReport(snapshot),
+    failedStep: "prompt-multi-amount",
+    failureReason: "choose_multi_amount was submitted but XMage kept or reissued the multi-amount prompt; no authoritative resolved snapshot was observed."
+  });
+  throw new Error(
+    "[Smoke] prompt-multi-amount submitted but did not resolve through real XMage.\n"
+      + smokeDebug("prompt-multi-amount final snapshot", snapshot)
+  );
+}
+
 if (stepCount >= maxStepsCount) {
   throw new Error(
     `[Smoke] hit maximum loop safeguards (${maxStepsCount} steps).\n`
@@ -569,6 +602,7 @@ async function runCommanderFullAiGate() {
     "prompt-mode",
     "prompt-order",
     "prompt-amount",
+    "prompt-multi-amount",
     "prompt-variety",
     "damage-assignment"
   ];
@@ -760,6 +794,10 @@ function baseSummaryReport(snapshot: SmokeSnapshot) {
     promptAmount: promptAmountScenario ? {
       choiceSubmitted: promptAmountChoiceSubmitted
     } : undefined,
+    promptMultiAmount: promptMultiAmountScenario ? {
+      choiceSubmitted: promptMultiAmountChoiceSubmitted,
+      choiceResolved: promptMultiAmountChoiceResolved
+    } : undefined,
     commanderTaxChanges,
     commanderDamageChanges,
     players: snapshot.players?.map((player: SmokePlayer) => ({
@@ -881,10 +919,14 @@ function fixtureSeedSchema() {
     ? ["Spirited Companion", "Plains"]
     : promptAmountScenario
     ? ["Wheel of Misfortune"]
+    : promptMultiAmountScenario
+    ? ["Manamorphose"]
     : triggeredAbilityScenario
     ? ["Spirited Companion", "Plains"]
     : [basic];
-  const libraryTop = promptAmountScenario
+  const libraryTop = promptMultiAmountScenario
+    ? ["Mountain"]
+    : promptAmountScenario
     ? Array.from({ length: 7 }, () => "Mountain")
     : commanderGauntletScenario
     ? Array.from({ length: 24 }, () => "Plains")
@@ -901,6 +943,8 @@ function fixtureSeedSchema() {
     ? ["Soul Warden", basic, basic]
     : promptAmountScenario
     ? ["Mountain", "Mountain", "Mountain"]
+    : promptMultiAmountScenario
+    ? ["Mountain", "Mountain"]
     : triggeredAbilityScenario
     ? [basic, basic]
     : [basic];
@@ -1017,6 +1061,7 @@ function routeFamiliesRequiredForScenario(input: string) {
   if (input === "prompt-mode") return ["cast_spell", "choose_mode"];
   if (input === "prompt-order") return ["order_triggers/order_items"];
   if (input === "prompt-amount") return ["cast_spell", "choose_amount"];
+  if (input === "prompt-multi-amount" || input === "prompt-variety-multi-amount") return ["cast_spell", "choose_multi_amount"];
   if (input === "damage-assignment") return ["damage_assignment"];
   if (input === "activated-ability-stack") return ["activate_ability", "stack_object_seen", "pass_priority"];
   if (input === "triggered-ability-stack") return ["trigger_seen", "stack_object_seen", "pass_priority"];
@@ -1187,6 +1232,20 @@ function scenarioModuleFor(input: string): ScenarioModule {
           "route-family:choose_amount"
         ]
       };
+    case "prompt-multi-amount":
+    case "prompt-variety-multi-amount":
+      return {
+        id: "prompt-multi-amount",
+        usesFixture: true,
+        scenarioSet: ["prompt-multi-amount"],
+        requiredSteps: [
+          "fixture_call",
+          "direct_state_seeded",
+          "seeded_state_verified",
+          "route-family:cast_spell",
+          "route-family:choose_multi_amount"
+        ]
+      };
     case "damage-assignment":
       return {
         id: "damage-assignment",
@@ -1251,7 +1310,7 @@ function scenarioModuleFor(input: string): ScenarioModule {
       throw new Error(
         `Unknown XMAGE_SMOKE_SCENARIO "${input}". Expected core-flow, mana-rock, search-select, `
           + "commander-replacement-tax, commander-damage, blocker-flow, prompt-variety, "
-          + "prompt-mode, prompt-order, prompt-amount, activated-ability-stack, triggered-ability-stack, damage-assignment, fixture-smoke, "
+          + "prompt-mode, prompt-order, prompt-amount, prompt-multi-amount, activated-ability-stack, triggered-ability-stack, damage-assignment, fixture-smoke, "
           + "commander-gauntlet, or commander-full-ai."
       );
   }
@@ -1353,6 +1412,17 @@ function promptAmountFixtureDeck() {
     commander: { cardName: "Kenrith, the Returned King", quantity: 1, section: "commander" },
     entries: [
       { cardName: "Wheel of Misfortune", quantity: 1, section: "deck" },
+      { cardName: "Mountain", quantity: 98, section: "deck" }
+    ]
+  };
+}
+
+function promptMultiAmountFixtureDeck() {
+  return {
+    name: "Prompt Multi Amount Fixture",
+    commander: { cardName: "Kenrith, the Returned King", quantity: 1, section: "commander" },
+    entries: [
+      { cardName: "Manamorphose", quantity: 1, section: "deck" },
       { cardName: "Mountain", quantity: 98, section: "deck" }
     ]
   };
@@ -1474,7 +1544,12 @@ function chooseBestAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
         ?? amountActions.find((a) => String(a.amount ?? a.commandTemplate?.amount ?? a.choiceIds?.[0] ?? "") !== "0")
         ?? amountActions[0]
       : amountActions[0];
-    if (amountAction) return amountAction;
+    if (amountAction) {
+      if (promptMultiAmountScenario && amountAction.type === "choose_multi_amount") {
+        return withExplicitSmokeMultiAmounts(amountAction, snapshot);
+      }
+      return amountAction;
+    }
 
     // Choose mode/ability
     const modeAction = snapshot.legalActions.find(a => a.type === "choose_mode" || a.type === "choose_ability");
@@ -1593,6 +1668,23 @@ function chooseFixtureAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
     if (makeRed) return makeRed;
   }
 
+  if (promptMultiAmountScenario) {
+    const chooseMultiAmount = actions.find((action) => action.type === "choose_multi_amount");
+    if (chooseMultiAmount) return withExplicitSmokeMultiAmounts(chooseMultiAmount, snapshot);
+
+    const castManamorphose = actions.find((action) =>
+      action.type === "cast_spell" && /manamorphose/i.test(action.cardName ?? action.label ?? "")
+    );
+    if (castManamorphose) return castManamorphose;
+
+    const makeRed = actions.find((action) =>
+      action.type === "make_mana"
+      && ((action.producedMana ?? action.commandTemplate?.producedMana ?? []).includes("R")
+        || /mountain|red|\{r\}/i.test(action.cardName ?? action.label ?? ""))
+    );
+    if (makeRed) return makeRed;
+  }
+
   const battlefieldNames = humanZone(snapshot, "battlefield").map((entry) => entry.card?.name ?? "");
   const hasIsamaru = battlefieldNames.includes("Isamaru, Hound of Konda");
   const hasLand = humanZone(snapshot, "battlefield").some((entry) => /plains/i.test(entry.card?.name ?? ""));
@@ -1628,6 +1720,48 @@ function chooseFixtureAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
   if (blocker) return blocker;
 
   return undefined;
+}
+
+function withExplicitSmokeMultiAmounts(action: SmokeAction, snapshot: SmokeSnapshot): SmokeAction {
+  return {
+    ...action,
+    amounts: explicitSmokeMultiAmounts(snapshot)
+  };
+}
+
+function explicitSmokeMultiAmounts(snapshot: SmokeSnapshot) {
+  const prompt = snapshot.promptEnvelopeV2;
+  const slots = prompt?.multiAmounts ?? [];
+  if (slots.length === 0) {
+    throw new Error("[Smoke] choose_multi_amount prompt did not include multiAmounts metadata.");
+  }
+  const totalMin = prompt?.totalMin ?? prompt?.minChoices ?? 0;
+  const totalMax = prompt?.totalMax ?? prompt?.maxChoices ?? totalMin;
+  const amounts = slots.map((slot) => Math.max(slot.min, Math.min(slot.max, slot.defaultValue ?? slot.min)));
+  let total = amounts.reduce((sum, amount) => sum + amount, 0);
+
+  for (let i = 0; i < slots.length && total < totalMin; i += 1) {
+    const add = Math.min(slots[i].max - amounts[i], totalMin - total);
+    if (add > 0) {
+      amounts[i] += add;
+      total += add;
+    }
+  }
+
+  if (totalMax >= totalMin) {
+    for (let i = slots.length - 1; i >= 0 && total > totalMax; i -= 1) {
+      const remove = Math.min(amounts[i] - slots[i].min, total - totalMax);
+      if (remove > 0) {
+        amounts[i] -= remove;
+        total -= remove;
+      }
+    }
+  }
+
+  if (total < totalMin || total > totalMax) {
+    throw new Error(`[Smoke] could not build legal multi-amount allocation for total range ${totalMin}-${totalMax}.`);
+  }
+  return amounts;
 }
 
 function chooseCommanderGauntletAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
@@ -1915,7 +2049,8 @@ function semanticProgressDeadlineMs(label: string) {
 }
 
 function commandFromAction(gameId: string, action: SmokeAction, snapshot: SmokeSnapshot) {
-  const template = action.commandTemplate ?? {};
+  const template = { ...(action.commandTemplate ?? {}) };
+  delete template.multiAmounts;
 
   // Determine max choices allowed by prompt
   let maxChoices = 1;
@@ -2376,8 +2511,11 @@ function recordRouteFamilyForPrompt(snapshot: SmokeSnapshot) {
   if (expected.includes("search")) markRouteFamily("search_select");
   if (expected.includes("ability")) markRouteFamily("choose_ability");
   if (expected.includes("mode")) markRouteFamily("choose_mode");
-  if (expected.includes("multi_amount")) markRouteFamily("choose_multi_amount");
-  if (expected.includes("amount")) markRouteFamily("choose_amount");
+  if (expected.includes("multi_amount")) {
+    markRouteFamily("choose_multi_amount");
+  } else if (expected.includes("amount")) {
+    markRouteFamily("choose_amount");
+  }
   if (expected.includes("pile")) markRouteFamily("choose_pile");
   if (expected.includes("order") || promptText.includes("order")) markRouteFamily("order_triggers/order_items");
   if (expected.includes("yes") || expected.includes("confirmation")) markRouteFamily("answer_yes_no");
@@ -2545,6 +2683,13 @@ function recordCoverage(snapshot: SmokeSnapshot) {
     manaRockResolvedSeen = true;
   }
   if (
+    promptMultiAmountScenario
+      && promptMultiAmountChoiceSubmitted
+      && (snapshot.promptEnvelopeV2?.responseKind ?? "") !== "multi_amount"
+  ) {
+    promptMultiAmountChoiceResolved = true;
+  }
+  if (
     triggeredAbilityScenario
       && (
         humanZone(snapshot, "battlefield").some((entry) => /spirited companion/i.test(entry.card?.name ?? ""))
@@ -2561,7 +2706,7 @@ function recordCoverage(snapshot: SmokeSnapshot) {
 }
 
 function recordPromptSample(snapshot: SmokeSnapshot) {
-  if (!(promptOrderScenario || promptModeScenario || promptAmountScenario || scenario === "prompt-variety" || damageAssignmentScenario)) {
+  if (!(promptOrderScenario || promptModeScenario || promptAmountScenario || promptMultiAmountScenario || scenario === "prompt-variety" || damageAssignmentScenario)) {
     return;
   }
   if (!snapshot.promptEnvelopeV2 || promptSamples.length >= 10) {
@@ -2613,6 +2758,7 @@ function scenarioSatisfied() {
   if (scenario === "prompt-mode") return missingRouteFamilies().length === 0 && promptModeChoiceSubmitted && promptModeChoiceResolved;
   if (scenario === "prompt-order") return missingRouteFamilies().length === 0 && promptOrderChoiceSubmitted;
   if (scenario === "prompt-amount") return missingRouteFamilies().length === 0 && promptAmountChoiceSubmitted;
+  if (promptMultiAmountScenario) return missingRouteFamilies().length === 0 && promptMultiAmountChoiceSubmitted && promptMultiAmountChoiceResolved;
   if (scenario === "activated-ability-stack" || scenario === "triggered-ability-stack") return missingRouteFamilies().length === 0;
   if (scenario === "commander-gauntlet") return commanderGauntletMissingSteps().length === 0;
   return false;
@@ -2708,7 +2854,19 @@ type SmokeSnapshot = {
   activePlayerId?: string;
   priorityPlayerId?: string;
   waitingOnPlayerId?: string;
-  promptEnvelopeV2?: { method?: string; responseKind?: string; responseCommand?: { type?: string }; maxChoices?: number; message?: string; id?: string; messageId?: number };
+  promptEnvelopeV2?: {
+    method?: string;
+    responseKind?: string;
+    responseCommand?: { type?: string };
+    minChoices?: number;
+    maxChoices?: number;
+    totalMin?: number;
+    totalMax?: number;
+    multiAmounts?: SmokePromptMultiAmount[];
+    message?: string;
+    id?: string;
+    messageId?: number;
+  };
   xmage?: { combat?: unknown; stack?: unknown[] };
   players?: SmokePlayer[];
   legalActions?: SmokeAction[];
@@ -2775,6 +2933,7 @@ type SmokeAction = {
   pay?: boolean;
   amount?: number;
   amounts?: number[];
+  multiAmounts?: SmokePromptMultiAmount[];
   pile?: number;
   useCommandZone?: boolean;
   attackers?: Array<{ attackerId: string; defenderId: string }>;
@@ -2803,10 +2962,19 @@ type SmokeCommandTemplate = {
   pay?: boolean;
   amount?: number;
   amounts?: number[];
+  multiAmounts?: SmokePromptMultiAmount[];
   pile?: number;
   useCommandZone?: boolean;
   attackers?: Array<{ attackerId: string; defenderId: string }>;
   blockers?: Array<{ blockerId: string; attackerId: string }>;
+};
+
+type SmokePromptMultiAmount = {
+  id: string;
+  label: string;
+  min: number;
+  max: number;
+  defaultValue?: number;
 };
 
 type ScenarioModule = {
