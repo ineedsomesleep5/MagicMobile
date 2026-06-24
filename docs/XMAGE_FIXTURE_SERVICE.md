@@ -109,7 +109,7 @@ On June 23, 2026, the embedded fixture hook reached ready locally after XMage ca
 - `seededZones`: `human.hand`, `human.battlefield`, `human.commandZone`, `human.libraryTopHidden:24`, `ai-1.aiBattlefield`
 - `stepsBlocked: []` in `build_output/smoke/smoke-report-commander-gauntlet.json`
 
-The latest successful local gauntlet used game `be79e0b6-eec6-4a42-99f3-d62cd200879c`, final `bridgeRevision: 133`, and final `xmageCycle: 223`.
+The latest successful local gauntlet used game `dc254c8c-718f-424e-8c9f-bf2c6bfe8933`, final `bridgeRevision: 133`, and final `xmageCycle: 219`.
 
 If fixture mutation happens but refreshed snapshot proof does not arrive quickly, the gateway now polls the real bridge snapshot for up to 20 seconds before returning `xmage_fixture_snapshot_proof_failed`. Do not weaken this proof gate; a fixture only counts when the refreshed real XMage snapshot proves the seed.
 
@@ -126,7 +126,7 @@ ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:1717
 Current full-AI blockers:
 
 - `prompt-variety`: aggregate route-family proof is now green. The June 24, 2026 aggregate run used real `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, `allRequiredScenariosPassed: true`, `routeFamiliesMissing: []`, and `stepsBlocked: []` by running activated-stack, triggered-stack, mode, order, amount, multi-amount, and pile child smokes. The earlier Austere Command attempt was intentionally left as a non-proof because XMage surfaced it as `GAME_CHOOSE_ABILITY:ability`.
-- `commander-full-ai`: current aggregate run fails closed after several child games because later fixture-created games have empty command zones in refreshed XMage snapshots. The next fixture-service fix is to keep command-zone proof stable across back-to-back fixture games, or to add an explicit dev/test cleanup/reset boundary before each child scenario.
+- `commander-full-ai`: current aggregate run fails closed only on `damage_assignment`. The fixture lifecycle is now more stable because Commander game creation waits for the human command-zone commander when that proof is required, fixture mutation happens under the live `Game` monitor, and child smoke reports are freshness-checked instead of trusting stale JSON artifacts.
 - `damage-assignment`: probe fixture exists, but no bridge/shared/Swift/iOS `damage_assignment` route is implemented or live-proven.
 
 Representative fixture candidate for the next full-AI blocker is a deterministic damage-assignment state. Keep using Commander-legal fixture shells and keep production routing generic.

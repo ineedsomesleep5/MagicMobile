@@ -281,12 +281,13 @@ public final class MagicMobileBridge implements MageClient {
             throw new IllegalStateException("XMage did not start the Commander match");
         }
 
-        GameRecord record = waitForStartedGame(humanExternalId, aiExternalId, aiName);
+        String humanCommanderName = string(object(object(config, "humanDeck"), "commander"), "cardName", "");
+        GameRecord record = waitForStartedGame(humanExternalId, aiExternalId, aiName, humanCommanderName);
         games.put(record.gameId.toString(), record);
         return snapshot(record.gameId.toString());
     }
 
-    private GameRecord waitForStartedGame(String humanExternalId, String aiExternalId, String aiName) throws InterruptedException {
+    private GameRecord waitForStartedGame(String humanExternalId, String aiExternalId, String aiName, String humanCommanderName) throws InterruptedException {
         long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(35);
         GameRecord lastRecord = null;
         while (System.currentTimeMillis() < deadline) {
@@ -300,7 +301,7 @@ public final class MagicMobileBridge implements MageClient {
                 }
                 if (existing.latestView != null) {
                     lastRecord = existing;
-                    if (isOpeningSnapshotReady(existing)) {
+                    if (isOpeningSnapshotReady(existing, humanCommanderName)) {
                         return existing;
                     }
                 }
@@ -1011,8 +1012,18 @@ public final class MagicMobileBridge implements MageClient {
                 throw new ActionNoLongerLegalException(bridgeGameId, "XMage expected combat UUID but received " + value);
             }
             session.sendPlayerUUID(xmageGameId, UUID.fromString(value));
+            combatResponsePause(bridgeGameId);
         }
         session.sendPlayerBoolean(xmageGameId, false);
+    }
+
+    private void combatResponsePause(String bridgeGameId) {
+        try {
+            Thread.sleep(350);
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new ActionNoLongerLegalException(bridgeGameId, "Interrupted while waiting for XMage combat response");
+        }
     }
 
     private JsonObject waitForUpdatedSnapshot(String gameId, String commandType, long startRevision, int startCycle) throws InterruptedException {
@@ -2520,15 +2531,44 @@ public final class MagicMobileBridge implements MageClient {
         return log;
     }
 
-    private boolean isOpeningSnapshotReady(GameRecord record) {
+    private boolean isOpeningSnapshotReady(GameRecord record, String humanCommanderName) {
         GameView view = record.latestView;
         if (view == null) {
+            return false;
+        }
+        if (!hasHumanCommandZoneCommander(record, view, humanCommanderName)) {
             return false;
         }
         if (isMulliganPrompt(record)) {
             return true;
         }
         return view.getMyHand() != null && !view.getMyHand().isEmpty();
+    }
+
+    private boolean hasHumanCommandZoneCommander(GameRecord record, GameView view, String humanCommanderName) {
+        if (humanCommanderName == null || humanCommanderName.isBlank()) {
+            return hasCommandZoneObjects(view);
+        }
+        for (PlayerView player : view.getPlayers()) {
+            if (record.humanXmagePlayerId != null && !player.getPlayerId().equals(record.humanXmagePlayerId)) {
+                continue;
+            }
+            for (CommandObjectView command : player.getCommandObjectList()) {
+                if (command instanceof CardView && humanCommanderName.equals(((CardView) command).getName())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean hasCommandZoneObjects(GameView view) {
+        for (PlayerView player : view.getPlayers()) {
+            if (!player.getCommandObjectList().isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isMulliganPrompt(GameRecord record) {
@@ -2882,73 +2922,75 @@ public final class MagicMobileBridge implements MageClient {
                 return report;
             }
 
-            JsonObject schema = object(request, "schema", object(object(request, "config"), "fixture"));
-            String fixtureName = string(request, "fixtureName", string(schema, "name", "commander"));
-            applyCommanderFixtureDefaults(fixtureName, schema);
+            synchronized (game) {
+                JsonObject schema = object(request, "schema", object(object(request, "config"), "fixture"));
+                String fixtureName = string(request, "fixtureName", string(schema, "name", "commander"));
+                applyCommanderFixtureDefaults(fixtureName, schema);
 
-            attempted.add("set_life");
-            int startingLife = integer(object(request, "config"), "startingLife", 40);
-            human.setLife(startingLife, game, null);
-            applied.add("set_human_life");
+                attempted.add("set_life");
+                int startingLife = integer(object(request, "config"), "startingLife", 40);
+                human.setLife(startingLife, game, null);
+                applied.add("set_human_life");
 
-            UUID aiPlayerId = parseUuid(string(request, "aiXmagePlayerId", ""));
-            if (aiPlayerId != null && game.getPlayer(aiPlayerId) != null) {
-                game.getPlayer(aiPlayerId).setLife(startingLife, game, null);
-                applied.add("set_ai_life");
-            }
-
-            attempted.add("clear_hand_and_library");
-            Map<Zone, String> reset = new LinkedHashMap<>();
-            reset.put(Zone.HAND, "clear");
-            reset.put(Zone.LIBRARY, "clear");
-            game.cheat(humanPlayerId, reset);
-            applied.add("clear_human_hand");
-            applied.add("clear_human_library");
-
-            List<Card> library = fixtureCards(humanPlayerId, array(schema, "humanLibraryTop"), proofCardNames, errors);
-            List<Card> hand = fixtureCards(humanPlayerId, array(schema, "humanHand"), proofCardNames, errors);
-            List<PutToBattlefieldInfo> battlefield = fixtureBattlefield(humanPlayerId, array(schema, "humanBattlefield"), proofCardNames, errors);
-            List<Card> graveyard = fixtureCards(humanPlayerId, array(schema, "humanGraveyard"), proofCardNames, errors);
-            List<Card> exile = fixtureCards(humanPlayerId, array(schema, "humanExile"), proofCardNames, errors);
-            if (array(schema, "humanCommandZone").size() > 0) {
-                unsupported.add("humanCommandZone reseed: Commander game startup already owns command-zone commander placement");
-            }
-
-            attempted.add("game_cheat_human_zones");
-            game.cheat(humanPlayerId, library, hand, battlefield, graveyard, Collections.emptyList(), exile);
-            applied.add("seed_human_hand:" + hand.size());
-            applied.add("seed_human_battlefield:" + battlefield.size());
-            applied.add("seed_human_library:" + library.size());
-            applied.add("seed_human_graveyard:" + graveyard.size());
-            applied.add("seed_human_exile:" + exile.size());
-
-            if (aiPlayerId != null && game.getPlayer(aiPlayerId) != null) {
-                List<PutToBattlefieldInfo> aiBattlefield = fixtureBattlefield(aiPlayerId, array(schema, "aiBattlefield"), proofCardNames, errors);
-                if (!aiBattlefield.isEmpty()) {
-                    attempted.add("game_cheat_ai_battlefield");
-                    game.cheat(aiPlayerId, Collections.emptyList(), Collections.emptyList(), aiBattlefield, Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
-                    applied.add("seed_ai_battlefield:" + aiBattlefield.size());
+                UUID aiPlayerId = parseUuid(string(request, "aiXmagePlayerId", ""));
+                if (aiPlayerId != null && game.getPlayer(aiPlayerId) != null) {
+                    game.getPlayer(aiPlayerId).setLife(startingLife, game, null);
+                    applied.add("set_ai_life");
                 }
+
+                attempted.add("clear_hand_and_library");
+                Map<Zone, String> reset = new LinkedHashMap<>();
+                reset.put(Zone.HAND, "clear");
+                reset.put(Zone.LIBRARY, "clear");
+                game.cheat(humanPlayerId, reset);
+                applied.add("clear_human_hand");
+                applied.add("clear_human_library");
+
+                List<Card> library = fixtureCards(humanPlayerId, array(schema, "humanLibraryTop"), proofCardNames, errors);
+                List<Card> hand = fixtureCards(humanPlayerId, array(schema, "humanHand"), proofCardNames, errors);
+                List<PutToBattlefieldInfo> battlefield = fixtureBattlefield(humanPlayerId, array(schema, "humanBattlefield"), proofCardNames, errors);
+                List<Card> graveyard = fixtureCards(humanPlayerId, array(schema, "humanGraveyard"), proofCardNames, errors);
+                List<Card> exile = fixtureCards(humanPlayerId, array(schema, "humanExile"), proofCardNames, errors);
+                if (array(schema, "humanCommandZone").size() > 0) {
+                    unsupported.add("humanCommandZone reseed: Commander game startup already owns command-zone commander placement");
+                }
+
+                attempted.add("game_cheat_human_zones");
+                game.cheat(humanPlayerId, library, hand, battlefield, graveyard, Collections.emptyList(), exile);
+                applied.add("seed_human_hand:" + hand.size());
+                applied.add("seed_human_battlefield:" + battlefield.size());
+                applied.add("seed_human_library:" + library.size());
+                applied.add("seed_human_graveyard:" + graveyard.size());
+                applied.add("seed_human_exile:" + exile.size());
+
+                if (aiPlayerId != null && game.getPlayer(aiPlayerId) != null) {
+                    List<PutToBattlefieldInfo> aiBattlefield = fixtureBattlefield(aiPlayerId, array(schema, "aiBattlefield"), proofCardNames, errors);
+                    if (!aiBattlefield.isEmpty()) {
+                        attempted.add("game_cheat_ai_battlefield");
+                        game.cheat(aiPlayerId, Collections.emptyList(), Collections.emptyList(), aiBattlefield, Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
+                        applied.add("seed_ai_battlefield:" + aiBattlefield.size());
+                    }
+                }
+
+                attempted.add("turn_priority");
+                GameState state = game.getState();
+                UUID activePlayerId = fixturePlayerId(schema, string(schema, "activePlayerId", "human"), humanPlayerId, aiPlayerId);
+                UUID priorityPlayerId = fixturePlayerId(schema, string(schema, "priorityPlayerId", "human"), humanPlayerId, aiPlayerId);
+                state.setActivePlayerId(activePlayerId);
+                state.setPriorityPlayerId(priorityPlayerId);
+                state.setTurnNum(integer(schema, "turn", 1));
+                applied.add("set_active_player");
+                applied.add("set_priority_player");
+                applied.add("set_turn");
+                seedFixtureCombat(fixtureName, game, humanPlayerId, aiPlayerId, applied, unsupported, errors);
+                setFixturePhaseStep(game, state, schema, applied, unsupported, errors);
+
+                game.applyEffects();
+                invokePrivateNoArg(controller, "updateGame", errors);
+                report.addProperty("serverStateMutated", true);
+                report.addProperty("setupMethod", "in_server_game_cheat");
+                report.addProperty("reason", "XMage server-side Game.cheat(...) mutated the real Game object under the Game monitor; bridge snapshot proof is still required.");
             }
-
-            attempted.add("turn_priority");
-            GameState state = game.getState();
-            UUID activePlayerId = fixturePlayerId(schema, string(schema, "activePlayerId", "human"), humanPlayerId, aiPlayerId);
-            UUID priorityPlayerId = fixturePlayerId(schema, string(schema, "priorityPlayerId", "human"), humanPlayerId, aiPlayerId);
-            state.setActivePlayerId(activePlayerId);
-            state.setPriorityPlayerId(priorityPlayerId);
-            state.setTurnNum(integer(schema, "turn", 1));
-            applied.add("set_active_player");
-            applied.add("set_priority_player");
-            applied.add("set_turn");
-            seedFixtureCombat(fixtureName, game, humanPlayerId, aiPlayerId, applied, unsupported, errors);
-            setFixturePhaseStep(game, state, schema, applied, unsupported, errors);
-
-            game.applyEffects();
-            invokePrivateNoArg(controller, "updateGame", errors);
-            report.addProperty("serverStateMutated", true);
-            report.addProperty("setupMethod", "in_server_game_cheat");
-            report.addProperty("reason", "XMage server-side Game.cheat(...) mutated the real Game object; bridge snapshot proof is still required.");
         } catch (Exception error) {
             errors.add(error.getClass().getName() + ": " + error.getMessage());
             report.addProperty("setupMethod", "fixture_seed_exception");

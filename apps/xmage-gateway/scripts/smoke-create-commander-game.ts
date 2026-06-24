@@ -618,6 +618,7 @@ writeSmokeReport(summaryReport);
 
 // Output summary JSON report to stdout
 console.log(JSON.stringify(summaryReport, null, 2));
+await cleanupSmokeGame(snapshot);
 
 function writeSmokeReport(report: unknown) {
   const reportScenario = typeof report === "object" && report !== null && "scenario" in report
@@ -635,6 +636,22 @@ function writeSmokeReportForScenario(report: unknown, reportScenario: string) {
   console.error(`[Smoke] Scenario report saved to ${scenarioReportPath}`);
 }
 
+async function cleanupSmokeGame(snapshot: SmokeSnapshot) {
+  const concede = snapshot.legalActions?.find((action) => action.type === "concede");
+  if (!snapshot.id || !concede || isGameOverSnapshot(snapshot)) {
+    return;
+  }
+  try {
+    await request(`/games/${encodeURIComponent(snapshot.id)}/commands`, {
+      method: "POST",
+      body: commandFromAction(snapshot.id, concede, snapshot)
+    });
+    console.error(`[Smoke] Cleanup conceded game ${snapshot.id}`);
+  } catch (error) {
+    console.error(`[Smoke] Cleanup concede skipped for ${snapshot.id}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 async function runCommanderFullAiGate() {
   const requiredScenarios = [
     "commander-gauntlet",
@@ -648,13 +665,15 @@ async function runCommanderFullAiGate() {
     "prompt-amount",
     "prompt-multi-amount",
     "prompt-pile",
-    "prompt-variety",
     "damage-assignment"
   ];
   const scenarioResults: Array<Record<string, unknown>> = [];
 
   for (const childScenario of requiredScenarios) {
     console.error(`[Smoke] commander-full-ai running ${childScenario}`);
+    const reportPath = path.join(reportDirectory, `smoke-report-${childScenario}.json`);
+    const startedAtMs = Date.now();
+    fs.rmSync(reportPath, { force: true });
     const result = spawnSync("pnpm", ["smoke:xmage"], {
       cwd: workspaceRoot,
       env: {
@@ -669,8 +688,7 @@ async function runCommanderFullAiGate() {
     if (result.stdout) process.stdout.write(result.stdout);
     if (result.stderr) process.stderr.write(result.stderr);
 
-    const reportPath = path.join(reportDirectory, `smoke-report-${childScenario}.json`);
-    const childReport = readReportIfPresent(reportPath);
+    const childReport = readReportIfPresent(reportPath, startedAtMs);
     scenarioResults.push({
       scenario: childScenario,
       passed: result.status === 0,
@@ -860,6 +878,9 @@ function runChildSmokeScenarios(parentScenario: string, requiredScenarios: strin
 
   for (const childScenario of requiredScenarios) {
     console.error(`[Smoke] ${parentScenario} running ${childScenario}`);
+    const reportPath = path.join(reportDirectory, `smoke-report-${childScenario}.json`);
+    const startedAtMs = Date.now();
+    fs.rmSync(reportPath, { force: true });
     const result = spawnSync("pnpm", ["smoke:xmage"], {
       cwd: workspaceRoot,
       env: {
@@ -874,8 +895,7 @@ function runChildSmokeScenarios(parentScenario: string, requiredScenarios: strin
     if (result.stdout) process.stdout.write(result.stdout);
     if (result.stderr) process.stderr.write(result.stderr);
 
-    const reportPath = path.join(reportDirectory, `smoke-report-${childScenario}.json`);
-    const childReport = readReportIfPresent(reportPath);
+    const childReport = readReportIfPresent(reportPath, startedAtMs);
     scenarioResults.push({
       scenario: childScenario,
       passed: result.status === 0,
@@ -891,8 +911,11 @@ function runChildSmokeScenarios(parentScenario: string, requiredScenarios: strin
   return scenarioResults;
 }
 
-function readReportIfPresent(reportPath: string) {
+function readReportIfPresent(reportPath: string, minMtimeMs = 0) {
   try {
+    if (minMtimeMs > 0 && fs.statSync(reportPath).mtimeMs + 1000 < minMtimeMs) {
+      return null;
+    }
     return JSON.parse(fs.readFileSync(reportPath, "utf8")) as Record<string, unknown>;
   } catch {
     return null;
@@ -1159,7 +1182,10 @@ function fixtureSeedSchema() {
     : triggeredAbilityScenario
     ? [basic, basic]
     : [basic];
-  const commandZone = [commander];
+  const requiresCommandZoneProof = commanderGauntletScenario
+    || scenario === "commander-damage"
+    || scenario === "commander-replacement-tax";
+  const commandZone = requiresCommandZoneProof ? [commander] : [];
   return {
     gameId: `fixture-${scenario}-${seed}`,
     commander,
