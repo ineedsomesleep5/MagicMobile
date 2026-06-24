@@ -10,7 +10,7 @@ Use this checklist for the native iOS Commander gameplay surface. It separates s
 - Orientation note: the app declares landscape-only orientations. This CoreSimulator runtime did not expose `simctl ui ... orientation`, rejected `screenConfig` landscape geometry, and saved a portrait framebuffer containing the landscape UI rotated sideways. Keep both the raw capture and the readable rotated copy.
 - Simulator result: layout/build evidence only. It does not prove real iPhone install, local-network setup, touch ergonomics, WebSocket behavior, or sustained gameplay.
 - Generic iPhoneOS build result: `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project apps/ios/MagicMobileiOS.xcodeproj -scheme MagicMobile -configuration Debug -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build` passed. This proves arm64 compile only.
-- Real iPhone result: pending. Product release is blocked until physical iPhone QA passes against the same fixture-ready gateway.
+- Real iPhone result: pending. The June 24 device check showed Caleb's iPhone 16 Pro Max as `unavailable` and a separate physical iPhone (`Ruthie's iPhone 16`, reported as iPhone 16 Pro Max-class hardware) as `connected`; the app was not installed or launched on that device without explicit permission. Product release is blocked until physical iPhone QA passes against the same fixture-ready gateway.
 
 ## Simulator Screenshots To Keep
 
