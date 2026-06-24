@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import MagicMobile
 
 final class MagicMobileTests: XCTestCase {
@@ -526,6 +527,33 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertFalse(PromptCommandBuilder.hasPrebuiltCombatPayload(incompleteAction))
     }
 
+    func testBattlefieldLayoutMetricsFitProMaxLandscape() {
+        let metrics = BattlefieldLayoutMetrics(
+            size: CGSize(width: 932, height: 430),
+            safeArea: EdgeInsets(top: 0, leading: 47, bottom: 21, trailing: 47)
+        )
+
+        assertGameplayLayout(metrics)
+        XCTAssertGreaterThanOrEqual(metrics.handCardWidth, 68)
+        XCTAssertGreaterThanOrEqual(metrics.permanentCardWidth, 50)
+        XCTAssertGreaterThanOrEqual(metrics.landCardWidth, 44)
+        XCTAssertGreaterThanOrEqual(metrics.bottomActionRect.width, 226)
+        XCTAssertGreaterThan(metrics.centerStripRect.height, 24)
+    }
+
+    func testBattlefieldLayoutMetricsKeepCompactLandscapeUsable() {
+        let metrics = BattlefieldLayoutMetrics(
+            size: CGSize(width: 812, height: 375),
+            safeArea: EdgeInsets(top: 0, leading: 44, bottom: 21, trailing: 44)
+        )
+
+        assertGameplayLayout(metrics)
+        XCTAssertGreaterThanOrEqual(metrics.handCardWidth, 58)
+        XCTAssertGreaterThanOrEqual(metrics.permanentCardWidth, 44)
+        XCTAssertGreaterThanOrEqual(metrics.landCardHeight, 44)
+        XCTAssertGreaterThanOrEqual(metrics.bottomActionRect.height, 190)
+    }
+
     private func decodeAction(type: String, extra: String? = nil) throws -> LegalAction {
         let extraFields = extra.map { ",\n          \($0)" } ?? ""
         let data = """
@@ -603,5 +631,28 @@ final class MagicMobileTests: XCTestCase {
     private func payload(for command: GameCommand?) throws -> [String: Any] {
         let command = try XCTUnwrap(command)
         return try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder.magicMobile.encode(command)) as? [String: Any])
+    }
+
+    private func assertGameplayLayout(_ metrics: BattlefieldLayoutMetrics, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.rightDockRect), file: file, line: line)
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.boardColumnRect), file: file, line: line)
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.handRect), file: file, line: line)
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.bottomActionRect), file: file, line: line)
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.phaseRailRect), file: file, line: line)
+
+        XCTAssertFalse(metrics.boardColumnRect.intersects(metrics.rightDockRect), file: file, line: line)
+        XCTAssertFalse(metrics.handRect.intersects(metrics.playerBattlefieldRect), file: file, line: line)
+        XCTAssertFalse(metrics.centerStripRect.intersects(metrics.opponentBattlefieldRect), file: file, line: line)
+        XCTAssertFalse(metrics.centerStripRect.intersects(metrics.opponentLandsRect), file: file, line: line)
+        XCTAssertFalse(metrics.centerStripRect.intersects(metrics.playerBattlefieldRect), file: file, line: line)
+        XCTAssertFalse(metrics.centerStripRect.intersects(metrics.playerLandsRect), file: file, line: line)
+        XCTAssertFalse(metrics.phaseRailRect.intersects(metrics.bottomActionRect), file: file, line: line)
+
+        XCTAssertGreaterThanOrEqual(metrics.rightDockRect.minX - metrics.boardColumnRect.maxX, 10, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(metrics.handRect.height, metrics.handCardHeight, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(metrics.opponentBattlefieldRect.height, 52, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(metrics.playerBattlefieldRect.height, 52, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(metrics.opponentLandsRect.height, 44, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(metrics.playerLandsRect.height, 44, file: file, line: line)
     }
 }

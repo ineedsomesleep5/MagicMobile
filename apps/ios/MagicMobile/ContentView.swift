@@ -1404,10 +1404,12 @@ struct BattlefieldLayoutMetrics {
     }
 
     var phaseRailRect: CGRect {
-        let height = min(max(rightDockRect.height - bottomActionRect.height - 50, 98), 154)
+        let top = diagnosticsY + 36
+        let bottom = bottomActionRect.minY - 8
+        let height = min(max(bottom - top, 44), 154)
         return CGRect(
             x: rightDockRect.minX + (rightDockRect.width - railWidth) / 2,
-            y: diagnosticsY + 36,
+            y: max(rightDockRect.minY + 42, bottom - height),
             width: railWidth,
             height: height
         )
@@ -1508,7 +1510,7 @@ struct BattlefieldLayoutMetrics {
 
     var handCardWidth: CGFloat {
         let horizontalFit = boardColumnRect.width / 8.8
-        let verticalFit = max((safeFrame.height * 0.24) / 1.40, 58)
+        let verticalFit = max((safeFrame.height * 0.25) / 1.40, 58)
         return min(max(horizontalFit, 68), min(verticalFit, 86))
     }
 
@@ -1593,11 +1595,11 @@ struct BattlefieldLayoutMetrics {
     }
 
     private var battlefieldScale: CGFloat {
-        min(1, max(0.78, (opponentBattlefieldRect.height - 8) / max(naturalPermanentCardHeight, 1)))
+        min(1, max(0.88, (opponentBattlefieldRect.height - 8) / max(naturalPermanentCardHeight, 1)))
     }
 
     private var landScale: CGFloat {
-        min(1, max(0.84, (opponentLandsRect.height - 8) / max(naturalLandCardHeight, 1)))
+        1
     }
 
     private var naturalPermanentCardHeight: CGFloat {
@@ -2473,6 +2475,13 @@ struct UniversalPromptActionPanel: View {
                     .minimumScaleFactor(0.7)
             }
 
+            MobileSurfacesPanel(
+                snapshot: snapshot,
+                selectedCard: $selectedCard,
+                inspectedCard: $inspectedCard,
+                viewZone: viewZone
+            )
+
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     if let prompt = snapshot.promptEnvelopeV2 {
@@ -2507,13 +2516,6 @@ struct UniversalPromptActionPanel: View {
                     if !otherActions.isEmpty {
                         actionSection(title: "Other Actions", detail: "\(otherActions.count)", actions: otherActions)
                     }
-
-                    MobileSurfacesPanel(
-                        snapshot: snapshot,
-                        selectedCard: $selectedCard,
-                        inspectedCard: $inspectedCard,
-                        viewZone: viewZone
-                    )
                 }
                 .padding(.vertical, 1)
             }
@@ -3439,22 +3441,10 @@ struct MobileSurfacesPanel: View {
     var body: some View {
         PromptPanelSection(title: "Zones", detail: surfaceSummary) {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 76), spacing: 5)], spacing: 5) {
-                SurfaceChip(title: "Stack", value: "\(stackObjectCount)", systemImage: "sparkles")
-                    .onTapGesture {
-                        if !stackCards.isEmpty { viewZone("Stack", stackCards) }
-                    }
-                SurfaceChip(title: "Command", value: "\(commandCards.count)", systemImage: "crown")
-                    .onTapGesture {
-                        if !commandCards.isEmpty { viewZone("Command", commandCards) }
-                    }
-                SurfaceChip(title: "Grave", value: "\(graveyardCards.count)", systemImage: "archivebox")
-                    .onTapGesture {
-                        if !graveyardCards.isEmpty { viewZone("Graveyard", graveyardCards) }
-                    }
-                SurfaceChip(title: "Exile", value: "\(exileCards.count)", systemImage: "moon.stars")
-                    .onTapGesture {
-                        if !exileCards.isEmpty { viewZone("Exile", exileCards) }
-                    }
+                zoneButton(title: "Stack", value: "\(stackObjectCount)", systemImage: "sparkles", cards: stackCards)
+                zoneButton(title: "Command", value: "\(commandCards.count)", systemImage: "crown", cards: commandCards)
+                zoneButton(title: "Grave", value: "\(graveyardCards.count)", systemImage: "archivebox", cards: graveyardCards)
+                zoneButton(title: "Exile", value: "\(exileCards.count)", systemImage: "moon.stars", cards: exileCards)
                 SurfaceChip(title: "Priority", value: priorityOwner, systemImage: "hand.raised")
                 SurfaceChip(title: "Actions", value: "\((snapshot.legalActions ?? []).count)", systemImage: "bolt")
             }
@@ -3467,6 +3457,16 @@ struct MobileSurfacesPanel: View {
                     .minimumScaleFactor(0.64)
             }
         }
+    }
+
+    private func zoneButton(title: String, value: String, systemImage: String, cards: [ZoneCard]) -> some View {
+        Button {
+            viewZone(title == "Grave" ? "Graveyard" : title, cards)
+        } label: {
+            SurfaceChip(title: title, value: value, systemImage: systemImage)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title) zone, \(value) cards")
     }
 
     private var surfaceSummary: String {

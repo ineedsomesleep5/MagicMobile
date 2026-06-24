@@ -20,6 +20,12 @@ Keep captures under `build_output/ios-screenshots/` and treat them as local arti
 - `iphone-17-pro-max-setup-local-api-landscape-readable.jpg`: readable rotated setup evidence.
 - `iphone-17-pro-max-fixture-board-rustic.jpg`: raw fixture board capture from the local XMage fixture.
 - `iphone-17-pro-max-fixture-board-rustic-landscape-readable.jpg`: readable rotated fixture board proof currently cited by readiness docs.
+- `iphone-17-pro-max-fixture-board-zone-buttons-landscape-readable.jpg`: refreshed fixture board proof with Stack, Command, Grave, and Exile exposed as tappable zone buttons.
+- `iphone-17-pro-max-fixture-board-final-metrics-landscape-readable.jpg`: final board proof after layout metric minimum-size guards were added and satisfied.
+- `iphone-17-pro-max-zone-sheet-rustic-landscape-readable.jpg`: command-zone sheet proof.
+- `build_output/screenshots/ios-layout-after.png`: current readable board checkpoint requested by the layout milestone.
+- `build_output/screenshots/ios-prompt-active.png`: current active-prompt checkpoint; the current fixture prompt is the priority/pass prompt.
+- `build_output/screenshots/ios-zone-sheet.png`: current zone-sheet checkpoint.
 - Historical troubleshooting captures may remain in the same directory, but do not use older timeout/deck-validation captures as current layout proof.
 
 Next simulator run should recapture the same states after any layout edit and include the visible `source`, `bridgeRevision`, `xmageCycle`, priority player, pending state, phase/step, stack count, command zone access, graveyard access, exile access, and missing-art placeholders where present.
@@ -55,6 +61,8 @@ Next simulator run should recapture the same states after any layout edit and in
 - Commander tax and commander damage decode, but their visual prominence still needs real iPhone confirmation.
 - Prompt variety controls are deterministic-fixture proven, but amount, multi-amount, pile, ordering, and damage-assignment controls still need touch QA on hardware.
 - Missing art placeholders are visually stable in simulator evidence, but slow or failed image loading needs a real phone network check.
+- Hand-selected and missing-art screenshots were not recaptured in the latest automated simulator pass because the current runtime accessibility snapshot did not expose individual hand cards as reusable tap targets. This needs either manual Simulator interaction or a future card-accessibility polish pass.
+- Layout metric tests now cover Pro Max landscape and compact landscape named-region containment, non-overlap, and minimum readable card/action sizes.
 
 ## Physical iPhone QA Separation
 
