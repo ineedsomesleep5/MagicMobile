@@ -1310,10 +1310,12 @@ public final class MagicMobileBridge implements MageClient {
             if (attackerChoices.size() == 0) {
                 return actions;
             }
+            List<PermanentView> untappedBlockers = new ArrayList<>();
             for (PermanentView permanent : human.getBattlefield().values()) {
                 if (!permanent.isCreature() || permanent.isTapped()) {
                     continue;
                 }
+                untappedBlockers.add(permanent);
                 for (JsonElement element : attackerChoices) {
                     if (!element.isJsonObject()) continue;
                     JsonObject attacker = element.getAsJsonObject();
@@ -1328,6 +1330,15 @@ public final class MagicMobileBridge implements MageClient {
                             null,
                             attackerId
                     ));
+                }
+            }
+            if (untappedBlockers.size() > 1) {
+                for (JsonElement element : attackerChoices) {
+                    if (!element.isJsonObject()) continue;
+                    JsonObject attacker = element.getAsJsonObject();
+                    String attackerId = string(attacker, "id", "");
+                    if (attackerId.isEmpty()) continue;
+                    actions.add(multiBlockAction(record.humanExternalId, string(attacker, "name", "attacker"), attackerId, untappedBlockers));
                 }
             }
         }
@@ -1399,6 +1410,46 @@ public final class MagicMobileBridge implements MageClient {
             action.add("validTargetIds", validTargetIds);
             template.add("blockers", blockers.deepCopy());
         }
+        action.add("commandTemplate", template);
+        action.addProperty("isPrimary", true);
+        return action;
+    }
+
+    private JsonObject multiBlockAction(String playerId, String attackerName, String attackerId, List<PermanentView> blockers) {
+        PermanentView firstBlocker = blockers.get(0);
+        JsonObject action = action(
+                "xmage-block-multi-" + attackerId,
+                "declare_blockers",
+                playerId,
+                "Block " + attackerName + " with " + blockers.size() + " creatures",
+                firstBlocker.getId().toString(),
+                "battlefield",
+                null,
+                firstBlocker
+        );
+        JsonObject template = new JsonObject();
+        template.addProperty("type", "declare_blockers");
+        template.addProperty("cardInstanceId", firstBlocker.getId().toString());
+        template.addProperty("sourceInstanceId", firstBlocker.getId().toString());
+        template.addProperty("sourceZone", "battlefield");
+        template.addProperty("cardName", firstBlocker.getName());
+
+        JsonArray blockerPairs = new JsonArray();
+        JsonArray blockerIds = new JsonArray();
+        for (PermanentView blocker : blockers) {
+            JsonObject pair = new JsonObject();
+            pair.addProperty("blockerId", blocker.getId().toString());
+            pair.addProperty("attackerId", attackerId);
+            blockerPairs.add(pair);
+            blockerIds.add(blocker.getId().toString());
+        }
+        JsonArray validTargetIds = new JsonArray();
+        validTargetIds.add(attackerId);
+        action.add("blockers", blockerPairs.deepCopy());
+        action.add("blockerIds", blockerIds.deepCopy());
+        action.add("validTargetIds", validTargetIds);
+        template.add("blockers", blockerPairs.deepCopy());
+        template.add("blockerIds", blockerIds.deepCopy());
         action.add("commandTemplate", template);
         action.addProperty("isPrimary", true);
         return action;
@@ -3159,7 +3210,19 @@ public final class MagicMobileBridge implements MageClient {
     }
 
     private void applyCommanderFixtureDefaults(String fixtureName, JsonObject schema) {
-        if ("blocker-flow".equals(fixtureName) || "damage-assignment".equals(fixtureName)) {
+        if ("damage-assignment".equals(fixtureName)) {
+            defaultCards(schema, "humanHand", "Plains");
+            defaultBattlefield(schema, "humanBattlefield", "Defensive Formation", "Silvercoat Lion", "Savannah Lions", "Plains");
+            defaultCards(schema, "humanLibraryTop", "Plains");
+            defaultBattlefield(schema, "aiBattlefield", "Metalwork Colossus");
+            defaultString(schema, "phase", "combat");
+            defaultString(schema, "step", "combat-damage");
+            defaultString(schema, "activePlayerId", "ai-1");
+            defaultString(schema, "priorityPlayerId", "human");
+            schema.addProperty("turn", 1);
+            return;
+        }
+        if ("blocker-flow".equals(fixtureName)) {
             defaultCards(schema, "humanHand", "Plains");
             defaultBattlefield(schema, "humanBattlefield", "Silvercoat Lion", "Plains");
             defaultCards(schema, "humanLibraryTop", "Plains");
@@ -3303,26 +3366,43 @@ public final class MagicMobileBridge implements MageClient {
             unsupported.add("combat seed: missing AI player id");
             return;
         }
-        Permanent attacker = battlefieldPermanentByName(game, aiPlayerId, "Memnite");
-        Permanent blocker = battlefieldPermanentByName(game, humanPlayerId, "Silvercoat Lion");
-        if (attacker == null || blocker == null) {
+        boolean damageAssignment = "damage-assignment".equals(fixtureName);
+        UUID attackerControllerId = aiPlayerId;
+        UUID defenderId = humanPlayerId;
+        String attackerName = damageAssignment ? "Metalwork Colossus" : "Memnite";
+        Permanent attacker = battlefieldPermanentByName(game, attackerControllerId, attackerName);
+        Permanent blocker = damageAssignment ? null : battlefieldPermanentByName(game, humanPlayerId, "Silvercoat Lion");
+        if (attacker == null || (!damageAssignment && blocker == null)) {
             unsupported.add("combat seed: missing seeded attacker or blocker permanent");
             return;
         }
         try {
             game.getState().getCombat().clear();
-            game.getState().getCombat().setAttacker(aiPlayerId);
+            game.getState().getCombat().setAttacker(attackerControllerId);
             game.getState().getCombat().setDefenders(game);
-            boolean added = game.getState().getCombat().addAttackingCreature(attacker.getId(), game, humanPlayerId);
+            boolean added = game.getState().getCombat().addAttackingCreature(attacker.getId(), game, defenderId);
             if (!added) {
-                added = game.getState().getCombat().declareAttacker(attacker.getId(), humanPlayerId, aiPlayerId, game);
+                added = game.getState().getCombat().declareAttacker(attacker.getId(), defenderId, attackerControllerId, game);
             }
             if (!added) {
-                added = game.getState().getCombat().addAttackerToCombat(attacker.getId(), humanPlayerId, game);
+                added = game.getState().getCombat().addAttackerToCombat(attacker.getId(), defenderId, game);
             }
             if (added) {
                 attacker.setTapped(true);
                 applied.add("seed_combat_attacker:" + attacker.getName());
+                if (damageAssignment) {
+                    Permanent firstBlocker = battlefieldPermanentByName(game, humanPlayerId, "Silvercoat Lion");
+                    Permanent secondBlocker = battlefieldPermanentByName(game, humanPlayerId, "Savannah Lions");
+                    mage.game.combat.CombatGroup group = game.getState().getCombat().findGroup(attacker.getId());
+                    if (group != null && firstBlocker != null && secondBlocker != null) {
+                        group.addBlocker(firstBlocker.getId(), humanPlayerId, game);
+                        group.addBlocker(secondBlocker.getId(), humanPlayerId, game);
+                        applied.add("seed_combat_blocker:" + firstBlocker.getName());
+                        applied.add("seed_combat_blocker:" + secondBlocker.getName());
+                    } else {
+                        unsupported.add("combat seed: missing damage-assignment blockers or combat group");
+                    }
+                }
             } else {
                 unsupported.add("combat seed: XMage rejected seeded attacker");
             }

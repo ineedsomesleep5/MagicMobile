@@ -470,7 +470,7 @@ function fixtureExpectedRouteCoverage(scenario) {
   if (scenario === "prompt-multi-amount" || scenario === "prompt-variety-multi-amount") return [...common, "choose_multi_amount", "stack_objects"];
   if (scenario === "prompt-pile" || scenario === "prompt-variety-pile") return [...common, "choose_pile", "stack_objects"];
   if (scenario === "combat-blockers" || scenario === "blocker-flow") return [...common, "declare_attackers", "declare_blockers"];
-  if (scenario === "damage-assignment") return [...common, "declare_attackers", "declare_blockers", "damage_assignment"];
+  if (scenario === "damage-assignment") return [...common, "choose_multi_amount", "damage_assignment"];
   return [
     ...common,
     "activate_ability",
@@ -486,9 +486,21 @@ function fixtureExpectedRouteCoverage(scenario) {
 }
 
 function fixtureHumanDeck(scenario) {
-  if (scenario === "blocker-flow" || scenario === "damage-assignment") {
+  if (scenario === "damage-assignment") {
     return {
-      name: scenario === "damage-assignment" ? "Damage Assignment Human Fixture" : "Blocker Flow Human Fixture",
+      name: "Damage Assignment Human Fixture",
+      commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
+      entries: [
+        { cardName: "Defensive Formation", quantity: 1, section: "deck" },
+        { cardName: "Silvercoat Lion", quantity: 1, section: "deck" },
+        { cardName: "Savannah Lions", quantity: 1, section: "deck" },
+        { cardName: "Plains", quantity: 96, section: "deck" }
+      ]
+    };
+  }
+  if (scenario === "blocker-flow") {
+    return {
+      name: "Blocker Flow Human Fixture",
       commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
       entries: [
         { cardName: "Silvercoat Lion", quantity: 1, section: "deck" },
@@ -587,9 +599,19 @@ function fixtureHumanDeck(scenario) {
 }
 
 function fixtureAiDeck(scenario) {
-  if (scenario === "blocker-flow" || scenario === "damage-assignment") {
+  if (scenario === "damage-assignment") {
     return {
-      name: scenario === "damage-assignment" ? "Damage Assignment AI Fixture" : "Blocker Flow AI Fixture",
+      name: "Damage Assignment AI Fixture",
+      commander: { cardName: "Kozilek, Butcher of Truth", quantity: 1, section: "commander" },
+      entries: [
+        { cardName: "Metalwork Colossus", quantity: 1, section: "deck" },
+        { cardName: "Wastes", quantity: 98, section: "deck" }
+      ]
+    };
+  }
+  if (scenario === "blocker-flow") {
+    return {
+      name: "Blocker Flow AI Fixture",
       commander: { cardName: "Kozilek, Butcher of Truth", quantity: 1, section: "commander" },
       entries: [
         { cardName: "Memnite", quantity: 1, section: "deck" },

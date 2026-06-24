@@ -29,7 +29,7 @@ Latest CI/docs validation pass on June 23, 2026. Treat the smoke details below a
 - `XMAGE_SMOKE_SCENARIO=prompt-amount` is a targeted amount-choice proof. The latest June 24, 2026 run used real XMage, `directStateSeeded: true`, `seededStateVerified: true`, `promptFamiliesSeen: ["GAME_GET_AMOUNT:amount"]`, `actionsByType.choose_amount: 1`, final `bridgeRevision: 18`, final `xmageCycle: 24`, and empty `stepsBlocked` with Wheel of Misfortune's upstream `Player.getAmount(...)` callback.
 - `XMAGE_SMOKE_SCENARIO=prompt-multi-amount` is a targeted multi-amount proof. The latest June 24, 2026 run used real XMage, `directStateSeeded: true`, `seededStateVerified: true`, `promptFamiliesSeen: ["GAME_GET_MULTI_AMOUNT:multi_amount"]`, `actionsByType.choose_multi_amount: 1`, final `bridgeRevision: 18`, final `xmageCycle: 29`, and empty `stepsBlocked` with Manamorphose's upstream `AddManaInAnyCombinationEffect`.
 - `XMAGE_SMOKE_SCENARIO=prompt-pile` is a targeted pile proof. The latest June 24, 2026 run used real XMage, `directStateSeeded: true`, `seededStateVerified: true`, `promptFamiliesSeen: ["GAME_CHOOSE_PILE:pile"]`, `actionsByType.choose_pile: 1`, final `bridgeRevision: 20`, final `xmageCycle: 33`, and empty `stepsBlocked` with Fact or Fiction's upstream `RevealAndSeparatePilesEffect`.
-- `XMAGE_SMOKE_SCENARIO=commander-full-ai` is the full Commander vs AI truth gate. The latest June 24, 2026 run failed honestly with `readinessVerdict: "not-ready-full-commander-vs-ai"`: commander-gauntlet, mana-rock, commander-damage, and blocker-flow passed, then later fixture-created games failed direct seeded proof because the command zone was missing. It must fail until the repeated-fixture lifecycle and damage-assignment blockers are fixed or formally excluded with safe fallbacks.
+- `XMAGE_SMOKE_SCENARIO=commander-full-ai` is the full Commander vs AI truth gate. The latest June 24, 2026 run passed with real `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, `allRequiredScenariosPassed: true`, `routeFamiliesMissing: []`, `stepsBlocked: []`, `iOSRequiredRoutesMissing: []`, and `readinessVerdict: "full-commander-vs-ai-ready"`.
 - `XMAGE_SMOKE_MANA_ROCK_CARD="Arcane Signet" pnpm smoke:xmage:mana-rock` passed with real cast/payment/resolution evidence. Keep this as generic routing proof, not a card-specific production path.
 - `xcodebuild test -project apps/ios/MagicMobileiOS.xcodeproj -scheme MagicMobile -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' -only-testing:MagicMobileTests -quiet` exited 0 for the iOS unit test target. This is not real iPhone product success.
 
@@ -59,7 +59,7 @@ Historical/local notes from earlier runs; rerun before treating any item as curr
 
 Current pause blocker:
 
-- Commander damage, blocker assignment, and standalone aggregate prompt-variety are now live-verified by deterministic fixtures, but the full aggregate currently exposes repeated-fixture command-zone proof instability, and damage assignment remains incomplete. Real iPhone manual QA is still unchecked.
+- Commander damage, blocker assignment, damage assignment, standalone aggregate prompt-variety, and full `commander-full-ai` are now live-verified by deterministic fixtures. Real iPhone manual QA is still unchecked.
 - Earlier AI-priority stalls are now sharper: the bridge keeps the XMage remoting session warm with periodic `Session.ping()`, and the smoke harness fails as `bridge-disconnected` if health drops while waiting for AI.
 
 ## Preflight
@@ -187,9 +187,9 @@ Remaining live-coverage gaps:
 
 - Deterministic fixture setup is no longer the current `commander-gauntlet` blocker. The same-JVM seeding hook reached ready and produced refreshed real-XMage snapshot proof. Real iPhone manual QA remains the main product blocker.
 - player-scoped snapshots are still required before human-vs-human or pods.
-- damage assignment prompts have not been live-fixtured yet. The current probe can seed a combat state, but the bridge/shared/Swift/iOS `damage_assignment` route is not implemented and must be treated as a full-AI blocker.
+- damage assignment prompts are now deterministic-fixture proven through a real combat-damage `GAME_GET_MULTI_AMOUNT` prompt classified as `damage_assignment`; keep the iOS allocation UI under real phone QA.
 - `mana-rock` is targeted-fixture proven with `Sol Ring`, and the optional `Arcane Signet` variant now passes as generic route proof. Manual phone QA still needs to confirm the same flow through the iOS UI.
-- full `commander-gauntlet` now has deterministic real-XMage setup support for singleton test cards and reached commander cast, replacement, and recast-with-tax. Commander damage, blocker assignment, and prompt-variety remain outside the narrower gauntlet, with separate deterministic fixture proof for commander damage, blocker assignment, and standalone aggregate prompt-variety. The full `commander-full-ai` aggregate must still fail while repeated fixture-created games can lose command-zone proof.
+- full `commander-gauntlet` now has deterministic real-XMage setup support for singleton test cards and reached commander cast, replacement, and recast-with-tax. Commander damage, blocker assignment, damage assignment, and prompt-variety remain outside the narrower gauntlet, with separate deterministic fixture proof and a green `commander-full-ai` aggregate tying them together.
 
 ## Commander Gauntlet Acceptance Loop
 

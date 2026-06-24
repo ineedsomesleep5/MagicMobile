@@ -78,6 +78,8 @@ let promptMultiAmountChoiceSubmitted = false;
 let promptMultiAmountChoiceResolved = false;
 let promptPileChoiceSubmitted = false;
 let promptPileChoiceResolved = false;
+let damageAssignmentPromptSeen = false;
+let damageAssignmentChoiceSubmitted = false;
 const promptSamples: any[] = [];
 
 if (process.env.XMAGE_SMOKE_SELFTEST === "fixture-unavailable") {
@@ -393,6 +395,11 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
     }
     if (promptPileScenario && action.type === "choose_pile") {
       promptPileChoiceSubmitted = true;
+    }
+    if (damageAssignmentScenario && isDamageAssignmentPromptSnapshot(previous) && isDamageAssignmentPromptAction(action)) {
+      damageAssignmentPromptSeen = true;
+      damageAssignmentChoiceSubmitted = true;
+      markRouteFamily("damage_assignment");
     }
     recordRouteFamilyForTransition(previous, snapshot);
     recordCommanderState(snapshot);
@@ -1026,6 +1033,10 @@ function baseSummaryReport(snapshot: SmokeSnapshot) {
       choiceSubmitted: promptPileChoiceSubmitted,
       choiceResolved: promptPileChoiceResolved
     } : undefined,
+    damageAssignment: damageAssignmentScenario ? {
+      promptSeen: damageAssignmentPromptSeen,
+      choiceSubmitted: damageAssignmentChoiceSubmitted
+    } : undefined,
     commanderTaxChanges,
     commanderDamageChanges,
     players: snapshot.players?.map((player: SmokePlayer) => ({
@@ -1133,7 +1144,9 @@ function fixtureSeedSchema() {
   const commander = commanderGauntletScenario ? "Isamaru, Hound of Konda" : human.commander.cardName;
   const basic = commanderGauntletScenario ? "Plains" : "Plains";
   const expectedRoutes = routeFamiliesRequired.length > 0 ? routeFamiliesRequired : scenarioModule.requiredSteps;
-  const hand = blockerFlowScenario || damageAssignmentScenario
+  const hand = damageAssignmentScenario
+    ? ["Plains"]
+    : blockerFlowScenario
     ? [basic]
     : manaRockScenario
     ? [manaRockCardName]
@@ -1154,7 +1167,9 @@ function fixtureSeedSchema() {
     : triggeredAbilityScenario
     ? ["Spirited Companion", "Plains"]
     : [basic];
-  const libraryTop = promptMultiAmountScenario
+  const libraryTop = damageAssignmentScenario
+    ? ["Plains"]
+    : promptMultiAmountScenario
     ? ["Mountain"]
     : promptPileScenario
     ? ["Island", "Island", "Island", "Island", "Island"]
@@ -1163,7 +1178,9 @@ function fixtureSeedSchema() {
     : commanderGauntletScenario
     ? Array.from({ length: 24 }, () => "Plains")
     : [basic];
-  const battlefield = blockerFlowScenario || damageAssignmentScenario
+  const battlefield = damageAssignmentScenario
+    ? ["Defensive Formation", "Silvercoat Lion", "Savannah Lions", "Plains"]
+    : blockerFlowScenario
     ? ["Silvercoat Lion", basic]
     : manaRockScenario
     ? [basic, basic]
@@ -1195,9 +1212,9 @@ function fixtureSeedSchema() {
     libraryTop,
     graveyard: [],
     exile: [],
-    aiBattlefield: [blockerFlowScenario || damageAssignmentScenario ? "Memnite" : activatedAbilityScenario ? "Sol Ring" : commanderGauntletScenario ? "Plains" : "Wastes"],
+    aiBattlefield: damageAssignmentScenario ? ["Metalwork Colossus"] : [blockerFlowScenario ? "Memnite" : activatedAbilityScenario ? "Sol Ring" : commanderGauntletScenario ? "Plains" : "Wastes"],
     phase: blockerFlowScenario || damageAssignmentScenario ? "combat" : "precombat-main",
-    step: blockerFlowScenario || damageAssignmentScenario ? "declare-blockers" : "precombat-main",
+    step: blockerFlowScenario ? "declare-blockers" : damageAssignmentScenario ? "combat-damage" : "precombat-main",
     activePlayerId: blockerFlowScenario || damageAssignmentScenario ? aiPlayerId : humanPlayerId,
     priorityPlayerId: humanPlayerId,
     expectedRoutes,
@@ -1300,7 +1317,7 @@ function routeFamiliesRequiredForScenario(input: string) {
   if (input === "prompt-amount") return ["cast_spell", "choose_amount"];
   if (input === "prompt-multi-amount" || input === "prompt-variety-multi-amount") return ["cast_spell", "choose_multi_amount"];
   if (input === "prompt-pile" || input === "prompt-variety-pile") return ["cast_spell", "choose_pile"];
-  if (input === "damage-assignment") return ["damage_assignment"];
+  if (input === "damage-assignment") return ["choose_multi_amount", "damage_assignment"];
   if (input === "activated-ability-stack") return ["activate_ability", "stack_object_seen", "pass_priority"];
   if (input === "triggered-ability-stack") return ["trigger_seen", "stack_object_seen", "pass_priority"];
   return [];
@@ -1507,6 +1524,7 @@ function scenarioModuleFor(input: string): ScenarioModule {
           "fixture_call",
           "direct_state_seeded",
           "seeded_state_verified",
+          "route-family:choose_multi_amount",
           "route-family:damage_assignment"
         ]
       };
@@ -1808,7 +1826,7 @@ function chooseBestAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
         ?? amountActions[0]
       : amountActions[0];
     if (amountAction) {
-      if (promptMultiAmountScenario && amountAction.type === "choose_multi_amount") {
+      if ((promptMultiAmountScenario || damageAssignmentScenario) && amountAction.type === "choose_multi_amount") {
         return withExplicitSmokeMultiAmounts(amountAction, snapshot);
       }
       return amountAction;
@@ -1874,6 +1892,11 @@ function chooseBestAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
 }
 
 function chooseFixtureAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
+  if (damageAssignmentScenario) {
+    const damageAction = chooseDamageAssignmentAction(snapshot);
+    if (damageAction) return damageAction;
+  }
+
   if (blockerFlowScenario) {
     const blocker = snapshot.legalActions?.find((action) => action.type === "declare_blockers");
     if (blocker) return blocker;
@@ -2007,6 +2030,59 @@ function withExplicitSmokeMultiAmounts(action: SmokeAction, snapshot: SmokeSnaps
     ...action,
     amounts: explicitSmokeMultiAmounts(snapshot)
   };
+}
+
+function chooseDamageAssignmentAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
+  const actions = snapshot.legalActions ?? [];
+  if (isDamageAssignmentPromptSnapshot(snapshot)) {
+    damageAssignmentPromptSeen = true;
+    const multiAmount = actions.find((action) => action.type === "choose_multi_amount");
+    if (multiAmount) return withExplicitSmokeMultiAmounts(multiAmount, snapshot);
+
+    const yes = actions.find((action) =>
+      action.type === "answer_yes_no"
+        && (action.confirmed === true || action.commandTemplate?.confirmed === true || /yes/i.test(action.label ?? ""))
+    );
+    if (yes) return yes;
+
+    const amount = actions.find((action) => action.type === "choose_amount" && damageAssignmentAmount(action) > 0)
+      ?? actions.find((action) => action.type === "choose_amount");
+    if (amount) {
+      const chosen = damageAssignmentAmount(amount);
+      return {
+        ...amount,
+        amount: chosen,
+        commandTemplate: {
+          ...(amount.commandTemplate ?? {}),
+          amount: chosen
+        }
+      };
+    }
+  }
+
+  const blocker = actions.find((action) =>
+    action.type === "declare_blockers"
+      && /metalwork colossus/i.test(action.label ?? action.cardName ?? "")
+      && ((action.blockers?.length ?? action.commandTemplate?.blockers?.length ?? 0) > 1 || /with \d+ creatures/i.test(action.label ?? ""))
+  ) ?? actions.find((action) =>
+    action.type === "declare_blockers" && /metalwork colossus/i.test(action.label ?? action.cardName ?? "")
+  ) ?? actions.find((action) => action.type === "declare_blockers");
+  if (blocker) return blocker;
+
+  return actions.find((action) =>
+    action.type === "pass_priority"
+      || action.type === "pass_until_response"
+      || action.type === "advance_phase"
+      || action.type === "pass_until_next_turn"
+  ) ?? actions.find((action) => action.type === "declare_blockers");
+}
+
+function damageAssignmentAmount(action: SmokeAction) {
+  const raw = action.amount ?? action.commandTemplate?.amount ?? Number(action.choiceIds?.[0]);
+  if (Number.isFinite(raw) && raw > 0) {
+    return Number(raw);
+  }
+  return 1;
 }
 
 function explicitSmokeMultiAmounts(snapshot: SmokeSnapshot) {
@@ -2771,6 +2847,10 @@ function recordRouteFamilyForAction(action: SmokeAction) {
   if (action.type === "choose_target") markRouteFamily("choose_target");
   if (action.type === "answer_yes_no") markRouteFamily("answer_yes_no");
   if (action.type === "pay_cost") markRouteFamily("pay_cost");
+  if (damageAssignmentScenario && isDamageAssignmentPromptAction(action)) {
+    markRouteFamily("damage_assignment");
+    damageAssignmentChoiceSubmitted = true;
+  }
   if (action.type === "commander_replacement") markRouteFamily("commander_replacement");
   if (action.type === "play_mana" || action.type === "choose_mana") markRouteFamily("pay_cost");
   if (["pass_priority", "pass_until_response", "pass_until_next_turn", "advance_phase"].includes(action.type)) {
@@ -2800,6 +2880,10 @@ function recordRouteFamilyForPrompt(snapshot: SmokeSnapshot) {
   if (expected.includes("order") || promptText.includes("order")) markRouteFamily("order_triggers/order_items");
   if (expected.includes("yes") || expected.includes("confirmation")) markRouteFamily("answer_yes_no");
   if (expected.includes("pay") || expected.includes("mana") || promptText.includes("pay")) markRouteFamily("pay_cost");
+  if (damageAssignmentScenario && isDamageAssignmentPromptSnapshot(snapshot)) {
+    damageAssignmentPromptSeen = true;
+    markRouteFamily("damage_assignment");
+  }
   if (
     expected.includes("commander")
       || promptText.includes("commander replacement")
@@ -2830,6 +2914,10 @@ function recordRouteFamilyForTransition(previous: SmokeSnapshot, next: SmokeSnap
   }
   if (promptText.includes("pay") || promptText.includes("mana")) {
     markRouteFamily("pay_cost");
+  }
+  if (damageAssignmentScenario && (isDamageAssignmentPromptSnapshot(previous) || isDamageAssignmentPromptSnapshot(next))) {
+    damageAssignmentPromptSeen = true;
+    markRouteFamily("damage_assignment");
   }
 }
 
@@ -3048,6 +3136,7 @@ function scenarioSatisfied() {
   if (scenario === "prompt-amount") return missingRouteFamilies().length === 0 && promptAmountChoiceSubmitted;
   if (promptMultiAmountScenario) return missingRouteFamilies().length === 0 && promptMultiAmountChoiceSubmitted && promptMultiAmountChoiceResolved;
   if (promptPileScenario) return missingRouteFamilies().length === 0 && promptPileChoiceSubmitted && promptPileChoiceResolved;
+  if (damageAssignmentScenario) return missingRouteFamilies().length === 0 && damageAssignmentPromptSeen && damageAssignmentChoiceSubmitted;
   if (scenario === "activated-ability-stack" || scenario === "triggered-ability-stack") return missingRouteFamilies().length === 0;
   if (scenario === "commander-gauntlet") return commanderGauntletMissingSteps().length === 0;
   return false;
@@ -3066,6 +3155,29 @@ function isManaOrPaymentPrompt(snapshot: SmokeSnapshot) {
   if (!prompt) return false;
   const expected = `${prompt.responseCommand?.type ?? ""} ${prompt.responseKind ?? ""} ${prompt.method ?? ""} ${prompt.message ?? ""}`.toLowerCase();
   return expected.includes("mana") || expected.includes("pay") || expected.includes("cost");
+}
+
+function isDamageAssignmentPromptSnapshot(snapshot: SmokeSnapshot) {
+  const prompt = snapshot.promptEnvelopeV2;
+  if (!prompt) return false;
+  const text = `${snapshot.promptText ?? ""} ${prompt.method ?? ""} ${prompt.responseKind ?? ""} ${prompt.responseCommand?.type ?? ""} ${prompt.message ?? ""}`.toLowerCase();
+  const combatDamageMultiAmount = damageAssignmentScenario
+    && snapshot.phase === "combat"
+    && snapshot.step === "combat-damage"
+    && prompt.method === "GAME_GET_MULTI_AMOUNT"
+    && prompt.responseCommand?.type === "choose_multi_amount"
+    && (prompt.multiAmounts?.length ?? 0) > 1;
+  return text.includes("assign damage to")
+    || text.includes("assign its combat damage")
+    || text.includes("assign combat damage")
+    || text.includes("combat damage divided")
+    || combatDamageMultiAmount;
+}
+
+function isDamageAssignmentPromptAction(action: SmokeAction) {
+  const text = `${action.type ?? ""} ${action.label ?? ""} ${action.responseKind ?? ""} ${action.commandTemplate?.type ?? ""}`.toLowerCase();
+  return (action.type === "answer_yes_no" || action.type === "choose_amount" || action.type === "choose_multi_amount")
+    && (text.includes("assign damage") || text.includes("combat damage") || damageAssignmentPromptSeen);
 }
 
 function isGameOverSnapshot(snapshot: SmokeSnapshot) {

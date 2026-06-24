@@ -123,10 +123,10 @@ ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:1717
 
 `commander-full-ai` runs the deterministic fixture scenarios as separate real-XMage smokes and writes `build_output/smoke/smoke-report-commander-full-ai.json`. It should report `source: "xmage-java-bridge"`, `directStateSeeded: true`, and `seededStateVerified: true` for all passing fixture scenarios, then fail the readiness verdict if any required scenario still has `stepsBlocked`.
 
-Current full-AI blockers:
+Current full-AI automated route status:
 
-- `prompt-variety`: aggregate route-family proof is now green. The June 24, 2026 aggregate run used real `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, `allRequiredScenariosPassed: true`, `routeFamiliesMissing: []`, and `stepsBlocked: []` by running activated-stack, triggered-stack, mode, order, amount, multi-amount, and pile child smokes. The earlier Austere Command attempt was intentionally left as a non-proof because XMage surfaced it as `GAME_CHOOSE_ABILITY:ability`.
-- `commander-full-ai`: current aggregate run fails closed only on `damage_assignment`. The fixture lifecycle is now more stable because Commander game creation waits for the human command-zone commander when that proof is required, fixture mutation happens under the live `Game` monitor, and child smoke reports are freshness-checked instead of trusting stale JSON artifacts.
-- `damage-assignment`: probe fixture exists, but no bridge/shared/Swift/iOS `damage_assignment` route is implemented or live-proven.
+- `prompt-variety`: aggregate route-family proof is green. The June 24, 2026 aggregate run used real `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, `allRequiredScenariosPassed: true`, `routeFamiliesMissing: []`, and `stepsBlocked: []` by running activated-stack, triggered-stack, mode, order, amount, multi-amount, and pile child smokes. The earlier Austere Command attempt was intentionally left as a non-proof because XMage surfaced it as `GAME_CHOOSE_ABILITY:ability`.
+- `damage-assignment`: deterministic route proof is green. The June 24, 2026 run used a real combat-damage fixture; XMage exposed `GAME_GET_MULTI_AMOUNT:multi_amount`, the bridge classified it as `damage_assignment`, and the report ended with `source: "xmage-java-bridge"`, `directStateSeeded: true`, `seededStateVerified: true`, `routeFamiliesMissing: []`, and `stepsBlocked: []`.
+- `commander-full-ai`: current aggregate run is green with `allRequiredScenariosPassed: true`, `routeFamiliesMissing: []`, `stepsBlocked: []`, `iOSRequiredRoutesMissing: []`, and `readinessVerdict: "full-commander-vs-ai-ready"`. This is automated real-XMage route proof; real iPhone manual QA is still required before product release.
 
-Representative fixture candidate for the next full-AI blocker is a deterministic damage-assignment state. Keep using Commander-legal fixture shells and keep production routing generic.
+Keep using Commander-legal fixture shells and keep production routing generic; fixture cards are representative proof inputs, not card-specific production behavior.
