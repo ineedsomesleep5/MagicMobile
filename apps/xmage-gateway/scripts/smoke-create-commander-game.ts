@@ -35,6 +35,7 @@ const promptModeScenario = scenario === "prompt-mode";
 const promptOrderScenario = scenario === "prompt-order";
 const promptAmountScenario = scenario === "prompt-amount";
 const promptMultiAmountScenario = scenario === "prompt-multi-amount" || scenario === "prompt-variety-multi-amount";
+const promptPileScenario = scenario === "prompt-pile" || scenario === "prompt-variety-pile";
 const activatedAbilityScenario = scenario === "activated-ability-stack";
 const triggeredAbilityScenario = scenario === "triggered-ability-stack";
 const fixtureScenario = scenarioModule.usesFixture;
@@ -47,7 +48,8 @@ const fixtureCallRequired = commanderGauntletScenario
   || promptModeScenario
   || promptOrderScenario
   || promptAmountScenario
-  || promptMultiAmountScenario;
+  || promptMultiAmountScenario
+  || promptPileScenario;
 const fixtureGateRequired = useFixtureHarness || fixtureCallRequired;
 const aiDifficulty = process.env.XMAGE_SMOKE_AI_DIFFICULTY ?? "normal";
 const routeFamiliesRequired = routeFamiliesRequiredForScenario(scenario);
@@ -63,6 +65,8 @@ let promptOrderChoiceSubmitted = false;
 let promptAmountChoiceSubmitted = false;
 let promptMultiAmountChoiceSubmitted = false;
 let promptMultiAmountChoiceResolved = false;
+let promptPileChoiceSubmitted = false;
+let promptPileChoiceResolved = false;
 const promptSamples: any[] = [];
 
 if (process.env.XMAGE_SMOKE_SELFTEST === "fixture-unavailable") {
@@ -136,6 +140,8 @@ const human = fixtureScenario
     ? promptAmountFixtureDeck()
     : promptMultiAmountScenario
     ? promptMultiAmountFixtureDeck()
+    : promptPileScenario
+    ? promptPileFixtureDeck()
     : commanderFixtureDeck("Isamaru, Hound of Konda", "Plains")
   : generateBracketThreeCommanderDeck({ seed: `${seed}:human`, playerId: humanPlayerId }).deck;
 const ai = fixtureScenario
@@ -374,6 +380,9 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
     if (promptMultiAmountScenario && action.type === "choose_multi_amount") {
       promptMultiAmountChoiceSubmitted = true;
     }
+    if (promptPileScenario && action.type === "choose_pile") {
+      promptPileChoiceSubmitted = true;
+    }
     recordRouteFamilyForTransition(previous, snapshot);
     recordCommanderState(snapshot);
     recordCoverage(snapshot);
@@ -483,7 +492,7 @@ if (scenario === "commander-gauntlet") {
   }
 }
 
-if (activatedAbilityScenario || triggeredAbilityScenario || promptModeScenario || promptOrderScenario || promptAmountScenario || promptMultiAmountScenario || scenario === "prompt-variety" || scenario === "damage-assignment") {
+if (activatedAbilityScenario || triggeredAbilityScenario || promptModeScenario || promptOrderScenario || promptAmountScenario || promptMultiAmountScenario || promptPileScenario || scenario === "prompt-variety" || scenario === "damage-assignment") {
   const missing = missingRouteFamilies();
   if (missing.length > 0) {
     writeSmokeReport({
@@ -558,6 +567,30 @@ if (promptMultiAmountScenario && !promptMultiAmountChoiceResolved) {
   );
 }
 
+if (promptPileScenario && !promptPileChoiceSubmitted) {
+  writeSmokeReport({
+    ...baseSummaryReport(snapshot),
+    failedStep: "prompt-pile",
+    failureReason: "choose_pile was observed only as a prompt family or not observed; no real pile response was submitted."
+  });
+  throw new Error(
+    "[Smoke] prompt-pile did not submit a real XMage choose_pile response.\n"
+      + smokeDebug("prompt-pile final snapshot", snapshot)
+  );
+}
+
+if (promptPileScenario && !promptPileChoiceResolved) {
+  writeSmokeReport({
+    ...baseSummaryReport(snapshot),
+    failedStep: "prompt-pile",
+    failureReason: "choose_pile was submitted but XMage kept or reissued the pile prompt; no authoritative resolved snapshot was observed."
+  });
+  throw new Error(
+    "[Smoke] prompt-pile submitted but did not resolve through real XMage.\n"
+      + smokeDebug("prompt-pile final snapshot", snapshot)
+  );
+}
+
 if (stepCount >= maxStepsCount) {
   throw new Error(
     `[Smoke] hit maximum loop safeguards (${maxStepsCount} steps).\n`
@@ -603,6 +636,7 @@ async function runCommanderFullAiGate() {
     "prompt-order",
     "prompt-amount",
     "prompt-multi-amount",
+    "prompt-pile",
     "prompt-variety",
     "damage-assignment"
   ];
@@ -798,6 +832,10 @@ function baseSummaryReport(snapshot: SmokeSnapshot) {
       choiceSubmitted: promptMultiAmountChoiceSubmitted,
       choiceResolved: promptMultiAmountChoiceResolved
     } : undefined,
+    promptPile: promptPileScenario ? {
+      choiceSubmitted: promptPileChoiceSubmitted,
+      choiceResolved: promptPileChoiceResolved
+    } : undefined,
     commanderTaxChanges,
     commanderDamageChanges,
     players: snapshot.players?.map((player: SmokePlayer) => ({
@@ -921,11 +959,15 @@ function fixtureSeedSchema() {
     ? ["Wheel of Misfortune"]
     : promptMultiAmountScenario
     ? ["Manamorphose"]
+    : promptPileScenario
+    ? ["Fact or Fiction"]
     : triggeredAbilityScenario
     ? ["Spirited Companion", "Plains"]
     : [basic];
   const libraryTop = promptMultiAmountScenario
     ? ["Mountain"]
+    : promptPileScenario
+    ? ["Island", "Island", "Island", "Island", "Island"]
     : promptAmountScenario
     ? Array.from({ length: 7 }, () => "Mountain")
     : commanderGauntletScenario
@@ -945,6 +987,8 @@ function fixtureSeedSchema() {
     ? ["Mountain", "Mountain", "Mountain"]
     : promptMultiAmountScenario
     ? ["Mountain", "Mountain"]
+    : promptPileScenario
+    ? ["Island", "Island", "Island", "Island"]
     : triggeredAbilityScenario
     ? [basic, basic]
     : [basic];
@@ -1062,6 +1106,7 @@ function routeFamiliesRequiredForScenario(input: string) {
   if (input === "prompt-order") return ["order_triggers/order_items"];
   if (input === "prompt-amount") return ["cast_spell", "choose_amount"];
   if (input === "prompt-multi-amount" || input === "prompt-variety-multi-amount") return ["cast_spell", "choose_multi_amount"];
+  if (input === "prompt-pile" || input === "prompt-variety-pile") return ["cast_spell", "choose_pile"];
   if (input === "damage-assignment") return ["damage_assignment"];
   if (input === "activated-ability-stack") return ["activate_ability", "stack_object_seen", "pass_priority"];
   if (input === "triggered-ability-stack") return ["trigger_seen", "stack_object_seen", "pass_priority"];
@@ -1246,6 +1291,20 @@ function scenarioModuleFor(input: string): ScenarioModule {
           "route-family:choose_multi_amount"
         ]
       };
+    case "prompt-pile":
+    case "prompt-variety-pile":
+      return {
+        id: "prompt-pile",
+        usesFixture: true,
+        scenarioSet: ["prompt-pile"],
+        requiredSteps: [
+          "fixture_call",
+          "direct_state_seeded",
+          "seeded_state_verified",
+          "route-family:cast_spell",
+          "route-family:choose_pile"
+        ]
+      };
     case "damage-assignment":
       return {
         id: "damage-assignment",
@@ -1310,7 +1369,7 @@ function scenarioModuleFor(input: string): ScenarioModule {
       throw new Error(
         `Unknown XMAGE_SMOKE_SCENARIO "${input}". Expected core-flow, mana-rock, search-select, `
           + "commander-replacement-tax, commander-damage, blocker-flow, prompt-variety, "
-          + "prompt-mode, prompt-order, prompt-amount, prompt-multi-amount, activated-ability-stack, triggered-ability-stack, damage-assignment, fixture-smoke, "
+          + "prompt-mode, prompt-order, prompt-amount, prompt-multi-amount, prompt-pile, activated-ability-stack, triggered-ability-stack, damage-assignment, fixture-smoke, "
           + "commander-gauntlet, or commander-full-ai."
       );
   }
@@ -1424,6 +1483,17 @@ function promptMultiAmountFixtureDeck() {
     entries: [
       { cardName: "Manamorphose", quantity: 1, section: "deck" },
       { cardName: "Mountain", quantity: 98, section: "deck" }
+    ]
+  };
+}
+
+function promptPileFixtureDeck() {
+  return {
+    name: "Prompt Pile Fixture",
+    commander: { cardName: "Kenrith, the Returned King", quantity: 1, section: "commander" },
+    entries: [
+      { cardName: "Fact or Fiction", quantity: 1, section: "deck" },
+      { cardName: "Island", quantity: 98, section: "deck" }
     ]
   };
 }
@@ -1683,6 +1753,23 @@ function chooseFixtureAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
         || /mountain|red|\{r\}/i.test(action.cardName ?? action.label ?? ""))
     );
     if (makeRed) return makeRed;
+  }
+
+  if (promptPileScenario) {
+    const choosePile = actions.find((action) => action.type === "choose_pile");
+    if (choosePile) return choosePile;
+
+    const castFact = actions.find((action) =>
+      action.type === "cast_spell" && /fact or fiction/i.test(action.cardName ?? action.label ?? "")
+    );
+    if (castFact) return castFact;
+
+    const makeBlue = actions.find((action) =>
+      action.type === "make_mana"
+      && ((action.producedMana ?? action.commandTemplate?.producedMana ?? []).includes("U")
+        || /island|blue|\{u\}/i.test(action.cardName ?? action.label ?? ""))
+    );
+    if (makeBlue) return makeBlue;
   }
 
   const battlefieldNames = humanZone(snapshot, "battlefield").map((entry) => entry.card?.name ?? "");
@@ -2690,6 +2777,13 @@ function recordCoverage(snapshot: SmokeSnapshot) {
     promptMultiAmountChoiceResolved = true;
   }
   if (
+    promptPileScenario
+      && promptPileChoiceSubmitted
+      && (snapshot.promptEnvelopeV2?.responseKind ?? "") !== "pile"
+  ) {
+    promptPileChoiceResolved = true;
+  }
+  if (
     triggeredAbilityScenario
       && (
         humanZone(snapshot, "battlefield").some((entry) => /spirited companion/i.test(entry.card?.name ?? ""))
@@ -2706,7 +2800,7 @@ function recordCoverage(snapshot: SmokeSnapshot) {
 }
 
 function recordPromptSample(snapshot: SmokeSnapshot) {
-  if (!(promptOrderScenario || promptModeScenario || promptAmountScenario || promptMultiAmountScenario || scenario === "prompt-variety" || damageAssignmentScenario)) {
+  if (!(promptOrderScenario || promptModeScenario || promptAmountScenario || promptMultiAmountScenario || promptPileScenario || scenario === "prompt-variety" || damageAssignmentScenario)) {
     return;
   }
   if (!snapshot.promptEnvelopeV2 || promptSamples.length >= 10) {
@@ -2726,6 +2820,7 @@ function recordPromptSample(snapshot: SmokeSnapshot) {
       targetIds: action.targetIds,
       orderedIds: action.orderedIds,
       choiceIds: action.choiceIds,
+      pile: action.pile,
       cardName: action.cardName,
       responseKind: action.responseKind
     }))
@@ -2759,6 +2854,7 @@ function scenarioSatisfied() {
   if (scenario === "prompt-order") return missingRouteFamilies().length === 0 && promptOrderChoiceSubmitted;
   if (scenario === "prompt-amount") return missingRouteFamilies().length === 0 && promptAmountChoiceSubmitted;
   if (promptMultiAmountScenario) return missingRouteFamilies().length === 0 && promptMultiAmountChoiceSubmitted && promptMultiAmountChoiceResolved;
+  if (promptPileScenario) return missingRouteFamilies().length === 0 && promptPileChoiceSubmitted && promptPileChoiceResolved;
   if (scenario === "activated-ability-stack" || scenario === "triggered-ability-stack") return missingRouteFamilies().length === 0;
   if (scenario === "commander-gauntlet") return commanderGauntletMissingSteps().length === 0;
   return false;

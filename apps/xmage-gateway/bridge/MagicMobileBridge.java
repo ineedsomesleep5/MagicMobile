@@ -1930,6 +1930,15 @@ public final class MagicMobileBridge implements MageClient {
             action.add("playerIds", choiceIds);
             action.add("validPlayerIds", choiceIds.deepCopy());
             template.add("playerIds", choiceIds.deepCopy());
+        } else if ("choose_pile".equals(type)) {
+            try {
+                int pile = Integer.parseInt(choiceId);
+                action.addProperty("pile", pile);
+                template.addProperty("pile", pile);
+            } catch (NumberFormatException ignored) {
+                action.add("choiceIds", choiceIds);
+                template.add("choiceIds", choiceIds.deepCopy());
+            }
         } else if ("choose_amount".equals(type) || "play_x_mana".equals(type)) {
             try {
                 action.addProperty("amount", Integer.parseInt(choiceId));
@@ -3156,6 +3165,14 @@ public final class MagicMobileBridge implements MageClient {
             defaultCards(schema, "humanHand", "Manamorphose");
             defaultBattlefield(schema, "humanBattlefield", "Mountain", "Mountain");
             defaultCards(schema, "humanLibraryTop", "Mountain");
+            defaultBattlefield(schema, "aiBattlefield", "Wastes");
+            schema.addProperty("turn", 1);
+            return;
+        }
+        if ("prompt-pile".equals(fixtureName) || "prompt-variety-pile".equals(fixtureName)) {
+            defaultCards(schema, "humanHand", "Fact or Fiction");
+            defaultBattlefield(schema, "humanBattlefield", "Island", "Island", "Island", "Island");
+            defaultCards(schema, "humanLibraryTop", "Island", "Island", "Island", "Island", "Island");
             defaultBattlefield(schema, "aiBattlefield", "Wastes");
             schema.addProperty("turn", 1);
             return;

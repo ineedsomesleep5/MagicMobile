@@ -23,11 +23,12 @@ Latest CI/docs validation pass on June 23, 2026. Treat the smoke details below a
 - `XMAGE_SMOKE_SCENARIO=commander-replacement-tax` reproved commander tax. Commander damage is separately covered by the targeted `commander-damage` fixture.
 - `XMAGE_SMOKE_SCENARIO=triggered-ability-stack` passed with direct server-side fixture seeding, `routeFamiliesMissing: []`, and empty `stepsBlocked`.
 - `XMAGE_SMOKE_SCENARIO=mana-rock` now uses a Commander-legal singleton fixture deck (`Sol Ring` x1, `Plains` x98), direct server-side seeding, and passed with real `source: "xmage-java-bridge"`, `directStateSeeded: true`, final `bridgeRevision: 15`, final `xmageCycle: 24`, and `stepsBlocked: []`.
-- `XMAGE_SMOKE_SCENARIO=prompt-variety` is still not green. Current fixture-gated smoke uses real XMage and direct seeding, but the broader prompt-variety family still needs targeted proof for pile. Amount is separately proven by `XMAGE_SMOKE_SCENARIO=prompt-amount`; multi-amount is separately proven by `XMAGE_SMOKE_SCENARIO=prompt-multi-amount`.
+- `XMAGE_SMOKE_SCENARIO=prompt-variety` is still not green as an aggregate. Current fixture-gated targeted prompt smokes use real XMage and direct seeding; amount is separately proven by `XMAGE_SMOKE_SCENARIO=prompt-amount`, multi-amount by `XMAGE_SMOKE_SCENARIO=prompt-multi-amount`, and pile by `XMAGE_SMOKE_SCENARIO=prompt-pile`.
 - `XMAGE_SMOKE_SCENARIO=prompt-mode` is a targeted mode-choice proof. The latest June 23, 2026 run used real XMage, `directStateSeeded: true`, `seededStateVerified: true`, `actionsByType.choose_mode: 1`, final `bridgeRevision: 51`, final `xmageCycle: 91`, and empty `stepsBlocked` with Lavabrink Venturer's upstream `ChooseModeEffect`.
 - `XMAGE_SMOKE_SCENARIO=prompt-order` is a targeted trigger/item ordering proof. The latest June 24, 2026 run used real XMage, `directStateSeeded: true`, `seededStateVerified: true`, `promptFamiliesSeen: ["GAME_PLAY_MANA:mana", "GAME_TARGET:order"]`, `actionsByType.order_items: 1`, final `bridgeRevision: 29`, final `xmageCycle: 50`, and empty `stepsBlocked` with Soul Warden plus Spirited Companion.
 - `XMAGE_SMOKE_SCENARIO=prompt-amount` is a targeted amount-choice proof. The latest June 24, 2026 run used real XMage, `directStateSeeded: true`, `seededStateVerified: true`, `promptFamiliesSeen: ["GAME_GET_AMOUNT:amount"]`, `actionsByType.choose_amount: 1`, final `bridgeRevision: 18`, final `xmageCycle: 24`, and empty `stepsBlocked` with Wheel of Misfortune's upstream `Player.getAmount(...)` callback.
 - `XMAGE_SMOKE_SCENARIO=prompt-multi-amount` is a targeted multi-amount proof. The latest June 24, 2026 run used real XMage, `directStateSeeded: true`, `seededStateVerified: true`, `promptFamiliesSeen: ["GAME_GET_MULTI_AMOUNT:multi_amount"]`, `actionsByType.choose_multi_amount: 1`, final `bridgeRevision: 18`, final `xmageCycle: 29`, and empty `stepsBlocked` with Manamorphose's upstream `AddManaInAnyCombinationEffect`.
+- `XMAGE_SMOKE_SCENARIO=prompt-pile` is a targeted pile proof. The latest June 24, 2026 run used real XMage, `directStateSeeded: true`, `seededStateVerified: true`, `promptFamiliesSeen: ["GAME_CHOOSE_PILE:pile"]`, `actionsByType.choose_pile: 1`, final `bridgeRevision: 20`, final `xmageCycle: 33`, and empty `stepsBlocked` with Fact or Fiction's upstream `RevealAndSeparatePilesEffect`.
 - `XMAGE_SMOKE_SCENARIO=commander-full-ai` is the full Commander vs AI truth gate. It must fail until prompt-variety and damage-assignment are implemented/proven or explicitly excluded with safe fallbacks.
 - `XMAGE_SMOKE_MANA_ROCK_CARD="Arcane Signet" pnpm smoke:xmage:mana-rock` passed with real cast/payment/resolution evidence. Keep this as generic routing proof, not a card-specific production path.
 - `xcodebuild test -project apps/ios/MagicMobileiOS.xcodeproj -scheme MagicMobile -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' -only-testing:MagicMobileTests -quiet` exited 0 for the iOS unit test target. This is not real iPhone product success.
@@ -58,7 +59,7 @@ Historical/local notes from earlier runs; rerun before treating any item as curr
 
 Current pause blocker:
 
-- Commander damage and blocker assignment are now live-verified by targeted fixtures, but prompt-variety remains unproven. Real iPhone manual QA is still unchecked.
+- Commander damage, blocker assignment, and targeted prompt slices are now live-verified by targeted fixtures, but aggregate prompt-variety and damage assignment remain incomplete. Real iPhone manual QA is still unchecked.
 - Earlier AI-priority stalls are now sharper: the bridge keeps the XMage remoting session warm with periodic `Session.ping()`, and the smoke harness fails as `bridge-disconnected` if health drops while waiting for AI.
 
 ## Preflight
@@ -96,6 +97,7 @@ Current pause blocker:
   ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=prompt-order XMAGE_USE_FIXTURE=true pnpm smoke:xmage
   ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=prompt-amount XMAGE_USE_FIXTURE=true pnpm smoke:xmage
   ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=prompt-multi-amount XMAGE_USE_FIXTURE=true pnpm smoke:xmage
+  ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=prompt-pile XMAGE_USE_FIXTURE=true pnpm smoke:xmage
   ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=prompt-variety XMAGE_USE_FIXTURE=true pnpm smoke:xmage
   ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=damage-assignment XMAGE_USE_FIXTURE=true pnpm smoke:xmage
   ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_GATEWAY_URL=http://localhost:17171 XMAGE_SMOKE_SCENARIO=commander-full-ai XMAGE_USE_FIXTURE=true pnpm smoke:xmage
@@ -187,7 +189,7 @@ Remaining live-coverage gaps:
 - player-scoped snapshots are still required before human-vs-human or pods.
 - damage assignment prompts have not been live-fixtured yet. The current probe can seed a combat state, but the bridge/shared/Swift/iOS `damage_assignment` route is not implemented and must be treated as a full-AI blocker.
 - `mana-rock` is targeted-fixture proven with `Sol Ring`, and the optional `Arcane Signet` variant now passes as generic route proof. Manual phone QA still needs to confirm the same flow through the iOS UI.
-- full `commander-gauntlet` now has deterministic real-XMage setup support for singleton test cards and reached commander cast, replacement, and recast-with-tax. Commander damage, blocker assignment, and prompt-variety remain later-scope unless explicitly moved into the alpha gate, with commander damage, blocker assignment, and targeted prompt-mode/order/amount/multi-amount slices separately targeted-fixture proven.
+- full `commander-gauntlet` now has deterministic real-XMage setup support for singleton test cards and reached commander cast, replacement, and recast-with-tax. Commander damage, blocker assignment, and prompt-variety remain later-scope unless explicitly moved into the alpha gate, with commander damage, blocker assignment, and targeted prompt-mode/order/amount/multi-amount/pile slices separately targeted-fixture proven.
 
 ## Commander Gauntlet Acceptance Loop
 

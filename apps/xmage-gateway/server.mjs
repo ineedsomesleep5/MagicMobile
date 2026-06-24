@@ -468,6 +468,7 @@ function fixtureExpectedRouteCoverage(scenario) {
   if (scenario === "prompt-order" || scenario === "prompt-variety-order") return [...common, "order_triggers", "order_items", "stack_objects"];
   if (scenario === "prompt-amount" || scenario === "prompt-variety-amount") return [...common, "choose_amount", "stack_objects"];
   if (scenario === "prompt-multi-amount" || scenario === "prompt-variety-multi-amount") return [...common, "choose_multi_amount", "stack_objects"];
+  if (scenario === "prompt-pile" || scenario === "prompt-variety-pile") return [...common, "choose_pile", "stack_objects"];
   if (scenario === "combat-blockers" || scenario === "blocker-flow") return [...common, "declare_attackers", "declare_blockers"];
   if (scenario === "damage-assignment") return [...common, "declare_attackers", "declare_blockers", "damage_assignment"];
   return [
@@ -569,6 +570,16 @@ function fixtureHumanDeck(scenario) {
       entries: [
         { cardName: "Manamorphose", quantity: 1, section: "deck" },
         { cardName: "Mountain", quantity: 98, section: "deck" }
+      ]
+    };
+  }
+  if (scenario === "prompt-pile" || scenario === "prompt-variety-pile") {
+    return {
+      name: "Prompt Pile Fixture",
+      commander: { cardName: "Kenrith, the Returned King", quantity: 1, section: "commander" },
+      entries: [
+        { cardName: "Fact or Fiction", quantity: 1, section: "deck" },
+        { cardName: "Island", quantity: 98, section: "deck" }
       ]
     };
   }

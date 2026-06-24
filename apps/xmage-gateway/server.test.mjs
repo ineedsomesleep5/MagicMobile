@@ -561,6 +561,17 @@ describe("xmage gateway", () => {
     assert.equal(entries.find((entry) => entry.cardName === "Plains").quantity, 98);
   });
 
+  it("builds prompt-pile fixtures with a legal singleton proof spell", () => {
+    const fixture = commanderFixtureConfig("prompt-pile", { seed: "unit" });
+    const entries = fixture.config.humanDeck.entries;
+
+    assert.equal(fixture.schema.scenarioName, "prompt-pile");
+    assert.equal(fixture.config.humanDeck.commander.cardName, "Kenrith, the Returned King");
+    assert.equal(entries.find((entry) => entry.cardName === "Fact or Fiction").quantity, 1);
+    assert.equal(entries.find((entry) => entry.cardName === "Island").quantity, 98);
+    assert.equal(fixture.schema.expectedRouteCoverage.includes("choose_pile"), true);
+  });
+
   it("keeps the fixture smoke gate report-shaped and fail-fast", () => {
     const smokeSource = readFileSync(new URL("./scripts/smoke-create-commander-game.ts", import.meta.url), "utf8");
 
@@ -591,9 +602,12 @@ describe("xmage gateway", () => {
     assert.match(smokeSource, /triggered-ability-stack/);
     assert.match(smokeSource, /activatedAbilityFixtureDeck/);
     assert.match(smokeSource, /triggeredAbilityFixtureDeck/);
+    assert.match(smokeSource, /promptPileFixtureDeck/);
     assert.match(smokeSource, /Seal of Cleansing/);
     assert.match(smokeSource, /Isamaru, Hound of Konda/);
     assert.match(smokeSource, /Spirited Companion/);
+    assert.match(smokeSource, /Fact or Fiction/);
+    assert.match(smokeSource, /promptPileChoiceResolved/);
     assert.match(smokeSource, /function isGameOverSnapshot/);
     assert.match(smokeSource, /Game ended: XMage reported GAME_OVER/);
     for (const family of [

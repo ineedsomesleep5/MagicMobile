@@ -21,6 +21,7 @@
     "smoke:xmage:activated-stack": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=activated-ability-stack XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
     "smoke:xmage:triggered-stack": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=triggered-ability-stack XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
     "smoke:xmage:prompt-mode": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=prompt-mode XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
+    "smoke:xmage:prompt-pile": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=prompt-pile XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
     "smoke:xmage:prompt-variety": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=prompt-variety XMAGE_USE_FIXTURE=true pnpm smoke:xmage"
   },
   "dependencies": {
