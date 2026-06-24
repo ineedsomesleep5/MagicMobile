@@ -31,7 +31,7 @@ The implementation goal is not a visual redesign. The goal is to stop critical g
 - The player bottom zone is overloaded by player HUD, mana HUD, player lands, selected hand card lift, drag target highlight, and pending toast.
 - The hand fan has dynamic spread, scale, rotation, and selected-card lift. Its visual bounds exceed `handFrameHeight`, so nearby bottom HUD and action panel calculations can be optimistic.
 - Battlefield rows horizontally scroll and use negative card spacing. This preserves access to wide boards, but dense rows can still hide board state because all rows share a small vertical budget.
-- `UniversalPromptActionPanel` mixes critical actions, optional surfaces, mini zone previews, and prompt-specific controls in one scroll view. It can be correct functionally but still feel crowded because high-priority buttons are not visually separated from secondary surfaces.
+- `UniversalPromptActionPanel` keeps critical actions, optional surfaces, and prompt-specific controls in one right dock. The current implementation now orders prompt/selected/pass/action controls before secondary zone surfaces, but dense prompt states still need visual and touch QA on hardware.
 - Inspector and log are floating overlays without reserved detail space. They can cover battlefield rows or the right dock depending on current card/log state.
 - Zone surfaces are duplicated conceptually: stack can appear as a battlefield peek, a surfaces chip/mini row, a sheet, and possibly prompt text. This adds cognitive and spatial noise.
 
@@ -73,7 +73,7 @@ Rules:
 - This is the only permanent right-side action panel.
 - `UniversalPromptActionPanel` should fill this rect and keep internal scroll.
 - Primary pass/confirm/cast actions should remain at the top of the panel or be repeated in `bottomActionRect` when available.
-- `MobileSurfacesPanel` should be collapsible or placed below primary prompt controls, not above them, when a prompt is active.
+- `MobileSurfacesPanel` should stay below primary prompt controls when a prompt is active. It now exposes Stack, Command, Graveyard, Exile, count-only Library, and revealed/looked-at sheets when XMage exposes those zones.
 
 ### `phaseRailRect`
 
@@ -275,7 +275,7 @@ Compact fallback rules:
 - Collapse diagnostics to one status chip in `topStatusRect`; move detailed revision/cycle/source data to log/detail.
 - Hide persistent stack peek if stack is empty; if non-empty, show only a stack chip in `centerPromptStackRect`.
 - Move `ManaPoolHUD` into `bottomActionRect` unless a pending action is active.
-- Make `UniversalPromptActionPanel` start with primary prompt/actions and place surfaces below.
+- Keep `UniversalPromptActionPanel` ordered with primary prompt/actions first and secondary surfaces below.
 - Use one persistent overlay at a time: pending, inspector, or log/detail.
 
 ## Pass/Fail Criteria
@@ -333,7 +333,7 @@ Suggested tests:
 2. Move existing SwiftUI views into those rects with `.frame(width:height:)` and `.position(x: rect.midX, y: rect.midY)` as a low-risk first pass.
 3. Combine the prompt pill, stack peek, and pending toast behavior so only one center/bottom prompt surface is persistent at a time.
 4. Treat diagnostics, card inspector, log, and full zones as detail surfaces instead of permanent battlefield overlays.
-5. Reorder `UniversalPromptActionPanel` so critical prompt/action controls appear before `MobileSurfacesPanel` whenever human input is required.
+5. Re-run screenshot QA after any `UniversalPromptActionPanel` edits to confirm critical prompt/action controls still appear before zone surfaces whenever human input is required.
 6. Add pure layout unit tests before or alongside visual tuning.
 
 ## Assumptions

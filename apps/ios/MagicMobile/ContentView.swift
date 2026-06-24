@@ -2475,13 +2475,6 @@ struct UniversalPromptActionPanel: View {
                     .minimumScaleFactor(0.7)
             }
 
-            MobileSurfacesPanel(
-                snapshot: snapshot,
-                selectedCard: $selectedCard,
-                inspectedCard: $inspectedCard,
-                viewZone: viewZone
-            )
-
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     if let prompt = snapshot.promptEnvelopeV2 {
@@ -2516,6 +2509,13 @@ struct UniversalPromptActionPanel: View {
                     if !otherActions.isEmpty {
                         actionSection(title: "Other Actions", detail: "\(otherActions.count)", actions: otherActions)
                     }
+
+                    MobileSurfacesPanel(
+                        snapshot: snapshot,
+                        selectedCard: $selectedCard,
+                        inspectedCard: $inspectedCard,
+                        viewZone: viewZone
+                    )
                 }
                 .padding(.vertical, 1)
             }
@@ -3445,6 +3445,13 @@ struct MobileSurfacesPanel: View {
                 zoneButton(title: "Command", value: "\(commandCards.count)", systemImage: "crown", cards: commandCards)
                 zoneButton(title: "Grave", value: "\(graveyardCards.count)", systemImage: "archivebox", cards: graveyardCards)
                 zoneButton(title: "Exile", value: "\(exileCards.count)", systemImage: "moon.stars", cards: exileCards)
+                SurfaceChip(title: "Library", value: "\(libraryCount)", systemImage: "books.vertical")
+                if !revealedCards.isEmpty || snapshot.xmage?.panels.revealed == true {
+                    zoneButton(title: "Revealed", value: "\(revealedCards.count)", systemImage: "eye", cards: revealedCards)
+                }
+                if !lookedAtCards.isEmpty || snapshot.xmage?.panels.lookedAt == true {
+                    zoneButton(title: "Looked", value: "\(lookedAtCards.count)", systemImage: "eye.trianglebadge.exclamationmark", cards: lookedAtCards)
+                }
                 SurfaceChip(title: "Priority", value: priorityOwner, systemImage: "hand.raised")
                 SurfaceChip(title: "Actions", value: "\((snapshot.legalActions ?? []).count)", systemImage: "bolt")
             }
@@ -3472,6 +3479,12 @@ struct MobileSurfacesPanel: View {
     private var surfaceSummary: String {
         if snapshot.xmage?.panels.search == true {
             return "search"
+        }
+        if snapshot.xmage?.panels.revealed == true {
+            return "revealed"
+        }
+        if snapshot.xmage?.panels.lookedAt == true {
+            return "looked"
         }
         return priorityOwner
     }
@@ -3508,6 +3521,18 @@ struct MobileSurfacesPanel: View {
 
     private var exileCards: [ZoneCard] {
         snapshot.players.flatMap(\.zones.exile) + (snapshot.xmage?.players.flatMap(\.zones.exile) ?? []) + (snapshot.xmage?.exileZones.flatMap(\.cards) ?? [])
+    }
+
+    private var libraryCount: Int {
+        snapshot.players.map { $0.zones.library.count }.reduce(0, +)
+    }
+
+    private var revealedCards: [ZoneCard] {
+        snapshot.xmage?.revealed.flatMap(\.cards) ?? []
+    }
+
+    private var lookedAtCards: [ZoneCard] {
+        snapshot.xmage?.lookedAt.flatMap(\.cards) ?? []
     }
 }
 
