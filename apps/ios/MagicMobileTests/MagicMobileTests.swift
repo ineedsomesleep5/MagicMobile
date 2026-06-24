@@ -28,6 +28,43 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertTrue(creatureCard.isCreature)
     }
 
+    func testZoneCardAccessibilityLabelIncludesGameplayState() {
+        let card = ZoneCard(
+            instanceId: "sol-ring-instance-1234",
+            card: CardIdentity(name: "Sol Ring", typeLine: "Artifact", oracleText: "{T}: Add {C}{C}."),
+            tapped: true,
+            counters: nil,
+            power: nil,
+            toughness: nil,
+            damage: nil,
+            isAttacking: nil,
+            blocking: nil,
+            attachedToInstanceId: nil
+        )
+
+        XCTAssertEqual(
+            card.accessibilityLabel(zoneName: "Hand", selected: true, legal: true, pending: true),
+            "Hand card, Sol Ring, Artifact, tapped, playable, pending, selected"
+        )
+    }
+
+    func testZoneCardAccessibilityIdentifierIsStableAndZoneScoped() {
+        let card = ZoneCard(
+            instanceId: "ABCDEF12-3456",
+            card: CardIdentity(name: "Arcane Signet", typeLine: "Artifact", oracleText: nil),
+            tapped: nil,
+            counters: nil,
+            power: nil,
+            toughness: nil,
+            damage: nil,
+            isAttacking: nil,
+            blocking: nil,
+            attachedToInstanceId: nil
+        )
+
+        XCTAssertEqual(card.accessibilityIdentifier(zoneName: "Command Zone"), "card-command-zone-arcane-signet-abcdef12")
+    }
+
     func testLegalActionPreservesCommandTemplateValues() throws {
         let data = """
         {

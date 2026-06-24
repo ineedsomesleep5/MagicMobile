@@ -758,4 +758,47 @@ extension ZoneCard {
     public var isCreature: Bool {
         card.isCreature
     }
+
+    func accessibilityLabel(zoneName: String? = nil, selected: Bool = false, legal: Bool = false, pending: Bool = false) -> String {
+        var parts = ["\(zoneName?.isEmpty == false ? zoneName! : "Game") card", card.name]
+        if !card.typeLine.isEmpty {
+            parts.append(card.typeLine)
+        }
+        if tapped == true {
+            parts.append("tapped")
+        }
+        if isAttacking == true {
+            parts.append("attacking")
+        }
+        if let power, let toughness {
+            parts.append("\(power)/\(toughness)")
+        }
+        if legal {
+            parts.append("playable")
+        }
+        if pending {
+            parts.append("pending")
+        }
+        if selected {
+            parts.append("selected")
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    func accessibilityIdentifier(zoneName: String? = nil) -> String {
+        let zone = Self.accessibilitySlug(zoneName?.isEmpty == false ? zoneName! : "game")
+        let name = Self.accessibilitySlug(card.name)
+        let shortId = Self.accessibilitySlug(String(instanceId.prefix(8)))
+        return "card-\(zone)-\(name)-\(shortId)"
+    }
+
+    private static func accessibilitySlug(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics
+        let scalars = value.lowercased().unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? Character(scalar) : "-"
+        }
+        return String(scalars)
+            .split(separator: "-")
+            .joined(separator: "-")
+    }
 }

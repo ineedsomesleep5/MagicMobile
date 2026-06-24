@@ -61,7 +61,7 @@ Next simulator run should recapture the same states after any layout edit and in
 - Commander tax and commander damage decode, but their visual prominence still needs real iPhone confirmation.
 - Prompt variety controls are deterministic-fixture proven, but amount, multi-amount, pile, ordering, and damage-assignment controls still need touch QA on hardware.
 - Missing art placeholders are visually stable in simulator evidence, but slow or failed image loading needs a real phone network check.
-- Hand-selected and missing-art screenshots were not recaptured in the latest automated simulator pass because the current runtime accessibility snapshot did not expose individual hand cards as reusable tap targets. This needs either manual Simulator interaction or a future card-accessibility polish pass.
+- Hand, battlefield, stack, prompt, zone-sheet, and inspector card tiles now expose zone-scoped accessibility labels and stable identifiers such as `card-hand-sol-ring-<id>`, so the next simulator pass should retry automated hand-selection and missing-art captures. The screenshot artifacts have not yet been recaptured after this card-target polish.
 - Layout metric tests now cover Pro Max landscape and compact landscape named-region containment, non-overlap, and minimum readable card/action sizes.
 
 ## Physical iPhone QA Separation

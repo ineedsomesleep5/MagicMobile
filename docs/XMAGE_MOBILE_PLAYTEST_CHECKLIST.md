@@ -15,7 +15,7 @@ Latest iOS product-readiness pass on June 24, 2026:
 - Captured simulator screenshots under `build_output/ios-screenshots/`: `iphone-17-pro-max-setup-local-api.jpg`, `iphone-17-pro-max-setup-local-api-landscape-readable.jpg`, `iphone-17-pro-max-fixture-board-rustic.jpg`, and `iphone-17-pro-max-fixture-board-rustic-landscape-readable.jpg`.
 - The iOS setup screen now scrolls in landscape so the debug fixture control and start controls remain reachable on Pro Max.
 - The iOS API timeout is now long enough for real XMage table/fixture startup instead of failing at 15 seconds.
-- The iOS gameplay surface has a rustic leather/parchment/wood treatment, compact non-blocking waiting toast, visible source/bridge/revision/cycle/priority/pending/phase state, stable missing-art placeholders, and readable stack/command/graveyard/exile access without debug JSON.
+- The iOS gameplay surface has a rustic leather/parchment/wood treatment, compact non-blocking waiting toast, visible source/bridge/revision/cycle/priority/pending/phase state, stable missing-art placeholders, zone-scoped card accessibility labels/identifiers, and readable stack/command/graveyard/exile access without debug JSON.
 - Real iPhone install/play QA is still pending. The June 24 device check showed Caleb's iPhone 16 Pro Max as `unavailable` and a separate physical iPhone (`Ruthie's iPhone 16`, reported as iPhone 16 Pro Max-class hardware) as `connected`; the app was not installed or launched on that device without explicit permission. Product release remains blocked until a physical iPhone can start a local-gateway Commander game, exercise the fixture/normal play loop, and capture bridgeRevision/xmageCycle evidence.
 
 Local iOS simulator setup used for this pass:

@@ -2122,7 +2122,7 @@ struct StackPeek: View {
 
             HStack(spacing: -14) {
                 ForEach(Array(cards.suffix(4).enumerated()), id: \.element.id) { index, card in
-                    CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, width: 38, height: 54)
+                    CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, zoneName: "Stack", width: 38, height: 54)
                         .zIndex(Double(index))
                         .onTapGesture {
                             selectedCard = card
@@ -2173,7 +2173,7 @@ struct XmageStackPeek: View {
             HStack(spacing: -12) {
                 ForEach(Array(objects.suffix(3).enumerated()), id: \.element.id) { index, object in
                     if let card = object.sourceCard {
-                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, width: 38, height: 54)
+                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, zoneName: "Stack", width: 38, height: 54)
                             .zIndex(Double(index))
                             .onTapGesture {
                                 selectedCard = card
@@ -2814,7 +2814,7 @@ struct UniversalPromptActionPanel: View {
                 ForEach(cards) { card in
                     let type = idCommandType(preferred: prompt.responseCommand?.type, fallback: isSearchPrompt(prompt) ? "search_select" : "choose_card")
                     VStack(spacing: 4) {
-                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: true, width: 38, height: 53)
+                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: true, zoneName: "Prompt", width: 38, height: 53)
                             .onTapGesture {
                                 selectedCard = card
                                 inspectedCard = nil
@@ -3674,7 +3674,7 @@ struct MiniZoneRow: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: -7) {
                     ForEach(cards) { card in
-                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, width: 28, height: 39)
+                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, zoneName: title, width: 28, height: 39)
                             .onTapGesture {
                                 selectedCard = card
                                 inspectedCard = nil
@@ -3727,7 +3727,7 @@ struct BattlefieldRow: View {
                     }
                     ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
                         let action = legalAction(for: card)
-                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: action != nil, width: cardWidth, height: cardHeight)
+                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: action != nil, zoneName: title, width: cardWidth, height: cardHeight)
                             .offset(y: card.tapped == true ? 5 : 0)
                             .zIndex(Double(index))
                             .onTapGesture {
@@ -3800,6 +3800,7 @@ struct HandFan: View {
                     selected: selected,
                     pending: pendingCardInstanceId == card.instanceId,
                     legal: !playableActions.isEmpty,
+                    zoneName: "Hand",
                     width: metrics.handCardWidth,
                     height: metrics.handCardHeight
                 )
@@ -3887,6 +3888,7 @@ struct CardTile: View {
     let selected: Bool
     var pending = false
     var legal = false
+    var zoneName: String? = nil
     var width: CGFloat = 82
     var height: CGFloat = 112
 
@@ -3931,6 +3933,10 @@ struct CardTile: View {
         .frame(width: width, height: height)
         .overlay(RoundedRectangle(cornerRadius: 6).stroke(strokeColor, lineWidth: selected || pending || legal ? 3 : 1))
         .shadow(color: shadowColor, radius: legal || selected || pending ? 10 : 0)
+        .contentShape(RoundedRectangle(cornerRadius: 6))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(card.accessibilityLabel(zoneName: zoneName, selected: selected, legal: legal, pending: pending))
+        .accessibilityIdentifier(card.accessibilityIdentifier(zoneName: zoneName))
     }
 
     private var strokeColor: Color {
@@ -4197,7 +4203,7 @@ struct CardInspector: View {
 
     var body: some View {
         HStack(spacing: 9) {
-            CardTile(card: card, selected: true, width: 82, height: 114)
+            CardTile(card: card, selected: true, zoneName: "Inspector", width: 82, height: 114)
             VStack(alignment: .leading, spacing: 4) {
                 Text(card.card.name)
                     .font(.headline.weight(.black))
@@ -4810,7 +4816,7 @@ struct ZoneInspectorSheet: View {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 64), spacing: 8)], spacing: 8) {
                     ForEach(cards) { card in
-                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, width: 64, height: 90)
+                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, zoneName: title, width: 64, height: 90)
                             .onTapGesture {
                                 selectedCard = card
                                 inspectedCard = card
