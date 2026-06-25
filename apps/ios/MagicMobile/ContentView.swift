@@ -104,6 +104,8 @@ struct ContentView: View {
                     },
                     runAction: { action in Task { await run(action: action) } },
                     runCommand: { command, label, pendingId in Task { await run(command: command, label: label, pendingId: pendingId) } },
+                    refreshGame: { Task { await refreshCurrentSnapshot() } },
+                    reconnectGame: { reconnectLiveUpdates() },
                     newGame: { screen = .setup },
                     viewZone: { title, cards in
                         inspectingZoneTitle = title
@@ -558,6 +560,32 @@ struct ContentView: View {
         Task {
             await listenWebSocket(task: task, gameId: gameId)
         }
+    }
+
+    private func refreshCurrentSnapshot() async {
+        guard let api, let gameId = snapshot?.id else {
+            status = "No active XMage game to refresh"
+            return
+        }
+        status = "Refreshing XMage snapshot"
+        do {
+            let refreshed = try await api.snapshot(gameId: gameId)
+            applySnapshot(refreshed)
+            status = "Latest XMage snapshot applied"
+        } catch {
+            errorMessage = error.localizedDescription
+            status = error.localizedDescription
+        }
+    }
+
+    private func reconnectLiveUpdates() {
+        guard let gameId = snapshot?.id else {
+            status = "No active XMage game to reconnect"
+            return
+        }
+        liveUpdateStatus = "Reconnecting"
+        status = "Reconnecting live updates"
+        startWebSocket(gameId: gameId)
     }
 
     private func listenWebSocket(task: URLSessionWebSocketTask, gameId: String) async {
@@ -1157,6 +1185,8 @@ struct ImmersivePlayShell: View {
     let onInteractionFeedback: (String) -> Void
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
+    let refreshGame: () -> Void
+    let reconnectGame: () -> Void
     let newGame: () -> Void
     let viewZone: (String, [ZoneCard]) -> Void
 
@@ -1173,6 +1203,8 @@ struct ImmersivePlayShell: View {
             onInteractionFeedback: onInteractionFeedback,
             runAction: runAction,
             runCommand: runCommand,
+            refreshGame: refreshGame,
+            reconnectGame: reconnectGame,
             newGame: newGame,
             viewZone: viewZone
         )
@@ -1191,6 +1223,8 @@ struct NativeGameView: View {
     let onInteractionFeedback: (String) -> Void
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
+    let refreshGame: () -> Void
+    let reconnectGame: () -> Void
     let newGame: () -> Void
     let viewZone: (String, [ZoneCard]) -> Void
     @State private var isLogOpen = false
@@ -1199,6 +1233,8 @@ struct NativeGameView: View {
     @State private var inspectingZoneTitle: String? = nil
     @State private var inspectingZoneCards: [ZoneCard] = []
     @State private var isPromptDetailOpen = false
+    @State private var aiWaitBeganAt = Date()
+    @State private var aiWaitKey = ""
 
     private func localViewZone(title: String, cards: [ZoneCard]) {
         inspectingZoneTitle = title
@@ -1493,6 +1529,17 @@ struct NativeGameView: View {
                         .padding(.horizontal, 10)
                         .padding(.bottom, 12)
                     }
+                    .overlay(alignment: .center) {
+                        if snapshot.isWaitingOnAIOrStalled {
+                            AIWaitFallbackControls(
+                                snapshot: snapshot,
+                                beganAt: aiWaitBeganAt,
+                                refreshAction: refreshGame,
+                                reconnectAction: reconnectGame
+                            )
+                            .padding(.horizontal, 10)
+                        }
+                    }
                     .frame(width: 128)
                     .background(MagicPalette.iron.opacity(0.85))
                 }
@@ -1513,8 +1560,22 @@ struct NativeGameView: View {
                     .presentationDragIndicator(.visible)
                 }
             }
+            .onAppear {
+                updateAIWaitStart(for: snapshot)
+            }
+            .onChange(of: snapshot.aiWaitSignature) { _, _ in
+                updateAIWaitStart(for: snapshot)
+            }
         } else {
             LoadingGameView(startupStatus: startupStatus)
+        }
+    }
+
+    private func updateAIWaitStart(for snapshot: GameSnapshot) {
+        let key = snapshot.aiWaitSignature
+        if key != aiWaitKey {
+            aiWaitKey = key
+            aiWaitBeganAt = Date()
         }
     }
 
@@ -1938,6 +1999,7 @@ struct LoadingGameView: View {
     var body: some View {
         ZStack {
             BattlefieldSurface()
+                .ignoresSafeArea()
 
             VStack(spacing: 12) {
                 if startupStatus?.status == "failed" {
@@ -1965,6 +2027,7 @@ struct LoadingGameView: View {
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.14)))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
     }
 }
 
@@ -1994,99 +2057,63 @@ struct BattlefieldSurface: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.04, green: 0.09, blue: 0.06),
-                        MagicPalette.carvedWood.opacity(0.94),
-                        Color(red: 0.16, green: 0.20, blue: 0.12)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-
-                RadialGradient(
-                    colors: [
-                        Color(red: 0.78, green: 0.61, blue: 0.38).opacity(0.30),
-                        Color(red: 0.42, green: 0.30, blue: 0.18).opacity(0.18),
-                        .clear
-                    ],
-                    center: .center,
-                    startRadius: 20,
-                    endRadius: max(proxy.size.width, proxy.size.height) * 0.62
-                )
-
-                RoundedRectangle(cornerRadius: 34)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.68, green: 0.53, blue: 0.34).opacity(0.78),
-                                Color(red: 0.45, green: 0.34, blue: 0.23).opacity(0.82),
-                                Color(red: 0.28, green: 0.38, blue: 0.27).opacity(0.54)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .overlay(
-                        Ellipse()
-                            .fill(
-                                RadialGradient(
-                                    colors: [
-                                        MagicPalette.parchment.opacity(0.18),
-                                        MagicPalette.antiqueGold.opacity(0.08),
-                                        .clear
-                                    ],
-                                    center: .center,
-                                    startRadius: 8,
-                                    endRadius: proxy.size.width * 0.42
-                                )
-                            )
-                            .padding(.horizontal, proxy.size.width * 0.18)
-                            .padding(.vertical, proxy.size.height * 0.18)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 34)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [
-                                        MagicPalette.antiqueGold.opacity(0.24),
-                                        MagicPalette.borderIron.opacity(0.54)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                ),
-                                lineWidth: 2
-                            )
-                    )
-                    .shadow(color: .black.opacity(0.42), radius: 28, y: 14)
-                    .padding(.horizontal, proxy.size.width * 0.035)
-                    .padding(.vertical, proxy.size.height * 0.12)
-
-                RoundedRectangle(cornerRadius: 22)
-                    .stroke(MagicPalette.antiqueGold.opacity(0.08), lineWidth: 1.5)
-                    .padding(.horizontal, proxy.size.width * 0.16)
-                    .padding(.vertical, proxy.size.height * 0.25)
-
-                VStack(spacing: 0) {
-                    EdgeCanopy(height: proxy.size.height * 0.18, flipped: true)
-                    Spacer()
-                    EdgeCanopy(height: proxy.size.height * 0.20, flipped: false)
-                }
-
+                Image("mage-mobile-board-background")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
                 Rectangle()
                     .fill(
                         LinearGradient(
                             colors: [
-                                .black.opacity(0.42),
-                                .clear,
-                                .clear,
-                                .black.opacity(0.30)
+                                .black.opacity(0.34),
+                                .black.opacity(0.05),
+                                .black.opacity(0.08),
+                                .black.opacity(0.38)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
                         )
                     )
+                RadialGradient(
+                    colors: [
+                        .clear,
+                        .black.opacity(0.22),
+                        .black.opacity(0.52)
+                    ],
+                    center: .center,
+                    startRadius: min(proxy.size.width, proxy.size.height) * 0.20,
+                    endRadius: max(proxy.size.width, proxy.size.height) * 0.62
+                )
             }
+        }
+    }
+}
+
+struct AIWaitFallbackControls: View {
+    let snapshot: GameSnapshot
+    let beganAt: Date
+    let refreshAction: () -> Void
+    let reconnectAction: () -> Void
+
+    var body: some View {
+        TimelineView(.periodic(from: beganAt, by: 1)) { context in
+            VStack(spacing: 7) {
+                Text(snapshot.isStalled ? "XMAGE STALLED" : "AI THINKING")
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundStyle(snapshot.isStalled ? MagicPalette.warningAmber : MagicPalette.arcaneBlue)
+                Text("\(Int(context.date.timeIntervalSince(beganAt)))s")
+                    .font(.system(size: 18, weight: .black, design: .serif))
+                    .foregroundStyle(.white)
+                Button("REFRESH", action: refreshAction)
+                    .buttonStyle(CompactActionButtonStyle(isPrimary: true))
+                Button("RECONNECT", action: reconnectAction)
+                    .buttonStyle(CompactActionButtonStyle(isPrimary: false))
+            }
+            .padding(8)
+            .background(MagicPalette.iron.opacity(0.86), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke((snapshot.isStalled ? MagicPalette.warningAmber : MagicPalette.arcaneBlue).opacity(0.46), lineWidth: 1.2))
+            .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
         }
     }
 }
@@ -5147,6 +5174,13 @@ struct CardTile: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                     .padding(3)
             }
+
+            if !card.counterBadges.isEmpty {
+                CardCounterBadgeStrip(badges: Array(card.counterBadges.prefix(3)), cardWidth: width)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                    .padding(3)
+                    .allowsHitTesting(false)
+            }
         }
         .frame(width: width, height: height)
         .overlay(RoundedRectangle(cornerRadius: 6).stroke(strokeColor, lineWidth: strokeWidth))
@@ -5209,6 +5243,39 @@ struct CardTile: View {
             return MagicPalette.legalEmerald.opacity(0.58)
         }
         return .clear
+    }
+}
+
+struct CardCounterBadgeStrip: View {
+    let badges: [CardCounterBadge]
+    let cardWidth: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: max(cardWidth * 0.012, 1)) {
+            ForEach(badges, id: \.self) { badge in
+                HStack(spacing: 2) {
+                    Text(badge.label)
+                        .font(.system(size: max(cardWidth * 0.065, 5.5), weight: .black))
+                    Text("\(badge.count)")
+                        .font(.system(size: max(cardWidth * 0.083, 6.5), weight: .black))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, max(cardWidth * 0.035, 2.5))
+                .padding(.vertical, max(cardWidth * 0.015, 1))
+                .background(counterColor(for: badge).opacity(0.90), in: Capsule())
+                .overlay(Capsule().stroke(.black.opacity(0.38), lineWidth: 0.7))
+                .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+            }
+        }
+    }
+
+    private func counterColor(for badge: CardCounterBadge) -> Color {
+        let label = badge.label
+        if label == "+1/+1" { return MagicPalette.legalEmerald }
+        if label == "-1/-1" { return MagicPalette.oxblood }
+        if label == "LOY" { return MagicPalette.arcaneBlue }
+        if label == "SHD" { return MagicPalette.antiqueGold }
+        return MagicPalette.leather
     }
 }
 

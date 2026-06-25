@@ -129,6 +129,20 @@ struct GameSnapshot: Decodable {
     }
 }
 
+extension GameSnapshot {
+    var isStalled: Bool {
+        pendingStatus == "stalled" || engineHealth?.status == "stalled"
+    }
+
+    var isWaitingOnAIOrStalled: Bool {
+        isStalled || priorityPlayerId == "ai-1" || waitingOnPlayerId == "ai-1"
+    }
+
+    var aiWaitSignature: String {
+        "\(id)|\(turn)|\(phase)|\(step ?? "")|\(priorityPlayerId ?? "")|\(waitingOnPlayerId ?? "")|\(pendingStatus ?? "")|\(engineHealth?.status ?? "")|\(bridgeRevision ?? -1)|\(xmageCycle ?? -1)"
+    }
+}
+
 struct CommanderStartupResponse: Decodable {
     let startupId: String
     let status: String
@@ -782,6 +796,10 @@ extension ZoneCard {
         if let power, let toughness {
             parts.append("\(power)/\(toughness)")
         }
+        let counterHints = counterBadges.map { "\($0.label) counter \($0.count)" }
+        if !counterHints.isEmpty {
+            parts.append(contentsOf: counterHints)
+        }
         if legal {
             parts.append("playable")
         }
@@ -837,5 +855,52 @@ extension ZoneCard {
             }
             return CardImageURL.xmageIconAssetName(for: icon.iconType) != nil
         }
+    }
+
+    var counterBadges: [CardCounterBadge] {
+        (counters ?? [:])
+            .filter { $0.value > 0 }
+            .map { CardCounterBadge(name: $0.key, count: $0.value) }
+            .sorted { lhs, rhs in
+                if lhs.priority != rhs.priority {
+                    return lhs.priority < rhs.priority
+                }
+                return lhs.label < rhs.label
+            }
+    }
+}
+
+struct CardCounterBadge: Hashable {
+    let name: String
+    let count: Int
+
+    var label: String {
+        let lower = name.lowercased()
+        if lower.contains("+1") || lower.contains("p1p1") {
+            return "+1/+1"
+        }
+        if lower.contains("-1") || lower.contains("m1m1") {
+            return "-1/-1"
+        }
+        if lower.contains("loyalty") {
+            return "LOY"
+        }
+        if lower.contains("shield") {
+            return "SHD"
+        }
+        return name
+            .replacingOccurrences(of: " counter", with: "", options: .caseInsensitive)
+            .replacingOccurrences(of: "counter", with: "", options: .caseInsensitive)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+    }
+
+    var priority: Int {
+        let lower = name.lowercased()
+        if lower.contains("+1") || lower.contains("p1p1") { return 0 }
+        if lower.contains("-1") || lower.contains("m1m1") { return 1 }
+        if lower.contains("loyalty") { return 2 }
+        if lower.contains("shield") { return 3 }
+        return 4
     }
 }

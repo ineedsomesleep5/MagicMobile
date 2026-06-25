@@ -2462,7 +2462,55 @@ public final class MagicMobileBridge implements MageClient {
         if (power != null) out.addProperty("power", power);
         if (toughness != null) out.addProperty("toughness", toughness);
         out.add("cardIcons", cardIcons(card));
+        JsonObject counters = cardCounters(card);
+        if (counters.size() > 0) {
+            out.add("counters", counters);
+        }
         return out;
+    }
+
+    private JsonObject cardCounters(CardView card) {
+        JsonObject out = new JsonObject();
+        if (card == null || card.getCounters() == null || card.getCounters().isEmpty()) {
+            return out;
+        }
+        for (Object counter : card.getCounters()) {
+            String name = counterName(counter);
+            int count = counterCount(counter);
+            if (!name.isEmpty() && count > 0) {
+                out.addProperty(name, count);
+            }
+        }
+        return out;
+    }
+
+    private String counterName(Object counter) {
+        Object value = invokeNoArg(counter, "getName");
+        return value == null ? "" : cleanText(value.toString());
+    }
+
+    private int counterCount(Object counter) {
+        Object value = invokeNoArg(counter, "getCount");
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        try {
+            return value == null ? 0 : Integer.parseInt(value.toString());
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
+    private Object invokeNoArg(Object target, String methodName) {
+        if (target == null) {
+            return null;
+        }
+        try {
+            Method method = target.getClass().getMethod(methodName);
+            return method.invoke(target);
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private JsonArray cardIcons(CardView card) {
@@ -2613,10 +2661,24 @@ public final class MagicMobileBridge implements MageClient {
         if (!hasHumanCommandZoneCommander(record, view, humanCommanderName)) {
             return false;
         }
+        if (hasHumanOpeningPrompt(record)) {
+            return true;
+        }
         if (isMulliganPrompt(record)) {
             return true;
         }
         return view.getMyHand() != null && !view.getMyHand().isEmpty();
+    }
+
+    private boolean hasHumanOpeningPrompt(GameRecord record) {
+        if (record == null || record.promptEnvelope == null) {
+            return false;
+        }
+        String playerId = string(record.promptEnvelope, "playerId", "");
+        if (!playerId.isEmpty() && !record.humanExternalId.equals(playerId)) {
+            return false;
+        }
+        return isActionablePrompt(record.promptEnvelope);
     }
 
     private boolean hasHumanCommandZoneCommander(GameRecord record, GameView view, String humanCommanderName) {

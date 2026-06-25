@@ -80,6 +80,7 @@ let promptPileChoiceSubmitted = false;
 let promptPileChoiceResolved = false;
 let damageAssignmentPromptSeen = false;
 let damageAssignmentChoiceSubmitted = false;
+let aiProgressObserved = false;
 const promptSamples: any[] = [];
 
 if (process.env.XMAGE_SMOKE_SELFTEST === "fixture-unavailable") {
@@ -1273,7 +1274,8 @@ function completedScenarioSteps() {
   if (actionsByType.pass_priority || actionsByType.pass_until_response || actionsByType.pass_until_next_turn || actionsByType.advance_phase) {
     steps.add("pass-priority");
   }
-  if (aiWaits > 0) steps.add("ai-progress");
+  if (actionsByType.choose_player) steps.add("starting-player-choice");
+  if (aiProgressObserved) steps.add("ai-progress");
   if (combatStepSeen) steps.add("combat-step-seen");
   if (stackSeen) steps.add("stack-seen");
   if (combatExercised) steps.add("combat-exercised");
@@ -1320,6 +1322,8 @@ function routeFamiliesRequiredForScenario(input: string) {
   if (input === "damage-assignment") return ["choose_multi_amount", "damage_assignment"];
   if (input === "activated-ability-stack") return ["activate_ability", "stack_object_seen", "pass_priority"];
   if (input === "triggered-ability-stack") return ["trigger_seen", "stack_object_seen", "pass_priority"];
+  if (input === "opening-start-player") return ["choose_player"];
+  if (input === "ai-turn-progress") return ["pass_priority"];
   return [];
 }
 
@@ -1401,6 +1405,20 @@ function scenarioModuleFor(input: string): ScenarioModule {
           "ai-progress",
           "combat-step-seen"
         ]
+      };
+    case "opening-start-player":
+      return {
+        id: "opening-start-player",
+        usesFixture: false,
+        scenarioSet: ["opening-start-player"],
+        requiredSteps: ["starting-player-choice", "route-family:choose_player"]
+      };
+    case "ai-turn-progress":
+      return {
+        id: "ai-turn-progress",
+        usesFixture: false,
+        scenarioSet: ["ai-turn-progress"],
+        requiredSteps: ["opening-hand-decision", "pass-priority", "ai-progress"]
       };
     case "arcane-signet":
     case "mana-rock":
@@ -1579,7 +1597,7 @@ function scenarioModuleFor(input: string): ScenarioModule {
     default:
       throw new Error(
         `Unknown XMAGE_SMOKE_SCENARIO "${input}". Expected core-flow, mana-rock, search-select, `
-          + "commander-replacement-tax, commander-damage, blocker-flow, prompt-variety, "
+          + "opening-start-player, ai-turn-progress, commander-replacement-tax, commander-damage, blocker-flow, prompt-variety, "
           + "prompt-mode, prompt-order, prompt-amount, prompt-multi-amount, prompt-pile, activated-ability-stack, triggered-ability-stack, damage-assignment, fixture-smoke, "
           + "commander-gauntlet, or commander-full-ai."
       );
@@ -2369,13 +2387,23 @@ async function waitForAiIfNeeded(snapshot: SmokeSnapshot, label: string) {
     const actionable = current.legalActions?.some((action) => action.type !== "concede") ?? false;
     if (current.waitingOnPlayerId !== aiPlayerId || current.priorityPlayerId !== aiPlayerId || actionable) {
       console.error(`[Smoke] AI finished or action became available. New priority: ${current.priorityPlayerId}`);
+      aiProgressObserved = true;
       return current;
     }
   }
   writeSmokeReport({
     ...baseSummaryReport(current),
     failedStep: "ai-priority-stall",
-    failureReason: `Timed out waiting for AI progress during ${label}`
+    failureReason: `Timed out waiting for AI progress during ${label}`,
+    stallEvidence: {
+      phase: current.phase,
+      step: current.step,
+      priorityPlayerId: current.priorityPlayerId,
+      waitingOnPlayerId: current.waitingOnPlayerId,
+      bridgeRevision: current.bridgeRevision ?? null,
+      xmageCycle: current.xmageCycle ?? null,
+      recentLog: (current.log ?? []).slice(-8)
+    }
   });
   throw new Error(
     `XMage smoke ${label} timed out waiting for AI progress.\n`
@@ -3126,10 +3154,12 @@ function scenarioSatisfied() {
     return turnsObserved.size >= 4
       && Boolean(actionsByType.keep_hand || actionsByType.mulligan)
       && Boolean(actionsByType.pass_priority || actionsByType.pass_until_response || actionsByType.pass_until_next_turn || actionsByType.advance_phase)
-      && aiWaits > 0
+      && aiProgressObserved
       && combatStepSeen
       && realGameActionSeen;
   }
+  if (scenario === "opening-start-player") return actionsByType.choose_player > 0;
+  if (scenario === "ai-turn-progress") return aiProgressObserved;
   if (scenario === "blocker-flow") return blockerAssignmentExercised;
   if (scenario === "commander-replacement-tax") return commanderTaxChanges.length > 0;
   if (scenario === "commander-damage") return commanderDamageChanges.length > 0;
@@ -3256,6 +3286,7 @@ type SmokeSnapshot = {
   turn?: number;
   promptText?: string;
   pendingStatus?: string;
+  log?: Array<{ id?: string; message?: string }>;
   staleActionRecovered?: boolean;
   activePlayerId?: string;
   priorityPlayerId?: string;

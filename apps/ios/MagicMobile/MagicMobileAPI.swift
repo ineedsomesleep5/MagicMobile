@@ -607,12 +607,12 @@ struct MagicMobileAPI {
     private func get<T: Decodable>(_ path: String) async throws -> T {
         let (data, response) = try await session.data(from: url(path))
         try validate(response: response, data: data)
-        return try JSONDecoder.magicMobile.decode(T.self, from: data)
+        return try decode(T.self, from: data, response: response)
     }
 
     private func post<Body: Encodable, T: Decodable>(_ path: String, body: Body) async throws -> T {
         let data = try await postData(path, body: body)
-        return try JSONDecoder.magicMobile.decode(T.self, from: data)
+        return try decode(T.self, from: data)
     }
 
     private func postData<Body: Encodable>(_ path: String, body: Body) async throws -> Data {
@@ -662,11 +662,57 @@ struct MagicMobileAPI {
 
     private func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            let message = (try? JSONDecoder.magicMobile.decode(APIError.self, from: data).message)
-                ?? String(data: data, encoding: .utf8)
-                ?? "Unknown server error"
+            let http = response as? HTTPURLResponse
+            let message = Self.sanitizedServerMessage(
+                data: data,
+                statusCode: http?.statusCode,
+                contentType: http?.value(forHTTPHeaderField: "Content-Type")
+            )
             throw MagicMobileError.server(message)
         }
+    }
+
+    private func decode<T: Decodable>(_ type: T.Type, from data: Data, response: URLResponse? = nil) throws -> T {
+        do {
+            return try JSONDecoder.magicMobile.decode(type, from: data)
+        } catch {
+            let http = response as? HTTPURLResponse
+            if Self.responseLooksLikeHTML(data: data, contentType: http?.value(forHTTPHeaderField: "Content-Type")) {
+                throw MagicMobileError.server(Self.webPageResponseMessage(statusCode: http?.statusCode))
+            }
+            throw error
+        }
+    }
+
+    static func sanitizedServerMessage(data: Data, statusCode: Int?, contentType: String?) -> String {
+        if let apiMessage = try? JSONDecoder.magicMobile.decode(APIError.self, from: data).message,
+           !apiMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return apiMessage
+        }
+        if responseLooksLikeHTML(data: data, contentType: contentType) {
+            return webPageResponseMessage(statusCode: statusCode)
+        }
+        let text = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let text, !text.isEmpty {
+            return String(text.prefix(320))
+        }
+        return "MagicMobile server returned an empty error response."
+    }
+
+    private static func responseLooksLikeHTML(data: Data, contentType: String?) -> Bool {
+        if contentType?.localizedCaseInsensitiveContains("text/html") == true {
+            return true
+        }
+        let prefix = String(data: data.prefix(180), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+        return prefix.hasPrefix("<!doctype html") || prefix.hasPrefix("<html") || prefix.contains("<head")
+    }
+
+    private static func webPageResponseMessage(statusCode: Int?) -> String {
+        let statusText = statusCode.map { "HTTP \($0). " } ?? ""
+        return "\(statusText)MagicMobile expected a JSON XMage gateway response, but the server returned a web page. Check that the Server URL points to the MagicMobile gateway/API host and that XMage is running, then tap Refresh or start a new game."
     }
 }
 

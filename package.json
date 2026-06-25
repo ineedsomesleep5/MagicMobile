@@ -18,6 +18,8 @@
     "smoke:xmage:gauntlet": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
     "smoke:xmage:fixture-smoke": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=fixture-smoke XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
     "smoke:xmage:core": "XMAGE_SMOKE_SCENARIO=core-flow pnpm smoke:xmage",
+    "smoke:xmage:opening-start-player": "XMAGE_SMOKE_SCENARIO=opening-start-player pnpm smoke:xmage",
+    "smoke:xmage:ai-turn-progress": "XMAGE_SMOKE_SCENARIO=ai-turn-progress pnpm smoke:xmage",
     "smoke:xmage:combat": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=blocker-flow XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
     "smoke:xmage:commander-state": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=commander-replacement-tax XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
     "smoke:xmage:commander-damage": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=commander-damage XMAGE_USE_FIXTURE=true pnpm smoke:xmage",

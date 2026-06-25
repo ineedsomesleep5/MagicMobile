@@ -126,6 +126,53 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertTrue(card.accessibilityLabel(zoneName: "Battlefield").contains("Vigilance"))
     }
 
+    func testZoneCardDecodesPermanentCounterBadgesFromXMageSnapshot() throws {
+        let data = """
+        {
+          "instanceId": "creature-1",
+          "card": {
+            "name": "Furnace Whelp",
+            "typeLine": "Creature - Dragon",
+            "oracleText": "Flying"
+          },
+          "counters": {
+            "+1/+1": 2,
+            "shield": 1,
+            "charge": 3
+          },
+          "power": 2,
+          "toughness": 2
+        }
+        """.data(using: .utf8)!
+
+        let card = try JSONDecoder.magicMobile.decode(ZoneCard.self, from: data)
+
+        XCTAssertEqual(card.counterBadges.map(\.label), ["+1/+1", "SHD", "CHARGE"])
+        XCTAssertEqual(card.counterBadges.map(\.count), [2, 1, 3])
+        XCTAssertTrue(card.accessibilityLabel(zoneName: "Battlefield").contains("+1/+1 counter 2"))
+        XCTAssertTrue(card.accessibilityLabel(zoneName: "Battlefield").contains("SHD counter 1"))
+    }
+
+    func testGameplayBoardBackgroundAssetIsBundled() {
+        XCTAssertNotNil(UIImage(named: "mage-mobile-board-background"))
+    }
+
+    func testHTMLServerErrorsAreSanitizedForPhoneAlerts() {
+        let html = """
+        <!DOCTYPE html><html><head><title>MagicMobile</title></head><body>Not the API</body></html>
+        """.data(using: .utf8)!
+
+        let message = MagicMobileAPI.sanitizedServerMessage(
+            data: html,
+            statusCode: 502,
+            contentType: "text/html; charset=utf-8"
+        )
+
+        XCTAssertTrue(message.contains("HTTP 502"))
+        XCTAssertTrue(message.contains("expected a JSON XMage gateway response"))
+        XCTAssertFalse(message.contains("<!DOCTYPE html>"))
+    }
+
     func testBattlefieldCardMetricsPreserveMagicCardAspectRatio() {
         let metrics = BattlefieldLayoutMetrics(
             size: CGSize(width: 932, height: 430),
