@@ -202,6 +202,11 @@ public final class MagicMobileBridge implements MageClient {
                     writeJson(exchange, 200, submitCommand(gameId, readJson(exchange)));
                     return;
                 }
+                if ("DELETE".equals(method) && parts.length == 3) {
+                    JsonObject request = readOptionalJson(exchange);
+                    writeJson(exchange, 200, cleanupGame(gameId, string(request, "reason", "client-request")));
+                    return;
+                }
             }
 
             JsonObject body = new JsonObject();
@@ -273,7 +278,8 @@ public final class MagicMobileBridge implements MageClient {
             throw new IllegalStateException("XMage did not create a Commander table: " + reason);
         }
 
-        boolean humanJoined = session.joinTable(roomId, table.getTableId(), "TabletopPolish", PlayerType.HUMAN, 1, deckFromConfig(object(config, "humanDeck")), "");
+        String humanDisplayName = sanitizedDisplayName(string(config, "humanDisplayName", "TabletopPolish"));
+        boolean humanJoined = session.joinTable(roomId, table.getTableId(), humanDisplayName, PlayerType.HUMAN, 1, deckFromConfig(object(config, "humanDeck")), "");
         boolean aiJoined = session.joinTable(roomId, table.getTableId(), aiName, aiType, aiSkill, deckFromConfig(object(aiConfig, "deck", object(config, "humanDeck"))), "");
         if (!humanJoined || !aiJoined) {
             throw new IllegalStateException("XMage rejected one of the Commander decks");
@@ -456,6 +462,28 @@ public final class MagicMobileBridge implements MageClient {
             record.lastProgressAt = System.currentTimeMillis();
         }
         return waitForUpdatedSnapshot(gameId, type, startRevision, startCycle);
+    }
+
+    private JsonObject cleanupGame(String gameId, String reason) throws Exception {
+        GameRecord record = games.remove(gameId);
+        JsonObject response = new JsonObject();
+        response.addProperty("status", record == null ? "not_found" : "cleaned_up");
+        response.addProperty("gameId", gameId);
+        response.addProperty("reason", reason == null || reason.isEmpty() ? "client-request" : reason);
+        response.addProperty("removed", record != null);
+        response.addProperty("bridgeCleanupAttempted", record != null);
+        boolean succeeded = false;
+        if (record != null) {
+            try {
+                ensureConnected(false);
+                session.sendPlayerAction(PlayerAction.CONCEDE, record.gameId, null);
+                succeeded = true;
+            } catch (Exception ignored) {
+                succeeded = false;
+            }
+        }
+        response.addProperty("bridgeCleanupSucceeded", succeeded);
+        return response;
     }
 
     private UUID playableSourceUuid(String gameId, JsonObject command) {
@@ -4131,6 +4159,7 @@ public final class MagicMobileBridge implements MageClient {
         String normalizedMessage = message == null ? "" : message.toLowerCase();
         if (method == ClientCallbackMethod.GAME_TARGET && isTriggeredAbilityOrderTargetPrompt(normalizedMessage)) return "order";
         if (method == ClientCallbackMethod.GAME_TARGET) return "target";
+        if (method == ClientCallbackMethod.GAME_SELECT && normalizedMessage.contains("starting player")) return "player";
         if (method == ClientCallbackMethod.GAME_SELECT) return normalizedMessage.contains("search") ? "search" : "card";
         if (method == ClientCallbackMethod.GAME_CHOOSE_ABILITY) return "ability";
         if (method == ClientCallbackMethod.GAME_CHOOSE_PILE) return "pile";
@@ -4373,6 +4402,14 @@ public final class MagicMobileBridge implements MageClient {
         }
     }
 
+    private JsonObject readOptionalJson(HttpExchange exchange) {
+        try {
+            return readJson(exchange);
+        } catch (Exception ignored) {
+            return new JsonObject();
+        }
+    }
+
     private void writeJson(HttpExchange exchange, int status, JsonElement body) throws IOException {
         byte[] data = GSON.toJson(body).getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
@@ -4408,6 +4445,14 @@ public final class MagicMobileBridge implements MageClient {
     private static String string(JsonObject object, String name, String fallback) {
         JsonElement element = object == null ? null : object.get(name);
         return element != null && !element.isJsonNull() ? element.getAsString() : fallback;
+    }
+
+    private static String sanitizedDisplayName(String rawName) {
+        String trimmed = rawName == null ? "" : rawName.trim();
+        if (trimmed.isEmpty()) {
+            return "TabletopPolish";
+        }
+        return trimmed.length() > 24 ? trimmed.substring(0, 24) : trimmed;
     }
 
     private static int integer(JsonObject object, String name, int fallback) {

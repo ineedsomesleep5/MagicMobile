@@ -11,13 +11,16 @@ export const aiDifficultyProfiles = {
 };
 
 const games = new Map();
+const gameActivity = new Map();
 let nextGameNumber = 1;
 let lastAiProgressAt = Date.now();
 const aiStallMs = Number.parseInt(process.env.XMAGE_AI_STALL_MS ?? "45000", 10);
+const gameIdleCleanupMs = Number.parseInt(process.env.XMAGE_GAME_IDLE_CLEANUP_MS ?? "300000", 10);
 const port = Number.parseInt(process.env.PORT ?? "17171", 10);
 
 export function createGatewayHandler(state = games, options = {}) {
   const bridgeClient = options.bridgeClient ?? createBridgeClientFromEnv();
+  const activity = options.activityState ?? gameActivity;
 
   return async function handleRequest(request, response) {
     try {
@@ -44,9 +47,11 @@ export function createGatewayHandler(state = games, options = {}) {
           const snapshot = await bridgeClient.createCommanderGame(body);
           lastAiProgressAt = Date.now();
           state.set(snapshot.id, snapshot);
+          markGameActivity(activity, snapshot.id, "poll");
           return sendJson(response, snapshot, 201);
         }
         const snapshot = createCommanderGame(state, body);
+        markGameActivity(activity, snapshot.id, "poll");
         return sendJson(response, snapshot, 201);
       }
 
@@ -136,6 +141,7 @@ export function createGatewayHandler(state = games, options = {}) {
         }
         lastAiProgressAt = Date.now();
         state.set(snapshot.id, snapshot);
+        markGameActivity(activity, snapshot.id, "poll");
         return sendJson(response, snapshot, 201);
       }
 
@@ -151,6 +157,13 @@ export function createGatewayHandler(state = games, options = {}) {
       if (gameMatch) {
         const gameId = decodeURIComponent(gameMatch[1]);
         const action = gameMatch[2];
+
+        if (method === "DELETE" && !action) {
+          const body = await readJson(request).catch(() => ({}));
+          const cleanup = await cleanupGame(state, activity, bridgeClient, gameId, body?.reason ?? "client-request");
+          return sendJson(response, cleanup, cleanup.removed ? 200 : 404);
+        }
+
         const snapshot = getGame(state, gameId);
 
         if (method === "GET" && !action) {
@@ -161,6 +174,7 @@ export function createGatewayHandler(state = games, options = {}) {
             lastAiProgressAt = Date.now();
             currentSnapshot = storeSnapshot(state, nextSnapshot.id, nextSnapshot);
           }
+          markGameActivity(activity, gameId, "poll");
           if (playerId) {
             currentSnapshot = obfuscateSnapshotForPlayer(currentSnapshot, playerId);
           }
@@ -183,10 +197,12 @@ export function createGatewayHandler(state = games, options = {}) {
           if (bridgeClient && isBridgeSnapshot(snapshot)) {
             const nextSnapshot = await bridgeClient.submitCommand(gameId, command);
             lastAiProgressAt = Date.now();
+            markGameActivity(activity, gameId, "command");
             const storedSnapshot = storeSnapshot(state, nextSnapshot.id, nextSnapshot, { broadcast: true });
             return sendJson(response, storedSnapshot);
           }
           const nextSnapshot = applyCommand(snapshot, command);
+          markGameActivity(activity, gameId, "command");
           const storedSnapshot = storeSnapshot(state, nextSnapshot.id, nextSnapshot, { broadcast: true });
           return sendJson(response, storedSnapshot);
         }
@@ -257,6 +273,12 @@ export function createHttpBridgeClient(endpoint, fetchImpl = fetch) {
       return requestBridge(fetchImpl, baseUrl, `/games/${encodeURIComponent(gameId)}/commands`, {
         method: "POST",
         body: command
+      });
+    },
+    async cleanupGame(gameId, reason = "gateway-cleanup") {
+      return requestBridge(fetchImpl, baseUrl, `/games/${encodeURIComponent(gameId)}`, {
+        method: "DELETE",
+        body: { reason }
       });
     }
   };
@@ -1494,11 +1516,72 @@ class BridgeRequestError extends Error {
 
 const wssClients = new Map(); // gameId -> Set of ws clients
 
+function markGameActivity(activity, gameId, kind = "poll") {
+  if (!gameId) return;
+  const existing = activity.get(gameId) ?? {
+    lastPollAt: 0,
+    lastCommandAt: 0,
+    lastConnectedAt: 0,
+    lastDisconnectedAt: 0,
+    connectedClients: 0
+  };
+  const now = Date.now();
+  if (kind === "poll") existing.lastPollAt = now;
+  if (kind === "command") existing.lastCommandAt = now;
+  if (kind === "connect") {
+    existing.lastConnectedAt = now;
+    existing.connectedClients += 1;
+  }
+  if (kind === "disconnect") {
+    existing.lastDisconnectedAt = now;
+    existing.connectedClients = Math.max(0, existing.connectedClients - 1);
+  }
+  activity.set(gameId, existing);
+}
+
+async function cleanupGame(state, activity, bridgeClient, gameId, reason = "cleanup") {
+  const hadGame = state.has(gameId);
+  let bridgeCleanupAttempted = false;
+  let bridgeCleanupSucceeded = false;
+  if (bridgeClient && typeof bridgeClient.cleanupGame === "function" && isBridgeSnapshot(state.get(gameId))) {
+    bridgeCleanupAttempted = true;
+    try {
+      await bridgeClient.cleanupGame(gameId, reason);
+      bridgeCleanupSucceeded = true;
+    } catch {
+      bridgeCleanupSucceeded = false;
+    }
+  }
+  state.delete(gameId);
+  activity.delete(gameId);
+  closeGameSockets(gameId, reason);
+  return {
+    status: hadGame ? "cleaned_up" : "not_found",
+    gameId,
+    reason,
+    removed: hadGame,
+    bridgeCleanupAttempted,
+    bridgeCleanupSucceeded
+  };
+}
+
+export async function cleanupIdleGames(state = games, activity = gameActivity, bridgeClient = createBridgeClientFromEnv(), now = Date.now(), idleMs = gameIdleCleanupMs) {
+  const cleaned = [];
+  for (const [gameId, info] of activity.entries()) {
+    const lastObservedAt = Math.max(info.lastPollAt ?? 0, info.lastCommandAt ?? 0, info.lastConnectedAt ?? 0, info.lastDisconnectedAt ?? 0);
+    if ((info.connectedClients ?? 0) === 0 && lastObservedAt > 0 && now - lastObservedAt >= idleMs) {
+      cleaned.push(await cleanupGame(state, activity, bridgeClient, gameId, "idle-timeout"));
+    }
+  }
+  return cleaned;
+}
+
 export function registerWebSocketConnection(gameId, ws) {
   if (!wssClients.has(gameId)) {
     wssClients.set(gameId, new Set());
   }
   wssClients.get(gameId).add(ws);
+  markGameActivity(gameActivity, gameId, "connect");
   
   ws.on("close", () => {
     const clients = wssClients.get(gameId);
@@ -1508,7 +1591,21 @@ export function registerWebSocketConnection(gameId, ws) {
         wssClients.delete(gameId);
       }
     }
+    markGameActivity(gameActivity, gameId, "disconnect");
   });
+}
+
+function closeGameSockets(gameId, reason) {
+  const clients = wssClients.get(gameId);
+  if (!clients) return;
+  for (const ws of clients) {
+    try {
+      ws.close(1000, reason);
+    } catch {
+      // Best-effort cleanup; stale sockets should not block gateway state cleanup.
+    }
+  }
+  wssClients.delete(gameId);
 }
 
 export function broadcastSnapshot(gameId, snapshot) {
@@ -1526,6 +1623,12 @@ export function broadcastSnapshot(gameId, snapshot) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const handler = createGatewayHandler();
   const server = createServer(handler);
+  const bridgeClient = createBridgeClientFromEnv();
+  setInterval(() => {
+    cleanupIdleGames(games, gameActivity, bridgeClient).catch((error) => {
+      console.warn("MagicMobile idle game cleanup failed:", error?.message ?? error);
+    });
+  }, Math.min(gameIdleCleanupMs, 60_000)).unref?.();
 
   const wss = new WebSocketServer({ noServer: true });
   wss.on("connection", (ws, request) => {

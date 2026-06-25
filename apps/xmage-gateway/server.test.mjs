@@ -8,6 +8,7 @@ import {
   createCommanderGame,
   createGatewayHandler,
   createHttpBridgeClient,
+  cleanupIdleGames,
   getGatewayHealth,
   getHealth,
   registerWebSocketConnection,
@@ -271,12 +272,73 @@ describe("xmage gateway", () => {
       return new Response(JSON.stringify({ id: "xmage-game-1" }), { status: 201 });
     });
 
-    const snapshot = await client.createCommanderGame({ roomId: "room-1" });
+    const snapshot = await client.createCommanderGame({ roomId: "room-1", humanDisplayName: "Caleb" });
 
     assert.equal(snapshot.id, "xmage-game-1");
     assert.equal(requests[0].url, "http://bridge.test/games/commander");
     assert.equal(requests[0].init.method, "POST");
     assert.equal(JSON.parse(requests[0].init.body).roomId, "room-1");
+    assert.equal(JSON.parse(requests[0].init.body).humanDisplayName, "Caleb");
+  });
+
+  it("forwards explicit game cleanup to the bridge and removes gateway state", async () => {
+    const state = new Map();
+    const activity = new Map();
+    const snapshot = bridgeSmokeSnapshot(1, 1, "precombat-main", []);
+    state.set(snapshot.id, snapshot);
+    activity.set(snapshot.id, { lastPollAt: Date.now(), connectedClients: 0 });
+    const cleaned = [];
+    const handler = createGatewayHandler(state, {
+      activityState: activity,
+      bridgeClient: {
+        cleanupGame: async (gameId, reason) => {
+          cleaned.push({ gameId, reason });
+          return { status: "cleaned_up" };
+        }
+      }
+    });
+
+    const response = await runHandler(handler, `/games/${snapshot.id}`, "DELETE", { reason: "unit-test" });
+    const body = JSON.parse(response.body);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.removed, true);
+    assert.equal(body.bridgeCleanupAttempted, true);
+    assert.equal(body.bridgeCleanupSucceeded, true);
+    assert.equal(state.has(snapshot.id), false);
+    assert.equal(activity.has(snapshot.id), false);
+    assert.deepEqual(cleaned, [{ gameId: snapshot.id, reason: "unit-test" }]);
+  });
+
+  it("cleans idle games only after no clients or polling remain", async () => {
+    const state = new Map();
+    const activity = new Map();
+    const snapshot = bridgeSmokeSnapshot(1, 1, "precombat-main", []);
+    state.set(snapshot.id, snapshot);
+    activity.set(snapshot.id, {
+      lastPollAt: 1_000,
+      lastCommandAt: 1_000,
+      lastConnectedAt: 1_000,
+      lastDisconnectedAt: 1_000,
+      connectedClients: 1
+    });
+    const bridgeClient = { cleanupGame: async () => ({ status: "cleaned_up" }) };
+
+    assert.deepEqual(await cleanupIdleGames(state, activity, bridgeClient, 10_000, 5_000), []);
+    activity.set(snapshot.id, { ...activity.get(snapshot.id), connectedClients: 0 });
+    const cleaned = await cleanupIdleGames(state, activity, bridgeClient, 10_000, 5_000);
+
+    assert.equal(cleaned.length, 1);
+    assert.equal(cleaned[0].reason, "idle-timeout");
+    assert.equal(state.has(snapshot.id), false);
+  });
+
+  it("bridge source seats the human display name and treats starting-player prompts as player choices", () => {
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+
+    assert.ok(bridgeSource.includes("humanDisplayName"));
+    assert.match(bridgeSource, /session\.joinTable\(roomId, table\.getTableId\(\), humanDisplayName/);
+    assert.match(bridgeSource, /GAME_SELECT.*starting player.*return "player"/s);
   });
 
   it("proxies Commander fixture creation to the bridge fixture endpoint with schema payload", async () => {

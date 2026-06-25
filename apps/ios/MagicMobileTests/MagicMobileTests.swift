@@ -201,6 +201,27 @@ final class MagicMobileTests: XCTestCase {
 
     func testGameplayBoardBackgroundAssetIsBundled() {
         XCTAssertNotNil(UIImage(named: "mage-mobile-board-background"))
+        XCTAssertNotNil(UIImage(named: "mage-mobile-menu-background"))
+    }
+
+    func testPlayerNameIsCleanedBeforeCommanderStartupConfig() {
+        XCTAssertNil(MagicMobileAPI.cleanPlayerName("   "))
+        XCTAssertEqual(MagicMobileAPI.cleanPlayerName(" Caleb "), "Caleb")
+        XCTAssertEqual(MagicMobileAPI.cleanPlayerName("1234567890123456789012345678"), "123456789012345678901234")
+    }
+
+    func testCommanderConfigEncodesHumanDisplayName() throws {
+        let config = CommanderGameConfig(
+            roomId: "room-1",
+            humanPlayerId: "human",
+            humanDisplayName: "Caleb",
+            humanDeck: PreconCatalog.all[0].deckList,
+            aiPlayers: [],
+            startingLife: 40,
+            commanderDamageEnabled: true
+        )
+        let encoded = try JSONSerialization.jsonObject(with: JSONEncoder.magicMobile.encode(config)) as? [String: Any]
+        XCTAssertEqual(encoded?["humanDisplayName"] as? String, "Caleb")
     }
 
     func testHTMLServerErrorsAreSanitizedForPhoneAlerts() {
@@ -320,8 +341,8 @@ final class MagicMobileTests: XCTestCase {
             .data(using: .utf8)!
         let aiActive = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: aiActiveData)
 
-        XCTAssertEqual(MagicPathPhaseRail.skipButtonLabel(snapshot: humanActive, action: action), "SKIP\nTURN")
-        XCTAssertEqual(MagicPathPhaseRail.skipButtonLabel(snapshot: aiActive, action: action), "SKIP TILL\nMY TURN")
+        XCTAssertEqual(MagicPathPhaseRail.skipButtonLabel(snapshot: humanActive, action: action), "SKIP")
+        XCTAssertEqual(MagicPathPhaseRail.skipButtonLabel(snapshot: aiActive, action: action), "SKIP")
     }
 
     func testCastSubmissionClassifierRecognizesPaymentPrompt() throws {

@@ -85,6 +85,7 @@ struct SymbolManifestEntry: Decodable, Hashable {
 struct CommanderGameConfig: Encodable {
     let roomId: String
     let humanPlayerId: String
+    let humanDisplayName: String?
     let humanDeck: DeckList
     let aiPlayers: [AiPlayerConfig]
     let startingLife: Int
@@ -211,6 +212,19 @@ struct CommanderStartupResponse: Decodable {
     let snapshot: GameSnapshot?
     let message: String?
     let error: String?
+}
+
+struct CleanupGameRequest: Encodable {
+    let reason: String
+}
+
+struct CleanupGameResponse: Decodable {
+    let status: String
+    let gameId: String
+    let reason: String?
+    let removed: Bool
+    let bridgeCleanupAttempted: Bool?
+    let bridgeCleanupSucceeded: Bool?
 }
 
 struct CommanderFixtureResponse: Decodable {

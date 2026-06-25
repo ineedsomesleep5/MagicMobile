@@ -49,6 +49,7 @@ enum PromptSelectionRules {
 }
 
 struct ContentView: View {
+    @AppStorage("magicmobile.playerDisplayName") private var playerDisplayName = ""
     @State private var serverURLText = ProcessInfo.processInfo.environment["MAGICMOBILE_SERVER_URL"] ?? "https://magicmobile.openclaw-is3w.srv1420950.hstgr.cloud"
     @State private var status = "Not connected"
     @State private var screen: AppScreen = .menu
@@ -86,8 +87,13 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(colors: [Color(red: 0.03, green: 0.08, blue: 0.08), Color(red: 0.16, green: 0.25, blue: 0.13)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                .ignoresSafeArea()
+            if screen == .play {
+                LinearGradient(colors: [Color(red: 0.03, green: 0.08, blue: 0.08), Color(red: 0.16, green: 0.25, blue: 0.13)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    .ignoresSafeArea()
+            } else {
+                MenuBackgroundSurface()
+                    .ignoresSafeArea()
+            }
             if screen == .play {
                 ImmersivePlayShell(
                     snapshot: snapshot,
@@ -106,7 +112,8 @@ struct ContentView: View {
                     runCommand: { command, label, pendingId in Task { await run(command: command, label: label, pendingId: pendingId) } },
                     refreshGame: { Task { await refreshCurrentSnapshot() } },
                     reconnectGame: { reconnectLiveUpdates() },
-                    newGame: { screen = .setup },
+                    newGame: { Task { await leaveCurrentGame(destination: .setup, reason: "start-new-game") } },
+                    quitGame: { Task { await leaveCurrentGame(destination: .menu, reason: "quit-game") } },
                     viewZone: { title, cards in
                         inspectingZoneTitle = title
                         inspectingZoneCards = cards
@@ -163,22 +170,24 @@ struct ContentView: View {
     private var chromeScreen: some View {
         switch screen {
         case .menu:
-            MenuView(
-                startSetup: { screen = .setup },
-                openDecks: { screen = .decks },
-                quickStart: { Task { await startGame() } },
-                cardCacheMetadata: cardCacheMetadata,
-                isSyncingCardCache: isSyncingCardCache,
+                    MenuView(
+                        startSetup: { screen = .setup },
+                        openDecks: { screen = .decks },
+                        quickStart: { Task { await startGame() } },
+                        playerDisplayName: $playerDisplayName,
+                        cardCacheMetadata: cardCacheMetadata,
+                        isSyncingCardCache: isSyncingCardCache,
                 phoneImageCacheCount: phoneImageCacheCount,
                 phoneSymbolCacheCount: phoneSymbolCacheCount,
                 phoneImageDownloadProgress: phoneImageDownloadProgress,
                 syncCardCache: { Task { await syncCardCache() } }
             )
         case .setup:
-            SetupView(
-                serverURLText: $serverURLText,
-                difficulty: $difficulty,
-                selectedHumanPrecon: $selectedHumanPrecon,
+                    SetupView(
+                        serverURLText: $serverURLText,
+                        playerDisplayName: $playerDisplayName,
+                        difficulty: $difficulty,
+                        selectedHumanPrecon: $selectedHumanPrecon,
                 selectedAIPrecon: $selectedAIPrecon,
                 selectedPhoto: $selectedPhoto,
                 avatarData: playerAvatarData,
@@ -327,7 +336,7 @@ struct ContentView: View {
         do {
             let humanDeck = importedDeck ?? selectedHumanPrecon.deckList
             let aiDeck = selectedAIPrecon.deckList
-            let startup = try await api.startCommanderStartup(humanDeck: humanDeck, aiDeck: aiDeck, difficulty: difficulty)
+            let startup = try await api.startCommanderStartup(humanDeck: humanDeck, aiDeck: aiDeck, difficulty: difficulty, humanDisplayName: playerDisplayName)
             startupStatus = startup
             status = startup.message ?? "XMage table starting"
 
@@ -407,6 +416,31 @@ struct ContentView: View {
         errorMessage = "XMage fixtures are only available in debug builds."
         status = "XMage fixtures are debug-only"
         #endif
+    }
+
+    private func leaveCurrentGame(destination: AppScreen, reason: String) async {
+        let gameId = snapshot?.id
+        stopWebSocket()
+        if let api, let gameId {
+            do {
+                _ = try await api.cleanupGame(gameId: gameId, reason: reason)
+            } catch {
+                status = "Left local game view. Server cleanup needs retry: \(error.localizedDescription)"
+            }
+        }
+        snapshot = nil
+        startupStatus = nil
+        selectedCard = nil
+        inspectedCard = nil
+        pendingActionId = nil
+        pendingCardInstanceId = nil
+        lastSubmittedActionId = nil
+        lastSubmittedSnapshotSignature = nil
+        liveUpdateStatus = "Idle"
+        screen = destination
+        if status.isEmpty || !status.contains("cleanup needs retry") {
+            status = destination == .menu ? "Returned to menu" : "Ready for a new Commander game"
+        }
     }
 
     #if DEBUG
@@ -571,6 +605,12 @@ struct ContentView: View {
         Task {
             await listenWebSocket(task: task, gameId: gameId)
         }
+    }
+
+    private func stopWebSocket() {
+        webSocketTask?.cancel(with: .normalClosure, reason: nil)
+        webSocketTask = nil
+        liveUpdateStatus = "Idle"
     }
 
     private func refreshCurrentSnapshot() async {
@@ -810,6 +850,7 @@ struct MenuView: View {
     let startSetup: () -> Void
     let openDecks: () -> Void
     let quickStart: () -> Void
+    @Binding var playerDisplayName: String
     let cardCacheMetadata: CardCacheMetadata?
     let isSyncingCardCache: Bool
     let phoneImageCacheCount: Int
@@ -827,6 +868,18 @@ struct MenuView: View {
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.72))
                     .lineLimit(3)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Player name")
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(MagicPalette.antiqueGold)
+                    TextField("Enter name", text: $playerDisplayName)
+                        .textInputAutocapitalization(.words)
+                        .disableAutocorrection(true)
+                        .textFieldStyle(GameTextFieldStyle())
+                    Text("Used for the in-game HUD and XMage table seat.")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.55))
+                }
                 Spacer()
                 HStack(spacing: 10) {
                     Button("Game setup", action: startSetup)
@@ -837,10 +890,7 @@ struct MenuView: View {
             }
             .padding(22)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            .background(
-                LinearGradient(colors: [.black.opacity(0.64), .orange.opacity(0.20)], startPoint: .topLeading, endPoint: .bottomTrailing),
-                in: RoundedRectangle(cornerRadius: 8)
-            )
+            .background(.black.opacity(0.42), in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(.orange.opacity(0.24)))
 
             VStack(spacing: 12) {
@@ -944,6 +994,7 @@ struct HeroCard: View {
 
 struct SetupView: View {
     @Binding var serverURLText: String
+    @Binding var playerDisplayName: String
     @Binding var difficulty: AiDifficulty
     @Binding var selectedHumanPrecon: PreconDeck
     @Binding var selectedAIPrecon: PreconDeck
@@ -970,6 +1021,10 @@ struct SetupView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 HStack(spacing: gap) {
                     Panel(title: "Connection") {
+                        TextField("Enter name", text: $playerDisplayName)
+                            .textInputAutocapitalization(.words)
+                            .disableAutocorrection(true)
+                            .textFieldStyle(GameTextFieldStyle())
                         TextField("Server URL", text: $serverURLText)
                             .textInputAutocapitalization(.never)
                             .keyboardType(.URL)
@@ -1199,6 +1254,7 @@ struct ImmersivePlayShell: View {
     let refreshGame: () -> Void
     let reconnectGame: () -> Void
     let newGame: () -> Void
+    let quitGame: () -> Void
     let viewZone: (String, [ZoneCard]) -> Void
 
     var body: some View {
@@ -1217,6 +1273,7 @@ struct ImmersivePlayShell: View {
             refreshGame: refreshGame,
             reconnectGame: reconnectGame,
             newGame: newGame,
+            quitGame: quitGame,
             viewZone: viewZone
         )
     }
@@ -1237,8 +1294,11 @@ struct NativeGameView: View {
     let refreshGame: () -> Void
     let reconnectGame: () -> Void
     let newGame: () -> Void
+    let quitGame: () -> Void
     let viewZone: (String, [ZoneCard]) -> Void
     @State private var isLogOpen = false
+    @State private var isGameMenuOpen = false
+    @State private var gameMenuConfirmation: GameMenuConfirmation?
     @State private var isOverPlayerDropZone = false
     @State private var interactionState = GameBoardInteractionState.idle
     @State private var inspectingZoneTitle: String? = nil
@@ -1429,7 +1489,7 @@ struct NativeGameView: View {
                             passAction: passAction(in: snapshot.legalActions ?? []),
                             skipAction: skipAction(in: snapshot.legalActions ?? []),
                             logAction: { isLogOpen.toggle() },
-                            settingsAction: newGame,
+                            settingsAction: { isGameMenuOpen = true },
                             runAction: runAction,
                             onlyPhases: true
                         )
@@ -1548,7 +1608,9 @@ struct NativeGameView: View {
                                 }
                                 .buttonStyle(IconButtonStyle(small: true))
 
-                                Button(action: newGame) {
+                                Button {
+                                    isGameMenuOpen = true
+                                } label: {
                                     Image(systemName: "gearshape.fill")
                                 }
                                 .buttonStyle(IconButtonStyle(small: true))
@@ -1588,6 +1650,47 @@ struct NativeGameView: View {
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
                 }
+                .sheet(isPresented: $isGameMenuOpen) {
+                    GameManagementMenu(
+                        concedeAction: concedeAction(in: snapshot.legalActions ?? []),
+                        runAction: runAction,
+                        confirmStartNew: {
+                            gameMenuConfirmation = .startNew
+                        },
+                        confirmQuit: {
+                            gameMenuConfirmation = .quit
+                        }
+                    )
+                    .presentationDetents([.height(250)])
+                    .presentationDragIndicator(.visible)
+                }
+                .confirmationDialog(
+                    gameMenuConfirmation?.title ?? "Leave game?",
+                    isPresented: Binding(
+                        get: { gameMenuConfirmation != nil },
+                        set: { if !$0 { gameMenuConfirmation = nil } }
+                    ),
+                    titleVisibility: .visible
+                ) {
+                    if gameMenuConfirmation == .startNew {
+                        Button("Start New Game", role: .destructive) {
+                            gameMenuConfirmation = nil
+                            isGameMenuOpen = false
+                            newGame()
+                        }
+                    } else if gameMenuConfirmation == .quit {
+                        Button("Quit to Menu", role: .destructive) {
+                            gameMenuConfirmation = nil
+                            isGameMenuOpen = false
+                            quitGame()
+                        }
+                    }
+                    Button("Cancel", role: .cancel) {
+                        gameMenuConfirmation = nil
+                    }
+                } message: {
+                    Text(gameMenuConfirmation?.message ?? "")
+                }
             }
             .onAppear {
                 updateAIWaitStart(for: snapshot)
@@ -1609,11 +1712,15 @@ struct NativeGameView: View {
     }
 
     private func passAction(in actions: [LegalAction]) -> LegalAction? {
-        actions.first { ["pass_priority", "pass_until_response", "advance_phase"].contains($0.type) }
+        actions.first { ["pass_priority", "pass_until_response"].contains($0.type) }
     }
 
     private func skipAction(in actions: [LegalAction]) -> LegalAction? {
-        actions.first { ["pass_until_next_turn", "skip_turn"].contains($0.type) }
+        actions.first { $0.type == "pass_until_next_turn" }
+    }
+
+    private func concedeAction(in actions: [LegalAction]) -> LegalAction? {
+        actions.first { $0.type == "concede" }
     }
 
     private func selectedActions(in snapshot: GameSnapshot) -> [LegalAction] {
@@ -2113,6 +2220,38 @@ struct BattlefieldSurface: View {
                     center: .center,
                     startRadius: min(proxy.size.width, proxy.size.height) * 0.20,
                     endRadius: max(proxy.size.width, proxy.size.height) * 0.62
+                )
+            }
+        }
+    }
+}
+
+struct MenuBackgroundSurface: View {
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                Image("mage-mobile-menu-background")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                .black.opacity(0.46),
+                                .black.opacity(0.20),
+                                .black.opacity(0.52)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                RadialGradient(
+                    colors: [.clear, .black.opacity(0.45)],
+                    center: .center,
+                    startRadius: min(proxy.size.width, proxy.size.height) * 0.30,
+                    endRadius: max(proxy.size.width, proxy.size.height) * 0.70
                 )
             }
         }
@@ -5847,8 +5986,73 @@ struct MagicPathPhaseRail: View {
     }
 
     static func skipButtonLabel(snapshot: GameSnapshot, action: LegalAction?) -> String {
-        guard action != nil else { return "SKIP\nTURN" }
-        return snapshot.activePlayerId == "human" ? "SKIP\nTURN" : "SKIP TILL\nMY TURN"
+        "SKIP"
+    }
+}
+
+enum GameMenuConfirmation: Equatable {
+    case startNew
+    case quit
+
+    var title: String {
+        switch self {
+        case .startNew: return "Start a new game?"
+        case .quit: return "Quit this game?"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .startNew: return "MagicMobile will ask XMage to clean up the current game, then open setup."
+        case .quit: return "MagicMobile will ask XMage to clean up the current game, then return to the main menu."
+        }
+    }
+}
+
+struct GameManagementMenu: View {
+    let concedeAction: LegalAction?
+    let runAction: (LegalAction) -> Void
+    let confirmStartNew: () -> Void
+    let confirmQuit: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Game Menu")
+                .font(.system(size: 22, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+            Text("XMage remains the source of truth. Leaving a game asks the bridge to clean up the table.")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.62))
+                .lineLimit(2)
+
+            HStack(spacing: 10) {
+                Button {
+                    if let concedeAction {
+                        runAction(concedeAction)
+                    }
+                } label: {
+                    Label("Concede", systemImage: "flag.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(CompactActionButtonStyle(isDanger: true, isPrimary: false))
+                .disabled(concedeAction == nil)
+
+                Button(action: confirmStartNew) {
+                    Label("Start New", systemImage: "arrow.clockwise")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(CompactActionButtonStyle(isPrimary: true))
+
+                Button(action: confirmQuit) {
+                    Label("Quit", systemImage: "rectangle.portrait.and.arrow.right")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(CompactActionButtonStyle(isPrimary: false))
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(BattlefieldSurface().ignoresSafeArea())
     }
 }
 

@@ -78,6 +78,7 @@ export interface AiPlayerConfig {
 export interface CommanderGameConfig {
   roomId: RoomId;
   humanPlayerId: PlayerId;
+  humanDisplayName?: string;
   humanDeck: DeckList;
   aiPlayers: AiPlayerConfig[];
   startingLife: 40;

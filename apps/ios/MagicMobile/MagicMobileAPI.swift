@@ -30,14 +30,14 @@ struct MagicMobileAPI {
         )
     }
 
-    func startCommanderGame(humanDeck: DeckList, aiDeck: DeckList, difficulty: AiDifficulty) async throws -> GameSnapshot {
-        let config = commanderConfig(humanDeck: humanDeck, aiDeck: aiDeck, difficulty: difficulty)
+    func startCommanderGame(humanDeck: DeckList, aiDeck: DeckList, difficulty: AiDifficulty, humanDisplayName: String? = nil) async throws -> GameSnapshot {
+        let config = commanderConfig(humanDeck: humanDeck, aiDeck: aiDeck, difficulty: difficulty, humanDisplayName: humanDisplayName)
         return try await post(route(web: "/api/engine/commander", gateway: "/games/commander"), body: config)
     }
 
-    func startCommanderStartup(humanDeck: DeckList, aiDeck: DeckList, difficulty: AiDifficulty) async throws -> CommanderStartupResponse {
+    func startCommanderStartup(humanDeck: DeckList, aiDeck: DeckList, difficulty: AiDifficulty, humanDisplayName: String? = nil) async throws -> CommanderStartupResponse {
         if usesDirectGatewayRoutes {
-            let snapshot = try await startCommanderGame(humanDeck: humanDeck, aiDeck: aiDeck, difficulty: difficulty)
+            let snapshot = try await startCommanderGame(humanDeck: humanDeck, aiDeck: aiDeck, difficulty: difficulty, humanDisplayName: humanDisplayName)
             return CommanderStartupResponse(
                 startupId: "direct-gateway:\(snapshot.id)",
                 status: "ready",
@@ -46,7 +46,7 @@ struct MagicMobileAPI {
                 error: nil
             )
         }
-        return try await post("/api/engine/commander/start", body: commanderConfig(humanDeck: humanDeck, aiDeck: aiDeck, difficulty: difficulty))
+        return try await post("/api/engine/commander/start", body: commanderConfig(humanDeck: humanDeck, aiDeck: aiDeck, difficulty: difficulty, humanDisplayName: humanDisplayName))
     }
 
     func commanderStartupStatus(startupId: String) async throws -> CommanderStartupResponse {
@@ -62,10 +62,16 @@ struct MagicMobileAPI {
         try await get(gamePath(gameId: gameId))
     }
 
-    private func commanderConfig(humanDeck: DeckList, aiDeck: DeckList, difficulty: AiDifficulty) -> CommanderGameConfig {
+    func cleanupGame(gameId: String, reason: String = "ios-client-request") async throws -> CleanupGameResponse {
+        try await delete(gamePath(gameId: gameId), body: CleanupGameRequest(reason: reason))
+    }
+
+    private func commanderConfig(humanDeck: DeckList, aiDeck: DeckList, difficulty: AiDifficulty, humanDisplayName: String?) -> CommanderGameConfig {
+        let cleanDisplayName = Self.cleanPlayerName(humanDisplayName)
         let config = CommanderGameConfig(
             roomId: "ios-\(Int(Date().timeIntervalSince1970))",
             humanPlayerId: "human",
+            humanDisplayName: cleanDisplayName,
             humanDeck: humanDeck,
             aiPlayers: [
                 AiPlayerConfig(playerId: "ai-1", displayName: "Noaddrag", difficulty: difficulty, deck: aiDeck)
@@ -74,6 +80,12 @@ struct MagicMobileAPI {
             commanderDamageEnabled: true
         )
         return config
+    }
+
+    static func cleanPlayerName(_ rawName: String?) -> String? {
+        let trimmed = rawName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else { return nil }
+        return String(trimmed.prefix(24))
     }
 
     func submit(action: LegalAction, gameId: String, expectedBridgeRevision: Int?) async throws -> GameSnapshot {
@@ -624,6 +636,17 @@ struct MagicMobileAPI {
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
         return data
+    }
+
+    private func delete<Body: Encodable, T: Decodable>(_ path: String, body: Body) async throws -> T {
+        var request = URLRequest(url: url(path))
+        request.httpMethod = "DELETE"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(UUID().uuidString, forHTTPHeaderField: "X-Request-Id")
+        request.httpBody = try JSONEncoder.magicMobile.encode(body)
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+        return try decode(T.self, from: data)
     }
 
     static func decodeCommanderFixtureSnapshot(from data: Data) throws -> GameSnapshot {
