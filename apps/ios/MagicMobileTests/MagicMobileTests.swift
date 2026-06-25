@@ -365,6 +365,29 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(CastSubmissionClassifier.classify(action: action, before: before, after: after), .rejectedStillInHand)
     }
 
+    func testCastSubmissionClassifierPollsBeforeRejectingDelayedPaymentCast() throws {
+        let before = try snapshotWithHumanHand(cardId: "arcane-signet-1", cardName: "Arcane Signet")
+        let action = try decodeAction(type: "cast_spell", extra: #""sourceInstanceId": "arcane-signet-1", "requiresPayment": true"#)
+        let afterData = String(data: try minimalSnapshotJSON(id: "arcane-delayed-payment"), encoding: .utf8)!
+            .replacingOccurrences(of: #""hand": []"#, with: #""hand": [{ "instanceId": "arcane-signet-1", "card": { "name": "Arcane Signet", "typeLine": "Artifact", "oracleText": "" } }]"#)
+            .data(using: .utf8)!
+        let after = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: afterData)
+
+        XCTAssertTrue(CastSubmissionClassifier.shouldPollForDelayedOutcome(action: action, before: before, after: after))
+    }
+
+    func testStartupOpeningPromptDiagnosticsDecodeFromBridgeSnapshot() throws {
+        let snapshotData = String(data: try minimalSnapshotJSON(id: "game-startup-diagnostics"), encoding: .utf8)!
+            .replacingOccurrences(of: #""pendingStatus": null"#, with: #""pendingStatus": null, "startupOpeningPrompts": [{ "promptId": "xmage-prompt-start", "method": "GAME_SELECT", "responseKind": "player", "message": "Choose starting player", "playerId": "human", "bridgeRevision": 12, "xmageCycle": 34 }]"#)
+            .data(using: .utf8)!
+
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: snapshotData)
+
+        XCTAssertEqual(snapshot.startupOpeningPrompts?.first?.method, "GAME_SELECT")
+        XCTAssertEqual(snapshot.startupOpeningPrompts?.first?.responseKind, "player")
+        XCTAssertEqual(snapshot.startupOpeningPrompts?.first?.message, "Choose starting player")
+    }
+
     func testMagicPathLayerCatalogIncludesRequiredBoardLayers() {
         let layers = GameBoardZoneCatalog.requiredLayerNames
 
@@ -454,6 +477,22 @@ final class MagicMobileTests: XCTestCase {
             let action = try decodeAction(type: type)
             XCTAssertThrowsError(try api.command(for: action, gameId: "game-1"), "Expected \(type) to require explicit XMage prompt data")
         }
+    }
+
+    func testManaUndoIsOnlyAvailableFromExactXmageLegalActions() throws {
+        let snapshotData = String(data: try minimalSnapshotJSON(id: "game-mana-undo"), encoding: .utf8)!
+            .replacingOccurrences(of: #""manaPool": { "W": 0, "U": 0, "B": 0, "R": 0, "G": 0, "C": 0 }"#, with: #""manaPool": { "W": 0, "U": 0, "B": 0, "R": 0, "G": 1, "C": 0 }"#)
+            .data(using: .utf8)!
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: snapshotData)
+
+        XCTAssertTrue(ManaPaymentTray.manaUndoActions(in: snapshot).isEmpty)
+        XCTAssertEqual(ManaPaymentTray.manaUndoUnavailableText(in: snapshot), "XMage has not exposed mana undo")
+
+        let undoAction = try decodeAction(type: "cancel_payment")
+        let command = try MagicMobileAPI(baseURL: URL(string: "http://localhost")!)
+            .command(for: undoAction, gameId: "game-1")
+
+        XCTAssertEqual(command.type, "cancel_payment")
     }
 
     func testChooseAbilityUsesExplicitAbilityIdOnly() throws {

@@ -35,6 +35,7 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "typescript": "^5.8.3",
+    "vite-node": "3.2.4",
     "vitest": "^3.2.4"
   },
   "pnpm": {

@@ -520,10 +520,20 @@ struct ContentView: View {
             let previousSignature = snapshotSignature(currentSnapshot)
             let nextSnapshot = try await api.submit(action: action, gameId: currentSnapshot.id, expectedBridgeRevision: currentSnapshot.bridgeRevision)
             let submittedOutcome = CastSubmissionClassifier.classify(action: action, before: currentSnapshot, after: nextSnapshot)
+            let shouldPollDelayedOutcome = CastSubmissionClassifier.shouldPollForDelayedOutcome(action: action, before: currentSnapshot, after: nextSnapshot)
+            let submittedSignature = snapshotSignature(nextSnapshot)
             applySnapshot(nextSnapshot)
-            status = submittedOutcome.statusMessage
-            if nextSnapshot.pendingStatus == "waiting_for_xmage" {
-                let updated = await pollSnapshotAfterCommand(api: api, gameId: currentSnapshot.id, previousSignature: previousSignature)
+            if shouldPollDelayedOutcome {
+                pendingActionId = action.id
+                pendingCardInstanceId = action.cardInstanceId ?? action.sourceInstanceId
+                status = action.requiresPayment == true || action.manaCost?.isEmpty == false
+                    ? "Waiting for XMage payment"
+                    : "Waiting for XMage cast result"
+            } else {
+                status = submittedOutcome.statusMessage
+            }
+            if nextSnapshot.pendingStatus == "waiting_for_xmage" || shouldPollDelayedOutcome {
+                let updated = await pollSnapshotAfterCommand(api: api, gameId: currentSnapshot.id, previousSignature: shouldPollDelayedOutcome ? submittedSignature : previousSignature)
                 if let latestSnapshot = snapshot {
                     let finalOutcome = CastSubmissionClassifier.classify(action: action, before: currentSnapshot, after: latestSnapshot)
                     status = finalOutcome.statusMessage
@@ -5298,12 +5308,51 @@ struct ManaPaymentTray: View {
                 }
             }
 
+            let undoActions = Self.manaUndoActions(in: snapshot)
+            if !undoActions.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(undoActions.prefix(2)) { action in
+                        Button {
+                            runAction(action)
+                        } label: {
+                            PromptButtonLabel(title: action.shortLabel ?? "Undo Mana", systemImage: "arrow.uturn.backward", isPending: pendingActionId == action.id)
+                        }
+                        .buttonStyle(PanelActionButtonStyle(compact: true))
+                        .disabled(pendingActionId != nil)
+                    }
+                }
+            } else if let undoText = Self.manaUndoUnavailableText(in: snapshot) {
+                Text(undoText)
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(MagicPalette.parchment.opacity(0.58))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+
             if sourceManaActions.isEmpty && prompt.manaChoices?.isEmpty != false {
                 Text("Waiting for XMage mana options")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(MagicPalette.arcaneBlue)
             }
         }
+    }
+
+    static func manaUndoActions(in snapshot: GameSnapshot) -> [LegalAction] {
+        let undoTypes = Set(["undo_mana", "cancel_payment", "cancel_mana_payment"])
+        return (snapshot.legalActions ?? [])
+            .filter { undoTypes.contains($0.type) }
+    }
+
+    static func manaUndoUnavailableText(in snapshot: GameSnapshot) -> String? {
+        guard hasFloatingMana(in: snapshot), manaUndoActions(in: snapshot).isEmpty else {
+            return nil
+        }
+        return "XMage has not exposed mana undo"
+    }
+
+    private static func hasFloatingMana(in snapshot: GameSnapshot) -> Bool {
+        guard let pool = snapshot.human?.manaPool else { return false }
+        return pool.W + pool.U + pool.B + pool.R + pool.G + pool.C > 0
     }
 
     private var requiredManaText: String {

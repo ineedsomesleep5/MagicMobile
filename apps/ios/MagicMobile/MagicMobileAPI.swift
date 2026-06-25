@@ -106,7 +106,7 @@ struct MagicMobileAPI {
     func command(for action: LegalAction, gameId: String) throws -> GameCommand {
         let promptId = promptId(for: action)
         let messageId = messageId(for: action)
-        if ["keep_hand", "mulligan", "pass_priority", "pass_until_response", "pass_until_next_turn", "advance_phase", "concede"].contains(action.type) {
+        if ["keep_hand", "mulligan", "pass_priority", "pass_until_response", "pass_until_next_turn", "advance_phase", "concede", "undo_mana", "cancel_payment", "cancel_mana_payment"].contains(action.type) {
             return GameCommand(type: action.type, gameId: gameId, playerId: action.playerId)
         }
 

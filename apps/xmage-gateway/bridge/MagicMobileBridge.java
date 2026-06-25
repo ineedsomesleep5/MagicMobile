@@ -1135,6 +1135,7 @@ public final class MagicMobileBridge implements MageClient {
             snapshot.add("promptEnvelope", record.promptEnvelope);
             snapshot.add("promptEnvelopeV2", record.promptEnvelope);
         }
+        snapshot.add("startupOpeningPrompts", record.startupOpeningPrompts.deepCopy());
         snapshot.add("xmage", xmageMobileSnapshot(record, view, playerIds));
         return snapshot;
     }
@@ -2689,11 +2690,11 @@ public final class MagicMobileBridge implements MageClient {
         if (view == null) {
             return false;
         }
-        if (!hasHumanCommandZoneCommander(record, view, humanCommanderName)) {
-            return false;
-        }
         if (hasHumanOpeningPrompt(record)) {
             return true;
+        }
+        if (!hasHumanCommandZoneCommander(record, view, humanCommanderName)) {
+            return false;
         }
         if (isMulliganPrompt(record)) {
             return true;
@@ -3865,6 +3866,31 @@ public final class MagicMobileBridge implements MageClient {
         }
     }
 
+    private void recordStartupOpeningPrompt(GameRecord record, String promptText, JsonObject promptEnvelope) {
+        if (record == null || promptEnvelope == null || record.startupOpeningPrompts.size() >= 12) {
+            return;
+        }
+        String method = string(promptEnvelope, "method", "");
+        String promptId = string(promptEnvelope, "id", "");
+        String message = cleanText(promptText == null || promptText.isEmpty() ? string(promptEnvelope, "message", "") : promptText);
+        String signature = method + "|" + promptId + "|" + message;
+        for (JsonElement element : record.startupOpeningPrompts) {
+            if (element.isJsonObject() && signature.equals(string(element.getAsJsonObject(), "signature", ""))) {
+                return;
+            }
+        }
+        JsonObject item = new JsonObject();
+        item.addProperty("signature", signature);
+        item.addProperty("promptId", promptId);
+        item.addProperty("method", method);
+        item.addProperty("responseKind", string(promptEnvelope, "responseKind", ""));
+        item.addProperty("message", message);
+        item.addProperty("playerId", string(promptEnvelope, "playerId", ""));
+        item.addProperty("bridgeRevision", record.bridgeRevision.get());
+        item.addProperty("xmageCycle", record.latestCycle);
+        record.startupOpeningPrompts.add(item);
+    }
+
     private JsonObject promptEnvelope(ClientCallback callback, GameClientMessage message) {
         ClientCallbackMethod method = callback.getMethod();
         if (!isPromptMethod(method)) {
@@ -4329,6 +4355,7 @@ public final class MagicMobileBridge implements MageClient {
         record.bridgeRevision.incrementAndGet();
         record.lastProgressAt = System.currentTimeMillis();
         JsonObject actionablePrompt = isActionablePrompt(promptEnvelope) ? promptEnvelope : null;
+        recordStartupOpeningPrompt(record, promptText, promptEnvelope);
         record.promptText = actionablePrompt == null && promptEnvelope != null ? null : promptText == null ? null : cleanText(promptText);
         record.promptEnvelope = actionablePrompt;
         if (targets != null && !targets.isEmpty()) {
@@ -4591,6 +4618,7 @@ public final class MagicMobileBridge implements MageClient {
         volatile String promptText;
         volatile JsonObject choicePrompt;
         volatile JsonObject promptEnvelope;
+        final JsonArray startupOpeningPrompts = new JsonArray();
 
         GameRecord(UUID gameId, String humanExternalId, String aiExternalId, String aiName) {
             this.gameId = gameId;

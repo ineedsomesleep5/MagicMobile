@@ -1056,6 +1056,14 @@ describe("xmage gateway", () => {
     assert.equal(bridgeSource.includes('session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "confirmed", true));'), false);
   });
 
+  it("records startup opening prompts for starting-player diagnosis", () => {
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+
+    assert.match(bridgeSource, /startupOpeningPrompts/);
+    assert.match(bridgeSource, /recordStartupOpeningPrompt/);
+    assert.match(bridgeSource, /snapshot\.add\("startupOpeningPrompts"/);
+  });
+
   it("keeps XMage fixtures inside the server JVM with snapshot proof gates", () => {
     const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
     const embeddedSource = readFileSync(new URL("./bridge/MagicMobileEmbeddedServerBridge.java", import.meta.url), "utf8");

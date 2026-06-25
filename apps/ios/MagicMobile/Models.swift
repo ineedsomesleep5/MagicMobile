@@ -115,6 +115,7 @@ struct GameSnapshot: Decodable {
     let choicePrompt: ChoicePrompt?
     let promptEnvelope: PromptEnvelope?
     let promptEnvelopeV2: PromptEnvelopeV2?
+    let startupOpeningPrompts: [StartupOpeningPrompt]?
     let xmage: XmageMobileSnapshot?
     let engineHealth: EngineHealth?
     let bridgeRevision: Int?
@@ -128,6 +129,16 @@ struct GameSnapshot: Decodable {
     var opponent: PlayerGameState? {
         players.first { $0.playerId != "human" }
     }
+}
+
+struct StartupOpeningPrompt: Decodable, Equatable {
+    let promptId: String?
+    let method: String?
+    let responseKind: String?
+    let message: String?
+    let playerId: String?
+    let bridgeRevision: Int?
+    let xmageCycle: Int?
 }
 
 enum CastSubmissionOutcome: Equatable {
@@ -173,6 +184,11 @@ enum CastSubmissionClassifier {
             return .rejectedStillInHand
         }
         return .accepted
+    }
+
+    static func shouldPollForDelayedOutcome(action: LegalAction, before: GameSnapshot, after: GameSnapshot) -> Bool {
+        guard action.type == "cast_spell" else { return false }
+        return classify(action: action, before: before, after: after) == .rejectedStillInHand
     }
 
     static func isPaymentPrompt(_ prompt: PromptEnvelopeV2?) -> Bool {
