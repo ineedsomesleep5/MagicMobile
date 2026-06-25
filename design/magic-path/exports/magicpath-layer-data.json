@@ -1,0 +1,52 @@
+{
+  "source": "MagicPath CLI inspect output plus current layer contract",
+  "projectId": "420728834988597248",
+  "currentEditedFrame": {
+    "name": "Dragging Card / Drop Zones Visible",
+    "componentId": "420729376641007616",
+    "generatedName": "sweet-week-7067"
+  },
+  "exportLimitations": {
+    "svgExport": "not available through magicpath-ai CLI",
+    "rawCanvasJsonExport": "not available through magicpath-ai CLI",
+    "availableExports": [
+      "preview PNGs from MagicPath previewImageUrl",
+      "component metadata from list-components",
+      "component source from inspect"
+    ]
+  },
+  "mmLayers": [
+    "MM.BoardRoot",
+    "MM.BattlefieldSurface",
+    "MM.OpponentVerticalHUD",
+    "MM.OpponentBattlefieldCards",
+    "MM.PlayerBattlefieldCards",
+    "MM.PlayerHandRail",
+    "MM.SelectedCardLift",
+    "MM.DragGhostCard",
+    "MM.DragDropZoneCast",
+    "MM.DragDropZoneBattlefield",
+    "MM.ValidTargetGlow",
+    "MM.InvalidTargetDim",
+    "MM.RightPhaseRail",
+    "MM.PrimaryFlowButton",
+    "MM.RightTransparentGameLog",
+    "MM.StackMiniIndicator",
+    "MM.StackExpandedSheet",
+    "MM.PromptOverlay",
+    "MM.ManaPrompt",
+    "MM.SearchPrompt",
+    "MM.CommanderReplacementPrompt",
+    "MM.DamageAssignmentPrompt",
+    "MM.ZoneChips",
+    "MM.CommandZoneChip",
+    "MM.GraveyardChip",
+    "MM.ExileChip",
+    "MM.LibraryChip",
+    "MM.CardInspectorSheet",
+    "MM.AIThinkingStatus",
+    "MM.BridgeStatusPill",
+    "MM.UnsupportedPromptFallback",
+    "MM.DebugSheet"
+  ]
+}

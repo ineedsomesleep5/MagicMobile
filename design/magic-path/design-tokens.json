@@ -1,0 +1,85 @@
+{
+  "source": {
+    "projectId": "420728834988597248",
+    "mainComponent": "eager-tower-7952",
+    "frameSize": { "width": 956, "height": 440 }
+  },
+  "colors": {
+    "battlefieldStone": "#18130f",
+    "battlefieldStoneDeep": "#090b0c",
+    "darkLeather": "#2a1b10",
+    "carvedWood": "#3a2417",
+    "agedParchment": "#e8cf96",
+    "agedParchmentInk": "#2a1b10",
+    "warmGold": "#dcae4f",
+    "warmGoldBright": "#f2c86f",
+    "emberWarning": "#d56a2d",
+    "arcaneBlue": "#7ecbff",
+    "priorityGreen": "#69e0b2",
+    "dangerRed": "#fa5b5b",
+    "glassPanel": "rgba(12, 15, 16, 0.46)",
+    "cardFace": "#193632",
+    "cardFrame": "#e2b45e",
+    "cardGlow": "rgba(82, 179, 255, 0.52)",
+    "validDropGlow": "rgba(105, 224, 178, 0.55)",
+    "invalidTargetDim": "rgba(70, 11, 17, 0.54)"
+  },
+  "spacing": {
+    "safeAreaTop": 8,
+    "safeAreaBottom": 8,
+    "safeAreaSide": 18,
+    "hudPadding": 8,
+    "panelPadding": 8,
+    "chipGap": 4,
+    "cardGap": 12,
+    "handOverlap": -8
+  },
+  "cornerRadius": {
+    "board": 18,
+    "panel": 6,
+    "chip": 999,
+    "card": 7,
+    "cardArt": 4,
+    "prompt": 6
+  },
+  "borderWidths": {
+    "hairline": 1,
+    "card": 1,
+    "dropZone": 1,
+    "activeGlow": 1
+  },
+  "glows": {
+    "cardGlow": "0 0 0 1px rgba(126, 203, 255, 0.88), 0 0 18px rgba(82, 179, 255, 0.52)",
+    "validDropGlow": "0 0 0 1px rgba(105, 224, 178, 0.8), 0 0 18px rgba(105, 224, 178, 0.55)",
+    "priorityGreen": "0 0 18px rgba(105, 224, 178, 0.44)",
+    "dangerRed": "inset 0 0 0 1px rgba(250, 91, 91, 0.58)"
+  },
+  "shadows": {
+    "card": "0 9px 18px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 245, 210, 0.08)",
+    "glassPanel": "inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 14px 26px rgba(0, 0, 0, 0.28)",
+    "battlefieldInset": "inset 0 0 70px rgba(0, 0, 0, 0.72)"
+  },
+  "typography": {
+    "headingFont": "Cinzel",
+    "bodyFont": "Inter",
+    "hudName": 9,
+    "lifeTotal": 16,
+    "phaseLabel": 7,
+    "logEvent": 7,
+    "chip": 8,
+    "cardName": 7,
+    "cardType": 6,
+    "promptTitle": 21,
+    "promptBody": 11,
+    "primaryButton": 12
+  },
+  "zIndex": {
+    "battlefieldSurface": 0,
+    "battlefieldCards": 10,
+    "hudAndRails": 20,
+    "handRail": 30,
+    "dragOverlay": 40,
+    "promptOverlay": 50,
+    "debugSheet": 60
+  }
+}

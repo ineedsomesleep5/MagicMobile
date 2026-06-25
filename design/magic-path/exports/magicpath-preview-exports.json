@@ -1,0 +1,72 @@
+[
+    {
+        "frame":  "AI Thinking / Waiting",
+        "file":  "ai-thinking-waiting.png",
+        "componentId":  "420729460581601280",
+        "generatedName":  "clear-week-6056",
+        "previewImageUrl":  "https://storage.googleapis.com/storage.magicpath.ai/component-previews/f67f17c5-986b-4cbd-bc71-7ff65fbafd7f.png"
+    },
+    {
+        "frame":  "Bridge Unavailable / Reconnect",
+        "file":  "bridge-unavailable-reconnect.png",
+        "componentId":  "420729482081615872",
+        "generatedName":  "kind-forest-2398",
+        "previewImageUrl":  "https://storage.googleapis.com/storage.magicpath.ai/component-previews/6ef2131c-95ec-414c-886c-8bf53a902af5.png"
+    },
+    {
+        "frame":  "Commander Replacement Prompt",
+        "file":  "commander-replacement-prompt.png",
+        "componentId":  "420729435940089856",
+        "generatedName":  "cleverly-autumn-9282",
+        "previewImageUrl":  "https://storage.googleapis.com/storage.magicpath.ai/component-previews/9153c117-d7f8-498a-9335-59f66a68b7f4.png"
+    },
+    {
+        "frame":  "Damage Assignment Prompt",
+        "file":  "damage-assignment-prompt.png",
+        "componentId":  "420729447843528704",
+        "generatedName":  "lively-sand-1892",
+        "previewImageUrl":  "https://storage.googleapis.com/storage.magicpath.ai/component-previews/43739276-8436-45bb-8a72-b0d874060538.png"
+    },
+    {
+        "frame":  "Dragging Card / Drop Zones Visible",
+        "file":  "dragging-drop-zones.png",
+        "componentId":  "420729376641007616",
+        "generatedName":  "sweet-week-7067",
+        "previewImageUrl":  "https://storage.googleapis.com/storage.magicpath.ai/component-previews/5837bf5b-3bae-45c5-a03d-120563f3cdd0.png"
+    },
+    {
+        "frame":  "Mana Payment Prompt",
+        "file":  "mana-payment-prompt.png",
+        "componentId":  "420729401509023744",
+        "generatedName":  "safely-garden-7226",
+        "previewImageUrl":  "https://storage.googleapis.com/storage.magicpath.ai/component-previews/31de1444-79b9-4769-993a-9d990ea94332.png"
+    },
+    {
+        "frame":  "Normal Battlefield",
+        "file":  "normal-battlefield.png",
+        "componentId":  "420728860716449792",
+        "generatedName":  "eager-tower-7952",
+        "previewImageUrl":  "https://storage.googleapis.com/storage.magicpath.ai/component-previews/3d690d5a-77dc-4aaf-a5c2-1ca38851ad9d.png"
+    },
+    {
+        "frame":  "Search Library Prompt",
+        "file":  "search-library-prompt.png",
+        "componentId":  "420729414448467968",
+        "generatedName":  "steady-river-7644",
+        "previewImageUrl":  "https://storage.googleapis.com/storage.magicpath.ai/component-previews/819d241e-2561-45f6-a738-d0db50234b81.png"
+    },
+    {
+        "frame":  "Selected Card",
+        "file":  "selected-card.png",
+        "componentId":  "420729389609795584",
+        "generatedName":  "cleverly-tide-3424",
+        "previewImageUrl":  "https://storage.googleapis.com/storage.magicpath.ai/component-previews/1d5251c6-8c98-4528-8e9f-8a74f2b05933.png"
+    },
+    {
+        "frame":  "Stack Response Prompt",
+        "file":  "stack-response-prompt.png",
+        "componentId":  "420729424338628608",
+        "generatedName":  "eagerly-river-8898",
+        "previewImageUrl":  "https://storage.googleapis.com/storage.magicpath.ai/component-previews/8d5bff41-2d3c-4c3a-b169-4d9a08a201f2.png"
+    }
+]
