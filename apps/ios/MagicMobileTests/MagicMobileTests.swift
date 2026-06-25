@@ -96,6 +96,25 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual("combat-damage".compactPhaseTitle, "Damage")
     }
 
+    func testMagicPathLayerCatalogIncludesRequiredBoardLayers() {
+        let layers = GameBoardZoneCatalog.requiredLayerNames
+
+        XCTAssertTrue(layers.contains(.handRail))
+        XCTAssertTrue(layers.contains(.promptPanel))
+        XCTAssertTrue(layers.contains(.phasePriorityBar))
+        XCTAssertTrue(layers.contains(.unsupportedPromptFallback))
+        XCTAssertEqual(GameBoardLayoutSpec.magicPathLandscape.canvasSize.width, 956)
+        XCTAssertEqual(GameBoardLayoutSpec.magicPathLandscape.canvasSize.height, 440)
+    }
+
+    func testDesignPreviewSnapshotIsClearlyNotGameplayProof() {
+        let snapshot = GameBoardPreviewFixtures.snapshot(.manaPaymentPrompt)
+
+        XCTAssertEqual(snapshot.source, "design-preview")
+        XCTAssertEqual(snapshot.promptEnvelopeV2?.responseKind, "mana")
+        XCTAssertEqual(snapshot.engineHealth?.reason, "Design preview only. Not gameplay proof.")
+    }
+
     func testLegalActionPreservesCommandTemplateValues() throws {
         let data = """
         {
@@ -513,6 +532,97 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertFalse(PromptCommandBuilder.isCombatDamageAllocationPrompt(prompt, phase: "Main", step: "Precombat Main"))
     }
 
+    func testInteractionStateFindsOnlyExactDragPlayableActions() throws {
+        let card = zoneCard(id: "hand-sol-ring", name: "Sol Ring", typeLine: "Artifact")
+        let cast = try decodeAction(
+            type: "cast_spell",
+            extra: #""sourceInstanceId": "hand-sol-ring""#
+        )
+        let unrelatedCast = try decodeAction(
+            type: "cast_spell",
+            extra: #""sourceInstanceId": "other-card""#
+        )
+        let targetResponse = try decodeAction(
+            type: "choose_target",
+            extra: #""validTargetIds": ["hand-sol-ring"]"#
+        )
+
+        let actions = GameBoardInteractionState.legalPlayActions(
+            for: card,
+            actions: [cast, unrelatedCast, targetResponse]
+        )
+
+        XCTAssertEqual(actions.map(\.id), ["cast_spell-action"])
+    }
+
+    func testInteractionStateUsesOnlyExposedTargetIdsForGlow() throws {
+        let prompt = try JSONDecoder.magicMobile.decode(PromptEnvelopeV2.self, from: #"""
+        {
+          "id": "xmage-prompt-target",
+          "method": "GAME_TARGET",
+          "messageId": 44,
+          "playerId": "human",
+          "responseKind": "target",
+          "message": "Choose target artifact.",
+          "responseCommand": {
+            "type": "choose_target",
+            "promptId": "xmage-prompt-target",
+            "messageId": 44
+          },
+          "targets": [
+            { "id": "target-sol-ring", "label": "Sol Ring" }
+          ],
+          "targetIds": ["target-player"]
+        }
+        """#.data(using: .utf8)!)
+        let action = try decodeAction(
+            type: "choose_target",
+            extra: #""validTargetIds": ["target-arcane-signet"]"#
+        )
+
+        let ids = GameBoardInteractionState.validTargetIds(from: prompt, actions: [action])
+
+        XCTAssertEqual(ids, ["target-sol-ring", "target-player", "target-arcane-signet"])
+        XCTAssertTrue(GameBoardInteractionState(mode: .targeting(promptId: prompt.id, sourceCardId: nil, validTargetIds: ids)).isTargetable(zoneCard(id: "target-sol-ring", name: "Sol Ring", typeLine: "Artifact")))
+        XCTAssertFalse(GameBoardInteractionState(mode: .targeting(promptId: prompt.id, sourceCardId: nil, validTargetIds: ids)).isTargetable(zoneCard(id: "not-exposed", name: "Island", typeLine: "Basic Land - Island")))
+    }
+
+    func testInteractionStateDerivesUnsupportedPromptWithoutAutopicking() throws {
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
+        {
+          "id": "game-unknown",
+          "source": "xmage-java-bridge",
+          "activePlayerId": "human",
+          "phase": "precombat-main",
+          "step": "precombat-main",
+          "turn": 1,
+          "priorityPlayerId": "human",
+          "waitingOnPlayerId": "human",
+          "promptText": "Choose something weird",
+          "players": [],
+          "log": [],
+          "legalActions": [{ "id": "concede", "type": "concede", "playerId": "human", "label": "Concede" }],
+          "promptEnvelopeV2": {
+            "id": "xmage-prompt-weird",
+            "method": "GAME_UNKNOWN_CALLBACK",
+            "messageId": 91,
+            "playerId": "human",
+            "responseKind": "unknown",
+            "message": "Choose something weird",
+            "responseCommand": {
+              "type": "unsupported_mobile_prompt",
+              "promptId": "xmage-prompt-weird",
+              "messageId": 91
+            }
+          }
+        }
+        """#.data(using: .utf8)!)
+
+        let mode = GameBoardInteractionState.mode(for: snapshot, pendingActionId: nil, selectedCard: nil)
+
+        XCTAssertEqual(mode, .unsupportedPrompt(promptId: "xmage-prompt-weird", method: "GAME_UNKNOWN_CALLBACK", responseKind: "unknown"))
+    }
+
     func testPromptCommandBuilderValidatesMultiAmountRangesAndTotals() {
         let slots = [
             XmagePromptMultiAmount(id: "0", label: "W", min: 0, max: 2, defaultValue: 0),
@@ -525,6 +635,22 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertFalse(PromptCommandBuilder.isValidMultiAmountValues([1], slots: slots, totalMin: 2, totalMax: 2))
         XCTAssertFalse(PromptCommandBuilder.isValidMultiAmountValues([3, 0], slots: slots, totalMin: 2, totalMax: 2))
         XCTAssertFalse(PromptCommandBuilder.isValidMultiAmountValues([1, 0], slots: slots, totalMin: 2, totalMax: 2))
+    }
+
+    func testSearchSelectionRequiresExplicitMinMaxCount() {
+        XCTAssertFalse(PromptSelectionRules.isValidSelectedCount(0, minChoices: 1, maxChoices: 2))
+        XCTAssertTrue(PromptSelectionRules.isValidSelectedCount(1, minChoices: 1, maxChoices: 2))
+        XCTAssertTrue(PromptSelectionRules.isValidSelectedCount(2, minChoices: 1, maxChoices: 2))
+        XCTAssertFalse(PromptSelectionRules.isValidSelectedCount(3, minChoices: 1, maxChoices: 2))
+    }
+
+    func testUnsupportedPromptFallbackPreviewStateIsNotPlayable() {
+        let snapshot = GameBoardPreviewFixtures.snapshot(.unsupportedPromptFallback)
+
+        XCTAssertEqual(snapshot.source, "design-preview")
+        XCTAssertEqual(snapshot.promptEnvelopeV2?.responseCommand?.type, "unsupported_mobile_prompt")
+        XCTAssertEqual(snapshot.legalActions?.map(\.type), ["concede"])
+        XCTAssertEqual(snapshot.engineHealth?.reason, "Design preview only. Not gameplay proof.")
     }
 
     func testUniversalPromptResponseCommandBuilderFailsClosedForMissingPromptValues() {
@@ -638,6 +764,21 @@ final class MagicMobileTests: XCTestCase {
         }
         """.data(using: .utf8)!
         return try JSONDecoder.magicMobile.decode(LegalAction.self, from: data)
+    }
+
+    private func zoneCard(id: String, name: String, typeLine: String) -> ZoneCard {
+        ZoneCard(
+            instanceId: id,
+            card: CardIdentity(name: name, typeLine: typeLine, oracleText: nil),
+            tapped: nil,
+            counters: nil,
+            power: nil,
+            toughness: nil,
+            damage: nil,
+            isAttacking: nil,
+            blocking: nil,
+            attachedToInstanceId: nil
+        )
     }
 
     private func minimalSnapshotJSON(id: String) throws -> Data {

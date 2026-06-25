@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="956" height="440" viewBox="0 0 956 440" role="img" aria-label="MagicMobile iPhone Pro Max landscape board blueprint">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#061913"/>
+      <stop offset="0.45" stop-color="#342116"/>
+      <stop offset="1" stop-color="#090706"/>
+    </linearGradient>
+    <style>
+      .label{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:10px;font-weight:800;letter-spacing:.3px;fill:#f7f2e6}
+      .hint{font-size:7px;font-weight:700;fill:#c9bda5}
+      .zone{fill:#b8955e22;stroke:#d5a741;stroke-width:1.2}
+      .panel{fill:#1c130edd;stroke:#a9792b;stroke-width:1.2}
+      .functional{stroke:#2fc878}
+      .decorative{stroke:#d5a741}
+      .button{fill:#3a342dcc;stroke:#d5a741}
+    </style>
+  </defs>
+  <g id="MM.BoardRoot">
+    <rect id="MM.Background" x="0" y="0" width="956" height="440" rx="28" fill="url(#bg)"/>
+    <rect x="28" y="18" width="900" height="398" rx="24" fill="#b8955e1f" stroke="#d5a74155"/>
+  </g>
+  <g id="MM.OpponentHUD">
+    <rect class="panel functional" x="312" y="10" width="162" height="48" rx="22"/>
+    <text class="label" x="326" y="30">MM.OpponentHUD</text>
+    <text class="hint" x="326" y="43">AI life/commander/zones</text>
+  </g>
+  <g id="MM.PhasePriorityBar">
+    <rect class="panel functional" x="84" y="12" width="220" height="42" rx="21"/>
+    <text class="label" x="102" y="36">MM.PhasePriorityBar</text>
+  </g>
+  <g id="MM.BridgeStatusPill">
+    <rect class="button functional" x="496" y="17" width="92" height="28" rx="14"/>
+    <text class="label" x="520" y="35">LIVE</text>
+  </g>
+  <g id="MM.OpponentBattlefield">
+    <rect class="zone functional" x="78" y="65" width="540" height="66" rx="10"/>
+    <text class="label" x="92" y="88">MM.OpponentBattlefield</text>
+    <rect class="zone functional" x="78" y="137" width="540" height="54" rx="10"/>
+    <text class="hint" x="92" y="165">opponent lands row</text>
+  </g>
+  <g id="MM.CenterStackStrip">
+    <rect class="panel functional" x="78" y="197" width="540" height="44" rx="10"/>
+    <text class="label" x="96" y="224">MM.CenterStackStrip / Prompt Summary</text>
+  </g>
+  <g id="MM.PlayerBattlefield">
+    <rect class="zone functional" x="78" y="248" width="540" height="66" rx="10"/>
+    <text class="label" x="92" y="276">MM.PlayerBattlefield</text>
+    <rect class="zone functional" x="78" y="320" width="540" height="54" rx="10"/>
+    <text class="hint" x="92" y="348">player lands row</text>
+  </g>
+  <g id="MM.ManaPool">
+    <rect class="button functional" x="82" y="292" width="200" height="30" rx="15"/>
+    <text class="label" x="100" y="313">MM.ManaPool</text>
+  </g>
+  <g id="MM.HandRail">
+    <rect class="panel functional" x="186" y="374" width="392" height="52" rx="20"/>
+    <text class="label" x="330" y="405">MM.HandRail</text>
+  </g>
+  <g id="MM.ActionTray">
+    <rect class="panel functional" x="596" y="368" width="226" height="58" rx="12"/>
+    <text class="label" x="622" y="402">MM.ActionTray</text>
+  </g>
+  <g id="MM.PromptPanel">
+    <rect class="panel functional" x="634" y="70" width="216" height="298" rx="12"/>
+    <text class="label" x="654" y="96">MM.PromptPanel</text>
+    <rect class="button functional" x="650" y="122" width="184" height="44" rx="8"/>
+    <text class="hint" x="668" y="148">legal action button</text>
+    <rect class="button functional" x="650" y="176" width="184" height="44" rx="8"/>
+    <text class="hint" x="668" y="202">prompt control region</text>
+  </g>
+  <g id="MM.CommandZoneButton">
+    <rect class="button functional" x="74" y="382" width="72" height="34" rx="10"/>
+    <text class="hint" x="84" y="402">Command</text>
+  </g>
+  <g id="MM.GraveyardButton">
+    <rect class="button functional" x="828" y="376" width="46" height="34" rx="10"/>
+    <text class="hint" x="835" y="397">Grave</text>
+  </g>
+  <g id="MM.ExileButton">
+    <rect class="button functional" x="880" y="376" width="46" height="34" rx="10"/>
+    <text class="hint" x="891" y="397">Exile</text>
+  </g>
+  <g id="MM.StackButton">
+    <rect class="button functional" x="598" y="204" width="34" height="28" rx="8"/>
+    <text class="hint" x="607" y="222">Stack</text>
+  </g>
+  <g id="MM.CardInspectorSheet">
+    <rect class="panel functional" x="30" y="86" width="132" height="164" rx="12"/>
+    <text class="label" x="48" y="114">MM.CardInspector</text>
+  </g>
+  <g id="MM.ZoneSheet">
+    <rect class="panel functional" x="166" y="78" width="178" height="132" rx="12"/>
+    <text class="label" x="198" y="110">MM.ZoneSheet</text>
+  </g>
+  <g id="MM.AIThinkingPill">
+    <rect class="button functional" x="370" y="203" width="120" height="28" rx="14"/>
+    <text class="label" x="392" y="222">AI / WAIT</text>
+  </g>
+  <g id="MM.UnsupportedPromptFallback">
+    <rect class="panel functional" x="654" y="248" width="176" height="72" rx="10"/>
+    <text class="label" x="674" y="278">Unsupported Prompt</text>
+    <text class="hint" x="674" y="296">refresh/reconnect only</text>
+  </g>
+</svg>

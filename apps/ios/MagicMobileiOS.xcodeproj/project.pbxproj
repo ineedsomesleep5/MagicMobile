@@ -9,6 +9,13 @@
 /* Begin PBXBuildFile section */
 		0177F7BB151A10AEDA526F73 /* PreconCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EC7F366BBFC899D5DD7671C /* PreconCatalog.swift */; };
 		037F8C88A7F2DD19D445DEE4 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6872434C0866DDE9DEF3FB8C /* Models.swift */; };
+		0A11D0010000000000000001 /* GameBoardDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11F0010000000000000001 /* GameBoardDesignTokens.swift */; };
+		0A11D0010000000000000002 /* GameBoardTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11F0010000000000000002 /* GameBoardTheme.swift */; };
+		0A11D0010000000000000003 /* GameBoardLayoutMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11F0010000000000000003 /* GameBoardLayoutMetrics.swift */; };
+		0A11D0010000000000000004 /* GameBoardScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11F0010000000000000004 /* GameBoardScreen.swift */; };
+		0A11D0010000000000000005 /* GameBoardZones.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11F0010000000000000005 /* GameBoardZones.swift */; };
+		0A11D0010000000000000006 /* GameBoardPreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11F0010000000000000006 /* GameBoardPreviewFixtures.swift */; };
+		0A11D0010000000000000007 /* GameBoardInteractionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11F0010000000000000007 /* GameBoardInteractionState.swift */; };
 		3E8B2B4964B34D0F9B57D133 /* PromptCommandBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81D24D11B68146B6B4C2F52C /* PromptCommandBuilder.swift */; };
 		551A8C60BC9EF53BC42CE492 /* MagicMobileAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5880A440F12FAFCB5E9DB6 /* MagicMobileAPI.swift */; };
 		5E56D36ECA96BCF27A83C003 /* MagicMobileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8847ABC91603BF5DA5F4CE5 /* MagicMobileTests.swift */; };
@@ -29,6 +36,13 @@
 
 /* Begin PBXFileReference section */
 		08AC5C4DD955D082D3138966 /* MagicMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MagicMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		0A11F0010000000000000001 /* GameBoardDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardDesignTokens.swift; sourceTree = "<group>"; };
+		0A11F0010000000000000002 /* GameBoardTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardTheme.swift; sourceTree = "<group>"; };
+		0A11F0010000000000000003 /* GameBoardLayoutMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardLayoutMetrics.swift; sourceTree = "<group>"; };
+		0A11F0010000000000000004 /* GameBoardScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardScreen.swift; sourceTree = "<group>"; };
+		0A11F0010000000000000005 /* GameBoardZones.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardZones.swift; sourceTree = "<group>"; };
+		0A11F0010000000000000006 /* GameBoardPreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardPreviewFixtures.swift; sourceTree = "<group>"; };
+		0A11F0010000000000000007 /* GameBoardInteractionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardInteractionState.swift; sourceTree = "<group>"; };
 		1EC7F366BBFC899D5DD7671C /* PreconCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreconCatalog.swift; sourceTree = "<group>"; };
 		268E12F4889571947D93BF23 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		29DCFFDEC2E73604A42C81C3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -47,6 +61,13 @@
 			children = (
 				268E12F4889571947D93BF23 /* Assets.xcassets */,
 				29DCFFDEC2E73604A42C81C3 /* ContentView.swift */,
+				0A11F0010000000000000001 /* GameBoardDesignTokens.swift */,
+				0A11F0010000000000000007 /* GameBoardInteractionState.swift */,
+				0A11F0010000000000000003 /* GameBoardLayoutMetrics.swift */,
+				0A11F0010000000000000006 /* GameBoardPreviewFixtures.swift */,
+				0A11F0010000000000000004 /* GameBoardScreen.swift */,
+				0A11F0010000000000000002 /* GameBoardTheme.swift */,
+				0A11F0010000000000000005 /* GameBoardZones.swift */,
 				FF4EE202904EFC97FF10F5D0 /* Info.plist */,
 				5A5880A440F12FAFCB5E9DB6 /* MagicMobileAPI.swift */,
 				69B2CFE17C03F7A7CC6CFEC3 /* MagicMobileApp.swift */,
@@ -178,6 +199,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				C8623EC979ACF45B170D1881 /* ContentView.swift in Sources */,
+				0A11D0010000000000000001 /* GameBoardDesignTokens.swift in Sources */,
+				0A11D0010000000000000007 /* GameBoardInteractionState.swift in Sources */,
+				0A11D0010000000000000003 /* GameBoardLayoutMetrics.swift in Sources */,
+				0A11D0010000000000000006 /* GameBoardPreviewFixtures.swift in Sources */,
+				0A11D0010000000000000004 /* GameBoardScreen.swift in Sources */,
+				0A11D0010000000000000002 /* GameBoardTheme.swift in Sources */,
+				0A11D0010000000000000005 /* GameBoardZones.swift in Sources */,
 				551A8C60BC9EF53BC42CE492 /* MagicMobileAPI.swift in Sources */,
 				752C5EFA30A506F19E13681B /* MagicMobileApp.swift in Sources */,
 				037F8C88A7F2DD19D445DEE4 /* Models.swift in Sources */,

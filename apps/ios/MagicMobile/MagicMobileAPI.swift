@@ -4,7 +4,7 @@ struct MagicMobileAPI {
     var baseURL: URL
 
     func health() async throws -> EngineHealth {
-        try await get("/api/engine/health")
+        try await get(route(web: "/api/engine/health", gateway: "/health"))
     }
 
     func cardCacheMetadata() async throws -> CardCacheMetadata {
@@ -32,11 +32,21 @@ struct MagicMobileAPI {
 
     func startCommanderGame(humanDeck: DeckList, aiDeck: DeckList, difficulty: AiDifficulty) async throws -> GameSnapshot {
         let config = commanderConfig(humanDeck: humanDeck, aiDeck: aiDeck, difficulty: difficulty)
-        return try await post("/api/engine/commander", body: config)
+        return try await post(route(web: "/api/engine/commander", gateway: "/games/commander"), body: config)
     }
 
     func startCommanderStartup(humanDeck: DeckList, aiDeck: DeckList, difficulty: AiDifficulty) async throws -> CommanderStartupResponse {
-        try await post("/api/engine/commander/start", body: commanderConfig(humanDeck: humanDeck, aiDeck: aiDeck, difficulty: difficulty))
+        if usesDirectGatewayRoutes {
+            let snapshot = try await startCommanderGame(humanDeck: humanDeck, aiDeck: aiDeck, difficulty: difficulty)
+            return CommanderStartupResponse(
+                startupId: "direct-gateway:\(snapshot.id)",
+                status: "ready",
+                snapshot: snapshot,
+                message: "XMage table ready.",
+                error: nil
+            )
+        }
+        return try await post("/api/engine/commander/start", body: commanderConfig(humanDeck: humanDeck, aiDeck: aiDeck, difficulty: difficulty))
     }
 
     func commanderStartupStatus(startupId: String) async throws -> CommanderStartupResponse {
@@ -49,7 +59,7 @@ struct MagicMobileAPI {
     }
 
     func snapshot(gameId: String) async throws -> GameSnapshot {
-        try await get("/api/engine/games/\(gameId)")
+        try await get(gamePath(gameId: gameId))
     }
 
     private func commanderConfig(humanDeck: DeckList, aiDeck: DeckList, difficulty: AiDifficulty) -> CommanderGameConfig {
@@ -71,12 +81,12 @@ struct MagicMobileAPI {
             mergeCommandTemplate(try command(for: action, gameId: gameId), action: action, gameId: gameId),
             expectedBridgeRevision: expectedBridgeRevision
         )
-        return try await post("/api/engine/games/\(gameId)/commands", body: command)
+        return try await post(commandPath(gameId: gameId), body: command)
     }
 
     func submit(command: GameCommand, gameId: String, expectedBridgeRevision: Int?) async throws -> GameSnapshot {
         try await post(
-            "/api/engine/games/\(gameId)/commands",
+            commandPath(gameId: gameId),
             body: Self.withExpectedBridgeRevision(command, expectedBridgeRevision: expectedBridgeRevision)
         )
     }
@@ -629,6 +639,25 @@ struct MagicMobileAPI {
 
     private func url(_ path: String) -> URL {
         baseURL.appending(path: path)
+    }
+
+    private var usesDirectGatewayRoutes: Bool {
+        baseURL.port == 17171 || baseURL.port == 17172
+    }
+
+    private func route(web: String, gateway: String) -> String {
+        usesDirectGatewayRoutes ? gateway : web
+    }
+
+    private func gamePath(gameId: String) -> String {
+        var allowedPathSegment = CharacterSet.urlPathAllowed
+        allowedPathSegment.remove(charactersIn: "/")
+        let encoded = gameId.addingPercentEncoding(withAllowedCharacters: allowedPathSegment) ?? gameId
+        return usesDirectGatewayRoutes ? "/games/\(encoded)" : "/api/engine/games/\(encoded)"
+    }
+
+    private func commandPath(gameId: String) -> String {
+        "\(gamePath(gameId: gameId))/commands"
     }
 
     private func validate(response: URLResponse, data: Data) throws {

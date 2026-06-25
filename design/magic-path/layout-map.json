@@ -1,267 +1,189 @@
 {
-  "source": {
-    "projectId": "420728834988597248",
+  "canvas": {
+    "name": "MagicMobile iPhone Pro Max Landscape Board",
+    "points": { "width": 956, "height": 440 },
+    "coordinateSystem": "top-left",
+    "magicPathFileUrl": "https://www.magicpath.ai/files/420728834988597248",
+    "magicPathProjectId": "420728834988597248",
     "mainComponentId": "420728860716449792",
     "mainGeneratedName": "eager-tower-7952",
     "currentEditedFrameId": "420729376641007616",
-    "currentEditedFrameGeneratedName": "sweet-week-7067"
+    "currentEditedFrameGeneratedName": "sweet-week-7067",
+    "handoffFrames": [
+      "Normal Battlefield",
+      "Selected Card",
+      "Stack Response Prompt",
+      "Dragging Card / Drop Zones Visible",
+      "Search Library Prompt",
+      "Mana Payment Prompt",
+      "Commander Replacement Prompt",
+      "Damage Assignment Prompt",
+      "AI Thinking / Waiting",
+      "Bridge Unavailable / Reconnect"
+    ],
+    "sourceOfTruth": "XMage via GameSnapshot"
   },
   "layers": {
     "MM.BoardRoot": {
-      "purpose": "Full iPhone landscape game board container.",
-      "futureSwiftUIComponent": "GameBoardRootView",
-      "dataSource": "BoardViewModel composed from XMage game state.",
-      "allowedManualEdits": ["overall safe-area padding", "background framing", "global visual rhythm"],
-      "notAllowedManualEdits": ["flattening board to one image", "embedding gameplay state in decoration"],
-      "interactionBehavior": "Coordinates child zones and global overlays."
+      "purpose": "Root safe-area board container.",
+      "allowedEdits": ["outer margin", "corner radius", "ambient background", "safe-area hints"],
+      "swiftUIComponent": "NativeGameView",
+      "dataSource": "GameSnapshot plus safeAreaInsets",
+      "tapAction": "none",
+      "decorative": false
     },
-    "MM.BattlefieldSurface": {
-      "purpose": "Dark stone and magical tabletop surface.",
-      "futureSwiftUIComponent": "BattlefieldSurfaceView",
-      "dataSource": "Static theme tokens plus board state flags.",
-      "allowedManualEdits": ["texture intensity", "trim color", "rune line placement"],
-      "notAllowedManualEdits": ["drawing idle battlefield boxes", "using official Magic/Wizards assets"],
-      "interactionBehavior": "Visual only; no command submission."
+    "MM.Background": {
+      "purpose": "Rustic board surface and edge ambience.",
+      "allowedEdits": ["colors", "texture style", "edge canopy", "vignette"],
+      "swiftUIComponent": "BattlefieldSurface",
+      "dataSource": "none",
+      "tapAction": "none",
+      "decorative": true
     },
-    "MM.OpponentVerticalHUD": {
-      "purpose": "Opponent name, life, commander, hand, library, graveyard, exile, status/timer.",
-      "futureSwiftUIComponent": "OpponentVerticalHUDView",
-      "dataSource": "Opponent player state from XMage snapshot.",
-      "allowedManualEdits": ["vertical spacing", "avatar style", "badge treatment"],
-      "notAllowedManualEdits": ["turning into a horizontal top bar", "hiding life or zone counts"],
-      "interactionBehavior": "Tap can open opponent detail; counts remain live."
+    "MM.OpponentHUD": {
+      "purpose": "Shows AI life, commander, library, hand, graveyard, and exile counts.",
+      "allowedEdits": ["position", "size", "frame", "chip spacing"],
+      "swiftUIComponent": "PlayerHeroHUD",
+      "dataSource": "snapshot.opponent",
+      "tapAction": "open opponent summary where allowed",
+      "decorative": false
     },
-    "MM.OpponentBattlefieldCards": {
-      "purpose": "Opponent permanents in upper battlefield.",
-      "futureSwiftUIComponent": "OpponentBattlefieldCardsView",
-      "dataSource": "Opponent battlefield zone.",
-      "allowedManualEdits": ["card scale", "spacing", "lane y-position"],
-      "notAllowedManualEdits": ["replacing cards with static art", "adding persistent box outlines"],
-      "interactionBehavior": "Targetable cards glow during target prompts."
+    "MM.OpponentBattlefield": {
+      "purpose": "Shows opponent creatures/permanents and lands.",
+      "allowedEdits": ["row position", "lane height", "background rail", "card spacing"],
+      "swiftUIComponent": "BattlefieldRow",
+      "dataSource": "snapshot.opponent.zones.battlefield",
+      "tapAction": "inspect targetable/visible card",
+      "decorative": false
     },
-    "MM.PlayerBattlefieldCards": {
-      "purpose": "Player permanents in lower battlefield.",
-      "futureSwiftUIComponent": "PlayerBattlefieldCardsView",
-      "dataSource": "Human player battlefield zone.",
-      "allowedManualEdits": ["creature/land lane spacing", "badges", "selected glow"],
-      "notAllowedManualEdits": ["static screenshot cards", "big tap buttons"],
-      "interactionBehavior": "Tap permanent to tap/use; open contextual menu only when multiple legal actions exist."
+    "MM.CenterStackStrip": {
+      "purpose": "Shows stack count/top object and prompt summary.",
+      "allowedEdits": ["strip position", "height", "frame", "stack chip style"],
+      "swiftUIComponent": "XmageStackPeek, StackPeek, PromptPill",
+      "dataSource": "snapshot.xmage.stack, snapshot.human.zones.stack, prompt envelopes",
+      "tapAction": "open full stack sheet",
+      "decorative": false
     },
-    "MM.PlayerHandRail": {
-      "purpose": "Bottom player hand rail.",
-      "futureSwiftUIComponent": "PlayerHandRailView",
-      "dataSource": "Human player hand zone.",
-      "allowedManualEdits": ["rail position", "card spacing", "curve", "background", "glow"],
-      "notAllowedManualEdits": ["replacing cards with one static image", "adding big cast buttons"],
-      "interactionBehavior": "Drag card to cast/play; tap or long press to inspect."
+    "MM.PhasePriorityBar": {
+      "purpose": "Shows turn, phase, priority, active/waiting state.",
+      "allowedEdits": ["position", "chip shape", "colors", "label spacing"],
+      "swiftUIComponent": "TurnStatusBadge, CompactPhaseRail",
+      "dataSource": "snapshot.turn, snapshot.phase, snapshot.step, snapshot.priorityPlayerId",
+      "tapAction": "open status/details sheet",
+      "decorative": false
     },
-    "MM.SelectedCardLift": {
-      "purpose": "Lifted/glowing selected hand or battlefield card.",
-      "futureSwiftUIComponent": "SelectedCardLiftModifier",
-      "dataSource": "Selected card ID and legal actions.",
-      "allowedManualEdits": ["lift amount", "glow intensity", "scale"],
-      "notAllowedManualEdits": ["covering prompts or primary flow button"],
-      "interactionBehavior": "Selection previews actions without submitting by default."
+    "MM.PromptPanel": {
+      "purpose": "Primary touch surface for prompts and legal actions.",
+      "allowedEdits": ["position", "size", "frame", "section spacing", "button styling"],
+      "swiftUIComponent": "UniversalPromptActionPanel",
+      "dataSource": "snapshot.legalActions, snapshot.promptEnvelopeV2, snapshot.choicePrompt",
+      "tapAction": "submit exact LegalAction/GameCommand only",
+      "decorative": false
     },
-    "MM.DragGhostCard": {
-      "purpose": "Ghost representation of the card being dragged.",
-      "futureSwiftUIComponent": "DragGhostCardView",
-      "dataSource": "Active drag card model.",
-      "allowedManualEdits": ["opacity", "tilt", "shadow"],
-      "notAllowedManualEdits": ["showing when no drag is active"],
-      "interactionBehavior": "Follows drag gesture."
+    "MM.PlayerBattlefield": {
+      "purpose": "Shows human battlefield and lands.",
+      "allowedEdits": ["row position", "lane height", "background rail", "selected glow"],
+      "swiftUIComponent": "BattlefieldRow",
+      "dataSource": "snapshot.human.zones.battlefield",
+      "tapAction": "select/inspect/run legal action",
+      "decorative": false
     },
-    "MM.DragDropZoneCast": {
-      "purpose": "Valid cast/play drop zone.",
-      "futureSwiftUIComponent": "CastDropZoneView",
-      "dataSource": "Legal cast/play action validation.",
-      "allowedManualEdits": ["zone bounds", "valid glow", "label clarity"],
-      "notAllowedManualEdits": ["visible in idle state", "submitting without drop confirmation"],
-      "interactionBehavior": "Accepts dragged castable/playable card only when legal."
+    "MM.HandRail": {
+      "purpose": "Shows human hand.",
+      "allowedEdits": ["position", "size", "rail background", "spacing", "fan angle"],
+      "swiftUIComponent": "HandFan",
+      "dataSource": "snapshot.human.zones.hand",
+      "tapAction": "select card, inspect card, run legal card action",
+      "decorative": false,
+      "notStaticArt": "Actual card contents, legal highlights, and buttons remain SwiftUI."
     },
-    "MM.DragDropZoneBattlefield": {
-      "purpose": "Valid battlefield/land/permanent drop zone.",
-      "futureSwiftUIComponent": "BattlefieldDropZoneView",
-      "dataSource": "Legal permanent or land play validation.",
-      "allowedManualEdits": ["zone bounds", "glow color", "touch target size"],
-      "notAllowedManualEdits": ["visible in idle state"],
-      "interactionBehavior": "Accepts dragged land/permanent only when rules allow."
+    "MM.ActionTray": {
+      "purpose": "Compact selected-card and pass/priority actions.",
+      "allowedEdits": ["position", "size", "button frame", "button order styling"],
+      "swiftUIComponent": "UniversalPromptActionPanel.actionSection",
+      "dataSource": "selectedCardActions and snapshot.legalActions",
+      "tapAction": "submit exact command with expectedBridgeRevision",
+      "decorative": false
     },
-    "MM.ValidTargetGlow": {
-      "purpose": "Glow around valid target cards or players.",
-      "futureSwiftUIComponent": "ValidTargetGlowModifier",
-      "dataSource": "Target prompt legal target set.",
-      "allowedManualEdits": ["glow radius", "green/blue balance"],
-      "notAllowedManualEdits": ["glowing invalid targets"],
-      "interactionBehavior": "Tap target submits only after prompt requires a legal target."
+    "MM.ManaPool": {
+      "purpose": "Displays W/U/B/R/G/C mana pool.",
+      "allowedEdits": ["position", "chip size", "colors", "rail frame"],
+      "swiftUIComponent": "ManaPoolHUD",
+      "dataSource": "snapshot.human.manaPool",
+      "tapAction": "none unless XMage exposes mana choice prompt",
+      "decorative": false
     },
-    "MM.InvalidTargetDim": {
-      "purpose": "Dim/red treatment for invalid targets.",
-      "futureSwiftUIComponent": "InvalidTargetDimModifier",
-      "dataSource": "Target prompt illegal target set.",
-      "allowedManualEdits": ["dim opacity", "danger red intensity"],
-      "notAllowedManualEdits": ["blocking readability of legal targets"],
-      "interactionBehavior": "Invalid targets do not submit commands."
+    "MM.CommandZoneButton": {
+      "purpose": "Opens command zone and shows commander tax/damage entry point.",
+      "allowedEdits": ["position", "chip style"],
+      "swiftUIComponent": "MobileSurfacesPanel",
+      "dataSource": "snapshot.human.zones.command, commanderTax, commanderDamage",
+      "tapAction": "open command zone sheet",
+      "decorative": false
     },
-    "MM.RightPhaseRail": {
-      "purpose": "Compact phase and step rail on right side.",
-      "futureSwiftUIComponent": "RightPhaseRailView",
-      "dataSource": "Current phase, step, active player, priority owner.",
-      "allowedManualEdits": ["rail width", "phase glow", "corner placement"],
-      "notAllowedManualEdits": ["wide center phase bar", "hiding priority"],
-      "interactionBehavior": "Read-only except optional phase detail tap."
+    "MM.GraveyardButton": {
+      "purpose": "Opens graveyard sheet.",
+      "allowedEdits": ["position", "chip style"],
+      "swiftUIComponent": "MobileSurfacesPanel",
+      "dataSource": "snapshot.human.zones.graveyard",
+      "tapAction": "open graveyard sheet",
+      "decorative": false
     },
-    "MM.PrimaryFlowButton": {
-      "purpose": "Single primary game-flow button.",
-      "futureSwiftUIComponent": "PrimaryFlowButton",
-      "dataSource": "Current prompt/priority flow action.",
-      "allowedManualEdits": ["size", "label style", "gold treatment"],
-      "notAllowedManualEdits": ["adding big Cast/Tap rows", "enabling submit before valid"],
-      "interactionBehavior": "Pass, Next, Resolve, Done, Continue, or Submit depending on state."
+    "MM.ExileButton": {
+      "purpose": "Opens exile sheet.",
+      "allowedEdits": ["position", "chip style"],
+      "swiftUIComponent": "MobileSurfacesPanel",
+      "dataSource": "snapshot.human.zones.exile",
+      "tapAction": "open exile sheet",
+      "decorative": false
     },
-    "MM.RightTransparentGameLog": {
-      "purpose": "Compact transparent right-side game log.",
-      "futureSwiftUIComponent": "RightTransparentGameLogView",
-      "dataSource": "Recent game log events.",
-      "allowedManualEdits": ["glass opacity", "line count", "text density"],
-      "notAllowedManualEdits": ["giant opaque panel", "covering active cards"],
-      "interactionBehavior": "Tap expands full log sheet."
-    },
-    "MM.StackMiniIndicator": {
-      "purpose": "Compact stack top/count/source indicator.",
-      "futureSwiftUIComponent": "StackMiniIndicatorView",
-      "dataSource": "XMage stack objects.",
-      "allowedManualEdits": ["width", "active glow", "source text treatment"],
-      "notAllowedManualEdits": ["large default stack panel"],
-      "interactionBehavior": "Tap opens stack sheet."
-    },
-    "MM.StackExpandedSheet": {
-      "purpose": "Expanded stack details sheet.",
-      "futureSwiftUIComponent": "StackExpandedSheetView",
-      "dataSource": "Full stack object list and priority order.",
-      "allowedManualEdits": ["sheet height", "card rows", "response action placement"],
-      "notAllowedManualEdits": ["auto-resolving stack choices"],
-      "interactionBehavior": "Inspect stack and choose legal responses only."
-    },
-    "MM.PromptOverlay": {
-      "purpose": "Active XMage prompt overlay host.",
-      "futureSwiftUIComponent": "PromptOverlayView",
-      "dataSource": "Active prompt model.",
-      "allowedManualEdits": ["overlay width", "glass/parchment treatment", "button spacing"],
-      "notAllowedManualEdits": ["always visible", "defaulting choices"],
-      "interactionBehavior": "Fail-closed prompt UI; submit disabled until valid."
-    },
-    "MM.ManaPrompt": {
-      "purpose": "Mana/payment prompt.",
-      "futureSwiftUIComponent": "ManaPaymentPromptView",
-      "dataSource": "Mana pool, costs, payable sources, selected payment.",
-      "allowedManualEdits": ["source chip layout", "cost visual treatment"],
-      "notAllowedManualEdits": ["default colorless", "default amount 0"],
-      "interactionBehavior": "Select exact payment before Submit enables."
-    },
-    "MM.SearchPrompt": {
-      "purpose": "Search/select prompt.",
-      "futureSwiftUIComponent": "SearchLibraryPromptView",
-      "dataSource": "Search prompt filter and eligible cards.",
-      "allowedManualEdits": ["result grid/list density", "filter chip style"],
-      "notAllowedManualEdits": ["auto-picking first option"],
-      "interactionBehavior": "Submit enabled only after legal selection."
-    },
-    "MM.CommanderReplacementPrompt": {
-      "purpose": "Commander zone replacement prompt.",
-      "futureSwiftUIComponent": "CommanderReplacementPromptView",
-      "dataSource": "Commander replacement event and destination options.",
-      "allowedManualEdits": ["destination card style", "warning copy"],
-      "notAllowedManualEdits": ["default command zone"],
-      "interactionBehavior": "Player explicitly chooses graveyard/exile/etc. or command zone."
-    },
-    "MM.DamageAssignmentPrompt": {
-      "purpose": "Damage allocation prompt.",
-      "futureSwiftUIComponent": "DamageAssignmentPromptView",
-      "dataSource": "Blockers, combat assignment order, remaining damage.",
-      "allowedManualEdits": ["allocation row layout", "counter style"],
-      "notAllowedManualEdits": ["default pile 1", "default zero assignments"],
-      "interactionBehavior": "Submit enabled only when assignment is legal."
-    },
-    "MM.ZoneChips": {
-      "purpose": "Container for tucked zone/action chips.",
-      "futureSwiftUIComponent": "ZoneChipsView",
-      "dataSource": "Zone counts and sheet availability.",
-      "allowedManualEdits": ["chip spacing", "icons", "placement"],
-      "notAllowedManualEdits": ["huge persistent zone panels"],
-      "interactionBehavior": "Tap opens the requested zone sheet."
-    },
-    "MM.CommandZoneChip": {
-      "purpose": "Open command zone sheet.",
-      "futureSwiftUIComponent": "CommandZoneChip",
-      "dataSource": "Command zone cards and commander tax.",
-      "allowedManualEdits": ["label/icon", "badge count"],
-      "notAllowedManualEdits": ["hiding commander tax"],
-      "interactionBehavior": "Tap opens command zone sheet."
-    },
-    "MM.GraveyardChip": {
-      "purpose": "Open graveyard sheet.",
-      "futureSwiftUIComponent": "GraveyardChip",
-      "dataSource": "Player graveyard zone.",
-      "allowedManualEdits": ["label/icon", "badge count"],
-      "notAllowedManualEdits": ["large idle graveyard panel"],
-      "interactionBehavior": "Tap opens graveyard sheet."
-    },
-    "MM.ExileChip": {
-      "purpose": "Open exile sheet.",
-      "futureSwiftUIComponent": "ExileChip",
-      "dataSource": "Player exile zone.",
-      "allowedManualEdits": ["label/icon", "badge count"],
-      "notAllowedManualEdits": ["large idle exile panel"],
-      "interactionBehavior": "Tap opens exile sheet."
-    },
-    "MM.LibraryChip": {
-      "purpose": "Open library/search context when legal.",
-      "futureSwiftUIComponent": "LibraryChip",
-      "dataSource": "Library count and active search permission.",
-      "allowedManualEdits": ["label/icon", "badge count"],
-      "notAllowedManualEdits": ["allowing library browsing when game state forbids it"],
-      "interactionBehavior": "Tap opens library only in legal contexts or count detail otherwise."
+    "MM.StackButton": {
+      "purpose": "Opens stack sheet.",
+      "allowedEdits": ["position", "chip style"],
+      "swiftUIComponent": "XmageStackPeek",
+      "dataSource": "snapshot.xmage.stack",
+      "tapAction": "open full stack sheet",
+      "decorative": false
     },
     "MM.CardInspectorSheet": {
-      "purpose": "Card detail/inspector sheet.",
-      "futureSwiftUIComponent": "CardInspectorSheet",
-      "dataSource": "Selected or long-pressed card model.",
-      "allowedManualEdits": ["sheet size", "art/title/detail hierarchy"],
-      "notAllowedManualEdits": ["blocking required prompts"],
-      "interactionBehavior": "Long press or info action opens; dismiss returns to board."
+      "purpose": "Shows selected/inspected card detail without blocking required prompt controls.",
+      "allowedEdits": ["size", "position", "frame", "background"],
+      "swiftUIComponent": "CardInspector",
+      "dataSource": "inspectedCard",
+      "tapAction": "dismiss or choose legal card action",
+      "decorative": false
     },
-    "MM.AIThinkingStatus": {
-      "purpose": "AI thinking / waiting status.",
-      "futureSwiftUIComponent": "AIThinkingStatusPill",
-      "dataSource": "Opponent AI and bridge wait state.",
-      "allowedManualEdits": ["animation", "pill copy", "subtle glow"],
-      "notAllowedManualEdits": ["hiding stalled state"],
-      "interactionBehavior": "Read-only status; no hidden action."
+    "MM.ZoneSheet": {
+      "purpose": "Shows command, graveyard, exile, revealed, looked-at, or search zones.",
+      "allowedEdits": ["sheet size", "frame", "spacing"],
+      "swiftUIComponent": "ZoneInspectorSheet, Search/select prompt controls",
+      "dataSource": "zone-specific snapshot cards or promptEnvelopeV2.cards",
+      "tapAction": "select card only when legal",
+      "decorative": false
     },
     "MM.BridgeStatusPill": {
-      "purpose": "Bridge online, waiting, stalled, or reconnecting status.",
-      "futureSwiftUIComponent": "BridgeStatusPill",
-      "dataSource": "XMage bridge connection state.",
-      "allowedManualEdits": ["pill color", "placement", "label"],
-      "notAllowedManualEdits": ["submitting actions while bridge unavailable"],
-      "interactionBehavior": "Tap may show bridge status sheet; fail closed when disconnected."
+      "purpose": "Honest source/health/revision/cycle/WebSocket status.",
+      "allowedEdits": ["position", "collapsed/expanded visual style"],
+      "swiftUIComponent": "GameDiagnosticsBadge, LiveUpdateBadge",
+      "dataSource": "snapshot.source, bridgeRevision, xmageCycle, engineHealth, liveUpdateStatus",
+      "tapAction": "open connection details or refresh",
+      "decorative": false
+    },
+    "MM.AIThinkingPill": {
+      "purpose": "Shows AI thinking, waiting for XMage, stalled, or reconnecting state.",
+      "allowedEdits": ["position", "colors", "animation style"],
+      "swiftUIComponent": "PromptPill, GameDiagnosticsBadge",
+      "dataSource": "snapshot.pendingStatus, priorityPlayerId, waitingOnPlayerId, engineHealth",
+      "tapAction": "refresh/reconnect when stalled",
+      "decorative": false
     },
     "MM.UnsupportedPromptFallback": {
-      "purpose": "Visible safe fallback for unknown prompts.",
-      "futureSwiftUIComponent": "UnsupportedPromptFallbackView",
-      "dataSource": "Unsupported/unknown prompt payload.",
-      "allowedManualEdits": ["copy", "warning style", "retry placement"],
-      "notAllowedManualEdits": ["auto-answering unknown prompts"],
-      "interactionBehavior": "Blocks submission until user or implementation handles prompt safely."
-    },
-    "MM.DebugSheet": {
-      "purpose": "Small settings/debug entry point.",
-      "futureSwiftUIComponent": "DebugSheetTrigger",
-      "dataSource": "Debug-only diagnostics and app settings.",
-      "allowedManualEdits": ["icon", "chip position", "sheet visual style"],
-      "notAllowedManualEdits": ["always-visible debug dashboard", "production gameplay dependency"],
-      "interactionBehavior": "Opens tucked debug/settings sheet only on demand."
+      "purpose": "Fail-closed fallback for unknown or unsupported prompts.",
+      "allowedEdits": ["sheet size", "severity colors", "button style"],
+      "swiftUIComponent": "Unsupported prompt section in UniversalPromptActionPanel",
+      "dataSource": "promptEnvelopeV2.method, responseKind, message, choices",
+      "tapAction": "refresh/reconnect only; never auto-pick",
+      "decorative": false
     }
   }
 }

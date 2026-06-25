@@ -107,3 +107,10 @@ Manual phone pass requires:
 - Evidence note with game id if visible, `source`, `bridgeRevision`, `xmageCycle`, WebSocket state, pending status, and the local gateway/web terminal logs for failures.
 
 Product release remains blocked until this physical iPhone pass is complete. Simulator screenshots, including `build_output/screenshots/ios-17-pro-max-arena-pass-3.jpg`, are useful visual layout evidence but are not real iPhone manual QA and are not gameplay acceptance proof.
+## Magic Path Handoff
+
+For Magic Path visual editing, use the current file at https://www.magicpath.ai/files/420728834988597248 and the import package in [design/magic-path/README.md](../design/magic-path/README.md). The package includes named `MM.*` layers, a 956 x 440 point iPhone Pro Max landscape SVG blueprint, design tokens, a layer-to-SwiftUI binding map, and decorative placeholder assets.
+
+Current handoff frames: Normal Battlefield, Selected Card, Stack Response Prompt, Dragging Card / Drop Zones Visible, Search Library Prompt, Mana Payment Prompt, Commander Replacement Prompt, Damage Assignment Prompt, AI Thinking / Waiting, and Bridge Unavailable / Reconnect.
+
+The DEBUG-only SwiftUI design preview is launched with `MAGICMOBILE_DESIGN_PREVIEW=<state>`. It is for layout review only and is not gameplay proof.
