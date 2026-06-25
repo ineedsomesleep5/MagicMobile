@@ -49,7 +49,7 @@ enum PromptSelectionRules {
 }
 
 struct ContentView: View {
-    @State private var serverURLText = ProcessInfo.processInfo.environment["MAGICMOBILE_SERVER_URL"] ?? "https://magicmobile.openclaw-is3w.srv1420950.hstgr.cloud"
+    @State private var serverURLText = ProcessInfo.processInfo.environment["MAGICMOBILE_SERVER_URL"] ?? "http://100.105.112.22:17171"
     @State private var status = "Not connected"
     @State private var screen: AppScreen = .menu
     @State private var difficulty: AiDifficulty = .normal
