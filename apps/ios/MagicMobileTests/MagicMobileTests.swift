@@ -575,10 +575,12 @@ final class MagicMobileTests: XCTestCase {
         )
 
         assertGameplayLayout(metrics)
-        XCTAssertGreaterThanOrEqual(metrics.handCardWidth, 68)
+        XCTAssertGreaterThanOrEqual(metrics.handCardWidth, 74)
         XCTAssertGreaterThanOrEqual(metrics.permanentCardWidth, 50)
         XCTAssertGreaterThanOrEqual(metrics.landCardWidth, 44)
         XCTAssertGreaterThanOrEqual(metrics.rightActionPanelRect.width, 210)
+        XCTAssertEqual(metrics.rightDockRect.maxX, metrics.safeFrame.maxX, accuracy: 0.1)
+        XCTAssertLessThanOrEqual(metrics.phaseRailRect.height, 42)
         XCTAssertGreaterThanOrEqual(metrics.bottomActionRect.height, 38)
         XCTAssertGreaterThan(metrics.centerStripRect.height, 24)
     }

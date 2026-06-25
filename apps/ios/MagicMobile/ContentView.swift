@@ -1414,12 +1414,12 @@ struct BattlefieldLayoutMetrics {
     }
 
     var rightActionPanelRect: CGRect {
-        let height = min(max(safeFrame.height * 0.54, 232), max(rightDockRect.height - 118, 190))
+        let top = phaseRailRect.maxY + 8
         return CGRect(
             x: rightDockRect.minX,
-            y: rightDockRect.maxY - height,
+            y: top,
             width: rightDockRect.width,
-            height: height
+            height: max(rightDockRect.maxY - top, 190)
         )
     }
 
@@ -1435,8 +1435,8 @@ struct BattlefieldLayoutMetrics {
     }
 
     var phaseRailRect: CGRect {
-        let top = diagnosticsY + 34
-        let height: CGFloat = 46
+        let top = diagnosticsY + 28
+        let height: CGFloat = 36
         return CGRect(
             x: rightDockRect.minX + 8,
             y: top,
@@ -1543,9 +1543,10 @@ struct BattlefieldLayoutMetrics {
     }
 
     var handCardWidth: CGFloat {
-        let horizontalFit = boardColumnRect.width / 8.1
-        let verticalFit = max((safeFrame.height * 0.25) / 1.40, 58)
-        return min(max(horizontalFit, 68), min(verticalFit, 90))
+        let horizontalFit = boardColumnRect.width / 7.7
+        let verticalFit = max((safeFrame.height * 0.30) / 1.40, 58)
+        let minimumWidth: CGFloat = boardColumnRect.width < 540 ? 60 : 68
+        return min(max(horizontalFit, minimumWidth), min(verticalFit, 90))
     }
 
     var handCardHeight: CGFloat {
@@ -1839,6 +1840,12 @@ struct RightDockBackdrop: View {
                         lineWidth: 1.2
                     )
             )
+            .overlay(alignment: .trailing) {
+                Rectangle()
+                    .fill(MagicPalette.antiqueGold.opacity(0.18))
+                    .frame(width: 1)
+                    .padding(.vertical, 8)
+            }
             .shadow(color: .black.opacity(0.22), radius: 18, x: -6, y: 8)
     }
 }
@@ -2723,17 +2730,17 @@ struct UniversalPromptActionPanel: View {
                 .padding(.vertical, 1)
             }
         }
-        .padding(9)
+        .padding(8)
         .background(
             LinearGradient(
-                colors: [MagicPalette.iron.opacity(0.94), MagicPalette.leather.opacity(0.88), MagicPalette.laneWood.opacity(0.78)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
+                colors: [MagicPalette.iron.opacity(0.88), MagicPalette.leather.opacity(0.80), MagicPalette.laneWood.opacity(0.70)],
+                startPoint: .top,
+                endPoint: .bottom
             ),
             in: RoundedRectangle(cornerRadius: 8)
         )
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.borderBronze.opacity(0.66), lineWidth: 1.2))
-        .shadow(color: .black.opacity(0.34), radius: 14, y: 8)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.borderBronze.opacity(0.46), lineWidth: 1))
+        .shadow(color: .black.opacity(0.22), radius: 8, x: -3, y: 4)
     }
 
     private var priorityLabel: String {
@@ -2874,6 +2881,10 @@ struct UniversalPromptActionPanel: View {
 
             if let targetIds = prompt.targetIds, !targetIds.isEmpty {
                 legacyOptionGrid(targetIds.map { ($0, $0) }, prompt: prompt, fallbackType: "choose_target")
+            }
+
+            if prompt.choices?.isEmpty != false && prompt.targetIds?.isEmpty != false {
+                unsupportedPromptFallback(method: prompt.method, responseKind: prompt.responseKind)
             }
         }
     }
@@ -3224,32 +3235,68 @@ struct UniversalPromptActionPanel: View {
 
     @ViewBuilder
     private func confirmationPicker(confirmation: XmagePromptConfirmation, prompt: PromptEnvelopeV2) -> some View {
+        let yesCommand = explicitConfirmationCommand(confirmation.yesCommand, prompt: prompt)
+        let noCommand = explicitConfirmationCommand(confirmation.noCommand, prompt: prompt)
         HStack(spacing: 6) {
             promptButton(
                 label: confirmation.yesLabel ?? "Yes",
                 systemImage: "checkmark.circle",
                 pendingId: "\(prompt.id)-yes",
-                command: command(
-                    type: confirmation.yesCommand?.type ?? prompt.responseCommand?.type ?? "answer_yes_no",
-                    promptId: confirmation.yesCommand?.promptId ?? prompt.responseCommand?.promptId ?? prompt.id,
-                    playerId: prompt.playerId,
-                    ids: [(confirmation.yesCommand?.confirmed ?? true) ? "true" : "false"],
-                    pay: confirmation.yesCommand?.pay ?? confirmation.yesCommand?.confirmed ?? true
-                )
+                command: yesCommand
             )
             promptButton(
                 label: confirmation.noLabel ?? "No",
                 systemImage: "xmark.circle",
                 pendingId: "\(prompt.id)-no",
-                command: command(
-                    type: confirmation.noCommand?.type ?? prompt.responseCommand?.type ?? "answer_yes_no",
-                    promptId: confirmation.noCommand?.promptId ?? prompt.responseCommand?.promptId ?? prompt.id,
-                    playerId: prompt.playerId,
-                    ids: [(confirmation.noCommand?.confirmed ?? false) ? "true" : "false"],
-                    pay: confirmation.noCommand?.pay ?? confirmation.noCommand?.confirmed ?? false
-                )
+                command: noCommand
             )
         }
+        if yesCommand == nil || noCommand == nil {
+            Text("XMage did not expose explicit yes/no command metadata for every option, so missing choices stay disabled.")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(MagicPalette.warningAmber.opacity(0.82))
+                .lineLimit(3)
+                .minimumScaleFactor(0.7)
+        }
+    }
+
+    private func explicitConfirmationCommand(_ confirmationCommand: XmageResponseCommand?, prompt: PromptEnvelopeV2) -> GameCommand? {
+        guard let confirmationCommand,
+              let type = confirmationCommand.type,
+              let promptId = confirmationCommand.promptId,
+              let confirmed = confirmationCommand.confirmed ?? confirmationCommand.pay
+        else {
+            return nil
+        }
+        return command(
+            type: type,
+            promptId: promptId,
+            playerId: prompt.playerId,
+            ids: [confirmed ? "true" : "false"],
+            pay: confirmationCommand.pay ?? confirmed
+        )
+    }
+
+    private func unsupportedPromptFallback(method: String, responseKind: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("Unsupported prompt/action")
+                .font(.system(size: 10, weight: .black))
+                .foregroundStyle(MagicPalette.warningAmber)
+            Text("No default answer will be sent. Refresh or reconnect after the bridge exposes a mobile-safe response.")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.white.opacity(0.68))
+                .lineLimit(3)
+                .minimumScaleFactor(0.7)
+            Text("\(method) | \(responseKind)")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(.white.opacity(0.42))
+                .lineLimit(1)
+                .minimumScaleFactor(0.64)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 6)
+        .background(MagicPalette.warningAmber.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.warningAmber.opacity(0.24)))
     }
 
     @ViewBuilder
@@ -4168,8 +4215,17 @@ struct CardTile: View {
             }
         }
         .frame(width: width, height: height)
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(strokeColor, lineWidth: selected || pending || legal ? 3 : 1))
-        .shadow(color: shadowColor, radius: legal || selected || pending ? 10 : 0)
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(strokeColor, lineWidth: strokeWidth))
+        .overlay(alignment: .topTrailing) {
+            if legal && !selected && !pending {
+                Circle()
+                    .fill(MagicPalette.legalEmerald)
+                    .frame(width: max(width * 0.11, 6), height: max(width * 0.11, 6))
+                    .shadow(color: MagicPalette.legalEmerald.opacity(0.45), radius: 4)
+                    .padding(max(width * 0.04, 3))
+            }
+        }
+        .shadow(color: shadowColor, radius: selected || pending ? 11 : 0)
         .contentShape(RoundedRectangle(cornerRadius: 6))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(card.accessibilityLabel(zoneName: zoneName, selected: selected, legal: legal, pending: pending))
@@ -4186,9 +4242,15 @@ struct CardTile: View {
             return MagicPalette.antiqueGold
         }
         if legal {
-            return MagicPalette.legalEmerald
+            return MagicPalette.legalEmerald.opacity(0.72)
         }
         return .black.opacity(0.55)
+    }
+
+    private var strokeWidth: CGFloat {
+        if selected || pending { return 3 }
+        if legal { return 1.5 }
+        return 1
     }
 
     private var shadowColor: Color {
@@ -4197,9 +4259,6 @@ struct CardTile: View {
         }
         if selected {
             return MagicPalette.antiqueGold.opacity(0.55)
-        }
-        if legal {
-            return MagicPalette.legalEmerald.opacity(0.58)
         }
         return .clear
     }
@@ -4232,6 +4291,9 @@ struct CardArtPlaceholder: View {
                         .minimumScaleFactor(0.58)
                     Spacer(minLength: 2)
                 }
+                .padding(.horizontal, max(width * 0.03, 2))
+                .padding(.vertical, max(height * 0.018, 1.5))
+                .background(MagicPalette.parchment.opacity(0.72), in: RoundedRectangle(cornerRadius: 3))
 
                 ZStack {
                     RoundedRectangle(cornerRadius: 4)
@@ -4247,8 +4309,8 @@ struct CardArtPlaceholder: View {
                             )
                         )
                     Image(systemName: loading ? "hourglass" : "sparkles")
-                        .font(.system(size: max(width * 0.22, 12), weight: .black))
-                        .foregroundStyle(MagicPalette.antiqueGold.opacity(loading ? 0.42 : 0.58))
+                        .font(.system(size: max(width * 0.18, 10), weight: .semibold))
+                        .foregroundStyle(MagicPalette.antiqueGold.opacity(loading ? 0.34 : 0.42))
                 }
                 .frame(height: max(height * 0.38, 22))
 
@@ -4257,6 +4319,10 @@ struct CardArtPlaceholder: View {
                     .foregroundStyle(MagicPalette.iron.opacity(0.78))
                     .lineLimit(2)
                     .minimumScaleFactor(0.55)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, max(width * 0.035, 2))
+                    .padding(.vertical, max(height * 0.012, 1))
+                    .background(MagicPalette.parchmentShadow.opacity(0.14), in: RoundedRectangle(cornerRadius: 3))
 
                 Spacer(minLength: 0)
             }
@@ -4294,11 +4360,11 @@ struct CompactPhaseRail: View {
         let previous = stageLabels[max(index - 1, 0)]
         let next = stageLabels[min(index + 1, stageLabels.count - 1)]
 
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             Image(systemName: "hourglass")
-                .font(.system(size: 13, weight: .black))
+                .font(.system(size: 12, weight: .black))
                 .foregroundStyle(MagicPalette.warningAmber)
-                .frame(width: 18)
+                .frame(width: 16)
             PhaseChip(label: "Prev", phase: previous, active: false)
             PhaseChip(label: "Now", phase: current, active: true)
             PhaseChip(label: "Next", phase: next, active: false)
@@ -4308,8 +4374,8 @@ struct CompactPhaseRail: View {
                 .lineLimit(1)
                 .frame(width: 24)
         }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 5)
         .background(MagicPalette.iron.opacity(0.58), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.borderBronze.opacity(0.30)))
     }
@@ -4331,8 +4397,8 @@ struct PhaseChip: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
         }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 3)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(active ? MagicPalette.antiqueGold : MagicPalette.iron.opacity(0.50), in: RoundedRectangle(cornerRadius: 7))
         .overlay(RoundedRectangle(cornerRadius: 7).stroke(active ? MagicPalette.brass.opacity(0.55) : MagicPalette.borderBronze.opacity(0.20)))
@@ -5065,18 +5131,24 @@ struct ZoneInspectorSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 64), spacing: 8)], spacing: 8) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 9)], spacing: 10) {
                     ForEach(cards) { card in
-                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, zoneName: title, width: 64, height: 90)
+                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, zoneName: title, width: 70, height: 98)
                             .onTapGesture {
                                 selectedCard = card
                                 inspectedCard = card
                             }
+                            .onLongPressGesture(minimumDuration: 0.35) {
+                                inspectedCard = card
+                            }
                     }
                 }
-                .padding(16)
+                .padding(18)
+                .background(MagicPalette.iron.opacity(0.30), in: RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(MagicPalette.borderBronze.opacity(0.32), lineWidth: 1.2))
+                .padding(14)
             }
-            .navigationTitle("\(title) (\(cards.count) cards)")
+            .navigationTitle("\(title) · \(cards.count)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -5085,7 +5157,9 @@ struct ZoneInspectorSheet: View {
                     }
                 }
             }
-            .background(Color(red: 0.1, green: 0.12, blue: 0.1))
+            .background(BattlefieldSurface().ignoresSafeArea())
+            .toolbarBackground(MagicPalette.iron, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
         }
     }
 }

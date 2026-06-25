@@ -2,350 +2,277 @@
 
 ## Scope
 
-This plan audits the current native iOS landscape gameplay screen and defines a concrete named-region layout contract for the implementation pass. It is based on the current SwiftUI code in `apps/ios/MagicMobile/ContentView.swift`, with model/API context from `Models.swift` and `MagicMobileAPI.swift`.
+This is a code-level audit of the native iOS landscape gameplay layout on `main` starting from commit `03c51aa7` (`Polish iOS arena battlefield visual hierarchy`), then updated after the parent integration pass. It defines the target named-region contract, safe-area rules, Pro Max assumptions, smaller-device fallback behavior, and visual pass/fail criteria for continued iOS polish.
 
-The implementation goal is not a visual redesign. The goal is to stop critical gameplay surfaces from competing for the same pixels on iPhone landscape by giving each surface a reserved rectangle, a predictable overflow rule, and a small set of measurable pass/fail checks.
+Integration note: the original audit captured a transient red layout-test profile while layout edits were still in flight. The current integrated tree has since been revalidated by the parent orchestrator; the Pro Max and compact landscape layout tests now pass.
 
-## Current Major Elements
+This document is intentionally not a release signoff. Simulator geometry and unit tests can prove layout invariants; they do not prove real XMage gameplay readiness, fixture determinism, product polish, or end-to-end Commander playability.
 
-- Top HUD: `TurnStatusBadge`, `LiveUpdateBadge`, and `GameDiagnosticsBadge` are placed near `topHUDY`.
-- Opponent HUD: compact `PlayerHeroHUD` for "Noaddrag" near the top-left play area.
-- Player HUD: compact `PlayerHeroHUD` for "TabletopPolish" near the lower-left, above the hand.
-- Opponent board and lands: two `BattlefieldRow` views for non-land permanents and lands.
-- Player board and lands: two `BattlefieldRow` views for non-land permanents and lands.
-- Center prompt and stack: `PromptPill` sits on the battlefield center line, while `XmageStackPeek` or `StackPeek` is nearby.
-- Phase rail: `CompactPhaseRail` plus log/settings buttons sit in a narrow right rail.
-- Right prompt/action panel: `UniversalPromptActionPanel` includes surfaces, prompt controls, choice controls, action sections, mana/payment controls, command/grave/exile/stack chips, and mini zone rows.
-- Hand fan: `HandFan` uses a card fan anchored to the bottom play area and also owns drag-to-play behavior.
-- Mana HUD: `ManaPoolHUD` floats above player lands.
-- Command/grave/exile/stack surfaces: summarized inside `MobileSurfacesPanel`, with full-zone presentation through `ZoneInspectorSheet`.
-- Inspector/log/pending: `CardInspector`, `GameLogDrawer`, and the "Waiting for XMage" pending toast are additional floating overlays.
+## Current Implementation Audit
 
-## Current Collision And Crowding Causes
+The gameplay screen enters `ImmersivePlayShell` from `ContentView` when `screen == .play`, then renders `NativeGameView` around a single `GeometryReader` and `ZStack`. The current implementation already centralizes most placement in `BattlefieldLayoutMetrics`, but views are still placed with absolute `.position(...)` calls.
 
-- The gameplay screen is a single absolute-positioned `ZStack`. Most elements use `.position(...)`, so visual priority is implicit and there is no central overlap policy.
-- `BattlefieldLayoutMetrics` reserves a right action dock and right rail first, then gives the remainder to `playWidth`. On narrow landscape widths, battlefield rows, prompt, stack, top HUD, and hand all compress together.
-- The center lane is overloaded. `centerLineY` is used for both the battlefield divider and `PromptPill`, while stack peek sits close to the same space. Any stack prompt, pending toast, or long prompt text can cover battlefield cards.
-- The right side is double-booked. `phaseRailRect` and action dock are separate, but the action panel can grow to 340 pt high and is centered near the bottom, which can collide visually with hand/player-land territory.
-- The top HUD area has several independent elements: turn badge, live badge, diagnostics badge, and opponent HUD. These are not treated as a unified top status region, so diagnostics can drift into battlefield rows.
-- The player bottom zone is overloaded by player HUD, mana HUD, player lands, selected hand card lift, drag target highlight, and pending toast.
-- The hand fan has dynamic spread, scale, rotation, and selected-card lift. Its visual bounds exceed `handFrameHeight`, so nearby bottom HUD and action panel calculations can be optimistic.
-- Battlefield rows horizontally scroll and use negative card spacing. This preserves access to wide boards, but dense rows can still hide board state because all rows share a small vertical budget.
-- `UniversalPromptActionPanel` keeps critical actions, optional surfaces, and prompt-specific controls in one right dock. The current implementation now orders prompt/selected/pass/action controls before secondary zone surfaces, but dense prompt states still need visual and touch QA on hardware.
-- Inspector and log are floating overlays without reserved detail space. They can cover battlefield rows or the right dock depending on current card/log state.
-- Zone surfaces are duplicated conceptually: stack can appear as a battlefield peek, a surfaces chip/mini row, a sheet, and possibly prompt text. This adds cognitive and spatial noise.
+Current named geometry in `BattlefieldLayoutMetrics`:
+
+- `safeFrame`: derived from `GeometryProxy.safeAreaInsets` with a 10 pt horizontal margin, 8 pt top offset, and 16 pt total vertical inset. It clamps to at least `320 x 300`.
+- `topStatusRect`: full safe-frame width, 40 pt tall.
+- `rightDockRect`: pinned to `safeFrame.maxX`, width `clamp(safeFrame.width * 0.20, 210, 268)`, from below top status to the bottom of `safeFrame`.
+- `boardColumnRect`: the left gameplay column, separated from the dock by 12 pt and clamped to at least 320 pt wide.
+- `handRect`: bottom of the board column, height `handCardHeight + 14`.
+- `bottomActionRect`: centered above the hand, 38 pt high, width `clamp(boardColumnRect.width * 0.58, 320, 460)`.
+- `rightActionPanelRect`: anchored below the compact phase/log/settings strip and fills the remaining right dock height.
+- `phaseRailRect`: currently a compact horizontal strip inside the right dock, not a separate vertical rail. The integrated implementation keeps it short enough for the Pro Max layout test guard.
+- `detailSheetRect`: a floating left-side detail surface, width `clamp(boardColumnRect.width * 0.33, 220, 292)`, height `clamp(safeFrame.height * 0.40, 184, 240)`.
+- `opponentBattlefieldRect`, `opponentLandsRect`, `centerStripRect`, `playerBattlefieldRect`, and `playerLandsRect`: derived from `battlefieldRect` between the top status and hand, with a 3 pt lane gap.
+
+Current view ownership:
+
+- Top status: `TurnStatusBadge`, `LiveUpdateBadge`, `GameDiagnosticsBadge`, and opponent `PlayerHeroHUD`.
+- Battlefield lanes: two `BattlefieldRow` views for the opponent, two for the player, plus a center divider.
+- Center strip: `XmageStackPeek` or `StackPeek` plus `PromptPill` in one horizontal region.
+- Right dock: `RightDockBackdrop`, `GameDiagnosticsBadge`, `CompactPhaseRail`, log/settings buttons, and `UniversalPromptActionPanel`.
+- Prompt/action panel: `UniversalPromptActionPanel` places prompt controls first, then selected-card actions, pass/step actions, spells/lands, abilities/mana, other actions, and `MobileSurfacesPanel`.
+- Hand: `HandFan` with selected-card lift, drag-to-play, and pending-card highlighting.
+- Player lower HUD: `PlayerHeroHUD` and `ManaPoolHUD`.
+- Modal/detail: `CardInspector`, `GameLogDrawer`, and `ZoneInspectorSheet`.
+- Pending status: a "Waiting for XMage" toast in `bottomActionRect`.
+
+Model/API surfaces that affect layout:
+
+- `GameSnapshot` supplies phase, priority, prompt text, log, players, legal actions, choice prompts, prompt envelopes, XMage stack, bridge revision, XMage cycle, and pending status.
+- `XmageMobileSnapshot` can expose stack, combat, command, graveyard, exile, revealed, looked-at, playable objects, and panel flags.
+- `MagicMobileAPI` keeps prompt/action routing fail-closed for missing action data and includes `expectedBridgeRevision`; this layout work must not weaken that behavior.
+
+## Current Risks
+
+- The screen is still visually absolute-positioned. The metrics object gives central coordinates, but there is no formal compact-mode state or one-pass region allocator.
+- The current "phase rail" is a horizontal strip inside the right dock, not a separate vertical rail. That is acceptable for the current compact dock direction, but future docs/tests should name it as a dock-header strip if it stays horizontal.
+- The current right side is crowded because diagnostics, phase rail, settings/log buttons, and the prompt panel all share the dock.
+- `GameDiagnosticsBadge` is positioned in the dock, while `topStatusRect` still spans the full safe frame. This makes the top status contract fuzzier than the target.
+- `HandFan` selected cards lift by 30 pt and scale to 1.16x; visual overflow can exceed `handRect` even though hit geometry remains bounded.
+- `ManaPoolHUD` floats just above player lands and can become crowded with player HUD, selected hand cards, and bottom pending status.
+- `CardInspector` and `GameLogDrawer` are floating overlays, not modal owners of a reserved region. They can intentionally cover gameplay but should not be mistaken for persistent layout proof.
+- `MobileSurfacesPanel` is always inside the prompt scroll content. In dense prompt states, secondary zone surfaces can still compete with primary controls, although the current ordering is better than putting zones first.
 
 ## Target Named Regions
 
-Implement a replacement metrics contract that produces named rects from `safeFrame`, then place existing views inside those rects. Keep the names stable so later tests can assert geometry without snapshot brittle UI tests.
+The next implementation should keep the existing SwiftUI components and move them into an explicit region contract. Do not rewrite the gameplay architecture as part of the layout pass.
 
-Assume iPhone 16 Pro Max landscape first:
+### Pro Max Baseline
 
-- Logical viewport: about `956 x 440` pt in landscape.
-- Safe frame: derive from `GeometryProxy.safeAreaInsets`; do not hard-code Dynamic Island or home indicator values.
-- Minimum content gap: `8` pt.
-- Preferred battlefield card aspect ratio: `1.40`.
-- Preferred touch target: `44 x 44` pt for primary controls, `32 x 32` pt minimum for rail icon buttons.
+Use runtime safe-area values, not hard-coded device constants. For automated proof, the existing test baseline is:
+
+- Viewport: `932 x 430` pt.
+- Safe area: top `0`, leading `47`, bottom `21`, trailing `47`.
+- Current integrated evidence: hand-card width and compact phase-rail height meet the Pro Max layout test guards, and the compact landscape metric test also passes.
+
+For planning language, "Pro Max landscape" means the large landscape phone class. The exact physical model may vary between iPhone 16 Pro Max and the installed iPhone 17 Pro Max simulator, so tests should assert geometry classes instead of marketing-model names.
 
 ### `safeFrame`
 
-Definition:
-
-- `safeFrame = CGRect(x: safe.leading + 8, y: safe.top + 6, width: size.width - safe.leading - safe.trailing - 16, height: size.height - safe.top - safe.bottom - 12)`
+Purpose: parent constraint for all persistent gameplay regions.
 
 Rules:
 
-- All named regions must be contained by `safeFrame` except transient drag cards, which may temporarily overlap while dragging.
-- If `safeFrame.width < 760` or `safeFrame.height < 360`, enter compact fallback mode.
-
-### `rightDockRect`
-
-Purpose: right prompt/action panel.
-
-Sizing:
-
-- Width: `clamp(safeFrame.width * 0.24, 220, 286)`.
-- Height: from below `topStatusRect` to above `bottomActionRect`, with an 8 pt gap.
-- X: pinned to `safeFrame.maxX`.
-
-Rules:
-
-- This is the only permanent right-side action panel.
-- `UniversalPromptActionPanel` should fill this rect and keep internal scroll.
-- Primary pass/confirm/cast actions should remain at the top of the panel or be repeated in `bottomActionRect` when available.
-- `MobileSurfacesPanel` should stay below primary prompt controls when a prompt is active. It now exposes Stack, Command, Graveyard, Exile, count-only Library, and revealed/looked-at sheets when XMage exposes those zones.
-
-### `phaseRailRect`
-
-Purpose: compact phase/status rail and log/settings buttons.
-
-Sizing:
-
-- Width: `56` pt preferred, `48` pt compact.
-- Height: `min(210, rightDockRect.height)`.
-- Position: immediately left of `rightDockRect`, aligned to `topStatusRect.maxY + 8`.
-
-Rules:
-
-- The rail must not reduce battlefield width below `420` pt in iPhone 16 Pro Max landscape.
-- In compact fallback, merge the rail into the top of `rightDockRect` and hide the separate rail column.
+- Derive from `GeometryProxy.safeAreaInsets`.
+- Keep all persistent regions inside `safeFrame`.
+- Allow only transient drag cards to leave `safeFrame`.
+- Use margins in the 8-10 pt range unless a test proves a different value is required.
 
 ### `topStatusRect`
 
 Purpose: unified top HUD strip.
 
-Sizing:
+Rules:
 
-- X: `safeFrame.minX`.
-- Y: `safeFrame.minY`.
-- Width: from `safeFrame.minX` to `phaseRailRect.minX - 8` or `rightDockRect.minX - 8` if rail is merged.
-- Height: `52` pt preferred, `44` pt compact.
+- Own turn status, live status, opponent compact HUD, and collapsed diagnostics.
+- Persistent diagnostics text should not consume board-lane space.
+- Target height: 40-52 pt. If the compact phase/control strip remains horizontal, it must not inflate this strip unpredictably.
+
+### `rightDockRect`
+
+Purpose: permanent right-side command area.
 
 Rules:
 
-- `TurnStatusBadge` owns the center of this rect.
-- Opponent `PlayerHeroHUD` owns the leading side.
-- `LiveUpdateBadge` and `GameDiagnosticsBadge` should be collapsed into one trailing diagnostics pill in this rect. Full diagnostics can move to log/detail sheet.
-- Nothing in this rect may overlap battlefield rows.
+- Own the right action panel, secondary zone surfaces, and dock backdrop.
+- Keep primary prompt/pass/cast controls reachable before secondary surfaces.
+- Do not move XMage routing decisions into layout code.
+- Target width: large-phone preferred range 220-286 pt, with current code at 210-268 pt.
+
+### `phaseRailRect`
+
+Purpose: compact phase, log, and settings controls.
+
+Rules:
+
+- Decide explicitly between a separate rail column and a dock-header strip. The current code uses a dock-header strip.
+- If it remains a strip, rename the target or test accordingly so "rail" does not imply a separate column.
+- If it becomes a separate rail, it must not reduce the battlefield column below the compact usable minimum.
+- Current test contract: `testBattlefieldLayoutMetricsFitProMaxLandscape` expects the strip to stay at or below 42 pt, and the integrated implementation satisfies that guard.
+
+### `boardColumnRect`
+
+Purpose: battlefield, center prompt/stack, player HUD, mana HUD, hand, and bottom status.
+
+Rules:
+
+- Keep a minimum 10-12 pt gap from `rightDockRect`.
+- Preferred minimum width: 420 pt on large phones.
+- Compact minimum width: 360 pt.
+- Current test coverage asserts it does not intersect the right dock or right action panel.
+
+### Battlefield Lanes
+
+Regions:
+
+- `opponentBattlefieldRect`
+- `opponentLandsRect`
+- `centerStripRect` or target name `centerPromptStackRect`
+- `playerBattlefieldRect`
+- `playerLandsRect`
+
+Rules:
+
+- The center prompt/stack region owns both stack peek and prompt pill; do not introduce a second persistent center prompt.
+- Board rows must not intersect the center region.
+- Permanent rows should stay at least 52 pt tall.
+- Land rows should stay at least 44 pt tall.
+- Prefer scaling card size before overlapping rows.
 
 ### `handRect`
 
-Purpose: visual hand fan and drag origin.
-
-Sizing:
-
-- Height: `min(max(safeFrame.height * 0.27, 106), 128)` preferred.
-- Width: battlefield column width, not including right dock/rail.
-- X: `safeFrame.minX`.
-- Y: `safeFrame.maxY - handHeight`.
+Purpose: hand fan, selection, and drag origin.
 
 Rules:
 
-- Hand visual overflow may extend upward by at most `36` pt for selected/dragged cards.
-- No persistent HUD or toast should sit inside the top `36` pt overflow band.
-- If hand has more than 9 cards, reduce rotation first, then card width; do not let cards push above `playerLandsRect`.
+- Own all normal hand-card rendering.
+- Allow selected-card visual overflow upward, but keep it out of player lands and mana controls.
+- Large-phone target should keep hand cards near or above 74 pt wide if tests retain that criterion.
+- With 12 cards, reduce spread and rotation before allowing hand cards to cover `playerLandsRect`.
 
 ### `bottomActionRect`
 
-Purpose: high-priority transient action/status area.
-
-Sizing:
-
-- X: `safeFrame.minX`.
-- Y: `handRect.minY - 46`.
-- Width: battlefield column width.
-- Height: `40` pt.
+Purpose: high-priority transient status/action bar.
 
 Rules:
 
-- Use for pending toast, compact pass/confirm action, or one-line human prompt status.
-- Never stack `PromptPill` and pending toast in separate center overlays. In pending state, replace the bottom action content with waiting status.
-- In compact fallback, bottom actions may overlay the hand only as a translucent one-line bar pinned to `handRect.minY`.
-
-### Battlefield Column
-
-Definition:
-
-- `battlefieldColumnRect = CGRect(x: safeFrame.minX, y: topStatusRect.maxY + 8, width: phaseRailRect.minX - safeFrame.minX - 8, height: bottomActionRect.minY - topStatusRect.maxY - 16)`
-- If rail is merged, use `rightDockRect.minX - safeFrame.minX - 8` for width.
-
-Rules:
-
-- Minimum usable width: `420` pt preferred, `360` pt compact.
-- Minimum usable height: `210` pt preferred, `180` pt compact.
-- The battlefield column is the only owner of board rows, center prompt/stack, player HUD, opponent HUD if not in top status, and mana HUD.
-
-### `opponentBattlefieldRect`
-
-Purpose: opponent non-land permanents.
-
-Sizing:
-
-- Height: `rowHeight`, computed from available battlefield height.
-- Y: top of battlefield column.
-
-Rules:
-
-- Prefer card width `44-56` pt.
-- If vertical pressure is high, reduce row label height and card width before overlapping center prompt.
-
-### `opponentLandsRect`
-
-Purpose: opponent lands.
-
-Sizing:
-
-- Height: `landRowHeight`.
-- Y: below `opponentBattlefieldRect` with 4-6 pt gap.
-
-Rules:
-
-- Lands may use smaller card width than non-land permanents.
-- This rect must end above `centerPromptStackRect.minY`.
-
-### `centerPromptStackRect`
-
-Purpose: center prompt, stack peek, and battlefield divider.
-
-Sizing:
-
-- Height: `50` pt preferred, `42` pt compact.
-- Y: centered between opponent and player rows.
-
-Rules:
-
-- Combine `PromptPill` and `StackPeek` into this one region:
-  - Prompt text owns the leading/center area.
-  - Stack count/top object owns the trailing area.
-- If the stack has cards and prompt text is long, show one-line prompt plus stack chip; full stack opens via right dock surface or detail sheet.
-- The battlefield divider should be visual background inside this rect, not a separate element competing with prompt.
-
-### `playerBattlefieldRect`
-
-Purpose: player non-land permanents.
-
-Sizing:
-
-- Height: `rowHeight`.
-- Y: below `centerPromptStackRect` with 4-6 pt gap.
-
-Rules:
-
-- Drag target highlight should be clipped to `playerBattlefieldRect.union(playerLandsRect).insetBy(dx: 0, dy: -6)`.
-- Selected cards should not open an inspector in this rect; inspector belongs in `detailSheetRect`.
-
-### `playerLandsRect`
-
-Purpose: player lands and mana source tapping.
-
-Sizing:
-
-- Height: `landRowHeight`.
-- Y: below `playerBattlefieldRect` with 4-6 pt gap.
-
-Rules:
-
-- Mana source legal highlighting must remain visible at small card sizes.
-- `ManaPoolHUD` should dock to the leading edge of this rect or to `bottomActionRect`, not float between row coordinates.
+- Own pending status, compact pass/confirm action, or a one-line prompt status.
+- Pending status should replace an existing prompt/status surface instead of adding another center overlay.
+- Current code correctly places the XMage pending toast here.
 
 ### `detailSheetRect`
 
-Purpose: card inspector, log drawer, full zone sheets, and expanded diagnostics.
-
-Sizing:
-
-- Default presentation: bottom sheet or popover anchored above `handRect`, width `min(520, safeFrame.width - 32)`, height `min(300, safeFrame.height * 0.68)`.
-- In iPhone landscape, prefer a sheet over a floating battlefield overlay.
+Purpose: inspector, log, expanded diagnostics, and full zone details.
 
 Rules:
 
+- Treat details as intentional overlays or sheets, not persistent board regions.
 - `CardInspector` and `GameLogDrawer` should be mutually exclusive.
-- Zone inspector may continue as `.sheet`, but its intended geometry should be documented as `detailSheetRect`.
-- Detail surfaces can cover gameplay temporarily because they are modal/intentional. Persistent play elements should not.
+- `ZoneInspectorSheet` can remain a SwiftUI sheet.
 
-## Sizing Algorithm
+## Smaller-Device Fallback
 
-1. Build `safeFrame` from safe area insets and margins.
-2. Reserve `rightDockRect`.
-3. Reserve `phaseRailRect`, unless compact fallback merges it into `rightDockRect`.
-4. Reserve `topStatusRect`.
-5. Reserve `handRect`.
-6. Reserve `bottomActionRect`.
-7. Compute `battlefieldColumnRect` from the remaining space.
-8. Allocate battlefield vertical lanes in this order:
-   - `centerPromptStackRect` gets its fixed preferred height first.
-   - Remaining height is split into two permanent rows and two land rows.
-   - Permanent rows get about `30%` each of remaining height.
-   - Land rows get about `20%` each of remaining height.
-   - Clamp card widths by both row height and row width.
-9. If any row falls below minimum size, enter compact fallback.
+The current code has no explicit `isCompact` or `railMergedIntoDock` state. Add one before making further visual promises.
 
-## Fallback Behavior
+Compact fallback should trigger when any of these are true:
 
-Compact fallback triggers when:
-
-- `safeFrame.width < 760`, or
-- `safeFrame.height < 360`, or
-- battlefield column width after dock/rail reservation is below `360`, or
-- computed permanent card width is below `34`.
+- `safeFrame.width < 760`
+- `safeFrame.height < 360`
+- `boardColumnRect.width < 360`
+- computed permanent-card width falls below 44 pt
+- hand-card width falls below 58 pt
 
 Compact fallback rules:
 
-- Merge `phaseRailRect` into `rightDockRect`.
-- Collapse diagnostics to one status chip in `topStatusRect`; move detailed revision/cycle/source data to log/detail.
-- Hide persistent stack peek if stack is empty; if non-empty, show only a stack chip in `centerPromptStackRect`.
-- Move `ManaPoolHUD` into `bottomActionRect` unless a pending action is active.
-- Keep `UniversalPromptActionPanel` ordered with primary prompt/actions first and secondary surfaces below.
-- Use one persistent overlay at a time: pending, inspector, or log/detail.
+- Keep the phase control strip inside `rightDockRect`; do not reserve a separate rail column.
+- Collapse diagnostics to a one-line chip or move details to `detailSheetRect`.
+- Hide empty stack peek; when stack is non-empty, keep it as a chip inside the center prompt/stack region.
+- Move `ManaPoolHUD` into `bottomActionRect` or pin it to `playerLandsRect` leading edge when space is tight.
+- Allow only one transient overlay at a time: pending, inspector, or log/detail.
+- Keep `UniversalPromptActionPanel` internally scrollable, with prompt controls above zone surfaces.
 
-## Pass/Fail Criteria
+## Pass/Fail Visual Criteria
 
 Pass:
 
-- On iPhone 16 Pro Max landscape, all named rects are inside `safeFrame`.
-- `topStatusRect`, battlefield lane rects, `centerPromptStackRect`, `handRect`, `rightDockRect`, `phaseRailRect`, and `bottomActionRect` do not intersect except for explicitly allowed hand selected-card overflow.
-- With 7-card hand, 8 non-land permanents per side, 10 lands per side, active stack, active prompt, mana in pool, and pending action, the prompt/action controls remain tappable and no persistent element covers a battlefield row label or card midpoint.
-- With 12-card hand, hand cards stay within `handRect` plus allowed overflow and do not cover `playerLandsRect`.
-- With long prompt text, `centerPromptStackRect` truncates to one or two lines and routes detail to right dock/detail sheet.
-- With log open or card inspected, the detail surface is intentional/modal and can be dismissed without changing game state.
-- Primary action targets meet at least `44 x 44` pt where possible; rail icons are at least `32 x 32` pt.
-- The layout remains stable when `pendingActionId` changes; pending status replaces an existing region instead of adding another center overlay.
+- All persistent named regions are inside `safeFrame`.
+- `boardColumnRect`, `rightDockRect`, `rightActionPanelRect`, `handRect`, `bottomActionRect`, `phaseRailRect`, and battlefield lane rects do not intersect except for documented selected-hand visual overflow.
+- On the Pro Max baseline, hand cards meet the agreed width target, permanent cards remain tappable/readable, land rows remain visible, and the phase strip/rail fits its tested height.
+- With 7-card hand, 8 non-land permanents per side, 10 lands per side, active stack, active prompt, mana in pool, and pending action, prompt/action controls remain tappable and no persistent element covers a board card midpoint.
+- With 12-card hand, cards remain in `handRect` plus allowed selected-card overflow and do not cover player lands.
+- Long prompt text truncates within the center/right prompt regions and routes detail to the right dock or detail sheet.
+- Pending status appears in `bottomActionRect`, not as an additional center overlay.
+- Primary action targets are at least 44 pt where possible; rail/dock icon controls are at least 32 pt.
 
 Fail:
 
-- Any persistent region intersects another persistent region outside the allowed hand overflow.
-- A selected hand card covers player lands or mana controls.
-- Stack peek, prompt pill, and pending toast are visible as three independent center overlays.
-- The right action panel hides pass/confirm/cast controls below surfaces when a prompt is active.
-- Diagnostics text consumes battlefield space or overlaps opponent board.
-- Compact fallback still leaves computed card width below `34` pt.
+- Any persistent region intersects another persistent region outside documented hand overflow.
+- Selected or dragged hand cards hide player lands, mana controls, or bottom pending status after the drag ends.
+- Prompt pill, stack peek, and pending toast appear as three independent persistent center overlays.
+- The right action panel pushes pass/confirm/cast controls below zone surfaces in an active human prompt.
+- Diagnostics overlap opponent battlefield content or consume board-lane height.
+- Any layout metrics test remains red without either updating the layout or intentionally updating the test contract.
 
-## Practical Layout Helpers And Tests
+## Implementation Guardrails
 
-Suggested helpers:
+- Only refactor layout ownership; do not rewrite XMage routing, fixtures, command templates, or fail-closed prompt behavior.
+- Preserve `MagicMobileAPI.command(for:)` behavior around source instance IDs, ability IDs, prompt IDs, message IDs, and `expectedBridgeRevision`.
+- Keep `MobileSurfacesPanel` secondary to prompt controls unless the user explicitly asks for a zone-first interaction model.
+- Add or adjust pure layout tests before claiming visual stability.
+- Screenshot QA is necessary after implementation, but screenshot QA is not gameplay/product release proof.
 
-- Introduce a pure Swift value type, for example `GameplayLayoutRegions`, initialized from `CGSize` and `EdgeInsets`.
-- Give it named properties exactly matching this plan: `safeFrame`, `topStatusRect`, `opponentBattlefieldRect`, `opponentLandsRect`, `centerPromptStackRect`, `playerBattlefieldRect`, `playerLandsRect`, `handRect`, `rightDockRect`, `phaseRailRect`, `bottomActionRect`, and `detailSheetRect`.
-- Add derived booleans like `isCompact`, `railMergedIntoDock`, and `allowsHandOverflow`.
-- Add a debug-only helper returning `[BattlefieldLane]` or `[String: CGRect]` so tests and preview overlays can inspect the layout without rendering SwiftUI.
+## Required Final Report
 
-Suggested tests:
+### Files Inspected
 
-- Unit test `GameplayLayoutRegions` with iPhone 16 Pro Max landscape size and representative safe area insets.
-- Unit test compact fallback sizes such as `740 x 360`, `812 x 375`, and an exaggerated safe-area case.
-- Unit test that persistent rects do not intersect:
-  - `topStatusRect`
-  - `opponentBattlefieldRect`
-  - `opponentLandsRect`
-  - `centerPromptStackRect`
-  - `playerBattlefieldRect`
-  - `playerLandsRect`
-  - `handRect`
-  - `rightDockRect`
-  - `phaseRailRect` when not merged
-  - `bottomActionRect`
-- Unit test that battlefield row card widths stay above minimum thresholds in preferred and compact modes.
-- If UI tests become practical, add one landscape screenshot smoke test for the debug XMage gauntlet fixture and assert that key accessibility identifiers exist for top status, right dock, hand, and board rows.
+- `apps/ios/MagicMobile/ContentView.swift`
+- `apps/ios/MagicMobile/Models.swift`
+- `apps/ios/MagicMobile/MagicMobileAPI.swift`
+- `apps/ios/MagicMobileTests/MagicMobileTests.swift`
+- `docs/IOS_GAMEPLAY_LAYOUT_PLAN.md`
 
-## Recommended Implementation Changes
+### Files Changed
 
-1. Replace `BattlefieldLayoutMetrics` coordinate properties with a named-rect layout value.
-2. Move existing SwiftUI views into those rects with `.frame(width:height:)` and `.position(x: rect.midX, y: rect.midY)` as a low-risk first pass.
-3. Combine the prompt pill, stack peek, and pending toast behavior so only one center/bottom prompt surface is persistent at a time.
-4. Treat diagnostics, card inspector, log, and full zones as detail surfaces instead of permanent battlefield overlays.
-5. Re-run screenshot QA after any `UniversalPromptActionPanel` edits to confirm critical prompt/action controls still appear before zone surfaces whenever human input is required.
-6. Add pure layout unit tests before or alongside visual tuning.
+- `docs/IOS_GAMEPLAY_LAYOUT_PLAN.md`
 
-## Assumptions
+Note: subsequent parent integration also updated `apps/ios/MagicMobile/ContentView.swift`, `apps/ios/MagicMobileTests/MagicMobileTests.swift`, and `docs/IOS_VISUAL_QA_CHECKLIST.md` to implement and verify the current layout pass.
 
-- The target first pass is iPhone landscape, especially iPhone 16 Pro Max.
-- The implementation should keep existing visual components and gameplay behavior unless moving a component is required to honor named regions.
-- Source files should remain untouched by this audit; this document is the handoff for the implementation agent.
-- Exact safe-area inset values should come from SwiftUI at runtime. Any hard-coded device numbers in this document are planning assumptions, not constants.
+### Screenshots Taken Or Reason None
 
-## Open TODOs
+None. This audit was limited to source/test inspection and documentation. The app was not launched into a seeded gameplay fixture, so a screenshot would only prove simulator rendering at one moment, not real gameplay readiness.
 
-- Capture real device/simulator screenshots after implementation to confirm the assumed landscape safe frame.
-- Decide whether the phase rail remains separate in preferred mode or is always folded into the right dock.
-- Decide whether `MobileSurfacesPanel` should default collapsed when there is an active prompt.
-- Add accessibility identifiers during implementation if UI screenshot tests are desired.
+### Tests/Build Commands Run With Exact Pass/Fail
+
+- PASS: `git status --short --branch && git rev-parse --show-toplevel && git rev-parse --abbrev-ref HEAD && git rev-parse --short HEAD`
+  - Confirmed current checkout is `/Users/calebfeliciano/Documents/MagicMobile`, branch `main`, commit `03c51aa7`.
+- PASS: `xcodebuild -list -project apps/ios/MagicMobileiOS.xcodeproj`
+  - Confirmed scheme `MagicMobile` and targets `MagicMobile`, `MagicMobileTests`.
+- HISTORICAL RED: early audit runs failed the Pro Max and compact layout metric tests while layout edits were still in flight. Those failures drove the current hand-card, phase-strip, and right-dock assertions.
+- PASS: `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -project apps/ios/MagicMobileiOS.xcodeproj -scheme MagicMobile -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' -only-testing:MagicMobileTests -quiet -derivedDataPath /tmp/MagicMobileParentFullTestDerivedData`
+  - Parent rerun passed on the integrated checkout, including `testBattlefieldLayoutMetricsFitProMaxLandscape` and `testBattlefieldLayoutMetricsKeepCompactLandscapeUsable`.
+- PASS: `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project apps/ios/MagicMobileiOS.xcodeproj -scheme MagicMobile -configuration Debug -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO -derivedDataPath /tmp/MagicMobileParentGenericDerivedData build`
+  - Parent rerun produced `** BUILD SUCCEEDED **`.
+
+### Assumptions
+
+- The requested baseline started at `03c51aa7`; this document now also includes the parent integration changes made after that commit.
+- The first implementation target is large-phone landscape, with the existing Pro Max test using `932 x 430` pt and safe insets top `0`, leading/trailing `47`, bottom `21`.
+- Runtime safe-area insets remain authoritative; device numbers in this document are test/planning inputs, not constants.
+- Swift code and backend code are intentionally untouched by this audit.
+- Runtime screenshots remain required after each significant visual pass, because metric tests cannot prove final aesthetics or touch feel.
+
+### Blockers
+
+- The initial Pro Max and compact metric failures were resolved in the integrated tree.
+- A simulator screenshot was captured after integration at `build_output/screenshots/ios-17-pro-max-arena-pass-3.jpg`.
+- No deterministic seeded XMage gameplay run was performed, so this document cannot certify gameplay/product release readiness.
+- Compact fallback is still implicit rather than represented by a first-class `isCompact` layout state.
+
+### Remaining TODOs
+
+- Decide whether `phaseRailRect` should be a true rail or renamed/treated as a dock-header strip.
+- Keep `BattlefieldLayoutMetrics` and its tests synchronized whenever hand-card, dock, rail, or compact fallback sizing changes.
+- Add explicit compact-mode state and tests for fallback thresholds.
+- Capture landscape screenshots after implementation using a debug fixture, then record what the screenshot proves and does not prove.
+- Keep blocker docs honest if visual QA passes while XMage gameplay fixture proof remains incomplete.
