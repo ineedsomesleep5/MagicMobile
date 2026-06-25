@@ -1236,7 +1236,7 @@ struct NativeGameView: View {
                     ManaPoolHUD(manaPool: human.manaPool)
                         .position(x: metrics.manaHUDX, y: metrics.manaHUDY)
 
-                    VStack(spacing: 8) {
+                    HStack(spacing: 8) {
                         CompactPhaseRail(snapshot: snapshot)
                         Button {
                             isLogOpen.toggle()
@@ -1250,7 +1250,7 @@ struct NativeGameView: View {
                         }
                         .buttonStyle(IconButtonStyle())
                     }
-                    .frame(width: metrics.railWidth)
+                    .frame(width: metrics.phaseRailRect.width, height: metrics.phaseRailRect.height)
                     .position(x: metrics.phaseRailRect.midX, y: metrics.phaseRailRect.midY)
 
                     if !allActions.isEmpty || snapshot.choicePrompt != nil || snapshot.promptEnvelope != nil || snapshot.promptEnvelopeV2 != nil {
@@ -1435,13 +1435,12 @@ struct BattlefieldLayoutMetrics {
     }
 
     var phaseRailRect: CGRect {
-        let top = diagnosticsY + 36
-        let bottom = rightActionPanelRect.minY - 8
-        let height = min(max(bottom - top, 44), 154)
+        let top = diagnosticsY + 34
+        let height: CGFloat = 46
         return CGRect(
-            x: rightDockRect.minX + (rightDockRect.width - railWidth) / 2,
-            y: max(rightDockRect.minY + 42, bottom - height),
-            width: railWidth,
+            x: rightDockRect.minX + 8,
+            y: top,
+            width: max(rightDockRect.width - 16, 190),
             height: height
         )
     }
@@ -1718,24 +1717,52 @@ struct BattlefieldSurface: View {
                 LinearGradient(
                     colors: [
                         Color(red: 0.04, green: 0.09, blue: 0.06),
-                        MagicPalette.carvedWood,
-                        Color(red: 0.11, green: 0.16, blue: 0.10)
+                        MagicPalette.carvedWood.opacity(0.94),
+                        Color(red: 0.16, green: 0.20, blue: 0.12)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
+                )
+
+                RadialGradient(
+                    colors: [
+                        Color(red: 0.78, green: 0.61, blue: 0.38).opacity(0.30),
+                        Color(red: 0.42, green: 0.30, blue: 0.18).opacity(0.18),
+                        .clear
+                    ],
+                    center: .center,
+                    startRadius: 20,
+                    endRadius: max(proxy.size.width, proxy.size.height) * 0.62
                 )
 
                 RoundedRectangle(cornerRadius: 34)
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color(red: 0.62, green: 0.48, blue: 0.31).opacity(0.82),
-                                Color(red: 0.38, green: 0.29, blue: 0.21).opacity(0.86),
-                                Color(red: 0.28, green: 0.36, blue: 0.25).opacity(0.62)
+                                Color(red: 0.68, green: 0.53, blue: 0.34).opacity(0.78),
+                                Color(red: 0.45, green: 0.34, blue: 0.23).opacity(0.82),
+                                Color(red: 0.28, green: 0.38, blue: 0.27).opacity(0.54)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
                         )
+                    )
+                    .overlay(
+                        Ellipse()
+                            .fill(
+                                RadialGradient(
+                                    colors: [
+                                        MagicPalette.parchment.opacity(0.18),
+                                        MagicPalette.antiqueGold.opacity(0.08),
+                                        .clear
+                                    ],
+                                    center: .center,
+                                    startRadius: 8,
+                                    endRadius: proxy.size.width * 0.42
+                                )
+                            )
+                            .padding(.horizontal, proxy.size.width * 0.18)
+                            .padding(.vertical, proxy.size.height * 0.18)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 34)
@@ -1754,6 +1781,11 @@ struct BattlefieldSurface: View {
                     .shadow(color: .black.opacity(0.42), radius: 28, y: 14)
                     .padding(.horizontal, proxy.size.width * 0.035)
                     .padding(.vertical, proxy.size.height * 0.12)
+
+                RoundedRectangle(cornerRadius: 22)
+                    .stroke(MagicPalette.antiqueGold.opacity(0.08), lineWidth: 1.5)
+                    .padding(.horizontal, proxy.size.width * 0.16)
+                    .padding(.vertical, proxy.size.height * 0.25)
 
                 VStack(spacing: 0) {
                     EdgeCanopy(height: proxy.size.height * 0.18, flipped: true)
@@ -1911,18 +1943,18 @@ struct PlayerHeroHUD: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                    .frame(width: tiny ? 42 : 52, height: tiny ? 42 : 52)
+                    .frame(width: tiny ? 44 : 60, height: tiny ? 44 : 60)
                     .overlay(Circle().stroke(active ? MagicPalette.antiqueGold : MagicPalette.parchment.opacity(0.36), lineWidth: active ? 2.4 : 1.3))
                     .shadow(color: active ? MagicPalette.antiqueGold.opacity(0.42) : .black.opacity(0.34), radius: active ? 16 : 10, y: 6)
 
-                PlayerAvatar(data: avatarData, size: tiny ? 26 : 32, active: active)
-                    .offset(y: tiny ? -7 : -9)
+                PlayerAvatar(data: avatarData, size: tiny ? 27 : 36, active: active)
+                    .offset(y: tiny ? -8 : -11)
 
                 Text("\(player.life)")
-                    .font(.system(size: tiny ? 15 : 18, weight: .black, design: .rounded))
+                    .font(.system(size: tiny ? 16 : 21, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.8), radius: 2, y: 1)
-                    .offset(y: tiny ? 10 : 13)
+                    .offset(y: tiny ? 10 : 15)
             }
 
             VStack(alignment: .center, spacing: 1) {
@@ -2104,23 +2136,30 @@ struct GameDiagnosticsBadge: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(waitState.uppercased())
-                .font(.system(size: 7, weight: .black))
-                .foregroundStyle(waitState == "Your priority" ? MagicPalette.legalEmerald : (waitState.contains("stalled") ? MagicPalette.warningAmber : MagicPalette.priorityArcane))
-            Text("\(source) · \(snapshot.engineHealth?.status ?? "bridge") · ws \(liveUpdateStatus)")
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(waitState == "Your priority" ? MagicPalette.legalEmerald : (waitState.contains("stalled") ? MagicPalette.warningAmber : MagicPalette.priorityArcane))
+                    .frame(width: 7, height: 7)
+                    .shadow(color: MagicPalette.priorityArcane.opacity(0.45), radius: 5)
+                Text(waitState.uppercased())
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundStyle(waitState == "Your priority" ? MagicPalette.legalEmerald : (waitState.contains("stalled") ? MagicPalette.warningAmber : MagicPalette.priorityArcane))
+                Spacer(minLength: 4)
+                Text("REV \(snapshot.bridgeRevision.map(String.init) ?? "n/a")")
+                    .font(.system(size: 7, weight: .black))
+                    .foregroundStyle(MagicPalette.parchment.opacity(0.72))
+            }
+
+            HStack(spacing: 5) {
+                DiagnosticsChip(title: "SRC", value: source)
+                DiagnosticsChip(title: "CYCLE", value: snapshot.xmageCycle.map(String.init) ?? "n/a")
+                DiagnosticsChip(title: "WS", value: liveUpdateStatus)
+            }
+
+            Text("\(snapshot.engineHealth?.status ?? "bridge") · \(snapshot.pendingStatus ?? "none") · turn \(snapshot.turn) · \(phaseStep)")
                 .font(.system(size: 7, weight: .bold))
-                .foregroundStyle(.white.opacity(0.72))
-                .lineLimit(1)
-                .minimumScaleFactor(0.58)
-            Text("rev \(snapshot.bridgeRevision.map(String.init) ?? "n/a") · cycle \(snapshot.xmageCycle.map(String.init) ?? "n/a") · pending \(snapshot.pendingStatus ?? "none")")
-                .font(.system(size: 7, weight: .bold))
-                .foregroundStyle(.white.opacity(0.62))
-                .lineLimit(1)
-                .minimumScaleFactor(0.58)
-            Text("turn \(snapshot.turn) · \(phaseStep) · active \(snapshot.activePlayerId ?? "-") · priority \(snapshot.priorityPlayerId ?? snapshot.waitingOnPlayerId ?? "-")")
-                .font(.system(size: 7, weight: .bold))
-                .foregroundStyle(.white.opacity(0.62))
+                .foregroundStyle(.white.opacity(0.58))
                 .lineLimit(1)
                 .minimumScaleFactor(0.58)
         }
@@ -2128,6 +2167,28 @@ struct GameDiagnosticsBadge: View {
         .padding(.vertical, 6)
         .background(MagicPalette.iron.opacity(0.62), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.borderBronze.opacity(0.38), lineWidth: 1))
+    }
+}
+
+struct DiagnosticsChip: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(.system(size: 5.5, weight: .black))
+                .foregroundStyle(MagicPalette.antiqueGold.opacity(0.74))
+            Text(value)
+                .font(.system(size: 6.5, weight: .black))
+                .foregroundStyle(.white.opacity(0.78))
+                .lineLimit(1)
+                .minimumScaleFactor(0.48)
+        }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 5))
     }
 }
 
@@ -3919,20 +3980,23 @@ struct BattlefieldRow: View {
             }
             .background(
                 LinearGradient(
-                    colors: [MagicPalette.laneWood.opacity(0.58), MagicPalette.iron.opacity(0.42)],
+                    colors: [
+                        MagicPalette.laneWood.opacity(cards.isEmpty ? 0.12 : 0.28),
+                        MagicPalette.iron.opacity(cards.isEmpty ? 0.06 : 0.20)
+                    ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
             )
             .cornerRadius(8)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.borderBronze.opacity(0.22), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.borderBronze.opacity(cards.isEmpty ? 0.07 : 0.16), lineWidth: 1))
 
             Text(title.uppercased())
                 .font(.system(size: 8, weight: .black))
                 .foregroundStyle(MagicPalette.parchment.opacity(cards.isEmpty ? 0.36 : 0.68))
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
-                .background(MagicPalette.iron.opacity(0.56), in: RoundedRectangle(cornerRadius: 4))
+                .background(MagicPalette.iron.opacity(cards.isEmpty ? 0.18 : 0.44), in: RoundedRectangle(cornerRadius: 4))
                 .padding(5)
         }
     }
@@ -4230,21 +4294,22 @@ struct CompactPhaseRail: View {
         let previous = stageLabels[max(index - 1, 0)]
         let next = stageLabels[min(index + 1, stageLabels.count - 1)]
 
-        VStack(alignment: .leading, spacing: 5) {
+        HStack(spacing: 5) {
             Image(systemName: "hourglass")
-                .font(.system(size: 15, weight: .black))
+                .font(.system(size: 13, weight: .black))
                 .foregroundStyle(MagicPalette.warningAmber)
-                .frame(maxWidth: .infinity)
+                .frame(width: 18)
             PhaseChip(label: "Prev", phase: previous, active: false)
             PhaseChip(label: "Now", phase: current, active: true)
             PhaseChip(label: "Next", phase: next, active: false)
             Text(snapshot.priorityPlayerId == "human" ? "YOU" : "AI")
-                .font(.system(size: 10, weight: .black))
+                .font(.system(size: 9, weight: .black))
                 .foregroundStyle(.white.opacity(0.75))
                 .lineLimit(1)
-                .frame(maxWidth: .infinity)
+                .frame(width: 24)
         }
-        .padding(6)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 6)
         .background(MagicPalette.iron.opacity(0.58), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.borderBronze.opacity(0.30)))
     }
@@ -4258,15 +4323,16 @@ struct PhaseChip: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(label.uppercased())
-                .font(.system(size: 7, weight: .black))
+                .font(.system(size: 6, weight: .black))
                 .foregroundStyle(active ? .black.opacity(0.7) : .white.opacity(0.55))
             Text(phase.phaseTitle)
-                .font(.system(size: 10, weight: .black))
+                .font(.system(size: 9, weight: .black))
                 .foregroundStyle(active ? .black : .white)
-                .lineLimit(2)
+                .lineLimit(1)
                 .minimumScaleFactor(0.65)
         }
-        .padding(5)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(active ? MagicPalette.antiqueGold : MagicPalette.iron.opacity(0.50), in: RoundedRectangle(cornerRadius: 7))
         .overlay(RoundedRectangle(cornerRadius: 7).stroke(active ? MagicPalette.brass.opacity(0.55) : MagicPalette.borderBronze.opacity(0.20)))
