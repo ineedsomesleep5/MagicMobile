@@ -5,6 +5,7 @@ enum GameBoardInteractionMode: Equatable {
     case selectedCard(cardId: String)
     case draggingCard(cardId: String, legalActionIds: [String])
     case awaitingCastSnapshot(actionId: String)
+    case manaPayment(promptId: String)
     case targeting(promptId: String, sourceCardId: String?, validTargetIds: Set<String>)
     case searchSelecting(promptId: String, zoneName: String, selectedIds: Set<String>)
     case combatSelectingAttackers
@@ -50,6 +51,9 @@ struct GameBoardInteractionState: Equatable {
         }
 
         if let prompt = snapshot.promptEnvelopeV2 {
+            if isManaPaymentPrompt(prompt) {
+                return .manaPayment(promptId: prompt.responseCommand?.promptId ?? prompt.id)
+            }
             if let targetingMode = targetingMode(for: prompt, selectedCard: selectedCard) {
                 return targetingMode
             }
@@ -132,6 +136,21 @@ struct GameBoardInteractionState: Equatable {
     private static func isSearchPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
         let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
         return type == "search_select" || prompt.method.localizedCaseInsensitiveContains("search")
+    }
+
+    private static func isManaPaymentPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
+        let type = prompt.responseCommand?.type?.lowercased() ?? ""
+        let kind = prompt.responseKind.lowercased()
+        return type == "play_mana" ||
+            type == "choose_mana" ||
+            type == "pay_cost" ||
+            type == "play_x_mana" ||
+            kind == "mana" ||
+            kind == "pay_cost" ||
+            kind == "cost" ||
+            kind == "x_mana" ||
+            prompt.method == "GAME_PLAY_MANA" ||
+            prompt.method == "GAME_PLAY_XMANA"
     }
 
     private static func searchZoneName(for prompt: PromptEnvelopeV2) -> String {

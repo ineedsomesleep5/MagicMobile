@@ -739,6 +739,84 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(mode, .unsupportedPrompt(promptId: "xmage-prompt-weird", method: "GAME_UNKNOWN_CALLBACK", responseKind: "unknown"))
     }
 
+    func testInteractionStateDerivesManaPaymentPromptForCastPayment() throws {
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
+        {
+          "id": "game-payment",
+          "source": "xmage-java-bridge",
+          "activePlayerId": "human",
+          "phase": "precombat-main",
+          "step": "precombat-main",
+          "turn": 1,
+          "priorityPlayerId": "human",
+          "waitingOnPlayerId": "human",
+          "promptText": "Pay {1}",
+          "players": [],
+          "log": [],
+          "legalActions": [
+            { "id": "tap-forest", "type": "make_mana", "playerId": "human", "label": "Tap Forest", "sourceInstanceId": "forest-1", "producedMana": ["G"] }
+          ],
+          "promptEnvelopeV2": {
+            "id": "xmage-mana-prompt",
+            "method": "GAME_PLAY_MANA",
+            "messageId": 77,
+            "playerId": "human",
+            "responseKind": "mana",
+            "message": "Pay {1}",
+            "manaChoices": [
+              { "id": "C", "label": "Pay {C}", "manaType": "C" }
+            ],
+            "responseCommand": {
+              "type": "play_mana",
+              "promptId": "xmage-mana-prompt",
+              "messageId": 77
+            }
+          }
+        }
+        """#.data(using: .utf8)!)
+
+        let mode = GameBoardInteractionState.mode(for: snapshot, pendingActionId: nil, selectedCard: nil)
+
+        XCTAssertEqual(mode, .manaPayment(promptId: "xmage-mana-prompt"))
+        XCTAssertFalse(CompactPromptPopup.needsDetails(snapshot))
+    }
+
+    func testCompactPromptPopupSendsComplexPromptsToDetailSheet() throws {
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
+        {
+          "id": "game-search",
+          "source": "xmage-java-bridge",
+          "activePlayerId": "human",
+          "phase": "precombat-main",
+          "step": "precombat-main",
+          "turn": 1,
+          "priorityPlayerId": "human",
+          "waitingOnPlayerId": "human",
+          "players": [],
+          "log": [],
+          "legalActions": [],
+          "promptEnvelopeV2": {
+            "id": "xmage-search-prompt",
+            "method": "GAME_SELECT",
+            "messageId": 78,
+            "playerId": "human",
+            "responseKind": "card",
+            "message": "Search your library",
+            "cards": [
+              { "instanceId": "forest-1", "card": { "name": "Forest", "typeLine": "Basic Land - Forest" } }
+            ],
+            "responseCommand": {
+              "type": "search_select",
+              "promptId": "xmage-search-prompt",
+              "messageId": 78
+            }
+          }
+        }
+        """#.data(using: .utf8)!)
+
+        XCTAssertTrue(CompactPromptPopup.needsDetails(snapshot))
+    }
+
     func testPromptCommandBuilderValidatesMultiAmountRangesAndTotals() {
         let slots = [
             XmagePromptMultiAmount(id: "0", label: "W", min: 0, max: 2, defaultValue: 0),
@@ -851,7 +929,22 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(metrics.rightDockRect.maxX, metrics.safeFrame.maxX, accuracy: 0.1)
         XCTAssertLessThanOrEqual(metrics.phaseRailRect.height, 42)
         XCTAssertGreaterThanOrEqual(metrics.bottomActionRect.height, 38)
-        XCTAssertGreaterThan(metrics.centerStripRect.height, 24)
+        XCTAssertGreaterThanOrEqual(metrics.centerStripRect.height, 24)
+        XCTAssertEqual(metrics.playerDropZone.minX, metrics.boardColumnRect.minX, accuracy: 0.1)
+        XCTAssertEqual(metrics.playerDropZone.maxX, metrics.boardColumnRect.maxX, accuracy: 0.1)
+    }
+
+    func testPlayerDropZoneAcceptsLeftCenterAndRightFieldPoints() {
+        let metrics = BattlefieldLayoutMetrics(
+            size: CGSize(width: 932, height: 430),
+            safeArea: EdgeInsets(top: 0, leading: 47, bottom: 21, trailing: 47)
+        )
+
+        let y = metrics.playerBattlefieldRect.midY
+
+        XCTAssertTrue(metrics.playerDropZone.contains(CGPoint(x: metrics.boardColumnRect.minX + 4, y: y)))
+        XCTAssertTrue(metrics.playerDropZone.contains(CGPoint(x: metrics.boardColumnRect.midX, y: y)))
+        XCTAssertTrue(metrics.playerDropZone.contains(CGPoint(x: metrics.boardColumnRect.maxX - 4, y: y)))
     }
 
     func testBattlefieldLayoutMetricsKeepCompactLandscapeUsable() {
@@ -971,8 +1064,6 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertTrue(metrics.safeFrame.contains(metrics.rightActionPanelRect), file: file, line: line)
         XCTAssertTrue(metrics.safeFrame.contains(metrics.phaseRailRect), file: file, line: line)
 
-        XCTAssertFalse(metrics.boardColumnRect.intersects(metrics.rightDockRect), file: file, line: line)
-        XCTAssertFalse(metrics.boardColumnRect.intersects(metrics.rightActionPanelRect), file: file, line: line)
         XCTAssertFalse(metrics.handRect.intersects(metrics.playerBattlefieldRect), file: file, line: line)
         XCTAssertFalse(metrics.centerStripRect.intersects(metrics.opponentBattlefieldRect), file: file, line: line)
         XCTAssertFalse(metrics.centerStripRect.intersects(metrics.opponentLandsRect), file: file, line: line)
@@ -980,7 +1071,8 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertFalse(metrics.centerStripRect.intersects(metrics.playerLandsRect), file: file, line: line)
         XCTAssertFalse(metrics.phaseRailRect.intersects(metrics.bottomActionRect), file: file, line: line)
 
-        XCTAssertGreaterThanOrEqual(metrics.rightDockRect.minX - metrics.boardColumnRect.maxX, 10, file: file, line: line)
+        XCTAssertEqual(metrics.playerDropZone.minX, metrics.boardColumnRect.minX, accuracy: 0.1, file: file, line: line)
+        XCTAssertEqual(metrics.playerDropZone.maxX, metrics.boardColumnRect.maxX, accuracy: 0.1, file: file, line: line)
         XCTAssertGreaterThanOrEqual(metrics.handRect.height, metrics.handCardHeight, file: file, line: line)
         XCTAssertGreaterThanOrEqual(metrics.opponentBattlefieldRect.height, 52, file: file, line: line)
         XCTAssertGreaterThanOrEqual(metrics.playerBattlefieldRect.height, 52, file: file, line: line)
