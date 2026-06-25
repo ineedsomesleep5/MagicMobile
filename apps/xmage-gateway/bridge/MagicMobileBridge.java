@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import mage.abilities.icon.CardIcon;
 import mage.cards.Card;
 import mage.cards.decks.DeckCardInfo;
 import mage.cards.decks.DeckCardLists;
@@ -2411,6 +2412,7 @@ public final class MagicMobileBridge implements MageClient {
         for (PermanentView card : cards) {
             JsonObject zoneCard = zoneCard(card);
             zoneCard.addProperty("tapped", card.isTapped());
+            zoneCard.addProperty("summoningSickness", card.hasSummoningSickness());
             zoneCard.addProperty("damage", card.getDamage());
             if (card.getAttachedTo() != null) {
                 zoneCard.addProperty("attachedToInstanceId", card.getAttachedTo().toString());
@@ -2459,7 +2461,28 @@ public final class MagicMobileBridge implements MageClient {
         Integer toughness = parseStat(card.getToughness());
         if (power != null) out.addProperty("power", power);
         if (toughness != null) out.addProperty("toughness", toughness);
+        out.add("cardIcons", cardIcons(card));
         return out;
+    }
+
+    private JsonArray cardIcons(CardView card) {
+        JsonArray icons = new JsonArray();
+        if (card.getCardIcons() == null || card.getCardIcons().isEmpty()) {
+            return icons;
+        }
+        for (CardIcon icon : card.getCardIcons()) {
+            if (icon == null || icon.getIconType() == null) {
+                continue;
+            }
+            JsonObject out = new JsonObject();
+            out.addProperty("iconType", icon.getIconType().name());
+            out.addProperty("resourceName", icon.getIconType().getResourceName());
+            out.addProperty("category", icon.getIconType().getCategory().name());
+            out.addProperty("text", cleanText(icon.getText()));
+            out.addProperty("hint", cleanText(icon.getHint()));
+            icons.add(out);
+        }
+        return icons;
     }
 
     private JsonObject simpleZoneCard(SimpleCardView card) {

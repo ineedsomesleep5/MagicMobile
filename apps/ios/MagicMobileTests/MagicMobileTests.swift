@@ -33,6 +33,8 @@ final class MagicMobileTests: XCTestCase {
             instanceId: "sol-ring-instance-1234",
             card: CardIdentity(name: "Sol Ring", typeLine: "Artifact", oracleText: "{T}: Add {C}{C}."),
             tapped: true,
+            summoningSickness: nil,
+            cardIcons: nil,
             counters: nil,
             power: nil,
             toughness: nil,
@@ -53,6 +55,8 @@ final class MagicMobileTests: XCTestCase {
             instanceId: "ABCDEF12-3456",
             card: CardIdentity(name: "Arcane Signet", typeLine: "Artifact", oracleText: nil),
             tapped: nil,
+            summoningSickness: nil,
+            cardIcons: nil,
             counters: nil,
             power: nil,
             toughness: nil,
@@ -65,8 +69,120 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(card.accessibilityIdentifier(zoneName: "Command Zone"), "card-command-zone-arcane-signet-abcdef12")
     }
 
+    func testZoneCardDecodesSummoningSicknessFromXMageSnapshot() throws {
+        let data = """
+        {
+          "instanceId": "creature-1",
+          "card": {
+            "name": "Memnite",
+            "typeLine": "Artifact Creature - Construct",
+            "oracleText": ""
+          },
+          "tapped": false,
+          "summoningSickness": true,
+          "power": 1,
+          "toughness": 1
+        }
+        """.data(using: .utf8)!
+
+        let card = try JSONDecoder.magicMobile.decode(ZoneCard.self, from: data)
+
+        XCTAssertTrue(card.isCreature)
+        XCTAssertEqual(card.summoningSickness, true)
+        XCTAssertTrue(card.accessibilityLabel(zoneName: "Battlefield").contains("summoning sick"))
+    }
+
+    func testZoneCardDecodesAndFiltersXMageAbilityIcons() throws {
+        let data = """
+        {
+          "instanceId": "creature-1",
+          "card": {
+            "name": "Serra Angel",
+            "typeLine": "Creature - Angel",
+            "oracleText": "Flying, vigilance"
+          },
+          "cardIcons": [
+            {
+              "iconType": "ABILITY_FLYING",
+              "resourceName": "prepared/feather-alt.svg",
+              "category": "ABILITY",
+              "hint": "Flying"
+            },
+            {
+              "iconType": "ABILITY_VIGILANCE",
+              "resourceName": "prepared/eye.svg",
+              "category": "ABILITY",
+              "hint": "Vigilance"
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let card = try JSONDecoder.magicMobile.decode(ZoneCard.self, from: data)
+
+        XCTAssertEqual(card.visibleXmageIcons.map(\.iconType), ["ABILITY_FLYING", "ABILITY_VIGILANCE"])
+        XCTAssertEqual(CardImageURL.xmageIconAssetName(for: "ABILITY_FLYING"), "xmage-icon-flying")
+        XCTAssertTrue(card.accessibilityLabel(zoneName: "Battlefield").contains("Flying"))
+        XCTAssertTrue(card.accessibilityLabel(zoneName: "Battlefield").contains("Vigilance"))
+    }
+
+    func testBattlefieldCardMetricsPreserveMagicCardAspectRatio() {
+        let metrics = BattlefieldLayoutMetrics(
+            size: CGSize(width: 932, height: 430),
+            safeArea: EdgeInsets(top: 0, leading: 47, bottom: 21, trailing: 47)
+        )
+
+        XCTAssertEqual(metrics.handCardHeight / metrics.handCardWidth, BattlefieldLayoutMetrics.magicCardHeightToWidth, accuracy: 0.01)
+        XCTAssertEqual(metrics.permanentCardHeight / metrics.permanentCardWidth, BattlefieldLayoutMetrics.magicCardHeightToWidth, accuracy: 0.01)
+        XCTAssertEqual(metrics.landCardHeight / metrics.landCardWidth, BattlefieldLayoutMetrics.magicCardHeightToWidth, accuracy: 0.01)
+    }
+
     func testCardImageURLCanForcePlaceholdersForVisualQA() {
         XCTAssertNil(CardImageURL.normal("Sol Ring", forcePlaceholder: true))
+    }
+
+    func testManaSymbolBundledFallbackNamesAreDeterministic() {
+        XCTAssertEqual(CardImageURL.bundledSymbolAssetName(for: "{W}"), "mana-w")
+        XCTAssertEqual(CardImageURL.bundledSymbolAssetName(for: "U"), "mana-u")
+        XCTAssertEqual(CardImageURL.bundledSymbolAssetName(for: "{B}"), "mana-b")
+        XCTAssertEqual(CardImageURL.bundledSymbolAssetName(for: "{R}"), "mana-r")
+        XCTAssertEqual(CardImageURL.bundledSymbolAssetName(for: "{G}"), "mana-g")
+        XCTAssertEqual(CardImageURL.bundledSymbolAssetName(for: "{C}"), "mana-c")
+        XCTAssertNil(CardImageURL.bundledSymbolAssetName(for: "{2}"))
+    }
+
+    func testCommanderHudSummaryUsesLiveSnapshotCounts() {
+        let player = PlayerGameState(
+            playerId: "human",
+            life: 37,
+            poison: 0,
+            commanderTax: 2,
+            manaPool: nil,
+            zones: PlayerZones(
+                library: [zoneCard(id: "library-1", name: "Forest", typeLine: "Basic Land"), zoneCard(id: "library-2", name: "Island", typeLine: "Basic Land")],
+                hand: [
+                    zoneCard(id: "hand-1", name: "Sol Ring", typeLine: "Artifact"),
+                    zoneCard(id: "hand-2", name: "Forest", typeLine: "Basic Land"),
+                    zoneCard(id: "hand-3", name: "Swords to Plowshares", typeLine: "Instant")
+                ],
+                battlefield: [],
+                graveyard: [zoneCard(id: "grave-1", name: "Memnite", typeLine: "Artifact Creature")],
+                exile: [],
+                command: [zoneCard(id: "command-1", name: "Isamaru", typeLine: "Legendary Creature")],
+                stack: []
+            ),
+            commanderDamage: ["ai": 4]
+        )
+
+        let summary = CommanderHudSummary(player: player, opponentId: "ai")
+
+        XCTAssertEqual(summary.life, 37)
+        XCTAssertEqual(summary.commanderTax, 2)
+        XCTAssertEqual(summary.handCount, 3)
+        XCTAssertEqual(summary.libraryCount, 2)
+        XCTAssertEqual(summary.graveyardCount, 1)
+        XCTAssertEqual(summary.exileCount, 0)
+        XCTAssertEqual(summary.commanderDamage, 4)
     }
 
     func testWebSocketEndpointUsesExplicitGatewayOverride() throws {
@@ -771,6 +887,8 @@ final class MagicMobileTests: XCTestCase {
             instanceId: id,
             card: CardIdentity(name: name, typeLine: typeLine, oracleText: nil),
             tapped: nil,
+            summoningSickness: nil,
+            cardIcons: nil,
             counters: nil,
             power: nil,
             toughness: nil,

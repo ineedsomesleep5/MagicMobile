@@ -117,6 +117,8 @@ export interface ZoneCard {
   instanceId: string;
   card: CardIdentity;
   tapped?: boolean;
+  summoningSickness?: boolean;
+  cardIcons?: XmageCardIcon[];
   counters?: Record<string, number>;
   power?: number;
   toughness?: number;
@@ -124,6 +126,14 @@ export interface ZoneCard {
   isAttacking?: boolean;
   blocking?: string[];
   attachedToInstanceId?: string;
+}
+
+export interface XmageCardIcon {
+  iconType: string;
+  resourceName?: string;
+  category?: string;
+  text?: string;
+  hint?: string;
 }
 
 export interface ManaPool {

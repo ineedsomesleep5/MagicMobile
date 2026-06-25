@@ -643,7 +643,7 @@ describe("xmage gateway", () => {
     const contentView = readFileSync(new URL("../ios/MagicMobile/ContentView.swift", import.meta.url), "utf8");
 
     assert.match(contentView, /XmageStackPeek\(/);
-    assert.match(contentView, /legalActions: allActions/);
+    assert.match(contentView, /legalActions: snapshot\.legalActions \?\? \[\]/);
     assert.match(contentView, /promptText: snapshot\.promptEnvelopeV2\?\.message \?\? snapshot\.promptText/);
     assert.ok(contentView.includes('Text("TOP \\(objects.count)")'));
     assert.match(contentView, /RESPOND\/PASS/);

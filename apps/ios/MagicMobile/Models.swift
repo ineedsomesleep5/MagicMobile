@@ -230,6 +230,8 @@ struct ZoneCard: Decodable, Identifiable, Hashable {
     let instanceId: String
     let card: CardIdentity
     let tapped: Bool?
+    let summoningSickness: Bool?
+    let cardIcons: [XmageCardIcon]?
     let counters: [String: Int]?
     let power: Int?
     let toughness: Int?
@@ -767,6 +769,13 @@ extension ZoneCard {
         if tapped == true {
             parts.append("tapped")
         }
+        if summoningSickness == true {
+            parts.append("summoning sick")
+        }
+        let iconHints = visibleXmageIcons.compactMap(\.displayText)
+        if !iconHints.isEmpty {
+            parts.append(contentsOf: iconHints)
+        }
         if isAttacking == true {
             parts.append("attacking")
         }
@@ -800,5 +809,33 @@ extension ZoneCard {
         return String(scalars)
             .split(separator: "-")
             .joined(separator: "-")
+    }
+}
+
+struct XmageCardIcon: Decodable, Hashable {
+    let iconType: String
+    let resourceName: String?
+    let category: String?
+    let text: String?
+    let hint: String?
+
+    var displayText: String? {
+        for value in [text, hint] {
+            if let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return value
+            }
+        }
+        return nil
+    }
+}
+
+extension ZoneCard {
+    var visibleXmageIcons: [XmageCardIcon] {
+        (cardIcons ?? []).filter { icon in
+            guard icon.category?.caseInsensitiveCompare("ABILITY") == .orderedSame || icon.category?.caseInsensitiveCompare("COMMANDER") == .orderedSame else {
+                return false
+            }
+            return CardImageURL.xmageIconAssetName(for: icon.iconType) != nil
+        }
     }
 }

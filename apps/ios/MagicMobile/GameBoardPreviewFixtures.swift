@@ -81,7 +81,7 @@ enum GameBoardPreviewFixtures {
           "battlefield":[
             \(zoneCard("human-plains-1", "Plains", "Basic Land - Plains", "{T}: Add {W}.", true, nil)),
             \(zoneCard("human-forest-1", "Forest", "Basic Land - Forest", "{T}: Add {G}.", false, nil)),
-            \(zoneCard("human-commander", "Isamaru, Hound of Konda", "Legendary Creature - Dog", "Commander", false, "2"))
+            \(zoneCard("human-commander", "Isamaru, Hound of Konda", "Legendary Creature - Dog", "Commander", false, "2", summoningSickness: true))
           ],
           "graveyard":[\(zoneCard("human-grave-1", "Spirited Companion", "Enchantment Creature - Dog", "When this enters, draw a card.", nil, "1"))],
           "exile":[],
@@ -98,7 +98,12 @@ enum GameBoardPreviewFixtures {
           "hand":[\(hiddenCard("ai-hand-1")), \(hiddenCard("ai-hand-2"))],
           "battlefield":[
             \(zoneCard("ai-wastes-1", "Wastes", "Basic Land", "{T}: Add {C}.", true, nil)),
-            \(zoneCard("ai-creature-1", "Memnite", "Artifact Creature - Construct", "", false, "1"))
+            \(zoneCard("ai-creature-1", "Serra Angel", "Creature - Angel", "Flying, vigilance", false, "4", summoningSickness: true, icons: #"""
+              [
+                {"iconType":"ABILITY_FLYING","resourceName":"prepared/feather-alt.svg","category":"ABILITY","hint":"Flying"},
+                {"iconType":"ABILITY_VIGILANCE","resourceName":"prepared/eye.svg","category":"ABILITY","hint":"Vigilance"}
+              ]
+              """#))
           ],
           "graveyard":[],
           "exile":[],
@@ -108,11 +113,13 @@ enum GameBoardPreviewFixtures {
         """
     }
 
-    private static func zoneCard(_ id: String, _ name: String, _ typeLine: String, _ oracleText: String, _ tapped: Bool?, _ power: String?) -> String {
+    private static func zoneCard(_ id: String, _ name: String, _ typeLine: String, _ oracleText: String, _ tapped: Bool?, _ power: String?, summoningSickness: Bool? = nil, icons: String? = nil) -> String {
         let tappedText = tapped.map { #","tapped":\#($0)"# } ?? ""
+        let sicknessText = summoningSickness.map { #","summoningSickness":\#($0)"# } ?? ""
+        let iconsText = icons.map { #","cardIcons":\#($0)"# } ?? ""
         let stats = power.map { #","power":\#($0),"toughness":\#($0)"# } ?? ""
         return #"""
-        {"instanceId":"\#(id)","card":{"name":"\#(name)","typeLine":"\#(typeLine)","oracleText":"\#(oracleText)"}\#(tappedText)\#(stats)}
+        {"instanceId":"\#(id)","card":{"name":"\#(name)","typeLine":"\#(typeLine)","oracleText":"\#(oracleText)"}\#(tappedText)\#(sicknessText)\#(iconsText)\#(stats)}
         """#
     }
 
