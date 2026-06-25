@@ -828,6 +828,88 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertFalse(CompactPromptPopup.needsDetails(snapshot))
     }
 
+    func testCompactPromptPopupDoesNotShowForPassiveGameSelectPriority() throws {
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
+        {
+          "id": "game-priority",
+          "source": "xmage-java-bridge",
+          "activePlayerId": "human",
+          "phase": "precombat-main",
+          "step": "precombat-main",
+          "turn": 1,
+          "priorityPlayerId": "human",
+          "waitingOnPlayerId": "human",
+          "promptText": "Play instants and activated abilities",
+          "players": [],
+          "log": [],
+          "legalActions": [
+            { "id": "pass-priority", "type": "pass_priority", "playerId": "human", "label": "Pass" },
+            { "id": "cast-path", "type": "cast_spell", "playerId": "human", "label": "Cast Path to Exile", "cardInstanceId": "path-1" }
+          ],
+          "promptEnvelopeV2": {
+            "id": "xmage-priority-prompt",
+            "method": "GAME_SELECT",
+            "messageId": 91,
+            "playerId": "human",
+            "responseKind": "card",
+            "message": "Play instants and activated abilities",
+            "responseCommand": {
+              "type": "choose_card",
+              "promptId": "xmage-priority-prompt",
+              "messageId": 91
+            }
+          }
+        }
+        """#.data(using: .utf8)!)
+
+        XCTAssertFalse(CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: nil))
+        XCTAssertTrue(CompactPromptPopup.compactLegalPromptActions(in: snapshot).isEmpty)
+    }
+
+    func testCompactPromptPopupShowsForManaPaymentPrompt() throws {
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
+        {
+          "id": "game-payment",
+          "source": "xmage-java-bridge",
+          "activePlayerId": "human",
+          "phase": "precombat-main",
+          "step": "precombat-main",
+          "turn": 1,
+          "priorityPlayerId": "human",
+          "waitingOnPlayerId": "human",
+          "promptText": "Pay {1}",
+          "players": [],
+          "log": [],
+          "legalActions": [
+            { "id": "tap-plains", "type": "make_mana", "playerId": "human", "label": "Tap Plains", "sourceInstanceId": "plains-1", "producedMana": ["W"] }
+          ],
+          "promptEnvelopeV2": {
+            "id": "xmage-mana-prompt",
+            "method": "GAME_PLAY_MANA",
+            "messageId": 77,
+            "playerId": "human",
+            "responseKind": "mana",
+            "message": "Pay {1}",
+            "manaChoices": [
+              { "id": "W", "label": "Pay {W}", "manaType": "W" }
+            ],
+            "responseCommand": {
+              "type": "play_mana",
+              "promptId": "xmage-mana-prompt",
+              "messageId": 77
+            }
+          }
+        }
+        """#.data(using: .utf8)!)
+
+        XCTAssertTrue(CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: nil))
+    }
+
+    func testPlayableCardGlowIsDistinctFromNormalCardBorder() {
+        XCTAssertGreaterThan(CardTile.playableGlowRadius(legal: true, selected: false, pending: false, targetable: false, width: 72), 6)
+        XCTAssertEqual(CardTile.playableGlowRadius(legal: false, selected: false, pending: false, targetable: false, width: 72), 0)
+    }
+
     func testCompactPromptUsesLegalActionsForMulliganPromptWithoutChoices() throws {
         let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
         {

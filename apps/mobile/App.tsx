@@ -809,9 +809,9 @@ const styles = StyleSheet.create({
   // Play screen revamped layout styles
   gameLayout: { flex: 1, flexDirection: "row" },
   battlefieldContainer: { flex: 1, position: "relative", overflow: "hidden" },
-  battlefield: { position: "absolute", inset: 0, justifyContent: "space-around", paddingVertical: 12, transform: [{ perspective: 1200 }, { rotateX: "50deg" }, { scaleY: 0.95 }] },
-  battlefieldDivider: { height: 2, backgroundColor: "rgba(255,180,93,0.12)", marginHorizontal: 20, marginVertical: 4 },
-  hudOverlay: { position: "absolute", inset: 0, justifyContent: "space-between", padding: 8 },
+  battlefield: { position: "absolute", inset: 0, justifyContent: "space-between", paddingVertical: 20, paddingHorizontal: 10, transform: [{ perspective: 1200 }, { rotateX: "45deg" }, { scaleY: 0.95 }] },
+  battlefieldDivider: { height: 2, backgroundColor: "rgba(255,180,93,0.12)", marginHorizontal: 20, marginVertical: 0 },
+  hudOverlay: { position: "absolute", inset: 0, justifyContent: "space-between", padding: 8, pointerEvents: "box-none" },
   
   opponentAvatarWrap: { position: "absolute", top: 8, left: 12, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(10,15,15,0.85)", paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: "rgba(255,180,93,0.3)" },
   humanAvatarWrap: { position: "absolute", bottom: 8, left: 12, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(10,15,15,0.85)", paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: "rgba(53,199,255,0.3)" },
@@ -822,9 +822,9 @@ const styles = StyleSheet.create({
   playerName: { color: "#fff2d8", fontSize: 13, fontWeight: "900" },
   playerSubText: { color: "#a8b0a1", fontSize: 10, fontWeight: "700" },
   
-  centerBanner: { position: "absolute", top: 8, right: 12, alignItems: "flex-end", backgroundColor: "rgba(10,15,15,0.8)", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)" },
-  phaseBannerText: { color: "#ffb45d", fontSize: 12, fontWeight: "900", textTransform: "uppercase" },
-  promptBannerText: { color: "#fff2d8", fontSize: 11, fontWeight: "700" },
+  centerBanner: { position: "absolute", top: "45%", alignSelf: "center", backgroundColor: "rgba(10,15,15,0.9)", paddingHorizontal: 20, paddingVertical: 10, borderRadius: 16, borderWidth: 1, borderColor: "rgba(255,180,93,0.5)", shadowColor: "#ffb45d", shadowOpacity: 0.4, shadowRadius: 15 },
+  phaseBannerText: { color: "#ffb45d", fontSize: 13, fontWeight: "900", textTransform: "uppercase", textAlign: "center", marginBottom: 2 },
+  promptBannerText: { color: "#fff2d8", fontSize: 12, fontWeight: "800", textAlign: "center" },
   
   handFan: { position: "absolute", bottom: -15, left: "50%", transform: [{ translateX: -150 }], width: 300, height: 95, flexDirection: "row", justifyContent: "center", alignItems: "flex-end" },
   handCard: { width: 64, height: 90, marginHorizontal: -12, borderWidth: 2, borderColor: "#23c7ff", borderRadius: 6, overflow: "hidden", shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 5 },

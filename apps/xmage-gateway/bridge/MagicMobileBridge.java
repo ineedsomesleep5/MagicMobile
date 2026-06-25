@@ -422,6 +422,8 @@ public final class MagicMobileBridge implements MageClient {
             boolean response = requiredBooleanResponse(gameId, command, "confirmed");
             validatePromptSelections(gameId, prompt, singletonSelection(String.valueOf(response)));
             session.sendPlayerBoolean(xmageGameId, response);
+        } else if ("generic_replacement".equals(type)) {
+            sendPromptStringsOrUuids(gameId, xmageGameId, prompt, selectionIds(command, "choiceIds", "choiceId", "ids", "id"));
         } else if ("declare_attackers".equals(type) || "declare_blockers".equals(type)) {
             sendCombatSelection(gameId, xmageGameId, command, "declare_attackers".equals(type));
         } else if ("resolve_choice".equals(type)) {
@@ -3381,6 +3383,57 @@ public final class MagicMobileBridge implements MageClient {
             schema.addProperty("turn", 1);
             return;
         }
+        if ("repeated-mulligan".equals(fixtureName)) {
+            defaultCards(schema, "humanHand", "Plains", "Plains", "Plains", "Plains", "Plains", "Plains", "Plains");
+            defaultCards(schema, "humanLibraryTop", "Plains", "Plains", "Plains", "Plains", "Plains", "Plains", "Plains");
+            schema.addProperty("turn", 1);
+            return;
+        }
+        if ("choose-card".equals(fixtureName)) {
+            defaultCards(schema, "humanHand", "Faithless Looting");
+            defaultBattlefield(schema, "humanBattlefield", "Mountain");
+            defaultCards(schema, "humanLibraryTop", "Mountain", "Mountain");
+            schema.addProperty("turn", 1);
+            return;
+        }
+        if ("choose-player".equals(fixtureName)) {
+            defaultCards(schema, "humanHand", "Sign in Blood");
+            defaultBattlefield(schema, "humanBattlefield", "Swamp", "Swamp");
+            defaultCards(schema, "humanLibraryTop", "Swamp", "Swamp");
+            schema.addProperty("turn", 1);
+            return;
+        }
+        if ("play-x-mana".equals(fixtureName)) {
+            defaultCards(schema, "humanHand", "Blaze");
+            defaultBattlefield(schema, "humanBattlefield", "Mountain", "Mountain", "Mountain");
+            defaultCards(schema, "humanLibraryTop", "Mountain");
+            defaultBattlefield(schema, "aiBattlefield", "Memnite");
+            schema.addProperty("turn", 1);
+            return;
+        }
+        if ("choose-mana".equals(fixtureName)) {
+            defaultCards(schema, "humanHand", "Lotus Petal");
+            defaultBattlefield(schema, "humanBattlefield", "Plains");
+            defaultCards(schema, "humanLibraryTop", "Plains");
+            schema.addProperty("turn", 1);
+            return;
+        }
+        if ("generic-replacement".equals(fixtureName)) {
+            defaultCards(schema, "humanHand", "Doom Blade");
+            defaultBattlefield(schema, "humanBattlefield", "Swamp", "Swamp", "Leyline of the Void", "Rest in Peace");
+            defaultCards(schema, "humanLibraryTop", "Swamp");
+            defaultBattlefield(schema, "aiBattlefield", "Memnite");
+            schema.addProperty("turn", 1);
+            return;
+        }
+        if ("zone-movement".equals(fixtureName)) {
+            defaultCards(schema, "humanHand", "Doom Blade", "Swords to Plowshares");
+            defaultBattlefield(schema, "humanBattlefield", "Swamp", "Swamp", "Plains");
+            defaultCards(schema, "humanLibraryTop", "Swamp");
+            defaultBattlefield(schema, "aiBattlefield", "Memnite", "Memnite");
+            schema.addProperty("turn", 1);
+            return;
+        }
         if (!"commander-gauntlet".equals(fixtureName)) {
             return;
         }
@@ -4053,6 +4106,7 @@ public final class MagicMobileBridge implements MageClient {
         if ("confirmation".equals(responseKind)) return "answer_yes_no";
         if ("search".equals(responseKind)) return "search_select";
         if ("commander_replacement".equals(responseKind)) return "commander_replacement";
+        if ("generic_replacement".equals(responseKind)) return "generic_replacement";
         if ("pay_cost".equals(responseKind)) return "pay_cost";
         if ("game_over".equals(responseKind)) return "game_over";
         return "resolve_choice";
@@ -4086,6 +4140,7 @@ public final class MagicMobileBridge implements MageClient {
             return "mode";
         }
         if (method == ClientCallbackMethod.GAME_CHOOSE_CHOICE && normalizedMessage.contains("mode")) return "mode";
+        if (method == ClientCallbackMethod.GAME_CHOOSE_CHOICE && (normalizedMessage.contains("replacement") || normalizedMessage.contains("apply"))) return "generic_replacement";
         if (method == ClientCallbackMethod.GAME_PLAY_MANA) return "mana";
         if (method == ClientCallbackMethod.GAME_PLAY_XMANA) return "x_mana";
         if (method == ClientCallbackMethod.GAME_GET_AMOUNT) return "amount";

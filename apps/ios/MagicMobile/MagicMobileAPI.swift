@@ -98,7 +98,7 @@ struct MagicMobileAPI {
             return GameCommand(type: action.type, gameId: gameId, playerId: action.playerId)
         }
 
-        if action.type == "play_land" || action.type == "cast_spell" {
+        if action.type == "play_land" || action.type == "cast_spell" || action.type == "play" {
             let cardInstanceId = templateString(action, "cardInstanceId") ?? action.cardInstanceId ?? action.sourceInstanceId
             let sourceInstanceId = templateString(action, "sourceInstanceId") ?? action.sourceInstanceId ?? cardInstanceId
             let cardName = templateString(action, "cardName") ?? action.cardName

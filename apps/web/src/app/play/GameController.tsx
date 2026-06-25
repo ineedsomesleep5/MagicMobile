@@ -216,21 +216,29 @@ export function GameController({ config, initialHealth, requireXmage = false, si
           name="Noaddrag"
           life={viewModel?.opponent.life ?? 40}
           manaPool={viewModel?.opponent.manaPool}
+          zoneCounts={viewModel?.opponentZoneCounts}
           onClick={() => {
             if (viewModel?.opponent.playerId) {
               handlePlayerClick(viewModel.opponent.playerId);
             }
           }}
         />
-        <div className="arena-status">
-          <strong>{viewModel?.phase ?? "starting"}</strong>
-          <span>{modeLabel}</span>
-          <small>{health.status}: {simulatorMode ? "UI mechanics only; full rules require XMage bridge." : health.reason}</small>
-          {statusLines.map((line) => <small key={line}>{line}</small>)}
-          {!simulatorMode ? <small>Live updates: {socketStatus}</small> : null}
-          {pendingActionLabel ? <small>Action sent: {pendingActionLabel}. Waiting for XMage.</small> : null}
-          {error ? <small role="alert">Command error: {error}</small> : null}
+        <div className="top-hud-center">
+          <div className="arena-status">
+            <strong>{viewModel?.phase ?? "starting"}</strong>
+            <small>Turn {viewModel?.turn ?? 1}</small>
+          </div>
         </div>
+        <details style={{ color: "rgba(246,240,223,0.5)", fontSize: "0.6rem", pointerEvents: "auto" }}>
+          <summary style={{ cursor: "pointer", color: "rgba(246,240,223,0.45)", fontSize: "0.58rem", fontWeight: 800 }}>⚙️ Debug</summary>
+          <div style={{ padding: "0.3rem", background: "rgba(0,0,0,0.6)", borderRadius: "6px", marginTop: "0.2rem", maxWidth: "22rem" }}>
+            <small>{health.status}: {simulatorMode ? "UI mechanics only" : health.reason}</small>
+            {statusLines.map((line) => <small key={line} style={{ display: "block" }}>{line}</small>)}
+            {!simulatorMode ? <small style={{ display: "block" }}>Live: {socketStatus}</small> : null}
+            {pendingActionLabel ? <small style={{ display: "block" }}>Sent: {pendingActionLabel}</small> : null}
+            {error ? <small role="alert" style={{ display: "block", color: "#ff6b6b" }}>Error: {error}</small> : null}
+          </div>
+        </details>
       </div>
 
       {viewModel ? (
@@ -277,6 +285,7 @@ export function GameController({ config, initialHealth, requireXmage = false, si
           name="TabletopPolish"
           life={viewModel?.human.life ?? 40}
           manaPool={viewModel?.human.manaPool}
+          zoneCounts={viewModel?.humanZoneCounts}
           active
           onClick={() => {
             if (viewModel?.human.playerId) {
@@ -284,9 +293,31 @@ export function GameController({ config, initialHealth, requireXmage = false, si
             }
           }}
         />
-        <div className="arena-selected-card">
-          <span>Selected</span>
-          <strong>{selectedCard?.name ?? "Choose a card"}</strong>
+        <div className="bottom-hud-center">
+          <div className="arena-selected-card">
+            <span>Selected</span>
+            <strong>{selectedCard?.name ?? "Choose a card"}</strong>
+          </div>
+        </div>
+        <div className="bottom-hud-actions">
+          {viewModel && (() => {
+            const passAction = legalActions.find((a) => a.type === "pass_priority");
+            const advanceAction = legalActions.find((a) => a.type === "advance_phase");
+            const skipTurnAction = legalActions.find((a) => a.type === "pass_until_next_turn");
+            return (
+              <>
+                {skipTurnAction ? (
+                  <button className="btn-secondary" disabled={actionPending} onClick={() => runLegalAction(skipTurnAction)} type="button">Skip</button>
+                ) : null}
+                {advanceAction ? (
+                  <button className="btn-secondary" disabled={actionPending} onClick={() => runLegalAction(advanceAction)} type="button">Next</button>
+                ) : null}
+                {passAction ? (
+                  <button disabled={actionPending} onClick={() => runLegalAction(passAction)} type="button">PASS</button>
+                ) : null}
+              </>
+            );
+          })()}
         </div>
       </div>
     </section>
@@ -461,44 +492,19 @@ function snapshotSource(snapshot: GameSnapshot, simulatorMode: boolean): string 
   return "xmage";
 }
 
-function ManaPoolView({ manaPool }: { manaPool?: ManaPool | undefined }) {
+function ManaPoolSymbols({ manaPool }: { manaPool?: ManaPool | undefined }) {
   if (!manaPool) return null;
   const symbols = ["W", "U", "B", "R", "G", "C"] as const;
-  const colors: Record<string, string> = {
-    W: "#fef3c7",
-    U: "#3b82f6",
-    B: "#1f2937",
-    R: "#ef4444",
-    G: "#10b981",
-    C: "#6b7280"
-  };
-  const textColors: Record<string, string> = {
-    W: "#000",
-    U: "#fff",
-    B: "#fff",
-    R: "#fff",
-    G: "#fff",
-    C: "#fff"
-  };
+  const hasAny = symbols.some((sym) => (manaPool[sym] ?? 0) > 0);
+  if (!hasAny) return null;
   return (
-    <div className="mana-pool-view" style={{ display: "flex", gap: "2px", marginTop: "2px" }}>
+    <div className="mana-pool-row">
       {symbols.map((sym) => {
         const count = manaPool[sym] ?? 0;
         if (count === 0) return null;
         return (
-          <span
-            key={sym}
-            style={{
-              background: colors[sym],
-              color: textColors[sym],
-              padding: "1px 4px",
-              borderRadius: "3px",
-              fontSize: "0.65rem",
-              fontWeight: "bold",
-              border: "1px solid rgba(255,255,255,0.15)"
-            }}
-          >
-            {sym}:{count}
+          <span key={sym} className={`mana-symbol mana-symbol-${sym}`}>
+            {count}
           </span>
         );
       })}
@@ -511,12 +517,16 @@ function PlayerBadge({
   life,
   manaPool,
   active = false,
+  zoneCounts,
+  commanderDamage,
   onClick
 }: {
   name: string;
   life: number;
   manaPool?: ManaPool | undefined;
   active?: boolean;
+  zoneCounts?: { library: number; graveyard: number; exile: number; command: number } | undefined;
+  commanderDamage?: number | undefined;
   onClick?: (() => void) | undefined;
 }) {
   return (
@@ -537,7 +547,17 @@ function PlayerBadge({
       <div className="arena-avatar" />
       <strong>{life}</strong>
       <span>{name}</span>
-      <ManaPoolView manaPool={manaPool} />
+      <ManaPoolSymbols manaPool={manaPool} />
+      {zoneCounts ? (
+        <div className="badge-zones">
+          <span>📚 {zoneCounts.library}</span>
+          <span>⚰️ {zoneCounts.graveyard}</span>
+          <span>🚫 {zoneCounts.exile}</span>
+        </div>
+      ) : null}
+      {commanderDamage !== undefined && commanderDamage > 0 ? (
+        <div className="badge-cmd-damage">⚔️ {commanderDamage} cmd dmg</div>
+      ) : null}
     </button>
   );
 }

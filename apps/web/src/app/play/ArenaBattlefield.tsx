@@ -42,12 +42,14 @@ export function ArenaBattlefield({
     <div className="arena-battlefield" data-testid="arena-battlefield" aria-label="Arena-style Commander battlefield">
       <ArenaFxLayer phase={viewModel.phase} />
       <div className="arena-map-river" aria-hidden="true" />
+      <div className="arena-phase-bar" aria-label="Phase tracker">
+        <StageTracker activeStep={viewModel.step} />
+      </div>
       <div className="arena-prompt-banner">
         <strong>{viewModel.promptText}</strong>
         <span>Priority: {viewModel.priorityPlayerName}</span>
       </div>
       <aside className="arena-side-panel" aria-label="Game stage and move log">
-        <StageTracker activeStep={viewModel.step} />
         <ActionPanel
           pending={actionPending}
           promptActions={promptActions}
@@ -138,11 +140,7 @@ export function ArenaBattlefield({
 
       {inspectCard ? <CardInspector card={inspectCard} pinned={inspectCard.instanceId === selectedInstanceId} /> : null}
 
-      <div className="arena-priority-strip">
-        <span>Priority: {viewModel.priorityPlayerName}</span>
-        <strong>{formatStepLabel(viewModel.step)}</strong>
-        <span>Turn {viewModel.turn} {viewModel.health ? `(Engine: ${viewModel.health.status})` : ""}</span>
-      </div>
+
     </div>
   );
 }
@@ -203,46 +201,20 @@ function GameLog({ entries }: { entries: BattlefieldViewModel["logEntries"] }) {
 function ManaPoolCompact({ pool }: { pool?: ManaPool | undefined }) {
   if (!pool) return <span style={{ fontSize: "0.7rem", color: "rgba(246,240,223,0.4)" }}>None</span>;
   const symbols = ["W", "U", "B", "R", "G", "C"] as const;
-  const colors: Record<string, string> = {
-    W: "#fef3c7",
-    U: "#3b82f6",
-    B: "#1f2937",
-    R: "#ef4444",
-    G: "#10b981",
-    C: "#6b7280"
-  };
-  const textColors: Record<string, string> = {
-    W: "#000",
-    U: "#fff",
-    B: "#fff",
-    R: "#fff",
-    G: "#fff",
-    C: "#fff"
-  };
+  const hasAny = symbols.some((sym) => (pool[sym] ?? 0) > 0);
 
   return (
-    <span style={{ display: "inline-flex", gap: "2px" }}>
+    <span className="mana-pool-row">
       {symbols.map((sym) => {
         const count = pool[sym] ?? 0;
         if (count === 0) return null;
         return (
-          <span
-            key={sym}
-            style={{
-              background: colors[sym],
-              color: textColors[sym],
-              padding: "1px 4px",
-              borderRadius: "3px",
-              fontSize: "0.65rem",
-              fontWeight: "bold",
-              border: "1px solid rgba(255,255,255,0.15)"
-            }}
-          >
-            {sym}:{count}
+          <span key={sym} className={`mana-symbol mana-symbol-${sym}`}>
+            {count}
           </span>
         );
       })}
-      {Object.values(pool).every((val) => val === 0) && (
+      {!hasAny && (
         <span style={{ fontSize: "0.65rem", color: "rgba(246,240,223,0.4)" }}>0</span>
       )}
     </span>

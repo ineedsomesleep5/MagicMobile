@@ -653,7 +653,7 @@ struct ContentView: View {
         let changedFromSubmittedSnapshot = lastSubmittedSnapshotSignature.map { snapshotSignature(nextSnapshot) != $0 } ?? false
         snapshot = nextSnapshot
         selectedCard = nil
-        if pendingActionId != nil && nextSnapshot.pendingStatus != "waiting_for_xmage" && changedFromSubmittedSnapshot {
+        if pendingActionId != nil && (nextSnapshot.pendingStatus != "waiting_for_xmage" || changedFromSubmittedSnapshot) {
             clearPendingAction()
         }
     }
@@ -1276,7 +1276,7 @@ struct NativeGameView: View {
                     GeometryReader { proxy in
                         let metrics = BattlefieldLayoutMetrics(proxy: proxy)
                         let targetableIds = targetableCardIds(in: snapshot)
-                        let hasDecisionPrompt = snapshot.choicePrompt != nil || snapshot.promptEnvelope != nil || snapshot.promptEnvelopeV2 != nil
+                        let shouldShowCompactPrompt = CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: pendingActionId)
                         let derivedInteractionMode = GameBoardInteractionState.mode(
                             for: snapshot,
                             pendingActionId: pendingActionId,
@@ -1308,6 +1308,19 @@ struct NativeGameView: View {
                             HStack(spacing: 8) {
                                 PromptPill(snapshot: snapshot)
                                     .frame(maxWidth: .infinity)
+                                
+                                let revealedCards = snapshot.xmage?.revealed.flatMap(\.cards) ?? []
+                                let lookedAtCards = snapshot.xmage?.lookedAt.flatMap(\.cards) ?? []
+                                if !revealedCards.isEmpty {
+                                    FloatingZoneChip(title: "Revealed", count: revealedCards.count, icon: "eye") {
+                                        localViewZone(title: "Revealed", cards: revealedCards)
+                                    }
+                                }
+                                if !lookedAtCards.isEmpty {
+                                    FloatingZoneChip(title: "Looked", count: lookedAtCards.count, icon: "eye.trianglebadge.exclamationmark") {
+                                        localViewZone(title: "Looked", cards: lookedAtCards)
+                                    }
+                                }
                             }
                             .frame(width: metrics.centerStripRect.width, height: metrics.centerStripRect.height)
                             .position(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.midY)
@@ -1362,14 +1375,19 @@ struct NativeGameView: View {
                                 .position(x: metrics.size.width / 2, y: metrics.size.height / 2)
                                 .transition(.scale.combined(with: .opacity))
                             }
-
                             if let inspectedCard {
+                                Color.black.opacity(0.01)
+                                    .ignoresSafeArea()
+                                    .onTapGesture { self.inspectedCard = nil }
+                                    .zIndex(99)
+                                
                                 CardInspector(card: inspectedCard)
                                     .frame(width: metrics.detailSheetRect.width, height: metrics.detailSheetRect.height)
                                     .position(x: metrics.detailSheetRect.midX, y: metrics.detailSheetRect.midY)
+                                    .zIndex(100)
                             }
 
-                            if hasDecisionPrompt {
+                            if shouldShowCompactPrompt {
                                 CompactPromptPopup(
                                     snapshot: snapshot,
                                     pendingActionId: pendingActionId,
@@ -1748,8 +1766,8 @@ struct BattlefieldLayoutMetrics {
     }
 
     var detailSheetRect: CGRect {
-        let width = min(max(boardColumnRect.width * 0.33, 220), 292)
-        let height = min(max(safeFrame.height * 0.40, 184), 240)
+        let width = min(max(boardColumnRect.width * 0.45, 260), 340)
+        let height = min(max(safeFrame.height * 0.60, 240), 320)
         return CGRect(
             x: boardColumnRect.minX + 8,
             y: max(topStatusRect.maxY + 12, centerStripRect.maxY - height * 0.34),
@@ -2226,6 +2244,31 @@ struct PlayerStrip: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .background(.black.opacity(0.28), in: Capsule())
+    }
+}
+
+struct FloatingZoneChip: View {
+    let title: String
+    let count: Int
+    let icon: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .bold))
+                Text("\(title) (\(count))")
+                    .font(.system(size: 10, weight: .black))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(MagicPalette.iron.opacity(0.95), in: Capsule())
+            .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.5), lineWidth: 1.5))
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.4), radius: 4, y: 2)
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -3037,6 +3080,7 @@ struct UniversalPromptActionPanel: View {
     @State private var orderedIds: [String] = []
     @State private var multiAmountPromptId: String?
     @State private var multiAmountValues: [String: Int] = [:]
+    @State private var manualAmountValues: [String: Int] = [:]
     @State private var selectedSearchPromptId: String?
     @State private var selectedSearchCardIds: [String] = []
     let pendingActionId: String?
@@ -3231,6 +3275,8 @@ struct UniversalPromptActionPanel: View {
                 amountPicker(amounts: amounts, prompt: prompt)
             } else if let multiAmounts = prompt.multiAmounts, !multiAmounts.isEmpty {
                 multiAmountPicker(slots: multiAmounts, prompt: prompt)
+            } else if isAmountPrompt(prompt) {
+                manualAmountPicker(prompt: prompt)
             }
 
             if let orderedItems = prompt.orderedItems, !orderedItems.isEmpty {
@@ -3246,7 +3292,9 @@ struct UniversalPromptActionPanel: View {
                 manaChoicePicker(choices: manaChoices, prompt: prompt)
             }
 
-            if prompt.manaChoices?.isEmpty != false && isManaPrompt(prompt) && !availableManaSymbols.isEmpty {
+            if prompt.manaChoices?.isEmpty != false && isChooseColorPrompt(prompt) {
+                colorChoicePicker(prompt: prompt)
+            } else if prompt.manaChoices?.isEmpty != false && isManaPrompt(prompt) && !availableManaSymbols.isEmpty {
                 manaPicker(prompt: prompt)
             }
 
@@ -3267,6 +3315,18 @@ struct UniversalPromptActionPanel: View {
                     type: "search_select",
                     ids: prompt.targetIds ?? []
                 )
+            } else if isCardSelectionPrompt(prompt), prompt.cards?.isEmpty != false, prompt.targets?.isEmpty != false {
+                placeholderSubmit(
+                    title: "Select card on battlefield",
+                    button: "Submit selected card",
+                    prompt: prompt,
+                    type: prompt.responseCommand?.type ?? "choose_card",
+                    ids: selectedCard.map { [$0.id] } ?? prompt.targetIds ?? []
+                )
+            }
+
+            if isPlayerSelectionPrompt(prompt), prompt.players?.isEmpty != false {
+                optionGrid(snapshot.players.map { ($0.playerId, $0.playerId == "human" ? "You" : "AI") }, prompt: prompt, fallbackType: prompt.responseCommand?.type ?? "choose_player", icon: "person.crop.circle")
             }
 
             if isDamageAssignmentPrompt(prompt), prompt.multiAmounts?.isEmpty != false {
@@ -3713,6 +3773,74 @@ struct UniversalPromptActionPanel: View {
         }
     }
 
+
+    @ViewBuilder
+    private func colorChoicePicker(prompt: PromptEnvelopeV2) -> some View {
+        PromptMiniLabel("Choose Color")
+        HStack(spacing: 6) {
+            ForEach(["W", "U", "B", "R", "G", "C"], id: \.self) { mana in
+                Button {
+                    if let command = command(type: prompt.responseCommand?.type ?? "choose_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, manaType: mana) {
+                        runCommand(command, mana, "\(prompt.id)-choose-color-\(mana)")
+                    }
+                } label: {
+                    ManaSymbolView(symbol: mana, size: 26)
+                        .overlay {
+                            if pendingActionId == "\(prompt.id)-choose-color-\(mana)" {
+                                ProgressView()
+                                    .tint(.white)
+                                    .scaleEffect(0.6)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .disabled(pendingActionId != nil)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func manualAmountPicker(prompt: PromptEnvelopeV2) -> some View {
+        let type = amountCommandType(preferred: prompt.responseCommand?.type)
+        let currentValue = manualAmountValues[prompt.id] ?? 0
+        PromptMiniLabel(type == "play_x_mana" ? "X Amount" : "Amount")
+        
+        HStack(spacing: 7) {
+            Button {
+                manualAmountValues[prompt.id] = max(0, currentValue - 1)
+            } label: {
+                Image(systemName: "minus.circle.fill")
+                    .font(.system(size: 24, weight: .black))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(currentValue <= 0 ? .white.opacity(0.24) : MagicPalette.parchment)
+            .disabled(pendingActionId != nil || currentValue <= 0)
+
+            Text("\(currentValue)")
+                .font(.system(size: 16, weight: .black))
+                .foregroundStyle(.white)
+                .frame(width: 40)
+
+            Button {
+                manualAmountValues[prompt.id] = currentValue + 1
+            } label: {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 24, weight: .black))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(MagicPalette.parchment)
+            .disabled(pendingActionId != nil)
+
+            Spacer()
+
+            promptButton(
+                label: "Submit \(currentValue)",
+                systemImage: "number",
+                pendingId: "\(prompt.id)-amount-\(currentValue)",
+                command: command(type: type, promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, amount: currentValue, amounts: [currentValue])
+            )
+        }
+    }
     @ViewBuilder
     private func confirmationPicker(confirmation: XmagePromptConfirmation, prompt: PromptEnvelopeV2) -> some View {
         let yesCommand = explicitConfirmationCommand(confirmation.yesCommand, prompt: prompt)
@@ -3954,7 +4082,8 @@ struct UniversalPromptActionPanel: View {
     }
 
     private func isManaPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
-        prompt.responseCommand?.type?.lowercased() == "play_mana" || ["mana", "play_mana"].contains(prompt.responseKind.lowercased())
+        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
+        return type == "play_mana" || type == "choose_mana" || type == "mana" || type == "pay_cost" || type == "cost"
     }
 
     private func isManaOrPaymentPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
@@ -3968,7 +4097,9 @@ struct UniversalPromptActionPanel: View {
     }
 
     private func isConfirmationPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
-        prompt.responseCommand?.type?.lowercased() == "answer_yes_no" || prompt.responseKind.lowercased() == "confirmation"
+        if prompt.confirmation != nil { return true }
+        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
+        return type == "answer_yes_no" || type == "confirmation" || type == "pay_cost"
     }
 
     private func isCommanderReplacement(_ prompt: PromptEnvelopeV2) -> Bool {
@@ -3985,17 +4116,39 @@ struct UniversalPromptActionPanel: View {
         return type == "search_select" || prompt.method.localizedCaseInsensitiveContains("search")
     }
 
+    private func isCardSelectionPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
+        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
+        return type == "choose_card" || type == "card" || type == "choose_target" || type == "target"
+    }
+
+    private func isPlayerSelectionPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
+        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
+        return type == "choose_player" || type == "player"
+    }
+
+    private func isChooseColorPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
+        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
+        return type == "choose_mana" || type == "choose_color"
+    }
+
+    private func isAmountPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
+        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
+        return type == "play_x_mana" || type == "choose_amount"
+    }
+
     private func isDamageAssignmentPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
         PromptCommandBuilder.isCombatDamageAllocationPrompt(prompt, phase: snapshot.phase, step: snapshot.step)
     }
 
     private func hasRenderablePromptControls(_ prompt: PromptEnvelopeV2) -> Bool {
-        if isManaOrPaymentPrompt(prompt), !sourceManaActions.isEmpty { return true }
+        if isManaOrPaymentPrompt(prompt) { return true }
         if isDamageAssignmentPrompt(prompt) { return true }
         if isCommanderReplacement(prompt) || isConfirmationPrompt(prompt) || isManaPrompt(prompt) || isTriggerOrderPrompt(prompt) || isSearchPrompt(prompt) { return true }
+        if isCardSelectionPrompt(prompt) || isPlayerSelectionPrompt(prompt) || isChooseColorPrompt(prompt) || isAmountPrompt(prompt) { return true }
         if prompt.choices?.isEmpty == false || prompt.targets?.isEmpty == false || prompt.players?.isEmpty == false { return true }
         if prompt.cards?.isEmpty == false || prompt.modes?.isEmpty == false || prompt.abilities?.isEmpty == false { return true }
         if prompt.piles?.isEmpty == false || prompt.amounts?.isEmpty == false || prompt.multiAmounts?.isEmpty == false || prompt.orderedItems?.isEmpty == false || prompt.manaChoices?.isEmpty == false { return true }
+        if prompt.method == "GAME_SELECT" { return true }
         return false
     }
 
@@ -4521,8 +4674,15 @@ struct CompactPromptPopup: View {
                         .font(.system(size: 10, weight: .black))
                         .foregroundStyle(MagicPalette.arcaneBlue)
                 }
-            } else if let prompt = promptV2, isManaPaymentPrompt(prompt) {
-                compactManaPayment(prompt)
+            } else if let prompt = promptV2, Self.isManaPaymentPrompt(prompt) {
+                ManaPaymentTray(
+                    snapshot: snapshot,
+                    prompt: prompt,
+                    sourceManaActions: sourceManaActions,
+                    pendingActionId: pendingActionId,
+                    runAction: runAction,
+                    runCommand: runCommand
+                )
             } else if let prompt = promptV2 {
                 compactPromptControls(prompt)
             } else if let prompt = snapshot.choicePrompt {
@@ -4543,6 +4703,44 @@ struct CompactPromptPopup: View {
         )
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(borderColor.opacity(0.60), lineWidth: 1.2))
         .shadow(color: .black.opacity(0.30), radius: 10, x: 0, y: 5)
+    }
+
+    static func shouldShow(for snapshot: GameSnapshot, pendingActionId: String?) -> Bool {
+        if pendingActionId != nil {
+            return true
+        }
+
+        if let prompt = snapshot.promptEnvelopeV2 {
+            if isManaPaymentPrompt(prompt) {
+                return true
+            }
+            if isPassivePriorityPrompt(prompt, snapshot: snapshot) {
+                return false
+            }
+            if !compactLegalPromptActions(in: snapshot).isEmpty {
+                return true
+            }
+            if needsDetails(snapshot) {
+                return true
+            }
+            if prompt.confirmation != nil || isCommanderReplacementPrompt(prompt) {
+                return true
+            }
+            if prompt.choices?.isEmpty == false {
+                return true
+            }
+            return prompt.required == true && !isPassivePriorityMessage(prompt.message)
+        }
+
+        if let choicePrompt = snapshot.choicePrompt {
+            return !choicePrompt.choices.isEmpty || !compactLegalPromptActions(in: snapshot).isEmpty
+        }
+
+        if let prompt = snapshot.promptEnvelope {
+            return prompt.choices?.isEmpty == false || !compactLegalPromptActions(in: snapshot).isEmpty
+        }
+
+        return false
     }
 
     static func needsDetails(_ snapshot: GameSnapshot) -> Bool {
@@ -4595,7 +4793,7 @@ struct CompactPromptPopup: View {
 
     private var isManaPayment: Bool {
         if let prompt = promptV2 {
-            return isManaPaymentPrompt(prompt)
+            return Self.isManaPaymentPrompt(prompt)
         }
         return false
     }
@@ -4617,65 +4815,6 @@ struct CompactPromptPopup: View {
             ?? snapshot.promptEnvelope?.message
             ?? snapshot.promptText
             ?? "XMage is waiting"
-    }
-
-    @ViewBuilder
-    private func compactManaPayment(_ prompt: PromptEnvelopeV2) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if !sourceManaActions.isEmpty {
-                Text("Tap a source")
-                    .font(.system(size: 8, weight: .black))
-                    .foregroundStyle(MagicPalette.parchment.opacity(0.70))
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(sourceManaActions.prefix(6)) { action in
-                            Button {
-                                runAction(action)
-                            } label: {
-                                HStack(spacing: 5) {
-                                    Image(systemName: "bolt.fill")
-                                        .font(.system(size: 9, weight: .black))
-                                    Text(sourceCardName(for: action))
-                                        .font(.system(size: 10, weight: .black))
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.65)
-                                    producedManaSymbols(for: action)
-                                }
-                                .padding(.horizontal, 8)
-                                .frame(height: 30)
-                                .background(MagicPalette.legalEmerald.opacity(0.18), in: Capsule())
-                                .overlay(Capsule().stroke(MagicPalette.legalEmerald.opacity(0.40), lineWidth: 1))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-            }
-
-            if let choices = prompt.manaChoices, !choices.isEmpty {
-                HStack(spacing: 7) {
-                    Text("Pay")
-                        .font(.system(size: 8, weight: .black))
-                        .foregroundStyle(MagicPalette.parchment.opacity(0.70))
-                    ForEach(choices.prefix(6)) { choice in
-                        let symbol = choice.manaType ?? choice.id
-                        Button {
-                            if let command = command(type: prompt.responseCommand?.type ?? "play_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [symbol], manaType: symbol) {
-                                runCommand(command, choice.label, "\(prompt.id)-mana-choice-\(choice.id)")
-                            }
-                        } label: {
-                            ManaSymbolView(symbol: symbol, size: 26)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(command(type: prompt.responseCommand?.type ?? "play_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [symbol], manaType: symbol) == nil)
-                    }
-                }
-            }
-
-            if sourceManaActions.isEmpty && prompt.manaChoices?.isEmpty != false {
-                unsupportedLine(method: prompt.method, responseKind: prompt.responseKind)
-            }
-        }
     }
 
     @ViewBuilder
@@ -4706,7 +4845,7 @@ struct CompactPromptPopup: View {
         } else if CompactPromptPopup.needsDetails(snapshot) {
             detailButton()
         } else {
-            unsupportedLine(method: prompt.method, responseKind: prompt.responseKind)
+            unsupportedFallback()
         }
     }
 
@@ -4744,7 +4883,7 @@ struct CompactPromptPopup: View {
         } else if !compactPromptActions.isEmpty {
             compactActionButtons(compactPromptActions)
         } else {
-            unsupportedLine(method: prompt.method, responseKind: prompt.responseKind)
+            unsupportedFallback()
         }
     }
 
@@ -4790,24 +4929,17 @@ struct CompactPromptPopup: View {
         .disabled(pendingActionId != nil || command == nil)
     }
 
-    private func producedManaSymbols(for action: LegalAction) -> some View {
-        HStack(spacing: -2) {
-            ForEach((action.producedMana ?? []).prefix(3), id: \.self) { symbol in
-                ManaSymbolView(symbol: symbol, size: 16)
-            }
-        }
-    }
-
-    private func unsupportedLine(method: String, responseKind: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("Unsupported prompt/action")
-                .font(.system(size: 9, weight: .black))
+    private func unsupportedFallback() -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 10, weight: .black))
                 .foregroundStyle(MagicPalette.warningAmber)
-            Text("\(method) | \(responseKind)")
-                .font(.system(size: 8, weight: .bold))
-                .foregroundStyle(.white.opacity(0.48))
+            Text("Needs app support")
+                .font(.system(size: 10, weight: .black))
+                .foregroundStyle(.white.opacity(0.86))
                 .lineLimit(1)
-                .minimumScaleFactor(0.62)
+            Spacer(minLength: 2)
+            detailButton()
         }
     }
 
@@ -4863,7 +4995,7 @@ struct CompactPromptPopup: View {
         )
     }
 
-    private func isManaPaymentPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
+    private static func isManaPaymentPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
         let type = prompt.responseCommand?.type?.lowercased() ?? ""
         let kind = prompt.responseKind.lowercased()
         return type == "play_mana" || type == "choose_mana" || type == "pay_cost" || type == "play_x_mana" ||
@@ -4876,8 +5008,7 @@ struct CompactPromptPopup: View {
     }
 
     private func isCommanderReplacement(_ prompt: PromptEnvelopeV2) -> Bool {
-        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
-        return type == "commander_replacement" || prompt.message.localizedCaseInsensitiveContains("command zone")
+        return Self.isCommanderReplacementPrompt(prompt)
     }
 
     private func sourceCardName(for action: LegalAction) -> String {
@@ -4918,6 +5049,184 @@ struct CompactPromptPopup: View {
         default:
             return 8
         }
+    }
+
+    private static func isCommanderReplacementPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
+        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
+        return type == "commander_replacement" || prompt.message.localizedCaseInsensitiveContains("command zone")
+    }
+
+    private static func isPassivePriorityPrompt(_ prompt: PromptEnvelopeV2, snapshot: GameSnapshot) -> Bool {
+        guard prompt.method == "GAME_SELECT" else { return false }
+        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
+        guard type == "choose_card" || type == "card" else { return false }
+        if prompt.cards?.isEmpty == false || prompt.targets?.isEmpty == false || prompt.players?.isEmpty == false {
+            return false
+        }
+        if prompt.choices?.isEmpty == false || prompt.modes?.isEmpty == false || prompt.abilities?.isEmpty == false {
+            return false
+        }
+        return isPassivePriorityMessage(prompt.message) || isPassivePriorityMessage(snapshot.promptText ?? "")
+    }
+
+    private static func isPassivePriorityMessage(_ message: String) -> Bool {
+        let normalized = message.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized == "play spells and abilities" ||
+            normalized == "play instants and activated abilities" ||
+            normalized == "play spells or abilities" ||
+            normalized == "select a card"
+    }
+}
+
+struct ManaPaymentTray: View {
+    let snapshot: GameSnapshot
+    let prompt: PromptEnvelopeV2
+    let sourceManaActions: [LegalAction]
+    let pendingActionId: String?
+    let runAction: (LegalAction) -> Void
+    let runCommand: (GameCommand, String, String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 7) {
+                Text(requiredManaText)
+                    .font(.system(size: 9, weight: .black))
+                    .foregroundStyle(MagicPalette.antiqueGold)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+                Spacer(minLength: 2)
+                manaPoolPips
+            }
+
+            if !sourceManaActions.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(sourceManaActions.prefix(8)) { action in
+                            Button {
+                                runAction(action)
+                            } label: {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "bolt.fill")
+                                        .font(.system(size: 9, weight: .black))
+                                    Text(sourceCardName(for: action))
+                                        .font(.system(size: 10, weight: .black))
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.62)
+                                    producedManaSymbols(for: action)
+                                }
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 8)
+                                .frame(height: 30)
+                                .background(MagicPalette.legalEmerald.opacity(0.20), in: Capsule())
+                                .overlay(Capsule().stroke(MagicPalette.legalEmerald.opacity(0.54), lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(pendingActionId != nil)
+                        }
+                    }
+                }
+            }
+
+            if let choices = prompt.manaChoices, !choices.isEmpty {
+                HStack(spacing: 7) {
+                    Text("Pay")
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundStyle(MagicPalette.parchment.opacity(0.72))
+                    ForEach(choices.prefix(6)) { choice in
+                        let symbol = choice.manaType ?? choice.id
+                        Button {
+                            if let command = command(type: prompt.responseCommand?.type ?? "play_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [symbol], manaType: symbol) {
+                                runCommand(command, choice.label, "\(prompt.id)-mana-choice-\(choice.id)")
+                            }
+                        } label: {
+                            ManaSymbolView(symbol: symbol, size: 24)
+                                .opacity(canPay(symbol) ? 1 : 0.42)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(pendingActionId != nil || !canPay(symbol) || command(type: prompt.responseCommand?.type ?? "play_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [symbol], manaType: symbol) == nil)
+                    }
+                }
+            }
+
+            if sourceManaActions.isEmpty && prompt.manaChoices?.isEmpty != false {
+                Text("Waiting for XMage mana options")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(MagicPalette.arcaneBlue)
+            }
+        }
+    }
+
+    private var requiredManaText: String {
+        let message = prompt.message.trimmingCharacters(in: .whitespacesAndNewlines)
+        if message.isEmpty {
+            return "Tap for mana"
+        }
+        return message.count > 28 ? "Pay mana" : message
+    }
+
+    private var manaPoolPips: some View {
+        HStack(spacing: 3) {
+            ForEach(["W", "U", "B", "R", "G", "C"], id: \.self) { symbol in
+                let count = manaPoolValue(symbol)
+                if count > 0 {
+                    HStack(spacing: 1) {
+                        ManaSymbolView(symbol: symbol, size: 16)
+                        Text("\(count)")
+                            .font(.system(size: 8, weight: .black))
+                            .foregroundStyle(.white.opacity(0.86))
+                    }
+                }
+            }
+        }
+    }
+
+    private func producedManaSymbols(for action: LegalAction) -> some View {
+        HStack(spacing: -2) {
+            ForEach((action.producedMana ?? []).prefix(3), id: \.self) { symbol in
+                ManaSymbolView(symbol: symbol, size: 16)
+            }
+        }
+    }
+
+    private func command(
+        type rawType: String,
+        promptId: String,
+        playerId: String,
+        ids: [String] = [],
+        manaType: String? = nil
+    ) -> GameCommand? {
+        UniversalPromptResponseCommandBuilder.command(
+            gameId: snapshot.id,
+            bridgeRevision: snapshot.bridgeRevision,
+            promptEnvelope: snapshot.promptEnvelopeV2,
+            type: rawType,
+            promptId: promptId,
+            playerId: playerId,
+            ids: ids,
+            manaType: manaType
+        )
+    }
+
+    private func canPay(_ symbol: String) -> Bool {
+        if manaPoolValue(symbol) > 0 { return true }
+        return symbol == "C" && ["W", "U", "B", "R", "G", "C"].contains { manaPoolValue($0) > 0 }
+    }
+
+    private func manaPoolValue(_ symbol: String) -> Int {
+        let pool = snapshot.human?.manaPool
+        switch symbol {
+        case "W": return pool?.W ?? 0
+        case "U": return pool?.U ?? 0
+        case "B": return pool?.B ?? 0
+        case "R": return pool?.R ?? 0
+        case "G": return pool?.G ?? 0
+        case "C": return pool?.C ?? 0
+        default: return 0
+        }
+    }
+
+    private func sourceCardName(for action: LegalAction) -> String {
+        action.cardName ?? action.label.replacingOccurrences(of: "Tap ", with: "")
     }
 }
 
@@ -5120,6 +5429,7 @@ struct CardTile: View {
     var zoneName: String? = nil
     var width: CGFloat = 82
     var height: CGFloat = 112
+    var ignoreTappedRotation: Bool = false
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -5154,7 +5464,7 @@ struct CardTile: View {
             }
 
             if card.tapped == true {
-                Text("TAP")
+                Text("TAPPED")
                     .font(.system(size: 7, weight: .black))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 4)
@@ -5185,6 +5495,15 @@ struct CardTile: View {
         .frame(width: width, height: height)
         .overlay(RoundedRectangle(cornerRadius: 6).stroke(strokeColor, lineWidth: strokeWidth))
         .overlay {
+            if legal && !selected && !pending && !targetable {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(MagicPalette.antiqueGold.opacity(0.92), lineWidth: max(width * 0.030, 2.1))
+                    .shadow(
+                        color: MagicPalette.legalEmerald.opacity(0.85),
+                        radius: Self.playableGlowRadius(legal: legal, selected: selected, pending: pending, targetable: targetable, width: width)
+                    )
+                    .padding(-3)
+            }
             if targetable {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(MagicPalette.antiqueGold.opacity(0.88), lineWidth: 2.5)
@@ -5201,7 +5520,9 @@ struct CardTile: View {
                     .padding(max(width * 0.04, 3))
             }
         }
-        .shadow(color: shadowColor, radius: selected || pending ? 11 : 0)
+        .shadow(color: shadowColor, radius: shadowRadius)
+        .rotationEffect(.degrees(card.tapped == true && !ignoreTappedRotation ? 90 : 0))
+        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: card.tapped)
         .contentShape(RoundedRectangle(cornerRadius: 6))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(card.accessibilityLabel(zoneName: zoneName, selected: selected, legal: legal, pending: pending))
@@ -5228,7 +5549,7 @@ struct CardTile: View {
 
     private var strokeWidth: CGFloat {
         if selected || pending || targetable { return 3 }
-        if legal { return 1.5 }
+        if legal { return 2.2 }
         return 1
     }
 
@@ -5242,7 +5563,22 @@ struct CardTile: View {
         if targetable {
             return MagicPalette.legalEmerald.opacity(0.58)
         }
+        if legal {
+            return MagicPalette.legalEmerald.opacity(0.38)
+        }
         return .clear
+    }
+
+    private var shadowRadius: CGFloat {
+        if selected || pending {
+            return 11
+        }
+        return Self.playableGlowRadius(legal: legal, selected: selected, pending: pending, targetable: targetable, width: width)
+    }
+
+    static func playableGlowRadius(legal: Bool, selected: Bool, pending: Bool, targetable: Bool, width: CGFloat) -> CGFloat {
+        guard legal && !selected && !pending && !targetable else { return 0 }
+        return max(width * 0.13, 7)
     }
 }
 
@@ -5629,7 +5965,7 @@ struct CardInspector: View {
 
     var body: some View {
         HStack(spacing: 9) {
-            CardTile(card: card, selected: true, zoneName: "Inspector", width: 82, height: 114)
+            CardTile(card: card, selected: true, zoneName: "Inspector", width: 82, height: 114, ignoreTappedRotation: true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(card.card.name)
                     .font(.headline.weight(.black))

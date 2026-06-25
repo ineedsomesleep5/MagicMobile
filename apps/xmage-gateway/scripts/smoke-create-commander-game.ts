@@ -156,6 +156,20 @@ const human = fixtureScenario
     ? promptMultiAmountFixtureDeck()
     : promptPileScenario
     ? promptPileFixtureDeck()
+    : scenario === "repeated-mulligan"
+    ? repeatedMulliganFixtureDeck()
+    : scenario === "choose-card"
+    ? chooseCardFixtureDeck()
+    : scenario === "choose-player"
+    ? choosePlayerFixtureDeck()
+    : scenario === "play-x-mana"
+    ? playXManaFixtureDeck()
+    : scenario === "choose-mana"
+    ? chooseManaFixtureDeck()
+    : scenario === "generic-replacement"
+    ? genericReplacementFixtureDeck()
+    : scenario === "zone-movement"
+    ? zoneMovementFixtureDeck()
     : commanderFixtureDeck("Isamaru, Hound of Konda", "Plains")
   : generateBracketThreeCommanderDeck({ seed: `${seed}:human`, playerId: humanPlayerId }).deck;
 const ai = fixtureScenario
@@ -1413,6 +1427,13 @@ function scenarioModuleFor(input: string): ScenarioModule {
         scenarioSet: ["opening-start-player"],
         requiredSteps: ["starting-player-choice", "route-family:choose_player"]
       };
+    case "repeated-mulligan":
+      return {
+        id: "repeated-mulligan",
+        usesFixture: true,
+        scenarioSet: ["repeated-mulligan"],
+        requiredSteps: ["route-family:mulligan"]
+      };
     case "ai-turn-progress":
       return {
         id: "ai-turn-progress",
@@ -1434,6 +1455,48 @@ function scenarioModuleFor(input: string): ScenarioModule {
         usesFixture: true,
         scenarioSet: ["search-select"],
         requiredSteps: ["search-select"]
+      };
+    case "choose-card":
+      return {
+        id: "choose-card",
+        usesFixture: true,
+        scenarioSet: ["choose-card"],
+        requiredSteps: ["route-family:choose_card"]
+      };
+    case "choose-player":
+      return {
+        id: "choose-player",
+        usesFixture: true,
+        scenarioSet: ["choose-player"],
+        requiredSteps: ["route-family:choose_player"]
+      };
+    case "play-x-mana":
+      return {
+        id: "play-x-mana",
+        usesFixture: true,
+        scenarioSet: ["play-x-mana"],
+        requiredSteps: ["route-family:play_x_mana"]
+      };
+    case "choose-mana":
+      return {
+        id: "choose-mana",
+        usesFixture: true,
+        scenarioSet: ["choose-mana"],
+        requiredSteps: ["route-family:choose_mana"]
+      };
+    case "generic-replacement":
+      return {
+        id: "generic-replacement",
+        usesFixture: true,
+        scenarioSet: ["generic-replacement"],
+        requiredSteps: ["route-family:generic_replacement"]
+      };
+    case "zone-movement":
+      return {
+        id: "zone-movement",
+        usesFixture: true,
+        scenarioSet: ["zone-movement"],
+        requiredSteps: ["zone_update_seen"]
       };
     case "commander-state":
     case "commander-replacement-tax":
@@ -1729,11 +1792,84 @@ function promptPileFixtureDeck() {
 
 function triggeredAbilityFixtureDeck() {
   return {
-    name: "Triggered Ability Stack Fixture",
-    commander: { cardName: "Isamaru, Hound of Konda", quantity: 1, section: "commander" },
+    name: "MagicMobile Triggered Ability Fixture",
+    commander: { cardName: "Isamaru, Hound of Konda" },
     entries: [
       { cardName: "Spirited Companion", quantity: 1, section: "deck" },
       { cardName: "Plains", quantity: 98, section: "deck" }
+    ]
+  };
+}
+
+function repeatedMulliganFixtureDeck() {
+  return commanderFixtureDeck("Isamaru, Hound of Konda", "Plains");
+}
+
+function chooseCardFixtureDeck() {
+  return {
+    name: "MagicMobile Choose Card Fixture",
+    commander: { cardName: "Isamaru, Hound of Konda" },
+    entries: [
+      { cardName: "Faithless Looting", quantity: 1, section: "deck" },
+      { cardName: "Mountain", quantity: 98, section: "deck" }
+    ]
+  };
+}
+
+function choosePlayerFixtureDeck() {
+  return {
+    name: "MagicMobile Choose Player Fixture",
+    commander: { cardName: "Isamaru, Hound of Konda" },
+    entries: [
+      { cardName: "Sign in Blood", quantity: 1, section: "deck" },
+      { cardName: "Swamp", quantity: 98, section: "deck" }
+    ]
+  };
+}
+
+function playXManaFixtureDeck() {
+  return {
+    name: "MagicMobile Play X Mana Fixture",
+    commander: { cardName: "Isamaru, Hound of Konda" },
+    entries: [
+      { cardName: "Blaze", quantity: 1, section: "deck" },
+      { cardName: "Mountain", quantity: 98, section: "deck" }
+    ]
+  };
+}
+
+function chooseManaFixtureDeck() {
+  return {
+    name: "MagicMobile Choose Mana Fixture",
+    commander: { cardName: "Isamaru, Hound of Konda" },
+    entries: [
+      { cardName: "Lotus Petal", quantity: 1, section: "deck" },
+      { cardName: "Plains", quantity: 98, section: "deck" }
+    ]
+  };
+}
+
+function genericReplacementFixtureDeck() {
+  return {
+    name: "MagicMobile Generic Replacement Fixture",
+    commander: { cardName: "Isamaru, Hound of Konda" },
+    entries: [
+      { cardName: "Doom Blade", quantity: 1, section: "deck" },
+      { cardName: "Leyline of the Void", quantity: 1, section: "deck" },
+      { cardName: "Rest in Peace", quantity: 1, section: "deck" },
+      { cardName: "Swamp", quantity: 96, section: "deck" }
+    ]
+  };
+}
+
+function zoneMovementFixtureDeck() {
+  return {
+    name: "MagicMobile Zone Movement Fixture",
+    commander: { cardName: "Isamaru, Hound of Konda" },
+    entries: [
+      { cardName: "Doom Blade", quantity: 1, section: "deck" },
+      { cardName: "Swords to Plowshares", quantity: 1, section: "deck" },
+      { cardName: "Swamp", quantity: 97, section: "deck" }
     ]
   };
 }
@@ -1779,8 +1915,13 @@ function chooseBestAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
     const expected = snapshot.promptEnvelopeV2.responseCommand?.type ?? snapshot.promptEnvelopeV2.responseKind;
     console.error(`[Smoke] Prompt envelope active: ${snapshot.promptEnvelopeV2.method} expecting ${expected}`);
 
-    const keepHand = snapshot.legalActions.find(a => a.type === "keep_hand");
-    if (keepHand) return keepHand;
+    if (scenario === "repeated-mulligan") {
+      const mulligan = snapshot.legalActions.find(a => a.type === "mulligan");
+      if (mulligan) return mulligan;
+    } else {
+      const keepHand = snapshot.legalActions.find(a => a.type === "keep_hand");
+      if (keepHand) return keepHand;
+    }
 
     // Order items/triggers
     const orderAction = snapshot.legalActions.find(a => a.type === "order_triggers" || a.type === "order_items");
@@ -1861,9 +2002,14 @@ function chooseBestAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
     return undefined;
   }
 
-  // 2. Keep opening hand
-  const keepHand = snapshot.legalActions.find(a => a.type === "keep_hand");
-  if (keepHand) return keepHand;
+  // 2. Keep opening hand or mulligan
+  if (scenario === "repeated-mulligan") {
+    const mulligan = snapshot.legalActions.find(a => a.type === "mulligan");
+    if (mulligan) return mulligan;
+  } else {
+    const keepHand = snapshot.legalActions.find(a => a.type === "keep_hand");
+    if (keepHand) return keepHand;
+  }
 
   if (fixtureScenario) {
     const fixtureAction = chooseFixtureAction(snapshot);
@@ -2880,6 +3026,11 @@ function recordRouteFamilyForAction(action: SmokeAction) {
   if (action.type === "choose_target") markRouteFamily("choose_target");
   if (action.type === "answer_yes_no") markRouteFamily("answer_yes_no");
   if (action.type === "pay_cost") markRouteFamily("pay_cost");
+  if (action.type === "choose_player") markRouteFamily("choose_player");
+  if (action.type === "play_x_mana") markRouteFamily("play_x_mana");
+  if (action.type === "choose_mana") markRouteFamily("choose_mana");
+  if (action.type === "generic_replacement") markRouteFamily("generic_replacement");
+  if (action.type === "mulligan") markRouteFamily("mulligan");
   if (damageAssignmentScenario && isDamageAssignmentPromptAction(action)) {
     markRouteFamily("damage_assignment");
     damageAssignmentChoiceSubmitted = true;
@@ -2901,14 +3052,18 @@ function recordRouteFamilyForPrompt(snapshot: SmokeSnapshot) {
   const promptText = `${snapshot.promptEnvelopeV2.method ?? ""} ${snapshot.promptEnvelopeV2.message ?? ""} ${snapshot.promptText ?? ""}`.toLowerCase();
   if (expected.includes("target")) markRouteFamily("choose_target");
   if (expected.includes("card")) markRouteFamily("choose_card");
+  if (expected.includes("player")) markRouteFamily("choose_player");
   if (expected.includes("search")) markRouteFamily("search_select");
   if (expected.includes("ability")) markRouteFamily("choose_ability");
   if (expected.includes("mode")) markRouteFamily("choose_mode");
+  if (expected.includes("generic_replacement")) markRouteFamily("generic_replacement");
   if (expected.includes("multi_amount")) {
     markRouteFamily("choose_multi_amount");
   } else if (expected.includes("amount")) {
     markRouteFamily("choose_amount");
   }
+  if (expected.includes("play_x_mana") || expected.includes("x_mana")) markRouteFamily("play_x_mana");
+  if (expected.includes("choose_mana")) markRouteFamily("choose_mana");
   if (expected.includes("pile")) markRouteFamily("choose_pile");
   if (expected.includes("order") || promptText.includes("order")) markRouteFamily("order_triggers/order_items");
   if (expected.includes("yes") || expected.includes("confirmation")) markRouteFamily("answer_yes_no");
