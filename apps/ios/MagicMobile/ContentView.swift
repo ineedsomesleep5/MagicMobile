@@ -2489,7 +2489,7 @@ struct GameDiagnosticsBadge: View {
         if snapshot.pendingStatus == "waiting_for_xmage" {
             return "Waiting for XMage"
         }
-        if snapshot.priorityPlayerId == "human" || snapshot.waitingOnPlayerId == "human" {
+        if snapshot.priorityPlayerId == "human" || snapshot.waitingOnPlayerId == "human" || !CompactPromptPopup.compactLegalPromptActions(in: snapshot).isEmpty {
             return "Your priority"
         }
         if snapshot.priorityPlayerId != nil || snapshot.waitingOnPlayerId != nil {
@@ -2839,7 +2839,9 @@ struct PromptPill: View {
     let snapshot: GameSnapshot
 
     private var isWaitingOnHuman: Bool {
-        snapshot.waitingOnPlayerId == "human" || (snapshot.waitingOnPlayerId == nil && snapshot.priorityPlayerId == "human")
+        snapshot.waitingOnPlayerId == "human"
+            || (snapshot.waitingOnPlayerId == nil && snapshot.priorityPlayerId == "human")
+            || !CompactPromptPopup.compactLegalPromptActions(in: snapshot).isEmpty
     }
 
     var body: some View {
@@ -4224,7 +4226,7 @@ struct MobileSurfacesPanel: View {
     }
 
     private var priorityOwner: String {
-        if snapshot.priorityPlayerId == "human" || snapshot.waitingOnPlayerId == "human" {
+        if snapshot.priorityPlayerId == "human" || snapshot.waitingOnPlayerId == "human" || !CompactPromptPopup.compactLegalPromptActions(in: snapshot).isEmpty {
             return "You"
         }
         return snapshot.priorityPlayerId ?? snapshot.waitingOnPlayerId ?? "-"
@@ -4463,16 +4465,18 @@ struct CompactPromptPopup: View {
     private var sourceManaActions: [LegalAction] {
         legalActions.filter { $0.type == "make_mana" && ($0.sourceInstanceId != nil || $0.cardInstanceId != nil) }
     }
+    private var compactPromptActions: [LegalAction] {
+        Self.compactLegalPromptActions(in: snapshot)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 7) {
-                Image(systemName: isManaPayment ? "sparkles" : "wand.and.stars")
-                    .font(.system(size: 11, weight: .black))
-                    .foregroundStyle(MagicPalette.antiqueGold)
-                Text(isManaPayment ? "PAY MANA" : "PROMPT")
-                    .font(.system(size: 10, weight: .black))
-                    .foregroundStyle(MagicPalette.antiqueGold)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(messageText)
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.68)
                 Spacer(minLength: 4)
                 Text(priorityLabel)
                     .font(.system(size: 8, weight: .black))
@@ -4480,12 +4484,6 @@ struct CompactPromptPopup: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.65)
             }
-
-            Text(messageText)
-                .font(.system(size: 12, weight: .black))
-                .foregroundStyle(.white.opacity(0.90))
-                .lineLimit(2)
-                .minimumScaleFactor(0.68)
 
             if pendingActionId != nil {
                 HStack(spacing: 6) {
@@ -4526,6 +4524,46 @@ struct CompactPromptPopup: View {
         if prompt.piles?.isEmpty == false || prompt.abilities?.isEmpty == false || prompt.modes?.isEmpty == false { return true }
         if prompt.amounts?.isEmpty == false || prompt.multiAmounts?.isEmpty == false || prompt.orderedItems?.isEmpty == false { return true }
         return (prompt.choices?.count ?? 0) > 3
+    }
+
+    static func compactLegalPromptActions(in snapshot: GameSnapshot) -> [LegalAction] {
+        let legalActions = snapshot.legalActions ?? []
+        let promptId = snapshot.promptEnvelopeV2?.responseCommand?.promptId
+            ?? snapshot.promptEnvelopeV2?.id
+            ?? snapshot.promptEnvelope?.id
+            ?? snapshot.choicePrompt?.id
+        let responseType = snapshot.promptEnvelopeV2?.responseCommand?.type?.lowercased()
+        let responseKind = snapshot.promptEnvelopeV2?.responseKind.lowercased()
+            ?? snapshot.promptEnvelope?.responseKind.lowercased()
+        let message = (
+            snapshot.promptEnvelopeV2?.message
+                ?? snapshot.promptEnvelope?.message
+                ?? snapshot.choicePrompt?.message
+                ?? snapshot.promptText
+                ?? ""
+        ).lowercased()
+
+        var allowedTypes = Set(["resolve_choice", "answer_yes_no", "pay_cost", "commander_replacement"])
+        if message.contains("mulligan") {
+            allowedTypes.formUnion(["keep_hand", "mulligan"])
+        }
+        if message.contains("starting player") || message.contains("starts") || responseKind == "player" {
+            allowedTypes.insert("choose_player")
+        }
+        if responseType == "resolve_choice" || responseKind == "choice" {
+            allowedTypes.insert("resolve_choice")
+        }
+
+        return legalActions
+            .filter { action in
+                if action.type == "concede" { return false }
+                if let promptId, action.promptId == promptId { return true }
+                if let responseType, action.type == responseType { return true }
+                return allowedTypes.contains(action.type)
+            }
+            .sorted { lhs, rhs in
+                compactActionPriority(lhs) < compactActionPriority(rhs)
+            }
     }
 
     private var isManaPayment: Bool {
@@ -4636,6 +4674,8 @@ struct CompactPromptPopup: View {
                     )
                 }
             }
+        } else if !compactPromptActions.isEmpty {
+            compactActionButtons(compactPromptActions)
         } else if CompactPromptPopup.needsDetails(snapshot) {
             detailButton()
         } else {
@@ -4674,8 +4714,32 @@ struct CompactPromptPopup: View {
                     compactCommandButton(choice.label, systemImage: yesNoIcon(choice.label), pendingId: "\(prompt.id)-\(choice.id)", command: command(type: "resolve_choice", promptId: prompt.id, playerId: prompt.playerId, ids: [choice.id]))
                 }
             }
+        } else if !compactPromptActions.isEmpty {
+            compactActionButtons(compactPromptActions)
         } else {
             unsupportedLine(method: prompt.method, responseKind: prompt.responseKind)
+        }
+    }
+
+    private func compactActionButtons(_ actions: [LegalAction]) -> some View {
+        HStack(spacing: 7) {
+            ForEach(actions.prefix(3)) { action in
+                let title = action.shortLabel ?? compactActionLabel(action)
+                Button {
+                    runAction(action)
+                } label: {
+                    PromptButtonLabel(
+                        title: title,
+                        systemImage: action.systemImage,
+                        isPending: pendingActionId == action.id
+                    )
+                }
+                .buttonStyle(PanelActionButtonStyle(isPrimary: action.isPrimary == true || action.type == "keep_hand", compact: true))
+                .disabled(pendingActionId != nil)
+            }
+            if actions.count > 3 {
+                detailButton()
+            }
         }
     }
 
@@ -4793,11 +4857,40 @@ struct CompactPromptPopup: View {
         action.cardName ?? action.label.replacingOccurrences(of: "Tap ", with: "")
     }
 
+    private func compactActionLabel(_ action: LegalAction) -> String {
+        switch action.type {
+        case "keep_hand":
+            return "Keep"
+        case "mulligan":
+            return "Mulligan"
+        default:
+            return action.label
+        }
+    }
+
     private func yesNoIcon(_ label: String) -> String? {
         let lower = label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if ["yes", "ok", "accept", "keep"].contains(lower) { return "checkmark.circle" }
         if ["no", "cancel", "decline", "mulligan"].contains(lower) { return "xmark.circle" }
         return nil
+    }
+
+    private static func compactActionPriority(_ action: LegalAction) -> Int {
+        if action.isPrimary == true { return 0 }
+        switch action.type {
+        case "keep_hand":
+            return 1
+        case "mulligan":
+            return 2
+        case "choose_player":
+            return 3
+        case "resolve_choice", "answer_yes_no":
+            return 4
+        case "pay_cost", "commander_replacement":
+            return 5
+        default:
+            return 8
+        }
     }
 }
 

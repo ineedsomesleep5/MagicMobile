@@ -781,6 +781,87 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertFalse(CompactPromptPopup.needsDetails(snapshot))
     }
 
+    func testCompactPromptUsesLegalActionsForMulliganPromptWithoutChoices() throws {
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
+        {
+          "id": "game-mulligan",
+          "source": "xmage-java-bridge",
+          "activePlayerId": "ai",
+          "phase": "beginning",
+          "step": "untap",
+          "turn": 1,
+          "priorityPlayerId": "ai",
+          "waitingOnPlayerId": "ai",
+          "promptText": "Mulligan down to 6 cards?",
+          "players": [],
+          "log": [],
+          "legalActions": [
+            { "id": "keep-opening-hand", "type": "keep_hand", "playerId": "human", "label": "Keep", "shortLabel": "Keep", "isPrimary": true },
+            { "id": "take-mulligan", "type": "mulligan", "playerId": "human", "label": "Mulligan", "shortLabel": "Mulligan" },
+            { "id": "concede", "type": "concede", "playerId": "human", "label": "Concede" }
+          ],
+          "promptEnvelopeV2": {
+            "id": "xmage-mulligan-prompt",
+            "method": "GAME_ASK",
+            "messageId": 52,
+            "playerId": "human",
+            "responseKind": "choice",
+            "message": "Mulligan down to 6 cards?",
+            "responseCommand": {
+              "type": "resolve_choice",
+              "promptId": "xmage-mulligan-prompt",
+              "messageId": 52
+            }
+          }
+        }
+        """#.data(using: .utf8)!)
+
+        let actions = CompactPromptPopup.compactLegalPromptActions(in: snapshot)
+
+        XCTAssertEqual(actions.map(\.type), ["keep_hand", "mulligan"])
+        XCTAssertFalse(CompactPromptPopup.needsDetails(snapshot))
+    }
+
+    func testCompactPromptUsesLegalActionsForStartingPlayerChoice() throws {
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
+        {
+          "id": "game-starting-player",
+          "source": "xmage-java-bridge",
+          "activePlayerId": "human",
+          "phase": "beginning",
+          "step": "choose_starting_player",
+          "turn": 0,
+          "priorityPlayerId": "human",
+          "waitingOnPlayerId": "human",
+          "promptText": "Choose starting player",
+          "players": [],
+          "log": [],
+          "legalActions": [
+            { "id": "human-starts", "type": "choose_player", "playerId": "human", "label": "You start", "shortLabel": "You start", "promptId": "xmage-start-player" },
+            { "id": "ai-starts", "type": "choose_player", "playerId": "human", "label": "AI starts", "shortLabel": "AI starts", "promptId": "xmage-start-player" },
+            { "id": "concede", "type": "concede", "playerId": "human", "label": "Concede" }
+          ],
+          "promptEnvelopeV2": {
+            "id": "xmage-start-player",
+            "method": "GAME_SELECT",
+            "messageId": 12,
+            "playerId": "human",
+            "responseKind": "player",
+            "message": "Choose starting player",
+            "responseCommand": {
+              "type": "choose_player",
+              "promptId": "xmage-start-player",
+              "messageId": 12
+            }
+          }
+        }
+        """#.data(using: .utf8)!)
+
+        let actions = CompactPromptPopup.compactLegalPromptActions(in: snapshot)
+
+        XCTAssertEqual(actions.map(\.label), ["You start", "AI starts"])
+    }
+
     func testCompactPromptPopupSendsComplexPromptsToDetailSheet() throws {
         let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
         {
