@@ -129,6 +129,68 @@ struct GameSnapshot: Decodable {
     }
 }
 
+enum CastSubmissionOutcome: Equatable {
+    case accepted
+    case payment
+    case targeting
+    case waiting
+    case rejectedStillInHand
+    case notCastOrPlay
+
+    var statusMessage: String {
+        switch self {
+        case .accepted:
+            return "XMage accepted the play"
+        case .payment:
+            return "Tap mana sources to pay"
+        case .targeting:
+            return "Choose a highlighted XMage target"
+        case .waiting:
+            return "Waiting for XMage update"
+        case .rejectedStillInHand:
+            return "XMage did not accept that play. Refresh and try again."
+        case .notCastOrPlay:
+            return "Action submitted"
+        }
+    }
+}
+
+enum CastSubmissionClassifier {
+    static func classify(action: LegalAction, before: GameSnapshot, after: GameSnapshot) -> CastSubmissionOutcome {
+        guard ["cast_spell", "play_land"].contains(action.type) else { return .notCastOrPlay }
+        if isPaymentPrompt(after.promptEnvelopeV2) { return .payment }
+        if isTargetPrompt(after.promptEnvelopeV2) { return .targeting }
+        if after.pendingStatus == "waiting_for_xmage" { return .waiting }
+
+        guard let cardId = action.cardInstanceId ?? action.sourceInstanceId else {
+            return .accepted
+        }
+
+        let wasInHand = before.human?.zones.hand.contains { $0.instanceId == cardId } == true
+        let stillInHand = after.human?.zones.hand.contains { $0.instanceId == cardId } == true
+        if wasInHand && stillInHand {
+            return .rejectedStillInHand
+        }
+        return .accepted
+    }
+
+    static func isPaymentPrompt(_ prompt: PromptEnvelopeV2?) -> Bool {
+        guard let prompt else { return false }
+        let method = prompt.method.uppercased()
+        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
+        return method == "GAME_PLAY_MANA"
+            || method == "GAME_PLAY_XMANA"
+            || ["play_mana", "choose_mana", "pay_cost", "play_x_mana", "mana", "x_mana"].contains(type)
+    }
+
+    static func isTargetPrompt(_ prompt: PromptEnvelopeV2?) -> Bool {
+        guard let prompt else { return false }
+        let method = prompt.method.uppercased()
+        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
+        return method.contains("TARGET") || type == "choose_target" || type == "target"
+    }
+}
+
 extension GameSnapshot {
     var isStalled: Bool {
         pendingStatus == "stalled" || engineHealth?.status == "stalled"
@@ -249,6 +311,7 @@ struct ZoneCard: Decodable, Identifiable, Hashable {
     let counters: [String: Int]?
     let power: Int?
     let toughness: Int?
+    let isCreaturePermanent: Bool?
     let damage: Int?
     let isAttacking: Bool?
     let blocking: [String]?
@@ -772,7 +835,11 @@ extension CardIdentity {
 
 extension ZoneCard {
     public var isCreature: Bool {
-        card.isCreature
+        isCreaturePermanent ?? card.isCreature
+    }
+
+    public var showsPowerToughness: Bool {
+        power != nil && toughness != nil && isCreature
     }
 
     func accessibilityLabel(zoneName: String? = nil, selected: Bool = false, legal: Bool = false, pending: Bool = false) -> String {
@@ -793,7 +860,7 @@ extension ZoneCard {
         if isAttacking == true {
             parts.append("attacking")
         }
-        if let power, let toughness {
+        if showsPowerToughness, let power, let toughness {
             parts.append("\(power)/\(toughness)")
         }
         let counterHints = counterBadges.map { "\($0.label) counter \($0.count)" }

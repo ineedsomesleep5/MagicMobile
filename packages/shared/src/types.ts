@@ -122,6 +122,7 @@ export interface ZoneCard {
   counters?: Record<string, number>;
   power?: number;
   toughness?: number;
+  isCreaturePermanent?: boolean;
   damage?: number;
   isAttacking?: boolean;
   blocking?: string[];

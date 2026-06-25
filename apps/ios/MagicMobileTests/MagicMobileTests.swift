@@ -38,6 +38,7 @@ final class MagicMobileTests: XCTestCase {
             counters: nil,
             power: nil,
             toughness: nil,
+            isCreaturePermanent: nil,
             damage: nil,
             isAttacking: nil,
             blocking: nil,
@@ -60,6 +61,7 @@ final class MagicMobileTests: XCTestCase {
             counters: nil,
             power: nil,
             toughness: nil,
+            isCreaturePermanent: nil,
             damage: nil,
             isAttacking: nil,
             blocking: nil,
@@ -90,6 +92,50 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertTrue(card.isCreature)
         XCTAssertEqual(card.summoningSickness, true)
         XCTAssertTrue(card.accessibilityLabel(zoneName: "Battlefield").contains("summoning sick"))
+    }
+
+    func testZoneCardHidesPowerToughnessForNonCreaturePermanent() throws {
+        let data = """
+        {
+          "instanceId": "sol-ring-1",
+          "card": {
+            "name": "Sol Ring",
+            "typeLine": "Artifact",
+            "oracleText": "{T}: Add {C}{C}."
+          },
+          "isCreaturePermanent": false,
+          "power": 0,
+          "toughness": 0
+        }
+        """.data(using: .utf8)!
+
+        let card = try JSONDecoder.magicMobile.decode(ZoneCard.self, from: data)
+
+        XCTAssertFalse(card.isCreature)
+        XCTAssertFalse(card.showsPowerToughness)
+        XCTAssertFalse(card.accessibilityLabel(zoneName: "Battlefield").contains("0/0"))
+    }
+
+    func testZoneCardShowsPowerToughnessForAnimatedPermanent() throws {
+        let data = """
+        {
+          "instanceId": "forest-creature-1",
+          "card": {
+            "name": "Forest",
+            "typeLine": "Basic Land - Forest",
+            "oracleText": "{T}: Add {G}."
+          },
+          "isCreaturePermanent": true,
+          "power": 3,
+          "toughness": 3
+        }
+        """.data(using: .utf8)!
+
+        let card = try JSONDecoder.magicMobile.decode(ZoneCard.self, from: data)
+
+        XCTAssertTrue(card.isCreature)
+        XCTAssertTrue(card.showsPowerToughness)
+        XCTAssertTrue(card.accessibilityLabel(zoneName: "Battlefield").contains("3/3"))
     }
 
     func testZoneCardDecodesAndFiltersXMageAbilityIcons() throws {
@@ -253,10 +299,49 @@ final class MagicMobileTests: XCTestCase {
     }
 
     func testCompactPhaseTitlesFitLandscapeStatusRail() {
+        XCTAssertEqual("untap".compactPhaseTitle, "Untap")
+        XCTAssertEqual("upkeep".compactPhaseTitle, "Upkeep")
+        XCTAssertEqual("draw".compactPhaseTitle, "Draw")
         XCTAssertEqual("precombat-main".compactPhaseTitle, "Main 1")
         XCTAssertEqual("postcombat-main".compactPhaseTitle, "Main 2")
+        XCTAssertEqual("begin-combat".compactPhaseTitle, "Combat")
         XCTAssertEqual("declare-attackers".compactPhaseTitle, "Attackers")
+        XCTAssertEqual("declare-blockers".compactPhaseTitle, "Blockers")
         XCTAssertEqual("combat-damage".compactPhaseTitle, "Damage")
+        XCTAssertEqual("end".compactPhaseTitle, "End")
+        XCTAssertEqual("cleanup".compactPhaseTitle, "Cleanup")
+    }
+
+    func testSkipTurnLabelAdaptsToActivePlayer() throws {
+        let action = try decodeAction(type: "pass_until_next_turn")
+        let humanActive = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: minimalSnapshotJSON(id: "human-active"))
+        let aiActiveData = String(data: try minimalSnapshotJSON(id: "ai-active"), encoding: .utf8)!
+            .replacingOccurrences(of: #""activePlayerId": "human""#, with: #""activePlayerId": "ai-1""#)
+            .data(using: .utf8)!
+        let aiActive = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: aiActiveData)
+
+        XCTAssertEqual(MagicPathPhaseRail.skipButtonLabel(snapshot: humanActive, action: action), "SKIP\nTURN")
+        XCTAssertEqual(MagicPathPhaseRail.skipButtonLabel(snapshot: aiActive, action: action), "SKIP TILL\nMY TURN")
+    }
+
+    func testCastSubmissionClassifierRecognizesPaymentPrompt() throws {
+        let before = try snapshotWithHumanHand(cardId: "sol-ring-1", cardName: "Sol Ring")
+        let action = try decodeAction(type: "cast_spell", extra: #""sourceInstanceId": "sol-ring-1""#)
+        let afterData = String(data: try minimalSnapshotJSON(id: "payment"), encoding: .utf8)!
+            .replacingOccurrences(of: #""hand": []"#, with: #""hand": [{ "instanceId": "sol-ring-1", "card": { "name": "Sol Ring", "typeLine": "Artifact", "oracleText": "" } }]"#)
+            .replacingOccurrences(of: #""legalActions": []"#, with: #""promptEnvelopeV2": { "id": "mana-1", "method": "GAME_PLAY_MANA", "messageId": 1, "playerId": "human", "responseKind": "mana", "message": "Pay {1}", "responseCommand": { "type": "play_mana", "promptId": "mana-1", "messageId": 1 } }, "legalActions": []"#)
+            .data(using: .utf8)!
+        let after = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: afterData)
+
+        XCTAssertEqual(CastSubmissionClassifier.classify(action: action, before: before, after: after), .payment)
+    }
+
+    func testCastSubmissionClassifierFlagsRejectedStillInHand() throws {
+        let before = try snapshotWithHumanHand(cardId: "jaspera-1", cardName: "Jaspera Sentinel")
+        let action = try decodeAction(type: "cast_spell", extra: #""sourceInstanceId": "jaspera-1""#)
+        let after = try snapshotWithHumanHand(cardId: "jaspera-1", cardName: "Jaspera Sentinel")
+
+        XCTAssertEqual(CastSubmissionClassifier.classify(action: action, before: before, after: after), .rejectedStillInHand)
     }
 
     func testMagicPathLayerCatalogIncludesRequiredBoardLayers() {
@@ -1195,6 +1280,7 @@ final class MagicMobileTests: XCTestCase {
             counters: nil,
             power: nil,
             toughness: nil,
+            isCreaturePermanent: nil,
             damage: nil,
             isAttacking: nil,
             blocking: nil,
@@ -1240,6 +1326,12 @@ final class MagicMobileTests: XCTestCase {
           "pendingStatus": null
         }
         """.data(using: .utf8)!
+    }
+
+    private func snapshotWithHumanHand(cardId: String, cardName: String) throws -> GameSnapshot {
+        let json = String(data: try minimalSnapshotJSON(id: "snapshot-\(cardId)"), encoding: .utf8)!
+            .replacingOccurrences(of: #""hand": []"#, with: #""hand": [{ "instanceId": "\#(cardId)", "card": { "name": "\#(cardName)", "typeLine": "Artifact", "oracleText": "" } }]"#)
+        return try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: json.data(using: .utf8)!)
     }
 
     private func promptEnvelopeV2(responseType: String, responsePromptId: String, responseMessageId: Int) throws -> PromptEnvelopeV2 {

@@ -2415,6 +2415,7 @@ public final class MagicMobileBridge implements MageClient {
             JsonObject zoneCard = zoneCard(card);
             zoneCard.addProperty("tapped", card.isTapped());
             zoneCard.addProperty("summoningSickness", card.hasSummoningSickness());
+            zoneCard.addProperty("isCreaturePermanent", card.isCreature());
             zoneCard.addProperty("damage", card.getDamage());
             if (card.getAttachedTo() != null) {
                 zoneCard.addProperty("attachedToInstanceId", card.getAttachedTo().toString());

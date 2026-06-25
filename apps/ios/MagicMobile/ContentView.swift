@@ -485,14 +485,25 @@ struct ContentView: View {
         do {
             let previousSignature = snapshotSignature(currentSnapshot)
             let nextSnapshot = try await api.submit(action: action, gameId: currentSnapshot.id, expectedBridgeRevision: currentSnapshot.bridgeRevision)
+            let submittedOutcome = CastSubmissionClassifier.classify(action: action, before: currentSnapshot, after: nextSnapshot)
             applySnapshot(nextSnapshot)
-            status = nextSnapshot.pendingStatus == "waiting_for_xmage" ? "Waiting for XMage update" : "Action submitted"
+            status = submittedOutcome.statusMessage
             if nextSnapshot.pendingStatus == "waiting_for_xmage" {
                 let updated = await pollSnapshotAfterCommand(api: api, gameId: currentSnapshot.id, previousSignature: previousSignature)
+                if let latestSnapshot = snapshot {
+                    let finalOutcome = CastSubmissionClassifier.classify(action: action, before: currentSnapshot, after: latestSnapshot)
+                    status = finalOutcome.statusMessage
+                    if finalOutcome == .rejectedStillInHand {
+                        errorMessage = finalOutcome.statusMessage
+                    }
+                }
                 if !updated {
                     clearPendingAction()
                 }
             } else {
+                if submittedOutcome == .rejectedStillInHand {
+                    errorMessage = submittedOutcome.statusMessage
+                }
                 clearPendingAction()
             }
         } catch {
@@ -1521,7 +1532,7 @@ struct NativeGameView: View {
                                     runAction(skipAct)
                                 }
                             } label: {
-                                Text("SKIP TILL MY TURN")
+                                Text(MagicPathPhaseRail.skipButtonLabel(snapshot: snapshot, action: skipAct))
                                     .font(.system(size: 8, weight: .black, design: .serif))
                                     .multilineTextAlignment(.center)
                                     .frame(maxWidth: .infinity)
@@ -2771,33 +2782,33 @@ struct StackPeek: View {
     @Binding var inspectedCard: ZoneCard?
 
     var body: some View {
-        HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 5) {
             Text("STACK")
                 .font(.system(size: 10, weight: .black))
                 .foregroundStyle(MagicPalette.antiqueGold)
-                .rotationEffect(.degrees(-90))
-                .frame(width: 24)
 
-            HStack(spacing: -14) {
-                ForEach(Array(cards.suffix(4).enumerated()), id: \.element.id) { index, card in
-                    CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, zoneName: "Stack", width: 38, height: 54)
-                        .zIndex(Double(index))
-                        .onTapGesture {
-                            selectedCard = card
-                            inspectedCard = nil
-                        }
-                        .onLongPressGesture(minimumDuration: 0.35) {
-                            inspectedCard = card
-                        }
+            HStack(spacing: 8) {
+                HStack(spacing: -14) {
+                    ForEach(Array(cards.suffix(4).enumerated()), id: \.element.id) { index, card in
+                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, zoneName: "Stack", width: 38, height: 54)
+                            .zIndex(Double(index))
+                            .onTapGesture {
+                                selectedCard = card
+                                inspectedCard = nil
+                            }
+                            .onLongPressGesture(minimumDuration: 0.35) {
+                                inspectedCard = card
+                            }
+                    }
                 }
-            }
 
-            Text(cards.last?.card.name ?? "Resolving")
-                .font(.system(size: 11, weight: .black))
-                .foregroundStyle(.white)
-                .lineLimit(2)
-                .minimumScaleFactor(0.65)
-            Spacer(minLength: 0)
+                Text(cards.last?.card.name ?? "Resolving")
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.65)
+                Spacer(minLength: 0)
+            }
         }
         .padding(8)
         .background(.black.opacity(0.56), in: RoundedRectangle(cornerRadius: 8))
@@ -2821,83 +2832,83 @@ struct XmageStackPeek: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 5) {
             Text("STACK")
                 .font(.system(size: 10, weight: .black))
                 .foregroundStyle(MagicPalette.antiqueGold)
-                .rotationEffect(.degrees(-90))
-                .frame(width: 24)
 
-            HStack(spacing: -12) {
-                ForEach(Array(objects.suffix(3).enumerated()), id: \.element.id) { index, object in
-                    if let card = object.sourceCard {
-                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, zoneName: "Stack", width: 38, height: 54)
-                            .zIndex(Double(index))
-                            .onTapGesture {
-                                selectedCard = card
-                                inspectedCard = nil
-                            }
-                            .onLongPressGesture(minimumDuration: 0.35) {
-                                inspectedCard = card
-                            }
+            HStack(spacing: 8) {
+                HStack(spacing: -12) {
+                    ForEach(Array(objects.suffix(3).enumerated()), id: \.element.id) { index, object in
+                        if let card = object.sourceCard {
+                            CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, zoneName: "Stack", width: 38, height: 54)
+                                .zIndex(Double(index))
+                                .onTapGesture {
+                                    selectedCard = card
+                                    inspectedCard = nil
+                                }
+                                .onLongPressGesture(minimumDuration: 0.35) {
+                                    inspectedCard = card
+                                }
+                        }
                     }
                 }
-            }
 
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 5) {
-                    Text("TOP \(objects.count)")
-                        .font(.system(size: 8, weight: .black))
-                        .foregroundStyle(MagicPalette.antiqueGold)
-                    Text(passAvailable ? "RESPOND/PASS" : "WAIT")
-                        .font(.system(size: 8, weight: .black))
-                        .foregroundStyle(passAvailable ? .green : .white.opacity(0.62))
-                }
-                Text(topObject?.displayName ?? "Resolving")
-                    .font(.system(size: 11, weight: .black))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.65)
-                if let source = topObject?.sourceCard?.card.name, source != topObject?.name {
-                    Text("Source: \(source)")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.70))
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 5) {
+                        Text("TOP \(objects.count)")
+                            .font(.system(size: 8, weight: .black))
+                            .foregroundStyle(MagicPalette.antiqueGold)
+                        Text(passAvailable ? "RESPOND/PASS" : "WAIT")
+                            .font(.system(size: 8, weight: .black))
+                            .foregroundStyle(passAvailable ? .green : .white.opacity(0.62))
+                    }
+                    Text(topObject?.displayName ?? "Resolving")
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundStyle(.white)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.62)
-                } else if let source = topObject?.sourceName, !source.isEmpty, source != topObject?.name {
-                    Text("Source: \(source)")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.70))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.62)
+                        .minimumScaleFactor(0.65)
+                    if let source = topObject?.sourceCard?.card.name, source != topObject?.name {
+                        Text("Source: \(source)")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.70))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.62)
+                    } else if let source = topObject?.sourceName, !source.isEmpty, source != topObject?.name {
+                        Text("Source: \(source)")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.70))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.62)
+                    }
+                    if let metadata = topObject?.displayMetadata {
+                        Text(metadata)
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.64))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.58)
+                    }
+                    if let text = topObject?.rulesText, !text.isEmpty {
+                        Text(text)
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.72))
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.62)
+                    }
+                    if let promptText, !promptText.isEmpty {
+                        Text("Prompt: \(promptText)")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(MagicPalette.antiqueGold.opacity(0.82))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.58)
+                    } else if let paid = topObject?.paid {
+                        Text(paid ? "Paid" : "Pending payment")
+                            .font(.system(size: 8, weight: .black))
+                            .foregroundStyle(paid ? MagicPalette.parchment.opacity(0.7) : MagicPalette.antiqueGold)
+                    }
                 }
-                if let metadata = topObject?.displayMetadata {
-                    Text(metadata)
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.64))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.58)
-                }
-                if let text = topObject?.rulesText, !text.isEmpty {
-                    Text(text)
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.72))
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.62)
-                }
-                if let promptText, !promptText.isEmpty {
-                    Text("Prompt: \(promptText)")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(MagicPalette.antiqueGold.opacity(0.82))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.58)
-                } else if let paid = topObject?.paid {
-                    Text(paid ? "Paid" : "Pending payment")
-                        .font(.system(size: 8, weight: .black))
-                        .foregroundStyle(paid ? MagicPalette.parchment.opacity(0.7) : MagicPalette.antiqueGold)
-                }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
         }
         .padding(8)
         .background(MagicPalette.iron.opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
@@ -5453,8 +5464,8 @@ struct CardTile: View {
                 .padding(.leading, 2)
                 .allowsHitTesting(false)
 
-            if card.power != nil || card.toughness != nil {
-                Text("\(card.power ?? 0)/\(card.toughness ?? 0)")
+            if card.showsPowerToughness, let power = card.power, let toughness = card.toughness {
+                Text("\(power)/\(toughness)")
                     .font(.system(size: 10, weight: .black))
                     .foregroundStyle(.black)
                     .padding(.horizontal, 5)
@@ -5804,7 +5815,7 @@ struct MagicPathPhaseRail: View {
                             runAction(skipAction)
                         }
                     } label: {
-                        Text("SKIP TILL\nMY TURN")
+                        Text(Self.skipButtonLabel(snapshot: snapshot, action: skipAction))
                             .font(.system(size: 8, weight: .black, design: .serif))
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
@@ -5833,6 +5844,11 @@ struct MagicPathPhaseRail: View {
                     .stroke(MagicPalette.antiqueGold.opacity(0.26), lineWidth: 1)
             }
         }
+    }
+
+    static func skipButtonLabel(snapshot: GameSnapshot, action: LegalAction?) -> String {
+        guard action != nil else { return "SKIP\nTURN" }
+        return snapshot.activePlayerId == "human" ? "SKIP\nTURN" : "SKIP TILL\nMY TURN"
     }
 }
 
@@ -5949,7 +5965,7 @@ struct CardInspector: View {
         if let damage = card.damage, damage > 0 {
             items.append(BadgeItem(text: "DAMAGE: \(damage)", color: Color(red: 0.7, green: 0.1, blue: 0.1)))
         }
-        if let power = card.power, let toughness = card.toughness {
+        if card.showsPowerToughness, let power = card.power, let toughness = card.toughness {
             items.append(BadgeItem(text: "P/T: \(power)/\(toughness)", color: MagicPalette.antiqueGold))
         }
         if let counters = card.counters {
