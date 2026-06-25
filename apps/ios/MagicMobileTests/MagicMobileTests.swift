@@ -69,6 +69,33 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertNil(CardImageURL.normal("Sol Ring", forcePlaceholder: true))
     }
 
+    func testWebSocketEndpointUsesExplicitGatewayOverride() throws {
+        let url = try XCTUnwrap(MagicMobileWebSocketEndpoint.url(
+            gameId: "game/with/slash",
+            httpBaseURL: try XCTUnwrap(URL(string: "http://127.0.0.1:3002")),
+            overrideBaseText: "http://127.0.0.1:17171"
+        ))
+
+        XCTAssertEqual(url.absoluteString, "ws://127.0.0.1:17171/ws/games/game%2Fwith%2Fslash")
+    }
+
+    func testWebSocketEndpointFallsBackToHTTPBaseWhenNoOverrideIsSet() throws {
+        let url = try XCTUnwrap(MagicMobileWebSocketEndpoint.url(
+            gameId: "game-1",
+            httpBaseURL: try XCTUnwrap(URL(string: "https://example.com/mobile")),
+            overrideBaseText: nil
+        ))
+
+        XCTAssertEqual(url.absoluteString, "wss://example.com/mobile/ws/games/game-1")
+    }
+
+    func testCompactPhaseTitlesFitLandscapeStatusRail() {
+        XCTAssertEqual("precombat-main".compactPhaseTitle, "Main 1")
+        XCTAssertEqual("postcombat-main".compactPhaseTitle, "Main 2")
+        XCTAssertEqual("declare-attackers".compactPhaseTitle, "Attackers")
+        XCTAssertEqual("combat-damage".compactPhaseTitle, "Damage")
+    }
+
     func testLegalActionPreservesCommandTemplateValues() throws {
         let data = """
         {

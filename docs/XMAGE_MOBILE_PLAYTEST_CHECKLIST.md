@@ -28,7 +28,7 @@ ENGINE_MODE=xmage XMAGE_GATEWAY_URL=http://localhost:17171 ENABLE_XMAGE_FIXTURES
 
 The web API layer exposed `/api/engine/*` for the iOS client and forwarded to the raw gateway at `http://localhost:17171`. The debug fixture button uses the dev-only `/dev/xmage-fixtures/commander` proxy on the local web API; this remains gated by `ENABLE_XMAGE_FIXTURES=true` and disabled in production.
 
-For simulator launches against a local web API, use `MAGICMOBILE_SERVER_URL=http://127.0.0.1:<web-port>` so the setup screen points at the local Next server without manual typing.
+For simulator launches against a local web API, use `MAGICMOBILE_SERVER_URL=http://127.0.0.1:<web-port>` so the setup screen points at the local Next server without manual typing. Also set `MAGICMOBILE_XMAGE_WS_URL=http://127.0.0.1:17171` so native live updates connect to the real XMage gateway WebSocket endpoint instead of trying to open `/ws/games/:gameId` on the Next dev server.
 
 For missing-art visual QA only, also launch a Debug simulator build with `MAGICMOBILE_FORCE_CARD_PLACEHOLDERS=true`. This does not alter XMage state or route proof; it only forces `CardImageURL.normal(...)` to return `nil` so the existing iOS placeholder renderer is exercised against a real fixture board. Release builds ignore this environment toggle.
 
@@ -114,7 +114,7 @@ Current pause blocker:
   ENGINE_MODE=xmage XMAGE_GATEWAY_URL=http://localhost:17171 ENABLE_XMAGE_FIXTURES=true NODE_ENV=development pnpm --filter @magicmobile/web exec next dev --hostname 0.0.0.0
   ```
 
-  Use `http://localhost:3000` or the printed fallback port in Simulator. On a physical iPhone, use `http://<Mac-LAN-IP>:<printed-port>` and keep the Mac and iPhone on the same local network. The raw gateway health URL stays `http://<Mac-LAN-IP>:17171/health`; the app URL should point at the web API port, not the raw gateway, for normal `/api/engine/*` play.
+  Use `http://localhost:3000` or the printed fallback port in Simulator. On a physical iPhone, use `http://<Mac-LAN-IP>:<printed-port>` and keep the Mac and iPhone on the same local network. The raw gateway health URL stays `http://<Mac-LAN-IP>:17171/health`; the app URL should point at the web API port, not the raw gateway, for normal `/api/engine/*` play. For Debug launches, set `MAGICMOBILE_XMAGE_WS_URL=http://<Mac-LAN-IP>:17171` so the native WebSocket badge can reach the gateway `/ws/games/:gameId` endpoint.
 
 - [ ] Run the gateway smoke script against the live stack:
 
@@ -282,6 +282,7 @@ Real iPhone QA is required before product release. Simulator screenshots, simula
 - [ ] Confirm fixture-ready gateway health from the Mac: `curl -fsS http://localhost:17171/health` returns `status: "ready"` with `XMage Java bridge connected to 127.0.0.1:17171.`
 - [ ] Start the local web API that the iOS client expects: `ENGINE_MODE=xmage XMAGE_GATEWAY_URL=http://localhost:17171 ENABLE_XMAGE_FIXTURES=true NODE_ENV=development pnpm --filter @magicmobile/web exec next dev --hostname 0.0.0.0`.
 - [ ] On the iPhone, set the server URL to `http://<Mac-LAN-IP>:<web-port>`, not `localhost` and not the raw `http://<Mac-LAN-IP>:17171` gateway.
+- [ ] Launch the Debug iPhone build with `MAGICMOBILE_XMAGE_WS_URL=http://<Mac-LAN-IP>:17171`, or add the equivalent value through Xcode scheme environment, so WebSocket status can reach the raw gateway while HTTP remains on the web API.
 - [ ] Install and launch the iPhone build, then confirm the setup health line reports the fixture-ready gateway.
 - [ ] Start a Commander game or the debug Commander fixture through the local web API. Do not use simulator-only gameplay proof.
 - [ ] Confirm the play screen shows `source: xmage-java-bridge`, numeric `bridgeRevision`, numeric `xmageCycle`, active/priority player, phase/step/turn, pending status, and WebSocket status.

@@ -265,7 +265,7 @@ None. This audit was limited to source/test inspection and documentation. The ap
 ### Blockers
 
 - The initial Pro Max and compact metric failures were resolved in the integrated tree.
-- A simulator screenshot was captured after integration at `build_output/screenshots/ios-17-pro-max-arena-pass-3.jpg`.
+- Simulator screenshots were captured after integration. The current readable reference is `build_output/screenshots/ios-17-pro-max-arena-pass-7-readable.jpg`, which uses a real XMage fixture snapshot, explicit native gateway WebSocket URL, `WS Live`, and the simplified compact phase strip.
 - No deterministic seeded XMage gameplay run was performed, so this document cannot certify gameplay/product release readiness.
 - Compact fallback is still implicit rather than represented by a first-class `isCompact` layout state.
 

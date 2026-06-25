@@ -572,16 +572,7 @@ struct ContentView: View {
     }
 
     private func webSocketURL(gameId: String, baseURL: URL) -> URL? {
-        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else { return nil }
-        components.scheme = components.scheme == "https" ? "wss" : "ws"
-        let basePath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        var allowedPathSegment = CharacterSet.urlPathAllowed
-        allowedPathSegment.remove(charactersIn: "/")
-        let encodedGameId = gameId.addingPercentEncoding(withAllowedCharacters: allowedPathSegment) ?? gameId
-        components.percentEncodedPath = "/" + ([basePath, "ws", "games", encodedGameId].filter { !$0.isEmpty }.joined(separator: "/"))
-        components.query = nil
-        components.fragment = nil
-        return components.url
+        MagicMobileWebSocketEndpoint.url(gameId: gameId, httpBaseURL: baseURL)
     }
 
     private func snapshotSignature(_ snapshot: GameSnapshot) -> String {
@@ -651,6 +642,41 @@ struct ContentView: View {
     private func loadSelectedAvatar() async {
         guard let selectedPhoto else { return }
         playerAvatarData = try? await selectedPhoto.loadTransferable(type: Data.self)
+    }
+}
+
+enum MagicMobileWebSocketEndpoint {
+    static func url(
+        gameId: String,
+        httpBaseURL: URL,
+        overrideBaseText: String? = ProcessInfo.processInfo.environment["MAGICMOBILE_XMAGE_WS_URL"]
+            ?? ProcessInfo.processInfo.environment["MAGICMOBILE_WEBSOCKET_URL"]
+    ) -> URL? {
+        let base = overrideBaseText
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty ? nil : URL(string: $0) }
+            ?? httpBaseURL
+
+        guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else { return nil }
+        switch components.scheme?.lowercased() {
+        case "https":
+            components.scheme = "wss"
+        case "http":
+            components.scheme = "ws"
+        case "wss", "ws":
+            break
+        default:
+            return nil
+        }
+
+        let basePath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        var allowedPathSegment = CharacterSet.urlPathAllowed
+        allowedPathSegment.remove(charactersIn: "/")
+        let encodedGameId = gameId.addingPercentEncoding(withAllowedCharacters: allowedPathSegment) ?? gameId
+        components.percentEncodedPath = "/" + ([basePath, "ws", "games", encodedGameId].filter { !$0.isEmpty }.joined(separator: "/"))
+        components.query = nil
+        components.fragment = nil
+        return components.url
     }
 }
 
@@ -2038,7 +2064,7 @@ struct TurnStatusBadge: View {
     }
 
     private var phaseText: String {
-        let phase = (snapshot.step ?? snapshot.phase).phaseTitle
+        let phase = (snapshot.step ?? snapshot.phase).compactPhaseTitle
         return phase
     }
 
@@ -2669,7 +2695,7 @@ struct UniversalPromptActionPanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 6) {
                 Image(systemName: "wand.and.stars")
                     .font(.system(size: 11, weight: .black))
@@ -2686,7 +2712,7 @@ struct UniversalPromptActionPanel: View {
             }
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 8) {
                     if let prompt = snapshot.promptEnvelopeV2 {
                         promptEnvelopeV2Section(prompt)
                     } else if let prompt = snapshot.promptEnvelope {
@@ -3874,8 +3900,8 @@ struct PanelActionButtonStyle: ButtonStyle {
         configuration.label
             .foregroundStyle(.white)
             .padding(.horizontal, 7)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+            .padding(.vertical, 5)
+            .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
             .background(backgroundColor(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 7))
             .overlay(RoundedRectangle(cornerRadius: 7).stroke(.white.opacity(isPrimary ? 0.18 : 0.10)))
             .opacity(configuration.isPressed ? 0.82 : 1)
@@ -4356,23 +4382,38 @@ struct CompactPhaseRail: View {
 
     var body: some View {
         let current = snapshot.step ?? snapshot.phase
-        let index = stageLabels.firstIndex(of: current) ?? 0
-        let previous = stageLabels[max(index - 1, 0)]
-        let next = stageLabels[min(index + 1, stageLabels.count - 1)]
+        let priority = snapshot.priorityPlayerId == "human" ? "YOU" : (snapshot.priorityPlayerId ?? "WAIT")
 
-        HStack(spacing: 4) {
+        HStack(spacing: 7) {
             Image(systemName: "hourglass")
                 .font(.system(size: 12, weight: .black))
                 .foregroundStyle(MagicPalette.warningAmber)
                 .frame(width: 16)
-            PhaseChip(label: "Prev", phase: previous, active: false)
-            PhaseChip(label: "Now", phase: current, active: true)
-            PhaseChip(label: "Next", phase: next, active: false)
-            Text(snapshot.priorityPlayerId == "human" ? "YOU" : "AI")
-                .font(.system(size: 9, weight: .black))
-                .foregroundStyle(.white.opacity(0.75))
+
+            Text("T\(snapshot.turn)")
+                .font(.system(size: 10, weight: .black))
+                .foregroundStyle(.white.opacity(0.78))
                 .lineLimit(1)
-                .frame(width: 24)
+
+            Divider()
+                .frame(height: 16)
+                .background(.white.opacity(0.18))
+
+            Text(current.compactPhaseTitle.uppercased())
+                .font(.system(size: 10, weight: .black))
+                .foregroundStyle(MagicPalette.antiqueGold)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+
+            Spacer(minLength: 0)
+
+            Text(priority.uppercased())
+                .font(.system(size: 9, weight: .black))
+                .foregroundStyle(priority == "YOU" ? .black : .white.opacity(0.75))
+                .lineLimit(1)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(priority == "YOU" ? MagicPalette.antiqueGold : MagicPalette.iron.opacity(0.50), in: Capsule())
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 5)
@@ -4391,7 +4432,7 @@ struct PhaseChip: View {
             Text(label.uppercased())
                 .font(.system(size: 6, weight: .black))
                 .foregroundStyle(active ? .black.opacity(0.7) : .white.opacity(0.55))
-            Text(phase.phaseTitle)
+            Text(phase.compactPhaseTitle)
                 .font(.system(size: 9, weight: .black))
                 .foregroundStyle(active ? .black : .white)
                 .lineLimit(1)
@@ -4988,6 +5029,33 @@ extension String {
         split(separator: "-")
             .map { $0.capitalized }
             .joined(separator: " ")
+    }
+
+    var compactPhaseTitle: String {
+        switch lowercased() {
+        case "beginning", "untap", "upkeep", "draw":
+            return capitalized
+        case "precombat-main":
+            return "Main 1"
+        case "postcombat-main":
+            return "Main 2"
+        case "combat", "begin-combat":
+            return "Combat"
+        case "declare-attackers":
+            return "Attackers"
+        case "declare-blockers":
+            return "Blockers"
+        case "first-strike-damage":
+            return "First Damage"
+        case "combat-damage":
+            return "Damage"
+        case "end-combat":
+            return "End Combat"
+        case "ending", "end", "cleanup":
+            return capitalized
+        default:
+            return phaseTitle
+        }
     }
 }
 

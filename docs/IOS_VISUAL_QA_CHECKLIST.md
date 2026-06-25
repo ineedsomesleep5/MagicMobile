@@ -2,13 +2,14 @@
 
 Use this checklist for the native iOS Commander gameplay surface. It separates simulator layout evidence from physical iPhone play QA so a clean screenshot pass does not get mistaken for product release readiness.
 
-## Current Evidence - June 24, 2026, after `03c51aa7`
+## Current Evidence - June 24, 2026, after `fed99977` plus local pass-7 polish
 
 - Target device for the milestone: iPhone 16 Pro Max landscape.
 - Simulator actually used: iPhone 17 Pro Max Simulator on iOS 26.5 because iPhone 16 Pro Max Simulator was unavailable.
-- Reviewed commit: `03c51aa7 Polish iOS arena battlefield visual hierarchy`.
+- Reviewed commit: `fed99977 Refine iOS arena layout QA and prompt polish`, with the follow-up local pass that adds explicit native WebSocket gateway configuration and a simpler readable phase strip.
 - Arena-style visual reference applied in the current native pass: the play surface now favors a broad tabletop center, centered player/opponent life anchors, a slimmer translucent right action dock, and edge/zone affordances instead of a dashboard-heavy board. This is inspired by observed MTG Arena layout patterns and official Arena mobile notes, but it does not copy Arena art, logos, or branded assets.
 - Local simulator API override: launch the app with `MAGICMOBILE_SERVER_URL=http://127.0.0.1:<web-port>` when using a local Next web API port such as `3001`.
+- Local simulator/gateway WebSocket override: launch with `MAGICMOBILE_XMAGE_WS_URL=http://127.0.0.1:17171` when HTTP uses the local Next web API. This keeps HTTP routed through the web API while native live updates connect to the real XMage gateway `/ws/games/:gameId` endpoint.
 - Debug simulator fixture shortcut: launch a Debug build with `MAGICMOBILE_AUTO_START_FIXTURE=true` to skip the setup form and request the dev-only real XMage commander fixture immediately. This is for screenshot/layout QA only and does not change release behavior.
 - Orientation note: older captures in this pass include portrait framebuffers containing the landscape UI rotated sideways. The latest `ios-17-pro-max-*` captures are readable 800x368 landscape files.
 - Simulator result: layout/build evidence only. It does not prove real iPhone install, local-network setup, touch ergonomics, WebSocket behavior, or sustained gameplay. Do not describe these screenshots as real iPhone manual QA or gameplay proof.
@@ -21,6 +22,7 @@ Keep current captures under `build_output/screenshots/` and treat them as local 
 
 - `build_output/screenshots/ios-17-pro-max-arena-pass-2.jpg`: after-`03c51aa7` iPhone 17 Pro Max simulator visual pass. Shows the arena-style battlefield, centered life/hand anchors, readable hand fan, opponent/player rows, visible mana rail, and right prompt dock with Done/Pass/Skip turn controls.
 - `build_output/screenshots/ios-17-pro-max-arena-pass-3.jpg`: latest parent-orchestrated simulator visual pass after the dock/metrics/prompt polish. Shows the right prompt dock anchored to the trailing safe area, larger hand cards, compact phase/log/settings strip, and real fixture-backed board data.
+- `build_output/screenshots/ios-17-pro-max-arena-pass-7-readable.jpg`: latest readable iPhone 17 Pro Max simulator visual pass after explicit gateway WebSocket configuration and compact phase strip polish. Shows `WS Live`, `source: xmage-java-bridge`, numeric `bridgeRevision`/`xmageCycle`, board-first layout, centered life anchors, hand fan, mana pool, and visible prompt/action dock.
 - `build_output/screenshots/ios-17-pro-max-arena-pass-1-board-upright.jpg`: prior readable arena-board proof from the same polish sequence, useful for comparing the right dock and board density before pass 2.
 - `build_output/screenshots/ios-17-pro-max-arena-pass-1-board.jpg`: prior pass-1 board proof.
 - `build_output/screenshots/ios-17-pro-max-arena-pass-1.jpg`: prior pass-1 full arena proof.
@@ -70,7 +72,7 @@ Next simulator run should recapture the same states after any layout edit and in
 
 - iPhone 16 Pro Max simulator was not installed for the current pass, so actual 16 Pro Max simulator safe-area behavior remains unverified.
 - Real iPhone safe-area, Dynamic Island, home indicator, touch target feel, and local-network latency remain unverified.
-- The latest `ios-17-pro-max-arena-pass-3.jpg` capture still shows connection/reconnection status text while the board is otherwise rendered; verify whether this is a transient WebSocket state, a stale status label, or a real connection issue before treating the state as clean.
+- The earlier `ios-17-pro-max-arena-pass-3.jpg` capture showed connection/reconnection status text because iOS was deriving `/ws/games/:gameId` from the local Next API port. Pass 7 uses `MAGICMOBILE_XMAGE_WS_URL=http://127.0.0.1:17171` and shows `WS Live`; keep this override in simulator/phone fixture QA unless the web API grows a real WebSocket proxy.
 - The latest pass-2 screenshot improves the arena hierarchy, but the right dock, status pill, phase/prompt controls, and phone cutout still need real-device checks for tap comfort and safe-area clearance.
 - Dense combat states still need physical-device checks for attacker/blocker assignment and damage allocation.
 - Commander tax and commander damage decode, but their visual prominence still needs real iPhone confirmation.
@@ -97,6 +99,7 @@ Manual phone pass requires:
 
 - iPhone and Mac on the same Wi-Fi.
 - App server URL set to `http://<Mac-LAN-IP>:<web-port>`, not `localhost` and not the raw `:17171` gateway.
+- Native WebSocket URL set to `http://<Mac-LAN-IP>:17171` through `MAGICMOBILE_XMAGE_WS_URL` for Debug launches until a phone-facing settings field or web WebSocket proxy exists.
 - Fixture-ready health visible from the app.
 - A Commander game or debug fixture started through the local web API.
 - Gauntlet-style actions played through the native UI: keep hand, play land, make mana, cast/pay, pass priority, respond to prompts, open stack, open command zone, inspect graveyard/exile, observe commander tax and commander damage, handle missing art, and wait through at least one AI action.
