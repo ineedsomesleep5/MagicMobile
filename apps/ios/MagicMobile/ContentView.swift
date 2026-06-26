@@ -42,6 +42,15 @@ enum PromptSelectionRules {
         return count >= minChoices && count <= maxChoices
     }
 
+    static func selectedPromptCardId(selectedCard: ZoneCard?, validCards: [ZoneCard]) -> String? {
+        guard let selectedCard else { return nil }
+        let validIds = Set(validCards.flatMap { [$0.id, $0.instanceId] })
+        guard validIds.contains(selectedCard.id) || validIds.contains(selectedCard.instanceId) else {
+            return nil
+        }
+        return selectedCard.instanceId
+    }
+
     static func boundsText(minChoices: Int?, maxChoices: Int?) -> String {
         guard let minChoices, let maxChoices else { return "min/max unavailable" }
         return "min \(minChoices) / max \(maxChoices)"
@@ -522,7 +531,6 @@ struct ContentView: View {
             let nextSnapshot = try await api.submit(action: action, gameId: currentSnapshot.id, expectedBridgeRevision: currentSnapshot.bridgeRevision)
             let submittedOutcome = CastSubmissionClassifier.classify(action: action, before: currentSnapshot, after: nextSnapshot)
             let shouldPollDelayedOutcome = CastSubmissionClassifier.shouldPollForDelayedOutcome(action: action, before: currentSnapshot, after: nextSnapshot)
-            let submittedSignature = snapshotSignature(nextSnapshot)
             applySnapshot(nextSnapshot)
             if shouldPollDelayedOutcome {
                 pendingActionId = action.id
@@ -534,11 +542,13 @@ struct ContentView: View {
                 status = submittedOutcome.statusMessage
             }
             if nextSnapshot.pendingStatus == "waiting_for_xmage" || shouldPollDelayedOutcome {
-                let updated = await pollSnapshotAfterCommand(api: api, gameId: currentSnapshot.id, previousSignature: shouldPollDelayedOutcome ? submittedSignature : previousSignature)
+                let updated = shouldPollDelayedOutcome
+                    ? await pollCastOutcomeAfterCommand(api: api, gameId: currentSnapshot.id, action: action, before: currentSnapshot)
+                    : await pollSnapshotAfterCommand(api: api, gameId: currentSnapshot.id, previousSignature: previousSignature)
                 if let latestSnapshot = snapshot {
                     let finalOutcome = CastSubmissionClassifier.classify(action: action, before: currentSnapshot, after: latestSnapshot)
                     status = finalOutcome.statusMessage
-                    if finalOutcome == .rejectedStillInHand {
+                    if finalOutcome == .rejectedStillInHand && updated {
                         errorMessage = finalOutcome.statusMessage
                     }
                 }
@@ -747,6 +757,22 @@ struct ContentView: View {
         } else {
             status = "XMage update delayed. Refresh or retry the action."
         }
+        return false
+    }
+
+    @discardableResult
+    private func pollCastOutcomeAfterCommand(api: MagicMobileAPI, gameId: String, action: LegalAction, before: GameSnapshot) async -> Bool {
+        for _ in 0..<18 {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard let refreshed = try? await api.snapshot(gameId: gameId) else { continue }
+            applySnapshot(refreshed)
+            if !CastSubmissionClassifier.shouldKeepPollingForCastOutcome(action: action, before: before, after: refreshed) {
+                status = CastSubmissionClassifier.classify(action: action, before: before, after: refreshed).statusMessage
+                return true
+            }
+            status = "Waiting for XMage cast result"
+        }
+        status = "XMage cast result delayed. Refresh or try again."
         return false
     }
 
@@ -3665,31 +3691,42 @@ struct UniversalPromptActionPanel: View {
 
     @ViewBuilder
     private func cardPicker(cards: [ZoneCard], prompt: PromptEnvelopeV2) -> some View {
+        let type = idCommandType(preferred: prompt.responseCommand?.type, fallback: isSearchPrompt(prompt) ? "search_select" : "choose_card")
+        let selectedPromptCardId = PromptSelectionRules.selectedPromptCardId(selectedCard: selectedCard, validCards: cards)
+        let hasValidSelection = selectedPromptCardId != nil && PromptSelectionRules.isValidSelectedCount(1, minChoices: prompt.minChoices ?? 1, maxChoices: prompt.maxChoices ?? 1)
         PromptMiniLabel("Cards")
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 7) {
-                ForEach(cards) { card in
-                    let type = idCommandType(preferred: prompt.responseCommand?.type, fallback: isSearchPrompt(prompt) ? "search_select" : "choose_card")
-                    VStack(spacing: 4) {
-                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: true, zoneName: "Prompt", width: 38, height: 53)
-                            .onTapGesture {
-                                selectedCard = card
-                                inspectedCard = nil
-                            }
-                            .onLongPressGesture(minimumDuration: 0.35) {
-                                inspectedCard = card
-                            }
-                        promptButton(
-                            label: "Choose",
-                            subtitle: card.card.name,
-                            systemImage: "checkmark.circle",
-                            pendingId: "\(prompt.id)-\(card.instanceId)",
-                            command: command(type: type, promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [card.instanceId])
-                        )
-                        .frame(width: 74)
+        VStack(alignment: .leading, spacing: 7) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    ForEach(cards) { card in
+                        VStack(spacing: 4) {
+                            CardTile(card: card, selected: selectedCard?.id == card.id || selectedCard?.instanceId == card.instanceId, legal: true, zoneName: "Prompt", width: 42, height: 59)
+                                .onTapGesture {
+                                    selectedCard = card
+                                    inspectedCard = nil
+                                }
+                                .onLongPressGesture(minimumDuration: 0.35) {
+                                    inspectedCard = card
+                                }
+                            Text(card.card.name)
+                                .font(.system(size: 8, weight: .black))
+                                .foregroundStyle(.white.opacity(0.74))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.6)
+                                .frame(width: 70)
+                        }
                     }
                 }
             }
+            promptButton(
+                label: "Done",
+                subtitle: selectedPromptCardId == nil ? "Select a card first" : selectedCard?.card.name,
+                systemImage: "checkmark.circle",
+                pendingId: "\(prompt.id)-choose-card",
+                command: hasValidSelection && selectedPromptCardId != nil
+                    ? command(type: type, promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [selectedPromptCardId!])
+                    : nil
+            )
         }
     }
 

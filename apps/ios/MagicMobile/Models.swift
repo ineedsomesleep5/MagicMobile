@@ -187,6 +187,10 @@ enum CastSubmissionClassifier {
     }
 
     static func shouldPollForDelayedOutcome(action: LegalAction, before: GameSnapshot, after: GameSnapshot) -> Bool {
+        shouldKeepPollingForCastOutcome(action: action, before: before, after: after)
+    }
+
+    static func shouldKeepPollingForCastOutcome(action: LegalAction, before: GameSnapshot, after: GameSnapshot) -> Bool {
         guard action.type == "cast_spell" else { return false }
         return classify(action: action, before: before, after: after) == .rejectedStillInHand
     }

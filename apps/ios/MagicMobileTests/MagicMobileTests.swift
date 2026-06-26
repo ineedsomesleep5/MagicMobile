@@ -71,6 +71,42 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(card.accessibilityIdentifier(zoneName: "Command Zone"), "card-command-zone-arcane-signet-abcdef12")
     }
 
+    func testPromptCardSelectionRequiresCardFromPromptChoices() {
+        let promptCard = ZoneCard(
+            instanceId: "discard-forest",
+            card: CardIdentity(name: "Forest", typeLine: "Basic Land — Forest", oracleText: nil),
+            tapped: nil,
+            summoningSickness: nil,
+            cardIcons: nil,
+            counters: nil,
+            power: nil,
+            toughness: nil,
+            isCreaturePermanent: nil,
+            damage: nil,
+            isAttacking: nil,
+            blocking: nil,
+            attachedToInstanceId: nil
+        )
+        let unrelatedCard = ZoneCard(
+            instanceId: "hand-mountain",
+            card: CardIdentity(name: "Mountain", typeLine: "Basic Land — Mountain", oracleText: nil),
+            tapped: nil,
+            summoningSickness: nil,
+            cardIcons: nil,
+            counters: nil,
+            power: nil,
+            toughness: nil,
+            isCreaturePermanent: nil,
+            damage: nil,
+            isAttacking: nil,
+            blocking: nil,
+            attachedToInstanceId: nil
+        )
+
+        XCTAssertEqual(PromptSelectionRules.selectedPromptCardId(selectedCard: promptCard, validCards: [promptCard]), "discard-forest")
+        XCTAssertNil(PromptSelectionRules.selectedPromptCardId(selectedCard: unrelatedCard, validCards: [promptCard]))
+    }
+
     func testZoneCardDecodesSummoningSicknessFromXMageSnapshot() throws {
         let data = """
         {
@@ -375,6 +411,32 @@ final class MagicMobileTests: XCTestCase {
         let after = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: afterData)
 
         XCTAssertTrue(CastSubmissionClassifier.shouldPollForDelayedOutcome(action: action, before: before, after: after))
+    }
+
+    func testCastSubmissionClassifierKeepsWaitingThroughIntermediateCastSnapshots() throws {
+        let before = try snapshotWithHumanHand(cardId: "arcane-signet-1", cardName: "Arcane Signet")
+        let action = try decodeAction(type: "cast_spell", extra: #""sourceInstanceId": "arcane-signet-1", "requiresPayment": true"#)
+        let intermediateData = String(data: try minimalSnapshotJSON(id: "arcane-intermediate"), encoding: .utf8)!
+            .replacingOccurrences(of: #""bridgeRevision": 1"#, with: #""bridgeRevision": 2"#)
+            .replacingOccurrences(of: #""hand": []"#, with: #""hand": [{ "instanceId": "arcane-signet-1", "card": { "name": "Arcane Signet", "typeLine": "Artifact", "oracleText": "" } }]"#)
+            .data(using: .utf8)!
+        let intermediate = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: intermediateData)
+
+        XCTAssertTrue(CastSubmissionClassifier.shouldKeepPollingForCastOutcome(action: action, before: before, after: intermediate))
+    }
+
+    func testCastSubmissionClassifierStopsWaitingWhenPaymentPromptArrives() throws {
+        let before = try snapshotWithHumanHand(cardId: "arcane-signet-1", cardName: "Arcane Signet")
+        let action = try decodeAction(type: "cast_spell", extra: #""sourceInstanceId": "arcane-signet-1", "requiresPayment": true"#)
+        let paymentData = String(data: try minimalSnapshotJSON(id: "arcane-payment"), encoding: .utf8)!
+            .replacingOccurrences(of: #""bridgeRevision": 1"#, with: #""bridgeRevision": 3"#)
+            .replacingOccurrences(of: #""hand": []"#, with: #""hand": [{ "instanceId": "arcane-signet-1", "card": { "name": "Arcane Signet", "typeLine": "Artifact", "oracleText": "" } }]"#)
+            .replacingOccurrences(of: #""legalActions": []"#, with: #""promptEnvelopeV2": { "id": "mana-arcane", "method": "GAME_PLAY_MANA", "messageId": 8, "playerId": "human", "responseKind": "mana", "message": "Pay {2}", "responseCommand": { "type": "play_mana", "promptId": "mana-arcane", "messageId": 8 } }, "legalActions": []"#)
+            .data(using: .utf8)!
+        let payment = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: paymentData)
+
+        XCTAssertFalse(CastSubmissionClassifier.shouldKeepPollingForCastOutcome(action: action, before: before, after: payment))
+        XCTAssertEqual(CastSubmissionClassifier.classify(action: action, before: before, after: payment), .payment)
     }
 
     func testStartupOpeningPromptDiagnosticsDecodeFromBridgeSnapshot() throws {
