@@ -303,6 +303,7 @@ struct GameLogEntry: Decodable, Identifiable {
 
 struct PlayerGameState: Decodable, Identifiable {
     let playerId: String
+    let displayName: String?
     let life: Int
     let poison: Int
     let commanderTax: Int

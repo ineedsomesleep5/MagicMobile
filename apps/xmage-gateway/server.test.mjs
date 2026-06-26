@@ -338,6 +338,8 @@ describe("xmage gateway", () => {
 
     assert.ok(bridgeSource.includes("humanDisplayName"));
     assert.match(bridgeSource, /session\.joinTable\(roomId, table\.getTableId\(\), humanDisplayName/);
+    assert.match(bridgeSource, /waitForStartedGame\(humanExternalId, aiExternalId, humanDisplayName, aiName/);
+    assert.match(bridgeSource, /out\.addProperty\("displayName", player\.getName\(\)\)/);
     assert.match(bridgeSource, /GAME_SELECT.*starting player.*return "player"/s);
   });
 
@@ -357,10 +359,29 @@ describe("xmage gateway", () => {
     assert.match(bridgeSource, /"GAME_TARGET"\.equals\(method\)/);
     assert.match(bridgeSource, /record\.latestView\.getTurn\(\) <= 1/);
     assert.match(labelMethod, /startingPlayerPrompt && isUuid\(choiceId\)/);
+    assert.match(labelMethod, /record\.humanName \+ " starts"/);
     assert.ok(
       labelMethod.indexOf("startingPlayerPrompt && isUuid(choiceId)") < labelMethod.indexOf("JsonObject promptChoice"),
       "starting-player labels must win over raw XMage choice labels"
     );
+  });
+
+  it("exposes XMage undo only through the real PlayerAction.UNDO path", () => {
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+
+    assert.match(bridgeSource, /private boolean canUndoMana\(GameView view, Map<UUID, String> playerIds, String humanId\)/);
+    assert.match(bridgeSource, /player\.getStatesSavedSize\(\) > 0/);
+    assert.match(bridgeSource, /view\.getStack\(\) == null \|\| !view\.getStack\(\)\.isEmpty\(\)/);
+    assert.match(bridgeSource, /action\("xmage-undo-mana", "undo_mana"/);
+    assert.match(bridgeSource, /"undo_mana"\.equals\(type\)[\s\S]*?PlayerAction\.UNDO/);
+  });
+
+  it("waits for XMage payment prompts after cast_spell instead of short-timeout rejection", () => {
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+    const directMethod = bridgeSource.match(/private boolean isDirectCommand[\s\S]*?private JsonObject snapshot/)?.[0] ?? "";
+
+    assert.doesNotMatch(directMethod, /"cast_spell"\.equals\(type\)/);
+    assert.match(bridgeSource, /long waitMs = isDirectCommand\(commandType\) \? 1500 : 6000/);
   });
 
   it("proxies Commander fixture creation to the bridge fixture endpoint with schema payload", async () => {

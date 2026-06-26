@@ -293,7 +293,7 @@ public final class MagicMobileBridge implements MageClient {
         }
 
         String humanCommanderName = string(object(object(config, "humanDeck"), "commander"), "cardName", "");
-        GameRecord record = waitForStartedGame(humanExternalId, aiExternalId, aiName, humanCommanderName);
+        GameRecord record = waitForStartedGame(humanExternalId, aiExternalId, humanDisplayName, aiName, humanCommanderName);
         games.put(record.gameId.toString(), record);
         return snapshot(record.gameId.toString());
     }
@@ -362,7 +362,7 @@ public final class MagicMobileBridge implements MageClient {
         throw new NoSuchFieldException(name);
     }
 
-    private GameRecord waitForStartedGame(String humanExternalId, String aiExternalId, String aiName, String humanCommanderName) throws InterruptedException {
+    private GameRecord waitForStartedGame(String humanExternalId, String aiExternalId, String humanName, String aiName, String humanCommanderName) throws InterruptedException {
         long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(35);
         GameRecord lastRecord = null;
         while (System.currentTimeMillis() < deadline) {
@@ -370,7 +370,7 @@ public final class MagicMobileBridge implements MageClient {
             if (gameId != null) {
                 GameRecord existing = games.get(gameId.toString());
                 if (existing == null) {
-                    existing = new GameRecord(gameId, humanExternalId, aiExternalId, aiName);
+                    existing = new GameRecord(gameId, humanExternalId, aiExternalId, humanName, aiName);
                     existing.humanXmagePlayerId = lastStartedHumanPlayerId;
                     games.put(gameId.toString(), existing);
                 }
@@ -420,6 +420,8 @@ public final class MagicMobileBridge implements MageClient {
         } else if ("make_mana".equals(type)) {
             // Basic mana activation follows card-click behavior and submits the source card UUID.
             session.sendPlayerUUID(xmageGameId, playableSourceUuid(gameId, command));
+        } else if ("undo_mana".equals(type) || "cancel_payment".equals(type) || "cancel_mana_payment".equals(type)) {
+            session.sendPlayerAction(PlayerAction.UNDO, xmageGameId, null);
         } else if ("pass_priority".equals(type)) {
             session.sendPlayerBoolean(xmageGameId, false);
         } else if ("keep_hand".equals(type)) {
@@ -1145,8 +1147,10 @@ public final class MagicMobileBridge implements MageClient {
         return "keep_hand".equals(type)
                 || "mulligan".equals(type)
                 || "play_land".equals(type)
-                || "cast_spell".equals(type)
                 || "make_mana".equals(type)
+                || "undo_mana".equals(type)
+                || "cancel_payment".equals(type)
+                || "cancel_mana_payment".equals(type)
                 || "play_mana".equals(type)
                 || "activate_ability".equals(type)
                 || "choose_target".equals(type)
@@ -1225,6 +1229,9 @@ public final class MagicMobileBridge implements MageClient {
     private JsonArray legalActions(GameRecord record, GameView view, Map<UUID, String> playerIds) {
         JsonArray actions = new JsonArray();
         String humanId = record.humanExternalId;
+        if (canUndoMana(view, playerIds, humanId)) {
+            actions.add(action("xmage-undo-mana", "undo_mana", humanId, "Undo mana", null, null, null));
+        }
 
         if (isGameOverPrompt(record)) {
             actions.add(action("xmage-concede", "concede", humanId, "Concede", null, null, null));
@@ -1576,6 +1583,18 @@ public final class MagicMobileBridge implements MageClient {
                 || "play_x_mana".equals(responseType)
                 || "GAME_PLAY_MANA".equals(method)
                 || "GAME_PLAY_XMANA".equals(method);
+    }
+
+    private boolean canUndoMana(GameView view, Map<UUID, String> playerIds, String humanId) {
+        if (view == null || view.getStack() == null || !view.getStack().isEmpty()) {
+            return false;
+        }
+        for (PlayerView player : view.getPlayers()) {
+            if (humanId.equals(playerIds.get(player.getPlayerId()))) {
+                return player.getStatesSavedSize() > 0;
+            }
+        }
+        return false;
     }
 
     private boolean hasManaPlayable(CardView card, PlayableObjectStats stats) {
@@ -2160,7 +2179,7 @@ public final class MagicMobileBridge implements MageClient {
             UUID id = UUID.fromString(choiceId);
             String externalId = playerIds.get(id);
             if (record.humanExternalId.equals(externalId)) {
-                return "You start";
+                return record.humanName + " starts";
             }
             if (record.aiExternalId.equals(externalId)) {
                 return record.aiName + " starts";
@@ -2183,7 +2202,7 @@ public final class MagicMobileBridge implements MageClient {
             }
             String externalId = playerIds.get(id);
             if (record.humanExternalId.equals(externalId)) {
-                return startingPlayerPrompt ? "You start" : "Choose you";
+                return startingPlayerPrompt ? record.humanName + " starts" : "Choose " + record.humanName;
             }
             if (record.aiExternalId.equals(externalId)) {
                 return startingPlayerPrompt ? record.aiName + " starts" : "Choose " + record.aiName;
@@ -2494,6 +2513,7 @@ public final class MagicMobileBridge implements MageClient {
             JsonObject out = new JsonObject();
             String externalId = playerIds.get(player.getPlayerId());
             out.addProperty("playerId", externalId);
+            out.addProperty("displayName", player.getName());
             out.addProperty("life", player.getLife());
             out.addProperty("poison", counterValue(player, "poison"));
             out.addProperty("commanderTax", playerCommanderTax(player, view));
@@ -4444,7 +4464,7 @@ public final class MagicMobileBridge implements MageClient {
         if (gameId == null || view == null) {
             return;
         }
-        GameRecord record = games.computeIfAbsent(gameId.toString(), id -> new GameRecord(gameId, "human", "ai-1", "XMage AI"));
+        GameRecord record = games.computeIfAbsent(gameId.toString(), id -> new GameRecord(gameId, "human", "ai-1", "TabletopPolish", "XMage AI"));
         record.latestView = view;
         record.latestCycle = view.getGameCycle();
         record.bridgeRevision.incrementAndGet();
@@ -4704,6 +4724,7 @@ public final class MagicMobileBridge implements MageClient {
         final UUID gameId;
         final String humanExternalId;
         final String aiExternalId;
+        final String humanName;
         final String aiName;
         final AtomicLong bridgeRevision = new AtomicLong();
         volatile UUID humanXmagePlayerId;
@@ -4715,10 +4736,11 @@ public final class MagicMobileBridge implements MageClient {
         volatile JsonObject promptEnvelope;
         final JsonArray startupOpeningPrompts = new JsonArray();
 
-        GameRecord(UUID gameId, String humanExternalId, String aiExternalId, String aiName) {
+        GameRecord(UUID gameId, String humanExternalId, String aiExternalId, String humanName, String aiName) {
             this.gameId = gameId;
             this.humanExternalId = humanExternalId;
             this.aiExternalId = aiExternalId;
+            this.humanName = humanName;
             this.aiName = aiName;
         }
     }

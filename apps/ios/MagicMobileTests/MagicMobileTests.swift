@@ -268,6 +268,7 @@ final class MagicMobileTests: XCTestCase {
     func testCommanderHudSummaryUsesLiveSnapshotCounts() {
         let player = PlayerGameState(
             playerId: "human",
+            displayName: nil,
             life: 37,
             poison: 0,
             commanderTax: 2,
@@ -1111,8 +1112,8 @@ final class MagicMobileTests: XCTestCase {
           "players": [],
           "log": [],
           "legalActions": [
-            { "id": "human-starts", "type": "choose_player", "playerId": "human", "label": "You start", "shortLabel": "You start", "promptId": "xmage-start-player" },
-            { "id": "ai-starts", "type": "choose_player", "playerId": "human", "label": "AI starts", "shortLabel": "AI starts", "promptId": "xmage-start-player" },
+            { "id": "human-starts", "type": "choose_player", "playerId": "human", "label": "Caleb starts", "shortLabel": "Caleb starts", "promptId": "xmage-start-player" },
+            { "id": "ai-starts", "type": "choose_player", "playerId": "human", "label": "Noaddrag starts", "shortLabel": "Noaddrag starts", "promptId": "xmage-start-player" },
             { "id": "concede", "type": "concede", "playerId": "human", "label": "Concede" }
           ],
           "promptEnvelopeV2": {
@@ -1133,7 +1134,46 @@ final class MagicMobileTests: XCTestCase {
 
         let actions = CompactPromptPopup.compactLegalPromptActions(in: snapshot)
 
-        XCTAssertEqual(actions.map(\.label), ["You start", "AI starts"])
+        XCTAssertEqual(actions.map(\.label), ["Caleb starts", "Noaddrag starts"])
+        XCTAssertTrue(CompactPromptPopup.shouldPreferCompactActionsBeforeRawChoices(for: snapshot))
+    }
+
+    func testPlayerSnapshotDecodesDisplayNameForHud() throws {
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
+        {
+          "id": "game-names",
+          "source": "xmage-java-bridge",
+          "activePlayerId": "human",
+          "phase": "beginning",
+          "turn": 1,
+          "players": [
+            {
+              "playerId": "human",
+              "displayName": "Caleb",
+              "life": 40,
+              "poison": 0,
+              "commanderTax": 0,
+              "manaPool": { "W": 0, "U": 0, "B": 0, "R": 0, "G": 0, "C": 0 },
+              "zones": { "library": [], "hand": [], "battlefield": [], "graveyard": [], "exile": [], "command": [], "stack": [] },
+              "commanderDamage": {}
+            },
+            {
+              "playerId": "ai-1",
+              "displayName": "Noaddrag",
+              "life": 40,
+              "poison": 0,
+              "commanderTax": 0,
+              "manaPool": { "W": 0, "U": 0, "B": 0, "R": 0, "G": 0, "C": 0 },
+              "zones": { "library": [], "hand": [], "battlefield": [], "graveyard": [], "exile": [], "command": [], "stack": [] },
+              "commanderDamage": {}
+            }
+          ],
+          "log": []
+        }
+        """#.data(using: .utf8)!)
+
+        XCTAssertEqual(snapshot.human?.displayName, "Caleb")
+        XCTAssertEqual(snapshot.opponent?.displayName, "Noaddrag")
     }
 
     func testCompactPromptPopupSendsComplexPromptsToDetailSheet() throws {

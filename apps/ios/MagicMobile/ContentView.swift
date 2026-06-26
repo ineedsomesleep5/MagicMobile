@@ -100,6 +100,7 @@ struct ContentView: View {
                     startupStatus: startupStatus,
                     selectedCard: $selectedCard,
                     inspectedCard: $inspectedCard,
+                    playerDisplayName: playerDisplayName,
                     avatarData: playerAvatarData,
                     pendingActionId: pendingActionId,
                     pendingCardInstanceId: pendingCardInstanceId,
@@ -1254,6 +1255,7 @@ struct ImmersivePlayShell: View {
     let startupStatus: CommanderStartupResponse?
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
+    let playerDisplayName: String
     let avatarData: Data?
     let pendingActionId: String?
     let pendingCardInstanceId: String?
@@ -1273,6 +1275,7 @@ struct ImmersivePlayShell: View {
             startupStatus: startupStatus,
             selectedCard: $selectedCard,
             inspectedCard: $inspectedCard,
+            playerDisplayName: playerDisplayName,
             avatarData: avatarData,
             pendingActionId: pendingActionId,
             pendingCardInstanceId: pendingCardInstanceId,
@@ -1294,6 +1297,7 @@ struct NativeGameView: View {
     let startupStatus: CommanderStartupResponse?
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
+    let playerDisplayName: String
     let avatarData: Data?
     let pendingActionId: String?
     let pendingCardInstanceId: String?
@@ -1325,6 +1329,8 @@ struct NativeGameView: View {
     @ViewBuilder
     var body: some View {
         if let snapshot, let human = snapshot.human, let opponent = snapshot.opponent {
+            let humanName = human.displayName ?? MagicMobileAPI.cleanPlayerName(playerDisplayName) ?? "You"
+            let opponentName = opponent.displayName ?? "Ashen Sage"
             ZStack {
                 BattlefieldSurface()
                     .ignoresSafeArea()
@@ -1332,7 +1338,7 @@ struct NativeGameView: View {
                 HStack(spacing: 0) {
                     // LEFT COLUMN
                     VStack(alignment: .leading, spacing: 0) {
-                        OpponentVerticalHUD(name: "Ashen Sage", player: opponent, active: snapshot.activePlayerId == opponent.playerId, opponentId: human.playerId)
+                        OpponentVerticalHUD(name: opponentName, player: opponent, active: snapshot.activePlayerId == opponent.playerId, opponentId: human.playerId)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, 12)
 
@@ -1344,7 +1350,7 @@ struct NativeGameView: View {
 
                         HStack(alignment: .bottom, spacing: 4) {
                             ManaPoolHUD(manaPool: human.manaPool, vertical: true)
-                            PlayerVerticalHUD(name: "TabletopPolish", player: human, active: snapshot.activePlayerId == human.playerId, opponentId: opponent.playerId, viewZone: { localViewZone(title: $0, cards: $1) })
+                            PlayerVerticalHUD(name: humanName, player: human, active: snapshot.activePlayerId == human.playerId, opponentId: opponent.playerId, viewZone: { localViewZone(title: $0, cards: $1) })
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.bottom, 12)
@@ -4989,6 +4995,8 @@ struct CompactPromptPopup: View {
                 compactCommandButton(confirmation.yesLabel ?? "Yes", systemImage: "checkmark.circle", pendingId: "\(prompt.id)-yes", command: explicitConfirmationCommand(confirmation.yesCommand, prompt: prompt))
                 compactCommandButton(confirmation.noLabel ?? "No", systemImage: "xmark.circle", pendingId: "\(prompt.id)-no", command: explicitConfirmationCommand(confirmation.noCommand, prompt: prompt))
             }
+        } else if Self.shouldPreferCompactActionsBeforeRawChoices(for: snapshot) {
+            compactActionButtons(compactPromptActions)
         } else if let choices = prompt.choices, !choices.isEmpty, choices.count <= 3 {
             HStack(spacing: 7) {
                 ForEach(choices) { choice in
@@ -5030,6 +5038,26 @@ struct CompactPromptPopup: View {
                 detailButton()
             }
         }
+    }
+
+    static func shouldPreferCompactActionsBeforeRawChoices(for snapshot: GameSnapshot) -> Bool {
+        let actions = compactLegalPromptActions(in: snapshot)
+        guard actions.contains(where: { $0.type == "choose_player" }) else {
+            return false
+        }
+        let responseType = snapshot.promptEnvelopeV2?.responseCommand?.type?.lowercased()
+        let responseKind = snapshot.promptEnvelopeV2?.responseKind.lowercased()
+            ?? snapshot.promptEnvelope?.responseKind.lowercased()
+        let message = (
+            snapshot.promptEnvelopeV2?.message
+                ?? snapshot.promptEnvelope?.message
+                ?? snapshot.choicePrompt?.message
+                ?? snapshot.promptText
+                ?? ""
+        ).lowercased()
+        return responseType == "choose_player" ||
+            responseKind == "player" ||
+            message.contains("starting player")
     }
 
     @ViewBuilder
