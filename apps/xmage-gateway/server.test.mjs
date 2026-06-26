@@ -341,6 +341,28 @@ describe("xmage gateway", () => {
     assert.match(bridgeSource, /GAME_SELECT.*starting player.*return "player"/s);
   });
 
+  it("starts embedded Commander games with the human as XMage starting-player chooser", () => {
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+
+    assert.match(bridgeSource, /startMatchWithHumanChooser/);
+    assert.match(bridgeSource, /startGame\.invoke\(controller, humanPlayerId\)/);
+    assert.doesNotMatch(bridgeSource, /startMatchWithHumanChooser[\s\S]*?setStartingPlayerId/);
+  });
+
+  it("labels XMage turn-one player target as starting-player choice", () => {
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+    const labelMethod = bridgeSource.match(/private String labelForChoice[\s\S]*?private boolean isStartingPlayerPrompt/)?.[0] ?? "";
+
+    assert.match(bridgeSource, /isStartingPlayerPrompt/);
+    assert.match(bridgeSource, /"GAME_TARGET"\.equals\(method\)/);
+    assert.match(bridgeSource, /record\.latestView\.getTurn\(\) <= 1/);
+    assert.match(labelMethod, /startingPlayerPrompt && isUuid\(choiceId\)/);
+    assert.ok(
+      labelMethod.indexOf("startingPlayerPrompt && isUuid(choiceId)") < labelMethod.indexOf("JsonObject promptChoice"),
+      "starting-player labels must win over raw XMage choice labels"
+    );
+  });
+
   it("proxies Commander fixture creation to the bridge fixture endpoint with schema payload", async () => {
     const requests = [];
     const client = createHttpBridgeClient("http://bridge.test/", async (url, init) => {

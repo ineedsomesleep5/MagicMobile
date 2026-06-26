@@ -284,7 +284,11 @@ public final class MagicMobileBridge implements MageClient {
         if (!humanJoined || !aiJoined) {
             throw new IllegalStateException("XMage rejected one of the Commander decks");
         }
-        if (!session.startMatch(roomId, table.getTableId())) {
+        if (fixtureManagerProvider != null) {
+            if (!startMatchWithHumanChooser(table.getTableId())) {
+                throw new IllegalStateException("XMage embedded server did not start the Commander match with the human as starting-player chooser");
+            }
+        } else if (!session.startMatch(roomId, table.getTableId())) {
             throw new IllegalStateException("XMage did not start the Commander match");
         }
 
@@ -292,6 +296,70 @@ public final class MagicMobileBridge implements MageClient {
         GameRecord record = waitForStartedGame(humanExternalId, aiExternalId, aiName, humanCommanderName);
         games.put(record.gameId.toString(), record);
         return snapshot(record.gameId.toString());
+    }
+
+    private boolean startMatchWithHumanChooser(UUID tableId) throws Exception {
+        ManagerFactory managerFactory = fixtureManagerProvider.get();
+        Object tableManager = managerFactory.tableManager();
+        Object controller = tableController(tableManager, tableId);
+        UUID humanPlayerId = humanPlayerIdFromTableController(controller);
+        if (controller == null || humanPlayerId == null) {
+            return false;
+        }
+
+        Object match = fieldValue(controller, "match");
+        Method startMatch = match.getClass().getMethod("startMatch");
+        startMatch.invoke(match);
+
+        Method startGame = controller.getClass().getDeclaredMethod("startGame", UUID.class);
+        startGame.setAccessible(true);
+        startGame.invoke(controller, humanPlayerId);
+        return true;
+    }
+
+    private Object tableController(Object tableManager, UUID tableId) throws Exception {
+        if (tableManager == null || tableId == null) {
+            return null;
+        }
+        Object controllers = fieldValue(tableManager, "controllers");
+        if (!(controllers instanceof Map<?, ?>)) {
+            return null;
+        }
+        return ((Map<?, ?>) controllers).get(tableId);
+    }
+
+    private UUID humanPlayerIdFromTableController(Object controller) throws Exception {
+        if (controller == null) {
+            return null;
+        }
+        Object userPlayerMap = fieldValue(controller, "userPlayerMap");
+        if (!(userPlayerMap instanceof Map<?, ?>)) {
+            return null;
+        }
+        for (Object value : ((Map<?, ?>) userPlayerMap).values()) {
+            if (value instanceof UUID) {
+                return (UUID) value;
+            }
+        }
+        return null;
+    }
+
+    private Object fieldValue(Object instance, String name) throws Exception {
+        Field field = findField(instance.getClass(), name);
+        field.setAccessible(true);
+        return field.get(instance);
+    }
+
+    private Field findField(Class<?> type, String name) throws NoSuchFieldException {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                return current.getDeclaredField(name);
+            } catch (NoSuchFieldException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        throw new NoSuchFieldException(name);
     }
 
     private GameRecord waitForStartedGame(String humanExternalId, String aiExternalId, String aiName, String humanCommanderName) throws InterruptedException {
@@ -2087,6 +2155,17 @@ public final class MagicMobileBridge implements MageClient {
     }
 
     private String labelForChoice(GameRecord record, Map<UUID, String> playerIds, String choiceId) {
+        boolean startingPlayerPrompt = isStartingPlayerPrompt(record);
+        if (startingPlayerPrompt && isUuid(choiceId)) {
+            UUID id = UUID.fromString(choiceId);
+            String externalId = playerIds.get(id);
+            if (record.humanExternalId.equals(externalId)) {
+                return "You start";
+            }
+            if (record.aiExternalId.equals(externalId)) {
+                return record.aiName + " starts";
+            }
+        }
         JsonObject promptChoice = promptChoiceById(record, choiceId);
         if (promptChoice != null) {
             String label = string(promptChoice, "label", "");
@@ -2103,7 +2182,6 @@ public final class MagicMobileBridge implements MageClient {
                 return (bottomPrompt ? "Bottom " : "Choose ") + card.getName();
             }
             String externalId = playerIds.get(id);
-            boolean startingPlayerPrompt = record.promptText != null && record.promptText.toLowerCase().contains("starting player");
             if (record.humanExternalId.equals(externalId)) {
                 return startingPlayerPrompt ? "You start" : "Choose you";
             }
@@ -2112,6 +2190,23 @@ public final class MagicMobileBridge implements MageClient {
             }
         }
         return "Choose " + choiceId;
+    }
+
+    private boolean isStartingPlayerPrompt(GameRecord record) {
+        if (record == null || record.promptEnvelope == null) {
+            return false;
+        }
+        String promptText = record.promptText == null ? "" : record.promptText.toLowerCase();
+        String promptMessage = string(record.promptEnvelope, "message", "").toLowerCase();
+        if (promptText.contains("starting player") || promptMessage.contains("starting player")) {
+            return true;
+        }
+        String method = string(record.promptEnvelope, "method", "");
+        String responseKind = string(record.promptEnvelope, "responseKind", "");
+        return "GAME_TARGET".equals(method)
+                && "player".equals(responseKind)
+                && record.latestView != null
+                && record.latestView.getTurn() <= 1;
     }
 
     private JsonObject promptChoiceById(GameRecord record, String choiceId) {
