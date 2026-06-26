@@ -3687,6 +3687,16 @@ public final class MagicMobileBridge implements MageClient {
             schema.addProperty("turn", 1);
             return;
         }
+        if ("drag-cast-phone-regression".equals(fixtureName)) {
+            if (!schema.has("commander")) {
+                schema.addProperty("commander", "Krenko, Mob Boss");
+            }
+            defaultCards(schema, "humanHand", "Circle of Flame");
+            defaultBattlefield(schema, "humanBattlefield", "Mountain", "Mountain");
+            defaultCards(schema, "humanLibraryTop", "Mountain");
+            schema.addProperty("turn", 1);
+            return;
+        }
         if ("drag-cast-regression".equals(fixtureName)) {
             defaultCards(schema, "humanHand", "Plains", "Sol Ring", "Primal Might", "Frontier Siege", "Vandalblast");
             defaultBattlefield(schema, "humanBattlefield", "Plains", "Plains", "Mountain", "Forest");

@@ -38,8 +38,9 @@ const scenarioModule = scenarioModuleFor(requestedScenario);
 const scenario = scenarioModule.id;
 const manaRockScenario = scenario === "mana-rock";
 const dragCastRegressionScenario = scenario === "drag-cast-regression";
-const manaRockLikeScenario = manaRockScenario || dragCastRegressionScenario;
-const manaRockCardName = process.env.XMAGE_SMOKE_MANA_ROCK_CARD ?? "Sol Ring";
+const dragCastPhoneRegressionScenario = scenario === "drag-cast-phone-regression";
+const manaRockLikeScenario = manaRockScenario || dragCastRegressionScenario || dragCastPhoneRegressionScenario;
+const manaRockCardName = process.env.XMAGE_SMOKE_MANA_ROCK_CARD ?? (dragCastPhoneRegressionScenario ? "Circle of Flame" : "Sol Ring");
 const alphaGameScenario = scenario === "core-flow";
 const commanderGauntletScenario = scenario === "commander-gauntlet";
 const blockerFlowScenario = scenario === "blocker-flow";
@@ -146,6 +147,8 @@ const human = fixtureScenario
     ? activatedAbilityFixtureDeck()
     : triggeredAbilityScenario
     ? triggeredAbilityFixtureDeck()
+    : dragCastPhoneRegressionScenario
+    ? phoneDragCastFixtureDeck()
     : manaRockLikeScenario
     ? manaRockFixtureDeck()
     : promptModeScenario
@@ -475,7 +478,7 @@ if (scenario === "commander-replacement-tax" || scenario === "commander-damage")
   }
 }
 
-if (scenario === "mana-rock" || scenario === "drag-cast-regression") {
+if (scenario === "mana-rock" || scenario === "drag-cast-regression" || scenario === "drag-cast-phone-regression") {
   if (dragCastRegressionScenario && !dragCastLandSeen) {
     throw new Error(
       "[Smoke] drag-cast-regression did not submit a play_land action through the drag-equivalent legal action path.\n"
@@ -490,11 +493,26 @@ if (scenario === "mana-rock" || scenario === "drag-cast-regression") {
   }
   if (!manaRockPaymentSourceSeen) {
     throw new Error(
-      "[Smoke] mana-rock scenario did not expose source make_mana actions during payment.\n"
+      `[Smoke] ${scenario} scenario did not expose source make_mana actions during payment.\n`
         + smokeDebug("mana-rock payment final snapshot", snapshot)
     );
   }
-  if (!manaRockResolvedSeen) {
+  if (dragCastPhoneRegressionScenario && !stackSeen) {
+    throw new Error(
+      "[Smoke] drag-cast-phone-regression did not observe a real stack object after the drag-equivalent cast.\n"
+        + smokeDebug("drag-cast-phone stack final snapshot", snapshot)
+    );
+  }
+  if (dragCastPhoneRegressionScenario) {
+    const phoneSteps = completedScenarioSteps();
+    if (!phoneSteps.includes("drag-cast-phone-regression")) {
+      throw new Error(
+        "[Smoke] drag-cast-phone-regression did not complete cast + stack + source mana proof.\n"
+          + smokeDebug("drag-cast-phone final snapshot", snapshot)
+      );
+    }
+  }
+  if (!manaRockResolvedSeen && !dragCastPhoneRegressionScenario) {
     throw new Error(
       `[Smoke] mana-rock scenario did not observe ${manaRockCardName} leaving hand and resolving to the battlefield.\n`
         + smokeDebug("mana-rock resolution final snapshot", snapshot)
@@ -1181,6 +1199,8 @@ function fixtureSeedSchema() {
     ? [basic]
     : dragCastRegressionScenario
     ? ["Plains", manaRockCardName]
+    : dragCastPhoneRegressionScenario
+    ? [manaRockCardName]
     : manaRockScenario
     ? [manaRockCardName]
     : commanderGauntletScenario
@@ -1215,6 +1235,8 @@ function fixtureSeedSchema() {
     ? ["Defensive Formation", "Silvercoat Lion", "Savannah Lions", "Plains"]
     : blockerFlowScenario
     ? ["Silvercoat Lion", basic]
+    : dragCastPhoneRegressionScenario
+    ? ["Mountain", "Mountain"]
     : manaRockLikeScenario
     ? [basic, basic]
     : activatedAbilityScenario
@@ -1312,6 +1334,7 @@ function completedScenarioSteps() {
   if (stackSeen) steps.add("stack-seen");
   if (combatExercised) steps.add("combat-exercised");
   if (manaRockCastSeen && manaRockPaymentSourceSeen && manaRockResolvedSeen) steps.add("mana-rock");
+  if (dragCastPhoneRegressionScenario && manaRockCastSeen && manaRockPaymentSourceSeen && stackSeen) steps.add("drag-cast-phone-regression");
   if (dragCastLandSeen && manaRockCastSeen && manaRockPaymentSourceSeen && manaRockResolvedSeen) steps.add("drag-cast-regression");
   if (gauntlet.searchResolved || actionsByType.search_select) steps.add("search-select");
   if (gauntlet.commanderReplacementAnswered || commanderTaxChanges.length > 0) steps.add("commander-replacement-tax");
@@ -1359,6 +1382,7 @@ function routeFamiliesRequiredForScenario(input: string) {
   if (input === "choose-mana" || input === "mana-color-choice") return ["choose_mana"];
   if (input === "ai-turn-progress") return ["pass_priority"];
   if (input === "drag-cast-regression") return ["play_land", "cast_spell", "make_mana"];
+  if (input === "drag-cast-phone-regression") return ["cast_spell", "make_mana", "stack_object_seen"];
   return [];
 }
 
@@ -1484,6 +1508,21 @@ function scenarioModuleFor(input: string): ScenarioModule {
           "route-family:cast_spell",
           "route-family:make_mana",
           "drag-cast-regression"
+        ]
+      };
+    case "drag-cast-phone-regression":
+      return {
+        id: "drag-cast-phone-regression",
+        usesFixture: true,
+        scenarioSet: ["drag-cast-phone-regression"],
+        requiredSteps: [
+          "fixture_call",
+          "direct_state_seeded",
+          "seeded_state_verified",
+          "route-family:cast_spell",
+          "route-family:make_mana",
+          "route-family:stack_object_seen",
+          "drag-cast-phone-regression"
         ]
       };
     case "search-select":
@@ -1756,6 +1795,17 @@ function manaRockFixtureDeck() {
     entries: [
       { cardName: manaRockCardName, quantity: 1, section: "deck" },
       { cardName: "Plains", quantity: 98, section: "deck" }
+    ]
+  };
+}
+
+function phoneDragCastFixtureDeck() {
+  return {
+    name: "Phone Drag Cast Payment Fixture",
+    commander: { cardName: "Krenko, Mob Boss", quantity: 1, section: "commander" },
+    entries: [
+      { cardName: manaRockCardName, quantity: 1, section: "deck" },
+      { cardName: "Mountain", quantity: 98, section: "deck" }
     ]
   };
 }
@@ -2109,7 +2159,7 @@ function chooseFixtureAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
     if (gauntletAction) return gauntletAction;
   }
 
-  if (dragCastRegressionScenario) {
+  if (dragCastRegressionScenario || dragCastPhoneRegressionScenario) {
     const dragAction = chooseDragCastRegressionAction(snapshot);
     if (dragAction) return dragAction;
   }
@@ -3455,6 +3505,7 @@ function scenarioSatisfied() {
   if (scenario === "commander-damage") return commanderDamageChanges.length > 0;
   if (scenario === "mana-rock") return manaRockCastSeen && manaRockPaymentSourceSeen && manaRockResolvedSeen;
   if (scenario === "drag-cast-regression") return dragCastLandSeen && manaRockCastSeen && manaRockPaymentSourceSeen && manaRockResolvedSeen;
+  if (scenario === "drag-cast-phone-regression") return manaRockCastSeen && manaRockPaymentSourceSeen && stackSeen;
   if (scenario === "search-select") return gauntlet.searchResolved || actionsByType.search_select > 0;
   if (scenario === "prompt-variety") return promptVarietyRouteFamiliesSatisfied();
   if (scenario === "prompt-mode") return missingRouteFamilies().length === 0 && promptModeChoiceSubmitted && promptModeChoiceResolved;

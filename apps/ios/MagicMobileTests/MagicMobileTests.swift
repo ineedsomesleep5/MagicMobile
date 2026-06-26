@@ -1104,6 +1104,38 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(result, .submit(cast))
     }
 
+    func testDragDropResolverRejectsAmbiguousCardNameWithoutMatchingId() throws {
+        let card = zoneCard(id: "hand-frontier-siege", name: "Frontier Siege", typeLine: "Enchantment")
+        let wrongCardAction = try decodeAction(
+            type: "cast_spell",
+            extra: #""id": "wrong-card-cast", "label": "Cast Frontier Siege", "cardName": "Frontier Siege", "sourceInstanceId": "other-card", "cardInstanceId": "other-card", "sourceZone": "hand""#
+        )
+
+        let result = DragCastDropResolver.resolve(card: card, legalActions: [wrongCardAction], droppedInPlayArea: true)
+
+        XCTAssertEqual(result, .rejected("Frontier Siege is not currently playable"))
+    }
+
+    func testHandFanHitTestingPrefersVisibleTopCardFrame() throws {
+        let metrics = BattlefieldLayoutMetrics(size: CGSize(width: 956, height: 440), safeArea: EdgeInsets())
+        let cards = [
+            zoneCard(id: "hand-forest", name: "Forest", typeLine: "Basic Land - Forest"),
+            zoneCard(id: "hand-mountain", name: "Mountain", typeLine: "Basic Land - Mountain"),
+            zoneCard(id: "hand-frontier-siege", name: "Frontier Siege", typeLine: "Enchantment")
+        ]
+
+        let hit = HandFanLayout.card(
+            at: CGPoint(x: metrics.playWidth / 2 + 35, y: metrics.handFrameHeight / 2),
+            cards: cards,
+            metrics: metrics,
+            selectedCardId: Optional<String>.none,
+            draggingCardId: Optional<String>.none,
+            dragOffset: CGSize.zero
+        )
+
+        XCTAssertEqual(hit?.id, "hand-frontier-siege")
+    }
+
     func testInteractionStateUsesOnlyExposedTargetIdsForGlow() throws {
         let prompt = try JSONDecoder.magicMobile.decode(PromptEnvelopeV2.self, from: #"""
         {
@@ -1212,6 +1244,68 @@ final class MagicMobileTests: XCTestCase {
 
         XCTAssertEqual(mode, .manaPayment(promptId: "xmage-mana-prompt"))
         XCTAssertFalse(CompactPromptPopup.needsDetails(snapshot))
+    }
+
+    func testCompactPromptPopupShowsManaTrayForStackSourceManaActionsWithoutPrompt() throws {
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
+        {
+          "id": "game-stack-payment",
+          "source": "xmage-java-bridge",
+          "activePlayerId": "human",
+          "phase": "precombat-main",
+          "step": "precombat-main",
+          "turn": 1,
+          "priorityPlayerId": "human",
+          "waitingOnPlayerId": "human",
+          "promptText": "Play spells and abilities",
+          "players": [
+            {
+              "playerId": "human",
+              "displayName": "Caleb",
+              "life": 40,
+              "poison": 0,
+              "manaPool": { "W": 0, "U": 0, "B": 0, "R": 0, "G": 0, "C": 0 },
+              "zones": {
+                "library": [],
+                "hand": [],
+                "battlefield": [{ "instanceId": "mountain-1", "tapped": false, "card": { "name": "Mountain", "typeLine": "Basic Land - Mountain", "oracleText": "" } }],
+                "graveyard": [],
+                "exile": [],
+                "command": [],
+                "stack": []
+              },
+              "commanderTax": 0,
+              "commanderDamage": {}
+            }
+          ],
+          "xmage": {
+            "schemaVersion": 1,
+            "gameId": "game-stack-payment",
+            "bridgeRevision": 7,
+            "xmageCycle": 9,
+            "callbackCoverage": [],
+            "stack": [{ "id": "stack-spell", "name": "Circle of Flame" }],
+            "combat": [],
+            "players": [],
+            "exileZones": [],
+            "revealed": [],
+            "lookedAt": [],
+            "companion": [],
+            "playableObjects": [],
+            "panels": { "stack": true, "command": true, "graveyard": true, "exile": true, "revealed": false, "lookedAt": false, "search": false }
+          },
+          "legalActions": [
+            { "id": "tap-mountain", "type": "make_mana", "playerId": "human", "label": "Tap Mountain", "sourceInstanceId": "mountain-1", "producedMana": ["R"] }
+          ],
+          "log": [],
+          "bridgeRevision": 7,
+          "xmageCycle": 9
+        }
+        """#.data(using: .utf8)!)
+
+        XCTAssertTrue(CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: nil))
+        XCTAssertTrue(CompactPromptPopup.shouldShowStackPaymentTray(in: snapshot))
+        XCTAssertEqual(CompactPromptPopup.syntheticStackPaymentPrompt(in: snapshot).message, "Tap mana for Circle of Flame")
     }
 
     func testCompactPromptPopupDoesNotShowForPassiveGameSelectPriority() throws {

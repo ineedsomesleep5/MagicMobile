@@ -4977,6 +4977,15 @@ struct CompactPromptPopup: View {
     private var compactPromptActions: [LegalAction] {
         Self.compactLegalPromptActions(in: snapshot)
     }
+    private var paymentPrompt: PromptEnvelopeV2? {
+        if let prompt = promptV2, Self.isManaPaymentPrompt(prompt) {
+            return prompt
+        }
+        if Self.shouldShowStackPaymentTray(in: snapshot) {
+            return Self.syntheticStackPaymentPrompt(in: snapshot)
+        }
+        return nil
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -5003,7 +5012,7 @@ struct CompactPromptPopup: View {
                         .font(.system(size: 10, weight: .black))
                         .foregroundStyle(MagicPalette.arcaneBlue)
                 }
-            } else if let prompt = promptV2, Self.isManaPaymentPrompt(prompt) {
+            } else if let prompt = paymentPrompt {
                 ManaPaymentTray(
                     snapshot: snapshot,
                     prompt: prompt,
@@ -5038,6 +5047,9 @@ struct CompactPromptPopup: View {
         if pendingActionId != nil {
             return true
         }
+        if shouldShowStackPaymentTray(in: snapshot) {
+            return true
+        }
 
         if let prompt = snapshot.promptEnvelopeV2 {
             if isManaPaymentPrompt(prompt) {
@@ -5070,6 +5082,57 @@ struct CompactPromptPopup: View {
         }
 
         return false
+    }
+
+    static func shouldShowStackPaymentTray(in snapshot: GameSnapshot) -> Bool {
+        guard snapshot.promptEnvelopeV2 == nil else { return false }
+        guard snapshot.priorityPlayerId == "human" || snapshot.waitingOnPlayerId == "human" else { return false }
+        let hasStackObject = !(snapshot.xmage?.stack.isEmpty ?? true) || !(snapshot.human?.zones.stack.isEmpty ?? true)
+        guard hasStackObject else { return false }
+        return (snapshot.legalActions ?? []).contains { action in
+            action.type == "make_mana" && (action.sourceInstanceId != nil || action.cardInstanceId != nil)
+        }
+    }
+
+    static func syntheticStackPaymentPrompt(in snapshot: GameSnapshot) -> PromptEnvelopeV2 {
+        PromptEnvelopeV2(
+            id: "xmage-stack-payment-\(snapshot.bridgeRevision ?? snapshot.turn)",
+            method: "GAME_PLAY_MANA",
+            messageId: -1,
+            playerId: snapshot.human?.playerId ?? "human",
+            responseKind: "mana",
+            message: stackPaymentMessage(in: snapshot),
+            required: false,
+            minChoices: nil,
+            maxChoices: nil,
+            totalMin: nil,
+            totalMax: nil,
+            targetIds: nil,
+            choices: nil,
+            responseCommand: nil,
+            cards: nil,
+            targets: nil,
+            players: nil,
+            piles: nil,
+            abilities: nil,
+            modes: nil,
+            amounts: nil,
+            multiAmounts: nil,
+            manaChoices: nil,
+            orderedItems: nil,
+            confirmation: nil,
+            options: nil
+        )
+    }
+
+    private static func stackPaymentMessage(in snapshot: GameSnapshot) -> String {
+        if let top = snapshot.xmage?.stack.first {
+            return "Tap mana for \(top.displayName)"
+        }
+        if let top = snapshot.human?.zones.stack.first {
+            return "Tap mana for \(top.card.name)"
+        }
+        return "Tap mana for the spell"
     }
 
     static func needsDetails(_ snapshot: GameSnapshot) -> Bool {
@@ -5771,10 +5834,15 @@ struct HandFan: View {
     var body: some View {
         ZStack {
             ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
-                let center = CGFloat(cards.count - 1) / 2
-                let distance = CGFloat(index) - center
-                let maxSpread = max((metrics.playWidth - metrics.handCardWidth) / CGFloat(max(cards.count - 1, 1)), 0)
-                let spread = min(metrics.handCardWidth * 0.56, maxSpread)
+                let frame = HandFanLayout.cardFrame(
+                    index: index,
+                    card: card,
+                    cards: cards,
+                    metrics: metrics,
+                    selectedCardId: selectedCard?.id,
+                    draggingCardId: draggingCardId,
+                    dragOffset: dragOffset
+                )
                 let selected = selectedCard?.id == card.id
                 let playableActions = legalHandActions(for: card)
                 let isDragging = draggingCardId == card.id
@@ -5790,8 +5858,8 @@ struct HandFan: View {
                 )
                     .scaleEffect(selected ? 1.16 : 1.0)
                     .offset(
-                        x: distance * spread + (isDragging ? dragOffset.width : 0),
-                        y: (selected ? -30 : 10) + (isDragging ? dragOffset.height : 0)
+                        x: frame.midX - metrics.playWidth / 2,
+                        y: frame.midY - metrics.handFrameHeight / 2
                     )
                     .zIndex(isDragging || selectedCard?.id == card.id ? 10 : Double(index))
                     .onTapGesture {
@@ -5806,7 +5874,7 @@ struct HandFan: View {
         .gesture(
             DragGesture(minimumDistance: 4)
                 .onChanged { value in
-                    if let card = draggingCard ?? card(at: value.location.x) {
+                    if let card = draggingCard ?? card(at: value.location) {
                         selectedCard = card
                         inspectedCard = nil
                         draggingCardId = card.id
@@ -5851,14 +5919,15 @@ struct HandFan: View {
         GameBoardInteractionState.legalPlayActions(for: card, actions: legalActions)
     }
 
-    private func card(at x: CGFloat) -> ZoneCard? {
-        guard !cards.isEmpty else { return nil }
-        guard cards.count > 1 else { return cards.first }
-        let center = CGFloat(cards.count - 1) / 2
-        let maxSpread = max((metrics.playWidth - metrics.handCardWidth) / CGFloat(max(cards.count - 1, 1)), 0)
-        let spread = min(metrics.handCardWidth * 0.56, maxSpread)
-        let index = Int(round((x - metrics.playWidth / 2) / max(spread, 1) + center))
-        return cards[min(max(index, 0), cards.count - 1)]
+    private func card(at point: CGPoint) -> ZoneCard? {
+        HandFanLayout.card(
+            at: point,
+            cards: cards,
+            metrics: metrics,
+            selectedCardId: selectedCard?.id,
+            draggingCardId: draggingCardId,
+            dragOffset: dragOffset
+        )
     }
 
     private func boardPoint(for localPoint: CGPoint) -> CGPoint {
@@ -5871,6 +5940,59 @@ struct HandFan: View {
     private var draggingCard: ZoneCard? {
         guard let draggingCardId else { return nil }
         return cards.first { $0.id == draggingCardId }
+    }
+}
+
+enum HandFanLayout {
+    static func card(
+        at point: CGPoint,
+        cards: [ZoneCard],
+        metrics: BattlefieldLayoutMetrics,
+        selectedCardId: String?,
+        draggingCardId: String?,
+        dragOffset: CGSize
+    ) -> ZoneCard? {
+        guard !cards.isEmpty else { return nil }
+        for (index, card) in cards.enumerated().reversed() {
+            let frame = cardFrame(
+                index: index,
+                card: card,
+                cards: cards,
+                metrics: metrics,
+                selectedCardId: selectedCardId,
+                draggingCardId: draggingCardId,
+                dragOffset: dragOffset
+            )
+            if frame.insetBy(dx: -8, dy: -8).contains(point) {
+                return card
+            }
+        }
+        return cards.last
+    }
+
+    static func cardFrame(
+        index: Int,
+        card: ZoneCard,
+        cards: [ZoneCard],
+        metrics: BattlefieldLayoutMetrics,
+        selectedCardId: String?,
+        draggingCardId: String?,
+        dragOffset: CGSize
+    ) -> CGRect {
+        let center = CGFloat(cards.count - 1) / 2
+        let distance = CGFloat(index) - center
+        let maxSpread = max((metrics.playWidth - metrics.handCardWidth) / CGFloat(max(cards.count - 1, 1)), 0)
+        let spread = min(metrics.handCardWidth * 0.56, maxSpread)
+        let isSelected = selectedCardId == card.id
+        let isDragging = draggingCardId == card.id
+        let midX = metrics.playWidth / 2 + distance * spread + (isDragging ? dragOffset.width : 0)
+        let midY = metrics.handFrameHeight / 2 + (isSelected ? -30 : 10) + (isDragging ? dragOffset.height : 0)
+        return CGRect(
+            x: midX - metrics.handCardWidth / 2,
+            y: midY - metrics.handCardHeight / 2,
+            width: metrics.handCardWidth,
+            height: metrics.handCardHeight
+        )
     }
 }
 

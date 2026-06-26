@@ -494,6 +494,7 @@ function fixtureExpectedRouteCoverage(scenario) {
   if (scenario === "prompt-pile" || scenario === "prompt-variety-pile") return [...common, "choose_pile", "stack_objects"];
   if (scenario === "combat-blockers" || scenario === "blocker-flow") return [...common, "declare_attackers", "declare_blockers"];
   if (scenario === "damage-assignment") return [...common, "choose_multi_amount", "damage_assignment"];
+  if (scenario === "drag-cast-phone-regression") return [...common, "stack_objects"];
   return [
     ...common,
     "activate_ability",
@@ -553,6 +554,16 @@ function fixtureHumanDeck(scenario) {
       entries: [
         { cardName: "Sol Ring", quantity: 1, section: "deck" },
         { cardName: "Plains", quantity: 98, section: "deck" }
+      ]
+    };
+  }
+  if (scenario === "drag-cast-phone-regression") {
+    return {
+      name: "Phone Drag Cast Fixture",
+      commander: { cardName: "Krenko, Mob Boss", quantity: 1, section: "commander" },
+      entries: [
+        { cardName: "Circle of Flame", quantity: 1, section: "deck" },
+        { cardName: "Mountain", quantity: 98, section: "deck" }
       ]
     };
   }
