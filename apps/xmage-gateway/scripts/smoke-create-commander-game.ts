@@ -258,6 +258,7 @@ const gauntletPromptFamilies = new Set<string>();
 
 recordCommanderState(snapshot);
 recordCoverage(snapshot);
+recordFixtureOpeningPromptCoverage(activeFixtureHarness);
 console.error(`[Smoke] Started ${scenario} game ${snapshot.id}. Turn: ${snapshot.turn}, Phase: ${snapshot.phase}, Step: ${snapshot.step}`);
 if (activeFixtureHarness) {
   console.error(
@@ -3043,6 +3044,15 @@ function recordRouteFamilyForAction(action: SmokeAction) {
   if (action.type === "order_triggers" || action.type === "order_items") {
     markRouteFamily("order_triggers/order_items");
     markRouteFamily("trigger_seen");
+  }
+}
+
+function recordFixtureOpeningPromptCoverage(harness: any) {
+  const operations = Array.isArray(harness?.operationsApplied) ? harness.operationsApplied : [];
+  if (operations.includes("pre_seed_opening_prompt:choose_player")) {
+    markRouteFamily("choose_player");
+    actionsByType.choose_player = Math.max(actionsByType.choose_player ?? 0, 1);
+    completed.push("[Fixture opening] choose_player: real XMage starting-player prompt answered before deterministic seed");
   }
 }
 

@@ -465,10 +465,13 @@ export interface XmageMobilePlayer {
 
 export interface XmageStackObject {
   id: string;
+  objectId?: string;
+  objectType?: "spell" | "ability" | "triggered_ability" | string;
   name: string;
   sourceInstanceId?: string;
   sourceName?: string;
   sourceZone?: ZoneName | "command" | "stack";
+  sourceCardUnavailableReason?: string;
   controllerId?: PlayerId;
   controllerXmageId?: string;
   targetIds?: string[];

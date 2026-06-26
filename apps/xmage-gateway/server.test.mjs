@@ -339,6 +339,8 @@ describe("xmage gateway", () => {
     assert.ok(bridgeSource.includes("humanDisplayName"));
     assert.match(bridgeSource, /session\.joinTable\(roomId, table\.getTableId\(\), humanDisplayName/);
     assert.match(bridgeSource, /waitForStartedGame\(humanExternalId, aiExternalId, humanDisplayName, aiName/);
+    assert.match(bridgeSource, /startupRecord\(gameId, existing, humanExternalId, aiExternalId, humanName, aiName\)/);
+    assert.match(bridgeSource, /normalizePlayerPromptChoices\(rebound\.promptEnvelope, rebound, rebound\.latestView\)/);
     assert.match(bridgeSource, /out\.addProperty\("displayName", player\.getName\(\)\)/);
     assert.match(bridgeSource, /GAME_SELECT.*starting player.*return "player"/s);
   });
@@ -687,6 +689,8 @@ describe("xmage gateway", () => {
     assert.match(smokeSource, /directStateSeeded/);
     assert.match(smokeSource, /seededStateVerified/);
     assert.match(smokeSource, /verifySeededStateFromSnapshot/);
+    assert.match(smokeSource, /recordFixtureOpeningPromptCoverage/);
+    assert.match(smokeSource, /pre_seed_opening_prompt:choose_player/);
     assert.match(smokeSource, /a\.type === "keep_hand"/);
     assert.match(
       smokeSource,
@@ -1086,9 +1090,11 @@ describe("xmage gateway", () => {
     assert.match(sendCombatSelection, /session\.sendPlayerUUID\(xmageGameId, UUID\.fromString\(value\)\);/);
     assert.doesNotMatch(sendCombatSelection, /session\.sendPlayerBoolean\(xmageGameId, true\)/);
     assert.match(sendCombatSelection, /session\.sendPlayerBoolean\(xmageGameId, false\);/);
-    assert.match(bridgeSource, /stackObjects\(view\.getStack\(\), playerIds\)/);
-    assert.match(bridgeSource, /item\.addProperty\("sourceInstanceId", card\.getId\(\)\.toString\(\)\)/);
-    assert.match(bridgeSource, /item\.addProperty\("sourceName", card\.getName\(\)\)/);
+    assert.match(bridgeSource, /stackObjects\(view\.getStack\(\), view, playerIds\)/);
+    assert.match(bridgeSource, /resolveStackSourceCard\(card, view\)/);
+    assert.match(bridgeSource, /item\.addProperty\("objectId", card\.getId\(\)\.toString\(\)\)/);
+    assert.match(bridgeSource, /item\.addProperty\("objectType", stackObjectType\(card\)\)/);
+    assert.match(bridgeSource, /item\.addProperty\("sourceCardUnavailableReason"/);
     assert.match(bridgeSource, /optionalUuidProperty\(card, "getControllerId", "getController", "getOwnerId", "getOwner"\)/);
     assert.match(bridgeSource, /item\.addProperty\("controllerId", playerIds\.getOrDefault\(controllerId, controllerId\.toString\(\)\)\)/);
     assert.match(bridgeSource, /optionalTargetIds\(card, playerIds\)/);
@@ -1105,6 +1111,16 @@ describe("xmage gateway", () => {
     assert.match(bridgeSource, /startupOpeningPrompts/);
     assert.match(bridgeSource, /recordStartupOpeningPrompt/);
     assert.match(bridgeSource, /snapshot\.add\("startupOpeningPrompts"/);
+  });
+
+  it("normalizes startup player choices to display names before iOS sees them", () => {
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+
+    assert.match(bridgeSource, /normalizePlayerPromptChoices\(prompt, record, message\.getGameView\(\)\)/);
+    assert.match(bridgeSource, /labelForChoice\(record, playerIds, choiceId\)/);
+    assert.match(bridgeSource, /record\.humanName \+ " starts"/);
+    assert.match(bridgeSource, /record\.aiName \+ " starts"/);
+    assert.doesNotMatch(bridgeSource, /choice\.addProperty\("label", choiceId\)/);
   });
 
   it("keeps XMage fixtures inside the server JVM with snapshot proof gates", () => {

@@ -369,11 +369,7 @@ public final class MagicMobileBridge implements MageClient {
             UUID gameId = lastStartedGameId;
             if (gameId != null) {
                 GameRecord existing = games.get(gameId.toString());
-                if (existing == null) {
-                    existing = new GameRecord(gameId, humanExternalId, aiExternalId, humanName, aiName);
-                    existing.humanXmagePlayerId = lastStartedHumanPlayerId;
-                    games.put(gameId.toString(), existing);
-                }
+                existing = startupRecord(gameId, existing, humanExternalId, aiExternalId, humanName, aiName);
                 if (existing.latestView != null) {
                     lastRecord = existing;
                     if (isOpeningSnapshotReady(existing, humanCommanderName)) {
@@ -387,6 +383,40 @@ public final class MagicMobileBridge implements MageClient {
             return lastRecord;
         }
         throw new IllegalStateException("Timed out waiting for XMage game snapshot");
+    }
+
+    private GameRecord startupRecord(UUID gameId, GameRecord existing, String humanExternalId, String aiExternalId, String humanName, String aiName) {
+        if (existing == null) {
+            GameRecord created = new GameRecord(gameId, humanExternalId, aiExternalId, humanName, aiName);
+            created.humanXmagePlayerId = lastStartedHumanPlayerId;
+            games.put(gameId.toString(), created);
+            return created;
+        }
+        boolean staleNames = !humanExternalId.equals(existing.humanExternalId)
+                || !aiExternalId.equals(existing.aiExternalId)
+                || !humanName.equals(existing.humanName)
+                || !aiName.equals(existing.aiName);
+        if (!staleNames) {
+            if (existing.humanXmagePlayerId == null) {
+                existing.humanXmagePlayerId = lastStartedHumanPlayerId;
+            }
+            return existing;
+        }
+
+        GameRecord rebound = new GameRecord(gameId, humanExternalId, aiExternalId, humanName, aiName);
+        rebound.bridgeRevision.set(existing.bridgeRevision.get());
+        rebound.humanXmagePlayerId = existing.humanXmagePlayerId == null ? lastStartedHumanPlayerId : existing.humanXmagePlayerId;
+        rebound.latestView = existing.latestView;
+        rebound.latestCycle = existing.latestCycle;
+        rebound.lastProgressAt = existing.lastProgressAt;
+        rebound.promptText = existing.promptText;
+        rebound.choicePrompt = existing.choicePrompt;
+        rebound.promptEnvelope = existing.promptEnvelope;
+        rebound.startupOpeningPrompts.addAll(existing.startupOpeningPrompts);
+        normalizePlayerPromptChoices(rebound.promptEnvelope, rebound, rebound.latestView);
+        rebound.choicePrompt = choicePromptFromEnvelope(rebound.promptEnvelope);
+        games.put(gameId.toString(), rebound);
+        return rebound;
     }
 
     private JsonObject submitCommand(String gameId, JsonObject command) throws Exception {
@@ -1710,7 +1740,7 @@ public final class MagicMobileBridge implements MageClient {
             coverage.add(string(record.promptEnvelope, "method", ""));
         }
         out.add("callbackCoverage", coverage);
-        out.add("stack", stackObjects(view.getStack(), playerIds));
+        out.add("stack", stackObjects(view.getStack(), view, playerIds));
         out.add("combat", combatGroups(view, playerIds));
         out.add("players", xmagePlayers(record, view, playerIds));
         out.add("exileZones", exileZones(view.getExile()));
@@ -1758,21 +1788,30 @@ public final class MagicMobileBridge implements MageClient {
         return out;
     }
 
-    private JsonArray stackObjects(CardsView stack, Map<UUID, String> playerIds) {
+    private JsonArray stackObjects(CardsView stack, GameView view, Map<UUID, String> playerIds) {
         JsonArray out = new JsonArray();
         for (CardView card : stack.values()) {
             JsonObject item = new JsonObject();
             item.addProperty("id", card.getId().toString());
+            item.addProperty("objectId", card.getId().toString());
             item.addProperty("name", card.getName());
-            item.addProperty("sourceInstanceId", card.getId().toString());
-            item.addProperty("sourceName", card.getName());
+            item.addProperty("objectType", stackObjectType(card));
             item.addProperty("sourceZone", "stack");
             String rulesText = rulesText(card);
             if (!rulesText.isEmpty()) {
                 item.addProperty("rulesText", rulesText);
             }
             item.addProperty("paid", card.isPaid());
-            item.add("sourceCard", zoneCard(card));
+            CardView sourceCard = resolveStackSourceCard(card, view);
+            if (sourceCard != null) {
+                item.addProperty("sourceInstanceId", sourceCard.getId().toString());
+                item.addProperty("sourceName", sourceCard.getName());
+                item.add("sourceCard", zoneCard(sourceCard));
+            } else {
+                item.addProperty("sourceInstanceId", card.getId().toString());
+                item.addProperty("sourceName", stackSourceName(card));
+                item.addProperty("sourceCardUnavailableReason", "XMage exposed a synthetic stack object without source card metadata.");
+            }
             UUID controllerId = optionalUuidProperty(card, "getControllerId", "getController", "getOwnerId", "getOwner");
             if (controllerId != null) {
                 item.addProperty("controllerXmageId", controllerId.toString());
@@ -1787,6 +1826,99 @@ public final class MagicMobileBridge implements MageClient {
         return out;
     }
 
+    private CardView resolveStackSourceCard(CardView card, GameView view) {
+        if (card == null || view == null) {
+            return null;
+        }
+        if (!isSyntheticStackObject(card)) {
+            return card;
+        }
+        UUID sourceId = optionalUuidMember(card,
+                "sourceId",
+                "sourceObjectId",
+                "sourceCardId",
+                "sourcePermanentId",
+                "originalId",
+                "originalCardId",
+                "getSourceId",
+                "getSourceObjectId",
+                "getSourceCardId",
+                "getSourcePermanentId",
+                "getOriginalId",
+                "getOriginalCardId");
+        if (sourceId != null) {
+            CardView byId = findVisibleCard(view, sourceId);
+            if (byId != null) {
+                return byId;
+            }
+        }
+        String sourceName = stackSourceName(card);
+        if (!sourceName.isEmpty() && !"ability".equalsIgnoreCase(sourceName) && !"card".equalsIgnoreCase(sourceName)) {
+            return findVisibleCardByName(view, sourceName);
+        }
+        return null;
+    }
+
+    private boolean isSyntheticStackObject(CardView card) {
+        String name = card.getName() == null ? "" : card.getName().trim();
+        String type = cleanText(card.getTypeText()).trim();
+        return "Ability".equalsIgnoreCase(name)
+                || "Triggered ability".equalsIgnoreCase(name)
+                || "Activated ability".equalsIgnoreCase(name)
+                || "Card".equalsIgnoreCase(type);
+    }
+
+    private String stackObjectType(CardView card) {
+        String name = card.getName() == null ? "" : card.getName().trim().toLowerCase();
+        if (name.contains("trigger")) {
+            return "triggered_ability";
+        }
+        if (name.contains("ability") || isSyntheticStackObject(card)) {
+            return "ability";
+        }
+        return "spell";
+    }
+
+    private String stackSourceName(CardView card) {
+        Object sourceName = optionalProperty(card, "getSourceName", "getSourceCardName", "getOriginalName");
+        String value = sourceName == null ? "" : cleanText(sourceName.toString());
+        return value.isEmpty() ? cleanText(card.getName()) : value;
+    }
+
+    private CardView findVisibleCardByName(GameView view, String name) {
+        if (view == null || name == null || name.isEmpty()) {
+            return null;
+        }
+        for (CardView card : view.getMyHand().values()) {
+            if (name.equals(card.getName())) {
+                return card;
+            }
+        }
+        for (PlayerView player : view.getPlayers()) {
+            CardView found = findCardByName(player.getBattlefield().values(), name);
+            if (found != null) return found;
+            found = findCardByName(player.getGraveyard().values(), name);
+            if (found != null) return found;
+            found = findCardByName(player.getExile().values(), name);
+            if (found != null) return found;
+            for (CommandObjectView command : player.getCommandObjectList()) {
+                if (command instanceof CardView && name.equals(((CardView) command).getName())) {
+                    return (CardView) command;
+                }
+            }
+        }
+        return null;
+    }
+
+    private CardView findCardByName(Iterable<? extends CardView> cards, String name) {
+        for (CardView card : cards) {
+            if (name.equals(card.getName())) {
+                return card;
+            }
+        }
+        return null;
+    }
+
     private UUID optionalUuidProperty(Object object, String... methodNames) {
         Object value = optionalProperty(object, methodNames);
         if (value instanceof UUID) {
@@ -1794,6 +1926,33 @@ public final class MagicMobileBridge implements MageClient {
         }
         if (value != null && isUuid(value.toString())) {
             return UUID.fromString(value.toString());
+        }
+        return null;
+    }
+
+    private UUID optionalUuidMember(Object object, String... names) {
+        if (object == null) {
+            return null;
+        }
+        for (String name : names) {
+            Object value = null;
+            try {
+                if (name.startsWith("get")) {
+                    Method method = object.getClass().getMethod(name);
+                    value = method.invoke(object);
+                } else {
+                    Field field = findField(object.getClass(), name);
+                    field.setAccessible(true);
+                    value = field.get(object);
+                }
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+            }
+            if (value instanceof UUID) {
+                return (UUID) value;
+            }
+            if (value != null && isUuid(value.toString())) {
+                return UUID.fromString(value.toString());
+            }
         }
         return null;
     }
@@ -4157,7 +4316,37 @@ public final class MagicMobileBridge implements MageClient {
         if (choices.size() > 0) {
             prompt.add("choices", choices);
         }
+        GameRecord record = games.get(callback.getObjectId().toString());
+        normalizePlayerPromptChoices(prompt, record, message.getGameView());
         return prompt;
+    }
+
+    private void normalizePlayerPromptChoices(JsonObject prompt, GameRecord record, GameView view) {
+        if (prompt == null || record == null || view == null) {
+            return;
+        }
+        String responseKind = string(prompt, "responseKind", "");
+        String message = string(prompt, "message", "").toLowerCase();
+        if (!"player".equals(responseKind) && !message.contains("starting player")) {
+            return;
+        }
+        Map<UUID, String> playerIds = externalPlayerIds(record, view);
+        normalizePlayerChoiceArray(array(prompt, "choices"), record, playerIds);
+        normalizePlayerChoiceArray(array(prompt, "players"), record, playerIds);
+    }
+
+    private void normalizePlayerChoiceArray(JsonArray choices, GameRecord record, Map<UUID, String> playerIds) {
+        for (JsonElement element : choices) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            JsonObject choice = element.getAsJsonObject();
+            String choiceId = string(choice, "id", string(choice, "playerId", ""));
+            String label = labelForChoice(record, playerIds, choiceId);
+            if (!label.isEmpty() && !label.equals(choiceId)) {
+                choice.addProperty("label", label);
+            }
+        }
     }
 
     private String[] manaChoicesForPrompt(UUID gameId, GameClientMessage message) {

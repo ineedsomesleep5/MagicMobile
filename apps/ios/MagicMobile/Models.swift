@@ -603,12 +603,15 @@ struct XmagePlayerZones: Decodable {
 
 struct XmageStackObject: Decodable, Identifiable {
     let id: String
+    let objectId: String?
+    let objectType: String?
     let name: String
     let rulesText: String?
     let sourceInstanceId: String?
     let sourceName: String?
     let sourceZone: String?
     let sourceCard: ZoneCard?
+    let sourceCardUnavailableReason: String?
     let controllerId: String?
     let controllerXmageId: String?
     let targetIds: [String]?
@@ -619,7 +622,24 @@ struct XmageStackObject: Decodable, Identifiable {
     }
 
     var displaySourceName: String {
-        sourceCard?.card.name ?? sourceName ?? "Source unavailable"
+        displaySourceCard?.card.name ?? sourceName ?? "Source unavailable"
+    }
+
+    var displaySourceCard: ZoneCard? {
+        guard let sourceCard, !sourceCard.isSyntheticStackAbilityPlaceholder else {
+            return nil
+        }
+        return sourceCard
+    }
+
+    var compactFallbackDetail: String? {
+        if let sourceCardUnavailableReason, !sourceCardUnavailableReason.isEmpty {
+            return sourceCardUnavailableReason
+        }
+        if displaySourceCard == nil, displaySourceName != "Source unavailable" {
+            return "Source: \(displaySourceName)"
+        }
+        return nil
     }
 
     var displayMetadata: String? {
@@ -875,6 +895,12 @@ extension ZoneCard {
 
     public var showsPowerToughness: Bool {
         power != nil && toughness != nil && isCreature
+    }
+
+    var isSyntheticStackAbilityPlaceholder: Bool {
+        let name = card.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let type = card.typeLine.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return name == "ability" || name == "activated ability" || name == "triggered ability" || type == "card"
     }
 
     func accessibilityLabel(zoneName: String? = nil, selected: Bool = false, legal: Bool = false, pending: Bool = false) -> String {

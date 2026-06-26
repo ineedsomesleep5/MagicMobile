@@ -3021,7 +3021,7 @@ struct XmageStackPeek: View {
             HStack(spacing: 8) {
                 HStack(spacing: -12) {
                     ForEach(Array(objects.suffix(3).enumerated()), id: \.element.id) { index, object in
-                        if let card = object.sourceCard {
+                        if let card = object.displaySourceCard {
                             CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, zoneName: "Stack", width: 38, height: 54)
                                 .zIndex(Double(index))
                                 .onTapGesture {
@@ -3049,7 +3049,7 @@ struct XmageStackPeek: View {
                         .foregroundStyle(.white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.65)
-                    if let source = topObject?.sourceCard?.card.name, source != topObject?.name {
+                    if let source = topObject?.displaySourceCard?.card.name, source != topObject?.name {
                         Text("Source: \(source)")
                             .font(.system(size: 9, weight: .bold))
                             .foregroundStyle(.white.opacity(0.70))
@@ -3061,6 +3061,12 @@ struct XmageStackPeek: View {
                             .foregroundStyle(.white.opacity(0.70))
                             .lineLimit(1)
                             .minimumScaleFactor(0.62)
+                    } else if let detail = topObject?.compactFallbackDetail {
+                        Text(detail)
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(MagicPalette.antiqueGold.opacity(0.82))
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.58)
                     }
                     if let metadata = topObject?.displayMetadata {
                         Text(metadata)
@@ -4616,7 +4622,7 @@ struct MobileSurfacesPanel: View {
     }
 
     private var stackCards: [ZoneCard] {
-        let xmageCards = snapshot.xmage?.stack.compactMap(\.sourceCard) ?? []
+        let xmageCards = snapshot.xmage?.stack.compactMap(\.displaySourceCard) ?? []
         if !xmageCards.isEmpty { return xmageCards }
         return snapshot.players.flatMap(\.zones.stack)
     }

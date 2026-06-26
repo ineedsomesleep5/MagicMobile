@@ -687,7 +687,8 @@ final class MagicMobileTests: XCTestCase {
           "id": "stack-1",
           "name": "Activated ability",
           "rulesText": "Draw a card.",
-          "paid": false
+          "paid": false,
+          "sourceCardUnavailableReason": "XMage exposed a synthetic stack object without source card metadata."
         }
         """.data(using: .utf8)!
 
@@ -696,6 +697,45 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertNil(object.sourceCard)
         XCTAssertEqual(object.displayName, "Activated ability")
         XCTAssertEqual(object.displaySourceName, "Source unavailable")
+        XCTAssertEqual(object.sourceCardUnavailableReason, "XMage exposed a synthetic stack object without source card metadata.")
+        XCTAssertEqual(object.compactFallbackDetail, "XMage exposed a synthetic stack object without source card metadata.")
+    }
+
+    func testStackObjectDecodesRealSourceCardForSyntheticAbility() throws {
+        let data = """
+        {
+          "id": "stack-ability-1",
+          "objectId": "stack-ability-1",
+          "objectType": "ability",
+          "name": "Activated ability",
+          "rulesText": "{T}: Add {G}.",
+          "sourceInstanceId": "jaspera-1",
+          "sourceName": "Jaspera Sentinel",
+          "sourceZone": "battlefield",
+          "sourceCard": {
+            "instanceId": "jaspera-1",
+            "card": {
+              "name": "Jaspera Sentinel",
+              "typeLine": "Creature - Elf Rogue",
+              "oracleText": "Reach. Tap an untapped creature you control: Add one mana of any color."
+            },
+            "power": 1,
+            "toughness": 2,
+            "isCreaturePermanent": true
+          },
+          "paid": true
+        }
+        """.data(using: .utf8)!
+
+        let object = try JSONDecoder.magicMobile.decode(XmageStackObject.self, from: data)
+
+        XCTAssertEqual(object.objectId, "stack-ability-1")
+        XCTAssertEqual(object.objectType, "ability")
+        XCTAssertEqual(object.displayName, "Activated ability")
+        XCTAssertEqual(object.displaySourceName, "Jaspera Sentinel")
+        XCTAssertEqual(object.sourceCard?.card.name, "Jaspera Sentinel")
+        XCTAssertNil(object.sourceCardUnavailableReason)
+        XCTAssertNil(object.compactFallbackDetail)
     }
 
     func testStackObjectDecodesControllerSourceAndTargets() throws {
