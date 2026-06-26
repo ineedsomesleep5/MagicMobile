@@ -89,11 +89,15 @@ struct MagicMobileAPI {
     }
 
     func submit(action: LegalAction, gameId: String, expectedBridgeRevision: Int?) async throws -> GameSnapshot {
-        let command = Self.withExpectedBridgeRevision(
+        let command = try preparedCommand(for: action, gameId: gameId, expectedBridgeRevision: expectedBridgeRevision)
+        return try await post(commandPath(gameId: gameId), body: command)
+    }
+
+    func preparedCommand(for action: LegalAction, gameId: String, expectedBridgeRevision: Int?) throws -> GameCommand {
+        Self.withExpectedBridgeRevision(
             mergeCommandTemplate(try command(for: action, gameId: gameId), action: action, gameId: gameId),
             expectedBridgeRevision: expectedBridgeRevision
         )
-        return try await post(commandPath(gameId: gameId), body: command)
     }
 
     func submit(command: GameCommand, gameId: String, expectedBridgeRevision: Int?) async throws -> GameSnapshot {

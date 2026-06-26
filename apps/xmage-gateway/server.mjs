@@ -291,6 +291,7 @@ export function xmageFixturesEnabled(env = process.env) {
 export function commanderFixtureConfig(fixtureName, body = {}) {
   const schemaInput = body.fixture ?? body;
   const scenario = schemaInput.scenarioName ?? body.scenario ?? fixtureName;
+  const dragCastRegression = scenario === "drag-cast-regression";
   const humanPlayerId = body.humanPlayerId ?? "human";
   const aiPlayerId = body.aiPlayerId ?? "ai-1";
   const seed = body.seed ?? "fixture";
@@ -307,10 +308,10 @@ export function commanderFixtureConfig(fixtureName, body = {}) {
     format: "commander",
     playerIds: { human: humanPlayerId, ai: [aiPlayerId] },
     commander,
-    hand: schemaInput.hand ?? schemaInput.humanHand ?? [],
-    battlefield: schemaInput.battlefield ?? schemaInput.humanBattlefield ?? [],
+    hand: schemaInput.hand ?? schemaInput.humanHand ?? (dragCastRegression ? ["Plains", "Sol Ring", "Primal Might", "Frontier Siege", "Vandalblast"] : []),
+    battlefield: schemaInput.battlefield ?? schemaInput.humanBattlefield ?? (dragCastRegression ? ["Plains", "Plains", "Mountain", "Forest"] : []),
     commandZone,
-    libraryTop: schemaInput.libraryTop ?? schemaInput.humanLibraryTop ?? [],
+    libraryTop: schemaInput.libraryTop ?? schemaInput.humanLibraryTop ?? (dragCastRegression ? ["Plains", "Mountain", "Forest"] : []),
     graveyard: schemaInput.graveyard ?? schemaInput.humanGraveyard ?? [],
     exile: schemaInput.exile ?? schemaInput.humanExile ?? [],
     aiBattlefield: schemaInput.aiBattlefield ?? [],
@@ -321,12 +322,12 @@ export function commanderFixtureConfig(fixtureName, body = {}) {
     expectedRoutes,
     humanCommander: commander,
     aiCommander: aiDeck.commander?.cardName,
-    humanHand: schemaInput.hand ?? schemaInput.humanHand ?? [],
-    humanBattlefield: schemaInput.battlefield ?? schemaInput.humanBattlefield ?? [],
+    humanHand: schemaInput.hand ?? schemaInput.humanHand ?? (dragCastRegression ? ["Plains", "Sol Ring", "Primal Might", "Frontier Siege", "Vandalblast"] : []),
+    humanBattlefield: schemaInput.battlefield ?? schemaInput.humanBattlefield ?? (dragCastRegression ? ["Plains", "Plains", "Mountain", "Forest"] : []),
     humanCommandZone: commandZone,
     humanGraveyard: schemaInput.graveyard ?? schemaInput.humanGraveyard ?? [],
     humanExile: schemaInput.exile ?? schemaInput.humanExile ?? [],
-    humanLibraryTop: schemaInput.libraryTop ?? schemaInput.humanLibraryTop ?? [],
+    humanLibraryTop: schemaInput.libraryTop ?? schemaInput.humanLibraryTop ?? (dragCastRegression ? ["Plains", "Mountain", "Forest"] : []),
     searchableLibraryContents: humanDeck.entries?.map((entry) => entry.cardName) ?? [],
     activePlayer: schemaInput.activePlayerId ?? humanPlayerId,
     priorityPlayer: schemaInput.priorityPlayerId ?? humanPlayerId,

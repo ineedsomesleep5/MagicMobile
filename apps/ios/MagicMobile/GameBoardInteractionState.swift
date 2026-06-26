@@ -85,8 +85,9 @@ struct GameBoardInteractionState: Equatable {
 
     static func legalPlayActions(for card: ZoneCard, actions: [LegalAction]) -> [LegalAction] {
         actions.filter { action in
-            (action.cardInstanceId == card.instanceId || action.sourceInstanceId == card.instanceId) &&
-                ["play_land", "cast_spell"].contains(action.type)
+            guard ["play_land", "cast_spell"].contains(action.type) else { return false }
+            return action.effectiveCardInstanceId == card.instanceId ||
+                action.effectiveSourceInstanceId == card.instanceId
         }
     }
 
@@ -182,5 +183,41 @@ struct GameBoardInteractionState: Equatable {
             "order_triggers",
             "order_items"
         ].contains(type)
+    }
+}
+
+enum DragCastDropResult: Equatable {
+    case ignored
+    case rejected(String)
+    case requiresChoice([LegalAction], String)
+    case submit(LegalAction)
+
+    static func == (lhs: DragCastDropResult, rhs: DragCastDropResult) -> Bool {
+        switch (lhs, rhs) {
+        case (.ignored, .ignored):
+            return true
+        case let (.rejected(left), .rejected(right)):
+            return left == right
+        case let (.requiresChoice(leftActions, leftMessage), .requiresChoice(rightActions, rightMessage)):
+            return leftMessage == rightMessage && leftActions.map(\.id) == rightActions.map(\.id)
+        case let (.submit(left), .submit(right)):
+            return left.id == right.id
+        default:
+            return false
+        }
+    }
+}
+
+enum DragCastDropResolver {
+    static func resolve(card: ZoneCard, legalActions: [LegalAction], droppedInPlayArea: Bool) -> DragCastDropResult {
+        guard droppedInPlayArea else { return .ignored }
+        let playableActions = GameBoardInteractionState.legalPlayActions(for: card, actions: legalActions)
+        guard playableActions.count == 1, let action = playableActions.first else {
+            if playableActions.isEmpty {
+                return .rejected("\(card.card.name) is not currently playable")
+            }
+            return .requiresChoice(playableActions, "Choose how to play \(card.card.name)")
+        }
+        return .submit(action)
     }
 }

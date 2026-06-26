@@ -425,6 +425,35 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertTrue(CastSubmissionClassifier.shouldKeepPollingForCastOutcome(action: action, before: before, after: intermediate))
     }
 
+    func testCastSubmissionClassifierDoesNotTreatPassivePriorityAsCastProgress() throws {
+        let before = try snapshotWithHumanHand(cardId: "arcane-signet-1", cardName: "Arcane Signet")
+        let action = try decodeAction(type: "cast_spell", extra: #""sourceInstanceId": "arcane-signet-1", "requiresPayment": true"#)
+        let passiveData = String(data: try minimalSnapshotJSON(id: "passive-after-cast"), encoding: .utf8)!
+            .replacingOccurrences(of: #""bridgeRevision": 1"#, with: #""bridgeRevision": 6"#)
+            .replacingOccurrences(of: #""promptText": "Your priority""#, with: #""promptText": "Play spells and abilities""#)
+            .replacingOccurrences(of: #""hand": []"#, with: #""hand": [{ "instanceId": "arcane-signet-1", "card": { "name": "Arcane Signet", "typeLine": "Artifact", "oracleText": "" } }]"#)
+            .replacingOccurrences(of: #""legalActions": []"#, with: #""promptEnvelopeV2": { "id": "passive-priority", "method": "GAME_SELECT", "messageId": 14, "playerId": "human", "responseKind": "card", "message": "Play spells and abilities" }, "legalActions": []"#)
+            .data(using: .utf8)!
+        let passive = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: passiveData)
+
+        XCTAssertTrue(CastSubmissionClassifier.shouldKeepPollingForCastOutcome(action: action, before: before, after: passive))
+        XCTAssertEqual(CastSubmissionClassifier.classify(action: action, before: before, after: passive), .rejectedStillInHand)
+    }
+
+    func testCastSubmissionClassifierPollsDelayedLandPlay() throws {
+        let before = try snapshotWithHumanHand(cardId: "forest-1", cardName: "Forest")
+        let action = try decodeAction(type: "play_land", extra: #""sourceInstanceId": "forest-1", "cardInstanceId": "forest-1", "sourceZone": "hand""#)
+        let passiveData = String(data: try minimalSnapshotJSON(id: "passive-after-land"), encoding: .utf8)!
+            .replacingOccurrences(of: #""bridgeRevision": 1"#, with: #""bridgeRevision": 3"#)
+            .replacingOccurrences(of: #""promptText": "Your priority""#, with: #""promptText": "Play spells and abilities""#)
+            .replacingOccurrences(of: #""hand": []"#, with: #""hand": [{ "instanceId": "forest-1", "card": { "name": "Forest", "typeLine": "Basic Land - Forest", "oracleText": "" } }]"#)
+            .data(using: .utf8)!
+        let passive = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: passiveData)
+
+        XCTAssertTrue(CastSubmissionClassifier.shouldKeepPollingForCastOutcome(action: action, before: before, after: passive))
+        XCTAssertEqual(CastSubmissionClassifier.classify(action: action, before: before, after: passive), .rejectedStillInHand)
+    }
+
     func testCastSubmissionClassifierStopsWaitingWhenPaymentPromptArrives() throws {
         let before = try snapshotWithHumanHand(cardId: "arcane-signet-1", cardName: "Arcane Signet")
         let action = try decodeAction(type: "cast_spell", extra: #""sourceInstanceId": "arcane-signet-1", "requiresPayment": true"#)
@@ -437,6 +466,20 @@ final class MagicMobileTests: XCTestCase {
 
         XCTAssertFalse(CastSubmissionClassifier.shouldKeepPollingForCastOutcome(action: action, before: before, after: payment))
         XCTAssertEqual(CastSubmissionClassifier.classify(action: action, before: before, after: payment), .payment)
+    }
+
+    func testCastSubmissionClassifierTreatsChoicePromptAsCastProgress() throws {
+        let before = try snapshotWithHumanHand(cardId: "frontier-siege-1", cardName: "Frontier Siege")
+        let action = try decodeAction(type: "cast_spell", extra: #""sourceInstanceId": "frontier-siege-1", "requiresPayment": false"#)
+        let promptData = String(data: try minimalSnapshotJSON(id: "mode-after-cast"), encoding: .utf8)!
+            .replacingOccurrences(of: #""bridgeRevision": 1"#, with: #""bridgeRevision": 4"#)
+            .replacingOccurrences(of: #""hand": []"#, with: #""hand": [{ "instanceId": "frontier-siege-1", "card": { "name": "Frontier Siege", "typeLine": "Enchantment", "oracleText": "" } }]"#)
+            .replacingOccurrences(of: #""legalActions": []"#, with: #""promptEnvelopeV2": { "id": "mode-1", "method": "GAME_SELECT", "messageId": 12, "playerId": "human", "responseKind": "mode", "message": "Choose one", "responseCommand": { "type": "choose_mode", "promptId": "mode-1", "messageId": 12 } }, "legalActions": []"#)
+            .data(using: .utf8)!
+        let after = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: promptData)
+
+        XCTAssertFalse(CastSubmissionClassifier.shouldKeepPollingForCastOutcome(action: action, before: before, after: after))
+        XCTAssertEqual(CastSubmissionClassifier.classify(action: action, before: before, after: after), .waiting)
     }
 
     func testStartupOpeningPromptDiagnosticsDecodeFromBridgeSnapshot() throws {
@@ -509,6 +552,32 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(payload?["expectedBridgeRevision"] as? Int, 42)
         XCTAssertEqual(payload?["sourceInstanceId"] as? String, "forest-instance")
         XCTAssertEqual(payload?["abilityId"] as? String, "mana-ability")
+    }
+
+    func testPreparedDragCastCommandUsesCommandTemplateSourceAndRevision() throws {
+        let action = try decodeAction(
+            type: "cast_spell",
+            extra: #"""
+            "cardInstanceId": "local-card-id",
+            "sourceInstanceId": "local-source-id",
+            "commandTemplate": {
+              "type": "cast_spell",
+              "cardInstanceId": "xmage-card-id",
+              "sourceInstanceId": "xmage-source-id",
+              "sourceZone": "hand"
+            }
+            """#
+        )
+
+        let command = try MagicMobileAPI(baseURL: URL(string: "http://localhost")!)
+            .preparedCommand(for: action, gameId: "game-1", expectedBridgeRevision: 17)
+        let payload = try JSONSerialization.jsonObject(with: JSONEncoder.magicMobile.encode(command)) as? [String: Any]
+
+        XCTAssertEqual(payload?["type"] as? String, "cast_spell")
+        XCTAssertEqual(payload?["cardInstanceId"] as? String, "xmage-card-id")
+        XCTAssertEqual(payload?["sourceInstanceId"] as? String, "xmage-source-id")
+        XCTAssertEqual(payload?["sourceZone"] as? String, "hand")
+        XCTAssertEqual(payload?["expectedBridgeRevision"] as? Int, 17)
     }
 
     func testPromptActionCommandPreservesMessageIdWithoutTemplate() throws {
@@ -964,6 +1033,75 @@ final class MagicMobileTests: XCTestCase {
         )
 
         XCTAssertEqual(actions.map(\.id), ["cast_spell-action"])
+    }
+
+    func testInteractionStateMatchesDragPlayableActionsFromCommandTemplate() throws {
+        let card = zoneCard(id: "hand-arcane-signet", name: "Arcane Signet", typeLine: "Artifact")
+        let cast = try decodeAction(
+            type: "cast_spell",
+            extra: #"""
+            "commandTemplate": {
+              "type": "cast_spell",
+              "sourceInstanceId": "hand-arcane-signet",
+              "cardInstanceId": "hand-arcane-signet",
+              "sourceZone": "hand"
+            }
+            """#
+        )
+        let unrelatedCast = try decodeAction(
+            type: "cast_spell",
+            extra: #"""
+            "commandTemplate": {
+              "type": "cast_spell",
+              "sourceInstanceId": "other-card",
+              "cardInstanceId": "other-card",
+              "sourceZone": "hand"
+            }
+            """#
+        )
+
+        let actions = GameBoardInteractionState.legalPlayActions(
+            for: card,
+            actions: [cast, unrelatedCast]
+        )
+
+        XCTAssertEqual(actions.map(\.id), ["cast_spell-action"])
+    }
+
+    func testDragDropResolverRejectsNoLegalActionBeforeSubmitting() throws {
+        let card = zoneCard(id: "hand-dragon", name: "Hoard-Smelter Dragon", typeLine: "Creature - Dragon")
+
+        let result = DragCastDropResolver.resolve(card: card, legalActions: [], droppedInPlayArea: true)
+
+        XCTAssertEqual(result, .rejected("Hoard-Smelter Dragon is not currently playable"))
+    }
+
+    func testDragDropResolverRequiresChoiceForMultipleLegalActions() throws {
+        let card = zoneCard(id: "hand-vandalblast", name: "Vandalblast", typeLine: "Sorcery")
+        let normal = try decodeAction(
+            type: "cast_spell",
+            extra: #""id": "normal-cast", "sourceInstanceId": "hand-vandalblast", "label": "Cast""#
+        )
+        let overload = try decodeAction(
+            type: "cast_spell",
+            extra: #""id": "overload-cast", "sourceInstanceId": "hand-vandalblast", "label": "Cast with overload""#
+        )
+
+        let result = DragCastDropResolver.resolve(card: card, legalActions: [normal, overload], droppedInPlayArea: true)
+
+        XCTAssertEqual(result, .requiresChoice([normal, overload], "Choose how to play Vandalblast"))
+    }
+
+    func testDragDropResolverSubmitsExactSingleLegalAction() throws {
+        let card = zoneCard(id: "hand-servant", name: "Dragonlord's Servant", typeLine: "Creature - Goblin Shaman")
+        let cast = try decodeAction(
+            type: "cast_spell",
+            extra: #""sourceInstanceId": "hand-servant", "cardInstanceId": "hand-servant", "sourceZone": "hand""#
+        )
+
+        let result = DragCastDropResolver.resolve(card: card, legalActions: [cast], droppedInPlayArea: true)
+
+        XCTAssertEqual(result, .submit(cast))
     }
 
     func testInteractionStateUsesOnlyExposedTargetIdsForGlow() throws {

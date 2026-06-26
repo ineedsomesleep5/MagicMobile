@@ -37,6 +37,8 @@ if (requestedScenario === "prompt-variety") {
 const scenarioModule = scenarioModuleFor(requestedScenario);
 const scenario = scenarioModule.id;
 const manaRockScenario = scenario === "mana-rock";
+const dragCastRegressionScenario = scenario === "drag-cast-regression";
+const manaRockLikeScenario = manaRockScenario || dragCastRegressionScenario;
 const manaRockCardName = process.env.XMAGE_SMOKE_MANA_ROCK_CARD ?? "Sol Ring";
 const alphaGameScenario = scenario === "core-flow";
 const commanderGauntletScenario = scenario === "commander-gauntlet";
@@ -144,7 +146,7 @@ const human = fixtureScenario
     ? activatedAbilityFixtureDeck()
     : triggeredAbilityScenario
     ? triggeredAbilityFixtureDeck()
-    : manaRockScenario
+    : manaRockLikeScenario
     ? manaRockFixtureDeck()
     : promptModeScenario
     ? promptModeFixtureDeck()
@@ -234,6 +236,7 @@ let stackSeen = false;
 let manaRockCastSeen = false;
 let manaRockResolvedSeen = false;
 let manaRockPaymentSourceSeen = false;
+let dragCastLandSeen = false;
 const turnsObserved = new Set<number>();
 const actionsByType: Record<string, number> = {};
 const commanderTaxChanges: Array<{ playerId: string; tax: number; turn: number }> = [];
@@ -314,7 +317,7 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
     }
 
     const manaRockSourceManaAvailable = snapshot.legalActions?.some((candidate) => candidate.type === "make_mana") ?? false;
-    if (manaRockScenario && action.type === "cast_spell" && isManaRockAction(action) && manaRockCastSeen && !manaRockSourceManaAvailable) {
+    if (manaRockLikeScenario && action.type === "cast_spell" && isManaRockAction(action) && manaRockCastSeen && !manaRockSourceManaAvailable) {
       const report = {
         ...baseSummaryReport(snapshot),
         failedStep: "mana-rock-cast-no-progress",
@@ -339,10 +342,13 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
     if (action.type === "declare_blockers") {
       blockerAssignmentExercised = true;
     }
-    if (manaRockScenario && action.type === "cast_spell" && isManaRockAction(action)) {
+    if (dragCastRegressionScenario && action.type === "play_land") {
+      dragCastLandSeen = true;
+    }
+    if (manaRockLikeScenario && action.type === "cast_spell" && isManaRockAction(action)) {
       manaRockCastSeen = true;
     }
-    if (manaRockScenario && action.type === "make_mana" && manaRockCastSeen) {
+    if (manaRockLikeScenario && action.type === "make_mana" && manaRockCastSeen) {
       manaRockPaymentSourceSeen = true;
     }
     recordGauntletAction(snapshot, action);
@@ -362,6 +368,9 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
     assertLegalActionBeforeSubmit(snapshot, action);
     const command = commandFromAction(snapshot.id, action, snapshot);
     assertCommandUsesLegalAction(action, command);
+    if (dragCastRegressionScenario && (action.type === "play_land" || action.type === "cast_spell")) {
+      assertIosDragCommandUsesCurrentHandLegalAction(snapshot, action, command);
+    }
     snapshot = await request(`/games/${encodeURIComponent(snapshot.id)}/commands`, {
       method: "POST",
       body: command
@@ -389,7 +398,7 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
                 : "resolve prompt";
             
     snapshot = await waitForSemanticProgress(previous, snapshot, semanticLabel);
-    if (manaRockScenario && action.type === "cast_spell" && isManaRockAction(action)) {
+    if (manaRockLikeScenario && action.type === "cast_spell" && isManaRockAction(action)) {
       assertManaRockCastProgress(previous, snapshot);
     }
     assertBridgeSnapshot(snapshot, `action: ${action.type}`);
@@ -466,10 +475,16 @@ if (scenario === "commander-replacement-tax" || scenario === "commander-damage")
   }
 }
 
-if (scenario === "mana-rock") {
+if (scenario === "mana-rock" || scenario === "drag-cast-regression") {
+  if (dragCastRegressionScenario && !dragCastLandSeen) {
+    throw new Error(
+      "[Smoke] drag-cast-regression did not submit a play_land action through the drag-equivalent legal action path.\n"
+        + smokeDebug("drag land final snapshot", snapshot)
+    );
+  }
   if (!manaRockCastSeen) {
     throw new Error(
-      `[Smoke] mana-rock scenario did not cast ${manaRockCardName} from an XMage legal action.\n`
+      `[Smoke] ${scenario} scenario did not cast ${manaRockCardName} from an XMage legal action.\n`
         + smokeDebug("mana-rock cast final snapshot", snapshot)
     );
   }
@@ -526,7 +541,7 @@ if (scenario === "commander-gauntlet") {
   }
 }
 
-if (activatedAbilityScenario || triggeredAbilityScenario || promptModeScenario || promptOrderScenario || promptAmountScenario || promptMultiAmountScenario || promptPileScenario || scenario === "prompt-variety" || scenario === "damage-assignment") {
+if (activatedAbilityScenario || triggeredAbilityScenario || promptModeScenario || promptOrderScenario || promptAmountScenario || promptMultiAmountScenario || promptPileScenario || scenario === "prompt-variety" || scenario === "damage-assignment" || scenario === "choose-mana" || scenario === "mana-color-choice") {
   const missing = missingRouteFamilies();
   if (missing.length > 0) {
     writeSmokeReport({
@@ -1164,6 +1179,8 @@ function fixtureSeedSchema() {
     ? ["Plains"]
     : blockerFlowScenario
     ? [basic]
+    : dragCastRegressionScenario
+    ? ["Plains", manaRockCardName]
     : manaRockScenario
     ? [manaRockCardName]
     : commanderGauntletScenario
@@ -1198,7 +1215,7 @@ function fixtureSeedSchema() {
     ? ["Defensive Formation", "Silvercoat Lion", "Savannah Lions", "Plains"]
     : blockerFlowScenario
     ? ["Silvercoat Lion", basic]
-    : manaRockScenario
+    : manaRockLikeScenario
     ? [basic, basic]
     : activatedAbilityScenario
     ? ["Seal of Cleansing", basic]
@@ -1295,6 +1312,7 @@ function completedScenarioSteps() {
   if (stackSeen) steps.add("stack-seen");
   if (combatExercised) steps.add("combat-exercised");
   if (manaRockCastSeen && manaRockPaymentSourceSeen && manaRockResolvedSeen) steps.add("mana-rock");
+  if (dragCastLandSeen && manaRockCastSeen && manaRockPaymentSourceSeen && manaRockResolvedSeen) steps.add("drag-cast-regression");
   if (gauntlet.searchResolved || actionsByType.search_select) steps.add("search-select");
   if (gauntlet.commanderReplacementAnswered || commanderTaxChanges.length > 0) steps.add("commander-replacement-tax");
   if (commanderDamageChanges.length > 0) steps.add("commander-damage");
@@ -1337,8 +1355,10 @@ function routeFamiliesRequiredForScenario(input: string) {
   if (input === "damage-assignment") return ["choose_multi_amount", "damage_assignment"];
   if (input === "activated-ability-stack") return ["activate_ability", "stack_object_seen", "pass_priority"];
   if (input === "triggered-ability-stack") return ["trigger_seen", "stack_object_seen", "pass_priority"];
-  if (input === "opening-start-player") return ["choose_player"];
+  if (input === "opening-start-player" || input === "starting-player-choice") return ["choose_player"];
+  if (input === "choose-mana" || input === "mana-color-choice") return ["choose_mana"];
   if (input === "ai-turn-progress") return ["pass_priority"];
+  if (input === "drag-cast-regression") return ["play_land", "cast_spell", "make_mana"];
   return [];
 }
 
@@ -1422,8 +1442,9 @@ function scenarioModuleFor(input: string): ScenarioModule {
         ]
       };
     case "opening-start-player":
+    case "starting-player-choice":
       return {
-        id: "opening-start-player",
+        id: input,
         usesFixture: false,
         scenarioSet: ["opening-start-player"],
         requiredSteps: ["starting-player-choice", "route-family:choose_player"]
@@ -1449,6 +1470,21 @@ function scenarioModuleFor(input: string): ScenarioModule {
         usesFixture: true,
         scenarioSet: ["mana-rock"],
         requiredSteps: ["mana-rock"]
+      };
+    case "drag-cast-regression":
+      return {
+        id: "drag-cast-regression",
+        usesFixture: true,
+        scenarioSet: ["drag-cast-regression"],
+        requiredSteps: [
+          "fixture_call",
+          "direct_state_seeded",
+          "seeded_state_verified",
+          "route-family:play_land",
+          "route-family:cast_spell",
+          "route-family:make_mana",
+          "drag-cast-regression"
+        ]
       };
     case "search-select":
       return {
@@ -1479,8 +1515,9 @@ function scenarioModuleFor(input: string): ScenarioModule {
         requiredSteps: ["route-family:play_x_mana"]
       };
     case "choose-mana":
+    case "mana-color-choice":
       return {
-        id: "choose-mana",
+        id: input,
         usesFixture: true,
         scenarioSet: ["choose-mana"],
         requiredSteps: ["route-family:choose_mana"]
@@ -1661,8 +1698,8 @@ function scenarioModuleFor(input: string): ScenarioModule {
     default:
       throw new Error(
         `Unknown XMAGE_SMOKE_SCENARIO "${input}". Expected core-flow, mana-rock, search-select, `
-          + "opening-start-player, ai-turn-progress, commander-replacement-tax, commander-damage, blocker-flow, prompt-variety, "
-          + "prompt-mode, prompt-order, prompt-amount, prompt-multi-amount, prompt-pile, activated-ability-stack, triggered-ability-stack, damage-assignment, fixture-smoke, "
+          + "opening-start-player, starting-player-choice, ai-turn-progress, commander-replacement-tax, commander-damage, blocker-flow, prompt-variety, "
+          + "prompt-mode, prompt-order, prompt-amount, prompt-multi-amount, prompt-pile, choose-mana, mana-color-choice, activated-ability-stack, triggered-ability-stack, damage-assignment, drag-cast-regression, fixture-smoke, "
           + "commander-gauntlet, or commander-full-ai."
       );
   }
@@ -2072,6 +2109,11 @@ function chooseFixtureAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
     if (gauntletAction) return gauntletAction;
   }
 
+  if (dragCastRegressionScenario) {
+    const dragAction = chooseDragCastRegressionAction(snapshot);
+    if (dragAction) return dragAction;
+  }
+
   if (manaRockScenario) {
     const manaRockAction = chooseManaRockAction(snapshot);
     if (manaRockAction) return manaRockAction;
@@ -2376,6 +2418,42 @@ function chooseManaRockAction(snapshot: SmokeSnapshot): SmokeAction | undefined 
     const castManaRock = actions.find((action) =>
       action.type === "cast_spell" && isManaRockAction(action)
     );
+    if (castManaRock) return castManaRock;
+  }
+
+  return actions.find((action) =>
+    action.type === "pass_priority" || action.type === "pass_until_response" || action.type === "pass_until_next_turn" || action.type === "advance_phase"
+  );
+}
+
+function chooseDragCastRegressionAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
+  const actions = snapshot.legalActions ?? [];
+  const battlefield = humanZone(snapshot, "battlefield");
+  const hasManaRockInHand = humanZone(snapshot, "hand").some((entry) => isManaRockName(entry.card?.name ?? ""));
+
+  if (snapshot.promptEnvelopeV2 && isManaOrPaymentPrompt(snapshot)) {
+    const sourceMana = actions.find((action) => action.type === "make_mana");
+    if (sourceMana) return sourceMana;
+    const pay = actions.find((action) => action.type === "pay_cost" && action.pay !== false);
+    if (pay) return pay;
+    const mana = actions.find((action) => action.type === "play_mana" || action.type === "choose_mana");
+    if (mana) return mana;
+  }
+
+  if (!dragCastLandSeen) {
+    const dragLand = iosDragPlayableActions(snapshot, "play_land")
+      .find((action) => /land|plains|forest|island|mountain|swamp/i.test(action.cardName ?? action.label ?? ""));
+    if (dragLand) return dragLand;
+  }
+
+  if (manaRockCastSeen && !manaRockResolvedSeen) {
+    const sourceMana = actions.find((action) => action.type === "make_mana");
+    if (sourceMana) return sourceMana;
+  }
+
+  if (battlefield.length >= 2 && hasManaRockInHand) {
+    const castManaRock = iosDragPlayableActions(snapshot, "cast_spell")
+      .find((action) => isManaRockAction(action));
     if (castManaRock) return castManaRock;
   }
 
@@ -2718,6 +2796,53 @@ function assertCommandUsesLegalAction(action: SmokeAction, command: Record<strin
     }
     throw new Error(`[Smoke] command field ${field} was not derived from the LegalAction or commandTemplate.`);
   }
+}
+
+function iosDragPlayableActions(snapshot: SmokeSnapshot, type: "play_land" | "cast_spell") {
+  const handIds = new Set(humanZone(snapshot, "hand").map((entry) => entry.instanceId).filter(Boolean));
+  return (snapshot.legalActions ?? []).filter((action) => {
+    if (action.type !== type) return false;
+    const sourceId = effectiveActionSourceInstanceId(action);
+    const cardId = effectiveActionCardInstanceId(action);
+    return Boolean((sourceId && handIds.has(sourceId)) || (cardId && handIds.has(cardId)));
+  });
+}
+
+function assertIosDragCommandUsesCurrentHandLegalAction(
+  snapshot: SmokeSnapshot,
+  action: SmokeAction,
+  command: Record<string, unknown>
+) {
+  const handIds = new Set(humanZone(snapshot, "hand").map((entry) => entry.instanceId).filter(Boolean));
+  const actionSourceId = effectiveActionSourceInstanceId(action);
+  const actionCardId = effectiveActionCardInstanceId(action);
+  const commandSourceId = typeof command.sourceInstanceId === "string" ? command.sourceInstanceId : undefined;
+  const commandCardId = typeof command.cardInstanceId === "string" ? command.cardInstanceId : undefined;
+
+  if (!actionSourceId && !actionCardId) {
+    throw new Error(`[Smoke] drag action ${action.type} did not include source/card ids or commandTemplate ids.`);
+  }
+  if (!((actionSourceId && handIds.has(actionSourceId)) || (actionCardId && handIds.has(actionCardId)))) {
+    throw new Error(
+      `[Smoke] drag action ${action.type} did not match a current hand card.\n`
+        + smokeDebug("drag action mismatch snapshot", snapshot)
+    );
+  }
+  if (commandSourceId !== actionSourceId && commandCardId !== actionCardId) {
+    throw new Error(
+      `[Smoke] drag command did not preserve the current LegalAction ids: `
+        + `actionSource=${actionSourceId ?? "n/a"} actionCard=${actionCardId ?? "n/a"} `
+        + `commandSource=${commandSourceId ?? "n/a"} commandCard=${commandCardId ?? "n/a"}`
+    );
+  }
+}
+
+function effectiveActionSourceInstanceId(action: SmokeAction) {
+  return action.commandTemplate?.sourceInstanceId ?? action.sourceInstanceId ?? action.cardInstanceId;
+}
+
+function effectiveActionCardInstanceId(action: SmokeAction) {
+  return action.commandTemplate?.cardInstanceId ?? action.cardInstanceId ?? effectiveActionSourceInstanceId(action);
 }
 
 function selectionValueDerived(
@@ -3245,7 +3370,7 @@ function recordCoverage(snapshot: SmokeSnapshot) {
     stackSeen = true;
     markRouteFamily("stack_object_seen");
   }
-  if (manaRockScenario && humanZone(snapshot, "battlefield").some((entry) => isManaRockName(entry.card?.name ?? ""))) {
+  if (manaRockLikeScenario && humanZone(snapshot, "battlefield").some((entry) => isManaRockName(entry.card?.name ?? ""))) {
     manaRockResolvedSeen = true;
   }
   if (
@@ -3323,12 +3448,13 @@ function scenarioSatisfied() {
       && combatStepSeen
       && realGameActionSeen;
   }
-  if (scenario === "opening-start-player") return actionsByType.choose_player > 0;
+  if (scenario === "opening-start-player" || scenario === "starting-player-choice") return actionsByType.choose_player > 0;
   if (scenario === "ai-turn-progress") return aiProgressObserved;
   if (scenario === "blocker-flow") return blockerAssignmentExercised;
   if (scenario === "commander-replacement-tax") return commanderTaxChanges.length > 0;
   if (scenario === "commander-damage") return commanderDamageChanges.length > 0;
   if (scenario === "mana-rock") return manaRockCastSeen && manaRockPaymentSourceSeen && manaRockResolvedSeen;
+  if (scenario === "drag-cast-regression") return dragCastLandSeen && manaRockCastSeen && manaRockPaymentSourceSeen && manaRockResolvedSeen;
   if (scenario === "search-select") return gauntlet.searchResolved || actionsByType.search_select > 0;
   if (scenario === "prompt-variety") return promptVarietyRouteFamiliesSatisfied();
   if (scenario === "prompt-mode") return missingRouteFamilies().length === 0 && promptModeChoiceSubmitted && promptModeChoiceResolved;
@@ -3338,6 +3464,7 @@ function scenarioSatisfied() {
   if (promptPileScenario) return missingRouteFamilies().length === 0 && promptPileChoiceSubmitted && promptPileChoiceResolved;
   if (damageAssignmentScenario) return missingRouteFamilies().length === 0 && damageAssignmentPromptSeen && damageAssignmentChoiceSubmitted;
   if (scenario === "activated-ability-stack" || scenario === "triggered-ability-stack") return missingRouteFamilies().length === 0;
+  if (scenario === "choose-mana" || scenario === "mana-color-choice") return missingRouteFamilies().length === 0;
   if (scenario === "commander-gauntlet") return commanderGauntletMissingSteps().length === 0;
   return false;
 }

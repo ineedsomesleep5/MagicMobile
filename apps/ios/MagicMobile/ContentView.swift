@@ -79,6 +79,8 @@ struct ContentView: View {
 
     @State private var pendingActionId: String?
     @State private var pendingCardInstanceId: String?
+    @State private var pendingCastAction: LegalAction?
+    @State private var pendingCastBeforeSnapshot: GameSnapshot?
     @State private var lastSubmittedActionId: String?
     @State private var lastSubmittedSnapshotSignature: String?
     @State private var isLoading = false
@@ -521,20 +523,45 @@ struct ContentView: View {
         }
 
         pendingActionId = action.id
-        pendingCardInstanceId = action.cardInstanceId ?? action.sourceInstanceId
+        pendingCardInstanceId = action.effectiveCardInstanceId ?? action.effectiveSourceInstanceId
+        if ["cast_spell", "play_land"].contains(action.type) {
+            pendingCastAction = action
+            pendingCastBeforeSnapshot = currentSnapshot
+        }
         lastSubmittedActionId = action.id
         lastSubmittedSnapshotSignature = currentSignature
         status = "Sending \(action.shortLabel ?? action.label)"
 
         do {
             let previousSignature = snapshotSignature(currentSnapshot)
+            let preparedCommand = try api.preparedCommand(
+                for: action,
+                gameId: currentSnapshot.id,
+                expectedBridgeRevision: currentSnapshot.bridgeRevision
+            )
+            logCastSubmission(
+                phase: "submit",
+                action: action,
+                command: preparedCommand,
+                before: currentSnapshot,
+                after: nil,
+                outcome: nil
+            )
             let nextSnapshot = try await api.submit(action: action, gameId: currentSnapshot.id, expectedBridgeRevision: currentSnapshot.bridgeRevision)
             let submittedOutcome = CastSubmissionClassifier.classify(action: action, before: currentSnapshot, after: nextSnapshot)
             let shouldPollDelayedOutcome = CastSubmissionClassifier.shouldPollForDelayedOutcome(action: action, before: currentSnapshot, after: nextSnapshot)
+            logCastSubmission(
+                phase: "response",
+                action: action,
+                command: preparedCommand,
+                before: currentSnapshot,
+                after: nextSnapshot,
+                outcome: submittedOutcome
+            )
             applySnapshot(nextSnapshot)
             if shouldPollDelayedOutcome {
                 pendingActionId = action.id
-                pendingCardInstanceId = action.cardInstanceId ?? action.sourceInstanceId
+                pendingCardInstanceId = action.effectiveCardInstanceId ?? action.effectiveSourceInstanceId
                 status = action.requiresPayment == true || action.manaCost?.isEmpty == false
                     ? "Waiting for XMage payment"
                     : "Waiting for XMage cast result"
@@ -547,23 +574,40 @@ struct ContentView: View {
                     : await pollSnapshotAfterCommand(api: api, gameId: currentSnapshot.id, previousSignature: previousSignature)
                 if let latestSnapshot = snapshot {
                     let finalOutcome = CastSubmissionClassifier.classify(action: action, before: currentSnapshot, after: latestSnapshot)
+                    logCastSubmission(
+                        phase: "final",
+                        action: action,
+                        command: preparedCommand,
+                        before: currentSnapshot,
+                        after: latestSnapshot,
+                        outcome: finalOutcome
+                    )
                     status = finalOutcome.statusMessage
                     if finalOutcome == .rejectedStillInHand && updated {
-                        errorMessage = finalOutcome.statusMessage
+                        errorMessage = castFailureMessage(action: action, before: currentSnapshot, after: latestSnapshot, reason: finalOutcome.statusMessage)
                     }
                 }
                 if !updated {
+                    if let latestSnapshot = snapshot, ["cast_spell", "play_land"].contains(action.type) {
+                        errorMessage = castFailureMessage(
+                            action: action,
+                            before: currentSnapshot,
+                            after: latestSnapshot,
+                            reason: "Cast did not progress before the XMage watchdog timed out."
+                        )
+                    }
                     clearPendingAction()
                 }
             } else {
                 if submittedOutcome == .rejectedStillInHand {
-                    errorMessage = submittedOutcome.statusMessage
+                    errorMessage = castFailureMessage(action: action, before: currentSnapshot, after: nextSnapshot, reason: submittedOutcome.statusMessage)
                 }
                 clearPendingAction()
             }
         } catch {
             errorMessage = error.localizedDescription
             status = error.localizedDescription
+            logCastSubmissionError(action: action, before: currentSnapshot, error: error)
             clearPendingAction()
         }
     }
@@ -725,6 +769,10 @@ struct ContentView: View {
         let changedFromSubmittedSnapshot = lastSubmittedSnapshotSignature.map { snapshotSignature(nextSnapshot) != $0 } ?? false
         snapshot = nextSnapshot
         selectedCard = nil
+        if let pendingCastAction, let pendingCastBeforeSnapshot,
+           CastSubmissionClassifier.shouldKeepPollingForCastOutcome(action: pendingCastAction, before: pendingCastBeforeSnapshot, after: nextSnapshot) {
+            return
+        }
         if pendingActionId != nil && (nextSnapshot.pendingStatus != "waiting_for_xmage" || changedFromSubmittedSnapshot) {
             clearPendingAction()
         }
@@ -779,8 +827,58 @@ struct ContentView: View {
     private func clearPendingAction() {
         pendingActionId = nil
         pendingCardInstanceId = nil
+        pendingCastAction = nil
+        pendingCastBeforeSnapshot = nil
         lastSubmittedActionId = nil
         lastSubmittedSnapshotSignature = nil
+    }
+
+    private func castFailureMessage(action: LegalAction, before: GameSnapshot, after: GameSnapshot, reason: String) -> String {
+        """
+        \(reason)
+
+        Card: \(action.cardName ?? action.effectiveCardInstanceId ?? action.effectiveSourceInstanceId ?? "unknown")
+        Action: \(action.type) / \(action.id)
+        Source: \(action.effectiveSourceInstanceId ?? "nil")
+        Card ID: \(action.effectiveCardInstanceId ?? "nil")
+        Zone: \(action.effectiveSourceZone ?? action.effectiveFromZone ?? "nil")
+        Ability: \(action.effectiveAbilityId ?? "nil")
+        Before: \(castDebugSummary(before))
+        After: \(castDebugSummary(after))
+        """
+    }
+
+    private func logCastSubmission(
+        phase: String,
+        action: LegalAction,
+        command: GameCommand,
+        before: GameSnapshot,
+        after: GameSnapshot?,
+        outcome: CastSubmissionOutcome?
+    ) {
+        guard ["cast_spell", "play_land"].contains(action.type) else { return }
+        let payload = (try? JSONEncoder.magicMobile.encode(command))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "<unencodable>"
+        print(
+            """
+            [DragCast] \(phase) card=\(action.cardName ?? action.effectiveCardInstanceId ?? action.effectiveSourceInstanceId ?? "unknown") actionId=\(action.id) type=\(action.type) source=\(action.effectiveSourceInstanceId ?? "nil") cardId=\(action.effectiveCardInstanceId ?? "nil") abilityId=\(action.effectiveAbilityId ?? "nil") before=\(castDebugSummary(before)) after=\(after.map(castDebugSummary) ?? "nil") outcome=\(outcome?.statusMessage ?? "pending") command=\(payload)
+            """
+        )
+    }
+
+    private func logCastSubmissionError(action: LegalAction, before: GameSnapshot, error: Error) {
+        guard ["cast_spell", "play_land"].contains(action.type) else { return }
+        print(
+            "[DragCast] error card=\(action.cardName ?? action.effectiveCardInstanceId ?? action.effectiveSourceInstanceId ?? "unknown") actionId=\(action.id) before=\(castDebugSummary(before)) failureReason=\(error.localizedDescription)"
+        )
+    }
+
+    private func castDebugSummary(_ snapshot: GameSnapshot) -> String {
+        let handCount = snapshot.human?.zones.hand.count ?? 0
+        let stackCount = snapshot.xmage?.stack.count ?? snapshot.human?.zones.stack.count ?? 0
+        let mana = snapshot.human?.manaPool.map { "W\($0.W) U\($0.U) B\($0.B) R\($0.R) G\($0.G) C\($0.C)" } ?? "nil"
+        let prompt = snapshot.promptEnvelopeV2.map { "\($0.method)|\($0.responseCommand?.type ?? $0.responseKind)" } ?? "nil"
+        return "rev=\(snapshot.bridgeRevision ?? -1) cycle=\(snapshot.xmageCycle ?? -1) hand=\(handCount) stack=\(stackCount) mana=\(mana) prompt=\(prompt) pending=\(snapshot.pendingStatus ?? "nil")"
     }
 
     private func perform(_ work: @escaping () async throws -> Void) async {
@@ -1344,6 +1442,7 @@ struct NativeGameView: View {
     @State private var inspectingZoneTitle: String? = nil
     @State private var inspectingZoneCards: [ZoneCard] = []
     @State private var isPromptDetailOpen = false
+    @State private var dragActionChoice: DragActionChoice?
     @State private var aiWaitBeganAt = Date()
     @State private var aiWaitKey = ""
 
@@ -1457,6 +1556,9 @@ struct NativeGameView: View {
                                 metrics: metrics,
                                 isOverPlayerDropZone: $isOverPlayerDropZone,
                                 onDropFeedback: onInteractionFeedback,
+                                onActionChoice: { actions, message in
+                                    dragActionChoice = DragActionChoice(message: message, actions: actions)
+                                },
                                 runAction: runAction
                             )
                                 .frame(width: metrics.handRect.width, height: metrics.handRect.height)
@@ -1517,6 +1619,24 @@ struct NativeGameView: View {
                                 .position(x: metrics.boardColumnRect.midX, y: metrics.compactPromptRect.midY)
                                 .transition(.scale.combined(with: .opacity))
                                 .zIndex(20)
+                            }
+
+                            if let dragActionChoice {
+                                DragActionChoicePopup(
+                                    choice: dragActionChoice,
+                                    pendingActionId: pendingActionId,
+                                    runAction: { action in
+                                        self.dragActionChoice = nil
+                                        runAction(action)
+                                    },
+                                    cancel: {
+                                        self.dragActionChoice = nil
+                                    }
+                                )
+                                .frame(width: min(max(metrics.size.width * 0.30, 260), 340))
+                                .position(x: metrics.boardColumnRect.midX, y: metrics.compactPromptRect.midY)
+                                .transition(.scale.combined(with: .opacity))
+                                .zIndex(21)
                             }
                         }
                         .onAppear {
@@ -5309,6 +5429,67 @@ struct CompactPromptPopup: View {
     }
 }
 
+struct DragActionChoice: Identifiable {
+    let id = UUID()
+    let message: String
+    let actions: [LegalAction]
+}
+
+struct DragActionChoicePopup: View {
+    let choice: DragActionChoice
+    let pendingActionId: String?
+    let runAction: (LegalAction) -> Void
+    let cancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(choice.message)
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+                Spacer(minLength: 4)
+                Button(action: cancel) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .black))
+                        .foregroundStyle(.white.opacity(0.70))
+                }
+                .buttonStyle(.plain)
+                .disabled(pendingActionId != nil)
+            }
+
+            HStack(spacing: 7) {
+                ForEach(choice.actions.prefix(3)) { action in
+                    Button {
+                        runAction(action)
+                    } label: {
+                        PromptButtonLabel(
+                            title: action.shortLabel ?? action.label,
+                            systemImage: action.systemImage,
+                            isPending: pendingActionId == action.id
+                        )
+                    }
+                    .buttonStyle(PanelActionButtonStyle(isPrimary: action.isPrimary == true, compact: true))
+                    .disabled(pendingActionId != nil)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(
+            LinearGradient(
+                colors: [MagicPalette.iron.opacity(0.94), MagicPalette.leather.opacity(0.88)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 10)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(MagicPalette.antiqueGold.opacity(0.62), lineWidth: 1.2))
+        .shadow(color: MagicPalette.antiqueGold.opacity(0.18), radius: 14, x: 0, y: 0)
+    }
+}
+
 struct ManaPaymentTray: View {
     let snapshot: GameSnapshot
     let prompt: PromptEnvelopeV2
@@ -5582,6 +5763,7 @@ struct HandFan: View {
     let metrics: BattlefieldLayoutMetrics
     @Binding var isOverPlayerDropZone: Bool
     let onDropFeedback: (String) -> Void
+    let onActionChoice: ([LegalAction], String) -> Void
     let runAction: (LegalAction) -> Void
     @State private var draggingCardId: String?
     @State private var dragOffset: CGSize = .zero
@@ -5647,18 +5829,20 @@ struct HandFan: View {
                         interactionState.mode = .selectedCard(cardId: card.instanceId)
                         return
                     }
-                    let playableActions = legalHandActions(for: card)
-                    guard playableActions.count == 1, let action = playableActions.first else {
-                        if playableActions.isEmpty {
-                            onDropFeedback("\(card.card.name) is not currently playable")
-                        } else {
-                            onDropFeedback("Choose how to play \(card.card.name)")
-                        }
+                    switch DragCastDropResolver.resolve(card: card, legalActions: legalActions, droppedInPlayArea: shouldPlay) {
+                    case .ignored:
                         interactionState.mode = .selectedCard(cardId: card.instanceId)
-                        return
+                    case let .rejected(message):
+                        onDropFeedback(message)
+                        interactionState.mode = .selectedCard(cardId: card.instanceId)
+                    case let .requiresChoice(actions, message):
+                        onDropFeedback(message)
+                        onActionChoice(actions, message)
+                        interactionState.mode = .selectedCard(cardId: card.instanceId)
+                    case let .submit(action):
+                        interactionState.mode = .awaitingCastSnapshot(actionId: action.id)
+                        runAction(action)
                     }
-                    interactionState.mode = .awaitingCastSnapshot(actionId: action.id)
-                    runAction(action)
                 }
         )
     }

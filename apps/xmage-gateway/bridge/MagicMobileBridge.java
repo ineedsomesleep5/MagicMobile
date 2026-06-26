@@ -3262,13 +3262,13 @@ public final class MagicMobileBridge implements MageClient {
 
     private JsonObject fixtureOpeningAction(JsonObject snapshot) {
         JsonArray actions = array(snapshot, "legalActions");
-        JsonObject keep = findAction(actions, "keep_hand", "");
-        if (keep != null) {
-            return keep;
-        }
         JsonObject startingPlayer = findOpeningChoice(actions);
         if (startingPlayer != null) {
             return startingPlayer;
+        }
+        JsonObject keep = findAction(actions, "keep_hand", "");
+        if (keep != null) {
+            return keep;
         }
         JsonObject mulligan = findAction(actions, "mulligan", "");
         if (mulligan != null) {
@@ -3684,6 +3684,14 @@ public final class MagicMobileBridge implements MageClient {
             defaultCards(schema, "humanHand", "Sol Ring");
             defaultBattlefield(schema, "humanBattlefield", "Plains", "Plains");
             defaultCards(schema, "humanLibraryTop", "Plains");
+            schema.addProperty("turn", 1);
+            return;
+        }
+        if ("drag-cast-regression".equals(fixtureName)) {
+            defaultCards(schema, "humanHand", "Plains", "Sol Ring", "Primal Might", "Frontier Siege", "Vandalblast");
+            defaultBattlefield(schema, "humanBattlefield", "Plains", "Plains", "Mountain", "Forest");
+            defaultCards(schema, "humanLibraryTop", "Plains", "Mountain", "Forest");
+            defaultBattlefield(schema, "aiBattlefield", "Memnite");
             schema.addProperty("turn", 1);
             return;
         }

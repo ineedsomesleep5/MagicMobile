@@ -1123,6 +1123,16 @@ describe("xmage gateway", () => {
     assert.doesNotMatch(bridgeSource, /choice\.addProperty\("label", choiceId\)/);
   });
 
+  it("handles starting-player opening choices before keep or mulligan actions", () => {
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+    const method = bridgeSource.match(/private JsonObject fixtureOpeningAction[\s\S]*?\n    private JsonObject findOpeningChoice/)?.[0] ?? "";
+
+    assert.ok(
+      method.indexOf("JsonObject startingPlayer = findOpeningChoice(actions)") < method.indexOf('JsonObject keep = findAction(actions, "keep_hand", "")'),
+      "starting-player prompt must be checked before keep_hand"
+    );
+  });
+
   it("keeps XMage fixtures inside the server JVM with snapshot proof gates", () => {
     const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
     const embeddedSource = readFileSync(new URL("./bridge/MagicMobileEmbeddedServerBridge.java", import.meta.url), "utf8");

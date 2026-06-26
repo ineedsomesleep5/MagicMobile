@@ -160,7 +160,7 @@ enum CastSubmissionOutcome: Equatable {
         case .waiting:
             return "Waiting for XMage update"
         case .rejectedStillInHand:
-            return "XMage did not accept that play. Refresh and try again."
+            return "Cast did not progress. Refresh and try again."
         case .notCastOrPlay:
             return "Action submitted"
         }
@@ -172,9 +172,10 @@ enum CastSubmissionClassifier {
         guard ["cast_spell", "play_land"].contains(action.type) else { return .notCastOrPlay }
         if isPaymentPrompt(after.promptEnvelopeV2) { return .payment }
         if isTargetPrompt(after.promptEnvelopeV2) { return .targeting }
+        if isActionableFollowUpPrompt(after.promptEnvelopeV2) { return .waiting }
         if after.pendingStatus == "waiting_for_xmage" { return .waiting }
 
-        guard let cardId = action.cardInstanceId ?? action.sourceInstanceId else {
+        guard let cardId = action.effectiveCardInstanceId ?? action.effectiveSourceInstanceId else {
             return .accepted
         }
 
@@ -191,7 +192,7 @@ enum CastSubmissionClassifier {
     }
 
     static func shouldKeepPollingForCastOutcome(action: LegalAction, before: GameSnapshot, after: GameSnapshot) -> Bool {
-        guard action.type == "cast_spell" else { return false }
+        guard ["cast_spell", "play_land"].contains(action.type) else { return false }
         return classify(action: action, before: before, after: after) == .rejectedStillInHand
     }
 
@@ -209,6 +210,44 @@ enum CastSubmissionClassifier {
         let method = prompt.method.uppercased()
         let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
         return method.contains("TARGET") || type == "choose_target" || type == "target"
+    }
+
+    static func isActionableFollowUpPrompt(_ prompt: PromptEnvelopeV2?) -> Bool {
+        guard let prompt else { return false }
+        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
+        let actionableTypes: Set<String> = [
+            "answer_yes_no",
+            "choose_ability",
+            "choose_amount",
+            "choose_card",
+            "choose_mode",
+            "choose_multi_amount",
+            "choose_pile",
+            "choose_player",
+            "commander_replacement",
+            "generic_replacement",
+            "order_items",
+            "order_triggers",
+            "pay_cost",
+            "play_x_mana",
+            "resolve_choice",
+            "search_select"
+        ]
+        guard actionableTypes.contains(type) else { return false }
+
+        let hasChoices = prompt.choices?.isEmpty == false ||
+            prompt.cards?.isEmpty == false ||
+            prompt.targets?.isEmpty == false ||
+            prompt.players?.isEmpty == false ||
+            prompt.piles?.isEmpty == false ||
+            prompt.abilities?.isEmpty == false ||
+            prompt.modes?.isEmpty == false ||
+            prompt.multiAmounts?.isEmpty == false ||
+            prompt.targetIds?.isEmpty == false ||
+            (prompt.minChoices ?? 0) > 0 ||
+            prompt.required == true
+
+        return hasChoices || prompt.responseCommand != nil
     }
 }
 
@@ -404,6 +443,28 @@ struct LegalAction: Decodable, Identifiable {
     let commandTemplate: [String: JSONValue]?
     let attackers: [AttackDeclaration]?
     let blockers: [BlockDeclaration]?
+}
+
+extension LegalAction {
+    var effectiveCardInstanceId: String? {
+        commandTemplate?["cardInstanceId"]?.stringValue ?? cardInstanceId ?? effectiveSourceInstanceId
+    }
+
+    var effectiveSourceInstanceId: String? {
+        commandTemplate?["sourceInstanceId"]?.stringValue ?? sourceInstanceId ?? cardInstanceId
+    }
+
+    var effectiveSourceZone: String? {
+        commandTemplate?["sourceZone"]?.stringValue ?? sourceZone
+    }
+
+    var effectiveFromZone: String? {
+        commandTemplate?["fromZone"]?.stringValue ?? sourceZone
+    }
+
+    var effectiveAbilityId: String? {
+        commandTemplate?["abilityId"]?.stringValue ?? abilityId
+    }
 }
 
 struct ChoicePrompt: Decodable, Identifiable {
