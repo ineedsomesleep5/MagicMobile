@@ -293,6 +293,35 @@ extension GameSnapshot {
     }
 }
 
+enum AIWaitRecoveryAction: Equatable {
+    case none
+    case refresh
+    case reconnect
+}
+
+enum AIWaitRecoveryPolicy {
+    static let refreshThresholdSeconds: TimeInterval = 10
+    static let reconnectThresholdSeconds: TimeInterval = 20
+
+    static func action(
+        for snapshot: GameSnapshot,
+        elapsedSeconds: TimeInterval,
+        didRefresh: Bool,
+        didReconnect: Bool
+    ) -> AIWaitRecoveryAction {
+        guard snapshot.isWaitingOnAIOrStalled else {
+            return .none
+        }
+        if elapsedSeconds >= reconnectThresholdSeconds, didRefresh, !didReconnect {
+            return .reconnect
+        }
+        if elapsedSeconds >= refreshThresholdSeconds, !didRefresh {
+            return .refresh
+        }
+        return .none
+    }
+}
+
 struct CommanderStartupResponse: Decodable {
     let startupId: String
     let status: String
@@ -507,6 +536,9 @@ struct LegalAction: Decodable, Identifiable {
     let commandTemplate: [String: JSONValue]?
     let attackers: [AttackDeclaration]?
     let blockers: [BlockDeclaration]?
+    let defenderId: String?
+    let defenderKind: String?
+    let defenderName: String?
 }
 
 extension LegalAction {
@@ -750,6 +782,34 @@ struct XmageStackObject: Decodable, Identifiable {
         displaySourceCard?.card.name ?? sourceName ?? "Source unavailable"
     }
 
+    var syntheticTileTitle: String {
+        if displayName.localizedCaseInsensitiveContains("ability") {
+            return displayName
+        }
+        if objectType?.localizedCaseInsensitiveContains("ability") == true {
+            return "Activated ability"
+        }
+        return displayName
+    }
+
+    var syntheticTileSubtitle: String {
+        let source = sourceName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let source, !source.isEmpty {
+            return source
+        }
+        return "Stack"
+    }
+
+    var syntheticTileDetail: String {
+        if let rulesText, !rulesText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return rulesText
+        }
+        if let detail = compactFallbackDetail {
+            return detail
+        }
+        return sourceCardUnavailableReason ?? "Source card image unavailable"
+    }
+
     var displaySourceCard: ZoneCard? {
         guard let sourceCard, !sourceCard.isSyntheticStackAbilityPlaceholder else {
             return nil
@@ -785,6 +845,7 @@ struct XmageStackObject: Decodable, Identifiable {
 struct XmageCombatGroup: Decodable, Identifiable {
     let defenderId: String
     let defenderName: String
+    let defenderKind: String?
     let blocked: Bool
     let attackers: [ZoneCard]
     let blockers: [ZoneCard]

@@ -10,6 +10,7 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
+    "design:lint": "designmd lint DESIGN.md",
     "typecheck": "pnpm -r typecheck",
     "db:migrate": "pnpm --filter @magicmobile/shared db:migrate",
     "db:seed": "pnpm --filter @magicmobile/card-data db:seed",
@@ -33,6 +34,7 @@
     "smoke:xmage:full-ai": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=commander-full-ai XMAGE_USE_FIXTURE=true pnpm smoke:xmage"
   },
   "devDependencies": {
+    "@google/design.md": "^0.3.0",
     "@types/node": "^24.0.0",
     "typescript": "^5.8.3",
     "vite-node": "3.2.4",

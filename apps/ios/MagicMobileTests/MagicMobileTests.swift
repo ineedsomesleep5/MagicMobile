@@ -768,6 +768,9 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(object.displaySourceName, "Source unavailable")
         XCTAssertEqual(object.sourceCardUnavailableReason, "XMage exposed a synthetic stack object without source card metadata.")
         XCTAssertEqual(object.compactFallbackDetail, "XMage exposed a synthetic stack object without source card metadata.")
+        XCTAssertEqual(object.syntheticTileTitle, "Activated ability")
+        XCTAssertEqual(object.syntheticTileSubtitle, "Stack")
+        XCTAssertEqual(object.syntheticTileDetail, "Draw a card.")
     }
 
     func testStackObjectDecodesRealSourceCardForSyntheticAbility() throws {
@@ -833,6 +836,9 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(object.controllerXmageId, "controller-xmage-1")
         XCTAssertEqual(object.targetIds ?? [], ["target-1", "target-2"])
         XCTAssertEqual(object.displayMetadata, "Controller: human | From: battlefield | Targets: 2")
+        XCTAssertEqual(object.syntheticTileTitle, "Activated ability")
+        XCTAssertEqual(object.syntheticTileSubtitle, "Seal of Cleansing")
+        XCTAssertEqual(object.syntheticTileDetail, "Destroy target artifact.")
     }
 
     func testPromptCommandBuilderPreservesResponsePromptAndMessageId() throws {
@@ -1246,7 +1252,7 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertFalse(CompactPromptPopup.needsDetails(snapshot))
     }
 
-    func testCompactPromptPopupShowsManaTrayForStackSourceManaActionsWithoutPrompt() throws {
+    func testInlinePaymentPromptHandlesStackSourceManaActionsWithoutFloatingPopup() throws {
         let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
         {
           "id": "game-stack-payment",
@@ -1303,7 +1309,8 @@ final class MagicMobileTests: XCTestCase {
         }
         """#.data(using: .utf8)!)
 
-        XCTAssertTrue(CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: nil))
+        XCTAssertTrue(InlinePaymentPromptState.isActive(in: snapshot))
+        XCTAssertFalse(CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: nil))
         XCTAssertTrue(CompactPromptPopup.shouldShowStackPaymentTray(in: snapshot))
         XCTAssertEqual(CompactPromptPopup.syntheticStackPaymentPrompt(in: snapshot).message, "Tap mana for Circle of Flame")
     }
@@ -1346,7 +1353,7 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertTrue(CompactPromptPopup.compactLegalPromptActions(in: snapshot).isEmpty)
     }
 
-    func testCompactPromptPopupShowsForManaPaymentPrompt() throws {
+    func testInlinePaymentPromptHandlesManaPaymentPromptWithoutFloatingPopup() throws {
         let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
         {
           "id": "game-payment",
@@ -1382,7 +1389,93 @@ final class MagicMobileTests: XCTestCase {
         }
         """#.data(using: .utf8)!)
 
-        XCTAssertTrue(CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: nil))
+        XCTAssertTrue(InlinePaymentPromptState.isActive(in: snapshot))
+        XCTAssertFalse(CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: nil))
+    }
+
+    func testPaymentPromptSuppressesTargetableBoardIdsEvenWhenIdsArePresent() throws {
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
+        {
+          "id": "game-payment-target-looking",
+          "source": "xmage-java-bridge",
+          "activePlayerId": "human",
+          "phase": "precombat-main",
+          "step": "precombat-main",
+          "turn": 1,
+          "priorityPlayerId": "human",
+          "waitingOnPlayerId": "human",
+          "promptText": "Pay {1}",
+          "players": [],
+          "log": [],
+          "legalActions": [
+            { "id": "tap-plains", "type": "make_mana", "playerId": "human", "label": "Tap Plains", "sourceInstanceId": "plains-1", "producedMana": ["W"] }
+          ],
+          "promptEnvelopeV2": {
+            "id": "xmage-mana-prompt",
+            "method": "GAME_PLAY_MANA",
+            "messageId": 77,
+            "playerId": "human",
+            "responseKind": "mana",
+            "message": "Pay {1}",
+            "targetIds": ["plains-1"],
+            "responseCommand": {
+              "type": "pay_cost",
+              "promptId": "xmage-mana-prompt",
+              "messageId": 77
+            }
+          }
+        }
+        """#.data(using: .utf8)!)
+
+        XCTAssertEqual(GameBoardInteractionState.boardTargetableIds(for: snapshot), [])
+    }
+
+    func testAIWaitRecoveryRefreshesThenReconnectsWithoutRecreatingGame() throws {
+        let waiting = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: String(data: try minimalSnapshotJSON(id: "ai-wait"), encoding: .utf8)!
+            .replacingOccurrences(of: #""priorityPlayerId": "human""#, with: #""priorityPlayerId": "ai-1""#)
+            .replacingOccurrences(of: #""waitingOnPlayerId": "human""#, with: #""waitingOnPlayerId": "ai-1""#)
+            .data(using: .utf8)!)
+
+        XCTAssertEqual(AIWaitRecoveryPolicy.action(for: waiting, elapsedSeconds: 6, didRefresh: false, didReconnect: false), .none)
+        XCTAssertEqual(AIWaitRecoveryPolicy.action(for: waiting, elapsedSeconds: 12, didRefresh: false, didReconnect: false), .refresh)
+        XCTAssertEqual(AIWaitRecoveryPolicy.action(for: waiting, elapsedSeconds: 22, didRefresh: true, didReconnect: false), .reconnect)
+        XCTAssertEqual(AIWaitRecoveryPolicy.action(for: waiting, elapsedSeconds: 60, didRefresh: true, didReconnect: true), .none)
+    }
+
+    func testAssetDownloadStatusDistinguishesCompleteAndNewAssets() {
+        let complete = CardAssetDownloadStatus(
+            metadataStatus: "ready",
+            serverImageCount: 100,
+            serverSymbolCount: 20,
+            phoneImageCount: 100,
+            phoneSymbolCount: 20,
+            isSyncing: false,
+            progress: nil
+        )
+        let partial = CardAssetDownloadStatus(
+            metadataStatus: "ready",
+            serverImageCount: 100,
+            serverSymbolCount: 20,
+            phoneImageCount: 80,
+            phoneSymbolCount: 20,
+            isSyncing: false,
+            progress: nil
+        )
+        let downloading = CardAssetDownloadStatus(
+            metadataStatus: "ready",
+            serverImageCount: 100,
+            serverSymbolCount: 20,
+            phoneImageCount: 80,
+            phoneSymbolCount: 20,
+            isSyncing: true,
+            progress: "images 8/100"
+        )
+
+        XCTAssertEqual(complete.stateLabel, "ALL DOWNLOADED")
+        XCTAssertEqual(complete.buttonTitle, "All assets downloaded")
+        XCTAssertEqual(partial.stateLabel, "NEW ASSETS")
+        XCTAssertEqual(partial.buttonTitle, "Download new assets")
+        XCTAssertEqual(downloading.buttonTitle, "Downloading images 8/100")
     }
 
     func testPlayableCardGlowIsDistinctFromNormalCardBorder() {
@@ -1681,12 +1774,30 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(command?.blockers?.first?.attackerId, "attacker-1")
     }
 
+    func testBlockerModeRequiresExactLegalBlockerActions() throws {
+        let blockersStepData = String(data: try minimalSnapshotJSON(id: "blockers-no-actions"), encoding: .utf8)!
+            .replacingOccurrences(of: #""step": "precombat-main""#, with: #""step": "declare-blockers""#)
+            .data(using: .utf8)!
+        let noActions = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: blockersStepData)
+
+        XCTAssertFalse(CombatSelectionState.isDeclareBlockers(noActions))
+
+        let legalData = String(data: try minimalSnapshotJSON(id: "blockers-with-actions"), encoding: .utf8)!
+            .replacingOccurrences(of: #""step": "precombat-main""#, with: #""step": "declare-blockers""#)
+            .replacingOccurrences(of: #""legalActions": []"#, with: #""legalActions": [{ "id": "block-1", "type": "declare_blockers", "playerId": "human", "label": "Block", "blockers": [{ "blockerId": "blocker-1", "attackerId": "attacker-1" }] }]"#)
+            .data(using: .utf8)!
+        let withActions = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: legalData)
+
+        XCTAssertTrue(CombatSelectionState.isDeclareBlockers(withActions))
+    }
+
     func testCombatArrowModelUsesAuthoritativeCombatGroups() {
         let attacker = zoneCard(id: "attacker-1", name: "Attacker", typeLine: "Creature")
         let blocker = zoneCard(id: "blocker-1", name: "Blocker", typeLine: "Creature")
         let group = XmageCombatGroup(
             defenderId: "ai-1",
             defenderName: "AI",
+            defenderKind: "player",
             blocked: true,
             attackers: [attacker],
             blockers: [blocker]
@@ -1697,6 +1808,7 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(arrows.map(\.kind), [.blockedAttack, .block])
         XCTAssertEqual(arrows.first?.fromId, "attacker-1")
         XCTAssertEqual(arrows.first?.toId, "ai-1")
+        XCTAssertEqual(arrows.first?.toKind, "player")
         XCTAssertEqual(arrows.last?.fromId, "blocker-1")
         XCTAssertEqual(arrows.last?.toId, "attacker-1")
     }

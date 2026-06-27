@@ -1068,6 +1068,18 @@ struct CardCachePanel: View {
     let downloadProgress: String?
     let sync: () -> Void
 
+    private var downloadStatus: CardAssetDownloadStatus {
+        CardAssetDownloadStatus(
+            metadataStatus: metadata?.status,
+            serverImageCount: metadata?.imageCount ?? 0,
+            serverSymbolCount: metadata?.symbolCount ?? 0,
+            phoneImageCount: phoneImageCacheCount,
+            phoneSymbolCount: phoneSymbolCacheCount,
+            isSyncing: isSyncing,
+            progress: downloadProgress
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -1077,12 +1089,12 @@ struct CardCachePanel: View {
                     .font(.title3.weight(.black))
                     .foregroundStyle(.white)
                 Spacer()
-                Text(metadata?.status.uppercased() ?? "EMPTY")
+                Text(downloadStatus.stateLabel)
                     .font(.caption.weight(.black))
-                    .foregroundStyle(metadata?.status == "ready" ? .green : .orange)
+                    .foregroundStyle(downloadStatus.stateColor)
             }
 
-            Text(cacheSummary)
+            Text(downloadStatus.summary)
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.72))
                 .lineLimit(3)
@@ -1095,26 +1107,83 @@ struct CardCachePanel: View {
                         ProgressView()
                             .tint(.white)
                     }
-                    Text(isSyncing ? "Downloading \(downloadProgress ?? "")" : "Download cards + symbols")
+                    Text(downloadStatus.buttonTitle)
                 }
             }
             .buttonStyle(SecondaryButtonStyle())
-            .disabled(isSyncing)
+            .disabled(isSyncing || downloadStatus.isComplete)
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(.black.opacity(0.34), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.12)))
     }
+}
 
-    private var cacheSummary: String {
-        guard let metadata else {
+struct CardAssetDownloadStatus: Equatable {
+    let metadataStatus: String?
+    let serverImageCount: Int
+    let serverSymbolCount: Int
+    let phoneImageCount: Int
+    let phoneSymbolCount: Int
+    let isSyncing: Bool
+    let progress: String?
+
+    var isComplete: Bool {
+        guard metadataStatus == "ready", serverImageCount > 0 else { return false }
+        return phoneImageCount >= serverImageCount && phoneSymbolCount >= serverSymbolCount
+    }
+
+    var hasNewAssets: Bool {
+        guard metadataStatus == "ready", serverImageCount > 0 else { return false }
+        return phoneImageCount < serverImageCount || phoneSymbolCount < serverSymbolCount
+    }
+
+    var stateLabel: String {
+        if isSyncing {
+            return "DOWNLOADING"
+        }
+        if isComplete {
+            return "ALL DOWNLOADED"
+        }
+        if hasNewAssets {
+            return "NEW ASSETS"
+        }
+        return metadataStatus?.uppercased() ?? "EMPTY"
+    }
+
+    var buttonTitle: String {
+        if isSyncing {
+            let suffix = progress?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return suffix.isEmpty ? "Downloading images" : "Downloading \(suffix)"
+        }
+        if isComplete {
+            return "All assets downloaded"
+        }
+        if hasNewAssets {
+            return "Download new assets"
+        }
+        return "Download cards + symbols"
+    }
+
+    var stateColor: Color {
+        if isComplete {
+            return .green
+        }
+        if hasNewAssets || isSyncing {
+            return MagicPalette.warningAmber
+        }
+        return .orange
+    }
+
+    var summary: String {
+        guard metadataStatus != nil else {
             return "Download the full Scryfall image pack onto this iPhone so gameplay renders cards locally."
         }
-        if metadata.status == "ready" {
-            return "Phone cache: \(phoneImageCacheCount) cards, \(phoneSymbolCacheCount) symbols. Scryfall index: \(metadata.cardCount) cards, \(metadata.symbolCount ?? 0) symbols."
+        if metadataStatus == "ready" {
+            return "Phone cache: \(phoneImageCount)/\(serverImageCount) cards, \(phoneSymbolCount)/\(serverSymbolCount) symbols."
         }
-        return "Phone cache: \(phoneImageCacheCount) cards, \(phoneSymbolCacheCount) symbols. Scryfall index status: \(metadata.status)."
+        return "Phone cache: \(phoneImageCount) cards, \(phoneSymbolCount) symbols. Scryfall index status: \(metadataStatus ?? "unknown")."
     }
 }
 
@@ -1462,6 +1531,8 @@ struct NativeGameView: View {
     @State private var combatSelection = CombatSelectionState()
     @State private var aiWaitBeganAt = Date()
     @State private var aiWaitKey = ""
+    @State private var didAutoRefreshAIWaitKey: String?
+    @State private var didAutoReconnectAIWaitKey: String?
 
     private func localViewZone(title: String, cards: [ZoneCard]) {
         inspectingZoneTitle = title
@@ -1518,7 +1589,7 @@ struct NativeGameView: View {
                     // CENTER COLUMN
                     GeometryReader { proxy in
                         let metrics = BattlefieldLayoutMetrics(proxy: proxy)
-                        let targetableIds = targetableCardIds(in: snapshot)
+                        let targetableIds = GameBoardInteractionState.boardTargetableIds(for: snapshot)
                         let combatHighlights = CombatHighlightSet(
                             selection: combatSelection,
                             actions: snapshot.legalActions ?? [],
@@ -1545,11 +1616,11 @@ struct NativeGameView: View {
                                 .frame(width: max(metrics.centerStripRect.width - 28, 80), height: 1.5)
                                 .position(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.midY)
 
-                            BattlefieldRow(title: "Your board", cards: nonLandPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.boardColumnRect.width, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                            BattlefieldRow(title: "Your board", cards: nonLandPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.boardColumnRect.width, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                                 .frame(width: metrics.playerBattlefieldRect.width, height: metrics.playerBattlefieldRect.height)
                                 .position(x: metrics.playerBattlefieldRect.midX, y: metrics.playerBattlefieldRect.midY)
 
-                            BattlefieldRow(title: "Your lands", cards: landPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.boardColumnRect.width, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                            BattlefieldRow(title: "Your lands", cards: landPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.boardColumnRect.width, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                                 .frame(width: metrics.playerLandsRect.width, height: metrics.playerLandsRect.height)
                                 .position(x: metrics.playerLandsRect.midX, y: metrics.playerLandsRect.midY)
 
@@ -1562,8 +1633,18 @@ struct NativeGameView: View {
                             .allowsHitTesting(false)
 
                             HStack(spacing: 8) {
-                                PromptPill(snapshot: snapshot)
+                                if InlinePaymentPromptState.isActive(in: snapshot) {
+                                    InlinePaymentPromptBar(
+                                        snapshot: snapshot,
+                                        pendingActionId: pendingActionId,
+                                        runAction: runAction,
+                                        runCommand: runCommand
+                                    )
                                     .frame(maxWidth: .infinity)
+                                } else {
+                                    PromptPill(snapshot: snapshot, combatSelection: combatSelection)
+                                        .frame(maxWidth: .infinity)
+                                }
                                 
                                 let revealedCards = snapshot.xmage?.revealed.flatMap(\.cards) ?? []
                                 let lookedAtCards = snapshot.xmage?.lookedAt.flatMap(\.cards) ?? []
@@ -1578,7 +1659,7 @@ struct NativeGameView: View {
                                     }
                                 }
                             }
-                            .frame(width: metrics.centerStripRect.width, height: metrics.centerStripRect.height)
+                            .frame(width: metrics.centerStripRect.width, height: InlinePaymentPromptState.isActive(in: snapshot) ? max(metrics.centerStripRect.height, 52) : metrics.centerStripRect.height)
                             .position(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.midY)
 
                             if isOverPlayerDropZone {
@@ -1915,6 +1996,9 @@ struct NativeGameView: View {
             .onChange(of: snapshot.aiWaitSignature) { _, _ in
                 updateAIWaitStart(for: snapshot)
             }
+            .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { now in
+                handleAIWaitRecovery(for: snapshot, now: now)
+            }
         } else {
             LoadingGameView(startupStatus: startupStatus)
         }
@@ -1925,6 +2009,31 @@ struct NativeGameView: View {
         if key != aiWaitKey {
             aiWaitKey = key
             aiWaitBeganAt = Date()
+            didAutoRefreshAIWaitKey = nil
+            didAutoReconnectAIWaitKey = nil
+        }
+    }
+
+    private func handleAIWaitRecovery(for snapshot: GameSnapshot, now: Date) {
+        let key = snapshot.aiWaitSignature
+        guard key == aiWaitKey else { return }
+        let action = AIWaitRecoveryPolicy.action(
+            for: snapshot,
+            elapsedSeconds: now.timeIntervalSince(aiWaitBeganAt),
+            didRefresh: didAutoRefreshAIWaitKey == key,
+            didReconnect: didAutoReconnectAIWaitKey == key
+        )
+        switch action {
+        case .none:
+            return
+        case .refresh:
+            didAutoRefreshAIWaitKey = key
+            onInteractionFeedback("Refreshing AI wait")
+            refreshGame()
+        case .reconnect:
+            didAutoReconnectAIWaitKey = key
+            onInteractionFeedback("Reconnecting AI wait")
+            reconnectGame()
         }
     }
 
@@ -1946,13 +2055,7 @@ struct NativeGameView: View {
     }
 
     private func targetableCardIds(in snapshot: GameSnapshot) -> Set<String> {
-        guard let prompt = snapshot.promptEnvelopeV2 else { return [] }
-        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
-        let isTargetPrompt = type == "choose_target" ||
-            prompt.responseKind.lowercased() == "target" ||
-            prompt.method.localizedCaseInsensitiveContains("TARGET")
-        guard isTargetPrompt else { return [] }
-        return GameBoardInteractionState.validTargetIds(from: prompt, actions: snapshot.legalActions ?? [])
+        GameBoardInteractionState.boardTargetableIds(for: snapshot)
     }
 
     private func submitTarget(_ card: ZoneCard, snapshot: GameSnapshot) {
@@ -3303,20 +3406,7 @@ struct XmageStackPeek: View {
                             inspectedCard = card
                         }
                 } else {
-                    VStack(spacing: 5) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 16, weight: .black))
-                            .foregroundStyle(MagicPalette.antiqueGold)
-                        Text(topObject?.sourceName ?? topObject?.displayName ?? "Ability")
-                            .font(.system(size: 8, weight: .black))
-                            .foregroundStyle(.white.opacity(0.82))
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                            .minimumScaleFactor(0.55)
-                    }
-                    .frame(width: 54, height: 76)
-                    .background(MagicPalette.parchment.opacity(0.26), in: RoundedRectangle(cornerRadius: 6))
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(MagicPalette.antiqueGold.opacity(0.45), lineWidth: 1))
+                    SyntheticStackObjectTile(object: topObject, width: 54, height: 76)
                 }
 
                 Spacer(minLength: 0)
@@ -3328,8 +3418,60 @@ struct XmageStackPeek: View {
     }
 }
 
+struct SyntheticStackObjectTile: View {
+    let object: XmageStackObject?
+    let width: CGFloat
+    let height: CGFloat
+
+    var body: some View {
+        VStack(spacing: 3) {
+            Text(object?.syntheticTileSubtitle.uppercased() ?? "STACK")
+                .font(.system(size: 6, weight: .black))
+                .foregroundStyle(MagicPalette.antiqueGold)
+                .lineLimit(1)
+                .minimumScaleFactor(0.55)
+            Image(systemName: "sparkles")
+                .font(.system(size: 13, weight: .black))
+                .foregroundStyle(MagicPalette.antiqueGold)
+            Text(object?.syntheticTileTitle ?? "Ability")
+                .font(.system(size: 7.5, weight: .black))
+                .foregroundStyle(.white.opacity(0.88))
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .minimumScaleFactor(0.50)
+            Text(object?.syntheticTileDetail ?? "Source card image unavailable")
+                .font(.system(size: 5.8, weight: .bold))
+                .foregroundStyle(MagicPalette.parchment.opacity(0.70))
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .minimumScaleFactor(0.48)
+        }
+        .padding(.horizontal, 4)
+        .frame(width: width, height: height)
+        .background(
+            LinearGradient(
+                colors: [MagicPalette.leather.opacity(0.78), MagicPalette.iron.opacity(0.82)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 6)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(MagicPalette.antiqueGold.opacity(0.55), lineWidth: 1))
+        .overlay(alignment: .bottomTrailing) {
+            Text("STACK")
+                .font(.system(size: 5.5, weight: .black))
+                .foregroundStyle(.black.opacity(0.72))
+                .padding(.horizontal, 3)
+                .padding(.vertical, 1)
+                .background(MagicPalette.antiqueGold.opacity(0.88), in: Capsule())
+                .padding(3)
+        }
+    }
+}
+
 struct PromptPill: View {
     let snapshot: GameSnapshot
+    var combatSelection = CombatSelectionState()
 
     private var isWaitingOnHuman: Bool {
         snapshot.waitingOnPlayerId == "human"
@@ -3338,7 +3480,7 @@ struct PromptPill: View {
     }
 
     private var guidance: PromptGuidance {
-        PromptGuidance(snapshot: snapshot, isWaitingOnHuman: isWaitingOnHuman)
+        PromptGuidance(snapshot: snapshot, isWaitingOnHuman: isWaitingOnHuman, combatSelection: combatSelection)
     }
 
     var body: some View {
@@ -3371,19 +3513,78 @@ struct PromptPill: View {
     }
 }
 
+enum InlinePaymentPromptState {
+    static func isActive(in snapshot: GameSnapshot) -> Bool {
+        paymentPrompt(in: snapshot) != nil
+    }
+
+    static func paymentPrompt(in snapshot: GameSnapshot) -> PromptEnvelopeV2? {
+        if let prompt = snapshot.promptEnvelopeV2, CompactPromptPopup.isManaPaymentPrompt(prompt) {
+            return prompt
+        }
+        if CompactPromptPopup.shouldShowStackPaymentTray(in: snapshot) {
+            return CompactPromptPopup.syntheticStackPaymentPrompt(in: snapshot)
+        }
+        return nil
+    }
+}
+
+struct InlinePaymentPromptBar: View {
+    let snapshot: GameSnapshot
+    let pendingActionId: String?
+    let runAction: (LegalAction) -> Void
+    let runCommand: (GameCommand, String, String) -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(MagicPalette.antiqueGold)
+                .frame(width: 8, height: 8)
+                .shadow(color: MagicPalette.antiqueGold.opacity(0.8), radius: 5)
+
+            Text("PAY COST")
+                .font(.system(size: 9, weight: .black))
+                .foregroundStyle(MagicPalette.antiqueGold)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(MagicPalette.antiqueGold.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
+
+            if let prompt = InlinePaymentPromptState.paymentPrompt(in: snapshot) {
+                ManaPaymentTray(
+                    snapshot: snapshot,
+                    prompt: prompt,
+                    pendingActionId: pendingActionId,
+                    runAction: runAction,
+                    runCommand: runCommand,
+                    compact: true
+                )
+            } else {
+                Text("Tap mana sources")
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundStyle(.white)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
+        .background(MagicPalette.iron.opacity(0.78), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.antiqueGold.opacity(0.72), lineWidth: 1.5))
+    }
+}
+
 private struct PromptGuidance {
     let label: String
     let message: String
     let color: Color
     let isUrgent: Bool
 
-    init(snapshot: GameSnapshot, isWaitingOnHuman: Bool) {
+    init(snapshot: GameSnapshot, isWaitingOnHuman: Bool, combatSelection: CombatSelectionState = CombatSelectionState()) {
         let promptType = snapshot.promptEnvelopeV2?.responseCommand?.type?.lowercased()
             ?? snapshot.promptEnvelopeV2?.responseKind.lowercased()
             ?? ""
         let method = snapshot.promptEnvelopeV2?.method.uppercased() ?? ""
-        let step = (snapshot.step ?? snapshot.phase).lowercased()
-
         if snapshot.manaPayment?.active == true || snapshot.promptEnvelopeV2.map(CompactPromptPopup.isManaPaymentPrompt) == true {
             label = "PAY COST"
             message = snapshot.manaPayment?.remainingText ?? "Tap mana sources"
@@ -3394,12 +3595,12 @@ private struct PromptGuidance {
             message = snapshot.promptText ?? "Choose a highlighted target"
             color = MagicPalette.oxblood
             isUrgent = true
-        } else if step.contains("declare-attackers") || promptType == "declare_attackers" {
-            label = "SELECT ATTACKERS"
-            message = "Choose attackers, then choose a defender"
+        } else if CombatSelectionState.isDeclareAttackers(snapshot) {
+            label = combatSelection.selectedAttackerIds.isEmpty ? "SELECT ATTACKERS" : "SELECT DEFENDER"
+            message = combatSelection.selectedAttackerIds.isEmpty ? "Choose attackers" : "Choose defender"
             color = MagicPalette.oxblood
             isUrgent = true
-        } else if step.contains("declare-blockers") || promptType == "declare_blockers" {
+        } else if CombatSelectionState.isDeclareBlockers(snapshot) {
             label = "SELECT BLOCKERS"
             message = "Choose blockers"
             color = MagicPalette.warningAmber
@@ -5206,16 +5407,16 @@ struct CompactPromptPopup: View {
     }
 
     static func shouldShow(for snapshot: GameSnapshot, pendingActionId: String?) -> Bool {
-        if pendingActionId != nil {
-            return true
+        if InlinePaymentPromptState.isActive(in: snapshot) {
+            return false
         }
-        if shouldShowStackPaymentTray(in: snapshot) {
+        if pendingActionId != nil {
             return true
         }
 
         if let prompt = snapshot.promptEnvelopeV2 {
             if isManaPaymentPrompt(prompt) {
-                return true
+                return false
             }
             if isPassivePriorityPrompt(prompt, snapshot: snapshot) {
                 return false
@@ -5251,7 +5452,22 @@ struct CompactPromptPopup: View {
         // is actually paying for a spell/ability on the stack. This intentionally
         // does NOT fire for plain response windows (an ability on the stack you may
         // respond to but are not paying for).
-        snapshot.manaPayment?.active == true
+        if snapshot.manaPayment?.active == true {
+            return true
+        }
+        guard snapshot.waitingOnPlayerId == "human" || snapshot.priorityPlayerId == "human" else {
+            return false
+        }
+        let actions = snapshot.legalActions ?? []
+        let sourceManaActions = actions.filter { $0.type == "make_mana" && ($0.sourceInstanceId != nil || $0.cardInstanceId != nil) }
+        guard !sourceManaActions.isEmpty else {
+            return false
+        }
+        let allowedPaymentWindowTypes = Set(["make_mana", "undo_mana", "cancel_payment", "cancel_mana_payment", "concede"])
+        guard actions.allSatisfy({ allowedPaymentWindowTypes.contains($0.type) }) else {
+            return false
+        }
+        return snapshot.xmage?.stack.isEmpty == false || snapshot.human?.zones.stack.isEmpty == false
     }
 
     static func syntheticStackPaymentPrompt(in snapshot: GameSnapshot) -> PromptEnvelopeV2 {
@@ -5719,10 +5935,19 @@ struct ManaPaymentTray: View {
     let pendingActionId: String?
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
+    var compact = false
 
     private var remainingPips: ManaPips? { snapshot.manaPayment?.remaining }
 
     var body: some View {
+        if compact {
+            compactBody
+        } else {
+            fullBody
+        }
+    }
+
+    private var fullBody: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Text("Pay cost")
@@ -5780,6 +6005,45 @@ struct ManaPaymentTray: View {
                     .foregroundStyle(MagicPalette.arcaneBlue)
             }
         }
+    }
+
+    private var compactBody: some View {
+        HStack(spacing: 7) {
+            paymentPipRow
+            if let choices = prompt.manaChoices, !choices.isEmpty {
+                ForEach(choices.prefix(6)) { choice in
+                    let symbol = choice.manaType ?? choice.id
+                    Button {
+                        if let command = command(type: prompt.responseCommand?.type ?? "play_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [symbol], manaType: symbol) {
+                            runCommand(command, choice.label, "\(prompt.id)-mana-choice-\(choice.id)")
+                        }
+                    } label: {
+                        ManaSymbolView(symbol: symbol, size: 22)
+                            .opacity(canPay(symbol) ? 1 : 0.42)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(pendingActionId != nil || !canPay(symbol) || command(type: prompt.responseCommand?.type ?? "play_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [symbol], manaType: symbol) == nil)
+                }
+            } else {
+                Text(hasBattlefieldManaSources ? "Tap lands" : "Waiting for mana options")
+                    .font(.system(size: 9, weight: .black))
+                    .foregroundStyle(hasBattlefieldManaSources ? MagicPalette.parchment.opacity(0.78) : MagicPalette.arcaneBlue)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+
+            ForEach(Self.manaUndoActions(in: snapshot).prefix(1)) { action in
+                Button {
+                    runAction(action)
+                } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.system(size: 10, weight: .black))
+                }
+                .buttonStyle(IconButtonStyle(small: true))
+                .disabled(pendingActionId != nil)
+            }
+        }
+        .frame(maxHeight: 32)
     }
 
     @ViewBuilder
@@ -6040,13 +6304,11 @@ struct CombatSelectionState: Equatable {
     }
 
     static func isDeclareAttackers(_ snapshot: GameSnapshot) -> Bool {
-        let step = (snapshot.step ?? snapshot.phase).lowercased()
-        return step.contains("declare-attackers") || snapshot.legalActions?.contains(where: { $0.type == "declare_attackers" }) == true
+        snapshot.legalActions?.contains(where: { $0.type == "declare_attackers" }) == true
     }
 
     static func isDeclareBlockers(_ snapshot: GameSnapshot) -> Bool {
-        let step = (snapshot.step ?? snapshot.phase).lowercased()
-        return step.contains("declare-blockers") || snapshot.legalActions?.contains(where: { $0.type == "declare_blockers" }) == true
+        snapshot.legalActions?.contains(where: { $0.type == "declare_blockers" }) == true
     }
 
     private static func attackers(in action: LegalAction) -> [AttackDeclaration] {
@@ -6086,6 +6348,7 @@ struct CombatArrow: Equatable {
     let kind: CombatArrowKind
     let fromId: String
     let toId: String
+    let toKind: String?
 }
 
 enum CombatArrowModel {
@@ -6093,11 +6356,11 @@ enum CombatArrowModel {
         groups.flatMap { group in
             let attackKind: CombatArrowKind = group.blocked ? .blockedAttack : .attack
             let attacks = group.attackers.map {
-                CombatArrow(kind: attackKind, fromId: $0.instanceId, toId: group.defenderId)
+                CombatArrow(kind: attackKind, fromId: $0.instanceId, toId: group.defenderId, toKind: group.defenderKind)
             }
             let blocks = group.blockers.flatMap { blocker in
                 group.attackers.map { attacker in
-                    CombatArrow(kind: .block, fromId: blocker.instanceId, toId: attacker.instanceId)
+                    CombatArrow(kind: .block, fromId: blocker.instanceId, toId: attacker.instanceId, toKind: nil)
                 }
             }
             return attacks + blocks
@@ -6116,7 +6379,7 @@ struct CombatArrowOverlay: View {
         Canvas { context, _ in
             for arrow in CombatArrowModel.arrows(from: groups) {
                 guard let start = anchors[arrow.fromId] else { continue }
-                let end = anchors[arrow.toId] ?? defenderAnchor(for: arrow.toId)
+                let end = anchors[arrow.toId] ?? defenderAnchor(for: arrow.toId, kind: arrow.toKind)
                 drawArrow(arrow, from: start, to: end, in: &context)
             }
         }
@@ -6141,9 +6404,11 @@ struct CombatArrowOverlay: View {
         }
     }
 
-    private func defenderAnchor(for defenderId: String) -> CGPoint {
-        if defenderId.localizedCaseInsensitiveContains("human") {
-            return CGPoint(x: metrics.playerBattlefieldRect.midX, y: metrics.playerBattlefieldRect.maxY)
+    private func defenderAnchor(for defenderId: String, kind: String?) -> CGPoint {
+        if kind?.localizedCaseInsensitiveContains("player") == true || defenderId.localizedCaseInsensitiveContains("human") || defenderId.localizedCaseInsensitiveContains("ai") {
+            let isHuman = defenderId.localizedCaseInsensitiveContains("human")
+            let rect = isHuman ? metrics.playerBattlefieldRect : metrics.opponentBattlefieldRect
+            return CGPoint(x: metrics.boardColumnRect.minX + 10, y: rect.midY)
         }
         return CGPoint(x: metrics.opponentBattlefieldRect.midX, y: metrics.opponentBattlefieldRect.minY)
     }
@@ -6202,6 +6467,8 @@ struct BattlefieldRow: View {
     let cardWidth: CGFloat
     let cardHeight: CGFloat
     let rowWidth: CGFloat
+    var allowsManaUndo = false
+    var manaPaymentActive = false
     let runAction: (LegalAction) -> Void
     let runTargetAction: (ZoneCard) -> Void
     let runCombatCardAction: (ZoneCard) -> Bool
@@ -6222,7 +6489,7 @@ struct BattlefieldRow: View {
                                     runTargetAction(card)
                                 } else if combatHighlighted, runCombatCardAction(card) {
                                     return
-                                } else if let action, action.type == "make_mana" {
+                                } else if let action, Self.tapRunnableActionTypes.contains(action.type) {
                                     runAction(action)
                                 } else {
                                     selectedCard = card
@@ -6261,10 +6528,20 @@ struct BattlefieldRow: View {
     }
 
     private func legalAction(for card: ZoneCard) -> LegalAction? {
-        legalActions.first {
+        if allowsManaUndo, manaPaymentActive, card.tapped == true, let undo = manaUndoAction {
+            return undo
+        }
+        return legalActions.first {
             $0.cardInstanceId == card.instanceId || $0.sourceInstanceId == card.instanceId
         }
     }
+
+    private var manaUndoAction: LegalAction? {
+        legalActions.first { Self.manaUndoActionTypes.contains($0.type) }
+    }
+
+    private static let tapRunnableActionTypes = Set(["make_mana", "undo_mana", "cancel_payment", "cancel_mana_payment"])
+    private static let manaUndoActionTypes = Set(["undo_mana", "cancel_payment", "cancel_mana_payment"])
 }
 
 struct HandFan: View {

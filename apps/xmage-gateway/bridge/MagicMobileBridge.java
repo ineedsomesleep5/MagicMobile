@@ -1685,7 +1685,7 @@ public final class MagicMobileBridge implements MageClient {
             }
             String defenderExternalId = playerIds.get(defender.getPlayerId());
             for (PermanentView permanent : human.getBattlefield().values()) {
-                if (!permanent.isCreature() || permanent.isTapped() || permanent.hasSummoningSickness()) {
+                if (!permanent.isCreature() || !permanent.isCanAttack()) {
                     continue;
                 }
                 actions.add(combatAction(
@@ -1695,6 +1695,8 @@ public final class MagicMobileBridge implements MageClient {
                         "Attack " + defender.getName() + " with " + permanent.getName(),
                         permanent,
                         defenderExternalId,
+                        "player",
+                        defender.getName(),
                         null
                 ));
             }
@@ -1703,12 +1705,16 @@ public final class MagicMobileBridge implements MageClient {
             if (attackerChoices.size() == 0) {
                 return actions;
             }
-            List<PermanentView> untappedBlockers = new ArrayList<>();
+            if (attackerChoices.size() > 1) {
+                // CardView.isCanBlock() is XMage-backed for whether this permanent can block now,
+                // but it is not pair-specific. Avoid fabricating blocker/attacker pairs when the
+                // defending player has multiple possible attackers to choose from.
+                return actions;
+            }
             for (PermanentView permanent : human.getBattlefield().values()) {
-                if (!permanent.isCreature() || permanent.isTapped()) {
+                if (!permanent.isCreature() || !permanent.isCanBlock()) {
                     continue;
                 }
-                untappedBlockers.add(permanent);
                 for (JsonElement element : attackerChoices) {
                     if (!element.isJsonObject()) continue;
                     JsonObject attacker = element.getAsJsonObject();
@@ -1721,17 +1727,10 @@ public final class MagicMobileBridge implements MageClient {
                             "Block " + string(attacker, "name", "attacker") + " with " + permanent.getName(),
                             permanent,
                             null,
+                            null,
+                            null,
                             attackerId
                     ));
-                }
-            }
-            if (untappedBlockers.size() > 1) {
-                for (JsonElement element : attackerChoices) {
-                    if (!element.isJsonObject()) continue;
-                    JsonObject attacker = element.getAsJsonObject();
-                    String attackerId = string(attacker, "id", "");
-                    if (attackerId.isEmpty()) continue;
-                    actions.add(multiBlockAction(record.humanExternalId, string(attacker, "name", "attacker"), attackerId, untappedBlockers));
                 }
             }
         }
@@ -1769,7 +1768,7 @@ public final class MagicMobileBridge implements MageClient {
         return null;
     }
 
-    private JsonObject combatAction(String id, String type, String playerId, String label, PermanentView permanent, String defenderId, String attackerId) {
+    private JsonObject combatAction(String id, String type, String playerId, String label, PermanentView permanent, String defenderId, String defenderKind, String defenderName, String attackerId) {
         JsonObject action = action(id, type, playerId, label, permanent.getId().toString(), "battlefield", null, permanent);
         JsonObject template = new JsonObject();
         template.addProperty("type", type);
@@ -1787,6 +1786,11 @@ public final class MagicMobileBridge implements MageClient {
             attackers.add(pair);
             action.add("attackers", attackers.deepCopy());
             if (defenderId != null) {
+                action.addProperty("defenderId", defenderId);
+                action.addProperty("defenderKind", defenderKind == null || defenderKind.isEmpty() ? "player" : defenderKind);
+                if (defenderName != null && !defenderName.isEmpty()) {
+                    action.addProperty("defenderName", cleanText(defenderName));
+                }
                 JsonArray validTargetIds = new JsonArray();
                 validTargetIds.add(defenderId);
                 action.add("validTargetIds", validTargetIds.deepCopy());
@@ -2096,6 +2100,12 @@ public final class MagicMobileBridge implements MageClient {
         if (!isSyntheticStackObject(card)) {
             return card;
         }
+        Object sourceCardObject = optionalMember(card, "getSourceCard", "sourceCard");
+        if (sourceCardObject instanceof CardView) {
+            CardView sourceCard = (CardView) sourceCardObject;
+            CardView visible = findVisibleCard(view, sourceCard.getId());
+            return visible == null ? sourceCard : visible;
+        }
         UUID sourceId = optionalUuidMember(card,
                 "sourceId",
                 "sourceObjectId",
@@ -2143,7 +2153,7 @@ public final class MagicMobileBridge implements MageClient {
     }
 
     private String stackSourceName(CardView card) {
-        Object sourceName = optionalProperty(card, "getSourceName", "getSourceCardName", "getOriginalName");
+        Object sourceName = optionalMember(card, "getSourceName", "getSourceCardName", "getOriginalName", "sourceName");
         String value = sourceName == null ? "" : cleanText(sourceName.toString());
         return value.isEmpty() ? cleanText(card.getName()) : value;
     }
@@ -2267,13 +2277,34 @@ public final class MagicMobileBridge implements MageClient {
         return null;
     }
 
+    private Object optionalMember(Object object, String... names) {
+        if (object == null) {
+            return null;
+        }
+        for (String name : names) {
+            try {
+                if (name.startsWith("get")) {
+                    Method method = object.getClass().getMethod(name);
+                    return method.invoke(object);
+                }
+                Field field = findField(object.getClass(), name);
+                field.setAccessible(true);
+                return field.get(object);
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+            }
+        }
+        return null;
+    }
+
     private JsonArray combatGroups(GameView view, Map<UUID, String> playerIds) {
         JsonArray out = new JsonArray();
         for (CombatGroupView group : view.getCombat()) {
             JsonObject item = new JsonObject();
+            boolean defenderIsPlayer = playerIds.containsKey(group.getDefenderId());
             String defenderId = playerIds.getOrDefault(group.getDefenderId(), group.getDefenderId().toString());
             item.addProperty("defenderId", defenderId);
             item.addProperty("defenderName", cleanText(group.getDefenderName()));
+            item.addProperty("defenderKind", defenderIsPlayer ? "player" : "permanent");
             item.addProperty("blocked", group.isBlocked());
             item.add("attackers", zoneCards(group.getAttackers().values(), false));
             item.add("blockers", zoneCards(group.getBlockers().values(), false));

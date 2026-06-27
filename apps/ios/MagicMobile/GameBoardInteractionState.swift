@@ -113,6 +113,19 @@ struct GameBoardInteractionState: Equatable {
         return ids
     }
 
+    static func boardTargetableIds(for snapshot: GameSnapshot) -> Set<String> {
+        guard let prompt = snapshot.promptEnvelopeV2 else { return [] }
+        if isManaPaymentPrompt(prompt) || snapshot.manaPayment?.active == true {
+            return []
+        }
+        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
+        let isTargetPrompt = type == "choose_target" ||
+            prompt.responseKind.lowercased() == "target" ||
+            prompt.method.localizedCaseInsensitiveContains("TARGET")
+        guard isTargetPrompt else { return [] }
+        return validTargetIds(from: prompt, actions: snapshot.legalActions ?? [])
+    }
+
     private static func targetingMode(
         for prompt: PromptEnvelopeV2,
         selectedCard: ZoneCard?

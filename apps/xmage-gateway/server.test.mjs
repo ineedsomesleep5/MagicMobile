@@ -397,6 +397,24 @@ describe("xmage gateway", () => {
     assert.match(bridgeSource, /"undo_mana"\.equals\(type\)[\s\S]*?PlayerAction\.UNDO/);
   });
 
+  it("resolves synthetic ability stack objects through XMage source cards", () => {
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+
+    assert.match(bridgeSource, /optionalMember\(card, "getSourceCard", "sourceCard"\)/);
+    assert.match(bridgeSource, /sourceCardObject instanceof CardView/);
+    assert.match(bridgeSource, /stackSourceName\(CardView card\)[\s\S]*?"sourceName"/);
+    assert.match(bridgeSource, /sourceCardUnavailableReason/);
+  });
+
+  it("keeps combat choices XMage-authored and fails closed for speculative blockers", () => {
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+
+    assert.match(bridgeSource, /!permanent\.isCreature\(\) \|\| !permanent\.isCanAttack\(\)/);
+    assert.match(bridgeSource, /!permanent\.isCreature\(\) \|\| !permanent\.isCanBlock\(\)/);
+    assert.match(bridgeSource, /attackerChoices\.size\(\) > 1[\s\S]*?return actions;/);
+    assert.match(bridgeSource, /addProperty\("defenderKind", defenderIsPlayer \? "player" : "permanent"\)/);
+  });
+
   it("waits for XMage payment prompts after cast_spell instead of short-timeout rejection", () => {
     const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
     const directMethod = bridgeSource.match(/private boolean isDirectCommand[\s\S]*?private JsonObject snapshot/)?.[0] ?? "";
@@ -792,7 +810,10 @@ describe("xmage gateway", () => {
     assert.doesNotMatch(traySource, /ForEach\(sourceManaActions/);
     assert.doesNotMatch(traySource, /sourceCardName\(for: action\)/);
     assert.doesNotMatch(traySource, /Text\(spellName\)/);
-    assert.match(battlefieldSource, /action\.type == "make_mana"[\s\S]*runAction\(action\)/);
+    assert.match(battlefieldSource, /tapRunnableActionTypes/);
+    assert.match(battlefieldSource, /"make_mana"/);
+    assert.match(battlefieldSource, /"undo_mana"/);
+    assert.match(battlefieldSource, /runAction\(action\)/);
   });
 
   it("rejects stale bridge snapshots by revision", () => {
