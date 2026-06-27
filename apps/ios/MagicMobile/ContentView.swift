@@ -1455,7 +1455,7 @@ struct NativeGameView: View {
     var body: some View {
         if let snapshot, let human = snapshot.human, let opponent = snapshot.opponent {
             let humanName = human.displayName ?? MagicMobileAPI.cleanPlayerName(playerDisplayName) ?? "You"
-            let opponentName = opponent.displayName ?? "Ashen Sage"
+            let opponentName = opponent.displayName ?? "AI"
             ZStack {
                 BattlefieldSurface()
                     .ignoresSafeArea()

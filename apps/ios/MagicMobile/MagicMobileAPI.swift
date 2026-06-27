@@ -74,7 +74,7 @@ struct MagicMobileAPI {
             humanDisplayName: cleanDisplayName,
             humanDeck: humanDeck,
             aiPlayers: [
-                AiPlayerConfig(playerId: "ai-1", displayName: "Noaddrag", difficulty: difficulty, deck: aiDeck)
+                AiPlayerConfig(playerId: "ai-1", displayName: "AI", difficulty: difficulty, deck: aiDeck)
             ],
             startingLife: 40,
             commanderDamageEnabled: true

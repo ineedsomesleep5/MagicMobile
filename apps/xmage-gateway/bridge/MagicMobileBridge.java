@@ -436,6 +436,10 @@ public final class MagicMobileBridge implements MageClient {
         JsonObject prompt = currentPromptForCommand(gameId, command, type);
         UUID retryableUuid = null;
 
+        if ("cast_spell".equals(type) || "play_land".equals(type)) {
+            logCastDiag("incoming", gameId, command, type, record, null);
+        }
+
         if ("play_land".equals(type)) {
             // Desktop XMage receives the source card UUID for normal card clicks.
             retryableUuid = playableSourceUuid(gameId, command);
@@ -567,6 +571,9 @@ public final class MagicMobileBridge implements MageClient {
         JsonObject updated = waitForUpdatedSnapshot(gameId, type, startRevision, startCycle);
         if (retryableUuid != null) {
             updated = retryPlayableUuidCommandIfNoProgress(gameId, xmageGameId, command, type, retryableUuid, updated);
+        }
+        if ("cast_spell".equals(type) || "play_land".equals(type)) {
+            logCastDiag("result startRev=" + startRevision + " sentUuid=" + retryableUuid, gameId, command, type, games.get(gameId), updated);
         }
         return updated;
     }
@@ -1193,6 +1200,89 @@ public final class MagicMobileBridge implements MageClient {
         return current;
     }
 
+    // Diagnostic logging for the drag-cast / play-land path. Writes one [CASTDIAG] line
+    // per submit so a device repro can be traced through docker logs. Safe/no-op on error.
+    private void logCastDiag(String phase, String gameId, JsonObject command, String type, GameRecord record, JsonObject snapshot) {
+        try {
+            String cardId = string(command, "cardInstanceId", string(command, "sourceInstanceId", ""));
+            String abilityId = string(command, "abilityId", "");
+            long expected = longInteger(command, "expectedBridgeRevision", -1L);
+            StringBuilder sb = new StringBuilder();
+            sb.append("[CASTDIAG ").append(phase).append("] game=").append(gameId)
+              .append(" type=").append(type)
+              .append(" card=").append(cardId.isEmpty() ? "nil" : cardId)
+              .append(" ability=").append(abilityId.isEmpty() ? "nil" : abilityId)
+              .append(" expectedRev=").append(expected);
+            if (record != null) {
+                sb.append(" curRev=").append(record.bridgeRevision.get())
+                  .append(" curCyc=").append(record.latestCycle);
+                GameView view = record.latestView;
+                if (view != null) {
+                    Map<UUID, String> playerIds = externalPlayerIds(record, view);
+                    sb.append(" xmagePriority=").append(priorityPlayerId(playerIds, view));
+                    boolean inCanPlay = false;
+                    int abilityIdCount = -1;
+                    try {
+                        if (!cardId.isEmpty()) {
+                            PlayableObjectsList playable = view.getCanPlayObjects();
+                            PlayableObjectStats stats = playable == null ? null : playable.getObjects().get(UUID.fromString(cardId));
+                            inCanPlay = stats != null;
+                            abilityIdCount = stats == null ? -1 : stats.getPlayableAbilityIds().size();
+                        }
+                    } catch (Exception ignored) {
+                    }
+                    sb.append(" inCanPlay=").append(inCanPlay).append(" playableAbilityIds=").append(abilityIdCount);
+                }
+            }
+            if (snapshot != null) {
+                sb.append(" | ").append(castSnapshotSummary(snapshot));
+            }
+            System.out.println(sb.toString());
+        } catch (Exception error) {
+            System.out.println("[CASTDIAG error] " + error);
+        }
+    }
+
+    private String castSnapshotSummary(JsonObject snapshot) {
+        int hand = 0;
+        int stack = 0;
+        JsonObject xmage = object(snapshot, "xmage", null);
+        if (xmage != null) {
+            stack = array(xmage, "stack").size();
+        }
+        for (JsonElement element : array(snapshot, "players")) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            JsonObject player = element.getAsJsonObject();
+            if ("human".equals(string(player, "playerId", ""))) {
+                JsonObject zones = object(player, "zones", null);
+                if (zones != null) {
+                    hand = array(zones, "hand").size();
+                }
+            }
+        }
+        JsonObject promptV2 = object(snapshot, "promptEnvelopeV2", null);
+        String prompt = promptV2 == null
+                ? "nil"
+                : string(promptV2, "method", "?") + "|" + string(promptV2, "responseKind", "?");
+        int makeMana = 0;
+        for (JsonElement element : array(snapshot, "legalActions")) {
+            if (element.isJsonObject() && "make_mana".equals(string(element.getAsJsonObject(), "type", ""))) {
+                makeMana++;
+            }
+        }
+        return "snapRev=" + string(snapshot, "bridgeRevision", "?")
+                + " snapCyc=" + string(snapshot, "xmageCycle", "?")
+                + " hand=" + hand
+                + " stack=" + stack
+                + " makeMana=" + makeMana
+                + " prompt=" + prompt
+                + " pending=" + string(snapshot, "pendingStatus", "nil")
+                + " priority=" + string(snapshot, "priorityPlayerId", "nil")
+                + " waiting=" + string(snapshot, "waitingOnPlayerId", "nil");
+    }
+
     private boolean playableUuidCommandStillNeedsRetry(JsonObject snapshot, JsonObject command, String type) {
         if (!"cast_spell".equals(type) && !"play_land".equals(type)) {
             return false;
@@ -1284,8 +1374,20 @@ public final class MagicMobileBridge implements MageClient {
         snapshot.addProperty("step", step(view.getStep()));
         snapshot.addProperty("turn", view.getTurn());
         snapshot.addProperty("activePlayerId", playerIds.get(view.getActivePlayerId()));
-        snapshot.addProperty("priorityPlayerId", priorityPlayerId(playerIds, view));
-        snapshot.addProperty("waitingOnPlayerId", priorityPlayerId(playerIds, view));
+        String priorityId = priorityPlayerId(playerIds, view);
+        snapshot.addProperty("priorityPlayerId", priorityId);
+        // XMage does not assign MTG "priority" for pre-game / out-of-priority choices
+        // such as "Select a starting player". When a prompt is targeted at a player but
+        // priority is null, the snapshot is still genuinely waiting on that player to
+        // respond, so surface them as the waiting player for client decision routing.
+        String waitingId = priorityId;
+        if (waitingId == null && record.promptEnvelope != null) {
+            String promptPlayer = string(record.promptEnvelope, "playerId", "");
+            if (!promptPlayer.isEmpty()) {
+                waitingId = promptPlayer;
+            }
+        }
+        snapshot.addProperty("waitingOnPlayerId", waitingId);
         snapshot.addProperty("promptText", promptText(record, view));
         snapshot.add("players", players(record, view, playerIds));
         snapshot.add("log", log(record, view));
