@@ -5045,7 +5045,6 @@ struct CompactPromptPopup: View {
                 ManaPaymentTray(
                     snapshot: snapshot,
                     prompt: prompt,
-                    sourceManaActions: sourceManaActions,
                     pendingActionId: pendingActionId,
                     runAction: runAction,
                     runCommand: runCommand
@@ -5592,7 +5591,6 @@ struct DragActionChoicePopup: View {
 struct ManaPaymentTray: View {
     let snapshot: GameSnapshot
     let prompt: PromptEnvelopeV2
-    let sourceManaActions: [LegalAction]
     let pendingActionId: String?
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
@@ -5606,45 +5604,7 @@ struct ManaPaymentTray: View {
                     .font(.system(size: 9, weight: .black))
                     .foregroundStyle(MagicPalette.antiqueGold)
                 paymentPipRow
-                Spacer(minLength: 2)
-                manaPoolPips
-            }
-
-            if let spellName = snapshot.manaPayment?.spellName, !spellName.isEmpty {
-                Text(spellName)
-                    .font(.system(size: 8, weight: .black))
-                    .foregroundStyle(.white.opacity(0.72))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.62)
-            }
-
-            if !sourceManaActions.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(sourceManaActions.prefix(8)) { action in
-                            Button {
-                                runAction(action)
-                            } label: {
-                                HStack(spacing: 5) {
-                                    Image(systemName: "bolt.fill")
-                                        .font(.system(size: 9, weight: .black))
-                                    Text(sourceCardName(for: action))
-                                        .font(.system(size: 10, weight: .black))
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.62)
-                                    producedManaSymbols(for: action)
-                                }
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 8)
-                                .frame(height: 30)
-                                .background(MagicPalette.legalEmerald.opacity(0.20), in: Capsule())
-                                .overlay(Capsule().stroke(MagicPalette.legalEmerald.opacity(0.54), lineWidth: 1))
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(pendingActionId != nil)
-                        }
-                    }
-                }
+                Spacer(minLength: 0)
             }
 
             if let choices = prompt.manaChoices, !choices.isEmpty {
@@ -5689,7 +5649,7 @@ struct ManaPaymentTray: View {
                     .minimumScaleFactor(0.72)
             }
 
-            if sourceManaActions.isEmpty && prompt.manaChoices?.isEmpty != false {
+            if !hasBattlefieldManaSources && prompt.manaChoices?.isEmpty != false {
                 Text("Waiting for XMage mana options")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(MagicPalette.arcaneBlue)
@@ -5751,27 +5711,9 @@ struct ManaPaymentTray: View {
         return message.count > 28 ? "Pay mana" : message
     }
 
-    private var manaPoolPips: some View {
-        HStack(spacing: 3) {
-            ForEach(["W", "U", "B", "R", "G", "C"], id: \.self) { symbol in
-                let count = manaPoolValue(symbol)
-                if count > 0 {
-                    HStack(spacing: 1) {
-                        ManaSymbolView(symbol: symbol, size: 16)
-                        Text("\(count)")
-                            .font(.system(size: 8, weight: .black))
-                            .foregroundStyle(.white.opacity(0.86))
-                    }
-                }
-            }
-        }
-    }
-
-    private func producedManaSymbols(for action: LegalAction) -> some View {
-        HStack(spacing: -2) {
-            ForEach((action.producedMana ?? []).prefix(3), id: \.self) { symbol in
-                ManaSymbolView(symbol: symbol, size: 16)
-            }
+    private var hasBattlefieldManaSources: Bool {
+        (snapshot.legalActions ?? []).contains {
+            $0.type == "make_mana" && ($0.sourceInstanceId != nil || $0.cardInstanceId != nil)
         }
     }
 
@@ -5812,9 +5754,6 @@ struct ManaPaymentTray: View {
         }
     }
 
-    private func sourceCardName(for action: LegalAction) -> String {
-        action.cardName ?? action.label.replacingOccurrences(of: "Tap ", with: "")
-    }
 }
 
 struct BattlefieldRow: View {

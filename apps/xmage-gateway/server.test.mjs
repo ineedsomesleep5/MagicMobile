@@ -779,6 +779,22 @@ describe("xmage gateway", () => {
     assert.match(contentView, /CardTile\(card: card, selected:/);
   });
 
+  it("keeps iOS mana payment source actions on battlefield cards instead of tray buttons", () => {
+    const contentView = readFileSync(new URL("../ios/MagicMobile/ContentView.swift", import.meta.url), "utf8");
+    const trayStart = contentView.indexOf("struct ManaPaymentTray");
+    const trayEnd = contentView.indexOf("struct BattlefieldRow");
+    const traySource = contentView.slice(trayStart, trayEnd);
+    const battlefieldSource = contentView.slice(trayEnd);
+
+    assert.ok(trayStart > 0, "missing ManaPaymentTray");
+    assert.ok(trayEnd > trayStart, "missing BattlefieldRow after ManaPaymentTray");
+    assert.match(traySource, /Text\("Pay cost"\)/);
+    assert.doesNotMatch(traySource, /ForEach\(sourceManaActions/);
+    assert.doesNotMatch(traySource, /sourceCardName\(for: action\)/);
+    assert.doesNotMatch(traySource, /Text\(spellName\)/);
+    assert.match(battlefieldSource, /action\.type == "make_mana"[\s\S]*runAction\(action\)/);
+  });
+
   it("rejects stale bridge snapshots by revision", () => {
     assert.equal(shouldAcceptSnapshot({ bridgeRevision: 3 }, { bridgeRevision: 2 }), false);
     assert.equal(shouldAcceptSnapshot({ bridgeRevision: 3 }, { bridgeRevision: 3 }), true);
