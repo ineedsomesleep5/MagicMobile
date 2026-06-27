@@ -44,6 +44,13 @@ import mage.remote.Session;
 import mage.remote.SessionImpl;
 import mage.server.game.GameController;
 import mage.server.managers.ManagerFactory;
+import mage.server.managers.GameManager;
+import mage.game.stack.StackObject;
+import mage.abilities.Ability;
+import mage.abilities.costs.mana.ManaCosts;
+import mage.abilities.costs.mana.ManaCost;
+import mage.abilities.costs.mana.ManaCostsImpl;
+import mage.Mana;
 import mage.utils.MageVersion;
 import mage.view.CardView;
 import mage.view.AbilityPickerView;
@@ -1283,6 +1290,88 @@ public final class MagicMobileBridge implements MageClient {
                 + " waiting=" + string(snapshot, "waitingOnPlayerId", "nil");
     }
 
+    // Reads the live game (embedded server only) to detect whether the human is
+    // mid-paying for a spell/ability on the stack, and the remaining cost. This is
+    // the single source of truth for the client mana-payment UI: it gates the pip
+    // tray (only shown while active), drives the counting-down pips, and lets the
+    // client auto-resolve once the cost is fully paid (active flips false). Any
+    // failure degrades safely to omitting the field (client keeps prior behavior).
+    private JsonObject manaPaymentState(GameRecord record) {
+        if (fixtureManagerProvider == null || record == null || record.humanXmagePlayerId == null) {
+            return null;
+        }
+        try {
+            ManagerFactory managerFactory = fixtureManagerProvider.get();
+            GameManager gameManager = managerFactory == null ? null : managerFactory.gameManager();
+            if (gameManager == null) {
+                return null;
+            }
+            Map<UUID, GameController> controllers = gameManager.getGameController();
+            GameController controller = controllers == null ? null : controllers.get(record.gameId);
+            if (controller == null) {
+                return null;
+            }
+            Object gameObject = fieldValue(controller, "game");
+            if (!(gameObject instanceof Game)) {
+                return null;
+            }
+            Game game = (Game) gameObject;
+            UUID humanId = record.humanXmagePlayerId;
+            for (StackObject stackObject : game.getStack()) {
+                if (stackObject == null || !humanId.equals(stackObject.getControllerId())) {
+                    continue;
+                }
+                Ability ability = stackObject.getStackAbility();
+                if (ability == null) {
+                    continue;
+                }
+                ManaCosts<ManaCost> toPay = ability.getManaCostsToPay();
+                if (toPay == null || toPay.isEmpty()) {
+                    continue;
+                }
+                Mana remaining = unpaidMana(toPay);
+                if (remaining == null || remaining.count() <= 0) {
+                    continue;
+                }
+                JsonObject payment = new JsonObject();
+                payment.addProperty("active", true);
+                payment.addProperty("spellName", cleanText(stackObject.getName()));
+                payment.addProperty("manaCostText", toPay.getText());
+                payment.addProperty("remainingText", unpaidText(toPay));
+                JsonObject remainingPips = new JsonObject();
+                remainingPips.addProperty("generic", remaining.getGeneric());
+                remainingPips.addProperty("W", remaining.getWhite());
+                remainingPips.addProperty("U", remaining.getBlue());
+                remainingPips.addProperty("B", remaining.getBlack());
+                remainingPips.addProperty("R", remaining.getRed());
+                remainingPips.addProperty("G", remaining.getGreen());
+                remainingPips.addProperty("C", remaining.getColorless());
+                remainingPips.addProperty("total", remaining.count());
+                payment.add("remaining", remainingPips);
+                return payment;
+            }
+        } catch (Throwable error) {
+            // Safe fallback: omit manaPayment so clients keep current behavior.
+        }
+        return null;
+    }
+
+    private Mana unpaidMana(ManaCosts<ManaCost> toPay) {
+        try {
+            return ((ManaCostsImpl<?>) toPay).getUnpaid().getMana();
+        } catch (Throwable fallback) {
+            return toPay.getMana();
+        }
+    }
+
+    private String unpaidText(ManaCosts<ManaCost> toPay) {
+        try {
+            return ((ManaCostsImpl<?>) toPay).getUnpaid().getText();
+        } catch (Throwable fallback) {
+            return toPay.getText();
+        }
+    }
+
     private boolean playableUuidCommandStillNeedsRetry(JsonObject snapshot, JsonObject command, String type) {
         if (!"cast_spell".equals(type) && !"play_land".equals(type)) {
             return false;
@@ -1402,6 +1491,10 @@ public final class MagicMobileBridge implements MageClient {
         }
         snapshot.add("startupOpeningPrompts", record.startupOpeningPrompts.deepCopy());
         snapshot.add("xmage", xmageMobileSnapshot(record, view, playerIds));
+        JsonObject manaPayment = manaPaymentState(record);
+        if (manaPayment != null) {
+            snapshot.add("manaPayment", manaPayment);
+        }
         return snapshot;
     }
 
