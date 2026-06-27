@@ -5561,6 +5561,10 @@ struct ManaPaymentTray: View {
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
 
+    private var resolveAction: LegalAction? {
+        (snapshot.legalActions ?? []).first { $0.type == "pass_priority" }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 7) {
@@ -5571,6 +5575,30 @@ struct ManaPaymentTray: View {
                     .minimumScaleFactor(0.65)
                 Spacer(minLength: 2)
                 manaPoolPips
+            }
+
+            // Explicit completion: once mana is tapped, the player taps Done to
+            // resolve the spell instead of hunting for the side PASS button.
+            if let resolveAction {
+                Button {
+                    runAction(resolveAction)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 11, weight: .black))
+                        Text("Done — Resolve")
+                            .font(.system(size: 12, weight: .black))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 32)
+                    .background(MagicPalette.antiqueGold.opacity(0.30), in: Capsule())
+                    .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.7), lineWidth: 1.2))
+                }
+                .buttonStyle(.plain)
+                .disabled(pendingActionId != nil)
             }
 
             if !sourceManaActions.isEmpty {
