@@ -13,7 +13,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-if [ "${ENABLE_XMAGE_FIXTURES:-false}" = "true" ] && [ "${NODE_ENV:-production}" != "production" ]; then
+if [ "${XMAGE_EMBEDDED_BRIDGE:-true}" = "true" ]; then
   cd "$SERVER_DIR"
   exec java $JAVA_OPEN_OPTS -Xmx"$XMAGE_SERVER_XMX" \
     -cp "/opt/magicmobile/classes:$SERVER_DIR/lib/*:$SERVER_DIR/plugins/*:$XMAGE_HOME/mage-client/lib/*:$XMAGE_HOME/mage-client/plugins/*" \

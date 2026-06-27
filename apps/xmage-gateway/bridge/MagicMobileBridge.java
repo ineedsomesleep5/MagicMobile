@@ -434,13 +434,16 @@ public final class MagicMobileBridge implements MageClient {
             throw new ActionNoLongerLegalException(gameId, "Action was based on stale XMage snapshot revision " + expectedRevision + "; current revision is " + startRevision);
         }
         JsonObject prompt = currentPromptForCommand(gameId, command, type);
+        UUID retryableUuid = null;
 
         if ("play_land".equals(type)) {
             // Desktop XMage receives the source card UUID for normal card clicks.
-            session.sendPlayerUUID(xmageGameId, playableSourceUuid(gameId, command));
+            retryableUuid = playableSourceUuid(gameId, command);
+            session.sendPlayerUUID(xmageGameId, retryableUuid);
         } else if ("cast_spell".equals(type)) {
-            // Casts from hand/command also submit the source card UUID, not an ability UUID.
-            session.sendPlayerUUID(xmageGameId, playableSourceUuid(gameId, command));
+            // HumanPlayer priority consumes the clicked card/source UUID, then selects the playable cast ability.
+            retryableUuid = playableSourceUuid(gameId, command);
+            session.sendPlayerUUID(xmageGameId, retryableUuid);
         } else if ("activate_ability".equals(type)) {
             // Validate the selected ability UUID, then use XMage's source-click
             // activation path. Real XMage desktop playables expose ability ids for
@@ -561,7 +564,11 @@ public final class MagicMobileBridge implements MageClient {
         if (record != null) {
             record.lastProgressAt = System.currentTimeMillis();
         }
-        return waitForUpdatedSnapshot(gameId, type, startRevision, startCycle);
+        JsonObject updated = waitForUpdatedSnapshot(gameId, type, startRevision, startCycle);
+        if (retryableUuid != null) {
+            updated = retryPlayableUuidCommandIfNoProgress(gameId, xmageGameId, command, type, retryableUuid, updated);
+        }
+        return updated;
     }
 
     private JsonObject cleanupGame(String gameId, String reason) throws Exception {
@@ -1171,6 +1178,60 @@ public final class MagicMobileBridge implements MageClient {
             Thread.sleep(200);
         }
         return snapshot(gameId, "waiting_for_xmage");
+    }
+
+    private JsonObject retryPlayableUuidCommandIfNoProgress(String gameId, UUID xmageGameId, JsonObject command, String type, UUID responseUuid, JsonObject firstSnapshot) throws Exception {
+        JsonObject current = firstSnapshot;
+        for (int attempt = 0; attempt < 4 && playableUuidCommandStillNeedsRetry(current, command, type); attempt++) {
+            Thread.sleep(250L + (attempt * 150L));
+            GameRecord record = games.get(gameId);
+            long retryStartRevision = record == null ? -1 : record.bridgeRevision.get();
+            int retryStartCycle = record == null ? -1 : record.latestCycle;
+            session.sendPlayerUUID(xmageGameId, responseUuid);
+            current = waitForUpdatedSnapshot(gameId, type, retryStartRevision, retryStartCycle);
+        }
+        return current;
+    }
+
+    private boolean playableUuidCommandStillNeedsRetry(JsonObject snapshot, JsonObject command, String type) {
+        if (!"cast_spell".equals(type) && !"play_land".equals(type)) {
+            return false;
+        }
+        if (snapshot == null
+                || snapshot.has("pendingStatus")
+                || snapshot.has("promptEnvelope")
+                || snapshot.has("promptEnvelopeV2")) {
+            return false;
+        }
+        JsonArray stack = array(object(snapshot, "xmage", null), "stack");
+        if (stack.size() > 0) {
+            return false;
+        }
+        return legalActionStillAvailable(snapshot, command, type);
+    }
+
+    private boolean legalActionStillAvailable(JsonObject snapshot, JsonObject command, String type) {
+        String sourceId = string(command, "sourceInstanceId", string(command, "cardInstanceId", ""));
+        String abilityId = string(command, "abilityId", "");
+        for (JsonElement element : array(snapshot, "legalActions")) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            JsonObject action = element.getAsJsonObject();
+            if (!type.equals(string(action, "type", ""))) {
+                continue;
+            }
+            String actionSourceId = string(action, "sourceInstanceId", string(action, "cardInstanceId", ""));
+            if (!sourceId.isEmpty() && !sourceId.equals(actionSourceId)) {
+                continue;
+            }
+            String actionAbilityId = string(action, "abilityId", "");
+            if (!abilityId.isEmpty() && !abilityId.equals(actionAbilityId)) {
+                continue;
+            }
+            return true;
+        }
+        return false;
     }
 
     private boolean isDirectCommand(String type) {

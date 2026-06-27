@@ -347,10 +347,29 @@ describe("xmage gateway", () => {
 
   it("starts embedded Commander games with the human as XMage starting-player chooser", () => {
     const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+    const startSource = readFileSync(new URL("./bridge/start.sh", import.meta.url), "utf8");
 
     assert.match(bridgeSource, /startMatchWithHumanChooser/);
     assert.match(bridgeSource, /startGame\.invoke\(controller, humanPlayerId\)/);
     assert.doesNotMatch(bridgeSource, /startMatchWithHumanChooser[\s\S]*?setStartingPlayerId/);
+    assert.match(startSource, /XMAGE_EMBEDDED_BRIDGE/);
+    assert.match(startSource, /MagicMobileEmbeddedServerBridge/);
+    assert.doesNotMatch(
+      startSource,
+      /ENABLE_XMAGE_FIXTURES[\s\S]{0,160}MagicMobileEmbeddedServerBridge/,
+      "normal Commander games must not lose the starting-player chooser just because fixtures are disabled"
+    );
+  });
+
+  it("dispatches hand spell casts through the source card and retries missed priority windows", () => {
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+    const commandBranch = bridgeSource.match(/if \("play_land"\.equals\(type\)\)[\s\S]*?else if \("undo_mana"/)?.[0] ?? "";
+
+    assert.match(commandBranch, /"cast_spell"\.equals\(type\)[\s\S]*?retryableUuid = playableSourceUuid\(gameId, command\)/);
+    assert.match(bridgeSource, /retryPlayableUuidCommandIfNoProgress\(gameId, xmageGameId, command, type, retryableUuid, updated\)/);
+    assert.match(bridgeSource, /private JsonObject retryPlayableUuidCommandIfNoProgress/);
+    assert.match(bridgeSource, /private boolean playableUuidCommandStillNeedsRetry/);
+    assert.match(bridgeSource, /legalActionStillAvailable\(snapshot, command, type\)/);
   });
 
   it("labels XMage turn-one player target as starting-player choice", () => {
@@ -1083,7 +1102,7 @@ describe("xmage gateway", () => {
     assert.match(bridgeSource, /Action was based on stale XMage snapshot revision/);
     assert.match(bridgeSource, /int startCycle = record == null \? -1 : record\.latestCycle;/);
     assert.match(bridgeSource, /record\.bridgeRevision\.get\(\) > startRevision \|\| record\.latestCycle > startCycle/);
-    assert.match(bridgeSource, /"cast_spell"\.equals\(type\)\) \{[\s\S]*?session\.sendPlayerUUID\(xmageGameId, playableSourceUuid\(gameId, command\)\);/);
+    assert.match(bridgeSource, /"cast_spell"\.equals\(type\)\) \{[\s\S]*?retryableUuid = playableSourceUuid\(gameId, command\);[\s\S]*?session\.sendPlayerUUID\(xmageGameId, retryableUuid\);/);
     assert.match(bridgeSource, /"make_mana"\.equals\(type\)\) \{[\s\S]*?session\.sendPlayerUUID\(xmageGameId, playableSourceUuid\(gameId, command\)\);/);
     assert.match(bridgeSource, /"activate_ability"\.equals\(type\)\) \{[\s\S]*?playableCommandUuid\(gameId, command\);[\s\S]*?session\.sendPlayerUUID\(xmageGameId, playableSourceUuid\(gameId, command\)\);/);
     const sendCombatSelection = bridgeSource.match(/private void sendCombatSelection[\s\S]*?\n    private JsonObject waitForUpdatedSnapshot/)?.[0] ?? "";
@@ -1138,9 +1157,10 @@ describe("xmage gateway", () => {
     const embeddedSource = readFileSync(new URL("./bridge/MagicMobileEmbeddedServerBridge.java", import.meta.url), "utf8");
     const startSource = readFileSync(new URL("./bridge/start.sh", import.meta.url), "utf8");
 
-    assert.match(startSource, /ENABLE_XMAGE_FIXTURES/);
-    assert.match(startSource, /NODE_ENV:-production/);
     assert.match(startSource, /MagicMobileEmbeddedServerBridge/);
+    assert.match(bridgeSource, /if \(!fixturesEnabled\(\)\) \{[\s\S]*?xmage_fixtures_disabled[\s\S]*?writeJson\(exchange, 404, body\)/);
+    assert.match(bridgeSource, /"true"\.equalsIgnoreCase\(env\("ENABLE_XMAGE_FIXTURES", "false"\)\)/);
+    assert.match(bridgeSource, /!"production"\.equalsIgnoreCase\(nodeEnv\)/);
     assert.match(embeddedSource, /mage\.server\.Main\.main\(args\)/);
     assert.match(embeddedSource, /setFixtureManagerProvider/);
     assert.match(bridgeSource, /seedFixtureInServerProcess\(seedRequest, provider\.get\(\)\)/);
