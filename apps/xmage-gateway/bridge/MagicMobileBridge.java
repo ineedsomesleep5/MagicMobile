@@ -1786,6 +1786,13 @@ public final class MagicMobileBridge implements MageClient {
             }
             attackers.add(pair);
             action.add("attackers", attackers.deepCopy());
+            if (defenderId != null) {
+                JsonArray validTargetIds = new JsonArray();
+                validTargetIds.add(defenderId);
+                action.add("validTargetIds", validTargetIds.deepCopy());
+                action.add("validPlayerIds", validTargetIds.deepCopy());
+                action.add("targetIds", validTargetIds.deepCopy());
+            }
             template.add("attackers", attackers.deepCopy());
         } else if ("declare_blockers".equals(type)) {
             JsonArray blockers = new JsonArray();
@@ -2988,6 +2995,16 @@ public final class MagicMobileBridge implements MageClient {
         JsonArray out = new JsonArray();
         for (CardView card : cards) {
             out.add(hidden ? hiddenCard(card.getId().toString()) : zoneCard(card));
+        }
+        return out;
+    }
+
+    private JsonArray selectableZoneCards(Iterable<CardView> cards) {
+        JsonArray out = zoneCards(cards, false);
+        for (JsonElement element : out) {
+            if (element.isJsonObject()) {
+                element.getAsJsonObject().addProperty("selectable", true);
+            }
         }
         return out;
     }
@@ -4584,7 +4601,7 @@ public final class MagicMobileBridge implements MageClient {
             }
         } else if (message.getCardsView1() != null && !message.getCardsView1().isEmpty()) {
             addCardChoices(choices, message.getCardsView1());
-            prompt.add("cards", zoneCards(message.getCardsView1().values(), false));
+            prompt.add("cards", selectableZoneCards(message.getCardsView1().values()));
         }
 
         if (choices.size() > 0) {

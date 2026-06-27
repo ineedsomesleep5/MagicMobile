@@ -121,6 +121,7 @@ struct GameSnapshot: Decodable {
     let bridgeRevision: Int?
     let xmageCycle: Int?
     let pendingStatus: String?
+    let manaPayment: ManaPayment?
 
     var human: PlayerGameState? {
         players.first { $0.playerId == "human" }
@@ -128,6 +129,33 @@ struct GameSnapshot: Decodable {
 
     var opponent: PlayerGameState? {
         players.first { $0.playerId != "human" }
+    }
+}
+
+/// Authoritative mana-payment state from the bridge: present and `active` only
+/// while the human is mid-paying for a spell/ability on the stack. Drives the
+/// pip tray, gating, and auto-resolve. Absent/inactive = not paying.
+struct ManaPayment: Decodable {
+    let active: Bool
+    let spellName: String?
+    let manaCostText: String?
+    let remainingText: String?
+    let remaining: ManaPips?
+}
+
+struct ManaPips: Decodable {
+    let generic: Int
+    let W: Int
+    let U: Int
+    let B: Int
+    let R: Int
+    let G: Int
+    let C: Int
+    let total: Int
+
+    /// Ordered (symbol, count) pairs for rendering, generic first then WUBRG/C.
+    var orderedColors: [(symbol: String, count: Int)] {
+        [("W", W), ("U", U), ("B", B), ("R", R), ("G", G), ("C", C)].filter { $0.count > 0 }
     }
 }
 
@@ -390,6 +418,8 @@ struct ZoneCard: Decodable, Identifiable, Hashable {
     let isAttacking: Bool?
     let blocking: [String]?
     let attachedToInstanceId: String?
+    let selectable: Bool?
+    let disabledReason: String?
 
     var id: String { instanceId }
 }
@@ -956,6 +986,10 @@ extension ZoneCard {
 
     public var showsPowerToughness: Bool {
         power != nil && toughness != nil && isCreature
+    }
+
+    public var isPromptSelectable: Bool {
+        selectable ?? true
     }
 
     var isSyntheticStackAbilityPlaceholder: Bool {

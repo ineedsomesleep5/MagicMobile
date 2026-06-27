@@ -773,10 +773,10 @@ describe("xmage gateway", () => {
     assert.match(contentView, /XmageStackPeek\(/);
     assert.match(contentView, /legalActions: snapshot\.legalActions \?\? \[\]/);
     assert.match(contentView, /promptText: snapshot\.promptEnvelopeV2\?\.message \?\? snapshot\.promptText/);
-    assert.ok(contentView.includes('Text("TOP \\(objects.count)")'));
-    assert.match(contentView, /RESPOND\/PASS/);
-    assert.ok(contentView.includes('Text("Source: \\(source)")'));
-    assert.ok(contentView.includes('Text("Prompt: \\(promptText)")'));
+    assert.ok(contentView.includes('Text("\\(objects.count)")'));
+    assert.match(contentView, /RESPOND/);
+    assert.match(contentView, /topDisplayCard/);
+    assert.match(contentView, /CardTile\(card: card, selected:/);
   });
 
   it("rejects stale bridge snapshots by revision", () => {

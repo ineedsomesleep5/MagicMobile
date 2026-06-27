@@ -83,6 +83,7 @@ struct ContentView: View {
     @State private var pendingCastBeforeSnapshot: GameSnapshot?
     @State private var lastSubmittedActionId: String?
     @State private var lastSubmittedSnapshotSignature: String?
+    @State private var manaPaymentWasActive = false
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var webSocketTask: URLSessionWebSocketTask?
@@ -776,6 +777,21 @@ struct ContentView: View {
         if pendingActionId != nil && (nextSnapshot.pendingStatus != "waiting_for_xmage" || changedFromSubmittedSnapshot) {
             clearPendingAction()
         }
+        maybeAutoResolveAfterPayment(nextSnapshot)
+    }
+
+    /// When the human finishes paying for a spell/ability (manaPayment goes from
+    /// active to inactive), automatically pass priority so it resolves — no hunting
+    /// for PASS. Manual PASS still works if this is skipped (e.g. a follow-up prompt).
+    private func maybeAutoResolveAfterPayment(_ nextSnapshot: GameSnapshot) {
+        let active = nextSnapshot.manaPayment?.active == true
+        defer { manaPaymentWasActive = active }
+        guard manaPaymentWasActive, !active else { return }
+        guard pendingActionId == nil else { return }
+        guard nextSnapshot.promptEnvelopeV2 == nil else { return }
+        guard nextSnapshot.priorityPlayerId == "human" || nextSnapshot.waitingOnPlayerId == "human" else { return }
+        guard let pass = (nextSnapshot.legalActions ?? []).first(where: { $0.type == "pass_priority" }) else { return }
+        Task { await run(action: pass) }
     }
 
     private func shouldAcceptSnapshot(_ nextSnapshot: GameSnapshot) -> Bool {
@@ -3128,92 +3144,56 @@ struct XmageStackPeek: View {
         objects.last
     }
 
+    private var topDisplayCard: ZoneCard? {
+        topObject?.displaySourceCard
+    }
+
     private var passAvailable: Bool {
         legalActions.contains { ["pass_priority", "pass_until_response", "advance_phase"].contains($0.type) }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("STACK")
-                .font(.system(size: 10, weight: .black))
-                .foregroundStyle(MagicPalette.antiqueGold)
+            HStack(spacing: 6) {
+                Text("STACK")
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundStyle(MagicPalette.antiqueGold)
+                Text("\(objects.count)")
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundStyle(.white.opacity(0.68))
+                Spacer(minLength: 0)
+                Text(passAvailable ? "RESPOND" : "WAIT")
+                    .font(.system(size: 7, weight: .black))
+                    .foregroundStyle(passAvailable ? MagicPalette.legalEmerald : .white.opacity(0.55))
+            }
 
-            HStack(spacing: 8) {
-                HStack(spacing: -12) {
-                    ForEach(Array(objects.suffix(3).enumerated()), id: \.element.id) { index, object in
-                        if let card = object.displaySourceCard {
-                            CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, zoneName: "Stack", width: 38, height: 54)
-                                .zIndex(Double(index))
-                                .onTapGesture {
-                                    selectedCard = card
-                                    inspectedCard = nil
-                                }
-                                .onLongPressGesture(minimumDuration: 0.35) {
-                                    inspectedCard = card
-                                }
+            HStack(spacing: 9) {
+                if let card = topDisplayCard {
+                    CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, zoneName: "Stack", width: 54, height: 76)
+                        .onTapGesture {
+                            selectedCard = card
+                            inspectedCard = nil
                         }
+                        .onLongPressGesture(minimumDuration: 0.35) {
+                            inspectedCard = card
+                        }
+                } else {
+                    VStack(spacing: 5) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 16, weight: .black))
+                            .foregroundStyle(MagicPalette.antiqueGold)
+                        Text(topObject?.sourceName ?? topObject?.displayName ?? "Ability")
+                            .font(.system(size: 8, weight: .black))
+                            .foregroundStyle(.white.opacity(0.82))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                            .minimumScaleFactor(0.55)
                     }
+                    .frame(width: 54, height: 76)
+                    .background(MagicPalette.parchment.opacity(0.26), in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(MagicPalette.antiqueGold.opacity(0.45), lineWidth: 1))
                 }
 
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 5) {
-                        Text("TOP \(objects.count)")
-                            .font(.system(size: 8, weight: .black))
-                            .foregroundStyle(MagicPalette.antiqueGold)
-                        Text(passAvailable ? "RESPOND/PASS" : "WAIT")
-                            .font(.system(size: 8, weight: .black))
-                            .foregroundStyle(passAvailable ? .green : .white.opacity(0.62))
-                    }
-                    Text(topObject?.displayName ?? "Resolving")
-                        .font(.system(size: 11, weight: .black))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.65)
-                    if let source = topObject?.displaySourceCard?.card.name, source != topObject?.name {
-                        Text("Source: \(source)")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.70))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.62)
-                    } else if let source = topObject?.sourceName, !source.isEmpty, source != topObject?.name {
-                        Text("Source: \(source)")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.70))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.62)
-                    } else if let detail = topObject?.compactFallbackDetail {
-                        Text(detail)
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundStyle(MagicPalette.antiqueGold.opacity(0.82))
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.58)
-                    }
-                    if let metadata = topObject?.displayMetadata {
-                        Text(metadata)
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.64))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.58)
-                    }
-                    if let text = topObject?.rulesText, !text.isEmpty {
-                        Text(text)
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.72))
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.62)
-                    }
-                    if let promptText, !promptText.isEmpty {
-                        Text("Prompt: \(promptText)")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundStyle(MagicPalette.antiqueGold.opacity(0.82))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.58)
-                    } else if let paid = topObject?.paid {
-                        Text(paid ? "Paid" : "Pending payment")
-                            .font(.system(size: 8, weight: .black))
-                            .foregroundStyle(paid ? MagicPalette.parchment.opacity(0.7) : MagicPalette.antiqueGold)
-                    }
-                }
                 Spacer(minLength: 0)
             }
         }
@@ -3232,21 +3212,25 @@ struct PromptPill: View {
             || !CompactPromptPopup.compactLegalPromptActions(in: snapshot).isEmpty
     }
 
+    private var guidance: PromptGuidance {
+        PromptGuidance(snapshot: snapshot, isWaitingOnHuman: isWaitingOnHuman)
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             Circle()
-                .fill(isWaitingOnHuman ? MagicPalette.emerald : MagicPalette.arcaneBlue)
+                .fill(guidance.color)
                 .frame(width: 8, height: 8)
-                .shadow(color: (isWaitingOnHuman ? MagicPalette.emerald : MagicPalette.arcaneBlue).opacity(0.8), radius: 5)
+                .shadow(color: guidance.color.opacity(0.8), radius: 5)
 
-            Text(isWaitingOnHuman ? "YOUR DECISION" : "AI DECISION")
+            Text(guidance.label)
                 .font(.system(size: 9, weight: .black))
-                .foregroundStyle(isWaitingOnHuman ? MagicPalette.emerald : MagicPalette.arcaneBlue)
+                .foregroundStyle(guidance.color)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
-                .background((isWaitingOnHuman ? MagicPalette.emerald : MagicPalette.arcaneBlue).opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
+                .background(guidance.color.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
 
-            Text(snapshot.promptText ?? "Waiting for XMage")
+            Text(guidance.message)
                 .font(.system(size: 11, weight: .black))
                 .foregroundStyle(.white)
                 .lineLimit(2)
@@ -3258,7 +3242,54 @@ struct PromptPill: View {
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
         .background(MagicPalette.iron.opacity(0.74), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(isWaitingOnHuman ? MagicPalette.emerald.opacity(0.5) : MagicPalette.arcaneBlue.opacity(0.26), lineWidth: 1.5))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(guidance.color.opacity(guidance.isUrgent ? 0.72 : 0.5), lineWidth: 1.5))
+    }
+}
+
+private struct PromptGuidance {
+    let label: String
+    let message: String
+    let color: Color
+    let isUrgent: Bool
+
+    init(snapshot: GameSnapshot, isWaitingOnHuman: Bool) {
+        let promptType = snapshot.promptEnvelopeV2?.responseCommand?.type?.lowercased()
+            ?? snapshot.promptEnvelopeV2?.responseKind.lowercased()
+            ?? ""
+        let method = snapshot.promptEnvelopeV2?.method.uppercased() ?? ""
+        let step = (snapshot.step ?? snapshot.phase).lowercased()
+
+        if snapshot.manaPayment?.active == true || snapshot.promptEnvelopeV2.map(CompactPromptPopup.isManaPaymentPrompt) == true {
+            label = "PAY COST"
+            message = snapshot.manaPayment?.remainingText ?? "Tap mana sources"
+            color = MagicPalette.antiqueGold
+            isUrgent = true
+        } else if promptType == "choose_target" || method.contains("TARGET") {
+            label = "SELECT TARGET"
+            message = snapshot.promptText ?? "Choose a highlighted target"
+            color = MagicPalette.oxblood
+            isUrgent = true
+        } else if step.contains("declare-attackers") || promptType == "declare_attackers" {
+            label = "SELECT ATTACKERS"
+            message = "Choose attackers, then choose a defender"
+            color = MagicPalette.oxblood
+            isUrgent = true
+        } else if step.contains("declare-blockers") || promptType == "declare_blockers" {
+            label = "SELECT BLOCKERS"
+            message = "Choose blockers"
+            color = MagicPalette.warningAmber
+            isUrgent = true
+        } else if isWaitingOnHuman {
+            label = "YOUR DECISION"
+            message = snapshot.promptText ?? "Play spells and abilities"
+            color = MagicPalette.emerald
+            isUrgent = false
+        } else {
+            label = "AI DECISION"
+            message = snapshot.promptText ?? "Waiting for XMage"
+            color = MagicPalette.arcaneBlue
+            isUrgent = false
+        }
     }
 }
 
@@ -3858,7 +3889,8 @@ struct UniversalPromptActionPanel: View {
 
     @ViewBuilder
     private func searchSelectionPicker(cards: [ZoneCard], prompt: PromptEnvelopeV2) -> some View {
-        let selectedIds = currentSearchSelection(promptId: prompt.id, validIds: cards.map(\.instanceId))
+        let selectableIds = cards.filter(\.isPromptSelectable).map(\.instanceId)
+        let selectedIds = currentSearchSelection(promptId: prompt.id, validIds: selectableIds)
         let selectedCount = selectedIds.count
         let valid = PromptSelectionRules.isValidSelectedCount(selectedCount, minChoices: prompt.minChoices, maxChoices: prompt.maxChoices)
         let type = idCommandType(preferred: prompt.responseCommand?.type, fallback: "search_select")
@@ -3874,40 +3906,46 @@ struct UniversalPromptActionPanel: View {
                     .minimumScaleFactor(0.62)
             }
 
-            VStack(alignment: .leading, spacing: 5) {
-                ForEach(cards) { card in
-                    let isSelected = selectedIds.contains(card.instanceId)
-                    Button {
-                        toggleSearchSelection(promptId: prompt.id, cardId: card.instanceId, validIds: cards.map(\.instanceId), maxChoices: prompt.maxChoices)
-                    } label: {
-                        HStack(spacing: 7) {
-                            CardTile(card: card, selected: isSelected, legal: true, zoneName: searchZoneName(for: prompt), width: 30, height: 42)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(card.card.name)
-                                    .font(.system(size: 10, weight: .black))
-                                    .foregroundStyle(.white.opacity(0.90))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.66)
-                                Text(card.card.typeLine)
-                                    .font(.system(size: 8, weight: .bold))
-                                    .foregroundStyle(.white.opacity(0.58))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.62)
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 54), spacing: 7)], spacing: 7) {
+                    ForEach(cards) { card in
+                        let selectable = card.isPromptSelectable
+                        let isSelected = selectedIds.contains(card.instanceId)
+                        Button {
+                            guard selectable else { return }
+                            toggleSearchSelection(promptId: prompt.id, cardId: card.instanceId, validIds: selectableIds, maxChoices: prompt.maxChoices)
+                        } label: {
+                            CardTile(
+                                card: card,
+                                selected: isSelected,
+                                legal: selectable,
+                                targetable: selectable,
+                                zoneName: searchZoneName(for: prompt),
+                                width: 50,
+                                height: 70
+                            )
+                            .opacity(selectable ? 1 : 0.34)
+                            .overlay(alignment: .bottom) {
+                                if !selectable {
+                                    Text(card.disabledReason ?? "Not valid")
+                                        .font(.system(size: 6, weight: .black))
+                                        .foregroundStyle(.white.opacity(0.82))
+                                        .padding(.horizontal, 3)
+                                        .padding(.vertical, 2)
+                                        .background(.black.opacity(0.72), in: Capsule())
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.55)
+                                        .padding(2)
+                                }
                             }
-                            Spacer(minLength: 4)
-                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 14, weight: .black))
-                                .foregroundStyle(isSelected ? MagicPalette.legalEmerald : .white.opacity(0.34))
                         }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 5)
-                        .background(isSelected ? MagicPalette.legalEmerald.opacity(0.12) : .white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(isSelected ? MagicPalette.legalEmerald.opacity(0.34) : .white.opacity(0.08)))
+                        .buttonStyle(.plain)
+                        .disabled(pendingActionId != nil || !selectable)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(pendingActionId != nil)
                 }
+                .padding(.vertical, 2)
             }
+            .frame(maxHeight: 154)
 
             promptButton(
                 label: "Submit selection",
@@ -5003,16 +5041,7 @@ struct CompactPromptPopup: View {
                     .minimumScaleFactor(0.65)
             }
 
-            if pendingActionId != nil {
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .tint(MagicPalette.arcaneBlue)
-                        .scaleEffect(0.66)
-                    Text("Waiting for XMage")
-                        .font(.system(size: 10, weight: .black))
-                        .foregroundStyle(MagicPalette.arcaneBlue)
-                }
-            } else if let prompt = paymentPrompt {
+            if let prompt = paymentPrompt {
                 ManaPaymentTray(
                     snapshot: snapshot,
                     prompt: prompt,
@@ -5021,6 +5050,15 @@ struct CompactPromptPopup: View {
                     runAction: runAction,
                     runCommand: runCommand
                 )
+            } else if pendingActionId != nil {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .tint(MagicPalette.arcaneBlue)
+                        .scaleEffect(0.66)
+                    Text("Waiting for XMage")
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundStyle(MagicPalette.arcaneBlue)
+                }
             } else if let prompt = promptV2 {
                 compactPromptControls(prompt)
             } else if let prompt = snapshot.choicePrompt {
@@ -5085,13 +5123,11 @@ struct CompactPromptPopup: View {
     }
 
     static func shouldShowStackPaymentTray(in snapshot: GameSnapshot) -> Bool {
-        guard snapshot.promptEnvelopeV2 == nil else { return false }
-        guard snapshot.priorityPlayerId == "human" || snapshot.waitingOnPlayerId == "human" else { return false }
-        let hasStackObject = !(snapshot.xmage?.stack.isEmpty ?? true) || !(snapshot.human?.zones.stack.isEmpty ?? true)
-        guard hasStackObject else { return false }
-        return (snapshot.legalActions ?? []).contains { action in
-            action.type == "make_mana" && (action.sourceInstanceId != nil || action.cardInstanceId != nil)
-        }
+        // Authoritative: the bridge reports manaPayment.active only while the human
+        // is actually paying for a spell/ability on the stack. This intentionally
+        // does NOT fire for plain response windows (an ability on the stack you may
+        // respond to but are not paying for).
+        snapshot.manaPayment?.active == true
     }
 
     static func syntheticStackPaymentPrompt(in snapshot: GameSnapshot) -> PromptEnvelopeV2 {
@@ -5409,7 +5445,7 @@ struct CompactPromptPopup: View {
         )
     }
 
-    private static func isManaPaymentPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
+    static func isManaPaymentPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
         let type = prompt.responseCommand?.type?.lowercased() ?? ""
         let kind = prompt.responseKind.lowercased()
         return type == "play_mana" || type == "choose_mana" || type == "pay_cost" || type == "play_x_mana" ||
@@ -5561,44 +5597,25 @@ struct ManaPaymentTray: View {
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
 
-    private var resolveAction: LegalAction? {
-        (snapshot.legalActions ?? []).first { $0.type == "pass_priority" }
-    }
+    private var remainingPips: ManaPips? { snapshot.manaPayment?.remaining }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 7) {
-                Text(requiredManaText)
+            HStack(spacing: 6) {
+                Text("Pay cost")
                     .font(.system(size: 9, weight: .black))
                     .foregroundStyle(MagicPalette.antiqueGold)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.65)
+                paymentPipRow
                 Spacer(minLength: 2)
                 manaPoolPips
             }
 
-            // Explicit completion: once mana is tapped, the player taps Done to
-            // resolve the spell instead of hunting for the side PASS button.
-            if let resolveAction {
-                Button {
-                    runAction(resolveAction)
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 11, weight: .black))
-                        Text("Done — Resolve")
-                            .font(.system(size: 12, weight: .black))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 32)
-                    .background(MagicPalette.antiqueGold.opacity(0.30), in: Capsule())
-                    .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.7), lineWidth: 1.2))
-                }
-                .buttonStyle(.plain)
-                .disabled(pendingActionId != nil)
+            if let spellName = snapshot.manaPayment?.spellName, !spellName.isEmpty {
+                Text(spellName)
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.62)
             }
 
             if !sourceManaActions.isEmpty {
@@ -5677,6 +5694,34 @@ struct ManaPaymentTray: View {
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(MagicPalette.arcaneBlue)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var paymentPipRow: some View {
+        if let pips = remainingPips, pips.total > 0 {
+            HStack(spacing: 3) {
+                if pips.generic > 0 {
+                    ZStack {
+                        Circle().fill(Color.gray.opacity(0.55))
+                        Text("\(pips.generic)")
+                            .font(.system(size: 11, weight: .black))
+                            .foregroundStyle(.white)
+                    }
+                    .frame(width: 18, height: 18)
+                }
+                ForEach(Array(pips.orderedColors.enumerated()), id: \.offset) { entry in
+                    ForEach(0..<entry.element.count, id: \.self) { _ in
+                        ManaSymbolView(symbol: entry.element.symbol, size: 18)
+                    }
+                }
+            }
+        } else {
+            Text(requiredManaText)
+                .font(.system(size: 9, weight: .black))
+                .foregroundStyle(MagicPalette.antiqueGold)
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
         }
     }
 
@@ -6110,8 +6155,8 @@ struct CardTile: View {
             }
             if targetable {
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(MagicPalette.antiqueGold.opacity(0.88), lineWidth: 2.5)
-                    .shadow(color: MagicPalette.legalEmerald.opacity(0.72), radius: 9)
+                    .stroke(Color.red.opacity(0.94), lineWidth: 2.8)
+                    .shadow(color: Color.red.opacity(0.78), radius: 11)
                     .padding(-3)
             }
         }
@@ -6143,7 +6188,7 @@ struct CardTile: View {
             return MagicPalette.antiqueGold
         }
         if targetable {
-            return MagicPalette.legalEmerald
+            return Color.red
         }
         if legal {
             return MagicPalette.legalEmerald.opacity(0.72)
@@ -6165,10 +6210,10 @@ struct CardTile: View {
             return MagicPalette.antiqueGold.opacity(0.55)
         }
         if targetable {
-            return MagicPalette.legalEmerald.opacity(0.58)
+            return Color.red.opacity(0.64)
         }
         if legal {
-            return MagicPalette.legalEmerald.opacity(0.38)
+            return MagicPalette.legalEmerald.opacity(0.58)
         }
         return .clear
     }
@@ -6182,7 +6227,7 @@ struct CardTile: View {
 
     static func playableGlowRadius(legal: Bool, selected: Bool, pending: Bool, targetable: Bool, width: CGFloat) -> CGFloat {
         guard legal && !selected && !pending && !targetable else { return 0 }
-        return max(width * 0.13, 7)
+        return max(width * 0.18, 10)
     }
 }
 
@@ -6609,74 +6654,27 @@ struct ContextActionTray: View {
 struct CardInspector: View {
     let card: ZoneCard
 
-    private var badges: [BadgeItem] {
-        var items: [BadgeItem] = []
-        if card.tapped == true {
-            items.append(BadgeItem(text: "TAPPED", color: MagicPalette.oxblood))
-        }
-        if card.isAttacking == true {
-            items.append(BadgeItem(text: "ATTACKING", color: Color.red))
-        }
-        if let blocking = card.blocking, !blocking.isEmpty {
-            items.append(BadgeItem(text: "BLOCKING", color: Color.green))
-        }
-        if let damage = card.damage, damage > 0 {
-            items.append(BadgeItem(text: "DAMAGE: \(damage)", color: Color(red: 0.7, green: 0.1, blue: 0.1)))
-        }
-        if card.showsPowerToughness, let power = card.power, let toughness = card.toughness {
-            items.append(BadgeItem(text: "P/T: \(power)/\(toughness)", color: MagicPalette.antiqueGold))
-        }
-        if let counters = card.counters {
-            for (name, val) in counters where val > 0 {
-                items.append(BadgeItem(text: "\(name): \(val)", color: Color.purple))
-            }
-        }
-        if card.attachedToInstanceId != nil {
-            items.append(BadgeItem(text: "ATTACHED", color: Color.blue))
-        }
-        return items
-    }
-
     var body: some View {
-        HStack(spacing: 9) {
-            CardTile(card: card, selected: true, zoneName: "Inspector", width: 82, height: 114, ignoreTappedRotation: true)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(card.card.name)
-                    .font(.headline.weight(.black))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                Text(card.card.typeLine)
-                    .font(.caption.weight(.black))
-                    .foregroundStyle(.orange)
-                    .lineLimit(2)
+        GeometryReader { proxy in
+            let availableHeight = max(proxy.size.height - 18, 120)
+            let availableWidth = max(proxy.size.width - 18, 86)
+            let cardHeight = min(availableHeight, availableWidth * 1.4)
+            let cardWidth = cardHeight / 1.4
 
-                if !badges.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 4) {
-                            ForEach(badges, id: \.text) { badge in
-                                Text(badge.text)
-                                    .font(.system(size: 8, weight: .black))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 2)
-                                    .background(badge.color, in: RoundedRectangle(cornerRadius: 4))
-                            }
-                        }
-                    }
-                    .frame(height: 16)
-                }
-
-                ScrollView {
-                    Text(card.card.oracleText ?? "Rules text unavailable.")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.78))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+            ZStack {
+                Color.black.opacity(0.78)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                CardTile(
+                    card: card,
+                    selected: true,
+                    zoneName: "Inspector",
+                    width: cardWidth,
+                    height: cardHeight,
+                    ignoreTappedRotation: true
+                )
             }
         }
-        .padding(10)
-        .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.cyan.opacity(0.35)))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.cyan.opacity(0.35)))
     }
 }
 
