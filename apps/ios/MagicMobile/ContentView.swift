@@ -1459,6 +1459,7 @@ struct NativeGameView: View {
     @State private var inspectingZoneCards: [ZoneCard] = []
     @State private var isPromptDetailOpen = false
     @State private var dragActionChoice: DragActionChoice?
+    @State private var combatSelection = CombatSelectionState()
     @State private var aiWaitBeganAt = Date()
     @State private var aiWaitKey = ""
 
@@ -1472,6 +1473,11 @@ struct NativeGameView: View {
         if let snapshot, let human = snapshot.human, let opponent = snapshot.opponent {
             let humanName = human.displayName ?? MagicMobileAPI.cleanPlayerName(playerDisplayName) ?? "You"
             let opponentName = opponent.displayName ?? "AI"
+            let sideCombatHighlights = CombatHighlightSet(
+                selection: combatSelection,
+                actions: snapshot.legalActions ?? [],
+                combatGroups: snapshot.xmage?.combat ?? []
+            )
             ZStack {
                 BattlefieldSurface()
                     .ignoresSafeArea()
@@ -1479,7 +1485,16 @@ struct NativeGameView: View {
                 HStack(spacing: 0) {
                     // LEFT COLUMN
                     VStack(alignment: .leading, spacing: 0) {
-                        OpponentVerticalHUD(name: opponentName, player: opponent, active: snapshot.activePlayerId == opponent.playerId, opponentId: human.playerId)
+                        OpponentVerticalHUD(
+                            name: opponentName,
+                            player: opponent,
+                            active: snapshot.activePlayerId == opponent.playerId,
+                            opponentId: human.playerId,
+                            combatTargetable: sideCombatHighlights.defenderIds.contains(opponent.playerId),
+                            combatTargetAction: {
+                                submitAttackers(defenderId: opponent.playerId, snapshot: snapshot)
+                            }
+                        )
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, 12)
 
@@ -1504,6 +1519,11 @@ struct NativeGameView: View {
                     GeometryReader { proxy in
                         let metrics = BattlefieldLayoutMetrics(proxy: proxy)
                         let targetableIds = targetableCardIds(in: snapshot)
+                        let combatHighlights = CombatHighlightSet(
+                            selection: combatSelection,
+                            actions: snapshot.legalActions ?? [],
+                            combatGroups: snapshot.xmage?.combat ?? []
+                        )
                         let shouldShowCompactPrompt = CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: pendingActionId)
                         let derivedInteractionMode = GameBoardInteractionState.mode(
                             for: snapshot,
@@ -1512,11 +1532,11 @@ struct NativeGameView: View {
                         )
 
                         ZStack {
-                            BattlefieldRow(title: "Opponent board", cards: nonLandPermanents(opponent.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.boardColumnRect.width, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) })
+                            BattlefieldRow(title: "Opponent board", cards: nonLandPermanents(opponent.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.boardColumnRect.width, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                                 .frame(width: metrics.opponentBattlefieldRect.width, height: metrics.opponentBattlefieldRect.height)
                                 .position(x: metrics.opponentBattlefieldRect.midX, y: metrics.opponentBattlefieldRect.midY)
 
-                            BattlefieldRow(title: "Opponent lands", cards: landPermanents(opponent.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.boardColumnRect.width, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) })
+                            BattlefieldRow(title: "Opponent lands", cards: landPermanents(opponent.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.boardColumnRect.width, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                                 .frame(width: metrics.opponentLandsRect.width, height: metrics.opponentLandsRect.height)
                                 .position(x: metrics.opponentLandsRect.midX, y: metrics.opponentLandsRect.midY)
 
@@ -1525,13 +1545,21 @@ struct NativeGameView: View {
                                 .frame(width: max(metrics.centerStripRect.width - 28, 80), height: 1.5)
                                 .position(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.midY)
 
-                            BattlefieldRow(title: "Your board", cards: nonLandPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.boardColumnRect.width, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) })
+                            BattlefieldRow(title: "Your board", cards: nonLandPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.boardColumnRect.width, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                                 .frame(width: metrics.playerBattlefieldRect.width, height: metrics.playerBattlefieldRect.height)
                                 .position(x: metrics.playerBattlefieldRect.midX, y: metrics.playerBattlefieldRect.midY)
 
-                            BattlefieldRow(title: "Your lands", cards: landPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.boardColumnRect.width, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) })
+                            BattlefieldRow(title: "Your lands", cards: landPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.boardColumnRect.width, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                                 .frame(width: metrics.playerLandsRect.width, height: metrics.playerLandsRect.height)
                                 .position(x: metrics.playerLandsRect.midX, y: metrics.playerLandsRect.midY)
+
+                            CombatArrowOverlay(
+                                groups: snapshot.xmage?.combat ?? [],
+                                metrics: metrics,
+                                humanBattlefield: human.zones.battlefield,
+                                opponentBattlefield: opponent.zones.battlefield
+                            )
+                            .allowsHitTesting(false)
 
                             HStack(spacing: 8) {
                                 PromptPill(snapshot: snapshot)
@@ -1589,6 +1617,14 @@ struct NativeGameView: View {
                                 TargetingStatusPill(count: targetableIds.count)
                                     .position(x: metrics.bottomActionRect.midX, y: metrics.bottomActionRect.midY)
                                     .allowsHitTesting(false)
+                            }
+
+                            if combatSelection.hasPendingBlockers, CombatSelectionState.isDeclareBlockers(snapshot) {
+                                CombatSubmitPill(title: "Declare blocks", count: combatSelection.blockerPairCount) {
+                                    submitBlockers(snapshot: snapshot)
+                                }
+                                .position(x: metrics.bottomActionRect.midX, y: metrics.bottomActionRect.midY)
+                                .zIndex(19)
                             }
 
                             // Floating Zone Inspector overlay
@@ -1657,6 +1693,9 @@ struct NativeGameView: View {
                         }
                         .onAppear {
                             interactionState.mode = derivedInteractionMode
+                        }
+                        .onChange(of: snapshot.combatSelectionResetKey) { _, _ in
+                            combatSelection.resetIfInactive(snapshot)
                         }
                     }
 
@@ -1939,6 +1978,80 @@ struct NativeGameView: View {
             return
         }
         runCommand(command, "Target \(card.card.name)", "\(promptId)-\(card.instanceId)")
+    }
+
+    private func handleCombatCardTap(_ card: ZoneCard, snapshot: GameSnapshot) -> Bool {
+        let actions = snapshot.legalActions ?? []
+        if CombatSelectionState.isDeclareAttackers(snapshot) {
+            if combatSelection.attackerHighlightIds(actions: actions).contains(card.instanceId) {
+                combatSelection.toggleAttacker(card.instanceId)
+                onInteractionFeedback(combatSelection.selectedAttackerIds.contains(card.instanceId) ? "Attacker selected" : "Attacker removed")
+                return true
+            }
+            if combatSelection.defenderHighlightIds(actions: actions).contains(card.instanceId) {
+                submitAttackers(defenderId: card.instanceId, snapshot: snapshot)
+                return true
+            }
+        }
+
+        if CombatSelectionState.isDeclareBlockers(snapshot) {
+            if combatSelection.blockerHighlightIds(actions: actions).contains(card.instanceId) {
+                combatSelection.selectBlocker(card.instanceId)
+                onInteractionFeedback("Blocker selected")
+                return true
+            }
+            if combatSelection.attackingCreatureHighlightIds(actions: actions, combatGroups: snapshot.xmage?.combat ?? []).contains(card.instanceId) {
+                combatSelection.pairSelectedBlocker(withAttackerId: card.instanceId)
+                onInteractionFeedback(combatSelection.hasPendingBlockers ? "Block pair selected" : "Select a blocker first")
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private func submitAttackers(defenderId: String, snapshot: GameSnapshot) {
+        let actions = snapshot.legalActions ?? []
+        guard !combatSelection.selectedAttackerIds.isEmpty else {
+            onInteractionFeedback("Select at least one attacker first")
+            return
+        }
+        guard combatSelection.defenderHighlightIds(actions: actions).contains(defenderId) else {
+            onInteractionFeedback("XMage did not expose that defender")
+            return
+        }
+        if let exactAction = combatSelection.attackAction(forDefenderId: defenderId, actions: actions) {
+            runAction(exactAction)
+            combatSelection.clearAttackers()
+            return
+        }
+        guard let human = snapshot.human else { return }
+        guard let command = combatSelection.attackCommand(
+            gameId: snapshot.id,
+            playerId: human.playerId,
+            defenderId: defenderId,
+            actions: actions,
+            expectedBridgeRevision: snapshot.bridgeRevision
+        ) else {
+            onInteractionFeedback("XMage did not expose mobile-safe attacker data")
+            return
+        }
+        runCommand(command, "Declare attackers", "declare-attackers-\(snapshot.bridgeRevision ?? snapshot.turn)")
+        combatSelection.clearAttackers()
+    }
+
+    private func submitBlockers(snapshot: GameSnapshot) {
+        guard let human = snapshot.human else { return }
+        guard let command = combatSelection.pendingBlockActionPayload(
+            playerId: human.playerId,
+            gameId: snapshot.id,
+            expectedBridgeRevision: snapshot.bridgeRevision
+        ) else {
+            onInteractionFeedback("Select a blocker and the attacker it blocks")
+            return
+        }
+        runCommand(command, "Declare blockers", "declare-blockers-\(snapshot.bridgeRevision ?? snapshot.turn)")
+        combatSelection.clearBlockers()
     }
 
     private func designPreviewState(from snapshot: GameSnapshot) -> GameBoardDesignPreviewState {
@@ -2726,6 +2839,8 @@ struct OpponentVerticalHUD: View {
     let player: PlayerGameState
     var active = false
     var opponentId: String?
+    var combatTargetable = false
+    var combatTargetAction: (() -> Void)?
 
     private var summary: CommanderHudSummary {
         CommanderHudSummary(player: player, opponentId: opponentId)
@@ -2760,8 +2875,18 @@ struct OpponentVerticalHUD: View {
         .padding(6)
         .frame(width: 84, alignment: .leading)
         .background(MagicPalette.iron.opacity(0.64), in: RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).stroke(MagicPalette.antiqueGold.opacity(active ? 0.68 : 0.30), lineWidth: active ? 1.4 : 1))
-        .shadow(color: active ? MagicPalette.antiqueGold.opacity(0.18) : .black.opacity(0.20), radius: 10, y: 5)
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(borderColor.opacity(combatTargetable ? 0.92 : active ? 0.68 : 0.30), lineWidth: combatTargetable ? 2.2 : active ? 1.4 : 1))
+        .shadow(color: combatTargetable ? MagicPalette.oxblood.opacity(0.55) : active ? MagicPalette.antiqueGold.opacity(0.18) : .black.opacity(0.20), radius: combatTargetable ? 13 : 10, y: 5)
+        .contentShape(RoundedRectangle(cornerRadius: 9))
+        .onTapGesture {
+            if combatTargetable {
+                combatTargetAction?()
+            }
+        }
+    }
+
+    private var borderColor: Color {
+        combatTargetable ? MagicPalette.oxblood : MagicPalette.antiqueGold
     }
 }
 
@@ -5756,11 +5881,321 @@ struct ManaPaymentTray: View {
 
 }
 
+struct CombatSubmitPill: View {
+    let title: String
+    let count: Int
+    let submit: () -> Void
+
+    var body: some View {
+        Button(action: submit) {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.system(size: 11, weight: .black))
+                Text(title.uppercased())
+                    .font(.system(size: 10, weight: .black))
+                Text("\(count)")
+                    .font(.system(size: 10, weight: .black))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(.black.opacity(0.28), in: Capsule())
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(MagicPalette.oxblood.opacity(0.88), in: Capsule())
+            .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.45), lineWidth: 1.2))
+            .shadow(color: MagicPalette.oxblood.opacity(0.42), radius: 10)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct CombatHighlightSet {
+    let cardIds: Set<String>
+    let defenderIds: Set<String>
+
+    init(selection: CombatSelectionState, actions: [LegalAction], combatGroups: [XmageCombatGroup]) {
+        var cards = Set<String>()
+        cards.formUnion(selection.attackerHighlightIds(actions: actions))
+        cards.formUnion(selection.blockerHighlightIds(actions: actions))
+        cards.formUnion(selection.attackingCreatureHighlightIds(actions: actions, combatGroups: combatGroups))
+        cards.formUnion(selection.selectedAttackerIds)
+        if let blocker = selection.selectedBlockerId {
+            cards.insert(blocker)
+        }
+        self.cardIds = cards
+        self.defenderIds = selection.defenderHighlightIds(actions: actions)
+    }
+}
+
+struct CombatSelectionState: Equatable {
+    var selectedAttackerIds: Set<String> = []
+    var selectedBlockerId: String?
+    private(set) var blockerPairs: [BlockDeclaration] = []
+
+    var hasPendingBlockers: Bool { !blockerPairs.isEmpty }
+    var blockerPairCount: Int { blockerPairs.count }
+
+    mutating func toggleAttacker(_ id: String) {
+        if selectedAttackerIds.contains(id) {
+            selectedAttackerIds.remove(id)
+        } else {
+            selectedAttackerIds.insert(id)
+        }
+    }
+
+    mutating func selectBlocker(_ id: String) {
+        selectedBlockerId = id
+    }
+
+    mutating func pairSelectedBlocker(withAttackerId attackerId: String) {
+        guard let blockerId = selectedBlockerId else { return }
+        let pair = BlockDeclaration(blockerId: blockerId, attackerId: attackerId)
+        if !blockerPairs.contains(pair) {
+            blockerPairs.append(pair)
+        }
+        selectedBlockerId = nil
+    }
+
+    mutating func clearAttackers() {
+        selectedAttackerIds.removeAll()
+    }
+
+    mutating func clearBlockers() {
+        selectedBlockerId = nil
+        blockerPairs.removeAll()
+    }
+
+    mutating func resetIfInactive(_ snapshot: GameSnapshot) {
+        if !Self.isDeclareAttackers(snapshot) {
+            clearAttackers()
+        }
+        if !Self.isDeclareBlockers(snapshot) {
+            clearBlockers()
+        }
+    }
+
+    func attackerHighlightIds(actions: [LegalAction]) -> Set<String> {
+        Set(actions
+            .filter { $0.type == "declare_attackers" }
+            .flatMap { Self.attackers(in: $0).map(\.attackerId) })
+    }
+
+    func defenderHighlightIds(actions: [LegalAction]) -> Set<String> {
+        Set(actions
+            .filter { $0.type == "declare_attackers" }
+            .flatMap { action in
+                var ids = Self.attackers(in: action).compactMap(\.defenderId)
+                ids.append(contentsOf: action.validTargetIds ?? [])
+                ids.append(contentsOf: action.validPlayerIds ?? [])
+                ids.append(contentsOf: action.playerIds ?? [])
+                ids.append(contentsOf: action.targetIds ?? [])
+                return ids
+            })
+    }
+
+    func blockerHighlightIds(actions: [LegalAction]) -> Set<String> {
+        Set(actions
+            .filter { $0.type == "declare_blockers" }
+            .flatMap { Self.blockers(in: $0).map(\.blockerId) })
+    }
+
+    func attackingCreatureHighlightIds(actions: [LegalAction], combatGroups: [XmageCombatGroup]) -> Set<String> {
+        var ids = Set(actions
+            .filter { $0.type == "declare_blockers" }
+            .flatMap { Self.blockers(in: $0).compactMap(\.attackerId) })
+        ids.formUnion(combatGroups.flatMap { $0.attackers.map(\.instanceId) })
+        return ids
+    }
+
+    func attackAction(forDefenderId defenderId: String, actions: [LegalAction]) -> LegalAction? {
+        guard selectedAttackerIds.count == 1, let attackerId = selectedAttackerIds.first else { return nil }
+        return actions.first { action in
+            guard action.type == "declare_attackers" else { return false }
+            return Self.attackers(in: action).contains { $0.attackerId == attackerId && $0.defenderId == defenderId }
+        }
+    }
+
+    func attackCommand(gameId: String, playerId: String, defenderId: String, actions: [LegalAction], expectedBridgeRevision: Int?) -> GameCommand? {
+        let legalAttackers = attackerHighlightIds(actions: actions)
+        guard !selectedAttackerIds.isEmpty, selectedAttackerIds.isSubset(of: legalAttackers) else { return nil }
+        return GameCommand(
+            type: "declare_attackers",
+            gameId: gameId,
+            playerId: playerId,
+            attackers: selectedAttackerIds.sorted().map { AttackDeclaration(attackerId: $0, defenderId: defenderId) },
+            expectedBridgeRevision: expectedBridgeRevision
+        )
+    }
+
+    func pendingBlockActionPayload(playerId: String, gameId: String, expectedBridgeRevision: Int? = nil) -> GameCommand? {
+        guard !blockerPairs.isEmpty else { return nil }
+        return GameCommand(
+            type: "declare_blockers",
+            gameId: gameId,
+            playerId: playerId,
+            blockers: blockerPairs,
+            expectedBridgeRevision: expectedBridgeRevision
+        )
+    }
+
+    static func isDeclareAttackers(_ snapshot: GameSnapshot) -> Bool {
+        let step = (snapshot.step ?? snapshot.phase).lowercased()
+        return step.contains("declare-attackers") || snapshot.legalActions?.contains(where: { $0.type == "declare_attackers" }) == true
+    }
+
+    static func isDeclareBlockers(_ snapshot: GameSnapshot) -> Bool {
+        let step = (snapshot.step ?? snapshot.phase).lowercased()
+        return step.contains("declare-blockers") || snapshot.legalActions?.contains(where: { $0.type == "declare_blockers" }) == true
+    }
+
+    private static func attackers(in action: LegalAction) -> [AttackDeclaration] {
+        if let attackers = action.attackers, !attackers.isEmpty {
+            return attackers
+        }
+        guard case .array(let values)? = action.commandTemplate?["attackers"] else { return [] }
+        return values.compactMap { value in
+            guard case .object(let object) = value,
+                  let attackerId = object["attackerId"]?.stringValue
+            else { return nil }
+            return AttackDeclaration(attackerId: attackerId, defenderId: object["defenderId"]?.stringValue)
+        }
+    }
+
+    private static func blockers(in action: LegalAction) -> [BlockDeclaration] {
+        if let blockers = action.blockers, !blockers.isEmpty {
+            return blockers
+        }
+        guard case .array(let values)? = action.commandTemplate?["blockers"] else { return [] }
+        return values.compactMap { value in
+            guard case .object(let object) = value,
+                  let blockerId = object["blockerId"]?.stringValue
+            else { return nil }
+            return BlockDeclaration(blockerId: blockerId, attackerId: object["attackerId"]?.stringValue)
+        }
+    }
+}
+
+enum CombatArrowKind: Equatable {
+    case attack
+    case blockedAttack
+    case block
+}
+
+struct CombatArrow: Equatable {
+    let kind: CombatArrowKind
+    let fromId: String
+    let toId: String
+}
+
+enum CombatArrowModel {
+    static func arrows(from groups: [XmageCombatGroup]) -> [CombatArrow] {
+        groups.flatMap { group in
+            let attackKind: CombatArrowKind = group.blocked ? .blockedAttack : .attack
+            let attacks = group.attackers.map {
+                CombatArrow(kind: attackKind, fromId: $0.instanceId, toId: group.defenderId)
+            }
+            let blocks = group.blockers.flatMap { blocker in
+                group.attackers.map { attacker in
+                    CombatArrow(kind: .block, fromId: blocker.instanceId, toId: attacker.instanceId)
+                }
+            }
+            return attacks + blocks
+        }
+    }
+}
+
+struct CombatArrowOverlay: View {
+    let groups: [XmageCombatGroup]
+    let metrics: BattlefieldLayoutMetrics
+    let humanBattlefield: [ZoneCard]
+    let opponentBattlefield: [ZoneCard]
+
+    var body: some View {
+        let anchors = cardAnchors()
+        Canvas { context, _ in
+            for arrow in CombatArrowModel.arrows(from: groups) {
+                guard let start = anchors[arrow.fromId] else { continue }
+                let end = anchors[arrow.toId] ?? defenderAnchor(for: arrow.toId)
+                drawArrow(arrow, from: start, to: end, in: &context)
+            }
+        }
+    }
+
+    private func cardAnchors() -> [String: CGPoint] {
+        var anchors: [String: CGPoint] = [:]
+        addAnchors(for: nonLandCards(opponentBattlefield), rect: metrics.opponentBattlefieldRect, cardWidth: metrics.permanentCardWidth, into: &anchors)
+        addAnchors(for: landCards(opponentBattlefield), rect: metrics.opponentLandsRect, cardWidth: metrics.landCardWidth, into: &anchors)
+        addAnchors(for: nonLandCards(humanBattlefield), rect: metrics.playerBattlefieldRect, cardWidth: metrics.permanentCardWidth, into: &anchors)
+        addAnchors(for: landCards(humanBattlefield), rect: metrics.playerLandsRect, cardWidth: metrics.landCardWidth, into: &anchors)
+        return anchors
+    }
+
+    private func addAnchors(for cards: [ZoneCard], rect: CGRect, cardWidth: CGFloat, into anchors: inout [String: CGPoint]) {
+        guard !cards.isEmpty else { return }
+        let spacing: CGFloat = 4
+        let totalWidth = CGFloat(cards.count) * cardWidth + CGFloat(max(cards.count - 1, 0)) * spacing
+        let startX = rect.midX - totalWidth / 2 + cardWidth / 2
+        for (index, card) in cards.enumerated() {
+            anchors[card.instanceId] = CGPoint(x: startX + CGFloat(index) * (cardWidth + spacing), y: rect.midY)
+        }
+    }
+
+    private func defenderAnchor(for defenderId: String) -> CGPoint {
+        if defenderId.localizedCaseInsensitiveContains("human") {
+            return CGPoint(x: metrics.playerBattlefieldRect.midX, y: metrics.playerBattlefieldRect.maxY)
+        }
+        return CGPoint(x: metrics.opponentBattlefieldRect.midX, y: metrics.opponentBattlefieldRect.minY)
+    }
+
+    private func drawArrow(_ arrow: CombatArrow, from start: CGPoint, to end: CGPoint, in context: inout GraphicsContext) {
+        var path = Path()
+        path.move(to: start)
+        path.addLine(to: end)
+        let color: Color
+        switch arrow.kind {
+        case .attack:
+            color = MagicPalette.oxblood
+        case .blockedAttack:
+            color = .gray
+        case .block:
+            color = MagicPalette.arcaneBlue
+        }
+        context.stroke(path, with: .color(color.opacity(0.82)), style: StrokeStyle(lineWidth: 3.0, lineCap: .round))
+
+        let angle = atan2(end.y - start.y, end.x - start.x)
+        let headLength: CGFloat = 9
+        let left = CGPoint(x: end.x - headLength * cos(angle - .pi / 6), y: end.y - headLength * sin(angle - .pi / 6))
+        let right = CGPoint(x: end.x - headLength * cos(angle + .pi / 6), y: end.y - headLength * sin(angle + .pi / 6))
+        var head = Path()
+        head.move(to: end)
+        head.addLine(to: left)
+        head.move(to: end)
+        head.addLine(to: right)
+        context.stroke(head, with: .color(color.opacity(0.92)), style: StrokeStyle(lineWidth: 3.0, lineCap: .round))
+    }
+
+    private func nonLandCards(_ cards: [ZoneCard]) -> [ZoneCard] {
+        cards.filter { !$0.card.isLand }
+    }
+
+    private func landCards(_ cards: [ZoneCard]) -> [ZoneCard] {
+        cards.filter { $0.card.isLand }
+    }
+}
+
+extension GameSnapshot {
+    var combatSelectionResetKey: String {
+        "\(id)|\(bridgeRevision ?? -1)|\(turn)|\(phase)|\(step ?? "")"
+    }
+}
+
 struct BattlefieldRow: View {
     let title: String
     let cards: [ZoneCard]
     let legalActions: [LegalAction]
     let targetableIds: Set<String>
+    let combatHighlightIds: Set<String>
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
     var flipped = false
@@ -5769,6 +6204,7 @@ struct BattlefieldRow: View {
     let rowWidth: CGFloat
     let runAction: (LegalAction) -> Void
     let runTargetAction: (ZoneCard) -> Void
+    let runCombatCardAction: (ZoneCard) -> Bool
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -5777,12 +6213,15 @@ struct BattlefieldRow: View {
                     ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
                         let action = legalAction(for: card)
                         let targetable = targetableIds.contains(card.instanceId) || targetableIds.contains(card.id)
-                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: action != nil, targetable: targetable, zoneName: title, width: cardWidth, height: cardHeight)
+                        let combatHighlighted = combatHighlightIds.contains(card.instanceId) || combatHighlightIds.contains(card.id)
+                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: action != nil, targetable: targetable || combatHighlighted, zoneName: title, width: cardWidth, height: cardHeight)
                             .offset(y: card.tapped == true ? 5 : 0)
                             .zIndex(Double(index))
                             .onTapGesture {
                                 if targetable {
                                     runTargetAction(card)
+                                } else if combatHighlighted, runCombatCardAction(card) {
+                                    return
                                 } else if let action, action.type == "make_mana" {
                                     runAction(action)
                                 } else {

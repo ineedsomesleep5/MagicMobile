@@ -422,6 +422,40 @@ struct ZoneCard: Decodable, Identifiable, Hashable {
     let disabledReason: String?
 
     var id: String { instanceId }
+
+    init(
+        instanceId: String,
+        card: CardIdentity,
+        tapped: Bool?,
+        summoningSickness: Bool?,
+        cardIcons: [XmageCardIcon]?,
+        counters: [String: Int]?,
+        power: Int?,
+        toughness: Int?,
+        isCreaturePermanent: Bool?,
+        damage: Int?,
+        isAttacking: Bool?,
+        blocking: [String]?,
+        attachedToInstanceId: String?,
+        selectable: Bool? = nil,
+        disabledReason: String? = nil
+    ) {
+        self.instanceId = instanceId
+        self.card = card
+        self.tapped = tapped
+        self.summoningSickness = summoningSickness
+        self.cardIcons = cardIcons
+        self.counters = counters
+        self.power = power
+        self.toughness = toughness
+        self.isCreaturePermanent = isCreaturePermanent
+        self.damage = damage
+        self.isAttacking = isAttacking
+        self.blocking = blocking
+        self.attachedToInstanceId = attachedToInstanceId
+        self.selectable = selectable
+        self.disabledReason = disabledReason
+    }
 }
 
 struct CardIdentity: Decodable, Hashable {
@@ -634,12 +668,12 @@ struct XmagePromptConfirmation: Decodable {
     let noCommand: XmageResponseCommand?
 }
 
-struct AttackDeclaration: Codable {
+struct AttackDeclaration: Codable, Equatable {
     let attackerId: String
     let defenderId: String?
 }
 
-struct BlockDeclaration: Codable {
+struct BlockDeclaration: Codable, Equatable {
     let blockerId: String
     let attackerId: String?
 }

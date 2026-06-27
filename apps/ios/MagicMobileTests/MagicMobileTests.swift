@@ -1644,6 +1644,63 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertFalse(PromptCommandBuilder.hasPrebuiltCombatPayload(incompleteAction))
     }
 
+    func testCombatSelectionRequiresAttackerBeforeDefender() throws {
+        let action = try decodeAction(
+            type: "declare_attackers",
+            extra: #"""
+            "validTargetIds": ["ai-1"],
+            "commandTemplate": {
+              "type": "declare_attackers",
+              "attackers": [{ "attackerId": "creature-1", "defenderId": "ai-1" }]
+            }
+            """#
+        )
+        var selection = CombatSelectionState()
+
+        XCTAssertNil(selection.attackAction(forDefenderId: "ai-1", actions: [action]))
+
+        selection.toggleAttacker("creature-1")
+        let chosen = selection.attackAction(forDefenderId: "ai-1", actions: [action])
+
+        XCTAssertEqual(chosen?.id, action.id)
+        XCTAssertEqual(selection.attackerHighlightIds(actions: [action]), ["creature-1"])
+        XCTAssertEqual(selection.defenderHighlightIds(actions: [action]), ["ai-1"])
+    }
+
+    func testCombatSelectionBuildsBlockerPairsBeforeSubmitting() {
+        var selection = CombatSelectionState()
+
+        XCTAssertNil(selection.pendingBlockActionPayload(playerId: "human", gameId: "game-1"))
+
+        selection.selectBlocker("blocker-1")
+        selection.pairSelectedBlocker(withAttackerId: "attacker-1")
+        let command = selection.pendingBlockActionPayload(playerId: "human", gameId: "game-1")
+
+        XCTAssertEqual(command?.type, "declare_blockers")
+        XCTAssertEqual(command?.blockers?.first?.blockerId, "blocker-1")
+        XCTAssertEqual(command?.blockers?.first?.attackerId, "attacker-1")
+    }
+
+    func testCombatArrowModelUsesAuthoritativeCombatGroups() {
+        let attacker = zoneCard(id: "attacker-1", name: "Attacker", typeLine: "Creature")
+        let blocker = zoneCard(id: "blocker-1", name: "Blocker", typeLine: "Creature")
+        let group = XmageCombatGroup(
+            defenderId: "ai-1",
+            defenderName: "AI",
+            blocked: true,
+            attackers: [attacker],
+            blockers: [blocker]
+        )
+
+        let arrows = CombatArrowModel.arrows(from: [group])
+
+        XCTAssertEqual(arrows.map(\.kind), [.blockedAttack, .block])
+        XCTAssertEqual(arrows.first?.fromId, "attacker-1")
+        XCTAssertEqual(arrows.first?.toId, "ai-1")
+        XCTAssertEqual(arrows.last?.fromId, "blocker-1")
+        XCTAssertEqual(arrows.last?.toId, "attacker-1")
+    }
+
     func testBattlefieldLayoutMetricsFitProMaxLandscape() {
         let metrics = BattlefieldLayoutMetrics(
             size: CGSize(width: 932, height: 430),
