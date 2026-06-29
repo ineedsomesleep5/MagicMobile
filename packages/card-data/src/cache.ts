@@ -6,6 +6,7 @@ export interface CachedCardVisual {
   name: string;
   smallImageUrl?: string;
   imageUrl?: string;
+  largeImageUrl?: string;
   artCropUrl?: string;
   typeLine?: string;
   manaCost?: string;
@@ -24,6 +25,8 @@ export interface CachedCardVisual {
 export interface CachedCardImageManifestEntry {
   name: string;
   url: string;
+  normalUrl?: string;
+  inspectionUrl?: string;
 }
 
 export interface CachedSymbolManifestEntry {
@@ -80,7 +83,12 @@ export async function readCachedCardImageManifest(
     const cached = JSON.parse(raw) as CachedCardVisual[];
     return cached.flatMap((card) => {
       const url = card.smallImageUrl ?? card.imageUrl;
-      return url ? [{ name: card.name, url }] : [];
+      if (!url) return [];
+      const entry: CachedCardImageManifestEntry = { name: card.name, url };
+      if (card.imageUrl) entry.normalUrl = card.imageUrl;
+      const inspectionUrl = card.largeImageUrl ?? card.imageUrl;
+      if (inspectionUrl) entry.inspectionUrl = inspectionUrl;
+      return [entry];
     });
   } catch {
     return [];
@@ -149,6 +157,7 @@ export async function syncScryfallCache(cacheDir = getScryfallCacheDir()): Promi
       isBasicLand: Boolean(card.type_line?.includes("Basic Land")),
       smallImageUrl: imageUris?.small ?? imageUris?.normal ?? imageUris?.border_crop,
       imageUrl: imageUris?.normal ?? imageUris?.border_crop,
+      largeImageUrl: imageUris?.large ?? imageUris?.normal ?? imageUris?.border_crop,
       artCropUrl: imageUris?.art_crop,
       artist: card.artist,
       copyright: card.copyright ?? "™ & © Wizards of the Coast"
@@ -202,6 +211,7 @@ interface ScryfallBulkCard {
 interface ScryfallImageUris {
   small?: string;
   normal?: string;
+  large?: string;
   border_crop?: string;
   art_crop?: string;
 }

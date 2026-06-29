@@ -40,6 +40,7 @@ const visuals = cards.map((card) => {
     isBasicLand: Boolean(card.type_line?.includes("Basic Land")),
     smallImageUrl: imageUris?.small ?? imageUris?.normal ?? imageUris?.border_crop,
     imageUrl: imageUris?.normal ?? imageUris?.border_crop,
+    largeImageUrl: imageUris?.large ?? imageUris?.normal ?? imageUris?.border_crop,
     artCropUrl: imageUris?.art_crop,
     artist: card.artist,
     copyright: card.copyright ?? "™ & © Wizards of the Coast"

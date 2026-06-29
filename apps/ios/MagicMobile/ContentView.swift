@@ -57,6 +57,28 @@ enum PromptSelectionRules {
     }
 }
 
+enum TargetingHelperVisibility {
+    static func shouldShow(
+        snapshot: GameSnapshot,
+        pendingActionId: String?,
+        mode: GameBoardInteractionMode,
+        targetableIds: Set<String>
+    ) -> Bool {
+        guard case .targeting = mode, !targetableIds.isEmpty else {
+            return false
+        }
+        guard !InlinePaymentPromptState.isActive(in: snapshot) else {
+            return false
+        }
+        guard !CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: pendingActionId) else {
+            let promptKind = snapshot.promptEnvelopeV2?.responseKind.lowercased()
+            let hasButtonActions = !CompactPromptPopup.compactLegalPromptActions(in: snapshot).isEmpty
+            return promptKind == "target" && !hasButtonActions
+        }
+        return true
+    }
+}
+
 struct ContentView: View {
     @AppStorage("magicmobile.playerDisplayName") private var playerDisplayName = ""
     @AppStorage(PortraitModePreference.key) private var portraitModeEnabled = false
@@ -93,6 +115,7 @@ struct ContentView: View {
     @State private var cardCacheMetadata: CardCacheMetadata?
     @State private var isSyncingCardCache = false
     @State private var phoneImageCacheCount = 0
+    @State private var phoneInspectionImageCacheCount = 0
     @State private var phoneSymbolCacheCount = 0
     @State private var phoneImageDownloadProgress: String?
     #if DEBUG
@@ -128,6 +151,7 @@ struct ContentView: View {
                     runCommand: { command, label, pendingId in Task { await run(command: command, label: label, pendingId: pendingId) } },
                     refreshGame: { Task { await refreshCurrentSnapshot() } },
                     reconnectGame: { reconnectLiveUpdates() },
+                    checkBridgeHealth: { await bridgeHealth() },
                     newGame: { Task { await leaveCurrentGame(destination: .setup, reason: "start-new-game") } },
                     quitGame: { Task { await leaveCurrentGame(destination: .menu, reason: "quit-game") } },
                     loadProtocolDebug: loadProtocolDebug(gameId:),
@@ -201,6 +225,7 @@ struct ContentView: View {
                         cardCacheMetadata: cardCacheMetadata,
                         isSyncingCardCache: isSyncingCardCache,
                 phoneImageCacheCount: phoneImageCacheCount,
+                phoneInspectionImageCacheCount: phoneInspectionImageCacheCount,
                 phoneSymbolCacheCount: phoneSymbolCacheCount,
                 phoneImageDownloadProgress: phoneImageDownloadProgress,
                 syncCardCache: { Task { await syncCardCache() } }
@@ -219,6 +244,7 @@ struct ContentView: View {
                 cardCacheMetadata: cardCacheMetadata,
                 isSyncingCardCache: isSyncingCardCache,
                 phoneImageCacheCount: phoneImageCacheCount,
+                phoneInspectionImageCacheCount: phoneInspectionImageCacheCount,
                 phoneSymbolCacheCount: phoneSymbolCacheCount,
                 phoneImageDownloadProgress: phoneImageDownloadProgress,
                 syncCardCache: { Task { await syncCardCache() } },
@@ -265,6 +291,22 @@ struct ContentView: View {
         }
     }
 
+    private func bridgeHealth() async -> EngineHealth? {
+        guard let api else { return nil }
+        do {
+            let health = try await api.health()
+            await MainActor.run {
+                status = "\(health.status): \(health.reason)"
+            }
+            return health
+        } catch {
+            await MainActor.run {
+                status = error.localizedDescription
+            }
+            return nil
+        }
+    }
+
     private func loadProtocolDebug(gameId: String) async throws -> XmageProtocolDebug {
         guard let api else { throw MagicMobileError.invalidServerURL }
         return try await api.protocolDebug(gameId: gameId)
@@ -276,7 +318,8 @@ struct ContentView: View {
     }
 
     private func refreshPhoneAssetCacheCounts() async {
-        phoneImageCacheCount = CardImageURL.cachedImageCount()
+        phoneImageCacheCount = CardImageURL.cachedImageCount(variant: .board)
+        phoneInspectionImageCacheCount = CardImageURL.cachedImageCount(variant: .inspection)
         phoneSymbolCacheCount = CardImageURL.cachedSymbolCount()
     }
 
@@ -307,6 +350,15 @@ struct ContentView: View {
                     }
                 }
             }
+            phoneImageDownloadProgress = "inspection 0/\(manifest.images.count)"
+            let downloadedInspectionImages = try await CardImageURL.downloadAllImagesToPhone(images: manifest.images, variant: .inspection) { completed, total in
+                await MainActor.run {
+                    phoneImageDownloadProgress = "inspection \(completed)/\(total)"
+                    if completed == total || completed % 25 == 0 {
+                        status = "Downloading inspection images \(completed)/\(total)"
+                    }
+                }
+            }
             phoneImageDownloadProgress = "symbols 0/\(symbolManifest.symbols.count)"
             let downloadedSymbols = try await CardImageURL.downloadAllSymbolsToPhone(symbols: symbolManifest.symbols) { completed, total in
                 await MainActor.run {
@@ -317,7 +369,7 @@ struct ContentView: View {
                 }
             }
             await refreshPhoneAssetCacheCounts()
-            status = "Assets ready: \(phoneImageCacheCount) cards, \(phoneSymbolCacheCount) symbols cached (\(downloaded) cards, \(downloadedSymbols) symbols new)"
+            status = "Assets ready: \(phoneImageCacheCount) cards, \(phoneInspectionImageCacheCount) inspection images, \(phoneSymbolCacheCount) symbols cached (\(downloaded) cards, \(downloadedInspectionImages) inspection, \(downloadedSymbols) symbols new)"
         } catch {
             lastSubmittedActionId = nil
             lastSubmittedSnapshotSignature = nil
@@ -1039,6 +1091,7 @@ struct MenuView: View {
     let cardCacheMetadata: CardCacheMetadata?
     let isSyncingCardCache: Bool
     let phoneImageCacheCount: Int
+    let phoneInspectionImageCacheCount: Int
     let phoneSymbolCacheCount: Int
     let phoneImageDownloadProgress: String?
     let syncCardCache: () -> Void
@@ -1095,6 +1148,7 @@ struct MenuView: View {
                     metadata: cardCacheMetadata,
                     isSyncing: isSyncingCardCache,
                     phoneImageCacheCount: phoneImageCacheCount,
+                    phoneInspectionImageCacheCount: phoneInspectionImageCacheCount,
                     phoneSymbolCacheCount: phoneSymbolCacheCount,
                     downloadProgress: phoneImageDownloadProgress,
                     sync: syncCardCache
@@ -1143,6 +1197,7 @@ struct MenuView: View {
                     metadata: cardCacheMetadata,
                     isSyncing: isSyncingCardCache,
                     phoneImageCacheCount: phoneImageCacheCount,
+                    phoneInspectionImageCacheCount: phoneInspectionImageCacheCount,
                     phoneSymbolCacheCount: phoneSymbolCacheCount,
                     downloadProgress: phoneImageDownloadProgress,
                     sync: syncCardCache
@@ -1180,6 +1235,7 @@ struct CardCachePanel: View {
     let metadata: CardCacheMetadata?
     let isSyncing: Bool
     let phoneImageCacheCount: Int
+    let phoneInspectionImageCacheCount: Int
     let phoneSymbolCacheCount: Int
     let downloadProgress: String?
     let sync: () -> Void
@@ -1190,6 +1246,7 @@ struct CardCachePanel: View {
             serverImageCount: metadata?.imageCount ?? 0,
             serverSymbolCount: metadata?.symbolCount ?? 0,
             phoneImageCount: phoneImageCacheCount,
+            phoneInspectionImageCount: phoneInspectionImageCacheCount,
             phoneSymbolCount: phoneSymbolCacheCount,
             isSyncing: isSyncing,
             progress: downloadProgress
@@ -1241,18 +1298,23 @@ struct CardAssetDownloadStatus: Equatable {
     let serverImageCount: Int
     let serverSymbolCount: Int
     let phoneImageCount: Int
+    let phoneInspectionImageCount: Int
     let phoneSymbolCount: Int
     let isSyncing: Bool
     let progress: String?
 
     var isComplete: Bool {
         guard metadataStatus == "ready", serverImageCount > 0 else { return false }
-        return phoneImageCount >= serverImageCount && phoneSymbolCount >= serverSymbolCount
+        return phoneImageCount >= serverImageCount &&
+            phoneInspectionImageCount >= serverImageCount &&
+            phoneSymbolCount >= serverSymbolCount
     }
 
     var hasNewAssets: Bool {
         guard metadataStatus == "ready", serverImageCount > 0 else { return false }
-        return phoneImageCount < serverImageCount || phoneSymbolCount < serverSymbolCount
+        return phoneImageCount < serverImageCount ||
+            phoneInspectionImageCount < serverImageCount ||
+            phoneSymbolCount < serverSymbolCount
     }
 
     var stateLabel: String {
@@ -1297,9 +1359,9 @@ struct CardAssetDownloadStatus: Equatable {
             return "Download the full Scryfall image pack onto this iPhone so gameplay renders cards locally."
         }
         if metadataStatus == "ready" {
-            return "Phone cache: \(phoneImageCount)/\(serverImageCount) cards, \(phoneSymbolCount)/\(serverSymbolCount) symbols."
+            return "Phone cache: \(phoneImageCount)/\(serverImageCount) cards, \(phoneInspectionImageCount)/\(serverImageCount) inspection, \(phoneSymbolCount)/\(serverSymbolCount) symbols."
         }
-        return "Phone cache: \(phoneImageCount) cards, \(phoneSymbolCount) symbols. Scryfall index status: \(metadataStatus ?? "unknown")."
+        return "Phone cache: \(phoneImageCount) cards, \(phoneInspectionImageCount) inspection, \(phoneSymbolCount) symbols. Scryfall index status: \(metadataStatus ?? "unknown")."
     }
 }
 
@@ -1341,6 +1403,7 @@ struct SetupView: View {
     let cardCacheMetadata: CardCacheMetadata?
     let isSyncingCardCache: Bool
     let phoneImageCacheCount: Int
+    let phoneInspectionImageCacheCount: Int
     let phoneSymbolCacheCount: Int
     let phoneImageDownloadProgress: String?
     let syncCardCache: () -> Void
@@ -1395,6 +1458,7 @@ struct SetupView: View {
                 metadata: cardCacheMetadata,
                 isSyncing: isSyncingCardCache,
                 phoneImageCacheCount: phoneImageCacheCount,
+                phoneInspectionImageCacheCount: phoneInspectionImageCacheCount,
                 phoneSymbolCacheCount: phoneSymbolCacheCount,
                 downloadProgress: phoneImageDownloadProgress,
                 sync: syncCardCache
@@ -1639,6 +1703,7 @@ struct ImmersivePlayShell: View {
     let runCommand: (GameCommand, String, String) -> Void
     let refreshGame: () -> Void
     let reconnectGame: () -> Void
+    let checkBridgeHealth: () async -> EngineHealth?
     let newGame: () -> Void
     let quitGame: () -> Void
     let loadProtocolDebug: (String) async throws -> XmageProtocolDebug
@@ -1662,6 +1727,7 @@ struct ImmersivePlayShell: View {
             runCommand: runCommand,
             refreshGame: refreshGame,
             reconnectGame: reconnectGame,
+            checkBridgeHealth: checkBridgeHealth,
             newGame: newGame,
             quitGame: quitGame,
             loadProtocolDebug: loadProtocolDebug,
@@ -1687,6 +1753,7 @@ struct NativeGameView: View {
     let runCommand: (GameCommand, String, String) -> Void
     let refreshGame: () -> Void
     let reconnectGame: () -> Void
+    let checkBridgeHealth: () async -> EngineHealth?
     let newGame: () -> Void
     let quitGame: () -> Void
     let loadProtocolDebug: (String) async throws -> XmageProtocolDebug
@@ -1711,6 +1778,7 @@ struct NativeGameView: View {
     @State private var aiWaitKey = ""
     @State private var didAutoRefreshAIWaitKey: String?
     @State private var didAutoReconnectAIWaitKey: String?
+    @State private var didAutoDiagnoseAIWaitKey: String?
 
     private func localViewZone(title: String, cards: [ZoneCard]) {
         inspectingZoneTitle = title
@@ -1901,7 +1969,7 @@ struct NativeGameView: View {
 
 
 
-                            if case .targeting = derivedInteractionMode, !targetableIds.isEmpty {
+                            if TargetingHelperVisibility.shouldShow(snapshot: snapshot, pendingActionId: pendingActionId, mode: derivedInteractionMode, targetableIds: targetableIds) {
                                 TargetingStatusPill(count: targetableIds.count)
                                     .position(x: metrics.bottomActionRect.midX, y: metrics.bottomActionRect.midY)
                                     .allowsHitTesting(false)
@@ -2163,6 +2231,7 @@ struct NativeGameView: View {
                                 beganAt: aiWaitBeganAt,
                                 didRefresh: didAutoRefreshAIWaitKey == aiWaitKey,
                                 didReconnect: didAutoReconnectAIWaitKey == aiWaitKey,
+                                didDiagnose: didAutoDiagnoseAIWaitKey == aiWaitKey,
                                 refreshAction: refreshGame,
                                 reconnectAction: reconnectGame
                             )
@@ -2274,6 +2343,7 @@ struct NativeGameView: View {
             aiWaitBeganAt = Date()
             didAutoRefreshAIWaitKey = nil
             didAutoReconnectAIWaitKey = nil
+            didAutoDiagnoseAIWaitKey = nil
         }
     }
 
@@ -2284,7 +2354,8 @@ struct NativeGameView: View {
             for: snapshot,
             elapsedSeconds: now.timeIntervalSince(aiWaitBeganAt),
             didRefresh: didAutoRefreshAIWaitKey == key,
-            didReconnect: didAutoReconnectAIWaitKey == key
+            didReconnect: didAutoReconnectAIWaitKey == key,
+            didDiagnose: didAutoDiagnoseAIWaitKey == key
         )
         switch action {
         case .none:
@@ -2297,6 +2368,13 @@ struct NativeGameView: View {
             didAutoReconnectAIWaitKey = key
             onInteractionFeedback("Reconnecting AI wait")
             reconnectGame()
+        case .diagnose:
+            didAutoDiagnoseAIWaitKey = key
+            onInteractionFeedback("Checking bridge health")
+            Task {
+                _ = await checkBridgeHealth()
+                await refreshProtocolDebug()
+            }
         }
     }
 
@@ -2450,7 +2528,7 @@ struct NativeGameView: View {
                 .frame(width: metrics.bottomControlsRect.width, height: metrics.bottomControlsRect.height)
                 .position(x: metrics.bottomControlsRect.midX, y: metrics.bottomControlsRect.midY)
 
-                if case .targeting = derivedInteractionMode, !targetableIds.isEmpty {
+                if TargetingHelperVisibility.shouldShow(snapshot: snapshot, pendingActionId: pendingActionId, mode: derivedInteractionMode, targetableIds: targetableIds) {
                     TargetingStatusPill(count: targetableIds.count)
                         .position(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.maxY + 28)
                         .allowsHitTesting(false)
@@ -2564,6 +2642,7 @@ struct NativeGameView: View {
                         beganAt: aiWaitBeganAt,
                         didRefresh: didAutoRefreshAIWaitKey == aiWaitKey,
                         didReconnect: didAutoReconnectAIWaitKey == aiWaitKey,
+                        didDiagnose: didAutoDiagnoseAIWaitKey == aiWaitKey,
                         refreshAction: refreshGame,
                         reconnectAction: reconnectGame
                     )
@@ -3143,7 +3222,7 @@ struct PortraitBattlefieldLayoutMetrics {
     }
 
     var topHUDRect: CGRect {
-        CGRect(x: safeFrame.minX, y: safeFrame.minY, width: safeFrame.width, height: min(max(safeFrame.height * 0.095, 78), 104))
+        CGRect(x: safeFrame.minX, y: safeFrame.minY, width: safeFrame.width, height: min(max(safeFrame.height * 0.104, 85), 116))
     }
 
     var opponentBattlefieldRect: CGRect {
@@ -3459,6 +3538,7 @@ struct AIWaitFallbackControls: View {
     let beganAt: Date
     let didRefresh: Bool
     let didReconnect: Bool
+    let didDiagnose: Bool
     let refreshAction: () -> Void
     let reconnectAction: () -> Void
 
@@ -3471,7 +3551,8 @@ struct AIWaitFallbackControls: View {
                 liveUpdateStatus: liveUpdateStatus,
                 elapsedSeconds: elapsed,
                 didRefresh: didRefresh,
-                didReconnect: didReconnect
+                didReconnect: didReconnect,
+                didDiagnose: didDiagnose
             )
             VStack(spacing: 7) {
                 Text(wait.title.uppercased())
@@ -7580,11 +7661,30 @@ struct PortraitOpponentStatusBar: View {
                     Text("GAME LOG")
                         .font(.system(size: 8, weight: .black))
                         .foregroundStyle(MagicPalette.antiqueGold)
-                    Text(snapshot.log.suffix(4).map(\.message).joined(separator: "\n"))
-                        .font(.system(size: 9, weight: .bold, design: .serif))
-                        .foregroundStyle(MagicPalette.parchment)
-                        .lineLimit(6)
-                        .minimumScaleFactor(0.65)
+                    ScrollViewReader { proxy in
+                        ScrollView(.vertical, showsIndicators: false) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(snapshot.log.suffix(7)) { entry in
+                                    Text(entry.message)
+                                        .font(.system(size: 9, weight: .bold, design: .serif))
+                                        .foregroundStyle(MagicPalette.parchment)
+                                        .lineLimit(2)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .id(entry.id)
+                                }
+                            }
+                        }
+                        .onAppear {
+                            if let lastId = snapshot.log.last?.id {
+                                proxy.scrollTo(lastId, anchor: .bottom)
+                            }
+                        }
+                        .onChange(of: snapshot.log.count) { _, _ in
+                            if let lastId = snapshot.log.last?.id {
+                                proxy.scrollTo(lastId, anchor: .bottom)
+                            }
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(8)
@@ -8064,9 +8164,12 @@ struct PortraitBottomCommandBar: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let stackWidth = min(max(proxy.size.width * 0.28, 108), 126)
-            let hudWidth = min(max(proxy.size.width * 0.34, 132), 146)
-            HStack(alignment: .bottom, spacing: 10) {
+            let stackWidth = min(max(proxy.size.width * 0.32, 132), 162)
+            let hudWidth = min(max(proxy.size.width * 0.32, 132), 148)
+            let stackX = proxy.size.width - stackWidth - 8
+            let centerX = hudWidth + 14
+            let centerWidth = max(stackX - centerX - 44, 118)
+            ZStack(alignment: .topLeading) {
                 VStack(alignment: .leading, spacing: 8) {
                     ManaPoolHUD(manaPool: manaPool)
                     PlayerVerticalHUD(
@@ -8078,50 +8181,50 @@ struct PortraitBottomCommandBar: View {
                     )
                 }
                 .frame(width: hudWidth, alignment: .leading)
+                .frame(height: proxy.size.height - 16, alignment: .topLeading)
+                .position(x: 8 + hudWidth / 2, y: proxy.size.height / 2)
 
-                HStack(alignment: .bottom, spacing: 8) {
-                    Button(action: openSettings) {
-                        Image(systemName: "gearshape.fill")
-                            .font(.system(size: 15, weight: .black))
-                    }
-                    .buttonStyle(IconButtonStyle(small: true))
-                    .frame(width: 34, height: 34)
-                    .padding(.bottom, 6)
+                VStack(spacing: 8) {
+                    Spacer(minLength: 18)
 
-                    VStack(spacing: 7) {
-                        Spacer(minLength: 22)
-
-                        Button {
-                            if let passAction {
-                                runAction(passAction)
-                            }
-                        } label: {
-                            Text(passAction == nil ? "WAIT" : "PASS")
-                                .font(.system(size: 22, weight: .black, design: .serif))
-                                .frame(maxWidth: .infinity)
+                    Button {
+                        if let passAction {
+                            runAction(passAction)
                         }
-                        .buttonStyle(CompactActionButtonStyle(isPrimary: true))
-                        .disabled(passAction == nil)
-                        .frame(height: 44)
-
-                        Button {
-                            if let skipAction {
-                                runAction(skipAction)
-                            }
-                        } label: {
-                            Text(MagicPathPhaseRail.skipButtonLabel(snapshot: snapshot, action: skipAction))
-                                .font(.system(size: 12, weight: .black, design: .serif))
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(CompactActionButtonStyle(isPrimary: false))
-                        .disabled(skipAction == nil)
-                        .frame(height: 34)
-
-                        Spacer(minLength: 2)
+                    } label: {
+                        Text(passAction == nil ? "WAIT" : "PASS")
+                            .font(.system(size: 22, weight: .black, design: .serif))
+                            .frame(maxWidth: .infinity)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .buttonStyle(CompactActionButtonStyle(isPrimary: true))
+                    .disabled(passAction == nil)
+                    .frame(height: 44)
+
+                    Button {
+                        if let skipAction {
+                            runAction(skipAction)
+                        }
+                    } label: {
+                        Text(MagicPathPhaseRail.skipButtonLabel(snapshot: snapshot, action: skipAction))
+                            .font(.system(size: 12, weight: .black, design: .serif))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(CompactActionButtonStyle(isPrimary: false))
+                    .disabled(skipAction == nil)
+                    .frame(height: 34)
+
+                    Spacer(minLength: 4)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(width: min(centerWidth, 244), height: proxy.size.height - 16)
+                .position(x: centerX + centerWidth / 2, y: proxy.size.height / 2)
+
+                Button(action: openSettings) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 15, weight: .black))
+                }
+                .buttonStyle(IconButtonStyle(small: true))
+                .frame(width: 34, height: 34)
+                .position(x: stackX - 20, y: 26)
 
                 PortraitStackLane(
                     snapshot: snapshot,
@@ -8131,7 +8234,8 @@ struct PortraitBottomCommandBar: View {
                     inspectedCard: $inspectedCard
                 )
                 .frame(width: stackWidth)
-                .frame(maxHeight: .infinity)
+                .frame(height: proxy.size.height - 16)
+                .position(x: stackX + stackWidth / 2, y: proxy.size.height / 2)
             }
             .padding(8)
             .background(MagicPalette.iron.opacity(0.86), in: RoundedRectangle(cornerRadius: 10))
@@ -8529,10 +8633,11 @@ struct CardTile: View {
     var width: CGFloat = 82
     var height: CGFloat = 112
     var ignoreTappedRotation: Bool = false
+    var imageVariant: CardImageCacheVariant = .board
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            AsyncImage(url: CardImageURL.normal(card.card.name)) { phase in
+            AsyncImage(url: CardImageURL.image(card.card.name, variant: imageVariant)) { phase in
                 switch phase {
                 case .success(let image):
                     image
@@ -9251,7 +9356,8 @@ struct CardInspector: View {
                     zoneName: "Inspector",
                     width: cardWidth,
                     height: cardHeight,
-                    ignoreTappedRotation: true
+                    ignoreTappedRotation: true,
+                    imageVariant: .inspection
                 )
             }
         }
@@ -9432,6 +9538,25 @@ struct GameTextFieldStyle: TextFieldStyle {
     }
 }
 
+enum CardImageCacheVariant {
+    case board
+    case inspection
+
+    var queryVersion: String {
+        switch self {
+        case .board: return "small"
+        case .inspection: return "large"
+        }
+    }
+
+    var cacheDirectoryName: String {
+        switch self {
+        case .board: return "MagicMobileCardImages"
+        case .inspection: return "MagicMobileInspectionImages"
+        }
+    }
+}
+
 enum CardImageURL {
     private static let baseURLKey = "MagicMobile.cardImageBaseURL"
     private static var shouldForcePlaceholders: Bool {
@@ -9447,28 +9572,36 @@ enum CardImageURL {
     }
 
     static func normal(_ name: String, forcePlaceholder: Bool = shouldForcePlaceholders) -> URL? {
+        image(name, variant: .board, forcePlaceholder: forcePlaceholder)
+    }
+
+    static func inspection(_ name: String, forcePlaceholder: Bool = shouldForcePlaceholders) -> URL? {
+        image(name, variant: .inspection, forcePlaceholder: forcePlaceholder)
+    }
+
+    static func image(_ name: String, variant: CardImageCacheVariant, forcePlaceholder: Bool = shouldForcePlaceholders) -> URL? {
         if forcePlaceholder {
             return nil
         }
         if name == "Hidden card" {
             return URL(string: "https://gatherer.wizards.com/Images/CardBack.jpg")
         }
-        let localURL = cacheURL(for: name)
+        let localURL = cacheURL(for: name, variant: variant)
         if FileManager.default.fileExists(atPath: localURL.path) {
             return localURL
         }
         let baseURL = UserDefaults.standard.string(forKey: baseURLKey) ?? "https://magicmobile.openclaw-is3w.srv1420950.hstgr.cloud"
         var components = URLComponents(string: baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/card-image")
         components?.queryItems = [
-            URLQueryItem(name: "version", value: "small"),
+            URLQueryItem(name: "version", value: variant.queryVersion),
             URLQueryItem(name: "name", value: name)
         ]
         return components?.url
     }
 
-    static func cachedImageCount() -> Int {
+    static func cachedImageCount(variant: CardImageCacheVariant = .board) -> Int {
         guard let files = try? FileManager.default.contentsOfDirectory(
-            at: cacheDirectory,
+            at: cacheDirectory(for: variant),
             includingPropertiesForKeys: nil
         ) else {
             return 0
@@ -9533,10 +9666,12 @@ enum CardImageURL {
 
     static func downloadAllImagesToPhone(
         images: [CardImageManifestEntry],
+        variant: CardImageCacheVariant = .board,
         progress: @escaping (_ completed: Int, _ total: Int) async -> Void
     ) async throws -> Int {
-        try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
-        try excludeFromBackup(cacheDirectory)
+        let directory = cacheDirectory(for: variant)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try excludeFromBackup(directory)
         let uniqueImages = uniqueManifestEntries(images)
         let total = uniqueImages.count
         var completed = 0
@@ -9552,7 +9687,7 @@ enum CardImageURL {
             downloaded += await withTaskGroup(of: Bool.self) { group in
                 for entry in batch {
                     group.addTask {
-                        await downloadImage(entry)
+                        await downloadImage(entry, variant: variant)
                     }
                 }
 
@@ -9609,12 +9744,13 @@ enum CardImageURL {
         return downloaded
     }
 
-    private static func downloadImage(_ entry: CardImageManifestEntry) async -> Bool {
-        let destination = cacheURL(for: entry.name)
+    private static func downloadImage(_ entry: CardImageManifestEntry, variant: CardImageCacheVariant) async -> Bool {
+        let destination = cacheURL(for: entry.name, variant: variant)
         if FileManager.default.fileExists(atPath: destination.path) {
             return false
         }
-        guard let sourceURL = URL(string: entry.url) else {
+        let source = variant == .inspection ? (entry.inspectionUrl ?? entry.normalUrl ?? entry.url) : entry.url
+        guard let sourceURL = URL(string: source) else {
             return false
         }
 
@@ -9654,9 +9790,9 @@ enum CardImageURL {
         return false
     }
 
-    private static var cacheDirectory: URL {
+    private static func cacheDirectory(for variant: CardImageCacheVariant) -> URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("MagicMobileCardImages", isDirectory: true)
+            .appendingPathComponent(variant.cacheDirectoryName, isDirectory: true)
     }
 
     private static var symbolCacheDirectory: URL {
@@ -9671,8 +9807,8 @@ enum CardImageURL {
         try mutableURL.setResourceValues(values)
     }
 
-    private static func cacheURL(for name: String) -> URL {
-        cacheDirectory.appendingPathComponent(fileName(for: name))
+    private static func cacheURL(for name: String, variant: CardImageCacheVariant) -> URL {
+        cacheDirectory(for: variant).appendingPathComponent(fileName(for: name))
     }
 
     private static func symbolCacheURL(for symbol: String) -> URL {

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { SeedCardDataProvider, mapScryfallCard, seedCards } from "../src";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { SeedCardDataProvider, mapScryfallCard, readCachedCardImageManifest, seedCards } from "../src";
 
 describe("SeedCardDataProvider", () => {
   it("finds seed cards by exact name without case sensitivity", async () => {
@@ -41,5 +44,28 @@ describe("mapScryfallCard", () => {
       typeLine: "Artifact",
       manaCost: "{1}"
     });
+  });
+});
+
+describe("readCachedCardImageManifest", () => {
+  it("keeps small URLs for board tiles and exposes high resolution inspection URLs", async () => {
+    const cacheDir = await mkdtemp(join(tmpdir(), "magicmobile-card-cache-"));
+    await writeFile(join(cacheDir, "card-visuals.json"), JSON.stringify([
+      {
+        name: "Sol Ring",
+        smallImageUrl: "https://cards.scryfall.io/small/front/a/b/sol-ring.jpg",
+        imageUrl: "https://cards.scryfall.io/normal/front/a/b/sol-ring.jpg",
+        largeImageUrl: "https://cards.scryfall.io/large/front/a/b/sol-ring.jpg"
+      }
+    ]));
+
+    await expect(readCachedCardImageManifest(cacheDir)).resolves.toEqual([
+      {
+        name: "Sol Ring",
+        url: "https://cards.scryfall.io/small/front/a/b/sol-ring.jpg",
+        normalUrl: "https://cards.scryfall.io/normal/front/a/b/sol-ring.jpg",
+        inspectionUrl: "https://cards.scryfall.io/large/front/a/b/sol-ring.jpg"
+      }
+    ]);
   });
 });

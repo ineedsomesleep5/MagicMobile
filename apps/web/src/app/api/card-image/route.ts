@@ -15,6 +15,8 @@ export async function GET(request: Request) {
       url = visual?.artCropUrl ?? null;
     } else if (version === "small") {
       url = visual?.smallImageUrl ?? visual?.imageUrl ?? null;
+    } else if (version === "large") {
+      url = visual?.largeImageUrl ?? visual?.imageUrl ?? null;
     } else {
       url = visual?.imageUrl ?? null;
     }

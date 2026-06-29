@@ -67,6 +67,8 @@ struct CardImageManifestResponse: Decodable {
 struct CardImageManifestEntry: Decodable, Hashable {
     let name: String
     let url: String
+    let inspectionUrl: String?
+    let normalUrl: String?
 }
 
 struct SymbolManifestResponse: Decodable {
@@ -362,7 +364,8 @@ struct XmageWaitPresentation: Equatable {
         liveUpdateStatus: String,
         elapsedSeconds: TimeInterval = 0,
         didRefresh: Bool = false,
-        didReconnect: Bool = false
+        didReconnect: Bool = false,
+        didDiagnose: Bool = false
     ) -> XmageWaitPresentation {
         let live = liveUpdateStatus.lowercased()
         if live.contains("unavailable") || live.contains("disconnect") {
@@ -374,8 +377,8 @@ struct XmageWaitPresentation: Equatable {
         if snapshot.pendingStatus == "waiting_for_xmage" {
             return XmageWaitPresentation(kind: .waitingForBridge, title: "Waiting for bridge", detail: "XMage accepted the command.")
         }
-        if elapsedSeconds >= AIWaitRecoveryPolicy.reconnectThresholdSeconds, didRefresh, didReconnect {
-            return XmageWaitPresentation(kind: .manualReconnectAvailable, title: "Manual reconnect available", detail: "Automatic refresh and reconnect already ran.")
+        if elapsedSeconds >= AIWaitRecoveryPolicy.diagnoseThresholdSeconds, didRefresh, didReconnect, didDiagnose {
+            return XmageWaitPresentation(kind: .manualReconnectAvailable, title: "Manual reconnect available", detail: "Automatic refresh, reconnect, and health check already ran.")
         }
         if snapshot.isStalled {
             return XmageWaitPresentation(kind: .snapshotStale, title: "Snapshot stale", detail: "Refresh or reconnect to recover.")
@@ -552,20 +555,26 @@ enum AIWaitRecoveryAction: Equatable {
     case none
     case refresh
     case reconnect
+    case diagnose
 }
 
 enum AIWaitRecoveryPolicy {
     static let refreshThresholdSeconds: TimeInterval = 10
     static let reconnectThresholdSeconds: TimeInterval = 20
+    static let diagnoseThresholdSeconds: TimeInterval = 30
 
     static func action(
         for snapshot: GameSnapshot,
         elapsedSeconds: TimeInterval,
         didRefresh: Bool,
-        didReconnect: Bool
+        didReconnect: Bool,
+        didDiagnose: Bool = false
     ) -> AIWaitRecoveryAction {
         guard snapshot.isWaitingOnAIOrStalled else {
             return .none
+        }
+        if elapsedSeconds >= diagnoseThresholdSeconds, didRefresh, didReconnect, !didDiagnose {
+            return .diagnose
         }
         if elapsedSeconds >= reconnectThresholdSeconds, didRefresh, !didReconnect {
             return .reconnect

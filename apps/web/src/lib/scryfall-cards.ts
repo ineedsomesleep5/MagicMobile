@@ -9,6 +9,7 @@ export interface VisualCard {
   oracleText?: string;
   smallImageUrl?: string;
   imageUrl?: string;
+  largeImageUrl?: string;
   artCropUrl?: string;
   source: "scryfall" | "missing";
 }
@@ -16,6 +17,7 @@ export interface VisualCard {
 interface ScryfallCardImageUris {
   small?: string;
   normal?: string;
+  large?: string;
   art_crop?: string;
   border_crop?: string;
 }
@@ -113,6 +115,7 @@ function mapCachedVisual(card: {
   name: string;
   smallImageUrl?: string;
   imageUrl?: string;
+  largeImageUrl?: string;
   artCropUrl?: string;
   typeLine?: string;
   manaCost?: string;
@@ -131,6 +134,7 @@ function mapCachedVisual(card: {
   if (card.manaCost) visualCard.manaCost = card.manaCost;
   if (card.smallImageUrl) visualCard.smallImageUrl = card.smallImageUrl;
   if (card.imageUrl) visualCard.imageUrl = card.imageUrl;
+  if (card.largeImageUrl) visualCard.largeImageUrl = card.largeImageUrl;
   if (card.artCropUrl) visualCard.artCropUrl = card.artCropUrl;
   if (card.oracleText) visualCard.oracleText = card.oracleText;
 
@@ -152,6 +156,7 @@ function findSplitCard(name: string, cards: Map<string, VisualCard>): VisualCard
 function mapVisualCard(card: ScryfallCollectionCard): VisualCard {
   const imageUris = card.image_uris ?? card.card_faces?.find((face) => face.image_uris)?.image_uris;
   const imageUrl = imageUris?.normal ?? imageUris?.border_crop;
+  const largeImageUrl = imageUris?.large ?? imageUrl;
   const smallImageUrl = imageUris?.small ?? imageUrl;
   const visualCard: VisualCard = {
     name: card.name,
@@ -171,6 +176,10 @@ function mapVisualCard(card: ScryfallCollectionCard): VisualCard {
 
   if (imageUrl) {
     visualCard.imageUrl = imageUrl;
+  }
+
+  if (largeImageUrl) {
+    visualCard.largeImageUrl = largeImageUrl;
   }
 
   if (smallImageUrl) {

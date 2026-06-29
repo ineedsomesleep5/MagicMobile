@@ -310,6 +310,33 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertNil(CardImageURL.normal("Sol Ring", forcePlaceholder: true))
     }
 
+    func testCardImageManifestDecodesInspectionUrlsCompatibly() throws {
+        let response = try JSONDecoder.magicMobile.decode(CardImageManifestResponse.self, from: #"""
+        {
+          "metadata": {
+            "provider": "scryfall",
+            "status": "ready",
+            "cardCount": 1,
+            "imageCount": 1,
+            "missingImageCount": 0,
+            "symbolCount": 0
+          },
+          "images": [
+            {
+              "name": "Sol Ring",
+              "url": "https://cards.scryfall.io/small/front/a/b/sol-ring.jpg",
+              "normalUrl": "https://cards.scryfall.io/normal/front/a/b/sol-ring.jpg",
+              "inspectionUrl": "https://cards.scryfall.io/large/front/a/b/sol-ring.jpg"
+            }
+          ]
+        }
+        """#.data(using: .utf8)!)
+
+        XCTAssertEqual(response.images.first?.url, "https://cards.scryfall.io/small/front/a/b/sol-ring.jpg")
+        XCTAssertEqual(response.images.first?.normalUrl, "https://cards.scryfall.io/normal/front/a/b/sol-ring.jpg")
+        XCTAssertEqual(response.images.first?.inspectionUrl, "https://cards.scryfall.io/large/front/a/b/sol-ring.jpg")
+    }
+
     func testManaSymbolBundledFallbackNamesAreDeterministic() {
         XCTAssertEqual(CardImageURL.bundledSymbolAssetName(for: "{W}"), "mana-w")
         XCTAssertEqual(CardImageURL.bundledSymbolAssetName(for: "U"), "mana-u")
@@ -1684,7 +1711,8 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(AIWaitRecoveryPolicy.action(for: waiting, elapsedSeconds: 6, didRefresh: false, didReconnect: false), .none)
         XCTAssertEqual(AIWaitRecoveryPolicy.action(for: waiting, elapsedSeconds: 12, didRefresh: false, didReconnect: false), .refresh)
         XCTAssertEqual(AIWaitRecoveryPolicy.action(for: waiting, elapsedSeconds: 22, didRefresh: true, didReconnect: false), .reconnect)
-        XCTAssertEqual(AIWaitRecoveryPolicy.action(for: waiting, elapsedSeconds: 60, didRefresh: true, didReconnect: true), .none)
+        XCTAssertEqual(AIWaitRecoveryPolicy.action(for: waiting, elapsedSeconds: 32, didRefresh: true, didReconnect: true), .diagnose)
+        XCTAssertEqual(AIWaitRecoveryPolicy.action(for: waiting, elapsedSeconds: 60, didRefresh: true, didReconnect: true, didDiagnose: true), .none)
     }
 
     func testWaitPresentationLabelsRecoveryStates() throws {
@@ -1704,7 +1732,7 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(XmageWaitPresentation.make(snapshot: bridgeWaiting, pendingActionId: nil, liveUpdateStatus: "connected").kind, .waitingForBridge)
         XCTAssertEqual(XmageWaitPresentation.make(snapshot: aiWaiting, pendingActionId: nil, liveUpdateStatus: "disconnected").kind, .bridgeDisconnected)
         XCTAssertEqual(XmageWaitPresentation.make(snapshot: stale, pendingActionId: nil, liveUpdateStatus: "connected").kind, .snapshotStale)
-        XCTAssertEqual(XmageWaitPresentation.make(snapshot: stale, pendingActionId: nil, liveUpdateStatus: "connected", elapsedSeconds: 60, didRefresh: true, didReconnect: true).kind, .manualReconnectAvailable)
+        XCTAssertEqual(XmageWaitPresentation.make(snapshot: stale, pendingActionId: nil, liveUpdateStatus: "connected", elapsedSeconds: 60, didRefresh: true, didReconnect: true, didDiagnose: true).kind, .manualReconnectAvailable)
     }
 
     func testActionRejectionNoticeUsesStructuredCategoryAndReturnedSnapshot() throws {
@@ -1732,6 +1760,7 @@ final class MagicMobileTests: XCTestCase {
             serverImageCount: 100,
             serverSymbolCount: 20,
             phoneImageCount: 100,
+            phoneInspectionImageCount: 100,
             phoneSymbolCount: 20,
             isSyncing: false,
             progress: nil
@@ -1741,6 +1770,7 @@ final class MagicMobileTests: XCTestCase {
             serverImageCount: 100,
             serverSymbolCount: 20,
             phoneImageCount: 80,
+            phoneInspectionImageCount: 100,
             phoneSymbolCount: 20,
             isSyncing: false,
             progress: nil
@@ -1750,6 +1780,7 @@ final class MagicMobileTests: XCTestCase {
             serverImageCount: 100,
             serverSymbolCount: 20,
             phoneImageCount: 80,
+            phoneInspectionImageCount: 80,
             phoneSymbolCount: 20,
             isSyncing: true,
             progress: "images 8/100"
@@ -1847,6 +1878,81 @@ final class MagicMobileTests: XCTestCase {
 
         XCTAssertEqual(actions.map(\.label), ["Caleb starts", "Noaddrag starts"])
         XCTAssertTrue(CompactPromptPopup.shouldPreferCompactActionsBeforeRawChoices(for: snapshot))
+    }
+
+    func testTargetingHelperHidesBehindButtonDrivenPrompt() throws {
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
+        {
+          "id": "game-starting-player-targeting",
+          "source": "xmage-java-bridge",
+          "activePlayerId": "human",
+          "phase": "beginning",
+          "step": "choose_starting_player",
+          "turn": 0,
+          "priorityPlayerId": "human",
+          "waitingOnPlayerId": "human",
+          "promptText": "Select a starting player",
+          "players": [],
+          "log": [],
+          "legalActions": [
+            { "id": "human-starts", "type": "choose_player", "playerId": "human", "label": "Caleb starts", "shortLabel": "Caleb starts", "promptId": "xmage-start-player" },
+            { "id": "ai-starts", "type": "choose_player", "playerId": "human", "label": "AI starts", "shortLabel": "AI starts", "promptId": "xmage-start-player" }
+          ],
+          "promptEnvelopeV2": {
+            "id": "xmage-start-player",
+            "method": "GAME_SELECT",
+            "messageId": 12,
+            "playerId": "human",
+            "responseKind": "target",
+            "message": "Select a starting player",
+            "targetIds": ["human", "ai-1"],
+            "responseCommand": {
+              "type": "choose_target",
+              "promptId": "xmage-start-player",
+              "messageId": 12
+            }
+          }
+        }
+        """#.data(using: .utf8)!)
+        let mode = GameBoardInteractionMode.targeting(promptId: "xmage-start-player", sourceCardId: nil, validTargetIds: ["human", "ai-1"])
+
+        XCTAssertFalse(TargetingHelperVisibility.shouldShow(snapshot: snapshot, pendingActionId: nil, mode: mode, targetableIds: ["human", "ai-1"]))
+    }
+
+    func testTargetingHelperStillShowsForBoardTargetPrompt() throws {
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
+        {
+          "id": "game-board-target",
+          "source": "xmage-java-bridge",
+          "activePlayerId": "human",
+          "phase": "precombat-main",
+          "step": "precombat-main",
+          "turn": 1,
+          "priorityPlayerId": "human",
+          "waitingOnPlayerId": "human",
+          "promptText": "Choose target creature",
+          "players": [],
+          "log": [],
+          "legalActions": [],
+          "promptEnvelopeV2": {
+            "id": "xmage-target",
+            "method": "GAME_TARGET",
+            "messageId": 19,
+            "playerId": "human",
+            "responseKind": "target",
+            "message": "Choose target creature",
+            "targetIds": ["creature-1"],
+            "responseCommand": {
+              "type": "choose_target",
+              "promptId": "xmage-target",
+              "messageId": 19
+            }
+          }
+        }
+        """#.data(using: .utf8)!)
+        let mode = GameBoardInteractionMode.targeting(promptId: "xmage-target", sourceCardId: nil, validTargetIds: ["creature-1"])
+
+        XCTAssertTrue(TargetingHelperVisibility.shouldShow(snapshot: snapshot, pendingActionId: nil, mode: mode, targetableIds: ["creature-1"]))
     }
 
     func testPlayerSnapshotDecodesDisplayNameForHud() throws {
