@@ -84,10 +84,16 @@ struct GameBoardInteractionState: Equatable {
     }
 
     static func legalPlayActions(for card: ZoneCard, actions: [LegalAction]) -> [LegalAction] {
-        actions.filter { action in
-            guard ["play_land", "cast_spell"].contains(action.type) else { return false }
-            return action.effectiveCardInstanceId == card.instanceId ||
-                action.effectiveSourceInstanceId == card.instanceId
+        cardActions(for: card, actions: actions).filter { action in
+            ["play_land", "cast_spell"].contains(action.type)
+        }
+    }
+
+    static func cardActions(for card: ZoneCard, actions: [LegalAction]) -> [LegalAction] {
+        let ids = Set([card.instanceId, card.id])
+        return actions.filter { action in
+            action.effectiveCardInstanceId.map(ids.contains) == true ||
+                action.effectiveSourceInstanceId.map(ids.contains) == true
         }
     }
 

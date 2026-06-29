@@ -59,6 +59,7 @@ enum PromptSelectionRules {
 
 struct ContentView: View {
     @AppStorage("magicmobile.playerDisplayName") private var playerDisplayName = ""
+    @AppStorage(PortraitModePreference.key) private var portraitModeEnabled = false
     @State private var serverURLText = ProcessInfo.processInfo.environment["MAGICMOBILE_SERVER_URL"] ?? "https://magicmobile.openclaw-is3w.srv1420950.hstgr.cloud"
     @State private var status = "Not connected"
     @State private var screen: AppScreen = .menu
@@ -83,6 +84,7 @@ struct ContentView: View {
     @State private var pendingCastBeforeSnapshot: GameSnapshot?
     @State private var lastSubmittedActionId: String?
     @State private var lastSubmittedSnapshotSignature: String?
+    @State private var lastActionRejection: ActionRejectionNotice?
     @State private var manaPaymentWasActive = false
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -103,7 +105,7 @@ struct ContentView: View {
                 LinearGradient(colors: [Color(red: 0.03, green: 0.08, blue: 0.08), Color(red: 0.16, green: 0.25, blue: 0.13)], startPoint: .topLeading, endPoint: .bottomTrailing)
                     .ignoresSafeArea()
             } else {
-                MenuBackgroundSurface()
+                MenuBackgroundSurface(portraitModeEnabled: portraitModeEnabled)
                     .ignoresSafeArea()
             }
             if screen == .play {
@@ -116,6 +118,7 @@ struct ContentView: View {
                     avatarData: playerAvatarData,
                     pendingActionId: pendingActionId,
                     pendingCardInstanceId: pendingCardInstanceId,
+                    lastActionRejection: lastActionRejection,
                     liveUpdateStatus: liveUpdateStatus,
                     onInteractionFeedback: { message in
                         status = message
@@ -127,6 +130,8 @@ struct ContentView: View {
                     reconnectGame: { reconnectLiveUpdates() },
                     newGame: { Task { await leaveCurrentGame(destination: .setup, reason: "start-new-game") } },
                     quitGame: { Task { await leaveCurrentGame(destination: .menu, reason: "quit-game") } },
+                    loadProtocolDebug: loadProtocolDebug(gameId:),
+                    portraitModeEnabled: $portraitModeEnabled,
                     viewZone: { title, cards in
                         inspectingZoneTitle = title
                         inspectingZoneCards = cards
@@ -160,10 +165,14 @@ struct ContentView: View {
                 liveUpdateStatus = "Idle"
             }
         }
+        .onChange(of: portraitModeEnabled) { _, enabled in
+            MagicMobileOrientationController.shared.setPortraitModeEnabled(enabled)
+        }
         .onChange(of: serverURLText) { _, newValue in
             CardImageURL.setBaseURL(newValue)
         }
         .task {
+            MagicMobileOrientationController.shared.setPortraitModeEnabled(portraitModeEnabled)
             CardImageURL.setBaseURL(serverURLText)
             #if DEBUG
             if await maybeStartDesignPreviewForMagicPath() {
@@ -188,6 +197,7 @@ struct ContentView: View {
                         openDecks: { screen = .decks },
                         quickStart: { Task { await startGame() } },
                         playerDisplayName: $playerDisplayName,
+                        portraitModeEnabled: $portraitModeEnabled,
                         cardCacheMetadata: cardCacheMetadata,
                         isSyncingCardCache: isSyncingCardCache,
                 phoneImageCacheCount: phoneImageCacheCount,
@@ -201,10 +211,11 @@ struct ContentView: View {
                         playerDisplayName: $playerDisplayName,
                         difficulty: $difficulty,
                         selectedHumanPrecon: $selectedHumanPrecon,
-                selectedAIPrecon: $selectedAIPrecon,
+                        selectedAIPrecon: $selectedAIPrecon,
                 selectedPhoto: $selectedPhoto,
                 avatarData: playerAvatarData,
                 deckSummary: deckSummary,
+                portraitModeEnabled: portraitModeEnabled,
                 cardCacheMetadata: cardCacheMetadata,
                 isSyncingCardCache: isSyncingCardCache,
                 phoneImageCacheCount: phoneImageCacheCount,
@@ -222,7 +233,8 @@ struct ContentView: View {
                 deckSource: $deckSource,
                 deckSummary: deckSummary,
                 importDeck: importDeck,
-                selectedHumanPrecon: $selectedHumanPrecon
+                selectedHumanPrecon: $selectedHumanPrecon,
+                portraitModeEnabled: portraitModeEnabled
             )
         case .play:
             EmptyView()
@@ -251,6 +263,11 @@ struct ContentView: View {
             let health = try await api.health()
             status = "\(health.status): \(health.reason)"
         }
+    }
+
+    private func loadProtocolDebug(gameId: String) async throws -> XmageProtocolDebug {
+        guard let api else { throw MagicMobileError.invalidServerURL }
+        return try await api.protocolDebug(gameId: gameId)
     }
 
     private func refreshCardCacheMetadata() async {
@@ -333,6 +350,7 @@ struct ContentView: View {
         inspectedCard = nil
         pendingActionId = nil
         pendingCardInstanceId = nil
+        lastActionRejection = nil
         lastSubmittedActionId = nil
         lastSubmittedSnapshotSignature = nil
         liveUpdateStatus = "Idle"
@@ -394,6 +412,7 @@ struct ContentView: View {
         inspectedCard = nil
         pendingActionId = nil
         pendingCardInstanceId = nil
+        lastActionRejection = nil
         lastSubmittedActionId = nil
         lastSubmittedSnapshotSignature = nil
         liveUpdateStatus = "Idle"
@@ -525,6 +544,7 @@ struct ContentView: View {
 
         pendingActionId = action.id
         pendingCardInstanceId = action.effectiveCardInstanceId ?? action.effectiveSourceInstanceId
+        lastActionRejection = nil
         if ["cast_spell", "play_land"].contains(action.type) {
             pendingCastAction = action
             pendingCastBeforeSnapshot = currentSnapshot
@@ -606,10 +626,8 @@ struct ContentView: View {
                 clearPendingAction()
             }
         } catch {
-            errorMessage = error.localizedDescription
-            status = error.localizedDescription
             logCastSubmissionError(action: action, before: currentSnapshot, error: error)
-            clearPendingAction()
+            handleCommandError(error)
         }
     }
 
@@ -629,6 +647,7 @@ struct ContentView: View {
 
         pendingActionId = pendingId
         pendingCardInstanceId = command.cardInstanceId ?? command.sourceInstanceId
+        lastActionRejection = nil
         lastSubmittedActionId = pendingId
         lastSubmittedSnapshotSignature = currentSignature
         status = "Sending \(label)"
@@ -647,10 +666,24 @@ struct ContentView: View {
                 clearPendingAction()
             }
         } catch {
-            errorMessage = error.localizedDescription
-            status = error.localizedDescription
-            clearPendingAction()
+            handleCommandError(error)
         }
+    }
+
+    private func handleCommandError(_ error: Error) {
+        if case MagicMobileError.actionRejected(let rejection) = error {
+            if let rejectedSnapshot = rejection.snapshot {
+                applySnapshot(rejectedSnapshot)
+            }
+            let notice = ActionRejectionNotice(rejection: rejection)
+            lastActionRejection = notice
+            status = notice.message
+            clearPendingAction()
+            return
+        }
+        errorMessage = error.localizedDescription
+        status = error.localizedDescription
+        clearPendingAction()
     }
 
     private func startWebSocket(gameId: String) {
@@ -1002,6 +1035,7 @@ struct MenuView: View {
     let openDecks: () -> Void
     let quickStart: () -> Void
     @Binding var playerDisplayName: String
+    @Binding var portraitModeEnabled: Bool
     let cardCacheMetadata: CardCacheMetadata?
     let isSyncingCardCache: Bool
     let phoneImageCacheCount: Int
@@ -1010,12 +1044,22 @@ struct MenuView: View {
     let syncCardCache: () -> Void
 
     var body: some View {
+        GeometryReader { proxy in
+            if GameOrientationMode.isPortraitLayout(size: proxy.size, portraitEnabled: portraitModeEnabled) {
+                portraitBody
+            } else {
+                landscapeBody
+            }
+        }
+    }
+
+    private var landscapeBody: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Commander")
                     .font(.system(size: 42, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
-                Text("XMage rules, 100-card precons, real Scryfall card art, built for landscape iPhone play.")
+                Text("XMage rules, 100-card precons, real Scryfall card art, built for iPhone play.")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.72))
                     .lineLimit(3)
@@ -1038,6 +1082,7 @@ struct MenuView: View {
                     Button("Quick battle", action: quickStart)
                         .buttonStyle(SecondaryButtonStyle())
                 }
+                PortraitModeToggle(isOn: $portraitModeEnabled)
             }
             .padding(22)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
@@ -1057,6 +1102,77 @@ struct MenuView: View {
             }
             .frame(width: 360)
         }
+    }
+
+    private var portraitBody: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Commander")
+                        .font(.system(size: 38, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text("XMage rules, 100-card precons, real Scryfall card art, built for iPhone play.")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.72))
+                        .lineLimit(3)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Player name")
+                            .font(.caption.weight(.black))
+                            .foregroundStyle(MagicPalette.antiqueGold)
+                        TextField("Enter name", text: $playerDisplayName)
+                            .textInputAutocapitalization(.words)
+                            .disableAutocorrection(true)
+                            .textFieldStyle(GameTextFieldStyle())
+                    }
+                    HStack(spacing: 10) {
+                        Button("Game setup", action: startSetup)
+                            .buttonStyle(PrimaryButtonStyle())
+                        Button("Quick battle", action: quickStart)
+                            .buttonStyle(SecondaryButtonStyle())
+                    }
+                    PortraitModeToggle(isOn: $portraitModeEnabled)
+                }
+                .padding(18)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.black.opacity(0.42), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(.orange.opacity(0.24)))
+
+                HeroCard(title: "Deck Builder", description: "Paste Archidekt or Moxfield export text, or pick an included Commander precon.", button: "Build deck", action: openDecks)
+                    .frame(minHeight: 190)
+                CardCachePanel(
+                    metadata: cardCacheMetadata,
+                    isSyncing: isSyncingCardCache,
+                    phoneImageCacheCount: phoneImageCacheCount,
+                    phoneSymbolCacheCount: phoneSymbolCacheCount,
+                    downloadProgress: phoneImageDownloadProgress,
+                    sync: syncCardCache
+                )
+            }
+            .padding(.bottom, 18)
+        }
+    }
+}
+
+struct PortraitModeToggle: View {
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Portrait Mode")
+                    .font(.callout.weight(.black))
+                    .foregroundStyle(.white)
+                Text("Enable automatic portrait and landscape rotation.")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .lineLimit(2)
+            }
+        }
+        .toggleStyle(.switch)
+        .tint(MagicPalette.emerald)
+        .padding(10)
+        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.12)))
     }
 }
 
@@ -1221,6 +1337,7 @@ struct SetupView: View {
     @Binding var selectedPhoto: PhotosPickerItem?
     let avatarData: Data?
     let deckSummary: String
+    let portraitModeEnabled: Bool
     let cardCacheMetadata: CardCacheMetadata?
     let isSyncingCardCache: Bool
     let phoneImageCacheCount: Int
@@ -1239,97 +1356,119 @@ struct SetupView: View {
             let rightWidth = max(proxy.size.width - leftWidth - gap, 430)
 
             ScrollView(.vertical, showsIndicators: false) {
-                HStack(spacing: gap) {
-                    Panel(title: "Connection") {
-                        TextField("Enter name", text: $playerDisplayName)
-                            .textInputAutocapitalization(.words)
-                            .disableAutocorrection(true)
-                            .textFieldStyle(GameTextFieldStyle())
-                        TextField("Server URL", text: $serverURLText)
-                            .textInputAutocapitalization(.never)
-                            .keyboardType(.URL)
-                            .textFieldStyle(GameTextFieldStyle())
-                        Text("iPhone client. XMage, Docker, card cache, symbols, and rules bridge run on this server.")
-                            .foregroundStyle(.white.opacity(0.68))
-                            .font(.system(size: 12, weight: .semibold))
-                            .lineLimit(3)
-                        Button("Check XMage bridge", action: checkBridge)
-                            .buttonStyle(SecondaryButtonStyle())
-                        CardCachePanel(
-                            metadata: cardCacheMetadata,
-                            isSyncing: isSyncingCardCache,
-                            phoneImageCacheCount: phoneImageCacheCount,
-                            phoneSymbolCacheCount: phoneSymbolCacheCount,
-                            downloadProgress: phoneImageDownloadProgress,
-                            sync: syncCardCache
-                        )
+                if GameOrientationMode.isPortraitLayout(size: proxy.size, portraitEnabled: portraitModeEnabled) {
+                    VStack(spacing: gap) {
+                        connectionPanel
+                        commanderPanel(isPortrait: true)
                     }
-                    .frame(width: leftWidth)
-
-                    Panel(title: "Commander vs AI") {
-                        HStack(alignment: .top, spacing: 10) {
-                            PreconPicker(title: "Your precon", selection: $selectedHumanPrecon)
-                            PreconPicker(title: "AI deck", selection: $selectedAIPrecon)
-                        }
-
-                        Text(deckSummary)
-                            .font(.system(size: 18, weight: .black, design: .rounded))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.62)
-
-                        HStack(spacing: 10) {
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text("AI skill")
-                                    .font(.caption.weight(.black))
-                                    .foregroundStyle(MagicPalette.antiqueGold)
-                                Picker("AI skill", selection: $difficulty) {
-                                    ForEach(AiDifficulty.allCases) { difficulty in
-                                        Text(difficulty.menuLabel).tag(difficulty)
-                                    }
-                                }
-                                .pickerStyle(.segmented)
-                            }
-
-                            PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                                AvatarPreview(data: avatarData)
-                            }
-                            .buttonStyle(.plain)
-                        }
-
-                        HStack(spacing: 7) {
-                            SetupRuleChip(title: "Format", value: "Commander")
-                            SetupRuleChip(title: "Players", value: "1v1 AI")
-                            SetupRuleChip(title: "Life", value: "40")
-                            SetupRuleChip(title: "Mulligan", value: "XMage")
-                            SetupRuleChip(title: "Start", value: "Prompt")
-                        }
-
-                        Text("XMage controls rules, mulligans, priority, mana, and legal actions.")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.58))
-                            .lineLimit(1)
-
-                        HStack {
-                            Button("Deck upload", action: openDecks)
-                                .buttonStyle(SecondaryButtonStyle())
-                            Button("Start vs AI", action: startGame)
-                                .buttonStyle(PrimaryButtonStyle())
-                        }
-
-                        #if DEBUG
-                        Button("Start XMage gauntlet fixture", action: startFixtureGame)
-                            .buttonStyle(SecondaryButtonStyle())
-                        Text("Debug only. Requires ENABLE_XMAGE_FIXTURES=true and a non-production gateway.")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(MagicPalette.antiqueGold.opacity(0.82))
-                            .lineLimit(2)
-                        #endif
+                    .frame(maxWidth: .infinity, alignment: .top)
+                } else {
+                    HStack(spacing: gap) {
+                        connectionPanel
+                            .frame(width: leftWidth)
+                        commanderPanel(isPortrait: false)
+                            .frame(width: rightWidth)
                     }
-                    .frame(width: rightWidth)
+                    .frame(maxWidth: .infinity, alignment: .top)
                 }
-                .frame(maxWidth: .infinity, alignment: .top)
             }
+        }
+    }
+
+    private var connectionPanel: some View {
+        Panel(title: "Connection") {
+            TextField("Enter name", text: $playerDisplayName)
+                .textInputAutocapitalization(.words)
+                .disableAutocorrection(true)
+                .textFieldStyle(GameTextFieldStyle())
+            TextField("Server URL", text: $serverURLText)
+                .textInputAutocapitalization(.never)
+                .keyboardType(.URL)
+                .textFieldStyle(GameTextFieldStyle())
+            Text("iPhone client. XMage, Docker, card cache, symbols, and rules bridge run on this server.")
+                .foregroundStyle(.white.opacity(0.68))
+                .font(.system(size: 12, weight: .semibold))
+                .lineLimit(3)
+            Button("Check XMage bridge", action: checkBridge)
+                .buttonStyle(SecondaryButtonStyle())
+            CardCachePanel(
+                metadata: cardCacheMetadata,
+                isSyncing: isSyncingCardCache,
+                phoneImageCacheCount: phoneImageCacheCount,
+                phoneSymbolCacheCount: phoneSymbolCacheCount,
+                downloadProgress: phoneImageDownloadProgress,
+                sync: syncCardCache
+            )
+        }
+    }
+
+    private func commanderPanel(isPortrait: Bool) -> some View {
+        Panel(title: "Commander vs AI") {
+            if isPortrait {
+                VStack(alignment: .leading, spacing: 10) {
+                    PreconPicker(title: "Your precon", selection: $selectedHumanPrecon)
+                    PreconPicker(title: "AI deck", selection: $selectedAIPrecon)
+                }
+            } else {
+                HStack(alignment: .top, spacing: 10) {
+                    PreconPicker(title: "Your precon", selection: $selectedHumanPrecon)
+                    PreconPicker(title: "AI deck", selection: $selectedAIPrecon)
+                }
+            }
+
+            Text(deckSummary)
+                .font(.system(size: 18, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.62)
+
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("AI skill")
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(MagicPalette.antiqueGold)
+                    Picker("AI skill", selection: $difficulty) {
+                        ForEach(AiDifficulty.allCases) { difficulty in
+                            Text(difficulty.menuLabel).tag(difficulty)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                    AvatarPreview(data: avatarData)
+                }
+                .buttonStyle(.plain)
+            }
+
+            HStack(spacing: 7) {
+                SetupRuleChip(title: "Format", value: "Commander")
+                SetupRuleChip(title: "Players", value: "1v1 AI")
+                SetupRuleChip(title: "Life", value: "40")
+                SetupRuleChip(title: "Mulligan", value: "XMage")
+                SetupRuleChip(title: "Start", value: "Prompt")
+            }
+
+            Text("XMage controls rules, mulligans, priority, mana, and legal actions.")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.58))
+                .lineLimit(2)
+
+            HStack {
+                Button("Deck upload", action: openDecks)
+                    .buttonStyle(SecondaryButtonStyle())
+                Button("Start vs AI", action: startGame)
+                    .buttonStyle(PrimaryButtonStyle())
+            }
+
+            #if DEBUG
+            Button("Start XMage gauntlet fixture", action: startFixtureGame)
+                .buttonStyle(SecondaryButtonStyle())
+            Text("Debug only. Requires ENABLE_XMAGE_FIXTURES=true and a non-production gateway.")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(MagicPalette.antiqueGold.opacity(0.82))
+                .lineLimit(2)
+            #endif
         }
     }
 }
@@ -1363,41 +1502,66 @@ struct DeckBuilderView: View {
     let deckSummary: String
     let importDeck: () -> Void
     @Binding var selectedHumanPrecon: PreconDeck
+    let portraitModeEnabled: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            Panel(title: "Deck Upload") {
-                TextField("Deck name, Archidekt URL, or Moxfield URL", text: $deckSource)
-                    .textInputAutocapitalization(.never)
-                    .textFieldStyle(GameTextFieldStyle())
-                TextEditor(text: $deckText)
-                    .font(.system(.body, design: .monospaced))
-                    .scrollContentBackground(.hidden)
-                    .foregroundStyle(.white)
-                    .padding(8)
-                    .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.12)))
-                HStack {
-                    Link("Archidekt", destination: URL(string: "https://archidekt.com/")!)
-                        .buttonStyle(SecondaryButtonStyle())
-                    Link("Moxfield", destination: URL(string: "https://www.moxfield.com/")!)
-                        .buttonStyle(SecondaryButtonStyle())
-                    Button("Import text", action: importDeck)
-                        .buttonStyle(PrimaryButtonStyle())
+        GeometryReader { proxy in
+            if GameOrientationMode.isPortraitLayout(size: proxy.size, portraitEnabled: portraitModeEnabled) {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 12) {
+                        deckUploadPanel(textEditorHeight: 260)
+                        currentDeckPanel
+                    }
+                    .padding(.bottom, 18)
                 }
+            } else {
+                landscapeBody
             }
+        }
+    }
 
-            Panel(title: "Current Deck") {
-                Text(deckSummary)
-                    .font(.title3.weight(.black))
-                    .foregroundStyle(.white)
-                Text("Use exported plain text from Archidekt or Moxfield. Direct scraping is intentionally avoided.")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.7))
-                PreconPicker(title: "Fallback precon", selection: $selectedHumanPrecon)
-                Spacer()
-            }
+    private var landscapeBody: some View {
+        HStack(spacing: 12) {
+            deckUploadPanel(textEditorHeight: nil)
+            currentDeckPanel
             .frame(width: 330)
+        }
+    }
+
+    private func deckUploadPanel(textEditorHeight: CGFloat?) -> some View {
+        Panel(title: "Deck Upload") {
+            TextField("Deck name, Archidekt URL, or Moxfield URL", text: $deckSource)
+                .textInputAutocapitalization(.never)
+                .textFieldStyle(GameTextFieldStyle())
+            TextEditor(text: $deckText)
+                .font(.system(.body, design: .monospaced))
+                .scrollContentBackground(.hidden)
+                .foregroundStyle(.white)
+                .padding(8)
+                .frame(height: textEditorHeight)
+                .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.12)))
+            HStack {
+                Link("Archidekt", destination: URL(string: "https://archidekt.com/")!)
+                    .buttonStyle(SecondaryButtonStyle())
+                Link("Moxfield", destination: URL(string: "https://www.moxfield.com/")!)
+                    .buttonStyle(SecondaryButtonStyle())
+                Button("Import text", action: importDeck)
+                    .buttonStyle(PrimaryButtonStyle())
+            }
+        }
+    }
+
+    private var currentDeckPanel: some View {
+        Panel(title: "Current Deck") {
+            Text(deckSummary)
+                .font(.title3.weight(.black))
+                .foregroundStyle(.white)
+            Text("Use exported plain text from Archidekt or Moxfield. Direct scraping is intentionally avoided.")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.7))
+            PreconPicker(title: "Fallback precon", selection: $selectedHumanPrecon)
+            Spacer()
         }
     }
 }
@@ -1468,6 +1632,7 @@ struct ImmersivePlayShell: View {
     let avatarData: Data?
     let pendingActionId: String?
     let pendingCardInstanceId: String?
+    let lastActionRejection: ActionRejectionNotice?
     let liveUpdateStatus: String
     let onInteractionFeedback: (String) -> Void
     let runAction: (LegalAction) -> Void
@@ -1476,6 +1641,8 @@ struct ImmersivePlayShell: View {
     let reconnectGame: () -> Void
     let newGame: () -> Void
     let quitGame: () -> Void
+    let loadProtocolDebug: (String) async throws -> XmageProtocolDebug
+    @Binding var portraitModeEnabled: Bool
     let viewZone: (String, [ZoneCard]) -> Void
 
     var body: some View {
@@ -1488,6 +1655,7 @@ struct ImmersivePlayShell: View {
             avatarData: avatarData,
             pendingActionId: pendingActionId,
             pendingCardInstanceId: pendingCardInstanceId,
+            lastActionRejection: lastActionRejection,
             liveUpdateStatus: liveUpdateStatus,
             onInteractionFeedback: onInteractionFeedback,
             runAction: runAction,
@@ -1496,6 +1664,8 @@ struct ImmersivePlayShell: View {
             reconnectGame: reconnectGame,
             newGame: newGame,
             quitGame: quitGame,
+            loadProtocolDebug: loadProtocolDebug,
+            portraitModeEnabled: $portraitModeEnabled,
             viewZone: viewZone
         )
     }
@@ -1510,6 +1680,7 @@ struct NativeGameView: View {
     let avatarData: Data?
     let pendingActionId: String?
     let pendingCardInstanceId: String?
+    let lastActionRejection: ActionRejectionNotice?
     let liveUpdateStatus: String
     let onInteractionFeedback: (String) -> Void
     let runAction: (LegalAction) -> Void
@@ -1518,9 +1689,15 @@ struct NativeGameView: View {
     let reconnectGame: () -> Void
     let newGame: () -> Void
     let quitGame: () -> Void
+    let loadProtocolDebug: (String) async throws -> XmageProtocolDebug
+    @Binding var portraitModeEnabled: Bool
     let viewZone: (String, [ZoneCard]) -> Void
     @State private var isLogOpen = false
     @State private var isGameMenuOpen = false
+    @State private var isPromptInspectorOpen = false
+    @State private var protocolDebug: XmageProtocolDebug?
+    @State private var protocolDebugError: String?
+    @State private var isProtocolDebugLoading = false
     @State private var gameMenuConfirmation: GameMenuConfirmation?
     @State private var isOverPlayerDropZone = false
     @State private var interactionState = GameBoardInteractionState.idle
@@ -1529,6 +1706,7 @@ struct NativeGameView: View {
     @State private var isPromptDetailOpen = false
     @State private var dragActionChoice: DragActionChoice?
     @State private var combatSelection = CombatSelectionState()
+    @State private var combatPreviewArrows: [CombatArrow] = []
     @State private var aiWaitBeganAt = Date()
     @State private var aiWaitKey = ""
     @State private var didAutoRefreshAIWaitKey: String?
@@ -1537,6 +1715,18 @@ struct NativeGameView: View {
     private func localViewZone(title: String, cards: [ZoneCard]) {
         inspectingZoneTitle = title
         inspectingZoneCards = cards
+    }
+
+    private func refreshProtocolDebug() async {
+        guard let gameId = snapshot?.id else { return }
+        isProtocolDebugLoading = true
+        protocolDebugError = nil
+        do {
+            protocolDebug = try await loadProtocolDebug(gameId)
+        } catch {
+            protocolDebugError = error.localizedDescription
+        }
+        isProtocolDebugLoading = false
     }
 
     @ViewBuilder
@@ -1549,11 +1739,22 @@ struct NativeGameView: View {
                 actions: snapshot.legalActions ?? [],
                 combatGroups: snapshot.xmage?.combat ?? []
             )
-            ZStack {
-                BattlefieldSurface()
-                    .ignoresSafeArea()
+            GeometryReader { rootProxy in
+                ZStack {
+                    BattlefieldSurface(portraitModeEnabled: portraitModeEnabled)
+                        .ignoresSafeArea()
 
-                HStack(spacing: 0) {
+                    if GameOrientationMode.isPortraitLayout(size: rootProxy.size, portraitEnabled: portraitModeEnabled) {
+                        portraitGameContent(
+                            snapshot: snapshot,
+                            human: human,
+                            opponent: opponent,
+                            humanName: humanName,
+                            opponentName: opponentName,
+                            sideCombatHighlights: sideCombatHighlights
+                        )
+                    } else {
+                    HStack(spacing: 0) {
                     // LEFT COLUMN
                     VStack(alignment: .leading, spacing: 0) {
                         OpponentVerticalHUD(
@@ -1561,7 +1762,7 @@ struct NativeGameView: View {
                             player: opponent,
                             active: snapshot.activePlayerId == opponent.playerId,
                             opponentId: human.playerId,
-                            combatTargetable: sideCombatHighlights.defenderIds.contains(opponent.playerId),
+                            combatTargetable: sideCombatHighlights.matches(id: opponent.playerId),
                             combatTargetAction: {
                                 submitAttackers(defenderId: opponent.playerId, snapshot: snapshot)
                             }
@@ -1626,40 +1827,46 @@ struct NativeGameView: View {
 
                             CombatArrowOverlay(
                                 groups: snapshot.xmage?.combat ?? [],
+                                previewArrows: combatPreviewArrows,
                                 metrics: metrics,
                                 humanBattlefield: human.zones.battlefield,
                                 opponentBattlefield: opponent.zones.battlefield
                             )
                             .allowsHitTesting(false)
 
-                            HStack(spacing: 8) {
-                                if InlinePaymentPromptState.isActive(in: snapshot) {
-                                    InlinePaymentPromptBar(
-                                        snapshot: snapshot,
-                                        pendingActionId: pendingActionId,
-                                        runAction: runAction,
-                                        runCommand: runCommand
-                                    )
-                                    .frame(maxWidth: .infinity)
-                                } else {
-                                    PromptPill(snapshot: snapshot, combatSelection: combatSelection)
+                            VStack(spacing: 4) {
+                                HStack(spacing: 8) {
+                                    if InlinePaymentPromptState.isActive(in: snapshot) {
+                                        InlinePaymentPromptBar(
+                                            snapshot: snapshot,
+                                            pendingActionId: pendingActionId,
+                                            runAction: runAction,
+                                            runCommand: runCommand
+                                        )
                                         .frame(maxWidth: .infinity)
-                                }
-                                
-                                let revealedCards = snapshot.xmage?.revealed.flatMap(\.cards) ?? []
-                                let lookedAtCards = snapshot.xmage?.lookedAt.flatMap(\.cards) ?? []
-                                if !revealedCards.isEmpty {
-                                    FloatingZoneChip(title: "Revealed", count: revealedCards.count, icon: "eye") {
-                                        localViewZone(title: "Revealed", cards: revealedCards)
+                                    } else {
+                                        PromptPill(snapshot: snapshot, combatSelection: combatSelection)
+                                            .frame(maxWidth: .infinity)
+                                    }
+
+                                    let revealedCards = snapshot.xmage?.revealed.flatMap(\.cards) ?? []
+                                    let lookedAtCards = snapshot.xmage?.lookedAt.flatMap(\.cards) ?? []
+                                    if !revealedCards.isEmpty {
+                                        FloatingZoneChip(title: "Revealed", count: revealedCards.count, icon: "eye") {
+                                            localViewZone(title: "Revealed", cards: revealedCards)
+                                        }
+                                    }
+                                    if !lookedAtCards.isEmpty {
+                                        FloatingZoneChip(title: "Looked", count: lookedAtCards.count, icon: "eye.trianglebadge.exclamationmark") {
+                                            localViewZone(title: "Looked", cards: lookedAtCards)
+                                        }
                                     }
                                 }
-                                if !lookedAtCards.isEmpty {
-                                    FloatingZoneChip(title: "Looked", count: lookedAtCards.count, icon: "eye.trianglebadge.exclamationmark") {
-                                        localViewZone(title: "Looked", cards: lookedAtCards)
-                                    }
+                                if let lastActionRejection {
+                                    ActionRejectionInlineView(notice: lastActionRejection)
                                 }
                             }
-                            .frame(width: metrics.centerStripRect.width, height: InlinePaymentPromptState.isActive(in: snapshot) ? max(metrics.centerStripRect.height, 52) : metrics.centerStripRect.height)
+                            .frame(width: metrics.centerStripRect.width, height: max(InlinePaymentPromptState.isActive(in: snapshot) ? 52 : metrics.centerStripRect.height, lastActionRejection == nil ? metrics.centerStripRect.height : 66))
                             .position(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.midY)
 
                             if isOverPlayerDropZone {
@@ -1700,11 +1907,37 @@ struct NativeGameView: View {
                                     .allowsHitTesting(false)
                             }
 
-                            if combatSelection.hasPendingBlockers, CombatSelectionState.isDeclareBlockers(snapshot) {
-                                CombatSubmitPill(title: "Declare blocks", count: combatSelection.blockerPairCount) {
-                                    submitBlockers(snapshot: snapshot)
+                            if CombatSelectionState.isDeclareAttackers(snapshot) {
+                                let declaredAttackCount = snapshot.xmage?.combat.flatMap(\.attackers).count ?? 0
+                                let hasPendingAttacker = !combatSelection.selectedAttackerIds.isEmpty
+                                CombatSubmitPill(
+                                    title: hasPendingAttacker ? "Cancel attack" : (declaredAttackCount == 0 ? "No attacks" : "Done attacks"),
+                                    count: max(declaredAttackCount, combatSelection.selectedAttackerIds.count)
+                                ) {
+                                    if hasPendingAttacker {
+                                        combatSelection.clearAttackers()
+                                    } else {
+                                        finishAttackers(snapshot: snapshot)
+                                    }
                                 }
-                                .position(x: metrics.bottomActionRect.midX, y: metrics.bottomActionRect.midY)
+                                .position(x: metrics.bottomActionRect.midX, y: metrics.centerStripRect.maxY + 18)
+                                .zIndex(19)
+                            } else if CombatSelectionState.isDeclareBlockers(snapshot) {
+                                let declaredBlockCount = snapshot.xmage?.combat.flatMap(\.blockers).count ?? 0
+                                let hasPendingBlocker = combatSelection.selectedBlockerId != nil
+                                CombatSubmitPill(
+                                    title: hasPendingBlocker ? "Cancel block" : (declaredBlockCount == 0 ? "No blocks" : "Done blocks"),
+                                    count: max(declaredBlockCount, combatSelection.blockerPairCount)
+                                ) {
+                                    if hasPendingBlocker {
+                                        combatSelection.clearBlockers()
+                                    } else if combatSelection.hasPendingBlockers {
+                                        submitBlockers(snapshot: snapshot)
+                                    } else {
+                                        finishBlockers(snapshot: snapshot)
+                                    }
+                                }
+                                .position(x: metrics.bottomActionRect.midX, y: metrics.centerStripRect.maxY + 18)
                                 .zIndex(19)
                             }
 
@@ -1713,8 +1946,11 @@ struct NativeGameView: View {
                                 CompactZoneInspectorOverlay(
                                     title: inspectingZoneTitle,
                                     cards: inspectingZoneCards,
+                                    legalActions: snapshot.legalActions ?? [],
+                                    pendingActionId: pendingActionId,
                                     selectedCard: $selectedCard,
                                     inspectedCard: $inspectedCard,
+                                    runAction: runAction,
                                     closeAction: {
                                         self.inspectingZoneTitle = nil
                                         self.inspectingZoneCards = []
@@ -1777,6 +2013,12 @@ struct NativeGameView: View {
                         }
                         .onChange(of: snapshot.combatSelectionResetKey) { _, _ in
                             combatSelection.resetIfInactive(snapshot)
+                            combatPreviewArrows = []
+                        }
+                        .onChange(of: pendingActionId) { _, newValue in
+                            if newValue == nil {
+                                combatPreviewArrows = []
+                            }
                         }
                     }
 
@@ -1808,13 +2050,7 @@ struct NativeGameView: View {
                                 ScrollView {
                                     LazyVStack(alignment: .leading, spacing: 4) {
                                         ForEach(snapshot.log) { entry in
-                                            Text(entry.message)
-                                                .font(.system(size: 7.5, weight: .bold))
-                                                .foregroundStyle(MagicPalette.parchment.opacity(0.72))
-                                                .lineLimit(2)
-                                                .multilineTextAlignment(.leading)
-                                                .fixedSize(horizontal: false, vertical: true)
-                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                            GameLogMessageRow(message: entry.message)
                                         }
                                     }
                                     .padding(.trailing, 4)
@@ -1922,7 +2158,11 @@ struct NativeGameView: View {
                         if snapshot.isWaitingOnAIOrStalled {
                             AIWaitFallbackControls(
                                 snapshot: snapshot,
+                                pendingActionId: pendingActionId,
+                                liveUpdateStatus: liveUpdateStatus,
                                 beganAt: aiWaitBeganAt,
+                                didRefresh: didAutoRefreshAIWaitKey == aiWaitKey,
+                                didReconnect: didAutoReconnectAIWaitKey == aiWaitKey,
                                 refreshAction: refreshGame,
                                 reconnectAction: reconnectGame
                             )
@@ -1932,6 +2172,9 @@ struct NativeGameView: View {
                     .frame(width: 128)
                     .background(MagicPalette.iron.opacity(0.85))
                 }
+                }
+                }
+            }
                 .sheet(isPresented: $isPromptDetailOpen) {
                     UniversalPromptActionPanel(
                         snapshot: snapshot,
@@ -1952,6 +2195,11 @@ struct NativeGameView: View {
                     GameManagementMenu(
                         concedeAction: concedeAction(in: snapshot.legalActions ?? []),
                         runAction: runAction,
+                        portraitModeEnabled: $portraitModeEnabled,
+                        openPromptInspector: {
+                            isGameMenuOpen = false
+                            isPromptInspectorOpen = true
+                        },
                         confirmStartNew: {
                             gameMenuConfirmation = .startNew
                         },
@@ -1959,8 +2207,24 @@ struct NativeGameView: View {
                             gameMenuConfirmation = .quit
                         }
                     )
-                    .presentationDetents([.height(250)])
+                    .presentationDetents([.height(380)])
                     .presentationDragIndicator(.visible)
+                }
+                .sheet(isPresented: $isPromptInspectorOpen) {
+                    PromptDebugInspector(
+                        snapshot: snapshot,
+                        liveUpdateStatus: liveUpdateStatus,
+                        lastActionRejection: lastActionRejection,
+                        protocolDebug: protocolDebug,
+                        protocolDebugError: protocolDebugError,
+                        isProtocolDebugLoading: isProtocolDebugLoading,
+                        refreshProtocolDebug: { Task { await refreshProtocolDebug() } }
+                    )
+                        .task(id: snapshot.id) {
+                            await refreshProtocolDebug()
+                        }
+                        .presentationDetents([.medium, .large])
+                        .presentationDragIndicator(.visible)
                 }
                 .confirmationDialog(
                     gameMenuConfirmation?.title ?? "Leave game?",
@@ -1989,7 +2253,6 @@ struct NativeGameView: View {
                 } message: {
                     Text(gameMenuConfirmation?.message ?? "")
                 }
-            }
             .onAppear {
                 updateAIWaitStart(for: snapshot)
             }
@@ -2037,6 +2300,294 @@ struct NativeGameView: View {
         }
     }
 
+    @ViewBuilder
+    private func portraitGameContent(
+        snapshot: GameSnapshot,
+        human: PlayerGameState,
+        opponent: PlayerGameState,
+        humanName: String,
+        opponentName: String,
+        sideCombatHighlights: CombatHighlightSet
+    ) -> some View {
+        GeometryReader { proxy in
+            let metrics = PortraitBattlefieldLayoutMetrics(proxy: proxy)
+            let actions = snapshot.legalActions ?? []
+            let targetableIds = GameBoardInteractionState.boardTargetableIds(for: snapshot)
+            let combatHighlights = CombatHighlightSet(
+                selection: combatSelection,
+                actions: actions,
+                combatGroups: snapshot.xmage?.combat ?? []
+            )
+            let shouldShowCompactPrompt = CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: pendingActionId)
+            let derivedInteractionMode = GameBoardInteractionState.mode(
+                for: snapshot,
+                pendingActionId: pendingActionId,
+                selectedCard: selectedCard
+            )
+
+            ZStack {
+                PortraitOpponentStatusBar(
+                    snapshot: snapshot,
+                    opponentName: opponentName,
+                    opponent: opponent,
+                    humanId: human.playerId,
+                    combatTargetable: combatHighlights.matches(id: opponent.playerId),
+                    combatTargetAction: {
+                        submitAttackers(defenderId: opponent.playerId, snapshot: snapshot)
+                    },
+                    openLog: { isLogOpen = true }
+                )
+                .frame(width: metrics.topHUDRect.width, height: metrics.topHUDRect.height)
+                .position(x: metrics.topHUDRect.midX, y: metrics.topHUDRect.midY)
+
+                PortraitBattlefieldPermanentGroup(title: "Opponent board", cards: nonLandPermanents(opponent.zones.battlefield), legalActions: actions, targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.opponentBattlefieldRect.width, maxRows: 3, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                    .frame(width: metrics.opponentBattlefieldRect.width, height: metrics.opponentBattlefieldRect.height)
+                    .position(x: metrics.opponentBattlefieldRect.midX, y: metrics.opponentBattlefieldRect.midY)
+
+                BattlefieldRow(title: "Opponent lands", cards: landPermanents(opponent.zones.battlefield), legalActions: actions, targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.opponentLandsRect.width, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                    .frame(width: metrics.opponentLandsRect.width, height: metrics.opponentLandsRect.height)
+                    .position(x: metrics.opponentLandsRect.midX, y: metrics.opponentLandsRect.midY)
+
+                VStack(spacing: 4) {
+                    HStack(spacing: 8) {
+                        if InlinePaymentPromptState.isActive(in: snapshot) {
+                            InlinePaymentPromptBar(
+                                snapshot: snapshot,
+                                pendingActionId: pendingActionId,
+                                runAction: runAction,
+                                runCommand: runCommand
+                            )
+                            .frame(maxWidth: .infinity)
+                        } else {
+                            PromptPill(snapshot: snapshot, combatSelection: combatSelection)
+                                .frame(maxWidth: .infinity)
+                        }
+
+                        let revealedCards = snapshot.xmage?.revealed.flatMap(\.cards) ?? []
+                        let lookedAtCards = snapshot.xmage?.lookedAt.flatMap(\.cards) ?? []
+                        if !revealedCards.isEmpty {
+                            FloatingZoneChip(title: "Revealed", count: revealedCards.count, icon: "eye") {
+                                localViewZone(title: "Revealed", cards: revealedCards)
+                            }
+                        }
+                        if !lookedAtCards.isEmpty {
+                            FloatingZoneChip(title: "Looked", count: lookedAtCards.count, icon: "eye.trianglebadge.exclamationmark") {
+                                localViewZone(title: "Looked", cards: lookedAtCards)
+                            }
+                        }
+                    }
+                    if let lastActionRejection {
+                        ActionRejectionInlineView(notice: lastActionRejection)
+                    }
+                }
+                .frame(width: metrics.centerStripRect.width, height: metrics.centerStripRect.height)
+                .position(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.midY)
+
+                PortraitBattlefieldPermanentGroup(title: "Your board", cards: nonLandPermanents(human.zones.battlefield), legalActions: actions, targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.playerBattlefieldRect.width, maxRows: 3, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                    .frame(width: metrics.playerBattlefieldRect.width, height: metrics.playerBattlefieldRect.height)
+                    .position(x: metrics.playerBattlefieldRect.midX, y: metrics.playerBattlefieldRect.midY)
+
+                BattlefieldRow(title: "Your lands", cards: landPermanents(human.zones.battlefield), legalActions: actions, targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.playerLandsRect.width, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                    .frame(width: metrics.playerLandsRect.width, height: metrics.playerLandsRect.height)
+                    .position(x: metrics.playerLandsRect.midX, y: metrics.playerLandsRect.midY)
+
+                PortraitCombatArrowOverlay(
+                    groups: snapshot.xmage?.combat ?? [],
+                    previewArrows: combatPreviewArrows,
+                    metrics: metrics,
+                    humanBattlefield: human.zones.battlefield,
+                    opponentBattlefield: opponent.zones.battlefield
+                )
+                .allowsHitTesting(false)
+
+                PortraitHandRow(
+                    cards: human.zones.hand,
+                    legalActions: actions,
+                    selectedCard: $selectedCard,
+                    inspectedCard: $inspectedCard,
+                    pendingCardInstanceId: pendingCardInstanceId,
+                    interactionState: $interactionState,
+                    playerDropZone: metrics.playerDropZone,
+                    isOverPlayerDropZone: $isOverPlayerDropZone,
+                    cardWidth: metrics.handCardWidth,
+                    cardHeight: metrics.handCardHeight,
+                    rowWidth: metrics.handRect.width,
+                    onDropFeedback: onInteractionFeedback,
+                    onActionChoice: { choiceActions, message in
+                        dragActionChoice = DragActionChoice(message: message, actions: choiceActions)
+                    },
+                    runAction: runAction
+                )
+                .frame(width: metrics.handRect.width, height: metrics.handRect.height)
+                .position(x: metrics.handRect.midX, y: metrics.handRect.midY)
+                .onChange(of: derivedInteractionMode) { _, mode in
+                    interactionState.mode = mode
+                }
+
+                if isOverPlayerDropZone {
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(MagicPalette.antiqueGold.opacity(0.13))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(MagicPalette.antiqueGold.opacity(0.70), lineWidth: 2))
+                        .frame(width: metrics.playerDropZone.width, height: metrics.playerDropZone.height)
+                        .position(x: metrics.playerDropZone.midX, y: metrics.playerDropZone.midY)
+                        .allowsHitTesting(false)
+                }
+
+                PortraitBottomCommandBar(
+                    humanName: humanName,
+                    human: human,
+                    opponentId: opponent.playerId,
+                    manaPool: human.manaPool,
+                    passAction: passAction(in: actions),
+                    skipAction: skipAction(in: actions),
+                    snapshot: snapshot,
+                    selectedCard: $selectedCard,
+                    inspectedCard: $inspectedCard,
+                    openSettings: { isGameMenuOpen = true },
+                    viewZone: { localViewZone(title: $0, cards: $1) },
+                    runAction: runAction
+                )
+                .frame(width: metrics.bottomControlsRect.width, height: metrics.bottomControlsRect.height)
+                .position(x: metrics.bottomControlsRect.midX, y: metrics.bottomControlsRect.midY)
+
+                if case .targeting = derivedInteractionMode, !targetableIds.isEmpty {
+                    TargetingStatusPill(count: targetableIds.count)
+                        .position(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.maxY + 28)
+                        .allowsHitTesting(false)
+                }
+
+                if CombatSelectionState.isDeclareAttackers(snapshot) {
+                    let declaredAttackCount = snapshot.xmage?.combat.flatMap(\.attackers).count ?? 0
+                    let hasPendingAttacker = !combatSelection.selectedAttackerIds.isEmpty
+                    CombatSubmitPill(
+                        title: hasPendingAttacker ? "Undo" : (declaredAttackCount == 0 ? "No attacks" : "Declare attacks"),
+                        count: max(declaredAttackCount, combatSelection.selectedAttackerIds.count)
+                    ) {
+                        if hasPendingAttacker {
+                            combatSelection.clearAttackers()
+                        } else {
+                            finishAttackers(snapshot: snapshot)
+                        }
+                    }
+                    .position(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.maxY + 20)
+                    .zIndex(19)
+                } else if CombatSelectionState.isDeclareBlockers(snapshot) {
+                    let declaredBlockCount = snapshot.xmage?.combat.flatMap(\.blockers).count ?? 0
+                    let hasPendingBlocker = combatSelection.selectedBlockerId != nil
+                    CombatSubmitPill(
+                        title: hasPendingBlocker ? "Undo" : (declaredBlockCount == 0 ? "No blocks" : "Declare blocks"),
+                        count: max(declaredBlockCount, combatSelection.blockerPairCount)
+                    ) {
+                        if hasPendingBlocker {
+                            combatSelection.clearBlockers()
+                        } else if combatSelection.hasPendingBlockers {
+                            submitBlockers(snapshot: snapshot)
+                        } else {
+                            finishBlockers(snapshot: snapshot)
+                        }
+                    }
+                    .position(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.maxY + 20)
+                    .zIndex(19)
+                }
+
+                if let inspectingZoneTitle {
+                    CompactZoneInspectorOverlay(
+                        title: inspectingZoneTitle,
+                        cards: inspectingZoneCards,
+                        legalActions: actions,
+                        pendingActionId: pendingActionId,
+                        selectedCard: $selectedCard,
+                        inspectedCard: $inspectedCard,
+                        runAction: runAction,
+                        closeAction: {
+                            self.inspectingZoneTitle = nil
+                            self.inspectingZoneCards = []
+                        }
+                    )
+                    .frame(width: metrics.detailSheetRect.width, height: metrics.detailSheetRect.height)
+                    .position(x: metrics.detailSheetRect.midX, y: metrics.detailSheetRect.midY)
+                    .transition(.scale.combined(with: .opacity))
+                    .zIndex(70)
+                }
+
+                if let inspectedCard {
+                    Color.black.opacity(0.01)
+                        .ignoresSafeArea()
+                        .onTapGesture { self.inspectedCard = nil }
+                        .zIndex(99)
+
+                    CardInspector(card: inspectedCard)
+                        .frame(width: metrics.detailSheetRect.width, height: metrics.detailSheetRect.height)
+                        .position(x: metrics.detailSheetRect.midX, y: metrics.detailSheetRect.midY)
+                        .zIndex(100)
+                }
+
+                if shouldShowCompactPrompt {
+                    CompactPromptPopup(
+                        snapshot: snapshot,
+                        pendingActionId: pendingActionId,
+                        runAction: runAction,
+                        runCommand: runCommand,
+                        openDetails: {
+                            isPromptDetailOpen = true
+                        }
+                    )
+                    .frame(width: metrics.compactPromptRect.width, height: metrics.compactPromptRect.height)
+                    .position(x: metrics.compactPromptRect.midX, y: metrics.compactPromptRect.midY)
+                    .transition(.scale.combined(with: .opacity))
+                    .zIndex(20)
+                }
+
+                if let dragActionChoice {
+                    DragActionChoicePopup(
+                        choice: dragActionChoice,
+                        pendingActionId: pendingActionId,
+                        runAction: { action in
+                            self.dragActionChoice = nil
+                            runAction(action)
+                        },
+                        cancel: {
+                            self.dragActionChoice = nil
+                        }
+                    )
+                    .frame(width: metrics.compactPromptRect.width)
+                    .position(x: metrics.compactPromptRect.midX, y: metrics.compactPromptRect.midY)
+                    .transition(.scale.combined(with: .opacity))
+                    .zIndex(21)
+                }
+
+                if snapshot.isWaitingOnAIOrStalled {
+                    AIWaitFallbackControls(
+                        snapshot: snapshot,
+                        pendingActionId: pendingActionId,
+                        liveUpdateStatus: liveUpdateStatus,
+                        beganAt: aiWaitBeganAt,
+                        didRefresh: didAutoRefreshAIWaitKey == aiWaitKey,
+                        didReconnect: didAutoReconnectAIWaitKey == aiWaitKey,
+                        refreshAction: refreshGame,
+                        reconnectAction: reconnectGame
+                    )
+                    .frame(width: min(metrics.safeFrame.width - 28, 360))
+                    .position(x: metrics.safeFrame.midX, y: metrics.safeFrame.midY)
+                    .zIndex(80)
+                }
+            }
+            .coordinateSpace(name: "portrait-board")
+            .onAppear {
+                interactionState.mode = derivedInteractionMode
+            }
+            .onChange(of: snapshot.combatSelectionResetKey) { _, _ in
+                combatSelection.resetIfInactive(snapshot)
+                combatPreviewArrows = []
+            }
+            .onChange(of: pendingActionId) { _, newValue in
+                if newValue == nil {
+                    combatPreviewArrows = []
+                }
+            }
+        }
+    }
+
     private func passAction(in actions: [LegalAction]) -> LegalAction? {
         actions.first { ["pass_priority", "pass_until_response"].contains($0.type) }
     }
@@ -2051,7 +2602,7 @@ struct NativeGameView: View {
 
     private func selectedActions(in snapshot: GameSnapshot) -> [LegalAction] {
         guard let selectedCard else { return [] }
-        return snapshot.legalActions?.filter { $0.cardInstanceId == selectedCard.instanceId || $0.sourceInstanceId == selectedCard.instanceId } ?? []
+        return GameBoardInteractionState.cardActions(for: selectedCard, actions: snapshot.legalActions ?? [])
     }
 
     private func targetableCardIds(in snapshot: GameSnapshot) -> Set<String> {
@@ -2086,26 +2637,48 @@ struct NativeGameView: View {
     private func handleCombatCardTap(_ card: ZoneCard, snapshot: GameSnapshot) -> Bool {
         let actions = snapshot.legalActions ?? []
         if CombatSelectionState.isDeclareAttackers(snapshot) {
-            if combatSelection.attackerHighlightIds(actions: actions).contains(card.instanceId) {
-                combatSelection.toggleAttacker(card.instanceId)
-                onInteractionFeedback(combatSelection.selectedAttackerIds.contains(card.instanceId) ? "Attacker selected" : "Attacker removed")
+            if let attackerId = CombatSelectionState.matchingCardId(for: card, in: combatSelection.attackerHighlightIds(actions: actions)) {
+                let defenders = combatSelection.defenderIds(forAttackerId: attackerId, actions: actions)
+                combatSelection.selectAttacker(attackerId)
+                if defenders.count == 1, let defenderId = defenders.first {
+                    submitAttackers(defenderId: defenderId, snapshot: snapshot)
+                    onInteractionFeedback("Attacker declared")
+                } else {
+                    onInteractionFeedback("Choose who to attack")
+                }
                 return true
             }
-            if combatSelection.defenderHighlightIds(actions: actions).contains(card.instanceId) {
-                submitAttackers(defenderId: card.instanceId, snapshot: snapshot)
+            if let defenderId = CombatSelectionState.matchingCardId(for: card, in: combatSelection.defenderHighlightIds(actions: actions)) {
+                guard combatSelection.selectedAttackerId != nil else {
+                    onInteractionFeedback("Select an attacker first")
+                    return true
+                }
+                submitAttackers(defenderId: defenderId, snapshot: snapshot)
                 return true
             }
         }
 
         if CombatSelectionState.isDeclareBlockers(snapshot) {
-            if combatSelection.blockerHighlightIds(actions: actions).contains(card.instanceId) {
-                combatSelection.selectBlocker(card.instanceId)
-                onInteractionFeedback("Blocker selected")
+            if let blockerId = CombatSelectionState.matchingCardId(for: card, in: combatSelection.blockerHighlightIds(actions: actions)) {
+                let attackers = combatSelection.attackingCreatureIds(forBlockerId: blockerId, actions: actions, combatGroups: snapshot.xmage?.combat ?? [])
+                combatSelection.selectBlocker(blockerId)
+                if attackers.count == 1, let attackerId = attackers.first {
+                    combatSelection.pairSelectedBlocker(withAttackerId: attackerId)
+                    submitBlockers(snapshot: snapshot)
+                    onInteractionFeedback("Block declared")
+                } else {
+                    onInteractionFeedback("Choose attacker to block")
+                }
                 return true
             }
-            if combatSelection.attackingCreatureHighlightIds(actions: actions, combatGroups: snapshot.xmage?.combat ?? []).contains(card.instanceId) {
-                combatSelection.pairSelectedBlocker(withAttackerId: card.instanceId)
-                onInteractionFeedback(combatSelection.hasPendingBlockers ? "Block pair selected" : "Select a blocker first")
+            if let attackerId = CombatSelectionState.matchingCardId(for: card, in: combatSelection.attackingCreatureHighlightIds(actions: actions, combatGroups: snapshot.xmage?.combat ?? [])) {
+                guard combatSelection.selectedBlockerId != nil else {
+                    onInteractionFeedback("Select a blocker first")
+                    return true
+                }
+                combatSelection.pairSelectedBlocker(withAttackerId: attackerId)
+                submitBlockers(snapshot: snapshot)
+                onInteractionFeedback("Block declared")
                 return true
             }
         }
@@ -2123,11 +2696,6 @@ struct NativeGameView: View {
             onInteractionFeedback("XMage did not expose that defender")
             return
         }
-        if let exactAction = combatSelection.attackAction(forDefenderId: defenderId, actions: actions) {
-            runAction(exactAction)
-            combatSelection.clearAttackers()
-            return
-        }
         guard let human = snapshot.human else { return }
         guard let command = combatSelection.attackCommand(
             gameId: snapshot.id,
@@ -2139,7 +2707,11 @@ struct NativeGameView: View {
             onInteractionFeedback("XMage did not expose mobile-safe attacker data")
             return
         }
-        runCommand(command, "Declare attackers", "declare-attackers-\(snapshot.bridgeRevision ?? snapshot.turn)")
+        combatPreviewArrows = command.attackers?.compactMap { pair in
+            guard let defenderId = pair.defenderId else { return nil }
+            return CombatArrow(kind: .previewAttack, fromId: pair.attackerId, toId: defenderId, toKind: combatSelection.defenderKind(forDefenderId: defenderId, actions: actions))
+        } ?? []
+        runCommand(command, "Declare attacker", "declare-attacker-\(snapshot.bridgeRevision ?? snapshot.turn)-\(defenderId)")
         combatSelection.clearAttackers()
     }
 
@@ -2153,7 +2725,33 @@ struct NativeGameView: View {
             onInteractionFeedback("Select a blocker and the attacker it blocks")
             return
         }
-        runCommand(command, "Declare blockers", "declare-blockers-\(snapshot.bridgeRevision ?? snapshot.turn)")
+        combatPreviewArrows = command.blockers?.compactMap { pair in
+            guard let attackerId = pair.attackerId else { return nil }
+            return CombatArrow(kind: .previewBlock, fromId: pair.blockerId, toId: attackerId, toKind: nil)
+        } ?? []
+        runCommand(command, "Declare blocker", "declare-blocker-\(snapshot.bridgeRevision ?? snapshot.turn)")
+        combatSelection.clearBlockers()
+    }
+
+    private func finishAttackers(snapshot: GameSnapshot) {
+        guard let human = snapshot.human else { return }
+        let command = CombatSelectionState.finishAttackCommand(
+            gameId: snapshot.id,
+            playerId: human.playerId,
+            expectedBridgeRevision: snapshot.bridgeRevision
+        )
+        runCommand(command, "Finish attackers", "declare-attackers-finish-\(snapshot.bridgeRevision ?? snapshot.turn)")
+        combatSelection.clearAttackers()
+    }
+
+    private func finishBlockers(snapshot: GameSnapshot) {
+        guard let human = snapshot.human else { return }
+        let command = CombatSelectionState.finishBlockCommand(
+            gameId: snapshot.id,
+            playerId: human.playerId,
+            expectedBridgeRevision: snapshot.bridgeRevision
+        )
+        runCommand(command, "Finish blockers", "declare-blockers-finish-\(snapshot.bridgeRevision ?? snapshot.turn)")
         combatSelection.clearBlockers()
     }
 
@@ -2518,6 +3116,191 @@ struct BattlefieldLayoutMetrics {
 
 typealias BattlefieldBoardLayout = BattlefieldLayoutMetrics
 
+struct PortraitBattlefieldLayoutMetrics {
+    static let magicCardHeightToWidth = BattlefieldLayoutMetrics.magicCardHeightToWidth
+
+    let size: CGSize
+    let safeArea: EdgeInsets
+
+    init(proxy: GeometryProxy) {
+        size = proxy.size
+        safeArea = proxy.safeAreaInsets
+    }
+
+    init(size: CGSize, safeArea: EdgeInsets = EdgeInsets()) {
+        self.size = size
+        self.safeArea = safeArea
+    }
+
+    var safeFrame: CGRect {
+        let margin: CGFloat = 8
+        return CGRect(
+            x: safeArea.leading + margin,
+            y: safeArea.top + 8,
+            width: max(size.width - safeArea.leading - safeArea.trailing - margin * 2, 300),
+            height: max(size.height - safeArea.top - safeArea.bottom - 16, 620)
+        )
+    }
+
+    var topHUDRect: CGRect {
+        CGRect(x: safeFrame.minX, y: safeFrame.minY, width: safeFrame.width, height: min(max(safeFrame.height * 0.095, 78), 104))
+    }
+
+    var opponentBattlefieldRect: CGRect {
+        CGRect(x: safeFrame.minX + 10, y: topHUDRect.maxY + 10, width: safeFrame.width - 20, height: permanentGroupHeight)
+    }
+
+    var opponentLandsRect: CGRect {
+        CGRect(x: safeFrame.minX + 10, y: opponentBattlefieldRect.maxY + 5, width: safeFrame.width - 20, height: landCardHeight + 8)
+    }
+
+    var centerStripRect: CGRect {
+        CGRect(x: safeFrame.minX + 8, y: opponentLandsRect.maxY + 10, width: safeFrame.width - 16, height: 60)
+    }
+
+    var playerBattlefieldRect: CGRect {
+        CGRect(x: safeFrame.minX + 10, y: centerStripRect.maxY + 10, width: safeFrame.width - 20, height: permanentGroupHeight)
+    }
+
+    var playerLandsRect: CGRect {
+        CGRect(x: safeFrame.minX + 10, y: playerBattlefieldRect.maxY + 5, width: safeFrame.width - 20, height: landCardHeight + 8)
+    }
+
+    var bottomControlsRect: CGRect {
+        let height = min(max(safeFrame.height * 0.19, 146), 178)
+        return CGRect(x: safeFrame.minX, y: safeFrame.maxY - height, width: safeFrame.width, height: height)
+    }
+
+    var handRect: CGRect {
+        let top = playerLandsRect.maxY + 8
+        let bottom = bottomControlsRect.minY - 8
+        return CGRect(x: safeFrame.minX, y: top, width: safeFrame.width, height: max(bottom - top, handCardHeight + 20))
+    }
+
+    var bottomHUDRect: CGRect {
+        CGRect(x: bottomControlsRect.minX, y: bottomControlsRect.minY, width: min(max(bottomControlsRect.width * 0.34, 132), 146), height: bottomControlsRect.height)
+    }
+
+    var bottomActionPanelRect: CGRect {
+        let x = bottomHUDRect.maxX + 10
+        return CGRect(
+            x: x,
+            y: bottomControlsRect.minY + 8,
+            width: max(stackPanelRect.minX - x - 10, 118),
+            height: bottomControlsRect.height - 16
+        )
+    }
+
+    var passButtonRect: CGRect {
+        CGRect(
+            x: bottomActionPanelRect.minX,
+            y: bottomActionPanelRect.minY + 18,
+            width: bottomActionPanelRect.width,
+            height: 44
+        )
+    }
+
+    var skipButtonRect: CGRect {
+        CGRect(
+            x: passButtonRect.minX,
+            y: passButtonRect.maxY + 10,
+            width: passButtonRect.width,
+            height: 34
+        )
+    }
+
+    var bottomNavRect: CGRect {
+        CGRect(
+            x: bottomActionPanelRect.minX,
+            y: skipButtonRect.maxY + 6,
+            width: bottomActionPanelRect.width,
+            height: max(bottomActionPanelRect.maxY - skipButtonRect.maxY - 6, 34)
+        )
+    }
+
+    var stackPanelRect: CGRect {
+        let width = min(max(bottomControlsRect.width * 0.28, 108), 126)
+        return CGRect(
+            x: bottomControlsRect.maxX - width - 8,
+            y: bottomControlsRect.minY + 8,
+            width: width,
+            height: bottomControlsRect.height - 16
+        )
+    }
+
+    var settingsButtonRect: CGRect {
+        let size: CGFloat = 34
+        return CGRect(
+            x: bottomNavRect.minX,
+            y: bottomNavRect.midY - size / 2,
+            width: size,
+            height: size
+        )
+    }
+
+    var handScrubberRect: CGRect {
+        CGRect(
+            x: handRect.minX + 24,
+            y: handRect.maxY - 12,
+            width: max(handRect.width - 48, 120),
+            height: 8
+        )
+    }
+
+    var compactPromptRect: CGRect {
+        CGRect(x: centerStripRect.minX + 8, y: centerStripRect.maxY + 6, width: centerStripRect.width - 16, height: 126)
+    }
+
+    var detailSheetRect: CGRect {
+        CGRect(
+            x: safeFrame.minX + 18,
+            y: safeFrame.midY - 160,
+            width: safeFrame.width - 36,
+            height: 320
+        )
+    }
+
+    var playerPlayAreaRect: CGRect {
+        CGRect(x: safeFrame.minX, y: playerBattlefieldRect.minY - 8, width: safeFrame.width, height: playerLandsRect.maxY - playerBattlefieldRect.minY + 16)
+    }
+
+    var playerDropZone: CGRect {
+        playerPlayAreaRect
+    }
+
+    var permanentCardWidth: CGFloat {
+        min(max(safeFrame.width / 7.1, 50), 66)
+    }
+
+    var permanentCardHeight: CGFloat {
+        permanentCardWidth * Self.magicCardHeightToWidth
+    }
+
+    var permanentRowHeight: CGFloat {
+        permanentCardHeight + 8
+    }
+
+    var permanentGroupHeight: CGFloat {
+        permanentRowHeight + 12
+    }
+
+    var landCardWidth: CGFloat {
+        min(max(safeFrame.width / 8.25, 44), 58)
+    }
+
+    var landCardHeight: CGFloat {
+        max(56, landCardWidth * Self.magicCardHeightToWidth)
+    }
+
+    var handCardWidth: CGFloat {
+        min(max(safeFrame.width / 6.2, 64), 78)
+    }
+
+    var handCardHeight: CGFloat {
+        handCardWidth * Self.magicCardHeightToWidth
+    }
+}
+
 struct BattlefieldLane {
     let name: String
     let frame: CGRect
@@ -2583,11 +3366,23 @@ enum MagicPalette {
     static let laneWood = Color(red: 0.22, green: 0.13, blue: 0.07)
 }
 
+enum MagicMobileAssetName {
+    static let boardBackground = "mage-mobile-board-background"
+    static let menuBackground = "mage-mobile-menu-background"
+    static let portraitBoardBackground = "mage-mobile-board-background-portrait"
+    static let portraitMenuBackground = "mage-mobile-menu-background-portrait"
+}
+
 struct BattlefieldSurface: View {
+    var portraitModeEnabled = false
+
     var body: some View {
         GeometryReader { proxy in
+            let imageName = GameOrientationMode.isPortraitLayout(size: proxy.size, portraitEnabled: portraitModeEnabled)
+                ? MagicMobileAssetName.portraitBoardBackground
+                : MagicMobileAssetName.boardBackground
             ZStack {
-                Image("mage-mobile-board-background")
+                Image(imageName)
                     .resizable()
                     .scaledToFill()
                     .frame(width: proxy.size.width, height: proxy.size.height)
@@ -2621,10 +3416,15 @@ struct BattlefieldSurface: View {
 }
 
 struct MenuBackgroundSurface: View {
+    var portraitModeEnabled = false
+
     var body: some View {
         GeometryReader { proxy in
+            let imageName = GameOrientationMode.isPortraitLayout(size: proxy.size, portraitEnabled: portraitModeEnabled)
+                ? MagicMobileAssetName.portraitMenuBackground
+                : MagicMobileAssetName.menuBackground
             ZStack {
-                Image("mage-mobile-menu-background")
+                Image(imageName)
                     .resizable()
                     .scaledToFill()
                     .frame(width: proxy.size.width, height: proxy.size.height)
@@ -2654,19 +3454,37 @@ struct MenuBackgroundSurface: View {
 
 struct AIWaitFallbackControls: View {
     let snapshot: GameSnapshot
+    let pendingActionId: String?
+    let liveUpdateStatus: String
     let beganAt: Date
+    let didRefresh: Bool
+    let didReconnect: Bool
     let refreshAction: () -> Void
     let reconnectAction: () -> Void
 
     var body: some View {
         TimelineView(.periodic(from: beganAt, by: 1)) { context in
+            let elapsed = context.date.timeIntervalSince(beganAt)
+            let wait = XmageWaitPresentation.make(
+                snapshot: snapshot,
+                pendingActionId: pendingActionId,
+                liveUpdateStatus: liveUpdateStatus,
+                elapsedSeconds: elapsed,
+                didRefresh: didRefresh,
+                didReconnect: didReconnect
+            )
             VStack(spacing: 7) {
-                Text(snapshot.isStalled ? "XMAGE STALLED" : "AI THINKING")
+                Text(wait.title.uppercased())
                     .font(.system(size: 8, weight: .black))
-                    .foregroundStyle(snapshot.isStalled ? MagicPalette.warningAmber : MagicPalette.arcaneBlue)
-                Text("\(Int(context.date.timeIntervalSince(beganAt)))s")
+                    .foregroundStyle(wait.kind == .snapshotStale || wait.kind == .manualReconnectAvailable ? MagicPalette.warningAmber : MagicPalette.arcaneBlue)
+                Text("\(Int(elapsed))s")
                     .font(.system(size: 18, weight: .black, design: .serif))
                     .foregroundStyle(.white)
+                Text(wait.detail)
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.62))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
                 Button("REFRESH", action: refreshAction)
                     .buttonStyle(CompactActionButtonStyle(isPrimary: true))
                 Button("RECONNECT", action: reconnectAction)
@@ -2674,7 +3492,7 @@ struct AIWaitFallbackControls: View {
             }
             .padding(8)
             .background(MagicPalette.iron.opacity(0.86), in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke((snapshot.isStalled ? MagicPalette.warningAmber : MagicPalette.arcaneBlue).opacity(0.46), lineWidth: 1.2))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke((wait.kind == .snapshotStale || wait.kind == .manualReconnectAvailable ? MagicPalette.warningAmber : MagicPalette.arcaneBlue).opacity(0.46), lineWidth: 1.2))
             .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
         }
     }
@@ -3109,19 +3927,7 @@ struct GameDiagnosticsBadge: View {
     }
 
     private var waitState: String {
-        if snapshot.pendingStatus == "stalled" || snapshot.engineHealth?.status == "stalled" {
-            return "XMage stalled"
-        }
-        if snapshot.pendingStatus == "waiting_for_xmage" {
-            return "Waiting for XMage"
-        }
-        if snapshot.priorityPlayerId == "human" || snapshot.waitingOnPlayerId == "human" || !CompactPromptPopup.compactLegalPromptActions(in: snapshot).isEmpty {
-            return "Your priority"
-        }
-        if snapshot.priorityPlayerId != nil || snapshot.waitingOnPlayerId != nil {
-            return "AI thinking"
-        }
-        return "Waiting for XMage"
+        XmageWaitPresentation.make(snapshot: snapshot, pendingActionId: nil, liveUpdateStatus: liveUpdateStatus).title
     }
 
     var body: some View {
@@ -3156,6 +3962,46 @@ struct GameDiagnosticsBadge: View {
         .padding(.vertical, 6)
         .background(MagicPalette.iron.opacity(0.62), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.borderBronze.opacity(0.38), lineWidth: 1))
+    }
+}
+
+private struct GameLogMessageRow: View {
+    let message: String
+
+    var body: some View {
+        Text(message)
+            .font(.system(size: 7.5, weight: .bold))
+            .foregroundStyle(MagicPalette.parchment.opacity(0.72))
+            .lineLimit(2)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct ActionRejectionInlineView: View {
+    let notice: ActionRejectionNotice
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: notice.category == .staleSnapshot ? "arrow.clockwise.circle.fill" : "exclamationmark.triangle.fill")
+                .font(.system(size: 9, weight: .black))
+            Text(notice.message.uppercased())
+                .font(.system(size: 8, weight: .black))
+                .lineLimit(1)
+                .minimumScaleFactor(0.68)
+            Spacer(minLength: 2)
+            if let bridgeRevision = notice.bridgeRevision {
+                Text("REV \(bridgeRevision)")
+                    .font(.system(size: 7, weight: .black))
+                    .foregroundStyle(.white.opacity(0.62))
+            }
+        }
+        .foregroundStyle(MagicPalette.warningAmber)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(MagicPalette.iron.opacity(0.82), in: Capsule())
+        .overlay(Capsule().stroke(MagicPalette.warningAmber.opacity(0.42), lineWidth: 1))
     }
 }
 
@@ -3597,12 +4443,12 @@ private struct PromptGuidance {
             isUrgent = true
         } else if CombatSelectionState.isDeclareAttackers(snapshot) {
             label = combatSelection.selectedAttackerIds.isEmpty ? "SELECT ATTACKERS" : "SELECT DEFENDER"
-            message = combatSelection.selectedAttackerIds.isEmpty ? "Choose attackers" : "Choose defender"
+            message = combatSelection.selectedAttackerIds.isEmpty ? "Choose attackers" : "Choose who to attack"
             color = MagicPalette.oxblood
             isUrgent = true
         } else if CombatSelectionState.isDeclareBlockers(snapshot) {
-            label = "SELECT BLOCKERS"
-            message = "Choose blockers"
+            label = combatSelection.selectedBlockerId == nil ? "SELECT BLOCKERS" : "SELECT ATTACKER"
+            message = combatSelection.selectedBlockerId == nil ? "Choose blockers" : "Choose attacker to block"
             color = MagicPalette.warningAmber
             isUrgent = true
         } else if isWaitingOnHuman {
@@ -3797,13 +4643,17 @@ struct UniversalPromptActionPanel: View {
         }
     }
 
+    private var promptPresentation: MobilePromptPresentation? {
+        MobilePromptPresentation.make(snapshot: snapshot, legalActions: snapshot.legalActions ?? [])
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 6) {
                 Image(systemName: "wand.and.stars")
                     .font(.system(size: 11, weight: .black))
                     .foregroundStyle(MagicPalette.antiqueGold)
-                Text("PROMPT")
+                Text(promptPresentation?.title.uppercased() ?? "PROMPT")
                     .font(.system(size: 10, weight: .black))
                     .foregroundStyle(MagicPalette.antiqueGold)
                 Spacer(minLength: 4)
@@ -3816,6 +4666,16 @@ struct UniversalPromptActionPanel: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
+                    if let promptPresentation {
+                        PromptPanelSection(title: promptPresentation.kind.rawValue.replacingOccurrences(of: "_", with: " ").uppercased(), detail: promptPresentation.requiresDetail ? "DETAIL" : "COMPACT", isHighlighted: promptPresentation.isUnsupported) {
+                            Text(promptPresentation.message)
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(promptPresentation.isUnsupported ? MagicPalette.warningAmber : .white.opacity(0.78))
+                                .lineLimit(3)
+                                .minimumScaleFactor(0.72)
+                        }
+                    }
+
                     if let prompt = snapshot.promptEnvelopeV2 {
                         promptEnvelopeV2Section(prompt)
                     } else if let prompt = snapshot.promptEnvelope {
@@ -5341,6 +6201,9 @@ struct CompactPromptPopup: View {
     private var compactPromptActions: [LegalAction] {
         Self.compactLegalPromptActions(in: snapshot)
     }
+    private var presentation: MobilePromptPresentation? {
+        MobilePromptPresentation.make(snapshot: snapshot, legalActions: legalActions)
+    }
     private var paymentPrompt: PromptEnvelopeV2? {
         if let prompt = promptV2, Self.isManaPaymentPrompt(prompt) {
             return prompt
@@ -5415,7 +6278,8 @@ struct CompactPromptPopup: View {
         }
 
         if let prompt = snapshot.promptEnvelopeV2 {
-            if isManaPaymentPrompt(prompt) {
+            let presentation = MobilePromptPresentation.make(snapshot: snapshot, legalActions: snapshot.legalActions ?? [])
+            if presentation?.kind == .payment || isManaPaymentPrompt(prompt) {
                 return false
             }
             if isPassivePriorityPrompt(prompt, snapshot: snapshot) {
@@ -5424,7 +6288,7 @@ struct CompactPromptPopup: View {
             if !compactLegalPromptActions(in: snapshot).isEmpty {
                 return true
             }
-            if needsDetails(snapshot) {
+            if presentation?.requiresDetail == true || needsDetails(snapshot) {
                 return true
             }
             if prompt.confirmation != nil || isCommanderReplacementPrompt(prompt) {
@@ -5512,6 +6376,12 @@ struct CompactPromptPopup: View {
     }
 
     static func needsDetails(_ snapshot: GameSnapshot) -> Bool {
+        if !compactLegalPromptActions(in: snapshot).isEmpty {
+            return false
+        }
+        if let presentation = MobilePromptPresentation.make(snapshot: snapshot, legalActions: snapshot.legalActions ?? []) {
+            return presentation.requiresDetail
+        }
         guard let prompt = snapshot.promptEnvelopeV2 else { return false }
         if prompt.cards?.isEmpty == false || prompt.targets?.isEmpty == false || prompt.players?.isEmpty == false { return true }
         if prompt.piles?.isEmpty == false || prompt.abilities?.isEmpty == false || prompt.modes?.isEmpty == false { return true }
@@ -5560,6 +6430,9 @@ struct CompactPromptPopup: View {
     }
 
     private var isManaPayment: Bool {
+        if presentation?.kind == .payment {
+            return true
+        }
         if let prompt = promptV2 {
             return Self.isManaPaymentPrompt(prompt)
         }
@@ -5578,7 +6451,8 @@ struct CompactPromptPopup: View {
     }
 
     private var messageText: String {
-        promptV2?.message
+        presentation?.message
+            ?? promptV2?.message
             ?? snapshot.choicePrompt?.message
             ?? snapshot.promptEnvelope?.message
             ?? snapshot.promptText
@@ -5680,7 +6554,7 @@ struct CompactPromptPopup: View {
     private func compactActionButtons(_ actions: [LegalAction]) -> some View {
         HStack(spacing: 7) {
             ForEach(actions.prefix(3)) { action in
-                let title = action.shortLabel ?? compactActionLabel(action)
+                let title = compactActionLabel(action)
                 Button {
                     runAction(action)
                 } label: {
@@ -5812,7 +6686,7 @@ struct CompactPromptPopup: View {
         case "mulligan":
             return "Mulligan"
         default:
-            return action.label
+            return action.compactPromptTitle
         }
     }
 
@@ -5964,16 +6838,7 @@ struct ManaPaymentTray: View {
                         .foregroundStyle(MagicPalette.parchment.opacity(0.72))
                     ForEach(choices.prefix(6)) { choice in
                         let symbol = choice.manaType ?? choice.id
-                        Button {
-                            if let command = command(type: prompt.responseCommand?.type ?? "play_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [symbol], manaType: symbol) {
-                                runCommand(command, choice.label, "\(prompt.id)-mana-choice-\(choice.id)")
-                            }
-                        } label: {
-                            ManaSymbolView(symbol: symbol, size: 24)
-                                .opacity(canPay(symbol) ? 1 : 0.42)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(pendingActionId != nil || !canPay(symbol) || command(type: prompt.responseCommand?.type ?? "play_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [symbol], manaType: symbol) == nil)
+                        paymentManaButton(symbol: symbol, label: choice.label, pendingId: "\(prompt.id)-mana-choice-\(choice.id)", size: 24)
                     }
                 }
             }
@@ -5985,7 +6850,7 @@ struct ManaPaymentTray: View {
                         Button {
                             runAction(action)
                         } label: {
-                            PromptButtonLabel(title: action.shortLabel ?? "Undo Mana", systemImage: "arrow.uturn.backward", isPending: pendingActionId == action.id)
+                            PromptButtonLabel(title: Self.paymentCancelTitle(for: action), systemImage: "arrow.uturn.backward", isPending: pendingActionId == action.id)
                         }
                         .buttonStyle(PanelActionButtonStyle(compact: true))
                         .disabled(pendingActionId != nil)
@@ -6013,16 +6878,7 @@ struct ManaPaymentTray: View {
             if let choices = prompt.manaChoices, !choices.isEmpty {
                 ForEach(choices.prefix(6)) { choice in
                     let symbol = choice.manaType ?? choice.id
-                    Button {
-                        if let command = command(type: prompt.responseCommand?.type ?? "play_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [symbol], manaType: symbol) {
-                            runCommand(command, choice.label, "\(prompt.id)-mana-choice-\(choice.id)")
-                        }
-                    } label: {
-                        ManaSymbolView(symbol: symbol, size: 22)
-                            .opacity(canPay(symbol) ? 1 : 0.42)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(pendingActionId != nil || !canPay(symbol) || command(type: prompt.responseCommand?.type ?? "play_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [symbol], manaType: symbol) == nil)
+                    paymentManaButton(symbol: symbol, label: choice.label, pendingId: "\(prompt.id)-mana-choice-\(choice.id)", size: 22)
                 }
             } else {
                 Text(hasBattlefieldManaSources ? "Tap lands" : "Waiting for mana options")
@@ -6061,7 +6917,12 @@ struct ManaPaymentTray: View {
                 }
                 ForEach(Array(pips.orderedColors.enumerated()), id: \.offset) { entry in
                     ForEach(0..<entry.element.count, id: \.self) { _ in
-                        ManaSymbolView(symbol: entry.element.symbol, size: 18)
+                        paymentManaButton(
+                            symbol: entry.element.symbol,
+                            label: "Pay {\(entry.element.symbol)}",
+                            pendingId: "\(prompt.id)-pip-\(entry.element.symbol)-\(entry.offset)",
+                            size: 18
+                        )
                     }
                 }
             }
@@ -6080,6 +6941,23 @@ struct ManaPaymentTray: View {
             .filter { undoTypes.contains($0.type) }
     }
 
+    static func paymentCancelTitle(for action: LegalAction) -> String {
+        switch action.type {
+        case "cancel_payment", "cancel_mana_payment":
+            return "Cancel cast"
+        case "undo_mana":
+            return "Undo mana"
+        default:
+            return action.shortLabel ?? action.displayLabel
+        }
+    }
+
+    static func payableManaChoiceSymbols(in snapshot: GameSnapshot, prompt: PromptEnvelopeV2) -> [String] {
+        (prompt.manaChoices ?? [])
+            .map { $0.manaType ?? $0.id }
+            .filter { canPay(symbol: $0, in: snapshot) }
+    }
+
     static func manaUndoUnavailableText(in snapshot: GameSnapshot) -> String? {
         guard hasFloatingMana(in: snapshot), manaUndoActions(in: snapshot).isEmpty else {
             return nil
@@ -6090,6 +6968,24 @@ struct ManaPaymentTray: View {
     private static func hasFloatingMana(in snapshot: GameSnapshot) -> Bool {
         guard let pool = snapshot.human?.manaPool else { return false }
         return pool.W + pool.U + pool.B + pool.R + pool.G + pool.C > 0
+    }
+
+    static func canPay(symbol: String, in snapshot: GameSnapshot) -> Bool {
+        if manaPoolValue(symbol, in: snapshot) > 0 { return true }
+        return symbol == "C" && ["W", "U", "B", "R", "G", "C"].contains { manaPoolValue($0, in: snapshot) > 0 }
+    }
+
+    private static func manaPoolValue(_ symbol: String, in snapshot: GameSnapshot) -> Int {
+        let pool = snapshot.human?.manaPool
+        switch symbol {
+        case "W": return pool?.W ?? 0
+        case "U": return pool?.U ?? 0
+        case "B": return pool?.B ?? 0
+        case "R": return pool?.R ?? 0
+        case "G": return pool?.G ?? 0
+        case "C": return pool?.C ?? 0
+        default: return 0
+        }
     }
 
     private var requiredManaText: String {
@@ -6125,22 +7021,26 @@ struct ManaPaymentTray: View {
         )
     }
 
-    private func canPay(_ symbol: String) -> Bool {
-        if manaPoolValue(symbol) > 0 { return true }
-        return symbol == "C" && ["W", "U", "B", "R", "G", "C"].contains { manaPoolValue($0) > 0 }
+    private func paymentManaButton(symbol: String, label: String, pendingId: String, size: CGFloat) -> some View {
+        Button {
+            if let command = command(type: prompt.responseCommand?.type ?? "play_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [symbol], manaType: symbol) {
+                runCommand(command, label, pendingId)
+            }
+        } label: {
+            ManaSymbolView(symbol: symbol, size: size)
+                .opacity(canPay(symbol) && promptExposesManaChoice(symbol) ? 1 : 0.42)
+        }
+        .buttonStyle(.plain)
+        .disabled(pendingActionId != nil || !canPay(symbol) || !promptExposesManaChoice(symbol) || command(type: prompt.responseCommand?.type ?? "play_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [symbol], manaType: symbol) == nil)
     }
 
-    private func manaPoolValue(_ symbol: String) -> Int {
-        let pool = snapshot.human?.manaPool
-        switch symbol {
-        case "W": return pool?.W ?? 0
-        case "U": return pool?.U ?? 0
-        case "B": return pool?.B ?? 0
-        case "R": return pool?.R ?? 0
-        case "G": return pool?.G ?? 0
-        case "C": return pool?.C ?? 0
-        default: return 0
-        }
+    private func canPay(_ symbol: String) -> Bool {
+        Self.canPay(symbol: symbol, in: snapshot)
+    }
+
+    private func promptExposesManaChoice(_ symbol: String) -> Bool {
+        guard let choices = prompt.manaChoices, !choices.isEmpty else { return false }
+        return choices.contains { ($0.manaType ?? $0.id) == symbol }
     }
 
 }
@@ -6187,8 +7087,18 @@ struct CombatHighlightSet {
         if let blocker = selection.selectedBlockerId {
             cards.insert(blocker)
         }
+        let defenders = selection.defenderHighlightIds(actions: actions)
+        cards.formUnion(defenders)
         self.cardIds = cards
-        self.defenderIds = selection.defenderHighlightIds(actions: actions)
+        self.defenderIds = defenders
+    }
+
+    func matches(card: ZoneCard) -> Bool {
+        CombatSelectionState.matchingCardId(for: card, in: cardIds) != nil
+    }
+
+    func matches(id: String) -> Bool {
+        cardIds.contains(id) || defenderIds.contains(id)
     }
 }
 
@@ -6199,6 +7109,17 @@ struct CombatSelectionState: Equatable {
 
     var hasPendingBlockers: Bool { !blockerPairs.isEmpty }
     var blockerPairCount: Int { blockerPairs.count }
+    var selectedAttackerId: String? { selectedAttackerIds.count == 1 ? selectedAttackerIds.first : nil }
+
+    static func matchingCardId(for card: ZoneCard, in ids: Set<String>) -> String? {
+        if ids.contains(card.instanceId) {
+            return card.instanceId
+        }
+        if ids.contains(card.id) {
+            return card.id
+        }
+        return nil
+    }
 
     mutating func toggleAttacker(_ id: String) {
         if selectedAttackerIds.contains(id) {
@@ -6206,6 +7127,10 @@ struct CombatSelectionState: Equatable {
         } else {
             selectedAttackerIds.insert(id)
         }
+    }
+
+    mutating func selectAttacker(_ id: String) {
+        selectedAttackerIds = [id]
     }
 
     mutating func selectBlocker(_ id: String) {
@@ -6240,9 +7165,13 @@ struct CombatSelectionState: Equatable {
     }
 
     func attackerHighlightIds(actions: [LegalAction]) -> Set<String> {
-        Set(actions
+        var ids = Set(actions
             .filter { $0.type == "declare_attackers" }
             .flatMap { Self.attackers(in: $0).map(\.attackerId) })
+        ids.formUnion(actions
+            .filter { $0.type == "declare_attackers" }
+            .compactMap { $0.effectiveCardInstanceId ?? $0.effectiveSourceInstanceId })
+        return ids
     }
 
     func defenderHighlightIds(actions: [LegalAction]) -> Set<String> {
@@ -6258,10 +7187,37 @@ struct CombatSelectionState: Equatable {
             })
     }
 
-    func blockerHighlightIds(actions: [LegalAction]) -> Set<String> {
+    func defenderIds(forAttackerId attackerId: String, actions: [LegalAction]) -> Set<String> {
         Set(actions
+            .filter { $0.type == "declare_attackers" }
+            .flatMap { action -> [String] in
+                let attackerIds = Set(Self.attackers(in: action).map(\.attackerId))
+                let actionCardId = action.effectiveCardInstanceId ?? action.effectiveSourceInstanceId
+                guard attackerIds.contains(attackerId) || actionCardId == attackerId else { return [] }
+                var ids = Self.attackers(in: action).compactMap(\.defenderId)
+                ids.append(contentsOf: action.validTargetIds ?? [])
+                ids.append(contentsOf: action.validPlayerIds ?? [])
+                ids.append(contentsOf: action.playerIds ?? [])
+                ids.append(contentsOf: action.targetIds ?? [])
+                return ids
+            })
+    }
+
+    func defenderKind(forDefenderId defenderId: String, actions: [LegalAction]) -> String? {
+        actions.first { action in
+            action.type == "declare_attackers" &&
+                Self.attackers(in: action).contains { $0.defenderId == defenderId }
+        }?.defenderKind
+    }
+
+    func blockerHighlightIds(actions: [LegalAction]) -> Set<String> {
+        var ids = Set(actions
             .filter { $0.type == "declare_blockers" }
             .flatMap { Self.blockers(in: $0).map(\.blockerId) })
+        ids.formUnion(actions
+            .filter { $0.type == "declare_blockers" }
+            .compactMap { $0.effectiveCardInstanceId ?? $0.effectiveSourceInstanceId })
+        return ids
     }
 
     func attackingCreatureHighlightIds(actions: [LegalAction], combatGroups: [XmageCombatGroup]) -> Set<String> {
@@ -6269,6 +7225,20 @@ struct CombatSelectionState: Equatable {
             .filter { $0.type == "declare_blockers" }
             .flatMap { Self.blockers(in: $0).compactMap(\.attackerId) })
         ids.formUnion(combatGroups.flatMap { $0.attackers.map(\.instanceId) })
+        return ids
+    }
+
+    func attackingCreatureIds(forBlockerId blockerId: String, actions: [LegalAction], combatGroups: [XmageCombatGroup]) -> Set<String> {
+        var ids = Set(actions
+            .filter { $0.type == "declare_blockers" }
+            .flatMap { action in
+                Self.blockers(in: action)
+                    .filter { $0.blockerId == blockerId }
+                    .compactMap(\.attackerId)
+            })
+        if ids.isEmpty {
+            ids.formUnion(combatGroups.flatMap { $0.attackers.map(\.instanceId) })
+        }
         return ids
     }
 
@@ -6288,6 +7258,7 @@ struct CombatSelectionState: Equatable {
             gameId: gameId,
             playerId: playerId,
             attackers: selectedAttackerIds.sorted().map { AttackDeclaration(attackerId: $0, defenderId: defenderId) },
+            combatComplete: false,
             expectedBridgeRevision: expectedBridgeRevision
         )
     }
@@ -6299,16 +7270,49 @@ struct CombatSelectionState: Equatable {
             gameId: gameId,
             playerId: playerId,
             blockers: blockerPairs,
+            combatComplete: false,
+            expectedBridgeRevision: expectedBridgeRevision
+        )
+    }
+
+    static func finishAttackCommand(gameId: String, playerId: String, expectedBridgeRevision: Int?) -> GameCommand {
+        GameCommand(
+            type: "declare_attackers",
+            gameId: gameId,
+            playerId: playerId,
+            attackers: [],
+            combatComplete: true,
+            expectedBridgeRevision: expectedBridgeRevision
+        )
+    }
+
+    static func finishBlockCommand(gameId: String, playerId: String, expectedBridgeRevision: Int?) -> GameCommand {
+        GameCommand(
+            type: "declare_blockers",
+            gameId: gameId,
+            playerId: playerId,
+            blockers: [],
+            combatComplete: true,
             expectedBridgeRevision: expectedBridgeRevision
         )
     }
 
     static func isDeclareAttackers(_ snapshot: GameSnapshot) -> Bool {
-        snapshot.legalActions?.contains(where: { $0.type == "declare_attackers" }) == true
+        snapshot.legalActions?.contains(where: { $0.type == "declare_attackers" }) == true ||
+            (isHumanCombatDecision(snapshot) && normalizedCombatStep(snapshot).contains("declare-attack"))
     }
 
     static func isDeclareBlockers(_ snapshot: GameSnapshot) -> Bool {
-        snapshot.legalActions?.contains(where: { $0.type == "declare_blockers" }) == true
+        snapshot.legalActions?.contains(where: { $0.type == "declare_blockers" }) == true ||
+            (isHumanCombatDecision(snapshot) && normalizedCombatStep(snapshot).contains("declare-block"))
+    }
+
+    private static func isHumanCombatDecision(_ snapshot: GameSnapshot) -> Bool {
+        snapshot.waitingOnPlayerId == "human" || snapshot.priorityPlayerId == "human"
+    }
+
+    private static func normalizedCombatStep(_ snapshot: GameSnapshot) -> String {
+        "\(snapshot.step ?? "") \(snapshot.promptText ?? "")".lowercased()
     }
 
     private static func attackers(in action: LegalAction) -> [AttackDeclaration] {
@@ -6342,6 +7346,8 @@ enum CombatArrowKind: Equatable {
     case attack
     case blockedAttack
     case block
+    case previewAttack
+    case previewBlock
 }
 
 struct CombatArrow: Equatable {
@@ -6366,10 +7372,15 @@ enum CombatArrowModel {
             return attacks + blocks
         }
     }
+
+    static func arrows(from groups: [XmageCombatGroup], previewArrows: [CombatArrow]) -> [CombatArrow] {
+        arrows(from: groups) + previewArrows
+    }
 }
 
 struct CombatArrowOverlay: View {
     let groups: [XmageCombatGroup]
+    let previewArrows: [CombatArrow]
     let metrics: BattlefieldLayoutMetrics
     let humanBattlefield: [ZoneCard]
     let opponentBattlefield: [ZoneCard]
@@ -6377,7 +7388,7 @@ struct CombatArrowOverlay: View {
     var body: some View {
         let anchors = cardAnchors()
         Canvas { context, _ in
-            for arrow in CombatArrowModel.arrows(from: groups) {
+            for arrow in CombatArrowModel.arrows(from: groups, previewArrows: previewArrows) {
                 guard let start = anchors[arrow.fromId] else { continue }
                 let end = anchors[arrow.toId] ?? defenderAnchor(for: arrow.toId, kind: arrow.toKind)
                 drawArrow(arrow, from: start, to: end, in: &context)
@@ -6425,8 +7436,13 @@ struct CombatArrowOverlay: View {
             color = .gray
         case .block:
             color = MagicPalette.arcaneBlue
+        case .previewAttack:
+            color = MagicPalette.warningAmber
+        case .previewBlock:
+            color = MagicPalette.arcaneBlue
         }
-        context.stroke(path, with: .color(color.opacity(0.82)), style: StrokeStyle(lineWidth: 3.0, lineCap: .round))
+        let isPreview = arrow.kind == .previewAttack || arrow.kind == .previewBlock
+        context.stroke(path, with: .color(color.opacity(isPreview ? 0.48 : 0.82)), style: StrokeStyle(lineWidth: isPreview ? 2.0 : 3.0, lineCap: .round, dash: isPreview ? [6, 5] : []))
 
         let angle = atan2(end.y - start.y, end.x - start.x)
         let headLength: CGFloat = 9
@@ -6437,7 +7453,7 @@ struct CombatArrowOverlay: View {
         head.addLine(to: left)
         head.move(to: end)
         head.addLine(to: right)
-        context.stroke(head, with: .color(color.opacity(0.92)), style: StrokeStyle(lineWidth: 3.0, lineCap: .round))
+        context.stroke(head, with: .color(color.opacity(isPreview ? 0.56 : 0.92)), style: StrokeStyle(lineWidth: isPreview ? 2.0 : 3.0, lineCap: .round))
     }
 
     private func nonLandCards(_ cards: [ZoneCard]) -> [ZoneCard] {
@@ -6447,6 +7463,785 @@ struct CombatArrowOverlay: View {
     private func landCards(_ cards: [ZoneCard]) -> [ZoneCard] {
         cards.filter { $0.card.isLand }
     }
+}
+
+struct PortraitCombatArrowOverlay: View {
+    let groups: [XmageCombatGroup]
+    let previewArrows: [CombatArrow]
+    let metrics: PortraitBattlefieldLayoutMetrics
+    let humanBattlefield: [ZoneCard]
+    let opponentBattlefield: [ZoneCard]
+
+    var body: some View {
+        let anchors = PortraitCombatAnchorResolver.cardAnchors(
+            metrics: metrics,
+            humanBattlefield: humanBattlefield,
+            opponentBattlefield: opponentBattlefield
+        )
+        Canvas { context, _ in
+            for arrow in CombatArrowModel.arrows(from: groups, previewArrows: previewArrows) {
+                guard let start = anchors[arrow.fromId] else { continue }
+                let end = anchors[arrow.toId] ?? PortraitCombatAnchorResolver.defenderAnchor(for: arrow.toId, kind: arrow.toKind, metrics: metrics)
+                drawArrow(arrow, from: start, to: end, in: &context)
+            }
+        }
+    }
+
+    private func drawArrow(_ arrow: CombatArrow, from start: CGPoint, to end: CGPoint, in context: inout GraphicsContext) {
+        var path = Path()
+        path.move(to: start)
+        path.addLine(to: end)
+        let color: Color
+        switch arrow.kind {
+        case .attack:
+            color = MagicPalette.oxblood
+        case .blockedAttack:
+            color = .gray
+        case .block:
+            color = MagicPalette.arcaneBlue
+        case .previewAttack:
+            color = MagicPalette.warningAmber
+        case .previewBlock:
+            color = MagicPalette.arcaneBlue
+        }
+        let isPreview = arrow.kind == .previewAttack || arrow.kind == .previewBlock
+        context.stroke(path, with: .color(color.opacity(isPreview ? 0.48 : 0.82)), style: StrokeStyle(lineWidth: isPreview ? 2.0 : 3.0, lineCap: .round, dash: isPreview ? [6, 5] : []))
+
+        let angle = atan2(end.y - start.y, end.x - start.x)
+        let headLength: CGFloat = 9
+        let left = CGPoint(x: end.x - headLength * cos(angle - .pi / 6), y: end.y - headLength * sin(angle - .pi / 6))
+        let right = CGPoint(x: end.x - headLength * cos(angle + .pi / 6), y: end.y - headLength * sin(angle + .pi / 6))
+        var head = Path()
+        head.move(to: end)
+        head.addLine(to: left)
+        head.move(to: end)
+        head.addLine(to: right)
+        context.stroke(head, with: .color(color.opacity(isPreview ? 0.56 : 0.92)), style: StrokeStyle(lineWidth: isPreview ? 2.0 : 3.0, lineCap: .round))
+    }
+}
+
+enum PortraitCombatAnchorResolver {
+    static func cardAnchors(metrics: PortraitBattlefieldLayoutMetrics, humanBattlefield: [ZoneCard], opponentBattlefield: [ZoneCard]) -> [String: CGPoint] {
+        var anchors: [String: CGPoint] = [:]
+        addAnchors(for: opponentBattlefield.filter { !$0.card.isLand }, rect: metrics.opponentBattlefieldRect, cardWidth: metrics.permanentCardWidth, into: &anchors)
+        addAnchors(for: opponentBattlefield.filter { $0.card.isLand }, rect: metrics.opponentLandsRect, cardWidth: metrics.landCardWidth, into: &anchors)
+        addAnchors(for: humanBattlefield.filter { !$0.card.isLand }, rect: metrics.playerBattlefieldRect, cardWidth: metrics.permanentCardWidth, into: &anchors)
+        addAnchors(for: humanBattlefield.filter { $0.card.isLand }, rect: metrics.playerLandsRect, cardWidth: metrics.landCardWidth, into: &anchors)
+        return anchors
+    }
+
+    static func defenderAnchor(for defenderId: String, kind: String?, metrics: PortraitBattlefieldLayoutMetrics) -> CGPoint {
+        if kind?.localizedCaseInsensitiveContains("player") == true || defenderId.localizedCaseInsensitiveContains("human") || defenderId.localizedCaseInsensitiveContains("ai") {
+            let isHuman = defenderId.localizedCaseInsensitiveContains("human")
+            let rect = isHuman ? metrics.bottomHUDRect : metrics.topHUDRect
+            return CGPoint(x: rect.midX, y: rect.midY)
+        }
+        return CGPoint(x: metrics.opponentBattlefieldRect.midX, y: metrics.opponentBattlefieldRect.midY)
+    }
+
+    private static func addAnchors(for cards: [ZoneCard], rect: CGRect, cardWidth: CGFloat, into anchors: inout [String: CGPoint]) {
+        guard !cards.isEmpty else { return }
+        let spacing: CGFloat = 4
+        let totalWidth = CGFloat(cards.count) * cardWidth + CGFloat(max(cards.count - 1, 0)) * spacing
+        let startX = rect.midX - totalWidth / 2 + cardWidth / 2
+        for (index, card) in cards.enumerated() {
+            anchors[card.instanceId] = CGPoint(x: startX + CGFloat(index) * (cardWidth + spacing), y: rect.midY)
+        }
+    }
+}
+
+struct PortraitOpponentStatusBar: View {
+    let snapshot: GameSnapshot
+    let opponentName: String
+    let opponent: PlayerGameState
+    let humanId: String
+    let combatTargetable: Bool
+    let combatTargetAction: () -> Void
+    let openLog: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            OpponentVerticalHUD(
+                name: opponentName,
+                player: opponent,
+                active: snapshot.activePlayerId == opponent.playerId,
+                opponentId: humanId,
+                combatTargetable: combatTargetable,
+                combatTargetAction: combatTargetAction
+            )
+
+            HStack(spacing: 7) {
+                PhaseStatusTile(title: "PHASE", value: snapshot.phase.capitalized)
+                PhaseStatusTile(title: "PRIORITY", value: snapshot.priorityPlayerId == "human" ? "You" : "AI")
+            }
+
+            Button(action: openLog) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("GAME LOG")
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundStyle(MagicPalette.antiqueGold)
+                    Text(snapshot.log.suffix(4).map(\.message).joined(separator: "\n"))
+                        .font(.system(size: 9, weight: .bold, design: .serif))
+                        .foregroundStyle(MagicPalette.parchment)
+                        .lineLimit(6)
+                        .minimumScaleFactor(0.65)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(8)
+                .background(MagicPalette.iron.opacity(0.70), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.antiqueGold.opacity(0.28), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
+struct PhaseStatusTile: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 8, weight: .black))
+            Text(value)
+                .font(.system(size: 12, weight: .black, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.62)
+        }
+        .foregroundStyle(.black)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(width: 82, alignment: .leading)
+        .background(MagicPalette.antiqueGold, in: RoundedRectangle(cornerRadius: 8))
+        .shadow(color: .black.opacity(0.28), radius: 8, y: 4)
+    }
+}
+
+struct PortraitBattlefieldRowPlan: Equatable {
+    let rows: [[ZoneCard]]
+    let cardsPerRow: Int
+    let overflowsHorizontally: Bool
+}
+
+enum PortraitBattlefieldRowPlanner {
+    static func plan(cards: [ZoneCard], rowWidth: CGFloat, cardWidth: CGFloat, maxRows: Int = 3) -> PortraitBattlefieldRowPlan {
+        guard !cards.isEmpty else {
+            return PortraitBattlefieldRowPlan(rows: [[]], cardsPerRow: 1, overflowsHorizontally: false)
+        }
+        let visibleCards = Array(cards.prefix(10))
+        let rowCount: Int
+        if visibleCards.count <= 4 {
+            rowCount = 1
+        } else if visibleCards.count <= 7 {
+            rowCount = min(maxRows, 2)
+        } else {
+            rowCount = min(maxRows, 3)
+        }
+        let baseRowCount = max(rowCount, 1)
+        let baseSize = visibleCards.count / baseRowCount
+        let remainder = visibleCards.count % baseRowCount
+        var rows: [[ZoneCard]] = []
+        var index = 0
+        for rowIndex in 0..<baseRowCount {
+            let size = baseSize + (rowIndex < remainder ? 1 : 0)
+            guard size > 0 else { continue }
+            rows.append(Array(visibleCards[index..<(index + size)]))
+            index += size
+        }
+        if cards.count > 10, !rows.isEmpty {
+            rows[rows.count - 1].append(contentsOf: cards.dropFirst(10))
+        }
+        return PortraitBattlefieldRowPlan(
+            rows: rows,
+            cardsPerRow: rows.map(\.count).max() ?? 1,
+            overflowsHorizontally: cards.count > 10
+        )
+    }
+}
+
+struct PortraitOverlapLayoutPlan: Equatable {
+    let count: Int
+    let cardWidth: CGFloat
+    let containerWidth: CGFloat
+    let visibleLimit: Int
+    let stride: CGFloat
+    let contentWidth: CGFloat
+    let needsScrolling: Bool
+
+    func xOffset(for index: Int) -> CGFloat {
+        let effectiveIndex = CGFloat(max(index, 0))
+        let start = contentWidth > containerWidth ? 8 : max((containerWidth - visibleContentWidth) / 2, 0)
+        return start + effectiveIndex * stride
+    }
+
+    private var visibleContentWidth: CGFloat {
+        guard count > 0 else { return 0 }
+        let visibleCount = CGFloat(min(count, visibleLimit))
+        return cardWidth + max(visibleCount - 1, 0) * stride
+    }
+}
+
+enum PortraitOverlapLayout {
+    static func plan(
+        count: Int,
+        containerWidth: CGFloat,
+        cardWidth: CGFloat,
+        visibleLimit: Int = 10,
+        minVisibleWidth: CGFloat = 30,
+        spacing: CGFloat = 6
+    ) -> PortraitOverlapLayoutPlan {
+        guard count > 0 else {
+            return PortraitOverlapLayoutPlan(
+                count: 0,
+                cardWidth: cardWidth,
+                containerWidth: containerWidth,
+                visibleLimit: visibleLimit,
+                stride: cardWidth + spacing,
+                contentWidth: max(containerWidth, 0),
+                needsScrolling: false
+            )
+        }
+        let visibleCount = min(count, max(visibleLimit, 1))
+        let naturalStride = cardWidth + spacing
+        let fittingStride = visibleCount > 1 ? max((containerWidth - cardWidth) / CGFloat(visibleCount - 1), 1) : naturalStride
+        let stride = min(naturalStride, max(fittingStride, minVisibleWidth))
+        let visibleContentWidth = cardWidth + CGFloat(max(visibleCount - 1, 0)) * stride
+        let needsScrolling = count > visibleLimit || visibleContentWidth > containerWidth
+        let contentWidth = needsScrolling && count > visibleLimit
+            ? cardWidth + CGFloat(max(count - 1, 0)) * stride
+            : min(max(visibleContentWidth, cardWidth), max(containerWidth, cardWidth))
+        return PortraitOverlapLayoutPlan(
+            count: count,
+            cardWidth: cardWidth,
+            containerWidth: containerWidth,
+            visibleLimit: visibleLimit,
+            stride: stride,
+            contentWidth: contentWidth,
+            needsScrolling: needsScrolling
+        )
+    }
+}
+
+struct PortraitBattlefieldPermanentGroup: View {
+    let title: String
+    let cards: [ZoneCard]
+    let legalActions: [LegalAction]
+    let targetableIds: Set<String>
+    let combatHighlightIds: Set<String>
+    @Binding var selectedCard: ZoneCard?
+    @Binding var inspectedCard: ZoneCard?
+    var flipped = false
+    let cardWidth: CGFloat
+    let cardHeight: CGFloat
+    let rowWidth: CGFloat
+    let maxRows: Int
+    var allowsManaUndo = false
+    var manaPaymentActive = false
+    let runAction: (LegalAction) -> Void
+    let runTargetAction: (ZoneCard) -> Void
+    let runCombatCardAction: (ZoneCard) -> Bool
+
+    var body: some View {
+        let plan = PortraitBattlefieldRowPlanner.plan(cards: cards, rowWidth: rowWidth, cardWidth: cardWidth, maxRows: maxRows)
+        ZStack(alignment: .bottom) {
+            ScrollView(.vertical, showsIndicators: plan.rows.count > 1) {
+                VStack(spacing: 4) {
+                    ForEach(Array(plan.rows.enumerated()), id: \.offset) { rowIndex, rowCards in
+                        PortraitOverlappingBattlefieldRow(
+                            title: "\(title) row \(rowIndex + 1)",
+                            cards: rowCards,
+                            legalActions: legalActions,
+                            targetableIds: targetableIds,
+                            combatHighlightIds: combatHighlightIds,
+                            selectedCard: $selectedCard,
+                            inspectedCard: $inspectedCard,
+                            flipped: flipped,
+                            cardWidth: cardWidth,
+                            cardHeight: cardHeight,
+                            rowWidth: rowWidth,
+                            allowsManaUndo: allowsManaUndo,
+                            manaPaymentActive: manaPaymentActive,
+                            runAction: runAction,
+                            runTargetAction: runTargetAction,
+                            runCombatCardAction: runCombatCardAction
+                        )
+                        .frame(width: rowWidth, height: cardHeight + 8)
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: cardHeight + 8, alignment: flipped ? .top : .bottom)
+                .padding(.vertical, 2)
+            }
+
+            if plan.overflowsHorizontally {
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.left.and.right")
+                        .font(.system(size: 7, weight: .black))
+                    Text("Scroll rows")
+                        .font(.system(size: 7, weight: .black))
+                }
+                .foregroundStyle(MagicPalette.parchment.opacity(0.82))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(MagicPalette.iron.opacity(0.66), in: Capsule())
+                .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.28), lineWidth: 0.8))
+                .padding(.bottom, 2)
+                .allowsHitTesting(false)
+            }
+        }
+    }
+}
+
+struct PortraitOverlappingBattlefieldRow: View {
+    let title: String
+    let cards: [ZoneCard]
+    let legalActions: [LegalAction]
+    let targetableIds: Set<String>
+    let combatHighlightIds: Set<String>
+    @Binding var selectedCard: ZoneCard?
+    @Binding var inspectedCard: ZoneCard?
+    var flipped = false
+    let cardWidth: CGFloat
+    let cardHeight: CGFloat
+    let rowWidth: CGFloat
+    var allowsManaUndo = false
+    var manaPaymentActive = false
+    let runAction: (LegalAction) -> Void
+    let runTargetAction: (ZoneCard) -> Void
+    let runCombatCardAction: (ZoneCard) -> Bool
+
+    var body: some View {
+        let plan = PortraitOverlapLayout.plan(
+            count: cards.count,
+            containerWidth: rowWidth,
+            cardWidth: cardWidth,
+            visibleLimit: 10,
+            minVisibleWidth: 28,
+            spacing: 4
+        )
+        ZStack(alignment: .topLeading) {
+            ScrollView(.horizontal, showsIndicators: plan.needsScrolling) {
+                ZStack(alignment: .topLeading) {
+                    ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
+                        let action = legalAction(for: card)
+                        let targetable = targetableIds.contains(card.instanceId) || targetableIds.contains(card.id)
+                        let combatHighlighted = combatHighlightIds.contains(card.instanceId) || combatHighlightIds.contains(card.id)
+                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: action != nil, targetable: targetable || combatHighlighted, zoneName: title, width: cardWidth, height: cardHeight)
+                            .offset(x: plan.xOffset(for: index), y: card.tapped == true ? 5 : 0)
+                            .zIndex(zIndex(for: index, card: card))
+                            .onTapGesture {
+                                if targetable {
+                                    runTargetAction(card)
+                                } else if combatHighlighted, runCombatCardAction(card) {
+                                    return
+                                } else if let action, Self.tapRunnableActionTypes.contains(action.type) {
+                                    runAction(action)
+                                } else {
+                                    selectedCard = card
+                                    inspectedCard = nil
+                                }
+                            }
+                            .onLongPressGesture(minimumDuration: 0.35) { inspectedCard = card }
+                    }
+                }
+                .frame(width: max(plan.contentWidth, rowWidth), height: max(cardHeight + 8, 44), alignment: .topLeading)
+            }
+
+            if plan.needsScrolling {
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.left.and.right")
+                        .font(.system(size: 7, weight: .black))
+                    Text("Scroll")
+                        .font(.system(size: 7, weight: .black))
+                }
+                .foregroundStyle(MagicPalette.parchment.opacity(0.82))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(MagicPalette.iron.opacity(0.62), in: Capsule())
+                .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.28), lineWidth: 0.8))
+                .padding(.leading, 7)
+                .padding(.top, 3)
+                .allowsHitTesting(false)
+            }
+        }
+    }
+
+    private func zIndex(for index: Int, card: ZoneCard) -> Double {
+        if inspectedCard?.id == card.id || selectedCard?.id == card.id {
+            return 1000
+        }
+        return flipped ? Double(cards.count - index) : Double(index)
+    }
+
+    private func legalAction(for card: ZoneCard) -> LegalAction? {
+        if allowsManaUndo, manaPaymentActive, card.tapped == true, let undo = manaUndoAction {
+            return undo
+        }
+        return legalActions.first {
+            $0.cardInstanceId == card.instanceId || $0.sourceInstanceId == card.instanceId
+        }
+    }
+
+    private var manaUndoAction: LegalAction? {
+        legalActions.first { Self.manaUndoActionTypes.contains($0.type) }
+    }
+
+    private static let tapRunnableActionTypes: Set<String> = [
+        "activate_ability", "make_mana", "pay_mana", "undo_mana", "play_land"
+    ]
+    private static let manaUndoActionTypes: Set<String> = ["undo_mana", "undo_payment", "cancel_payment"]
+}
+
+struct PortraitScrollScrubber: View {
+    let progress: CGFloat
+    let visible: Bool
+    let drag: (CGFloat) -> Void
+
+    var body: some View {
+        GeometryReader { proxy in
+            let trackWidth = max(proxy.size.width, 1)
+            let thumbWidth = min(max(trackWidth * 0.22, 34), 72)
+            let travel = max(trackWidth - thumbWidth, 1)
+            Capsule()
+                .fill(.white.opacity(visible ? 0.14 : 0.0))
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(MagicPalette.antiqueGold.opacity(visible ? 0.78 : 0.0))
+                        .frame(width: thumbWidth)
+                        .offset(x: travel * min(max(progress, 0), 1))
+                }
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            guard visible else { return }
+                            drag(min(max(value.location.x / trackWidth, 0), 1))
+                        }
+                )
+        }
+        .frame(height: 8)
+        .opacity(visible ? 1 : 0)
+        .allowsHitTesting(visible)
+    }
+}
+
+struct PortraitHandRow: View {
+    let cards: [ZoneCard]
+    let legalActions: [LegalAction]
+    @Binding var selectedCard: ZoneCard?
+    @Binding var inspectedCard: ZoneCard?
+    let pendingCardInstanceId: String?
+    @Binding var interactionState: GameBoardInteractionState
+    let playerDropZone: CGRect
+    @Binding var isOverPlayerDropZone: Bool
+    let cardWidth: CGFloat
+    let cardHeight: CGFloat
+    let rowWidth: CGFloat
+    let onDropFeedback: (String) -> Void
+    let onActionChoice: ([LegalAction], String) -> Void
+    let runAction: (LegalAction) -> Void
+    @State private var draggingCardId: String?
+    @State private var dragOffset: CGSize = .zero
+    @State private var scrollProgress: CGFloat = 0
+
+    var body: some View {
+        ScrollViewReader { scrollProxy in
+            let plan = PortraitOverlapLayout.plan(
+                count: cards.count,
+                containerWidth: rowWidth,
+                cardWidth: cardWidth,
+                visibleLimit: 10,
+                minVisibleWidth: 34,
+                spacing: 6
+            )
+            VStack(spacing: 4) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    ZStack(alignment: .bottomLeading) {
+                        ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
+                            let playableActions = GameBoardInteractionState.legalPlayActions(for: card, actions: legalActions)
+                            let selected = selectedCard?.id == card.id
+                            let isDragging = draggingCardId == card.id
+                            CardTile(
+                                card: card,
+                                selected: selected,
+                                pending: pendingCardInstanceId == card.instanceId,
+                                legal: !playableActions.isEmpty,
+                                zoneName: "Hand",
+                                width: cardWidth,
+                                height: cardHeight
+                            )
+                            .id(card.id)
+                            .scaleEffect(selected ? 1.05 : 1.0)
+                            .offset(
+                                x: plan.xOffset(for: index) + (isDragging ? dragOffset.width : 0),
+                                y: (selected ? -10 : 0) + (isDragging ? dragOffset.height : 0)
+                            )
+                            .zIndex(isDragging ? 1000 : selected ? 900 : Double(index))
+                            .onTapGesture {
+                                if selected, playableActions.count == 1, let action = playableActions.first {
+                                    runAction(action)
+                                } else if selected, playableActions.count > 1 {
+                                    onActionChoice(playableActions, "Choose how to play \(card.card.name)")
+                                } else {
+                                    selectedCard = card
+                                    inspectedCard = nil
+                                }
+                            }
+                            .onLongPressGesture(minimumDuration: 0.35) {
+                                inspectedCard = card
+                            }
+                            .gesture(
+                                DragGesture(minimumDistance: 4, coordinateSpace: .named("portrait-board"))
+                                    .onChanged { value in
+                                        selectedCard = card
+                                        inspectedCard = nil
+                                        draggingCardId = card.id
+                                        dragOffset = value.translation
+                                        isOverPlayerDropZone = playerDropZone.contains(value.location)
+                                        interactionState.mode = .draggingCard(
+                                            cardId: card.instanceId,
+                                            legalActionIds: playableActions.map(\.id)
+                                        )
+                                    }
+                                    .onEnded { value in
+                                        selectedCard = card
+                                        let shouldPlay = playerDropZone.contains(value.location)
+                                        draggingCardId = nil
+                                        dragOffset = .zero
+                                        isOverPlayerDropZone = false
+                                        guard shouldPlay else {
+                                            interactionState.mode = .selectedCard(cardId: card.instanceId)
+                                            return
+                                        }
+                                        switch DragCastDropResolver.resolve(card: card, legalActions: legalActions, droppedInPlayArea: shouldPlay) {
+                                        case .ignored:
+                                            interactionState.mode = .selectedCard(cardId: card.instanceId)
+                                        case let .rejected(message):
+                                            onDropFeedback(message)
+                                            interactionState.mode = .selectedCard(cardId: card.instanceId)
+                                        case let .requiresChoice(actions, message):
+                                            onDropFeedback(message)
+                                            onActionChoice(actions, message)
+                                            interactionState.mode = .selectedCard(cardId: card.instanceId)
+                                        case let .submit(action):
+                                            interactionState.mode = .awaitingCastSnapshot(actionId: action.id)
+                                            runAction(action)
+                                        }
+                                    }
+                            )
+                        }
+                    }
+                    .frame(width: max(plan.contentWidth, cardWidth), height: cardHeight + 18, alignment: .bottomLeading)
+                    .padding(.horizontal, 0)
+                }
+
+                PortraitScrollScrubber(progress: scrollProgress, visible: plan.needsScrolling) { progress in
+                    scrollProgress = progress
+                    guard !cards.isEmpty else { return }
+                    let index = min(max(Int(round(progress * CGFloat(max(cards.count - 1, 0)))), 0), max(cards.count - 1, 0))
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        scrollProxy.scrollTo(cards[index].id, anchor: .center)
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct PortraitBottomCommandBar: View {
+    let humanName: String
+    let human: PlayerGameState
+    let opponentId: String
+    let manaPool: ManaPool?
+    let passAction: LegalAction?
+    let skipAction: LegalAction?
+    let snapshot: GameSnapshot
+    @Binding var selectedCard: ZoneCard?
+    @Binding var inspectedCard: ZoneCard?
+    let openSettings: () -> Void
+    let viewZone: (String, [ZoneCard]) -> Void
+    let runAction: (LegalAction) -> Void
+
+    var body: some View {
+        GeometryReader { proxy in
+            let stackWidth = min(max(proxy.size.width * 0.28, 108), 126)
+            let hudWidth = min(max(proxy.size.width * 0.34, 132), 146)
+            HStack(alignment: .bottom, spacing: 10) {
+                VStack(alignment: .leading, spacing: 8) {
+                    ManaPoolHUD(manaPool: manaPool)
+                    PlayerVerticalHUD(
+                        name: humanName,
+                        player: human,
+                        active: snapshot.activePlayerId == human.playerId,
+                        opponentId: opponentId,
+                        viewZone: viewZone
+                    )
+                }
+                .frame(width: hudWidth, alignment: .leading)
+
+                HStack(alignment: .bottom, spacing: 8) {
+                    Button(action: openSettings) {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 15, weight: .black))
+                    }
+                    .buttonStyle(IconButtonStyle(small: true))
+                    .frame(width: 34, height: 34)
+                    .padding(.bottom, 6)
+
+                    VStack(spacing: 7) {
+                        Spacer(minLength: 22)
+
+                        Button {
+                            if let passAction {
+                                runAction(passAction)
+                            }
+                        } label: {
+                            Text(passAction == nil ? "WAIT" : "PASS")
+                                .font(.system(size: 22, weight: .black, design: .serif))
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(CompactActionButtonStyle(isPrimary: true))
+                        .disabled(passAction == nil)
+                        .frame(height: 44)
+
+                        Button {
+                            if let skipAction {
+                                runAction(skipAction)
+                            }
+                        } label: {
+                            Text(MagicPathPhaseRail.skipButtonLabel(snapshot: snapshot, action: skipAction))
+                                .font(.system(size: 12, weight: .black, design: .serif))
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(CompactActionButtonStyle(isPrimary: false))
+                        .disabled(skipAction == nil)
+                        .frame(height: 34)
+
+                        Spacer(minLength: 2)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                PortraitStackLane(
+                    snapshot: snapshot,
+                    humanStack: human.zones.stack,
+                    legalActions: snapshot.legalActions ?? [],
+                    selectedCard: $selectedCard,
+                    inspectedCard: $inspectedCard
+                )
+                .frame(width: stackWidth)
+                .frame(maxHeight: .infinity)
+            }
+            .padding(8)
+            .background(MagicPalette.iron.opacity(0.86), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(MagicPalette.antiqueGold.opacity(0.30), lineWidth: 1))
+        }
+    }
+}
+
+struct PortraitStackLane: View {
+    let snapshot: GameSnapshot
+    let humanStack: [ZoneCard]
+    let legalActions: [LegalAction]
+    @Binding var selectedCard: ZoneCard?
+    @Binding var inspectedCard: ZoneCard?
+
+    var body: some View {
+        VStack(spacing: 5) {
+            HStack(spacing: 4) {
+                Text("STACK")
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundStyle(MagicPalette.antiqueGold)
+                Text("\(stackCount)")
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundStyle(.white.opacity(0.68))
+                Spacer(minLength: 0)
+                Text(responseLabel)
+                    .font(.system(size: 6.5, weight: .black))
+                    .foregroundStyle(responseColor)
+            }
+            .padding(.horizontal, 2)
+
+            Divider()
+                .background(MagicPalette.antiqueGold.opacity(0.22))
+
+            if stackCount == 0 {
+                VStack(spacing: 5) {
+                    Image(systemName: "square.stack.3d.up")
+                        .font(.system(size: 18, weight: .black))
+                        .foregroundStyle(MagicPalette.antiqueGold.opacity(0.76))
+                    Text("No stack")
+                        .font(.system(size: 9, weight: .black))
+                        .foregroundStyle(.white)
+                    Text("Spells and abilities appear here")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(MagicPalette.parchment.opacity(0.68))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView(.vertical, showsIndicators: stackCount > 2) {
+                    VStack(spacing: 6) {
+                        ForEach(Array(xmageObjects.enumerated()), id: \.element.id) { _, object in
+                            stackObjectView(object)
+                        }
+                        if xmageObjects.isEmpty {
+                            ForEach(Array(humanStack.reversed().enumerated()), id: \.element.id) { _, card in
+                                stackCardView(card)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .padding(7)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(MagicPalette.iron.opacity(0.78), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.antiqueGold.opacity(0.30), lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func stackObjectView(_ object: XmageStackObject) -> some View {
+        if let card = object.displaySourceCard {
+            stackCardView(card)
+        } else {
+            SyntheticStackObjectTile(object: object, width: 54, height: 76)
+        }
+    }
+
+    private func stackCardView(_ card: ZoneCard) -> some View {
+        CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, zoneName: "Stack", width: 54, height: 76)
+            .onTapGesture {
+                selectedCard = card
+                inspectedCard = nil
+            }
+            .onLongPressGesture(minimumDuration: 0.35) {
+                inspectedCard = card
+            }
+    }
+
+    private var xmageObjects: [XmageStackObject] {
+        Array((snapshot.xmage?.stack ?? []).reversed())
+    }
+
+    private var stackCount: Int {
+        if let count = snapshot.xmage?.stack.count, count > 0 {
+            return count
+        }
+        return humanStack.count
+    }
+
+    private var responseLabel: String {
+        legalActions.contains { ["pass_priority", "pass_until_response", "advance_phase"].contains($0.type) } ? "RESPOND" : "WAIT"
+    }
+
+    private var responseColor: Color {
+        responseLabel == "RESPOND" ? MagicPalette.legalEmerald : .white.opacity(0.55)
+    }
+
 }
 
 extension GameSnapshot {
@@ -7163,9 +8958,132 @@ enum GameMenuConfirmation: Equatable {
     }
 }
 
+struct PromptDebugInspector: View {
+    let snapshot: GameSnapshot
+    let liveUpdateStatus: String
+    let lastActionRejection: ActionRejectionNotice?
+    let protocolDebug: XmageProtocolDebug?
+    let protocolDebugError: String?
+    let isProtocolDebugLoading: Bool
+    let refreshProtocolDebug: () -> Void
+
+    private var prompt: PromptEnvelopeV2? { snapshot.promptEnvelopeV2 }
+    private var presentation: MobilePromptPresentation? {
+        MobilePromptPresentation.make(snapshot: snapshot, legalActions: snapshot.legalActions ?? [])
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Prompt Debug")
+                    .font(.system(size: 22, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                Text("XMage prompt and bridge state")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.62))
+
+                HStack {
+                    Text(isProtocolDebugLoading ? "Loading gateway protocol..." : "Gateway protocol")
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundStyle(MagicPalette.antiqueGold)
+                    Spacer()
+                    Button(action: refreshProtocolDebug) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 12, weight: .black))
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.white)
+                }
+
+                if let protocolDebugError {
+                    Text(protocolDebugError)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(MagicPalette.warningAmber)
+                }
+
+                if let protocolDebug {
+                    debugGrid([
+                        ("Debug game", protocolDebug.gameId ?? "none"),
+                        ("Debug source", protocolDebug.source ?? "none"),
+                        ("Debug revision", protocolDebug.bridgeRevision.map(String.init) ?? "n/a"),
+                        ("Debug cycle", protocolDebug.xmageCycle.map(String.init) ?? "n/a"),
+                        ("Debug pending", protocolDebug.pendingStatus ?? "none"),
+                        ("Debug priority", protocolDebug.priorityPlayerId ?? "none"),
+                        ("Debug waiting", protocolDebug.waitingOnPlayerId ?? "none"),
+                        ("Debug legal", protocolDebug.legalActionCount.map(String.init) ?? "n/a"),
+                        ("Debug types", protocolDebug.legalActionTypes?.joined(separator: ", ") ?? "none"),
+                        ("Debug prompt", protocolDebug.promptSummary?.id ?? "none"),
+                        ("Debug method", protocolDebug.promptSummary?.method ?? "none"),
+                        ("Debug response", protocolDebug.promptSummary?.responseKind ?? "none"),
+                        ("Debug command", protocolDebug.promptSummary?.responseCommandType ?? "none")
+                    ])
+                }
+
+                debugGrid([
+                    ("Kind", presentation?.kind.rawValue ?? "none"),
+                    ("Method", prompt?.method ?? "none"),
+                    ("Response", prompt?.responseKind ?? "none"),
+                    ("Command", prompt?.responseCommand?.type ?? "none"),
+                    ("Prompt ID", prompt?.id ?? "none"),
+                    ("Message", prompt?.messageId.description ?? "none"),
+                    ("Revision", snapshot.bridgeRevision.map(String.init) ?? "n/a"),
+                    ("Cycle", snapshot.xmageCycle.map(String.init) ?? "n/a"),
+                    ("Pending", snapshot.pendingStatus ?? "none"),
+                    ("Priority", snapshot.priorityPlayerId ?? "none"),
+                    ("Waiting", snapshot.waitingOnPlayerId ?? "none"),
+                    ("Legal", "\(snapshot.legalActions?.count ?? 0)"),
+                    ("WS", liveUpdateStatus)
+                ])
+
+                if let lastActionRejection {
+                    PromptPanelSection(title: "Last rejection", detail: lastActionRejection.category.rawValue, isHighlighted: true) {
+                        Text(lastActionRejection.message)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(MagicPalette.warningAmber)
+                    }
+                }
+
+                if let actions = snapshot.legalActions, !actions.isEmpty {
+                    PromptPanelSection(title: "Legal action types", detail: "\(actions.count)", isHighlighted: false) {
+                        Text(Array(Set(actions.map(\.type))).sorted().joined(separator: ", "))
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.72))
+                    }
+                }
+            }
+            .padding(18)
+        }
+        .background(BattlefieldSurface().ignoresSafeArea())
+    }
+
+    private func debugGrid(_ rows: [(String, String)]) -> some View {
+        VStack(spacing: 6) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: 8) {
+                    Text(row.0.uppercased())
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundStyle(MagicPalette.antiqueGold)
+                        .frame(width: 76, alignment: .leading)
+                    Text(row.1)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.82))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.7)
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .padding(10)
+        .background(MagicPalette.iron.opacity(0.70), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.borderBronze.opacity(0.35), lineWidth: 1))
+    }
+}
+
 struct GameManagementMenu: View {
     let concedeAction: LegalAction?
     let runAction: (LegalAction) -> Void
+    @Binding var portraitModeEnabled: Bool
+    let openPromptInspector: () -> Void
     let confirmStartNew: () -> Void
     let confirmQuit: () -> Void
 
@@ -7178,6 +9096,8 @@ struct GameManagementMenu: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.62))
                 .lineLimit(2)
+
+            PortraitModeToggle(isOn: $portraitModeEnabled)
 
             HStack(spacing: 10) {
                 Button {
@@ -7203,6 +9123,12 @@ struct GameManagementMenu: View {
                 }
                 .buttonStyle(CompactActionButtonStyle(isPrimary: false))
             }
+
+            Button(action: openPromptInspector) {
+                Label("Prompt Debug", systemImage: "ladybug.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(CompactActionButtonStyle(isPrimary: false))
         }
         .padding(18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -7377,13 +9303,28 @@ struct GameLogDrawer: View {
                 .buttonStyle(IconButtonStyle(small: true))
             }
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(log.suffix(16)) { entry in
-                        Text(entry.message)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.78))
-                            .frame(maxWidth: .infinity, alignment: .leading)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(log.suffix(48)) { entry in
+                            Text(entry.message)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.78))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .id(entry.id)
+                        }
+                    }
+                }
+                .onAppear {
+                    if let lastId = log.last?.id {
+                        proxy.scrollTo(lastId, anchor: .bottom)
+                    }
+                }
+                .onChange(of: log.count) { _, _ in
+                    if let lastId = log.last?.id {
+                        withAnimation(.easeOut(duration: 0.18)) {
+                            proxy.scrollTo(lastId, anchor: .bottom)
+                        }
                     }
                 }
             }
@@ -7877,6 +9818,9 @@ extension String {
 
 private extension LegalAction {
     var displayLabel: String {
+        if type == "choose_ability" || type == "activate_ability" {
+            return compactPromptTitle
+        }
         if let shortLabel, !shortLabel.isEmpty {
             return shortLabel
         }
@@ -8006,8 +9950,11 @@ struct ZoneInspectorData: Identifiable {
 struct ZoneInspectorSheet: View {
     let title: String
     let cards: [ZoneCard]
+    var legalActions: [LegalAction] = []
+    var pendingActionId: String?
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
+    var runAction: ((LegalAction) -> Void)?
     @Environment(\.dismiss) var dismiss
 
     var body: some View {
@@ -8015,14 +9962,32 @@ struct ZoneInspectorSheet: View {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 9)], spacing: 10) {
                     ForEach(cards) { card in
-                        CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, zoneName: title, width: 70, height: 98)
-                            .onTapGesture {
-                                selectedCard = card
-                                inspectedCard = card
+                        let playActions = GameBoardInteractionState.legalPlayActions(for: card, actions: legalActions)
+                        VStack(spacing: 5) {
+                            CardTile(card: card, selected: selectedCard?.id == card.id, legal: !playActions.isEmpty, zoneName: title, width: 70, height: 98)
+                                .onTapGesture {
+                                    selectedCard = card
+                                    inspectedCard = nil
+                                }
+                                .onLongPressGesture(minimumDuration: 0.35) {
+                                    inspectedCard = card
+                                }
+                            if let action = playActions.first, playActions.count == 1 {
+                                Button {
+                                    runAction?(action)
+                                } label: {
+                                    PromptButtonLabel(title: action.displayLabel, systemImage: action.systemImage, isPending: pendingActionId == action.id)
+                                }
+                                .buttonStyle(PanelActionButtonStyle(isPrimary: true, compact: true))
+                                .disabled(pendingActionId != nil || runAction == nil)
                             }
-                            .onLongPressGesture(minimumDuration: 0.35) {
-                                inspectedCard = card
+                            if playActions.count > 1 {
+                                Text("Select for actions")
+                                    .font(.system(size: 8, weight: .black))
+                                    .foregroundStyle(MagicPalette.antiqueGold)
+                                    .lineLimit(1)
                             }
+                        }
                     }
                 }
                 .padding(18)
@@ -8049,8 +10014,11 @@ struct ZoneInspectorSheet: View {
 struct CompactZoneInspectorOverlay: View {
     let title: String
     let cards: [ZoneCard]
+    let legalActions: [LegalAction]
+    let pendingActionId: String?
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
+    let runAction: (LegalAction) -> Void
     let closeAction: () -> Void
 
     var body: some View {
@@ -8084,14 +10052,37 @@ struct CompactZoneInspectorOverlay: View {
                 } else {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 46), spacing: 8)], spacing: 8) {
                         ForEach(cards) { card in
-                            CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, zoneName: title, width: 44, height: 62)
-                                .onTapGesture {
-                                    selectedCard = card
-                                    inspectedCard = card
+                            let playActions = GameBoardInteractionState.legalPlayActions(for: card, actions: legalActions)
+                            VStack(spacing: 4) {
+                                CardTile(card: card, selected: selectedCard?.id == card.id, legal: !playActions.isEmpty, zoneName: title, width: 44, height: 62)
+                                    .onTapGesture {
+                                        selectedCard = card
+                                        inspectedCard = nil
+                                    }
+                                    .onLongPressGesture(minimumDuration: 0.35) {
+                                        inspectedCard = card
+                                    }
+                                if let action = playActions.first, playActions.count == 1 {
+                                    Button {
+                                        runAction(action)
+                                    } label: {
+                                        Text(action.displayLabel)
+                                            .font(.system(size: 8, weight: .black))
+                                            .foregroundStyle(.white)
+                                            .lineLimit(1)
+                                            .minimumScaleFactor(0.65)
+                                            .frame(maxWidth: 52, minHeight: 18)
+                                    }
+                                    .buttonStyle(PanelActionButtonStyle(isPrimary: true, compact: true))
+                                    .disabled(pendingActionId != nil)
                                 }
-                                .onLongPressGesture(minimumDuration: 0.35) {
-                                    inspectedCard = card
+                                if playActions.count > 1 {
+                                    Text("Select")
+                                        .font(.system(size: 8, weight: .black))
+                                        .foregroundStyle(MagicPalette.antiqueGold)
+                                        .lineLimit(1)
                                 }
+                            }
                         }
                     }
                     .padding(8)

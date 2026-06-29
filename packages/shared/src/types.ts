@@ -533,6 +533,7 @@ export interface GameCommandTemplate {
   useCommandZone?: boolean;
   attackers?: Array<{ attackerId: string; defenderId: string }>;
   blockers?: Array<{ blockerId: string; attackerId: string }>;
+  combatComplete?: boolean;
   cardName?: string;
 }
 
@@ -560,8 +561,8 @@ export type GameCommand = (
   | { type: "order_items"; gameId: GameId; playerId: PlayerId; promptId: string; orderedIds: string[] }
   | { type: "search_select"; gameId: GameId; playerId: PlayerId; promptId: string; cardInstanceIds: string[] }
   | { type: "commander_replacement"; gameId: GameId; playerId: PlayerId; promptId: string; useCommandZone: boolean }
-  | { type: "declare_attackers"; gameId: GameId; playerId: PlayerId; attackers: Array<{ attackerId: string; defenderId: string }> }
-  | { type: "declare_blockers"; gameId: GameId; playerId: PlayerId; blockers: Array<{ blockerId: string; attackerId: string }> }
+  | { type: "declare_attackers"; gameId: GameId; playerId: PlayerId; attackers: Array<{ attackerId: string; defenderId: string }>; combatComplete?: boolean }
+  | { type: "declare_blockers"; gameId: GameId; playerId: PlayerId; blockers: Array<{ blockerId: string; attackerId: string }>; combatComplete?: boolean }
   | { type: "resolve_choice"; gameId: GameId; playerId: PlayerId; promptId: string; choiceIds: string[] }
   | { type: "tap_permanent"; gameId: GameId; playerId: PlayerId; cardInstanceId: string }
   | { type: "untap_permanent"; gameId: GameId; playerId: PlayerId; cardInstanceId: string }

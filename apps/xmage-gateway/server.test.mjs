@@ -11,6 +11,7 @@ import {
   cleanupIdleGames,
   getGatewayHealth,
   getHealth,
+  protocolDebug,
   registerWebSocketConnection,
   shouldAcceptSnapshot,
   obfuscateSnapshotForPlayer,
@@ -406,13 +407,95 @@ describe("xmage gateway", () => {
     assert.match(bridgeSource, /sourceCardUnavailableReason/);
   });
 
-  it("keeps combat choices XMage-authored and fails closed for speculative blockers", () => {
+  it("keeps mana payment prompts actionable even when XMage exposes no finite choices", () => {
     const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+    const isActionablePrompt = bridgeSource.match(/private boolean isActionablePrompt[\s\S]*?\n    private void pushSnapshotToGateway/)?.[0] ?? "";
+
+    assert.match(isActionablePrompt, /String responseKind = string\(prompt, "responseKind", ""\)/);
+    assert.match(isActionablePrompt, /"mana"\.equals\(responseKind\)/);
+    assert.match(isActionablePrompt, /"pay_cost"\.equals\(responseKind\)/);
+    assert.match(isActionablePrompt, /"x_mana"\.equals\(responseKind\)/);
+    assert.match(isActionablePrompt, /String responseType = string\(object\(prompt, "responseCommand"\), "type", ""\)/);
+    assert.match(isActionablePrompt, /"pay_cost"\.equals\(responseType\)/);
+    assert.match(isActionablePrompt, /"play_x_mana"\.equals\(responseType\)/);
+  });
+
+  it("does not hide choose_ability labels behind a generic short label", () => {
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+    const shortLabelMethod = bridgeSource.match(/private String shortLabel[\s\S]*?\n    private boolean requiresTarget/)?.[0] ?? "";
+
+    assert.doesNotMatch(shortLabelMethod, /"choose_ability"\.equals\(type\)\) return "Ability"/);
+    assert.match(shortLabelMethod, /return label;/);
+  });
+
+  it("keeps combat choices XMage-authored and emits pair-specific blockers for multiple attackers", () => {
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+    const combatActions = bridgeSource.match(/private JsonArray combatActions[\s\S]*?\n    private JsonArray combatAttackers/)?.[0] ?? "";
 
     assert.match(bridgeSource, /!permanent\.isCreature\(\) \|\| !permanent\.isCanAttack\(\)/);
     assert.match(bridgeSource, /!permanent\.isCreature\(\) \|\| !permanent\.isCanBlock\(\)/);
-    assert.match(bridgeSource, /attackerChoices\.size\(\) > 1[\s\S]*?return actions;/);
-    assert.match(bridgeSource, /addProperty\("defenderKind", defenderIsPlayer \? "player" : "permanent"\)/);
+    assert.doesNotMatch(combatActions, /attackerChoices\.size\(\) > 1[\s\S]*?return actions;/);
+    assert.match(combatActions, /for \(JsonElement element : attackerChoices\)[\s\S]*?attackerId[\s\S]*?actions\.add\(combatAction/);
+    assert.match(bridgeSource, /action\.addProperty\("defenderKind", defenderKind == null \|\| defenderKind\.isEmpty\(\) \? "player" : defenderKind\)/);
+    assert.match(combatActions, /combatDefenders\(record, view, playerIds\)/);
+    assert.match(bridgeSource, /permanent\.isPlaneswalker\(\) \|\| permanent\.isBattle\(\)/);
+    assert.match(bridgeSource, /action\.addProperty\("defenderId", defenderId\)/);
+    assert.match(bridgeSource, /action\.addProperty\("defenderName", cleanText\(defenderName\)\)/);
+    assert.match(bridgeSource, /combatFinishAction\(record\.humanExternalId, "declare_attackers", "No attacks"\)/);
+    assert.match(bridgeSource, /combatFinishAction\(record\.humanExternalId, "declare_blockers", "No blocks"\)/);
+  });
+
+  it("reports structured prompt protocol debug data for the mobile inspector", () => {
+    const debug = protocolDebug({
+      id: "game-debug",
+      source: "xmage-java-bridge",
+      bridgeRevision: 17,
+      xmageCycle: 23,
+      pendingStatus: "waiting_for_xmage",
+      priorityPlayerId: "human",
+      waitingOnPlayerId: "human",
+      promptEnvelopeV2: {
+        id: "prompt-1",
+        method: "GAME_CHOOSE",
+        messageId: 44,
+        responseKind: "ability",
+        responseCommand: { type: "choose_ability" }
+      },
+      legalActions: [
+        { id: "ability-1", type: "choose_ability" },
+        { id: "pass-1", type: "pass_priority" }
+      ]
+    });
+
+    assert.equal(debug.bridgeRevision, 17);
+    assert.equal(debug.xmageCycle, 23);
+    assert.equal(debug.pendingStatus, "waiting_for_xmage");
+    assert.equal(debug.priorityPlayerId, "human");
+    assert.equal(debug.waitingOnPlayerId, "human");
+    assert.equal(debug.legalActionCount, 2);
+    assert.deepEqual(debug.legalActionTypes, ["choose_ability", "pass_priority"]);
+    assert.deepEqual(debug.promptSummary, {
+      id: "prompt-1",
+      method: "GAME_CHOOSE",
+      messageId: 44,
+      responseKind: "ability",
+      responseCommandType: "choose_ability"
+    });
+  });
+
+  it("standardizes bridge command failures into mobile rejection categories", () => {
+    const serverSource = readFileSync(new URL("./server.mjs", import.meta.url), "utf8");
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+
+    assert.match(serverSource, /sendJson\(response, enrichGatewayError\(error\.body\), error\.status\)/);
+    assert.match(serverSource, /function rejectionCategory/);
+    assert.match(serverSource, /return "stale_snapshot"/);
+    assert.match(serverSource, /return "no_longer_legal"/);
+    assert.match(serverSource, /return "invalid_choice"/);
+    assert.match(serverSource, /return "bridge_disconnected"/);
+    assert.match(serverSource, /return "xmage_waiting"/);
+    assert.match(bridgeSource, /body\.addProperty\("category", rejectionCategory\(lastError\)\)/);
+    assert.match(bridgeSource, /private String rejectionCategory\(String message\)/);
   });
 
   it("waits for XMage payment prompts after cast_spell instead of short-timeout rejection", () => {
@@ -1134,6 +1217,8 @@ describe("xmage gateway", () => {
     assert.doesNotMatch(bridgeSource, /private boolean hasManaPlayable[\s\S]*?card\.isLand\(\) \|\| producedManaHint/);
     assert.match(bridgeSource, /Set<UUID> commandIds = commandIds\(view\);/);
     assert.match(bridgeSource, /String sourceZone = handIds\.contains\(objectId\) \? "hand" : inCommand \? "command" : "battlefield";/);
+    assert.match(bridgeSource, /boolean inCommand = commandIds\.contains\(objectId\);/);
+    assert.match(bridgeSource, /actionType\(card, handIds\.contains\(objectId\), inCommand\)/);
     assert.match(bridgeSource, /yesCommand\.addProperty\("pay", true\)/);
     assert.match(bridgeSource, /noCommand\.addProperty\("pay", false\)/);
     assert.match(bridgeSource, /Action was based on stale XMage snapshot revision/);
@@ -1143,9 +1228,13 @@ describe("xmage gateway", () => {
     assert.match(bridgeSource, /"make_mana"\.equals\(type\)\) \{[\s\S]*?session\.sendPlayerUUID\(xmageGameId, playableSourceUuid\(gameId, command\)\);/);
     assert.match(bridgeSource, /"activate_ability"\.equals\(type\)\) \{[\s\S]*?playableCommandUuid\(gameId, command\);[\s\S]*?session\.sendPlayerUUID\(xmageGameId, playableSourceUuid\(gameId, command\)\);/);
     const sendCombatSelection = bridgeSource.match(/private void sendCombatSelection[\s\S]*?\n    private JsonObject waitForUpdatedSnapshot/)?.[0] ?? "";
+    assert.match(sendCombatSelection, /boolean complete = bool\(command, "combatComplete", true\);/);
+    assert.match(sendCombatSelection, /string\(group, "defenderId"/);
+    assert.match(sendCombatSelection, /string\(group, "attackerId"/);
+    assert.match(sendCombatSelection, /addSelections\(ids, command, attackers \? "defenderIds" : "attackerIds"\)/);
     assert.match(sendCombatSelection, /session\.sendPlayerUUID\(xmageGameId, UUID\.fromString\(value\)\);/);
     assert.doesNotMatch(sendCombatSelection, /session\.sendPlayerBoolean\(xmageGameId, true\)/);
-    assert.match(sendCombatSelection, /session\.sendPlayerBoolean\(xmageGameId, false\);/);
+    assert.match(sendCombatSelection, /if \(complete\) \{[\s\S]*?session\.sendPlayerBoolean\(xmageGameId, false\);[\s\S]*?\}/);
     assert.match(bridgeSource, /stackObjects\(view\.getStack\(\), view, playerIds\)/);
     assert.match(bridgeSource, /resolveStackSourceCard\(card, view\)/);
     assert.match(bridgeSource, /item\.addProperty\("objectId", card\.getId\(\)\.toString\(\)\)/);

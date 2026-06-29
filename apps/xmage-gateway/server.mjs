@@ -231,11 +231,11 @@ export function createGatewayHandler(state = games, options = {}) {
       return sendJson(response, { error: "Not found" }, 404);
     } catch (error) {
       if (error instanceof BridgeRequestError) {
-        return sendJson(response, error.body, error.status);
+        return sendJson(response, enrichGatewayError(error.body), error.status);
       }
       return sendJson(
         response,
-        { error: error instanceof Error ? error.message : "Gateway request failed" },
+        enrichGatewayError({ error: error instanceof Error ? error.message : "Gateway request failed" }),
         error instanceof NotFoundError ? 404 : 500
       );
     }
@@ -1466,17 +1466,50 @@ export function obfuscateSnapshotForPlayer(snapshot, targetPlayerId) {
 export function protocolDebug(snapshot) {
   const xmage = snapshot?.xmage ?? null;
   const prompt = snapshot?.promptEnvelopeV2 ?? snapshot?.promptEnvelope ?? null;
+  const legalActions = Array.isArray(snapshot?.legalActions) ? snapshot.legalActions : [];
   return {
     gameId: snapshot?.id,
     source: snapshot?.source ?? "simulator",
     bridgeRevision: snapshot?.bridgeRevision ?? null,
     xmageCycle: snapshot?.xmageCycle ?? null,
     pendingStatus: snapshot?.pendingStatus ?? null,
+    priorityPlayerId: snapshot?.priorityPlayerId ?? null,
+    waitingOnPlayerId: snapshot?.waitingOnPlayerId ?? null,
+    legalActionCount: legalActions.length,
+    legalActionTypes: [...new Set(legalActions.map((action) => action?.type).filter(Boolean))],
+    promptSummary: prompt
+      ? {
+          id: prompt.id ?? null,
+          method: prompt.method ?? null,
+          messageId: prompt.messageId ?? null,
+          responseKind: prompt.responseKind ?? null,
+          responseCommandType: prompt.responseCommand?.type ?? null
+        }
+      : null,
     prompt,
     callbackCoverage: xmage?.callbackCoverage ?? (prompt?.method ? [prompt.method] : []),
     panels: xmage?.panels ?? {},
     xmage
   };
+}
+
+function enrichGatewayError(body = {}) {
+  const message = body?.message ?? body?.error ?? "Gateway request failed";
+  return {
+    ...body,
+    message,
+    category: body?.category ?? body?.rejectionCategory ?? rejectionCategory(message)
+  };
+}
+
+function rejectionCategory(message = "") {
+  const text = String(message).toLowerCase();
+  if (text.includes("stale") || text.includes("revision")) return "stale_snapshot";
+  if (text.includes("no longer") || text.includes("not legal") || text.includes("action_no_longer_legal")) return "no_longer_legal";
+  if (text.includes("invalid") || text.includes("duplicate") || text.includes("disabled")) return "invalid_choice";
+  if (text.includes("disconnect") || text.includes("unavailable") || text.includes("econnrefused")) return "bridge_disconnected";
+  if (text.includes("waiting") || text.includes("pending")) return "xmage_waiting";
+  return "unknown";
 }
 
 function findPlayer(snapshot, playerId) {

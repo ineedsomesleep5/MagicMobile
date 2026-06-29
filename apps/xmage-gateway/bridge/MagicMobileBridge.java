@@ -224,6 +224,7 @@ public final class MagicMobileBridge implements MageClient {
             JsonObject body = new JsonObject();
             body.addProperty("error", "action_no_longer_legal");
             body.addProperty("message", lastError);
+            body.addProperty("category", rejectionCategory(lastError));
             try {
                 body.add("snapshot", snapshot(error.gameId));
             } catch (Exception ignored) {
@@ -233,8 +234,20 @@ public final class MagicMobileBridge implements MageClient {
             lastError = error.getMessage() == null ? error.toString() : error.getMessage();
             JsonObject body = new JsonObject();
             body.addProperty("error", lastError);
+            body.addProperty("message", lastError);
+            body.addProperty("category", rejectionCategory(lastError));
             writeJson(exchange, 500, body);
         }
+    }
+
+    private String rejectionCategory(String message) {
+        String text = message == null ? "" : message.toLowerCase();
+        if (text.contains("stale") || text.contains("revision")) return "stale_snapshot";
+        if (text.contains("no longer") || text.contains("not legal")) return "no_longer_legal";
+        if (text.contains("invalid") || text.contains("duplicate") || text.contains("disabled")) return "invalid_choice";
+        if (text.contains("disconnect") || text.contains("unavailable")) return "bridge_disconnected";
+        if (text.contains("waiting") || text.contains("pending")) return "xmage_waiting";
+        return "unknown";
     }
 
     private JsonObject createCommanderGame(JsonObject config) throws Exception {
@@ -574,6 +587,7 @@ public final class MagicMobileBridge implements MageClient {
 
         if (record != null) {
             record.lastProgressAt = System.currentTimeMillis();
+            appendActionLog(record, type, command);
         }
         JsonObject updated = waitForUpdatedSnapshot(gameId, type, startRevision, startCycle);
         if (retryableUuid != null) {
@@ -1146,14 +1160,22 @@ public final class MagicMobileBridge implements MageClient {
     }
 
     private void sendCombatSelection(String bridgeGameId, UUID xmageGameId, JsonObject command, boolean attackers) {
+        boolean complete = bool(command, "combatComplete", true);
         JsonArray ids = new JsonArray();
         JsonArray groups = array(command, attackers ? "attackers" : "blockers");
         String objectKey = attackers ? "attackerId" : "blockerId";
         for (JsonElement element : groups) {
             if (!element.isJsonObject()) continue;
-            addSelection(ids, string(element.getAsJsonObject(), objectKey, ""));
+            JsonObject group = element.getAsJsonObject();
+            addSelection(ids, string(group, objectKey, ""));
+            if (attackers) {
+                addSelection(ids, string(group, "defenderId", ""));
+            } else {
+                addSelection(ids, string(group, "attackerId", ""));
+            }
         }
         addSelections(ids, command, attackers ? "attackerIds" : "blockerIds");
+        addSelections(ids, command, attackers ? "defenderIds" : "attackerIds");
         if (ids.size() == 0) {
             session.sendPlayerBoolean(xmageGameId, false);
             return;
@@ -1166,7 +1188,9 @@ public final class MagicMobileBridge implements MageClient {
             session.sendPlayerUUID(xmageGameId, UUID.fromString(value));
             combatResponsePause(bridgeGameId);
         }
-        session.sendPlayerBoolean(xmageGameId, false);
+        if (complete) {
+            session.sendPlayerBoolean(xmageGameId, false);
+        }
     }
 
     private void combatResponsePause(String bridgeGameId) {
@@ -1679,36 +1703,38 @@ public final class MagicMobileBridge implements MageClient {
         }
         String step = step(view.getStep());
         if ("declare-attackers".equals(step)) {
-            PlayerView defender = firstOpponent(record.humanExternalId, view, playerIds);
-            if (defender == null) {
-                return actions;
-            }
-            String defenderExternalId = playerIds.get(defender.getPlayerId());
+            JsonArray defenders = combatDefenders(record, view, playerIds);
             for (PermanentView permanent : human.getBattlefield().values()) {
                 if (!permanent.isCreature() || !permanent.isCanAttack()) {
                     continue;
                 }
-                actions.add(combatAction(
-                        "xmage-attack-" + permanent.getId(),
-                        "declare_attackers",
-                        record.humanExternalId,
-                        "Attack " + defender.getName() + " with " + permanent.getName(),
-                        permanent,
-                        defenderExternalId,
-                        "player",
-                        defender.getName(),
-                        null
-                ));
+                for (JsonElement defenderElement : defenders) {
+                    if (!defenderElement.isJsonObject()) continue;
+                    JsonObject defender = defenderElement.getAsJsonObject();
+                    String defenderId = string(defender, "id", "");
+                    if (defenderId.isEmpty()) continue;
+                    actions.add(combatAction(
+                            "xmage-attack-" + permanent.getId() + "-" + defenderId,
+                            "declare_attackers",
+                            record.humanExternalId,
+                            "Attack " + string(defender, "name", "defender") + " with " + permanent.getName(),
+                            permanent,
+                            defenderId,
+                            string(defender, "kind", "player"),
+                            string(defender, "name", ""),
+                            null
+                    ));
+                }
+            }
+            actions.add(combatFinishAction(record.humanExternalId, "declare_attackers", "No attacks"));
+            if (actions.size() == 1) {
+                markPrimary(actions, "xmage-declare-attackers-finish", "No attacks");
             }
         } else if ("declare-blockers".equals(step)) {
             JsonArray attackerChoices = combatAttackers(view);
             if (attackerChoices.size() == 0) {
-                return actions;
-            }
-            if (attackerChoices.size() > 1) {
-                // CardView.isCanBlock() is XMage-backed for whether this permanent can block now,
-                // but it is not pair-specific. Avoid fabricating blocker/attacker pairs when the
-                // defending player has multiple possible attackers to choose from.
+                actions.add(combatFinishAction(record.humanExternalId, "declare_blockers", "No blocks"));
+                markPrimary(actions, "xmage-declare-blockers-finish", "No blocks");
                 return actions;
             }
             for (PermanentView permanent : human.getBattlefield().values()) {
@@ -1733,8 +1759,41 @@ public final class MagicMobileBridge implements MageClient {
                     ));
                 }
             }
+            actions.add(combatFinishAction(record.humanExternalId, "declare_blockers", "No blocks"));
+            if (actions.size() == 1) {
+                markPrimary(actions, "xmage-declare-blockers-finish", "No blocks");
+            }
         }
         return actions;
+    }
+
+    private JsonArray combatDefenders(GameRecord record, GameView view, Map<UUID, String> playerIds) {
+        JsonArray defenders = new JsonArray();
+        Set<String> seen = new HashSet<>();
+        for (PlayerView player : view.getPlayers()) {
+            String externalId = playerIds.get(player.getPlayerId());
+            if (externalId == null || externalId.equals(record.humanExternalId)) {
+                continue;
+            }
+            addCombatDefender(defenders, seen, externalId, player.getName(), "player");
+            for (PermanentView permanent : player.getBattlefield().values()) {
+                if (permanent.isPlaneswalker() || permanent.isBattle()) {
+                    addCombatDefender(defenders, seen, permanent.getId().toString(), permanent.getName(), "permanent");
+                }
+            }
+        }
+        return defenders;
+    }
+
+    private void addCombatDefender(JsonArray defenders, Set<String> seen, String id, String name, String kind) {
+        if (id == null || id.isEmpty() || !seen.add(id)) {
+            return;
+        }
+        JsonObject defender = new JsonObject();
+        defender.addProperty("id", id);
+        defender.addProperty("name", cleanText(name == null || name.isEmpty() ? "Defender" : name));
+        defender.addProperty("kind", kind);
+        defenders.add(defender);
     }
 
     private JsonArray combatAttackers(GameView view) {
@@ -1768,6 +1827,23 @@ public final class MagicMobileBridge implements MageClient {
         return null;
     }
 
+    private JsonObject combatFinishAction(String playerId, String type, String label) {
+        String id = "declare_attackers".equals(type) ? "xmage-declare-attackers-finish" : "xmage-declare-blockers-finish";
+        JsonObject action = action(id, type, playerId, label, null, null, null);
+        JsonObject template = new JsonObject();
+        template.addProperty("type", type);
+        template.addProperty("combatComplete", true);
+        if ("declare_attackers".equals(type)) {
+            action.add("attackers", new JsonArray());
+            template.add("attackers", new JsonArray());
+        } else {
+            action.add("blockers", new JsonArray());
+            template.add("blockers", new JsonArray());
+        }
+        action.add("commandTemplate", template);
+        return action;
+    }
+
     private JsonObject combatAction(String id, String type, String playerId, String label, PermanentView permanent, String defenderId, String defenderKind, String defenderName, String attackerId) {
         JsonObject action = action(id, type, playerId, label, permanent.getId().toString(), "battlefield", null, permanent);
         JsonObject template = new JsonObject();
@@ -1794,8 +1870,10 @@ public final class MagicMobileBridge implements MageClient {
                 JsonArray validTargetIds = new JsonArray();
                 validTargetIds.add(defenderId);
                 action.add("validTargetIds", validTargetIds.deepCopy());
-                action.add("validPlayerIds", validTargetIds.deepCopy());
                 action.add("targetIds", validTargetIds.deepCopy());
+                if ("player".equals(defenderKind)) {
+                    action.add("validPlayerIds", validTargetIds.deepCopy());
+                }
             }
             template.add("attackers", attackers.deepCopy());
         } else if ("declare_blockers".equals(type)) {
@@ -2435,7 +2513,6 @@ public final class MagicMobileBridge implements MageClient {
         if ("play_land".equals(type)) return "Play";
         if ("cast_spell".equals(type)) return "Cast";
         if ("make_mana".equals(type) || "play_mana".equals(type)) return "Mana";
-        if ("choose_ability".equals(type)) return "Ability";
         if ("choose_pile".equals(type)) return "Pile";
         if ("choose_amount".equals(type) || "choose_multi_amount".equals(type) || "play_x_mana".equals(type)) return label;
         if ("search_select".equals(type)) return "Choose";
@@ -3257,10 +3334,59 @@ public final class MagicMobileBridge implements MageClient {
         JsonArray log = new JsonArray();
         log.add(logEntry("xmage-start", "XMage Commander game connected"));
         log.add(logEntry("xmage-state", "Turn " + view.getTurn() + " - " + view.getStep()));
+        synchronized (record.mobileLog) {
+            for (JsonElement element : record.mobileLog) {
+                log.add(element);
+            }
+        }
         if (record.promptText != null && !record.promptText.isEmpty()) {
             log.add(logEntry("xmage-prompt", record.promptText));
         }
         return log;
+    }
+
+    private void appendActionLog(GameRecord record, String type, JsonObject command) {
+        if (record == null) return;
+        String message = mobileActionMessage(type, command);
+        if (message == null || message.isEmpty()) return;
+        synchronized (record.mobileLog) {
+            String id = "mobile-action-" + record.mobileLog.size() + "-" + System.currentTimeMillis();
+            record.mobileLog.add(logEntry(id, message));
+            while (record.mobileLog.size() > 80) {
+                record.mobileLog.remove(0);
+            }
+        }
+    }
+
+    private String mobileActionMessage(String type, JsonObject command) {
+        if ("cast_spell".equals(type)) return "Cast " + commandCardName(command);
+        if ("play_land".equals(type)) return "Played " + commandCardName(command);
+        if ("make_mana".equals(type)) return "Activated mana from " + commandCardName(command);
+        if ("choose_target".equals(type)) return "Selected target";
+        if ("search_select".equals(type)) return "Selected search result";
+        if ("declare_attackers".equals(type)) {
+            JsonArray attackers = array(command, "attackers");
+            return attackers.size() == 0 || bool(command, "combatComplete", false)
+                    ? "Finished declare attackers"
+                    : "Declared " + attackers.size() + " attacker" + (attackers.size() == 1 ? "" : "s");
+        }
+        if ("declare_blockers".equals(type)) {
+            JsonArray blockers = array(command, "blockers");
+            return blockers.size() == 0 || bool(command, "combatComplete", false)
+                    ? "Finished declare blockers"
+                    : "Declared " + blockers.size() + " blocker" + (blockers.size() == 1 ? "" : "s");
+        }
+        if ("pass_priority".equals(type) || "pass_until_response".equals(type) || "pass_until_next_turn".equals(type)) {
+            return "Passed priority";
+        }
+        if (type != null && type.startsWith("choose_")) return "Answered " + type.replace('_', ' ');
+        if ("resolve_choice".equals(type)) return "Resolved prompt choice";
+        return null;
+    }
+
+    private String commandCardName(JsonObject command) {
+        String name = string(command, "cardName", "");
+        return name.isEmpty() ? "card" : name;
     }
 
     private boolean isOpeningSnapshotReady(GameRecord record, String humanCommanderName) {
@@ -5021,6 +5147,17 @@ public final class MagicMobileBridge implements MageClient {
                 return true;
             }
         }
+        String responseKind = string(prompt, "responseKind", "");
+        String responseType = string(object(prompt, "responseCommand"), "type", "");
+        if ("mana".equals(responseKind)
+                || "pay_cost".equals(responseKind)
+                || "x_mana".equals(responseKind)
+                || "pay_cost".equals(responseType)
+                || "choose_mana".equals(responseType)
+                || "play_mana".equals(responseType)
+                || "play_x_mana".equals(responseType)) {
+            return true;
+        }
         return prompt.has("confirmation") || "game_over".equals(string(prompt, "responseKind", ""));
     }
 
@@ -5246,6 +5383,7 @@ public final class MagicMobileBridge implements MageClient {
         volatile JsonObject choicePrompt;
         volatile JsonObject promptEnvelope;
         final JsonArray startupOpeningPrompts = new JsonArray();
+        final JsonArray mobileLog = new JsonArray();
 
         GameRecord(UUID gameId, String humanExternalId, String aiExternalId, String humanName, String aiName) {
             this.gameId = gameId;

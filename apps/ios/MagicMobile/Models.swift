@@ -132,6 +132,261 @@ struct GameSnapshot: Decodable {
     }
 }
 
+enum MobilePromptKind: String, Codable, Equatable {
+    case payment
+    case target
+    case confirmation
+    case cardChoice
+    case playerChoice
+    case abilityChoice
+    case order
+    case amount
+    case multiAmount
+    case pile
+    case search
+    case combat
+    case unsupported
+}
+
+struct MobilePromptPresentation: Equatable {
+    let kind: MobilePromptKind
+    let title: String
+    let message: String
+    let requiresDetail: Bool
+    let isUnsupported: Bool
+
+    static func make(snapshot: GameSnapshot, legalActions: [LegalAction]) -> MobilePromptPresentation? {
+        if isCombatSelection(snapshot, legalActions: legalActions) {
+            let isBlock = legalActions.contains { $0.type == "declare_blockers" } ||
+                normalizedStep(snapshot).contains("declare-block")
+            return MobilePromptPresentation(
+                kind: .combat,
+                title: isBlock ? "Select blockers" : "Select attackers",
+                message: snapshot.promptText ?? (isBlock ? "Choose blockers" : "Choose attackers"),
+                requiresDetail: false,
+                isUnsupported: false
+            )
+        }
+
+        guard let prompt = snapshot.promptEnvelopeV2 else { return nil }
+        let kind = kind(for: prompt)
+        let detailKinds: Set<MobilePromptKind> = [.cardChoice, .playerChoice, .abilityChoice, .order, .amount, .multiAmount, .pile, .search, .target, .unsupported]
+        let title = title(for: kind, prompt: prompt)
+        return MobilePromptPresentation(
+            kind: kind,
+            title: title,
+            message: prompt.message,
+            requiresDetail: detailKinds.contains(kind) || optionCount(prompt) > 3,
+            isUnsupported: kind == .unsupported
+        )
+    }
+
+    static func kind(for prompt: PromptEnvelopeV2) -> MobilePromptKind {
+        let type = prompt.responseCommand?.type?.lowercased() ?? ""
+        let kind = prompt.responseKind.lowercased()
+        let method = prompt.method.uppercased()
+        if type == "play_mana" || type == "choose_mana" || type == "pay_cost" || type == "play_x_mana" ||
+            kind == "mana" || kind == "pay_cost" || kind == "cost" || kind == "x_mana" ||
+            method == "GAME_PLAY_MANA" || method == "GAME_PLAY_XMANA" {
+            return .payment
+        }
+        if type == "choose_target" || kind == "target" || method.contains("TARGET") || prompt.targets?.isEmpty == false || prompt.targetIds?.isEmpty == false {
+            return .target
+        }
+        if type == "answer_yes_no" || kind == "confirmation" || prompt.confirmation != nil {
+            return .confirmation
+        }
+        if type == "choose_player" || kind == "player" || prompt.players?.isEmpty == false {
+            return .playerChoice
+        }
+        if type == "choose_ability" || kind == "ability" || prompt.abilities?.isEmpty == false {
+            return .abilityChoice
+        }
+        if type == "order_triggers" || type == "order_items" || kind == "order" || prompt.orderedItems?.isEmpty == false {
+            return .order
+        }
+        if type == "choose_multi_amount" || kind == "multi_amount" || prompt.multiAmounts?.isEmpty == false {
+            return .multiAmount
+        }
+        if type == "choose_amount" || kind == "amount" || prompt.amounts?.isEmpty == false {
+            return .amount
+        }
+        if type == "choose_pile" || kind == "pile" || prompt.piles?.isEmpty == false {
+            return .pile
+        }
+        if type == "search_select" || kind == "search" {
+            return .search
+        }
+        if type == "choose_card" || kind == "card" || prompt.cards?.isEmpty == false || prompt.choices?.isEmpty == false || prompt.modes?.isEmpty == false {
+            return .cardChoice
+        }
+        return .unsupported
+    }
+
+    private static func title(for kind: MobilePromptKind, prompt: PromptEnvelopeV2) -> String {
+        switch kind {
+        case .payment: return "Pay cost"
+        case .target: return "Select target"
+        case .confirmation: return "Confirm choice"
+        case .cardChoice: return "Choose card"
+        case .playerChoice: return "Choose player"
+        case .abilityChoice: return "Choose ability"
+        case .order: return "Order choices"
+        case .amount: return "Choose amount"
+        case .multiAmount: return "Assign amounts"
+        case .pile: return "Choose pile"
+        case .search: return "Search"
+        case .combat: return "Combat"
+        case .unsupported:
+            return prompt.responseKind.isEmpty ? "XMage prompt" : prompt.responseKind.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+
+    private static func optionCount(_ prompt: PromptEnvelopeV2) -> Int {
+        (prompt.choices?.count ?? 0) + (prompt.cards?.count ?? 0) + (prompt.targets?.count ?? 0) +
+            (prompt.players?.count ?? 0) + (prompt.abilities?.count ?? 0) + (prompt.piles?.count ?? 0) +
+            (prompt.amounts?.count ?? 0) + (prompt.multiAmounts?.count ?? 0) + (prompt.orderedItems?.count ?? 0)
+    }
+
+    private static func isCombatSelection(_ snapshot: GameSnapshot, legalActions: [LegalAction]) -> Bool {
+        legalActions.contains { $0.type == "declare_attackers" || $0.type == "declare_blockers" } ||
+            ((snapshot.waitingOnPlayerId == "human" || snapshot.priorityPlayerId == "human") &&
+             (normalizedStep(snapshot).contains("declare-attack") || normalizedStep(snapshot).contains("declare-block")))
+    }
+
+    private static func normalizedStep(_ snapshot: GameSnapshot) -> String {
+        "\(snapshot.step ?? "") \(snapshot.promptText ?? "")".lowercased()
+    }
+}
+
+enum MagicMobileActionRejectionCategory: String, Codable, Equatable {
+    case staleSnapshot = "stale_snapshot"
+    case noLongerLegal = "no_longer_legal"
+    case invalidChoice = "invalid_choice"
+    case bridgeDisconnected = "bridge_disconnected"
+    case xmageWaiting = "xmage_waiting"
+    case unknown
+}
+
+struct MagicMobileActionRejection: Decodable {
+    let category: MagicMobileActionRejectionCategory
+    let message: String
+    let snapshot: GameSnapshot?
+
+    var shortMessage: String {
+        switch category {
+        case .staleSnapshot:
+            return "Snapshot stale. Refreshed choices."
+        case .noLongerLegal:
+            return "That action is no longer legal."
+        case .invalidChoice:
+            return "XMage rejected that choice."
+        case .bridgeDisconnected:
+            return "Bridge disconnected. Reconnect available."
+        case .xmageWaiting:
+            return "XMage is still resolving."
+        case .unknown:
+            return message
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case category
+        case rejectionCategory
+        case message
+        case error
+        case snapshot
+    }
+
+    init(category: MagicMobileActionRejectionCategory, message: String, snapshot: GameSnapshot?) {
+        self.category = category
+        self.message = message
+        self.snapshot = snapshot
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let rawCategory = try container.decodeIfPresent(String.self, forKey: .rejectionCategory) ??
+            container.decodeIfPresent(String.self, forKey: .category) ??
+            container.decodeIfPresent(String.self, forKey: .error)
+        category = Self.category(from: rawCategory)
+        message = try container.decodeIfPresent(String.self, forKey: .message) ??
+            container.decodeIfPresent(String.self, forKey: .error) ??
+            "XMage rejected the action."
+        snapshot = try container.decodeIfPresent(GameSnapshot.self, forKey: .snapshot)
+    }
+
+    static func category(from raw: String?) -> MagicMobileActionRejectionCategory {
+        let text = raw?.lowercased() ?? ""
+        if text.contains("stale") || text.contains("revision") { return .staleSnapshot }
+        if text.contains("no_longer") || text.contains("no longer") || text.contains("not legal") { return .noLongerLegal }
+        if text.contains("invalid") || text.contains("duplicate") || text.contains("disabled") { return .invalidChoice }
+        if text.contains("disconnect") || text.contains("unavailable") { return .bridgeDisconnected }
+        if text.contains("waiting") || text.contains("pending") { return .xmageWaiting }
+        return .unknown
+    }
+}
+
+struct ActionRejectionNotice: Equatable {
+    let category: MagicMobileActionRejectionCategory
+    let message: String
+    let bridgeRevision: Int?
+    let xmageCycle: Int?
+
+    init(rejection: MagicMobileActionRejection) {
+        category = rejection.category
+        message = rejection.shortMessage
+        bridgeRevision = rejection.snapshot?.bridgeRevision
+        xmageCycle = rejection.snapshot?.xmageCycle
+    }
+}
+
+enum XmageWaitKind: String, Equatable {
+    case yourPriority
+    case xmageThinking
+    case waitingForBridge
+    case bridgeDisconnected
+    case actionStillResolving
+    case snapshotStale
+    case manualReconnectAvailable
+}
+
+struct XmageWaitPresentation: Equatable {
+    let kind: XmageWaitKind
+    let title: String
+    let detail: String
+
+    static func make(
+        snapshot: GameSnapshot,
+        pendingActionId: String?,
+        liveUpdateStatus: String,
+        elapsedSeconds: TimeInterval = 0,
+        didRefresh: Bool = false,
+        didReconnect: Bool = false
+    ) -> XmageWaitPresentation {
+        let live = liveUpdateStatus.lowercased()
+        if live.contains("unavailable") || live.contains("disconnect") {
+            return XmageWaitPresentation(kind: .bridgeDisconnected, title: "Bridge disconnected", detail: "Reconnect live updates.")
+        }
+        if pendingActionId != nil {
+            return XmageWaitPresentation(kind: .actionStillResolving, title: "Action still resolving", detail: "Waiting for XMage to advance.")
+        }
+        if snapshot.pendingStatus == "waiting_for_xmage" {
+            return XmageWaitPresentation(kind: .waitingForBridge, title: "Waiting for bridge", detail: "XMage accepted the command.")
+        }
+        if elapsedSeconds >= AIWaitRecoveryPolicy.reconnectThresholdSeconds, didRefresh, didReconnect {
+            return XmageWaitPresentation(kind: .manualReconnectAvailable, title: "Manual reconnect available", detail: "Automatic refresh and reconnect already ran.")
+        }
+        if snapshot.isStalled {
+            return XmageWaitPresentation(kind: .snapshotStale, title: "Snapshot stale", detail: "Refresh or reconnect to recover.")
+        }
+        if snapshot.priorityPlayerId == "human" || snapshot.waitingOnPlayerId == "human" {
+            return XmageWaitPresentation(kind: .yourPriority, title: "Your priority", detail: "Choose an action.")
+        }
+        return XmageWaitPresentation(kind: .xmageThinking, title: "XMage thinking", detail: "Waiting for AI or rules resolution.")
+    }
+}
+
 /// Authoritative mana-payment state from the bridge: present and `active` only
 /// while the human is mid-paying for a spell/ability on the stack. Drives the
 /// pip tray, gating, and auto-resolve. Absent/inactive = not paying.
@@ -542,6 +797,23 @@ struct LegalAction: Decodable, Identifiable {
 }
 
 extension LegalAction {
+    var compactPromptTitle: String {
+        let trimmedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedShortLabel = shortLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let genericAbilityLabels = Set(["ability", "activated ability", "triggered ability"])
+        if ["choose_ability", "activate_ability"].contains(type),
+           let trimmedShortLabel,
+           genericAbilityLabels.contains(trimmedShortLabel.lowercased()),
+           !trimmedLabel.isEmpty,
+           !genericAbilityLabels.contains(trimmedLabel.lowercased()) {
+            return trimmedLabel
+        }
+        if let trimmedShortLabel, !trimmedShortLabel.isEmpty {
+            return trimmedShortLabel
+        }
+        return trimmedLabel.isEmpty ? type : trimmedLabel
+    }
+
     var effectiveCardInstanceId: String? {
         commandTemplate?["cardInstanceId"]?.stringValue ?? cardInstanceId ?? effectiveSourceInstanceId
     }
@@ -725,6 +997,27 @@ struct XmageMobileSnapshot: Decodable {
     let companion: [XmageNamedZone]
     let playableObjects: [XmagePlayableObject]
     let panels: XmagePanels
+}
+
+struct XmageProtocolDebug: Decodable {
+    let gameId: String?
+    let source: String?
+    let bridgeRevision: Int?
+    let xmageCycle: Int?
+    let pendingStatus: String?
+    let priorityPlayerId: String?
+    let waitingOnPlayerId: String?
+    let legalActionCount: Int?
+    let legalActionTypes: [String]?
+    let promptSummary: XmageProtocolPromptSummary?
+}
+
+struct XmageProtocolPromptSummary: Decodable {
+    let id: String?
+    let method: String?
+    let messageId: Int?
+    let responseKind: String?
+    let responseCommandType: String?
 }
 
 struct XmageMobilePlayer: Decodable, Identifiable {
@@ -983,6 +1276,7 @@ struct GameCommand: Encodable {
     let cardName: String?
     let attackers: [AttackDeclaration]?
     let blockers: [BlockDeclaration]?
+    let combatComplete: Bool?
     let expectedBridgeRevision: Int?
 
     init(
@@ -1016,6 +1310,7 @@ struct GameCommand: Encodable {
         cardName: String? = nil,
         attackers: [AttackDeclaration]? = nil,
         blockers: [BlockDeclaration]? = nil,
+        combatComplete: Bool? = nil,
         expectedBridgeRevision: Int? = nil
     ) {
         self.type = type
@@ -1048,6 +1343,7 @@ struct GameCommand: Encodable {
         self.cardName = cardName
         self.attackers = attackers
         self.blockers = blockers
+        self.combatComplete = combatComplete
         self.expectedBridgeRevision = expectedBridgeRevision
     }
 }

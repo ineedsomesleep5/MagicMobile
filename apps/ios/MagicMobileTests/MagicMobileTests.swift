@@ -236,8 +236,27 @@ final class MagicMobileTests: XCTestCase {
     }
 
     func testGameplayBoardBackgroundAssetIsBundled() {
-        XCTAssertNotNil(UIImage(named: "mage-mobile-board-background"))
-        XCTAssertNotNil(UIImage(named: "mage-mobile-menu-background"))
+        XCTAssertNotNil(UIImage(named: MagicMobileAssetName.boardBackground))
+        XCTAssertNotNil(UIImage(named: MagicMobileAssetName.menuBackground))
+        XCTAssertNotNil(UIImage(named: MagicMobileAssetName.portraitBoardBackground))
+        XCTAssertNotNil(UIImage(named: MagicMobileAssetName.portraitMenuBackground))
+    }
+
+    func testPortraitOrientationModeDefaultsToLandscapeOnlyMask() {
+        UserDefaults.standard.removeObject(forKey: PortraitModePreference.key)
+        defer { UserDefaults.standard.removeObject(forKey: PortraitModePreference.key) }
+
+        XCTAssertFalse(UserDefaults.standard.bool(forKey: PortraitModePreference.key))
+        XCTAssertEqual(GameOrientationMode.supportedOrientations(portraitEnabled: false), [.landscapeLeft, .landscapeRight])
+        XCTAssertTrue(GameOrientationMode.supportedOrientations(portraitEnabled: true).contains(.portrait))
+        XCTAssertTrue(GameOrientationMode.supportedOrientations(portraitEnabled: true).contains(.landscapeLeft))
+        XCTAssertTrue(GameOrientationMode.supportedOrientations(portraitEnabled: true).contains(.landscapeRight))
+    }
+
+    func testPortraitLayoutSelectionRequiresSettingAndTallGeometry() {
+        XCTAssertFalse(GameOrientationMode.isPortraitLayout(size: CGSize(width: 430, height: 932), portraitEnabled: false))
+        XCTAssertTrue(GameOrientationMode.isPortraitLayout(size: CGSize(width: 430, height: 932), portraitEnabled: true))
+        XCTAssertFalse(GameOrientationMode.isPortraitLayout(size: CGSize(width: 932, height: 430), portraitEnabled: true))
     }
 
     func testPlayerNameIsCleanedBeforeCommanderStartupConfig() {
@@ -580,6 +599,34 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(payload?["expectedBridgeRevision"] as? Int, 17)
     }
 
+    func testPreparedCommanderCastCommandPreservesCommandZoneSourceAndFromZone() throws {
+        let action = try decodeAction(
+            type: "cast_spell",
+            label: "Cast Isamaru, Hound of Konda",
+            extra: #"""
+            "cardInstanceId": "local-command-id",
+            "sourceInstanceId": "local-command-id",
+            "commandTemplate": {
+              "type": "cast_spell",
+              "cardInstanceId": "xmage-commander-id",
+              "sourceInstanceId": "xmage-commander-id",
+              "sourceZone": "command"
+            }
+            """#
+        )
+
+        let command = try MagicMobileAPI(baseURL: URL(string: "http://localhost")!)
+            .preparedCommand(for: action, gameId: "game-1", expectedBridgeRevision: 18)
+        let payload = try JSONSerialization.jsonObject(with: JSONEncoder.magicMobile.encode(command)) as? [String: Any]
+
+        XCTAssertEqual(payload?["type"] as? String, "cast_spell")
+        XCTAssertEqual(payload?["cardInstanceId"] as? String, "xmage-commander-id")
+        XCTAssertEqual(payload?["sourceInstanceId"] as? String, "xmage-commander-id")
+        XCTAssertEqual(payload?["sourceZone"] as? String, "command")
+        XCTAssertEqual(payload?["fromZone"] as? String, "command")
+        XCTAssertEqual(payload?["expectedBridgeRevision"] as? Int, 18)
+    }
+
     func testPromptActionCommandPreservesMessageIdWithoutTemplate() throws {
         let data = """
         {
@@ -625,6 +672,45 @@ final class MagicMobileTests: XCTestCase {
             .command(for: undoAction, gameId: "game-1")
 
         XCTAssertEqual(command.type, "cancel_payment")
+    }
+
+    func testManaPaymentTrayExposesCancelCastLabelForPaymentCancelActions() throws {
+        let cancelAction = try decodeAction(type: "cancel_payment")
+        let undoAction = try decodeAction(type: "undo_mana")
+
+        XCTAssertEqual(ManaPaymentTray.paymentCancelTitle(for: cancelAction), "Cancel cast")
+        XCTAssertEqual(ManaPaymentTray.paymentCancelTitle(for: undoAction), "Undo mana")
+    }
+
+    func testManaPaymentTrayFiltersManaChoicesByFloatingPool() throws {
+        let snapshotData = String(data: try minimalSnapshotJSON(id: "game-floating-mana"), encoding: .utf8)!
+            .replacingOccurrences(of: #""manaPool": { "W": 0, "U": 0, "B": 0, "R": 0, "G": 0, "C": 0 }"#, with: #""manaPool": { "W": 1, "U": 0, "B": 0, "R": 0, "G": 1, "C": 0 }"#)
+            .data(using: .utf8)!
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: snapshotData)
+        let prompt = try JSONDecoder.magicMobile.decode(PromptEnvelopeV2.self, from: #"""
+        {
+          "id": "xmage-mana-prompt",
+          "method": "GAME_PLAY_MANA",
+          "messageId": 77,
+          "playerId": "human",
+          "responseKind": "mana",
+          "message": "Pay {W}",
+          "manaChoices": [
+            { "id": "W", "label": "Pay {W}", "manaType": "W" },
+            { "id": "U", "label": "Pay {U}", "manaType": "U" },
+            { "id": "G", "label": "Pay {G}", "manaType": "G" }
+          ],
+          "responseCommand": {
+            "type": "play_mana",
+            "promptId": "xmage-mana-prompt",
+            "messageId": 77
+          }
+        }
+        """#.data(using: .utf8)!)
+
+        XCTAssertEqual(ManaPaymentTray.payableManaChoiceSymbols(in: snapshot, prompt: prompt), ["W", "G"])
+        XCTAssertTrue(ManaPaymentTray.canPay(symbol: "W", in: snapshot))
+        XCTAssertFalse(ManaPaymentTray.canPay(symbol: "U", in: snapshot))
     }
 
     func testChooseAbilityUsesExplicitAbilityIdOnly() throws {
@@ -919,8 +1005,42 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(ability["expectedBridgeRevision"] as? Int, 44)
     }
 
+    func testMobilePromptPresentationClassifiesPromptKindsAndCombatSteps() throws {
+        let cases: [(String, MobilePromptKind)] = [
+            ("play_mana", .payment),
+            ("choose_target", .target),
+            ("answer_yes_no", .confirmation),
+            ("choose_card", .cardChoice),
+            ("choose_player", .playerChoice),
+            ("choose_ability", .abilityChoice),
+            ("order_triggers", .order),
+            ("choose_amount", .amount),
+            ("choose_multi_amount", .multiAmount),
+            ("choose_pile", .pile),
+            ("search_select", .search),
+            ("unsupported_mobile_prompt", .unsupported)
+        ]
+
+        for (responseType, expectedKind) in cases {
+            let prompt = try promptEnvelopeV2(responseType: responseType, responsePromptId: "prompt-\(responseType)", responseMessageId: 91)
+            XCTAssertEqual(MobilePromptPresentation.kind(for: prompt), expectedKind, responseType)
+        }
+
+        let attackersStepData = String(data: try minimalSnapshotJSON(id: "prompt-combat"), encoding: .utf8)!
+            .replacingOccurrences(of: #""step": "precombat-main""#, with: #""step": "declare-attackers""#)
+            .replacingOccurrences(of: #""promptText": "Your priority""#, with: #""promptText": "Your priority""#)
+            .data(using: .utf8)!
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: attackersStepData)
+        let presentation = try XCTUnwrap(MobilePromptPresentation.make(snapshot: snapshot, legalActions: []))
+
+        XCTAssertEqual(presentation.kind, .combat)
+        XCTAssertEqual(presentation.title, "Select attackers")
+        XCTAssertFalse(presentation.requiresDetail)
+    }
+
     func testPromptCommandBuilderBuildsOrderedAndAmountCommands() throws {
         let prompt = try promptEnvelopeV2(responseType: "order_triggers", responsePromptId: "prompt-order", responseMessageId: 12)
+        let xPrompt = try promptEnvelopeV2(responseType: "play_x_mana", responsePromptId: "prompt-x-mana", responseMessageId: 13)
 
         let ordered = try payload(
             for: PromptCommandBuilder.command(
@@ -952,11 +1072,24 @@ final class MagicMobileTests: XCTestCase {
                 amounts: [1, 2]
             )
         )
+        let xMana = try payload(
+            for: PromptCommandBuilder.command(
+                gameId: "game-1",
+                promptEnvelope: xPrompt,
+                type: "play_x_mana",
+                promptId: "prompt-x-mana",
+                playerId: "human",
+                amount: 3
+            )
+        )
 
         XCTAssertEqual(ordered["orderedIds"] as? [String], ["trigger-2", "trigger-1"])
         XCTAssertEqual(ordered["messageId"] as? Int, 12)
         XCTAssertEqual(amount["amount"] as? Int, 3)
         XCTAssertEqual(multiAmount["amounts"] as? [Int], [1, 2])
+        XCTAssertEqual(xMana["type"] as? String, "play_x_mana")
+        XCTAssertEqual(xMana["amount"] as? Int, 3)
+        XCTAssertEqual(xMana["messageId"] as? Int, 13)
     }
 
     func testPromptEnvelopeV2DecodesMultiAmountBounds() throws {
@@ -1072,6 +1205,26 @@ final class MagicMobileTests: XCTestCase {
         )
 
         XCTAssertEqual(actions.map(\.id), ["cast_spell-action"])
+    }
+
+    func testInteractionStateMatchesCommanderCastActionsFromCommandZoneTemplate() throws {
+        let commander = zoneCard(id: "commander-isamaru", name: "Isamaru, Hound of Konda", typeLine: "Legendary Creature")
+        let cast = try decodeAction(
+            type: "cast_spell",
+            label: "Cast Isamaru, Hound of Konda",
+            extra: #"""
+            "commandTemplate": {
+              "type": "cast_spell",
+              "sourceInstanceId": "commander-isamaru",
+              "cardInstanceId": "commander-isamaru",
+              "sourceZone": "command"
+            }
+            """#
+        )
+        let actions = GameBoardInteractionState.cardActions(for: commander, actions: [cast])
+
+        XCTAssertEqual(actions.map(\.id), ["cast_spell-action"])
+        XCTAssertEqual(GameBoardInteractionState.legalPlayActions(for: commander, actions: [cast]).map(\.id), ["cast_spell-action"])
     }
 
     func testDragDropResolverRejectsNoLegalActionBeforeSubmitting() throws {
@@ -1315,6 +1468,76 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(CompactPromptPopup.syntheticStackPaymentPrompt(in: snapshot).message, "Tap mana for Circle of Flame")
     }
 
+    func testInlinePaymentPromptHandlesAbilityManaPaymentPipsWithoutPromptEnvelope() throws {
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
+        {
+          "id": "game-ability-payment",
+          "source": "xmage-java-bridge",
+          "activePlayerId": "human",
+          "phase": "precombat-main",
+          "step": "precombat-main",
+          "turn": 1,
+          "priorityPlayerId": "human",
+          "waitingOnPlayerId": "human",
+          "promptText": "Pay {1} to draw a card",
+          "players": [
+            {
+              "playerId": "human",
+              "displayName": "Caleb",
+              "life": 40,
+              "poison": 0,
+              "manaPool": { "W": 0, "U": 0, "B": 0, "R": 0, "G": 1, "C": 0 },
+              "zones": {
+                "library": [],
+                "hand": [],
+                "battlefield": [{ "instanceId": "forest-1", "tapped": false, "card": { "name": "Forest", "typeLine": "Basic Land - Forest", "oracleText": "" } }],
+                "graveyard": [],
+                "exile": [],
+                "command": [],
+                "stack": []
+              },
+              "commanderTax": 0,
+              "commanderDamage": {}
+            }
+          ],
+          "xmage": {
+            "schemaVersion": 1,
+            "gameId": "game-ability-payment",
+            "bridgeRevision": 9,
+            "xmageCycle": 12,
+            "callbackCoverage": [],
+            "stack": [{ "id": "stack-trigger", "name": "Activated ability", "sourceName": "Beast Whisperer", "rulesText": "Pay {1}. If you do, draw a card." }],
+            "combat": [],
+            "players": [],
+            "exileZones": [],
+            "revealed": [],
+            "lookedAt": [],
+            "companion": [],
+            "playableObjects": [],
+            "panels": { "stack": true, "command": true, "graveyard": true, "exile": true, "revealed": false, "lookedAt": false, "search": false }
+          },
+          "legalActions": [
+            { "id": "tap-forest", "type": "make_mana", "playerId": "human", "label": "Tap Forest", "sourceInstanceId": "forest-1", "producedMana": ["G"] }
+          ],
+          "log": [],
+          "bridgeRevision": 9,
+          "xmageCycle": 12,
+          "manaPayment": {
+            "active": true,
+            "spellName": "Beast Whisperer",
+            "manaCostText": "{1}",
+            "remainingText": "{1}",
+            "remaining": { "generic": 1, "W": 0, "U": 0, "B": 0, "R": 0, "G": 0, "C": 0, "total": 1 }
+          }
+        }
+        """#.data(using: .utf8)!)
+
+        XCTAssertTrue(InlinePaymentPromptState.isActive(in: snapshot))
+        XCTAssertFalse(CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: nil))
+        XCTAssertEqual(snapshot.manaPayment?.remaining?.generic, 1)
+        XCTAssertEqual(InlinePaymentPromptState.paymentPrompt(in: snapshot)?.message, "Tap mana for Activated ability")
+    }
+
     func testCompactPromptPopupDoesNotShowForPassiveGameSelectPriority() throws {
         let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
         {
@@ -1393,6 +1616,28 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertFalse(CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: nil))
     }
 
+    func testChooseAbilityActionTitlePrefersSpecificLabelOverGenericShortLabel() throws {
+        let first = try decodeAction(
+            type: "choose_ability",
+            label: "Soul Warden - Whenever another creature enters, you gain 1 life.",
+            extra: #"""
+            "shortLabel": "Ability",
+            "abilityId": "ability-soul-warden"
+            """#
+        )
+        let second = try decodeAction(
+            type: "choose_ability",
+            label: "Beast Whisperer - Pay {1}. If you do, draw a card.",
+            extra: #"""
+            "shortLabel": "Ability",
+            "abilityId": "ability-beast-whisperer"
+            """#
+        )
+
+        XCTAssertEqual(first.compactPromptTitle, "Soul Warden - Whenever another creature enters, you gain 1 life.")
+        XCTAssertEqual(second.compactPromptTitle, "Beast Whisperer - Pay {1}. If you do, draw a card.")
+    }
+
     func testPaymentPromptSuppressesTargetableBoardIdsEvenWhenIdsArePresent() throws {
         let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
         {
@@ -1440,6 +1685,45 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(AIWaitRecoveryPolicy.action(for: waiting, elapsedSeconds: 12, didRefresh: false, didReconnect: false), .refresh)
         XCTAssertEqual(AIWaitRecoveryPolicy.action(for: waiting, elapsedSeconds: 22, didRefresh: true, didReconnect: false), .reconnect)
         XCTAssertEqual(AIWaitRecoveryPolicy.action(for: waiting, elapsedSeconds: 60, didRefresh: true, didReconnect: true), .none)
+    }
+
+    func testWaitPresentationLabelsRecoveryStates() throws {
+        let aiWaiting = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: String(data: try minimalSnapshotJSON(id: "ai-wait-label"), encoding: .utf8)!
+            .replacingOccurrences(of: #""priorityPlayerId": "human""#, with: #""priorityPlayerId": "ai-1""#)
+            .replacingOccurrences(of: #""waitingOnPlayerId": "human""#, with: #""waitingOnPlayerId": "ai-1""#)
+            .data(using: .utf8)!)
+        let bridgeWaiting = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: String(data: try minimalSnapshotJSON(id: "bridge-wait-label"), encoding: .utf8)!
+            .replacingOccurrences(of: #""pendingStatus": null"#, with: #""pendingStatus": "waiting_for_xmage""#)
+            .data(using: .utf8)!)
+        let stale = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: String(data: try minimalSnapshotJSON(id: "stale-wait-label"), encoding: .utf8)!
+            .replacingOccurrences(of: #""pendingStatus": null"#, with: #""pendingStatus": "stalled""#)
+            .data(using: .utf8)!)
+
+        XCTAssertEqual(XmageWaitPresentation.make(snapshot: aiWaiting, pendingActionId: nil, liveUpdateStatus: "connected").kind, .xmageThinking)
+        XCTAssertEqual(XmageWaitPresentation.make(snapshot: aiWaiting, pendingActionId: "command-1", liveUpdateStatus: "connected").kind, .actionStillResolving)
+        XCTAssertEqual(XmageWaitPresentation.make(snapshot: bridgeWaiting, pendingActionId: nil, liveUpdateStatus: "connected").kind, .waitingForBridge)
+        XCTAssertEqual(XmageWaitPresentation.make(snapshot: aiWaiting, pendingActionId: nil, liveUpdateStatus: "disconnected").kind, .bridgeDisconnected)
+        XCTAssertEqual(XmageWaitPresentation.make(snapshot: stale, pendingActionId: nil, liveUpdateStatus: "connected").kind, .snapshotStale)
+        XCTAssertEqual(XmageWaitPresentation.make(snapshot: stale, pendingActionId: nil, liveUpdateStatus: "connected", elapsedSeconds: 60, didRefresh: true, didReconnect: true).kind, .manualReconnectAvailable)
+    }
+
+    func testActionRejectionNoticeUsesStructuredCategoryAndReturnedSnapshot() throws {
+        let snapshotText = try XCTUnwrap(String(data: try minimalSnapshotJSON(id: "rejection-snapshot"), encoding: .utf8))
+        let rejectionData = """
+        {
+          "category": "stale_snapshot",
+          "message": "Expected bridge revision 7 but got 9",
+          "snapshot": \(snapshotText)
+        }
+        """.data(using: .utf8)!
+        let rejection = try JSONDecoder.magicMobile.decode(MagicMobileActionRejection.self, from: rejectionData)
+        let notice = ActionRejectionNotice(rejection: rejection)
+
+        XCTAssertEqual(rejection.category, .staleSnapshot)
+        XCTAssertEqual(rejection.snapshot?.id, "rejection-snapshot")
+        XCTAssertEqual(notice.message, "Snapshot stale. Refreshed choices.")
+        XCTAssertEqual(notice.bridgeRevision, 7)
+        XCTAssertEqual(notice.xmageCycle, 11)
     }
 
     func testAssetDownloadStatusDistinguishesCompleteAndNewAssets() {
@@ -1760,6 +2044,94 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(selection.defenderHighlightIds(actions: [action]), ["ai-1"])
     }
 
+    func testCombatSelectionDetectsDeclareAttackersFromHumanStepWithoutActions() throws {
+        let attackersStepData = String(data: try minimalSnapshotJSON(id: "attackers-no-actions"), encoding: .utf8)!
+            .replacingOccurrences(of: #""step": "precombat-main""#, with: #""step": "declare-attackers""#)
+            .data(using: .utf8)!
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: attackersStepData)
+
+        XCTAssertTrue(CombatSelectionState.isDeclareAttackers(snapshot))
+        XCTAssertFalse(CombatSelectionState.isDeclareBlockers(snapshot))
+    }
+
+    func testCombatSelectionBuildsPartialAndFinishAttackCommands() throws {
+        let action = try decodeAction(
+            type: "declare_attackers",
+            extra: #"""
+            "validTargetIds": ["ai-1"],
+            "commandTemplate": {
+              "type": "declare_attackers",
+              "attackers": [{ "attackerId": "creature-1", "defenderId": "ai-1" }]
+            }
+            """#
+        )
+        var selection = CombatSelectionState()
+        selection.selectAttacker("creature-1")
+
+        let partial = selection.attackCommand(gameId: "game-1", playerId: "human", defenderId: "ai-1", actions: [action], expectedBridgeRevision: 7)
+        let finish = CombatSelectionState.finishAttackCommand(gameId: "game-1", playerId: "human", expectedBridgeRevision: 7)
+
+        XCTAssertEqual(partial?.type, "declare_attackers")
+        XCTAssertEqual(partial?.attackers?.first?.attackerId, "creature-1")
+        XCTAssertEqual(partial?.attackers?.first?.defenderId, "ai-1")
+        XCTAssertEqual(partial?.combatComplete, false)
+        XCTAssertEqual(finish.attackers?.count, 0)
+        XCTAssertEqual(finish.combatComplete, true)
+    }
+
+    func testCombatSelectionUsesActionCardIdsForAttackerHighlights() throws {
+        let action = try decodeAction(
+            type: "declare_attackers",
+            extra: #"""
+            "cardInstanceId": "creature-1",
+            "validTargetIds": ["ai-1"]
+            """#
+        )
+        var selection = CombatSelectionState()
+
+        XCTAssertEqual(selection.attackerHighlightIds(actions: [action]), ["creature-1"])
+        XCTAssertEqual(selection.defenderIds(forAttackerId: "creature-1", actions: [action]), ["ai-1"])
+
+        selection.selectAttacker("creature-1")
+        let command = selection.attackCommand(gameId: "game-1", playerId: "human", defenderId: "ai-1", actions: [action], expectedBridgeRevision: 9)
+
+        XCTAssertEqual(command?.attackers?.first?.attackerId, "creature-1")
+        XCTAssertEqual(command?.attackers?.first?.defenderId, "ai-1")
+        XCTAssertEqual(command?.expectedBridgeRevision, 9)
+    }
+
+    func testCombatSelectionBuildsPlaneswalkerAndBattleAttackCommands() throws {
+        let planeswalkerAction = try decodeAction(
+            type: "declare_attackers",
+            extra: #"""
+            "validTargetIds": ["planeswalker-1"],
+            "commandTemplate": {
+              "type": "declare_attackers",
+              "attackers": [{ "attackerId": "creature-1", "defenderId": "planeswalker-1" }]
+            }
+            """#
+        )
+        let battleAction = try decodeAction(
+            type: "declare_attackers",
+            extra: #"""
+            "validTargetIds": ["battle-1"],
+            "commandTemplate": {
+              "type": "declare_attackers",
+              "attackers": [{ "attackerId": "creature-1", "defenderId": "battle-1" }]
+            }
+            """#
+        )
+        var selection = CombatSelectionState()
+        selection.selectAttacker("creature-1")
+
+        let planeswalkerCommand = selection.attackCommand(gameId: "game-1", playerId: "human", defenderId: "planeswalker-1", actions: [planeswalkerAction], expectedBridgeRevision: 7)
+        let battleCommand = selection.attackCommand(gameId: "game-1", playerId: "human", defenderId: "battle-1", actions: [battleAction], expectedBridgeRevision: 7)
+
+        XCTAssertEqual(planeswalkerCommand?.attackers?.first?.defenderId, "planeswalker-1")
+        XCTAssertEqual(battleCommand?.attackers?.first?.defenderId, "battle-1")
+        XCTAssertEqual(selection.defenderHighlightIds(actions: [planeswalkerAction, battleAction]), ["planeswalker-1", "battle-1"])
+    }
+
     func testCombatSelectionBuildsBlockerPairsBeforeSubmitting() {
         var selection = CombatSelectionState()
 
@@ -1772,15 +2144,43 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(command?.type, "declare_blockers")
         XCTAssertEqual(command?.blockers?.first?.blockerId, "blocker-1")
         XCTAssertEqual(command?.blockers?.first?.attackerId, "attacker-1")
+        XCTAssertEqual(command?.combatComplete, false)
     }
 
-    func testBlockerModeRequiresExactLegalBlockerActions() throws {
+    func testCombatSelectionUsesActionCardIdsForBlockerHighlights() throws {
+        let action = try decodeAction(
+            type: "declare_blockers",
+            extra: #"""
+            "cardInstanceId": "blocker-1",
+            "validTargetIds": ["attacker-1"],
+            "commandTemplate": {
+              "type": "declare_blockers",
+              "blockers": [{ "blockerId": "blocker-1", "attackerId": "attacker-1" }]
+            }
+            """#
+        )
+        let selection = CombatSelectionState()
+
+        XCTAssertEqual(selection.blockerHighlightIds(actions: [action]), ["blocker-1"])
+        XCTAssertEqual(selection.attackingCreatureHighlightIds(actions: [action], combatGroups: []), ["attacker-1"])
+    }
+
+    func testCombatSelectionBuildsFinishBlockCommand() {
+        let command = CombatSelectionState.finishBlockCommand(gameId: "game-1", playerId: "human", expectedBridgeRevision: 7)
+
+        XCTAssertEqual(command.type, "declare_blockers")
+        XCTAssertEqual(command.blockers?.count, 0)
+        XCTAssertEqual(command.combatComplete, true)
+        XCTAssertEqual(command.expectedBridgeRevision, 7)
+    }
+
+    func testBlockerModeDetectsHumanStepBeforeLegalActionsArrive() throws {
         let blockersStepData = String(data: try minimalSnapshotJSON(id: "blockers-no-actions"), encoding: .utf8)!
             .replacingOccurrences(of: #""step": "precombat-main""#, with: #""step": "declare-blockers""#)
             .data(using: .utf8)!
         let noActions = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: blockersStepData)
 
-        XCTAssertFalse(CombatSelectionState.isDeclareBlockers(noActions))
+        XCTAssertTrue(CombatSelectionState.isDeclareBlockers(noActions))
 
         let legalData = String(data: try minimalSnapshotJSON(id: "blockers-with-actions"), encoding: .utf8)!
             .replacingOccurrences(of: #""step": "precombat-main""#, with: #""step": "declare-blockers""#)
@@ -1789,6 +2189,39 @@ final class MagicMobileTests: XCTestCase {
         let withActions = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: legalData)
 
         XCTAssertTrue(CombatSelectionState.isDeclareBlockers(withActions))
+    }
+
+    func testCombatSelectionHandlesMultipleAttackerBlockerPairs() throws {
+        let firstBlock = try decodeAction(
+            type: "declare_blockers",
+            extra: #"""
+            "blockers": [{ "blockerId": "blocker-1", "attackerId": "attacker-1" }],
+            "validTargetIds": ["attacker-1"],
+            "commandTemplate": {
+              "type": "declare_blockers",
+              "blockers": [{ "blockerId": "blocker-1", "attackerId": "attacker-1" }]
+            }
+            """#
+        )
+        let secondBlock = try decodeAction(
+            type: "declare_blockers",
+            extra: #"""
+            "blockers": [{ "blockerId": "blocker-1", "attackerId": "attacker-2" }],
+            "validTargetIds": ["attacker-2"],
+            "commandTemplate": {
+              "type": "declare_blockers",
+              "blockers": [{ "blockerId": "blocker-1", "attackerId": "attacker-2" }]
+            }
+            """#
+        )
+        let groups = [
+            XmageCombatGroup(defenderId: "human", defenderName: "Caleb", defenderKind: "player", blocked: false, attackers: [zoneCard(id: "attacker-1", name: "Attacker One", typeLine: "Creature")], blockers: []),
+            XmageCombatGroup(defenderId: "human", defenderName: "Caleb", defenderKind: "player", blocked: false, attackers: [zoneCard(id: "attacker-2", name: "Attacker Two", typeLine: "Creature")], blockers: [])
+        ]
+        let selection = CombatSelectionState()
+
+        XCTAssertEqual(selection.blockerHighlightIds(actions: [firstBlock, secondBlock]), ["blocker-1"])
+        XCTAssertEqual(selection.attackingCreatureHighlightIds(actions: [firstBlock, secondBlock], combatGroups: groups), ["attacker-1", "attacker-2"])
     }
 
     func testCombatArrowModelUsesAuthoritativeCombatGroups() {
@@ -1811,6 +2244,24 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(arrows.first?.toKind, "player")
         XCTAssertEqual(arrows.last?.fromId, "blocker-1")
         XCTAssertEqual(arrows.last?.toId, "attacker-1")
+    }
+
+    func testCombatArrowModelAppendsPreviewArrowsAfterAuthoritativeCombat() {
+        let attacker = zoneCard(id: "attacker-1", name: "Attacker", typeLine: "Creature")
+        let group = XmageCombatGroup(
+            defenderId: "ai-1",
+            defenderName: "AI",
+            defenderKind: "player",
+            blocked: false,
+            attackers: [attacker],
+            blockers: []
+        )
+        let preview = CombatArrow(kind: .previewBlock, fromId: "blocker-1", toId: "attacker-1", toKind: nil)
+
+        let arrows = CombatArrowModel.arrows(from: [group], previewArrows: [preview])
+
+        XCTAssertEqual(arrows.map(\.kind), [.attack, .previewBlock])
+        XCTAssertEqual(arrows.last, preview)
     }
 
     func testBattlefieldLayoutMetricsFitProMaxLandscape() {
@@ -1858,14 +2309,114 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(metrics.rightActionPanelRect.height, 190)
     }
 
-    private func decodeAction(type: String, extra: String? = nil) throws -> LegalAction {
+    func testPortraitBattlefieldLayoutMetricsFitProMaxPortrait() {
+        let metrics = PortraitBattlefieldLayoutMetrics(
+            size: CGSize(width: 430, height: 932),
+            safeArea: EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0)
+        )
+
+        assertPortraitGameplayLayout(metrics)
+        XCTAssertGreaterThanOrEqual(metrics.handCardWidth, 64)
+        XCTAssertGreaterThanOrEqual(metrics.permanentCardWidth, 58)
+        XCTAssertGreaterThanOrEqual(metrics.landCardWidth, 50)
+        XCTAssertEqual(metrics.handCardHeight / metrics.handCardWidth, PortraitBattlefieldLayoutMetrics.magicCardHeightToWidth, accuracy: 0.01)
+        XCTAssertEqual(metrics.permanentCardHeight / metrics.permanentCardWidth, PortraitBattlefieldLayoutMetrics.magicCardHeightToWidth, accuracy: 0.01)
+        XCTAssertEqual(metrics.landCardHeight / metrics.landCardWidth, PortraitBattlefieldLayoutMetrics.magicCardHeightToWidth, accuracy: 0.01)
+    }
+
+    func testPortraitPlayerDropZoneCoversBattlefieldAndLands() {
+        let metrics = PortraitBattlefieldLayoutMetrics(
+            size: CGSize(width: 430, height: 932),
+            safeArea: EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0)
+        )
+
+        XCTAssertTrue(metrics.playerDropZone.contains(CGPoint(x: metrics.playerBattlefieldRect.midX, y: metrics.playerBattlefieldRect.midY)))
+        XCTAssertTrue(metrics.playerDropZone.contains(CGPoint(x: metrics.playerLandsRect.midX, y: metrics.playerLandsRect.midY)))
+        XCTAssertFalse(metrics.playerDropZone.contains(CGPoint(x: metrics.handRect.midX, y: metrics.handRect.midY)))
+    }
+
+    func testPortraitBattlefieldRowPlannerUsesVisibleRowsBeforeOverflow() {
+        let cards = (0..<7).map { zoneCard(id: "creature-\($0)", name: "Creature \($0)", typeLine: "Creature") }
+
+        let plan = PortraitBattlefieldRowPlanner.plan(cards: cards, rowWidth: 208, cardWidth: 60, maxRows: 3)
+
+        XCTAssertEqual(plan.cardsPerRow, 4)
+        XCTAssertFalse(plan.overflowsHorizontally)
+        XCTAssertEqual(plan.rows.map { $0.map(\.instanceId) }, [
+            ["creature-0", "creature-1", "creature-2", "creature-3"],
+            ["creature-4", "creature-5", "creature-6"]
+        ])
+    }
+
+    func testPortraitBattlefieldRowPlannerFitsTenCardsWithoutOverflow() {
+        let cards = (0..<10).map { zoneCard(id: "creature-\($0)", name: "Creature \($0)", typeLine: "Creature") }
+
+        let plan = PortraitBattlefieldRowPlanner.plan(cards: cards, rowWidth: 208, cardWidth: 60, maxRows: 3)
+
+        XCTAssertEqual(plan.cardsPerRow, 4)
+        XCTAssertFalse(plan.overflowsHorizontally)
+        XCTAssertEqual(plan.rows.count, 3)
+        XCTAssertEqual(plan.rows.map { $0.map(\.instanceId) }, [
+            ["creature-0", "creature-1", "creature-2", "creature-3"],
+            ["creature-4", "creature-5", "creature-6"],
+            ["creature-7", "creature-8", "creature-9"]
+        ])
+    }
+
+    func testPortraitBattlefieldRowPlannerKeepsOverflowOnLastScrollableRowAboveTen() {
+        let cards = (0..<12).map { zoneCard(id: "creature-\($0)", name: "Creature \($0)", typeLine: "Creature") }
+
+        let plan = PortraitBattlefieldRowPlanner.plan(cards: cards, rowWidth: 208, cardWidth: 60, maxRows: 3)
+
+        XCTAssertTrue(plan.overflowsHorizontally)
+        XCTAssertEqual(plan.rows.count, 3)
+        XCTAssertEqual(plan.rows[2].map(\.instanceId), ["creature-7", "creature-8", "creature-9", "creature-10", "creature-11"])
+    }
+
+    func testPortraitOverlapLayoutFitsTenCardsWithoutScrolling() {
+        let plan = PortraitOverlapLayout.plan(count: 10, containerWidth: 414, cardWidth: 66, visibleLimit: 10, minVisibleWidth: 34, spacing: 6)
+
+        XCTAssertFalse(plan.needsScrolling)
+        XCTAssertGreaterThanOrEqual(plan.stride, 34)
+        XCTAssertLessThanOrEqual(plan.xOffset(for: 9) + plan.cardWidth, 414.1)
+    }
+
+    func testPortraitOverlapLayoutScrollsAboveTenCards() {
+        let plan = PortraitOverlapLayout.plan(count: 11, containerWidth: 414, cardWidth: 66, visibleLimit: 10, minVisibleWidth: 34, spacing: 6)
+
+        XCTAssertTrue(plan.needsScrolling)
+        XCTAssertGreaterThan(plan.contentWidth, plan.containerWidth)
+    }
+
+    func testPortraitCombatArrowAnchorsResolveCardsAndDefenders() {
+        let metrics = PortraitBattlefieldLayoutMetrics(
+            size: CGSize(width: 430, height: 932),
+            safeArea: EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0)
+        )
+        let attacker = zoneCard(id: "attacker-1", name: "Elvish Guide", typeLine: "Creature")
+        let blocker = zoneCard(id: "blocker-1", name: "Silvercoat Lion", typeLine: "Creature")
+
+        let anchors = PortraitCombatAnchorResolver.cardAnchors(
+            metrics: metrics,
+            humanBattlefield: [attacker],
+            opponentBattlefield: [blocker]
+        )
+
+        XCTAssertEqual(try XCTUnwrap(anchors["attacker-1"]).y, metrics.playerBattlefieldRect.midY, accuracy: 0.1)
+        XCTAssertEqual(try XCTUnwrap(anchors["blocker-1"]).y, metrics.opponentBattlefieldRect.midY, accuracy: 0.1)
+        XCTAssertEqual(PortraitCombatAnchorResolver.defenderAnchor(for: "ai", kind: "player", metrics: metrics).y, metrics.topHUDRect.midY, accuracy: 0.1)
+        XCTAssertEqual(PortraitCombatAnchorResolver.defenderAnchor(for: "human", kind: "player", metrics: metrics).y, metrics.bottomHUDRect.midY, accuracy: 0.1)
+        XCTAssertEqual(PortraitCombatAnchorResolver.defenderAnchor(for: "planeswalker-1", kind: "planeswalker", metrics: metrics).y, metrics.opponentBattlefieldRect.midY, accuracy: 0.1)
+    }
+
+    private func decodeAction(type: String, label: String? = nil, extra: String? = nil) throws -> LegalAction {
         let extraFields = extra.map { ",\n          \($0)" } ?? ""
         let data = """
         {
           "id": "\(type)-action",
           "type": "\(type)",
           "playerId": "human",
-          "label": "\(type)",
+          "label": "\(label ?? type)",
           "promptId": "prompt-1",
           "messageId": 1\(extraFields)
         }
@@ -1983,5 +2534,43 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(metrics.playerBattlefieldRect.height, 52, file: file, line: line)
         XCTAssertGreaterThanOrEqual(metrics.opponentLandsRect.height, 44, file: file, line: line)
         XCTAssertGreaterThanOrEqual(metrics.playerLandsRect.height, 44, file: file, line: line)
+    }
+
+    private func assertPortraitGameplayLayout(_ metrics: PortraitBattlefieldLayoutMetrics, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.topHUDRect), file: file, line: line)
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.opponentBattlefieldRect), file: file, line: line)
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.opponentLandsRect), file: file, line: line)
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.centerStripRect), file: file, line: line)
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.playerBattlefieldRect), file: file, line: line)
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.playerLandsRect), file: file, line: line)
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.handRect), file: file, line: line)
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.bottomControlsRect), file: file, line: line)
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.stackPanelRect), file: file, line: line)
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.bottomActionPanelRect), file: file, line: line)
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.passButtonRect), file: file, line: line)
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.skipButtonRect), file: file, line: line)
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.bottomNavRect), file: file, line: line)
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.settingsButtonRect), file: file, line: line)
+        XCTAssertTrue(metrics.safeFrame.contains(metrics.handScrubberRect), file: file, line: line)
+
+        XCTAssertLessThan(metrics.topHUDRect.maxY, metrics.opponentBattlefieldRect.minY, file: file, line: line)
+        XCTAssertLessThan(metrics.opponentBattlefieldRect.maxY, metrics.opponentLandsRect.minY, file: file, line: line)
+        XCTAssertLessThan(metrics.opponentLandsRect.maxY, metrics.centerStripRect.minY, file: file, line: line)
+        XCTAssertLessThan(metrics.centerStripRect.maxY, metrics.playerBattlefieldRect.minY, file: file, line: line)
+        XCTAssertLessThan(metrics.playerBattlefieldRect.maxY, metrics.playerLandsRect.minY, file: file, line: line)
+        XCTAssertLessThan(metrics.playerLandsRect.maxY, metrics.handRect.minY, file: file, line: line)
+        XCTAssertLessThan(metrics.handRect.maxY, metrics.bottomControlsRect.minY + 0.1, file: file, line: line)
+        XCTAssertTrue(metrics.bottomControlsRect.contains(metrics.bottomHUDRect), file: file, line: line)
+        XCTAssertTrue(metrics.bottomControlsRect.contains(metrics.bottomActionPanelRect), file: file, line: line)
+        XCTAssertTrue(metrics.bottomControlsRect.contains(metrics.stackPanelRect), file: file, line: line)
+        XCTAssertTrue(metrics.bottomActionPanelRect.contains(metrics.passButtonRect), file: file, line: line)
+        XCTAssertTrue(metrics.bottomActionPanelRect.contains(metrics.skipButtonRect), file: file, line: line)
+        XCTAssertLessThan(metrics.passButtonRect.maxY, metrics.skipButtonRect.minY, file: file, line: line)
+        XCTAssertTrue(metrics.bottomNavRect.contains(metrics.settingsButtonRect), file: file, line: line)
+        XCTAssertLessThan(metrics.bottomHUDRect.maxX, metrics.bottomActionPanelRect.minX, file: file, line: line)
+        XCTAssertLessThan(metrics.bottomActionPanelRect.maxX, metrics.stackPanelRect.minX, file: file, line: line)
+        XCTAssertFalse(metrics.stackPanelRect.intersects(metrics.passButtonRect), file: file, line: line)
+        XCTAssertFalse(metrics.stackPanelRect.intersects(metrics.skipButtonRect), file: file, line: line)
+        XCTAssertFalse(metrics.stackPanelRect.intersects(metrics.settingsButtonRect), file: file, line: line)
     }
 }

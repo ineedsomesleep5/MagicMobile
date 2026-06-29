@@ -66,6 +66,10 @@ struct MagicMobileAPI {
         try await delete(gamePath(gameId: gameId), body: CleanupGameRequest(reason: reason))
     }
 
+    func protocolDebug(gameId: String) async throws -> XmageProtocolDebug {
+        try await get("\(gamePath(gameId: gameId))/debug")
+    }
+
     private func commanderConfig(humanDeck: DeckList, aiDeck: DeckList, difficulty: AiDifficulty, humanDisplayName: String?) -> CommanderGameConfig {
         let cleanDisplayName = Self.cleanPlayerName(humanDisplayName)
         let config = CommanderGameConfig(
@@ -129,7 +133,7 @@ struct MagicMobileAPI {
                 sourceInstanceId: sourceInstanceId,
                 abilityId: templateString(action, "abilityId") ?? action.abilityId,
                 sourceZone: templateString(action, "sourceZone") ?? action.sourceZone,
-                fromZone: templateString(action, "fromZone") ?? action.sourceZone,
+                fromZone: templateString(action, "fromZone") ?? templateString(action, "sourceZone") ?? action.sourceZone,
                 cardName: cardName
             )
         }
@@ -149,7 +153,8 @@ struct MagicMobileAPI {
 
         if action.type == "declare_attackers" {
             let attackers = action.attackers ?? templateAttackers(action)
-            guard let attackers, !attackers.isEmpty else {
+            let isFinishingCombat = templateBool(action, "combatComplete") == true
+            guard let attackers, !attackers.isEmpty || isFinishingCombat else {
                 throw missingActionData(action, "attacker pair")
             }
             return GameCommand(
@@ -158,13 +163,15 @@ struct MagicMobileAPI {
                 playerId: action.playerId,
                 cardInstanceId: templateString(action, "cardInstanceId") ?? action.cardInstanceId,
                 sourceInstanceId: templateString(action, "sourceInstanceId") ?? action.sourceInstanceId,
-                attackers: attackers
+                attackers: attackers,
+                combatComplete: templateBool(action, "combatComplete")
             )
         }
 
         if action.type == "declare_blockers" {
             let blockers = action.blockers ?? templateBlockers(action)
-            guard let blockers, !blockers.isEmpty else {
+            let isFinishingCombat = templateBool(action, "combatComplete") == true
+            guard let blockers, !blockers.isEmpty || isFinishingCombat else {
                 throw missingActionData(action, "blocker pair")
             }
             return GameCommand(
@@ -173,7 +180,8 @@ struct MagicMobileAPI {
                 playerId: action.playerId,
                 cardInstanceId: templateString(action, "cardInstanceId") ?? action.cardInstanceId,
                 sourceInstanceId: templateString(action, "sourceInstanceId") ?? action.sourceInstanceId,
-                blockers: blockers
+                blockers: blockers,
+                combatComplete: templateBool(action, "combatComplete")
             )
         }
 
@@ -441,6 +449,7 @@ struct MagicMobileAPI {
             cardName: templateString(action, "cardName") ?? command.cardName,
             attackers: templateAttackers(action) ?? action.attackers ?? command.attackers,
             blockers: templateBlockers(action) ?? action.blockers ?? command.blockers,
+            combatComplete: templateBool(action, "combatComplete") ?? command.combatComplete,
             expectedBridgeRevision: templateInt(action, "expectedBridgeRevision") ?? command.expectedBridgeRevision
         )
     }
@@ -478,6 +487,7 @@ struct MagicMobileAPI {
             cardName: command.cardName,
             attackers: command.attackers,
             blockers: command.blockers,
+            combatComplete: command.combatComplete,
             expectedBridgeRevision: expectedBridgeRevision
         )
     }
@@ -690,6 +700,10 @@ struct MagicMobileAPI {
     private func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let http = response as? HTTPURLResponse
+            if let apiError = try? JSONDecoder.magicMobile.decode(APIError.self, from: data),
+               let rejection = apiError.actionRejection {
+                throw MagicMobileError.actionRejected(rejection)
+            }
             let message = Self.sanitizedServerMessage(
                 data: data,
                 statusCode: http?.statusCode,
@@ -712,7 +726,7 @@ struct MagicMobileAPI {
     }
 
     static func sanitizedServerMessage(data: Data, statusCode: Int?, contentType: String?) -> String {
-        if let apiMessage = try? JSONDecoder.magicMobile.decode(APIError.self, from: data).message,
+        if let apiMessage = try? JSONDecoder.magicMobile.decode(APIError.self, from: data).displayMessage,
            !apiMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return apiMessage
         }
@@ -811,14 +825,44 @@ private struct CommanderFixtureRequest: Encodable {
 
 private struct APIError: Decodable {
     let error: String?
+    let serverMessage: String?
+    let category: String?
+    let rejectionCategory: String?
     let blockedReason: String?
     let nextImplementationStep: String?
+    let snapshot: GameSnapshot?
 
-    var message: String? {
+    enum CodingKeys: String, CodingKey {
+        case error
+        case serverMessage = "message"
+        case category
+        case rejectionCategory
+        case blockedReason
+        case nextImplementationStep
+        case snapshot
+    }
+
+    var displayMessage: String? {
+        if let serverMessage, !serverMessage.isEmpty {
+            return serverMessage
+        }
         if let blockedReason, !blockedReason.isEmpty {
             return nextImplementationStep.map { "\(blockedReason) Next: \($0)" } ?? blockedReason
         }
         return error
+    }
+
+    var actionRejection: MagicMobileActionRejection? {
+        let rawCategory = rejectionCategory ?? category ?? error
+        let normalizedError = error?.lowercased() ?? ""
+        guard snapshot != nil || category != nil || rejectionCategory != nil || normalizedError == "action_no_longer_legal" else {
+            return nil
+        }
+        return MagicMobileActionRejection(
+            category: MagicMobileActionRejection.category(from: rawCategory),
+            message: displayMessage ?? error ?? "XMage rejected the action.",
+            snapshot: snapshot
+        )
     }
 }
 
@@ -827,6 +871,7 @@ struct EmptyRequest: Encodable {}
 enum MagicMobileError: LocalizedError {
     case invalidServerURL
     case server(String)
+    case actionRejected(MagicMobileActionRejection)
 
     var errorDescription: String? {
         switch self {
@@ -834,6 +879,8 @@ enum MagicMobileError: LocalizedError {
             return "Enter a valid MagicMobile server URL."
         case .server(let message):
             return message
+        case .actionRejected(let rejection):
+            return rejection.shortMessage
         }
     }
 }

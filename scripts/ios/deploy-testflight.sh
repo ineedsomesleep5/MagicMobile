@@ -12,6 +12,8 @@ OUTPUT_ROOT="${OUTPUT_ROOT:-$REPO_ROOT/build_output/testflight}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-$OUTPUT_ROOT/MagicMobile.xcarchive}"
 EXPORT_PATH="${EXPORT_PATH:-$OUTPUT_ROOT/export}"
 IPA_PATH="$EXPORT_PATH/MagicMobile.ipa"
+UPLOAD_LOG="$OUTPUT_ROOT/altool-upload.log"
+BUILD_NUMBER_SCRIPT="$REPO_ROOT/scripts/ios/testflight-build-number.mjs"
 
 ASC_KEY_ID="${ASC_KEY_ID:-Z54BVK456U}"
 ASC_ISSUER_ID="${ASC_ISSUER_ID:-0e7ba65b-f006-4c46-bb4d-dddf7303de16}"
@@ -24,7 +26,13 @@ if [[ ! -f "$ASC_KEY_PATH" ]]; then
   exit 2
 fi
 
+if [[ "${PREPARE_TESTFLIGHT_BUILD_NUMBER:-1}" == "1" && -f "$BUILD_NUMBER_SCRIPT" ]]; then
+  echo "Preparing next tracked TestFlight build number..."
+  node "$BUILD_NUMBER_SCRIPT" prepare
+fi
+
 echo "Preparing TestFlight upload for $BUNDLE_ID"
+echo "Version: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$REPO_ROOT/apps/ios/MagicMobile/Info.plist") ($(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$REPO_ROOT/apps/ios/MagicMobile/Info.plist"))"
 echo "Project: $PROJECT_PATH"
 echo "Scheme: $SCHEME"
 echo "Configuration: $CONFIGURATION"
@@ -69,8 +77,13 @@ xcrun altool --validate-app "$IPA_PATH" \
   --api-issuer "$ASC_ISSUER_ID"
 
 echo "Uploading IPA to App Store Connect..."
+rm -f "$UPLOAD_LOG"
 xcrun altool --upload-app -f "$IPA_PATH" \
   --api-key "$ASC_KEY_ID" \
-  --api-issuer "$ASC_ISSUER_ID"
+  --api-issuer "$ASC_ISSUER_ID" 2>&1 | tee "$UPLOAD_LOG"
+
+if [[ -f "$BUILD_NUMBER_SCRIPT" ]]; then
+  node "$BUILD_NUMBER_SCRIPT" record --upload-log "$UPLOAD_LOG" --ipa "$IPA_PATH"
+fi
 
 echo "Uploaded $IPA_PATH to App Store Connect."

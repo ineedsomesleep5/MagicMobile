@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "bundleId": "com.calebfeliciano.magicmobile",
+  "marketingVersion": "0.1.0",
+  "lastPreparedBuild": "2026062806",
+  "lastUploadedBuild": "2026062806",
+  "uploads": [
+    {
+      "build": "2026062701",
+      "marketingVersion": "0.1.0",
+      "uploadedAt": "2026-06-27T19:04:48-05:00",
+      "deliveryUuid": "7508e562-5a7d-4c74-b8b2-f8c0afa40be6",
+      "ipaPath": "build_output/testflight/export/MagicMobile.ipa",
+      "note": "Seeded from previous successful App Store Connect upload."
+    },
+    {
+      "build": "2026062801",
+      "marketingVersion": "0.1.0",
+      "uploadedAt": "2026-06-28T02:11:58.306Z",
+      "deliveryUuid": "e37fd1e4-aa09-4bdf-93d9-635d375aec7d",
+      "ipaPath": "build_output/testflight/export/MagicMobile.ipa"
+    },
+    {
+      "build": "2026062802",
+      "marketingVersion": "0.1.0",
+      "uploadedAt": "2026-06-28T05:17:24.477Z",
+      "deliveryUuid": "94353869-4e84-434d-9b7f-fcf3d71c58cd",
+      "ipaPath": "build_output/testflight/export/MagicMobile.ipa"
+    },
+    {
+      "build": "2026062803",
+      "marketingVersion": "0.1.0",
+      "uploadedAt": "2026-06-28T06:12:09.361Z",
+      "deliveryUuid": "f0dc84eb-f863-436e-809a-1a8ef86184d5",
+      "ipaPath": "build_output/testflight/export/MagicMobile.ipa"
+    },
+    {
+      "build": "2026062804",
+      "marketingVersion": "0.1.0",
+      "uploadedAt": "2026-06-28T13:46:22.757Z",
+      "deliveryUuid": "b3145422-2e62-4976-bb09-9277282d34b1",
+      "ipaPath": "build_output/testflight/export/MagicMobile.ipa"
+    },
+    {
+      "build": "2026062805",
+      "marketingVersion": "0.1.0",
+      "uploadedAt": "2026-06-28T15:27:55.429Z",
+      "deliveryUuid": "f4b5b6c7-831c-413c-a5ba-99631cd702df",
+      "ipaPath": "build_output/testflight/export/MagicMobile.ipa"
+    },
+    {
+      "build": "2026062806",
+      "marketingVersion": "0.1.0",
+      "uploadedAt": "2026-06-28T16:05:54.482Z",
+      "deliveryUuid": "a509d3ad-e399-4b91-9753-10eded8079a7",
+      "ipaPath": "build_output/testflight/export/MagicMobile.ipa"
+    }
+  ],
+  "lastPreparedAt": "2026-06-28T16:02:49.704Z"
+}

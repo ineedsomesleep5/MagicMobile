@@ -10,7 +10,7 @@
 # See DEPLOY.md for the full topology and recovery instructions.
 set -euo pipefail
 
-HOST="${MAGICMOBILE_DEPLOY_HOST:-root@72.62.200.185}"
+HOST="${MAGICMOBILE_DEPLOY_HOST:-root@100.107.89.62}"
 REMOTE_DIR="${MAGICMOBILE_REMOTE_DIR:-/root/MagicMobile}"
 SKIP_BRIDGE_BUILD="${SKIP_BRIDGE_BUILD:-0}"
 
