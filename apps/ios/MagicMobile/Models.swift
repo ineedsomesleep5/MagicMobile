@@ -101,6 +101,11 @@ struct AiPlayerConfig: Encodable {
     let deck: DeckList
 }
 
+enum GameStatus: String, Decodable, Equatable {
+    case inProgress = "in_progress"
+    case completed
+}
+
 struct GameSnapshot: Decodable {
     let id: String
     let source: String?
@@ -124,6 +129,9 @@ struct GameSnapshot: Decodable {
     let xmageCycle: Int?
     let pendingStatus: String?
     let manaPayment: ManaPayment?
+    let gameStatus: GameStatus?
+    let winnerPlayerIds: [String]?
+    let endReason: String?
 
     var human: PlayerGameState? {
         players.first { $0.playerId == "human" }
@@ -131,6 +139,18 @@ struct GameSnapshot: Decodable {
 
     var opponent: PlayerGameState? {
         players.first { $0.playerId != "human" }
+    }
+
+    var isCompleted: Bool {
+        gameStatus == .completed
+    }
+
+    var winnerDisplayNames: [String] {
+        let winners = Set(winnerPlayerIds ?? [])
+        return players.compactMap { player in
+            guard winners.contains(player.playerId) else { return nil }
+            return player.displayName ?? (player.playerId == "human" ? "You" : player.playerId)
+        }
     }
 }
 
@@ -340,6 +360,28 @@ struct ActionRejectionNotice: Equatable {
         message = rejection.shortMessage
         bridgeRevision = rejection.snapshot?.bridgeRevision
         xmageCycle = rejection.snapshot?.xmageCycle
+    }
+
+    var title: String {
+        switch category {
+        case .staleSnapshot: return "Game state changed"
+        case .noLongerLegal: return "Action no longer legal"
+        case .invalidChoice: return "Choice rejected"
+        case .bridgeDisconnected: return "Connection lost"
+        case .xmageWaiting: return "XMage is resolving"
+        case .unknown: return "Action not completed"
+        }
+    }
+
+    var recoveryTitle: String? {
+        switch category {
+        case .staleSnapshot, .noLongerLegal, .invalidChoice:
+            return "Refresh"
+        case .bridgeDisconnected:
+            return "Reconnect"
+        case .xmageWaiting, .unknown:
+            return nil
+        }
     }
 }
 
@@ -592,6 +634,7 @@ struct CommanderStartupResponse: Decodable {
     let snapshot: GameSnapshot?
     let message: String?
     let error: String?
+    var deckErrors: [CommanderDeckValidationError]? = nil
 }
 
 struct CleanupGameRequest: Encodable {
@@ -757,6 +800,26 @@ struct CardIdentity: Decodable, Hashable {
     let oracleText: String?
 }
 
+struct FlexibleInt: Decodable, Equatable {
+    let value: Int
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let number = try? container.decode(Int.self) {
+            value = number
+            return
+        }
+        if let text = try? container.decode(String.self), let number = Int(text) {
+            value = number
+            return
+        }
+        throw DecodingError.typeMismatch(
+            Int.self,
+            DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Expected an integer or numeric string.")
+        )
+    }
+}
+
 struct LegalAction: Decodable, Identifiable {
     let id: String
     let type: String
@@ -783,7 +846,7 @@ struct LegalAction: Decodable, Identifiable {
     let multiAmounts: [XmagePromptMultiAmount]?
     let manaType: String?
     let manaTypes: [String]?
-    let pile: String?
+    let pile: FlexibleInt?
     let confirmed: Bool?
     let pay: Bool?
     let useCommandZone: Bool?
@@ -807,6 +870,15 @@ struct LegalAction: Decodable, Identifiable {
 
 extension LegalAction {
     var compactPromptTitle: String {
+        switch type {
+        case "pass_priority": return "Pass Priority"
+        case "resolve_stack", "pass_until_stack_resolved": return "Resolve Stack"
+        case "end_turn": return "End Turn"
+        case "pass_until_end_of_turn": return "Yield Until End Step"
+        case "yield_until_next_turn", "pass_until_next_turn": return "Yield Until Next Turn"
+        default: break
+        }
+
         let trimmedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedShortLabel = shortLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
         let genericAbilityLabels = Set(["ability", "activated ability", "triggered ability"])

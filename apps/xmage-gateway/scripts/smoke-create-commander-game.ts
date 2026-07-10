@@ -11,7 +11,41 @@ const latestReportPath = path.join(reportDirectory, "smoke-report.json");
 const seed = process.env.XMAGE_SMOKE_SEED ?? "bridge-smoke";
 const humanPlayerId = process.env.XMAGE_SMOKE_HUMAN_ID ?? "human";
 const aiPlayerId = process.env.XMAGE_SMOKE_AI_ID ?? "ai-1";
+const commanderFullAiRequiredScenarios = [
+  "commander-gauntlet",
+  "mana-rock",
+  "commander-damage",
+  "blocker-flow",
+  "activated-ability-stack",
+  "triggered-ability-stack",
+  "prompt-mode",
+  "prompt-order",
+  "prompt-amount",
+  "prompt-multi-amount",
+  "prompt-pile",
+  "damage-assignment",
+  "repeated-mulligan",
+  "choose-card",
+  "choose-player",
+  "play-x-mana",
+  "choose-mana",
+  "generic-replacement",
+  "zone-movement",
+  "opening-start-player",
+  "drag-cast-phone-regression",
+  "terminal-reconnect",
+  "terminal-concede",
+  "terminal-draw",
+  "terminal-poison",
+  "terminal-commander-damage",
+  "terminal-lethal"
+] as const;
 const requestedScenario = process.env.XMAGE_SMOKE_SCENARIO ?? "core-flow";
+if (process.env.XMAGE_SMOKE_SELFTEST === "commander-full-ai-gate") {
+  const report = runCommanderFullAiGateSelfTest();
+  console.log(JSON.stringify(report, null, 2));
+  process.exit(report.passed ? 0 : 1);
+}
 if (requestedScenario === "commander-full-ai") {
   const report = await runCommanderFullAiGate();
   writeSmokeReportForScenario(report, "commander-full-ai");
@@ -52,6 +86,9 @@ const promptMultiAmountScenario = scenario === "prompt-multi-amount" || scenario
 const promptPileScenario = scenario === "prompt-pile" || scenario === "prompt-variety-pile";
 const activatedAbilityScenario = scenario === "activated-ability-stack";
 const triggeredAbilityScenario = scenario === "triggered-ability-stack";
+const terminalOutcomeExpected = terminalOutcomeForScenario(scenario);
+const terminalOutcomeScenario = terminalOutcomeExpected !== undefined;
+const terminalReconnectScenario = scenario === "terminal-reconnect";
 const fixtureScenario = scenarioModule.usesFixture;
 const useFixtureHarness = process.env.XMAGE_USE_FIXTURE === "true";
 const fixtureCallRequired = commanderGauntletScenario
@@ -63,7 +100,8 @@ const fixtureCallRequired = commanderGauntletScenario
   || promptOrderScenario
   || promptAmountScenario
   || promptMultiAmountScenario
-  || promptPileScenario;
+  || promptPileScenario
+  || terminalOutcomeScenario;
 const fixtureGateRequired = useFixtureHarness || fixtureCallRequired;
 const aiDifficulty = process.env.XMAGE_SMOKE_AI_DIFFICULTY ?? "normal";
 const routeFamiliesRequired = routeFamiliesRequiredForScenario(scenario);
@@ -84,6 +122,7 @@ let promptPileChoiceResolved = false;
 let damageAssignmentPromptSeen = false;
 let damageAssignmentChoiceSubmitted = false;
 let aiProgressObserved = false;
+let terminalReconnectVerified = false;
 const promptSamples: any[] = [];
 
 if (process.env.XMAGE_SMOKE_SELFTEST === "fixture-unavailable") {
@@ -175,6 +214,8 @@ const human = fixtureScenario
     ? genericReplacementFixtureDeck()
     : scenario === "zone-movement"
     ? zoneMovementFixtureDeck()
+    : terminalOutcomeScenario
+    ? terminalOutcomeFixtureDeck(scenario)
     : commanderFixtureDeck("Isamaru, Hound of Konda", "Plains")
   : generateBracketThreeCommanderDeck({ seed: `${seed}:human`, playerId: humanPlayerId }).deck;
 const ai = fixtureScenario
@@ -199,7 +240,7 @@ const created = await request(createPath, {
     humanPlayerId,
     humanDeck: human,
     aiPlayers: [{ playerId: aiPlayerId, displayName: "Noaddrag", difficulty: aiDifficulty, deck: ai }],
-    startingLife: 40,
+    startingLife: terminalStartingLife(scenario),
     commanderDamageEnabled: true,
     ...(fixtureSeed ?? {})
   }
@@ -279,32 +320,31 @@ let stepCount = 0;
 while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
   stepCount++;
 
-  // 1. Check if game has ended
-  const humanPlayer = snapshot.players?.find(p => p.playerId === humanPlayerId);
-  const aiPlayer = snapshot.players?.find(p => p.playerId === aiPlayerId);
-  if (humanPlayer && typeof humanPlayer.life === "number" && humanPlayer.life <= 0) {
-    console.error(`[Smoke] Game ended: Human life is ${humanPlayer.life}`);
-    break;
-  }
-  if (aiPlayer && typeof aiPlayer.life === "number" && aiPlayer.life <= 0) {
-    console.error(`[Smoke] Game ended: AI life is ${aiPlayer.life}`);
+  // 1. Track authoritative XMage state, including terminal completion.
+  recordCommanderState(snapshot);
+  recordCoverage(snapshot);
+  if (snapshot.gameStatus === "completed") {
+    console.error(`[Smoke] Game completed: ${snapshot.endReason}`);
+    if (terminalReconnectScenario) {
+      snapshot = await verifyTerminalReconnect(snapshot);
+    }
     break;
   }
 
-  // 2. Track commander tax and damage from authoritative XMage snapshots.
-  recordCommanderState(snapshot);
-  recordCoverage(snapshot);
+  const humanPlayer = snapshot.players?.find(p => p.playerId === humanPlayerId);
+  const aiPlayer = snapshot.players?.find(p => p.playerId === aiPlayerId);
+  if (humanPlayer && typeof humanPlayer.life === "number" && humanPlayer.life <= 0) {
+    console.error(`[Smoke] Human life is ${humanPlayer.life}; waiting for authoritative completed state.`);
+  }
+  if (aiPlayer && typeof aiPlayer.life === "number" && aiPlayer.life <= 0) {
+    console.error(`[Smoke] AI life is ${aiPlayer.life}; waiting for authoritative completed state.`);
+  }
 
   if (scenarioSatisfied()) {
     console.error(`[Smoke] ${scenario} scenario satisfied at turn ${snapshot.turn}, step ${snapshot.step}`);
     break;
   }
-  if (isGameOverSnapshot(snapshot)) {
-    console.error(`[Smoke] Game ended: XMage reported GAME_OVER`);
-    break;
-  }
-
-  // 3. Check if human has legal actions
+  // 2. Check if human has legal actions
   const actionable = snapshot.legalActions?.some(a => a.type !== "concede") ?? false;
   const isHumanActive = snapshot.priorityPlayerId === humanPlayerId || snapshot.waitingOnPlayerId === humanPlayerId || actionable;
 
@@ -455,6 +495,25 @@ while (snapshot.turn < maxTurns && stepCount < maxStepsCount) {
 
 recordCommanderState(snapshot);
 recordCoverage(snapshot);
+
+if (terminalOutcomeScenario) {
+  const terminalFailures = terminalSnapshotFailures(
+    snapshot,
+    terminalOutcomeExpected,
+    terminalReconnectScenario && !terminalReconnectVerified
+  );
+  if (terminalFailures.length > 0) {
+    writeSmokeReport({
+      ...baseSummaryReport(snapshot),
+      failedStep: scenario,
+      failureReason: `Terminal proof failed: ${terminalFailures.join(", ")}`
+    });
+    throw new Error(
+      `[Smoke] ${scenario} did not prove an authoritative terminal outcome: ${terminalFailures.join(", ")}.\n`
+        + smokeDebug(`${scenario} final snapshot`, snapshot)
+    );
+  }
+}
 
 if (scenario === "blocker-flow" && !blockerAssignmentExercised) {
   throw new Error(
@@ -708,95 +767,32 @@ async function cleanupSmokeGame(snapshot: SmokeSnapshot) {
   }
 }
 
-async function runCommanderFullAiGate() {
-  const requiredScenarios = [
-    "commander-gauntlet",
-    "mana-rock",
-    "commander-damage",
-    "blocker-flow",
-    "activated-ability-stack",
-    "triggered-ability-stack",
-    "prompt-mode",
-    "prompt-order",
-    "prompt-amount",
-    "prompt-multi-amount",
-    "prompt-pile",
-    "damage-assignment"
-  ];
-  const scenarioResults: Array<Record<string, unknown>> = [];
-
-  for (const childScenario of requiredScenarios) {
-    console.error(`[Smoke] commander-full-ai running ${childScenario}`);
-    const reportPath = path.join(reportDirectory, `smoke-report-${childScenario}.json`);
-    const startedAtMs = Date.now();
-    fs.rmSync(reportPath, { force: true });
-    const result = spawnSync("pnpm", ["smoke:xmage"], {
-      cwd: workspaceRoot,
-      env: {
-        ...process.env,
-        ENABLE_XMAGE_FIXTURES: "true",
-        NODE_ENV: "test",
-        XMAGE_SMOKE_SCENARIO: childScenario,
-        XMAGE_USE_FIXTURE: "true"
-      },
-      encoding: "utf8"
-    });
-    if (result.stdout) process.stdout.write(result.stdout);
-    if (result.stderr) process.stderr.write(result.stderr);
-
-    const childReport = readReportIfPresent(reportPath, startedAtMs);
-    scenarioResults.push({
-      scenario: childScenario,
-      passed: result.status === 0,
-      exitCode: result.status,
-      reportPath,
-      ...(childReport ?? {
-        failedStep: "report-missing",
-        failureReason: `No scenario report was written for ${childScenario}.`
-      })
-    });
+async function verifyTerminalReconnect(completed: SmokeSnapshot) {
+  const beforeFailures = terminalSnapshotFailures(completed, terminalOutcomeExpected, false);
+  if (beforeFailures.length > 0) {
+    throw new Error(`[Smoke] cannot verify terminal reconnect from an invalid completed snapshot: ${beforeFailures.join(", ")}`);
   }
+  const reconnected = await request(`/games/${encodeURIComponent(completed.id)}`);
+  assertBridgeSnapshot(reconnected, "terminal reconnect");
+  const afterFailures = terminalSnapshotFailures(reconnected, terminalOutcomeExpected, false);
+  if (afterFailures.length > 0) {
+    throw new Error(`[Smoke] terminal reconnect returned invalid completed state: ${afterFailures.join(", ")}`);
+  }
+  if (reconnected.id !== completed.id
+    || JSON.stringify(reconnected.winnerPlayerIds) !== JSON.stringify(completed.winnerPlayerIds)
+    || reconnected.endReason !== completed.endReason) {
+    throw new Error("[Smoke] terminal reconnect did not preserve game id, winners, and end reason.");
+  }
+  terminalReconnectVerified = true;
+  markRouteFamily("terminal_reconnect");
+  recordCoverage(reconnected);
+  return reconnected;
+}
 
-  const routeFamiliesCovered = unionReportStrings(scenarioResults, "routeFamiliesSeen").sort();
-  const routeFamiliesRequired = unionReportStrings(scenarioResults, "routeFamiliesRequired").sort();
-  const routeFamiliesMissing = routeFamiliesRequired
-    .filter((family) => !routeFamilyCoveredByReports(family, routeFamiliesCovered))
-    .sort();
-  const iOSRequiredRoutesMissing = routeFamiliesMissing.filter((family) => ![
-    "fixture_call",
-    "direct_state_seeded",
-    "seeded_state_verified"
-  ].includes(family));
-  const failedScenarios = scenarioResults
-    .filter((result) => result.passed !== true)
-    .map((result) => String(result.scenario));
-  const sourceFailures = scenarioResults
-    .filter((result) => result.source !== "xmage-java-bridge")
-    .map((result) => String(result.scenario));
-  const directSeedFailures = scenarioResults
-    .filter((result) => result.directStateSeeded !== true)
-    .map((result) => String(result.scenario));
-  const seededVerificationFailures = scenarioResults
-    .filter((result) => result.seededStateVerified !== true)
-    .map((result) => String(result.scenario));
-  const productionGateFailures = scenarioResults
-    .filter((result) => !resultProductionDisabled(result))
-    .map((result) => String(result.scenario));
-  const scenarioStepsBlocked = scenarioResults.flatMap((result) => {
-    const blocks = Array.isArray(result.stepsBlocked) ? result.stepsBlocked.map(String) : [];
-    return blocks.map((block) => `${String(result.scenario)}:${block}`);
-  });
-  const stepsBlocked = Array.from(new Set([
-    ...failedScenarios.map((name) => `scenario:${name}`),
-    ...sourceFailures.map((name) => `source:${name}`),
-    ...directSeedFailures.map((name) => `direct_state_seeded:${name}`),
-    ...seededVerificationFailures.map((name) => `seeded_state_verified:${name}`),
-    ...productionGateFailures.map((name) => `production_disabled:${name}`),
-    ...scenarioStepsBlocked,
-    ...routeFamiliesMissing.map((family) => `route_family:${family}`)
-  ])).sort();
-  const allRequiredScenariosPassed = stepsBlocked.length === 0
-    && iOSRequiredRoutesMissing.length === 0;
+async function runCommanderFullAiGate() {
+  const requiredScenarios = Array.from(commanderFullAiRequiredScenarios);
+  const scenarioResults = runChildSmokeScenarios("commander-full-ai", requiredScenarios);
+  const evaluation = evaluateCommanderFullAiGate(scenarioResults, requiredScenarios);
 
   return {
     endpoint,
@@ -804,16 +800,11 @@ async function runCommanderFullAiGate() {
     fixtureRequested: true,
     fixtureCallRequired: true,
     requiredScenarios,
-    allRequiredScenariosPassed,
+    ...evaluation,
     source: scenarioResults.every((result) => result.source === "xmage-java-bridge") ? "xmage-java-bridge" : "mixed-or-missing",
     directStateSeeded: scenarioResults.every((result) => result.directStateSeeded === true),
     seededStateVerified: scenarioResults.every((result) => result.seededStateVerified === true),
     productionDisabled: scenarioResults.every(resultProductionDisabled),
-    routeFamiliesRequired,
-    routeFamiliesCovered,
-    routeFamiliesMissing,
-    stepsBlocked,
-    iOSRequiredRoutesMissing,
     scenarioResults: scenarioResults.map((result) => ({
       scenario: result.scenario,
       passed: result.passed,
@@ -822,19 +813,281 @@ async function runCommanderFullAiGate() {
       seededStateVerified: result.seededStateVerified,
       bridgeRevision: result.bridgeRevision,
       xmageCycle: result.xmageCycle,
+      gameStatus: result.gameStatus,
+      winnerPlayerIds: result.winnerPlayerIds,
+      winners: result.winners,
+      endReason: result.endReason,
+      terminalOutcome: result.terminalOutcome,
+      terminalReconnectVerified: result.terminalReconnectVerified,
+      routeFamiliesSeen: result.routeFamiliesSeen,
       routeFamiliesRequired: result.routeFamiliesRequired,
       routeFamiliesMissing: result.routeFamiliesMissing,
+      aggregateRouteFamiliesRequired: commanderFullAiRouteFamiliesForScenario(String(result.scenario)),
+      aggregateRouteFamiliesMissing: evaluation.scenarioRouteFamiliesMissing
+        .find((entry) => entry.scenario === String(result.scenario))?.routeFamilies ?? [],
+      aggregateTerminalFailures: evaluation.scenarioTerminalFailures
+        .find((entry) => entry.scenario === String(result.scenario))?.failures ?? [],
       stepsBlocked: result.stepsBlocked,
       failedStep: result.failedStep,
       failureReason: result.failureReason,
       reportPath: result.reportPath
     })),
-    readinessVerdict: allRequiredScenariosPassed
+    readinessVerdict: evaluation.allRequiredScenariosPassed
       ? "full-commander-vs-ai-ready"
       : "not-ready-full-commander-vs-ai",
-    failureReason: allRequiredScenariosPassed
+    failureReason: evaluation.allRequiredScenariosPassed
       ? null
       : "Full Commander vs AI requires every listed deterministic scenario to pass and every required route family to be covered by real XMage."
+  };
+}
+
+function evaluateCommanderFullAiGate(
+  scenarioResults: Array<Record<string, unknown>>,
+  requiredScenarios: string[]
+) {
+  const resultsByScenario = new Map<string, Array<Record<string, unknown>>>();
+  for (const result of scenarioResults) {
+    const name = String(result.scenario ?? "");
+    const matches = resultsByScenario.get(name) ?? [];
+    matches.push(result);
+    resultsByScenario.set(name, matches);
+  }
+
+  const missingScenarios = requiredScenarios.filter((name) => !resultsByScenario.has(name));
+  const duplicateScenarios = requiredScenarios.filter((name) => (resultsByScenario.get(name)?.length ?? 0) > 1);
+  const requiredResults = requiredScenarios
+    .map((name) => resultsByScenario.get(name)?.[0])
+    .filter((result): result is Record<string, unknown> => Boolean(result));
+  const routeFamiliesRequired = Array.from(new Set(
+    requiredScenarios.flatMap(commanderFullAiRouteFamiliesForScenario)
+  )).sort();
+  const routeFamiliesCovered = unionReportStrings(requiredResults, "routeFamiliesSeen").sort();
+  const scenarioRouteFamiliesMissing = requiredResults.flatMap((result) => {
+    const scenario = String(result.scenario);
+    const covered = Array.isArray(result.routeFamiliesSeen) ? result.routeFamiliesSeen.map(String) : [];
+    const routeFamilies = commanderFullAiRouteFamiliesForScenario(scenario)
+      .filter((family) => !routeFamilyCoveredByReports(family, covered));
+    return routeFamilies.length > 0 ? [{ scenario, routeFamilies }] : [];
+  });
+  const routeFamiliesMissing = Array.from(new Set(
+    scenarioRouteFamiliesMissing.flatMap((entry) => entry.routeFamilies)
+  )).sort();
+  const iOSRequiredRoutesMissing = routeFamiliesMissing.filter((family) => ![
+    "fixture_call",
+    "direct_state_seeded",
+    "seeded_state_verified"
+  ].includes(family));
+  const failedScenarios = requiredResults
+    .filter((result) => result.passed !== true)
+    .map((result) => String(result.scenario));
+  const sourceFailures = requiredResults
+    .filter((result) => result.source !== "xmage-java-bridge")
+    .map((result) => String(result.scenario));
+  const directSeedFailures = requiredResults
+    .filter((result) => result.directStateSeeded !== true)
+    .map((result) => String(result.scenario));
+  const seededVerificationFailures = requiredResults
+    .filter((result) => result.seededStateVerified !== true)
+    .map((result) => String(result.scenario));
+  const productionGateFailures = requiredResults
+    .filter((result) => !resultProductionDisabled(result))
+    .map((result) => String(result.scenario));
+  const scenarioTerminalFailures = requiredResults.flatMap((result) => {
+    const scenario = String(result.scenario);
+    const expected = terminalOutcomeForScenario(scenario);
+    if (!expected) return [];
+    const failures = terminalReportFailures(result, expected, scenario === "terminal-reconnect");
+    return failures.length > 0 ? [{ scenario, failures }] : [];
+  });
+  const scenarioStepsBlocked = requiredResults.flatMap((result) => {
+    const blocks = Array.isArray(result.stepsBlocked) ? result.stepsBlocked.map(String) : [];
+    return blocks.map((block) => `${String(result.scenario)}:${block}`);
+  });
+  const stepsBlocked = Array.from(new Set([
+    ...missingScenarios.map((name) => `scenario_missing:${name}`),
+    ...duplicateScenarios.map((name) => `scenario_duplicate:${name}`),
+    ...failedScenarios.map((name) => `scenario:${name}`),
+    ...sourceFailures.map((name) => `source:${name}`),
+    ...directSeedFailures.map((name) => `direct_state_seeded:${name}`),
+    ...seededVerificationFailures.map((name) => `seeded_state_verified:${name}`),
+    ...productionGateFailures.map((name) => `production_disabled:${name}`),
+    ...scenarioStepsBlocked,
+    ...scenarioTerminalFailures.flatMap((entry) =>
+      entry.failures.map((failure) => `terminal:${entry.scenario}:${failure}`)
+    ),
+    ...scenarioRouteFamiliesMissing.flatMap((entry) =>
+      entry.routeFamilies.map((family) => `route_family:${entry.scenario}:${family}`)
+    )
+  ])).sort();
+  const allRequiredScenariosPassed = stepsBlocked.length === 0
+    && iOSRequiredRoutesMissing.length === 0;
+
+  return {
+    allRequiredScenariosPassed,
+    missingScenarios,
+    duplicateScenarios,
+    routeFamiliesRequired,
+    routeFamiliesCovered,
+    routeFamiliesMissing,
+    scenarioRouteFamiliesMissing,
+    scenarioTerminalFailures,
+    stepsBlocked,
+    iOSRequiredRoutesMissing
+  };
+}
+
+function commanderFullAiRouteFamiliesForScenario(scenario: string) {
+  return routeFamiliesRequiredForScenario(scenarioModuleFor(scenario).id);
+}
+
+function runCommanderFullAiGateSelfTest() {
+  const requiredScenarios = Array.from(commanderFullAiRequiredScenarios);
+  const passingResults = requiredScenarios.map((scenario) => {
+    const routeFamilies = commanderFullAiRouteFamiliesForScenario(scenario);
+    return {
+      scenario,
+      passed: true,
+      source: "xmage-java-bridge",
+      directStateSeeded: true,
+      seededStateVerified: true,
+      fixtureHarness: { productionDisabled: true },
+      ...syntheticTerminalReport(scenario),
+      routeFamiliesRequired: routeFamilies,
+      routeFamiliesSeen: routeFamilies,
+      routeFamiliesMissing: [],
+      stepsBlocked: []
+    };
+  });
+  const failures: string[] = [];
+  const baseline = evaluateCommanderFullAiGate(passingResults, requiredScenarios);
+  if (!baseline.allRequiredScenariosPassed) {
+    failures.push(`passing baseline failed: ${baseline.stepsBlocked.join(", ")}`);
+  }
+
+  for (const omittedScenario of requiredScenarios) {
+    const result = evaluateCommanderFullAiGate(
+      passingResults.filter((entry) => entry.scenario !== omittedScenario),
+      requiredScenarios
+    );
+    if (result.allRequiredScenariosPassed || !result.stepsBlocked.includes(`scenario_missing:${omittedScenario}`)) {
+      failures.push(`omitted scenario was not blocked: ${omittedScenario}`);
+    }
+  }
+
+  for (const failedScenario of requiredScenarios) {
+    const failedResults = passingResults.map((entry) => entry.scenario === failedScenario
+      ? { ...entry, passed: false }
+      : entry);
+    const result = evaluateCommanderFullAiGate(failedResults, requiredScenarios);
+    if (result.allRequiredScenariosPassed || !result.stepsBlocked.includes(`scenario:${failedScenario}`)) {
+      failures.push(`failed child status was not blocked: ${failedScenario}`);
+    }
+  }
+
+  let routeFailuresChecked = 0;
+  for (const entry of passingResults) {
+    for (const missingFamily of entry.routeFamiliesSeen) {
+      routeFailuresChecked++;
+      const brokenResults = passingResults.map((candidate) => candidate.scenario === entry.scenario
+        ? {
+            ...candidate,
+            routeFamiliesSeen: candidate.routeFamiliesSeen.filter((family) => family !== missingFamily)
+          }
+        : candidate);
+      const result = evaluateCommanderFullAiGate(brokenResults, requiredScenarios);
+      const expectedBlock = `route_family:${entry.scenario}:${missingFamily}`;
+      if (result.allRequiredScenariosPassed || !result.stepsBlocked.includes(expectedBlock)) {
+        failures.push(`missing route was not blocked: ${entry.scenario}:${missingFamily}`);
+      }
+    }
+  }
+
+  let terminalFailuresChecked = 0;
+  for (const entry of passingResults) {
+    const expected = terminalOutcomeForScenario(entry.scenario);
+    if (!expected) continue;
+    const mutations: Array<[string, Record<string, unknown>]> = [
+      ["game_status", { gameStatus: "in_progress" }],
+      ["winner_ids", { winnerPlayerIds: undefined, winners: undefined }],
+      ["winners_alias", { winners: ["wrong-player"] }],
+      ["end_reason", { endReason: null }],
+      ["legal_actions", { legalActions: ["pass_priority"] }],
+      ["outcome", { terminalOutcome: "wrong-outcome" }]
+    ];
+    if (entry.scenario === "terminal-reconnect") {
+      mutations.push(["reconnect", { terminalReconnectVerified: false }]);
+    }
+    for (const [failureName, mutation] of mutations) {
+      terminalFailuresChecked++;
+      const brokenResults = passingResults.map((candidate) => candidate.scenario === entry.scenario
+        ? { ...candidate, ...mutation }
+        : candidate);
+      const result = evaluateCommanderFullAiGate(brokenResults, requiredScenarios);
+      if (result.allRequiredScenariosPassed
+        || !result.stepsBlocked.some((block) => block.startsWith(`terminal:${entry.scenario}:`))) {
+        failures.push(`invalid terminal report was not blocked: ${entry.scenario}:${failureName}`);
+      }
+    }
+  }
+
+  return {
+    selfTest: "commander-full-ai-gate",
+    passed: failures.length === 0,
+    requiredScenarios,
+    omittedScenarioFailuresChecked: requiredScenarios.length,
+    failedScenarioStatusesChecked: requiredScenarios.length,
+    routeFailuresChecked,
+    terminalFailuresChecked,
+    failures
+  };
+}
+
+function terminalOutcomeForScenario(scenario: string): TerminalOutcome | undefined {
+  if (scenario === "terminal-reconnect" || scenario === "terminal-concede") return "concede";
+  if (scenario === "terminal-draw") return "draw";
+  if (scenario === "terminal-poison") return "poison";
+  if (scenario === "terminal-commander-damage") return "commander_damage";
+  if (scenario === "terminal-lethal") return "lethal";
+  return undefined;
+}
+
+function terminalReportFailures(
+  report: Record<string, unknown>,
+  expected: TerminalOutcome,
+  reconnectRequired: boolean
+) {
+  const failures: string[] = [];
+  const winnerPlayerIds = report.winnerPlayerIds;
+  if (report.gameStatus !== "completed") failures.push("game_status_not_completed");
+  if (!Array.isArray(winnerPlayerIds)) failures.push("winner_ids_missing");
+  if (!Array.isArray(report.winners)
+    || JSON.stringify(report.winners) !== JSON.stringify(winnerPlayerIds)) failures.push("winners_alias_mismatch");
+  if (typeof report.endReason !== "string" || report.endReason.trim().length === 0) failures.push("end_reason_missing");
+  if (!Array.isArray(report.legalActions) || report.legalActions.length !== 0) failures.push("terminal_actions_present_or_missing");
+  if (report.terminalOutcome !== expected) failures.push(`outcome_expected_${expected}`);
+  if (Array.isArray(winnerPlayerIds)) {
+    if (expected === "draw" && winnerPlayerIds.length !== 0) failures.push("draw_has_winner");
+    if (expected !== "draw" && winnerPlayerIds.length === 0) failures.push("winner_missing");
+    if ((expected === "concede") && !winnerPlayerIds.map(String).includes(aiPlayerId)) failures.push("concede_winner_not_ai");
+    if (["poison", "commander_damage", "lethal"].includes(expected)
+      && !winnerPlayerIds.map(String).includes(humanPlayerId)) failures.push("winning_human_missing");
+  }
+  if (reconnectRequired && report.terminalReconnectVerified !== true) failures.push("terminal_reconnect_unverified");
+  return failures;
+}
+
+function syntheticTerminalReport(scenario: string) {
+  const expected = terminalOutcomeForScenario(scenario);
+  if (!expected) return {};
+  const winnerPlayerIds = expected === "draw" ? [] : expected === "concede" ? [aiPlayerId] : [humanPlayerId];
+  return {
+    gameStatus: "completed",
+    winnerPlayerIds,
+    winners: winnerPlayerIds,
+    endReason: expected === "draw" ? "The game is a draw." : `Terminal ${expected} self-test outcome.`,
+    terminalOutcome: expected,
+    terminalReconnectVerified: scenario === "terminal-reconnect",
+    legalActions: []
   };
 }
 
@@ -953,14 +1206,14 @@ function runChildSmokeScenarios(parentScenario: string, requiredScenarios: strin
 
     const childReport = readReportIfPresent(reportPath, startedAtMs);
     scenarioResults.push({
-      scenario: childScenario,
-      passed: result.status === 0,
-      exitCode: result.status,
-      reportPath,
       ...(childReport ?? {
         failedStep: "report-missing",
         failureReason: `No scenario report was written for ${childScenario}.`
-      })
+      }),
+      scenario: childScenario,
+      passed: result.status === 0,
+      exitCode: result.status,
+      reportPath
     });
   }
 
@@ -1031,6 +1284,12 @@ function baseSummaryReport(snapshot: SmokeSnapshot) {
     source: snapshot.source ?? "gateway",
     bridgeRevision: snapshot.bridgeRevision ?? null,
     xmageCycle: snapshot.xmageCycle ?? null,
+    gameStatus: snapshot.gameStatus ?? null,
+    winnerPlayerIds: snapshot.winnerPlayerIds ?? null,
+    winners: snapshot.winnerPlayerIds ?? null,
+    endReason: snapshot.endReason ?? null,
+    terminalOutcome: classifyTerminalOutcome(snapshot),
+    terminalReconnectVerified,
     phase: snapshot.phase,
     step: snapshot.step,
     turn: snapshot.turn,
@@ -1091,6 +1350,7 @@ function baseSummaryReport(snapshot: SmokeSnapshot) {
     players: snapshot.players?.map((player: SmokePlayer) => ({
       playerId: player.playerId,
       life: player.life,
+      poison: player.poison ?? 0,
       commanderTax: player.commanderTax ?? 0,
       commanderDamage: player.commanderDamage ?? {},
       library: player.zones?.library?.length ?? 0,
@@ -1193,7 +1453,10 @@ function fixtureSeedSchema() {
   const commander = commanderGauntletScenario ? "Isamaru, Hound of Konda" : human.commander.cardName;
   const basic = commanderGauntletScenario ? "Plains" : "Plains";
   const expectedRoutes = routeFamiliesRequired.length > 0 ? routeFamiliesRequired : scenarioModule.requiredSteps;
-  const hand = damageAssignmentScenario
+  const terminalSeed = terminalFixtureSeed(scenario);
+  const hand = terminalSeed
+    ? terminalSeed.hand
+    : damageAssignmentScenario
     ? ["Plains"]
     : blockerFlowScenario
     ? [basic]
@@ -1220,7 +1483,9 @@ function fixtureSeedSchema() {
     : triggeredAbilityScenario
     ? ["Spirited Companion", "Plains"]
     : [basic];
-  const libraryTop = damageAssignmentScenario
+  const libraryTop = terminalSeed
+    ? terminalSeed.libraryTop
+    : damageAssignmentScenario
     ? ["Plains"]
     : promptMultiAmountScenario
     ? ["Mountain"]
@@ -1231,7 +1496,9 @@ function fixtureSeedSchema() {
     : commanderGauntletScenario
     ? Array.from({ length: 24 }, () => "Plains")
     : [basic];
-  const battlefield = damageAssignmentScenario
+  const battlefield = terminalSeed
+    ? terminalSeed.battlefield
+    : damageAssignmentScenario
     ? ["Defensive Formation", "Silvercoat Lion", "Savannah Lions", "Plains"]
     : blockerFlowScenario
     ? ["Silvercoat Lion", basic]
@@ -1256,7 +1523,8 @@ function fixtureSeedSchema() {
     : [basic];
   const requiresCommandZoneProof = commanderGauntletScenario
     || scenario === "commander-damage"
-    || scenario === "commander-replacement-tax";
+    || scenario === "commander-replacement-tax"
+    || scenario === "terminal-commander-damage";
   const commandZone = requiresCommandZoneProof ? [commander] : [];
   return {
     gameId: `fixture-${scenario}-${seed}`,
@@ -1267,9 +1535,11 @@ function fixtureSeedSchema() {
     libraryTop,
     graveyard: [],
     exile: [],
-    aiBattlefield: damageAssignmentScenario ? ["Metalwork Colossus"] : [blockerFlowScenario ? "Memnite" : activatedAbilityScenario ? "Sol Ring" : commanderGauntletScenario ? "Plains" : "Wastes"],
-    phase: blockerFlowScenario || damageAssignmentScenario ? "combat" : "precombat-main",
-    step: blockerFlowScenario ? "declare-blockers" : damageAssignmentScenario ? "combat-damage" : "precombat-main",
+    aiBattlefield: terminalSeed?.aiBattlefield
+      ?? (damageAssignmentScenario ? ["Metalwork Colossus"] : [blockerFlowScenario ? "Memnite" : activatedAbilityScenario ? "Sol Ring" : commanderGauntletScenario ? "Plains" : "Wastes"]),
+    phase: terminalSeed?.phase ?? (blockerFlowScenario || damageAssignmentScenario ? "combat" : "precombat-main"),
+    step: terminalSeed?.step ?? (blockerFlowScenario ? "declare-blockers" : damageAssignmentScenario ? "combat-damage" : "precombat-main"),
+    turn: terminalSeed?.turn ?? 1,
     activePlayerId: blockerFlowScenario || damageAssignmentScenario ? aiPlayerId : humanPlayerId,
     priorityPlayerId: humanPlayerId,
     expectedRoutes,
@@ -1370,6 +1640,14 @@ function laterScopeSteps(stepsCompleted: string[]) {
 function routeFamiliesRequiredForScenario(input: string) {
   if (input === "commander-gauntlet") return commanderGauntletRouteFamiliesRequired();
   if (input === "prompt-variety") return promptVarietyRouteFamiliesRequired();
+  if (input === "repeated-mulligan") return ["mulligan"];
+  if (input === "choose-card") return ["choose_card"];
+  if (input === "choose-player") return ["choose_player"];
+  if (input === "play-x-mana") return ["play_x_mana"];
+  if (input === "generic-replacement") return ["generic_replacement"];
+  if (input === "zone-movement") return ["zone_update_seen"];
+  if (input === "terminal-reconnect") return ["terminal_state", "terminal_reconnect"];
+  if (terminalOutcomeForScenario(input)) return ["terminal_state"];
   if (input === "prompt-mode") return ["cast_spell", "choose_mode"];
   if (input === "prompt-order") return ["order_triggers/order_items"];
   if (input === "prompt-amount") return ["cast_spell", "choose_amount"];
@@ -1574,6 +1852,24 @@ function scenarioModuleFor(input: string): ScenarioModule {
         usesFixture: true,
         scenarioSet: ["zone-movement"],
         requiredSteps: ["zone_update_seen"]
+      };
+    case "terminal-reconnect":
+      return {
+        id: "terminal-reconnect",
+        usesFixture: true,
+        scenarioSet: ["terminal-reconnect"],
+        requiredSteps: ["route-family:terminal_state", "route-family:terminal_reconnect"]
+      };
+    case "terminal-concede":
+    case "terminal-draw":
+    case "terminal-poison":
+    case "terminal-commander-damage":
+    case "terminal-lethal":
+      return {
+        id: input,
+        usesFixture: true,
+        scenarioSet: [input],
+        requiredSteps: ["route-family:terminal_state"]
       };
     case "commander-state":
     case "commander-replacement-tax":
@@ -1962,6 +2258,89 @@ function zoneMovementFixtureDeck() {
   };
 }
 
+function terminalOutcomeFixtureDeck(input: string) {
+  if (input === "terminal-lethal") {
+    return {
+      name: "Terminal Lethal Fixture",
+      commander: { cardName: "Krenko, Mob Boss", quantity: 1, section: "commander" },
+      entries: [
+        { cardName: "Lightning Bolt", quantity: 1, section: "deck" },
+        { cardName: "Mountain", quantity: 98, section: "deck" }
+      ]
+    };
+  }
+  if (input === "terminal-draw") {
+    return {
+      name: "Terminal Draw Fixture",
+      commander: { cardName: "Krenko, Mob Boss", quantity: 1, section: "commander" },
+      entries: [
+        { cardName: "Earthquake", quantity: 1, section: "deck" },
+        { cardName: "Mountain", quantity: 98, section: "deck" }
+      ]
+    };
+  }
+  if (input === "terminal-poison") {
+    return {
+      name: "Terminal Poison Fixture",
+      commander: { cardName: "Kozilek, Butcher of Truth", quantity: 1, section: "commander" },
+      entries: [
+        { cardName: "Blightsteel Colossus", quantity: 1, section: "deck" },
+        { cardName: "Wastes", quantity: 98, section: "deck" }
+      ]
+    };
+  }
+  if (input === "terminal-commander-damage") {
+    return commanderFixtureDeck("Yargle and Multani", "Swamp");
+  }
+  return commanderFixtureDeck("Isamaru, Hound of Konda", "Plains");
+}
+
+function terminalFixtureSeed(input: string) {
+  if (input === "terminal-lethal") {
+    return terminalSeed(["Lightning Bolt"], ["Mountain"], ["Mountain"]);
+  }
+  if (input === "terminal-draw") {
+    return terminalSeed(["Earthquake"], ["Mountain", "Mountain"], ["Mountain"]);
+  }
+  if (input === "terminal-poison") {
+    return terminalSeed(["Wastes"], ["Blightsteel Colossus"], ["Wastes"], {
+      phase: "combat",
+      step: "declare-attackers",
+      turn: 2
+    });
+  }
+  if (input === "terminal-commander-damage") {
+    return terminalSeed(["Swamp"], Array.from({ length: 5 }, () => "Swamp"), ["Swamp"], { turn: 1 });
+  }
+  if (input === "terminal-concede" || input === "terminal-reconnect") {
+    return terminalSeed(["Plains"], ["Plains"], ["Plains"]);
+  }
+  return undefined;
+}
+
+function terminalSeed(
+  hand: string[],
+  battlefield: string[],
+  libraryTop: string[],
+  options: { phase?: string; step?: string; turn?: number } = {}
+) {
+  return {
+    hand,
+    battlefield,
+    libraryTop,
+    aiBattlefield: [] as string[],
+    phase: options.phase ?? "precombat-main",
+    step: options.step ?? "precombat-main",
+    turn: options.turn ?? 1
+  };
+}
+
+function terminalStartingLife(input: string) {
+  if (input === "terminal-draw") return 1;
+  if (input === "terminal-lethal") return 3;
+  return 40;
+}
+
 function commanderGauntletHumanDeck() {
   return {
     name: "Commander Gauntlet Fixture",
@@ -1996,6 +2375,11 @@ function findAction(snapshot: SmokeSnapshot, type: string | string[], label = ""
 function chooseBestAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
   if (!snapshot.legalActions || snapshot.legalActions.length === 0) {
     return undefined;
+  }
+
+  if (terminalOutcomeScenario) {
+    const terminalAction = chooseTerminalAction(snapshot);
+    if (terminalAction) return terminalAction;
   }
 
   // 1. Active prompt responses from promptEnvelopeV2
@@ -2144,6 +2528,10 @@ function chooseBestAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
 }
 
 function chooseFixtureAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
+  if (terminalOutcomeScenario) {
+    return chooseTerminalAction(snapshot);
+  }
+
   if (damageAssignmentScenario) {
     const damageAction = chooseDamageAssignmentAction(snapshot);
     if (damageAction) return damageAction;
@@ -2278,6 +2666,64 @@ function chooseFixtureAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
 
   const blocker = actions.find((action) => action.type === "declare_blockers");
   if (blocker) return blocker;
+
+  return undefined;
+}
+
+function chooseTerminalAction(snapshot: SmokeSnapshot): SmokeAction | undefined {
+  const actions = snapshot.legalActions ?? [];
+  if (scenario === "terminal-concede" || scenario === "terminal-reconnect") {
+    return actions.find((action) => action.type === "concede");
+  }
+
+  if (scenario === "terminal-draw") {
+    const amount = actions.find((action) =>
+      (action.type === "play_x_mana" || action.type === "choose_amount")
+        && Number(action.amount ?? action.commandTemplate?.amount ?? action.choiceIds?.[0]) === 1
+    );
+    if (amount) return amount;
+  }
+
+  if (scenario === "terminal-lethal") {
+    const targetAi = actions.find((action) => {
+      if (action.type !== "choose_target" && action.type !== "choose_player" && action.type !== "resolve_choice") return false;
+      const ids = [
+        ...(action.playerIds ?? []),
+        ...(action.validPlayerIds ?? []),
+        ...(action.targetIds ?? []),
+        ...(action.validTargetIds ?? [])
+      ];
+      return ids.includes(aiPlayerId) || /noaddrag|ai-1|opponent/i.test(action.label ?? "");
+    });
+    if (targetAi) return targetAi;
+  }
+
+  const proofCard = scenario === "terminal-lethal"
+    ? /lightning bolt/i
+    : scenario === "terminal-draw"
+    ? /earthquake/i
+    : undefined;
+  if (proofCard) {
+    const cast = actions.find((action) => action.type === "cast_spell" && proofCard.test(action.cardName ?? action.label ?? ""));
+    if (cast) return cast;
+  }
+
+  if (scenario === "terminal-commander-damage") {
+    const castCommander = actions.find((action) =>
+      action.type === "cast_spell"
+        && ((action.sourceZone ?? action.commandTemplate?.sourceZone) === "command"
+          || /yargle and multani/i.test(action.cardName ?? action.label ?? ""))
+    );
+    if (castCommander) return castCommander;
+  }
+
+  if (scenario === "terminal-poison" || scenario === "terminal-commander-damage") {
+    const attackerName = scenario === "terminal-poison" ? /blightsteel colossus/i : /yargle and multani/i;
+    const attacker = actions.find((action) =>
+      action.type === "declare_attackers" && attackerName.test(action.cardName ?? action.label ?? "")
+    ) ?? actions.find((action) => action.type === "declare_attackers");
+    if (attacker) return attacker;
+  }
 
   return undefined;
 }
@@ -2941,6 +3387,22 @@ function assertBridgeSnapshot(snapshot: SmokeSnapshot, label: string) {
   if (snapshot.xmageCycle !== undefined && typeof snapshot.xmageCycle !== "number") {
     throw new Error(`XMage smoke ${label} returned non-numeric xmageCycle.`);
   }
+  if (snapshot.gameStatus !== "in_progress" && snapshot.gameStatus !== "completed") {
+    throw new Error(`XMage smoke ${label} did not include a valid gameStatus.`);
+  }
+  if (!Array.isArray(snapshot.winnerPlayerIds)) {
+    throw new Error(`XMage smoke ${label} did not include winnerPlayerIds.`);
+  }
+  if (snapshot.gameStatus === "completed") {
+    if (typeof snapshot.endReason !== "string" || snapshot.endReason.trim().length === 0) {
+      throw new Error(`XMage smoke ${label} completed without an endReason.`);
+    }
+    if ((snapshot.legalActions?.length ?? 0) !== 0) {
+      throw new Error(`XMage smoke ${label} completed with legal actions still exposed.`);
+    }
+  } else if (snapshot.winnerPlayerIds.length > 0 || snapshot.endReason != null) {
+    throw new Error(`XMage smoke ${label} returned terminal result fields while the game is still in progress.`);
+  }
   if (lastBridgeRevision !== undefined && snapshot.bridgeRevision < lastBridgeRevision) {
     throw new Error(`XMage smoke ${label} bridgeRevision went backward: ${lastBridgeRevision} -> ${snapshot.bridgeRevision}`);
   }
@@ -3033,6 +3495,9 @@ function isManaRockName(name: string) {
 }
 
 function hasSemanticProgress(previous: SmokeSnapshot, next: SmokeSnapshot, label: string) {
+  if (previous.gameStatus !== next.gameStatus && next.gameStatus === "completed") {
+    return true;
+  }
   if (label === "play land") {
     return humanZone(next, "battlefield").length > humanZone(previous, "battlefield").length;
   }
@@ -3420,6 +3885,9 @@ function recordCoverage(snapshot: SmokeSnapshot) {
     stackSeen = true;
     markRouteFamily("stack_object_seen");
   }
+  if (snapshot.gameStatus === "completed") {
+    markRouteFamily("terminal_state");
+  }
   if (manaRockLikeScenario && humanZone(snapshot, "battlefield").some((entry) => isManaRockName(entry.card?.name ?? ""))) {
     manaRockResolvedSeen = true;
   }
@@ -3559,11 +4027,37 @@ function isDamageAssignmentPromptAction(action: SmokeAction) {
 }
 
 function isGameOverSnapshot(snapshot: SmokeSnapshot) {
-  const prompt = snapshot.promptEnvelopeV2;
-  if (!prompt) return false;
-  return prompt.method === "GAME_OVER"
-    || prompt.responseKind === "game_over"
-    || prompt.responseCommand?.type === "game_over";
+  return snapshot.gameStatus === "completed";
+}
+
+function terminalSnapshotFailures(
+  snapshot: SmokeSnapshot,
+  expected: TerminalOutcome | undefined,
+  reconnectMissing: boolean
+) {
+  if (!expected) return ["terminal_outcome_contract_missing"];
+  return terminalReportFailures({
+    gameStatus: snapshot.gameStatus,
+    winnerPlayerIds: snapshot.winnerPlayerIds,
+    winners: snapshot.winnerPlayerIds,
+    endReason: snapshot.endReason,
+    terminalOutcome: classifyTerminalOutcome(snapshot),
+    terminalReconnectVerified: !reconnectMissing,
+    legalActions: snapshot.legalActions
+  }, expected, reconnectMissing);
+}
+
+function classifyTerminalOutcome(snapshot: SmokeSnapshot): TerminalOutcome | undefined {
+  if (snapshot.gameStatus !== "completed") return undefined;
+  const reason = (snapshot.endReason ?? "").toLowerCase();
+  if (reason.includes("conced")) return "concede";
+  if (reason.includes("draw") && (snapshot.winnerPlayerIds?.length ?? 0) === 0) return "draw";
+  if ((snapshot.players ?? []).some((player) => (player.poison ?? 0) >= 10) || reason.includes("poison")) return "poison";
+  if ((snapshot.players ?? []).some((player) =>
+    Object.values(player.commanderDamage ?? {}).some((damage) => damage >= 21)
+  ) || reason.includes("commander damage")) return "commander_damage";
+  if ((snapshot.winnerPlayerIds?.length ?? 0) > 0) return "lethal";
+  return undefined;
 }
 
 function formatActions(snapshot: SmokeSnapshot) {
@@ -3581,6 +4075,9 @@ function smokeDebug(label: string, snapshot: SmokeSnapshot) {
     source: snapshot.source,
     bridgeRevision: snapshot.bridgeRevision,
     xmageCycle: snapshot.xmageCycle,
+    gameStatus: snapshot.gameStatus,
+    winnerPlayerIds: snapshot.winnerPlayerIds,
+    endReason: snapshot.endReason,
     pendingStatus: snapshot.pendingStatus,
     phase: snapshot.phase,
     step: snapshot.step,
@@ -3624,6 +4121,9 @@ type SmokeSnapshot = {
   source?: string;
   bridgeRevision?: number;
   xmageCycle?: number;
+  gameStatus?: "in_progress" | "completed";
+  winnerPlayerIds?: string[];
+  endReason?: string | null;
   phase?: string;
   step?: string;
   turn?: number;
@@ -3675,11 +4175,14 @@ type SmokeSnapshot = {
 type SmokePlayer = {
   playerId: string;
   life?: number;
+  poison?: number;
   manaPool?: Record<string, number>;
   commanderTax?: number;
   commanderDamage?: Record<string, number>;
   zones?: Record<string, Array<{ card?: { name?: string; oracleText?: string; typeLine?: string }; tapped?: boolean; instanceId?: string }>>;
 };
+
+type TerminalOutcome = "concede" | "draw" | "poison" | "commander_damage" | "lethal";
 
 type SmokeAction = {
   id?: string;

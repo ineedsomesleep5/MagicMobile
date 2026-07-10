@@ -112,12 +112,23 @@ export class MockEngineAdapter implements EngineAdapter {
     return this.getSnapshot(input.gameId);
   }
 
+  async resumeGame(input: { gameId: GameId; playerId: PlayerId }): Promise<GameSnapshot> {
+    const snapshot = await this.getSnapshot(input.gameId);
+    findPlayer(snapshot, input.playerId);
+    return { ...snapshot, resumeStatus: "resumed" };
+  }
+
   async advanceTurn(input: { gameId: GameId }): Promise<GameSnapshot> {
     this.append(input.gameId, { type: "turn_advanced" });
     return this.getSnapshot(input.gameId);
   }
 
   async submitGameCommand(input: GameCommand): Promise<GameSnapshot> {
+    const snapshot = await this.getSnapshot(input.gameId);
+    if (snapshot.gameStatus === "completed") {
+      throw new Error("Action no longer legal: game is already completed");
+    }
+
     switch (input.type) {
       case "keep_hand":
         return this.applyHybridAction({ gameId: input.gameId, action: { type: "pass_priority", playerId: input.playerId } });
@@ -160,6 +171,12 @@ export class MockEngineAdapter implements EngineAdapter {
         });
       case "pass_priority":
         return this.passPriority({ gameId: input.gameId, playerId: input.playerId });
+      case "resolve_stack":
+        return this.passPriority({ gameId: input.gameId, playerId: input.playerId });
+      case "end_turn":
+        return this.advanceTurn({ gameId: input.gameId });
+      case "yield_until_next_turn":
+        return this.advanceTurn({ gameId: input.gameId });
       case "pass_until_response":
         return this.passPriority({ gameId: input.gameId, playerId: input.playerId });
       case "pass_until_next_turn":
@@ -233,6 +250,9 @@ export class MockEngineAdapter implements EngineAdapter {
         snapshot = {
           id: event.gameId,
           roomId: event.roomId,
+          gameStatus: "in_progress",
+          winnerPlayerIds: [],
+          endReason: null,
           phase: "beginning",
           turn: 1,
           players: event.playerIds.map((playerId) => createPlayer(playerId, event.playerIds)),
@@ -263,7 +283,7 @@ export class MockEngineAdapter implements EngineAdapter {
 }
 
 function enrichSnapshot(snapshot: GameSnapshot): GameSnapshot {
-  const legalActions = snapshot.priorityPlayerId ? getLegalActions(snapshot, snapshot.priorityPlayerId) : [];
+  const legalActions = snapshot.gameStatus !== "completed" && snapshot.priorityPlayerId ? getLegalActions(snapshot, snapshot.priorityPlayerId) : [];
   const enriched: GameSnapshot = {
     ...snapshot,
     legalActions,
@@ -297,11 +317,25 @@ function getLegalActions(snapshot: GameSnapshot, playerId: PlayerId): LegalActio
       isPrimary: true
     },
     {
-      id: `${playerId}-skip-turn`,
-      type: "pass_until_next_turn",
+      id: `${playerId}-resolve-stack`,
+      type: "resolve_stack",
       playerId,
-      label: "Pass until next turn",
-      shortLabel: "Skip turn"
+      label: "Resolve Stack",
+      shortLabel: "Resolve"
+    },
+    {
+      id: `${playerId}-end-turn`,
+      type: "end_turn",
+      playerId,
+      label: "End Turn",
+      shortLabel: "End turn"
+    },
+    {
+      id: `${playerId}-yield-next-turn`,
+      type: "yield_until_next_turn",
+      playerId,
+      label: "Yield Until Your Next Turn",
+      shortLabel: "Yield"
     },
     {
       id: `${playerId}-advance-phase`,
@@ -475,6 +509,12 @@ function applyHybridAction(snapshot: GameSnapshot, action: HybridAction): void {
       break;
     case "change_life":
       player.life += action.amount ?? 0;
+      if (player.life <= 0) {
+        snapshot.gameStatus = "completed";
+        snapshot.winnerPlayerIds = snapshot.players.filter((candidate) => candidate.playerId !== player.playerId).map((candidate) => candidate.playerId);
+        snapshot.endReason = "Player life reached zero.";
+        delete snapshot.priorityPlayerId;
+      }
       break;
     case "update_commander_damage":
       if (action.targetPlayerId) {

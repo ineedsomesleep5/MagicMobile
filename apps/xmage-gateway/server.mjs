@@ -158,6 +158,44 @@ export function createGatewayHandler(state = games, options = {}) {
         const gameId = decodeURIComponent(gameMatch[1]);
         const action = gameMatch[2];
 
+        if (method === "POST" && action === "resume") {
+          const body = await readJson(request);
+          const playerId = String(body?.playerId ?? "").trim();
+          if (!playerId) {
+            return sendJson(response, {
+              error: "resume_player_required",
+              message: "A playerId is required to resume a game.",
+              category: "invalid_player",
+              recoverable: true
+            }, 400);
+          }
+
+          const cachedSnapshot = state.get(gameId);
+          const resumedSnapshot = bridgeClient && (!cachedSnapshot || isBridgeSnapshot(cachedSnapshot))
+            ? await bridgeClient.getSnapshot(gameId, playerId)
+            : cachedSnapshot;
+          if (!resumedSnapshot) {
+            return sendJson(response, {
+              error: "game_expired",
+              message: `Game is no longer available: ${gameId}`,
+              category: "expired_game",
+              recoverable: false
+            }, 404);
+          }
+          if (!resumedSnapshot.players?.some((player) => player.playerId === playerId)) {
+            return sendJson(response, {
+              error: "resume_player_mismatch",
+              message: `Player ${playerId} does not belong to game ${gameId}.`,
+              category: "invalid_player",
+              recoverable: false
+            }, 403);
+          }
+
+          const storedSnapshot = storeSnapshot(state, gameId, { ...resumedSnapshot, resumeStatus: "resumed" });
+          markGameActivity(activity, gameId, "poll");
+          return sendJson(response, obfuscateSnapshotForPlayer(storedSnapshot, playerId));
+        }
+
         if (method === "DELETE" && !action) {
           const body = await readJson(request).catch(() => ({}));
           const cleanup = await cleanupGame(state, activity, bridgeClient, gameId, body?.reason ?? "client-request");
@@ -732,6 +770,9 @@ export function createGame(state, roomId, playerIds) {
   const snapshot = {
     id: gameId,
     roomId,
+    gameStatus: "in_progress",
+    winnerPlayerIds: [],
+    endReason: null,
     phase: "setup",
     step: "choose_starting_player",
     turn: 1,
@@ -824,8 +865,6 @@ function isRealBridgeSnapshot(snapshot) {
 }
 
 export function applyCommand(snapshot, command) {
-  lastAiProgressAt = Date.now();
-
   const knownCommands = new Set([
     "resolve_choice",
     "keep_hand",
@@ -837,6 +876,9 @@ export function applyCommand(snapshot, command) {
     "untap_permanent",
     "declare_attackers",
     "pass_priority",
+    "resolve_stack",
+    "end_turn",
+    "yield_until_next_turn",
     "pass_until_response",
     "pass_until_next_turn",
     "advance_phase",
@@ -845,6 +887,11 @@ export function applyCommand(snapshot, command) {
   if (!knownCommands.has(command.type)) {
     throw new Error(`Unknown command type: ${command.type}`);
   }
+  if (snapshot.gameStatus === "completed") {
+    throw new Error("Action no longer legal: game is already completed");
+  }
+
+  lastAiProgressAt = Date.now();
 
   if (command.type === "resolve_choice") {
     const chosenPlayerId = command.choiceIds?.[0] ?? command.playerId;
@@ -936,11 +983,36 @@ export function applyCommand(snapshot, command) {
     snapshot.log.push(logEntry(snapshot.log.length, `${command.playerId} passed priority`));
   }
 
-  if (command.type === "pass_until_next_turn") {
+  if (command.type === "resolve_stack") {
+    for (const player of snapshot.players) {
+      player.zones.graveyard.push(...player.zones.stack.splice(0));
+    }
+    snapshot.priorityPlayerId = nextPlayerId(snapshot, command.playerId);
+    snapshot.waitingOnPlayerId = snapshot.priorityPlayerId;
+    snapshot.promptText = "Stack resolved";
+    snapshot.log.push(logEntry(snapshot.log.length, `${command.playerId} yielded until the stack resolved`));
+  }
+
+  if (command.type === "end_turn" || command.type === "pass_until_next_turn") {
+    snapshot.turn += 1;
+    snapshot.activePlayerId = nextPlayerId(snapshot, snapshot.activePlayerId ?? command.playerId);
     snapshot.priorityPlayerId = snapshot.activePlayerId;
     snapshot.waitingOnPlayerId = snapshot.activePlayerId;
-    snapshot.promptText = "Your priority";
-    snapshot.log.push(logEntry(snapshot.log.length, `${command.playerId} passed until next turn`));
+    snapshot.phase = "beginning";
+    snapshot.step = "untap";
+    snapshot.promptText = "Untap step";
+    snapshot.log.push(logEntry(snapshot.log.length, `${command.playerId} ended the turn`));
+  }
+
+  if (command.type === "yield_until_next_turn") {
+    snapshot.turn += Math.max(1, snapshot.players.length);
+    snapshot.activePlayerId = command.playerId;
+    snapshot.priorityPlayerId = command.playerId;
+    snapshot.waitingOnPlayerId = command.playerId;
+    snapshot.phase = "beginning";
+    snapshot.step = "untap";
+    snapshot.promptText = "Your untap step";
+    snapshot.log.push(logEntry(snapshot.log.length, `${command.playerId} yielded until their next turn`));
   }
 
   if (command.type === "advance_phase") {
@@ -953,16 +1025,22 @@ export function applyCommand(snapshot, command) {
 
   if (command.type === "concede") {
     findPlayer(snapshot, command.playerId).life = 0;
+    snapshot.gameStatus = "completed";
+    snapshot.winnerPlayerIds = snapshot.players.filter((player) => player.playerId !== command.playerId).map((player) => player.playerId);
+    snapshot.endReason = `${command.playerId} conceded.`;
+    delete snapshot.priorityPlayerId;
+    delete snapshot.waitingOnPlayerId;
     snapshot.log.push(logEntry(snapshot.log.length, `${command.playerId} conceded`));
   }
 
-  snapshot.legalActions = getLegalActions(snapshot, snapshot.priorityPlayerId ?? command.playerId);
+  snapshot.legalActions = snapshot.gameStatus === "completed" ? [] : getLegalActions(snapshot, snapshot.priorityPlayerId ?? command.playerId);
   snapshot.engineHealth = getHealth();
   snapshot.waitingOnPlayerId = snapshot.priorityPlayerId;
   return snapshot;
 }
 
 function getLegalActions(snapshot, playerId) {
+  if (snapshot.gameStatus === "completed") return [];
   const player = snapshot.players.find((candidate) => candidate.playerId === playerId);
   if (!player) return [];
 
@@ -1028,8 +1106,10 @@ function getLegalActions(snapshot, playerId) {
   const firstHandCard = player.zones.hand[0];
   const actions = [
     { id: `${playerId}-pass`, type: "pass_priority", playerId, label: "Pass Priority", shortLabel: "Done", isPrimary: true },
+    { id: `${playerId}-resolve-stack`, type: "resolve_stack", playerId, label: "Resolve Stack", shortLabel: "Resolve" },
+    { id: `${playerId}-end-turn`, type: "end_turn", playerId, label: "End Turn", shortLabel: "End turn" },
+    { id: `${playerId}-yield-next-turn`, type: "yield_until_next_turn", playerId, label: "Yield Until Your Next Turn", shortLabel: "Yield" },
     { id: `${playerId}-phase`, type: "advance_phase", playerId, label: "Next Phase", shortLabel: "Next" },
-    { id: `${playerId}-skip-turn`, type: "pass_until_next_turn", playerId, label: "Pass until next turn", shortLabel: "Skip turn" },
     { id: `${playerId}-concede`, type: "concede", playerId, label: "Concede", shortLabel: "Concede" }
   ];
 
@@ -1383,6 +1463,9 @@ export function storeSnapshot(state, gameId, nextSnapshot, options = {}) {
 }
 
 function sanitizePendingSnapshot(snapshot) {
+  if (snapshot?.gameStatus === "completed") {
+    return { ...snapshot, legalActions: [] };
+  }
   if (!snapshot?.pendingStatus) {
     return snapshot;
   }
@@ -1470,6 +1553,9 @@ export function protocolDebug(snapshot) {
   return {
     gameId: snapshot?.id,
     source: snapshot?.source ?? "simulator",
+    gameStatus: snapshot?.gameStatus ?? "in_progress",
+    winnerPlayerIds: snapshot?.winnerPlayerIds ?? [],
+    endReason: snapshot?.endReason ?? null,
     bridgeRevision: snapshot?.bridgeRevision ?? null,
     xmageCycle: snapshot?.xmageCycle ?? null,
     pendingStatus: snapshot?.pendingStatus ?? null,
@@ -1505,6 +1591,7 @@ function enrichGatewayError(body = {}) {
 function rejectionCategory(message = "") {
   const text = String(message).toLowerCase();
   if (text.includes("stale") || text.includes("revision")) return "stale_snapshot";
+  if (text.includes("deck")) return "invalid_deck";
   if (text.includes("no longer") || text.includes("not legal") || text.includes("action_no_longer_legal")) return "no_longer_legal";
   if (text.includes("invalid") || text.includes("duplicate") || text.includes("disabled")) return "invalid_choice";
   if (text.includes("disconnect") || text.includes("unavailable") || text.includes("econnrefused")) return "bridge_disconnected";

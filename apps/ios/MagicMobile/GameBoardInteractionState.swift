@@ -12,7 +12,180 @@ enum GameBoardInteractionMode: Equatable {
     case combatSelectingBlockers
     case damageAllocating(promptId: String)
     case waitingForXmage
+    case gameOver
     case unsupportedPrompt(promptId: String, method: String, responseKind: String)
+}
+
+enum GameplayActionPresentation {
+    private static let yieldActionGroups = [
+        ["resolve_stack", "pass_until_stack_resolved"],
+        ["pass_until_response"],
+        ["end_turn", "pass_until_end_of_turn"],
+        ["yield_until_next_turn", "pass_until_next_turn"]
+    ]
+
+    static func yieldActions(in actions: [LegalAction]) -> [LegalAction] {
+        yieldActionGroups.compactMap { preferredTypes in
+            preferredTypes.compactMap { type in
+                actions.first { $0.type == type }
+            }.first
+        }
+    }
+
+    static func title(for action: LegalAction?, snapshot: GameSnapshot) -> String {
+        guard let action else { return "Wait" }
+
+        switch action.type {
+        case "pass_priority":
+            return "Pass Priority"
+        case "pass_until_response":
+            return "Pass Until Response"
+        case "resolve_stack", "pass_until_stack_resolved":
+            return "Resolve Stack"
+        case "end_turn":
+            return "End Turn"
+        case "pass_until_end_of_turn":
+            return "Yield Until End Step"
+        case "yield_until_next_turn", "pass_until_next_turn":
+            return "Yield Until Next Turn"
+        case "advance_phase":
+            return "Yield Until Next Main"
+        case "declare_attackers":
+            return "Done Attacking"
+        case "declare_blockers":
+            return "Done Blocking"
+        default:
+            if let shortLabel = action.shortLabel, !shortLabel.isEmpty {
+                return shortLabel
+            }
+            return action.label
+        }
+    }
+
+}
+
+struct GameActionDockModel {
+    enum Mode: Equatable {
+        case prompt
+        case priority
+        case waiting
+        case gameOver
+    }
+
+    let mode: Mode
+    let primaryAction: LegalAction?
+    let promptActions: [LegalAction]
+    let primaryTitle: String
+    let showsPromptDetails: Bool
+    let isPrimaryEnabled: Bool
+
+    static func make(
+        snapshot: GameSnapshot,
+        passAction: LegalAction?,
+        promptActions: [LegalAction],
+        decisionRequired: Bool,
+        pendingActionId: String?
+    ) -> GameActionDockModel {
+        if snapshot.isCompleted {
+            return GameActionDockModel(
+                mode: .gameOver,
+                primaryAction: nil,
+                promptActions: [],
+                primaryTitle: "Game Complete",
+                showsPromptDetails: false,
+                isPrimaryEnabled: false
+            )
+        }
+
+        if pendingActionId != nil {
+            return GameActionDockModel(
+                mode: .waiting,
+                primaryAction: nil,
+                promptActions: promptActions,
+                primaryTitle: "Waiting for XMage",
+                showsPromptDetails: false,
+                isPrimaryEnabled: false
+            )
+        }
+
+        if decisionRequired {
+            let primaryAction = promptActions.first
+            return GameActionDockModel(
+                mode: .prompt,
+                primaryAction: primaryAction,
+                promptActions: promptActions,
+                primaryTitle: primaryAction?.label ?? "Open Choice",
+                showsPromptDetails: true,
+                isPrimaryEnabled: true
+            )
+        }
+
+        return GameActionDockModel(
+            mode: .priority,
+            primaryAction: passAction,
+            promptActions: [],
+            primaryTitle: GameplayActionPresentation.title(for: passAction, snapshot: snapshot),
+            showsPromptDetails: false,
+            isPrimaryEnabled: passAction != nil
+        )
+    }
+}
+
+struct BattlefieldCardGroup: Identifiable, Equatable {
+    let id: String
+    let cards: [ZoneCard]
+
+    var representative: ZoneCard { cards[0] }
+    var count: Int { cards.count }
+}
+
+enum BattlefieldDensityPlanner {
+    static func groups(cards: [ZoneCard]) -> [BattlefieldCardGroup] {
+        var order: [String] = []
+        var grouped: [String: [ZoneCard]] = [:]
+
+        for card in cards {
+            let key = groupKey(for: card)
+            if grouped[key] == nil {
+                order.append(key)
+            }
+            grouped[key, default: []].append(card)
+        }
+
+        return order.compactMap { key in
+            guard let cards = grouped[key] else { return nil }
+            return BattlefieldCardGroup(id: key, cards: cards)
+        }
+    }
+
+    private static func groupKey(for card: ZoneCard) -> String {
+        let counters = (card.counters ?? [:])
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: ",")
+        let icons = (card.cardIcons ?? [])
+            .map { "\($0.iconType):\($0.resourceName ?? "")" }
+            .sorted()
+            .joined(separator: ",")
+        let blockers = (card.blocking ?? []).sorted().joined(separator: ",")
+        return [
+            card.card.name,
+            card.card.typeLine,
+            card.card.oracleText ?? "",
+            String(card.tapped ?? false),
+            String(card.summoningSickness ?? false),
+            counters,
+            String(card.power ?? Int.min),
+            String(card.toughness ?? Int.min),
+            String(card.damage ?? Int.min),
+            String(card.isAttacking ?? false),
+            blockers,
+            card.attachedToInstanceId ?? "",
+            String(card.selectable ?? true),
+            card.disabledReason ?? "",
+            icons
+        ].joined(separator: "|")
+    }
 }
 
 struct GameBoardInteractionState: Equatable {
@@ -46,6 +219,10 @@ struct GameBoardInteractionState: Equatable {
         pendingActionId: String?,
         selectedCard: ZoneCard?
     ) -> GameBoardInteractionMode {
+        if snapshot.isCompleted {
+            return .gameOver
+        }
+
         if pendingActionId != nil {
             return .waitingForXmage
         }
@@ -74,6 +251,14 @@ struct GameBoardInteractionState: Equatable {
                     responseKind: prompt.responseKind
                 )
             }
+        }
+
+        let actions = snapshot.legalActions ?? []
+        if actions.contains(where: { $0.type == "declare_attackers" }) {
+            return .combatSelectingAttackers
+        }
+        if actions.contains(where: { $0.type == "declare_blockers" }) {
+            return .combatSelectingBlockers
         }
 
         if let selectedCard {

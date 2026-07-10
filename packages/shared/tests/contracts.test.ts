@@ -133,6 +133,9 @@ describe("shared contracts", () => {
       async advancePhase() {
         return snapshot;
       },
+      async resumeGame() {
+        return snapshot;
+      },
       async getSnapshot() {
         return snapshot;
       }
@@ -243,6 +246,13 @@ describe("shared contracts", () => {
       abilityId: "ability-1"
     };
 
+    const resolveStackCommand: GameCommand = {
+      type: "resolve_stack",
+      gameId: "game-1",
+      playerId: "player-1",
+      expectedBridgeRevision: 12
+    };
+
     expect(prompt.players?.[0]?.playerId).toBe("player-2");
     expect(legalAction.commandTemplate?.type).toBe("choose_mana");
     expect(legalAction.cardName).toBe("Forest");
@@ -254,5 +264,6 @@ describe("shared contracts", () => {
     expect(payCommand.pay).toBe(false);
     expect(makeManaCommand.sourceInstanceId).toBe("source-card-1");
     expect(activateAbilityCommand.abilityId).toBe("ability-1");
+    expect(resolveStackCommand.expectedBridgeRevision).toBe(12);
   });
 });

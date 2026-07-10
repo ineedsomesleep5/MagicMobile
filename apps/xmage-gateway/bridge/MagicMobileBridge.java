@@ -8,8 +8,10 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import mage.abilities.icon.CardIcon;
 import mage.cards.Card;
+import mage.cards.decks.Deck;
 import mage.cards.decks.DeckCardInfo;
 import mage.cards.decks.DeckCardLists;
+import mage.cards.decks.DeckValidatorError;
 import mage.cards.repository.CardScanner;
 import mage.cards.repository.CardInfo;
 import mage.cards.repository.CardRepository;
@@ -25,6 +27,7 @@ import mage.constants.RangeOfInfluence;
 import mage.constants.SkillLevel;
 import mage.constants.TurnPhase;
 import mage.constants.Zone;
+import mage.deck.Commander;
 import mage.game.Game;
 import mage.game.GameState;
 import mage.game.PutToBattlefieldInfo;
@@ -59,6 +62,7 @@ import mage.view.CombatGroupView;
 import mage.view.CommandObjectView;
 import mage.view.ExileView;
 import mage.view.GameClientMessage;
+import mage.view.GameEndView;
 import mage.view.GameView;
 import mage.view.LookedAtView;
 import mage.view.ManaPoolView;
@@ -219,6 +223,36 @@ public final class MagicMobileBridge implements MageClient {
             JsonObject body = new JsonObject();
             body.addProperty("error", "Not found");
             writeJson(exchange, 404, body);
+        } catch (DeckValidationException error) {
+            lastError = error.getMessage() == null ? error.toString() : error.getMessage();
+            JsonObject body = new JsonObject();
+            body.addProperty("error", "deck_validation_failed");
+            body.addProperty("message", lastError);
+            body.addProperty("category", "invalid_deck");
+            body.add("deckErrors", error.deckErrors);
+            writeJson(exchange, 422, body);
+        } catch (UnknownGameException error) {
+            lastError = error.getMessage() == null ? error.toString() : error.getMessage();
+            JsonObject body = new JsonObject();
+            body.addProperty("error", "game_expired");
+            body.addProperty("message", lastError);
+            body.addProperty("category", "expired_game");
+            body.addProperty("recoverable", false);
+            writeJson(exchange, 404, body);
+        } catch (StaleCommandException error) {
+            lastError = error.getMessage() == null ? error.toString() : error.getMessage();
+            JsonObject body = new JsonObject();
+            body.addProperty("error", "action_no_longer_legal");
+            body.addProperty("message", lastError);
+            body.addProperty("category", "stale_snapshot");
+            body.addProperty("expectedBridgeRevision", error.expectedRevision);
+            body.addProperty("currentBridgeRevision", error.currentRevision);
+            body.addProperty("retryable", true);
+            try {
+                body.add("snapshot", snapshot(error.gameId));
+            } catch (Exception ignored) {
+            }
+            writeJson(exchange, 409, body);
         } catch (ActionNoLongerLegalException error) {
             lastError = error.getMessage() == null ? error.toString() : error.getMessage();
             JsonObject body = new JsonObject();
@@ -251,12 +285,6 @@ public final class MagicMobileBridge implements MageClient {
     }
 
     private JsonObject createCommanderGame(JsonObject config) throws Exception {
-        ensureConnected(false);
-        UUID roomId = session.getMainRoomId();
-        if (roomId == null) {
-            throw new IllegalStateException("XMage main room is unavailable");
-        }
-
         String humanExternalId = string(config, "humanPlayerId", "human");
         JsonArray aiPlayers = array(config, "aiPlayers");
         JsonObject aiConfig = aiPlayers.size() > 0 && aiPlayers.get(0).isJsonObject() ? aiPlayers.get(0).getAsJsonObject() : new JsonObject();
@@ -264,6 +292,21 @@ public final class MagicMobileBridge implements MageClient {
         String aiName = string(aiConfig, "displayName", "XMage AI");
         PlayerType aiType = playerTypeForDifficulty(string(aiConfig, "difficulty", "normal"));
         int aiSkill = skillForDifficulty(string(aiConfig, "difficulty", "normal"));
+
+        JsonObject humanDeckConfig = object(config, "humanDeck");
+        JsonObject aiDeckConfig = object(aiConfig, "deck", humanDeckConfig);
+        JsonArray deckErrors = new JsonArray();
+        DeckCardLists humanDeck = validateCommanderDeck(humanDeckConfig, "human", humanExternalId, deckErrors);
+        DeckCardLists aiDeck = validateCommanderDeck(aiDeckConfig, "ai", aiExternalId, deckErrors);
+        if (deckErrors.size() > 0) {
+            throw new DeckValidationException("One or more Commander decks failed XMage validation.", deckErrors);
+        }
+
+        ensureConnected(false);
+        UUID roomId = session.getMainRoomId();
+        if (roomId == null) {
+            throw new IllegalStateException("XMage main room is unavailable");
+        }
 
         MatchOptions options = new MatchOptions("MagicMobile Commander " + System.currentTimeMillis(), "Commander Two Player Duel", false);
         options.getPlayerTypes().add(PlayerType.HUMAN);
@@ -299,10 +342,13 @@ public final class MagicMobileBridge implements MageClient {
         }
 
         String humanDisplayName = sanitizedDisplayName(string(config, "humanDisplayName", "TabletopPolish"));
-        boolean humanJoined = session.joinTable(roomId, table.getTableId(), humanDisplayName, PlayerType.HUMAN, 1, deckFromConfig(object(config, "humanDeck")), "");
-        boolean aiJoined = session.joinTable(roomId, table.getTableId(), aiName, aiType, aiSkill, deckFromConfig(object(aiConfig, "deck", object(config, "humanDeck"))), "");
-        if (!humanJoined || !aiJoined) {
-            throw new IllegalStateException("XMage rejected one of the Commander decks");
+        boolean humanJoined = session.joinTable(roomId, table.getTableId(), humanDisplayName, PlayerType.HUMAN, 1, humanDeck, "");
+        if (!humanJoined) {
+            throw rejectedDeckAfterValidation("human", humanExternalId, humanDeckConfig);
+        }
+        boolean aiJoined = session.joinTable(roomId, table.getTableId(), aiName, aiType, aiSkill, aiDeck, "");
+        if (!aiJoined) {
+            throw rejectedDeckAfterValidation("ai", aiExternalId, aiDeckConfig);
         }
         if (fixtureManagerProvider != null) {
             if (!startMatchWithHumanChooser(table.getTableId())) {
@@ -312,7 +358,7 @@ public final class MagicMobileBridge implements MageClient {
             throw new IllegalStateException("XMage did not start the Commander match");
         }
 
-        String humanCommanderName = string(object(object(config, "humanDeck"), "commander"), "cardName", "");
+        String humanCommanderName = string(object(humanDeckConfig, "commander"), "cardName", "");
         GameRecord record = waitForStartedGame(humanExternalId, aiExternalId, humanDisplayName, aiName, humanCommanderName);
         games.put(record.gameId.toString(), record);
         return snapshot(record.gameId.toString());
@@ -432,6 +478,9 @@ public final class MagicMobileBridge implements MageClient {
         rebound.promptText = existing.promptText;
         rebound.choicePrompt = existing.choicePrompt;
         rebound.promptEnvelope = existing.promptEnvelope;
+        rebound.completed = existing.completed;
+        rebound.endReason = existing.endReason;
+        rebound.winnerPlayerIds.addAll(existing.winnerPlayerIds);
         rebound.startupOpeningPrompts.addAll(existing.startupOpeningPrompts);
         normalizePlayerPromptChoices(rebound.promptEnvelope, rebound, rebound.latestView);
         rebound.choicePrompt = choicePromptFromEnvelope(rebound.promptEnvelope);
@@ -447,11 +496,21 @@ public final class MagicMobileBridge implements MageClient {
         UUID xmageGameId = UUID.fromString(gameId);
         String type = string(command, "type", "");
         GameRecord record = games.get(gameId);
-        long startRevision = record == null ? -1 : record.bridgeRevision.get();
-        int startCycle = record == null ? -1 : record.latestCycle;
+        if (record == null || record.latestView == null) {
+            throw new UnknownGameException("Unknown or expired XMage game: " + gameId);
+        }
+        if (record.completed) {
+            throw new ActionNoLongerLegalException(gameId, "XMage game is already completed");
+        }
+        String commandPlayerId = string(command, "playerId", "");
+        if (!commandPlayerId.isEmpty() && !record.humanExternalId.equals(commandPlayerId)) {
+            throw new ActionNoLongerLegalException(gameId, "Command player does not control this XMage game: " + commandPlayerId);
+        }
+        long startRevision = record.bridgeRevision.get();
+        int startCycle = record.latestCycle;
         long expectedRevision = longInteger(command, "expectedBridgeRevision", -1L);
-        if (expectedRevision >= 0 && startRevision > expectedRevision) {
-            throw new ActionNoLongerLegalException(gameId, "Action was based on stale XMage snapshot revision " + expectedRevision + "; current revision is " + startRevision);
+        if (expectedRevision >= 0 && startRevision != expectedRevision) {
+            throw new StaleCommandException(gameId, expectedRevision, startRevision);
         }
         JsonObject prompt = currentPromptForCommand(gameId, command, type);
         UUID retryableUuid = null;
@@ -485,10 +544,14 @@ public final class MagicMobileBridge implements MageClient {
             session.sendPlayerBoolean(xmageGameId, false);
         } else if ("mulligan".equals(type)) {
             session.sendPlayerBoolean(xmageGameId, true);
-        } else if ("pass_until_response".equals(type) || "pass_until_next_turn".equals(type) || "advance_phase".equals(type)) {
-            PlayerAction playerAction = "pass_until_next_turn".equals(type)
-                    ? PlayerAction.PASS_PRIORITY_UNTIL_NEXT_TURN
-                    : PlayerAction.PASS_PRIORITY_UNTIL_NEXT_MAIN_PHASE;
+        } else if ("resolve_stack".equals(type) || "pass_until_response".equals(type)) {
+            session.sendPlayerAction(PlayerAction.PASS_PRIORITY_UNTIL_STACK_RESOLVED, xmageGameId, null);
+        } else if ("end_turn".equals(type) || "pass_until_next_turn".equals(type)) {
+            session.sendPlayerAction(PlayerAction.PASS_PRIORITY_UNTIL_NEXT_TURN, xmageGameId, null);
+        } else if ("yield_until_next_turn".equals(type)) {
+            session.sendPlayerAction(PlayerAction.PASS_PRIORITY_UNTIL_MY_NEXT_TURN, xmageGameId, null);
+        } else if ("advance_phase".equals(type)) {
+            PlayerAction playerAction = PlayerAction.PASS_PRIORITY_UNTIL_NEXT_MAIN_PHASE;
             session.sendPlayerAction(playerAction, xmageGameId, null);
         } else if ("concede".equals(type)) {
             session.sendPlayerAction(PlayerAction.CONCEDE, xmageGameId, null);
@@ -773,11 +836,25 @@ public final class MagicMobileBridge implements MageClient {
                 throw new ActionNoLongerLegalException(gameId, "XMage prompt message is no longer active: " + requestedMessageId);
             }
 
+            if (isYieldCommand(type) && !isCommandCompatibleWithPrompt(type, prompt)) {
+                throw new ActionNoLongerLegalException(gameId, "Required XMage prompt must be answered before yielding priority: " + activePromptId);
+            }
+
             if (exactPromptRequested && !isCommandCompatibleWithPrompt(type, prompt)) {
                 throw new ActionNoLongerLegalException(gameId, "Command " + type + " does not answer active XMage prompt " + activePromptId);
             }
             return exactPromptRequested || isCommandCompatibleWithPrompt(type, prompt) ? prompt : null;
         }
+    }
+
+    private boolean isYieldCommand(String type) {
+        return "pass_priority".equals(type)
+                || "resolve_stack".equals(type)
+                || "end_turn".equals(type)
+                || "yield_until_next_turn".equals(type)
+                || "pass_until_response".equals(type)
+                || "pass_until_next_turn".equals(type)
+                || "advance_phase".equals(type);
     }
 
     private boolean isCommandCompatibleWithPrompt(String type, JsonObject prompt) {
@@ -1161,45 +1238,104 @@ public final class MagicMobileBridge implements MageClient {
 
     private void sendCombatSelection(String bridgeGameId, UUID xmageGameId, JsonObject command, boolean attackers) {
         boolean complete = bool(command, "combatComplete", true);
-        JsonArray ids = new JsonArray();
         JsonArray groups = array(command, attackers ? "attackers" : "blockers");
         String objectKey = attackers ? "attackerId" : "blockerId";
-        for (JsonElement element : groups) {
-            if (!element.isJsonObject()) continue;
-            JsonObject group = element.getAsJsonObject();
-            addSelection(ids, string(group, objectKey, ""));
-            if (attackers) {
-                addSelection(ids, string(group, "defenderId", ""));
-            } else {
-                addSelection(ids, string(group, "attackerId", ""));
+        String targetKey = attackers ? "defenderId" : "attackerId";
+        if (groups.size() == 0) {
+            if (!complete) {
+                throw new ActionNoLongerLegalException(bridgeGameId, "Partial combat selection requires an attacker or blocker pair");
             }
-        }
-        addSelections(ids, command, attackers ? "attackerIds" : "blockerIds");
-        addSelections(ids, command, attackers ? "defenderIds" : "attackerIds");
-        if (ids.size() == 0) {
             session.sendPlayerBoolean(xmageGameId, false);
             return;
         }
-        for (JsonElement id : ids) {
-            String value = id.getAsString();
-            if (!isUuid(value)) {
-                throw new ActionNoLongerLegalException(bridgeGameId, "XMage expected combat UUID but received " + value);
+        for (JsonElement element : groups) {
+            if (!element.isJsonObject()) continue;
+            JsonObject group = element.getAsJsonObject();
+            String objectId = string(group, objectKey, "");
+            String targetId = string(group, targetKey, "");
+            if (!isUuid(objectId) || targetId.isEmpty()) {
+                throw new ActionNoLongerLegalException(bridgeGameId, "XMage expected a paired combat selection");
             }
-            session.sendPlayerUUID(xmageGameId, UUID.fromString(value));
-            combatResponsePause(bridgeGameId);
+            GameRecord record = games.get(bridgeGameId);
+            UUID objectUuid = UUID.fromString(objectId);
+            UUID targetUuid = combatTargetUuid(bridgeGameId, targetId);
+            boolean pairWasDeclared = combatPairMatches(record, objectUuid, targetUuid, attackers);
+            long startRevision = record == null ? -1 : record.bridgeRevision.get();
+            session.sendPlayerUUID(xmageGameId, objectUuid);
+            JsonObject responsePrompt = waitForCombatResponse(bridgeGameId, startRevision);
+            if (isCombatTargetPrompt(responsePrompt)) {
+                JsonArray targetSelection = new JsonArray();
+                targetSelection.add(targetUuid.toString());
+                validatePromptSelections(bridgeGameId, responsePrompt, targetSelection);
+                record = games.get(bridgeGameId);
+                startRevision = record == null ? -1 : record.bridgeRevision.get();
+                session.sendPlayerUUID(xmageGameId, targetUuid);
+                responsePrompt = waitForCombatResponse(bridgeGameId, startRevision);
+            }
+            if (responsePrompt != null) {
+                return;
+            }
+            record = games.get(bridgeGameId);
+            boolean pairIsDeclared = combatPairMatches(record, objectUuid, targetUuid, attackers);
+            if (pairIsDeclared == pairWasDeclared) {
+                throw new ActionNoLongerLegalException(bridgeGameId, "XMage did not apply the requested combat pairing");
+            }
         }
         if (complete) {
             session.sendPlayerBoolean(xmageGameId, false);
         }
     }
 
-    private void combatResponsePause(String bridgeGameId) {
-        try {
-            Thread.sleep(350);
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
-            throw new ActionNoLongerLegalException(bridgeGameId, "Interrupted while waiting for XMage combat response");
+    private JsonObject waitForCombatResponse(String bridgeGameId, long startRevision) {
+        long deadline = System.currentTimeMillis() + 3000;
+        while (System.currentTimeMillis() < deadline) {
+            GameRecord record = games.get(bridgeGameId);
+            if (record != null && record.bridgeRevision.get() > startRevision) {
+                return record.promptEnvelope == null ? null : record.promptEnvelope.deepCopy();
+            }
+            try {
+                Thread.sleep(25);
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                throw new ActionNoLongerLegalException(bridgeGameId, "Interrupted while waiting for XMage combat response");
+            }
         }
+        throw new ActionNoLongerLegalException(bridgeGameId, "XMage did not answer the combat selection in time");
+    }
+
+    private boolean isCombatTargetPrompt(JsonObject prompt) {
+        return prompt != null && "GAME_TARGET".equals(string(prompt, "method", ""));
+    }
+
+    private UUID combatTargetUuid(String bridgeGameId, String targetId) {
+        if (isUuid(targetId)) {
+            return UUID.fromString(targetId);
+        }
+        GameRecord record = games.get(bridgeGameId);
+        if (record != null && record.latestView != null) {
+            for (Map.Entry<UUID, String> entry : externalPlayerIds(record, record.latestView).entrySet()) {
+                if (targetId.equals(entry.getValue())) {
+                    return entry.getKey();
+                }
+            }
+        }
+        throw new ActionNoLongerLegalException(bridgeGameId, "XMage could not resolve combat target " + targetId);
+    }
+
+    private boolean combatPairMatches(GameRecord record, UUID objectId, UUID targetId, boolean attackers) {
+        if (record == null || record.latestView == null) {
+            return false;
+        }
+        for (CombatGroupView group : record.latestView.getCombat()) {
+            if (attackers) {
+                if (targetId.equals(group.getDefenderId()) && group.getAttackers().containsKey(objectId)) {
+                    return true;
+                }
+            } else if (group.getAttackers().containsKey(targetId) && group.getBlockers().containsKey(objectId)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private JsonObject waitForUpdatedSnapshot(String gameId, String commandType, long startRevision, int startCycle) throws InterruptedException {
@@ -1469,7 +1605,7 @@ public final class MagicMobileBridge implements MageClient {
     private JsonObject snapshot(String gameId, String pendingStatus) {
         GameRecord record = games.get(gameId);
         if (record == null || record.latestView == null) {
-            throw new IllegalArgumentException("Unknown XMage game: " + gameId);
+            throw new UnknownGameException("Unknown or expired XMage game: " + gameId);
         }
         GameView view = record.latestView;
         Map<UUID, String> playerIds = externalPlayerIds(record, view);
@@ -1480,6 +1616,9 @@ public final class MagicMobileBridge implements MageClient {
         snapshot.addProperty("roomId", "xmage-room");
         snapshot.addProperty("bridgeRevision", record.bridgeRevision.get());
         snapshot.addProperty("xmageCycle", record.latestCycle);
+        snapshot.addProperty("gameStatus", record.completed ? "completed" : "in_progress");
+        snapshot.add("winnerPlayerIds", record.winnerPlayerIds.deepCopy());
+        snapshot.addProperty("endReason", record.endReason);
         if (pendingStatus != null) {
             snapshot.addProperty("pendingStatus", pendingStatus);
         }
@@ -1539,6 +1678,9 @@ public final class MagicMobileBridge implements MageClient {
     private JsonArray legalActions(GameRecord record, GameView view, Map<UUID, String> playerIds) {
         JsonArray actions = new JsonArray();
         String humanId = record.humanExternalId;
+        if (record.completed) {
+            return actions;
+        }
         if (canUndoMana(view, playerIds, humanId)) {
             actions.add(action("xmage-undo-mana", "undo_mana", humanId, "Undo mana", null, null, null));
         }
@@ -1586,10 +1728,13 @@ public final class MagicMobileBridge implements MageClient {
         }
 
         if (humanHasPriority(record, view)) {
-            actions.add(action("xmage-pass", "pass_priority", humanId, "Done", null, null, null));
-            actions.add(action("xmage-pass-main", "pass_until_response", humanId, "Pass until response", null, null, null));
-            actions.add(action("xmage-pass-turn", "pass_until_next_turn", humanId, "Pass until next turn", null, null, null));
-            markPrimary(actions, "xmage-pass", "Done");
+            actions.add(action("xmage-pass", "pass_priority", humanId, "Pass Priority", null, null, null));
+            if (view.getStack() != null && !view.getStack().isEmpty()) {
+                actions.add(action("xmage-resolve-stack", "resolve_stack", humanId, "Resolve Stack", null, null, null));
+            }
+            actions.add(action("xmage-end-turn", "end_turn", humanId, "End Turn", null, null, null));
+            actions.add(action("xmage-yield-next-turn", "yield_until_next_turn", humanId, "Yield Until Your Next Turn", null, null, null));
+            markPrimary(actions, "xmage-pass", "Pass");
         }
         actions.add(action("xmage-concede", "concede", humanId, "Concede", null, null, null));
 
@@ -1702,10 +1847,13 @@ public final class MagicMobileBridge implements MageClient {
             return actions;
         }
         String step = step(view.getStep());
-        if ("declare-attackers".equals(step)) {
+        if ("declare-attackers".equals(step) && isActiveCombatSelection(record, "declare-attackers")) {
             JsonArray defenders = combatDefenders(record, view, playerIds);
             for (PermanentView permanent : human.getBattlefield().values()) {
-                if (!permanent.isCreature() || !permanent.isCanAttack()) {
+                boolean candidate = record.activeCombatCandidateIds.isEmpty()
+                        ? permanent.isCanAttack()
+                        : record.activeCombatCandidateIds.contains(permanent.getId());
+                if (!permanent.isCreature() || !candidate) {
                     continue;
                 }
                 for (JsonElement defenderElement : defenders) {
@@ -1726,19 +1874,46 @@ public final class MagicMobileBridge implements MageClient {
                     ));
                 }
             }
+            for (CombatGroupView group : view.getCombat()) {
+                String defenderId = playerIds.getOrDefault(group.getDefenderId(), group.getDefenderId().toString());
+                String defenderKind = playerIds.containsKey(group.getDefenderId()) ? "player" : "permanent";
+                for (CardView attacker : group.getAttackers().values()) {
+                    if (record.activeCombatCandidateIds.contains(attacker.getId())) {
+                        continue;
+                    }
+                    PermanentView permanent = human.getBattlefield().get(attacker.getId());
+                    if (permanent == null) {
+                        continue;
+                    }
+                    actions.add(combatAction(
+                            "xmage-attack-" + permanent.getId() + "-" + defenderId,
+                            "declare_attackers",
+                            record.humanExternalId,
+                            "Remove " + permanent.getName() + " from combat",
+                            permanent,
+                            defenderId,
+                            defenderKind,
+                            group.getDefenderName(),
+                            null
+                    ));
+                }
+            }
             actions.add(combatFinishAction(record.humanExternalId, "declare_attackers", "No attacks"));
             if (actions.size() == 1) {
                 markPrimary(actions, "xmage-declare-attackers-finish", "No attacks");
             }
-        } else if ("declare-blockers".equals(step)) {
-            JsonArray attackerChoices = combatAttackers(view);
+        } else if ("declare-blockers".equals(step) && isActiveCombatSelection(record, "declare-blockers")) {
+            JsonArray attackerChoices = combatAttackers(record, view, human);
             if (attackerChoices.size() == 0) {
                 actions.add(combatFinishAction(record.humanExternalId, "declare_blockers", "No blocks"));
                 markPrimary(actions, "xmage-declare-blockers-finish", "No blocks");
                 return actions;
             }
             for (PermanentView permanent : human.getBattlefield().values()) {
-                if (!permanent.isCreature() || !permanent.isCanBlock()) {
+                boolean candidate = record.activeCombatCandidateIds.isEmpty()
+                        ? permanent.isCanBlock()
+                        : record.activeCombatCandidateIds.contains(permanent.getId());
+                if (!permanent.isCreature() || !candidate) {
                     continue;
                 }
                 for (JsonElement element : attackerChoices) {
@@ -1759,12 +1934,40 @@ public final class MagicMobileBridge implements MageClient {
                     ));
                 }
             }
+            for (CombatGroupView group : view.getCombat()) {
+                for (CardView attacker : group.getAttackers().values()) {
+                    for (CardView blocker : group.getBlockers().values()) {
+                        if (record.activeCombatCandidateIds.contains(blocker.getId())) {
+                            continue;
+                        }
+                        PermanentView permanent = human.getBattlefield().get(blocker.getId());
+                        if (permanent == null) {
+                            continue;
+                        }
+                        actions.add(combatAction(
+                                "xmage-block-" + permanent.getId() + "-" + attacker.getId(),
+                                "declare_blockers",
+                                record.humanExternalId,
+                                "Remove " + permanent.getName() + " from blocks",
+                                permanent,
+                                null,
+                                null,
+                                null,
+                                attacker.getId().toString()
+                        ));
+                    }
+                }
+            }
             actions.add(combatFinishAction(record.humanExternalId, "declare_blockers", "No blocks"));
             if (actions.size() == 1) {
                 markPrimary(actions, "xmage-declare-blockers-finish", "No blocks");
             }
         }
         return actions;
+    }
+
+    private boolean isActiveCombatSelection(GameRecord record, String type) {
+        return type.equals(record.activeCombatSelection) && record.promptEnvelope == null;
     }
 
     private JsonArray combatDefenders(GameRecord record, GameView view, Map<UUID, String> playerIds) {
@@ -1796,9 +1999,14 @@ public final class MagicMobileBridge implements MageClient {
         defenders.add(defender);
     }
 
-    private JsonArray combatAttackers(GameView view) {
+    private JsonArray combatAttackers(GameRecord record, GameView view, PlayerView human) {
         JsonArray attackers = new JsonArray();
         for (CombatGroupView group : view.getCombat()) {
+            boolean defendsHuman = group.getDefenderId().equals(record.humanXmagePlayerId)
+                    || human.getBattlefield().containsKey(group.getDefenderId());
+            if (!defendsHuman) {
+                continue;
+            }
             for (CardView attacker : group.getAttackers().values()) {
                 JsonObject item = new JsonObject();
                 item.addProperty("id", attacker.getId().toString());
@@ -1848,6 +2056,8 @@ public final class MagicMobileBridge implements MageClient {
         JsonObject action = action(id, type, playerId, label, permanent.getId().toString(), "battlefield", null, permanent);
         JsonObject template = new JsonObject();
         template.addProperty("type", type);
+        action.addProperty("combatComplete", false);
+        template.addProperty("combatComplete", false);
         template.addProperty("cardInstanceId", permanent.getId().toString());
         template.addProperty("sourceInstanceId", permanent.getId().toString());
         template.addProperty("sourceZone", "battlefield");
@@ -1911,6 +2121,8 @@ public final class MagicMobileBridge implements MageClient {
         );
         JsonObject template = new JsonObject();
         template.addProperty("type", "declare_blockers");
+        action.addProperty("combatComplete", false);
+        template.addProperty("combatComplete", false);
         template.addProperty("cardInstanceId", firstBlocker.getId().toString());
         template.addProperty("sourceInstanceId", firstBlocker.getId().toString());
         template.addProperty("sourceZone", "battlefield");
@@ -2507,9 +2719,10 @@ public final class MagicMobileBridge implements MageClient {
     }
 
     private String shortLabel(String type, String label) {
-        if ("pass_priority".equals(type)) return "Done";
-        if ("pass_until_response".equals(type)) return "Pass";
-        if ("pass_until_next_turn".equals(type)) return "Skip turn";
+        if ("pass_priority".equals(type)) return "Pass";
+        if ("resolve_stack".equals(type) || "pass_until_response".equals(type)) return "Resolve";
+        if ("end_turn".equals(type) || "pass_until_next_turn".equals(type)) return "End turn";
+        if ("yield_until_next_turn".equals(type)) return "Yield";
         if ("play_land".equals(type)) return "Play";
         if ("cast_spell".equals(type)) return "Cast";
         if ("make_mana".equals(type) || "play_mana".equals(type)) return "Mana";
@@ -3376,7 +3589,12 @@ public final class MagicMobileBridge implements MageClient {
                     ? "Finished declare blockers"
                     : "Declared " + blockers.size() + " blocker" + (blockers.size() == 1 ? "" : "s");
         }
-        if ("pass_priority".equals(type) || "pass_until_response".equals(type) || "pass_until_next_turn".equals(type)) {
+        if ("pass_priority".equals(type)
+                || "resolve_stack".equals(type)
+                || "end_turn".equals(type)
+                || "yield_until_next_turn".equals(type)
+                || "pass_until_response".equals(type)
+                || "pass_until_next_turn".equals(type)) {
             return "Passed priority";
         }
         if (type != null && type.startsWith("choose_")) return "Answered " + type.replace('_', ' ');
@@ -3495,6 +3713,99 @@ public final class MagicMobileBridge implements MageClient {
                 .orElse(0);
     }
 
+    private DeckCardLists validateCommanderDeck(JsonObject deckConfig, String seat, String playerId, JsonArray deckErrors) {
+        ensureCardRepository();
+        JsonArray issues = new JsonArray();
+        JsonObject commander = object(deckConfig, "commander", null);
+        String commanderName = commander == null ? "" : string(commander, "cardName", "").trim();
+        if (commanderName.isEmpty()) {
+            issues.add(deckValidationIssue("missing_commander", "Commander deck must identify a commander.", null, "Commander"));
+        } else if (CardRepository.instance.findPreferredCoreExpansionCard(commanderName) == null) {
+            issues.add(deckValidationIssue("card_not_found", "XMage card not found: " + commanderName, commanderName, "Commander"));
+        }
+
+        for (JsonElement entryElement : array(deckConfig, "entries")) {
+            if (!entryElement.isJsonObject()) {
+                issues.add(deckValidationIssue("invalid_entry", "Deck entry must be an object.", null, "Deck"));
+                continue;
+            }
+            JsonObject entry = entryElement.getAsJsonObject();
+            String name = string(entry, "cardName", "").trim();
+            int quantity = integer(entry, "quantity", 1);
+            if (name.isEmpty()) {
+                issues.add(deckValidationIssue("missing_card_name", "Deck entry is missing cardName.", null, "Deck"));
+            } else if (CardRepository.instance.findPreferredCoreExpansionCard(name) == null) {
+                issues.add(deckValidationIssue("card_not_found", "XMage card not found: " + name, name, "Deck"));
+            }
+            if (quantity <= 0) {
+                issues.add(deckValidationIssue("invalid_quantity", "Card quantity must be greater than zero.", name.isEmpty() ? null : name, "Deck"));
+            }
+        }
+
+        DeckCardLists deck = null;
+        if (issues.size() == 0) {
+            try {
+                deck = deckFromConfig(deckConfig);
+                Deck loadedDeck = Deck.load(deck, false, true);
+                Commander validator = new Commander();
+                if (!validator.validate(loadedDeck)) {
+                    for (DeckValidatorError error : validator.getErrorsListSorted()) {
+                        issues.add(deckValidationIssue(
+                                error.getErrorType().name(),
+                                error.getMessage(),
+                                error.getCardName(),
+                                error.getGroup()
+                        ));
+                    }
+                }
+            } catch (Exception error) {
+                String message = error.getMessage() == null ? error.toString() : error.getMessage();
+                issues.add(deckValidationIssue("deck_load_failed", message, null, "Deck"));
+            }
+        }
+
+        if (issues.size() > 0) {
+            JsonObject failure = new JsonObject();
+            failure.addProperty("playerId", playerId);
+            failure.addProperty("seat", seat);
+            failure.addProperty("deckName", string(deckConfig, "name", "MagicMobile Commander"));
+            failure.add("issues", issues);
+            deckErrors.add(failure);
+        }
+        return deck;
+    }
+
+    private JsonObject deckValidationIssue(String code, String message, String cardName, String group) {
+        JsonObject issue = new JsonObject();
+        issue.addProperty("code", code);
+        issue.addProperty("message", message);
+        if (cardName != null && !cardName.isEmpty()) {
+            issue.addProperty("cardName", cardName);
+        }
+        if (group != null && !group.isEmpty()) {
+            issue.addProperty("group", group);
+        }
+        return issue;
+    }
+
+    private DeckValidationException rejectedDeckAfterValidation(String seat, String playerId, JsonObject deckConfig) {
+        JsonArray issues = new JsonArray();
+        issues.add(deckValidationIssue(
+                "xmage_join_rejected",
+                "XMage rejected the validated Commander deck while joining the table.",
+                null,
+                "Deck"
+        ));
+        JsonObject failure = new JsonObject();
+        failure.addProperty("playerId", playerId);
+        failure.addProperty("seat", seat);
+        failure.addProperty("deckName", string(deckConfig, "name", "MagicMobile Commander"));
+        failure.add("issues", issues);
+        JsonArray deckErrors = new JsonArray();
+        deckErrors.add(failure);
+        return new DeckValidationException("XMage rejected a Commander deck after validation.", deckErrors);
+    }
+
     private DeckCardLists deckFromConfig(JsonObject deckConfig) {
         ensureCardRepository();
 
@@ -3504,8 +3815,9 @@ public final class MagicMobileBridge implements MageClient {
 
         JsonObject commander = object(deckConfig, "commander", null);
         boolean hasCommanderObject = commander != null;
+        String primaryCommanderName = commander == null ? "" : string(commander, "cardName", "");
         if (commander != null) {
-            addCard(deck.getSideboard(), string(commander, "cardName", ""), 1);
+            addCard(deck.getSideboard(), primaryCommanderName, 1);
         }
         for (JsonElement entryElement : array(deckConfig, "entries")) {
             if (!entryElement.isJsonObject()) continue;
@@ -3513,7 +3825,11 @@ public final class MagicMobileBridge implements MageClient {
             String section = string(entry, "section", "deck");
             int quantity = integer(entry, "quantity", 1);
             String name = string(entry, "cardName", "");
-            if ("commander".equals(section) && !hasCommanderObject) {
+            if ("commander".equals(section)) {
+                if (!hasCommanderObject || !name.equalsIgnoreCase(primaryCommanderName)) {
+                    addCard(deck.getSideboard(), name, quantity);
+                }
+            } else if ("sideboard".equals(section) || "companion".equals(section)) {
                 addCard(deck.getSideboard(), name, quantity);
             } else if ("deck".equals(section)) {
                 addCard(deck.getCards(), name, quantity);
@@ -4560,10 +4876,12 @@ public final class MagicMobileBridge implements MageClient {
                 }
             }
             if (data instanceof GameView) {
+                clearActiveCombatSelection(callback.getObjectId());
                 updateRecord(callback.getObjectId(), (GameView) data, null, null, null);
             }
             if (data instanceof GameClientMessage) {
                 GameClientMessage message = (GameClientMessage) data;
+                updateActiveCombatSelection(callback.getObjectId(), method, message);
                 updateRecord(
                         callback.getObjectId(),
                         message.getGameView(),
@@ -4571,6 +4889,9 @@ public final class MagicMobileBridge implements MageClient {
                         message.getTargets(),
                         promptEnvelope(callback, message)
                 );
+                if (method == ClientCallbackMethod.GAME_OVER) {
+                    recordGameOver(callback.getObjectId(), message.getGameView(), message.getMessage());
+                }
             }
             if (data instanceof AbilityPickerView) {
                 AbilityPickerView picker = (AbilityPickerView) data;
@@ -4582,9 +4903,151 @@ public final class MagicMobileBridge implements MageClient {
                         promptEnvelope(callback, picker)
                 );
             }
+            if (method == ClientCallbackMethod.END_GAME_INFO && data instanceof GameEndView) {
+                recordGameEndInfo(callback.getObjectId(), (GameEndView) data);
+            }
         } catch (Exception error) {
             lastError = error.getMessage() == null ? error.toString() : error.getMessage();
             error.printStackTrace();
+        }
+    }
+
+    private void updateActiveCombatSelection(UUID gameId, ClientCallbackMethod method, GameClientMessage message) {
+        GameRecord record = gameId == null ? null : games.get(gameId.toString());
+        if (record == null || method != ClientCallbackMethod.GAME_SELECT) {
+            return;
+        }
+        String promptText = message == null ? null : message.getMessage();
+        String normalized = promptText == null ? "" : promptText.toLowerCase();
+        if (normalized.contains("select attackers")) {
+            record.activeCombatSelection = "declare-attackers";
+            record.activeCombatCandidateIds = combatCandidateIds(message, "possibleAttackers");
+        } else if (normalized.contains("select blockers")) {
+            record.activeCombatSelection = "declare-blockers";
+            record.activeCombatCandidateIds = combatCandidateIds(message, "possibleBlockers");
+        } else {
+            record.activeCombatSelection = null;
+            record.activeCombatCandidateIds = Set.of();
+        }
+    }
+
+    private Set<UUID> combatCandidateIds(GameClientMessage message, String optionKey) {
+        if (message == null || message.getOptions() == null) {
+            return Set.of();
+        }
+        Object raw = message.getOptions().get(optionKey);
+        if (!(raw instanceof Iterable<?>)) {
+            return Set.of();
+        }
+        Set<UUID> ids = new HashSet<>();
+        for (Object value : (Iterable<?>) raw) {
+            if (value instanceof UUID) {
+                ids.add((UUID) value);
+            } else if (value != null && isUuid(value.toString())) {
+                ids.add(UUID.fromString(value.toString()));
+            }
+        }
+        return Set.copyOf(ids);
+    }
+
+    private void clearActiveCombatSelection(UUID gameId) {
+        GameRecord record = gameId == null ? null : games.get(gameId.toString());
+        if (record != null) {
+            record.activeCombatSelection = null;
+            record.activeCombatCandidateIds = Set.of();
+        }
+    }
+
+    private void recordGameOver(UUID gameId, GameView view, String message) {
+        if (gameId == null) {
+            return;
+        }
+        GameRecord record = games.get(gameId.toString());
+        if (record == null) {
+            return;
+        }
+        record.completed = true;
+        record.lastProgressAt = System.currentTimeMillis();
+        record.promptText = null;
+        record.promptEnvelope = null;
+        record.choicePrompt = null;
+        JsonArray resolvedWinnerIds = new JsonArray();
+        if (view != null) {
+            Map<UUID, String> playerIds = externalPlayerIds(record, view);
+            for (PlayerView player : view.getPlayers()) {
+                if (player.getWinsNeeded() > 0 && player.getWins() >= player.getWinsNeeded()) {
+                    String winnerId = playerIds.get(player.getPlayerId());
+                    if (winnerId != null && !winnerId.isEmpty()) {
+                        resolvedWinnerIds.add(winnerId);
+                    }
+                }
+            }
+        }
+        String cleanedMessage = cleanText(message);
+        if (resolvedWinnerIds.size() > 0 || cleanedMessage.toLowerCase().contains("draw")) {
+            clearJsonArray(record.winnerPlayerIds);
+            record.winnerPlayerIds.addAll(resolvedWinnerIds);
+        }
+        record.endReason = cleanedMessage.isEmpty() ? "XMage reported that the game ended." : cleanedMessage;
+        pushTerminalSnapshot(record);
+    }
+
+    private void recordGameEndInfo(UUID gameId, GameEndView endView) {
+        if (gameId == null || endView == null) {
+            return;
+        }
+        GameRecord record = games.get(gameId.toString());
+        if (record == null || record.latestView == null) {
+            return;
+        }
+        record.completed = true;
+        record.lastProgressAt = System.currentTimeMillis();
+        record.bridgeRevision.incrementAndGet();
+        record.promptText = null;
+        record.promptEnvelope = null;
+        record.choicePrompt = null;
+        clearJsonArray(record.winnerPlayerIds);
+
+        Map<UUID, String> playerIds = externalPlayerIds(record, record.latestView);
+        PlayerView clientPlayer = endView.getClientPlayer();
+        String gameInfo = cleanText(endView.getGameInfo());
+        boolean draw = gameInfo.toLowerCase().contains("draw");
+        if (endView.hasWon() && clientPlayer != null) {
+            String winnerId = playerIds.get(clientPlayer.getPlayerId());
+            if (winnerId != null && !winnerId.isEmpty()) {
+                record.winnerPlayerIds.add(winnerId);
+            }
+        } else if (!draw) {
+            UUID clientPlayerId = clientPlayer == null ? record.humanXmagePlayerId : clientPlayer.getPlayerId();
+            for (PlayerView player : endView.getPlayers()) {
+                if (clientPlayerId == null || !clientPlayerId.equals(player.getPlayerId())) {
+                    String winnerId = playerIds.get(player.getPlayerId());
+                    if (winnerId != null && !winnerId.isEmpty()) {
+                        record.winnerPlayerIds.add(winnerId);
+                    }
+                }
+            }
+        }
+
+        String additionalInfo = cleanText(endView.getAdditionalInfo());
+        if (!additionalInfo.isEmpty()) {
+            record.endReason = additionalInfo;
+        } else if (!gameInfo.isEmpty()
+                && (record.endReason == null
+                || record.endReason.isEmpty()
+                || "XMage reported that the game ended.".equals(record.endReason))) {
+            record.endReason = gameInfo;
+        } else if (record.endReason == null || record.endReason.isEmpty()) {
+            record.endReason = "XMage reported that the game ended.";
+        }
+        pushTerminalSnapshot(record);
+    }
+
+    private void pushTerminalSnapshot(GameRecord record) {
+        try {
+            JsonObject snap = snapshot(record.gameId.toString());
+            pushSnapshotToGateway(record.gameId.toString(), snap);
+        } catch (Exception ignored) {
         }
     }
 
@@ -5223,6 +5686,12 @@ public final class MagicMobileBridge implements MageClient {
         return element != null && element.isJsonArray() ? element.getAsJsonArray() : new JsonArray();
     }
 
+    private static void clearJsonArray(JsonArray values) {
+        while (values.size() > 0) {
+            values.remove(values.size() - 1);
+        }
+    }
+
     private static JsonObject object(JsonObject object, String name) {
         return object(object, name, new JsonObject());
     }
@@ -5382,6 +5851,11 @@ public final class MagicMobileBridge implements MageClient {
         volatile String promptText;
         volatile JsonObject choicePrompt;
         volatile JsonObject promptEnvelope;
+        volatile String activeCombatSelection;
+        volatile Set<UUID> activeCombatCandidateIds = Set.of();
+        volatile boolean completed;
+        volatile String endReason;
+        final JsonArray winnerPlayerIds = new JsonArray();
         final JsonArray startupOpeningPrompts = new JsonArray();
         final JsonArray mobileLog = new JsonArray();
 
@@ -5398,12 +5872,38 @@ public final class MagicMobileBridge implements MageClient {
         ManagerFactory get() throws Exception;
     }
 
-    private static final class ActionNoLongerLegalException extends RuntimeException {
+    private static final class DeckValidationException extends RuntimeException {
+        final JsonArray deckErrors;
+
+        DeckValidationException(String message, JsonArray deckErrors) {
+            super(message);
+            this.deckErrors = deckErrors == null ? new JsonArray() : deckErrors.deepCopy();
+        }
+    }
+
+    private static final class UnknownGameException extends IllegalArgumentException {
+        UnknownGameException(String message) {
+            super(message);
+        }
+    }
+
+    private static class ActionNoLongerLegalException extends RuntimeException {
         final String gameId;
 
         ActionNoLongerLegalException(String gameId, String message) {
             super(message);
             this.gameId = gameId;
+        }
+    }
+
+    private static final class StaleCommandException extends ActionNoLongerLegalException {
+        final long expectedRevision;
+        final long currentRevision;
+
+        StaleCommandException(String gameId, long expectedRevision, long currentRevision) {
+            super(gameId, "Action was based on stale XMage snapshot revision " + expectedRevision + "; current revision is " + currentRevision);
+            this.expectedRevision = expectedRevision;
+            this.currentRevision = currentRevision;
         }
     }
 }

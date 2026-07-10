@@ -52,6 +52,8 @@ describe("xmage gateway", () => {
     assert.equal(snapshot.players[0].zones.hand.length, 0);
     assert.equal(snapshot.phase, "setup");
     assert.equal(snapshot.step, "choose_starting_player");
+    assert.equal(snapshot.gameStatus, "in_progress");
+    assert.deepEqual(snapshot.winnerPlayerIds, []);
     assert.equal(snapshot.legalActions.some((action) => action.type === "resolve_choice"), true);
 
     snapshot = applyCommand(snapshot, {
@@ -77,6 +79,8 @@ describe("xmage gateway", () => {
     assert.equal(snapshot.players[0].zones.hand.length, 7);
     assert.equal(snapshot.legalActions.some((action) => action.type === "play_land" || action.type === "cast_spell"), true);
     assert.equal(state.has(snapshot.id), true);
+    assert.equal(snapshot.legalActions.some((action) => action.type === "end_turn"), true);
+    assert.equal(snapshot.legalActions.some((action) => action.type === "yield_until_next_turn"), true);
   });
 
   it("applies simulator tap and attack commands through snapshots", () => {
@@ -116,6 +120,38 @@ describe("xmage gateway", () => {
       attacking.players[0].zones.battlefield.find((card) => card.instanceId === attackAction.cardInstanceId).isAttacking,
       true
     );
+  });
+
+  it("publishes terminal fields and removes actions after concede", () => {
+    const snapshot = createCommanderGame(new Map(), {
+      roomId: "room-terminal",
+      humanPlayerId: "human",
+      humanDeck: deck,
+      aiPlayers: [{ playerId: "ai-1", displayName: "AI", difficulty: "normal", deck }],
+      startingLife: 40,
+      commanderDamageEnabled: true
+    });
+
+    const completed = applyCommand(snapshot, {
+      type: "concede",
+      gameId: snapshot.id,
+      playerId: "human"
+    });
+
+    assert.equal(completed.gameStatus, "completed");
+    assert.deepEqual(completed.winnerPlayerIds, ["ai-1"]);
+    assert.equal(completed.endReason, "human conceded.");
+    assert.deepEqual(completed.legalActions, []);
+
+    const terminalState = structuredClone(completed);
+    assert.throws(() => {
+      applyCommand(completed, {
+        type: "end_turn",
+        gameId: snapshot.id,
+        playerId: "human"
+      });
+    }, /Action no longer legal: game is already completed/);
+    assert.deepEqual(completed, terminalState);
   });
 
   it("initializes mana pools and exposes make-mana actions for untapped lands", () => {
@@ -282,6 +318,48 @@ describe("xmage gateway", () => {
     assert.equal(JSON.parse(requests[0].init.body).humanDisplayName, "Caleb");
   });
 
+  it("resumes an authoritative bridge game after gateway state is lost", async () => {
+    const state = new Map();
+    const calls = [];
+    const snapshot = bridgeSmokeSnapshot(19, 44, "precombat-main", []);
+    const handler = createGatewayHandler(state, {
+      bridgeClient: {
+        getSnapshot: async (gameId, playerId) => {
+          calls.push({ gameId, playerId });
+          return snapshot;
+        }
+      }
+    });
+
+    const response = await runHandler(handler, `/games/${snapshot.id}/resume`, "POST", { playerId: "human" });
+    const body = JSON.parse(response.body);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.resumeStatus, "resumed");
+    assert.equal(body.bridgeRevision, 19);
+    assert.equal(state.get(snapshot.id).bridgeRevision, 19);
+    assert.deepEqual(calls, [{ gameId: snapshot.id, playerId: "human" }]);
+  });
+
+  it("distinguishes expired games and player mismatches during resume", async () => {
+    const expiredHandler = createGatewayHandler(new Map(), { bridgeClient: null });
+    const expired = await runHandler(expiredHandler, "/games/missing/resume", "POST", { playerId: "human" });
+    assert.equal(expired.status, 404);
+    assert.deepEqual(JSON.parse(expired.body), {
+      error: "game_expired",
+      message: "Game is no longer available: missing",
+      category: "expired_game",
+      recoverable: false
+    });
+
+    const snapshot = bridgeSmokeSnapshot(2, 3, "precombat-main", []);
+    const mismatchHandler = createGatewayHandler(new Map([[snapshot.id, snapshot]]), { bridgeClient: null });
+    const mismatch = await runHandler(mismatchHandler, `/games/${snapshot.id}/resume`, "POST", { playerId: "intruder" });
+    assert.equal(mismatch.status, 403);
+    assert.equal(JSON.parse(mismatch.body).error, "resume_player_mismatch");
+    assert.equal(JSON.parse(mismatch.body).recoverable, false);
+  });
+
   it("forwards explicit game cleanup to the bridge and removes gateway state", async () => {
     const state = new Map();
     const activity = new Map();
@@ -432,8 +510,10 @@ describe("xmage gateway", () => {
     const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
     const combatActions = bridgeSource.match(/private JsonArray combatActions[\s\S]*?\n    private JsonArray combatAttackers/)?.[0] ?? "";
 
-    assert.match(bridgeSource, /!permanent\.isCreature\(\) \|\| !permanent\.isCanAttack\(\)/);
-    assert.match(bridgeSource, /!permanent\.isCreature\(\) \|\| !permanent\.isCanBlock\(\)/);
+    assert.match(bridgeSource, /record\.activeCombatCandidateIds\.isEmpty\(\)[\s\S]*?permanent\.isCanAttack\(\)[\s\S]*?record\.activeCombatCandidateIds\.contains\(permanent\.getId\(\)\)/);
+    assert.match(bridgeSource, /record\.activeCombatCandidateIds\.isEmpty\(\)[\s\S]*?permanent\.isCanBlock\(\)[\s\S]*?record\.activeCombatCandidateIds\.contains\(permanent\.getId\(\)\)/);
+    assert.match(bridgeSource, /combatCandidateIds\(message, "possibleAttackers"\)/);
+    assert.match(bridgeSource, /combatCandidateIds\(message, "possibleBlockers"\)/);
     assert.doesNotMatch(combatActions, /attackerChoices\.size\(\) > 1[\s\S]*?return actions;/);
     assert.match(combatActions, /for \(JsonElement element : attackerChoices\)[\s\S]*?attackerId[\s\S]*?actions\.add\(combatAction/);
     assert.match(bridgeSource, /action\.addProperty\("defenderKind", defenderKind == null \|\| defenderKind\.isEmpty\(\) \? "player" : defenderKind\)/);
@@ -838,7 +918,10 @@ describe("xmage gateway", () => {
     assert.match(smokeSource, /Fact or Fiction/);
     assert.match(smokeSource, /promptPileChoiceResolved/);
     assert.match(smokeSource, /function isGameOverSnapshot/);
-    assert.match(smokeSource, /Game ended: XMage reported GAME_OVER/);
+    assert.match(smokeSource, /snapshot\.gameStatus === "completed"/);
+    assert.match(smokeSource, /winnerPlayerIds/);
+    assert.match(smokeSource, /endReason/);
+    assert.match(smokeSource, /terminalReconnectVerified/);
     for (const family of [
       "play_land",
       "cast_spell",
@@ -1222,19 +1305,24 @@ describe("xmage gateway", () => {
     assert.match(bridgeSource, /yesCommand\.addProperty\("pay", true\)/);
     assert.match(bridgeSource, /noCommand\.addProperty\("pay", false\)/);
     assert.match(bridgeSource, /Action was based on stale XMage snapshot revision/);
-    assert.match(bridgeSource, /int startCycle = record == null \? -1 : record\.latestCycle;/);
+    assert.match(bridgeSource, /int startCycle = record\.latestCycle;/);
+    assert.match(bridgeSource, /expectedRevision >= 0 && startRevision != expectedRevision/);
     assert.match(bridgeSource, /record\.bridgeRevision\.get\(\) > startRevision \|\| record\.latestCycle > startCycle/);
     assert.match(bridgeSource, /"cast_spell"\.equals\(type\)\) \{[\s\S]*?retryableUuid = playableSourceUuid\(gameId, command\);[\s\S]*?session\.sendPlayerUUID\(xmageGameId, retryableUuid\);/);
     assert.match(bridgeSource, /"make_mana"\.equals\(type\)\) \{[\s\S]*?session\.sendPlayerUUID\(xmageGameId, playableSourceUuid\(gameId, command\)\);/);
     assert.match(bridgeSource, /"activate_ability"\.equals\(type\)\) \{[\s\S]*?playableCommandUuid\(gameId, command\);[\s\S]*?session\.sendPlayerUUID\(xmageGameId, playableSourceUuid\(gameId, command\)\);/);
     const sendCombatSelection = bridgeSource.match(/private void sendCombatSelection[\s\S]*?\n    private JsonObject waitForUpdatedSnapshot/)?.[0] ?? "";
     assert.match(sendCombatSelection, /boolean complete = bool\(command, "combatComplete", true\);/);
-    assert.match(sendCombatSelection, /string\(group, "defenderId"/);
-    assert.match(sendCombatSelection, /string\(group, "attackerId"/);
-    assert.match(sendCombatSelection, /addSelections\(ids, command, attackers \? "defenderIds" : "attackerIds"\)/);
-    assert.match(sendCombatSelection, /session\.sendPlayerUUID\(xmageGameId, UUID\.fromString\(value\)\);/);
+    assert.match(sendCombatSelection, /waitForCombatResponse/);
+    assert.match(sendCombatSelection, /combatTargetUuid/);
+    assert.doesNotMatch(sendCombatSelection, /combatResponsePause/);
+    assert.doesNotMatch(sendCombatSelection, /Thread\.sleep\(350\)/);
     assert.doesNotMatch(sendCombatSelection, /session\.sendPlayerBoolean\(xmageGameId, true\)/);
     assert.match(sendCombatSelection, /if \(complete\) \{[\s\S]*?session\.sendPlayerBoolean\(xmageGameId, false\);[\s\S]*?\}/);
+    assert.match(bridgeSource, /isActiveCombatSelection\(record, "declare-attackers"\)/);
+    assert.match(bridgeSource, /isActiveCombatSelection\(record, "declare-blockers"\)/);
+    assert.match(bridgeSource, /template\.addProperty\("combatComplete", false\)/);
+    assert.match(bridgeSource, /template\.addProperty\("combatComplete", true\)/);
     assert.match(bridgeSource, /stackObjects\(view\.getStack\(\), view, playerIds\)/);
     assert.match(bridgeSource, /resolveStackSourceCard\(card, view\)/);
     assert.match(bridgeSource, /item\.addProperty\("objectId", card\.getId\(\)\.toString\(\)\)/);
@@ -1248,6 +1336,36 @@ describe("xmage gateway", () => {
     assert.equal(bridgeSource.includes('session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "useCommandZone", true));'), false);
     assert.equal(bridgeSource.includes('session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "pay", true));'), false);
     assert.equal(bridgeSource.includes('session.sendPlayerBoolean(xmageGameId, booleanResponse(command, "confirmed", true));'), false);
+  });
+
+  it("binds precise yield commands and terminal state to XMage callbacks", () => {
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+
+    assert.match(bridgeSource, /"resolve_stack"\.equals\(type\)[\s\S]*?PASS_PRIORITY_UNTIL_STACK_RESOLVED/);
+    assert.match(bridgeSource, /"end_turn"\.equals\(type\)[\s\S]*?PASS_PRIORITY_UNTIL_NEXT_TURN/);
+    assert.match(bridgeSource, /"yield_until_next_turn"\.equals\(type\)[\s\S]*?PASS_PRIORITY_UNTIL_MY_NEXT_TURN/);
+    assert.match(bridgeSource, /Required XMage prompt must be answered before yielding priority/);
+    assert.match(bridgeSource, /ClientCallbackMethod\.GAME_OVER[\s\S]*?recordGameOver/);
+    assert.match(bridgeSource, /ClientCallbackMethod\.END_GAME_INFO[\s\S]*?recordGameEndInfo/);
+    assert.match(bridgeSource, /snapshot\.addProperty\("gameStatus", record\.completed \? "completed" : "in_progress"\)/);
+    assert.match(bridgeSource, /snapshot\.add\("winnerPlayerIds", record\.winnerPlayerIds\.deepCopy\(\)\)/);
+    assert.match(bridgeSource, /snapshot\.addProperty\("endReason", record\.endReason\)/);
+  });
+
+  it("validates both Commander decks before creating the XMage table", () => {
+    const bridgeSource = readFileSync(new URL("./bridge/MagicMobileBridge.java", import.meta.url), "utf8");
+    const createStart = bridgeSource.indexOf("private JsonObject createCommanderGame");
+    const createEnd = bridgeSource.indexOf("private boolean startMatchWithHumanChooser", createStart);
+    const createSource = bridgeSource.slice(createStart, createEnd);
+
+    assert.ok(createSource.indexOf("validateCommanderDeck(humanDeckConfig") < createSource.indexOf("session.createTable"));
+    assert.ok(createSource.indexOf("validateCommanderDeck(aiDeckConfig") < createSource.indexOf("session.createTable"));
+    assert.match(bridgeSource, /Commander validator = new Commander\(\)/);
+    assert.match(bridgeSource, /error\.getCardName\(\)/);
+    assert.match(bridgeSource, /body\.addProperty\("error", "deck_validation_failed"\)/);
+    assert.match(bridgeSource, /writeJson\(exchange, 422, body\)/);
+    assert.match(bridgeSource, /"commander"\.equals\(section\)[\s\S]*?deck\.getSideboard\(\)/);
+    assert.match(bridgeSource, /"sideboard"\.equals\(section\) \|\| "companion"\.equals\(section\)/);
   });
 
   it("records startup opening prompts for starting-player diagnosis", () => {

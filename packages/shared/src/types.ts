@@ -160,6 +160,10 @@ export interface PlayerGameState {
 export interface GameSnapshot {
   id: GameId;
   roomId: RoomId;
+  gameStatus?: "in_progress" | "completed";
+  winnerPlayerIds?: PlayerId[];
+  endReason?: string | null;
+  resumeStatus?: "resumed";
   bridgeRevision?: number;
   xmageCycle?: number;
   pendingStatus?: "accepted" | "waiting_for_xmage" | "stalled";
@@ -188,6 +192,7 @@ export interface CommanderStartupResponse {
   snapshot?: GameSnapshot;
   message?: string;
   error?: string;
+  deckErrors?: CommanderDeckValidationError[];
 }
 
 export type GameStep =
@@ -234,6 +239,9 @@ export type LegalActionType =
   | "tap_permanent"
   | "untap_permanent"
   | "pass_priority"
+  | "resolve_stack"
+  | "end_turn"
+  | "yield_until_next_turn"
   | "pass_until_response"
   | "pass_until_next_turn"
   | "advance_phase"
@@ -567,11 +575,35 @@ export type GameCommand = (
   | { type: "tap_permanent"; gameId: GameId; playerId: PlayerId; cardInstanceId: string }
   | { type: "untap_permanent"; gameId: GameId; playerId: PlayerId; cardInstanceId: string }
   | { type: "pass_priority"; gameId: GameId; playerId: PlayerId }
+  | { type: "resolve_stack"; gameId: GameId; playerId: PlayerId }
+  | { type: "end_turn"; gameId: GameId; playerId: PlayerId }
+  | { type: "yield_until_next_turn"; gameId: GameId; playerId: PlayerId }
   | { type: "pass_until_response"; gameId: GameId; playerId: PlayerId }
   | { type: "pass_until_next_turn"; gameId: GameId; playerId: PlayerId }
   | { type: "advance_phase"; gameId: GameId; playerId: PlayerId }
   | { type: "concede"; gameId: GameId; playerId: PlayerId }
 ) & { expectedBridgeRevision?: number };
+
+export interface CommanderDeckValidationIssue {
+  code: string;
+  message: string;
+  cardName?: string;
+  group?: string;
+}
+
+export interface CommanderDeckValidationError {
+  playerId: PlayerId;
+  seat: "human" | "ai";
+  deckName: string;
+  issues: CommanderDeckValidationIssue[];
+}
+
+export interface CommanderDeckValidationFailure {
+  error: "deck_validation_failed";
+  message: string;
+  category: "invalid_deck";
+  deckErrors: CommanderDeckValidationError[];
+}
 
 export interface EngineHealth {
   status: "ready" | "starting" | "unavailable" | "stalled";

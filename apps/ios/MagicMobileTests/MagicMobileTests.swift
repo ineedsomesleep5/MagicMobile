@@ -17,6 +17,40 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(list?.commander?.cardName, "Sol Ring")
         XCTAssertEqual(list?.entries.count, 2)
     }
+
+    func testDeckImporterPreservesPartnerCommanderAndCompanionSections() {
+        let deckText = """
+        Commanders
+        1 Frodo, Adventurous Hobbit
+        1 Sam, Loyal Attendant
+        Companion
+        1 Lurrus of the Dream-Den
+        Deck
+        97 Plains
+        """
+
+        let list = DeckImporter.parse(text: deckText, source: "Partner deck")
+
+        XCTAssertEqual(list?.commander?.cardName, "Frodo, Adventurous Hobbit")
+        XCTAssertEqual(list?.entries.first(where: { $0.cardName == "Sam, Loyal Attendant" })?.section, "commander")
+        XCTAssertEqual(list?.entries.first(where: { $0.cardName == "Lurrus of the Dream-Den" })?.section, "sideboard")
+        XCTAssertEqual(list?.entries.first(where: { $0.cardName == "Plains" })?.section, "deck")
+    }
+
+    func testDeckValidationErrorsRemainActionableAcrossHostedResponses() throws {
+        let synchronousFailure = #"{"error":"Commander deck validation failed.","validationErrors":["Human: Unknown card Black Lotus"]}"#.data(using: .utf8)!
+        XCTAssertEqual(
+            MagicMobileAPI.sanitizedServerMessage(data: synchronousFailure, statusCode: 400, contentType: "application/json"),
+            "Human: Unknown card Black Lotus"
+        )
+
+        let asyncFailure = #"{"startupId":"startup-1","status":"failed","error":"Deck validation failed.","deckErrors":[{"seat":"human","deckName":"My Deck","issues":[{"code":"unknown_card","message":"Card was not found in XMage.","cardName":"Imaginary Lotus"}]}]}"#.data(using: .utf8)!
+        let startup = try JSONDecoder.magicMobile.decode(CommanderStartupResponse.self, from: asyncFailure)
+        let deckErrors = try XCTUnwrap(startup.deckErrors)
+        let message = CommanderDeckValidationError.summarizedMessage(for: deckErrors)
+
+        XCTAssertEqual(message, "Human deck My Deck — Imaginary Lotus: Card was not found in XMage.")
+    }
     
     func testCardIdentityHelpers() {
         let landCard = CardIdentity(name: "Island", typeLine: "Basic Land — Island", oracleText: "{T}: Add {U}.")
@@ -243,10 +277,11 @@ final class MagicMobileTests: XCTestCase {
     }
 
     func testPortraitOrientationModeDefaultsToLandscapeOnlyMask() {
-        UserDefaults.standard.removeObject(forKey: PortraitModePreference.key)
-        defer { UserDefaults.standard.removeObject(forKey: PortraitModePreference.key) }
+        let suiteName = "MagicMobileTests.Orientation.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        XCTAssertFalse(UserDefaults.standard.bool(forKey: PortraitModePreference.key))
+        XCTAssertFalse(defaults.bool(forKey: PortraitModePreference.key))
         XCTAssertEqual(GameOrientationMode.supportedOrientations(portraitEnabled: false), [.landscapeLeft, .landscapeRight])
         XCTAssertTrue(GameOrientationMode.supportedOrientations(portraitEnabled: true).contains(.portrait))
         XCTAssertTrue(GameOrientationMode.supportedOrientations(portraitEnabled: true).contains(.landscapeLeft))
@@ -416,16 +451,134 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual("cleanup".compactPhaseTitle, "Cleanup")
     }
 
-    func testSkipTurnLabelAdaptsToActivePlayer() throws {
-        let action = try decodeAction(type: "pass_until_next_turn")
+    func testYieldUntilNextTurnLabelIsExplicitForEitherActivePlayer() throws {
+        let action = try decodeAction(type: "yield_until_next_turn")
+        let legacyAction = try decodeAction(type: "pass_until_next_turn")
         let humanActive = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: minimalSnapshotJSON(id: "human-active"))
         let aiActiveData = String(data: try minimalSnapshotJSON(id: "ai-active"), encoding: .utf8)!
             .replacingOccurrences(of: #""activePlayerId": "human""#, with: #""activePlayerId": "ai-1""#)
             .data(using: .utf8)!
         let aiActive = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: aiActiveData)
 
-        XCTAssertEqual(MagicPathPhaseRail.skipButtonLabel(snapshot: humanActive, action: action), "SKIP")
-        XCTAssertEqual(MagicPathPhaseRail.skipButtonLabel(snapshot: aiActive, action: action), "SKIP")
+        XCTAssertEqual(MagicPathPhaseRail.skipButtonLabel(snapshot: humanActive, action: action), "Yield Until Next Turn")
+        XCTAssertEqual(MagicPathPhaseRail.skipButtonLabel(snapshot: aiActive, action: action), "Yield Until Next Turn")
+        XCTAssertEqual(MagicPathPhaseRail.skipButtonLabel(snapshot: humanActive, action: legacyAction), "Yield Until Next Turn")
+    }
+
+    func testGameplayActionPresentationDistinguishesPriorityStackAndCombatActions() throws {
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: minimalSnapshotJSON(id: "action-labels"))
+
+        XCTAssertEqual(GameplayActionPresentation.title(for: try decodeAction(type: "pass_priority"), snapshot: snapshot), "Pass Priority")
+        XCTAssertEqual(GameplayActionPresentation.title(for: try decodeAction(type: "resolve_stack"), snapshot: snapshot), "Resolve Stack")
+        XCTAssertEqual(GameplayActionPresentation.title(for: try decodeAction(type: "pass_until_stack_resolved"), snapshot: snapshot), "Resolve Stack")
+        XCTAssertEqual(GameplayActionPresentation.title(for: try decodeAction(type: "end_turn"), snapshot: snapshot), "End Turn")
+        XCTAssertEqual(GameplayActionPresentation.title(for: try decodeAction(type: "yield_until_next_turn"), snapshot: snapshot), "Yield Until Next Turn")
+        XCTAssertEqual(GameplayActionPresentation.title(for: try decodeAction(type: "declare_attackers"), snapshot: snapshot), "Done Attacking")
+        XCTAssertEqual(GameplayActionPresentation.title(for: try decodeAction(type: "declare_blockers"), snapshot: snapshot), "Done Blocking")
+        XCTAssertEqual(GameplayActionPresentation.title(for: try decodeAction(type: "advance_phase"), snapshot: snapshot), "Yield Until Next Main")
+    }
+
+    func testGameActionDockKeepsPromptPriorityAndWaitingStatesExclusive() throws {
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: minimalSnapshotJSON(id: "action-dock"))
+        let pass = try decodeAction(type: "pass_priority")
+        let yes = try decodeAction(type: "answer_yes_no", label: "Yes")
+        let no = try decodeAction(type: "answer_yes_no", label: "No")
+
+        let priority = GameActionDockModel.make(
+            snapshot: snapshot,
+            passAction: pass,
+            promptActions: [],
+            decisionRequired: false,
+            pendingActionId: nil
+        )
+        XCTAssertEqual(priority.mode, .priority)
+        XCTAssertEqual(priority.primaryTitle, "Pass Priority")
+        XCTAssertEqual(priority.primaryAction?.id, pass.id)
+        XCTAssertTrue(priority.isPrimaryEnabled)
+        XCTAssertFalse(priority.showsPromptDetails)
+
+        let prompt = GameActionDockModel.make(
+            snapshot: snapshot,
+            passAction: pass,
+            promptActions: [yes, no],
+            decisionRequired: true,
+            pendingActionId: nil
+        )
+        XCTAssertEqual(prompt.mode, .prompt)
+        XCTAssertEqual(prompt.primaryTitle, "Yes")
+        XCTAssertEqual(prompt.primaryAction?.id, yes.id)
+        XCTAssertEqual(prompt.promptActions.map(\.id), [yes.id, no.id])
+        XCTAssertTrue(prompt.showsPromptDetails)
+
+        let waiting = GameActionDockModel.make(
+            snapshot: snapshot,
+            passAction: pass,
+            promptActions: [yes, no],
+            decisionRequired: true,
+            pendingActionId: "pending-choice"
+        )
+        XCTAssertEqual(waiting.mode, .waiting)
+        XCTAssertEqual(waiting.primaryTitle, "Waiting for XMage")
+        XCTAssertNil(waiting.primaryAction)
+        XCTAssertFalse(waiting.isPrimaryEnabled)
+        XCTAssertFalse(waiting.showsPromptDetails)
+    }
+
+    func testEveryAuthoredYieldChoiceIsExposedInStableOrder() throws {
+        let actions = try [
+            decodeAction(type: "yield_until_next_turn"),
+            decodeAction(type: "end_turn"),
+            decodeAction(type: "resolve_stack"),
+            decodeAction(type: "pass_until_stack_resolved"),
+            decodeAction(type: "pass_priority")
+        ]
+
+        XCTAssertEqual(
+            GameplayActionPresentation.yieldActions(in: actions).map(\.type),
+            ["resolve_stack", "end_turn", "yield_until_next_turn"]
+        )
+    }
+
+    func testNumericAndStringPileActionsDecodeAndBuildExactCommands() throws {
+        let api = MagicMobileAPI(baseURL: URL(string: "http://localhost:17171")!)
+        let numeric = try decodeAction(type: "choose_pile", extra: #""pile": 1"#)
+        let string = try decodeAction(type: "choose_pile", extra: #""pile": "2""#)
+
+        XCTAssertEqual(numeric.pile?.value, 1)
+        XCTAssertEqual(string.pile?.value, 2)
+        XCTAssertEqual(try api.command(for: numeric, gameId: "game-1").pile, 1)
+        XCTAssertEqual(try api.command(for: string, gameId: "game-1").pile, 2)
+    }
+
+    func testCanonicalYieldActionsKeepCompactLabelsAndBuildDirectCommands() throws {
+        let api = MagicMobileAPI(baseURL: URL(string: "http://localhost")!)
+        let cases = [
+            ("resolve_stack", "Resolve Stack"),
+            ("end_turn", "End Turn"),
+            ("yield_until_next_turn", "Yield Until Next Turn")
+        ]
+
+        for (type, title) in cases {
+            let action = try decodeAction(type: type)
+            XCTAssertEqual(action.compactPromptTitle, title)
+            XCTAssertEqual(try api.command(for: action, gameId: "game-1").type, type)
+        }
+    }
+
+    func testCompletedSnapshotDecodesTerminalResultAndDisablesBoardInteraction() throws {
+        let completedData = String(data: try minimalSnapshotJSON(id: "completed-game"), encoding: .utf8)!
+            .replacingOccurrences(
+                of: #""pendingStatus": null"#,
+                with: #""pendingStatus": null, "gameStatus": "completed", "winnerPlayerIds": ["human"], "endReason": "commander_damage""#
+            )
+            .data(using: .utf8)!
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: completedData)
+
+        XCTAssertTrue(snapshot.isCompleted)
+        XCTAssertEqual(snapshot.winnerPlayerIds, ["human"])
+        XCTAssertEqual(snapshot.winnerDisplayNames, ["You"])
+        XCTAssertEqual(snapshot.endReason, "commander_damage")
+        XCTAssertEqual(GameBoardInteractionState.mode(for: snapshot, pendingActionId: nil, selectedCard: nil), .gameOver)
     }
 
     func testCastSubmissionClassifierRecognizesPaymentPrompt() throws {
@@ -840,6 +993,7 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(attackers?.count, 1)
         XCTAssertEqual(attackers?.first?["attackerId"] as? String, "attacker-1")
         XCTAssertEqual(attackers?.first?["defenderId"] as? String, "ai-1")
+        XCTAssertEqual(command.combatComplete, false)
     }
 
     func testDeclareBlockersCommandPreservesTypedPayload() throws {
@@ -861,6 +1015,7 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(blockers?.count, 1)
         XCTAssertEqual(blockers?.first?["blockerId"] as? String, "blocker-1")
         XCTAssertEqual(blockers?.first?["attackerId"] as? String, "attacker-1")
+        XCTAssertEqual(command.combatComplete, false)
     }
 
     func testStackObjectWithoutSourceCardKeepsDisplayText() throws {
@@ -2150,14 +2305,26 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(selection.defenderHighlightIds(actions: [action]), ["ai-1"])
     }
 
-    func testCombatSelectionDetectsDeclareAttackersFromHumanStepWithoutActions() throws {
+    func testCombatSelectionDoesNotReenterAttackersFromPostDeclarationPriorityStep() throws {
         let attackersStepData = String(data: try minimalSnapshotJSON(id: "attackers-no-actions"), encoding: .utf8)!
             .replacingOccurrences(of: #""step": "precombat-main""#, with: #""step": "declare-attackers""#)
             .data(using: .utf8)!
         let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: attackersStepData)
 
-        XCTAssertTrue(CombatSelectionState.isDeclareAttackers(snapshot))
+        XCTAssertFalse(CombatSelectionState.isDeclareAttackers(snapshot))
         XCTAssertFalse(CombatSelectionState.isDeclareBlockers(snapshot))
+    }
+
+    func testInteractionModeUsesAuthoritativeAttackerActions() throws {
+        let data = String(data: try minimalSnapshotJSON(id: "attackers-with-actions"), encoding: .utf8)!
+            .replacingOccurrences(of: #""legalActions": []"#, with: #""legalActions": [{ "id": "attack-1", "type": "declare_attackers", "playerId": "human", "label": "Attack", "cardInstanceId": "creature-1", "validTargetIds": ["ai-1"] }]"#)
+            .data(using: .utf8)!
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: data)
+
+        XCTAssertEqual(
+            GameBoardInteractionState.mode(for: snapshot, pendingActionId: nil, selectedCard: nil),
+            .combatSelectingAttackers
+        )
     }
 
     func testCombatSelectionBuildsPartialAndFinishAttackCommands() throws {
@@ -2280,13 +2447,13 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(command.expectedBridgeRevision, 7)
     }
 
-    func testBlockerModeDetectsHumanStepBeforeLegalActionsArrive() throws {
+    func testCombatSelectionDoesNotReenterBlockersFromPostDeclarationPriorityStep() throws {
         let blockersStepData = String(data: try minimalSnapshotJSON(id: "blockers-no-actions"), encoding: .utf8)!
             .replacingOccurrences(of: #""step": "precombat-main""#, with: #""step": "declare-blockers""#)
             .data(using: .utf8)!
         let noActions = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: blockersStepData)
 
-        XCTAssertTrue(CombatSelectionState.isDeclareBlockers(noActions))
+        XCTAssertFalse(CombatSelectionState.isDeclareBlockers(noActions))
 
         let legalData = String(data: try minimalSnapshotJSON(id: "blockers-with-actions"), encoding: .utf8)!
             .replacingOccurrences(of: #""step": "precombat-main""#, with: #""step": "declare-blockers""#)
@@ -2295,6 +2462,10 @@ final class MagicMobileTests: XCTestCase {
         let withActions = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: legalData)
 
         XCTAssertTrue(CombatSelectionState.isDeclareBlockers(withActions))
+        XCTAssertEqual(
+            GameBoardInteractionState.mode(for: withActions, pendingActionId: nil, selectedCard: nil),
+            .combatSelectingBlockers
+        )
     }
 
     func testCombatSelectionHandlesMultipleAttackerBlockerPairs() throws {
@@ -2479,6 +2650,23 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(plan.rows[2].map(\.instanceId), ["creature-7", "creature-8", "creature-9", "creature-10", "creature-11"])
     }
 
+    func testBattlefieldDensityPlannerGroupsOnlyEquivalentPermanentStates() {
+        let cards = [
+            zoneCard(id: "island-1", name: "Island", typeLine: "Basic Land — Island"),
+            zoneCard(id: "island-2", name: "Island", typeLine: "Basic Land — Island"),
+            zoneCard(id: "island-3", name: "Island", typeLine: "Basic Land — Island", tapped: true),
+            zoneCard(id: "goblin-1", name: "Goblin", typeLine: "Token Creature — Goblin"),
+            zoneCard(id: "goblin-2", name: "Goblin", typeLine: "Token Creature — Goblin")
+        ]
+
+        let groups = BattlefieldDensityPlanner.groups(cards: cards)
+
+        XCTAssertEqual(groups.map(\.count), [2, 1, 2])
+        XCTAssertEqual(groups[0].cards.map(\.instanceId), ["island-1", "island-2"])
+        XCTAssertEqual(groups[1].representative.instanceId, "island-3")
+        XCTAssertEqual(groups[2].cards.map(\.instanceId), ["goblin-1", "goblin-2"])
+    }
+
     func testPortraitOverlapLayoutFitsTenCardsWithoutScrolling() {
         let plan = PortraitOverlapLayout.plan(count: 10, containerWidth: 414, cardWidth: 66, visibleLimit: 10, minVisibleWidth: 34, spacing: 6)
 
@@ -2530,11 +2718,11 @@ final class MagicMobileTests: XCTestCase {
         return try JSONDecoder.magicMobile.decode(LegalAction.self, from: data)
     }
 
-    private func zoneCard(id: String, name: String, typeLine: String) -> ZoneCard {
+    private func zoneCard(id: String, name: String, typeLine: String, tapped: Bool? = nil) -> ZoneCard {
         ZoneCard(
             instanceId: id,
             card: CardIdentity(name: name, typeLine: typeLine, oracleText: nil),
-            tapped: nil,
+            tapped: tapped,
             summoningSickness: nil,
             cardIcons: nil,
             counters: nil,

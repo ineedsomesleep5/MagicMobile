@@ -86,6 +86,7 @@ describe("EngineAdapter contract", () => {
   it("tracks priority, phases, turns, joins, and reconnect snapshots", async () => {
     const adapter = new MockEngineAdapter();
     const created = await adapter.createGame({ roomId: "room-2", playerIds: ["p1"] });
+    expect(created).toMatchObject({ gameStatus: "in_progress", winnerPlayerIds: [], endReason: null });
     const joined = await adapter.joinGame({ gameId: created.id, playerId: "p2" });
     expect(joined.players.map((player) => player.playerId)).toEqual(["p1", "p2"]);
 
@@ -103,6 +104,9 @@ describe("EngineAdapter contract", () => {
     const reconnect = await adapter.getSnapshot(created.id);
     expect(reconnect.players[0]?.life).toBe(40);
     expect(reconnect.log.some((entry) => entry.message.includes("turn 2"))).toBe(true);
+
+    const resumed = await adapter.resumeGame({ gameId: created.id, playerId: "p1" });
+    expect(resumed.resumeStatus).toBe("resumed");
   });
 
   it("creates Commander games with AI seats and legal actions", async () => {
@@ -124,6 +128,18 @@ describe("EngineAdapter contract", () => {
     await expect(adapter.submitGameCommand({ type: "pass_priority", gameId: snapshot.id, playerId: "human" })).resolves.toMatchObject({
       priorityPlayerId: "ai-1"
     });
+    await expect(adapter.submitGameCommand({ type: "end_turn", gameId: snapshot.id, playerId: "human" })).resolves.toMatchObject({
+      turn: 2
+    });
+    const completed = await adapter.submitGameCommand({ type: "concede", gameId: snapshot.id, playerId: "human" });
+    expect(completed).toMatchObject({
+      gameStatus: "completed",
+      winnerPlayerIds: ["ai-1"]
+    });
+    await expect(
+      adapter.submitGameCommand({ type: "end_turn", gameId: snapshot.id, playerId: "human" })
+    ).rejects.toThrow("Action no longer legal: game is already completed");
+    await expect(adapter.getSnapshot(snapshot.id)).resolves.toEqual(completed);
     await expect(adapter.getHealth()).resolves.toMatchObject({ status: "ready" });
   });
 
@@ -196,6 +212,10 @@ describe("EngineAdapter contract", () => {
     await expect(adapter.createGame({ roomId: "room-3", playerIds: ["p1"] })).resolves.toMatchObject({
       id: "gateway-game"
     });
+    await expect(adapter.resumeGame({ gameId: "gateway-game", playerId: "p1" })).resolves.toMatchObject({
+      id: "gateway-game"
+    });
     expect(fetchCalls).toContain("POST http://xmage-worker.test/games");
+    expect(fetchCalls).toContain("POST http://xmage-worker.test/games/gateway-game/resume");
   });
 });

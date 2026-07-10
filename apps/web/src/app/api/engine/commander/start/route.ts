@@ -35,10 +35,20 @@ export async function POST(request: Request): Promise<Response> {
       });
     })
     .catch((error) => {
+      const gatewayFailure = (error as { body?: { message?: unknown; deckErrors?: unknown } }).body;
+      const deckErrors = Array.isArray(gatewayFailure?.deckErrors)
+        ? (gatewayFailure.deckErrors as NonNullable<CommanderStartupResponse["deckErrors"]>)
+        : undefined;
+      const failureMessage = typeof gatewayFailure?.message === "string"
+        ? gatewayFailure.message
+        : error instanceof Error
+          ? error.message
+          : "XMage game start failed.";
       startupStore().set(startupId, {
         startupId,
         status: "failed",
-        error: error instanceof Error ? error.message : "XMage game start failed.",
+        error: failureMessage,
+        ...(deckErrors ? { deckErrors } : {}),
         createdAt: starting.createdAt
       });
     });

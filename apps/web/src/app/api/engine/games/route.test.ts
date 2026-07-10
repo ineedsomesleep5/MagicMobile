@@ -21,11 +21,14 @@ describe("engine game API routes", () => {
     const startupRouteSource = readFileSync(new URL("../commander/start/route.ts", import.meta.url), "utf8");
     const gameRouteSource = readFileSync(new URL("./[gameId]/route.ts", import.meta.url), "utf8");
     const commandRouteSource = readFileSync(new URL("./[gameId]/commands/route.ts", import.meta.url), "utf8");
+    const resumeRouteSource = readFileSync(new URL("./[gameId]/resume/route.ts", import.meta.url), "utf8");
 
     expect(routeSource).toContain("createCommanderRuntimeEngineAdapter(config)");
     expect(startupRouteSource).toContain("createCommanderRuntimeEngineAdapter(config)");
     expect(gameRouteSource).toContain("createGameRuntimeEngineAdapter(gameId)");
     expect(commandRouteSource).toContain("createGameRuntimeEngineAdapter(gameId)");
+    expect(resumeRouteSource).toContain("createGameRuntimeEngineAdapter(gameId)");
+    expect(resumeRouteSource).toContain('error: "bridge_disconnected"');
   });
 
   it("does not report mock health for the real engine health endpoint", async () => {

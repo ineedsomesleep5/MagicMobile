@@ -28,6 +28,7 @@ export interface EngineAdapter {
   applyHybridAction(input: { gameId: GameId; action: HybridAction }): Promise<GameSnapshot>;
   passPriority(input: { gameId: GameId; playerId: PlayerId }): Promise<GameSnapshot>;
   advancePhase(input: { gameId: GameId }): Promise<GameSnapshot>;
+  resumeGame(input: { gameId: GameId; playerId: PlayerId }): Promise<GameSnapshot>;
   submitGameCommand(input: GameCommand): Promise<GameSnapshot>;
   getLegalActions(input: { gameId: GameId; playerId: PlayerId }): Promise<LegalAction[]>;
   getHealth(): Promise<EngineHealth>;

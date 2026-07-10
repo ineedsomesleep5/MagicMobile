@@ -62,6 +62,20 @@ struct MagicMobileAPI {
         try await get(gamePath(gameId: gameId))
     }
 
+    func resumeGame(gameId: String, playerId: String = "human") async throws -> GameSnapshot {
+        if usesDirectJavaBridgeRoutes {
+            let snapshot: GameSnapshot = try await get(
+                gamePath(gameId: gameId),
+                queryItems: [URLQueryItem(name: "playerId", value: playerId)]
+            )
+            guard snapshot.players.contains(where: { $0.playerId == playerId }) else {
+                throw MagicMobileError.server("This saved game belongs to a different XMage player.")
+            }
+            return snapshot
+        }
+        return try await post("\(gamePath(gameId: gameId))/resume", body: ResumeGameRequest(playerId: playerId))
+    }
+
     func cleanupGame(gameId: String, reason: String = "ios-client-request") async throws -> CleanupGameResponse {
         try await delete(gamePath(gameId: gameId), body: CleanupGameRequest(reason: reason))
     }
@@ -114,7 +128,7 @@ struct MagicMobileAPI {
     func command(for action: LegalAction, gameId: String) throws -> GameCommand {
         let promptId = promptId(for: action)
         let messageId = messageId(for: action)
-        if ["keep_hand", "mulligan", "pass_priority", "pass_until_response", "pass_until_next_turn", "advance_phase", "concede", "undo_mana", "cancel_payment", "cancel_mana_payment"].contains(action.type) {
+        if ["keep_hand", "mulligan", "pass_priority", "pass_until_response", "resolve_stack", "pass_until_stack_resolved", "end_turn", "pass_until_end_of_turn", "yield_until_next_turn", "pass_until_next_turn", "advance_phase", "concede", "undo_mana", "cancel_payment", "cancel_mana_payment"].contains(action.type) {
             return GameCommand(type: action.type, gameId: gameId, playerId: action.playerId)
         }
 
@@ -164,7 +178,7 @@ struct MagicMobileAPI {
                 cardInstanceId: templateString(action, "cardInstanceId") ?? action.cardInstanceId,
                 sourceInstanceId: templateString(action, "sourceInstanceId") ?? action.sourceInstanceId,
                 attackers: attackers,
-                combatComplete: templateBool(action, "combatComplete")
+                combatComplete: templateBool(action, "combatComplete") ?? false
             )
         }
 
@@ -181,7 +195,7 @@ struct MagicMobileAPI {
                 cardInstanceId: templateString(action, "cardInstanceId") ?? action.cardInstanceId,
                 sourceInstanceId: templateString(action, "sourceInstanceId") ?? action.sourceInstanceId,
                 blockers: blockers,
-                combatComplete: templateBool(action, "combatComplete")
+                combatComplete: templateBool(action, "combatComplete") ?? false
             )
         }
 
@@ -603,8 +617,8 @@ struct MagicMobileAPI {
     }
 
     private func exactPile(_ action: LegalAction) -> Int? {
-        let raw = action.pile ?? action.targetIds?.first ?? action.validTargetIds?.first ?? action.choiceIds?.first
-        let pile = templateInt(action, "pile") ?? raw.flatMap(Int.init)
+        let raw = action.targetIds?.first ?? action.validTargetIds?.first ?? action.choiceIds?.first
+        let pile = templateInt(action, "pile") ?? action.pile?.value ?? raw.flatMap(Int.init)
         return pile == 1 || pile == 2 ? pile : nil
     }
 
@@ -632,6 +646,19 @@ struct MagicMobileAPI {
 
     private func get<T: Decodable>(_ path: String) async throws -> T {
         let (data, response) = try await session.data(from: url(path))
+        try validate(response: response, data: data)
+        return try decode(T.self, from: data, response: response)
+    }
+
+    private func get<T: Decodable>(_ path: String, queryItems: [URLQueryItem]) async throws -> T {
+        guard var components = URLComponents(url: url(path), resolvingAgainstBaseURL: false) else {
+            throw MagicMobileError.invalidServerURL
+        }
+        components.queryItems = queryItems
+        guard let requestURL = components.url else {
+            throw MagicMobileError.invalidServerURL
+        }
+        let (data, response) = try await session.data(from: requestURL)
         try validate(response: response, data: data)
         return try decode(T.self, from: data, response: response)
     }
@@ -682,6 +709,10 @@ struct MagicMobileAPI {
         baseURL.port == 17171 || baseURL.port == 17172
     }
 
+    private var usesDirectJavaBridgeRoutes: Bool {
+        baseURL.port == 17172
+    }
+
     private func route(web: String, gateway: String) -> String {
         usesDirectGatewayRoutes ? gateway : web
     }
@@ -700,9 +731,13 @@ struct MagicMobileAPI {
     private func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let http = response as? HTTPURLResponse
-            if let apiError = try? JSONDecoder.magicMobile.decode(APIError.self, from: data),
-               let rejection = apiError.actionRejection {
-                throw MagicMobileError.actionRejected(rejection)
+            if let apiError = try? JSONDecoder.magicMobile.decode(APIError.self, from: data) {
+                if apiError.category == "expired_game" || apiError.error == "game_expired" {
+                    throw MagicMobileError.gameExpired(apiError.displayMessage ?? "Game is no longer available.")
+                }
+                if let rejection = apiError.actionRejection {
+                    throw MagicMobileError.actionRejected(rejection)
+                }
             }
             let message = Self.sanitizedServerMessage(
                 data: data,
@@ -771,8 +806,12 @@ struct DeckImporter {
 
         for line in lines {
             let lower = line.lowercased()
-            if lower.contains("commander") {
+            if lower == "commander" || lower == "commanders" || lower.contains("commander deck") {
                 section = "commander"
+                continue
+            }
+            if lower == "companion" || lower == "sideboard" {
+                section = "sideboard"
                 continue
             }
             if lower == "deck" || lower.contains("mainboard") {
@@ -792,9 +831,6 @@ struct DeckImporter {
             guard !name.isEmpty else { continue }
 
             entries.append(DeckEntry(cardName: name, quantity: quantity, section: section))
-            if section == "commander" {
-                section = "deck"
-            }
         }
 
         guard let commander = entries.first(where: { $0.section == "commander" }) ?? entries.first else {
@@ -803,7 +839,7 @@ struct DeckImporter {
 
         let deckEntries = entries
             .filter { $0 != commander }
-            .map { DeckEntry(cardName: $0.cardName, quantity: $0.quantity, section: "deck") }
+            .map { DeckEntry(cardName: $0.cardName, quantity: $0.quantity, section: $0.section) }
 
         return DeckList(
             name: source.hasPrefix("http") ? "Imported URL Deck" : source,
@@ -823,6 +859,34 @@ private struct CommanderFixtureRequest: Encodable {
     let scenario: String
 }
 
+private struct ResumeGameRequest: Encodable {
+    let playerId: String
+}
+
+struct CommanderDeckValidationIssue: Decodable {
+    let code: String
+    let message: String
+    let cardName: String?
+}
+
+struct CommanderDeckValidationError: Decodable {
+    let seat: String
+    let deckName: String
+    let issues: [CommanderDeckValidationIssue]
+
+    static func summarizedMessage(for deckErrors: [CommanderDeckValidationError]) -> String {
+        let details = deckErrors.flatMap { deck in
+            deck.issues.map { issue in
+                let card = issue.cardName.map { "\($0): " } ?? ""
+                return "\(deck.seat.capitalized) deck \(deck.deckName) — \(card)\(issue.message)"
+            }
+        }
+        let visible = details.prefix(4).joined(separator: "\n")
+        let remaining = max(0, details.count - 4)
+        return remaining > 0 ? "\(visible)\nPlus \(remaining) more deck issue\(remaining == 1 ? "" : "s")." : visible
+    }
+}
+
 private struct APIError: Decodable {
     let error: String?
     let serverMessage: String?
@@ -831,6 +895,8 @@ private struct APIError: Decodable {
     let blockedReason: String?
     let nextImplementationStep: String?
     let snapshot: GameSnapshot?
+    let deckErrors: [CommanderDeckValidationError]?
+    let validationErrors: [String]?
 
     enum CodingKeys: String, CodingKey {
         case error
@@ -840,9 +906,19 @@ private struct APIError: Decodable {
         case blockedReason
         case nextImplementationStep
         case snapshot
+        case deckErrors
+        case validationErrors
     }
 
     var displayMessage: String? {
+        if let deckErrors, !deckErrors.isEmpty {
+            return CommanderDeckValidationError.summarizedMessage(for: deckErrors)
+        }
+        if let validationErrors, !validationErrors.isEmpty {
+            let visible = validationErrors.prefix(4).joined(separator: "\n")
+            let remaining = max(0, validationErrors.count - 4)
+            return remaining > 0 ? "\(visible)\nPlus \(remaining) more deck issue\(remaining == 1 ? "" : "s")." : visible
+        }
         if let serverMessage, !serverMessage.isEmpty {
             return serverMessage
         }
@@ -855,6 +931,9 @@ private struct APIError: Decodable {
     var actionRejection: MagicMobileActionRejection? {
         let rawCategory = rejectionCategory ?? category ?? error
         let normalizedError = error?.lowercased() ?? ""
+        if category == "invalid_deck" || normalizedError == "deck_validation_failed" {
+            return nil
+        }
         guard snapshot != nil || category != nil || rejectionCategory != nil || normalizedError == "action_no_longer_legal" else {
             return nil
         }
@@ -872,6 +951,7 @@ enum MagicMobileError: LocalizedError {
     case invalidServerURL
     case server(String)
     case actionRejected(MagicMobileActionRejection)
+    case gameExpired(String)
 
     var errorDescription: String? {
         switch self {
@@ -881,6 +961,8 @@ enum MagicMobileError: LocalizedError {
             return message
         case .actionRejected(let rejection):
             return rejection.shortMessage
+        case .gameExpired(let message):
+            return message
         }
     }
 }

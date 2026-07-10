@@ -91,6 +91,13 @@ export class XmageEngineAdapter implements EngineAdapter {
     return this.submitGameCommand({ type: "advance_phase", gameId: input.gameId, playerId });
   }
 
+  async resumeGame(input: { gameId: GameId; playerId: PlayerId }): Promise<GameSnapshot> {
+    return this.request<GameSnapshot>(`/games/${encodeURIComponent(input.gameId)}/resume`, {
+      method: "POST",
+      body: { playerId: input.playerId }
+    });
+  }
+
   async submitGameCommand(input: GameCommand): Promise<GameSnapshot> {
     return this.request<GameSnapshot>(`/games/${encodeURIComponent(input.gameId)}/commands`, {
       method: "POST",

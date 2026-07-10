@@ -1,18 +1,21 @@
 ---
-version: alpha
+version: beta
 name: MagicMobile
-description: "A dense, playable Magic: The Gathering interface for mobile, web, and XMage-backed game flows."
+description: "A polished, board-first Commander experience for native iPhone play."
 colors:
-  primary: "#d8b45a"
-  background: "#07120f"
-  surface: "#101c18"
-  surface-raised: "#16251f"
-  surface-muted: "#22332c"
-  text-primary: "#f3efe2"
-  text-secondary: "#c9c0aa"
-  accent-strong: "#f1cc6b"
-  danger: "#d95f54"
-  success: "#65b783"
+  primary: "#d6a640"
+  background: "#0a0806"
+  surface: "#1c120d"
+  surface-raised: "#292321"
+  surface-muted: "#332116"
+  text-primary: "#f7f2e6"
+  text-secondary: "#c9bda6"
+  text-tertiary: "#9c8f7a"
+  accent-strong: "#e8c46b"
+  danger: "#8a2b26"
+  success: "#2ec778"
+  warning: "#d9892b"
+  arcane: "#45a6d9"
   mana-white: "#f4ead0"
   mana-blue: "#78a8d8"
   mana-black: "#37323a"
@@ -21,44 +24,45 @@ colors:
   mana-colorless: "#b8b1a2"
 typography:
   headline:
-    fontFamily: Inter
-    fontSize: 28px
+    fontFamily: "System Serif"
+    fontSize: 34px
     fontWeight: 700
-    lineHeight: 1.15
+    lineHeight: 1.1
     letterSpacing: 0em
   title:
-    fontFamily: Inter
-    fontSize: 18px
+    fontFamily: "System Serif"
+    fontSize: 22px
     fontWeight: 700
     lineHeight: 1.25
     letterSpacing: 0em
   body:
-    fontFamily: Inter
-    fontSize: 15px
+    fontFamily: "System"
+    fontSize: 17px
     fontWeight: 400
     lineHeight: 1.4
     letterSpacing: 0em
   label:
-    fontFamily: Inter
+    fontFamily: "System"
     fontSize: 12px
     fontWeight: 700
     lineHeight: 1.2
     letterSpacing: 0.04em
   card-meta:
-    fontFamily: Inter
+    fontFamily: "System"
     fontSize: 11px
     fontWeight: 600
     lineHeight: 1.2
     letterSpacing: 0em
 rounded:
-  sm: 4px
-  md: 8px
-  lg: 12px
+  sm: 6px
+  md: 10px
+  lg: 14px
+  hero: 20px
   full: 9999px
 spacing:
-  unit: 8px
-  board-gap: 8px
-  zone-padding: 10px
+  unit: 4px
+  board-gap: 6px
+  zone-padding: 8px
   panel-padding: 16px
   touch-target: 44px
 components:
@@ -162,21 +166,28 @@ components:
 
 ## Overview
 
-MagicMobile should feel like a serious tabletop companion: compact, readable,
-and action-focused. The interface must prioritize board comprehension over
-decoration. The product personality is tactical and warm, using dark playmat
-surfaces, readable card zones, and restrained gold highlights for meaningful
-actions.
+MagicMobile is a native iPhone Commander client, not a desktop control panel
+compressed onto a phone. It should feel crafted, tactical, and immediately
+playable. The visual language is refined rustic fantasy: charred oak, worn
+leather, aged brass, iron, and parchment. Ornament is restrained so the cards,
+current decision, and legal actions remain the focus.
+
+The home experience is calm and simple. Setup is guided. Gameplay is dense only
+where the rules demand it, with stable controls and a board-first hierarchy in
+both portrait and landscape.
 
 ## Colors
 
-The palette is built around a dark green-black playmat foundation with parchment
-text and a single gold interaction accent.
+The palette is built around charred wood and near-black iron, with parchment
+text and aged-brass interaction accents. Deep moss is a supporting battlefield
+tone, not the generic panel color.
 
 - **Background:** Used behind full board and play surfaces.
 - **Surface:** Used for zones, panels, and dense game-state containers.
 - **Accent:** Reserved for primary legal actions, current prompts, and active
   selections.
+- **Magic state colors:** Emerald means priority/ready, amber means waiting,
+  oxblood means danger, and arcane blue means stack or spell information.
 - **Mana colors:** Used only for mana identity, costs, and resource indicators;
   do not recolor generic UI with mana colors.
 - **Danger and success:** Used for destructive actions, errors, resolved checks,
@@ -184,28 +195,61 @@ text and a single gold interaction accent.
 
 ## Typography
 
-Typography must stay compact and legible on mobile. Use heavier labels for
-zone headers, legal actions, and card metadata. Do not use oversized marketing
-headlines inside gameplay surfaces.
+Use the native system serif face for brand, screen, and major section titles.
+Use the default system face for controls, body copy, numbers, and game data.
+This keeps the medieval personality without sacrificing scan speed or Dynamic
+Type support. Gameplay labels may be compact, but never below 11pt for essential
+information. Do not use oversized marketing headlines inside gameplay surfaces.
 
 ## Layout
 
-Gameplay layout is board-first. Preserve stable zone dimensions, avoid layout
-shift during prompts, and keep the most likely legal actions within easy thumb
-reach. Dense panels should group related state tightly while leaving enough
-space for card names and action text to remain readable.
+### Home
+
+- Present one dominant `Play Commander` action.
+- Show the current player/deck and resumable game as compact supporting cards.
+- Move server, asset-cache, and orientation controls into Settings.
+- Surface connection problems as a concise badge or dismissible message; never
+  let technical status compete with the product title.
+
+### Setup
+
+- Use three explicit steps: `Player & Deck`, `Opponent`, and `Review`.
+- Keep Back and Continue/Start in stable positions.
+- Reveal advanced bridge and cache details only on demand.
+- State the selected player, decks, difficulty, avatar, and rules before Start.
+
+### Gameplay
+
+- Gameplay is board-first. Preserve stable zone dimensions and avoid layout
+  shifts during prompts.
+- Keep the hand and primary legal actions in thumb reach.
+- Show the current phase and priority persistently, but make the full game log
+  on demand. A single latest-event chip may remain visible.
+- Never show conflicting states such as `Wait` while also declaring `Your
+  decision`.
+- Tap is the complete interaction path. Drag may be a shortcut, but no action
+  can require drag alone.
+
+### Orientation
+
+Portrait and landscape expose the same information and actions. They may
+recompose, but neither orientation may lose prompts, zone access, stack access,
+timing controls, player status, or game-log access. Landscape should increase
+board space rather than adding permanent developer panels.
 
 ## Elevation & Depth
 
-Use tonal separation, borders, and active highlights instead of heavy shadows.
-Overlays and prompt panels may sit above the board, but they must not obscure
-the active choice without a clear dismissal or resolution path.
+Use material gradients only to imply oak, leather, iron, or brass. Keep them
+subtle. Tonal separation and thin brass borders do most of the work. Standard
+panels use a short soft shadow; only decision sheets and floating controls use
+the elevated shadow. Overlays and prompts must not obscure the active source,
+target, or choice without a clear resolution path.
 
 ## Shapes
 
-Use small radii for dense gameplay surfaces. Cards, zones, prompts, and buttons
-should feel tactile but not bubbly. Keep repeated board items consistent so
-players can scan them quickly.
+Use 8-12pt radii for dense gameplay surfaces, 14-18pt for sheets, and 20pt only
+for a home hero panel. Pills are reserved for statuses, filters, and compact
+metadata. Cards, zones, prompts, and buttons should feel tactile but not bubbly.
 
 ## Components
 
@@ -214,13 +258,24 @@ take an important legal action. Secondary actions use muted surfaces. Game
 zones should show their purpose, count, and relevant state without requiring a
 modal. Mana chips must stay visually tied to actual mana information.
 
+Native implementation uses `GameBoardTheme.current` for semantic color and
+material values, `GameBoardDesignTokens.current` for dimensions and motion, and
+the reusable `magicPanel`, `magicBadge`, `MagicPrimaryButtonStyle`,
+`MagicSecondaryButtonStyle`, and `MagicIconButtonStyle` primitives. Feature
+views should not introduce raw rustic colors when one of these semantics fits.
+
 ## Do's and Don'ts
 
 - Do preserve card readability and board-state scanability.
 - Do use mana colors only for mana-related meaning.
 - Do keep touch targets at least 44px when an action can change game state.
 - Do keep prompt and stack UI visually distinct from passive board information.
-- Don't introduce decorative gradients, glass effects, or large hero treatment
-  inside gameplay surfaces.
+- Do use the serif face sparingly for brand and hierarchy, not dense rules text.
+- Do keep status colors semantic and consistent.
+- Don't introduce glass effects or decorative texture over card art.
+- Don't add large hero treatment inside gameplay surfaces.
 - Don't hide legal actions behind vague icon-only controls.
 - Don't let overlays cover the selected source, target, or active prompt.
+- Don't make server health, cache counts, or cleanup errors the primary content
+  of the home screen.
+- Don't require a gesture that has no tap alternative.

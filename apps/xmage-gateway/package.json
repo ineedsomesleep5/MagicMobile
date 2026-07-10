@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "node ./server.mjs",
     "build": "node --check ./server.mjs",
-    "test": "node --test ./server.test.mjs",
+    "test": "node --test ./server.test.mjs && pnpm test:smoke:commander-full-ai-gate",
+    "test:smoke:commander-full-ai-gate": "XMAGE_SMOKE_SELFTEST=commander-full-ai-gate vite-node ./scripts/smoke-create-commander-game.ts",
     "lint": "node --check ./server.mjs && node --check ./server.test.mjs",
     "typecheck": "node --check ./server.mjs && node --check ./server.test.mjs",
     "smoke:xmage": "vite-node ./scripts/smoke-create-commander-game.ts",

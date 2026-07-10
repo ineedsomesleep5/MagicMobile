@@ -45,6 +45,9 @@ export function toStartupResponse(record: StartupRecord): CommanderStartupRespon
   if (record.error) {
     response.error = record.error;
   }
+  if (record.deckErrors) {
+    response.deckErrors = record.deckErrors;
+  }
 
   return response;
 }
