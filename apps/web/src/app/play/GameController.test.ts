@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GameSnapshot, LegalAction } from "@magicmobile/shared";
-import { gameWebSocketUrl, latestSnapshot, shouldClearPendingAfterSnapshot, staleCommandSnapshot, toCommand } from "./GameController";
+import { gameWebSocketUrl, latestSnapshot, reconnectBackoffMs, shouldClearPendingAfterSnapshot, staleCommandSnapshot, toCommand } from "./GameController";
 import { narrowCommandTemplate, narrowPromptAction } from "./ArenaBattlefield";
 import PlaySimulatorPage from "../dev/play-simulator/page";
 
@@ -88,6 +88,14 @@ describe("GameController command mapping and state integration", () => {
     expect(gameWebSocketUrl("game 1", "http://localhost:17171")).toBe("ws://localhost:17171/ws/games/game%201");
     expect(gameWebSocketUrl("game-2", "https://magicmobile.example/base/")).toBe("wss://magicmobile.example/base/ws/games/game-2");
     expect(gameWebSocketUrl("game-3")).toBe("/ws/games/game-3");
+    expect(gameWebSocketUrl("game-4", "https://magicmobile.example/base?old=value", "short lived/token")).toBe(
+      "wss://magicmobile.example/base/ws/games/game-4?token=short+lived%2Ftoken"
+    );
+    expect(gameWebSocketUrl("game-5", undefined, "token value")).toBe("/ws/games/game-5?token=token%20value");
+  });
+
+  it("backs off reconnect attempts and caps the delay", () => {
+    expect([0, 1, 2, 3, 4, 20].map(reconnectBackoffMs)).toEqual([1_000, 2_000, 4_000, 8_000, 10_000, 10_000]);
   });
 
   describe("latestSnapshot updates and snap-back protection", () => {

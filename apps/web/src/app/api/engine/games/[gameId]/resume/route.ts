@@ -1,4 +1,5 @@
 import { createGameRuntimeEngineAdapter } from "@/lib/engine";
+import { gameSessionErrorResponse, requireGameSession } from "@/lib/game-sessions";
 
 interface ResumeRouteContext {
   params: Promise<{ gameId: string }>;
@@ -23,8 +24,11 @@ export async function POST(request: Request, context: ResumeRouteContext): Promi
 
   const engine = createGameRuntimeEngineAdapter(gameId);
   try {
+    await requireGameSession(request, gameId);
     return Response.json(await engine.resumeGame({ gameId, playerId }));
   } catch (error) {
+    const sessionResponse = gameSessionErrorResponse(error);
+    if (sessionResponse) return sessionResponse;
     const gatewayError = error as { status?: number; body?: unknown; message?: string };
     if (gatewayError.status && gatewayError.body) {
       return Response.json(gatewayError.body, { status: gatewayError.status });

@@ -5,29 +5,28 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "MagicMobile",
-  description: "Commander-first tabletop and digital play scaffold"
+  description: "A polished Commander game powered by XMage rules"
 };
 
 const navItems: Array<[href: string, label: string]> = [
   ["/", "Home"],
   ["/decks", "Decks"],
-  ["/cards", "Cards"],
   ["/play", "Play"],
-  ["/rooms/demo-room", "Room"],
-  ["/settings", "Settings"],
-  ["/dev/engine", "Engine"],
-  ["/dev/components", "Components"]
+  ["/account", "Account"]
 ];
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body>
         <div className="app-shell">
           <aside className="side-nav">
             <Link className="brand" href="/">
-              <strong>MagicMobile</strong>
-              <span>Commander tables, clear state.</span>
+              <span className="brand-mark" aria-hidden="true">M</span>
+              <span className="brand-copy">
+                <strong>MagicMobile</strong>
+                <span>Commander, refined.</span>
+              </span>
             </Link>
             <nav aria-label="Primary">
               {navItems.map(([href, label]) => (
@@ -38,6 +37,11 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
             </nav>
           </aside>
           <main className="content">{children}</main>
+          <nav className="mobile-nav" aria-label="Primary mobile navigation">
+            {navItems.map(([href, label]) => (
+              <Link href={href} key={href}>{label}</Link>
+            ))}
+          </nav>
         </div>
       </body>
     </html>

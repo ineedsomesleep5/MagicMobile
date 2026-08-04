@@ -86,4 +86,13 @@ Arcane Signet
     `);
     expect(deck.errors).toContain("No valid card entries found in the pasted text.");
   });
+
+  it("parses quoted CSV exports and deck sections", () => {
+    const deck = new PastedDeckParser().parse(`Quantity,Card Name,Board\n1,"Atraxa, Praetors' Voice",Commander\n2,Island,Mainboard`);
+    expect(deck.commander?.cardName).toBe("Atraxa, Praetors' Voice");
+    expect(deck.entries).toEqual([
+      { cardName: "Atraxa, Praetors' Voice", quantity: 1, section: "commander" },
+      { cardName: "Island", quantity: 2, section: "deck" }
+    ]);
+  });
 });

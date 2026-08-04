@@ -12,15 +12,29 @@ interface GameControllerProps {
   simulatorMode: boolean;
   visuals: VisualCardRecord;
   webSocketBaseUrl?: string | undefined;
+  socketToken?: string | undefined;
 }
 
-export function GameController({ config, initialHealth, requireXmage = false, simulatorMode, visuals, webSocketBaseUrl }: GameControllerProps) {
+type LiveConnectionStatus = "idle" | "connecting" | "live" | "reconnecting";
+
+export function GameController({
+  config,
+  initialHealth,
+  requireXmage = false,
+  simulatorMode,
+  visuals,
+  webSocketBaseUrl,
+  socketToken
+}: GameControllerProps) {
   const [snapshot, setSnapshot] = useState<GameSnapshot | null>(null);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [pendingActionId, setPendingActionId] = useState<string | undefined>();
   const [pendingActionLabel, setPendingActionLabel] = useState<string | undefined>();
-  const [socketStatus, setSocketStatus] = useState<"idle" | "connecting" | "live" | "unavailable">("idle");
+  const [socketStatus, setSocketStatus] = useState<LiveConnectionStatus>("idle");
+  const [issuedSocketToken, setIssuedSocketToken] = useState<string | undefined>();
+  const [reconnectDelayMs, setReconnectDelayMs] = useState<number | undefined>();
+  const [connectionEpoch, setConnectionEpoch] = useState(0);
   const snapshotRef = useRef<GameSnapshot | null>(null);
   const pendingActionIdRef = useRef<string | undefined>(undefined);
 
@@ -57,6 +71,7 @@ export function GameController({ config, initialHealth, requireXmage = false, si
     })
       .then(async (response) => {
         if (!response.ok) throw new Error(await errorMessage(response, "Game start failed"));
+        setIssuedSocketToken(response.headers.get("x-magicmobile-socket-token") ?? undefined);
         return response.json() as Promise<GameSnapshot>;
       })
       .then((nextSnapshot) => {
@@ -82,32 +97,93 @@ export function GameController({ config, initialHealth, requireXmage = false, si
     }
 
     let active = true;
-    const socket = new WebSocket(gameWebSocketUrl(snapshot.id, webSocketBaseUrl));
-    setSocketStatus("connecting");
+    let socket: WebSocket | undefined;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let reconnectAttempt = 0;
+    let connectionGeneration = 0;
 
-    socket.addEventListener("open", () => {
-      if (active) setSocketStatus("live");
-    });
-    socket.addEventListener("message", (event) => {
+    const connect = (reconnecting: boolean) => {
+      if (!active) return;
+      const generation = ++connectionGeneration;
+      setSocketStatus(reconnecting ? "reconnecting" : "connecting");
+      setReconnectDelayMs(undefined);
+
+      let currentSocket: WebSocket;
       try {
-        const nextSnapshot = JSON.parse(String(event.data)) as GameSnapshot;
-        if (active) acceptSnapshot(nextSnapshot);
+        currentSocket = new WebSocket(gameWebSocketUrl(snapshot.id, webSocketBaseUrl, socketToken ?? issuedSocketToken));
+        socket = currentSocket;
       } catch {
-        if (active) setError("Received an unreadable XMage live update.");
+        scheduleReconnect(generation);
+        return;
       }
-    });
-    socket.addEventListener("error", () => {
-      if (active) setSocketStatus("unavailable");
-    });
-    socket.addEventListener("close", () => {
-      if (active) setSocketStatus("unavailable");
-    });
+
+      let retryScheduled = false;
+      currentSocket.addEventListener("open", () => {
+        if (!active || generation !== connectionGeneration) return;
+        reconnectAttempt = 0;
+        setReconnectDelayMs(undefined);
+        setSocketStatus("live");
+        void fetchLatestSnapshot(snapshot.id)
+          .then((nextSnapshot) => {
+            if (active) acceptSnapshot(nextSnapshot);
+          })
+          .catch(() => {
+            // A socket snapshot can still restore the table when this refresh races startup.
+          });
+      });
+      currentSocket.addEventListener("message", (event) => {
+        try {
+          const nextSnapshot = JSON.parse(String(event.data)) as GameSnapshot;
+          if (!isGameSnapshot(nextSnapshot)) throw new Error("Invalid snapshot");
+          if (active && generation === connectionGeneration) acceptSnapshot(nextSnapshot);
+        } catch {
+          if (active && generation === connectionGeneration) setError("Received an unreadable XMage live update.");
+        }
+      });
+      currentSocket.addEventListener("error", () => {
+        if (active && generation === connectionGeneration) currentSocket.close();
+      });
+      currentSocket.addEventListener("close", () => {
+        if (!active || retryScheduled || generation !== connectionGeneration) return;
+        retryScheduled = true;
+        scheduleReconnect(generation);
+      });
+    };
+
+    const scheduleReconnect = (generation: number) => {
+      if (!active || reconnectTimer || generation !== connectionGeneration) return;
+      const delay = reconnectBackoffMs(reconnectAttempt);
+      reconnectAttempt += 1;
+      setSocketStatus("reconnecting");
+      setReconnectDelayMs(delay);
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = undefined;
+        connect(true);
+      }, delay);
+    };
+
+    const reconnectWhenOnline = () => {
+      if (socket?.readyState === WebSocket.OPEN) return;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      reconnectTimer = undefined;
+      reconnectAttempt = 0;
+      connectionGeneration += 1;
+      const previousSocket = socket;
+      socket = undefined;
+      previousSocket?.close();
+      connect(true);
+    };
+
+    connect(false);
+    window.addEventListener("online", reconnectWhenOnline);
 
     return () => {
       active = false;
-      socket.close();
+      window.removeEventListener("online", reconnectWhenOnline);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      socket?.close();
     };
-  }, [simulatorMode, snapshot?.id, webSocketBaseUrl]);
+  }, [connectionEpoch, issuedSocketToken, simulatorMode, snapshot?.id, socketToken, webSocketBaseUrl]);
 
   const legalActions = snapshot?.legalActions ?? [];
   const health = snapshot?.engineHealth ?? initialHealth;
@@ -126,15 +202,10 @@ export function GameController({ config, initialHealth, requireXmage = false, si
   const actionPending = pendingActionId !== undefined;
   const statusLines = snapshot ? gameStatusLines(snapshot, health, socketStatus, simulatorMode) : [];
 
-  const connectionFailed = (finalRequireXmage && health.status !== "ready") || (finalRequireXmage && socketStatus === "unavailable");
+  const connectionFailed = finalRequireXmage && health.status !== "ready";
 
   if (connectionFailed) {
-    return (
-      <XmageSetupRequired
-        health={health}
-        reason={socketStatus === "unavailable" ? "WebSocket connection to XMage Gateway is unavailable." : undefined}
-      />
-    );
+    return <XmageSetupRequired health={health} />;
   }
 
   const runLegalAction = (action: LegalAction) => {
@@ -240,6 +311,41 @@ export function GameController({ config, initialHealth, requireXmage = false, si
           </div>
         </details>
       </div>
+
+      {!simulatorMode && socketStatus !== "live" && socketStatus !== "idle" ? (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            alignItems: "center",
+            background: "rgba(35, 20, 12, 0.94)",
+            border: "1px solid rgba(219, 168, 65, 0.65)",
+            borderRadius: "999px",
+            color: "#f6f0df",
+            display: "flex",
+            gap: "0.65rem",
+            left: "50%",
+            padding: "0.45rem 0.75rem",
+            position: "absolute",
+            top: "5.4rem",
+            transform: "translateX(-50%)",
+            zIndex: 20
+          }}
+        >
+          <span>
+            {socketStatus === "connecting"
+              ? "Connecting to XMage…"
+              : `Live updates interrupted. Retrying${reconnectDelayMs ? ` in ${Math.ceil(reconnectDelayMs / 1000)}s` : "…"}`}
+          </span>
+          <button
+            type="button"
+            onClick={() => setConnectionEpoch((value) => value + 1)}
+            style={{ minHeight: "2rem", padding: "0.25rem 0.7rem" }}
+          >
+            Retry now
+          </button>
+        </div>
+      ) : null}
 
       {viewModel ? (
         <ArenaBattlefield
@@ -411,7 +517,7 @@ function XmageSetupRequired({ health, reason }: { health: EngineHealth; reason?:
   );
 }
 
-export function gameWebSocketUrl(gameId: string, baseUrl?: string): string {
+export function gameWebSocketUrl(gameId: string, baseUrl?: string, socketToken?: string): string {
   const path = `/ws/games/${encodeURIComponent(gameId)}`;
   if (baseUrl) {
     const url = new URL(baseUrl);
@@ -419,14 +525,20 @@ export function gameWebSocketUrl(gameId: string, baseUrl?: string): string {
     url.pathname = `${url.pathname.replace(/\/$/, "")}${path}`;
     url.search = "";
     url.hash = "";
+    if (socketToken) url.searchParams.set("token", socketToken);
     return url.toString();
   }
 
   if (typeof window === "undefined") {
-    return path;
+    return socketToken ? `${path}?token=${encodeURIComponent(socketToken)}` : path;
   }
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}${path}`;
+  const url = `${protocol}//${window.location.host}${path}`;
+  return socketToken ? `${url}?token=${encodeURIComponent(socketToken)}` : url;
+}
+
+export function reconnectBackoffMs(attempt: number): number {
+  return Math.min(1_000 * (2 ** Math.max(0, attempt)), 10_000);
 }
 
 export function latestSnapshot(current: GameSnapshot | null, next: GameSnapshot): GameSnapshot {
@@ -462,7 +574,7 @@ export function shouldClearPendingAfterSnapshot(current: GameSnapshot, next: Gam
 function gameStatusLines(
   snapshot: GameSnapshot,
   health: EngineHealth,
-  socketStatus: "idle" | "connecting" | "live" | "unavailable",
+  socketStatus: LiveConnectionStatus,
   simulatorMode: boolean
 ): string[] {
   const source = snapshotSource(snapshot, simulatorMode);

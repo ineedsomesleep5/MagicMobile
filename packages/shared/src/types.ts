@@ -44,6 +44,44 @@ export interface DeckList {
   errors?: string[];
 }
 
+export type DeckSourceKind = "manual" | "paste" | "file" | "archidekt" | "moxfield";
+
+export interface DeckSource {
+  kind: DeckSourceKind;
+  url?: string;
+  filename?: string;
+}
+
+/** A persisted, owner-scoped deck. Revisions are used for optimistic updates. */
+export interface SavedDeck extends DeckList {
+  id: DeckId;
+  ownerId: PlayerId;
+  format: "commander";
+  revision: number;
+  source: DeckSource;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateDeckInput {
+  name: string;
+  entries: DeckEntry[];
+  commander?: DeckEntry;
+  rawList?: string;
+  source?: DeckSource;
+}
+
+export interface UpdateDeckInput extends Partial<CreateDeckInput> {
+  revision: number;
+}
+
+export interface DeckImportRequest {
+  name?: string;
+  sourceText?: string;
+  sourceURL?: string;
+  filename?: string;
+}
+
 export interface DeckStats {
   lands: number;
   ramp: number;

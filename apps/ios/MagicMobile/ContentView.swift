@@ -84,7 +84,7 @@ struct ContentView: View {
     @AppStorage("magicmobile.activeGameId") private var activeGameId = ""
     @AppStorage("magicmobile.activeGameServerURL") private var activeGameServerURL = ""
     @AppStorage("magicmobile.serverURL") private var serverURLText = ProcessInfo.processInfo.environment["MAGICMOBILE_SERVER_URL"] ?? "https://magicmobile.openclaw-is3w.srv1420950.hstgr.cloud"
-    @AppStorage(PortraitModePreference.key) private var portraitModeEnabled = false
+    @AppStorage(PortraitModePreference.key) private var portraitModeEnabled = true
     @State private var status = "Not connected"
     @State private var screen: AppScreen = .menu
     @State private var difficulty: AiDifficulty = .normal
@@ -269,11 +269,9 @@ struct ContentView: View {
                 startFixtureGame: { Task { await startFixtureGame() } }
             )
         case .decks:
-            DeckBuilderView(
-                deckText: $deckText,
-                deckSource: $deckSource,
-                deckSummary: deckSummary,
-                importDeck: importDeck,
+            DeckLibraryView(
+                serverURL: serverURLText,
+                activeDeck: $importedDeck,
                 selectedHumanPrecon: $selectedHumanPrecon,
                 portraitModeEnabled: portraitModeEnabled
             )

@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { parse as parseUrl } from "node:url";
 import { WebSocketServer } from "ws";
+import { verifySocketToken } from "./socket-token.mjs";
 
 export const aiDifficultyProfiles = {
   easy: { playerType: "Computer - default", skill: 3 },
@@ -1781,7 +1782,19 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
   server.on("upgrade", (request, socket, head) => {
     const url = parseUrl(request.url ?? "/", true);
-    if (url.pathname?.startsWith("/ws/games/")) {
+    const match = url.pathname?.match(/^\/ws\/games\/([^/]+)$/);
+    if (match) {
+      const gameId = decodeURIComponent(match[1]);
+      const authorization = verifySocketToken(
+        typeof url.query.token === "string" ? url.query.token : undefined,
+        gameId,
+        process.env.XMAGE_SOCKET_TOKEN_SECRET ?? ""
+      );
+      if (!authorization.ok) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+        socket.destroy();
+        return;
+      }
       wss.handleUpgrade(request, socket, head, (ws) => {
         wss.emit("connection", ws, request);
       });

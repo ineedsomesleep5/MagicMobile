@@ -37,6 +37,48 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(list?.entries.first(where: { $0.cardName == "Plains" })?.section, "deck")
     }
 
+    func testDeckFileParserReadsCSVExports() throws {
+        let csv = """
+        Quantity,Name,Edition
+        1,"Atraxa, Praetors' Voice",2X2
+        99,Forest,M21
+        """
+
+        let deck = try DeckFileParser.parse(
+            data: try XCTUnwrap(csv.data(using: .utf8)),
+            filename: "Counters.csv",
+            source: "Counters"
+        )
+
+        XCTAssertEqual(deck.name, "Counters")
+        XCTAssertEqual(deck.commander?.cardName, "Atraxa, Praetors' Voice")
+        XCTAssertEqual(deck.totalCards, 100)
+    }
+
+    func testDeckEditorDraftProducesBattleDeckAndValidation() throws {
+        var draft = DeckEditorDraft()
+        draft.name = "Council of Trees"
+        draft.commanderName = "Treebeard, Gracious Host"
+        draft.rows = [DeckEditorRow(quantity: 99, cardName: "Forest")]
+
+        let record = try XCTUnwrap(draft.record)
+
+        XCTAssertEqual(record.cardCount, 100)
+        XCTAssertTrue(record.isBattleReady)
+        XCTAssertEqual(record.deckList.commander?.cardName, "Treebeard, Gracious Host")
+    }
+
+    func testCloudDeckResponseAllowsServerDefaults() throws {
+        let data = #"{"id":"deck-1","ownerId":"user-1","name":"Minimal","format":"commander","commander":{"cardName":"Giada, Font of Hope","quantity":1,"section":"commander"},"entries":[],"revision":2,"source":{"kind":"moxfield","url":"https://www.moxfield.com/decks/example"},"createdAt":"2026-07-20T19:00:00Z","updatedAt":"2026-07-20T19:01:00.123Z"}"#.data(using: .utf8)!
+        let record = try JSONDecoder.magicMobileDecks.decode(DeckLibraryRecord.self, from: data)
+
+        XCTAssertEqual(record.id, "deck-1")
+        XCTAssertEqual(record.format, "commander")
+        XCTAssertEqual(record.revision, 2)
+        XCTAssertEqual(record.sourceURL, "https://www.moxfield.com/decks/example")
+        XCTAssertTrue(record.isCloudBacked)
+    }
+
     func testDeckValidationErrorsRemainActionableAcrossHostedResponses() throws {
         let synchronousFailure = #"{"error":"Commander deck validation failed.","validationErrors":["Human: Unknown card Black Lotus"]}"#.data(using: .utf8)!
         XCTAssertEqual(

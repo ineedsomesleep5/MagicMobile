@@ -6,6 +6,9 @@ services:
     environment:
       ENGINE_MODE: xmage
       XMAGE_GATEWAY_URL: http://xmage-gateway:17171
+      XMAGE_SOCKET_TOKEN_SECRET: ${XMAGE_SOCKET_TOKEN_SECRET:-}
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-}
       SCRYFALL_CACHE_DIR: /workspace/.cache/scryfall
       PUBLIC_APP_URL: https://magicmobile.openclaw-is3w.srv1420950.hstgr.cloud
       NEXT_TELEMETRY_DISABLED: "1"
@@ -33,6 +36,7 @@ services:
       SCRYFALL_CACHE_DIR: /workspace/.cache/scryfall
       XMAGE_AI_STALL_MS: 45000
       XMAGE_BRIDGE_URL: http://xmage-bridge:17172
+      XMAGE_SOCKET_TOKEN_SECRET: ${XMAGE_SOCKET_TOKEN_SECRET:-}
       ENABLE_XMAGE_FIXTURES: ${ENABLE_XMAGE_FIXTURES:-false}
       NODE_ENV: ${NODE_ENV:-production}
     ports:

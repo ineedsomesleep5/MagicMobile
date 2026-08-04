@@ -16,3 +16,5 @@ build_output/
 *.tsbuildinfo
 apps/xmage-gateway/smoke-report.json
 apps/xmage-gateway/smoke-report-*.json
+.vercel
+.env*

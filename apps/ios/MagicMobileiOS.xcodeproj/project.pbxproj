@@ -22,6 +22,7 @@
 		752C5EFA30A506F19E13681B /* MagicMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69B2CFE17C03F7A7CC6CFEC3 /* MagicMobileApp.swift */; };
 		C1511A400C8C25B7D7B72191 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 268E12F4889571947D93BF23 /* Assets.xcassets */; };
 		C8623EC979ACF45B170D1881 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29DCFFDEC2E73604A42C81C3 /* ContentView.swift */; };
+		D3C1A0010000000000000001 /* DeckLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3C1F0010000000000000001 /* DeckLibrary.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -52,6 +53,7 @@
 		7310F972E936D7992D841C36 /* MagicMobileTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MagicMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		81D24D11B68146B6B4C2F52C /* PromptCommandBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptCommandBuilder.swift; sourceTree = "<group>"; };
 		A8847ABC91603BF5DA5F4CE5 /* MagicMobileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MagicMobileTests.swift; sourceTree = "<group>"; };
+		D3C1F0010000000000000001 /* DeckLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckLibrary.swift; sourceTree = "<group>"; };
 		FF4EE202904EFC97FF10F5D0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -61,6 +63,7 @@
 			children = (
 				268E12F4889571947D93BF23 /* Assets.xcassets */,
 				29DCFFDEC2E73604A42C81C3 /* ContentView.swift */,
+				D3C1F0010000000000000001 /* DeckLibrary.swift */,
 				0A11F0010000000000000001 /* GameBoardDesignTokens.swift */,
 				0A11F0010000000000000007 /* GameBoardInteractionState.swift */,
 				0A11F0010000000000000003 /* GameBoardLayoutMetrics.swift */,
@@ -199,6 +202,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C8623EC979ACF45B170D1881 /* ContentView.swift in Sources */,
+				D3C1A0010000000000000001 /* DeckLibrary.swift in Sources */,
 				0A11D0010000000000000001 /* GameBoardDesignTokens.swift in Sources */,
 				0A11D0010000000000000007 /* GameBoardInteractionState.swift in Sources */,
 				0A11D0010000000000000003 /* GameBoardLayoutMetrics.swift in Sources */,

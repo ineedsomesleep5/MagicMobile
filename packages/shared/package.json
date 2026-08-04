@@ -16,7 +16,7 @@
     "test": "vitest run",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "db:migrate": "node ./scripts/db-migrate-stub.mjs"
+    "db:migrate": "node ./scripts/db-migrate.mjs"
   },
   "devDependencies": {
     "typescript": "^5.8.3",

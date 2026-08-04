@@ -22,7 +22,11 @@ final class MagicMobileOrientationController {
     private(set) var portraitEnabled: Bool
 
     private init() {
-        portraitEnabled = UserDefaults.standard.bool(forKey: PortraitModePreference.key)
+        if UserDefaults.standard.object(forKey: PortraitModePreference.key) == nil {
+            portraitEnabled = true
+        } else {
+            portraitEnabled = UserDefaults.standard.bool(forKey: PortraitModePreference.key)
+        }
     }
 
     var supportedOrientations: UIInterfaceOrientationMask {

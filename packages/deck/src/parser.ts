@@ -28,6 +28,10 @@ export const cleanCardName = (name: string): string => {
 
 export class PastedDeckParser implements DeckParser {
   parse(input: string): DeckList {
+    if (looksLikeCsv(input)) {
+      return parseCsvDeck(input);
+    }
+
     let currentSection: DeckEntry["section"] = "deck";
     const entries: DeckEntry[] = [];
     const errors: string[] = [];
@@ -90,3 +94,63 @@ export class PastedDeckParser implements DeckParser {
   }
 }
 
+const looksLikeCsv = (input: string): boolean => {
+  const firstLine = input.split(/\r?\n/, 1)[0]?.toLowerCase() ?? "";
+  return firstLine.includes(",") && /(?:quantity|qty|count)/.test(firstLine) && /(?:card|name)/.test(firstLine);
+};
+
+const parseCsvLine = (line: string): string[] => {
+  const values: string[] = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (character === '"') {
+      if (quoted && line[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (character === "," && !quoted) {
+      values.push(current.trim());
+      current = "";
+    } else {
+      current += character;
+    }
+  }
+  values.push(current.trim());
+  return values;
+};
+
+const csvSection = (value: string | undefined): DeckEntry["section"] => {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  if (normalized.includes("commander")) return "commander";
+  if (normalized.includes("side")) return "sideboard";
+  if (normalized.includes("maybe") || normalized.includes("consider")) return "maybeboard";
+  return "deck";
+};
+
+export const parseCsvDeck = (input: string): DeckList => {
+  const lines = input.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  const headers = parseCsvLine(lines[0] ?? "").map((header) => header.toLowerCase());
+  const quantityIndex = headers.findIndex((header) => ["quantity", "qty", "count"].includes(header));
+  const nameIndex = headers.findIndex((header) => ["card", "card name", "name"].includes(header));
+  const sectionIndex = headers.findIndex((header) => ["section", "board", "category"].includes(header));
+  if (quantityIndex < 0 || nameIndex < 0) {
+    return { name: "Imported deck", entries: [], errors: ["CSV must contain quantity and card name columns."] };
+  }
+
+  const entries = lines.slice(1).flatMap((line): DeckEntry[] => {
+    const values = parseCsvLine(line);
+    const quantity = Number.parseInt(values[quantityIndex] ?? "", 10);
+    const cardName = cleanCardName(values[nameIndex] ?? "");
+    if (!Number.isFinite(quantity) || quantity < 1 || !cardName) return [];
+    return [{ cardName, quantity, section: csvSection(values[sectionIndex]) }];
+  });
+  const deck: DeckList = { name: "Imported deck", entries };
+  const commander = entries.find((entry) => entry.section === "commander");
+  if (commander) deck.commander = commander;
+  if (entries.length === 0) deck.errors = ["No valid card entries found in the CSV file."];
+  return deck;
+};

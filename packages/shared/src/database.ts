@@ -1,4 +1,4 @@
-import type { DeckId, GameId, PlayerId, RoomId, SeatType } from "./types";
+import type { DeckEntry, DeckId, DeckSourceKind, GameId, PlayerId, RoomId, SeatType } from "./types";
 
 export interface UserModel {
   id: PlayerId;
@@ -10,8 +10,31 @@ export interface DeckModel {
   id: DeckId;
   ownerId: PlayerId;
   name: string;
+  format: "commander";
   commanderName?: string;
   rawList: string;
+  sourceKind: DeckSourceKind;
+  sourceUrl?: string;
+  sourceFilename?: string;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DeckEntryModel extends DeckEntry {
+  id: string;
+  deckId: DeckId;
+  ownerId: PlayerId;
+  position: number;
+}
+
+export interface GameSessionModel {
+  id: string;
+  ownerId: PlayerId;
+  gameId: GameId;
+  status: "starting" | "active" | "complete" | "failed";
+  revision: number;
+  snapshotJson?: string;
   createdAt: string;
   updatedAt: string;
 }
