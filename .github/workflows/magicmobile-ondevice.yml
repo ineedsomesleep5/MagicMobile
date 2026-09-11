@@ -32,6 +32,8 @@ jobs:
       - uses: actions/checkout@v4
       - run: swift test --package-path packages/ondevice-engine/swift
       - run: bash packages/ondevice-engine/scripts/test_swift_close.sh
+      - run: command -v xcodegen || brew install xcodegen
+      - run: bash packages/ondevice-engine/scripts/test_ios_harness.sh
   real-jvm:
     runs-on: ubuntu-latest
     timeout-minutes: 45

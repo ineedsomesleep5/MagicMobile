@@ -3,7 +3,7 @@
 include:
   - project.yml
 targets:
-  MagicMobileOnDevice:
+  MagicMobileLab:
     sources:
       - path: ../../packages/ondevice-engine/native/mm_graal_backend.c
       - path: Bridge

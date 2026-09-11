@@ -1,8 +1,10 @@
 {
   "deliveryDate": "2026-09-11",
   "targetRepository": "ineedsomesleep5/MagicMobile",
-  "remoteRepositoryModified": false,
-  "remoteCommitCreated": false,
+  "remoteRepositoryModified": true,
+  "remoteCommitCreated": true,
+  "firstPublishedCommit": "b8b273f690a9ff5e62c8ca0c52b6b84010fe9058",
+  "hostedNativeDiagnosticRun": "https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34659217140",
   "status": "real-jvm-commander-game-passed-ios-aot-build-resource-blocked-not-release-ready",
   "upstreamCommit": "8aea65ae9ae3c89970fe865e1316105539e097ca",
   "standaloneJavaCore": "compiled-and-tested",
@@ -15,7 +17,7 @@
   "desktopAotXmage": "not-built",
   "iosToolchainProbe": "non-XMage-ARM64-static-archive-and-generated-C-header-iOS-compilation-passed-no-runtime-execution",
   "iosAotXmage": "ORMLite-dependency-fix-tested-4GiB-and-5GiB-configurations-saturated-no-engine-artifact-larger-build-host-proposed",
-  "AppleSDKCompilation": "toolchain-probe-C-header-caller-only-SwiftUI-app-not-built",
+  "AppleSDKCompilation": "unsigned-inspection-harness-iOS-build-passed-no-native-XMage-link-or-execution; toolchain-probe-C-header-caller-passed",
   "physicalIPhoneOfflineGameplay": "not-run",
   "multiDeviceGameplay": "not-run",
   "nativeArtifactIncluded": false,
@@ -37,5 +39,5 @@
     "realJVMCommanderRulesGroups": 10,
     "realJVMBusyWorkerInjectedStallGroups": 2
   },
-  "SwiftUIParsedOnly": true
+  "SwiftUIParsedOnly": false
 }

@@ -4,7 +4,8 @@ The real JVM engine baseline is working. The full on-device engine is **not**
 release-ready: its native compilation is blocked by the tested local compiler
 memory configurations. No simulator/phone gameplay or TestFlight upload occurred.
 
-Work is on the local `codex/ondevice-xmage` branch. Nothing was pushed. The original
+Work is on `codex/ondevice-xmage`; source was published to that branch and `main`
+at `b8b273f` without rewriting history. The original
 portrait app under `apps/ios` remains unchanged; its existing
 `com.calebfeliciano.magicmobile` release identity is preserved. The separate
 `.ondevice` inspection harness is not the product interface or a replacement
@@ -21,6 +22,7 @@ TestFlight app. Portrait protocol integration and Game Center lobby work remain.
 | Real JVM regressions | 27 query/control/privacy groups; 10 seeded Commander rule groups; two injected-busy-worker groups; seven deck rejection fixtures and 24 lifecycle checks | `evidence/Real*Tests.txt`, `real-commander-rules-tests.txt`, `real-busy-shutdown-tests.txt`, `real-jvm-deck-validation.json`, `real-jvm-lifecycle.json` |
 | Full-engine AOT | No desktop or iOS XMage binary. ORMLite compiler fault minimized and fixed in a native dependency probe; full 4/5 GiB builds saturated configured old-generation space and were intentionally stopped | `evidence/ormlite-check-55Hbub.log`, `ios-native-memory-diagnostic.txt`, `ios-native-*.log` |
 | iOS toolchain only | Separate non-engine ARM64 archive and generated C-header caller compilation passed; no native execution | `evidence/ios-abi-zIwyrj.log`, `ios-toolchain-postchecks.txt` |
+| iOS inspection harness | Unsigned iOS SDK build passed after separating the app target name from its Swift package target; no native engine linked or app execution | `evidence/ios-harness-target-fixed.log`, `scripts/test_ios_harness.sh` |
 | Simulator | Not built or played | No native engine XCFramework |
 | Physical iPhone / airplane mode | Not installed or played | Not validated |
 | Multi-device internet | Not run; lobby/correlation/reconnect implementation still needed | Portable host/packet tests are not network-device proof |
@@ -88,8 +90,11 @@ Mac runner with a checksum-pinned Intel compiler. This is not a proven native
 engine build or an authorization for paid larger runners.
 [GitHub runner specifications](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
 
-The local evidence table above predates that hosted run. GitHub Actions records
-the subsequent build status; TestFlight still requires the native/product gates.
+The full native diagnostic is [run 34659217140](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34659217140).
+GitHub Actions records its status; dispatch is not build success. TestFlight still
+requires the native/product gates. Live App Store Connect lookup confirmed the
+existing app `6784735182`, bundle `com.calebfeliciano.magicmobile`, and latest
+uploaded build `2026062902` (valid, not expired) before any new upload.
 Changing the build machine does not change the requirement that gameplay and
 XMage run on the iPhone. After full native compilation: verify actual headers,
 archive contents/slices and isolate behavior, integrate the portrait interface,
