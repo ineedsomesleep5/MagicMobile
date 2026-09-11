@@ -1,0 +1,47 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>io.magicmobile</groupId>
+  <artifactId>native-engine-diagnostic</artifactId>
+  <version>1.0-SNAPSHOT</version>
+  <!-- Consume the passed JVM build; never invoke the upstream Maven reactor. -->
+  <packaging>pom</packaging>
+  <name>mmengine</name>
+  <properties>
+    <native.reflection.config>${engine.root}/build/generated/reflect-config.json</native.reflection.config>
+    <native.init.arg>--initialize-at-run-time=io.magicmobile,mage</native.init.arg>
+    <native.orm.arg>--initialize-at-run-time=io.magicmobile</native.orm.arg>
+    <native.new.ratio>2</native.new.ratio>
+    <native.max.heap>4g</native.max.heap>
+  </properties>
+  <build>
+    <directory>${native.build}</directory>
+    <outputDirectory>${native.build}/native-java</outputDirectory>
+    <plugins>
+      <plugin>
+        <groupId>com.gluonhq</groupId>
+        <artifactId>gluonfx-maven-plugin</artifactId>
+        <version>1.0.29</version>
+        <configuration>
+          <target>ios</target>
+          <mainClass>io.magicmobile.nativebridge.IosLibraryMain</mainClass>
+          <javaStaticSdkVersion>18-ea+prep18-9</javaStaticSdkVersion>
+          <nativeImageArgs>
+            <!-- Keep patched class directories ahead of original XMage jars. -->
+            <arg>-cp</arg>
+            <arg>${native.classpath}</arg>
+            <arg>--no-fallback</arg>
+            <arg>-J-Xmx${native.max.heap}</arg>
+            <arg>-J-XX:NewRatio=${native.new.ratio}</arg>
+            <arg>-H:NumberOfThreads=2</arg>
+            <arg>--initialize-at-run-time=io.magicmobile,mage</arg>
+            <arg>${native.init.arg}</arg>
+            <arg>${native.orm.arg}</arg>
+            <arg>-H:+IncludeAllLocales</arg>
+            <arg>-H:ReflectionConfigurationFiles=${native.reflection.config}</arg>
+            <arg>-H:ResourceConfigurationFiles=${engine.root}/native/resource-config.json</arg>
+          </nativeImageArgs>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

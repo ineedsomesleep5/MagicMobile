@@ -1,0 +1,21 @@
+# Only generate this variant after a real iOS/device + simulator XCFramework exists.
+# Plain desktop Graal output is NOT an iOS XCFramework.
+include:
+  - project.yml
+targets:
+  MagicMobileOnDevice:
+    sources:
+      - path: ../../packages/ondevice-engine/native/mm_graal_backend.c
+      - path: Bridge
+    dependencies:
+      - framework: ../../packages/ondevice-engine/build/ios/MMXmage.xcframework
+    settings:
+      base:
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) XMAGE_NATIVE_LINKED"
+        GCC_PREPROCESSOR_DEFINITIONS: "$(inherited) XMAGE_NATIVE_LINKED=1"
+        SWIFT_OBJC_BRIDGING_HEADER: Bridge/OnDevice-Bridging-Header.h
+        HEADER_SEARCH_PATHS:
+          - "$(inherited)"
+          - ../../packages/ondevice-engine/native
+          - ../../packages/ondevice-engine/swift/Sources/CMagicEngine/include
+          - ../../packages/ondevice-engine/build/ios/headers

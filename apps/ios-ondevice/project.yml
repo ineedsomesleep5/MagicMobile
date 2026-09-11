@@ -1,0 +1,31 @@
+name: MagicMobileOnDevice
+options:
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  OnDeviceCore:
+    path: ../../packages/ondevice-engine/swift
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_UILaunchScreen_Generation: YES
+    INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+    INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+targets:
+  MagicMobileOnDevice:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+    dependencies:
+      - package: OnDeviceCore
+        product: MagicMobileOnDevice
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.calebfeliciano.magicmobile.ondevice
+        PRODUCT_NAME: MagicMobile On Device
+        INFOPLIST_KEY_CFBundleDisplayName: MagicMobile Lab
+    scheme:
+      testTargets: []

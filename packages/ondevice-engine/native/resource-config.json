@@ -1,0 +1,9 @@
+{
+  "resources": {
+    "includes": [
+      {"pattern": "mage/.*"},
+      {"pattern": "META-INF/services/.*"},
+      {"pattern": ".*\\.properties$"}
+    ]
+  }
+}

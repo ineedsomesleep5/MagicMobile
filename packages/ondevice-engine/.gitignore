@@ -1,0 +1,18 @@
+.build/
+build/
+.upstream/
+.DS_Store
+*.class
+*.dylib
+*.so
+*.a
+*.xcframework/
+__pycache__/
+# Raw run output stays local or in explicit CI artifacts, not the public source.
+evidence/*
+!evidence/README.md
+*.ipa
+*.p12
+*.p8
+*.mobileprovision
+target/

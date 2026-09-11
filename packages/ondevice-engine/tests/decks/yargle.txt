@@ -1,0 +1,3 @@
+# Deliberately simple Commander regression deck for manual mana and commander combat.
+1 Yargle, Glutton of Urborg (DOM) 113
+99 Swamp (DOM) 258

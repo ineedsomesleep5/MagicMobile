@@ -77,3 +77,8 @@ Normal GitHub Actions CI runs on `pull_request` and pushes to `main`, and covers
 ## Performance Goals
 
 MagicMobile should feel like a polished mobile Commander client, not a frozen remote control for a desktop Java app. See [docs/PERFORMANCE_TARGETS.md](docs/PERFORMANCE_TARGETS.md) for the current latency targets, pending-state requirements, WebSocket-first update path, and measurement checklist.
+
+
+## New primary direction: embedded iOS XMage
+
+The on-device migration lives in `packages/ondevice-engine`; its native iOS harness is `apps/ios-ondevice`. Read `packages/ondevice-engine/CODEX_START_HERE.md` first. The old gateway/client path is retained for regression/reference, not a production on-device fallback. This is an experimental port, not a completed iPhone engine.

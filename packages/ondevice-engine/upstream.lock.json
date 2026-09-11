@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/magefree/mage.git",
+  "commit": "8aea65ae9ae3c89970fe865e1316105539e097ca",
+  "magicmobileBase": "058478f690b713332c13d0a8369e98f5b792a282",
+  "sourceBlobs": {
+    "Mage/src/main/java/mage/cards/CardImpl.java": "436796f9b5fd30708710823ae41e6529d82c5519",
+    "Mage/src/main/java/mage/cards/Sets.java": "152d51e53bf55ea0a8337eba6e86964bcbb65a90",
+    "Mage.Server.Plugins/Mage.Player.Human/src/mage/player/human/HumanPlayer.java": "0dd5cf47a77d96a580882fecf0f468c46dd5a44a"
+  }
+}

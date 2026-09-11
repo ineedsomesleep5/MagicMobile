@@ -1,0 +1,4 @@
+module CMagicEngine {
+    header "../../swift/Sources/CMagicEngine/include/mm_runtime.h"
+    export *
+}

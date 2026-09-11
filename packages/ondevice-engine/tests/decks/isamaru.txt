@@ -1,0 +1,3 @@
+# Deliberately simple Commander regression deck, not a competitive deck recommendation.
+1 Isamaru, Hound of Konda (CHK) 19
+99 Plains (CHK) 287

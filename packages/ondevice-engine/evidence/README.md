@@ -1,0 +1,44 @@
+# What was actually executed
+
+Captured outputs in this folder are from local delivery checks, not the user's repo CI.
+
+Raw output files are deliberately excluded from public Git history. The names
+below identify local evidence; hosted runs publish their own downloadable
+artifacts. A filename listed here is not a promise that the raw file is in Git.
+
+- `core-tests.txt`: standalone Java JSON/mailbox/protocol assertions. This includes randomized JSON round trips; the assertion count is not the number of Magic rules tested.
+- `swift-tests.txt`: Swift package tests on Linux. GameKit and SwiftUI Apple SDK paths were not compiled.
+- `native-boundary-tests.txt`: C ownership/concurrency checks under AddressSanitizer and UndefinedBehaviorSanitizer. The backend is a clearly labeled **test-only byte echo**, not XMage. The 8,000 threaded requests are not 8,000 games.
+- `tooling-tests.txt`: Python tests plus generated-Java compilation/execution using **synthetic fixture card/set classes**. No XMage rules execute in those fixtures. Also validates the safe installer and deck resolver when present.
+- `environment.txt`: toolchain information for the executed checks.
+
+## 2026-09-11 Mac continuation
+
+- `macos-environment.txt`: Apple Silicon Mac, JDK 21, Maven 3.9.16, Xcode 26.6, Swift 6.3.3.
+- `macos-tooling-tests.txt`: 378 Java core assertions and 24 Python tooling cases passed, including the installed-package installer fixture.
+- `macos-native-boundary-tests.txt`: 8,000 sanitizer-checked test-only echo requests passed; still not a native XMage test.
+- Current `native-boundary-tests.txt`, `native-shutdown-tests.txt`, `swift-close-tests.txt`: ABI v2 sanitizer fixture covers 8,000 concurrent requests, busy retention and 1,000 subsequent requests; five production-C-adapter failure-path fixtures; isolated Swift close/retry/idempotence/closed-request/deinit checks. C adapter tests were also rerun against the pinned SDK header. These use explicit test doubles, not real isolates. Failed teardown/deinit retention is intentional and not a successful cleanup claim.
+- `macos-swift-tests.txt`: 29 tests passed on macOS; GameKit compiled. Not an iOS app/device test.
+- `macos-jvm-build.log`: the pinned real upstream reactor succeeded. Generated 32,275 card factories, 587 set references and 92,166 printings with no unregistered printing reference. Compilation does not establish playable card coverage.
+- `pinned-upstream-audit.json`: actual pinned-source dependency/portability audit.
+- `real-jvm-first-prompt.json`: real Commander initialization and initial prompt passed.
+- `real-jvm-game.json`: actual two-human-seat Commander game completed at turn 16 after land plays, commander casts, explicit mana-source responses, stack passes and attacks. Both seats were driven by a developer protocol fixture, not remote users. It includes only synthetic fixture decks, not user deck data.
+- `real-jvm-four-player-game.json`: the current adapter rerun completed a four-human-seat game at turn 39; 39 land responses, four commander casts, 12 mana-source responses, 27 attack selections and explicit opponent target choices. 4,873 per-seat hand-ID privacy checks passed across that fixture. This is not four-device/network evidence or complete hidden-information coverage. Starting order and shuffled decks are real engine randomness; an earlier run ended at turn 42.
+- `real-jvm-lifecycle.json`: three real engine create/destroy cycles, 24 checks covering exclusive match ownership, seat authorization, duplicate response receipts, request-ID reuse rejection and waiting-thread cancellation. Does not prove cancellation during a complex resolving effect or native isolate destruction.
+- `real-busy-shutdown-tests.txt`: two real-worker busy shutdown/retry groups passed using a test-only uninterruptible query-listener barrier. They verify that a cancelled but still-live game worker is retained, failed destroy prevents replacement, and release/retry permits cleanup. Failed close remains closed to new matches. This deliberately injected stall is not a genuine complex-rules-effect cancellation test or native isolate proof. The regression runner includes both groups after creating its real match fixture.
+- `RealBusyShutdownTests.txt`: independent parent rerun of those two groups passed with freshly compiled current engine/test classes; busy responses observed after 2,006 ms and 2,000 ms.
+- `real-jvm-deck-validation.json`: seven real rejection fixtures covering Commander deck size, color identity, duplicate nonbasic cards, commander eligibility and trusted printing identity, followed by successful valid creation. Uses the pinned upstream validator, not a claim about an independently refreshed external banlist.
+- `real-jvm-token-mulligan-game.json`: real Adeline-versus-Yargle game completed at turn 16 with five Human tokens observed, an actual free mulligan followed by a paid mulligan and bottom-of-library choice. Rules, triggers, dynamic power and token creation came from upstream implementations.
+- `ios-native-*.log`: genuine Gluon/Graal device-target AOT attempts. A running analysis or compiler log is not an iOS artifact or native execution result.
+- `ios-native-memory-diagnostic.txt`: measured old-generation saturation and repeated full collections during the full-engine `HfNdpy` attempt; deliberately stopped with compiler status 143 after 23:47, not an OOM. Documents a same-4-GiB heap-split follow-up, without changing card coverage or target runtime GC.
+- That diagnostic now includes `ShThev` (4 GiB revised split, deliberately killed after TERM did not exit) and `AY07R4` (5 GiB, deliberately stopped on TERM). Both saturated their configured retained-data space without finishing analysis. No further local heap escalation or unapproved hosted build was performed.
+- `ios-abi-uOJQAN.log`, `ios-abi-zIwyrj.log`, `ios-toolchain-postchecks.txt`: **no-XMage toolchain probes**, not engine backends. Gluon produced an ARM64 archive with `mm_toolchain_probe` and isolate exports; the generated header compiled into an iOS 17-targeted C caller with SDK 26.5. The second wrapper initially failed because its `lipo -verify_arch` argument order was wrong; that command was corrected and all postchecks rerun successfully without rebuilding the archive. No iOS code was executed. Raw Gluon archives contain `AppDelegate.o`/`main` and are not ready-made Swift engine XCFrameworks.
+- The first probe's staging directory exposed automatic copying of the old macOS Swift-close runtime object from `build/native` (it was not archived). The test outputs were moved to isolated fixture directories, the old object moved to `build/test-artifact-quarantine`, and both test scripts passed again. The second probe verified the object was no longer copied and no engine/runtime fixture symbols entered its archive. Reproduce with `bash scripts/test_ios_toolchain.sh`.
+- `ios-native-ez6E3n.log`: actual compiler failure after 201.3 seconds of analysis, with 41 ORMLite converter image-heap errors; not a timeout or OOM.
+- `ormlite-check-55Hbub.log`: minimized **desktop native dependency** reproduction and fix, not XMage. Baseline reproduces the heap error; blanket converter initialization reproduces frozen builder timezone; the native-only date-format adaptation plus locale data matches JVM outputs for UTC/Tokyo and English/French, including SQL date, 800 concurrent accesses per case, runtime-created config and clone isolation. Reproduce with `bash scripts/test_ormlite_native.sh` using the pinned Gluon SDK.
+- `RealQueryTests.txt`, `RealControlledTurnTests.txt`, `RealControlPrivacyTests.txt`: 14 query, five proxy and eight routing/visibility test groups passed against the compiled current adapter and real upstream classes. Controlled-seat projections permit authorized in-game information while excluding sideboards and withholding third-seat/stale/reset access. This is protocol coverage, not a completed turn-control card game or native UI acceptance.
+- `real-commander-rules-tests.txt`: ten seeded real-XMage rule tests passed: graveyard/exile return and refusal/re-entry, command-zone recasts costing W/2W/4W, untaxed hand cast, the 20/21 commander-combat-damage threshold, ordinary-damage controls, separate commander accounting, and blocked combat. These directly set up real game state and invoke upstream actions; they are not complete matches or UI selection tests. Included in `scripts/test_real_engine.sh`.
+
+No native XMage binary, Xcode app build, simulator gameplay, physical-device offline game or multi-device internet game is claimed yet. The existing portrait playing mode remains the required product interface; the new inspector is development-only.
+
+Codex should add separately named real results, not relabel the portable checks as native/gameplay proof.

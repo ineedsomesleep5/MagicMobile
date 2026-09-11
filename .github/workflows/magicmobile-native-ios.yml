@@ -1,0 +1,74 @@
+name: Native iOS XMage diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-ios-xmage-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  device-library:
+    # Standard public-repository runner: 14 GB RAM, no paid larger-runner label.
+    runs-on: macos-26-intel
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: packages/ondevice-engine
+        shell: bash
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Record unsigned build environment
+        run: |
+          mkdir -p evidence
+          { uname -a; sysctl hw.memsize; xcodebuild -version; java -version; mvn -version; df -h .; } 2>&1 | tee evidence/hosted-environment.txt
+      - name: Compile the pinned full JVM engine and catalogue
+        run: bash scripts/build_jvm.sh 2>&1 | tee evidence/hosted-jvm-build.log
+      - name: Real JVM regression and completed-game gates
+        run: bash scripts/test_real_engine.sh 2>&1 | tee evidence/hosted-real-jvm.log
+      - name: Install checksum-pinned Intel Gluon compiler
+        run: |
+          bash scripts/setup_gluon_intel.sh
+          echo "MM_GRAALVM_HOME=$PWD/build/toolchains/graalvm-svm-java17-darwin-gluon-22.1.0.1-Final/Contents/Home" >> "$GITHUB_ENV"
+      - name: Check iOS toolchain archive and generated header
+        run: bash scripts/test_ios_toolchain.sh
+      - name: Compile full engine for iOS ARM64
+        timeout-minutes: 75
+        env:
+          MM_NATIVE_REFLECTION_PROFILE: targeted
+          MM_NATIVE_INIT_PROFILE: reviewed-enums
+          MM_NATIVE_ORM_PROFILE: runtime-defaults
+          MM_NATIVE_NEW_RATIO: '7'
+          MM_NATIVE_MAX_HEAP: 10g
+        run: bash scripts/build_native_ios.sh
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-ios-evidence-${{ github.sha }}
+          path: |
+            packages/ondevice-engine/evidence/
+            packages/ondevice-engine/build/ios-native-*/gluonfx/arm64-ios/gvm/log/
+          retention-days: 7
+      - name: Upload candidate device library, not an app
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-ios-candidate-${{ github.sha }}
+          path: |
+            packages/ondevice-engine/build/ios-native-*/gluonfx/arm64-ios/gvm/libmmengine.a
+            packages/ondevice-engine/build/ios-native-*/gluonfx/arm64-ios/gvm/mmengine/*.h
+          if-no-files-found: error
+          retention-days: 7
+# No signing, TestFlight upload, gameplay server, or automatic production fallback.
