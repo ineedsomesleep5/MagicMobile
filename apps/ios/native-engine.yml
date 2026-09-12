@@ -21,6 +21,7 @@ targets:
           fi
     settings:
       base:
+        "MM_ENGINE_MODE[sdk=iphoneos*]": "embedded-xmage"
         "EXCLUDED_SOURCE_FILE_NAMES[sdk=iphonesimulator*]": "$(inherited) mm_graal_backend.c"
         "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphoneos*]": "$(inherited) XMAGE_NATIVE_LINKED"
         "GCC_PREPROCESSOR_DEFINITIONS[sdk=iphoneos*]": "$(inherited) XMAGE_NATIVE_LINKED=1"

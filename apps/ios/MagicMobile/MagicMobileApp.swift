@@ -76,7 +76,7 @@ struct OrientationHostingRoot<Content: View>: UIViewControllerRepresentable {
 
     func updateUIViewController(_ controller: OrientationHostingController<Content>, context: Context) {
         controller.rootView = content
-        controller.setNeedsUpdateOfSupportedInterfaceOrientations()
+        controller.setNeedsUpdateOfSupportedOrientations()
     }
 }
 
@@ -87,15 +87,18 @@ struct MagicMobileApp: App {
     var body: some Scene {
         WindowGroup {
             OrientationHostingRoot {
-                #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains("--ondevice-setup-ui-test") {
+                switch OnDeviceAppConfiguration.entryPoint {
+                case .embedded, .setupPreview:
                     OnDeviceRootView()
-                } else {
+                case .referencePreview:
                     ContentView()
+                case .engineMissing:
+                    ContentUnavailableView(
+                        "Native engine missing",
+                        systemImage: "exclamationmark.triangle",
+                        description: Text("This build does not include the on-device XMage engine. Install a complete native build; no remote engine or simulator will be substituted.")
+                    )
                 }
-                #else
-                ContentView()
-                #endif
             }
         }
     }

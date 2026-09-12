@@ -15,16 +15,13 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>2026062902</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>MagicMobileEngineMode</key>
+	<string>$(MM_ENGINE_MODE)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
-	</dict>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Choose an image to use as your MagicMobile player icon.</string>
 	<key>UIApplicationSceneManifest</key>
