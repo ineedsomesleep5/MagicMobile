@@ -1,5 +1,34 @@
 # Local continuation status — 2026-09-11
 
+## Paused for Web Pro — 2026-09-12
+
+Caleb requested a GitHub handoff with no further simulator work. Continue from
+[issue #4](https://github.com/ineedsomesleep5/MagicMobile/issues/4), which defines
+the source/build completion checklist and the later desktop release boundary.
+The source checkpoint is published to `codex/ondevice-xmage` and `main`.
+
+New concrete blocker: [ARM64 run 34664591026](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34664591026)
+failed at image creation after method compilation, with
+`GraalError: failed guarantee: value too large to fit into space` in
+`AArch64Assembler$SingleInstructionAnnotation.patch` / `LIRNativeImageCodeCache.patchMethods`.
+This was not another timeout or an observed out-of-memory exception. The newer
+AI-inclusive ARM64 run 34669182960 was still compiling at pause; inspect its live
+result before another build. No full native archive has been accepted.
+
+The final small prompt patch preserves authoritative commander confirmation,
+direct mana-source actions, native detail controls beside quick actions,
+empty-special choices and exact special-payment labels/accessibility. All 76
+portable presentation tests passed on macOS after these edits. SwiftUI syntax
+parse and diff checks passed; the three new SDK-only board tests were added but
+not executed. Prior unsigned build-for-testing predates this final small patch.
+
+Simulator engine run 34670423198 and setup UI run 34669768265 were canceled at
+the user's request, not passed. No simulator is required for Web Pro's handoff
+phase. Native runtime, offline phone gameplay, AI performance and multi-phone
+acceptance remain explicitly unverified; do not convert source/build success
+into those claims. Signing and a new build in the existing TestFlight app are
+reserved for the later desktop phase. No new TestFlight upload occurred.
+
 ## Latest update — 2026-09-12 03:14 UTC
 
 Published portrait/setup integration `e116c42` preserves the existing bundle and

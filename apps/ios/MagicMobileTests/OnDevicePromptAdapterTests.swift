@@ -327,6 +327,27 @@ final class OnDevicePromptAdapterTests: XCTestCase {
         XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: mixed, prompt: p, viewerPlayerID: viewer))
     }
 
+    func testCommanderAskPreservesAuthoritativeConfirmationInsteadOfMessageHeuristic() throws {
+        let p = try prompt("ASK", types: ["boolean"], payload: [
+            "message": .string("Move your commander to the command zone?"),
+            "options": .object(["UI.left.btn.text": .string("Move commander"), "UI.right.btn.text": .string("Leave in graveyard")])
+        ])
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+        // Both the compact popup and full details renderer use this decision.
+        XCTAssertFalse(PromptCommandBuilder.isCommanderReplacement(view.envelope))
+        let confirmation = try XCTUnwrap(view.envelope.confirmation)
+        XCTAssertEqual(confirmation.yesLabel, "Move commander")
+        XCTAssertEqual(confirmation.noLabel, "Leave in graveyard")
+        for (provided, answer) in [(confirmation.yesCommand, true), (confirmation.noCommand, false)] {
+            let provided = try XCTUnwrap(provided)
+            let command = try XCTUnwrap(PromptCommandBuilder.command(gameId: "match", promptEnvelope: view.envelope,
+                type: try XCTUnwrap(provided.type), promptId: try XCTUnwrap(provided.promptId), playerId: viewer,
+                ids: [answer ? "true" : "false"]))
+            XCTAssertEqual(command.messageId, 37)
+            XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("boolean", .bool(answer)))
+        }
+    }
+
     func testTargetsUseOneUUIDPerPromptAndOnlyExplicitCandidates() throws {
         let p = try prompt("PICK_TARGET", types: ["uuid", "boolean"], payload: ["required": .bool(false), "candidates": .array([.string(first), .string(second)]), "options": .object(["chosenTargets": .array([.string(second)]), "targetZone": .string("HAND"), "UI.right.btn.text": .string("Done")])], min: 2, max: 3)
         let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])

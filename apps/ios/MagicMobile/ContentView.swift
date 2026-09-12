@@ -6646,8 +6646,7 @@ struct UniversalPromptActionPanel: View {
     }
 
     private func isCommanderReplacement(_ prompt: PromptEnvelopeV2) -> Bool {
-        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
-        return type == "commander_replacement" || prompt.message.localizedCaseInsensitiveContains("command zone")
+        PromptCommandBuilder.isCommanderReplacement(prompt)
     }
 
     private func isTriggerOrderPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
@@ -7403,6 +7402,12 @@ struct CompactPromptPopup: View {
     }
 
     static func needsDetails(_ snapshot: GameSnapshot) -> Bool {
+        if snapshot.source == "xmage-ondevice", let prompt = snapshot.promptEnvelopeV2 {
+            if prompt.cards?.isEmpty == false || prompt.targets?.isEmpty == false || prompt.players?.isEmpty == false { return true }
+            if prompt.piles?.isEmpty == false || prompt.abilities?.isEmpty == false || prompt.modes?.isEmpty == false { return true }
+            if prompt.amounts?.isEmpty == false || prompt.multiAmounts?.isEmpty == false || prompt.orderedItems?.isEmpty == false { return true }
+            if (prompt.choices?.count ?? 0) > 3 || prompt.responseCommand?.type == "choose_amount" { return true }
+        }
         if !compactLegalPromptActions(in: snapshot).isEmpty {
             return false
         }
@@ -7511,6 +7516,10 @@ struct CompactPromptPopup: View {
                     )
                 }
             }
+            let extraActions = Self.supplementalChoiceActions(in: snapshot)
+            if !extraActions.isEmpty {
+                compactActionButtons(extraActions)
+            }
         } else if !compactPromptActions.isEmpty {
             compactActionButtons(compactPromptActions)
         } else if CompactPromptPopup.needsDetails(snapshot) {
@@ -7578,6 +7587,18 @@ struct CompactPromptPopup: View {
         }
     }
 
+    static func supplementalChoiceActions(in snapshot: GameSnapshot) -> [LegalAction] {
+        guard snapshot.source == "xmage-ondevice", let prompt = snapshot.promptEnvelopeV2,
+              let choices = prompt.choices, !choices.isEmpty, choices.count <= 3 else { return [] }
+        let choiceIDs = Set(choices.map(\.id))
+        return compactLegalPromptActions(in: snapshot).filter { action in
+            guard action.promptId == (prompt.responseCommand?.promptId ?? prompt.id),
+                  action.messageId == (prompt.responseCommand?.messageId ?? prompt.messageId),
+                  action.playerId == prompt.playerId else { return false }
+            return !(action.type == "resolve_choice" && action.choiceIds?.count == 1 && choiceIDs.contains(action.choiceIds?.first ?? ""))
+        }
+    }
+
     private func compactActionButtons(_ actions: [LegalAction]) -> some View {
         HStack(spacing: 7) {
             ForEach(actions.prefix(3)) { action in
@@ -7594,7 +7615,7 @@ struct CompactPromptPopup: View {
                 .buttonStyle(PanelActionButtonStyle(isPrimary: action.isPrimary == true || action.type == "keep_hand", compact: true))
                 .disabled(pendingActionId != nil)
             }
-            if actions.count > 3 {
+            if actions.count > 3 || (snapshot.source == "xmage-ondevice" && Self.needsDetails(snapshot)) {
                 detailButton()
             }
         }
@@ -7743,8 +7764,7 @@ struct CompactPromptPopup: View {
     }
 
     private static func isCommanderReplacementPrompt(_ prompt: PromptEnvelopeV2) -> Bool {
-        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
-        return type == "commander_replacement" || prompt.message.localizedCaseInsensitiveContains("command zone")
+        PromptCommandBuilder.isCommanderReplacement(prompt)
     }
 
     private static func isPassivePriorityPrompt(_ prompt: PromptEnvelopeV2, snapshot: GameSnapshot) -> Bool {
@@ -7917,15 +7937,16 @@ struct ManaPaymentTray: View {
                     .minimumScaleFactor(0.72)
             }
 
-            ForEach(Self.manaUndoActions(in: snapshot).prefix(1)) { action in
+            ForEach(Self.compactPaymentActions(in: snapshot)) { action in
                 Button {
                     runAction(action)
                 } label: {
-                    Image(systemName: "arrow.uturn.backward")
+                    Image(systemName: action.type == "resolve_choice" ? "sparkles" : "arrow.uturn.backward")
                         .font(.system(size: 10, weight: .black))
                 }
                 .buttonStyle(IconButtonStyle(small: true))
                 .disabled(pendingActionId != nil)
+                .accessibilityLabel(Self.paymentCancelTitle(for: action))
             }
         }
         .frame(maxHeight: 32)
@@ -7967,11 +7988,25 @@ struct ManaPaymentTray: View {
     static func manaUndoActions(in snapshot: GameSnapshot) -> [LegalAction] {
         let undoTypes = Set(["undo_mana", "cancel_payment", "cancel_mana_payment"])
         return (snapshot.legalActions ?? [])
-            .filter { undoTypes.contains($0.type) }
+            .filter { action in
+                if undoTypes.contains(action.type) { return true }
+                guard snapshot.source == "xmage-ondevice", let prompt = snapshot.promptEnvelopeV2,
+                      CompactPromptPopup.isManaPaymentPrompt(prompt) else { return false }
+                return action.type == "resolve_choice" && action.choiceIds == ["special"]
+                    && action.promptId == (prompt.responseCommand?.promptId ?? prompt.id)
+                    && action.messageId == (prompt.responseCommand?.messageId ?? prompt.messageId)
+                    && action.playerId == prompt.playerId
+            }
+    }
+
+    static func compactPaymentActions(in snapshot: GameSnapshot) -> [LegalAction] {
+        Array(manaUndoActions(in: snapshot).prefix(snapshot.source == "xmage-ondevice" ? 2 : 1))
     }
 
     static func paymentCancelTitle(for action: LegalAction) -> String {
         switch action.type {
+        case "resolve_choice" where action.choiceIds == ["special"]:
+            return action.label
         case "cancel_payment", "cancel_mana_payment":
             return "Cancel cast"
         case "undo_mana":

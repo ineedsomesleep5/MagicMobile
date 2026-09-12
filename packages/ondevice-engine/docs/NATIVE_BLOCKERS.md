@@ -1,5 +1,18 @@
 # Unresolved native/engine work — do not hide these gates
 
+## Pause update — 2026-09-12
+
+[Web Pro issue #4](https://github.com/ineedsomesleep5/MagicMobile/issues/4) is the
+current continuation checklist. Older ARM64 run 34664591026 reached image
+creation and failed with `value too large to fit into space` in the Graal
+AArch64 instruction patcher; it did not merely time out. AI-inclusive ARM64 run
+34669182960 was still compiling at handoff. Simulator/UI jobs were canceled at
+the user's request. Final portable presentation suite: 76 passing tests;
+latest small SwiftUI patch has syntax checks, not an executed SDK test pass.
+The table below is the preceding baseline; the new status supersedes its active
+run counts. Web Pro must use non-simulator checks and leave native gameplay and
+phone acceptance explicitly unverified until actual execution.
+
 | Gate | Current state | Required proof |
 |---|---|---|
 | Complete XMage + adapter compile | Passed against pinned real sources on 2026-09-11; adapter fixes remain under regression | Real selected modules, generated registry and adapter compile together without fake Mage classes |

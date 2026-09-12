@@ -240,7 +240,7 @@ enum OnDeviceSnapshotAdapter {
             }
         }
         let categories = [("basicPlayAbilities", "play_land"), ("basicCastAbilities", "cast_spell"),
-                          ("basicManaAbilities", "activate_ability"), ("other", "activate_ability")]
+                          ("basicManaAbilities", "make_mana"), ("other", "activate_ability")]
         for (id, stats) in (view["canPlayObjects"]?["objects"]?.object ?? [:]).sorted(by: { $0.key < $1.key }) {
             guard let (card, zone) = known[id] else { continue }
             var abilities: [J] = [], activeCategories: [J] = []

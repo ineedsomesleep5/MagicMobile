@@ -42,6 +42,18 @@ final class OnDeviceSnapshotAdapterTests: XCTestCase {
         XCTAssertFalse(actions.contains { $0.type == "cast_spell" })
     }
 
+    func testNativeManaSourcesUseTheBoardsDirectManaAction() throws {
+        let poll = try fixture("2p-mana")
+        let snapshot = try OnDeviceSnapshotAdapter.snapshot(poll, expectedSeatID: poll.seatID)
+        let action = try XCTUnwrap(snapshot.legalActions?.first { $0.type == "make_mana" })
+        let source = try XCTUnwrap(action.sourceInstanceId)
+        XCTAssertNotNil(poll.snapshot?["gameView"]?["canPlayObjects"]?["objects"]?[source]?["basicManaAbilities"]?.array?.first)
+        let command = GameCommand(type: action.type, gameId: snapshot.id, playerId: action.playerId,
+                                  sourceInstanceId: source, promptId: action.promptId, messageId: action.messageId)
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: XCTUnwrap(poll.prompt), viewerPlayerID: snapshot.viewerID),
+                       EnginePrompt.answer("uuid", .string(source)))
+    }
+
     func testActualOpeningPromptUsesPromptRevisionNotPollRevision() throws {
         let poll = try fixture("2p-initial-player-1")
         let snapshot = try OnDeviceSnapshotAdapter.snapshot(poll, expectedSeatID: poll.seatID)

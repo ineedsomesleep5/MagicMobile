@@ -206,7 +206,7 @@ enum OnDevicePromptAdapter {
         case ("PLAY_MANA", "answer_yes_no"), ("PLAY_X_MANA", "answer_yes_no"):
             guard command.confirmed == false else { throw invalid("Expected mana cancellation") }
             return try answer("boolean", .bool(false), prompt: prompt)
-        case ("PLAY_MANA", "activate_ability"), ("PLAY_X_MANA", "activate_ability"):
+        case ("PLAY_MANA", "activate_ability"), ("PLAY_X_MANA", "activate_ability"), ("PLAY_MANA", "make_mana"), ("PLAY_X_MANA", "make_mana"):
             guard let id = command.sourceInstanceId ?? command.cardInstanceId, UUID(uuidString: id) != nil else { throw invalid("Missing mana source UUID") }
             return try answer("uuid", .string(id), prompt: prompt)
         case ("MULTI_AMOUNT", "choose_multi_amount"):
@@ -272,7 +272,7 @@ enum OnDevicePromptAdapter {
         case ("SELECT", "resolve_choice"), ("PLAY_MANA", "resolve_choice"):
             guard command.choiceIds == ["special"], prompt.payload["options"]?["specialButton"]?.string != nil else { throw invalid("Missing special control") }
             return try answer("string", .string("special"), prompt: prompt)
-        case ("SELECT", "cast_spell"), ("SELECT", "play_land"), ("SELECT", "activate_ability"):
+        case ("SELECT", "cast_spell"), ("SELECT", "play_land"), ("SELECT", "activate_ability"), ("SELECT", "make_mana"):
             guard prompt.payload["selectMode"]?.string == "priority", let id = command.sourceInstanceId ?? command.cardInstanceId, UUID(uuidString: id) != nil else { throw invalid("Missing source UUID") }
             return try answer("uuid", .string(id), prompt: prompt)
         default: throw invalid("Incompatible command \(command.type) for \(prompt.kind)")

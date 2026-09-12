@@ -1,6 +1,11 @@
 import Foundation
 
 enum PromptCommandBuilder {
+    static func isCommanderReplacement(_ prompt: PromptEnvelopeV2) -> Bool {
+        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
+        return type == "commander_replacement"
+    }
+
     static func command(
         gameId: String,
         promptEnvelope: PromptEnvelopeV2?,

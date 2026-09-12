@@ -3,6 +3,75 @@ import SwiftUI
 @testable import MagicMobile
 
 final class OnDeviceBoardIdentityTests: XCTestCase {
+    func testNativeDetailChoicesRemainReachableWithCompactActions() throws {
+        let controls: [[String: Any]] = [
+            ["targets": [["id": "target", "label": "Target"]]],
+            ["cards": [cardPayload]],
+            ["players": [["id": "other", "playerId": "other", "label": "Other player"]]],
+            ["piles": [["id": "1", "label": "Pile one", "cards": []]]],
+            ["abilities": [["id": "ability", "label": "Ability"]]],
+            ["modes": [["id": "mode", "label": "Mode"]]],
+            ["amounts": [0, 1]],
+            ["multiAmounts": [["id": "0", "label": "Damage", "min": 0, "max": 3]]],
+            ["orderedItems": [["id": "item", "label": "Item"]]],
+            ["choices": (1...4).map { ["id": "\($0)", "label": "Choice \($0)"] }],
+            ["responseKind": "amount", "responseCommand": ["type": "choose_amount", "promptId": "prompt", "messageId": 7], "minChoices": -100, "maxChoices": 100]
+        ]
+        let done: [String: Any] = ["id": "done", "type": "answer_yes_no", "label": "Done", "playerId": "viewer", "promptId": "prompt", "messageId": 7, "confirmed": true]
+        for fields in controls {
+            let native = try promptSnapshot(fields: fields, actions: [done])
+            XCTAssertEqual(CompactPromptPopup.compactLegalPromptActions(in: native).map(\.id), ["done"])
+            XCTAssertTrue(CompactPromptPopup.needsDetails(native), "Lost controls: \(fields.keys)")
+            let legacy = try promptSnapshot(fields: fields, actions: [done], source: "xmage-java-bridge")
+            XCTAssertFalse(CompactPromptPopup.needsDetails(legacy), "Legacy compact action policy changed")
+        }
+    }
+
+    func testNativeSmallChoicesRetainEmptySpecialWithoutDuplicatingRawChoice() throws {
+        let fields: [String: Any] = ["responseKind": "choice", "choices": [["id": "a", "label": "Normal"]]]
+        let special: [String: Any] = ["id": "empty", "type": "choose_empty_special", "label": "Choose no item", "playerId": "viewer", "promptId": "prompt", "messageId": 7]
+        var normal = special
+        normal["id"] = "normal"; normal["type"] = "resolve_choice"; normal["choiceIds"] = ["a"]
+        var stale = special
+        stale["id"] = "stale"; stale["messageId"] = 6
+        let actions = [special, normal, stale]
+        XCTAssertEqual(CompactPromptPopup.supplementalChoiceActions(in: try promptSnapshot(fields: fields, actions: actions)).map(\.id), ["empty"])
+        XCTAssertTrue(CompactPromptPopup.supplementalChoiceActions(in: try promptSnapshot(fields: fields, actions: actions, source: "xmage-java-bridge")).isEmpty)
+    }
+
+    func testNativePaymentRetainsCancelAndExactCurrentSpecialWithOriginalLabel() throws {
+        let fields: [String: Any] = ["method": "GAME_PLAY_MANA", "responseKind": "mana",
+                                   "responseCommand": ["type": "play_mana", "promptId": "prompt", "messageId": 7]]
+        let cancel: [String: Any] = ["id": "cancel", "type": "cancel_payment", "label": "Cancel", "playerId": "viewer", "promptId": "prompt", "messageId": 7]
+        var special = cancel
+        special["id"] = "special"; special["type"] = "resolve_choice"; special["choiceIds"] = ["special"]
+        special["label"] = "Use special payment"; special["shortLabel"] = "Undo"
+        var stale = special
+        stale["id"] = "stale"; stale["messageId"] = 6
+        var foreign = special
+        foreign["id"] = "foreign"; foreign["playerId"] = "other"
+        var wrongToken = special
+        wrongToken["id"] = "wrong"; wrongToken["choiceIds"] = ["other"]
+        let actions = [cancel, stale, foreign, wrongToken, special]
+        let native = try promptSnapshot(fields: fields, actions: actions)
+        XCTAssertEqual(ManaPaymentTray.manaUndoActions(in: native).map(\.id), ["cancel", "special"])
+        XCTAssertEqual(ManaPaymentTray.compactPaymentActions(in: native).map(\.id), ["cancel", "special"])
+        XCTAssertEqual(ManaPaymentTray.paymentCancelTitle(for: try decode(LegalAction.self, special)), "Use special payment")
+        let legacy = try promptSnapshot(fields: fields, actions: actions, source: "xmage-java-bridge")
+        XCTAssertEqual(ManaPaymentTray.compactPaymentActions(in: legacy).map(\.id), ["cancel"])
+        XCTAssertEqual(ManaPaymentTray.manaUndoActions(in: try promptSnapshot(fields: [:], actions: actions)).map(\.id), ["cancel"])
+    }
+
+    private func promptSnapshot(fields: [String: Any], actions: [[String: Any]], source: String = "xmage-ondevice") throws -> GameSnapshot {
+        var prompt: [String: Any] = ["id": "prompt", "method": "GAME_SELECT", "messageId": 7,
+                                   "playerId": "viewer", "responseKind": "target", "message": "Choose", "required": false,
+                                   "responseCommand": ["type": "choose_target", "promptId": "prompt", "messageId": 7]]
+        prompt.merge(fields) { _, new in new }
+        return try decode(GameSnapshot.self, ["id": "match", "source": source, "viewerPlayerId": "viewer",
+                                              "phase": "combat", "turn": 1, "log": [], "players": [],
+                                              "legalActions": actions, "promptEnvelopeV2": prompt])
+    }
+
     func testLegacySnapshotDefaultsToHumanViewer() throws {
         let snapshot = try decode(GameSnapshot.self, [
             "id": "legacy-match", "phase": "main", "turn": 1, "log": [],
