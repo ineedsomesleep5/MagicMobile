@@ -1,7 +1,18 @@
 #!/usr/bin/env bash
-# Device AOT diagnostic only: no app installation or capability-state updates.
+# AOT diagnostic only: device by default; optional full Intel simulator target.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+NATIVE_TARGET=${MM_NATIVE_TARGET:-ios}
+case "$NATIVE_TARGET" in
+  ios) NATIVE_ARCH=arm64 ;;
+  ios-sim)
+    [[ "$(uname -s)" == Darwin && "$(uname -m)" == x86_64 ]] || {
+      echo 'ios-sim requires an Intel macOS host' >&2; exit 2;
+    }
+    NATIVE_ARCH=x86_64
+    ;;
+  *) echo 'MM_NATIVE_TARGET must be ios or ios-sim' >&2; exit 2 ;;
+esac
 export GRAALVM_HOME="${MM_GRAALVM_HOME:-$ROOT/build/toolchains/graalvm-svm-java17-darwin-m1-gluon-22.1.0.1-Final/Contents/Home}"
 export JAVA_HOME="$GRAALVM_HOME"
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
@@ -14,7 +25,7 @@ mkdir -p "$NATIVE_BUILD/native-java"
 NATIVE_LOG="$ROOT/evidence/$(basename "$NATIVE_BUILD").log"
 exec > >(tee "$NATIVE_LOG") 2>&1
 trap 'rc=$?; printf "\nDiagnostic exit code: %s\nBuild directory: %s\nLog: %s\n" "$rc" "$NATIVE_BUILD" "$NATIVE_LOG"' EXIT
-printf 'Device AOT diagnostic, UTC %s\n' "$(date -u +%FT%TZ)"
+printf 'AOT diagnostic target=%s, UTC %s\n' "$NATIVE_TARGET" "$(date -u +%FT%TZ)"
 NATIVE_NEW_RATIO=${MM_NATIVE_NEW_RATIO:-2}
 case "$NATIVE_NEW_RATIO" in
   2|7) ;;
@@ -121,6 +132,12 @@ printf 'Real NativeEntryPoints compilation passed.\n'
 
 # Keep Maven dependencies and Gluon downloads within the authorized build tree.
 export MAVEN_OPTS="-Xmx512m -Duser.home=$ROOT/build/ios-native-home"
+NATIVE_GOALS=(com.gluonhq:gluonfx-maven-plugin:1.0.29:compile com.gluonhq:gluonfx-maven-plugin:1.0.29:staticlib)
+# The simulator's caller-owned C executable also needs the pinned static JDK,
+# which Gluon's link goal downloads. Device behavior remains compile/staticlib.
+if [[ "$NATIVE_TARGET" == ios-sim ]]; then
+  NATIVE_GOALS+=(com.gluonhq:gluonfx-maven-plugin:1.0.29:link)
+fi
 mvn --batch-mode --no-transfer-progress \
   -f "$ROOT/native/gluon/pom.xml" \
   "-Dmaven.repo.local=$ROOT/build/ios-native-maven" \
@@ -131,10 +148,10 @@ mvn --batch-mode --no-transfer-progress \
   "-Dnative.orm.arg=$NATIVE_ORM_ARG" \
   "-Dnative.new.ratio=$NATIVE_NEW_RATIO" \
   "-Dnative.max.heap=$NATIVE_MAX_HEAP" \
-  com.gluonhq:gluonfx-maven-plugin:1.0.29:compile \
-  com.gluonhq:gluonfx-maven-plugin:1.0.29:staticlib
+  "-Dnative.target=$NATIVE_TARGET" \
+  "${NATIVE_GOALS[@]}"
 
-NATIVE_ARCHIVE="$NATIVE_BUILD/gluonfx/arm64-ios/gvm/libmmengine.a"
+NATIVE_ARCHIVE="$NATIVE_BUILD/gluonfx/$NATIVE_ARCH-ios/gvm/libmmengine.a"
 [[ -s "$NATIVE_ARCHIVE" ]]
 xcrun lipo -info "$NATIVE_ARCHIVE"
 xcrun ar -t "$NATIVE_ARCHIVE"
@@ -142,4 +159,7 @@ NATIVE_SYMBOLS=$(xcrun nm -g "$NATIVE_ARCHIVE")
 for symbol in mm_engine_request mm_engine_free mm_engine_shutdown_v2 graal_create_isolate; do
   printf '%s\n' "$NATIVE_SYMBOLS" | grep -E "[[:space:]]T[[:space:]]_${symbol}$"
 done
-printf 'Device archive produced: %s\nNot linked into Swift or executed on a device.\n' "$NATIVE_ARCHIVE"
+if [[ -n "${MM_NATIVE_RESULT_FILE:-}" ]]; then
+  printf '%s\n' "$NATIVE_BUILD" > "$MM_NATIVE_RESULT_FILE"
+fi
+printf '%s archive produced: %s\nNot linked into Swift or executed.\n' "$NATIVE_TARGET" "$NATIVE_ARCHIVE"

@@ -1,0 +1,76 @@
+name: Full native XMage iOS simulator runtime
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-ios-simulator-xmage-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  simulator-engine:
+    # Standard public-repository Intel runner, no paid larger-runner label.
+    runs-on: macos-26-intel
+    timeout-minutes: 210
+    defaults:
+      run:
+        working-directory: packages/ondevice-engine
+        shell: bash
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Record source and unsigned build environment
+        run: |
+          mkdir -p evidence/ios-simulator-engine
+          git merge-base --is-ancestor 178f3f3618a4d7ad8ed152f1a4136348ca2dd0ae HEAD
+          { git rev-parse HEAD; uname -a; sysctl hw.memsize; xcodebuild -version; java -version; mvn -version; df -h .; } 2>&1 | tee evidence/ios-simulator-engine/hosted-environment.txt
+      - name: Compile pinned full JVM engine and catalogue
+        run: bash scripts/build_jvm.sh 2>&1 | tee evidence/ios-simulator-engine/jvm-build.log
+      - name: Install checksum-pinned Intel Gluon17 compiler
+        run: |
+          bash scripts/setup_gluon_intel.sh 2>&1 | tee evidence/ios-simulator-engine/compiler-install.log
+          echo "MM_GRAALVM_HOME=$PWD/build/toolchains/graalvm-svm-java17-darwin-gluon-22.1.0.1-Final/Contents/Home" >> "$GITHUB_ENV"
+      - name: Compile full native XMage for x86_64 iOS simulator
+        timeout-minutes: 180
+        env:
+          MM_NATIVE_TARGET: ios-sim
+          MM_NATIVE_REFLECTION_PROFILE: targeted
+          MM_NATIVE_INIT_PROFILE: reviewed-enums
+          MM_NATIVE_ORM_PROFILE: runtime-defaults
+          MM_NATIVE_NEW_RATIO: '7'
+          MM_NATIVE_MAX_HEAP: 10g
+          MM_NATIVE_RESULT_FILE: evidence/ios-simulator-engine/native-build.txt
+        run: bash scripts/build_native_ios.sh
+      - name: Execute real backend and lifecycle in owned simulator
+        timeout-minutes: 25
+        run: bash scripts/test_ios_simulator_engine.sh "$(<evidence/ios-simulator-engine/native-build.txt)"
+      - name: Upload simulator evidence including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-xmage-ios-simulator-evidence-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            packages/ondevice-engine/evidence/ios-simulator-engine/
+            packages/ondevice-engine/evidence/ios-native-*.log
+            packages/ondevice-engine/build/ios-native-*/class-snapshot.sha256
+            packages/ondevice-engine/build/ios-native-*/builder-gc.log*
+            packages/ondevice-engine/build/ios-native-*/gluonfx/x86_64-ios/gvm/log/
+            packages/ondevice-engine/build/ios-native-*/gluonfx/x86_64-ios/gvm/mmengine/*.h
+            packages/ondevice-engine/build/ios-sim-engine-*/*.txt
+            packages/ondevice-engine/build/ios-sim-engine-*/*.json
+            packages/ondevice-engine/build/generated/registry-report.json
+            packages/ondevice-engine/build/native-metadata/*.json
+          if-no-files-found: error
+          retention-days: 7
+# Simulator execution only: no signing, physical-device or TestFlight claim.
