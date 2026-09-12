@@ -15,7 +15,7 @@ let package = Package(
                       "GameBoardDesignTokens.swift", "GameBoardInteractionState.swift",
                       "GameBoardLayoutMetrics.swift", "GameBoardPreviewFixtures.swift",
                       "GameBoardScreen.swift", "GameBoardTheme.swift", "GameBoardZones.swift",
-                      "MagicMobileApp.swift", "OnDeviceRootView.swift"],
+                      "MagicMobileApp.swift", "OnDeviceRootView.swift", "NativeEngine-Bridging-Header.h"],
             sources: ["Models.swift", "MagicMobileAPI.swift", "PromptCommandBuilder.swift", "PreconCatalog.swift", "OnDeviceDeckResolver.swift", "OnDeviceSnapshotAdapter.swift", "OnDevicePromptAdapter.swift", "OnDeviceMultiplayer.swift", "OnDeviceSession.swift", "OnDeviceRuntimeManager.swift"],
             resources: [.copy("Resources/ondevice-catalogue.json")],
             swiftSettings: [.swiftLanguageMode(.v5)]

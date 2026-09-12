@@ -1,0 +1,39 @@
+# Optional device-native project: run prepare_ios_app_native.py with explicit
+# archive/header/CLIB/static-JDK inputs (dry run, then --apply) before generating:
+#   cd apps/ios && xcodegen generate --spec native-engine.yml
+# Use project.yml for unlinked hosted UI work. This overlay does not enable a
+# simulator backend. Do not use both specs as mutual includes.
+# Link flags mirror packages/ondevice-engine/scripts/test_ios_link.sh. They
+# have not yet been validated against the full ARM64 engine or a signed app.
+include:
+  - project.yml
+targets:
+  MagicMobile:
+    sources:
+      - path: ../../packages/ondevice-engine/native/mm_graal_backend.c
+    preBuildScripts:
+      - name: Verify staged native input hashes (device only)
+        basedOnDependencyAnalysis: false
+        script: |
+          set -eu
+          if [ "${PLATFORM_NAME}" = "iphoneos" ]; then
+            python3 -B "${SRCROOT}/../../packages/ondevice-engine/scripts/prepare_ios_app_native.py" --verify-installed > /dev/null
+          fi
+    settings:
+      base:
+        "EXCLUDED_SOURCE_FILE_NAMES[sdk=iphonesimulator*]": "$(inherited) mm_graal_backend.c"
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphoneos*]": "$(inherited) XMAGE_NATIVE_LINKED"
+        "GCC_PREPROCESSOR_DEFINITIONS[sdk=iphoneos*]": "$(inherited) XMAGE_NATIVE_LINKED=1"
+        "SWIFT_OBJC_BRIDGING_HEADER[sdk=iphoneos*]": "$(SRCROOT)/MagicMobile/NativeEngine-Bridging-Header.h"
+        "HEADER_SEARCH_PATHS[sdk=iphoneos*]":
+          - "$(inherited)"
+          - '"$(SRCROOT)/NativeEngine/include"'
+          - '"$(SRCROOT)/../../packages/ondevice-engine/native"'
+          - '"$(SRCROOT)/../../packages/ondevice-engine/swift/Sources/CMagicEngine/include"'
+        "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]":
+          - "$(inherited)"
+          - '"$(SRCROOT)/NativeEngine/lib"'
+        "OTHER_LDFLAGS[sdk=iphoneos*]": >-
+          $(inherited) -lmmengine -ljava -lnio -lzip -lnet -lprefs -ljvm -lfdlibm
+          -lz -ldl -lj2pkcs11 -ljaas -lextnet -lc++ -lpthread -llibchelper -lffi -ldarwin
+          -framework Foundation -framework UIKit -framework CoreGraphics -framework Security
