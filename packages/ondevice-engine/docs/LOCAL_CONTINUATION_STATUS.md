@@ -145,3 +145,9 @@ the required isolate/result output. It is not an execution pass. The follow-up
 uses `simctl spawn` for this C-only caller (which has no UIKit application entry)
 and adds a flushed main-entry marker to separate process entry from isolate
 startup. Runtime success, app lifecycle and full-engine gameplay remain unproven.
+
+That [follow-up 34665870814](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34665870814)
+stopped before compilation: the first `simctl list --json` exceeded its 30-second
+deadline. It did not exercise direct process execution. The discovery bound is
+now 120 seconds to test slow CoreSimulator initialization; no runtime/architecture
+checks or execution-result assertions were relaxed.

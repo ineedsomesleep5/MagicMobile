@@ -74,7 +74,9 @@ grep -qx 'Xcode 26.6' "$PROBE_BUILD/xcode-version.txt"
 "$JAVA_HOME/bin/native-image" --version
 SDK=$(xcrun --sdk iphonesimulator --show-sdk-path)
 SDK_VERSION=$(xcrun --sdk iphonesimulator --show-sdk-version)
-bounded 30 xcrun simctl list --json > "$PROBE_BUILD/simctl-before.json"
+# The first CoreSimulator query can initialize the service on a fresh CI host.
+# Run 34665870814 exhausted 30s before compilation; keep a finite discovery bound.
+bounded 120 xcrun simctl list --json > "$PROBE_BUILD/simctl-before.json"
 # Use runtime-supported device types, not a guessed iPhone model or existing UDID.
 # Require the selected runtime to match the SDK major/minor explicitly.
 python3 - "$PROBE_BUILD/simctl-before.json" "$SDK_VERSION" > "$PROBE_BUILD/selection.txt" <<'PY'
