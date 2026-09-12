@@ -1,0 +1,93 @@
+name: Existing iOS product native-link gate
+
+on:
+  push:
+    branches: [codex/issue-4-native-mvp]
+    paths:
+      - 'packages/ondevice-engine/native/product-candidate.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: issue4-native-product-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  existing-product:
+    runs-on: macos-26-intel
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Record exact app source and unsigned environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build_output/native-product
+          { git rev-parse HEAD; xcodebuild -version; } > build_output/native-product/app-source.txt
+      - name: Fetch explicitly selected successful full-engine artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 packages/ondevice-engine/scripts/fetch_native_candidate.py \
+            packages/ondevice-engine/native/product-candidate.json \
+            --destination "$RUNNER_TEMP/full-native-candidate" \
+            --report build_output/native-product/artifact-provenance.json
+      - name: Verify catalogue, compiler, checksums and stage paired native inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE=$(python3 -c 'import json; print(json.load(open("packages/ondevice-engine/native/product-candidate.json"))["sourceCommit"])')
+          # A newer app may reuse the binary only while all AOT engine inputs
+          # still match its producer. Swift/UI/build-inspection changes are separate.
+          git diff --exit-code "$SOURCE" HEAD -- \
+            packages/ondevice-engine/engine packages/ondevice-engine/native/gluon \
+            packages/ondevice-engine/native/resource-config.json packages/ondevice-engine/upstream.lock.json \
+            packages/ondevice-engine/scripts/bootstrap.sh packages/ondevice-engine/scripts/classpath.py \
+            packages/ondevice-engine/scripts/build_jvm.sh packages/ondevice-engine/scripts/build_native_ios.sh \
+            packages/ondevice-engine/scripts/prepare_upstream.py packages/ondevice-engine/scripts/test_core.sh \
+            > build_output/native-product/engine-source-diff.txt
+          python3 packages/ondevice-engine/scripts/native_candidate.py "$RUNNER_TEMP/full-native-candidate" \
+            --source-commit "$SOURCE" --stage --report build_output/native-product/native-inputs.json
+          cp apps/ios/NativeEngine/manifest.json build_output/native-product/staged-manifest.json
+      - name: Link the actual existing Release app without signing or execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen generate --spec apps/ios/native-engine.yml
+          xcodebuild -project apps/ios/MagicMobileiOS.xcodeproj -scheme MagicMobile \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/issue4-linked-app" -jobs 2 \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
+            build 2>&1 | tee build_output/native-product/unsigned-native-release.log
+      - name: Inspect actual linked product rather than an engine probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/issue4-linked-app/Build/Products/Release-iphoneos/MagicMobile.app"
+          python3 packages/ondevice-engine/scripts/verify_ios_product.py "$APP" \
+            --report build_output/native-product/linked-product.json
+          cp "$APP/Info.plist" build_output/native-product/Info.plist
+          xcrun dwarfdump --uuid "$APP/MagicMobile" > build_output/native-product/executable-uuid.txt
+          echo 'Unsigned existing product linkage only; physical runtime and gameplay are NOT verified.' > build_output/native-product/SCOPE.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue4-linked-product-evidence-${{ github.sha }}
+          path: build_output/native-product/
+          retention-days: 14
+          if-no-files-found: error
+
+# No simulator, signing, install, TestFlight upload, larger runner or remote gameplay.
+# No request file is fabricated: populate product-candidate.json only from an
+# actually successful full-engine producer and the exact returned artifact digest.
