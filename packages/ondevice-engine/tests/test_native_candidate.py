@@ -95,6 +95,20 @@ class SourceTests(unittest.TestCase):
     def test_new_engine_file_rejected(self):
         self.write('engine/core/New.java', 'added'); self.commit()
         with self.assertRaises(ValueError): candidate.source_identity(self.root, self.base)
+    def test_xmage_test_only_changes_remain_conservatively_guarded(self):
+        path = 'engine/xmage/src/test/java/Fixture.java'
+        self.write(path, '// compiled only to build/test-real'); self.commit()
+        with self.assertRaises(ValueError): candidate.source_identity(self.root, self.base)
+    def test_xmage_main_changes_remain_rejected(self):
+        self.write('engine/xmage/src/main/java/Fixture.java', '// runtime'); self.commit()
+        with self.assertRaises(ValueError): candidate.source_identity(self.root, self.base)
+    def test_core_test_changes_remain_rejected_because_they_are_on_aot_classpath(self):
+        self.write('engine/core/src/test/java/Fixture.java', '// compiled to build/core'); self.commit()
+        with self.assertRaises(ValueError): candidate.source_identity(self.root, self.base)
+    def test_runtime_changes_cannot_hide_beside_test_changes(self):
+        self.write('engine/xmage/src/test/java/Fixture.java', '// test')
+        self.write('engine/xmage/src/main/java/Fixture.java', '// runtime'); self.commit()
+        with self.assertRaises(ValueError): candidate.source_identity(self.root, self.base)
     def test_build_input_change_rejected(self):
         self.write('scripts/build_native_ios.sh', '# changed'); self.commit()
         with self.assertRaises(ValueError): candidate.source_identity(self.root, self.base)

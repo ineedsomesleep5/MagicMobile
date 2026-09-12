@@ -19,6 +19,7 @@ TARGETS = {
     'mm_far_engine_free': 'mm_engine_free',
     'mm_far_engine_shutdown_v2': 'mm_engine_shutdown_v2',
 }
+REQUIRED_SYMBOLS = {'___text', '___data'} | {'_' + s for s in set(TARGETS) | set(TARGETS.values())}
 
 
 def require(condition, message):
@@ -27,12 +28,14 @@ def require(condition, message):
 
 
 class MachO:
-    def __init__(self, data, base=0, size=None):
+    def __init__(self, data, base=0, size=None, *, allow_missing_symbols=False):
         self.data, self.base = data, base
         self.size = len(data) - base if size is None else size
         header = self.unpack('<8I', 0)
         require(header[0:3] == (0xfeedfacf, 0x100000c, 0), 'Expected ARM64 Mach-O')
         self.filetype, self.flags = header[3], header[6]
+        require(self.filetype in (1, 2, 10), 'Expected object, executable or dSYM Mach-O')
+        self.uuid = None
         self.sections, self.symbols = {}, {}
         section_names = []
         cursor, symtab = 32, None
@@ -51,7 +54,9 @@ class MachO:
                     self.sections[key] = dict(address=fields[2], size=fields[3], offset=fields[4],
                                               alignment=fields[5], relocations=fields[6], count=fields[7])
                     if key in (('__TEXT', '__text'), ('__DATA', '__data')):
-                        self.bytes(fields[4], fields[3])
+                        # MH_DSYM describes virtual product sections, not backing code.
+                        if self.filetype != 10:
+                            self.bytes(fields[4], fields[3])
                         if self.filetype == 2:
                             protection = 5 if key[0] == '__TEXT' else 3
                             require(segment[2].rstrip(b'\0').decode() == key[0]
@@ -62,24 +67,32 @@ class MachO:
                                     and fields[2] - segment[3] == fields[4] - segment[5],
                                     'Section does not match its loader mapping')
             elif command == 2:
+                require(size == 24 and symtab is None, 'Invalid or duplicate symbol table')
                 symtab = self.unpack('<4I', cursor + 8)
+            elif command == 0x1b:  # LC_UUID
+                require(size == 24 and self.uuid is None, 'Invalid or duplicate UUID')
+                self.uuid = self.bytes(cursor + 8, 16)
+                require(any(self.uuid), 'Zero UUID')
             cursor += size
-        require(cursor == 32 + header[5] and symtab is not None, 'Missing symbols or invalid commands')
-        symoff, count, stroff, strsize = symtab
+        require(cursor == 32 + header[5], 'Invalid commands')
+        require(symtab is not None or (allow_missing_symbols and self.filetype == 2), 'Missing symbols')
         self.symtab = symtab
+        if symtab is None:
+            return
+        symoff, count, stroff, strsize = symtab
         self.bytes(stroff, strsize)
-        required = {'___text', '___data'} | {'_' + s for s in set(TARGETS) | set(TARGETS.values())}
         for index in range(count):
             nameoff, kind, section, _, value = self.unpack('<IBBHQ', symoff + index * 16)
-            if kind & 0xe0 or kind & 0x0e != 0x0e or section == 0:
+            if kind & 0xe0:
                 continue
             require(nameoff < strsize, 'Invalid symbol name')
             start = base + stroff + nameoff
             end = data.find(b'\0', start, base + stroff + strsize)
             require(end >= start, 'Unterminated symbol')
             name = data[start:end].decode()
-            if name in required:
+            if name in REQUIRED_SYMBOLS:
                 require(name not in self.symbols, 'Duplicate required symbol: ' + name)
+                require(kind & 0x0e == 0x0e and section > 0, 'Required symbol is not section-defined: ' + name)
                 expected = ('__DATA', '__data') if name == '___data' else ('__TEXT', '__text')
                 require(section <= len(section_names) and section_names[section - 1] == expected,
                         'Required symbol belongs to the wrong section: ' + name)
@@ -87,6 +100,25 @@ class MachO:
                 require(bounds['address'] <= value < bounds['address'] + bounds['size'],
                         'Required symbol is outside its section: ' + name)
                 self.symbols[name] = value
+
+    def use_dsym(self, dsym):
+        require(self.filetype == 2 and dsym.filetype == 10, 'Expected executable and MH_DSYM pair')
+        require(self.uuid is not None and dsym.uuid is not None, 'Missing executable or dSYM UUID')
+        require(self.uuid == dsym.uuid, 'Executable and dSYM UUID mismatch')
+        require(REQUIRED_SYMBOLS <= dsym.symbols.keys(), 'Missing required dSYM symbols')
+        for key in (('__TEXT', '__text'), ('__DATA', '__data')):
+            require(key in self.sections and key in dsym.sections, 'Missing product or dSYM section')
+            product_section, debug_section = self.sections[key], dsym.sections[key]
+            require(all(product_section[field] == debug_section[field] for field in ('address', 'size')),
+                    'dSYM section does not match product address/size')
+        for name, value in dsym.symbols.items():
+            key = ('__DATA', '__data') if name == '___data' else ('__TEXT', '__text')
+            bounds = self.sections[key]
+            require(bounds['address'] <= value < bounds['address'] + bounds['size'],
+                    'dSYM symbol is outside product section: ' + name)
+            require(name not in self.symbols or self.symbols[name] == value,
+                    'Executable and dSYM symbol conflict: ' + name)
+        self.symbols.update(dsym.symbols)
 
     def relocation_symbol(self, index):
         symoff, count, stroff, strsize = self.symtab
@@ -218,19 +250,28 @@ def verify_layout(engine, product):
             'scope': 'binary layout only; no native execution'}
 
 
-def verify_files(archive, executable):
+def verify_files(archive, executable, dsym=None):
     with Path(archive).open('rb') as source, Path(executable).open('rb') as final:
         with mmap.mmap(source.fileno(), 0, access=mmap.ACCESS_READ) as a:
             with mmap.mmap(final.fileno(), 0, access=mmap.ACCESS_READ) as b:
-                return verify_layout(engine_object(a), MachO(b))
+                product = MachO(b, allow_missing_symbols=dsym is not None)
+                if dsym is not None:
+                    with Path(dsym).open('rb') as debug:
+                        with mmap.mmap(debug.fileno(), 0, access=mmap.ACCESS_READ) as d:
+                            product.use_dsym(MachO(d))
+                result = verify_layout(engine_object(a), product)
+                if dsym is not None:
+                    result.update(symbolSource='uuid-matched-dsym', uuid=product.uuid.hex())
+                return result
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--archive', required=True, type=Path)
     parser.add_argument('--executable', required=True, type=Path)
+    parser.add_argument('--dsym', type=Path, help='Actual DWARF Mach-O file, not the .dSYM bundle')
     args = parser.parse_args()
     try:
-        print(json.dumps(verify_files(args.archive, args.executable), indent=2))
+        print(json.dumps(verify_files(args.archive, args.executable, args.dsym), indent=2))
     except (ValueError, KeyError, OSError, struct.error) as error:
         parser.exit(2, f'Graal product layout refused: {error}\n')

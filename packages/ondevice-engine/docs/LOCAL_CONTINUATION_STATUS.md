@@ -1,4 +1,64 @@
-# Local continuation status — 2026-09-11
+# Local continuation status — 2026-09-12
+
+## New regression finding — replacement native candidate required
+
+After the initial upload, bounded teardown tests exposed an opening-selection
+race: interrupting the GAME worker makes every upstream player unable to respond,
+while `GameImpl.pickChoosingPlayer()` spins on `hasEnded()`. The mobile adapter's
+existing cancellation hook covered `checkIfGameIsOver()` but not that end check.
+The deterministic regression failed before the fix. `MobileCommanderGame` now
+includes the same durable cancellation signal in `hasEnded()`, including copies.
+Full real-engine regressions passed, including both MAD configurations and complete
+two-/four-seat plus token/mulligan games. Commit `a34fb08abd7c4f32b643701349f99f0b59ee2771`
+is building in ARM64 run **34723517045**. This changes production engine
+source: the old archive/build below cannot validate or ship the new fix. A fresh
+source-verified ARM64 build and replacement internal TestFlight build are required.
+Do not call build 2026091201 the final accepted candidate.
+
+## Initial desktop result — native product linked; internal TestFlight uploaded
+
+This block supersedes all chronological checkpoints below. Product source
+`62789b0e2b8fd006135fd0ff1dac0b769c92717f` on PR #6 preserves `apps/ios` and
+bundle `com.calebfeliciano.magicmobile`.
+
+- Full XMage + MAD ARM64 compilation passed in run **34673638060**, engine source
+  `220647689c76cc95de941d279faafd85e63792c3`, artifact **10292778783**. ZIP SHA-256:
+  `24ba46f4836251861d32d8a51b2a5a0ff6da52901a6ef86742c99526750b5331`.
+  Paired archive/headers/dependencies/manifests are preserved locally under
+  `packages/ondevice-engine/build/verified-native-10292778783`.
+- Apple's final `arm64_b26` link failure was reproduced. The fix places the intact
+  196,854,848-byte Graal image first and uses seven ARM64 far-call veneers. No cards
+  or AI were removed. Verification checks all 922 relocated instructions and their
+  actual targets, loader mapping/alignment, intact code and every veneer.
+- Actual unsigned generic-device Release passed; local receipt:
+  `packages/ondevice-engine/build/issue4-device-link.wacchh/product-receipt.json`.
+  Signed exported app layout also passed using UUID-matched dSYM
+  `44AC3CD8-A28A-33FC-84A9-DDE221057D7C`. This is inspection, not native execution.
+- Existing ASC app **6784735182** received internal-only **0.1.0 (2026091201)**.
+  Archive/export/Apple validation/upload passed; upload ID
+  `86361630-995a-4029-9ca0-67da4fffa789`, processing **VALID**, internal state
+  **MISSING_EXPORT_COMPLIANCE**. This superseded candidate is not final tester
+  availability. Signature verification passed; signed app
+  and distribution profile both carry Game Center. No public release was submitted.
+  Local artifacts: `build_output/testflight/issue4-2026091201-62789b0/`.
+- 108 portable app tests, 32 Swift protocol tests, 9,000 ASan/UBSan C fixture
+  requests and five shutdown scenarios passed. Real JVM query/control/privacy,
+  Commander, portrait, lifecycle/cancellation and MAD play regressions passed.
+  Two-/four-human games completed at turns 16/40; token/mulligan game at turn 16.
+  All five exact bundled precons passed real validation and first-prompt tests.
+- Final tooling now has 153 passing tests, including 31 native-layout/dSYM
+  fixtures. The signed verifier was rerun against the initial exported app; its
+  actual code/relocations/veneers passed with UUID-matched symbols.
+- Final test cleanup retries only documented `engine_busy_shutdown`, bounded to
+  20 seconds. Artifact equivalence remains conservative: all engine source
+  directories, including tests, and production/compiler inputs are guarded.
+
+See [source ledger](ISSUE4_SOURCE_CONTROL_LEDGER.md), [build gates](BUILD_AND_DEVICE_GATES.md),
+[upstream maintenance](UPSTREAM_MAINTENANCE.md) and [physical acceptance](TESTFLIGHT_ACCEPTANCE.md).
+No simulator/UI workflow was run in this continuation. Native phone gameplay,
+AI memory/thermal measurements and real multi-phone matches remain **NOT RUN**.
+
+## Historical checkpoints (superseded)
 
 ## Paused for Web Pro — 2026-09-12
 

@@ -17,9 +17,11 @@
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>2026091201</string>
+	<string>2026091202</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>MagicMobileEngineMode</key>
 	<string>$(MM_ENGINE_MODE)</string>
 	<key>NSPhotoLibraryUsageDescription</key>

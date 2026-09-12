@@ -21,8 +21,8 @@ concurrency:
 # The engine build is already running and will not be duplicated here. Reuse is
 # refused if any engine/compiler input differs from the product source revision.
 env:
-  ENGINE_RUN_ID: '34673638060'
-  ENGINE_COMMIT: '220647689c76cc95de941d279faafd85e63792c3'
+  ENGINE_RUN_ID: '34723517045'
+  ENGINE_COMMIT: 'a34fb08abd7c4f32b643701349f99f0b59ee2771'
 jobs:
   exact-native-artifact:
     runs-on: ubuntu-latest

@@ -37,6 +37,14 @@ batch-attack, batch-target, guessed special token, or replacement rules engine.
 
 ## Zones, identity and privacy
 
+The final source audit also added explicit regressions for incomplete controls:
+`testFloatingManaChoicesUseThePayloadPlayersPoolAndExactResponses`,
+`testSpecialPaymentWithoutButtonMetadataUsesOnlyPinnedProtocolToken`,
+`testDeclaredAttackerRemainsSelectableOnTheNextPromptWithoutAddingOtherCards`,
+`testLocalAndAuthorizedControlledAttackersRemainSelectableWithViewerCommands`
+and `testUnauthorizedOrMismatchedControlledAttackerIdentityFailsClosed`.
+Actual payment details remain reachable beside quick actions.
+
 | Surface | Implemented authority and boundary | Tests |
 |---|---|---|
 | Hand and library | Own/explicitly controlled hand views only; opponents' hidden hands and libraries remain counts. No card reconstruction from hidden UUIDs. | `RealControlPrivacyTests`; `testActualFourSeatPollPreservesViewerAndHiddenZoneCounts`. |
@@ -82,6 +90,12 @@ also sends the exact same-commit Swift-exported five bundled decks through real
 XMage validation and a first prompt.
 
 ## Explicit limits and device gates
+
+`RealAILifecycleTests.cancelledOpeningSelection` deterministically covers the
+opening-player cancellation end check and its copies; both real MAD lifecycle
+configurations and complete-game regressions passed after the fix. Busy teardown
+retries only `engine_busy_shutdown` within 20 seconds and preserves worker-exit,
+idle-simulation-pool and ownership assertions. It does not waive a stuck worker.
 
 Chained/nested turn control is explicitly unsupported rather than misrouted.
 Durable match restore, host migration, draft and tournament construction are not

@@ -2,10 +2,11 @@
 import pathlib
 import struct
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'scripts'))
-from verify_graal_product_layout import MachO, TARGETS, engine_object, veneer_target, verify_layout
+from verify_graal_product_layout import MachO, TARGETS, engine_object, veneer_target, verify_files, verify_layout
 
 
 def veneer(address, target):
@@ -13,6 +14,14 @@ def veneer(address, target):
     immediate = pages & 0x1fffff
     return struct.pack('<3I', 0x90000010 | ((immediate & 3) << 29) | ((immediate >> 2) << 5),
                        0x91000210 | ((target & 4095) << 10), 0xd61f0200)
+
+
+def with_uuid(data, value=bytes(range(16))):
+    data = bytearray(data)
+    count, size = struct.unpack_from('<II', data, 16)
+    data[32 + size:32 + size + 24] = struct.pack('<II16s', 0x1b, 24, value)
+    struct.pack_into('<II', data, 16, count + 1, size + 24)
+    return data
 
 
 class ImageFixture(MachO):
@@ -154,6 +163,126 @@ class GraalLayoutTests(unittest.TestCase):
             with self.assertRaises(ValueError): engine_object(data)
         for data in (bytes(32), struct.pack('<8I', 0xfeedfacf, 0x100000c, 0, 2, 0, 0, 0, 0)):
             with self.assertRaises(ValueError): MachO(data)
+
+    def dsym_pair(self, stripped=True):
+        executable = with_uuid(self.product.data)
+        debug = bytearray(executable)
+        struct.pack_into('<I', debug, 12, 10)
+        for command in (32, 32 + 152):
+            struct.pack_into('<I', debug, command + 72 + 48, 0)
+        # dSYM code bytes must never be used, even if coincidentally present.
+        debug[0x4000:0x4080] = bytes(128)
+        if stripped:
+            struct.pack_into('<I', executable, 32 + 304 + 12, 0)  # empty LC_SYMTAB
+        return executable, debug
+
+    def test_matching_dsym_supplies_stripped_symbols(self):
+        executable, debug = self.dsym_pair()
+        product = MachO(executable)
+        self.assertEqual(product.symbols, {})
+        product.use_dsym(MachO(debug))
+        self.assertTrue(verify_layout(self.engine, product)['intactCodeImage'])
+
+    def test_existing_matching_executable_symbols_accepted(self):
+        executable, debug = self.dsym_pair(stripped=False)
+        product = MachO(executable)
+        product.use_dsym(MachO(debug))
+        verify_layout(self.engine, product)
+
+    def test_dsym_virtual_section_has_no_file_range_requirement(self):
+        _, debug = self.dsym_pair()
+        struct.pack_into('<Q', debug, 32 + 72 + 40, 1 << 30)
+        self.assertEqual(MachO(debug).sections[('__TEXT', '__text')]['size'], 1 << 30)
+        for filetype in (1, 2):
+            struct.pack_into('<I', debug, 12, filetype)
+            with self.assertRaisesRegex(ValueError, 'outside file'): MachO(debug)
+
+    def test_missing_uuid_in_either_file_rejected(self):
+        for target in (0, 1):
+            pair = self.dsym_pair()
+            struct.pack_into('<I', pair[target], 32 + 328, 0x7fffffff)
+            with self.assertRaisesRegex(ValueError, 'Missing.*UUID'):
+                MachO(pair[0]).use_dsym(MachO(pair[1]))
+
+    def test_zero_duplicate_malformed_uuid_rejected(self):
+        for target in (0, 1):
+            for failure in ('zero', 'duplicate', 'size'):
+                with self.subTest(target=target, failure=failure):
+                    data = self.dsym_pair()[target]
+                    if failure == 'zero': data[32 + 328 + 8:32 + 328 + 24] = bytes(16)
+                    elif failure == 'duplicate': data = with_uuid(data)
+                    else: struct.pack_into('<I', data, 32 + 328 + 4, 16)
+                    with self.assertRaisesRegex(ValueError, 'UUID'): MachO(data)
+
+    def test_foreign_uuid_rejected(self):
+        executable, debug = self.dsym_pair()
+        debug[32 + 328 + 8] ^= 1
+        with self.assertRaisesRegex(ValueError, 'UUID mismatch'):
+            MachO(executable).use_dsym(MachO(debug))
+
+    def test_wrong_dsym_filetype_rejected(self):
+        executable, debug = self.dsym_pair()
+        for filetype in (1, 2, 6):
+            data = with_uuid(self.product.data)
+            struct.pack_into('<I', data, 12, filetype)
+            with self.assertRaises(ValueError): MachO(executable).use_dsym(MachO(data))
+        with self.assertRaisesRegex(ValueError, 'executable and MH_DSYM'):
+            MachO(debug).use_dsym(MachO(debug))
+
+    def test_bad_or_missing_dsym_symbols_rejected(self):
+        for failure in ('kind', 'zero-section', 'section', 'range', 'missing', 'duplicate'):
+            with self.subTest(failure=failure):
+                executable, debug = self.dsym_pair()
+                if failure == 'kind': debug[0x8120 + 4] = 0
+                elif failure == 'zero-section': debug[0x8120 + 5] = 0
+                elif failure == 'section': debug[0x8120 + 5] = 2
+                elif failure == 'range': struct.pack_into('<Q', debug, 0x8120 + 8, 0x100009000)
+                elif failure == 'missing': struct.pack_into('<I', debug, 32 + 304 + 12, 1)
+                else: debug[0x8120 + 16:0x8120 + 32] = debug[0x8120:0x8120 + 16]
+                with self.assertRaises(ValueError): MachO(executable).use_dsym(MachO(debug))
+
+    def test_dsym_section_must_match_actual_product(self):
+        for field, value in ((32, 0x100003000), (40, 0x1000)):
+            executable, debug = self.dsym_pair()
+            struct.pack_into('<Q', debug, 32 + 72 + field, value)
+            with self.assertRaises(ValueError): MachO(executable).use_dsym(MachO(debug))
+
+    def test_existing_executable_symbol_conflict_rejected(self):
+        executable, debug = self.dsym_pair(stripped=False)
+        struct.pack_into('<Q', executable, 0x8120 + 2 * 16 + 8, 0x100004018)
+        with self.assertRaisesRegex(ValueError, 'symbol conflict'):
+            MachO(executable).use_dsym(MachO(debug))
+
+    def test_dsym_does_not_bypass_product_mapping_or_code_checks(self):
+        executable, debug = self.dsym_pair()
+        struct.pack_into('<I', executable, 32 + 72 + 48, 0x5000)
+        with self.assertRaisesRegex(ValueError, 'loader mapping'): MachO(executable)
+        executable, debug = self.dsym_pair()
+        executable[0x4064] ^= 1
+        product = MachO(executable)
+        product.use_dsym(MachO(debug))
+        with self.assertRaisesRegex(ValueError, 'code bytes changed'): verify_layout(self.engine, product)
+
+    def test_mapped_file_api_with_and_without_dsym(self):
+        name = b'io.magicmobile.nativebridge.ioslibrarymain.o'
+        payload = name + self.engine.data
+        header = f'{"#1/" + str(len(name)):<16}{0:<12}{0:<6}{0:<6}{100644:<8}{len(payload):<10}`\n'.encode()
+        archive = b'!<arch>\n' + header + payload + (b'\n' if len(payload) % 2 else b'')
+        with tempfile.TemporaryDirectory(prefix='graal-layout-fixture-') as directory:
+            root = pathlib.Path(directory)
+            a, b, d = (root / name for name in ('engine.a', 'executable', 'dwarf'))
+            a.write_bytes(archive)
+            b.write_bytes(self.product.data)
+            expected = verify_files(a, b)
+            executable, debug = self.dsym_pair()
+            # A completely stripped product may omit LC_SYMTAB, not just its entries.
+            struct.pack_into('<I', executable, 32 + 304, 0x7fffffff)
+            b.write_bytes(executable); d.write_bytes(debug)
+            with self.assertRaisesRegex(ValueError, 'Missing symbols'): verify_files(a, b)
+            result = verify_files(a, b, d)
+            self.assertEqual(result.pop('uuid'), bytes(range(16)).hex())
+            self.assertEqual(result.pop('symbolSource'), 'uuid-matched-dsym')
+            self.assertEqual(result, expected)
 
 
 if __name__ == '__main__': unittest.main()
