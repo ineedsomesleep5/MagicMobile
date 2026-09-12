@@ -87,14 +87,17 @@ struct MagicMobileApp: App {
     var body: some Scene {
         WindowGroup {
             OrientationHostingRoot {
-                #if DEBUG
+                #if XMAGE_NATIVE_LINKED
+                OnDeviceRootView()
+                #elseif DEBUG
                 if ProcessInfo.processInfo.arguments.contains("--ondevice-setup-ui-test") {
                     OnDeviceRootView()
                 } else {
                     ContentView()
                 }
                 #else
-                ContentView()
+                ContentUnavailableView("Native engine missing", systemImage: "exclamationmark.triangle",
+                    description: Text("This build does not include the on-device XMage engine. Install a native-enabled build; no remote game will be started."))
                 #endif
             }
         }

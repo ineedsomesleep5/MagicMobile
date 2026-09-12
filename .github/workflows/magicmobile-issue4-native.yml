@@ -1,0 +1,132 @@
+name: Issue 4 real ARM64 compiler and product link
+on:
+  push:
+    branches: [codex/issue-4-mvp]
+    paths:
+      - packages/ondevice-engine/native/gluon/compiler-patch/**
+      - packages/ondevice-engine/scripts/prepare_graal_trampolines.py
+      - packages/ondevice-engine/scripts/test_graal_trampolines.sh
+      - .github/workflows/magicmobile-issue4-native.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: issue4-native-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  real-arm64:
+    runs-on: macos-26-intel
+    timeout-minutes: 240
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/ondevice-engine
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Pin evidence to this source
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/issue4-native
+          git rev-parse HEAD > evidence/issue4-native/commit.txt
+          git rev-parse HEAD^{tree} > evidence/issue4-native/tree.txt
+          { uname -a; sysctl hw.memsize; xcodebuild -version; java -version; } 2>&1 | tee evidence/issue4-native/environment.txt
+          bash scripts/test_graal_trampolines.sh | tee evidence/issue4-native/layout-tests.txt
+      - name: Prepare the checksum-pinned compiler backport
+        run: |
+          set -euo pipefail
+          bash scripts/setup_gluon_intel.sh
+          home="$PWD/build/toolchains/graalvm-svm-java17-darwin-gluon-22.1.0.1-Final/Contents/Home"
+          echo "MM_GRAALVM_HOME=$home" >> "$GITHUB_ENV"
+          mkdir -p build/compiler-patch
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/oracle/graal/vm-22.1.0/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/LIRNativeImageCodeCache.java' -o build/compiler-patch/upstream.java
+          python3 scripts/prepare_graal_trampolines.py --graal-home "$home" --source build/compiler-patch/upstream.java | tee evidence/issue4-native/compiler-patch.json
+          python3 scripts/prepare_graal_trampolines.py --graal-home "$home" --verify-installed
+      - name: Compile and link a forced-veneer ARM64 toolchain probe, no execution
+        env:
+          JAVA_TOOL_OPTIONS: -Dmagicmobile.aarch64.maxDirectCallDistance=1048576
+        run: |
+          set -euo pipefail
+          bash scripts/test_ios_toolchain.sh 2>&1 | tee evidence/issue4-native/forced-veneer-probe.log
+          grep -E 'MAGICMOBILE_AARCH64_TRAMPOLINES count=[1-9][0-9]* .*limit=1048576' evidence/issue4-native/forced-veneer-probe.log
+      - name: Build and regress the full real XMage JVM engine including AI
+        run: |
+          set -euo pipefail
+          bash scripts/build_jvm.sh 2>&1 | tee evidence/issue4-native/jvm-build.log
+          bash scripts/test_real_engine.sh 2>&1 | tee evidence/issue4-native/real-jvm.log
+      - name: Compile every registered card and real AI for iOS ARM64
+        timeout-minutes: 180
+        env:
+          MM_NATIVE_REFLECTION_PROFILE: targeted
+          MM_NATIVE_INIT_PROFILE: reviewed-enums
+          MM_NATIVE_ORM_PROFILE: runtime-defaults
+          MM_NATIVE_NEW_RATIO: '7'
+          MM_NATIVE_MAX_HEAP: 10g
+        run: |
+          set -euo pipefail
+          [[ -z "${JAVA_TOOL_OPTIONS:-}" ]]
+          python3 scripts/prepare_graal_trampolines.py --graal-home "$MM_GRAALVM_HOME" --verify-installed
+          export MM_NATIVE_RESULT_FILE="$PWD/evidence/issue4-native/native-build-directory.txt"
+          bash scripts/build_native_ios.sh
+          build=$(cat "$MM_NATIVE_RESULT_FILE")
+          cp "$build/class-snapshot.sha256" evidence/issue4-native/
+          shasum -a 256 "$build/class-snapshot.sha256" build/native-metadata/reflect-config.json upstream.lock.json > evidence/issue4-native/input-hashes.txt
+          cp "$MM_GRAALVM_HOME/magicmobile-compiler-patch.json" evidence/issue4-native/
+          cp "$MM_GRAALVM_HOME/release" evidence/issue4-native/compiler-release.txt
+      - name: Stage exact native archive, matching headers and static runtime
+        run: |
+          set -euo pipefail
+          build=$(cat evidence/issue4-native/native-build-directory.txt)
+          gvm="$build/gluonfx/arm64-ios/gvm"
+          python3 scripts/prepare_ios_app_native.py \
+            --archive "$gvm/libmmengine.a" --header "$gvm/mmengine/libmmengine.h" \
+            --clib-dir "$MM_GRAALVM_HOME/lib/svm/clibraries/27/ios-arm64" \
+            --jdk-lib-dir "$PWD/build/ios-native-home/.gluon/substrate/javaStaticSdk/18-ea+prep18-9/ios-arm64/staticjdk/lib/static" \
+            --apply | tee evidence/issue4-native/staging-manifest.json
+          python3 scripts/prepare_ios_app_native.py --verify-installed
+      - name: Unsigned compile and link of the existing iOS product, never launch a simulator
+        run: |
+          set -euo pipefail
+          command -v xcodegen || brew install xcodegen
+          cd ../..
+          xcodegen generate --spec apps/ios/native-engine.yml
+          xcodebuild -project apps/ios/MagicMobile.xcodeproj -scheme MagicMobile \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/issue4-product" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build 2>&1 | tee packages/ondevice-engine/evidence/issue4-native/product-link.log
+          binary="$RUNNER_TEMP/issue4-product/Build/Products/Release-iphoneos/MagicMobile.app/MagicMobile"
+          xcrun lipo "$binary" -verify_arch arm64
+          xcrun vtool -show-build "$binary" > packages/ondevice-engine/evidence/issue4-native/product-platform.txt
+          xcrun nm -g "$binary" > packages/ondevice-engine/evidence/issue4-native/product-symbols.txt
+          for symbol in mm_engine_request mm_engine_free mm_engine_shutdown_v2 graal_create_isolate; do
+            grep -E "[[:space:]]T[[:space:]]_${symbol}$" packages/ondevice-engine/evidence/issue4-native/product-symbols.txt
+          done
+          shasum -a 256 "$binary" > packages/ondevice-engine/evidence/issue4-native/product-binary.sha256
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue4-native-evidence-${{ github.sha }}
+          path: |
+            packages/ondevice-engine/evidence/
+            packages/ondevice-engine/build/compiler-patch/*.java
+            packages/ondevice-engine/build/ios-native-*/gluonfx/arm64-ios/gvm/log/
+            packages/ondevice-engine/build/ios-native-*/builder-gc.log*
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: issue4-native-product-inputs-${{ github.sha }}
+          path: |
+            apps/ios/NativeEngine/
+            packages/ondevice-engine/evidence/issue4-native/
+          if-no-files-found: error
+          retention-days: 14
+# Build/link evidence only. No native execution, signing, upload, paid runner,
+# subset registry, remote rules engine, or simulator is part of this workflow.
