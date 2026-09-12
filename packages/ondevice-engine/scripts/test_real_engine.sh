@@ -20,8 +20,10 @@ python3 scripts/resolve_deck.py --catalogue build/generated/catalogue.jsonl \
 python3 scripts/resolve_deck.py --catalogue build/generated/catalogue.jsonl \
   --input tests/decks/yargle.txt --commander 'Yargle, Glutton of Urborg' --output build/yargle.json
 python3 scripts/make_match.py build/isamaru.json build/yargle.json --output build/match.json
-java -Xmx384m -Djava.awt.headless=true -cp "$CP:build/test-real" io.magicmobile.xmage.RealBusyShutdownTests build/match.json \
-  2>&1 | tee evidence/RealBusyShutdownTests.txt
+for suite in RealBusyShutdownTests RealResolvingCancellationTests; do
+  java -Xmx384m -Djava.awt.headless=true -cp "$CP:build/test-real" "io.magicmobile.xmage.$suite" build/match.json \
+    2>&1 | tee "evidence/$suite.txt"
+done
 python3 scripts/test_real_decks.py
 python3 scripts/test_real_lifecycle.py
 python3 scripts/play_jvm.py build/match.json --timeout 240 --report evidence/real-jvm-game.json

@@ -37,7 +37,8 @@
     "cShutdownFixtureScenarios": 5,
     "realJVMQueryControlPrivacyGroups": 27,
     "realJVMCommanderRulesGroups": 10,
-    "realJVMBusyWorkerInjectedStallGroups": 2
+    "realJVMBusyWorkerInjectedStallGroups": 2,
+    "realJVMResolvingChoiceCancellationGroups": 2
   },
   "SwiftUIParsedOnly": false
 }

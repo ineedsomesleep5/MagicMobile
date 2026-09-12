@@ -19,7 +19,7 @@ TestFlight app. Portrait protocol integration and Game Center lobby work remain.
 | Native C/Swift boundary fixtures | 9,000 echo requests; five C shutdown scenarios; Swift retry/idempotence/deinit checks | `evidence/native-boundary-tests.txt`, `native-shutdown-tests.txt`, `swift-close-tests.txt` |
 | Actual JVM build | Pinned real XMage compiled; 32,275 factories, 587 sets, 92,166 printings; no unregistered printing reference | `evidence/macos-jvm-build.log` |
 | Completed real JVM games | Two-human game at turn 16; four-human game at turn 39; token/mulligan game at turn 16 | `evidence/real-jvm-game.json`, `real-jvm-four-player-game.json`, `real-jvm-token-mulligan-game.json` |
-| Real JVM regressions | 27 query/control/privacy groups; 10 seeded Commander rule groups; two injected-busy-worker groups; seven deck rejection fixtures and 24 lifecycle checks | `evidence/Real*Tests.txt`, `real-commander-rules-tests.txt`, `real-busy-shutdown-tests.txt`, `real-jvm-deck-validation.json`, `real-jvm-lifecycle.json` |
+| Real JVM regressions | 27 query/control/privacy groups; 10 seeded Commander rule groups; two injected-busy-worker groups; two real resolving-choice cancellation cases; seven deck rejection fixtures and 24 lifecycle checks | `evidence/Real*Tests.txt`, `real-commander-rules-tests.txt`, `real-busy-shutdown-tests.txt`, `real-jvm-deck-validation.json`, `real-jvm-lifecycle.json` |
 | Full-engine AOT | No desktop or iOS XMage binary. ORMLite compiler fault minimized and fixed in a native dependency probe; full 4/5 GiB builds saturated configured old-generation space and were intentionally stopped | `evidence/ormlite-check-55Hbub.log`, `ios-native-memory-diagnostic.txt`, `ios-native-*.log` |
 | iOS toolchain only | Separate non-engine ARM64 archive, generated-header caller compilation, and independent iOS executable link passed; no native execution | `evidence/ios-abi-H6FJa9.log`, `ios-abi-H6FJa9-link.log` |
 | iOS inspection harness | Unsigned iOS SDK build passed after separating the app target name from its Swift package target; no native engine linked or app execution | `evidence/ios-harness-target-fixed.log`, `scripts/test_ios_harness.sh` |
@@ -33,6 +33,12 @@ phones. The Commander-rule fixtures directly set up real upstream state. The
 busy-worker regression injects an uninterruptible query-listener stall; it does
 not prove cancellation inside a genuine complex resolving card effect. Full
 card catalogue compilation is not full playable-card/UI parity.
+
+The separate resolving-choice regression seeds a real Fact or Fiction and mana
+at an ordinary priority wait, then casts and resolves it through the unmodified
+game worker. Destroy/close at its genuine 0/5 pile-choice prompt terminate the
+worker before replacement. This is specific real-effect choice-wait evidence,
+not cancellation of every complex or CPU-bound effect, nor native/device proof.
 
 ## Environment and reproducible commands
 
@@ -110,3 +116,9 @@ XMage run on the iPhone. After full native compilation: verify actual headers,
 archive contents/slices and isolate behavior, integrate the portrait interface,
 then validate offline and two-/four-device play before the existing TestFlight
 release is updated.
+
+The separate unsigned [repository preflight](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34661344897)
+passed at `fe12ee1`: 65 retained-gateway tests, repository typecheck, and the
+existing bridge Docker image build on a Linux runner. No image was run or
+published, no local Docker daemon was started, and no app was signed or uploaded.
+These compatibility checks are not a remote rules-engine fallback or iOS proof.
