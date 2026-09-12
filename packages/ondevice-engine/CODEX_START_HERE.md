@@ -25,7 +25,7 @@ Caleb's 2026-09-11 clarification: **Commander gameplay is the main product goal,
 
 ## What you must not assume
 
-There is no successful full XMage compilation log, full-game run, native XMage library, simulator run, signed app, or physical-device/offline result in the handoff. Boundary tests do not establish any of those. `nativeDeviceValidated` is deliberately false. An echo backend exists only in a C memory test and must never be linked as the game backend.
+The original downloaded handoff contained no successful full XMage compilation log, full-game run, native XMage library, simulator run, signed app, or physical-device/offline result. That is a historical baseline: read `implementation-status.json` and `docs/LOCAL_CONTINUATION_STATUS.md` for the subsequent verified JVM games, regression checks, and native build attempts. Boundary tests do not establish native/device operation. `nativeDeviceValidated` remains deliberately false. An echo backend exists only in a C memory test and must never be linked as the game backend.
 
 ## Prioritized engineering gates
 

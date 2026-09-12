@@ -117,7 +117,8 @@ was uploaded. Diagnostics are retained locally under
 `evidence/hosted-native-34659217140/`; the frozen class-manifest hash matches the
 local baseline (`5d81068e320c953e73beee92d9b0d4d8f945db75eec28e3fba91601b50384c7a`).
 
-The next diagnostic keeps the same standard Intel runner, 10 GiB heap, two build
+The [retry, run 34664591026](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34664591026),
+was dispatched from `b76805d`. It keeps the same standard Intel runner, 10 GiB heap, two build
 workers, NewRatio 7 and complete card registry, but permits 180 minutes for the
 compile step (210 minutes for the job) and captures bounded GC logs. This tests
 whether the proven compiler progress can finish; it does not claim success or
