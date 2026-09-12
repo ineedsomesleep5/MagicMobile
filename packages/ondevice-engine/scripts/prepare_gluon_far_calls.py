@@ -51,13 +51,24 @@ def module_exports(java: Path) -> list[str]:
             elif words[:2] == ["qualified", "exports"]:
                 packages.add(words[2])
         for package in sorted(packages):
-            result += ["--add-exports", f"{module}/{package}=ALL-UNNAMED"]
+            # Graal's signatures expose JVMCI classes. javac must also permit
+            # the compiler module (not only our unnamed builder module) to read
+            # those qualified exports; otherwise generic signatures resolve as
+            # two incompatible same-name DataPatch/Infopoint types.
+            receivers = ["ALL-UNNAMED"] + [m for m in
+                ("org.graalvm.sdk", "jdk.internal.vm.compiler", "jdk.internal.vm.ci") if m != module]
+            result += ["--add-exports", f"{module}/{package}={','.join(receivers)}"]
     return result
 
 
 def patch_sources(destination: Path) -> list[Path]:
     manifest = json.loads((PATCH_ROOT / "upstream-sources.json").read_text())
     revision = manifest["upstreamCommit"]
+    license_path = destination / "LICENSE-GRAAL.txt"
+    license_url = f"https://raw.githubusercontent.com/oracle/graal/{revision}/LICENSE"
+    with urllib.request.urlopen(license_url, timeout=60) as response, license_path.open("xb") as output:
+        shutil.copyfileobj(response, output)
+    verify(license_path, "fbacd7adc43496ce1bffca08d41bbaaa562b91234cae568069a7c957a4aa7fff")
     sources = []
     for item in manifest["files"]:
         relative = Path(item["path"])
