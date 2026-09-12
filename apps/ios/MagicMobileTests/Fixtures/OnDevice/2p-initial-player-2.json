@@ -1,0 +1,1083 @@
+{
+  "events": [
+    {
+      "body": {},
+      "kind": "snapshot",
+      "revision": 4
+    }
+  ],
+  "failure": null,
+  "matchId": "efa40d5a-f81e-46a7-aa4a-9d7c2e1d2bea",
+  "phase": "running",
+  "prompt": null,
+  "resyncRequired": false,
+  "revision": 5,
+  "snapshot": {
+    "authorizedLookedAt": {},
+    "authorizedOpponentHands": {},
+    "commanders": {
+      "d80199fe-06bb-486b-b9f7-a3d4a685bdd5": {
+        "castsFromCommandZone": 0,
+        "commanderTax": 0,
+        "damageToPlayers": {},
+        "name": "Isamaru, Hound of Konda",
+        "ownerPlayerId": "83c51f38-1926-4c78-a744-ca1ec0b4048a"
+      },
+      "f3e88691-b49b-4d77-a161-2a95ca4a42ce": {
+        "castsFromCommandZone": 0,
+        "commanderTax": 0,
+        "damageToPlayers": {},
+        "name": "Yargle, Glutton of Urborg",
+        "ownerPlayerId": "8d3bec80-e9fa-409e-8960-4918885793cb"
+      }
+    },
+    "controlledPlayerViews": {},
+    "enginePlayerId": "8d3bec80-e9fa-409e-8960-4918885793cb",
+    "gameView": {
+      "activePlayerName": "",
+      "bufferTime": 0,
+      "combat": [],
+      "companion": [],
+      "exiles": [
+        {}
+      ],
+      "gameCycle": 0,
+      "lookedAt": [],
+      "myHand": {
+        "4913ab7b-fe6c-426d-95f7-43829f29c937": {
+          "artRect": "NORMAL",
+          "canAttack": false,
+          "canBlock": false,
+          "cardIcons": [],
+          "cardNumber": "258",
+          "cardTypes": [
+            "LAND"
+          ],
+          "color": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "controlledByOwner": true,
+          "defense": "",
+          "displayFullName": "Swamp",
+          "displayName": "Swamp",
+          "expansionSetCode": "DOM",
+          "extraDeckCard": false,
+          "faceDown": false,
+          "flipCard": false,
+          "frameColor": {
+            "black": true,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "frameStyle": "M15_NORMAL",
+          "gameObject": true,
+          "hideInfo": false,
+          "id": "4913ab7b-fe6c-426d-95f7-43829f29c937",
+          "imageFileName": "",
+          "imageNumber": 0,
+          "inViewerOnly": false,
+          "isAbility": false,
+          "isChoosable": false,
+          "isDoubleFacedCard": false,
+          "isSelected": false,
+          "isSplitCard": false,
+          "isToken": false,
+          "loyalty": "",
+          "mageObjectType": "CARD",
+          "manaCostLeftStr": [],
+          "manaCostRightStr": [],
+          "manaValue": 0,
+          "name": "Swamp",
+          "originalColorIdentity": "{B}",
+          "originalIsCopy": false,
+          "originalPower": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "originalToughness": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "paid": false,
+          "playableStats": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [],
+            "other": []
+          },
+          "power": "0",
+          "rarity": "LAND",
+          "rotate": false,
+          "rules": [
+            "{T}: Add {B}."
+          ],
+          "startingDefense": "",
+          "startingLoyalty": "",
+          "subTypes": [
+            "SWAMP"
+          ],
+          "superTypes": [
+            "BASIC"
+          ],
+          "toughness": "0",
+          "transformable": false,
+          "transformed": false,
+          "usesVariousArt": true
+        },
+        "4b02d4d5-a4ec-4778-ba3f-3526204727af": {
+          "artRect": "NORMAL",
+          "canAttack": false,
+          "canBlock": false,
+          "cardIcons": [],
+          "cardNumber": "258",
+          "cardTypes": [
+            "LAND"
+          ],
+          "color": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "controlledByOwner": true,
+          "defense": "",
+          "displayFullName": "Swamp",
+          "displayName": "Swamp",
+          "expansionSetCode": "DOM",
+          "extraDeckCard": false,
+          "faceDown": false,
+          "flipCard": false,
+          "frameColor": {
+            "black": true,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "frameStyle": "M15_NORMAL",
+          "gameObject": true,
+          "hideInfo": false,
+          "id": "4b02d4d5-a4ec-4778-ba3f-3526204727af",
+          "imageFileName": "",
+          "imageNumber": 0,
+          "inViewerOnly": false,
+          "isAbility": false,
+          "isChoosable": false,
+          "isDoubleFacedCard": false,
+          "isSelected": false,
+          "isSplitCard": false,
+          "isToken": false,
+          "loyalty": "",
+          "mageObjectType": "CARD",
+          "manaCostLeftStr": [],
+          "manaCostRightStr": [],
+          "manaValue": 0,
+          "name": "Swamp",
+          "originalColorIdentity": "{B}",
+          "originalIsCopy": false,
+          "originalPower": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "originalToughness": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "paid": false,
+          "playableStats": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [],
+            "other": []
+          },
+          "power": "0",
+          "rarity": "LAND",
+          "rotate": false,
+          "rules": [
+            "{T}: Add {B}."
+          ],
+          "startingDefense": "",
+          "startingLoyalty": "",
+          "subTypes": [
+            "SWAMP"
+          ],
+          "superTypes": [
+            "BASIC"
+          ],
+          "toughness": "0",
+          "transformable": false,
+          "transformed": false,
+          "usesVariousArt": true
+        },
+        "4c81330a-89d8-45c4-899c-2519b637a3a2": {
+          "artRect": "NORMAL",
+          "canAttack": false,
+          "canBlock": false,
+          "cardIcons": [],
+          "cardNumber": "258",
+          "cardTypes": [
+            "LAND"
+          ],
+          "color": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "controlledByOwner": true,
+          "defense": "",
+          "displayFullName": "Swamp",
+          "displayName": "Swamp",
+          "expansionSetCode": "DOM",
+          "extraDeckCard": false,
+          "faceDown": false,
+          "flipCard": false,
+          "frameColor": {
+            "black": true,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "frameStyle": "M15_NORMAL",
+          "gameObject": true,
+          "hideInfo": false,
+          "id": "4c81330a-89d8-45c4-899c-2519b637a3a2",
+          "imageFileName": "",
+          "imageNumber": 0,
+          "inViewerOnly": false,
+          "isAbility": false,
+          "isChoosable": false,
+          "isDoubleFacedCard": false,
+          "isSelected": false,
+          "isSplitCard": false,
+          "isToken": false,
+          "loyalty": "",
+          "mageObjectType": "CARD",
+          "manaCostLeftStr": [],
+          "manaCostRightStr": [],
+          "manaValue": 0,
+          "name": "Swamp",
+          "originalColorIdentity": "{B}",
+          "originalIsCopy": false,
+          "originalPower": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "originalToughness": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "paid": false,
+          "playableStats": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [],
+            "other": []
+          },
+          "power": "0",
+          "rarity": "LAND",
+          "rotate": false,
+          "rules": [
+            "{T}: Add {B}."
+          ],
+          "startingDefense": "",
+          "startingLoyalty": "",
+          "subTypes": [
+            "SWAMP"
+          ],
+          "superTypes": [
+            "BASIC"
+          ],
+          "toughness": "0",
+          "transformable": false,
+          "transformed": false,
+          "usesVariousArt": true
+        },
+        "8b78a72d-aade-474c-807f-8ea6ee4f874f": {
+          "artRect": "NORMAL",
+          "canAttack": false,
+          "canBlock": false,
+          "cardIcons": [],
+          "cardNumber": "258",
+          "cardTypes": [
+            "LAND"
+          ],
+          "color": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "controlledByOwner": true,
+          "defense": "",
+          "displayFullName": "Swamp",
+          "displayName": "Swamp",
+          "expansionSetCode": "DOM",
+          "extraDeckCard": false,
+          "faceDown": false,
+          "flipCard": false,
+          "frameColor": {
+            "black": true,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "frameStyle": "M15_NORMAL",
+          "gameObject": true,
+          "hideInfo": false,
+          "id": "8b78a72d-aade-474c-807f-8ea6ee4f874f",
+          "imageFileName": "",
+          "imageNumber": 0,
+          "inViewerOnly": false,
+          "isAbility": false,
+          "isChoosable": false,
+          "isDoubleFacedCard": false,
+          "isSelected": false,
+          "isSplitCard": false,
+          "isToken": false,
+          "loyalty": "",
+          "mageObjectType": "CARD",
+          "manaCostLeftStr": [],
+          "manaCostRightStr": [],
+          "manaValue": 0,
+          "name": "Swamp",
+          "originalColorIdentity": "{B}",
+          "originalIsCopy": false,
+          "originalPower": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "originalToughness": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "paid": false,
+          "playableStats": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [],
+            "other": []
+          },
+          "power": "0",
+          "rarity": "LAND",
+          "rotate": false,
+          "rules": [
+            "{T}: Add {B}."
+          ],
+          "startingDefense": "",
+          "startingLoyalty": "",
+          "subTypes": [
+            "SWAMP"
+          ],
+          "superTypes": [
+            "BASIC"
+          ],
+          "toughness": "0",
+          "transformable": false,
+          "transformed": false,
+          "usesVariousArt": true
+        },
+        "ac33030f-1704-4a1b-8c27-b9742ebbbbb9": {
+          "artRect": "NORMAL",
+          "canAttack": false,
+          "canBlock": false,
+          "cardIcons": [],
+          "cardNumber": "258",
+          "cardTypes": [
+            "LAND"
+          ],
+          "color": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "controlledByOwner": true,
+          "defense": "",
+          "displayFullName": "Swamp",
+          "displayName": "Swamp",
+          "expansionSetCode": "DOM",
+          "extraDeckCard": false,
+          "faceDown": false,
+          "flipCard": false,
+          "frameColor": {
+            "black": true,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "frameStyle": "M15_NORMAL",
+          "gameObject": true,
+          "hideInfo": false,
+          "id": "ac33030f-1704-4a1b-8c27-b9742ebbbbb9",
+          "imageFileName": "",
+          "imageNumber": 0,
+          "inViewerOnly": false,
+          "isAbility": false,
+          "isChoosable": false,
+          "isDoubleFacedCard": false,
+          "isSelected": false,
+          "isSplitCard": false,
+          "isToken": false,
+          "loyalty": "",
+          "mageObjectType": "CARD",
+          "manaCostLeftStr": [],
+          "manaCostRightStr": [],
+          "manaValue": 0,
+          "name": "Swamp",
+          "originalColorIdentity": "{B}",
+          "originalIsCopy": false,
+          "originalPower": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "originalToughness": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "paid": false,
+          "playableStats": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [],
+            "other": []
+          },
+          "power": "0",
+          "rarity": "LAND",
+          "rotate": false,
+          "rules": [
+            "{T}: Add {B}."
+          ],
+          "startingDefense": "",
+          "startingLoyalty": "",
+          "subTypes": [
+            "SWAMP"
+          ],
+          "superTypes": [
+            "BASIC"
+          ],
+          "toughness": "0",
+          "transformable": false,
+          "transformed": false,
+          "usesVariousArt": true
+        },
+        "d910a7cb-ea30-43df-8a75-1b6c9dbe2521": {
+          "artRect": "NORMAL",
+          "canAttack": false,
+          "canBlock": false,
+          "cardIcons": [],
+          "cardNumber": "258",
+          "cardTypes": [
+            "LAND"
+          ],
+          "color": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "controlledByOwner": true,
+          "defense": "",
+          "displayFullName": "Swamp",
+          "displayName": "Swamp",
+          "expansionSetCode": "DOM",
+          "extraDeckCard": false,
+          "faceDown": false,
+          "flipCard": false,
+          "frameColor": {
+            "black": true,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "frameStyle": "M15_NORMAL",
+          "gameObject": true,
+          "hideInfo": false,
+          "id": "d910a7cb-ea30-43df-8a75-1b6c9dbe2521",
+          "imageFileName": "",
+          "imageNumber": 0,
+          "inViewerOnly": false,
+          "isAbility": false,
+          "isChoosable": false,
+          "isDoubleFacedCard": false,
+          "isSelected": false,
+          "isSplitCard": false,
+          "isToken": false,
+          "loyalty": "",
+          "mageObjectType": "CARD",
+          "manaCostLeftStr": [],
+          "manaCostRightStr": [],
+          "manaValue": 0,
+          "name": "Swamp",
+          "originalColorIdentity": "{B}",
+          "originalIsCopy": false,
+          "originalPower": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "originalToughness": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "paid": false,
+          "playableStats": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [],
+            "other": []
+          },
+          "power": "0",
+          "rarity": "LAND",
+          "rotate": false,
+          "rules": [
+            "{T}: Add {B}."
+          ],
+          "startingDefense": "",
+          "startingLoyalty": "",
+          "subTypes": [
+            "SWAMP"
+          ],
+          "superTypes": [
+            "BASIC"
+          ],
+          "toughness": "0",
+          "transformable": false,
+          "transformed": false,
+          "usesVariousArt": true
+        },
+        "fb335670-c3c5-48da-a8f5-0cd11c2ee752": {
+          "artRect": "NORMAL",
+          "canAttack": false,
+          "canBlock": false,
+          "cardIcons": [],
+          "cardNumber": "258",
+          "cardTypes": [
+            "LAND"
+          ],
+          "color": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "controlledByOwner": true,
+          "defense": "",
+          "displayFullName": "Swamp",
+          "displayName": "Swamp",
+          "expansionSetCode": "DOM",
+          "extraDeckCard": false,
+          "faceDown": false,
+          "flipCard": false,
+          "frameColor": {
+            "black": true,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "frameStyle": "M15_NORMAL",
+          "gameObject": true,
+          "hideInfo": false,
+          "id": "fb335670-c3c5-48da-a8f5-0cd11c2ee752",
+          "imageFileName": "",
+          "imageNumber": 0,
+          "inViewerOnly": false,
+          "isAbility": false,
+          "isChoosable": false,
+          "isDoubleFacedCard": false,
+          "isSelected": false,
+          "isSplitCard": false,
+          "isToken": false,
+          "loyalty": "",
+          "mageObjectType": "CARD",
+          "manaCostLeftStr": [],
+          "manaCostRightStr": [],
+          "manaValue": 0,
+          "name": "Swamp",
+          "originalColorIdentity": "{B}",
+          "originalIsCopy": false,
+          "originalPower": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "originalToughness": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "paid": false,
+          "playableStats": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [],
+            "other": []
+          },
+          "power": "0",
+          "rarity": "LAND",
+          "rotate": false,
+          "rules": [
+            "{T}: Add {B}."
+          ],
+          "startingDefense": "",
+          "startingLoyalty": "",
+          "subTypes": [
+            "SWAMP"
+          ],
+          "superTypes": [
+            "BASIC"
+          ],
+          "toughness": "0",
+          "transformable": false,
+          "transformed": false,
+          "usesVariousArt": true
+        }
+      },
+      "myHelperEmblems": {},
+      "myPlayerId": "8d3bec80-e9fa-409e-8960-4918885793cb",
+      "opponentHands": {},
+      "players": [
+        {
+          "attachments": [],
+          "battlefield": {},
+          "bufferTimeLeft": 0,
+          "commandList": [
+            {
+              "artRect": "NORMAL",
+              "canAttack": false,
+              "canBlock": false,
+              "cardIcons": [],
+              "cardNumber": "113",
+              "cardTypes": [
+                "CREATURE"
+              ],
+              "color": {
+                "black": true,
+                "blue": false,
+                "green": false,
+                "red": false,
+                "white": false
+              },
+              "controlledByOwner": true,
+              "defense": "",
+              "displayFullName": "Yargle, Glutton of Urborg",
+              "displayName": "Yargle, Glutton of Urborg",
+              "expansionSetCode": "DOM",
+              "extraDeckCard": false,
+              "faceDown": false,
+              "flipCard": false,
+              "frameColor": {
+                "black": false,
+                "blue": false,
+                "green": false,
+                "red": false,
+                "white": false
+              },
+              "frameStyle": "M15_NORMAL",
+              "gameObject": true,
+              "hideInfo": false,
+              "id": "f3e88691-b49b-4d77-a161-2a95ca4a42ce",
+              "imageFileName": "",
+              "imageNumber": 0,
+              "inViewerOnly": false,
+              "isAbility": false,
+              "isChoosable": false,
+              "isDoubleFacedCard": false,
+              "isSelected": false,
+              "isSplitCard": false,
+              "isToken": false,
+              "loyalty": "",
+              "mageObjectType": "COMMANDER",
+              "manaCostLeftStr": [
+                "{4}",
+                "{B}"
+              ],
+              "manaCostRightStr": [],
+              "manaValue": 5,
+              "name": "Yargle, Glutton of Urborg",
+              "originalColorIdentity": "{B}",
+              "originalIsCopy": false,
+              "originalPower": {
+                "baseValue": 9,
+                "boostedValue": 9,
+                "cardValue": "9",
+                "modifiedBaseValue": 9
+              },
+              "originalToughness": {
+                "baseValue": 3,
+                "boostedValue": 3,
+                "cardValue": "3",
+                "modifiedBaseValue": 3
+              },
+              "paid": false,
+              "playableStats": {
+                "basicCastAbilities": [],
+                "basicManaAbilities": [],
+                "basicPlayAbilities": [],
+                "other": []
+              },
+              "power": "9",
+              "rarity": "UNCOMMON",
+              "rotate": false,
+              "rules": [],
+              "startingDefense": "",
+              "startingLoyalty": "",
+              "subTypes": [
+                "FROG",
+                "SPIRIT"
+              ],
+              "superTypes": [
+                "LEGENDARY"
+              ],
+              "toughness": "3",
+              "transformable": false,
+              "transformed": false,
+              "usesVariousArt": false
+            }
+          ],
+          "controlled": true,
+          "counters": [],
+          "designationNames": [],
+          "exile": {},
+          "graveyard": {},
+          "handCount": 7,
+          "hasLeft": false,
+          "hasPriority": false,
+          "helperCards": {},
+          "initiative": false,
+          "isActive": false,
+          "isHuman": true,
+          "libraryCount": 92,
+          "life": 40,
+          "manaPool": {
+            "black": 0,
+            "blue": 0,
+            "colorless": 0,
+            "green": 0,
+            "red": 0,
+            "white": 0
+          },
+          "monarch": false,
+          "name": "Fixture Player 2",
+          "passedAllTurns": false,
+          "passedTurn": false,
+          "passedUntilEndOfTurn": false,
+          "passedUntilEndStepBeforeMyTurn": false,
+          "passedUntilNextMain": false,
+          "passedUntilStackResolved": false,
+          "playerId": "8d3bec80-e9fa-409e-8960-4918885793cb",
+          "priorityTimeLeftSecs": 0,
+          "priorityTimeSavedTimeMs": 1789182561896,
+          "sideboard": {},
+          "statesSavedSize": -1,
+          "timerActive": false,
+          "userData": {
+            "allowRequestShowHandCards": false,
+            "askMoveToGraveOrder": false,
+            "autoOrderTrigger": true,
+            "autoTargetLevel": 1,
+            "avatarId": 0,
+            "confirmEmptyManaPool": true,
+            "constructedRating": 0,
+            "flagName": "world.png",
+            "generalRating": 0,
+            "groupId": 2,
+            "limitedRating": 0,
+            "manaPoolAutomatic": true,
+            "manaPoolAutomaticRestricted": true,
+            "matchHistory": "",
+            "matchQuitRatio": 0,
+            "passPriorityActivation": false,
+            "passPriorityCast": false,
+            "requestedHandPlayersList": {},
+            "tourneyHistory": "",
+            "tourneyQuitRatio": 0,
+            "useFirstManaAbility": false,
+            "useSameSettingsForReplacementEffects": true,
+            "userIdStr": "",
+            "userSkipPrioritySteps": {
+              "opponentTurn": {
+                "beforeCombat": false,
+                "draw": false,
+                "endOfCombat": false,
+                "endOfTurn": false,
+                "main1": true,
+                "main2": true,
+                "upkeep": false
+              },
+              "stopOnAllEndPhases": true,
+              "stopOnAllMainPhases": true,
+              "stopOnDeclareAttackers": true,
+              "stopOnDeclareBlockersWithAnyPermanents": true,
+              "stopOnDeclareBlockersWithZeroPermanents": false,
+              "stopOnStackNewObjects": true,
+              "yourTurn": {
+                "beforeCombat": false,
+                "draw": false,
+                "endOfCombat": false,
+                "endOfTurn": false,
+                "main1": true,
+                "main2": true,
+                "upkeep": false
+              }
+            }
+          },
+          "wins": 0,
+          "winsNeeded": 1
+        },
+        {
+          "attachments": [],
+          "battlefield": {},
+          "bufferTimeLeft": 0,
+          "commandList": [
+            {
+              "artRect": "NORMAL",
+              "canAttack": false,
+              "canBlock": false,
+              "cardIcons": [],
+              "cardNumber": "19",
+              "cardTypes": [
+                "CREATURE"
+              ],
+              "color": {
+                "black": false,
+                "blue": false,
+                "green": false,
+                "red": false,
+                "white": true
+              },
+              "controlledByOwner": true,
+              "defense": "",
+              "displayFullName": "Isamaru, Hound of Konda",
+              "displayName": "Isamaru, Hound of Konda",
+              "expansionSetCode": "CHK",
+              "extraDeckCard": false,
+              "faceDown": false,
+              "flipCard": false,
+              "frameColor": {
+                "black": false,
+                "blue": false,
+                "green": false,
+                "red": false,
+                "white": false
+              },
+              "frameStyle": "M15_NORMAL",
+              "gameObject": true,
+              "hideInfo": false,
+              "id": "d80199fe-06bb-486b-b9f7-a3d4a685bdd5",
+              "imageFileName": "",
+              "imageNumber": 0,
+              "inViewerOnly": false,
+              "isAbility": false,
+              "isChoosable": false,
+              "isDoubleFacedCard": false,
+              "isSelected": false,
+              "isSplitCard": false,
+              "isToken": false,
+              "loyalty": "",
+              "mageObjectType": "COMMANDER",
+              "manaCostLeftStr": [
+                "{W}"
+              ],
+              "manaCostRightStr": [],
+              "manaValue": 1,
+              "name": "Isamaru, Hound of Konda",
+              "originalColorIdentity": "{W}",
+              "originalIsCopy": false,
+              "originalPower": {
+                "baseValue": 2,
+                "boostedValue": 2,
+                "cardValue": "2",
+                "modifiedBaseValue": 2
+              },
+              "originalToughness": {
+                "baseValue": 2,
+                "boostedValue": 2,
+                "cardValue": "2",
+                "modifiedBaseValue": 2
+              },
+              "paid": false,
+              "playableStats": {
+                "basicCastAbilities": [],
+                "basicManaAbilities": [],
+                "basicPlayAbilities": [],
+                "other": []
+              },
+              "power": "2",
+              "rarity": "RARE",
+              "rotate": false,
+              "rules": [],
+              "startingDefense": "",
+              "startingLoyalty": "",
+              "subTypes": [
+                "DOG"
+              ],
+              "superTypes": [
+                "LEGENDARY"
+              ],
+              "toughness": "2",
+              "transformable": false,
+              "transformed": false,
+              "usesVariousArt": false
+            }
+          ],
+          "controlled": false,
+          "counters": [],
+          "designationNames": [],
+          "exile": {},
+          "graveyard": {},
+          "handCount": 7,
+          "hasLeft": false,
+          "hasPriority": false,
+          "helperCards": {},
+          "initiative": false,
+          "isActive": false,
+          "isHuman": true,
+          "libraryCount": 92,
+          "life": 40,
+          "manaPool": {
+            "black": 0,
+            "blue": 0,
+            "colorless": 0,
+            "green": 0,
+            "red": 0,
+            "white": 0
+          },
+          "monarch": false,
+          "name": "Fixture Player 1",
+          "passedAllTurns": false,
+          "passedTurn": false,
+          "passedUntilEndOfTurn": false,
+          "passedUntilEndStepBeforeMyTurn": false,
+          "passedUntilNextMain": false,
+          "passedUntilStackResolved": false,
+          "playerId": "83c51f38-1926-4c78-a744-ca1ec0b4048a",
+          "priorityTimeLeftSecs": 0,
+          "priorityTimeSavedTimeMs": 1789182561897,
+          "sideboard": {},
+          "statesSavedSize": -1,
+          "timerActive": true,
+          "userData": {
+            "allowRequestShowHandCards": false,
+            "askMoveToGraveOrder": false,
+            "autoOrderTrigger": true,
+            "autoTargetLevel": 1,
+            "avatarId": 0,
+            "confirmEmptyManaPool": true,
+            "constructedRating": 0,
+            "flagName": "world.png",
+            "generalRating": 0,
+            "groupId": 2,
+            "limitedRating": 0,
+            "manaPoolAutomatic": true,
+            "manaPoolAutomaticRestricted": true,
+            "matchHistory": "",
+            "matchQuitRatio": 0,
+            "passPriorityActivation": false,
+            "passPriorityCast": false,
+            "requestedHandPlayersList": {},
+            "tourneyHistory": "",
+            "tourneyQuitRatio": 0,
+            "useFirstManaAbility": false,
+            "useSameSettingsForReplacementEffects": true,
+            "userIdStr": "",
+            "userSkipPrioritySteps": {
+              "opponentTurn": {
+                "beforeCombat": false,
+                "draw": false,
+                "endOfCombat": false,
+                "endOfTurn": false,
+                "main1": true,
+                "main2": true,
+                "upkeep": false
+              },
+              "stopOnAllEndPhases": true,
+              "stopOnAllMainPhases": true,
+              "stopOnDeclareAttackers": true,
+              "stopOnDeclareBlockersWithAnyPermanents": true,
+              "stopOnDeclareBlockersWithZeroPermanents": false,
+              "stopOnStackNewObjects": true,
+              "yourTurn": {
+                "beforeCombat": false,
+                "draw": false,
+                "endOfCombat": false,
+                "endOfTurn": false,
+                "main1": true,
+                "main2": true,
+                "upkeep": false
+              }
+            }
+          },
+          "wins": 0,
+          "winsNeeded": 1
+        }
+      ],
+      "priorityPlayerName": "",
+      "priorityTime": 0,
+      "revealed": [],
+      "rollbackTurnsAllowed": false,
+      "special": false,
+      "stack": {},
+      "totalEffectsCount": 7,
+      "totalErrorsCount": 0,
+      "turn": 1,
+      "watchedHands": {}
+    },
+    "namedExiles": [
+      {
+        "cards": {},
+        "id": "712e3513-5657-435d-84fc-6b344ac1b811",
+        "name": "Permanent - Exile"
+      }
+    ],
+    "outcome": {
+      "ended": false,
+      "winnerPlayerIds": []
+    },
+    "schema": "xmage-gameview-v1",
+    "stackOrder": []
+  },
+  "viewerId": "player-2"
+}

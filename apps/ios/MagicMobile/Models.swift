@@ -132,24 +132,45 @@ struct GameSnapshot: Decodable {
     let gameStatus: GameStatus?
     let winnerPlayerIds: [String]?
     let endReason: String?
+    var viewerPlayerId: String? = nil
+    var selectedOpponentId: String? = nil
+
+    var viewerID: String { viewerPlayerId ?? "human" }
+
+    func isViewer(_ playerID: String?) -> Bool { playerID == viewerID }
+
+    func playerLabel(_ playerID: String?) -> String {
+        guard let playerID else { return "Waiting" }
+        if isViewer(playerID) { return "You" }
+        return players.first { $0.playerId == playerID }?.displayName ?? playerID
+    }
 
     var human: PlayerGameState? {
-        players.first { $0.playerId == "human" }
+        players.first { $0.playerId == viewerID }
     }
 
     var opponent: PlayerGameState? {
-        players.first { $0.playerId != "human" }
+        if let selectedOpponentId, selectedOpponentId != viewerID,
+           let selected = players.first(where: { $0.playerId == selectedOpponentId }) {
+            return selected
+        }
+        return players.first { $0.playerId != viewerID }
     }
 
     var isCompleted: Bool {
         gameStatus == .completed
     }
 
+    var stackTopFirst: [XmageStackObject] {
+        let objects = xmage?.stack ?? []
+        return source == "xmage-ondevice" ? objects : Array(objects.reversed())
+    }
+
     var winnerDisplayNames: [String] {
         let winners = Set(winnerPlayerIds ?? [])
         return players.compactMap { player in
             guard winners.contains(player.playerId) else { return nil }
-            return player.displayName ?? (player.playerId == "human" ? "You" : player.playerId)
+            return playerLabel(player.playerId)
         }
     }
 }
@@ -272,7 +293,7 @@ struct MobilePromptPresentation: Equatable {
 
     private static func isCombatSelection(_ snapshot: GameSnapshot, legalActions: [LegalAction]) -> Bool {
         legalActions.contains { $0.type == "declare_attackers" || $0.type == "declare_blockers" } ||
-            ((snapshot.waitingOnPlayerId == "human" || snapshot.priorityPlayerId == "human") &&
+            ((snapshot.isViewer(snapshot.waitingOnPlayerId) || snapshot.isViewer(snapshot.priorityPlayerId)) &&
              (normalizedStep(snapshot).contains("declare-attack") || normalizedStep(snapshot).contains("declare-block")))
     }
 
@@ -425,7 +446,7 @@ struct XmageWaitPresentation: Equatable {
         if snapshot.isStalled {
             return XmageWaitPresentation(kind: .snapshotStale, title: "Snapshot stale", detail: "Refresh or reconnect to recover.")
         }
-        if snapshot.priorityPlayerId == "human" || snapshot.waitingOnPlayerId == "human" {
+        if snapshot.isViewer(snapshot.priorityPlayerId) || snapshot.isViewer(snapshot.waitingOnPlayerId) {
             return XmageWaitPresentation(kind: .yourPriority, title: "Your priority", detail: "Choose an action.")
         }
         return XmageWaitPresentation(kind: .xmageThinking, title: "XMage thinking", detail: "Waiting for AI or rules resolution.")
@@ -441,6 +462,23 @@ struct ManaPayment: Decodable {
     let manaCostText: String?
     let remainingText: String?
     let remaining: ManaPips?
+}
+
+struct PromptAmountBounds {
+    let minimum: Int
+    let maximum: Int
+
+    init(minimum: Int?, maximum: Int?) {
+        self.minimum = max(Int(Int32.min), minimum ?? 0)
+        self.maximum = max(self.minimum, min(Int(Int32.max), maximum ?? Int(Int32.max)))
+    }
+
+    func clamp(_ value: Int) -> Int { min(maximum, max(minimum, value)) }
+
+    func stepping(_ value: Int, by delta: Int) -> Int {
+        let (next, overflow) = value.addingReportingOverflow(delta)
+        return overflow ? (delta < 0 ? minimum : maximum) : clamp(next)
+    }
 }
 
 struct ManaPips: Decodable {
@@ -717,8 +755,21 @@ struct PlayerGameState: Decodable, Identifiable {
     let manaPool: ManaPool?
     let zones: PlayerZones
     let commanderDamage: [String: Int]?
+    var commanderTaxKnown: Bool? = nil
+    var commanders: [CommanderPublicState]? = nil
+
+    var hasKnownCommanderTax: Bool { commanderTaxKnown ?? true }
 
     var id: String { playerId }
+}
+
+struct CommanderPublicState: Decodable, Hashable, Identifiable {
+    let id: String
+    let name: String?
+    let ownerPlayerId: String
+    let castsFromCommandZone: Int?
+    let commanderTax: Int?
+    let damageToPlayers: [String: Int]?
 }
 
 struct ManaPool: Decodable, Hashable {
@@ -738,6 +789,11 @@ struct PlayerZones: Decodable {
     let exile: [ZoneCard]
     let command: [ZoneCard]
     let stack: [ZoneCard]
+    var handCount: Int? = nil
+    var libraryCount: Int? = nil
+
+    var visibleHandCount: Int { handCount ?? hand.count }
+    var visibleLibraryCount: Int { libraryCount ?? library.count }
 }
 
 struct ZoneCard: Decodable, Identifiable, Hashable {
@@ -756,6 +812,11 @@ struct ZoneCard: Decodable, Identifiable, Hashable {
     let attachedToInstanceId: String?
     let selectable: Bool?
     let disabledReason: String?
+    var reportedPower: String? = nil
+    var reportedToughness: String? = nil
+
+    var displayPower: String? { reportedPower ?? power.map(String.init) }
+    var displayToughness: String? { reportedToughness ?? toughness.map(String.init) }
 
     var id: String { instanceId }
 
@@ -1457,7 +1518,7 @@ extension ZoneCard {
     }
 
     public var showsPowerToughness: Bool {
-        power != nil && toughness != nil && isCreature
+        displayPower != nil && displayToughness != nil && isCreature
     }
 
     public var isPromptSelectable: Bool {
@@ -1488,7 +1549,7 @@ extension ZoneCard {
         if isAttacking == true {
             parts.append("attacking")
         }
-        if showsPowerToughness, let power, let toughness {
+        if showsPowerToughness, let power = displayPower, let toughness = displayToughness {
             parts.append("\(power)/\(toughness)")
         }
         let counterHints = counterBadges.map { "\($0.label) counter \($0.count)" }
@@ -1532,6 +1593,34 @@ struct XmageCardIcon: Decodable, Hashable {
     let text: String?
     let hint: String?
 
+    static func assetName(for iconType: String) -> String? {
+        switch iconType.uppercased() {
+        case "PLAYABLE_COUNT": return "xmage-icon-playable-count"
+        case "ABILITY_FLYING": return "xmage-icon-flying"
+        case "ABILITY_DEFENDER": return "xmage-icon-defender"
+        case "ABILITY_DEATHTOUCH": return "xmage-icon-deathtouch"
+        case "ABILITY_LIFELINK": return "xmage-icon-lifelink"
+        case "ABILITY_DOUBLE_STRIKE": return "xmage-icon-double-strike"
+        case "ABILITY_FIRST_STRIKE": return "xmage-icon-first-strike"
+        case "ABILITY_CREW": return "xmage-icon-crew"
+        case "ABILITY_TRAMPLE": return "xmage-icon-trample"
+        case "ABILITY_HEXPROOF": return "xmage-icon-hexproof"
+        case "ABILITY_INFECT": return "xmage-icon-infect"
+        case "ABILITY_INDESTRUCTIBLE": return "xmage-icon-indestructible"
+        case "ABILITY_VIGILANCE": return "xmage-icon-vigilance"
+        case "ABILITY_CLASS_LEVEL": return "xmage-icon-class-level"
+        case "ABILITY_REACH": return "xmage-icon-reach"
+        case "OTHER_FACEDOWN": return "xmage-icon-facedown"
+        case "OTHER_COST_X": return "xmage-icon-cost-x"
+        case "OTHER_HAS_RESTRICTIONS": return "xmage-icon-restrictions"
+        case "OTHER_HAS_TARGETS": return "xmage-icon-targets"
+        case "RINGBEARER": return "xmage-icon-ringbearer"
+        case "COMMANDER": return "xmage-icon-commander"
+        case "SYSTEM_COMBINED": return "xmage-icon-combined"
+        default: return nil
+        }
+    }
+
     var displayText: String? {
         for value in [text, hint] {
             if let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -1548,7 +1637,7 @@ extension ZoneCard {
             guard icon.category?.caseInsensitiveCompare("ABILITY") == .orderedSame || icon.category?.caseInsensitiveCompare("COMMANDER") == .orderedSame else {
                 return false
             }
-            return CardImageURL.xmageIconAssetName(for: icon.iconType) != nil
+            return XmageCardIcon.assetName(for: icon.iconType) != nil
         }
     }
 

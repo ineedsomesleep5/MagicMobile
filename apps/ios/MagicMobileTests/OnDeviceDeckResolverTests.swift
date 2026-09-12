@@ -1,0 +1,146 @@
+import Foundation
+import XCTest
+@testable import MagicMobile
+
+final class OnDeviceDeckResolverTests: XCTestCase {
+    private func fixtureResolver() throws -> OnDeviceDeckResolver {
+        try OnDeviceDeckResolver(catalogueData: Data(#"{"schemaVersion":1,"upstreamCommit":"upstream","catalogueHash":"registry","sourceCatalogueSHA256":"source","sourceRegistrySHA256":"report","cards":[{"name":"Forest","setCode":"ONE","collectorNumber":"1"},{"name":"Emmara, Soul of the Accord","setCode":"GRN","collectorNumber":"168"}]}"#.utf8))
+    }
+
+    func testResolvesExactNamesAndPreservesCounts() throws {
+        let resolver = try OnDeviceDeckResolver(catalogueData: Data(#"{"schemaVersion":1,"upstreamCommit":"upstream","catalogueHash":"registry","sourceCatalogueSHA256":"source","sourceRegistrySHA256":"report","cards":[{"name":"Forest","setCode":"ONE","collectorNumber":"1"},{"name":"Emmara, Soul of the Accord","setCode":"GRN","collectorNumber":"168"}]}"#.utf8))
+        let deck = DeckList(name: "My deck", commander: DeckEntry(cardName: "Emmara, Soul of the Accord", quantity: 1, section: "commander"), entries: [DeckEntry(cardName: "Forest", quantity: 37, section: "deck")])
+        let config = try resolver.resolve(deck)
+        XCTAssertEqual(Set(config.object!.keys), ["name", "main", "commanders", "companions"])
+        XCTAssertEqual(config["name"]?.string, "My deck")
+        XCTAssertEqual(config["main"]?.array?.first?["count"]?.integer, 37)
+        XCTAssertEqual(config["main"]?.array?.first?["setCode"]?.string, "ONE")
+        XCTAssertEqual(config["commanders"]?.array?.first?["name"]?.string, "Emmara, Soul of the Accord")
+        XCTAssertEqual(config["companions"]?.array, [])
+        XCTAssertEqual(resolver.upstreamCommit, "upstream")
+        XCTAssertEqual(resolver.catalogueHash, "registry")
+    }
+
+    func testInvalidCountsFailBeforeConversionWithoutOverflow() throws {
+        let resolver = try fixtureResolver()
+        for count in [-1, 0, 2001, Int.max] {
+            let deck = DeckList(name: "Invalid", commander: nil, entries: [DeckEntry(cardName: "Forest", quantity: count, section: "deck")])
+            XCTAssertThrowsError(try resolver.resolve(deck), "count=\(count)")
+        }
+        let oversized = DeckList(name: "Oversized", commander: DeckEntry(cardName: "Emmara, Soul of the Accord", quantity: 1, section: "commander"), entries: [DeckEntry(cardName: "Forest", quantity: 2000, section: "deck")])
+        XCTAssertThrowsError(try resolver.resolve(oversized))
+        let maximum = DeckList(name: "Maximum", commander: nil, entries: [DeckEntry(cardName: "Forest", quantity: 2000, section: "deck")])
+        XCTAssertEqual(try resolver.resolve(maximum)["main"]?.array?.first?["count"]?.integer, 2000)
+    }
+
+    func testExplicitPartnerAndCompanionSectionsPreserveAllCounts() throws {
+        let resolver = try fixtureResolver()
+        let deck = DeckList(name: "Sections", commander: DeckEntry(cardName: "Emmara, Soul of the Accord", quantity: 1, section: "commander"), entries: [DeckEntry(cardName: "Forest", quantity: 2, section: "commanders")])
+        let config = try resolver.resolve(deck)
+        XCTAssertEqual(config["main"]?.array, [])
+        XCTAssertEqual(config["commanders"]?.array?.count, 2)
+        XCTAssertEqual(config["commanders"]?.array?.last?["count"]?.integer, 2)
+        let companion = DeckList(name: "Companion", commander: nil, entries: [DeckEntry(cardName: "Forest", quantity: 2, section: "Companion")])
+        XCTAssertEqual(try resolver.resolve(companion)["companions"]?.array?.first?["count"]?.integer, 2)
+        // These fixtures test section transport only, not card eligibility or deck legality.
+    }
+
+    func testCrossSectionDuplicatesAreActionableAndSameSectionCountsSurvive() throws {
+        let resolver = try fixtureResolver()
+        let entry = DeckEntry(cardName: "Forest", quantity: 3, section: "deck")
+        let duplicate = DeckList(name: "Duplicate", commander: DeckEntry(cardName: "Forest", quantity: 1, section: "commander"), entries: [entry])
+        XCTAssertThrowsError(try resolver.resolve(duplicate)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("Forest"))
+            XCTAssertTrue(error.localizedDescription.contains("section"))
+        }
+        let repeated = DeckList(name: "Repeated basics", commander: nil, entries: [entry, entry])
+        let rows = try XCTUnwrap(resolver.resolve(repeated)["main"]?.array)
+        XCTAssertEqual(rows.compactMap { $0["count"]?.integer }.reduce(0, +), 6)
+    }
+
+    func testCatalogueRejectsAmbiguousPrinting() throws {
+        let ambiguous = Data(#"{"schemaVersion":1,"upstreamCommit":"upstream","catalogueHash":"registry","sourceCatalogueSHA256":"source","sourceRegistrySHA256":"report","cards":[{"name":"Forest","setCode":"ONE","collectorNumber":"1"},{"name":"Island","setCode":"ONE","collectorNumber":"1"}]}"#.utf8)
+        XCTAssertThrowsError(try OnDeviceDeckResolver(catalogueData: ambiguous))
+    }
+
+    func testEveryExistingPreconResolvesWithoutChangingSourceCounts() throws {
+        let resolver = try OnDeviceDeckResolver.bundled()
+        XCTAssertEqual(PreconCatalog.all.count, 5)
+        for precon in PreconCatalog.all {
+            let deck = precon.deckList
+            let config = try resolver.resolve(deck)
+            let rows = ["main", "commanders", "companions"].flatMap { config[$0]!.array! }
+            let count = rows.compactMap { $0["count"]?.integer }.reduce(0, +)
+            XCTAssertEqual(count, Int64(deck.totalCards), precon.name)
+            XCTAssertEqual(count, 100, "Legacy source count changed: \(precon.name)")
+            XCTAssertEqual(config["commanders"]?.array?.count, 1, precon.name)
+            XCTAssertFalse(config["main"]!.array!.contains { $0["name"]?.string == precon.commander })
+            for row in rows { XCTAssertEqual(Set(row.object!.keys), ["count", "setCode", "collectorNumber", "name"]) }
+            print("PRECON \(precon.id): \(count) cards (native legality not evaluated)")
+            #if SWIFT_PACKAGE
+            if let directory = ProcessInfo.processInfo.environment["MAGICMOBILE_PRECON_EXPORT_DIR"] {
+                let folder = URL(fileURLWithPath: directory, isDirectory: true)
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                try config.encoded().write(to: folder.appendingPathComponent(precon.id + ".json"), options: .atomic)
+            }
+            #endif
+        }
+    }
+
+    func testLocalTextImportHonorsExplicitSections() throws {
+        let resolver = try fixtureResolver()
+        let deck = try resolver.importDeck(text: """
+        Commander:
+        1 Emmara, Soul of the Accord
+
+        Deck
+        15x Forest
+        22 Forest
+        """, name: "Imported")
+        XCTAssertEqual(deck.name, "Imported")
+        XCTAssertEqual(deck.commander?.cardName, "Emmara, Soul of the Accord")
+        XCTAssertEqual(deck.totalCards, 38)
+        XCTAssertEqual(try resolver.resolve(deck)["main"]?.array?.count, 2)
+        let companion = try resolver.importDeck(text: "Companion\n2 Forest", name: "Sections")
+        XCTAssertEqual(try resolver.resolve(companion)["companions"]?.array?.first?["count"]?.integer, 2)
+        let partners = try resolver.importDeck(text: "Commanders\n1 Forest\n1 Emmara, Soul of the Accord", name: "Partners")
+        XCTAssertEqual(try resolver.resolve(partners)["commanders"]?.array?.count, 2)
+        for text in ["Deck\nForest", "-1 Forest", "99999999999999999999999999 Forest", "1 forest", "Sideboard\n1 Forest"] {
+            XCTAssertThrowsError(try resolver.importDeck(text: text, name: "Invalid"), text)
+        }
+    }
+
+    func testMissingBundledCatalogueIsActionable() throws {
+        XCTAssertThrowsError(try OnDeviceDeckResolver.bundled(bundle: Bundle(for: NSObject.self))) { error in
+            XCTAssertTrue(error.localizedDescription.contains("ondevice-catalogue.json"))
+        }
+    }
+
+    func testUnknownNamesNeverUseFuzzyOrCaseInsensitiveIdentity() throws {
+        let resolver = try fixtureResolver()
+        for name in ["forest", "Forrest", "Forest (ONE) 1", "Unknown Card"] {
+            XCTAssertThrowsError(try resolver.resolve(DeckList(name: "Unknown", commander: nil, entries: [DeckEntry(cardName: name, quantity: 1, section: "deck")]))) { error in
+                XCTAssertTrue(error.localizedDescription.contains(name))
+                XCTAssertTrue(error.localizedDescription.contains("exact card name"))
+            }
+        }
+    }
+
+    func testMalformedOrDuplicateNameCatalogueFailsWithoutCrashing() throws {
+        let source = #"{"schemaVersion":1,"upstreamCommit":"upstream","catalogueHash":"registry","sourceCatalogueSHA256":"source","sourceRegistrySHA256":"report","cards":[{"name":"Forest","setCode":"ONE","collectorNumber":"1"},{"name":"Forest","setCode":"TWO","collectorNumber":"1"}]}"#
+        XCTAssertThrowsError(try OnDeviceDeckResolver(catalogueData: Data(source.utf8)))
+        XCTAssertThrowsError(try OnDeviceDeckResolver(catalogueData: Data(source.replacingOccurrences(of: "\"schemaVersion\":1", with: "\"schemaVersion\":2").utf8)))
+        XCTAssertThrowsError(try OnDeviceDeckResolver(catalogueData: Data("{}".utf8)))
+    }
+}
+
+#if ONDEVICE_DECK_STANDALONE
+@main
+enum DeckResolverTestRunner {
+    static func main() {
+        let suite = XCTestSuite(forTestCaseClass: OnDeviceDeckResolverTests.self)
+        suite.run()
+        exit(suite.testRun!.totalFailureCount == 0 ? 0 : 1)
+    }
+}
+#endif

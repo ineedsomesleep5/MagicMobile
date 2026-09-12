@@ -9,17 +9,24 @@ settings:
     CODE_SIGN_STYLE: Automatic
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     SWIFT_VERSION: "5.9"
+packages:
+  OnDeviceCore:
+    path: ../../packages/ondevice-engine/swift
 targets:
   MagicMobile:
     type: application
     platform: iOS
     sources:
       - path: MagicMobile
+    dependencies:
+      - package: OnDeviceCore
+        product: MagicMobileOnDevice
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.calebfeliciano.magicmobile
         PRODUCT_NAME: MagicMobile
         INFOPLIST_FILE: MagicMobile/Info.plist
+        CODE_SIGN_ENTITLEMENTS: MagicMobile/MagicMobile.entitlements
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: NO
   MagicMobileTests:
@@ -27,6 +34,29 @@ targets:
     platform: iOS
     sources:
       - path: MagicMobileTests
+        excludes:
+          - Fixtures
+      - path: MagicMobileTests/Fixtures/OnDevice
+        type: folder
+        buildPhase: resources
     dependencies:
       - target: MagicMobile
-
+  MagicMobileUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: MagicMobileUITests
+    dependencies:
+      - target: MagicMobile
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  MagicMobile:
+    build:
+      targets:
+        MagicMobile: all
+    test:
+      targets:
+        - MagicMobileTests
+        - MagicMobileUITests

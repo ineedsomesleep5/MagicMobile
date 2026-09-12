@@ -1,0 +1,346 @@
+import XCTest
+import MagicMobileOnDevice
+#if !PROMPT_ADAPTER_SEAM
+@testable import MagicMobile
+#endif
+
+final class OnDevicePromptAdapterTests: XCTestCase {
+    private let viewer = "00000000-0000-0000-0000-000000000001"
+    private let first = "11111111-0000-0000-0000-000000000000"
+    private let second = "22222222-0000-0000-0000-000000000000"
+
+    private func prompt(_ kind: String, types: [String], payload: [String: MagicMobileOnDevice.JSONValue] = [:], min: Int64 = 0, max: Int64 = 0, submitted: Bool = false) throws -> EnginePrompt {
+        var fields: [String: MagicMobileOnDevice.JSONValue] = ["message": .string("Engine question"), "required": .bool(true), "options": .object([:])]
+        fields.merge(payload) { _, value in value }
+        return try EnginePrompt(.object(["promptId": .string("real-prompt"), "revision": .integer(37), "kind": .string(kind), "payload": .object(fields), "submitted": .bool(submitted), "responseTypes": .array(types.map { .string($0) }), "min": .integer(min), "max": .integer(max)]))
+    }
+
+    func testAskRoundTripsThroughExistingCommandBuilder() throws {
+        let p = try prompt("ASK", types: ["boolean"])
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(view.envelope.id, p.id)
+        XCTAssertEqual(view.envelope.messageId, 37)
+        XCTAssertEqual(view.envelope.playerId, viewer)
+        XCTAssertEqual(view.envelope.confirmation?.yesLabel, "Yes")
+        XCTAssertEqual(view.envelope.confirmation?.noLabel, "No")
+        let yes = try XCTUnwrap(view.envelope.confirmation?.yesCommand)
+        XCTAssertEqual(yes.confirmed, true)
+        let command = try XCTUnwrap(PromptCommandBuilder.command(gameId: "match", promptEnvelope: view.envelope, type: try XCTUnwrap(yes.type), promptId: p.id, playerId: viewer, ids: ["true"]))
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("boolean", .bool(true)))
+    }
+
+    func testAskUsesPlainEngineButtonLabelsWithoutChangingBooleans() throws {
+        let p = try prompt("ASK", types: ["boolean"], payload: ["options": .object(["UI.left.btn.text": .string("<html><b>Mulligan</b><br>to 6 &amp; draw</html>"), "UI.right.btn.text": .string("<html><b>Keep</b> &#55;</html>")])])
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+        let confirmation = try XCTUnwrap(view.envelope.confirmation)
+        XCTAssertEqual(confirmation.yesLabel, "Mulligan to 6 & draw")
+        XCTAssertEqual(confirmation.noLabel, "Keep 7")
+        for (response, expected) in [(confirmation.yesCommand, true), (confirmation.noCommand, false)] {
+            let response = try XCTUnwrap(response)
+            XCTAssertEqual(response.confirmed, expected)
+            let c = try XCTUnwrap(PromptCommandBuilder.command(gameId: "match", promptEnvelope: view.envelope, type: try XCTUnwrap(response.type), promptId: p.id, playerId: viewer, ids: [expected ? "true" : "false"]))
+            XCTAssertEqual(try OnDevicePromptAdapter.answer(for: c, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("boolean", .bool(expected)))
+        }
+    }
+
+    func testRejectsSubmittedStaleAndOtherViewerCommands() throws {
+        let p = try prompt("ASK", types: ["boolean"])
+        for command in [
+            GameCommand(type: "answer_yes_no", gameId: "match", playerId: viewer, promptId: "old", messageId: 37, confirmed: true),
+            GameCommand(type: "answer_yes_no", gameId: "match", playerId: viewer, promptId: p.id, messageId: 36, confirmed: true),
+            GameCommand(type: "answer_yes_no", gameId: "match", playerId: "seat-1", promptId: p.id, messageId: 37, confirmed: true),
+            GameCommand(type: "answer_yes_no", gameId: "match", playerId: viewer, promptId: p.id, confirmed: true)
+        ] { XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: command, prompt: p, viewerPlayerID: viewer)) }
+        let submitted = try prompt("ASK", types: ["boolean"], submitted: true)
+        let command = GameCommand(type: "answer_yes_no", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, confirmed: true)
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: command, prompt: submitted, viewerPlayerID: viewer))
+        XCTAssertThrowsError(try OnDevicePromptAdapter.presentation(submitted, viewerPlayerID: viewer, cards: []))
+        XCTAssertThrowsError(try OnDevicePromptAdapter.presentation(p, viewerPlayerID: "seat-1", cards: []))
+    }
+
+    func testPriorityPassAndExplicitSpecialWithoutInventedPlayActions() throws {
+        let p = try prompt("SELECT", types: ["uuid", "boolean", "integer", "string", "mana"], payload: ["selectMode": .string("priority"), "manaPlayerId": .string(viewer), "options": .object(["specialButton": .string("Special action")])], min: -2147483648, max: 2147483647)
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(view.envelope.method, "GAME_SELECT")
+        XCTAssertEqual(view.legalActions.map(\.type), ["pass_priority", "resolve_choice"])
+        let pass = GameCommand(type: "pass_priority", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37)
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: pass, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("boolean", .bool(true)))
+        let special = GameCommand(type: "resolve_choice", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, choiceIds: ["special"])
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: special, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("string", .string("special")))
+        let card = GameCommand(type: "cast_spell", gameId: "match", playerId: viewer, cardInstanceId: first, promptId: p.id, messageId: 37)
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: card, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("uuid", .string(first)))
+        let wrong = GameCommand(type: "choose_pile", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, pile: 1)
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: wrong, prompt: p, viewerPlayerID: viewer))
+    }
+
+    func testModesPreserveEngineOrderAndSubmitOneUUID() throws {
+        let p = try prompt("CHOOSE_MODE", types: ["uuid"], payload: ["choices": .object([first: .string("First"), second: .string("Second")]), "choiceOrder": .array([.string(second), .string(first)])], min: 2, max: 3)
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(view.envelope.modes?.map(\.id), [second, first])
+        XCTAssertEqual(view.envelope.maxChoices, 1)
+        let command = try XCTUnwrap(PromptCommandBuilder.command(gameId: "match", promptEnvelope: view.envelope, type: "choose_mode", promptId: p.id, playerId: viewer, ids: [second]))
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("uuid", .string(second)))
+        let wrong = GameCommand(type: "choose_mode", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, modeIds: [viewer])
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: wrong, prompt: p, viewerPlayerID: viewer))
+    }
+
+    func testChoiceKeysSpecialsAndOptionalCancelRemainExact() throws {
+        let p = try prompt("CHOOSE_CHOICE", types: ["string"], payload: ["required": .bool(false), "choices": .object(["z": .string("Last label"), "a": .string("First label")]), "choiceOrder": .array([.string("z"), .string("a")]), "specialEnabled": .bool(true), "specialText": .string("Remember"), "specialChoices": .object(["#z": .string("Last label"), "#a": .string("First label")])])
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(view.envelope.choices?.map(\.id), ["z", "a", "#z", "#a", ""])
+        for key in ["z", "#a", ""] {
+            let c = GameCommand(type: "resolve_choice", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, choiceIds: [key])
+            XCTAssertEqual(try OnDevicePromptAdapter.answer(for: c, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("string", .string(key)))
+        }
+        for key in ["First label", "#", "#missing"] {
+            let c = GameCommand(type: "resolve_choice", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, choiceIds: [key])
+            XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: c, prompt: p, viewerPlayerID: viewer))
+        }
+    }
+
+    func testAbilityFamiliesUseAbilityUUIDAndRetainLabels() throws {
+        for kind in ["CHOOSE_ABILITY", "PICK_ABILITY"] {
+            let p = try prompt(kind, types: ["uuid", "boolean"], payload: ["required": .bool(false), "abilities": .array([.object(["id": .string(first), "label": .string("Cast Fire"), "sourceId": .string(second)])])])
+            let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+            XCTAssertEqual(view.envelope.abilities?.first?.label, "Cast Fire")
+            let c = GameCommand(type: "choose_ability", gameId: "match", playerId: viewer, abilityId: first, promptId: p.id, messageId: 37)
+            XCTAssertEqual(try OnDevicePromptAdapter.answer(for: c, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("uuid", .string(first)))
+            let wrong = GameCommand(type: "choose_ability", gameId: "match", playerId: viewer, abilityId: second, promptId: p.id, messageId: 37)
+            XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: wrong, prompt: p, viewerPlayerID: viewer))
+        }
+    }
+
+    func testPileSelectionTranslatesToBooleanAndMapsOnlyExplicitCards() throws {
+        let p = try prompt("CHOOSE_PILE", types: ["boolean"], payload: ["pile1": .array([.object(["id": .string(first), "name": .string("Forest"), "cardTypes": .array([.string("LAND")])])]), "pile2": .array([])])
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(view.envelope.piles?.map(\.id), ["1", "2"])
+        XCTAssertEqual(view.envelope.piles?.first?.cards.first?.card.name, "Forest")
+        for pile in [1, 2] {
+            let c = GameCommand(type: "choose_pile", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, pile: pile)
+            XCTAssertEqual(try OnDevicePromptAdapter.answer(for: c, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("boolean", .bool(pile == 1)))
+        }
+        let wrong = GameCommand(type: "choose_pile", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, pile: 0)
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: wrong, prompt: p, viewerPlayerID: viewer))
+    }
+
+    func testAmountsRespectSignedEngineBounds() throws {
+        let p = try prompt("AMOUNT", types: ["integer"], min: -2, max: 4)
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(view.envelope.responseCommand?.type, "choose_amount")
+        XCTAssertEqual(view.envelope.minChoices, -2)
+        XCTAssertEqual(view.envelope.maxChoices, 4)
+        for amount in [-2, 4, -3, 5, Int.max] {
+            let c = GameCommand(type: "choose_amount", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, amount: amount)
+            if (-2...4).contains(amount) { XCTAssertEqual(try OnDevicePromptAdapter.answer(for: c, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("integer", .integer(Int64(amount)))) }
+            else { XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: c, prompt: p, viewerPlayerID: viewer)) }
+        }
+    }
+
+    func testAmountButtonsExposePublishedNegativeRangeWithoutInventedBounds() throws {
+        let p = try prompt("AMOUNT", types: ["integer"], min: -2, max: 4)
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(view.envelope.amounts, [-2, -1, 0, 1, 2, 3, 4])
+        let command = try XCTUnwrap(PromptCommandBuilder.command(gameId: "match", promptEnvelope: view.envelope, type: "choose_amount", promptId: p.id, playerId: viewer, amount: -2))
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("integer", .integer(-2)))
+        let wide = try prompt("AMOUNT", types: ["integer"], min: -2147483648, max: 2147483647)
+        let wideView = try OnDevicePromptAdapter.presentation(wide, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(wideView.envelope.method, "GAME_GET_AMOUNT")
+        XCTAssertEqual(wideView.envelope.responseCommand?.type, "choose_amount")
+        XCTAssertEqual(wideView.envelope.minChoices, -2147483648)
+        XCTAssertEqual(wideView.envelope.maxChoices, 2147483647)
+        XCTAssertNil(wideView.envelope.amounts)
+    }
+
+    func testAllocationsEnforceRowsSumAndExplicitCancellation() throws {
+        let p = try prompt("MULTI_AMOUNT", types: ["integers", "boolean"], payload: ["options": .object(["canCancel": .bool(true)]), "allocations": .array([.object(["message": .string("First"), "min": .integer(0), "max": .integer(3), "defaultValue": .integer(1)]), .object(["message": .string("Second"), "min": .integer(1), "max": .integer(4), "defaultValue": .integer(2)])])], min: 3, max: 3)
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(view.envelope.method, "GAME_GET_MULTI_AMOUNT")
+        XCTAssertEqual(view.envelope.totalMin, 3)
+        XCTAssertEqual(view.envelope.multiAmounts?.map(\.defaultValue), [1, 2])
+        for amounts in [[1, 2], [0, 3], [1, 1], [3, 0], [3], [Int.max, 1]] {
+            let c = GameCommand(type: "choose_multi_amount", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, amounts: amounts)
+            if amounts == [1, 2] || amounts == [0, 3] { XCTAssertEqual(try OnDevicePromptAdapter.answer(for: c, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("integers", .array(amounts.map { .integer(Int64($0)) }))) }
+            else { XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: c, prompt: p, viewerPlayerID: viewer)) }
+        }
+        let cancel = GameCommand(type: "answer_yes_no", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, confirmed: false)
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: cancel, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("boolean", .bool(false)))
+    }
+
+    func testManaUsesPayloadPlayerIdentityAndExactNamedColors() throws {
+        for kind in ["PLAY_MANA", "PLAY_X_MANA", "SELECT"] {
+            let types = kind == "PLAY_MANA" ? ["uuid", "boolean", "mana", "string"] : ["uuid", "boolean", "mana", "integer"]
+            let p = try prompt(kind, types: types, payload: ["manaPlayerId": .string(second), "selectMode": .string("priority")], min: 0, max: 2147483647)
+            let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+            if kind != "SELECT" { XCTAssertEqual(view.manaPayment?.active, true) }
+            let c = GameCommand(type: "play_mana", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, manaType: "G")
+            XCTAssertEqual(try OnDevicePromptAdapter.answer(for: c, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("mana", .object(["playerId": .string(second), "manaType": .string("GREEN")])))
+            let wrong = GameCommand(type: "play_mana", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, manaType: "green")
+            XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: wrong, prompt: p, viewerPlayerID: viewer))
+        }
+        let x = try prompt("PLAY_X_MANA", types: ["uuid", "boolean", "mana", "integer"], payload: ["manaPlayerId": .string(viewer)], min: 0, max: 2147483647)
+        let c = GameCommand(type: "play_x_mana", gameId: "match", playerId: viewer, promptId: x.id, messageId: 37, amount: 5)
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: c, prompt: x, viewerPlayerID: viewer), EnginePrompt.answer("integer", .integer(5)))
+    }
+
+    func testManaCancelUsesInlinePaymentActionAndSendsOnlyBooleanFalse() throws {
+        for kind in ["PLAY_MANA", "PLAY_X_MANA"] {
+            let p = try prompt(kind, types: ["uuid", "boolean", "mana"], payload: ["manaPlayerId": .string(viewer)])
+            let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+            let action = try XCTUnwrap(view.legalActions.first { $0.type == "cancel_payment" })
+            XCTAssertEqual(action.label, "Cancel")
+            XCTAssertEqual(action.confirmed, false)
+            let c = GameCommand(type: action.type, gameId: "match", playerId: action.playerId, promptId: action.promptId, messageId: action.messageId, confirmed: action.confirmed)
+            XCTAssertEqual(try OnDevicePromptAdapter.answer(for: c, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("boolean", .bool(false)))
+            let withoutBoolean = try prompt(kind, types: ["uuid", "mana"], payload: ["manaPlayerId": .string(viewer)])
+            XCTAssertFalse(try OnDevicePromptAdapter.presentation(withoutBoolean, viewerPlayerID: viewer, cards: []).legalActions.contains { $0.type == "cancel_payment" })
+            XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: c, prompt: withoutBoolean, viewerPlayerID: viewer))
+            let wrongPrompt = try prompt("ASK", types: ["boolean"])
+            XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: c, prompt: wrongPrompt, viewerPlayerID: viewer))
+        }
+    }
+
+    func testCombatSelectUsesSequentialUUIDTogglesAndBooleanDone() throws {
+        for mode in ["attackers", "blockers"] {
+            let key = mode == "attackers" ? "possibleAttackers" : "possibleBlockers"
+            let p = try prompt("SELECT", types: ["uuid", "boolean", "integer"], payload: ["selectMode": .string(mode), "options": .object([key: .array([.string(first), .string(second)])])], min: -2147483648, max: 2147483647)
+            let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+            XCTAssertEqual(view.envelope.targets?.map(\.id), [first, second])
+            XCTAssertEqual(view.envelope.maxChoices, 1)
+            let c = GameCommand(type: "choose_target", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, targetIds: [first])
+            XCTAssertEqual(try OnDevicePromptAdapter.answer(for: c, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("uuid", .string(first)))
+            let done = GameCommand(type: "answer_yes_no", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, confirmed: true)
+            XCTAssertEqual(try OnDevicePromptAdapter.answer(for: done, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("boolean", .bool(true)))
+            let batch = GameCommand(type: "declare_attackers", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, attackers: [AttackDeclaration(attackerId: first, defenderId: second)])
+            XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: batch, prompt: p, viewerPlayerID: viewer))
+        }
+    }
+
+    func testTargetPromptCardsAndFaceAliasesRemainExplicit() throws {
+        let p = try prompt("PICK_TARGET", types: ["uuid"], payload: ["candidates": .array([.string(first)]), "cards": .array([.object(["id": .string(first), "name": .string("Bala Ged Recovery"), "cardTypes": .array([.string("SORCERY")]), "rules": .array([.string("Return target card from your graveyard to your hand.")])])]), "responseAliases": .object([second: .string(first)])])
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(view.envelope.cards?.first?.id, first)
+        XCTAssertEqual(view.envelope.cards?.first?.card.typeLine, "SORCERY")
+        XCTAssertNil(view.envelope.cards?.first?.tapped)
+        let c = GameCommand(type: "choose_target", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, targetIds: [second])
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: c, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("uuid", .string(second)))
+    }
+
+    func testTargetOrderingUsesExplicitOrderedViewsWithoutAddingZoneCards() throws {
+        let firstView: MagicMobileOnDevice.JSONValue = .object(["id": .string(first), "name": .string("First card"), "cardTypes": .array([.string("LAND")])])
+        let secondView: MagicMobileOnDevice.JSONValue = .object(["id": .string(second), "name": .string("Second card"), "cardTypes": .array([.string("CREATURE")])])
+        let unrelated = ZoneCard(instanceId: viewer, card: CardIdentity(name: "Unrelated private card", typeLine: "LAND", oracleText: nil), tapped: nil, summoningSickness: nil, cardIcons: nil, counters: nil, power: nil, toughness: nil, isCreaturePermanent: nil, damage: nil, isAttacking: nil, blocking: nil, attachedToInstanceId: nil)
+        let p = try prompt("PICK_TARGET", types: ["uuid"], payload: ["candidates": .array([.string(first), .string(second)]), "cards": .array([firstView]), "options": .object(["orderedViews": .array([secondView, firstView]), "secondMessage": .string("Library order")])])
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [unrelated])
+        XCTAssertEqual(view.envelope.cards?.map(\.id), [second, first])
+        XCTAssertEqual(view.envelope.cards?.map { $0.card.name }, ["Second card", "First card"])
+        XCTAssertEqual(view.envelope.targets?.count, 0)
+        XCTAssertEqual(view.envelope.maxChoices, 1)
+        let c = GameCommand(type: "order_items", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, orderedIds: [second])
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: c, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("uuid", .string(second)))
+    }
+
+    func testPlayerTargetsUseFourPlayerNamesAndStillSubmitTargetUUIDs() throws {
+        let third = "33333333-0000-0000-0000-000000000000"
+        let zones = PlayerZones(library: [], hand: [], battlefield: [], graveyard: [], exile: [], command: [], stack: [])
+        let players = [(viewer, "Local"), (first, "Alice"), (second, "Bri"), (third, "Cam")].map { id, name in
+            PlayerGameState(playerId: id, displayName: name, life: 40, poison: 0, commanderTax: 0, manaPool: nil, zones: zones, commanderDamage: nil)
+        }
+        let p = try prompt("PICK_TARGET", types: ["uuid"], payload: ["candidates": .array([viewer, first, second, third].map { .string($0) }), "cards": .array([])])
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [], players: players)
+        XCTAssertEqual(view.envelope.targets?.map(\.label), ["You", "Alice", "Bri", "Cam"])
+        XCTAssertEqual(view.envelope.responseCommand?.type, "choose_target")
+        let command = try XCTUnwrap(PromptCommandBuilder.command(gameId: "match", promptEnvelope: view.envelope, type: "choose_target", promptId: p.id, playerId: viewer, ids: [third]))
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("uuid", .string(third)))
+    }
+
+    func testExplicitSecondCardFaceSuppliesItsAliasLabelAndCard() throws {
+        let face: MagicMobileOnDevice.JSONValue = .object(["id": .string(second), "name": .string("Bala Ged Sanctuary"), "cardTypes": .array([.string("LAND")])])
+        let front: MagicMobileOnDevice.JSONValue = .object(["id": .string(first), "name": .string("Bala Ged Recovery"), "cardTypes": .array([.string("SORCERY")]), "secondCardFace": face])
+        let p = try prompt("PICK_TARGET", types: ["uuid"], payload: ["candidates": .array([.string(first)]), "responseAliases": .object([second: .string(first)]), "cards": .array([front])])
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(view.envelope.cards?.map(\.id), [first, second])
+        XCTAssertEqual(view.envelope.cards?.last?.card.name, "Bala Ged Sanctuary")
+        XCTAssertEqual(view.envelope.targets?.count, 0)
+    }
+
+    func testSelectIntegerResponsesRetainEngineBoundsAndResponseType() throws {
+        let p = try prompt("SELECT", types: ["uuid", "boolean", "integer"], payload: ["selectMode": .string("priority")], min: -2147483648, max: 2147483647)
+        let c = GameCommand(type: "choose_amount", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, amount: 0)
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: c, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("integer", .integer(0)))
+        let noInteger = try prompt("SELECT", types: ["uuid", "boolean"], payload: ["selectMode": .string("priority")])
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: c, prompt: noInteger, viewerPlayerID: viewer))
+        let overflow = GameCommand(type: "choose_amount", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, amount: Int.max)
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: overflow, prompt: p, viewerPlayerID: viewer))
+    }
+
+    func testUnsupportedVariantsAndWrongResponseTypesFailExplicitly() throws {
+        for kind in ["PERSONAL_MESSAGE", "DRAFT_PICK_CARD", "TOURNAMENT_CONSTRUCT", "FUTURE_QUERY"] {
+            let p = try prompt(kind, types: ["boolean"])
+            XCTAssertThrowsError(try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: []))
+        }
+        let emptySpecial = try prompt("CHOOSE_CHOICE", types: ["string"], payload: ["choices": .object(["a": .string("Choice")]), "choiceOrder": .array([.string("a")]), "specialEnabled": .bool(true), "specialCanBeEmpty": .bool(true)])
+        let choiceView = try OnDevicePromptAdapter.presentation(emptySpecial, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(choiceView.envelope.choices?.map(\.id), ["a"])
+        XCTAssertFalse(choiceView.envelope.message.contains("unsupported"))
+        XCTAssertEqual(choiceView.legalActions.map(\.type), ["choose_empty_special"])
+        let normal = GameCommand(type: "resolve_choice", gameId: "match", playerId: viewer, promptId: emptySpecial.id, messageId: 37, choiceIds: ["a"])
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: normal, prompt: emptySpecial, viewerPlayerID: viewer), EnginePrompt.answer("string", .string("a")))
+        let wrongTypes = try prompt("ASK", types: ["integer"])
+        let c = GameCommand(type: "answer_yes_no", gameId: "match", playerId: viewer, promptId: wrongTypes.id, messageId: 37, confirmed: true)
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: c, prompt: wrongTypes, viewerPlayerID: viewer))
+        XCTAssertThrowsError(try OnDevicePromptAdapter.presentation(wrongTypes, viewerPlayerID: viewer, cards: []))
+    }
+
+    func testTargetCommandReadsOnlyItsDeclaredSelectionField() throws {
+        let p = try prompt("PICK_TARGET", types: ["uuid"], payload: ["candidates": .array([.string(first)])])
+        let malformed = GameCommand(type: "choose_card", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, targetIds: [first])
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: malformed, prompt: p, viewerPlayerID: viewer))
+        let valid = GameCommand(type: "choose_card", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, cardInstanceIds: [first])
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: valid, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("uuid", .string(first)))
+    }
+
+    func testEmptySpecialHasDistinctActionAndTypedNullWithExactMetadata() throws {
+        let metadata: [String: MagicMobileOnDevice.JSONValue] = ["choices": .object(["a": .string("Normal choice")]), "choiceOrder": .array([.string("a")]), "specialEnabled": .bool(true), "specialCanBeEmpty": .bool(true), "specialText": .string("<b>Choose no item</b>")]
+        let p = try prompt("CHOOSE_CHOICE", types: ["string"], payload: metadata)
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(view.envelope.choices?.map(\.id), ["a"])
+        let action = try XCTUnwrap(view.legalActions.first { $0.type == "choose_empty_special" })
+        XCTAssertEqual(action.label, "Choose no item")
+        let c = GameCommand(type: action.type, gameId: "match", playerId: action.playerId, promptId: action.promptId, messageId: action.messageId)
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: c, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("string", .null))
+        for flags in [(false, true), (true, false), (false, false)] {
+            var fields = metadata
+            fields["specialEnabled"] = .bool(flags.0); fields["specialCanBeEmpty"] = .bool(flags.1)
+            let other = try prompt("CHOOSE_CHOICE", types: ["string"], payload: fields)
+            XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: c, prompt: other, viewerPlayerID: viewer))
+            XCTAssertFalse(try OnDevicePromptAdapter.presentation(other, viewerPlayerID: viewer, cards: []).legalActions.contains { $0.type == "choose_empty_special" })
+        }
+        let wrongKind = try prompt("ASK", types: ["string"], payload: metadata)
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: c, prompt: wrongKind, viewerPlayerID: viewer))
+        let wrongType = try prompt("CHOOSE_CHOICE", types: ["boolean"], payload: metadata)
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: c, prompt: wrongType, viewerPlayerID: viewer))
+        for token in ["#", ""] {
+            let wrong = GameCommand(type: "resolve_choice", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, choiceIds: [token])
+            XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: wrong, prompt: p, viewerPlayerID: viewer))
+        }
+        let mixed = GameCommand(type: "choose_empty_special", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, choiceIds: ["a"])
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: mixed, prompt: p, viewerPlayerID: viewer))
+    }
+
+    func testTargetsUseOneUUIDPerPromptAndOnlyExplicitCandidates() throws {
+        let p = try prompt("PICK_TARGET", types: ["uuid", "boolean"], payload: ["required": .bool(false), "candidates": .array([.string(first), .string(second)]), "options": .object(["chosenTargets": .array([.string(second)]), "targetZone": .string("HAND"), "UI.right.btn.text": .string("Done")])], min: 2, max: 3)
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(view.envelope.minChoices, 1)
+        XCTAssertEqual(view.envelope.maxChoices, 1)
+        XCTAssertEqual(view.envelope.targets?.map(\.id), [first, second])
+        let one = GameCommand(type: "choose_target", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, targetIds: [second])
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: one, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("uuid", .string(second)))
+        let batch = GameCommand(type: "choose_target", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, targetIds: [first, second])
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: batch, prompt: p, viewerPlayerID: viewer))
+        let done = GameCommand(type: "answer_yes_no", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, confirmed: false)
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: done, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("boolean", .bool(false)))
+        let required = try prompt("PICK_TARGET", types: ["uuid"], payload: ["candidates": .array([.string(first)])])
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: done, prompt: required, viewerPlayerID: viewer))
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: one, prompt: required, viewerPlayerID: viewer))
+    }
+}

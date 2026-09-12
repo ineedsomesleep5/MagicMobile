@@ -1,0 +1,431 @@
+{
+  "formatVersion": 1,
+  "scope": "real-XMage-JVM-poll-transport-and-projection",
+  "generatedAtUTC": "2026-09-12T03:09:22.980127+00:00",
+  "nativeRuntimeValidated": false,
+  "iOSRuntimeValidated": false,
+  "capabilities": {
+    "aiEnabled": false,
+    "catalogueHash": "807f3deda781f1e912c17c6648e4fb81dc4b00d08b33ee2c308e3f161206267a",
+    "engine": "xmage",
+    "execution": "jvm-integration",
+    "experimental": true,
+    "hostMigration": false,
+    "maxPlayers": 4,
+    "nativeDeviceValidated": false,
+    "protocol": 1,
+    "saveResume": false,
+    "upstream": "8aea65ae9ae3c89970fe865e1316105539e097ca"
+  },
+  "repositoryCommit": "10eec3a6f149a641a3971009e6bbb5ae26eeecfb",
+  "sourceSHA256": {
+    "packages/ondevice-engine/engine/core/src/main/java/io/magicmobile/core/BridgeException.java": "594338bd28defee8e5edcd2145bdba43c719bf765740bf25d46594c714746abd",
+    "packages/ondevice-engine/engine/core/src/main/java/io/magicmobile/core/DecisionSpec.java": "67e9d1750e4cfd0ed43465565847f0ce2a9939f8efbba95980f1129cd1adc8c4",
+    "packages/ondevice-engine/engine/core/src/main/java/io/magicmobile/core/EnginePort.java": "a51bf8edac25426930c0af455c6d67dba936d025cf4cb6aa0d1c2f481778b943",
+    "packages/ondevice-engine/engine/core/src/main/java/io/magicmobile/core/EngineService.java": "1af3d03c1b6cdb2c16a4315a7ece7e76b99715f3dd43218748a67dc44394e417",
+    "packages/ondevice-engine/engine/core/src/main/java/io/magicmobile/core/Json.java": "81584068df84eba477eb98c50a5619f7e1cec8d8c834df0dbb2e285b6be42c60",
+    "packages/ondevice-engine/engine/core/src/main/java/io/magicmobile/core/MatchMailbox.java": "e303f935f595e621d9ee0d9b096cb8276db3eeca18300e3fd2137676a52cbb15",
+    "packages/ondevice-engine/engine/xmage/src/main/java/io/magicmobile/xmage/DeckLoader.java": "d9597460396d0291e790c016031ffb5cb9ed82ddb732fa0d0a111a4b387aab15",
+    "packages/ondevice-engine/engine/xmage/src/main/java/io/magicmobile/xmage/EngineCli.java": "60db157ee48ba1be6724bed04ef96b687ad0b33d59c9fcb04e9a50f00b39b2da",
+    "packages/ondevice-engine/engine/xmage/src/main/java/io/magicmobile/xmage/MobileAICancellation.java": "78d2b453d73e0a1c12651c34bf1799d94381e48b0bb896ca232cc04bae4002ae",
+    "packages/ondevice-engine/engine/xmage/src/main/java/io/magicmobile/xmage/MobileCommanderGame.java": "8535bd2b40971c7a962a9e9fd1b8b6f721f6b69ee36d8ad4e5ba00d6f4408949",
+    "packages/ondevice-engine/engine/xmage/src/main/java/io/magicmobile/xmage/MobileCommanderMatch.java": "7757782f4e9d4b7ad4e0cfca6efb840cf979a4092c0ad367ad43305d381f9695",
+    "packages/ondevice-engine/engine/xmage/src/main/java/io/magicmobile/xmage/MobileHumanPlayer.java": "902860568ef06649e409eeb86460a2030cd7ea17332ce9c9b86d8ad479f048a1",
+    "packages/ondevice-engine/engine/xmage/src/main/java/io/magicmobile/xmage/QueryEncoder.java": "ed2f53574e206fd2298e018e57d3d0ee027d4b4d63b35beba64a83f32e47c28b",
+    "packages/ondevice-engine/engine/xmage/src/main/java/io/magicmobile/xmage/ViewProjector.java": "f5d5a8a3cca85e2aab6158ffebdd10080c61155f25c0b4502189c027cea7f522",
+    "packages/ondevice-engine/engine/xmage/src/main/java/io/magicmobile/xmage/XmageEngine.java": "dba6edc9ed3b673ac610a940f5fe9c67367f0a03810f4cf33af603cf40af2a85"
+  },
+  "exporterSHA256": "10af2bc84061f53ba4e29a3ceb30a51a791df54c39a214411b308a1e28976218",
+  "compiledClassSHA256": {
+    "io/magicmobile/core/BridgeException.class": "96c6ecdbe95ca615dce6980b44b1c2e5a99982ba961e814ad06035f4a63d4196",
+    "io/magicmobile/core/DecisionSpec.class": "99279471e34ef119b193744db50248eac98b1b627d5511b9ae77e890ab261a9a",
+    "io/magicmobile/core/EnginePort.class": "b2617d326fa0ed0ac2c75c28bed5cf2a762d925172ff9df8cd7c6a3669406a79",
+    "io/magicmobile/core/EngineService.class": "6ed0836e5e1ab302c9bcf6299e2ad86355e424d64bdc8a1eb2a3a7cc64f26a3a",
+    "io/magicmobile/core/Json$Parser.class": "64629427c14a378e0c12c41e60c2580e9af2ef37291381a7271ddcf31c9fe15f",
+    "io/magicmobile/core/Json.class": "a05cb99df34f3f6bdb371227d4ff04f6c3f7e92a9bd8dec79ca16fd6819cc9a3",
+    "io/magicmobile/core/MatchMailbox$AnswerSink.class": "98eb5b2339b4af1e69eee8dda33fefcb636d53f238d0144696172c2b1f445b94",
+    "io/magicmobile/core/MatchMailbox$Pending.class": "75a8f70d3ef84e0ef98e8fb25044e3d4b4223eb716c3161b0389e937286aaa4f",
+    "io/magicmobile/core/MatchMailbox$Receipt.class": "0e778d2fbfc7a54f8a8d479204434f10a85a6dfc628ae3de07af43e4cdddd8b0",
+    "io/magicmobile/core/MatchMailbox.class": "7c12d9cdfe664db53e11705a163979781660856050ea8930378d27d6e4177f92",
+    "io/magicmobile/xmage/DeckLoader.class": "7ceee945cbe784185f9d921ce28fcb781e3bfacbe6476af5ebef537c3e06e1a9",
+    "io/magicmobile/xmage/EngineCli.class": "6b0eba90b012deb015c3039d38d729c849a3c54b9d24b5e594e65e6de79c60f2",
+    "io/magicmobile/xmage/MobileAICancellation$CancellablePlayer.class": "824c63bcf51b7fc02eb400ed0235f9979490951bf549b32d360c8c731ad6e207",
+    "io/magicmobile/xmage/MobileAICancellation.class": "a2011fd855a2050c6322e8200e7610eddf9b6b6129b914f0d06e7abf81a43450",
+    "io/magicmobile/xmage/MobileCommanderGame.class": "dc3074c956d7c7633d07095d161184ee7f706985913c0861c2f642ec33400f85",
+    "io/magicmobile/xmage/MobileCommanderMatch.class": "932257baf87aa40b4e8f2b02391275488f83fd33d19f3a46b635b10d05a58697",
+    "io/magicmobile/xmage/MobileHumanPlayer$Channel.class": "032be8067934273a508be38ea28e5564b2a4923144a21a30ce617b389815b9d1",
+    "io/magicmobile/xmage/MobileHumanPlayer.class": "d2107abd510497422d386a22008a33730bf7a911c566cd852214af205d70b7fd",
+    "io/magicmobile/xmage/QueryEncoder$1.class": "aa952629424953d972e7e54a93746d97245e44d093587b5c4115dbcf1e80a7ab",
+    "io/magicmobile/xmage/QueryEncoder.class": "f7af935bbfba7783e64aeb725b302768f0bcad48dd5889f053b8f89486293eba",
+    "io/magicmobile/xmage/ViewProjector.class": "e51772ae9e9e38a5c39c025ed9e5d7e2cb2bdd88408f161a1113a0c1be64d3c4",
+    "io/magicmobile/xmage/XmageEngine$Running.class": "70eac0a79409660ebe9c773d9fc97b0f2a95bcda588ad34967d95d6c09bb65d8",
+    "io/magicmobile/xmage/XmageEngine.class": "7c7d065fcf2b68cd43590c47e8478de6d0e57ba607f0e0f9a804c0c64dec6321"
+  },
+  "javaVersion": "openjdk version \"21.0.11\" 2026-04-21\nOpenJDK Runtime Environment Homebrew (build 21.0.11)\nOpenJDK 64-Bit Server VM Homebrew (build 21.0.11, mixed mode, sharing)",
+  "jvmCommand": [
+    "/opt/homebrew/Cellar/openjdk@21/21.0.11/bin/java",
+    "-Xmx512m",
+    "-Djava.awt.headless=true",
+    "-cp",
+    "/Users/calebfeliciano/Documents/MagicMobile-ondevice/packages/ondevice-engine/build/test-portrait-fixtures/classes:/Users/calebfeliciano/Documents/MagicMobile-ondevice/packages/ondevice-engine/build/core:/Users/calebfeliciano/Documents/MagicMobile-ondevice/packages/ondevice-engine/build/engine:/Users/calebfeliciano/Documents/MagicMobile-ondevice/packages/ondevice-engine/.upstream/mage/Mage.Sets/target/classes:/Users/calebfeliciano/Documents/MagicMobile-ondevice/packages/ondevice-engine/.upstream/mage/Mage.Server.Plugins/Mage.Player.Human/target/classes:/Users/calebfeliciano/Documents/MagicMobile-ondevice/packages/ondevice-engine/.upstream/mage/Mage.Server.Plugins/Mage.Player.AI.MAD/target/classes:/Users/calebfeliciano/Documents/MagicMobile-ondevice/packages/ondevice-engine/.upstream/mage/Mage.Server.Plugins/Mage.Player.AI/target/classes:/Users/calebfeliciano/Documents/MagicMobile-ondevice/packages/ondevice-engine/.upstream/mage/Mage.Server.Plugins/Mage.Game.CommanderFreeForAll/target/classes:/Users/calebfeliciano/Documents/MagicMobile-ondevice/packages/ondevice-engine/.upstream/mage/Mage.Server.Plugins/Mage.Deck.Constructed/target/classes:/Users/calebfeliciano/Documents/MagicMobile-ondevice/packages/ondevice-engine/.upstream/mage/Mage.Common/target/classes:/Users/calebfeliciano/Documents/MagicMobile-ondevice/packages/ondevice-engine/.upstream/mage/Mage/target/classes:/Users/calebfeliciano/.m2/repository/com/google/guava/guava/33.4.8-jre/guava-33.4.8-jre.jar:/Users/calebfeliciano/.m2/repository/com/google/guava/failureaccess/1.0.3/failureaccess-1.0.3.jar:/Users/calebfeliciano/.m2/repository/com/google/guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar:/Users/calebfeliciano/.m2/repository/org/jspecify/jspecify/1.0.0/jspecify-1.0.0.jar:/Users/calebfeliciano/.m2/repository/com/google/errorprone/error_prone_annotations/2.36.0/error_prone_annotations-2.36.0.jar:/Users/calebfeliciano/.m2/repository/com/google/j2objc/j2objc-annotations/3.0.0/j2objc-annotations-3.0.0.jar:/Users/calebfeliciano/.m2/repository/com/google/code/gson/gson/2.13.2/gson-2.13.2.jar:/Users/calebfeliciano/.m2/repository/org/jsoup/jsoup/1.21.2/jsoup-1.21.2.jar:/Users/calebfeliciano/.m2/repository/com/google/protobuf/protobuf-java/3.25.8/protobuf-java-3.25.8.jar:/Users/calebfeliciano/.m2/repository/org/slf4j/slf4j-reload4j/2.0.17/slf4j-reload4j-2.0.17.jar:/Users/calebfeliciano/.m2/repository/org/slf4j/slf4j-api/2.0.17/slf4j-api-2.0.17.jar:/Users/calebfeliciano/.m2/repository/ch/qos/reload4j/reload4j/1.2.22/reload4j-1.2.22.jar:/Users/calebfeliciano/.m2/repository/com/j256/ormlite/ormlite-jdbc/5.7/ormlite-jdbc-5.7.jar:/Users/calebfeliciano/.m2/repository/com/j256/ormlite/ormlite-core/5.7/ormlite-core-5.7.jar:/Users/calebfeliciano/.m2/repository/com/h2database/h2/1.4.197/h2-1.4.197.jar:/Users/calebfeliciano/.m2/repository/org/junit/vintage/junit-vintage-engine/5.8.1/junit-vintage-engine-5.8.1.jar:/Users/calebfeliciano/.m2/repository/org/junit/platform/junit-platform-engine/1.8.1/junit-platform-engine-1.8.1.jar:/Users/calebfeliciano/.m2/repository/org/opentest4j/opentest4j/1.2.0/opentest4j-1.2.0.jar:/Users/calebfeliciano/.m2/repository/org/junit/platform/junit-platform-commons/1.8.1/junit-platform-commons-1.8.1.jar:/Users/calebfeliciano/.m2/repository/junit/junit/4.13.2/junit-4.13.2.jar:/Users/calebfeliciano/.m2/repository/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar:/Users/calebfeliciano/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/Users/calebfeliciano/.m2/repository/org/junit/jupiter/junit-jupiter/5.8.1/junit-jupiter-5.8.1.jar:/Users/calebfeliciano/.m2/repository/org/junit/jupiter/junit-jupiter-api/5.8.1/junit-jupiter-api-5.8.1.jar:/Users/calebfeliciano/.m2/repository/org/junit/jupiter/junit-jupiter-params/5.8.1/junit-jupiter-params-5.8.1.jar:/Users/calebfeliciano/.m2/repository/org/junit/jupiter/junit-jupiter-engine/5.8.1/junit-jupiter-engine-5.8.1.jar:/Users/calebfeliciano/.m2/repository/org/assertj/assertj-core/3.21.0/assertj-core-3.21.0.jar:/Users/calebfeliciano/.m2/repository/org/mage/mage/1.4.61/mage-1.4.61.jar:/Users/calebfeliciano/.m2/repository/com/googlecode/jspf/jspf-core/0.9.1/jspf-core-0.9.1.jar:/Users/calebfeliciano/.m2/repository/org/jboss/remoting/jboss-remoting/2.5.4.SP5/jboss-remoting-2.5.4.SP5.jar:/Users/calebfeliciano/.m2/repository/org/jboss/jboss-common-core/2.5.0.Final/jboss-common-core-2.5.0.Final.jar:/Users/calebfeliciano/.m2/repository/org/jboss/logging/jboss-logging-spi/2.1.2.GA/jboss-logging-spi-2.1.2.GA.jar:/Users/calebfeliciano/.m2/repository/jboss/jboss-serialization/4.2.2.GA/jboss-serialization-4.2.2.GA.jar:/Users/calebfeliciano/.m2/repository/org/ocpsoft/prettytime/prettytime/4.0.6.Final/prettytime-4.0.6.Final.jar:/Users/calebfeliciano/.m2/repository/concurrent/concurrent/1.3.4/concurrent-1.3.4.jar:/Users/calebfeliciano/.m2/repository/trove/trove/1.0.2/trove-1.0.2.jar:/Users/calebfeliciano/.m2/repository/org/apache/commons/commons-lang3/3.18.0/commons-lang3-3.18.0.jar:/Users/calebfeliciano/.m2/repository/org/mage/mage-sets/1.4.61/mage-sets-1.4.61.jar:/Users/calebfeliciano/.m2/repository/org/mage/mage-common/1.4.61/mage-common-1.4.61.jar:/Users/calebfeliciano/Documents/MagicMobile-ondevice/packages/ondevice-engine/.upstream/mage/Mage.Server.Plugins/Mage.Player.AI/target/mage-player-ai-1.4.61.jar",
+    "io.magicmobile.xmage.EngineCli"
+  ],
+  "matches": [
+    {
+      "configuration": {
+        "seats": [
+          {
+            "seatId": "player-1",
+            "name": "Fixture Player 1",
+            "controller": "human",
+            "deck": {
+              "name": "Synthetic portrait regression deck",
+              "main": [
+                {
+                  "count": 99,
+                  "name": "Plains",
+                  "setCode": "CHK",
+                  "collectorNumber": "287"
+                }
+              ],
+              "commanders": [
+                {
+                  "count": 1,
+                  "name": "Isamaru, Hound of Konda",
+                  "setCode": "CHK",
+                  "collectorNumber": "19"
+                }
+              ]
+            }
+          },
+          {
+            "seatId": "player-2",
+            "name": "Fixture Player 2",
+            "controller": "human",
+            "deck": {
+              "name": "Synthetic portrait regression deck",
+              "main": [
+                {
+                  "count": 99,
+                  "name": "Swamp",
+                  "setCode": "DOM",
+                  "collectorNumber": "258"
+                }
+              ],
+              "commanders": [
+                {
+                  "count": 1,
+                  "name": "Yargle, Glutton of Urborg",
+                  "setCode": "DOM",
+                  "collectorNumber": "113"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "createResult": {
+        "engine": {
+          "aiEnabled": false,
+          "catalogueHash": "807f3deda781f1e912c17c6648e4fb81dc4b00d08b33ee2c308e3f161206267a",
+          "engine": "xmage",
+          "execution": "jvm-integration",
+          "experimental": true,
+          "hostMigration": false,
+          "maxPlayers": 4,
+          "nativeDeviceValidated": false,
+          "protocol": 1,
+          "saveResume": false,
+          "upstream": "8aea65ae9ae3c89970fe865e1316105539e097ca"
+        },
+        "matchId": "efa40d5a-f81e-46a7-aa4a-9d7c2e1d2bea",
+        "seats": [
+          "player-1",
+          "player-2"
+        ]
+      },
+      "seatToEnginePlayerId": {
+        "player-1": "83c51f38-1926-4c78-a744-ca1ec0b4048a",
+        "player-2": "8d3bec80-e9fa-409e-8960-4918885793cb"
+      },
+      "responses": {
+        "PICK_TARGET": 1,
+        "ASK": 2,
+        "SELECT": 22,
+        "PLAY_MANA": 1
+      },
+      "lastTurn": 3,
+      "captured": [
+        "attackers",
+        "battlefield",
+        "combat",
+        "initial",
+        "mana",
+        "priority",
+        "stack"
+      ],
+      "completedGame": false,
+      "arbitraryGameSetup": false
+    },
+    {
+      "configuration": {
+        "seats": [
+          {
+            "seatId": "player-1",
+            "name": "Fixture Player 1",
+            "controller": "human",
+            "deck": {
+              "name": "Synthetic portrait regression deck",
+              "main": [
+                {
+                  "count": 99,
+                  "name": "Plains",
+                  "setCode": "CHK",
+                  "collectorNumber": "287"
+                }
+              ],
+              "commanders": [
+                {
+                  "count": 1,
+                  "name": "Isamaru, Hound of Konda",
+                  "setCode": "CHK",
+                  "collectorNumber": "19"
+                }
+              ]
+            }
+          },
+          {
+            "seatId": "player-2",
+            "name": "Fixture Player 2",
+            "controller": "human",
+            "deck": {
+              "name": "Synthetic portrait regression deck",
+              "main": [
+                {
+                  "count": 99,
+                  "name": "Swamp",
+                  "setCode": "DOM",
+                  "collectorNumber": "258"
+                }
+              ],
+              "commanders": [
+                {
+                  "count": 1,
+                  "name": "Yargle, Glutton of Urborg",
+                  "setCode": "DOM",
+                  "collectorNumber": "113"
+                }
+              ]
+            }
+          },
+          {
+            "seatId": "player-3",
+            "name": "Fixture Player 3",
+            "controller": "human",
+            "deck": {
+              "name": "Synthetic portrait regression deck",
+              "main": [
+                {
+                  "count": 99,
+                  "name": "Plains",
+                  "setCode": "CHK",
+                  "collectorNumber": "287"
+                }
+              ],
+              "commanders": [
+                {
+                  "count": 1,
+                  "name": "Isamaru, Hound of Konda",
+                  "setCode": "CHK",
+                  "collectorNumber": "19"
+                }
+              ]
+            }
+          },
+          {
+            "seatId": "player-4",
+            "name": "Fixture Player 4",
+            "controller": "human",
+            "deck": {
+              "name": "Synthetic portrait regression deck",
+              "main": [
+                {
+                  "count": 99,
+                  "name": "Swamp",
+                  "setCode": "DOM",
+                  "collectorNumber": "258"
+                }
+              ],
+              "commanders": [
+                {
+                  "count": 1,
+                  "name": "Yargle, Glutton of Urborg",
+                  "setCode": "DOM",
+                  "collectorNumber": "113"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "createResult": {
+        "engine": {
+          "aiEnabled": false,
+          "catalogueHash": "807f3deda781f1e912c17c6648e4fb81dc4b00d08b33ee2c308e3f161206267a",
+          "engine": "xmage",
+          "execution": "jvm-integration",
+          "experimental": true,
+          "hostMigration": false,
+          "maxPlayers": 4,
+          "nativeDeviceValidated": false,
+          "protocol": 1,
+          "saveResume": false,
+          "upstream": "8aea65ae9ae3c89970fe865e1316105539e097ca"
+        },
+        "matchId": "214c908b-deb4-42fd-8137-126edd7acd91",
+        "seats": [
+          "player-1",
+          "player-2",
+          "player-3",
+          "player-4"
+        ]
+      },
+      "seatToEnginePlayerId": {
+        "player-1": "05c46e25-770b-4121-9d34-d421891a2048",
+        "player-2": "17e15cde-9736-4128-b273-fe7fe4114abf",
+        "player-3": "af710eba-96d2-44d0-b1ca-f90cc315df3a",
+        "player-4": "e002bea4-7e65-4d86-aef4-de261b3f4827"
+      },
+      "responses": {
+        "PICK_TARGET": 1,
+        "ASK": 4
+      },
+      "lastTurn": 1,
+      "captured": [
+        "initial",
+        "priority"
+      ],
+      "completedGame": false,
+      "arbitraryGameSetup": false
+    }
+  ],
+  "fixtures": [
+    {
+      "file": "2p-attackers.json",
+      "sha256": "3178268c225fa58bb5c1af468f2e5b689c870c1408bd486807801d86692ba457",
+      "bytes": 60779,
+      "matchId": "efa40d5a-f81e-46a7-aa4a-9d7c2e1d2bea",
+      "viewerId": "player-1",
+      "promptKind": "SELECT",
+      "revision": 74
+    },
+    {
+      "file": "2p-battlefield.json",
+      "sha256": "64fb9083b5e13b9f2ce47ea0f52513624fa14a423a46db1e94f054b315adb875",
+      "bytes": 50467,
+      "matchId": "efa40d5a-f81e-46a7-aa4a-9d7c2e1d2bea",
+      "viewerId": "player-1",
+      "promptKind": "SELECT",
+      "revision": 26
+    },
+    {
+      "file": "2p-combat.json",
+      "sha256": "b0ccf99a8516d9206713ae5bf8f3df1ee822a4ce57a28d55398325729cc89c38",
+      "bytes": 65584,
+      "matchId": "efa40d5a-f81e-46a7-aa4a-9d7c2e1d2bea",
+      "viewerId": "player-1",
+      "promptKind": "SELECT",
+      "revision": 80
+    },
+    {
+      "file": "2p-initial-player-1.json",
+      "sha256": "8d383cda33701c8cf712f3c8a2f3a2cd0fbc9ece6d55c1740aa5b90d4554af3e",
+      "bytes": 32476,
+      "matchId": "efa40d5a-f81e-46a7-aa4a-9d7c2e1d2bea",
+      "viewerId": "player-1",
+      "promptKind": "ASK",
+      "revision": 5
+    },
+    {
+      "file": "2p-initial-player-2.json",
+      "sha256": "e69d8c857ceb2acdf8e3b23b13e0e3d0addf6712b6e53e52dd0cd4d8d7703bc4",
+      "bytes": 32067,
+      "matchId": "efa40d5a-f81e-46a7-aa4a-9d7c2e1d2bea",
+      "viewerId": "player-2",
+      "promptKind": null,
+      "revision": 5
+    },
+    {
+      "file": "2p-mana.json",
+      "sha256": "10577bf172e7baa7776e8af5877260e748bdcd76c0ea25995861c22d1f2b0541",
+      "bytes": 46572,
+      "matchId": "efa40d5a-f81e-46a7-aa4a-9d7c2e1d2bea",
+      "viewerId": "player-1",
+      "promptKind": "PLAY_MANA",
+      "revision": 17
+    },
+    {
+      "file": "2p-priority.json",
+      "sha256": "91e5edf32e4bc7515ee8c5a4ef5e63e5e19ea2c0ad5a11df75bca9ffbe6fb822",
+      "bytes": 45124,
+      "matchId": "efa40d5a-f81e-46a7-aa4a-9d7c2e1d2bea",
+      "viewerId": "player-1",
+      "promptKind": "SELECT",
+      "revision": 11
+    },
+    {
+      "file": "2p-stack.json",
+      "sha256": "288be0356d7571855452f23b12d010ce22e1793deac67e2f393e499143db3f79",
+      "bytes": 46163,
+      "matchId": "efa40d5a-f81e-46a7-aa4a-9d7c2e1d2bea",
+      "viewerId": "player-1",
+      "promptKind": "SELECT",
+      "revision": 20
+    },
+    {
+      "file": "4p-initial-player-1.json",
+      "sha256": "b26a06377c66567a5f09b881895f26a780cf2dffb3a91d286c645ceb24c99034",
+      "bytes": 45236,
+      "matchId": "214c908b-deb4-42fd-8137-126edd7acd91",
+      "viewerId": "player-1",
+      "promptKind": "ASK",
+      "revision": 5
+    },
+    {
+      "file": "4p-initial-player-2.json",
+      "sha256": "256a5afddc5692896b2483028e421033c6460ba9f1d6954a25732eea209f9cef",
+      "bytes": 44827,
+      "matchId": "214c908b-deb4-42fd-8137-126edd7acd91",
+      "viewerId": "player-2",
+      "promptKind": null,
+      "revision": 5
+    },
+    {
+      "file": "4p-initial-player-3.json",
+      "sha256": "d5991b7359436fc776289421f2c392bcf40040c0631d1cd11e139aa027709f72",
+      "bytes": 44855,
+      "matchId": "214c908b-deb4-42fd-8137-126edd7acd91",
+      "viewerId": "player-3",
+      "promptKind": null,
+      "revision": 5
+    },
+    {
+      "file": "4p-initial-player-4.json",
+      "sha256": "f492a64036ae2cbc86ad0d4d5b30289fea87705f8eb1394aa6bcb163f9812fe7",
+      "bytes": 44827,
+      "matchId": "214c908b-deb4-42fd-8137-126edd7acd91",
+      "viewerId": "player-4",
+      "promptKind": null,
+      "revision": 5
+    },
+    {
+      "file": "4p-priority.json",
+      "sha256": "db4d96bec6b586f9c7618855df2e48a487edebe420d23d37580568471c112810",
+      "bytes": 57984,
+      "matchId": "214c908b-deb4-42fd-8137-126edd7acd91",
+      "viewerId": "player-1",
+      "promptKind": "SELECT",
+      "revision": 17
+    }
+  ]
+}

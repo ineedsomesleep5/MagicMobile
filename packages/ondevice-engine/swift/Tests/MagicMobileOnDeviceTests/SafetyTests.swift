@@ -90,6 +90,19 @@ struct SafetyTests {
         let (r,_,_,e) = try await setup(); await r.setSuspended(true)
         await #expect(throws:EngineError.hostSuspended) { try await r.handle(PeerFrame(epoch:e,sequence:2,operation:"respond",payload:.object([:])),authenticatedPeerID:"peer") }
     }
+    @Test func staleSuspensionUpdatesCannotOverrideLatestPresence() async throws {
+        let (r,_,_,e) = try await setup()
+        await r.setSuspended(false, revision: 2)
+        await r.setSuspended(true, revision: 1)
+        let answer: JSONValue = .object(["requestId": .string(UUID().uuidString), "promptId": .string("prompt"),
+                                         "promptRevision": .integer(7), "answer": .bool(true)])
+        _ = try await r.handle(PeerFrame(epoch: e, sequence: 2, operation: "respond", payload: answer), authenticatedPeerID: "peer")
+        await r.setSuspended(true, revision: 3)
+        await r.setSuspended(false, revision: 2)
+        await #expect(throws: EngineError.hostSuspended) {
+            try await r.handle(PeerFrame(epoch: e, sequence: 3, operation: "respond", payload: answer), authenticatedPeerID: "peer")
+        }
+    }
     @Test func duplicateSeatBinding() async throws {
         let (r,_,_,_) = try await setup()
         await #expect(throws:(any Error).self) { try await r.bind(authenticatedPeerID:"other",seatID:"seat-2") }
@@ -98,6 +111,40 @@ struct SafetyTests {
         let data = Data((0..<40000).map{ UInt8($0%251) }), a = PacketAssembler(); var result:Data?
         for c in try PacketChunk.split(data).reversed() { if let d = try await a.receive(c,from:"A") { result = d } }
         #expect(result == data); #expect(await a.pendingCount() == 0)
+    }
+    @Test @MainActor func packetIngressPreservesOrderAndSurvivesBadChunks() async throws {
+        var received: [Data] = [], rejected: [String] = []
+        let ingress = OrderedPacketIngress(onPacket: { data, peer in
+            #expect(peer == "peer"); received.append(data)
+        }, onPacketRejected: { peer in rejected.append(peer) })
+        #expect(ingress.receive(Data("not a chunk".utf8), from: "peer"))
+        let messages = (0..<20).map { Data(repeating: UInt8($0), count: 20_000) }
+        for message in messages {
+            for chunk in try PacketChunk.split(message).reversed() {
+                #expect(ingress.receive(try JSONEncoder().encode(chunk), from: "peer"))
+            }
+        }
+        for _ in 0..<10_000 { if received.count == messages.count { break }; await Task.yield() }
+        #expect(received == messages)
+        #expect(rejected == ["peer"])
+    }
+    @Test @MainActor func packetIngressRetainsPartialMessagesAcrossIdleAndDropsAfterClose() async throws {
+        var received: [Data] = []
+        let ingress = OrderedPacketIngress(onPacket: { data, _ in received.append(data) })
+        let message = Data(repeating: 42, count: 10_000), marker = Data("marker".utf8)
+        let chunks = try PacketChunk.split(message)
+        #expect(ingress.receive(try JSONEncoder().encode(chunks[0]), from: "peer"))
+        #expect(ingress.receive(try JSONEncoder().encode(PacketChunk.split(marker)[0]), from: "peer"))
+        for _ in 0..<10_000 { if received == [marker] { break }; await Task.yield() }
+        #expect(received == [marker])
+        // Let the consumer become idle before the remaining network fragment arrives.
+        for _ in 0..<20 { await Task.yield() }
+        #expect(ingress.receive(try JSONEncoder().encode(chunks[1]), from: "peer"))
+        for _ in 0..<10_000 { if received.count == 2 { break }; await Task.yield() }
+        #expect(received == [marker, message])
+        ingress.close()
+        #expect(!ingress.receive(try JSONEncoder().encode(chunks[0]), from: "peer"))
+        #expect(received == [marker, message])
     }
     @Test func chunksPeerScoped() async throws {
         let c = try PacketChunk.split(Data(repeating:1,count:10000)), a = PacketAssembler()

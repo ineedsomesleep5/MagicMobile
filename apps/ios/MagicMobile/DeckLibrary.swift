@@ -359,6 +359,16 @@ final class DeckLibraryStore: ObservableObject {
         return record
     }
 
+    func addLocalDurably(_ deck: DeckList) throws -> DeckLibraryRecord {
+        let record = DeckLibraryRecord(deck: deck)
+        let candidate = [record] + decks
+        let data = try JSONEncoder.magicMobileDecks.encode(candidate)
+        try FileManager.default.createDirectory(at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: cacheURL, options: .atomic)
+        decks = candidate
+        return record
+    }
+
     func importURL(_ rawValue: String, serverURL: String) async -> DeckLibraryRecord? {
         guard let sourceURL = URL(string: rawValue), ["https", "http"].contains(sourceURL.scheme?.lowercased()) else {
             notice = "Paste a complete public Archidekt or Moxfield URL."

@@ -20,5 +20,7 @@ java -Xmx4g -cp "$ROOT/build/core:$ROOT/build/tools:$CP" RegistryExporter "$ROOT
 find "$ROOT/engine/xmage/src/main/java" "$ROOT/build/generated/java" -name '*.java' | sort > "$ROOT/build/engine-sources.txt"
 javac --release 17 -cp "$ROOT/build/core:$CP" -d "$ROOT/build/engine" @"$ROOT/build/engine-sources.txt"
 echo "$ROOT/build/core:$ROOT/build/engine:$CP" > "$ROOT/build/runtime-classpath.txt"
+javac --release 17 -cp "$ROOT/build/core:$ROOT/build/engine:$CP" -d "$ROOT/build/tools" "$ROOT/engine/tools/CommanderSetExporter.java"
+java -Xmx384m -cp "$ROOT/build/core:$ROOT/build/engine:$ROOT/build/tools:$CP" CommanderSetExporter "$ROOT/build/generated/commander-set-codes.json"
 # Compiler success is distinct from a completed game.
 printf 'Adapter compilation completed. Real-engine match smoke has not run yet.\n' | tee "$ROOT/evidence/jvm-compile.txt"

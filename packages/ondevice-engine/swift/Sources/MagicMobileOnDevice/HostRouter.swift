@@ -24,6 +24,7 @@ public actor HostRouter {
     public let epoch: UUID
     private var peers: [String: Binding] = [:]
     private var suspended = false
+    private var suspensionRevision: UInt64 = 0
     public init(engine: EngineClient, matchID: String, identity: BuildIdentity, epoch: UUID = UUID()) {
         self.engine = engine; self.matchID = matchID; self.identity = identity; self.epoch = epoch
     }
@@ -35,6 +36,10 @@ public actor HostRouter {
         peers[authenticatedPeerID] = Binding(seat: seatID)
     }
     public func setSuspended(_ value: Bool) { suspended = value }
+    public func setSuspended(_ value: Bool, revision: UInt64) {
+        guard revision > suspensionRevision else { return }
+        suspensionRevision = revision; suspended = value
+    }
     public func handle(_ frame: PeerFrame, authenticatedPeerID: String) async throws -> JSONValue {
         guard var binding = peers[authenticatedPeerID] else { throw EngineError.unboundPeer }
         guard frame.epoch == epoch else { throw EngineError.incompatibleBuild }

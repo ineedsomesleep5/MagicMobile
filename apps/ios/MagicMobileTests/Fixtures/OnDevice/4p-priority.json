@@ -1,0 +1,1912 @@
+{
+  "events": [
+    {
+      "body": {},
+      "kind": "snapshot",
+      "revision": 16
+    },
+    {
+      "body": {
+        "promptId": "b84dc37e-1c1a-4968-aa23-857d1cc848e6"
+      },
+      "kind": "prompt",
+      "revision": 17
+    }
+  ],
+  "failure": null,
+  "matchId": "214c908b-deb4-42fd-8137-126edd7acd91",
+  "phase": "running",
+  "prompt": {
+    "kind": "SELECT",
+    "max": 2147483647,
+    "min": -2147483648,
+    "payload": {
+      "manaPlayerId": "05c46e25-770b-4121-9d34-d421891a2048",
+      "message": "Play spells and abilities",
+      "options": {
+        "queryType": "SELECT"
+      },
+      "required": false,
+      "selectMode": "priority"
+    },
+    "promptId": "b84dc37e-1c1a-4968-aa23-857d1cc848e6",
+    "responseTypes": [
+      "boolean",
+      "integer",
+      "mana",
+      "string",
+      "uuid"
+    ],
+    "revision": 17,
+    "submitted": false
+  },
+  "resyncRequired": false,
+  "revision": 17,
+  "snapshot": {
+    "authorizedLookedAt": {},
+    "authorizedOpponentHands": {},
+    "commanders": {
+      "176f3596-6c7e-42ca-bfdb-d9240feaeb95": {
+        "castsFromCommandZone": 0,
+        "commanderTax": 0,
+        "damageToPlayers": {},
+        "name": "Isamaru, Hound of Konda",
+        "ownerPlayerId": "af710eba-96d2-44d0-b1ca-f90cc315df3a"
+      },
+      "2bf5d98b-81df-4db0-97b6-972d4a0e305b": {
+        "castsFromCommandZone": 0,
+        "commanderTax": 0,
+        "damageToPlayers": {},
+        "name": "Yargle, Glutton of Urborg",
+        "ownerPlayerId": "e002bea4-7e65-4d86-aef4-de261b3f4827"
+      },
+      "5349c8bf-f9b1-405b-b884-c2db33ebc252": {
+        "castsFromCommandZone": 0,
+        "commanderTax": 0,
+        "damageToPlayers": {},
+        "name": "Isamaru, Hound of Konda",
+        "ownerPlayerId": "05c46e25-770b-4121-9d34-d421891a2048"
+      },
+      "c8175fc0-30eb-49c9-b0b9-c673aaecbfe2": {
+        "castsFromCommandZone": 0,
+        "commanderTax": 0,
+        "damageToPlayers": {},
+        "name": "Yargle, Glutton of Urborg",
+        "ownerPlayerId": "17e15cde-9736-4128-b273-fe7fe4114abf"
+      }
+    },
+    "controlledPlayerViews": {},
+    "enginePlayerId": "05c46e25-770b-4121-9d34-d421891a2048",
+    "gameView": {
+      "activePlayerId": "05c46e25-770b-4121-9d34-d421891a2048",
+      "activePlayerName": "Fixture Player 1",
+      "bufferTime": 0,
+      "canPlayObjects": {
+        "objects": {
+          "19c05181-fac2-41ae-a63f-4da1622698c3": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [
+              {
+                "id": "3118eb4c-4471-4c91-a22f-b8e4a152ebf0",
+                "value": "Play Plains"
+              }
+            ],
+            "other": []
+          },
+          "40cef71a-d3f6-46c6-9837-27fb16ad629a": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [
+              {
+                "id": "517150ea-ffd8-4d24-9292-6bd2d7797bbb",
+                "value": "Play Plains"
+              }
+            ],
+            "other": []
+          },
+          "62e20f55-29b4-4949-9016-0a84d1f283a0": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [
+              {
+                "id": "e3fcbbdd-ce9e-4b35-8dc3-c988e1a2d193",
+                "value": "Play Plains"
+              }
+            ],
+            "other": []
+          },
+          "8950a4a4-f216-4cbf-9b18-3ccae7b6b6d2": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [
+              {
+                "id": "6e6714cd-e2e1-4a1e-9cf1-c193a89d9e37",
+                "value": "Play Plains"
+              }
+            ],
+            "other": []
+          },
+          "ab3c4c14-8ee5-41b9-a7c6-5b7317635dec": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [
+              {
+                "id": "e6f7feed-bd93-4d15-a563-96e11d32bd49",
+                "value": "Play Plains"
+              }
+            ],
+            "other": []
+          },
+          "d23391e1-c9f3-4d19-9562-331597ed5f70": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [
+              {
+                "id": "036d63b8-e738-4287-b0e2-9dd6f0045640",
+                "value": "Play Plains"
+              }
+            ],
+            "other": []
+          },
+          "e4197156-53d4-472d-a274-ac9e96ed1cd9": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [
+              {
+                "id": "64e0ab2f-b5d7-41b2-a0f2-6ac0842ceb69",
+                "value": "Play Plains"
+              }
+            ],
+            "other": []
+          },
+          "f127b1b7-a491-43df-a972-e145b374773b": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [
+              {
+                "id": "e65801d4-d291-45d9-8937-7fa31951413a",
+                "value": "Play Plains"
+              }
+            ],
+            "other": []
+          }
+        }
+      },
+      "combat": [],
+      "companion": [],
+      "exiles": [
+        {}
+      ],
+      "gameCycle": 14,
+      "lookedAt": [],
+      "myHand": {
+        "19c05181-fac2-41ae-a63f-4da1622698c3": {
+          "artRect": "NORMAL",
+          "canAttack": false,
+          "canBlock": false,
+          "cardIcons": [],
+          "cardNumber": "287",
+          "cardTypes": [
+            "LAND"
+          ],
+          "color": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "controlledByOwner": true,
+          "defense": "",
+          "displayFullName": "Plains",
+          "displayName": "Plains",
+          "expansionSetCode": "CHK",
+          "extraDeckCard": false,
+          "faceDown": false,
+          "flipCard": false,
+          "frameColor": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": true
+          },
+          "frameStyle": "M15_NORMAL",
+          "gameObject": true,
+          "hideInfo": false,
+          "id": "19c05181-fac2-41ae-a63f-4da1622698c3",
+          "imageFileName": "",
+          "imageNumber": 0,
+          "inViewerOnly": false,
+          "isAbility": false,
+          "isChoosable": false,
+          "isDoubleFacedCard": false,
+          "isSelected": false,
+          "isSplitCard": false,
+          "isToken": false,
+          "loyalty": "",
+          "mageObjectType": "CARD",
+          "manaCostLeftStr": [],
+          "manaCostRightStr": [],
+          "manaValue": 0,
+          "name": "Plains",
+          "originalColorIdentity": "{W}",
+          "originalIsCopy": false,
+          "originalPower": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "originalToughness": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "paid": false,
+          "playableStats": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [],
+            "other": []
+          },
+          "power": "0",
+          "rarity": "LAND",
+          "rotate": false,
+          "rules": [
+            "{T}: Add {W}."
+          ],
+          "startingDefense": "",
+          "startingLoyalty": "",
+          "subTypes": [
+            "PLAINS"
+          ],
+          "superTypes": [
+            "BASIC"
+          ],
+          "toughness": "0",
+          "transformable": false,
+          "transformed": false,
+          "usesVariousArt": true
+        },
+        "40cef71a-d3f6-46c6-9837-27fb16ad629a": {
+          "artRect": "NORMAL",
+          "canAttack": false,
+          "canBlock": false,
+          "cardIcons": [],
+          "cardNumber": "287",
+          "cardTypes": [
+            "LAND"
+          ],
+          "color": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "controlledByOwner": true,
+          "defense": "",
+          "displayFullName": "Plains",
+          "displayName": "Plains",
+          "expansionSetCode": "CHK",
+          "extraDeckCard": false,
+          "faceDown": false,
+          "flipCard": false,
+          "frameColor": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": true
+          },
+          "frameStyle": "M15_NORMAL",
+          "gameObject": true,
+          "hideInfo": false,
+          "id": "40cef71a-d3f6-46c6-9837-27fb16ad629a",
+          "imageFileName": "",
+          "imageNumber": 0,
+          "inViewerOnly": false,
+          "isAbility": false,
+          "isChoosable": false,
+          "isDoubleFacedCard": false,
+          "isSelected": false,
+          "isSplitCard": false,
+          "isToken": false,
+          "loyalty": "",
+          "mageObjectType": "CARD",
+          "manaCostLeftStr": [],
+          "manaCostRightStr": [],
+          "manaValue": 0,
+          "name": "Plains",
+          "originalColorIdentity": "{W}",
+          "originalIsCopy": false,
+          "originalPower": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "originalToughness": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "paid": false,
+          "playableStats": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [],
+            "other": []
+          },
+          "power": "0",
+          "rarity": "LAND",
+          "rotate": false,
+          "rules": [
+            "{T}: Add {W}."
+          ],
+          "startingDefense": "",
+          "startingLoyalty": "",
+          "subTypes": [
+            "PLAINS"
+          ],
+          "superTypes": [
+            "BASIC"
+          ],
+          "toughness": "0",
+          "transformable": false,
+          "transformed": false,
+          "usesVariousArt": true
+        },
+        "62e20f55-29b4-4949-9016-0a84d1f283a0": {
+          "artRect": "NORMAL",
+          "canAttack": false,
+          "canBlock": false,
+          "cardIcons": [],
+          "cardNumber": "287",
+          "cardTypes": [
+            "LAND"
+          ],
+          "color": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "controlledByOwner": true,
+          "defense": "",
+          "displayFullName": "Plains",
+          "displayName": "Plains",
+          "expansionSetCode": "CHK",
+          "extraDeckCard": false,
+          "faceDown": false,
+          "flipCard": false,
+          "frameColor": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": true
+          },
+          "frameStyle": "M15_NORMAL",
+          "gameObject": true,
+          "hideInfo": false,
+          "id": "62e20f55-29b4-4949-9016-0a84d1f283a0",
+          "imageFileName": "",
+          "imageNumber": 0,
+          "inViewerOnly": false,
+          "isAbility": false,
+          "isChoosable": false,
+          "isDoubleFacedCard": false,
+          "isSelected": false,
+          "isSplitCard": false,
+          "isToken": false,
+          "loyalty": "",
+          "mageObjectType": "CARD",
+          "manaCostLeftStr": [],
+          "manaCostRightStr": [],
+          "manaValue": 0,
+          "name": "Plains",
+          "originalColorIdentity": "{W}",
+          "originalIsCopy": false,
+          "originalPower": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "originalToughness": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "paid": false,
+          "playableStats": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [],
+            "other": []
+          },
+          "power": "0",
+          "rarity": "LAND",
+          "rotate": false,
+          "rules": [
+            "{T}: Add {W}."
+          ],
+          "startingDefense": "",
+          "startingLoyalty": "",
+          "subTypes": [
+            "PLAINS"
+          ],
+          "superTypes": [
+            "BASIC"
+          ],
+          "toughness": "0",
+          "transformable": false,
+          "transformed": false,
+          "usesVariousArt": true
+        },
+        "8950a4a4-f216-4cbf-9b18-3ccae7b6b6d2": {
+          "artRect": "NORMAL",
+          "canAttack": false,
+          "canBlock": false,
+          "cardIcons": [],
+          "cardNumber": "287",
+          "cardTypes": [
+            "LAND"
+          ],
+          "color": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "controlledByOwner": true,
+          "defense": "",
+          "displayFullName": "Plains",
+          "displayName": "Plains",
+          "expansionSetCode": "CHK",
+          "extraDeckCard": false,
+          "faceDown": false,
+          "flipCard": false,
+          "frameColor": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": true
+          },
+          "frameStyle": "M15_NORMAL",
+          "gameObject": true,
+          "hideInfo": false,
+          "id": "8950a4a4-f216-4cbf-9b18-3ccae7b6b6d2",
+          "imageFileName": "",
+          "imageNumber": 0,
+          "inViewerOnly": false,
+          "isAbility": false,
+          "isChoosable": false,
+          "isDoubleFacedCard": false,
+          "isSelected": false,
+          "isSplitCard": false,
+          "isToken": false,
+          "loyalty": "",
+          "mageObjectType": "CARD",
+          "manaCostLeftStr": [],
+          "manaCostRightStr": [],
+          "manaValue": 0,
+          "name": "Plains",
+          "originalColorIdentity": "{W}",
+          "originalIsCopy": false,
+          "originalPower": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "originalToughness": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "paid": false,
+          "playableStats": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [],
+            "other": []
+          },
+          "power": "0",
+          "rarity": "LAND",
+          "rotate": false,
+          "rules": [
+            "{T}: Add {W}."
+          ],
+          "startingDefense": "",
+          "startingLoyalty": "",
+          "subTypes": [
+            "PLAINS"
+          ],
+          "superTypes": [
+            "BASIC"
+          ],
+          "toughness": "0",
+          "transformable": false,
+          "transformed": false,
+          "usesVariousArt": true
+        },
+        "ab3c4c14-8ee5-41b9-a7c6-5b7317635dec": {
+          "artRect": "NORMAL",
+          "canAttack": false,
+          "canBlock": false,
+          "cardIcons": [],
+          "cardNumber": "287",
+          "cardTypes": [
+            "LAND"
+          ],
+          "color": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "controlledByOwner": true,
+          "defense": "",
+          "displayFullName": "Plains",
+          "displayName": "Plains",
+          "expansionSetCode": "CHK",
+          "extraDeckCard": false,
+          "faceDown": false,
+          "flipCard": false,
+          "frameColor": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": true
+          },
+          "frameStyle": "M15_NORMAL",
+          "gameObject": true,
+          "hideInfo": false,
+          "id": "ab3c4c14-8ee5-41b9-a7c6-5b7317635dec",
+          "imageFileName": "",
+          "imageNumber": 0,
+          "inViewerOnly": false,
+          "isAbility": false,
+          "isChoosable": false,
+          "isDoubleFacedCard": false,
+          "isSelected": false,
+          "isSplitCard": false,
+          "isToken": false,
+          "loyalty": "",
+          "mageObjectType": "CARD",
+          "manaCostLeftStr": [],
+          "manaCostRightStr": [],
+          "manaValue": 0,
+          "name": "Plains",
+          "originalColorIdentity": "{W}",
+          "originalIsCopy": false,
+          "originalPower": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "originalToughness": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "paid": false,
+          "playableStats": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [],
+            "other": []
+          },
+          "power": "0",
+          "rarity": "LAND",
+          "rotate": false,
+          "rules": [
+            "{T}: Add {W}."
+          ],
+          "startingDefense": "",
+          "startingLoyalty": "",
+          "subTypes": [
+            "PLAINS"
+          ],
+          "superTypes": [
+            "BASIC"
+          ],
+          "toughness": "0",
+          "transformable": false,
+          "transformed": false,
+          "usesVariousArt": true
+        },
+        "d23391e1-c9f3-4d19-9562-331597ed5f70": {
+          "artRect": "NORMAL",
+          "canAttack": false,
+          "canBlock": false,
+          "cardIcons": [],
+          "cardNumber": "287",
+          "cardTypes": [
+            "LAND"
+          ],
+          "color": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "controlledByOwner": true,
+          "defense": "",
+          "displayFullName": "Plains",
+          "displayName": "Plains",
+          "expansionSetCode": "CHK",
+          "extraDeckCard": false,
+          "faceDown": false,
+          "flipCard": false,
+          "frameColor": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": true
+          },
+          "frameStyle": "M15_NORMAL",
+          "gameObject": true,
+          "hideInfo": false,
+          "id": "d23391e1-c9f3-4d19-9562-331597ed5f70",
+          "imageFileName": "",
+          "imageNumber": 0,
+          "inViewerOnly": false,
+          "isAbility": false,
+          "isChoosable": false,
+          "isDoubleFacedCard": false,
+          "isSelected": false,
+          "isSplitCard": false,
+          "isToken": false,
+          "loyalty": "",
+          "mageObjectType": "CARD",
+          "manaCostLeftStr": [],
+          "manaCostRightStr": [],
+          "manaValue": 0,
+          "name": "Plains",
+          "originalColorIdentity": "{W}",
+          "originalIsCopy": false,
+          "originalPower": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "originalToughness": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "paid": false,
+          "playableStats": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [],
+            "other": []
+          },
+          "power": "0",
+          "rarity": "LAND",
+          "rotate": false,
+          "rules": [
+            "{T}: Add {W}."
+          ],
+          "startingDefense": "",
+          "startingLoyalty": "",
+          "subTypes": [
+            "PLAINS"
+          ],
+          "superTypes": [
+            "BASIC"
+          ],
+          "toughness": "0",
+          "transformable": false,
+          "transformed": false,
+          "usesVariousArt": true
+        },
+        "e4197156-53d4-472d-a274-ac9e96ed1cd9": {
+          "artRect": "NORMAL",
+          "canAttack": false,
+          "canBlock": false,
+          "cardIcons": [],
+          "cardNumber": "287",
+          "cardTypes": [
+            "LAND"
+          ],
+          "color": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "controlledByOwner": true,
+          "defense": "",
+          "displayFullName": "Plains",
+          "displayName": "Plains",
+          "expansionSetCode": "CHK",
+          "extraDeckCard": false,
+          "faceDown": false,
+          "flipCard": false,
+          "frameColor": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": true
+          },
+          "frameStyle": "M15_NORMAL",
+          "gameObject": true,
+          "hideInfo": false,
+          "id": "e4197156-53d4-472d-a274-ac9e96ed1cd9",
+          "imageFileName": "",
+          "imageNumber": 0,
+          "inViewerOnly": false,
+          "isAbility": false,
+          "isChoosable": false,
+          "isDoubleFacedCard": false,
+          "isSelected": false,
+          "isSplitCard": false,
+          "isToken": false,
+          "loyalty": "",
+          "mageObjectType": "CARD",
+          "manaCostLeftStr": [],
+          "manaCostRightStr": [],
+          "manaValue": 0,
+          "name": "Plains",
+          "originalColorIdentity": "{W}",
+          "originalIsCopy": false,
+          "originalPower": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "originalToughness": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "paid": false,
+          "playableStats": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [],
+            "other": []
+          },
+          "power": "0",
+          "rarity": "LAND",
+          "rotate": false,
+          "rules": [
+            "{T}: Add {W}."
+          ],
+          "startingDefense": "",
+          "startingLoyalty": "",
+          "subTypes": [
+            "PLAINS"
+          ],
+          "superTypes": [
+            "BASIC"
+          ],
+          "toughness": "0",
+          "transformable": false,
+          "transformed": false,
+          "usesVariousArt": true
+        },
+        "f127b1b7-a491-43df-a972-e145b374773b": {
+          "artRect": "NORMAL",
+          "canAttack": false,
+          "canBlock": false,
+          "cardIcons": [],
+          "cardNumber": "287",
+          "cardTypes": [
+            "LAND"
+          ],
+          "color": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "controlledByOwner": true,
+          "defense": "",
+          "displayFullName": "Plains",
+          "displayName": "Plains",
+          "expansionSetCode": "CHK",
+          "extraDeckCard": false,
+          "faceDown": false,
+          "flipCard": false,
+          "frameColor": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": true
+          },
+          "frameStyle": "M15_NORMAL",
+          "gameObject": true,
+          "hideInfo": false,
+          "id": "f127b1b7-a491-43df-a972-e145b374773b",
+          "imageFileName": "",
+          "imageNumber": 0,
+          "inViewerOnly": false,
+          "isAbility": false,
+          "isChoosable": false,
+          "isDoubleFacedCard": false,
+          "isSelected": false,
+          "isSplitCard": false,
+          "isToken": false,
+          "loyalty": "",
+          "mageObjectType": "CARD",
+          "manaCostLeftStr": [],
+          "manaCostRightStr": [],
+          "manaValue": 0,
+          "name": "Plains",
+          "originalColorIdentity": "{W}",
+          "originalIsCopy": false,
+          "originalPower": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "originalToughness": {
+            "baseValue": 0,
+            "boostedValue": 0,
+            "cardValue": "0",
+            "modifiedBaseValue": 0
+          },
+          "paid": false,
+          "playableStats": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [],
+            "other": []
+          },
+          "power": "0",
+          "rarity": "LAND",
+          "rotate": false,
+          "rules": [
+            "{T}: Add {W}."
+          ],
+          "startingDefense": "",
+          "startingLoyalty": "",
+          "subTypes": [
+            "PLAINS"
+          ],
+          "superTypes": [
+            "BASIC"
+          ],
+          "toughness": "0",
+          "transformable": false,
+          "transformed": false,
+          "usesVariousArt": true
+        }
+      },
+      "myHelperEmblems": {
+        "50c054e2-3909-428e-b08d-82c86a887f8e": {
+          "artRect": "NORMAL",
+          "canAttack": false,
+          "canBlock": false,
+          "cardIcons": [],
+          "cardNumber": "",
+          "cardTypes": [],
+          "color": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "controlledByOwner": true,
+          "defense": "",
+          "displayFullName": "Radiation",
+          "displayName": "Radiation",
+          "expansionSetCode": "XMAGE",
+          "extraDeckCard": false,
+          "faceDown": false,
+          "flipCard": false,
+          "frameColor": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "frameStyle": "M15_NORMAL",
+          "gameObject": true,
+          "hideInfo": false,
+          "id": "50c054e2-3909-428e-b08d-82c86a887f8e",
+          "imageFileName": "",
+          "imageNumber": 1,
+          "inViewerOnly": false,
+          "isAbility": false,
+          "isChoosable": false,
+          "isDoubleFacedCard": false,
+          "isSelected": false,
+          "isSplitCard": false,
+          "isToken": false,
+          "loyalty": "",
+          "mageObjectType": "EMBLEM",
+          "manaCostLeftStr": [],
+          "manaCostRightStr": [],
+          "manaValue": 0,
+          "name": "Radiation",
+          "originalIsCopy": false,
+          "paid": false,
+          "playableStats": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [],
+            "other": []
+          },
+          "power": "",
+          "rarity": "SPECIAL",
+          "rotate": false,
+          "rules": [
+            "At the beginning of each player's precombat main phase, if that player has one or more rad counters, mill that many cards. For each nonland card milled this way, you lose 1 life and remove one rad counter."
+          ],
+          "startingDefense": "",
+          "startingLoyalty": "",
+          "subTypes": [],
+          "superTypes": [],
+          "toughness": "",
+          "transformable": false,
+          "transformed": false,
+          "usesVariousArt": false
+        },
+        "8674016c-8df3-48a1-9082-e12c65b7565a": {
+          "artRect": "NORMAL",
+          "canAttack": false,
+          "canBlock": false,
+          "cardIcons": [],
+          "cardNumber": "",
+          "cardTypes": [],
+          "color": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "controlledByOwner": true,
+          "defense": "",
+          "displayFullName": "Helper Emblem",
+          "displayName": "Helper Emblem",
+          "expansionSetCode": "XMAGE",
+          "extraDeckCard": false,
+          "faceDown": false,
+          "flipCard": false,
+          "frameColor": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "frameStyle": "M15_NORMAL",
+          "gameObject": true,
+          "hideInfo": false,
+          "id": "8674016c-8df3-48a1-9082-e12c65b7565a",
+          "imageFileName": "",
+          "imageNumber": 1,
+          "inViewerOnly": false,
+          "isAbility": false,
+          "isChoosable": false,
+          "isDoubleFacedCard": false,
+          "isSelected": false,
+          "isSplitCard": false,
+          "isToken": false,
+          "loyalty": "",
+          "mageObjectType": "EMBLEM",
+          "manaCostLeftStr": [],
+          "manaCostRightStr": [],
+          "manaValue": 0,
+          "name": "Helper Emblem",
+          "originalIsCopy": false,
+          "paid": false,
+          "playableStats": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [],
+            "other": []
+          },
+          "power": "",
+          "rarity": "SPECIAL",
+          "rotate": false,
+          "rules": [
+            "Storm counter.",
+            "<br/><hintstart/>",
+            "Spells cast this turn: 0"
+          ],
+          "startingDefense": "",
+          "startingLoyalty": "",
+          "subTypes": [],
+          "superTypes": [],
+          "toughness": "",
+          "transformable": false,
+          "transformed": false,
+          "usesVariousArt": false
+        },
+        "ebf9ad64-5e95-482f-9a3f-e16bcc3299d5": {
+          "artRect": "NORMAL",
+          "canAttack": false,
+          "canBlock": false,
+          "cardIcons": [],
+          "cardNumber": "",
+          "cardTypes": [],
+          "color": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "controlledByOwner": true,
+          "defense": "",
+          "displayFullName": "Helper Emblem",
+          "displayName": "Helper Emblem",
+          "expansionSetCode": "XMAGE",
+          "extraDeckCard": false,
+          "faceDown": false,
+          "flipCard": false,
+          "frameColor": {
+            "black": false,
+            "blue": false,
+            "green": false,
+            "red": false,
+            "white": false
+          },
+          "frameStyle": "M15_NORMAL",
+          "gameObject": true,
+          "hideInfo": false,
+          "id": "ebf9ad64-5e95-482f-9a3f-e16bcc3299d5",
+          "imageFileName": "",
+          "imageNumber": 1,
+          "inViewerOnly": false,
+          "isAbility": false,
+          "isChoosable": false,
+          "isDoubleFacedCard": false,
+          "isSelected": false,
+          "isSplitCard": false,
+          "isToken": false,
+          "loyalty": "",
+          "mageObjectType": "EMBLEM",
+          "manaCostLeftStr": [],
+          "manaCostRightStr": [],
+          "manaValue": 0,
+          "name": "Helper Emblem",
+          "originalIsCopy": false,
+          "paid": false,
+          "playableStats": {
+            "basicCastAbilities": [],
+            "basicManaAbilities": [],
+            "basicPlayAbilities": [],
+            "other": []
+          },
+          "power": "",
+          "rarity": "SPECIAL",
+          "rotate": false,
+          "rules": [
+            "Day or night.",
+            "<br/><hintstart/>",
+            "It's neither day nor night."
+          ],
+          "startingDefense": "",
+          "startingLoyalty": "",
+          "subTypes": [],
+          "superTypes": [],
+          "toughness": "",
+          "transformable": false,
+          "transformed": false,
+          "usesVariousArt": false
+        }
+      },
+      "myPlayerId": "05c46e25-770b-4121-9d34-d421891a2048",
+      "opponentHands": {},
+      "phase": "PRECOMBAT_MAIN",
+      "players": [
+        {
+          "attachments": [],
+          "battlefield": {},
+          "bufferTimeLeft": 0,
+          "commandList": [
+            {
+              "artRect": "NORMAL",
+              "canAttack": false,
+              "canBlock": false,
+              "cardIcons": [],
+              "cardNumber": "19",
+              "cardTypes": [
+                "CREATURE"
+              ],
+              "color": {
+                "black": false,
+                "blue": false,
+                "green": false,
+                "red": false,
+                "white": true
+              },
+              "controlledByOwner": true,
+              "defense": "",
+              "displayFullName": "Isamaru, Hound of Konda",
+              "displayName": "Isamaru, Hound of Konda",
+              "expansionSetCode": "CHK",
+              "extraDeckCard": false,
+              "faceDown": false,
+              "flipCard": false,
+              "frameColor": {
+                "black": false,
+                "blue": false,
+                "green": false,
+                "red": false,
+                "white": false
+              },
+              "frameStyle": "M15_NORMAL",
+              "gameObject": true,
+              "hideInfo": false,
+              "id": "176f3596-6c7e-42ca-bfdb-d9240feaeb95",
+              "imageFileName": "",
+              "imageNumber": 0,
+              "inViewerOnly": false,
+              "isAbility": false,
+              "isChoosable": false,
+              "isDoubleFacedCard": false,
+              "isSelected": false,
+              "isSplitCard": false,
+              "isToken": false,
+              "loyalty": "",
+              "mageObjectType": "COMMANDER",
+              "manaCostLeftStr": [
+                "{W}"
+              ],
+              "manaCostRightStr": [],
+              "manaValue": 1,
+              "name": "Isamaru, Hound of Konda",
+              "originalColorIdentity": "{W}",
+              "originalIsCopy": false,
+              "originalPower": {
+                "baseValue": 2,
+                "boostedValue": 2,
+                "cardValue": "2",
+                "modifiedBaseValue": 2
+              },
+              "originalToughness": {
+                "baseValue": 2,
+                "boostedValue": 2,
+                "cardValue": "2",
+                "modifiedBaseValue": 2
+              },
+              "paid": false,
+              "playableStats": {
+                "basicCastAbilities": [],
+                "basicManaAbilities": [],
+                "basicPlayAbilities": [],
+                "other": []
+              },
+              "power": "2",
+              "rarity": "RARE",
+              "rotate": false,
+              "rules": [
+                "<b>Commander</b>"
+              ],
+              "startingDefense": "",
+              "startingLoyalty": "",
+              "subTypes": [
+                "DOG"
+              ],
+              "superTypes": [
+                "LEGENDARY"
+              ],
+              "toughness": "2",
+              "transformable": false,
+              "transformed": false,
+              "usesVariousArt": false
+            }
+          ],
+          "controlled": false,
+          "counters": [],
+          "designationNames": [],
+          "exile": {},
+          "graveyard": {},
+          "handCount": 7,
+          "hasLeft": false,
+          "hasPriority": false,
+          "helperCards": {},
+          "initiative": false,
+          "isActive": false,
+          "isHuman": true,
+          "libraryCount": 92,
+          "life": 40,
+          "manaPool": {
+            "black": 0,
+            "blue": 0,
+            "colorless": 0,
+            "green": 0,
+            "red": 0,
+            "white": 0
+          },
+          "monarch": false,
+          "name": "Fixture Player 3",
+          "passedAllTurns": false,
+          "passedTurn": false,
+          "passedUntilEndOfTurn": false,
+          "passedUntilEndStepBeforeMyTurn": false,
+          "passedUntilNextMain": false,
+          "passedUntilStackResolved": false,
+          "playerId": "af710eba-96d2-44d0-b1ca-f90cc315df3a",
+          "priorityTimeLeftSecs": 0,
+          "priorityTimeSavedTimeMs": 1789182562886,
+          "sideboard": {},
+          "statesSavedSize": -1,
+          "timerActive": false,
+          "userData": {
+            "allowRequestShowHandCards": false,
+            "askMoveToGraveOrder": false,
+            "autoOrderTrigger": true,
+            "autoTargetLevel": 1,
+            "avatarId": 0,
+            "confirmEmptyManaPool": true,
+            "constructedRating": 0,
+            "flagName": "world.png",
+            "generalRating": 0,
+            "groupId": 2,
+            "limitedRating": 0,
+            "manaPoolAutomatic": true,
+            "manaPoolAutomaticRestricted": true,
+            "matchHistory": "",
+            "matchQuitRatio": 0,
+            "passPriorityActivation": false,
+            "passPriorityCast": false,
+            "requestedHandPlayersList": {},
+            "tourneyHistory": "",
+            "tourneyQuitRatio": 0,
+            "useFirstManaAbility": false,
+            "useSameSettingsForReplacementEffects": true,
+            "userIdStr": "",
+            "userSkipPrioritySteps": {
+              "opponentTurn": {
+                "beforeCombat": false,
+                "draw": false,
+                "endOfCombat": false,
+                "endOfTurn": false,
+                "main1": true,
+                "main2": true,
+                "upkeep": false
+              },
+              "stopOnAllEndPhases": true,
+              "stopOnAllMainPhases": true,
+              "stopOnDeclareAttackers": true,
+              "stopOnDeclareBlockersWithAnyPermanents": true,
+              "stopOnDeclareBlockersWithZeroPermanents": false,
+              "stopOnStackNewObjects": true,
+              "yourTurn": {
+                "beforeCombat": false,
+                "draw": false,
+                "endOfCombat": false,
+                "endOfTurn": false,
+                "main1": true,
+                "main2": true,
+                "upkeep": false
+              }
+            }
+          },
+          "wins": 0,
+          "winsNeeded": 1
+        },
+        {
+          "attachments": [],
+          "battlefield": {},
+          "bufferTimeLeft": 0,
+          "commandList": [
+            {
+              "artRect": "NORMAL",
+              "canAttack": false,
+              "canBlock": false,
+              "cardIcons": [],
+              "cardNumber": "113",
+              "cardTypes": [
+                "CREATURE"
+              ],
+              "color": {
+                "black": true,
+                "blue": false,
+                "green": false,
+                "red": false,
+                "white": false
+              },
+              "controlledByOwner": true,
+              "defense": "",
+              "displayFullName": "Yargle, Glutton of Urborg",
+              "displayName": "Yargle, Glutton of Urborg",
+              "expansionSetCode": "DOM",
+              "extraDeckCard": false,
+              "faceDown": false,
+              "flipCard": false,
+              "frameColor": {
+                "black": false,
+                "blue": false,
+                "green": false,
+                "red": false,
+                "white": false
+              },
+              "frameStyle": "M15_NORMAL",
+              "gameObject": true,
+              "hideInfo": false,
+              "id": "c8175fc0-30eb-49c9-b0b9-c673aaecbfe2",
+              "imageFileName": "",
+              "imageNumber": 0,
+              "inViewerOnly": false,
+              "isAbility": false,
+              "isChoosable": false,
+              "isDoubleFacedCard": false,
+              "isSelected": false,
+              "isSplitCard": false,
+              "isToken": false,
+              "loyalty": "",
+              "mageObjectType": "COMMANDER",
+              "manaCostLeftStr": [
+                "{4}",
+                "{B}"
+              ],
+              "manaCostRightStr": [],
+              "manaValue": 5,
+              "name": "Yargle, Glutton of Urborg",
+              "originalColorIdentity": "{B}",
+              "originalIsCopy": false,
+              "originalPower": {
+                "baseValue": 9,
+                "boostedValue": 9,
+                "cardValue": "9",
+                "modifiedBaseValue": 9
+              },
+              "originalToughness": {
+                "baseValue": 3,
+                "boostedValue": 3,
+                "cardValue": "3",
+                "modifiedBaseValue": 3
+              },
+              "paid": false,
+              "playableStats": {
+                "basicCastAbilities": [],
+                "basicManaAbilities": [],
+                "basicPlayAbilities": [],
+                "other": []
+              },
+              "power": "9",
+              "rarity": "UNCOMMON",
+              "rotate": false,
+              "rules": [
+                "<b>Commander</b>"
+              ],
+              "startingDefense": "",
+              "startingLoyalty": "",
+              "subTypes": [
+                "FROG",
+                "SPIRIT"
+              ],
+              "superTypes": [
+                "LEGENDARY"
+              ],
+              "toughness": "3",
+              "transformable": false,
+              "transformed": false,
+              "usesVariousArt": false
+            }
+          ],
+          "controlled": false,
+          "counters": [],
+          "designationNames": [],
+          "exile": {},
+          "graveyard": {},
+          "handCount": 7,
+          "hasLeft": false,
+          "hasPriority": false,
+          "helperCards": {},
+          "initiative": false,
+          "isActive": false,
+          "isHuman": true,
+          "libraryCount": 92,
+          "life": 40,
+          "manaPool": {
+            "black": 0,
+            "blue": 0,
+            "colorless": 0,
+            "green": 0,
+            "red": 0,
+            "white": 0
+          },
+          "monarch": false,
+          "name": "Fixture Player 2",
+          "passedAllTurns": false,
+          "passedTurn": false,
+          "passedUntilEndOfTurn": false,
+          "passedUntilEndStepBeforeMyTurn": false,
+          "passedUntilNextMain": false,
+          "passedUntilStackResolved": false,
+          "playerId": "17e15cde-9736-4128-b273-fe7fe4114abf",
+          "priorityTimeLeftSecs": 0,
+          "priorityTimeSavedTimeMs": 1789182562886,
+          "sideboard": {},
+          "statesSavedSize": -1,
+          "timerActive": false,
+          "userData": {
+            "allowRequestShowHandCards": false,
+            "askMoveToGraveOrder": false,
+            "autoOrderTrigger": true,
+            "autoTargetLevel": 1,
+            "avatarId": 0,
+            "confirmEmptyManaPool": true,
+            "constructedRating": 0,
+            "flagName": "world.png",
+            "generalRating": 0,
+            "groupId": 2,
+            "limitedRating": 0,
+            "manaPoolAutomatic": true,
+            "manaPoolAutomaticRestricted": true,
+            "matchHistory": "",
+            "matchQuitRatio": 0,
+            "passPriorityActivation": false,
+            "passPriorityCast": false,
+            "requestedHandPlayersList": {},
+            "tourneyHistory": "",
+            "tourneyQuitRatio": 0,
+            "useFirstManaAbility": false,
+            "useSameSettingsForReplacementEffects": true,
+            "userIdStr": "",
+            "userSkipPrioritySteps": {
+              "opponentTurn": {
+                "beforeCombat": false,
+                "draw": false,
+                "endOfCombat": false,
+                "endOfTurn": false,
+                "main1": true,
+                "main2": true,
+                "upkeep": false
+              },
+              "stopOnAllEndPhases": true,
+              "stopOnAllMainPhases": true,
+              "stopOnDeclareAttackers": true,
+              "stopOnDeclareBlockersWithAnyPermanents": true,
+              "stopOnDeclareBlockersWithZeroPermanents": false,
+              "stopOnStackNewObjects": true,
+              "yourTurn": {
+                "beforeCombat": false,
+                "draw": false,
+                "endOfCombat": false,
+                "endOfTurn": false,
+                "main1": true,
+                "main2": true,
+                "upkeep": false
+              }
+            }
+          },
+          "wins": 0,
+          "winsNeeded": 1
+        },
+        {
+          "attachments": [],
+          "battlefield": {},
+          "bufferTimeLeft": 0,
+          "commandList": [
+            {
+              "artRect": "NORMAL",
+              "canAttack": false,
+              "canBlock": false,
+              "cardIcons": [],
+              "cardNumber": "19",
+              "cardTypes": [
+                "CREATURE"
+              ],
+              "color": {
+                "black": false,
+                "blue": false,
+                "green": false,
+                "red": false,
+                "white": true
+              },
+              "controlledByOwner": true,
+              "defense": "",
+              "displayFullName": "Isamaru, Hound of Konda",
+              "displayName": "Isamaru, Hound of Konda",
+              "expansionSetCode": "CHK",
+              "extraDeckCard": false,
+              "faceDown": false,
+              "flipCard": false,
+              "frameColor": {
+                "black": false,
+                "blue": false,
+                "green": false,
+                "red": false,
+                "white": false
+              },
+              "frameStyle": "M15_NORMAL",
+              "gameObject": true,
+              "hideInfo": false,
+              "id": "5349c8bf-f9b1-405b-b884-c2db33ebc252",
+              "imageFileName": "",
+              "imageNumber": 0,
+              "inViewerOnly": false,
+              "isAbility": false,
+              "isChoosable": false,
+              "isDoubleFacedCard": false,
+              "isSelected": false,
+              "isSplitCard": false,
+              "isToken": false,
+              "loyalty": "",
+              "mageObjectType": "COMMANDER",
+              "manaCostLeftStr": [
+                "{W}"
+              ],
+              "manaCostRightStr": [],
+              "manaValue": 1,
+              "name": "Isamaru, Hound of Konda",
+              "originalColorIdentity": "{W}",
+              "originalIsCopy": false,
+              "originalPower": {
+                "baseValue": 2,
+                "boostedValue": 2,
+                "cardValue": "2",
+                "modifiedBaseValue": 2
+              },
+              "originalToughness": {
+                "baseValue": 2,
+                "boostedValue": 2,
+                "cardValue": "2",
+                "modifiedBaseValue": 2
+              },
+              "paid": false,
+              "playableStats": {
+                "basicCastAbilities": [],
+                "basicManaAbilities": [],
+                "basicPlayAbilities": [],
+                "other": []
+              },
+              "power": "2",
+              "rarity": "RARE",
+              "rotate": false,
+              "rules": [
+                "<b>Commander</b>"
+              ],
+              "startingDefense": "",
+              "startingLoyalty": "",
+              "subTypes": [
+                "DOG"
+              ],
+              "superTypes": [
+                "LEGENDARY"
+              ],
+              "toughness": "2",
+              "transformable": false,
+              "transformed": false,
+              "usesVariousArt": false
+            }
+          ],
+          "controlled": true,
+          "counters": [],
+          "designationNames": [],
+          "exile": {},
+          "graveyard": {},
+          "handCount": 8,
+          "hasLeft": false,
+          "hasPriority": true,
+          "helperCards": {},
+          "initiative": false,
+          "isActive": true,
+          "isHuman": true,
+          "libraryCount": 91,
+          "life": 40,
+          "manaPool": {
+            "black": 0,
+            "blue": 0,
+            "colorless": 0,
+            "green": 0,
+            "red": 0,
+            "white": 0
+          },
+          "monarch": false,
+          "name": "Fixture Player 1",
+          "passedAllTurns": false,
+          "passedTurn": false,
+          "passedUntilEndOfTurn": false,
+          "passedUntilEndStepBeforeMyTurn": false,
+          "passedUntilNextMain": false,
+          "passedUntilStackResolved": false,
+          "playerId": "05c46e25-770b-4121-9d34-d421891a2048",
+          "priorityTimeLeftSecs": 0,
+          "priorityTimeSavedTimeMs": 1789182562886,
+          "sideboard": {},
+          "statesSavedSize": -1,
+          "timerActive": true,
+          "userData": {
+            "allowRequestShowHandCards": false,
+            "askMoveToGraveOrder": false,
+            "autoOrderTrigger": true,
+            "autoTargetLevel": 1,
+            "avatarId": 0,
+            "confirmEmptyManaPool": true,
+            "constructedRating": 0,
+            "flagName": "world.png",
+            "generalRating": 0,
+            "groupId": 2,
+            "limitedRating": 0,
+            "manaPoolAutomatic": true,
+            "manaPoolAutomaticRestricted": true,
+            "matchHistory": "",
+            "matchQuitRatio": 0,
+            "passPriorityActivation": false,
+            "passPriorityCast": false,
+            "requestedHandPlayersList": {},
+            "tourneyHistory": "",
+            "tourneyQuitRatio": 0,
+            "useFirstManaAbility": false,
+            "useSameSettingsForReplacementEffects": true,
+            "userIdStr": "",
+            "userSkipPrioritySteps": {
+              "opponentTurn": {
+                "beforeCombat": false,
+                "draw": false,
+                "endOfCombat": false,
+                "endOfTurn": false,
+                "main1": true,
+                "main2": true,
+                "upkeep": false
+              },
+              "stopOnAllEndPhases": true,
+              "stopOnAllMainPhases": true,
+              "stopOnDeclareAttackers": true,
+              "stopOnDeclareBlockersWithAnyPermanents": true,
+              "stopOnDeclareBlockersWithZeroPermanents": false,
+              "stopOnStackNewObjects": true,
+              "yourTurn": {
+                "beforeCombat": false,
+                "draw": false,
+                "endOfCombat": false,
+                "endOfTurn": false,
+                "main1": true,
+                "main2": true,
+                "upkeep": false
+              }
+            }
+          },
+          "wins": 0,
+          "winsNeeded": 1
+        },
+        {
+          "attachments": [],
+          "battlefield": {},
+          "bufferTimeLeft": 0,
+          "commandList": [
+            {
+              "artRect": "NORMAL",
+              "canAttack": false,
+              "canBlock": false,
+              "cardIcons": [],
+              "cardNumber": "113",
+              "cardTypes": [
+                "CREATURE"
+              ],
+              "color": {
+                "black": true,
+                "blue": false,
+                "green": false,
+                "red": false,
+                "white": false
+              },
+              "controlledByOwner": true,
+              "defense": "",
+              "displayFullName": "Yargle, Glutton of Urborg",
+              "displayName": "Yargle, Glutton of Urborg",
+              "expansionSetCode": "DOM",
+              "extraDeckCard": false,
+              "faceDown": false,
+              "flipCard": false,
+              "frameColor": {
+                "black": false,
+                "blue": false,
+                "green": false,
+                "red": false,
+                "white": false
+              },
+              "frameStyle": "M15_NORMAL",
+              "gameObject": true,
+              "hideInfo": false,
+              "id": "2bf5d98b-81df-4db0-97b6-972d4a0e305b",
+              "imageFileName": "",
+              "imageNumber": 0,
+              "inViewerOnly": false,
+              "isAbility": false,
+              "isChoosable": false,
+              "isDoubleFacedCard": false,
+              "isSelected": false,
+              "isSplitCard": false,
+              "isToken": false,
+              "loyalty": "",
+              "mageObjectType": "COMMANDER",
+              "manaCostLeftStr": [
+                "{4}",
+                "{B}"
+              ],
+              "manaCostRightStr": [],
+              "manaValue": 5,
+              "name": "Yargle, Glutton of Urborg",
+              "originalColorIdentity": "{B}",
+              "originalIsCopy": false,
+              "originalPower": {
+                "baseValue": 9,
+                "boostedValue": 9,
+                "cardValue": "9",
+                "modifiedBaseValue": 9
+              },
+              "originalToughness": {
+                "baseValue": 3,
+                "boostedValue": 3,
+                "cardValue": "3",
+                "modifiedBaseValue": 3
+              },
+              "paid": false,
+              "playableStats": {
+                "basicCastAbilities": [],
+                "basicManaAbilities": [],
+                "basicPlayAbilities": [],
+                "other": []
+              },
+              "power": "9",
+              "rarity": "UNCOMMON",
+              "rotate": false,
+              "rules": [
+                "<b>Commander</b>"
+              ],
+              "startingDefense": "",
+              "startingLoyalty": "",
+              "subTypes": [
+                "FROG",
+                "SPIRIT"
+              ],
+              "superTypes": [
+                "LEGENDARY"
+              ],
+              "toughness": "3",
+              "transformable": false,
+              "transformed": false,
+              "usesVariousArt": false
+            }
+          ],
+          "controlled": false,
+          "counters": [],
+          "designationNames": [],
+          "exile": {},
+          "graveyard": {},
+          "handCount": 7,
+          "hasLeft": false,
+          "hasPriority": false,
+          "helperCards": {},
+          "initiative": false,
+          "isActive": false,
+          "isHuman": true,
+          "libraryCount": 92,
+          "life": 40,
+          "manaPool": {
+            "black": 0,
+            "blue": 0,
+            "colorless": 0,
+            "green": 0,
+            "red": 0,
+            "white": 0
+          },
+          "monarch": false,
+          "name": "Fixture Player 4",
+          "passedAllTurns": false,
+          "passedTurn": false,
+          "passedUntilEndOfTurn": false,
+          "passedUntilEndStepBeforeMyTurn": false,
+          "passedUntilNextMain": false,
+          "passedUntilStackResolved": false,
+          "playerId": "e002bea4-7e65-4d86-aef4-de261b3f4827",
+          "priorityTimeLeftSecs": 0,
+          "priorityTimeSavedTimeMs": 1789182562887,
+          "sideboard": {},
+          "statesSavedSize": -1,
+          "timerActive": false,
+          "userData": {
+            "allowRequestShowHandCards": false,
+            "askMoveToGraveOrder": false,
+            "autoOrderTrigger": true,
+            "autoTargetLevel": 1,
+            "avatarId": 0,
+            "confirmEmptyManaPool": true,
+            "constructedRating": 0,
+            "flagName": "world.png",
+            "generalRating": 0,
+            "groupId": 2,
+            "limitedRating": 0,
+            "manaPoolAutomatic": true,
+            "manaPoolAutomaticRestricted": true,
+            "matchHistory": "",
+            "matchQuitRatio": 0,
+            "passPriorityActivation": false,
+            "passPriorityCast": false,
+            "requestedHandPlayersList": {},
+            "tourneyHistory": "",
+            "tourneyQuitRatio": 0,
+            "useFirstManaAbility": false,
+            "useSameSettingsForReplacementEffects": true,
+            "userIdStr": "",
+            "userSkipPrioritySteps": {
+              "opponentTurn": {
+                "beforeCombat": false,
+                "draw": false,
+                "endOfCombat": false,
+                "endOfTurn": false,
+                "main1": true,
+                "main2": true,
+                "upkeep": false
+              },
+              "stopOnAllEndPhases": true,
+              "stopOnAllMainPhases": true,
+              "stopOnDeclareAttackers": true,
+              "stopOnDeclareBlockersWithAnyPermanents": true,
+              "stopOnDeclareBlockersWithZeroPermanents": false,
+              "stopOnStackNewObjects": true,
+              "yourTurn": {
+                "beforeCombat": false,
+                "draw": false,
+                "endOfCombat": false,
+                "endOfTurn": false,
+                "main1": true,
+                "main2": true,
+                "upkeep": false
+              }
+            }
+          },
+          "wins": 0,
+          "winsNeeded": 1
+        }
+      ],
+      "priorityPlayerName": "Fixture Player 1",
+      "priorityTime": 0,
+      "revealed": [],
+      "rollbackTurnsAllowed": false,
+      "special": false,
+      "stack": {},
+      "step": "PRECOMBAT_MAIN",
+      "totalEffectsCount": 11,
+      "totalErrorsCount": 0,
+      "turn": 1,
+      "watchedHands": {}
+    },
+    "namedExiles": [
+      {
+        "cards": {},
+        "id": "712e3513-5657-435d-84fc-6b344ac1b811",
+        "name": "Permanent - Exile"
+      }
+    ],
+    "outcome": {
+      "ended": false,
+      "winnerPlayerIds": []
+    },
+    "schema": "xmage-gameview-v1",
+    "stackOrder": []
+  },
+  "viewerId": "player-1"
+}

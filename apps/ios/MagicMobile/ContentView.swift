@@ -936,7 +936,7 @@ struct ContentView: View {
 
     private func snapshotSignature(_ snapshot: GameSnapshot) -> String {
         let legalActionIds = snapshot.legalActions?.map(\.id).joined(separator: ",") ?? ""
-        let handCounts = snapshot.players.map { "\($0.playerId):\($0.zones.hand.count):\($0.zones.battlefield.count):\($0.zones.graveyard.count)" }.joined(separator: "|")
+        let handCounts = snapshot.players.map { "\($0.playerId):\($0.zones.visibleHandCount):\($0.zones.battlefield.count):\($0.zones.graveyard.count)" }.joined(separator: "|")
         return "\(snapshot.id)|\(snapshot.bridgeRevision ?? -1)|\(snapshot.xmageCycle ?? -1)|\(snapshot.turn)|\(snapshot.phase)|\(snapshot.step ?? "")|\(snapshot.priorityPlayerId ?? "")|\(snapshot.promptText ?? "")|\(handCounts)|\(legalActionIds)"
     }
 
@@ -968,7 +968,7 @@ struct ContentView: View {
         guard manaPaymentWasActive, !active else { return }
         guard pendingActionId == nil else { return }
         guard nextSnapshot.promptEnvelopeV2 == nil else { return }
-        guard nextSnapshot.priorityPlayerId == "human" || nextSnapshot.waitingOnPlayerId == "human" else { return }
+        guard nextSnapshot.isViewer(nextSnapshot.priorityPlayerId) || nextSnapshot.isViewer(nextSnapshot.waitingOnPlayerId) else { return }
         guard let pass = (nextSnapshot.legalActions ?? []).first(where: { $0.type == "pass_priority" }) else { return }
         Task { await run(action: pass) }
     }
@@ -1069,7 +1069,7 @@ struct ContentView: View {
     }
 
     private func castDebugSummary(_ snapshot: GameSnapshot) -> String {
-        let handCount = snapshot.human?.zones.hand.count ?? 0
+        let handCount = snapshot.human?.zones.visibleHandCount ?? 0
         let stackCount = snapshot.xmage?.stack.count ?? snapshot.human?.zones.stack.count ?? 0
         let mana = snapshot.human?.manaPool.map { "W\($0.W) U\($0.U) B\($0.B) R\($0.R) G\($0.G) C\($0.C)" } ?? "nil"
         let prompt = snapshot.promptEnvelopeV2.map { "\($0.method)|\($0.responseCommand?.type ?? $0.responseKind)" } ?? "nil"
@@ -2375,6 +2375,49 @@ private enum GameHaptics {
     }
 }
 
+enum BoardOpponentFocus {
+    static func opponents(in snapshot: GameSnapshot) -> [PlayerGameState] {
+        snapshot.players.filter { !snapshot.isViewer($0.playerId) }
+    }
+
+    static func snapshot(_ snapshot: GameSnapshot, selecting playerID: String?) -> GameSnapshot {
+        var selected = snapshot
+        if let playerID, opponents(in: snapshot).contains(where: { $0.playerId == playerID }) {
+            selected.selectedOpponentId = playerID
+        }
+        return selected
+    }
+}
+
+private struct OpponentFocusMenu: View {
+    let snapshot: GameSnapshot
+    let selectOpponent: (String) -> Void
+
+    var body: some View {
+        if BoardOpponentFocus.opponents(in: snapshot).count > 1 {
+            Menu {
+                ForEach(BoardOpponentFocus.opponents(in: snapshot)) { player in
+                    Button {
+                        selectOpponent(player.playerId)
+                    } label: {
+                        Label(snapshot.playerLabel(player.playerId), systemImage: snapshot.opponent?.playerId == player.playerId ? "checkmark.circle.fill" : "circle")
+                    }
+                }
+            } label: {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(MagicPalette.antiqueGold)
+                    .frame(width: 44, height: 44)
+                    .background(MagicPalette.iron.opacity(0.8), in: RoundedRectangle(cornerRadius: 8))
+            }
+            .accessibilityLabel("Choose opponent to view")
+            .accessibilityValue(snapshot.playerLabel(snapshot.opponent?.playerId))
+            .accessibilityHint("Changes the displayed opponent battlefield")
+            .accessibilityIdentifier("board.opponentFocus")
+        }
+    }
+}
+
 struct NativeGameView: View {
     let snapshot: GameSnapshot?
     let startupStatus: CommanderStartupResponse?
@@ -2412,6 +2455,7 @@ struct NativeGameView: View {
     @State private var dragActionChoice: DragActionChoice?
     @State private var combatSelection = CombatSelectionState()
     @State private var combatPreviewArrows: [CombatArrow] = []
+    @State private var focusedOpponentId: String?
     @State private var aiWaitBeganAt = Date()
     @State private var aiWaitKey = ""
     @State private var didAutoRefreshAIWaitKey: String?
@@ -2459,9 +2503,10 @@ struct NativeGameView: View {
 
     @ViewBuilder
     var body: some View {
-        if let snapshot, let human = snapshot.human, let opponent = snapshot.opponent {
-            let humanName = human.displayName ?? MagicMobileAPI.cleanPlayerName(playerDisplayName) ?? "You"
-            let opponentName = opponent.displayName ?? "AI"
+        if let snapshot = snapshot.map({ BoardOpponentFocus.snapshot($0, selecting: focusedOpponentId) }),
+           let human = snapshot.human, let opponent = snapshot.opponent {
+            let humanName = snapshot.playerLabel(human.playerId)
+            let opponentName = snapshot.playerLabel(opponent.playerId)
             let sideCombatHighlights = CombatHighlightSet(
                 selection: combatSelection,
                 actions: snapshot.legalActions ?? [],
@@ -2492,13 +2537,17 @@ struct NativeGameView: View {
                             player: opponent,
                             active: snapshot.activePlayerId == opponent.playerId,
                             opponentId: human.playerId,
-                            combatTargetable: sideCombatHighlights.matches(id: opponent.playerId),
+                            combatTargetable: CombatPlayerIdentity.targetID(for: opponent.playerId, in: snapshot, candidates: sideCombatHighlights.defenderIds) != nil,
                             combatTargetAction: {
-                                submitAttackers(defenderId: opponent.playerId, snapshot: snapshot)
+                                if let defenderId = CombatPlayerIdentity.targetID(for: opponent.playerId, in: snapshot, candidates: sideCombatHighlights.defenderIds) {
+                                    submitAttackers(defenderId: defenderId, snapshot: snapshot)
+                                }
                             }
                         )
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, 12)
+
+                        OpponentFocusMenu(snapshot: snapshot) { focusedOpponentId = $0 }
 
                         Spacer()
 
@@ -2567,6 +2616,7 @@ struct NativeGameView: View {
                                 .position(x: metrics.playerLandsRect.midX, y: metrics.playerLandsRect.midY)
 
                             CombatArrowOverlay(
+                                snapshot: snapshot,
                                 groups: snapshot.xmage?.combat ?? [],
                                 previewArrows: combatPreviewArrows,
                                 metrics: metrics,
@@ -2796,7 +2846,7 @@ struct NativeGameView: View {
 
                         if let xmageStack = snapshot.xmage?.stack, !xmageStack.isEmpty {
                             XmageStackPeek(
-                                objects: xmageStack,
+                                objects: snapshot.source == "xmage-ondevice" ? Array(xmageStack.reversed()) : xmageStack,
                                 legalActions: snapshot.legalActions ?? [],
                                 promptText: snapshot.promptEnvelopeV2?.message ?? snapshot.promptText,
                                 selectedCard: $selectedCard,
@@ -2961,6 +3011,9 @@ struct NativeGameView: View {
             .onAppear {
                 updateAIWaitStart(for: snapshot)
             }
+            .onChange(of: snapshot.id) { _, _ in
+                focusedOpponentId = nil
+            }
             .onChange(of: snapshot.aiWaitSignature) { _, _ in
                 updateAIWaitStart(for: snapshot)
             }
@@ -2998,11 +3051,11 @@ struct NativeGameView: View {
             return
         case .refresh:
             didAutoRefreshAIWaitKey = key
-            onInteractionFeedback("Refreshing AI wait")
+            onInteractionFeedback("Refreshing player wait")
             refreshGame()
         case .reconnect:
             didAutoReconnectAIWaitKey = key
-            onInteractionFeedback("Reconnecting AI wait")
+            onInteractionFeedback("Reconnecting player wait")
             reconnectGame()
         case .diagnose:
             didAutoDiagnoseAIWaitKey = key
@@ -3045,11 +3098,14 @@ struct NativeGameView: View {
                     opponentName: opponentName,
                     opponent: opponent,
                     humanId: human.playerId,
-                    combatTargetable: combatHighlights.matches(id: opponent.playerId),
+                    combatTargetable: CombatPlayerIdentity.targetID(for: opponent.playerId, in: snapshot, candidates: combatHighlights.defenderIds) != nil,
                     combatTargetAction: {
-                        submitAttackers(defenderId: opponent.playerId, snapshot: snapshot)
+                        if let defenderId = CombatPlayerIdentity.targetID(for: opponent.playerId, in: snapshot, candidates: combatHighlights.defenderIds) {
+                            submitAttackers(defenderId: defenderId, snapshot: snapshot)
+                        }
                     },
-                    openLog: { isLogOpen = true }
+                    openLog: { isLogOpen = true },
+                    selectOpponent: { focusedOpponentId = $0 }
                 )
                 .frame(width: metrics.topHUDRect.width, height: metrics.topHUDRect.height)
                 .position(x: metrics.topHUDRect.midX, y: metrics.topHUDRect.midY)
@@ -3108,6 +3164,7 @@ struct NativeGameView: View {
                     .position(x: metrics.playerLandsRect.midX, y: metrics.playerLandsRect.midY)
 
                 PortraitCombatArrowOverlay(
+                    snapshot: snapshot,
                     groups: snapshot.xmage?.combat ?? [],
                     previewArrows: combatPreviewArrows,
                     metrics: metrics,
@@ -4236,7 +4293,7 @@ struct GameCompletionOverlay: View {
 
     private var title: String {
         guard let winners = snapshot.winnerPlayerIds, !winners.isEmpty else { return "Game Over" }
-        return winners.contains("human") ? "Victory" : "Defeat"
+        return winners.contains(snapshot.viewerID) ? "Victory" : "Defeat"
     }
 
     private var winnerText: String {
@@ -4257,7 +4314,7 @@ struct GameCompletionOverlay: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 12) {
-                Image(systemName: snapshot.winnerPlayerIds?.contains("human") == true ? "trophy.fill" : "flag.checkered")
+                Image(systemName: snapshot.winnerPlayerIds?.contains(snapshot.viewerID) == true ? "trophy.fill" : "flag.checkered")
                     .font(.system(size: 32, weight: .black))
                     .foregroundStyle(MagicPalette.antiqueGold)
 
@@ -4388,14 +4445,14 @@ struct PlayerStrip: View {
                     .font(.headline.weight(.black))
                     .foregroundStyle(.white)
                     .lineLimit(1)
-                Text(player.zones.command.first?.card.name ?? "Commander hidden")
+                Text(player.zones.command.first?.card.name ?? (player.hasKnownCommanderTax ? "Commander hidden" : "Command zone"))
                     .font(.caption.weight(.black))
                     .foregroundStyle(.orange)
                     .lineLimit(1)
             }
 
-            ZoneCounter(label: "Lib", value: player.zones.library.count)
-            ZoneCounter(label: "Hand", value: player.zones.hand.count)
+            ZoneCounter(label: "Lib", value: player.zones.visibleLibraryCount)
+            ZoneCounter(label: "Hand", value: player.zones.visibleHandCount)
             ZoneCounter(label: "Grave", value: player.zones.graveyard.count)
             ZoneCounter(label: "Exile", value: player.zones.exile.count)
             Spacer()
@@ -4479,21 +4536,25 @@ struct InteractiveHudMiniStat: View {
 
 struct CommanderHudSummary: Equatable {
     let life: Int
-    let commanderTax: Int
+    let commanderTax: Int?
     let handCount: Int
     let libraryCount: Int
     let graveyardCount: Int
     let exileCount: Int
-    let commanderDamage: Int
+    let commanderDamage: Int?
+
+    var commanderTaxLabel: String { commanderTax.map(String.init) ?? "—" }
+    var commanderDamageLabel: String { commanderDamage.map(String.init) ?? "—" }
+    var commandZoneLabel: String { commanderTax.map { "Command (\($0))" } ?? "Command" }
 
     init(player: PlayerGameState, opponentId: String?) {
         life = player.life
-        commanderTax = player.commanderTax
-        handCount = player.zones.hand.count
-        libraryCount = player.zones.library.count
+        commanderTax = player.hasKnownCommanderTax ? player.commanderTax : nil
+        handCount = player.zones.visibleHandCount
+        libraryCount = player.zones.visibleLibraryCount
         graveyardCount = player.zones.graveyard.count
         exileCount = player.zones.exile.count
-        commanderDamage = opponentId.flatMap { player.commanderDamage?[$0] } ?? 0
+        commanderDamage = player.commanderDamage.map { damage in opponentId.flatMap { damage[$0] } ?? 0 }
     }
 }
 
@@ -4530,7 +4591,7 @@ struct PlayerVerticalHUD: View {
             }
 
             LazyVGrid(columns: [GridItem(.fixed(34)), GridItem(.fixed(34))], spacing: 3) {
-                InteractiveHudMiniStat(label: "CMD", value: "\(summary.commanderTax)") {
+                InteractiveHudMiniStat(label: "CMD", value: summary.commanderTaxLabel) {
                     viewZone("Command", player.zones.command)
                 }
                 HudMiniStat(label: "Hand", value: "\(summary.handCount)")
@@ -4541,7 +4602,7 @@ struct PlayerVerticalHUD: View {
                 InteractiveHudMiniStat(label: "Ex", value: "\(summary.exileCount)") {
                     viewZone("Exile", player.zones.exile)
                 }
-                HudMiniStat(label: "Dmg", value: "\(summary.commanderDamage)")
+                HudMiniStat(label: "Dmg", value: summary.commanderDamageLabel)
             }
         }
         .padding(6)
@@ -4582,12 +4643,12 @@ struct OpponentVerticalHUD: View {
             }
 
             LazyVGrid(columns: [GridItem(.fixed(34)), GridItem(.fixed(34))], spacing: 3) {
-                HudMiniStat(label: "CMD", value: "\(summary.commanderTax)")
+                HudMiniStat(label: "CMD", value: summary.commanderTaxLabel)
                 HudMiniStat(label: "Hand", value: "\(summary.handCount)")
                 HudMiniStat(label: "Lib", value: "\(summary.libraryCount)")
                 HudMiniStat(label: "GY", value: "\(summary.graveyardCount)")
                 HudMiniStat(label: "Ex", value: "\(summary.exileCount)")
-                HudMiniStat(label: "Dmg", value: "\(summary.commanderDamage)")
+                HudMiniStat(label: "Dmg", value: summary.commanderDamageLabel)
             }
         }
         .padding(6)
@@ -4633,14 +4694,11 @@ struct TurnStatusBadge: View {
     let opponent: PlayerGameState
 
     private var isHumanTurn: Bool {
-        snapshot.activePlayerId == human.playerId || snapshot.activePlayerId == "human"
+        snapshot.isViewer(snapshot.activePlayerId)
     }
 
     private var priorityText: String {
-        if let priority = snapshot.priorityPlayerId {
-            return priority == "human" ? "YOU" : "AI"
-        }
-        return "None"
+        snapshot.playerLabel(snapshot.priorityPlayerId)
     }
 
     private var phaseText: String {
@@ -4673,7 +4731,7 @@ struct TurnStatusBadge: View {
 
             Text(priorityText)
                 .font(.system(size: 10, weight: .black))
-                .foregroundStyle(snapshot.priorityPlayerId == "human" ? MagicPalette.legalEmerald : (snapshot.priorityPlayerId != nil ? MagicPalette.warningAmber : .white.opacity(0.4)))
+                .foregroundStyle(snapshot.isViewer(snapshot.priorityPlayerId) ? MagicPalette.legalEmerald : (snapshot.priorityPlayerId != nil ? MagicPalette.warningAmber : .white.opacity(0.4)))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -5190,8 +5248,8 @@ struct PromptPill: View {
     var combatSelection = CombatSelectionState()
 
     private var isWaitingOnHuman: Bool {
-        snapshot.waitingOnPlayerId == "human"
-            || (snapshot.waitingOnPlayerId == nil && snapshot.priorityPlayerId == "human")
+        snapshot.isViewer(snapshot.waitingOnPlayerId)
+            || (snapshot.waitingOnPlayerId == nil && snapshot.isViewer(snapshot.priorityPlayerId))
             || !CompactPromptPopup.compactLegalPromptActions(in: snapshot).isEmpty
     }
 
@@ -5333,7 +5391,7 @@ private struct PromptGuidance {
             color = MagicPalette.emerald
             isUrgent = false
         } else {
-            label = "AI DECISION"
+            label = "\(snapshot.playerLabel(snapshot.waitingOnPlayerId ?? snapshot.priorityPlayerId).uppercased()) DECISION"
             message = snapshot.promptText ?? "Waiting for XMage"
             color = MagicPalette.arcaneBlue
             isUrgent = false
@@ -5624,10 +5682,10 @@ struct UniversalPromptActionPanel: View {
     }
 
     private var priorityLabel: String {
-        if snapshot.priorityPlayerId == "human" || snapshot.waitingOnPlayerId == "human" {
+        if snapshot.isViewer(snapshot.priorityPlayerId) || snapshot.isViewer(snapshot.waitingOnPlayerId) {
             return "YOUR PRIORITY"
         }
-        return snapshot.priorityPlayerId ?? snapshot.waitingOnPlayerId ?? "WAITING"
+        return snapshot.playerLabel(snapshot.priorityPlayerId ?? snapshot.waitingOnPlayerId)
     }
 
     @ViewBuilder
@@ -5749,7 +5807,7 @@ struct UniversalPromptActionPanel: View {
             }
 
             if isPlayerSelectionPrompt(prompt), prompt.players?.isEmpty != false {
-                optionGrid(snapshot.players.map { ($0.playerId, $0.playerId == "human" ? "You" : "AI") }, prompt: prompt, fallbackType: prompt.responseCommand?.type ?? "choose_player", icon: "person.crop.circle")
+                optionGrid(snapshot.players.map { ($0.playerId, snapshot.playerLabel($0.playerId)) }, prompt: prompt, fallbackType: prompt.responseCommand?.type ?? "choose_player", icon: "person.crop.circle")
             }
 
             if isDamageAssignmentPrompt(prompt), prompt.multiAmounts?.isEmpty != false {
@@ -6280,34 +6338,41 @@ struct UniversalPromptActionPanel: View {
     @ViewBuilder
     private func manualAmountPicker(prompt: PromptEnvelopeV2) -> some View {
         let type = amountCommandType(preferred: prompt.responseCommand?.type)
-        let currentValue = manualAmountValues[prompt.id] ?? 0
+        let bounds = PromptAmountBounds(minimum: prompt.minChoices, maximum: prompt.maxChoices)
+        let currentValue = bounds.clamp(manualAmountValues[prompt.id] ?? 0)
         PromptMiniLabel(type == "play_x_mana" ? "X Amount" : "Amount")
         
         HStack(spacing: 7) {
             Button {
-                manualAmountValues[prompt.id] = max(0, currentValue - 1)
+                manualAmountValues[prompt.id] = bounds.stepping(currentValue, by: -1)
             } label: {
                 Image(systemName: "minus.circle.fill")
                     .font(.system(size: 24, weight: .black))
             }
             .buttonStyle(.plain)
-            .foregroundStyle(currentValue <= 0 ? .white.opacity(0.24) : MagicPalette.parchment)
-            .disabled(pendingActionId != nil || currentValue <= 0)
+            .frame(minWidth: 44, minHeight: 44)
+            .foregroundStyle(currentValue <= bounds.minimum ? .white.opacity(0.24) : MagicPalette.parchment)
+            .disabled(pendingActionId != nil || currentValue <= bounds.minimum)
 
-            Text("\(currentValue)")
+            TextField("Amount", value: Binding(get: { currentValue }, set: { manualAmountValues[prompt.id] = bounds.clamp($0) }), format: .number)
+                .keyboardType(.numbersAndPunctuation)
+                .multilineTextAlignment(.center)
                 .font(.system(size: 16, weight: .black))
                 .foregroundStyle(.white)
-                .frame(width: 40)
+                .frame(minWidth: 70, minHeight: 44)
+                .accessibilityLabel("Amount, from \(bounds.minimum) to \(bounds.maximum)")
+                .disabled(pendingActionId != nil)
 
             Button {
-                manualAmountValues[prompt.id] = currentValue + 1
+                manualAmountValues[prompt.id] = bounds.stepping(currentValue, by: 1)
             } label: {
                 Image(systemName: "plus.circle.fill")
                     .font(.system(size: 24, weight: .black))
             }
             .buttonStyle(.plain)
+            .frame(minWidth: 44, minHeight: 44)
             .foregroundStyle(MagicPalette.parchment)
-            .disabled(pendingActionId != nil)
+            .disabled(pendingActionId != nil || currentValue >= bounds.maximum)
 
             Spacer()
 
@@ -6795,10 +6860,10 @@ struct UniversalPromptActionPanel: View {
         if pendingActionId != nil {
             return "Action sent. Waiting for XMage to confirm the next game state."
         }
-        if snapshot.waitingOnPlayerId != nil && snapshot.waitingOnPlayerId != "human" {
-            return "Waiting on \(snapshot.waitingOnPlayerId ?? "another player"). XMage has not exposed a cast/play action for this card."
+        if snapshot.waitingOnPlayerId != nil && !snapshot.isViewer(snapshot.waitingOnPlayerId) {
+            return "Waiting on \(snapshot.playerLabel(snapshot.waitingOnPlayerId)). XMage has not exposed a cast/play action for this card."
         }
-        if snapshot.priorityPlayerId != nil && snapshot.priorityPlayerId != "human" {
+        if snapshot.priorityPlayerId != nil && !snapshot.isViewer(snapshot.priorityPlayerId) {
             return "Not your priority. XMage will expose cast/play actions when this card is legal."
         }
         if snapshot.promptEnvelopeV2 != nil || snapshot.promptEnvelope != nil || snapshot.choicePrompt != nil {
@@ -6846,8 +6911,35 @@ struct MobileSurfacesPanel: View {
                 if !lookedAtCards.isEmpty || snapshot.xmage?.panels.lookedAt == true {
                     zoneButton(title: "Looked", value: "\(lookedAtCards.count)", systemImage: "eye.trianglebadge.exclamationmark", cards: lookedAtCards)
                 }
+                if let companions = snapshot.xmage?.companion, !companions.isEmpty {
+                    zoneButton(title: "Companion", value: "\(companions.flatMap(\.cards).count)", systemImage: "person.crop.square", cards: companions.flatMap(\.cards))
+                }
                 SurfaceChip(title: "Priority", value: priorityOwner, systemImage: "hand.raised")
                 SurfaceChip(title: "Actions", value: "\((snapshot.legalActions ?? []).count)", systemImage: "bolt")
+            }
+
+            if snapshot.source == "xmage-ondevice" {
+                ForEach(namedInspectionZones) { group in
+                    if !group.cards.isEmpty {
+                        Button("\(group.name) (\(group.cards.count))") { viewZone(group.name, group.cards) }
+                            .frame(minHeight: 44).buttonStyle(.plain)
+                    }
+                }
+                DisclosureGroup("Commander tax and damage") {
+                    ForEach(snapshot.players) { player in
+                        ForEach(player.commanders ?? []) { commander in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("\(player.displayName ?? player.playerId) · \(commander.name ?? "Commander \(commander.id.prefix(8))")").font(.caption.bold())
+                                Text("Command-zone casts: \(commander.castsFromCommandZone.map(String.init) ?? "unknown") · Next tax: \(commander.commanderTax.map { "{\($0)}" } ?? "unknown")").font(.caption)
+                                if let damage = commander.damageToPlayers {
+                                    ForEach(snapshot.players) { recipient in
+                                        Text("Damage to \(snapshot.playerLabel(recipient.playerId)): \(damage[recipient.playerId] ?? 0)").font(.caption)
+                                    }
+                                } else { Text("Commander damage unavailable").font(.caption) }
+                            }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 5)
+                        }
+                    }
+                }
             }
 
             if let topStackObject = stackObjectNames.first {
@@ -6884,10 +6976,10 @@ struct MobileSurfacesPanel: View {
     }
 
     private var priorityOwner: String {
-        if snapshot.priorityPlayerId == "human" || snapshot.waitingOnPlayerId == "human" || !CompactPromptPopup.compactLegalPromptActions(in: snapshot).isEmpty {
+        if snapshot.isViewer(snapshot.priorityPlayerId) || snapshot.isViewer(snapshot.waitingOnPlayerId) || !CompactPromptPopup.compactLegalPromptActions(in: snapshot).isEmpty {
             return "You"
         }
-        return snapshot.priorityPlayerId ?? snapshot.waitingOnPlayerId ?? "-"
+        return snapshot.playerLabel(snapshot.priorityPlayerId ?? snapshot.waitingOnPlayerId)
     }
 
     private var stackCards: [ZoneCard] {
@@ -6906,19 +6998,29 @@ struct MobileSurfacesPanel: View {
     }
 
     private var commandCards: [ZoneCard] {
-        snapshot.players.flatMap(\.zones.command) + (snapshot.xmage?.players.flatMap(\.command) ?? [])
+        uniqueCards(snapshot.players.flatMap(\.zones.command) + (snapshot.xmage?.players.flatMap(\.command) ?? []))
     }
 
     private var graveyardCards: [ZoneCard] {
-        snapshot.players.flatMap(\.zones.graveyard) + (snapshot.xmage?.players.flatMap(\.zones.graveyard) ?? [])
+        uniqueCards(snapshot.players.flatMap(\.zones.graveyard) + (snapshot.xmage?.players.flatMap(\.zones.graveyard) ?? []))
     }
 
     private var exileCards: [ZoneCard] {
-        snapshot.players.flatMap(\.zones.exile) + (snapshot.xmage?.players.flatMap(\.zones.exile) ?? []) + (snapshot.xmage?.exileZones.flatMap(\.cards) ?? [])
+        uniqueCards(snapshot.players.flatMap(\.zones.exile) + (snapshot.xmage?.players.flatMap(\.zones.exile) ?? []) + (snapshot.xmage?.exileZones.flatMap(\.cards) ?? []))
+    }
+
+    private func uniqueCards(_ cards: [ZoneCard]) -> [ZoneCard] {
+        var seen = Set<String>()
+        return cards.filter { seen.insert($0.instanceId).inserted }
+    }
+
+    private var namedInspectionZones: [XmageNamedZone] {
+        guard let xmage = snapshot.xmage else { return [] }
+        return xmage.exileZones + xmage.revealed + xmage.lookedAt
     }
 
     private var libraryCount: Int {
-        snapshot.players.map { $0.zones.library.count }.reduce(0, +)
+        snapshot.players.map { $0.zones.visibleLibraryCount }.reduce(0, +)
     }
 
     private var revealedCards: [ZoneCard] {
@@ -7244,7 +7346,7 @@ struct CompactPromptPopup: View {
         if snapshot.manaPayment?.active == true {
             return true
         }
-        guard snapshot.waitingOnPlayerId == "human" || snapshot.priorityPlayerId == "human" else {
+        guard snapshot.isViewer(snapshot.waitingOnPlayerId) || snapshot.isViewer(snapshot.priorityPlayerId) else {
             return false
         }
         let actions = snapshot.legalActions ?? []
@@ -7264,7 +7366,7 @@ struct CompactPromptPopup: View {
             id: "xmage-stack-payment-\(snapshot.bridgeRevision ?? snapshot.turn)",
             method: "GAME_PLAY_MANA",
             messageId: -1,
-            playerId: snapshot.human?.playerId ?? "human",
+            playerId: snapshot.viewerID,
             responseKind: "mana",
             message: stackPaymentMessage(in: snapshot),
             required: false,
@@ -7369,7 +7471,7 @@ struct CompactPromptPopup: View {
     }
 
     private var priorityLabel: String {
-        if snapshot.priorityPlayerId == "human" || snapshot.waitingOnPlayerId == "human" {
+        if snapshot.isViewer(snapshot.priorityPlayerId) || snapshot.isViewer(snapshot.waitingOnPlayerId) {
             return "YOUR DECISION"
         }
         return "WAITING"
@@ -8296,6 +8398,7 @@ enum CombatArrowModel {
 }
 
 struct CombatArrowOverlay: View {
+    let snapshot: GameSnapshot
     let groups: [XmageCombatGroup]
     let previewArrows: [CombatArrow]
     let metrics: BattlefieldLayoutMetrics
@@ -8307,7 +8410,7 @@ struct CombatArrowOverlay: View {
         Canvas { context, _ in
             for arrow in CombatArrowModel.arrows(from: groups, previewArrows: previewArrows) {
                 guard let start = anchors[arrow.fromId] else { continue }
-                let end = anchors[arrow.toId] ?? defenderAnchor(for: arrow.toId, kind: arrow.toKind)
+                guard let end = anchors[arrow.toId] ?? defenderAnchor(for: arrow.toId, kind: arrow.toKind) else { continue }
                 drawArrow(arrow, from: start, to: end, in: &context)
             }
         }
@@ -8332,13 +8435,8 @@ struct CombatArrowOverlay: View {
         }
     }
 
-    private func defenderAnchor(for defenderId: String, kind: String?) -> CGPoint {
-        if kind?.localizedCaseInsensitiveContains("player") == true || defenderId.localizedCaseInsensitiveContains("human") || defenderId.localizedCaseInsensitiveContains("ai") {
-            let isHuman = defenderId.localizedCaseInsensitiveContains("human")
-            let rect = isHuman ? metrics.playerBattlefieldRect : metrics.opponentBattlefieldRect
-            return CGPoint(x: metrics.boardColumnRect.minX + 10, y: rect.midY)
-        }
-        return CGPoint(x: metrics.opponentBattlefieldRect.midX, y: metrics.opponentBattlefieldRect.minY)
+    private func defenderAnchor(for defenderId: String, kind: String?) -> CGPoint? {
+        CombatPlayerIdentity.defenderAnchor(for: defenderId, kind: kind, metrics: metrics, snapshot: snapshot)
     }
 
     private func drawArrow(_ arrow: CombatArrow, from start: CGPoint, to end: CGPoint, in context: inout GraphicsContext) {
@@ -8383,6 +8481,7 @@ struct CombatArrowOverlay: View {
 }
 
 struct PortraitCombatArrowOverlay: View {
+    let snapshot: GameSnapshot
     let groups: [XmageCombatGroup]
     let previewArrows: [CombatArrow]
     let metrics: PortraitBattlefieldLayoutMetrics
@@ -8398,7 +8497,7 @@ struct PortraitCombatArrowOverlay: View {
         Canvas { context, _ in
             for arrow in CombatArrowModel.arrows(from: groups, previewArrows: previewArrows) {
                 guard let start = anchors[arrow.fromId] else { continue }
-                let end = anchors[arrow.toId] ?? PortraitCombatAnchorResolver.defenderAnchor(for: arrow.toId, kind: arrow.toKind, metrics: metrics)
+                guard let end = anchors[arrow.toId] ?? PortraitCombatAnchorResolver.defenderAnchor(for: arrow.toId, kind: arrow.toKind, metrics: metrics, snapshot: snapshot) else { continue }
                 drawArrow(arrow, from: start, to: end, in: &context)
             }
         }
@@ -8437,6 +8536,36 @@ struct PortraitCombatArrowOverlay: View {
     }
 }
 
+enum CombatPlayerIdentity {
+    enum Side { case viewer, opponent }
+    enum DefenderKind: String { case player, planeswalker, battle }
+
+    static func ids(for playerID: String, in snapshot: GameSnapshot) -> [String] {
+        let engineIDs = snapshot.xmage?.players.filter { $0.playerId == playerID }.compactMap(\.xmagePlayerId) ?? []
+        return [playerID] + engineIDs
+    }
+
+    static func targetID(for playerID: String, in snapshot: GameSnapshot, candidates: Set<String>) -> String? {
+        ids(for: playerID, in: snapshot).first { candidates.contains($0) }
+    }
+
+    static func side(for defenderID: String, kind: String?, in snapshot: GameSnapshot) -> Side? {
+        // A permanent must use its card anchor, even if its ID resembles a seat ID.
+        guard kind == nil || kind.flatMap({ DefenderKind(rawValue: $0.lowercased()) }) == .player else { return nil }
+        if ids(for: snapshot.viewerID, in: snapshot).contains(defenderID) { return .viewer }
+        if let opponentID = snapshot.opponent?.playerId,
+           ids(for: opponentID, in: snapshot).contains(defenderID) { return .opponent }
+        // Other seats have no HUD anchor in the current two-sided board projection.
+        return nil
+    }
+
+    static func defenderAnchor(for defenderID: String, kind: String?, metrics: BattlefieldLayoutMetrics, snapshot: GameSnapshot) -> CGPoint? {
+        guard let side = side(for: defenderID, kind: kind, in: snapshot) else { return nil }
+        let rect = side == .viewer ? metrics.playerBattlefieldRect : metrics.opponentBattlefieldRect
+        return CGPoint(x: metrics.boardColumnRect.minX + 10, y: rect.midY)
+    }
+}
+
 enum PortraitCombatAnchorResolver {
     static func cardAnchors(metrics: PortraitBattlefieldLayoutMetrics, humanBattlefield: [ZoneCard], opponentBattlefield: [ZoneCard]) -> [String: CGPoint] {
         var anchors: [String: CGPoint] = [:]
@@ -8448,12 +8577,18 @@ enum PortraitCombatAnchorResolver {
     }
 
     static func defenderAnchor(for defenderId: String, kind: String?, metrics: PortraitBattlefieldLayoutMetrics) -> CGPoint {
-        if kind?.localizedCaseInsensitiveContains("player") == true || defenderId.localizedCaseInsensitiveContains("human") || defenderId.localizedCaseInsensitiveContains("ai") {
-            let isHuman = defenderId.localizedCaseInsensitiveContains("human")
-            let rect = isHuman ? metrics.bottomHUDRect : metrics.topHUDRect
+        // Preserve the legacy helper surface for existing callers and geometry tests.
+        if (kind == nil || kind?.lowercased() == "player"), ["human", "ai", "ai-1"].contains(defenderId) {
+            let rect = defenderId == "human" ? metrics.bottomHUDRect : metrics.topHUDRect
             return CGPoint(x: rect.midX, y: rect.midY)
         }
         return CGPoint(x: metrics.opponentBattlefieldRect.midX, y: metrics.opponentBattlefieldRect.midY)
+    }
+
+    static func defenderAnchor(for defenderId: String, kind: String?, metrics: PortraitBattlefieldLayoutMetrics, snapshot: GameSnapshot) -> CGPoint? {
+        guard let side = CombatPlayerIdentity.side(for: defenderId, kind: kind, in: snapshot) else { return nil }
+        let rect = side == .viewer ? metrics.bottomHUDRect : metrics.topHUDRect
+        return CGPoint(x: rect.midX, y: rect.midY)
     }
 
     private static func addAnchors(for cards: [ZoneCard], rect: CGRect, cardWidth: CGFloat, into anchors: inout [String: CGPoint]) {
@@ -8475,6 +8610,7 @@ struct PortraitOpponentStatusBar: View {
     let combatTargetable: Bool
     let combatTargetAction: () -> Void
     let openLog: () -> Void
+    var selectOpponent: ((String) -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .top, spacing: 7) {
@@ -8491,7 +8627,10 @@ struct PortraitOpponentStatusBar: View {
             VStack(spacing: 5) {
                 HStack(spacing: 6) {
                     PhaseStatusTile(title: "PHASE", value: (snapshot.step ?? snapshot.phase).arenaPhaseTitle)
-                    PhaseStatusTile(title: "PRIORITY", value: snapshot.priorityPlayerId == "human" ? "You" : "AI")
+                    PhaseStatusTile(title: "PRIORITY", value: snapshot.playerLabel(snapshot.priorityPlayerId))
+                    if let selectOpponent {
+                        OpponentFocusMenu(snapshot: snapshot, selectOpponent: selectOpponent)
+                    }
                 }
 
                 if let latestEntry = snapshot.log.last {
@@ -8566,21 +8705,21 @@ private struct PortraitOpponentCommanderHUD: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(name), \(summary.life) life")
+        .accessibilityLabel("\(name), \(summary.life) life, \(summary.handCount) cards in hand, \(summary.libraryCount) cards in library")
         .accessibilityHint(combatTargetable ? "Double tap to attack this player" : "")
     }
 }
 
 private struct CompactCommanderStat: View {
     let label: String
-    let value: Int
+    let value: Int?
 
     var body: some View {
         VStack(spacing: 0) {
             Text(label)
                 .font(.system(size: 5.5, weight: .black))
                 .foregroundStyle(MagicPalette.antiqueGold.opacity(0.78))
-            Text("\(value)")
+            Text(value.map(String.init) ?? "—")
                 .font(.system(size: 7.5, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
         }
@@ -9237,7 +9376,7 @@ private struct PortraitPlayerCommanderHUD: View {
             }
 
             Menu {
-                Button("Command (\(summary.commanderTax))") { viewZone("Command", player.zones.command) }
+                Button(summary.commandZoneLabel) { viewZone("Command", player.zones.command) }
                 Button("Graveyard (\(summary.graveyardCount))") { viewZone("Graveyard", player.zones.graveyard) }
                 Button("Exile (\(summary.exileCount))") { viewZone("Exile", player.zones.exile) }
             } label: {
@@ -9416,7 +9555,7 @@ struct PortraitStackLane: View {
     }
 
     private var xmageObjects: [XmageStackObject] {
-        Array((snapshot.xmage?.stack ?? []).reversed())
+        snapshot.stackTopFirst
     }
 
     private var stackCount: Int {
@@ -9843,7 +9982,7 @@ struct CardTile: View {
                 .padding(.leading, 2)
                 .allowsHitTesting(false)
 
-            if card.showsPowerToughness, let power = card.power, let toughness = card.toughness {
+            if card.showsPowerToughness, let power = card.displayPower, let toughness = card.displayToughness {
                 Text("\(power)/\(toughness)")
                     .font(.system(size: 10, weight: .black))
                     .foregroundStyle(.black)
@@ -10171,7 +10310,7 @@ struct MagicPathPhaseRail: View {
             if onlyPhases {
                 HStack(spacing: 7) {
                     PhaseChip(label: "Phase", phase: (snapshot.step ?? snapshot.phase).arenaPhaseTitle, active: true)
-                    PhaseChip(label: "Priority", phase: snapshot.priorityPlayerId == "human" ? "YOU" : "AI", active: snapshot.priorityPlayerId == "human")
+                    PhaseChip(label: "Priority", phase: snapshot.playerLabel(snapshot.priorityPlayerId), active: snapshot.isViewer(snapshot.priorityPlayerId))
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
@@ -10881,31 +11020,7 @@ enum CardImageURL {
     }
 
     static func xmageIconAssetName(for iconType: String) -> String? {
-        switch iconType.uppercased() {
-        case "PLAYABLE_COUNT": return "xmage-icon-playable-count"
-        case "ABILITY_FLYING": return "xmage-icon-flying"
-        case "ABILITY_DEFENDER": return "xmage-icon-defender"
-        case "ABILITY_DEATHTOUCH": return "xmage-icon-deathtouch"
-        case "ABILITY_LIFELINK": return "xmage-icon-lifelink"
-        case "ABILITY_DOUBLE_STRIKE": return "xmage-icon-double-strike"
-        case "ABILITY_FIRST_STRIKE": return "xmage-icon-first-strike"
-        case "ABILITY_CREW": return "xmage-icon-crew"
-        case "ABILITY_TRAMPLE": return "xmage-icon-trample"
-        case "ABILITY_HEXPROOF": return "xmage-icon-hexproof"
-        case "ABILITY_INFECT": return "xmage-icon-infect"
-        case "ABILITY_INDESTRUCTIBLE": return "xmage-icon-indestructible"
-        case "ABILITY_VIGILANCE": return "xmage-icon-vigilance"
-        case "ABILITY_CLASS_LEVEL": return "xmage-icon-class-level"
-        case "ABILITY_REACH": return "xmage-icon-reach"
-        case "OTHER_FACEDOWN": return "xmage-icon-facedown"
-        case "OTHER_COST_X": return "xmage-icon-cost-x"
-        case "OTHER_HAS_RESTRICTIONS": return "xmage-icon-restrictions"
-        case "OTHER_HAS_TARGETS": return "xmage-icon-targets"
-        case "RINGBEARER": return "xmage-icon-ringbearer"
-        case "COMMANDER": return "xmage-icon-commander"
-        case "SYSTEM_COMBINED": return "xmage-icon-combined"
-        default: return nil
-        }
+        XmageCardIcon.assetName(for: iconType)
     }
 
     static func downloadAllImagesToPhone(

@@ -1,0 +1,169 @@
+name: iOS setup presentation and geometry tests
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  presentation:
+    runs-on: macos-26-intel
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Prepare owned evidence directory and XcodeGen project
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d "$RUNNER_TEMP/magicmobile-presentation-XXXXXX")
+          echo "MM_PRESENTATION_DIR=$work" >> "$GITHUB_ENV"
+          [[ "$(uname -m)" == x86_64 ]]
+          xcodebuild -version | tee "$work/xcode-version.txt"
+          grep -qx 'Xcode 26.6' "$work/xcode-version.txt"
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen generate --spec apps/ios/project.yml
+
+      - name: Discover compatible iPhone runtime and create one owned simulator
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, re, subprocess
+          work = pathlib.Path(os.environ['MM_PRESENTATION_DIR'])
+          inventory_text = subprocess.check_output(['xcrun', 'simctl', 'list', '--json'], text=True, timeout=120)
+          (work / 'simctl-before.json').write_text(inventory_text)
+          inventory = json.loads(inventory_text)
+          sdk = subprocess.check_output(['xcrun', '--sdk', 'iphonesimulator', '--show-sdk-version'], text=True, timeout=30).strip()
+          version = lambda value: tuple(int(part) for part in value.split('.'))
+          types = {item['identifier']: item for item in inventory['devicetypes']}
+          choices = []
+          for runtime in inventory['runtimes']:
+              if not runtime.get('isAvailable') or not runtime['identifier'].startswith('com.apple.CoreSimulator.SimRuntime.iOS-'):
+                  continue
+              rv = version(runtime['version'])
+              if rv[:2] != version(sdk)[:2] or rv < (17, 0):
+                  continue
+              if 'supportedArchitectures' in runtime and 'x86_64' not in runtime['supportedArchitectures']:
+                  continue
+              for supported in runtime.get('supportedDeviceTypes', []):
+                  device = types.get(supported['identifier'])
+                  if device and device.get('productFamily') == 'iPhone':
+                      choices.append((rv, runtime['identifier'], device['identifier']))
+          if not choices:
+              raise SystemExit('No available Intel iPhone runtime matches simulator SDK ' + sdk)
+          rv, runtime_id, device_id = sorted(choices)[-1]
+          (work / 'selection.json').write_text(json.dumps({'sdk': sdk, 'runtime': runtime_id, 'device': device_id}, indent=2))
+          # Persist create stdout directly so the always-cleanup step can recover it.
+          with (work / 'created-uuid.txt').open('w') as output:
+              subprocess.run(['xcrun', 'simctl', 'create', 'MagicMobile-' + work.name, device_id, runtime_id],
+                             stdout=output, check=True, timeout=60)
+          udid = (work / 'created-uuid.txt').read_text().strip()
+          if not re.fullmatch(r'[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}', udid):
+              raise SystemExit('simctl create did not return one owned UUID')
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write('MM_PRESENTATION_UDID=' + udid + '\n')
+          PY
+
+      - name: Boot owned iPhone and wait for migration (600 second bound)
+        timeout-minutes: 12
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, subprocess
+          udid = os.environ['MM_PRESENTATION_UDID']
+          work = pathlib.Path(os.environ['MM_PRESENTATION_DIR'])
+          with (work / 'boot.log').open('w') as log:
+              subprocess.run(['xcrun', 'simctl', 'boot', udid], stdout=log, stderr=subprocess.STDOUT, check=True, timeout=30)
+              subprocess.run(['xcrun', 'simctl', 'bootstatus', udid, '-b'], stdout=log, stderr=subprocess.STDOUT, check=True, timeout=600)
+          PY
+
+      - name: Test full MagicMobile scheme including setup UI and existing geometry tests
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project apps/ios/MagicMobileiOS.xcodeproj \
+            -scheme MagicMobile -configuration Debug \
+            -destination "platform=iOS Simulator,id=$MM_PRESENTATION_UDID" \
+            -destination-timeout 60 \
+            -derivedDataPath "$MM_PRESENTATION_DIR/DerivedData" \
+            -resultBundlePath "$MM_PRESENTATION_DIR/Presentation.xcresult" \
+            -jobs 2 -parallel-testing-enabled NO \
+            -maximum-concurrent-test-simulator-destinations 1 \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 90 \
+            -maximum-test-execution-time-allowance 120 \
+            ARCHS=x86_64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO \
+            test 2>&1 | tee "$MM_PRESENTATION_DIR/xcodebuild.log"
+
+      - name: Collect screenshots and XCTest attachments even on failure
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, subprocess
+          directory = os.environ.get('MM_PRESENTATION_DIR')
+          if not directory:
+              raise SystemExit(0)
+          work = pathlib.Path(directory)
+          screenshots = work / 'screenshots'
+          screenshots.mkdir(exist_ok=True)
+          commands = []
+          udid = os.environ.get('MM_PRESENTATION_UDID')
+          if udid:
+              commands.append(['xcrun', 'simctl', 'io', udid, 'screenshot', str(screenshots / 'final-screen.png')])
+          result = work / 'Presentation.xcresult'
+          if result.exists():
+              commands.append(['xcrun', 'xcresulttool', 'export', 'attachments', '--path', str(result),
+                               '--output-path', str(screenshots / 'attachments')])
+          for command in commands:
+              try:
+                  subprocess.run(command, check=True, timeout=60)
+              except (subprocess.SubprocessError, OSError) as error:
+                  print('Evidence export unavailable:', error)
+          PY
+
+      - name: Cleanup only the simulator created by this job
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re, subprocess
+          directory = os.environ.get('MM_PRESENTATION_DIR')
+          if not directory:
+              raise SystemExit(0)
+          source = pathlib.Path(directory) / 'created-uuid.txt'
+          if not source.exists():
+              raise SystemExit(0)
+          udid = source.read_text().strip()
+          if not re.fullmatch(r'[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}', udid):
+              raise SystemExit('Refusing cleanup without exactly one owned UUID')
+          for action in ['shutdown', 'delete']:
+              try:
+                  subprocess.run(['xcrun', 'simctl', action, udid], check=True, timeout=30)
+              except (subprocess.SubprocessError, OSError) as error:
+                  if action == 'delete':
+                      raise
+                  print('Owned simulator may already be stopped:', error)
+          PY
+
+      - name: Upload presentation evidence even on failure
+        if: always() && env.MM_PRESENTATION_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: magicmobile-ios-presentation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.MM_PRESENTATION_DIR }}/Presentation.xcresult
+            ${{ env.MM_PRESENTATION_DIR }}/screenshots/
+            ${{ env.MM_PRESENTATION_DIR }}/*.log
+            ${{ env.MM_PRESENTATION_DIR }}/*.txt
+            ${{ env.MM_PRESENTATION_DIR }}/*.json
+          retention-days: 7
+          if-no-files-found: warn
+
+# Simulator presentation and unit tests only: no XMage build, cloud login,
+# physical-device acceptance, signing, distribution, or native-gameplay claim.

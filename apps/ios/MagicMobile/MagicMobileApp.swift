@@ -87,7 +87,15 @@ struct MagicMobileApp: App {
     var body: some Scene {
         WindowGroup {
             OrientationHostingRoot {
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--ondevice-setup-ui-test") {
+                    OnDeviceRootView()
+                } else {
+                    ContentView()
+                }
+                #else
                 ContentView()
+                #endif
             }
         }
     }

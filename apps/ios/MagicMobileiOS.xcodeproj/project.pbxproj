@@ -9,23 +9,49 @@
 /* Begin PBXBuildFile section */
 		0177F7BB151A10AEDA526F73 /* PreconCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EC7F366BBFC899D5DD7671C /* PreconCatalog.swift */; };
 		037F8C88A7F2DD19D445DEE4 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6872434C0866DDE9DEF3FB8C /* Models.swift */; };
-		0A11D0010000000000000001 /* GameBoardDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11F0010000000000000001 /* GameBoardDesignTokens.swift */; };
-		0A11D0010000000000000002 /* GameBoardTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11F0010000000000000002 /* GameBoardTheme.swift */; };
-		0A11D0010000000000000003 /* GameBoardLayoutMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11F0010000000000000003 /* GameBoardLayoutMetrics.swift */; };
-		0A11D0010000000000000004 /* GameBoardScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11F0010000000000000004 /* GameBoardScreen.swift */; };
-		0A11D0010000000000000005 /* GameBoardZones.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11F0010000000000000005 /* GameBoardZones.swift */; };
-		0A11D0010000000000000006 /* GameBoardPreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11F0010000000000000006 /* GameBoardPreviewFixtures.swift */; };
-		0A11D0010000000000000007 /* GameBoardInteractionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11F0010000000000000007 /* GameBoardInteractionState.swift */; };
-		3E8B2B4964B34D0F9B57D133 /* PromptCommandBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81D24D11B68146B6B4C2F52C /* PromptCommandBuilder.swift */; };
+		0C3D3FB20C2428C51C43991D /* GameBoardInteractionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1747ED595E46B6112F92E2D2 /* GameBoardInteractionState.swift */; };
+		14011F2FA8FBAA4DDD745BC8 /* ondevice-catalogue.json in Resources */ = {isa = PBXBuildFile; fileRef = 6B0D8FE0F5FC4C7001C4233F /* ondevice-catalogue.json */; };
+		17D75322AC32988D39F6FAC0 /* OnDeviceSnapshotAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CB96C4C95B38B6E59222035 /* OnDeviceSnapshotAdapter.swift */; };
+		2569C98BD1FBA5565C1A6372 /* OnDeviceBoardIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1280DE929C3D03FB11B33A1C /* OnDeviceBoardIdentityTests.swift */; };
+		279961B648C10EF650644D7A /* OnDeviceSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F134EEE83531B994E0FDA7CB /* OnDeviceSessionTests.swift */; };
+		2F86F85382645DF11D4BC04D /* MagicMobileOnDevice in Frameworks */ = {isa = PBXBuildFile; productRef = 519DF0DD7A3C3C4E7D805181 /* MagicMobileOnDevice */; };
+		3F4314DA60472BEFFF15C67F /* OnDevicePromptAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9F3D91659B183C793814CA9 /* OnDevicePromptAdapterTests.swift */; };
+		424AB2CF8B4D94F4DF2B1AAC /* OnDeviceRuntimeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6CE7415CD82D2670CB0A706 /* OnDeviceRuntimeManager.swift */; };
+		4B8DFA7151989EE4F97D4BE8 /* GameBoardPreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C9CE37525D6289CCBF098B8 /* GameBoardPreviewFixtures.swift */; };
+		50BF7D06B2BBBE2E1533857C /* OnDeviceDeckPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB39789F444BECD1BC439F88 /* OnDeviceDeckPersistenceTests.swift */; };
 		551A8C60BC9EF53BC42CE492 /* MagicMobileAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5880A440F12FAFCB5E9DB6 /* MagicMobileAPI.swift */; };
+		553AB2472E9D51782D1584E7 /* OnDeviceSetupUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6110FD6C7D0281A6D0C9E48A /* OnDeviceSetupUITests.swift */; };
+		561797D6E3D06387529F45ED /* GameBoardScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7192BE431A0A5F389E034747 /* GameBoardScreen.swift */; };
 		5E56D36ECA96BCF27A83C003 /* MagicMobileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8847ABC91603BF5DA5F4CE5 /* MagicMobileTests.swift */; };
+		722C1EF6B35C88CB1ACC17A4 /* OnDeviceRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5892EABA017C78F89597233 /* OnDeviceRootView.swift */; };
 		752C5EFA30A506F19E13681B /* MagicMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69B2CFE17C03F7A7CC6CFEC3 /* MagicMobileApp.swift */; };
+		77198AC6D92BD046F1CC9D3C /* OnDevicePromptAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECEAC8960FAD7EA6D906C998 /* OnDevicePromptAdapter.swift */; };
+		86B8A7C74336B1F0191650C2 /* OnDeviceSnapshotAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82174CD2213C389DEF7B246E /* OnDeviceSnapshotAdapterTests.swift */; };
+		8935A1C9BD309D3D029590BB /* OnDeviceModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B50E196EBB64CC33F92B990B /* OnDeviceModelTests.swift */; };
+		8EABD61987BE34FC9AE68EA8 /* OnDeviceDeckResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A75CAB8DE1CF7219F75D6196 /* OnDeviceDeckResolverTests.swift */; };
+		9210843F953916BD14200245 /* OnDeviceMultiplayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9FAFE026DBDEE8AABAE0553 /* OnDeviceMultiplayer.swift */; };
+		96505AA484EE6AD8DA300070 /* GameBoardLayoutMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13165C6AF66DDC9929C3F9EA /* GameBoardLayoutMetrics.swift */; };
+		A6FA26FFF8886D40AE25EEDC /* OnDeviceMultiplayerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81C3500BADA0CAAC23387CDB /* OnDeviceMultiplayerTests.swift */; };
+		B0C5D4EBA3173AAFED846BA4 /* OnDevice in Resources */ = {isa = PBXBuildFile; fileRef = E25161EF0DCBD6D130249073 /* OnDevice */; };
+		B4C7C72B6A3519D6484C4825 /* GameBoardTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 434AEA4E564EE069F504B192 /* GameBoardTheme.swift */; };
+		B9C204367A644D4365AAA00C /* DeckLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = E13EC4CC09BB14F446DB7424 /* DeckLibrary.swift */; };
 		C1511A400C8C25B7D7B72191 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 268E12F4889571947D93BF23 /* Assets.xcassets */; };
+		C5B8267EE6CFE68F2820BDBC /* OnDeviceDeckResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9C7F1985BCD3636167CFE7F /* OnDeviceDeckResolver.swift */; };
 		C8623EC979ACF45B170D1881 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29DCFFDEC2E73604A42C81C3 /* ContentView.swift */; };
-		D3C1A0010000000000000001 /* DeckLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3C1F0010000000000000001 /* DeckLibrary.swift */; };
+		CB579F1D301D4239AF1B54B2 /* OnDeviceSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6362475A26B1690B16AA7CE /* OnDeviceSession.swift */; };
+		DD64135BC47659C44970D607 /* GameBoardZones.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A3AD25E36EAC5A475AF5E31 /* GameBoardZones.swift */; };
+		DE661E8AFEF09CF49F4A7F36 /* GameBoardDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34AB998C3D5AA8E4DFD8EAF1 /* GameBoardDesignTokens.swift */; };
+		F85438C40C05270AA997FC8A /* PromptCommandBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7BA23D5B9BCF29F6619B8FB /* PromptCommandBuilder.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		29F85FF95C725C70E16B70B3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D79CD04B90E2363418EF9497 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 27303D5B55A9521EB0CBCFF5;
+			remoteInfo = MagicMobile;
+		};
 		9A686E59F31B22AABB93C696 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = D79CD04B90E2363418EF9497 /* Project object */;
@@ -36,26 +62,58 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		07DEA973C10068B2D3F0B619 /* swift */ = {isa = PBXFileReference; lastKnownFileType = folder; name = swift; path = "../../packages/ondevice-engine/swift"; sourceTree = SOURCE_ROOT; };
 		08AC5C4DD955D082D3138966 /* MagicMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MagicMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		0A11F0010000000000000001 /* GameBoardDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardDesignTokens.swift; sourceTree = "<group>"; };
-		0A11F0010000000000000002 /* GameBoardTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardTheme.swift; sourceTree = "<group>"; };
-		0A11F0010000000000000003 /* GameBoardLayoutMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardLayoutMetrics.swift; sourceTree = "<group>"; };
-		0A11F0010000000000000004 /* GameBoardScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardScreen.swift; sourceTree = "<group>"; };
-		0A11F0010000000000000005 /* GameBoardZones.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardZones.swift; sourceTree = "<group>"; };
-		0A11F0010000000000000006 /* GameBoardPreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardPreviewFixtures.swift; sourceTree = "<group>"; };
-		0A11F0010000000000000007 /* GameBoardInteractionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardInteractionState.swift; sourceTree = "<group>"; };
+		1280DE929C3D03FB11B33A1C /* OnDeviceBoardIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceBoardIdentityTests.swift; sourceTree = "<group>"; };
+		13165C6AF66DDC9929C3F9EA /* GameBoardLayoutMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardLayoutMetrics.swift; sourceTree = "<group>"; };
+		1747ED595E46B6112F92E2D2 /* GameBoardInteractionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardInteractionState.swift; sourceTree = "<group>"; };
+		1CB96C4C95B38B6E59222035 /* OnDeviceSnapshotAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceSnapshotAdapter.swift; sourceTree = "<group>"; };
 		1EC7F366BBFC899D5DD7671C /* PreconCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreconCatalog.swift; sourceTree = "<group>"; };
 		268E12F4889571947D93BF23 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		29DCFFDEC2E73604A42C81C3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		34AB998C3D5AA8E4DFD8EAF1 /* GameBoardDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardDesignTokens.swift; sourceTree = "<group>"; };
+		434AEA4E564EE069F504B192 /* GameBoardTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardTheme.swift; sourceTree = "<group>"; };
+		5A3AD25E36EAC5A475AF5E31 /* GameBoardZones.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardZones.swift; sourceTree = "<group>"; };
 		5A5880A440F12FAFCB5E9DB6 /* MagicMobileAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MagicMobileAPI.swift; sourceTree = "<group>"; };
+		6110FD6C7D0281A6D0C9E48A /* OnDeviceSetupUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceSetupUITests.swift; sourceTree = "<group>"; };
 		6872434C0866DDE9DEF3FB8C /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		6944BF96B15C9CEF357D0B30 /* MagicMobileUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MagicMobileUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		69B2CFE17C03F7A7CC6CFEC3 /* MagicMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MagicMobileApp.swift; sourceTree = "<group>"; };
+		6B0D8FE0F5FC4C7001C4233F /* ondevice-catalogue.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "ondevice-catalogue.json"; sourceTree = "<group>"; };
+		7192BE431A0A5F389E034747 /* GameBoardScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardScreen.swift; sourceTree = "<group>"; };
 		7310F972E936D7992D841C36 /* MagicMobileTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MagicMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		81D24D11B68146B6B4C2F52C /* PromptCommandBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptCommandBuilder.swift; sourceTree = "<group>"; };
+		7C9CE37525D6289CCBF098B8 /* GameBoardPreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardPreviewFixtures.swift; sourceTree = "<group>"; };
+		81C3500BADA0CAAC23387CDB /* OnDeviceMultiplayerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceMultiplayerTests.swift; sourceTree = "<group>"; };
+		82174CD2213C389DEF7B246E /* OnDeviceSnapshotAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceSnapshotAdapterTests.swift; sourceTree = "<group>"; };
+		A6CE7415CD82D2670CB0A706 /* OnDeviceRuntimeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceRuntimeManager.swift; sourceTree = "<group>"; };
+		A75CAB8DE1CF7219F75D6196 /* OnDeviceDeckResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceDeckResolverTests.swift; sourceTree = "<group>"; };
 		A8847ABC91603BF5DA5F4CE5 /* MagicMobileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MagicMobileTests.swift; sourceTree = "<group>"; };
-		D3C1F0010000000000000001 /* DeckLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckLibrary.swift; sourceTree = "<group>"; };
+		ABC7582C9646B73124076299 /* MagicMobile.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MagicMobile.entitlements; sourceTree = "<group>"; };
+		B50E196EBB64CC33F92B990B /* OnDeviceModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceModelTests.swift; sourceTree = "<group>"; };
+		B9F3D91659B183C793814CA9 /* OnDevicePromptAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDevicePromptAdapterTests.swift; sourceTree = "<group>"; };
+		C5892EABA017C78F89597233 /* OnDeviceRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceRootView.swift; sourceTree = "<group>"; };
+		C6362475A26B1690B16AA7CE /* OnDeviceSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceSession.swift; sourceTree = "<group>"; };
+		C7BA23D5B9BCF29F6619B8FB /* PromptCommandBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptCommandBuilder.swift; sourceTree = "<group>"; };
+		D9FAFE026DBDEE8AABAE0553 /* OnDeviceMultiplayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceMultiplayer.swift; sourceTree = "<group>"; };
+		E13EC4CC09BB14F446DB7424 /* DeckLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckLibrary.swift; sourceTree = "<group>"; };
+		E25161EF0DCBD6D130249073 /* OnDevice */ = {isa = PBXFileReference; lastKnownFileType = folder; name = OnDevice; path = MagicMobileTests/Fixtures/OnDevice; sourceTree = SOURCE_ROOT; };
+		EB39789F444BECD1BC439F88 /* OnDeviceDeckPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceDeckPersistenceTests.swift; sourceTree = "<group>"; };
+		ECEAC8960FAD7EA6D906C998 /* OnDevicePromptAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDevicePromptAdapter.swift; sourceTree = "<group>"; };
+		F134EEE83531B994E0FDA7CB /* OnDeviceSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceSessionTests.swift; sourceTree = "<group>"; };
+		F9C7F1985BCD3636167CFE7F /* OnDeviceDeckResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceDeckResolver.swift; sourceTree = "<group>"; };
 		FF4EE202904EFC97FF10F5D0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		6F2AB672F876E1D2004AA5B7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2F86F85382645DF11D4BC04D /* MagicMobileOnDevice in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		545B5AB13CF2F1913730E238 /* MagicMobile */ = {
@@ -63,20 +121,29 @@
 			children = (
 				268E12F4889571947D93BF23 /* Assets.xcassets */,
 				29DCFFDEC2E73604A42C81C3 /* ContentView.swift */,
-				D3C1F0010000000000000001 /* DeckLibrary.swift */,
-				0A11F0010000000000000001 /* GameBoardDesignTokens.swift */,
-				0A11F0010000000000000007 /* GameBoardInteractionState.swift */,
-				0A11F0010000000000000003 /* GameBoardLayoutMetrics.swift */,
-				0A11F0010000000000000006 /* GameBoardPreviewFixtures.swift */,
-				0A11F0010000000000000004 /* GameBoardScreen.swift */,
-				0A11F0010000000000000002 /* GameBoardTheme.swift */,
-				0A11F0010000000000000005 /* GameBoardZones.swift */,
+				E13EC4CC09BB14F446DB7424 /* DeckLibrary.swift */,
+				34AB998C3D5AA8E4DFD8EAF1 /* GameBoardDesignTokens.swift */,
+				1747ED595E46B6112F92E2D2 /* GameBoardInteractionState.swift */,
+				13165C6AF66DDC9929C3F9EA /* GameBoardLayoutMetrics.swift */,
+				7C9CE37525D6289CCBF098B8 /* GameBoardPreviewFixtures.swift */,
+				7192BE431A0A5F389E034747 /* GameBoardScreen.swift */,
+				434AEA4E564EE069F504B192 /* GameBoardTheme.swift */,
+				5A3AD25E36EAC5A475AF5E31 /* GameBoardZones.swift */,
 				FF4EE202904EFC97FF10F5D0 /* Info.plist */,
+				ABC7582C9646B73124076299 /* MagicMobile.entitlements */,
 				5A5880A440F12FAFCB5E9DB6 /* MagicMobileAPI.swift */,
 				69B2CFE17C03F7A7CC6CFEC3 /* MagicMobileApp.swift */,
 				6872434C0866DDE9DEF3FB8C /* Models.swift */,
+				F9C7F1985BCD3636167CFE7F /* OnDeviceDeckResolver.swift */,
+				D9FAFE026DBDEE8AABAE0553 /* OnDeviceMultiplayer.swift */,
+				ECEAC8960FAD7EA6D906C998 /* OnDevicePromptAdapter.swift */,
+				C5892EABA017C78F89597233 /* OnDeviceRootView.swift */,
+				A6CE7415CD82D2670CB0A706 /* OnDeviceRuntimeManager.swift */,
+				C6362475A26B1690B16AA7CE /* OnDeviceSession.swift */,
+				1CB96C4C95B38B6E59222035 /* OnDeviceSnapshotAdapter.swift */,
 				1EC7F366BBFC899D5DD7671C /* PreconCatalog.swift */,
-				81D24D11B68146B6B4C2F52C /* PromptCommandBuilder.swift */,
+				C7BA23D5B9BCF29F6619B8FB /* PromptCommandBuilder.swift */,
+				925E09D8BD9E18CC5EA8A35D /* Resources */,
 			);
 			path = MagicMobile;
 			sourceTree = "<group>";
@@ -86,6 +153,7 @@
 			children = (
 				08AC5C4DD955D082D3138966 /* MagicMobile.app */,
 				7310F972E936D7992D841C36 /* MagicMobileTests.xctest */,
+				6944BF96B15C9CEF357D0B30 /* MagicMobileUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -94,15 +162,50 @@
 			isa = PBXGroup;
 			children = (
 				A8847ABC91603BF5DA5F4CE5 /* MagicMobileTests.swift */,
+				1280DE929C3D03FB11B33A1C /* OnDeviceBoardIdentityTests.swift */,
+				EB39789F444BECD1BC439F88 /* OnDeviceDeckPersistenceTests.swift */,
+				A75CAB8DE1CF7219F75D6196 /* OnDeviceDeckResolverTests.swift */,
+				B50E196EBB64CC33F92B990B /* OnDeviceModelTests.swift */,
+				81C3500BADA0CAAC23387CDB /* OnDeviceMultiplayerTests.swift */,
+				B9F3D91659B183C793814CA9 /* OnDevicePromptAdapterTests.swift */,
+				F134EEE83531B994E0FDA7CB /* OnDeviceSessionTests.swift */,
+				82174CD2213C389DEF7B246E /* OnDeviceSnapshotAdapterTests.swift */,
 			);
 			path = MagicMobileTests;
+			sourceTree = "<group>";
+		};
+		71923E79EF5BF3BF6690B7CE /* MagicMobileUITests */ = {
+			isa = PBXGroup;
+			children = (
+				6110FD6C7D0281A6D0C9E48A /* OnDeviceSetupUITests.swift */,
+			);
+			path = MagicMobileUITests;
+			sourceTree = "<group>";
+		};
+		7B1DA9F199954B3D6E419655 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				07DEA973C10068B2D3F0B619 /* swift */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		925E09D8BD9E18CC5EA8A35D /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				6B0D8FE0F5FC4C7001C4233F /* ondevice-catalogue.json */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		FA9C7D60C20176C0EF298F17 = {
 			isa = PBXGroup;
 			children = (
+				E25161EF0DCBD6D130249073 /* OnDevice */,
 				545B5AB13CF2F1913730E238 /* MagicMobile */,
 				6E268242740097E706C9C7DF /* MagicMobileTests */,
+				71923E79EF5BF3BF6690B7CE /* MagicMobileUITests */,
+				7B1DA9F199954B3D6E419655 /* Packages */,
 				579A87D6C3BF95DC45F889A9 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -116,6 +219,7 @@
 			buildPhases = (
 				08275B628476837D8B65D70B /* Sources */,
 				69B18D5EF2E089E9AB3F0995 /* Resources */,
+				6F2AB672F876E1D2004AA5B7 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -123,16 +227,36 @@
 			);
 			name = MagicMobile;
 			packageProductDependencies = (
+				519DF0DD7A3C3C4E7D805181 /* MagicMobileOnDevice */,
 			);
 			productName = MagicMobile;
 			productReference = 08AC5C4DD955D082D3138966 /* MagicMobile.app */;
 			productType = "com.apple.product-type.application";
+		};
+		58E762997032FF1068E734F7 /* MagicMobileUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3C8307DE9172401BE012EB01 /* Build configuration list for PBXNativeTarget "MagicMobileUITests" */;
+			buildPhases = (
+				EDC73FB15F8D316A87D332D6 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E44CD6B8F9C23577836F8E88 /* PBXTargetDependency */,
+			);
+			name = MagicMobileUITests;
+			packageProductDependencies = (
+			);
+			productName = MagicMobileUITests;
+			productReference = 6944BF96B15C9CEF357D0B30 /* MagicMobileUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 		5FE170C3D01CED597547FA66 /* MagicMobileTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 05443BDB0271A6F9B468B0E6 /* Build configuration list for PBXNativeTarget "MagicMobileTests" */;
 			buildPhases = (
 				3B42694D39B1BD40E417CAF1 /* Sources */,
+				73274B79DF19606A63E206F3 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -159,6 +283,11 @@
 						DevelopmentTeam = 82HPAY85M8;
 						ProvisioningStyle = Automatic;
 					};
+					58E762997032FF1068E734F7 = {
+						DevelopmentTeam = 82HPAY85M8;
+						ProvisioningStyle = Automatic;
+						TestTargetID = 27303D5B55A9521EB0CBCFF5;
+					};
 					5FE170C3D01CED597547FA66 = {
 						DevelopmentTeam = 82HPAY85M8;
 						ProvisioningStyle = Automatic;
@@ -174,6 +303,9 @@
 			);
 			mainGroup = FA9C7D60C20176C0EF298F17;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				AB849D5D01C6EF24F98366B9 /* XCLocalSwiftPackageReference "../../packages/ondevice-engine/swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 579A87D6C3BF95DC45F889A9 /* Products */;
 			projectDirPath = "";
@@ -181,6 +313,7 @@
 			targets = (
 				27303D5B55A9521EB0CBCFF5 /* MagicMobile */,
 				5FE170C3D01CED597547FA66 /* MagicMobileTests */,
+				58E762997032FF1068E734F7 /* MagicMobileUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -191,6 +324,15 @@
 			buildActionMask = 2147483647;
 			files = (
 				C1511A400C8C25B7D7B72191 /* Assets.xcassets in Resources */,
+				14011F2FA8FBAA4DDD745BC8 /* ondevice-catalogue.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		73274B79DF19606A63E206F3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B0C5D4EBA3173AAFED846BA4 /* OnDevice in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -202,19 +344,26 @@
 			buildActionMask = 2147483647;
 			files = (
 				C8623EC979ACF45B170D1881 /* ContentView.swift in Sources */,
-				D3C1A0010000000000000001 /* DeckLibrary.swift in Sources */,
-				0A11D0010000000000000001 /* GameBoardDesignTokens.swift in Sources */,
-				0A11D0010000000000000007 /* GameBoardInteractionState.swift in Sources */,
-				0A11D0010000000000000003 /* GameBoardLayoutMetrics.swift in Sources */,
-				0A11D0010000000000000006 /* GameBoardPreviewFixtures.swift in Sources */,
-				0A11D0010000000000000004 /* GameBoardScreen.swift in Sources */,
-				0A11D0010000000000000002 /* GameBoardTheme.swift in Sources */,
-				0A11D0010000000000000005 /* GameBoardZones.swift in Sources */,
+				B9C204367A644D4365AAA00C /* DeckLibrary.swift in Sources */,
+				DE661E8AFEF09CF49F4A7F36 /* GameBoardDesignTokens.swift in Sources */,
+				0C3D3FB20C2428C51C43991D /* GameBoardInteractionState.swift in Sources */,
+				96505AA484EE6AD8DA300070 /* GameBoardLayoutMetrics.swift in Sources */,
+				4B8DFA7151989EE4F97D4BE8 /* GameBoardPreviewFixtures.swift in Sources */,
+				561797D6E3D06387529F45ED /* GameBoardScreen.swift in Sources */,
+				B4C7C72B6A3519D6484C4825 /* GameBoardTheme.swift in Sources */,
+				DD64135BC47659C44970D607 /* GameBoardZones.swift in Sources */,
 				551A8C60BC9EF53BC42CE492 /* MagicMobileAPI.swift in Sources */,
 				752C5EFA30A506F19E13681B /* MagicMobileApp.swift in Sources */,
 				037F8C88A7F2DD19D445DEE4 /* Models.swift in Sources */,
+				C5B8267EE6CFE68F2820BDBC /* OnDeviceDeckResolver.swift in Sources */,
+				9210843F953916BD14200245 /* OnDeviceMultiplayer.swift in Sources */,
+				77198AC6D92BD046F1CC9D3C /* OnDevicePromptAdapter.swift in Sources */,
+				722C1EF6B35C88CB1ACC17A4 /* OnDeviceRootView.swift in Sources */,
+				424AB2CF8B4D94F4DF2B1AAC /* OnDeviceRuntimeManager.swift in Sources */,
+				CB579F1D301D4239AF1B54B2 /* OnDeviceSession.swift in Sources */,
+				17D75322AC32988D39F6FAC0 /* OnDeviceSnapshotAdapter.swift in Sources */,
 				0177F7BB151A10AEDA526F73 /* PreconCatalog.swift in Sources */,
-				3E8B2B4964B34D0F9B57D133 /* PromptCommandBuilder.swift in Sources */,
+				F85438C40C05270AA997FC8A /* PromptCommandBuilder.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -223,6 +372,22 @@
 			buildActionMask = 2147483647;
 			files = (
 				5E56D36ECA96BCF27A83C003 /* MagicMobileTests.swift in Sources */,
+				2569C98BD1FBA5565C1A6372 /* OnDeviceBoardIdentityTests.swift in Sources */,
+				50BF7D06B2BBBE2E1533857C /* OnDeviceDeckPersistenceTests.swift in Sources */,
+				8EABD61987BE34FC9AE68EA8 /* OnDeviceDeckResolverTests.swift in Sources */,
+				8935A1C9BD309D3D029590BB /* OnDeviceModelTests.swift in Sources */,
+				A6FA26FFF8886D40AE25EEDC /* OnDeviceMultiplayerTests.swift in Sources */,
+				3F4314DA60472BEFFF15C67F /* OnDevicePromptAdapterTests.swift in Sources */,
+				279961B648C10EF650644D7A /* OnDeviceSessionTests.swift in Sources */,
+				86B8A7C74336B1F0191650C2 /* OnDeviceSnapshotAdapterTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EDC73FB15F8D316A87D332D6 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				553AB2472E9D51782D1584E7 /* OnDeviceSetupUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -234,6 +399,11 @@
 			target = 27303D5B55A9521EB0CBCFF5 /* MagicMobile */;
 			targetProxy = 9A686E59F31B22AABB93C696 /* PBXContainerItemProxy */;
 		};
+		E44CD6B8F9C23577836F8E88 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 27303D5B55A9521EB0CBCFF5 /* MagicMobile */;
+			targetProxy = 29F85FF95C725C70E16B70B3 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -242,6 +412,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = NO;
+				CODE_SIGN_ENTITLEMENTS = MagicMobile/MagicMobile.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_FILE = MagicMobile/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -259,7 +430,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -276,7 +446,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -294,6 +463,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = NO;
+				CODE_SIGN_ENTITLEMENTS = MagicMobile/MagicMobile.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_FILE = MagicMobile/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -372,6 +542,23 @@
 			};
 			name = Debug;
 		};
+		D4C7FCF2EAA8166248899949 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.calebfeliciano.MagicMobileUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = MagicMobile;
+			};
+			name = Debug;
+		};
 		E74101B339D1F5BD51B5FB35 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -430,6 +617,23 @@
 			};
 			name = Release;
 		};
+		ECCE8B6550362D69051FA565 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.calebfeliciano.MagicMobileUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = MagicMobile;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -438,6 +642,15 @@
 			buildConfigurations = (
 				6B77A2E4FDC86B480546A46A /* Debug */,
 				64A17C8A7A90A6E56C538C38 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		3C8307DE9172401BE012EB01 /* Build configuration list for PBXNativeTarget "MagicMobileUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D4C7FCF2EAA8166248899949 /* Debug */,
+				ECCE8B6550362D69051FA565 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -461,6 +674,20 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		AB849D5D01C6EF24F98366B9 /* XCLocalSwiftPackageReference "../../packages/ondevice-engine/swift" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../../packages/ondevice-engine/swift";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		519DF0DD7A3C3C4E7D805181 /* MagicMobileOnDevice */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MagicMobileOnDevice;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = D79CD04B90E2363418EF9497 /* Project object */;
 }
