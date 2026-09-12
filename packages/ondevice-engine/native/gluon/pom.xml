@@ -7,6 +7,7 @@
   <packaging>pom</packaging>
   <name>mmengine</name>
   <properties>
+    <native.target>ios</native.target>
     <native.reflection.config>${engine.root}/build/generated/reflect-config.json</native.reflection.config>
     <native.init.arg>--initialize-at-run-time=io.magicmobile,mage</native.init.arg>
     <native.orm.arg>--initialize-at-run-time=io.magicmobile</native.orm.arg>
@@ -22,7 +23,7 @@
         <artifactId>gluonfx-maven-plugin</artifactId>
         <version>1.0.29</version>
         <configuration>
-          <target>ios</target>
+          <target>${native.target}</target>
           <mainClass>io.magicmobile.nativebridge.IosLibraryMain</mainClass>
           <javaStaticSdkVersion>18-ea+prep18-9</javaStaticSdkVersion>
           <nativeImageArgs>

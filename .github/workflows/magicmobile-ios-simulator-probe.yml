@@ -1,0 +1,43 @@
+name: Non-XMage iOS simulator toolchain probe only
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  simulator-probe-only:
+    runs-on: macos-26-intel
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: packages/ondevice-engine
+        shell: bash
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install checksum-pinned Intel Gluon17 compiler
+        run: |
+          mkdir -p evidence/ios-simulator-probe-only
+          bash scripts/setup_gluon_intel.sh 2>&1 | tee evidence/ios-simulator-probe-only/compiler-install.log
+          echo "MM_GRAALVM_HOME=$PWD/build/toolchains/graalvm-svm-java17-darwin-gluon-22.1.0.1-Final/Contents/Home" >> "$GITHUB_ENV"
+      - name: Compile, link and execute the non-XMage simulator probe
+        run: bash scripts/test_ios_simulator_toolchain.sh
+      - name: Upload probe-only evidence, including failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: non-xmage-ios-simulator-probe-only-${{ github.run_id }}
+          path: |
+            packages/ondevice-engine/evidence/ios-simulator-probe-only/
+            packages/ondevice-engine/build/ios-sim-probe-*/*.txt
+            packages/ondevice-engine/build/ios-sim-probe-*/*.json
+            packages/ondevice-engine/build/ios-sim-probe-*/builder-gc.log*
+            packages/ondevice-engine/build/ios-sim-probe-*/gluonfx/x86_64-ios/gvm/log/
+            packages/ondevice-engine/build/ios-sim-probe-*/gluonfx/x86_64-ios/gvm/mmengine/*.h
+          retention-days: 7
+# No XMage/gameplay/device claim; no signing or distribution.
