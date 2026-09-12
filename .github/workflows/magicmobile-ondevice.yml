@@ -3,6 +3,7 @@ on:
   pull_request:
     paths: ['packages/ondevice-engine/**', 'apps/ios-ondevice/**', '.github/workflows/magicmobile-ondevice.yml']
   push:
+    branches: [main]
     paths: ['packages/ondevice-engine/**', 'apps/ios-ondevice/**', '.github/workflows/magicmobile-ondevice.yml']
   workflow_dispatch:
 permissions:

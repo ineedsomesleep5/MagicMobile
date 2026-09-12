@@ -5,9 +5,9 @@
 | Complete XMage + adapter compile | Passed against pinned real sources on 2026-09-11; adapter fixes remain under regression | Real selected modules, generated registry and adapter compile together without fake Mage classes |
 | Actual match semantics | Current adapter completed two- and four-human-seat Commander games at turns 16 and 39, plus a token/mulligan game; ten seeded Commander rule groups passed | Broader representative games and prompt/combat UI acceptance, then expand coverage |
 | Card/set registry on full catalogue | 32,275 card factories, 587 sets, 92,166 printings exported; no unregistered printing reference | Exclusions remain reviewed implementation categories, not claimed universal playable coverage |
-| Native runtime/toolchain | ORMLite compiler fault minimized and dependency fix tested; full engine saturates the tested 4/5 GiB compiler configurations; larger build host proposed | Working full-engine AOT compilation and genuine XMage execution |
-| iOS libraries | No binary produced | Device + simulator artifacts from a supported mobile toolchain, correct ABI/platform slices |
-| SwiftUI/GameKit SDK code | Swift package has 29 passing macOS tests and GameKit compilation; app not built | Xcode builds and device execution |
+| Native runtime/toolchain | ORMLite compiler fault minimized and dependency fix tested; local 4/5 GiB compiler configurations saturated; unsigned Intel hosted build started | Working full-engine AOT compilation and genuine XMage execution |
+| iOS libraries | Non-XMage probe archive and independent iOS executable linked; no full-engine binary or native execution | Device + simulator engine artifacts, correct ABI/platform slices and runtime dependencies |
+| SwiftUI/GameKit SDK code | 29 macOS package tests passed; unsigned iOS inspection app compiled after target-name collision fix | Native-engine Xcode integration and device execution |
 | Human prompt completeness | Core mappings written | Real-engine fixtures for every gameplay prompt subtype and metadata shape |
 | Turn/player control | Proxy, routing and permitted-visibility regression groups passed on JVM; nested control explicitly unsupported | Native UI consumption and full controlled-turn card-game acceptance |
 | Hidden information | Real query/control/privacy regressions and per-seat hand-ID checks passed; not exhaustive zone coverage | Broader native XMage hands, morphs, libraries, exile and looked-at/controlled-player leak tests |

@@ -13,8 +13,8 @@ more of the same 4 GiB heap for retained compiler objects. The baseline is `2`.
 This changes the builder VM only, not the generated runtime's garbage collector.
 See `evidence/ios-native-memory-diagnostic.txt` for the measured baseline and
 limitations; neither setting is evidence of a successful native engine build.
-`MM_NATIVE_MAX_HEAP=5g` permits one larger local diagnostic; no value above
-5 GiB is accepted by this resource-bounded script. Leave idle applications
+`MM_NATIVE_MAX_HEAP=5g` permits one larger local diagnostic; the hosted-only
+10 GiB setting requires at least 12 GiB physical memory. Leave idle applications
 closed and run only one compiler. Increasing the builder limit is not evidence
 of acceptable iPhone runtime memory use.
 
@@ -43,6 +43,22 @@ An archive is not a runnable iPhone app. Before Swift integration, inspect its
 objects (Gluon's archive can include `AppDelegate.o` with its own `main`), retain
 the generated Graal headers, and link the matching platform runtime libraries.
 This diagnostic neither packages an XCFramework nor installs or distributes an app.
+
+The no-XMage probe subsequently linked both through Gluon's `link` goal and
+through an independent C caller owning `main`. The latter did not pull in
+Gluon's `AppDelegate` and reported iOS 17 / SDK 26.5 load metadata. Reproduce
+with `scripts/test_ios_link.sh build/ios-abi-XXXXXX` after the toolchain probe;
+`test_ios_toolchain.sh` now includes this gate. No runtime execution is claimed.
+The legacy Graal object lacks a platform load command, so the Apple linker
+warns that it assumes iOS. The final executable's platform metadata and a
+successful link do not remove the requirement for a real device run.
+
+Static archives do not contain all target runtime libraries. The link goal
+retrieves Gluon C libraries `ios-arm64-ea+27` and static JDK
+`18-ea+prep18-9`; the caller links these explicitly. The downloaded ZIP hashes
+in this local link check were respectively
+`9fdf9203f99286a0fa88916da9dfffb4b7019c55a048fe077dac0d220b6ca7ad` and
+`95520e5e01adebfb0c9fdce12e87c39d1e630e0d1fa1a7a5af2288efd1c89d00`.
 
 `MM_NATIVE_REFLECTION_PROFILE=targeted` selects the experimental 1,429-entry
 reflection manifest. `MM_NATIVE_INIT_PROFILE=reviewed-enums` additionally selects

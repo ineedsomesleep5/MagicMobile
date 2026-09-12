@@ -42,3 +42,4 @@ xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 \
 xcrun vtool -show-build "$PROBE_BUILD/ios_probe_header_check.o"
 echo 'PASS: toolchain-only ARM64 archive, separate probe export, iOS header caller compilation.'
 echo 'Gluon archive still includes AppDelegate/main; NOT an engine XCFramework or runnable app.'
+bash "$ROOT/scripts/test_ios_link.sh" "$PROBE_BUILD"
