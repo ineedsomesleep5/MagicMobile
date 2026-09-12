@@ -5,7 +5,7 @@ import MagicMobileOnDevice
 enum OnDeviceSnapshotAdapter {
     private typealias J = MagicMobileOnDevice.JSONValue
 
-    static func snapshot(_ poll: MatchPoll, expectedSeatID: String) throws -> GameSnapshot {
+    static func snapshot(_ poll: MatchPoll, expectedSeatID: String, log: [GameLogEntry] = []) throws -> GameSnapshot {
         guard poll.seatID == expectedSeatID, let root = poll.snapshot,
               root["schema"]?.string == "xmage-gameview-v1", let view = root["gameView"],
               let viewer = root["enginePlayerId"]?.string, UUID(uuidString: viewer) != nil,
@@ -134,7 +134,7 @@ enum OnDeviceSnapshotAdapter {
             phase: view["phase"]?.string ?? poll.phase, step: view["step"]?.string,
             turn: Int(view["turn"]?.integer ?? 0), priorityPlayerId: priority?.string,
             waitingOnPlayerId: prompt == nil ? nil : viewer, promptText: presentation?.envelope.message,
-            players: decodedPlayers, log: [], legalActions: cardActions + (presentation?.legalActions ?? []),
+            players: decodedPlayers, log: log, legalActions: cardActions + (presentation?.legalActions ?? []),
             choicePrompt: nil, promptEnvelope: nil, promptEnvelopeV2: presentation?.envelope,
             startupOpeningPrompts: nil, xmage: decodedXmage, engineHealth: nil,
             bridgeRevision: Int(poll.revision), xmageCycle: view["gameCycle"]?.integer.map(Int.init),

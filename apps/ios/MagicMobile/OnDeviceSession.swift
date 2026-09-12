@@ -15,6 +15,7 @@ final class OnDeviceSession: ObservableObject {
     @Published private(set) var errorMessage: String?
     private var client: EngineClient?
     private var poll: MatchPoll?
+    private var messageLog = OnDeviceMessageLog()
     private var pollingTask: Task<Void, Never>?
     private var closeEndpoint: (@MainActor () async throws -> Void)?
     private var epoch = UUID()
@@ -33,6 +34,7 @@ final class OnDeviceSession: ObservableObject {
         guard self.client == nil, !isWorking else { throw EngineError.invalidMessage("Close the active game first") }
         self.client = client; self.matchID = matchID; self.seatID = seatID
         closeEndpoint = close; automaticPolling = autoPoll; epoch = UUID()
+        messageLog = OnDeviceMessageLog()
         status = "Starting local game"
         try await refresh()
         beginPolling()
@@ -45,7 +47,12 @@ final class OnDeviceSession: ObservableObject {
         guard epoch == token, self.matchID == matchID else { return }
         guard next.matchID == matchID, next.seatID == seatID else { throw EngineError.unboundPeer }
         if let poll, next.revision < poll.revision { return }
-        if next.snapshot != nil { snapshot = try OnDeviceSnapshotAdapter.snapshot(next, expectedSeatID: seatID) }
+        var nextLog = messageLog
+        try nextLog.ingest(next)
+        if next.snapshot != nil {
+            snapshot = try OnDeviceSnapshotAdapter.snapshot(next, expectedSeatID: seatID, log: nextLog.entries)
+        }
+        messageLog = nextLog
         poll = next
         if let pending, next.prompt?.id != pending.prompt.id || next.prompt?.revision != pending.prompt.revision {
             self.pending = nil; pendingActionID = nil; pendingCardID = nil
@@ -122,6 +129,7 @@ final class OnDeviceSession: ObservableObject {
         defer { isWorking = false }
         try await closeEndpoint()
         epoch = UUID(); client = nil; matchID = nil; seatID = nil; poll = nil; snapshot = nil
+        messageLog = OnDeviceMessageLog()
         self.closeEndpoint = nil; pending = nil; pendingActionID = nil; pendingCardID = nil; errorMessage = nil; status = "Ready"
     }
 
