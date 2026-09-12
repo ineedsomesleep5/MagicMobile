@@ -16,7 +16,7 @@ let package = Package(
                       "GameBoardLayoutMetrics.swift", "GameBoardPreviewFixtures.swift",
                       "GameBoardScreen.swift", "GameBoardTheme.swift", "GameBoardZones.swift",
                       "MagicMobileApp.swift", "OnDeviceRootView.swift", "NativeEngine-Bridging-Header.h"],
-            sources: ["Models.swift", "MagicMobileAPI.swift", "PromptCommandBuilder.swift", "PreconCatalog.swift", "OnDeviceDeckResolver.swift", "OnDeviceSnapshotAdapter.swift", "OnDevicePromptAdapter.swift", "OnDeviceMultiplayer.swift", "OnDeviceSession.swift", "OnDeviceRuntimeManager.swift"],
+            sources: ["OnDeviceAppConfiguration.swift", "Models.swift", "MagicMobileAPI.swift", "PromptCommandBuilder.swift", "PreconCatalog.swift", "OnDeviceDeckResolver.swift", "OnDeviceSnapshotAdapter.swift", "OnDevicePromptAdapter.swift", "OnDeviceMultiplayer.swift", "OnDeviceSession.swift", "OnDeviceRuntimeManager.swift"],
             resources: [.copy("Resources/ondevice-catalogue.json")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
@@ -25,7 +25,7 @@ let package = Package(
             dependencies: ["MagicMobile"],
             path: "MagicMobileTests",
             exclude: ["MagicMobileTests.swift", "OnDeviceBoardIdentityTests.swift", "OnDeviceDeckPersistenceTests.swift"],
-            sources: ["OnDeviceModelTests.swift", "OnDeviceSnapshotAdapterTests.swift", "OnDevicePromptAdapterTests.swift", "OnDeviceMultiplayerTests.swift", "OnDeviceSessionTests.swift", "OnDeviceDeckResolverTests.swift"],
+            sources: ["OnDeviceAppConfigurationTests.swift", "OnDeviceModelTests.swift", "OnDeviceSnapshotAdapterTests.swift", "OnDevicePromptAdapterTests.swift", "OnDeviceMultiplayerTests.swift", "OnDeviceSessionTests.swift", "OnDeviceDeckResolverTests.swift"],
             resources: [.copy("Fixtures/OnDevice")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         )

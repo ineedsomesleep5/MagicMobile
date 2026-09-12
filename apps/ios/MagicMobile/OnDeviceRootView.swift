@@ -16,11 +16,11 @@ struct OnDeviceRootView: View {
     @State private var selectedCard: ZoneCard?
     @State private var inspectedCard: ZoneCard?
     @State private var zone: InspectedZone?
-    @State private var selectedDeckID = "precon:token-triumph"
-    @State private var aiPrecon = PreconCatalog.all[1]
-    @State private var opponentCount = 1
-    @State private var playerCount = 2
-    @State private var playWithFriends = false
+    @AppStorage(OnDeviceSetupPreferences.deckKey) private var selectedDeckID = OnDeviceSetupPreferences.defaultDeckID
+    @AppStorage(OnDeviceSetupPreferences.aiDeckKey) private var aiPreconID = OnDeviceSetupPreferences.defaultAIDeckID
+    @AppStorage(OnDeviceSetupPreferences.aiCountKey) private var opponentCount = 1
+    @AppStorage(OnDeviceSetupPreferences.humanCountKey) private var playerCount = 2
+    @AppStorage(OnDeviceSetupPreferences.friendsKey) private var playWithFriends = false
     @State private var showImport = false
     @State private var confirmLeave = false
 
@@ -31,6 +31,7 @@ struct OnDeviceRootView: View {
     }
 
     private var activeGame: Bool { session.matchID != nil }
+    private var aiPrecon: PreconDeck? { PreconCatalog.all.first { $0.id == aiPreconID } }
     private var selectedDeck: DeckList? {
         if let precon = PreconCatalog.all.first(where: { "precon:\($0.id)" == selectedDeckID }) {
             return precon.deckList
@@ -39,7 +40,7 @@ struct OnDeviceRootView: View {
     }
     private var validName: Bool { (try? OnDeviceSetupModel.playerName(playerDisplayName)) != nil }
     private var mayStart: Bool {
-        validName && selectedDeck != nil && setup.identity != nil && !setup.isBusy && !setup.needsLeave
+        validName && selectedDeck != nil && (playWithFriends || aiPrecon != nil) && setup.identity != nil && !setup.isBusy && !setup.needsLeave
     }
 
     var body: some View {
@@ -63,12 +64,18 @@ struct OnDeviceRootView: View {
         .confirmationDialog("Leave this game?", isPresented: $confirmLeave, titleVisibility: .visible) {
             Button("Leave game", role: .destructive) { closeGame() }
         } message: {
-            Text("This closes the current match. It cannot be resumed after leaving.")
+            Text(setup.multiplayer?.endpoint?.isHost == true
+                 ? "You are hosting. Leaving ends this match for everyone; it cannot be resumed."
+                 : "This closes the current match. It cannot be resumed after leaving.")
         }
         .task {
             MagicMobileOrientationController.shared.setPortraitModeEnabled(portraitModeEnabled)
+            restoreSetupPreferences()
             setup.prepare()
             setup.setSceneActive(scenePhase == .active)
+        }
+        .onChange(of: library.decks.map(\.id)) { _, _ in
+            if !activeGame { restoreSetupPreferences() }
         }
         .onChange(of: portraitModeEnabled) { _, enabled in
             MagicMobileOrientationController.shared.setPortraitModeEnabled(enabled)
@@ -95,7 +102,7 @@ struct OnDeviceRootView: View {
             },
             refreshGame: refresh, reconnectGame: refresh,
             checkBridgeHealth: { setup.localHealth() },
-            newGame: closeGame, quitGame: closeGame,
+            newGame: requestLeave, quitGame: requestLeave,
             loadProtocolDebug: { _ in
                 throw EngineError.invalidMessage("Protocol debug export is not available for this on-device session.")
             },
@@ -180,8 +187,8 @@ struct OnDeviceRootView: View {
                     } else {
                         Stepper("AI opponents: \(opponentCount)", value: $opponentCount, in: 1...3)
                             .disabled(setup.isBusy || setup.needsLeave)
-                        Picker("AI deck", selection: $aiPrecon) {
-                            ForEach(PreconCatalog.all) { Text($0.name).tag($0) }
+                        Picker("AI deck", selection: $aiPreconID) {
+                            ForEach(PreconCatalog.all) { Text($0.name).tag($0.id) }
                         }.disabled(setup.isBusy || setup.needsLeave)
                         Text("XMage AI · Normal").font(.caption).foregroundStyle(.secondary)
                         Button("Start game") { startAI() }
@@ -240,7 +247,7 @@ struct OnDeviceRootView: View {
     }
 
     private func startAI() {
-        guard let deck = selectedDeck else { return }
+        guard let deck = selectedDeck, let aiPrecon else { return }
         Task {
             do { playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName) }
             catch { setup.errorMessage = error.localizedDescription; return }
@@ -258,6 +265,22 @@ struct OnDeviceRootView: View {
 
     private func refresh() {
         Task { await setup.perform { try await session.refresh(); setup.updateSessionForeground() } }
+    }
+
+    private func restoreSetupPreferences() {
+        let selected = OnDeviceSetupPreferences.normalize(
+            .init(deckID: selectedDeckID, aiDeckID: aiPreconID, aiOpponents: opponentCount,
+                  humanPlayers: playerCount, friends: playWithFriends),
+            deckIDs: Set(PreconCatalog.all.map { "precon:\($0.id)" } + library.decks.map { "local:\($0.id)" }),
+            aiDeckIDs: PreconCatalog.all.map(\.id)
+        )
+        selectedDeckID = selected.deckID; aiPreconID = selected.aiDeckID
+        opponentCount = selected.aiOpponents; playerCount = selected.humanPlayers
+    }
+
+    private func requestLeave() {
+        guard !setup.isBusy, !session.isWorking else { return }
+        confirmLeave = true
     }
 
     private func closeGame() {
