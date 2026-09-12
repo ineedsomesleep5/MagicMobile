@@ -2,7 +2,7 @@ name: Issue 4 non-simulator verification
 
 on:
   push:
-    branches: [codex/issue-4-native-mvp]
+    branches: [codex/issue-4-native-mvp, codex/issue-4-verified-continuation]
   workflow_dispatch:
 
 permissions:

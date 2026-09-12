@@ -87,7 +87,12 @@ struct MagicMobileApp: App {
     var body: some Scene {
         WindowGroup {
             OrientationHostingRoot {
-                #if DEBUG
+                #if XMAGE_NATIVE_LINKED
+                // Native Release/TestFlight builds must enter the on-device flow.
+                // The existing overlay defines this only when linking real AOT inputs.
+                // Runtime setup failures remain explicit; never fall back to ContentView.
+                OnDeviceRootView()
+                #elseif DEBUG
                 if ProcessInfo.processInfo.arguments.contains("--ondevice-setup-ui-test") {
                     OnDeviceRootView()
                 } else {

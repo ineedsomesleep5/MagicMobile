@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""Inspect a built iOS product; this is binary/link evidence, NOT gameplay proof."""
+import argparse
+import hashlib
+import json
+import pathlib
+import plistlib
+import re
+import subprocess
+
+REQUIRED = {'mm_engine_request', 'mm_engine_free', 'mm_engine_shutdown_v2', 'graal_create_isolate', 'mm_runtime_create'}
+
+
+def inspect_text(architectures: str, load_commands: str, symbols: str) -> None:
+    if architectures.strip() != 'arm64':
+        raise ValueError('Expected ARM64-only device product')
+    platforms = re.findall(r'^\s*platform\s+(\S+)', load_commands, re.M)
+    legacy = re.findall(r'\bcmd (LC_VERSION_MIN_\w+)', load_commands)
+    if (not platforms and not legacy or any(p not in ('2', 'IOS') for p in platforms)
+            or any(p != 'LC_VERSION_MIN_IPHONEOS' for p in legacy)):
+        raise ValueError('Missing/conflicting device platform tags')
+    if re.search(r'_OBJC_(?:META)?CLASS_\$_AppDelegate\b', symbols):
+        raise ValueError('Refusing the Gluon AppDelegate in the Swift product')
+    if re.search(r'_mm_toolchain_probe\b', symbols):
+        raise ValueError('Refusing ABI-only probe in product')
+    defined = set(re.findall(r'^\s*[0-9a-fA-F]+\s+T\s+_(\w+)\s*$', symbols, re.M))
+    if not REQUIRED <= defined:
+        raise ValueError('Missing native definitions: ' + ', '.join(sorted(REQUIRED - defined)))
+
+
+def digest(path):
+    h = hashlib.sha256()
+    with path.open('rb') as f:
+        for block in iter(lambda: f.read(1024*1024), b''): h.update(block)
+    return h.hexdigest()
+
+
+def main():
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--app',type=pathlib.Path,required=True)
+    p.add_argument('--repo',type=pathlib.Path,required=True)
+    p.add_argument('--output',type=pathlib.Path,required=True)
+    a=p.parse_args()
+    try:
+        info=plistlib.loads((a.app/'Info.plist').read_bytes())
+        if info.get('CFBundleIdentifier')!='com.calebfeliciano.magicmobile': raise ValueError('Wrong app identity')
+        executable=info['CFBundleExecutable']
+        if not isinstance(executable,str) or pathlib.Path(executable).name!=executable: raise ValueError('Invalid executable name')
+        binary=a.app/executable
+        def command(*args): return subprocess.check_output(args,text=True,stderr=subprocess.PIPE)
+        arch=command('xcrun','lipo','-archs',str(binary))
+        load=command('xcrun','otool','-l',str(binary))
+        symbols=command('xcrun','nm','-g',str(binary))
+        inspect_text(arch,load,symbols)
+        source=command('git','-C',str(a.repo),'rev-parse','HEAD').strip()
+        if not re.fullmatch('[a-f0-9]{40}',source): raise ValueError('Invalid source commit')
+        subprocess.run(['git','-C',str(a.repo),'diff','--quiet','HEAD','--'],check=True)
+        manifest=a.repo/'apps/ios/NativeEngine/manifest.json'
+        from prepare_ios_app_native import verify_installed
+        verify_installed(manifest.parent)
+        # The staging verifier performs its own per-file hash checks before linking.
+        receipt={'schema':1,'sourceCommit':source,'bundleID':info['CFBundleIdentifier'],
+            'binarySHA256':digest(binary),'stagedManifestSHA256':digest(manifest),
+            'architecture':'arm64','platform':'iphoneos','definedNativeSymbols':sorted(REQUIRED),
+            'evidenceScope':'product link and inspection only',
+            'nativeRuntimeTested':False,'nativeDeviceValidated':False,'testFlightUploaded':False,
+            'appVersion':info.get('CFBundleShortVersionString'),
+            'appBuild':info.get('CFBundleVersion')}
+        provenance=a.repo/'packages/ondevice-engine/build/native-candidate-provenance.json'
+        if provenance.is_file():
+            receipt['engineBuildProvenance']=json.loads(provenance.read_text())
+        a.output.write_text(json.dumps(receipt,indent=2)+'\n')
+        print(json.dumps(receipt,indent=2))
+    except (OSError,ValueError,KeyError,subprocess.CalledProcessError) as error:
+        p.exit(2,f'Unsigned product verification refused: {error}\n')
+if __name__=='__main__': main()
