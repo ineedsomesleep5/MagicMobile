@@ -99,6 +99,27 @@ final class OnDeviceSnapshotAdapterTests: XCTestCase {
         XCTAssertThrowsError(try OnDeviceSnapshotAdapter.snapshot(poll, expectedSeatID: "player-1"))
     }
 
+    func testNamedExileSourceRetainsOnlyItsEngineReportedPlayableAction() throws {
+        // Mapping-shape regression, not a rules assertion: relocate an existing
+        // engine-reported playable object to the public exile representation.
+        let original = try fixture("2p-priority")
+        var raw = try XCTUnwrap(original.raw.object)
+        var root = try XCTUnwrap(original.snapshot?.object)
+        var view = try XCTUnwrap(root["gameView"]?.object)
+        var hand = try XCTUnwrap(view["myHand"]?.object)
+        let id = try XCTUnwrap(view["canPlayObjects"]?["objects"]?.object?.keys.first)
+        let card = try XCTUnwrap(hand.removeValue(forKey: id))
+        view["myHand"] = .object(hand)
+        root["gameView"] = .object(view)
+        root["namedExiles"] = .array([.object(["id": .string("public-exile"), "name": .string("Playable exile"), "cards": .object([id: card])])])
+        raw["snapshot"] = .object(root)
+        let snapshot = try OnDeviceSnapshotAdapter.snapshot(MatchPoll(.object(raw)), expectedSeatID: original.seatID)
+        let action = try XCTUnwrap(snapshot.legalActions?.first { $0.cardInstanceId == id })
+        XCTAssertEqual(action.sourceZone, "exile")
+        XCTAssertEqual(action.promptId, original.prompt?.id)
+        XCTAssertEqual(action.messageId, Int(original.prompt!.revision))
+    }
+
     func testPublicCombatMarksBattlefieldAttackers() throws {
         let poll = try fixture("2p-combat")
         let snapshot = try OnDeviceSnapshotAdapter.snapshot(poll, expectedSeatID: poll.seatID)

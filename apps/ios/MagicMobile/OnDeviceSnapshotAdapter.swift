@@ -99,12 +99,16 @@ enum OnDeviceSnapshotAdapter {
                             "attackers": .array(combatCards(try cards(group["attackers"]), groups: view["combat"])),
                             "blockers": .array(combatCards(try cards(group["blockers"]), groups: view["combat"]))])
         }
-        let playability = try playableObjects(view: view, players: players, prompt: poll.prompt, viewer: viewer)
         let exileZones = try namedZones(root["namedExiles"], prefix: "exile")
         let revealed = try namedZones(view["revealed"], prefix: "revealed")
         let companions = try namedZones(view["companion"], prefix: "companion")
         let lookedAt = try disclosedGroups(root["authorizedLookedAt"], prefix: "looked-at")
             + disclosedGroups(root["authorizedOpponentHands"], prefix: "controlled-hand")
+        let extraZones: [(String, [J])] = [
+            ("exile", exileZones), ("revealed", revealed), ("looked_at", lookedAt), ("companion", companions)
+        ].map { name, groups in (name, groups.flatMap { $0["cards"]?.array ?? [] }) }
+            + [("stack", stack.compactMap { $0["sourceCard"] })]
+        let playability = try playableObjects(view: view, players: players, extraZones: extraZones, prompt: poll.prompt, viewer: viewer)
         let xmage: J = .object([
             "schemaVersion": .integer(1), "gameId": .string(poll.matchID), "bridgeRevision": .integer(poll.revision),
             "xmageCycle": view["gameCycle"] ?? .null, "callbackCoverage": .array([]),
@@ -220,7 +224,7 @@ enum OnDeviceSnapshotAdapter {
             .map { ($0.0, value?[$0.1] ?? .integer(0)) }))
     }
 
-    private static func playableObjects(view: J, players: [J], prompt: EnginePrompt?, viewer: String) throws -> (objects: [J], actions: [J]) {
+    private static func playableObjects(view: J, players: [J], extraZones: [(String, [J])], prompt: EnginePrompt?, viewer: String) throws -> (objects: [J], actions: [J]) {
         var objects: [J] = [], actions: [J] = []
         var known: [String: (J, String)] = [:]
         for player in players {
@@ -228,6 +232,11 @@ enum OnDeviceSnapshotAdapter {
                 for card in contents.array ?? [] {
                     if let id = card["instanceId"]?.string { known[id] = (card, zone) }
                 }
+            }
+        }
+        for (zone, cards) in extraZones {
+            for card in cards {
+                if let id = card["instanceId"]?.string, known[id] == nil { known[id] = (card, zone) }
             }
         }
         let categories = [("basicPlayAbilities", "play_land"), ("basicCastAbilities", "cast_spell"),
