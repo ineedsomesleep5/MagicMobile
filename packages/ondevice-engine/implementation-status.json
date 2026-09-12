@@ -1,66 +1,107 @@
 {
-  "deliveryDate": "2026-09-12",
+  "schema": 2,
+  "updatedDate": "2026-09-12",
   "targetRepository": "ineedsomesleep5/MagicMobile",
   "branch": "codex/issue-4-verified-continuation",
   "pullRequest": 6,
-  "status": "opening-cancellation-race-fixed-new-native-candidate-required-prior-upload-not-final",
-  "productSourceCommit": "62789b0e2b8fd006135fd0ff1dac0b769c92717f",
+  "sourceBuildIssue": 4,
+  "physicalAcceptanceIssue": 7,
+  "status": "source-gates-passed-replacement-native-build-running-physical-acceptance-not-run",
   "upstreamCommit": "8aea65ae9ae3c89970fe865e1316105539e097ca",
-  "nativeEngine": {
-    "sourceCommit": "220647689c76cc95de941d279faafd85e63792c3",
-    "run": 34673638060,
-    "artifact": 10292778783,
-    "zipSHA256": "24ba46f4836251861d32d8a51b2a5a0ff6da52901a6ef86742c99526750b5331",
-    "status": "full-XMage-plus-MAD-ARM64-AOT-passed",
-    "pairedInputsPreserved": true,
-    "sourceEquivalenceRequired": true
+  "currentCandidate": {
+    "appSourceCommit": "c2f62e2e4acbfa01351d3ddee2a6569fbe983ab5",
+    "engineSourceCommit": "a34fb08abd7c4f32b643701349f99f0b59ee2771",
+    "nativeRun": 34723517045,
+    "nativeAttempt": 2,
+    "nativeState": "in-progress",
+    "firstAttemptFailure": "Maven repository DNS failure before native compilation; retained logs; same-source retry",
+    "preparedVersion": "0.1.0",
+    "preparedBuild": "2026091202",
+    "productLink": "awaiting-new-native-artifact",
+    "testFlightUpload": "not-performed",
+    "physicalAcceptance": "not-run"
   },
-  "product": {
-    "path": "apps/ios",
-    "bundleId": "com.calebfeliciano.magicmobile",
-    "entrypoint": "embedded-xmage",
-    "unsignedDeviceRelease": "passed",
-    "distributionArchiveExportValidationUpload": "passed",
-    "signedGameCenterEntitlement": "verified-in-app-and-profile",
-    "graalCodeBytes": 196854848,
-    "verifiedRelocatedInstructions": 922,
-    "verifiedFarCallVeneers": 7,
-    "codeImageIntact": true,
-    "layoutInspectionIsRuntimeExecution": false
+  "supersededCandidate": {
+    "reason": "opening-selection shutdown race fixed after initial upload; production engine changed",
+    "productSourceCommit": "62789b0e2b8fd006135fd0ff1dac0b769c92717f",
+    "nativeEngine": {
+      "sourceCommit": "220647689c76cc95de941d279faafd85e63792c3",
+      "run": 34673638060,
+      "artifact": 10292778783,
+      "zipSHA256": "24ba46f4836251861d32d8a51b2a5a0ff6da52901a6ef86742c99526750b5331",
+      "status": "full-XMage-plus-MAD-ARM64-AOT-passed",
+      "pairedInputsPreserved": true,
+      "sourceEquivalenceRequired": true
+    },
+    "product": {
+      "path": "apps/ios",
+      "bundleId": "com.calebfeliciano.magicmobile",
+      "entrypoint": "embedded-xmage",
+      "unsignedDeviceRelease": "passed",
+      "distributionArchiveExportValidationUpload": "passed",
+      "signedGameCenterEntitlement": "verified-in-app-and-profile",
+      "graalCodeBytes": 196854848,
+      "verifiedRelocatedInstructions": 922,
+      "verifiedFarCallVeneers": 7,
+      "codeImageIntact": true,
+      "layoutInspectionIsRuntimeExecution": false
+    },
+    "testFlight": {
+      "appId": "6784735182",
+      "version": "0.1.0",
+      "build": "2026091201",
+      "internalOnly": true,
+      "uploadId": "86361630-995a-4029-9ca0-67da4fffa789",
+      "lastObservedUploadState": "COMPLETE",
+      "testerAvailability": "superseded-initial-candidate-not-final",
+      "physicalInstall": "not-run",
+      "processingState": "VALID",
+      "internalBuildState": "MISSING_EXPORT_COMPLIANCE",
+      "superseded": true
+    }
   },
-  "testFlight": {
-    "appId": "6784735182",
-    "version": "0.1.0",
-    "build": "2026091201",
-    "internalOnly": true,
-    "uploadId": "86361630-995a-4029-9ca0-67da4fffa789",
-    "lastObservedUploadState": "COMPLETE",
-    "testerAvailability": "superseded-initial-candidate-not-final",
-    "physicalInstall": "not-run",
-    "processingState": "VALID",
-    "internalBuildState": "MISSING_EXPORT_COMPLIANCE",
-    "superseded": true,
-    "replacementPreparedBuild": "2026091202"
+  "verification": {
+    "sourceCommit": "c2f62e2e4acbfa01351d3ddee2a6569fbe983ab5",
+    "ciRun": 34723993396,
+    "ciState": "passed",
+    "onDevicePackageRun": 34723993392,
+    "onDevicePackageState": "passed",
+    "nonSimulatorRun": 34723991713,
+    "nonSimulatorState": "passed",
+    "executedCheckCounts": {
+      "portableAppTests": 108,
+      "swiftProtocolTests": 32,
+      "pythonToolingTests": 153,
+      "javaCoreAssertions": 394,
+      "cFixtureRequests": 9000,
+      "cShutdownFixtureScenarios": 5,
+      "exactBundledPrecons": 5,
+      "realJVMQueryGroups": 14,
+      "realJVMControlGroups": 5,
+      "realJVMPrivacyGroups": 8,
+      "realJVMCommanderGroups": 10,
+      "realJVMPortraitGroups": 9
+    },
+    "openingCancellationStress": {
+      "scope": "real JVM only, not native execution or complete gameplay",
+      "cycles": 30,
+      "aiCounts": [
+        1,
+        2,
+        3
+      ],
+      "busyResponses": 0,
+      "maxDestroyMilliseconds": 74.68
+    },
+    "realJVMGameplay": "query-control-privacy-Commander-portrait-AI-lifecycle-two-and-four-human-complete-games-and-token-mulligan-game-passed",
+    "signedLayoutVerifier": "31 fixtures and initial signed app with UUID-matched dSYM passed; no native execution"
   },
-  "executedCheckCounts": {
-    "portableAppTests": 108,
-    "swiftProtocolTests": 32,
-    "pythonToolingTests": 153,
-    "javaCoreAssertions": 394,
-    "cFixtureRequests": 9000,
-    "cShutdownFixtureScenarios": 5,
-    "exactBundledPrecons": 5,
-    "realJVMQueryGroups": 14,
-    "realJVMControlGroups": 5,
-    "realJVMPrivacyGroups": 8,
-    "realJVMCommanderGroups": 10,
-    "realJVMPortraitGroups": 9
+  "implementation": {
+    "ai": "actual-upstream-MAD-integrated-JVM-tested-native-device-not-validated",
+    "networking": "authenticated-Game-Center-lobby-host-routing-correlation-suspension-and-retry-implemented-portable-tested-physical-not-run",
+    "controlledTurns": "authorized-proxy-routing-visibility-and-attacker-deselection-tested-nested-control-unsupported",
+    "userInterface": "existing-portrait-landscape-integrated-portable-tested-SDK-built-no-rendered-phone-acceptance"
   },
-  "realJVMGameplay": "two-and-four-human-Commander-completed-turns-16-and-40-token-mulligan-turn-16-MAD-land-cast-attack-and-cancellation-passed",
-  "ai": "actual-upstream-MAD-integrated-JVM-tested-native-device-not-validated",
-  "networking": "authenticated-Game-Center-lobby-host-routing-correlation-suspension-and-retry-implemented-portable-tested-physical-not-run",
-  "controlledTurns": "authorized-proxy-routing-visibility-and-attacker-deselection-tested-nested-control-unsupported",
-  "userInterface": "existing-portrait-landscape-integrated-portable-tested-SDK-built-no-rendered-phone-acceptance",
   "physicalIPhoneOfflineGameplay": "not-run",
   "nativeAIPerformance": "not-run",
   "multiDeviceGameplay": "not-run",
@@ -70,12 +111,5 @@
   "fullUpstreamSourceIncluded": false,
   "simulatorOrUITestWorkflowsExecutedInContinuation": false,
   "acceptanceChecklist": "docs/TESTFLIGHT_ACCEPTANCE.md",
-  "upstreamMaintenance": "docs/UPSTREAM_MAINTENANCE.md",
-  "engineSourceCommit": "a34fb08abd7c4f32b643701349f99f0b59ee2771",
-  "nativeRebuild": {
-    "run": 34723517045,
-    "status": "in-progress",
-    "reason": "opening-selection-cancellation-changed-production-engine",
-    "priorArtifactNotReusable": true
-  }
+  "upstreamMaintenance": "docs/UPSTREAM_MAINTENANCE.md"
 }

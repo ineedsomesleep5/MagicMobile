@@ -15,6 +15,18 @@ source: the old archive/build below cannot validate or ship the new fix. A fresh
 source-verified ARM64 build and replacement internal TestFlight build are required.
 Do not call build 2026091201 the final accepted candidate.
 
+App source `c2f62e2e4acbfa01351d3ddee2a6569fbe983ab5` prepared replacement
+`0.1.0 (2026091202)`. CI **34723993396**, on-device package gates **34723993392**
+and full non-simulator verification **34723991713** passed, including SDK compile,
+real JVM regressions and exact bundled precons. An additional 30 JVM immediate
+start/destroy cycles across 1/2/3 AI passed with zero busy replies (maximum 75 ms).
+These timings are not native mobile measurements.
+
+Native run **34723517045** attempt 1 stopped on Maven repository DNS resolution
+after module compilation, before AOT. Logs are retained; attempt 2 retries the same
+source/settings. New product link/signing/upload must wait for its valid artifact.
+Physical acceptance is tracked separately in [issue #7](https://github.com/ineedsomesleep5/MagicMobile/issues/7).
+
 ## Initial desktop result — native product linked; internal TestFlight uploaded
 
 This block supersedes all chronological checkpoints below. Product source

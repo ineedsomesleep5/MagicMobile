@@ -1,5 +1,8 @@
 # Physical TestFlight acceptance — NOT RUN
 
+Tracked separately from source/build issue #4 in
+[issue #7](https://github.com/ineedsomesleep5/MagicMobile/issues/7).
+
 Candidate: **0.1.0 (2026091201)**, product source `62789b0`, existing ASC app
 `6784735182` / `com.calebfeliciano.magicmobile`. Internal-only upload succeeded;
 check processing/availability before testing. No USB connection is required.
