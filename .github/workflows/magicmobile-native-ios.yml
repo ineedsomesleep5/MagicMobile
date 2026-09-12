@@ -14,7 +14,7 @@ jobs:
   device-library:
     # Standard public-repository runner: 14 GB RAM, no paid larger-runner label.
     runs-on: macos-26-intel
-    timeout-minutes: 120
+    timeout-minutes: 210
     defaults:
       run:
         working-directory: packages/ondevice-engine
@@ -44,7 +44,9 @@ jobs:
       - name: Check iOS toolchain archive and generated header
         run: bash scripts/test_ios_toolchain.sh
       - name: Compile full engine for iOS ARM64
-        timeout-minutes: 75
+        # The 75-minute run completed inlining just before its timeout. Preserve
+        # the same heap/worker settings while allowing code generation to finish.
+        timeout-minutes: 180
         env:
           MM_NATIVE_REFLECTION_PROFILE: targeted
           MM_NATIVE_INIT_PROFILE: reviewed-enums

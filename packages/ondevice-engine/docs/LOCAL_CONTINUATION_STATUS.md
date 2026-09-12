@@ -1,8 +1,9 @@
 # Local continuation status — 2026-09-11
 
 The real JVM engine baseline is working. The full on-device engine is **not**
-release-ready: its native compilation is blocked by the tested local compiler
-memory configurations. No simulator/phone gameplay or TestFlight upload occurred.
+release-ready: local native compiler heaps saturated, and the hosted 10 GiB
+attempt reached inlining but exceeded its 75-minute limit. No simulator/phone
+gameplay or TestFlight upload occurred.
 
 Work is on `codex/ondevice-xmage`; source was published to that branch and `main`
 at `b8b273f` without rewriting history. The original
@@ -20,7 +21,7 @@ TestFlight app. Portrait protocol integration and Game Center lobby work remain.
 | Actual JVM build | Pinned real XMage compiled; 32,275 factories, 587 sets, 92,166 printings; no unregistered printing reference | `evidence/macos-jvm-build.log` |
 | Completed real JVM games | Two-human game at turn 16; four-human game at turn 39; token/mulligan game at turn 16 | `evidence/real-jvm-game.json`, `real-jvm-four-player-game.json`, `real-jvm-token-mulligan-game.json` |
 | Real JVM regressions | 27 query/control/privacy groups; 10 seeded Commander rule groups; two injected-busy-worker groups; two real resolving-choice cancellation cases; seven deck rejection fixtures and 24 lifecycle checks | `evidence/Real*Tests.txt`, `real-commander-rules-tests.txt`, `real-busy-shutdown-tests.txt`, `real-jvm-deck-validation.json`, `real-jvm-lifecycle.json` |
-| Full-engine AOT | No desktop or iOS XMage binary. ORMLite compiler fault minimized and fixed in a native dependency probe; full 4/5 GiB builds saturated configured old-generation space and were intentionally stopped | `evidence/ormlite-check-55Hbub.log`, `ios-native-memory-diagnostic.txt`, `ios-native-*.log` |
+| Full-engine AOT | No desktop or iOS XMage binary. Local 4/5 GiB builds saturated; hosted 10 GiB completed analysis, universe, parsing and inlining before its 75-minute timeout | `evidence/ormlite-check-55Hbub.log`, `ios-native-memory-diagnostic.txt`, `hosted-native-34659217140/evidence/ios-native-Cx8W0J.log` |
 | iOS toolchain only | Separate non-engine ARM64 archive, generated-header caller compilation, and independent iOS executable link passed; no native execution | `evidence/ios-abi-H6FJa9.log`, `ios-abi-H6FJa9-link.log` |
 | iOS inspection harness | Unsigned iOS SDK build passed after separating the app target name from its Swift package target; no native engine linked or app execution | `evidence/ios-harness-target-fixed.log`, `scripts/test_ios_harness.sh` |
 | Simulator | Not built or played | No native engine XCFramework |
@@ -106,9 +107,22 @@ Mac runner with a checksum-pinned Intel compiler. This is not a proven native
 engine build or an authorization for paid larger runners.
 [GitHub runner specifications](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
 
-The full native diagnostic is [run 34659217140](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34659217140).
-GitHub Actions records its status; dispatch is not build success. TestFlight still
-requires the native/product gates. Live App Store Connect lookup confirmed the
+The first hosted native diagnostic, [run 34659217140](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34659217140),
+failed at its 75-minute step timeout. It completed analysis (66,479 reachable
+classes; 366,507 methods), universe construction, parsing and inlining. The
+universe stage reported 1,844.5 seconds in 13 collections, 92.24% of that stage;
+its final heap reading was 9.26 GB. There was no reported Java out-of-memory
+exception or native compatibility error before the timeout. No candidate library
+was uploaded. Diagnostics are retained locally under
+`evidence/hosted-native-34659217140/`; the frozen class-manifest hash matches the
+local baseline (`5d81068e320c953e73beee92d9b0d4d8f945db75eec28e3fba91601b50384c7a`).
+
+The next diagnostic keeps the same standard Intel runner, 10 GiB heap, two build
+workers, NewRatio 7 and complete card registry, but permits 180 minutes for the
+compile step (210 minutes for the job) and captures bounded GC logs. This tests
+whether the proven compiler progress can finish; it does not claim success or
+authorize a paid runner. TestFlight still requires the native/product gates.
+Live App Store Connect lookup confirmed the
 existing app `6784735182`, bundle `com.calebfeliciano.magicmobile`, and latest
 uploaded build `2026062902` (valid, not expired) before any new upload.
 Changing the build machine does not change the requirement that gameplay and
