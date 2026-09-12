@@ -172,9 +172,12 @@ SIM_UUID=$(<"$PROBE_BUILD/created-uuid.txt")
 }
 bounded 30 xcrun simctl boot "$SIM_UUID"
 bounded 180 xcrun simctl bootstatus "$SIM_UUID" -b
-bounded 60 xcrun simctl install "$SIM_UUID" "$APP"
-bounded 60 xcrun simctl launch --console "$SIM_UUID" io.magicmobile.toolchainonly.simprobe \
+# This caller is a C executable, not a UIKit application (no UIApplicationMain).
+# Execute it in the booted simulator, rather than asking SpringBoard to launch it.
+# This tests the native runtime only, not app installation or lifecycle.
+bounded 60 xcrun simctl spawn --arch=x86_64 "$SIM_UUID" "$APP/ios_probe_link_check" \
   | tee "$PROBE_BUILD/simulator-run.txt"
+grep -qx 'TOOLCHAIN_ONLY entered_main' "$PROBE_BUILD/simulator-run.txt"
 grep -qx 'TOOLCHAIN_ONLY isolate_create=0' "$PROBE_BUILD/simulator-run.txt"
 grep -qx 'TOOLCHAIN_ONLY result=42 isolate_teardown=0' "$PROBE_BUILD/simulator-run.txt"
 echo 'PASS: non-XMage x86_64 iOS SIMULATOR probe executed isolate_create=0 result=42 isolate_teardown=0.'

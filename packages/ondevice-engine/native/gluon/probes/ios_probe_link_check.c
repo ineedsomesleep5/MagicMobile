@@ -4,6 +4,7 @@
 /* Link-only caller with its own main, not Gluon's application delegate.
  * A linked binary is not runtime evidence; no XMage engine is present. */
 int main(void) {
+    puts("TOOLCHAIN_ONLY entered_main"); fflush(stdout);
     graal_isolatethread_t *thread = 0;
     int created = graal_create_isolate(0, 0, &thread);
     printf("TOOLCHAIN_ONLY isolate_create=%d\n", created); fflush(stdout);

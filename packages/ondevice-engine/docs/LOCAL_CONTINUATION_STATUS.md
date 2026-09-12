@@ -94,7 +94,7 @@ The fresh `H6FJa9` toolchain probe also verified bounded builder GC logs
 these logs to distinguish retained-heap pressure from compiler faults. This is
 instrumentation, not a fix or a measurement of the already-running hosted build.
 The pinned toolchain's simulator target is separately compiled x86_64, not the
-device ARM64 artifact; simulator compilation/execution remains outstanding.
+device ARM64 artifact; full-engine simulator compilation/execution remains outstanding.
 [Gluon simulator documentation](https://docs.gluonhq.com/#_ios_simulator)
 
 ## Hosted continuation authorized
@@ -137,3 +137,11 @@ passed at `fe12ee1`: 65 retained-gateway tests, repository typecheck, and the
 existing bridge Docker image build on a Linux runner. No image was run or
 published, no local Docker daemon was started, and no app was signed or uploaded.
 These compatibility checks are not a remote rules-engine fallback or iOS proof.
+
+The separate non-XMage [simulator probe 34665324348](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34665324348)
+compiled and linked x86_64 code with IOSSIMULATOR metadata, then booted a fresh
+iOS 26.5 simulator. Its application launch timed out after 60 seconds without
+the required isolate/result output. It is not an execution pass. The follow-up
+uses `simctl spawn` for this C-only caller (which has no UIKit application entry)
+and adds a flushed main-entry marker to separate process entry from isolate
+startup. Runtime success, app lifecycle and full-engine gameplay remain unproven.
