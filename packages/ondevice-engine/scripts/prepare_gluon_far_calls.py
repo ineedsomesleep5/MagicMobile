@@ -51,7 +51,14 @@ def module_exports(java: Path) -> list[str]:
             elif words[:2] == ["qualified", "exports"]:
                 packages.add(words[2])
         for package in sorted(packages):
-            result += ["--add-exports", f"{module}/{package}=ALL-UNNAMED"]
+            # javac must resolve JVMCI types inside Graal's generic signatures as
+            # well as in our unnamed-module source. Exporting only to the
+            # unnamed module makes DataPatch/Infopoint appear inaccessible
+            # when loaded through CompilationResult in the named module.
+            targets = "ALL-UNNAMED"
+            if module in ("jdk.internal.vm.ci", "org.graalvm.sdk"):
+                targets += ",jdk.internal.vm.compiler"
+            result += ["--add-exports", f"{module}/{package}={targets}"]
     return result
 
 
@@ -123,7 +130,14 @@ def prepare(archive: Path) -> tuple[Path, Path]:
     classes.mkdir()
     command = [str(home / "bin/javac"), "-J-Xmx768m", "-proc:none", "-source", "17", "-target", "17",
                "--add-modules", "org.graalvm.sdk,jdk.internal.vm.compiler,jdk.internal.vm.ci"]
+    # Use one JVMCI type universe for the SDK compiler and replacement classes.
+    command += ["--add-reads", "jdk.internal.vm.compiler=jdk.internal.vm.ci",
+                "--add-reads", "jdk.internal.vm.compiler=org.graalvm.sdk"]
     command += module_exports(home / "bin/java")
+    descriptors = {module: subprocess.check_output(
+        [str(home / "bin/java"), "--describe-module", module], text=True)
+        for module in ("org.graalvm.sdk", "jdk.internal.vm.compiler", "jdk.internal.vm.ci")}
+    (build / "compiler-module-descriptors.json").write_text(json.dumps(descriptors, indent=2) + "\n")
     command += ["--add-exports", "java.base/jdk.internal.misc=ALL-UNNAMED",
                 "-cp", str(home / "lib/svm/builder/*"), "-d", str(classes)]
     command += [str(p) for p in sources]

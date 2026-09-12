@@ -2,7 +2,7 @@ name: ARM64 far-call compiler verification
 
 on:
   push:
-    branches: [codex/issue-4-native-mvp]
+    branches: [codex/issue-4-native-mvp, codex/issue-4-verified-continuation]
     paths:
       - '.github/workflows/magicmobile-far-calls.yml'
       - 'packages/ondevice-engine/native/gluon/compiler-patches/**'
@@ -92,6 +92,7 @@ jobs:
             packages/ondevice-engine/evidence/
             packages/ondevice-engine/build/ios-compiler-patch-*/compiler-patch-manifest.json
             packages/ondevice-engine/build/ios-compiler-patch-*/javac-arguments.json
+            packages/ondevice-engine/build/ios-compiler-patch-*/compiler-module-descriptors.json
             packages/ondevice-engine/build/ios-compiler-patch-*/sources/
             packages/ondevice-engine/build/ios-native-*/gluonfx/arm64-ios/gvm/log/
             packages/ondevice-engine/build/ios-native-*/builder-gc.log*
