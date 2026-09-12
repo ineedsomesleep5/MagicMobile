@@ -21,7 +21,7 @@ TestFlight app. Portrait protocol integration and Game Center lobby work remain.
 | Completed real JVM games | Two-human game at turn 16; four-human game at turn 39; token/mulligan game at turn 16 | `evidence/real-jvm-game.json`, `real-jvm-four-player-game.json`, `real-jvm-token-mulligan-game.json` |
 | Real JVM regressions | 27 query/control/privacy groups; 10 seeded Commander rule groups; two injected-busy-worker groups; seven deck rejection fixtures and 24 lifecycle checks | `evidence/Real*Tests.txt`, `real-commander-rules-tests.txt`, `real-busy-shutdown-tests.txt`, `real-jvm-deck-validation.json`, `real-jvm-lifecycle.json` |
 | Full-engine AOT | No desktop or iOS XMage binary. ORMLite compiler fault minimized and fixed in a native dependency probe; full 4/5 GiB builds saturated configured old-generation space and were intentionally stopped | `evidence/ormlite-check-55Hbub.log`, `ios-native-memory-diagnostic.txt`, `ios-native-*.log` |
-| iOS toolchain only | Separate non-engine ARM64 archive and generated C-header caller compilation passed; no native execution | `evidence/ios-abi-zIwyrj.log`, `ios-toolchain-postchecks.txt` |
+| iOS toolchain only | Separate non-engine ARM64 archive, generated-header caller compilation, and independent iOS executable link passed; no native execution | `evidence/ios-abi-H6FJa9.log`, `ios-abi-H6FJa9-link.log` |
 | iOS inspection harness | Unsigned iOS SDK build passed after separating the app target name from its Swift package target; no native engine linked or app execution | `evidence/ios-harness-target-fixed.log`, `scripts/test_ios_harness.sh` |
 | Simulator | Not built or played | No native engine XCFramework |
 | Physical iPhone / airplane mode | Not installed or played | Not validated |
@@ -74,11 +74,21 @@ and exact snapshot hashes in the memory diagnostic. No card pruning, rule
 substitution, or remote rules-engine fallback was used.
 
 The toolchain-only archive is deliberately not an engine artifact: it contains
-no `mm_engine_*` exports. It also contains Gluon's application delegate/main,
-which requires an explicit integration decision before packaging a Swift engine
-library. The Graal-produced object itself lacks a platform load command; the
-Objective-C helper and separately compiled C caller have iOS platform metadata.
-An actual iOS link/run is still required—ARM64 alone is insufficient proof.
+no `mm_engine_*` exports. It also contains Gluon's application delegate/main;
+the independent caller link verified that ordinary archive linking with a
+caller-owned `main` does not pull that delegate into the executable. The linked
+executable reports platform iOS, minimum iOS 17, and exports the probe/isolate
+symbols, not the engine. The Graal-produced object itself lacks a platform load
+command, so Apple's linker still warns while assuming iOS for that member.
+Native execution and full-engine linking remain unverified.
+
+The fresh `H6FJa9` toolchain probe also verified bounded builder GC logs
+(`builder-gc.log`, up to two 8 MB rotated files). Future hosted diagnostics retain
+these logs to distinguish retained-heap pressure from compiler faults. This is
+instrumentation, not a fix or a measurement of the already-running hosted build.
+The pinned toolchain's simulator target is separately compiled x86_64, not the
+device ARM64 artifact; simulator compilation/execution remains outstanding.
+[Gluon simulator documentation](https://docs.gluonhq.com/#_ios_simulator)
 
 ## Hosted continuation authorized
 
