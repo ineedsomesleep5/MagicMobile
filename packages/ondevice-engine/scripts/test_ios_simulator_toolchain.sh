@@ -173,7 +173,8 @@ SIM_UUID=$(<"$PROBE_BUILD/created-uuid.txt")
   echo 'ERROR: simctl create did not return one valid owned UUID.' >&2; exit 1;
 }
 bounded 30 xcrun simctl boot "$SIM_UUID"
-bounded 180 xcrun simctl bootstatus "$SIM_UUID" -b
+# Fresh iOS 26.5 migration exceeded 180s in run 34666118749 while plugins progressed.
+bounded 600 xcrun simctl bootstatus "$SIM_UUID" -b
 # This caller is a C executable, not a UIKit application (no UIApplicationMain).
 # Execute it in the booted simulator, rather than asking SpringBoard to launch it.
 # This tests the native runtime only, not app installation or lifecycle.

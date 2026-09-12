@@ -151,3 +151,10 @@ stopped before compilation: the first `simctl list --json` exceeded its 30-secon
 deadline. It did not exercise direct process execution. The discovery bound is
 now 120 seconds to test slow CoreSimulator initialization; no runtime/architecture
 checks or execution-result assertions were relaxed.
+
+[Run 34666118749](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34666118749)
+passed discovery, compilation and linkage, then exceeded 180 seconds during a
+fresh iOS 26.5 simulator's data migration. Migration advanced through distinct
+system plugins; the probe executable was not reached. Cleanup of that owned,
+ephemeral CI simulator also exceeded its bounds. The next check permits up to
+600 seconds for first boot, retaining all platform and exact execution assertions.
