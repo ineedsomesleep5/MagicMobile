@@ -1,0 +1,41 @@
+name: Issue 4 non-simulator verification
+
+on:
+  push:
+    branches: [codex/issue-4-native-mvp]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue4-nonsimulator-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source-provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Preserve exact source for reproducible non-simulator checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/issue4-source"
+          git archive --format=tar.gz --output="$RUNNER_TEMP/issue4-source/source.tar.gz" HEAD
+          git rev-parse HEAD > "$RUNNER_TEMP/issue4-source/commit.txt"
+          git rev-parse HEAD^{tree} > "$RUNNER_TEMP/issue4-source/tree.txt"
+          sha256sum "$RUNNER_TEMP/issue4-source/source.tar.gz" > "$RUNNER_TEMP/issue4-source/SHA256SUMS"
+          printf '%s\n' 'Source provenance only. No engine/gameplay/runtime/device acceptance is implied.' > "$RUNNER_TEMP/issue4-source/SCOPE.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: issue4-source-${{ github.sha }}
+          path: ${{ runner.temp }}/issue4-source/
+          retention-days: 7
+          if-no-files-found: error
+
+# This workflow never launches a simulator, signs, uploads an app, or uses a paid runner.
+# Verification jobs are added alongside their source fixes; source provenance alone is not a pass.
