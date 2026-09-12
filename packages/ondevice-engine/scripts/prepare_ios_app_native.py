@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Stage explicitly supplied iOS AOT inputs; never compile, link, sign or run them.
+"""Stage exact device-native inputs into the existing iOS app (dry-run by default).
 
-Dry run by default. --apply owns only apps/ios/NativeEngine, refuses an existing
-different tree, and accepts an identical tree. Header and archive must come from
+No compilation, signing, uploading or gameplay is performed. Every archive is
+checked before any destination is created. The header and archive must come from
 the same real CI build; symbol checks cannot establish that provenance or engine
 capabilities. --verify-installed checks the recorded bytes for the optional
 native-engine.yml build. It does not prove that the native engine works.
@@ -12,10 +12,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
 DESTINATION = ROOT / 'apps/ios/NativeEngine'
@@ -114,6 +116,8 @@ def verify_installed(destination=DESTINATION):
 
 def prepare(archive, header, clib_dir, jdk_lib_dir, destination=DESTINATION, *, apply=False):
     check_destination(destination)
+    if archive.is_symlink() or header.is_symlink():
+        raise ValueError('Refusing symlink native input')
     sdk_header = validate_header(header)
     inputs = {'lib/libmmengine.a': archive, 'include/libmmengine.h': header,
               'include/graal_isolate.h': sdk_header}
@@ -121,6 +125,8 @@ def prepare(archive, header, clib_dir, jdk_lib_dir, destination=DESTINATION, *, 
         inputs.update({f'lib/lib{name}.a': directory / f'lib{name}.a' for name in names})
     files = {}
     for name, source in sorted(inputs.items()):
+        if source.is_symlink():
+            raise ValueError(f'Refusing symlink native input: {source}')
         if not source.is_file() or not source.stat().st_size:
             raise ValueError(f'Missing input: {source}')
         entry = {'source': str(source.resolve()), 'sha256': digest(source)}
@@ -138,18 +144,46 @@ def prepare(archive, header, clib_dir, jdk_lib_dir, destination=DESTINATION, *, 
         return manifest
     if apply:
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.mkdir()  # Exclusive ownership; never merge or replace a tree.
-        for name, source in inputs.items():
-            target = destination / name
-            target.parent.mkdir(exist_ok=True)
-            with source.open('rb') as src, target.open('xb') as dst:
-                shutil.copyfileobj(src, dst)
-            if digest(target) != files[name]['sha256']:
-                raise ValueError(f'Input changed while copying: {source}; staging is incomplete')
-        with (destination / 'manifest.json').open('x') as stream:
-            json.dump(manifest, stream, indent=2, sort_keys=True)
-            stream.write('\n')
-        verify_installed(destination)
+        check_destination(destination)
+        lock = destination.parent / f'.{destination.name}.stage.lock'
+        # Serialize cooperating installers. Never remove another installer's
+        # lock or edit a pre-existing destination to recover a partial attempt.
+        try:
+            lock_fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError as error:
+            raise ValueError(f'Another staging operation owns {lock}; inspect it before retrying') from error
+        staging = None
+        try:
+            if destination.exists():
+                if verify_installed(destination) != manifest:
+                    raise ValueError('Destination differs; refusing to overwrite existing native inputs')
+                return manifest
+            staging = Path(tempfile.mkdtemp(prefix=f'.{destination.name}.stage-', dir=destination.parent))
+            for name, source in inputs.items():
+                target = staging / name
+                target.parent.mkdir(exist_ok=True)
+                with source.open('rb') as src, target.open('xb') as dst:
+                    shutil.copyfileobj(src, dst)
+                if digest(target) != files[name]['sha256']:
+                    raise ValueError(f'Input changed while copying: {source}; no native tree published')
+            with (staging / 'manifest.json').open('x') as stream:
+                json.dump(manifest, stream, indent=2, sort_keys=True)
+                stream.write('\n')
+            verify_installed(staging)
+            check_destination(destination)
+            if destination.exists():
+                raise ValueError('Destination appeared during staging; refusing to overwrite it')
+            # Same-parent rename publishes the fully verified tree atomically.
+            # Do not modify this owned destination concurrently outside this tool.
+            os.rename(staging, destination)
+            staging = None
+        finally:
+            try:
+                if staging is not None:
+                    shutil.rmtree(staging)
+            finally:
+                os.close(lock_fd)
+                lock.unlink()
     return manifest
 
 

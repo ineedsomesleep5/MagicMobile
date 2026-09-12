@@ -198,6 +198,65 @@ class PrepareNativeTests(unittest.TestCase):
         # Gluon legitimately bundles this separate object in its static archive.
         self.native.validate_archive(self.archive, engine=True)
 
+    def test_copy_failure_never_publishes_partial_tree_and_can_retry(self):
+        args = self.packaging_fixture()
+        original = self.native.shutil.copyfileobj
+        def broken_copy(src, dst):
+            dst.write(b'partial fixture')
+            raise OSError('injected disk failure')
+        with patch.object(self.native.shutil, 'copyfileobj', side_effect=broken_copy):
+            with self.assertRaisesRegex(OSError, 'injected disk failure'):
+                self.native.prepare(*args, apply=True)
+        self.assertFalse(self.destination.exists())
+        self.assertEqual(list(self.destination.parent.iterdir()), [])
+        self.native.prepare(*args, apply=True)
+        self.native.verify_installed(self.destination)
+
+    def test_source_changes_during_copy_leave_no_native_tree(self):
+        args = self.packaging_fixture()
+        original = self.native.shutil.copyfileobj
+        def changed_copy(src, dst):
+            original(src, dst)
+            dst.write(b'changed fixture')
+        with patch.object(self.native.shutil, 'copyfileobj', side_effect=changed_copy):
+            with self.assertRaisesRegex(ValueError, 'changed while copying'):
+                self.native.prepare(*args, apply=True)
+        self.assertFalse(self.destination.exists())
+        self.assertEqual(list(self.destination.parent.iterdir()), [])
+
+    def test_existing_staging_lock_is_preserved(self):
+        args = self.packaging_fixture()
+        self.destination.parent.mkdir()
+        lock = self.destination.parent / '.NativeEngine.stage.lock'
+        lock.write_text('another installer owns this')
+        with self.assertRaisesRegex(ValueError, 'Another staging operation'):
+            self.native.prepare(*args, apply=True)
+        self.assertFalse(self.destination.exists())
+        self.assertEqual(lock.read_text(), 'another installer owns this')
+
+    def test_symlink_input_is_rejected_without_creating_destination(self):
+        args = self.packaging_fixture()
+        target = self.root / 'real-engine-fixture.a'
+        self.archive.rename(target)
+        self.archive.symlink_to(target)
+        with self.assertRaisesRegex(ValueError, 'symlink native input'):
+            self.native.prepare(*args, apply=True)
+        self.assertFalse(self.destination.exists())
+
+    def test_tree_is_fully_verified_before_atomic_publish(self):
+        args = self.packaging_fixture()
+        original = self.native.os.rename
+        seen = []
+        def inspect_publish(source, destination):
+            self.assertFalse(destination.exists())
+            self.native.verify_installed(source)
+            seen.append(source)
+            return original(source, destination)
+        with patch.object(self.native.os, 'rename', side_effect=inspect_publish):
+            self.native.prepare(*args, apply=True)
+        self.assertEqual(len(seen), 1)
+        self.native.verify_installed(self.destination)
+
 
 if __name__ == '__main__':
     unittest.main()
