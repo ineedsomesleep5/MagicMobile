@@ -25,6 +25,8 @@ mvn --batch-mode --no-transfer-progress -f native/gluon/pom.xml \
   "-Dnative.reflection.config=$ROOT/native/gluon/probes/empty-reflect-config.json" \
   -Dnative.max.heap=1g com.gluonhq:gluonfx-maven-plugin:1.0.29:compile \
   com.gluonhq:gluonfx-maven-plugin:1.0.29:staticlib
+[[ -s "$PROBE_BUILD/builder-gc.log" ]]
+grep -q 'gc,init' "$PROBE_BUILD/builder-gc.log"
 GVM="$PROBE_BUILD/gluonfx/arm64-ios/gvm"
 xcrun lipo "$GVM/libmmengine.a" -verify_arch arm64
 xcrun ar -t "$GVM/libmmengine.a" | tee "$PROBE_BUILD/archive-members.txt"

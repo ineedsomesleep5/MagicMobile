@@ -32,6 +32,8 @@
             <arg>--no-fallback</arg>
             <arg>-J-Xmx${native.max.heap}</arg>
             <arg>-J-XX:NewRatio=${native.new.ratio}</arg>
+            <!-- Builder-only GC telemetry; does not change the iOS runtime collector. -->
+            <arg>-J-Xlog:gc*:file=${native.build}/builder-gc.log:time,uptime,level,tags:filecount=2,filesize=8M</arg>
             <arg>-H:NumberOfThreads=2</arg>
             <arg>--initialize-at-run-time=io.magicmobile,mage</arg>
             <arg>${native.init.arg}</arg>

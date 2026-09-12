@@ -60,6 +60,8 @@ jobs:
           path: |
             packages/ondevice-engine/evidence/
             packages/ondevice-engine/build/ios-native-*/gluonfx/arm64-ios/gvm/log/
+            packages/ondevice-engine/build/ios-native-*/builder-gc.log*
+            packages/ondevice-engine/build/ios-abi-*/builder-gc.log*
           retention-days: 7
       - name: Upload candidate device library, not an app
         if: success()
