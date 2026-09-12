@@ -1,0 +1,118 @@
+name: Issue 4 non-simulator verification
+
+on:
+  push:
+    branches: [codex/issue-4-mvp]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue4-verification-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source-checkpoint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Preserve the exact source used by these checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/issue4-source"
+          git rev-parse HEAD > "$RUNNER_TEMP/issue4-source/commit.txt"
+          git rev-parse HEAD^{tree} > "$RUNNER_TEMP/issue4-source/tree.txt"
+          git archive --format=tar.gz --output="$RUNNER_TEMP/issue4-source/source.tar.gz" HEAD
+          (cd "$RUNNER_TEMP/issue4-source" && sha256sum source.tar.gz > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: issue4-source-${{ github.sha }}
+          path: ${{ runner.temp }}/issue4-source
+          retention-days: 7
+          if-no-files-found: error
+
+  boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Execute tooling and test-only native boundary regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/issue4-boundary"
+          git rev-parse HEAD > "$RUNNER_TEMP/issue4-boundary/commit.txt"
+          bash packages/ondevice-engine/scripts/test_tooling.sh 2>&1 | tee "$RUNNER_TEMP/issue4-boundary/tooling.log"
+          bash packages/ondevice-engine/scripts/test_native_boundary.sh 2>&1 | tee "$RUNNER_TEMP/issue4-boundary/native-boundary-fixtures.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue4-boundary-${{ github.sha }}
+          path: ${{ runner.temp }}/issue4-boundary
+          if-no-files-found: error
+
+  portable-swift:
+    runs-on: macos-26-intel
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Execute macOS-hosted portable Swift tests, without a simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/issue4-swift"
+          git rev-parse HEAD > "$RUNNER_TEMP/issue4-swift/commit.txt"
+          swift --version | tee "$RUNNER_TEMP/issue4-swift/swift-version.txt"
+          swift test --package-path apps/ios --jobs 2 2>&1 | tee "$RUNNER_TEMP/issue4-swift/presentation.log"
+          swift test --package-path packages/ondevice-engine/swift --jobs 2 2>&1 | tee "$RUNNER_TEMP/issue4-swift/engine-package.log"
+          bash packages/ondevice-engine/scripts/test_swift_close.sh 2>&1 | tee "$RUNNER_TEMP/issue4-swift/swift-close-fixtures.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue4-swift-${{ github.sha }}
+          path: ${{ runner.temp }}/issue4-swift
+          if-no-files-found: error
+
+  real-jvm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build and execute the pinned real XMage engine regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/issue4-jvm"
+          git rev-parse HEAD > "$RUNNER_TEMP/issue4-jvm/commit.txt"
+          bash packages/ondevice-engine/scripts/build_jvm.sh 2>&1 | tee "$RUNNER_TEMP/issue4-jvm/build.log"
+          bash packages/ondevice-engine/scripts/test_real_engine.sh 2>&1 | tee "$RUNNER_TEMP/issue4-jvm/real-engine.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue4-real-jvm-${{ github.sha }}
+          path: ${{ runner.temp }}/issue4-jvm
+          if-no-files-found: error
+
+# These are source/boundary/JVM gates, not native gameplay evidence.
+# No simulator, signing, TestFlight upload, or paid/larger runner is used.
