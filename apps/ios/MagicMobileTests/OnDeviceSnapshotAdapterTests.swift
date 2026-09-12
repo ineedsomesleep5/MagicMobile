@@ -3,6 +3,76 @@ import MagicMobileOnDevice
 @testable import MagicMobile
 
 final class OnDeviceSnapshotAdapterTests: XCTestCase {
+    func testLocalAndAuthorizedControlledAttackersRemainSelectableWithViewerCommands() throws {
+        for controlled in [false, true] {
+            let poll = try attackerPoll(controlled: controlled)
+            let snapshot = try OnDeviceSnapshotAdapter.snapshot(poll, expectedSeatID: poll.seatID)
+            let active = try XCTUnwrap(snapshot.activePlayerId)
+            let attacker = try XCTUnwrap(snapshot.players.first { $0.playerId == active }?.zones.battlefield.first { $0.isAttacking == true })
+            let envelope = try XCTUnwrap(snapshot.promptEnvelopeV2)
+            XCTAssertEqual(envelope.targets?.map(\.id), [attacker.id])
+            XCTAssertEqual(envelope.playerId, snapshot.viewerID)
+            XCTAssertEqual(snapshot.viewerID == active, !controlled)
+            let command = try XCTUnwrap(PromptCommandBuilder.command(gameId: snapshot.id, promptEnvelope: envelope,
+                type: "choose_target", promptId: envelope.id, playerId: snapshot.viewerID, ids: [attacker.id]))
+            let prompt = try XCTUnwrap(poll.prompt)
+            XCTAssertEqual(command.messageId, Int(prompt.revision))
+            XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: prompt, viewerPlayerID: snapshot.viewerID),
+                           EnginePrompt.answer("uuid", .string(attacker.id)))
+            let stale = GameCommand(type: "choose_target", gameId: snapshot.id, playerId: snapshot.viewerID,
+                                   promptId: envelope.id, messageId: Int(prompt.revision) - 1, targetIds: [attacker.id])
+            XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: stale, prompt: prompt, viewerPlayerID: snapshot.viewerID))
+            if controlled {
+                let impersonated = GameCommand(type: "choose_target", gameId: snapshot.id, playerId: active,
+                                               promptId: envelope.id, messageId: Int(prompt.revision), targetIds: [attacker.id])
+                XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: impersonated, prompt: prompt, viewerPlayerID: snapshot.viewerID))
+            }
+            XCTAssertThrowsError(try OnDeviceSnapshotAdapter.snapshot(poll, expectedSeatID: "unbound-seat"))
+        }
+    }
+
+    func testUnauthorizedOrMismatchedControlledAttackerIdentityFailsClosed() throws {
+        let original = try attackerPoll(controlled: true)
+        let active = try XCTUnwrap(original.snapshot?["gameView"]?["activePlayerId"]?.string)
+        let viewer = try XCTUnwrap(original.snapshot?["enginePlayerId"]?.string)
+        for mutation in ["missing-control", "wrong-key", "wrong-viewer", "missing-viewer", "wrong-active", "missing-controlled-active", "missing-active", "unknown-active"] {
+            var raw = try XCTUnwrap(original.raw.object)
+            var root = try XCTUnwrap(original.snapshot?.object)
+            var view = try XCTUnwrap(root["gameView"]?.object)
+            var control = try XCTUnwrap(root["controlledPlayerViews"]?[active]?.object)
+            switch mutation {
+            case "wrong-viewer": control["myPlayerId"] = .string(viewer)
+            case "missing-viewer": control["myPlayerId"] = nil
+            case "wrong-active": control["activePlayerId"] = .string(viewer)
+            case "missing-controlled-active": control["activePlayerId"] = nil
+            case "missing-active": view["activePlayerId"] = nil
+            case "unknown-active": view["activePlayerId"] = .string("00000000-0000-0000-0000-000000000099")
+            default: break
+            }
+            root["controlledPlayerViews"] = mutation == "missing-control" ? .object([:]) : .object([mutation == "wrong-key" ? viewer : active: .object(control)])
+            root["gameView"] = .object(view); raw["snapshot"] = .object(root)
+            XCTAssertThrowsError(try OnDeviceSnapshotAdapter.snapshot(MatchPoll(.object(raw)), expectedSeatID: original.seatID), mutation)
+        }
+    }
+
+    private func attackerPoll(controlled: Bool) throws -> MatchPoll {
+        let original = try fixture("2p-combat")
+        var raw = try XCTUnwrap(original.raw.object)
+        var root = try XCTUnwrap(original.snapshot?.object)
+        var view = try XCTUnwrap(root["gameView"]?.object)
+        let active = try XCTUnwrap(view["activePlayerId"]?.string)
+        if controlled {
+            let viewer = try XCTUnwrap(view["players"]?.array?.first { $0["playerId"]?.string != active }?["playerId"]?.string)
+            root["controlledPlayerViews"] = .object([active: .object(view)])
+            root["enginePlayerId"] = .string(viewer); view["myPlayerId"] = .string(viewer)
+            view["myHand"] = .object([:])
+        }
+        var prompt = try XCTUnwrap(raw["prompt"]?.object)
+        prompt["payload"] = .object(["selectMode": .string("attackers"), "options": .object(["possibleAttackers": .array([])])])
+        root["gameView"] = .object(view); raw["snapshot"] = .object(root); raw["prompt"] = .object(prompt)
+        return try MatchPoll(.object(raw))
+    }
+
     func testActualFourSeatPollPreservesViewerAndHiddenZoneCounts() throws {
         let poll = try fixture("4p-initial-player-3")
         let snapshot = try OnDeviceSnapshotAdapter.snapshot(poll, expectedSeatID: "player-3")

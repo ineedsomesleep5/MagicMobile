@@ -127,7 +127,20 @@ enum OnDeviceSnapshotAdapter {
         } + decodedXmage.stack.compactMap(\.sourceCard)
             + (decodedXmage.exileZones + decodedXmage.revealed + decodedXmage.lookedAt + decodedXmage.companion).flatMap(\.cards)
         let prompt = poll.prompt.flatMap { $0.submitted ? nil : $0 }
-        let presentation = try prompt.map { try OnDevicePromptAdapter.presentation($0, viewerPlayerID: viewer, cards: allCards, players: decodedPlayers) }
+        let presentation = try prompt.map { prompt in
+            var attackerID: String?
+            if prompt.kind == "SELECT", prompt.payload["selectMode"]?.string == "attackers" {
+                guard let active = view["activePlayerId"]?.string, ids.contains(active),
+                      active == viewer || (root["controlledPlayerViews"]?[active]?["myPlayerId"]?.string == active
+                        && root["controlledPlayerViews"]?[active]?["activePlayerId"]?.string == active) else {
+                    throw EngineError.invalidMessage("Missing or unauthorized acting attacker identity")
+                }
+                // ViewProjector emits this map only for the current, non-nested controller.
+                attackerID = active
+            }
+            return try OnDevicePromptAdapter.presentation(prompt, viewerPlayerID: viewer, cards: allCards,
+                                                          players: decodedPlayers, actingAttackerPlayerID: attackerID)
+        }
         let cardActions: [LegalAction] = try decode(.array(playability.actions))
         return GameSnapshot(
             id: poll.matchID, source: "xmage-ondevice", activePlayerId: view["activePlayerId"]?.string,

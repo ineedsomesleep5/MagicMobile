@@ -8,7 +8,7 @@ struct OnDevicePromptPresentation {
 }
 
 enum OnDevicePromptAdapter {
-    static func presentation(_ prompt: MagicMobileOnDevice.EnginePrompt, viewerPlayerID: String, cards: [ZoneCard], players: [PlayerGameState] = []) throws -> OnDevicePromptPresentation {
+    static func presentation(_ prompt: MagicMobileOnDevice.EnginePrompt, viewerPlayerID: String, cards: [ZoneCard], players: [PlayerGameState] = [], actingAttackerPlayerID: String? = nil) throws -> OnDevicePromptPresentation {
         try validate(prompt, viewer: viewerPlayerID)
         let revision = Int(prompt.revision)
         var fields: [String: Any] = [
@@ -53,10 +53,26 @@ enum OnDevicePromptAdapter {
                 guard prompt.responseTypes.contains("uuid"), let candidates = prompt.payload["options"]?[key]?.array else { throw invalid("Missing combat candidates") }
                 fields["responseKind"] = "target"; fields["responseCommand"] = response("choose_target")
                 fields["minChoices"] = 1; fields["maxChoices"] = 1
-                fields["targets"] = try candidates.map { item -> [String: String] in
+                var targets = try candidates.map { item -> [String: String] in
                     guard let id = item.string, UUID(uuidString: id) != nil else { throw invalid("Invalid combat UUID") }
                     return ["id": id, "label": targetLabel(id)]
                 }
+                // Upstream removes declared attackers from its possible-attacker highlights.
+                // The snapshot adapter authorizes a controlled acting player separately;
+                // command identity remains the authenticated viewer throughout.
+                if key == "possibleAttackers", let actingAttackerPlayerID {
+                    guard UUID(uuidString: actingAttackerPlayerID) != nil,
+                          players.contains(where: { $0.playerId == actingAttackerPlayerID }) else { throw invalid("Invalid acting attacker identity") }
+                }
+                let attackerID = actingAttackerPlayerID ?? viewerPlayerID
+                let battlefield = key == "possibleAttackers" ? players.first { $0.playerId == attackerID }?.zones.battlefield ?? [] : []
+                for card in battlefield where card.isAttacking == true {
+                    guard UUID(uuidString: card.id) != nil else { throw invalid("Invalid combat UUID") }
+                    if !targets.contains(where: { $0["id"] == card.id }) {
+                        targets.append(["id": card.id, "label": card.card.name])
+                    }
+                }
+                fields["targets"] = targets
                 if prompt.responseTypes.contains("boolean") { actions.append(try action("answer_yes_no", "Done", ["confirmed": true])) }
             default: throw invalid("Unsupported SELECT mode")
             }
@@ -68,10 +84,19 @@ enum OnDevicePromptAdapter {
             fields["responseKind"] = prompt.kind == "PLAY_MANA" ? "mana" : "x_mana"
             fields["responseCommand"] = response(prompt.kind == "PLAY_MANA" ? "play_mana" : "play_x_mana")
             if prompt.kind == "PLAY_X_MANA" { fields["minChoices"] = prompt.minimum; fields["maxChoices"] = prompt.maximum }
+            if let pool = players.first(where: { $0.playerId == player })?.manaPool {
+                fields["manaChoices"] = [("W", pool.W), ("U", pool.U), ("B", pool.B), ("R", pool.R), ("G", pool.G), ("C", pool.C)]
+                    .filter { $0.1 > 0 }.map { symbol, amount -> [String: Any] in
+                        ["id": symbol, "manaType": symbol, "label": "Pay {\(symbol)}", "amount": amount]
+                    }
+            }
             payment = try decode(["active": true, "remainingText": prompt.payload["message"]?.string ?? ""])
             if prompt.responseTypes.contains("boolean") { actions.append(try action("cancel_payment", "Cancel", ["confirmed": false])) }
-            if prompt.responseTypes.contains("string"), let label = prompt.payload["options"]?["specialButton"]?.string {
-                actions.append(try action("resolve_choice", label, ["choiceIds": ["special"]]))
+            if prompt.kind == "PLAY_MANA", prompt.responseTypes.contains("string") {
+                // The pinned PLAY_MANA protocol publishes exactly the string "special".
+                // HumanPlayer sends empty options even when convoke/delve are available;
+                // XMage opens its own special-action chooser after this response.
+                actions.append(try action("resolve_choice", prompt.payload["options"]?["specialButton"]?.string ?? "Special payment", ["choiceIds": ["special"]]))
             }
         case "MULTI_AMOUNT":
             guard prompt.responseTypes.contains("integers"), let rows = prompt.payload["allocations"]?.array else { throw invalid("Missing allocation rows") }
@@ -269,7 +294,10 @@ enum OnDevicePromptAdapter {
         case ("SELECT", "pass_priority"):
             guard prompt.payload["selectMode"]?.string == "priority" else { throw invalid("Not a priority prompt") }
             return try answer("boolean", .bool(true), prompt: prompt)
-        case ("SELECT", "resolve_choice"), ("PLAY_MANA", "resolve_choice"):
+        case ("PLAY_MANA", "resolve_choice"):
+            guard command.choiceIds == ["special"] else { throw invalid("Invalid special payment token") }
+            return try answer("string", .string("special"), prompt: prompt)
+        case ("SELECT", "resolve_choice"):
             guard command.choiceIds == ["special"], prompt.payload["options"]?["specialButton"]?.string != nil else { throw invalid("Missing special control") }
             return try answer("string", .string("special"), prompt: prompt)
         case ("SELECT", "cast_spell"), ("SELECT", "play_land"), ("SELECT", "activate_ability"), ("SELECT", "make_mana"):

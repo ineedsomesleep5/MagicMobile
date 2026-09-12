@@ -113,6 +113,10 @@ class GeneratedProjectTests(unittest.TestCase):
         p = self.repo / 'apps/ios/MagicMobile/Uncommitted.swift'
         p.parent.mkdir(parents=True, exist_ok=True); p.write_text('// unexpected untracked source')
         with self.assertRaises(ValueError): self.record()
+    def test_untracked_native_link_source_is_rejected(self):
+        p = self.repo / 'apps/ios/NativeLink/Uncommitted.S'
+        p.parent.mkdir(parents=True, exist_ok=True); p.write_text('// unexpected native wrapper')
+        with self.assertRaises(ValueError): self.record()
     def test_record_cannot_be_reused_for_another_source_commit(self):
         record = self.record()
         self.git('commit', '--allow-empty', '-qm', 'different source identity')

@@ -17,11 +17,11 @@
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>MagicMobileEngineMode</key>
-	<string>$(MM_ENGINE_MODE)</string>
+	<string>2026091201</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>MagicMobileEngineMode</key>
+	<string>$(MM_ENGINE_MODE)</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Choose an image to use as your MagicMobile player icon.</string>
 	<key>UIApplicationSceneManifest</key>

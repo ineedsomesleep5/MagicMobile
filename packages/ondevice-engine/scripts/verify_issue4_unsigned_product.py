@@ -68,7 +68,8 @@ def generated_project_receipt(repo: pathlib.Path) -> dict:
         raise ValueError('Source changed during product generation: ' + ', '.join(sorted(names - GENERATED_PROJECT_FILES)))
     untracked = subprocess.check_output([
         'git', '-C', str(repo), 'ls-files', '--others', '--exclude-standard', '-z', '--',
-        'apps/ios/MagicMobile', 'packages/ondevice-engine/swift/Sources', 'packages/ondevice-engine/native'])
+        'apps/ios/MagicMobile', 'apps/ios/NativeLink',
+        'packages/ondevice-engine/swift/Sources', 'packages/ondevice-engine/native'])
     if untracked:
         raise ValueError('Uncommitted source files would enter the generated product')
     files = {}
@@ -115,6 +116,8 @@ def main():
         load=command('xcrun','otool','-l',str(binary))
         symbols=command('xcrun','nm','-g',str(binary))
         inspect_text(arch,load,symbols)
+        from verify_graal_product_layout import verify_files
+        layout = verify_files(a.repo/'apps/ios/NativeEngine/lib/libmmengine.a', binary)
         source=project['sourceCommit']
         manifest=a.repo/'apps/ios/NativeEngine/manifest.json'
         from prepare_ios_app_native import verify_installed
@@ -125,6 +128,7 @@ def main():
             'architecture':'arm64','platform':'iphoneos','definedNativeSymbols':sorted(REQUIRED),
             'evidenceScope':'product link and inspection only',
             'generatedProject':project,
+            'graalCodeLayout':layout,
             'nativeRuntimeTested':False,'nativeDeviceValidated':False,'testFlightUploaded':False,
             'engineMode':info['MagicMobileEngineMode'],
             'appVersion':info.get('CFBundleShortVersionString'),
