@@ -27,6 +27,7 @@ if len(settings)!=1: raise SystemExit('Expected exactly one product target')
 s=settings[0]
 if s.get('PRODUCT_BUNDLE_IDENTIFIER')!='com.calebfeliciano.magicmobile': raise SystemExit('Wrong app identity')
 if s.get('PLATFORM_NAME')!='iphoneos': raise SystemExit('Not a device build')
+if s.get('MM_ENGINE_MODE')!='embedded-xmage': raise SystemExit('Refusing reference/missing native mode metadata')
 if 'XMAGE_NATIVE_LINKED' not in s.get('SWIFT_ACTIVE_COMPILATION_CONDITIONS','').split(): raise SystemExit('Refusing legacy/remote product entrypoint')
 if s.get('CODE_SIGNING_ALLOWED')!='NO': raise SystemExit('Signing unexpectedly enabled')
 print('PASS product identity, native entrypoint flag, iphoneos destination, signing disabled')

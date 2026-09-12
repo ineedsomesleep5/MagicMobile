@@ -3,7 +3,7 @@ import sys
 import unittest
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
-from verify_issue4_unsigned_product import inspect_text, REQUIRED
+from verify_issue4_unsigned_product import inspect_text, inspect_info, REQUIRED
 
 SYMBOLS='\n'.join('0000000100000000 T _'+name for name in sorted(REQUIRED))
 class ProductInspectionTests(unittest.TestCase):
@@ -34,5 +34,36 @@ class ProductInspectionTests(unittest.TestCase):
             inspect_text('arm64', ' platform IOS\n', SYMBOLS+'\n0000000100000000 S _OBJC_CLASS_$_AppDelegate')
     def test_swift_product_delegate_is_not_gluon_delegate(self):
         inspect_text('arm64', ' platform IOS\n', SYMBOLS+'\n0000000100000000 S _OBJC_CLASS_$_MagicMobileAppDelegate')
+
+class ProductMetadataTests(unittest.TestCase):
+    def metadata(self):
+        return {'CFBundleIdentifier': 'com.calebfeliciano.magicmobile',
+                'MagicMobileEngineMode': 'embedded-xmage',
+                'CFBundleShortVersionString': '0.1.0', 'CFBundleVersion': '123',
+                'CFBundleExecutable': 'MagicMobile'}
+    def test_embedded_resolved_metadata_accepted(self):
+        inspect_info(self.metadata())
+    def test_legacy_mode_rejected(self):
+        info = self.metadata(); info['MagicMobileEngineMode'] = 'reference'
+        with self.assertRaises(ValueError): inspect_info(info)
+    def test_missing_mode_rejected(self):
+        info = self.metadata(); del info['MagicMobileEngineMode']
+        with self.assertRaises(ValueError): inspect_info(info)
+    def test_wrong_app_identity_rejected(self):
+        info = self.metadata(); info['CFBundleIdentifier'] += '.ondevice'
+        with self.assertRaises(ValueError): inspect_info(info)
+    def test_blank_marketing_version_rejected(self):
+        info = self.metadata(); info['CFBundleShortVersionString'] = ' '
+        with self.assertRaises(ValueError): inspect_info(info)
+    def test_unresolved_build_variable_rejected(self):
+        info = self.metadata(); info['CFBundleVersion'] = '$(CURRENT_PROJECT_VERSION)'
+        with self.assertRaises(ValueError): inspect_info(info)
+    def test_non_string_build_version_rejected(self):
+        info = self.metadata(); info['CFBundleVersion'] = 123
+        with self.assertRaises(ValueError): inspect_info(info)
+    def test_invalid_executable_names_rejected(self):
+        for name in ('', '.', '..', '../MagicMobile', '/tmp/MagicMobile'):
+            info = self.metadata(); info['CFBundleExecutable'] = name
+            with self.assertRaises(ValueError, msg=name): inspect_info(info)
 
 if __name__=='__main__': unittest.main()

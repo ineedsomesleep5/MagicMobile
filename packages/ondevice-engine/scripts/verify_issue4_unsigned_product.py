@@ -28,6 +28,22 @@ def inspect_text(architectures: str, load_commands: str, symbols: str) -> None:
         raise ValueError('Missing native definitions: ' + ', '.join(sorted(REQUIRED - defined)))
 
 
+def inspect_info(info: dict) -> None:
+    """Require resolved release metadata for the embedded product, not a reference app."""
+    if info.get('CFBundleIdentifier') != 'com.calebfeliciano.magicmobile':
+        raise ValueError('Wrong app identity')
+    if info.get('MagicMobileEngineMode') != 'embedded-xmage':
+        raise ValueError('Product metadata does not identify the embedded engine')
+    for key in ('CFBundleShortVersionString', 'CFBundleVersion'):
+        value = info.get(key)
+        if not isinstance(value, str) or not value.strip() or '$(' in value:
+            raise ValueError('Missing or unresolved version metadata: ' + key)
+    executable = info.get('CFBundleExecutable')
+    if (not isinstance(executable, str) or not executable
+            or executable in ('.', '..') or pathlib.Path(executable).name != executable):
+        raise ValueError('Invalid executable name')
+
+
 def digest(path):
     h = hashlib.sha256()
     with path.open('rb') as f:
@@ -43,9 +59,8 @@ def main():
     a=p.parse_args()
     try:
         info=plistlib.loads((a.app/'Info.plist').read_bytes())
-        if info.get('CFBundleIdentifier')!='com.calebfeliciano.magicmobile': raise ValueError('Wrong app identity')
+        inspect_info(info)
         executable=info['CFBundleExecutable']
-        if not isinstance(executable,str) or pathlib.Path(executable).name!=executable: raise ValueError('Invalid executable name')
         binary=a.app/executable
         def command(*args): return subprocess.check_output(args,text=True,stderr=subprocess.PIPE)
         arch=command('xcrun','lipo','-archs',str(binary))
@@ -64,6 +79,7 @@ def main():
             'architecture':'arm64','platform':'iphoneos','definedNativeSymbols':sorted(REQUIRED),
             'evidenceScope':'product link and inspection only',
             'nativeRuntimeTested':False,'nativeDeviceValidated':False,'testFlightUploaded':False,
+            'engineMode':info['MagicMobileEngineMode'],
             'appVersion':info.get('CFBundleShortVersionString'),
             'appBuild':info.get('CFBundleVersion')}
         provenance=a.repo/'packages/ondevice-engine/build/native-candidate-provenance.json'
