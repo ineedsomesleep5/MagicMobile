@@ -73,4 +73,16 @@ jobs:
             packages/ondevice-engine/build/native-metadata/*.json
           if-no-files-found: error
           retention-days: 7
+      - name: Preserve compiled simulator inputs for follow-up runtime tests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-xmage-ios-simulator-candidate-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            packages/ondevice-engine/build/ios-native-*/gluonfx/x86_64-ios/gvm/libmmengine.a
+            packages/ondevice-engine/build/ios-native-*/gluonfx/x86_64-ios/gvm/mmengine/*.h
+            packages/ondevice-engine/build/toolchains/graalvm-svm-java17-darwin-gluon-22.1.0.1-Final/Contents/Home/lib/svm/clibraries/27/ios-amd64/*.a
+            packages/ondevice-engine/build/ios-native-home/.gluon/substrate/javaStaticSdk/18-ea+prep18-9/ios-x86_64/staticjdk/lib/static/*.a
+          if-no-files-found: warn
+          retention-days: 7
 # Simulator execution only: no signing, physical-device or TestFlight claim.

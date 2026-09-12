@@ -193,9 +193,173 @@ bounded 60 python3 "$ROOT/scripts/resolve_deck.py" --catalogue "$ROOT/build/gene
   --input "$ROOT/tests/decks/yargle.txt" --commander 'Yargle, Glutton of Urborg' --output "$ENGINE_BUILD/yargle.json"
 python3 "$ROOT/scripts/make_match.py" "$ENGINE_BUILD/isamaru.json" "$ENGINE_BUILD/yargle.json" --output "$ENGINE_BUILD/match.json"
 cat > "$ENGINE_BUILD/check_runtime.py" <<'PY_RUNTIME'
-import json, sys, time, uuid
+import copy, json, sys, time, uuid
 from pathlib import Path
 from jvm_client import EngineProcess
+
+def live_poll(engine, match, viewer):
+    state = engine.call('poll', matchId=match, viewerId=viewer, after=0)
+    if state['phase'] in ('failed', 'ended', 'closed'):
+        raise RuntimeError('Expected live native match: ' + str(state.get('failure')))
+    if state.get('viewerId') != viewer:
+        raise RuntimeError('Native poll returned another viewer')
+    return state
+
+def destroy_match(engine, match, viewer):
+    engine.call('destroy', matchId=match)
+    rejected = engine.request('poll', matchId=match, viewerId=viewer, after=0)
+    if rejected.get('ok') or rejected.get('error', {}).get('code') != 'unknown_match':
+        raise RuntimeError('Destroyed match remains accessible')
+
+def drive_ai(engine, configuration):
+    # Both legal decks come from the resolved Isamaru/99 Plains first seat.
+    ai_config = copy.deepcopy(configuration)
+    ai_config['seats'] = [copy.deepcopy(configuration['seats'][0]) for _ in range(2)]
+    for seat, identity, controller in zip(ai_config['seats'], ('native-human', 'native-ai'), ('human', 'ai')):
+        seat.update(seatId=identity, name=identity, controller=controller)
+    created = engine.call('create', configuration=ai_config)
+    match = created['matchId']
+    if created['seats'] != ['native-human', 'native-ai']:
+        raise RuntimeError('Unexpected native AI match seats')
+    deadline = time.monotonic() + 180
+    observed = dict(land=False, commanderCast=False, attack=False)
+    ai_id = None
+    responses = 0
+    sent = set()
+    while time.monotonic() < deadline:
+        state = live_poll(engine, match, 'native-human')
+        snapshot = state.get('snapshot')
+        if snapshot:
+            view = snapshot['gameView']
+            players = view['players']
+            ai_players = [p for p in players if p['name'] == 'native-ai']
+            if len(players) != 2 or len(ai_players) != 1 or view['opponentHands']:
+                raise RuntimeError('Invalid human-only AI snapshot')
+            current_id = ai_players[0]['playerId']
+            uuid.UUID(current_id)
+            if ai_id is not None and ai_id != current_id:
+                raise RuntimeError('AI player UUID changed')
+            ai_id = current_id
+            battlefield = next(p['battlefield'] for p in players if p['playerId'] == ai_id)
+            observed['land'] |= any(card['name'] == 'Plains' for card in battlefield.values())
+            # Public commander metadata binds actual command-zone casts to their owner UUID.
+            observed['commanderCast'] |= any(
+                card.get('ownerPlayerId') == ai_id and card.get('name') == 'Isamaru, Hound of Konda'
+                and card.get('castsFromCommandZone', 0) > 0
+                for card in snapshot['commanders'].values())
+            observed['attack'] |= any(set(group['attackers']) & set(battlefield) for group in view['combat'])
+            if all(observed.values()):
+                destroy_match(engine, match, 'native-human')
+                return dict(playerId=ai_id, observations=observed, humanResponses=responses,
+                            observationSource='human-poll-public-snapshot', destroyed=True)
+        prompt = state.get('prompt')
+        if prompt and not prompt.get('submitted') and (prompt['promptId'], prompt['revision']) not in sent:
+            if responses >= 1000:
+                raise RuntimeError('Native AI exceeded 1000 human responses: ' + str(observed))
+            payload, kind = prompt['payload'], prompt['kind']
+            if kind in ('ASK', 'SELECT'):
+                answer = dict(kind='boolean', value=False)
+            elif kind == 'PICK_TARGET':
+                candidates = payload['candidates']
+                value = ai_id if 'starting player' in payload.get('message', '').lower() else candidates[0]
+                if value not in candidates:
+                    raise RuntimeError('AI starting player is not a legal UUID candidate')
+                uuid.UUID(value)
+                answer = dict(kind='uuid', value=value)
+            elif kind == 'CHOOSE_CHOICE':
+                answer = dict(kind='string', value=payload['choiceOrder'][0])
+            else:
+                raise RuntimeError('Unexpected native human prompt: ' + kind)
+            request_id = str(uuid.uuid4())
+            receipt = engine.call('respond', matchId=match, viewerId='native-human', command={
+                'requestId': request_id, 'promptId': prompt['promptId'],
+                'promptRevision': prompt['revision'], 'answer': answer})
+            if receipt.get('status') != 'queued' or receipt.get('requestId') != request_id:
+                raise RuntimeError('Invalid native AI human response receipt')
+            sent.add((prompt['promptId'], prompt['revision']))
+            responses += 1
+        time.sleep(.001)
+    raise RuntimeError('Native AI did not show land/commander cast/attack within 180s: ' + str(observed))
+
+def initial_human_views(engine, configuration, opening_hands=False):
+    created = engine.call('create', configuration=configuration)
+    match, seats = created['matchId'], created['seats']
+    if seats != [seat['seatId'] for seat in configuration['seats']]:
+        raise RuntimeError('Unexpected recreated human seats')
+    deadline = time.monotonic() + 60
+    parked = None
+    if opening_hands:
+        starting_answered = False
+        while time.monotonic() < deadline and parked is None:
+            for viewer in seats:
+                state = live_poll(engine, match, viewer)
+                prompt = state.get('prompt')
+                if not prompt or prompt.get('submitted'):
+                    continue
+                if prompt['kind'] == 'ASK' and starting_answered:
+                    parked = (viewer, prompt, state['revision'])
+                    break
+                if (starting_answered or prompt['kind'] != 'PICK_TARGET'
+                        or 'starting player' not in prompt['payload'].get('message', '').lower()):
+                    raise RuntimeError('Unexpected opening-hand setup prompt')
+                candidate = prompt['payload']['candidates'][0]
+                uuid.UUID(candidate)
+                request_id = str(uuid.uuid4())
+                receipt = engine.call('respond', matchId=match, viewerId=viewer, command={
+                    'requestId': request_id, 'promptId': prompt['promptId'],
+                    'promptRevision': prompt['revision'],
+                    'answer': dict(kind='uuid', value=candidate)})
+                if receipt.get('status') != 'queued' or receipt.get('requestId') != request_id:
+                    raise RuntimeError('Invalid opening-hand response receipt')
+                starting_answered = True
+            if parked is None:
+                time.sleep(.01)
+        if parked is None:
+            raise RuntimeError('No parked opening-hand ASK within 60s')
+    # No query answers from here through all four captures and the parked-prompt recheck.
+    checked = {}
+    private_ids, snapshots = {}, {}
+    while time.monotonic() < deadline and len(checked) < len(seats):
+        for seat in configuration['seats']:
+            viewer = seat['seatId']
+            if viewer in checked:
+                continue
+            state = live_poll(engine, match, viewer)
+            snapshot = state.get('snapshot')
+            if not snapshot:
+                continue
+            view = snapshot['gameView']
+            player_id = snapshot['enginePlayerId']
+            uuid.UUID(player_id)
+            own = [p for p in view['players'] if p['playerId'] == player_id and p['name'] == seat['name']]
+            if (len(view['players']) != len(seats) or len(own) != 1
+                    or view['myPlayerId'] != player_id
+                    or len(view['myHand']) != own[0]['handCount']
+                    or view['opponentHands'] or view['watchedHands']
+                    or snapshot['authorizedOpponentHands'] or snapshot['controlledPlayerViews']):
+                raise RuntimeError('Initial native human seat privacy mismatch')
+            if opening_hands:
+                if len(view['myHand']) != 7 or state['revision'] != parked[2]:
+                    raise RuntimeError('Opening-hand privacy requires seven cards at the same parked decision')
+                private_ids[viewer] = set(view['myHand'])
+                snapshots[viewer] = json.dumps(snapshot)
+            checked[viewer] = dict(playerId=player_id, privateHandCount=len(view['myHand']))
+        if len(checked) < len(seats):
+            time.sleep(.01)
+    if len(checked) != len(seats) or len({v['playerId'] for v in checked.values()}) != len(seats):
+        raise RuntimeError('Missing distinct initial native human views')
+    if opening_hands:
+        for viewer in seats:
+            for other in seats:
+                if other != viewer and any(card_id in snapshots[viewer] for card_id in private_ids[other]):
+                    raise RuntimeError('Another seat private card ID leaked into viewer snapshot')
+        state = live_poll(engine, match, parked[0])
+        if state.get('prompt') != parked[1] or state['revision'] != parked[2]:
+            raise RuntimeError('Opening-hand decision changed during privacy capture')
+    destroy_match(engine, match, seats[0])
+    return dict(seats=checked, scope='seven-card-opening-hands-at-parked-ASK' if opening_hands
+                else 'initial-authenticated-seat-views', destroyed=True,
+                pairwisePrivateIDsAbsent=opening_hands)
 
 def check_runtime(command, configuration, expected_hash, diagnostics):
     engine = EngineProcess(timeout=90, command=command, diagnostics=diagnostics)
@@ -250,6 +414,13 @@ def check_runtime(command, configuration, expected_hash, diagnostics):
         rejected = engine.request('poll', matchId=match, viewerId=owner, after=0)
         if rejected.get('ok') or rejected.get('error', {}).get('code') != 'unknown_match':
             raise RuntimeError('Destroyed match remains accessible')
+        ai = drive_ai(engine, configuration)
+        four_config = copy.deepcopy(configuration)
+        four_config['seats'] = [copy.deepcopy(configuration['seats'][i % 2]) for i in range(4)]
+        for i, seat in enumerate(four_config['seats']):
+            seat.update(seatId=f'native-four-{i}', name=f'Native Four {i}', controller='human')
+        four_humans = initial_human_views(engine, four_config, opening_hands=True)
+        recreated = initial_human_views(engine, configuration)
         # A zero protocol result without native teardown is not a runtime pass.
         engine.process.stdin.close()
         if engine.process.wait(timeout=60) != 0:
@@ -260,6 +431,8 @@ def check_runtime(command, configuration, expected_hash, diagnostics):
                 'operations': ['capabilities', 'create', 'poll', 'respond', 'destroy'],
                 'catalogueHash': cap['catalogueHash'], 'upstream': cap['upstream'],
                 'responseReceipt': receipt, 'responseApplied': True, 'runtimeDestroyed': True,
+                'aiLifecycle': ai, 'fourHumanInitialPrivacy': four_humans,
+                'twoHumanRecreated': recreated, 'sameIsolateReused': True,
                 'completedGame': False, 'physicalDevice': False, 'testFlight': False}
     finally:
         engine.__exit__(None, None, None)
@@ -288,4 +461,4 @@ PYTHONPATH="$ROOT/scripts${PYTHONPATH:+:$PYTHONPATH}" \
   bounded 600 python3 "$ENGINE_BUILD/check_runtime.py" "$ENGINE_BUILD" \
   "$ROOT/build/generated/registry-report.json" "$SIM_UUID" | tee "$ENGINE_BUILD/runtime-run.txt"
 [[ -s "$ENGINE_BUILD/runtime-result.json" ]]
-echo 'PASS: full native XMage simulator capabilities/create/poll/respond/destroy and isolate teardown; no device, completed-game or TestFlight claim.'
+echo 'PASS: full native XMage simulator human lifecycle, AI land/commander cast/attack, four-human initial seat privacy, two-human recreation and isolate teardown; no device, completed-game or TestFlight claim.'
