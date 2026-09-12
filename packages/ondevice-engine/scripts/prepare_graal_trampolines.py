@@ -202,18 +202,30 @@ def prepare(home, source):
     (work / 'original-svm.jar').write_bytes(original)
     (work / 'LIRNativeImageCodeCache.java').write_bytes(generated)
     classes = Path(tempfile.mkdtemp(prefix='classes-', dir=work))
-    cp = os.pathsep.join([str(work / 'original-svm.jar'), str(home / 'lib/svm/builder/*'), str(home / 'lib/graalvm/*')])
-    exports = {
-        'jdk.internal.vm.ci': ['jdk.vm.ci.aarch64', 'jdk.vm.ci.code', 'jdk.vm.ci.code.site', 'jdk.vm.ci.meta'],
-        'jdk.internal.vm.compiler': ['org.graalvm.compiler.asm', 'org.graalvm.compiler.asm.aarch64',
-            'org.graalvm.compiler.code', 'org.graalvm.compiler.core.common',
-            'org.graalvm.compiler.debug', 'org.graalvm.compiler.options'],
-    }
+    # The distribution exposes JVMCI both through its system modules and Graal
+    # jars. Mixing those universes makes javac see two incompatible Infopoints.
+    # Compile against one flat copy of the *same pinned* builder APIs, keeping
+    # only Java SE modules in javac's application module graph.
+    api = work / 'compiler-api.jar'
+    extracted = Path(tempfile.mkdtemp(prefix='module-api-', dir=work))
+    subprocess.run([str(home / 'bin/jimage'), 'extract', '--dir', str(extracted),
+                    str(home / 'lib/modules')], check=True)
+    with zipfile.ZipFile(api, 'w', compression=zipfile.ZIP_DEFLATED) as target:
+        names = set()
+        for module in ('jdk.internal.vm.ci', 'jdk.internal.vm.compiler', 'org.graalvm.sdk'):
+            directory = extracted / module
+            if not directory.is_dir(): raise ValueError('Missing pinned compiler API module: ' + module)
+            for path in sorted(directory.rglob('*.class')):
+                name = path.relative_to(directory).as_posix()
+                if name == 'module-info.class': continue
+                if name in names: raise ValueError('Duplicate compiler API class: ' + name)
+                names.add(name); target.writestr(name, path.read_bytes())
+        if 'jdk/vm/ci/code/site/Infopoint.class' not in names:
+            raise ValueError('Pinned JVMCI API extraction is incomplete')
+    cp = os.pathsep.join([str(api), str(work / 'original-svm.jar'),
+                         str(home / 'lib/svm/builder/*'), str(home / 'lib/graalvm/*')])
     command = [str(home / 'bin/javac'), '-J-Xmx512m', '-source', '17', '-target', '17',
-               '--add-modules', 'jdk.internal.vm.ci,jdk.internal.vm.compiler,org.graalvm.sdk',
-               '-cp', cp, '-d', str(classes)]
-    for module, packages in exports.items():
-        for package in packages: command += ['--add-exports', module + '/' + package + '=ALL-UNNAMED']
+               '--limit-modules', 'java.se,jdk.unsupported', '-cp', cp, '-d', str(classes)]
     subprocess.run(command + [str(work / 'LIRNativeImageCodeCache.java'), str(HELPER)], check=True)
     replacements = {p.relative_to(classes).as_posix(): p.read_bytes() for p in classes.rglob('*.class')}
     if not replacements or any(not (name.startswith(PACKAGE + 'LIRNativeImageCodeCache')
