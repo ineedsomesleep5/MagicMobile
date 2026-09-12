@@ -1,5 +1,57 @@
 # Local continuation status — 2026-09-11
 
+## Latest update — 2026-09-12 03:14 UTC
+
+Published portrait/setup integration `e116c42` preserves the existing bundle and
+board, adds authenticated viewer identity, 2–4 human Game Center setup, 1–3 real
+XMage AI opponents, exact local deck resolution, native prompt transport, named
+public/authorized inspection zones, per-commander tax/damage, and retryable
+session cleanup. Release entry remains unchanged until a real native library is
+linked; only an explicit DEBUG argument opens the new setup for UI testing.
+
+Local gates passed: 73 portable Swift presentation tests, 32 native-boundary/
+network-package tests (including ordered ingress and suspension revisions),
+unsigned iOS build-for-testing, 13 freshly exported real JVM two-/four-seat board
+fixtures, and all five bundled precons through real Commander validation and an
+initial prompt. The catalogue selects eternal-legal printings with the exact
+upstream set predicate; no deck cards were changed to make validation pass.
+Real AI JVM tests observed land, commander cast, combat and bounded shutdown;
+they are not native AI or mobile-performance evidence.
+
+Game Center capability is enabled for the existing bundle and its existing app
+has a Game Center detail record. Entitlement source is wired; no newly signed
+provisioning profile or actual multi-phone match has been validated.
+
+Active hosted gates:
+
+- [ARM64 full engine including AI, source 178f3f3](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34669182960).
+- [Full XMage simulator lifecycle, source 10eec3a](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34669512748).
+- [Actual setup UI plus unit/geometry checks, source e116c42](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34669768265).
+
+The older ARM64 build 34664591026 remains running but predates the AI/projection
+freeze and cannot serve as the current release library. No full native library,
+native gameplay, new TestFlight build, or phone acceptance has been claimed.
+Caleb explicitly chose testing on his phone **through the TestFlight update**;
+USB availability must not become a release blocker. Native compilation/linkage,
+runtime and app checks still precede upload, with remaining physical-device and
+multi-phone acceptance reported honestly.
+
+## Earlier toolchain update — 2026-09-12 02:22 UTC
+
+[Non-XMage simulator probe 34666765499](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34666765499)
+passed on the pinned Intel toolchain and an actual iOS 26.5 simulator. The
+independent executable printed `TOOLCHAIN_ONLY entered_main`, `isolate_create=0`,
+`result=42 isolate_teardown=0`, and exited zero. Artifact 10289777588 preserves
+the evidence. This proves the simulator toolchain/runtime path, not XMage,
+ARM64 device execution, the product UI, or a TestFlight release.
+
+The full ARM64 engine run 34664591026 remains in progress. Portrait adapters,
+real AI lifecycle integration, and offline deck resolution are now being
+implemented in this worktree. The older chronological notes below describe
+earlier snapshots; the portrait source is no longer unchanged.
+
+## Earlier baseline
+
 The real JVM engine baseline is working. The full on-device engine is **not**
 release-ready: local native compiler heaps saturated, and the hosted 10 GiB
 attempt reached inlining but exceeded its 75-minute limit. No simulator/phone
@@ -129,8 +181,9 @@ uploaded build `2026062902` (valid, not expired) before any new upload.
 Changing the build machine does not change the requirement that gameplay and
 XMage run on the iPhone. After full native compilation: verify actual headers,
 archive contents/slices and isolate behavior, integrate the portrait interface,
-then validate offline and two-/four-device play before the existing TestFlight
-release is updated.
+then integrate and test the product before updating the existing TestFlight
+release. The later user instruction above makes TestFlight the delivery path
+for physical-phone and multi-device acceptance, not a USB prerequisite.
 
 The separate unsigned [repository preflight](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34661344897)
 passed at `fe12ee1`: 65 retained-gateway tests, repository typecheck, and the

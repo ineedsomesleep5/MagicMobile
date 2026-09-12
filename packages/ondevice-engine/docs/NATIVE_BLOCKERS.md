@@ -3,19 +3,19 @@
 | Gate | Current state | Required proof |
 |---|---|---|
 | Complete XMage + adapter compile | Passed against pinned real sources on 2026-09-11; adapter fixes remain under regression | Real selected modules, generated registry and adapter compile together without fake Mage classes |
-| Actual match semantics | Current adapter completed two- and four-human-seat Commander games at turns 16 and 39, plus a token/mulligan game; ten seeded Commander rule groups passed | Broader representative games and prompt/combat UI acceptance, then expand coverage |
+| Actual match semantics | Current adapter completed two- and four-human-seat Commander games at turns 16 and 41, plus a token/mulligan game; ten seeded Commander rule groups passed | Broader representative games and prompt/combat UI acceptance, then expand coverage |
 | Card/set registry on full catalogue | 32,275 card factories, 587 sets, 92,166 printings exported; no unregistered printing reference | Exclusions remain reviewed implementation categories, not claimed universal playable coverage |
 | Native runtime/toolchain | ORMLite compiler fault minimized and dependency fix tested; local 4/5 GiB compiler configurations saturated; unsigned Intel hosted build started | Working full-engine AOT compilation and genuine XMage execution |
-| iOS libraries | Non-XMage probe archive and independent iOS executable linked; full 10 GiB hosted engine build completed inlining but timed out at 75 minutes; no engine binary or native execution | Longer bounded same-configuration build, then device + simulator engine artifacts, correct ABI/platform slices and runtime dependencies |
-| SwiftUI/GameKit SDK code | 29 macOS package tests passed; unsigned iOS inspection app compiled after target-name collision fix | Native-engine Xcode integration and device execution |
-| Human prompt completeness | Core mappings written | Real-engine fixtures for every gameplay prompt subtype and metadata shape |
+| iOS libraries | Non-XMage x86_64 iOS simulator probe executed create/call/teardown successfully in run 34666765499; longer full ARM64 engine build remains running after the earlier 75-minute timeout | Full XMage device + simulator engine artifacts, correct ABI/platform slices, runtime dependencies, and genuine gameplay |
+| SwiftUI/GameKit SDK code | 32 package tests and 73 portable presentation tests passed; existing product compiled build-for-testing; hosted UI/geometry run 34669768265 active | Native-engine Xcode integration and device execution |
+| Human prompt completeness | Typed native adapters and 23 prompt tests cover current query families, exact revisions, mana cancellation and nullable special choices | Real-engine UI fixtures for every gameplay prompt subtype and metadata shape |
 | Turn/player control | Proxy, routing and permitted-visibility regression groups passed on JVM; nested control explicitly unsupported | Native UI consumption and full controlled-turn card-game acceptance |
 | Hidden information | Real query/control/privacy regressions and per-seat hand-ID checks passed; not exhaustive zone coverage | Broader native XMage hands, morphs, libraries, exile and looked-at/controlled-player leak tests |
 | Storage/restart | Not implemented | Durable, versioned full-game restore with random/hidden state preservation |
 | Host migration | Not implemented | Correct state/authority transfer; do not substitute partial snapshots |
-| Game Center lobby/client routing | Packet/host layer source only | Identity, matchmaking, lobby, deck exchange, correlation and reconnect implementation |
-| AI | Disabled | Integration, cancellation, mobile RAM/CPU/thermal benchmarks |
-| Product UI | Existing vertical board preserved, new protocol not yet integrated | Adapt existing portrait gameplay, four-human identity handling, all prompts, accessibility and reconciliation |
+| Game Center lobby/client routing | Authenticated lobby, private deck exchange, ordered bounded RPC, correlations, suspension and retry implemented; bundle capability enabled | Real two-/four-phone matches, signing entitlement and background/disconnection acceptance; no host migration/reconnect claimed |
+| AI | Real upstream MAD integrated; JVM tests observe land/cast/attack and cancellation/recreate; diagnostic native capability remains unvalidated | Native integration/runtime, mobile RAM/CPU/thermal benchmarks |
+| Product UI | Existing board now has native snapshot/prompt adapters, setup names/AI/Game Center, four-seat opponent focus and authorized zones; release switch held for native linkage | Hosted UI acceptance, actual native gameplay and physical acceptance delivered through existing TestFlight |
 
 ## Specific source/runtime hazards
 
