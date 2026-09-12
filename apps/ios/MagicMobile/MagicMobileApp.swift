@@ -76,7 +76,7 @@ struct OrientationHostingRoot<Content: View>: UIViewControllerRepresentable {
 
     func updateUIViewController(_ controller: OrientationHostingController<Content>, context: Context) {
         controller.rootView = content
-        controller.setNeedsUpdateOfSupportedOrientations()
+        controller.setNeedsUpdateOfSupportedInterfaceOrientations()
     }
 }
 
