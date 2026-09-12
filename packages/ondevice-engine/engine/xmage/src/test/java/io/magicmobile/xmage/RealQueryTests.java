@@ -210,7 +210,7 @@ public final class RealQueryTests {
         choice.setSpecial(true,true,"Choose nothing","Empty is distinct from cancel");
         spec=encode(PlayerQueryEvent.chooseChoiceEvent(PLAYER,choice));
         eq(spec.payload.get("specialCanBeEmpty"),true);rejects(spec,"string","#");
-        // This metadata must survive even though core currently cannot represent the upstream null answer.
+        accepts(spec,"string",null); // GamePanel's exact empty-special wire value, never a fabricated '#'.
     }
 
     private static void replacementLoop() {

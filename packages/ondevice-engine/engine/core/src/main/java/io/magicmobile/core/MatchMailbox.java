@@ -41,7 +41,7 @@ public final class MatchMailbox implements AutoCloseable {
     public MatchMailbox(String matchId,Collection<String> seats) {
         this.matchId=Objects.requireNonNull(matchId);
         this.seats=Collections.unmodifiableSet(new LinkedHashSet<>(seats));
-        if(this.seats.size()!=seats.size() || this.seats.size()<2 || this.seats.size()>4) throw new IllegalArgumentException("Need 2–4 unique seats");
+        if(this.seats.size()!=seats.size() || this.seats.size()<1 || this.seats.size()>4) throw new IllegalArgumentException("Need 1–4 unique recipient seats");
         for(String seat:seats) {
             if(seat==null || seat.isEmpty() || seat.length()>128) throw new IllegalArgumentException("Invalid seat");
             history.put(seat,new ArrayDeque<>());evictedThrough.put(seat,0L);

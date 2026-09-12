@@ -42,6 +42,11 @@ public final class DecisionSpec {
                 break;
             }
             case "string": {
+                if(value==null) {
+                    if(!kind.equals("CHOOSE_CHOICE") || !Boolean.TRUE.equals(payload.get("specialEnabled"))
+                            || !Boolean.TRUE.equals(payload.get("specialCanBeEmpty"))) reject("This prompt does not accept an empty special choice");
+                    break;
+                }
                 String s=Json.string(value);
                 if(s.length()>8192) reject("Response string too long");
                 if(allowedStrings!=null && !allowedStrings.contains(s)) reject("Choice is not a candidate");

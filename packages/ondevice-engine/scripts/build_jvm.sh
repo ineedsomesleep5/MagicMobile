@@ -4,7 +4,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 command -v mvn >/dev/null || { echo "Maven 3.9+ and a JDK are required on the development machine." >&2;exit 1; }
 bash "$ROOT/scripts/bootstrap.sh"
 U="$ROOT/.upstream/mage"
-MODULES="Mage.Sets,Mage.Common,Mage.Server.Plugins/Mage.Player.Human,Mage.Server.Plugins/Mage.Deck.Constructed,Mage.Server.Plugins/Mage.Game.CommanderFreeForAll"
+MODULES="Mage.Sets,Mage.Common,Mage.Server.Plugins/Mage.Player.Human,Mage.Server.Plugins/Mage.Player.AI,Mage.Server.Plugins/Mage.Player.AI.MAD,Mage.Server.Plugins/Mage.Deck.Constructed,Mage.Server.Plugins/Mage.Game.CommanderFreeForAll"
 export MAVEN_OPTS="${MAVEN_OPTS:--Xmx4g}"
 # Do not include desktop Client, SessionImpl, server networking, HTTP or Docker.
 (cd "$U" && mvn -B -pl "$MODULES" -am -Dmaven.test.skip=true install)

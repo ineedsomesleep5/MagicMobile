@@ -5,9 +5,19 @@ import mage.game.mulligan.LondonMulligan;
 import mage.constants.*;
 /** Casual Commander pod rules, including when tested with two seats. Not Duel Commander. */
 final class MobileCommanderGame extends CommanderFreeForAll {
+    private transient MobileAICancellation cancellation=new MobileAICancellation();
     MobileCommanderGame() {
         super(MultiplayerAttackOption.MULTIPLE,RangeOfInfluence.ALL,new LondonMulligan(1),40,7);
         this.gameOptions=new GameOptions();
         this.gameOptions.rollbackTurnsAllowed=false;
+    }
+    private MobileCommanderGame(MobileCommanderGame source) {
+        super(source);cancellation=source.cancellation;
+    }
+    void setCancellation(MobileAICancellation cancellation) { this.cancellation=cancellation; }
+    @Override public MobileCommanderGame copy() { return new MobileCommanderGame(this); }
+    @Override public boolean checkIfGameIsOver() {
+        // MAD can consume InterruptedException. Copies must retain the durable stop signal.
+        return cancellation.isClosing() || super.checkIfGameIsOver();
     }
 }

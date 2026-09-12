@@ -19,7 +19,7 @@ public final class CoreTests {
     private static Map<String,Object> answer(String kind,Object value) {return Json.map("kind",kind,"value",value);}
     private static Map<String,Object> pending(MatchMailbox m,String s) {return Json.object(m.poll(s,0).get("prompt"));}
     public static void main(String[] args) throws Exception {
-        json();decisions();mailbox();concurrent();service();
+        json();decisions();singleRecipient();mailbox();concurrent();service();
         System.out.println("PASS: "+checks+" assertions; scope=standalone-core (NOT XMage gameplay or iOS)");
     }
     private static void json() {
@@ -65,11 +65,40 @@ public final class CoreTests {
         DecisionSpec s=new DecisionSpec("CHOICE",Json.map(),Set.of("string"),null,Set.of("yes"),0,0,null);
         s.validate(answer("string","yes"));checks++;
         error("invalid_response",()->s.validate(answer("string","no")));
+        DecisionSpec emptySpecial=new DecisionSpec("CHOOSE_CHOICE",Json.map("specialEnabled",true,"specialCanBeEmpty",true),Set.of("string"),null,Set.of("yes"),0,0,null);
+        ok(emptySpecial.validate(answer("string",null)).containsKey("value"),"special empty preserves a typed null string response");
+        error("invalid_response",()->emptySpecial.validate(answer("string","#")));
+        error("invalid_response",()->s.validate(answer("string",null)));
+        DecisionSpec notEmpty=new DecisionSpec("CHOOSE_CHOICE",Json.map("specialEnabled",true,"specialCanBeEmpty",false),Set.of("string"),null,Set.of("yes"),0,0,null);
+        error("invalid_response",()->notEmpty.validate(answer("string",null)));
         DecisionSpec allocations=new DecisionSpec("MULTI",Json.map(),Set.of("integers"),null,null,5,5,List.of(new long[]{0,5},new long[]{0,5}));
         allocations.validate(answer("integers",List.of(2,3)));checks++;
         error("invalid_response",()->allocations.validate(answer("integers",List.of(2,2))));
         error("invalid_response",()->allocations.validate(answer("integers",List.of(5))));
         error("invalid_response",()->allocations.validate(answer("integers",List.of(-1,6))));
+    }
+    private static void singleRecipient() throws Exception {
+        try(MatchMailbox m=new MatchMailbox("human-and-ai",List.of("human"))) {
+            m.publishSnapshots(Map.of("human",Json.map("hand",List.of("human-secret"))));
+            CountDownLatch delivered=new CountDownLatch(1);
+            m.ask("human",spec("boolean"),r->delivered.countDown());
+            m.inform("human",Json.map("message","private-human-message"));
+            ok(Json.write(m.poll("human",0)).contains("human-secret"),"single recipient receives own snapshot");
+            ok(Json.write(m.poll("human",0)).contains("private-human-message"),"single recipient receives own information");
+            Map<String,Object> c=command(pending(m,"human"),UUID.randomUUID().toString(),answer("boolean",true));
+            error("unauthorized_seat",()->m.poll("ai",0));
+            error("unauthorized_seat",()->m.submit("ai",c));
+            error("unauthorized_seat",()->m.ask("ai",spec("boolean"),r->{}));
+            error("unauthorized_seat",()->m.inform("ai",Json.map("message","private")));
+            long revision=m.revision();
+            error("projection_error",()->m.publishSnapshots(Map.of("human",Json.map(),"ai",Json.map("hand",List.of("ai-secret")))));
+            ok(m.revision()==revision,"extra AI projection is rejected atomically");
+            m.submit("human",c);ok(delivered.await(2,TimeUnit.SECONDS),"single recipient answer delivered");
+            m.consumed("human");ok(m.poll("human",0).get("prompt")==null,"single recipient consumption removes prompt");
+            m.close();
+            ok(m.poll("human",0).get("snapshot")==null,"single recipient close clears snapshot");
+            ok(Json.array(m.poll("human",0).get("events")).isEmpty(),"single recipient close clears private event history");
+        }
     }
     private static void mailbox() throws Exception {
         try(MatchMailbox m=new MatchMailbox("match",List.of("A","B","C","D"))) {

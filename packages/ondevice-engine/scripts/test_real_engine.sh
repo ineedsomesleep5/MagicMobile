@@ -11,9 +11,16 @@ find engine/xmage/src/test/java -name '*.java' | sort > build/real-test-sources.
 javac -J-Xmx384m --release 17 -cp "$CP" -d build/engine @build/adapter-sources.txt
 javac -J-Xmx384m --release 17 -cp "$CP" -d build/test-real @build/real-test-sources.txt
 # Production classes first: stale adapter classes in a developer test folder must not override them.
-for suite in RealQueryTests RealControlledTurnTests RealControlPrivacyTests RealCommanderRulesTests; do
+for suite in RealQueryTests RealControlledTurnTests RealControlPrivacyTests RealCommanderRulesTests RealPortraitProjectionTests; do
   java -Xmx384m -Djava.awt.headless=true -cp "$CP:build/test-real" "io.magicmobile.xmage.$suite" \
     2>&1 | tee "evidence/$suite.txt"
+done
+for humans in one-human two-humans; do
+  args=(java -Xmx768m -Djava.awt.headless=true -cp "$CP:build/test-real" io.magicmobile.xmage.RealAILifecycleTests)
+  [[ "$humans" == one-human ]] || args+=(two-humans)
+  python3 -c 'import subprocess,sys; subprocess.run(sys.argv[1:],check=True,timeout=180)' \
+    "${args[@]}" \
+    2>&1 | tee "evidence/RealAILifecycleTests-$humans.txt"
 done
 python3 scripts/resolve_deck.py --catalogue build/generated/catalogue.jsonl \
   --input tests/decks/isamaru.txt --commander 'Isamaru, Hound of Konda' --output build/isamaru.json

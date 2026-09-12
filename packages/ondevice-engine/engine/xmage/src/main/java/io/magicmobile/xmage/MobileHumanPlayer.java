@@ -78,7 +78,7 @@ public final class MobileHumanPlayer extends HumanPlayer {
         switch(kind) {
             case "boolean": response.setBoolean(Json.bool(value));break;
             case "uuid": response.setUUID(UUID.fromString(Json.string(value)));break;
-            case "string": response.setString(Json.string(value));break;
+            case "string": response.setString(value==null ? null : Json.string(value));break;
             case "integer": response.setInteger(Math.toIntExact(Json.integer(value)));break;
             case "integers":
                 // MultiAmountType.parseAnswer consumes SPACE-separated integers, not an array.

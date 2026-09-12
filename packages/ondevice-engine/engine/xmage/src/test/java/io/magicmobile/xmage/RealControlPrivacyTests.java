@@ -297,8 +297,8 @@ public final class RealControlPrivacyTests {
             game.getState().getTurn().setPhase(phase);game.getState().setTurnNum(1);
             game.getState().setActivePlayerId(player("b").getId());
             Class<?> type=Class.forName("io.magicmobile.xmage.XmageEngine$Running");
-            Constructor<?> constructor=type.getDeclaredConstructor(MobileCommanderMatch.class,LinkedHashMap.class);constructor.setAccessible(true);
-            running=constructor.newInstance(match,seats);
+            Constructor<?> constructor=type.getDeclaredConstructor(MobileCommanderMatch.class,LinkedHashMap.class,LinkedHashMap.class,MobileAICancellation.class);constructor.setAccessible(true);
+            running=constructor.newInstance(match,new LinkedHashMap<String,Player>(seats),seats,new MobileAICancellation());
             query=type.getDeclaredMethod("query",PlayerQueryEvent.class);query.setAccessible(true);
             close=type.getDeclaredMethod("close");close.setAccessible(true);
             Field field=type.getDeclaredField("mailbox");field.setAccessible(true);mailbox=(MatchMailbox)field.get(running);

@@ -1,11 +1,22 @@
 package io.magicmobile.xmage;
 
+import com.google.gson.Gson;
 import io.magicmobile.core.Json;
+import io.magicmobile.generated.GeneratedCardFactory;
+import mage.cards.Card;
+import mage.cards.CardSetInfo;
+import mage.cards.ExpansionSet;
+import mage.cards.Sets;
+import mage.constants.CommanderCardType;
 import mage.constants.Zone;
 import mage.game.Game;
 import mage.players.Player;
 import mage.view.GameView;
+import mage.view.CardView;
+import mage.view.SimpleCardView;
 import mage.view.SimpleCardsView;
+import mage.watchers.common.CommanderInfoWatcher;
+import mage.watchers.common.CommanderPlaysCountWatcher;
 import java.util.*;
 
 /** Projection happens on the GAME thread, not while the engine is mutating elsewhere. */
@@ -16,6 +27,10 @@ public final class ViewProjector {
         // Match upstream GameSessionPlayer's projection boundary. Playability checks
         // may simulate actions, so they must not mutate the authoritative game.
         Game source=game.copy();
+        Map<String,Object> commanders=commanderMetadata(source);
+        List<String> winners=source.getPlayers().values().stream().filter(Player::hasWon)
+            .map(player->player.getId().toString()).toList();
+        Map<String,Object> outcome=Json.map("ended",source.hasEnded(),"winnerPlayerIds",winners);
         for(Map.Entry<String,MobileHumanPlayer> seat:players.entrySet()) {
             // A separate upstream view per seat. Never serialize Game/GameState to peers.
             UUID viewer=seat.getValue().getId();
@@ -42,10 +57,77 @@ public final class ViewProjector {
                 }
             }
             Map<String,Object> data=Json.parseObject(view.toJson());
+            List<Object> namedExiles=new ArrayList<>();
+            for(int i=0;i<view.getExile().size();i++) {
+                var exile=view.getExile().get(i);
+                namedExiles.add(Json.map("id",exile.getId().toString(),"name",exile.getName(),
+                    "cards",Json.array(data.get("exiles")).get(i)));
+            }
+            Map<String,Object> authorizedLookedAt=new LinkedHashMap<>(),authorizedOpponentHands=new LinkedHashMap<>();
+            view.getLookedAt().forEach(group->authorizedLookedAt.put(group.getName(),printedCards(group.getCards())));
+            view.getOpponentHands().forEach((name,cards)->authorizedOpponentHands.put(name,printedCards(cards)));
+            // CardsView preserves upstream top-first order; JSON object keys do not.
+            List<String> stackOrder=view.getStack().keySet().stream().map(UUID::toString).toList();
             out.put(seat.getKey(),Json.map("schema","xmage-gameview-v1","gameView",data,
+                "stackOrder",stackOrder,
+                "commanders",commanders,
+                "outcome",outcome,
+                "namedExiles",namedExiles,
+                "authorizedLookedAt",authorizedLookedAt,
+                "authorizedOpponentHands",authorizedOpponentHands,
                 "controlledPlayerViews",controlledPlayerViews,
                 "enginePlayerId",seat.getValue().getId().toString()));
         }
         return out;
+    }
+
+    private static Map<String,Object> printedCards(SimpleCardsView disclosed) {
+        Map<UUID,SimpleCardView> printed=new LinkedHashMap<>(disclosed);
+        for(var entry:disclosed.entrySet()) {
+            SimpleCardView simple=entry.getValue();
+            String code=simple.getExpansionSetCode(),number=simple.getCardNumber();
+            if(code==null || code.isBlank() || number==null || number.isBlank()) continue;
+            ExpansionSet set=Sets.getInstance().get(code);
+            if(set==null) continue;
+            ExpansionSet.SetCardInfo selected=null;
+            for(var info:set.getSetCardInfo()) {
+                if(!number.equals(info.getCardNumber())) continue;
+                if(selected!=null) { selected=null; break; } // Ambiguous printing stays unknown.
+                selected=info;
+            }
+            if(selected==null) continue;
+            Card card=GeneratedCardFactory.create(selected.getCardClass().getName(),
+                new CardSetInfo(selected.getName(),code,number,selected.getRarity(),selected.getGraphicInfo()));
+            // Only fresh printed characteristics; never resolve a game object or pass Game to CardView.
+            if(card!=null) printed.put(entry.getKey(),new CardView(card,simple));
+        }
+        return Json.parseObject(new Gson().toJson(printed));
+    }
+
+    private static Map<String,Object> commanderMetadata(Game source) {
+        Map<String,Object> commanders=new LinkedHashMap<>();
+        for(Player player:source.getPlayers().values()) {
+            // Public commander definitions, independent of current zone or controller.
+            for(UUID id:source.getCommandersIds(player,CommanderCardType.COMMANDER_OR_OATHBREAKER,false)) {
+                Map<String,Object> info=Json.map("ownerPlayerId",player.getId().toString());
+                Card commander=source.getCard(id); // This ID is a public commander definition, not a zone search.
+                if(commander!=null) info.put("name",commander.getMainCard().getName());
+                CommanderPlaysCountWatcher plays=source.getState().getWatcher(CommanderPlaysCountWatcher.class);
+                if(plays!=null) {
+                    int count=plays.getPlaysCount(id);
+                    info.put("castsFromCommandZone",count);
+                    // Tax component for the next command-zone cast, before other cost modifiers.
+                    info.put("commanderTax",count*2);
+                }
+                CommanderInfoWatcher damage=source.getState().getWatcher(CommanderInfoWatcher.class,id);
+                if(damage!=null) {
+                    Map<String,Object> damageToPlayers=new LinkedHashMap<>();
+                    damage.getDamageToPlayer().forEach((playerId,amount)->damageToPlayers.put(playerId.toString(),amount));
+                    info.put("damageToPlayers",damageToPlayers);
+                }
+                commanders.put(id.toString(),info);
+            }
+        }
+        return commanders;
     }
 }
