@@ -57,6 +57,8 @@ jobs:
         run: bash scripts/build_jvm.sh 2>&1 | tee evidence/far-call-full-jvm-build.log
       - name: Execute real JVM regressions (not native acceptance)
         run: bash scripts/test_real_engine.sh 2>&1 | tee evidence/far-call-real-jvm.log
+      - name: Reproduce and verify native Color compatibility (not iPhone acceptance)
+        run: bash scripts/test_color_native.sh 2>&1 | tee evidence/native-color-regression.log
       - name: Build full ARM64 engine using verified compiler backport
         timeout-minutes: 180
         env:
@@ -96,6 +98,7 @@ jobs:
             packages/ondevice-engine/build/ios-compiler-patch-*/sources/
             packages/ondevice-engine/build/ios-native-*/gluonfx/arm64-ios/gvm/log/
             packages/ondevice-engine/build/ios-native-*/builder-gc.log*
+            packages/ondevice-engine/build/color-native-*/*.log
           retention-days: 7
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
