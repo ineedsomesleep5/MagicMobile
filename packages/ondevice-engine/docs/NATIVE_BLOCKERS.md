@@ -1,6 +1,17 @@
 # Remaining native/runtime gates — 2026-09-13 UTC
 
-## Replacement source/build gates passed
+## Active blocker — native startup failure on build 2026091202
+
+The user installed 2026091202 and observed "The local engine stopped" during
+default Token Triumph versus one Grave Danger AI startup. Desktop JVM replay
+reaches turn one, but the actual native exception is not yet known. Full-game
+acceptance has failed at startup. User-approved diagnostic build 2026091203 is
+being prepared from engine `c355eee`, native run **34730780807**; it is not yet
+uploaded or verified on an iPhone. Capture remains private to the host and is
+shared only by explicit user action. Do not close source/runtime tracking or
+promote this as a gameplay fix before the actual failing scenario is verified.
+
+## Previous replacement source/build gates passed
 
 Opening-selection cancellation race was reproduced, fixed in `a34fb08`, and the
 complete real JVM suite passed. New ARM64 run **34723517045** and actual product
@@ -53,6 +64,7 @@ match. The UI must say so, not imply reconnect/resume works.
 - Preserve source/blob/compiler hashes and all paired generated/static inputs.
   A changed upstream needs reviewed regeneration and fresh gates, not relaxed checks.
 
-All physical checks are **NOT RUN**. Track them in
+Physical installation/startup was attempted and **FAILED** on 2026091202;
+remaining gameplay, multi-phone and performance checks are **NOT RUN**. Track them in
 [TESTFLIGHT_ACCEPTANCE.md](TESTFLIGHT_ACCEPTANCE.md), independently from issue #4
 source/build completion.

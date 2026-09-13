@@ -11,6 +11,19 @@ final class OnDeviceRuntimeManager {
     private(set) var capabilities: MagicMobileOnDevice.JSONValue?
     var isOpen: Bool { transport != nil }
 
+    // Uses only this phone's native transport, never a multiplayer peer endpoint.
+    func diagnosticReport() async throws -> String? {
+        guard let transport, !changing else { return nil }
+        let value = try await EngineClient(transport: transport).call("diagnostics")
+        return value["report"]?.string
+    }
+
+    func clearDiagnostics() async throws {
+        guard let transport else { return }
+        guard !changing else { throw EngineError.invalidMessage("Wait for the native operation to finish") }
+        _ = try await EngineClient(transport: transport).call("clearDiagnostics")
+    }
+
     func makeClient(identity: BuildIdentity) async throws -> EngineClient {
         guard !changing, transport == nil else { throw EngineError.invalidMessage("Close the previous native runtime first") }
         changing = true; defer { changing = false }

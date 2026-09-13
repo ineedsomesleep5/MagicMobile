@@ -13,6 +13,7 @@ struct OnDeviceRootView: View {
     @StateObject private var session: OnDeviceSession
     @StateObject private var setup: OnDeviceSetupModel
     @StateObject private var library = DeckLibraryStore()
+    @StateObject private var diagnostics = OnDeviceDiagnostics()
     @State private var selectedCard: ZoneCard?
     @State private var inspectedCard: ZoneCard?
     @State private var zone: InspectedZone?
@@ -23,6 +24,8 @@ struct OnDeviceRootView: View {
     @AppStorage(OnDeviceSetupPreferences.friendsKey) private var playWithFriends = false
     @State private var showImport = false
     @State private var confirmLeave = false
+    @State private var showDiagnostics = false
+    @State private var confirmDeleteReport = false
 
     init() {
         let session = OnDeviceSession()
@@ -56,6 +59,7 @@ struct OnDeviceRootView: View {
         .sheet(isPresented: $showImport) {
             OnDeviceTextImportView(library: library, selectedDeckID: $selectedDeckID)
         }
+        .sheet(isPresented: $showDiagnostics) { diagnosticSheet }
         .background {
             if let multiplayer = setup.multiplayer {
                 OnDeviceGameCenterPresentation(multiplayer: multiplayer)
@@ -81,6 +85,12 @@ struct OnDeviceRootView: View {
             MagicMobileOrientationController.shared.setPortraitModeEnabled(enabled)
         }
         .onChange(of: scenePhase) { _, phase in setup.setSceneActive(phase == .active) }
+        .onChange(of: session.errorMessage) { _, message in
+            if message != nil { Task { await setup.captureDiagnostics(in: diagnostics) } }
+        }
+        .onChange(of: setup.errorMessage) { _, message in
+            if message != nil { Task { await setup.captureDiagnostics(in: diagnostics) } }
+        }
         .onChange(of: setup.multiplayer?.isConnected) { _, _ in setup.updateSessionForeground() }
         .onChange(of: setup.multiplayer?.isSuspended) { _, _ in setup.updateSessionForeground() }
         .onChange(of: setup.multiplayer?.endpoint?.matchID) { _, matchID in
@@ -206,6 +216,8 @@ struct OnDeviceRootView: View {
                     Button("Retry loading local catalogue") { setup.prepare() }
                         .buttonStyle(MagicSecondaryButtonStyle(fillsWidth: true, compact: true))
                 }
+                Button("Engine error report") { showDiagnostics = true }
+                    .accessibilityIdentifier("ondevice.diagnostics")
             }
             .foregroundStyle(MagicPalette.parchment)
             .frame(maxWidth: 640).padding(16).frame(maxWidth: .infinity)
@@ -239,6 +251,10 @@ struct OnDeviceRootView: View {
                     }
                     .disabled(setup.isBusy || session.isWorking)
                 }
+                if setup.errorMessage != nil || session.errorMessage != nil {
+                    Button("Review engine error report") { showDiagnostics = true }
+                        .accessibilityIdentifier("ondevice.failureReport")
+                }
             }
             .foregroundStyle(MagicPalette.parchment)
             .magicPanel(.iron, prominence: .elevated, cornerRadius: 12, padding: 12)
@@ -252,6 +268,33 @@ struct OnDeviceRootView: View {
             do { playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName) }
             catch { setup.errorMessage = error.localizedDescription; return }
             await setup.startAI(name: playerDisplayName, deck: deck, aiDeck: aiPrecon.deckList, opponents: opponentCount)
+        }
+    }
+
+    private var diagnosticSheet: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Only the latest engine error report is kept on this phone, excluded from backups. Error text may contain private card information. Nothing is uploaded automatically; review it before sharing.")
+                    if let error = diagnostics.errorMessage { Text(error).foregroundStyle(.red) }
+                    if let report = diagnostics.report {
+                        ShareLink(item: report) { Label("Share report", systemImage: "square.and.arrow.up") }
+                            .accessibilityIdentifier("ondevice.shareReport")
+                        Button("Delete saved report", role: .destructive) { confirmDeleteReport = true }
+                        Text(report).font(.caption.monospaced()).textSelection(.enabled)
+                    } else {
+                        Text("No engine exception has been captured yet. Try starting the match again, then return here if it stops.")
+                    }
+                }.padding()
+            }
+            .navigationTitle("Engine error report").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { showDiagnostics = false } } }
+            .task { await setup.captureDiagnostics(in: diagnostics) }
+            .confirmationDialog("Delete the local engine report?", isPresented: $confirmDeleteReport, titleVisibility: .visible) {
+                Button("Delete report", role: .destructive) {
+                    Task { await setup.clearDiagnostics(in: diagnostics) }
+                }
+            } message: { Text("This removes the saved report and its in-memory copy. Reports you already shared are not removed.") }
         }
     }
 
@@ -463,6 +506,16 @@ private final class OnDeviceSetupModel: ObservableObject {
             : "Local runtime \(runtime.isOpen ? "open" : "closed"); capabilities \(runtime.capabilities == nil ? "unavailable" : "loaded")."
         return EngineHealth(status: connected ? "ok" : "unavailable", reason: reason,
                             checkedAt: ISO8601DateFormatter().string(from: Date()), recoveryAction: nil)
+    }
+
+    func captureDiagnostics(in store: OnDeviceDiagnostics) async {
+        await store.capture(status: session.status) { try await runtime.diagnosticReport() }
+    }
+
+    func clearDiagnostics(in store: OnDeviceDiagnostics) async {
+        do {
+            try await store.clear(engine: { try await runtime.clearDiagnostics() })
+        } catch { store.errorMessage = "Could not delete the local engine report: \(error.localizedDescription)" }
     }
 }
 

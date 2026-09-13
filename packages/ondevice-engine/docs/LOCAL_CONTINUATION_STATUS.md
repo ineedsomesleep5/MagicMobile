@@ -1,6 +1,24 @@
 # Local continuation status — 2026-09-13 UTC
 
-## Current result — replacement native/product passed; internal TestFlight available
+## Current result — physical startup failed; diagnostic replacement in progress
+
+The user confirmed installing **2026091202** and reported a stopped engine during
+startup with default **Token Triumph**, one AI opponent (default **Grave Danger**).
+This is a failed native play attempt, not successful full-game acceptance.
+The same matchup reached turn one with seven cards in a desktop JVM replay;
+that does not reproduce or fix the iPhone exception. The installed engine
+discarded the underlying exception. App Store Connect had no crash/feedback
+record at inspection; the engine catches this failure without crashing the app.
+
+The user approved a local-only diagnostic TestFlight update. Engine revision
+`c355eeea2277c6234207fe756eb757f86b58bde8` retains one bounded exception report,
+separate from peer polls and ordinary error replies. Full native run
+**34730780807** is rebuilding that source. App build **2026091203** adds explicit
+review/share/delete and protected, backup-excluded latest-report storage.
+It has **not been uploaded yet**. No gameplay fix or native performance claim
+is made. PR #6 remains draft; issues #4 and #7 remain open.
+
+## Previous distribution — replacement native/product passed; internal TestFlight available
 
 The release binary uses app source `55be4f417dded8c22b97987536dc6dc3cf825b4a`
 and engine source `a34fb08abd7c4f32b643701349f99f0b59ee2771`. Later status/ledger
