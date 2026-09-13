@@ -42,6 +42,11 @@ class InstallerTests(unittest.TestCase):
                 path.write_text(text)
         (self.delivery/'build').mkdir();(self.delivery/'build/fixture.txt').write_text('Not part of the installed package\n')
         self.git('init','-b','main');self.git('config','user.name','Local Fixture');self.git('config','user.email','fixture@example.invalid')
+        # Some Git versions may launch automatic repository maintenance after a
+        # commit. These fixtures are intentionally tiny, and an asynchronous gc
+        # can race TemporaryDirectory cleanup and create .git files while rmtree
+        # is removing the fixture. Disable maintenance so teardown is deterministic.
+        self.git('config','gc.auto','0');self.git('config','maintenance.auto','false')
         (self.repo/'README.md').write_text('Original project\n');self.git('add','README.md');self.git('commit','-m','fixture')
     def git(self,*args):return subprocess.run(['git','-C',str(self.repo),*args],check=True,text=True,capture_output=True).stdout.strip()
     def install(self,*args):return subprocess.run([sys.executable,str(self.delivery/'scripts/install_into_magicmobile.py'),str(self.repo),*args],text=True,capture_output=True)

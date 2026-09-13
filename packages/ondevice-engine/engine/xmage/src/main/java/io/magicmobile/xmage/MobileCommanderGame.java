@@ -16,6 +16,12 @@ final class MobileCommanderGame extends CommanderFreeForAll {
     }
     void setCancellation(MobileAICancellation cancellation) { this.cancellation=cancellation; }
     @Override public MobileCommanderGame copy() { return new MobileCommanderGame(this); }
+    @Override public boolean hasEnded() {
+        // Opening-player selection loops on hasEnded(), not checkIfGameIsOver().
+        // Interrupting its worker makes every player unable to respond; the
+        // durable stop signal must also terminate that upstream initialization loop.
+        return cancellation.isClosing() || super.hasEnded();
+    }
     @Override public boolean checkIfGameIsOver() {
         // MAD can consume InterruptedException. Copies must retain the durable stop signal.
         return cancellation.isClosing() || super.checkIfGameIsOver();

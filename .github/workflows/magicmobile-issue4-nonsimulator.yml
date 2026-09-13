@@ -1,0 +1,177 @@
+name: Issue 4 non-simulator verification
+
+on:
+  push:
+    branches: [codex/issue-4-native-mvp, codex/issue-4-verified-continuation]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue4-nonsimulator-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Preserve exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/issue4-source"
+          git archive --format=tar.gz --output="$RUNNER_TEMP/issue4-source/source.tar.gz" HEAD
+          git rev-parse HEAD > "$RUNNER_TEMP/issue4-source/commit.txt"
+          git rev-parse HEAD^{tree} > "$RUNNER_TEMP/issue4-source/tree.txt"
+          sha256sum "$RUNNER_TEMP/issue4-source/source.tar.gz" > "$RUNNER_TEMP/issue4-source/SHA256SUMS"
+          echo 'Provenance only; no engine/runtime/device acceptance is implied.' > "$RUNNER_TEMP/issue4-source/SCOPE.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: issue4-source-${{ github.sha }}
+          path: ${{ runner.temp }}/issue4-source/
+          retention-days: 7
+          if-no-files-found: error
+
+  portable-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/ondevice-engine
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: bash scripts/test_tooling.sh
+      - run: bash scripts/test_native_boundary.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue4-contracts-${{ github.sha }}
+          path: packages/ondevice-engine/evidence/
+          retention-days: 7
+          if-no-files-found: error
+
+  apple-source-and-sdk:
+    # Standard public repository runner; no larger/paid runner label.
+    runs-on: macos-26-intel
+    timeout-minutes: 35
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare owned evidence and exact identity
+        run: |
+          set -euo pipefail
+          mkdir -p build_output/issue4/precons
+          { git rev-parse HEAD; xcodebuild -version; swift --version; } > build_output/issue4/source-environment.txt
+      - name: Execute portable native protocol tests on macOS
+        run: swift test --package-path packages/ondevice-engine/swift --jobs 2 2>&1 | tee build_output/issue4/swift-protocol.log
+      - name: Execute portable app tests and export exact bundled decks
+        env:
+          MAGICMOBILE_PRECON_EXPORT_DIR: ${{ github.workspace }}/build_output/issue4/precons
+        run: swift test --package-path apps/ios --jobs 2 2>&1 | tee build_output/issue4/swift-presentation.log
+      - name: Native-close fixture tests (not XMage runtime)
+        run: bash packages/ondevice-engine/scripts/test_swift_close.sh
+      - name: Compile existing product and SDK-only tests without signing or execution
+        run: |
+          set -euo pipefail
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen generate --spec apps/ios/project.yml
+          xcodebuild -project apps/ios/MagicMobileiOS.xcodeproj -scheme MagicMobile \
+            -configuration Debug -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/issue4-sdk" -jobs 2 \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
+            build-for-testing 2>&1 | tee build_output/issue4/unsigned-sdk-build.log
+          echo 'Compiled app and SDK tests only. No simulator, native XMage linkage, signing or execution.' > build_output/issue4/SDK-SCOPE.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue4-apple-${{ github.sha }}
+          path: build_output/issue4/
+          retention-days: 7
+          if-no-files-found: error
+
+  real-jvm:
+    needs: apple-source-and-sdk
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/ondevice-engine
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - run: mkdir -p evidence; bash scripts/build_jvm.sh 2>&1 | tee evidence/issue4-jvm-build.log
+      - run: bash scripts/test_real_engine.sh 2>&1 | tee evidence/issue4-real-engine.log
+      - name: Retrieve exact same-commit Swift-exported bundled decks
+        uses: actions/download-artifact@v4
+        with:
+          name: issue4-apple-${{ github.sha }}
+          path: packages/ondevice-engine/build/ios-source-evidence
+      - name: Validate all five actual bundled decks with XMage
+        run: |
+          set -euo pipefail
+          test "$(head -n 1 build/ios-source-evidence/source-environment.txt)" = "$(git rev-parse HEAD)"
+          python3 scripts/test_ios_precons.py build/ios-source-evidence/precons 2>&1 | tee evidence/issue4-real-precons.log
+          (cd build/ios-source-evidence/precons && sha256sum *.json) > evidence/issue4-precon-hashes.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue4-real-jvm-${{ github.sha }}
+          path: |
+            packages/ondevice-engine/evidence/
+            packages/ondevice-engine/build/generated/registry-report.json
+          retention-days: 7
+          if-no-files-found: error
+
+  compiler-source-inspection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Preserve upstream compiler source for branch-range investigation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/compiler-inspection"
+          git clone --depth 1 --branch vm-22.1.0 https://github.com/oracle/graal.git "$RUNNER_TEMP/graal-source"
+          cd "$RUNNER_TEMP/graal-source"
+          git rev-parse HEAD > "$RUNNER_TEMP/compiler-inspection/oracle-source-commit.txt"
+          grep -R -n 'NativeImageCodeCacheFactory' substratevm/src > "$RUNNER_TEMP/compiler-inspection/factory-uses.txt"
+          tar -czf "$RUNNER_TEMP/compiler-inspection/relevant-sources.tar.gz" \
+            substratevm/src compiler/src/org.graalvm.compiler.asm.aarch64 LICENSE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue4-compiler-source-${{ github.sha }}
+          path: ${{ runner.temp }}/compiler-inspection/
+          retention-days: 7
+          if-no-files-found: error
+
+# Never invokes simctl, xcodebuild test/test-without-building, signing, distribution,
+# or a remote gameplay engine. JVM games and C fixtures have separate evidence.

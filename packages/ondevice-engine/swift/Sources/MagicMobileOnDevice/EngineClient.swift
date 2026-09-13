@@ -64,8 +64,18 @@ public struct EngineClient: Sendable {
     public func capabilities() async throws -> JSONValue { try await call("capabilities") }
     public func create(configuration: JSONValue) async throws -> JSONValue { try await call("create", fields: ["configuration": configuration]) }
     public func poll(matchID: String, seatID: String, after: Int64 = 0) async throws -> MatchPoll {
+        guard !matchID.isEmpty, !seatID.isEmpty, after >= 0 else {
+            throw EngineError.invalidMessage("Invalid poll identity or revision")
+        }
         let value = try await call("poll", fields: ["matchId": .string(matchID), "viewerId": .string(seatID), "after": .integer(after)])
-        return try MatchPoll(value)
+        let poll = try MatchPoll(value)
+        // Do not let a stale/misrouted response enter another match's presentation.
+        // Seat authority remains the host's responsibility; this is correlation,
+        // not protection against a malicious authoritative host.
+        guard poll.matchID == matchID, poll.seatID == seatID else {
+            throw EngineError.invalidMessage("Poll response identity mismatch")
+        }
+        return poll
     }
     public func respond(matchID: String, seatID: String, prompt: EnginePrompt, answer: JSONValue, requestID: UUID = UUID()) async throws -> JSONValue {
         try await call("respond", fields: ["matchId": .string(matchID), "viewerId": .string(seatID), "command": prompt.command(answer: answer, requestID: requestID)])
@@ -83,9 +93,17 @@ public struct EnginePrompt: Sendable, Equatable {
               let minimum = value["min"]?.integer, let maximum = value["max"]?.integer else {
             throw EngineError.invalidMessage("Malformed engine prompt")
         }
+        guard !id.isEmpty, !kind.isEmpty, payload.object != nil, minimum <= maximum,
+              !types.isEmpty, types.count <= 6 else {
+            throw EngineError.invalidMessage("Invalid prompt structure or bounds")
+        }
         self.id = id; self.revision = revision; self.kind = kind; self.payload = payload
         self.submitted = submitted; self.minimum = minimum; self.maximum = maximum
         self.responseTypes = try types.map { guard let s = $0.string else { throw EngineError.invalidMessage("Response type must be a string") }; return s }
+        let supported: Set<String> = ["boolean", "uuid", "string", "integer", "integers", "mana"]
+        guard Set(responseTypes).count == responseTypes.count, Set(responseTypes).isSubset(of: supported) else {
+            throw EngineError.invalidMessage("Unknown or duplicate prompt response type")
+        }
     }
     public func command(answer: JSONValue, requestID: UUID = UUID()) -> JSONValue {
         .object(["requestId": .string(requestID.uuidString.lowercased()), "promptId": .string(id),

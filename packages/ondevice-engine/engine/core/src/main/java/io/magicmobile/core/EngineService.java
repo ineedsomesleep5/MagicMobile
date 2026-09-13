@@ -16,6 +16,9 @@ public final class EngineService {
             String op=Json.requiredString(r,"op"); Object result;
             switch(op) {
                 case "capabilities": keys(r,"protocol","op");result=engine.capabilities();break;
+                // Trusted local API only. HostRouter independently rejects these for peers.
+                case "diagnostics": keys(r,"protocol","op");result=EngineDiagnostics.read();break;
+                case "clearDiagnostics": keys(r,"protocol","op");EngineDiagnostics.clear();result=Json.map("cleared",true);break;
                 case "create": keys(r,"protocol","op","configuration");result=engine.create(Json.object(r.get("configuration")));break;
                 case "poll": keys(r,"protocol","op","matchId","viewerId","after");result=engine.poll(Json.requiredString(r,"matchId"),Json.requiredString(r,"viewerId"),Json.integer(r.get("after")));break;
                 case "respond": keys(r,"protocol","op","matchId","viewerId","command");result=engine.respond(Json.requiredString(r,"matchId"),Json.requiredString(r,"viewerId"),Json.object(r.get("command")));break;
@@ -28,6 +31,7 @@ public final class EngineService {
             return Json.write(Json.map("protocol",PROTOCOL,"ok",false,"error",Json.map("code",e.code(),"message",e.getMessage())));
         } catch(Exception e) {
             // Diagnostics must stay on the host; do not leak card-bearing exception messages.
+            EngineDiagnostics.capture("engine-request",e);
             return Json.write(Json.map("protocol",PROTOCOL,"ok",false,"error",Json.map("code","engine_failure","message","Engine operation failed.")));
         }
     }

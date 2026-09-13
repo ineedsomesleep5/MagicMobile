@@ -1,0 +1,127 @@
+name: ARM64 far-call compiler verification
+
+on:
+  push:
+    branches: [codex/issue-4-native-mvp, codex/issue-4-verified-continuation]
+    paths:
+      - '.github/workflows/magicmobile-far-calls.yml'
+      - 'packages/ondevice-engine/native/gluon/compiler-patches/**'
+      - 'packages/ondevice-engine/scripts/prepare_gluon_far_calls.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue4-far-calls-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  compiler-probe:
+    runs-on: macos-26-intel
+    timeout-minutes: 210
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/ondevice-engine
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Record source and run actual layout-planner tests
+        run: |
+          mkdir -p evidence
+          git rev-parse HEAD > evidence/far-call-source.txt
+          bash scripts/test_far_call_planner.sh
+      - name: Fetch checksum-pinned compiler
+        run: bash scripts/setup_gluon_intel.sh
+      - name: Build private compiler backport
+        run: |
+          set -euo pipefail
+          python3 scripts/prepare_gluon_far_calls.py --result-file "$RUNNER_TEMP/patched-gluon-home.txt" 2>&1 | tee evidence/far-call-compiler-build.log
+          echo "MM_GRAALVM_HOME=$(cat "$RUNNER_TEMP/patched-gluon-home.txt")" >> "$GITHUB_ENV"
+      - name: Verify bounded builder-heap regression (not engine execution)
+        run: bash scripts/test_builder_heap.sh
+      - name: Force veneers in a separate unsigned ARM64 toolchain-only probe
+        env:
+          JAVA_TOOL_OPTIONS: -Dmagicmobile.farCallLimit=256
+        run: |
+          set -euo pipefail
+          bash scripts/test_ios_toolchain.sh
+          grep -E 'MAGICMOBILE_FAR_CALLS_V1 .*veneers=[1-9][0-9]* .*distance=256$' evidence/ios-abi-*.log
+      - name: Compile full pinned engine including AI
+        run: bash scripts/build_jvm.sh 2>&1 | tee evidence/far-call-full-jvm-build.log
+      - name: Execute real JVM regressions (not native acceptance)
+        run: bash scripts/test_real_engine.sh 2>&1 | tee evidence/far-call-real-jvm.log
+      - name: Reproduce and verify native Color compatibility (not iPhone acceptance)
+        run: bash scripts/test_color_native.sh 2>&1 | tee evidence/native-color-regression.log
+      - name: Verify real token repository resource inclusion (not iPhone acceptance)
+        run: bash scripts/test_token_native.sh 2>&1 | tee evidence/native-token-regression.log
+      - name: Verify bundled catalogue native decoding (not engine or iPhone acceptance)
+        run: bash scripts/test_card_catalogue_native.sh 2>&1 | tee evidence/native-catalogue-regression.log
+      - name: Build full ARM64 engine using verified compiler backport
+        timeout-minutes: 180
+        env:
+          MM_NATIVE_REFLECTION_PROFILE: targeted
+          MM_NATIVE_INIT_PROFILE: reviewed-enums
+          MM_NATIVE_ORM_PROFILE: runtime-defaults
+          MM_NATIVE_MAX_HEAP: 10g
+          MM_NATIVE_RESULT_FILE: ${{ runner.temp }}/full-native-build.txt
+        run: bash scripts/build_native_ios.sh
+      - name: Preserve successful archive and paired build inputs
+        if: success()
+        run: |
+          set -euo pipefail
+          OUT=$(cat "$RUNNER_TEMP/full-native-build.txt")
+          mkdir -p build/native-candidate/include build/native-candidate/clib build/native-candidate/jdk
+          cp "$OUT/gluonfx/arm64-ios/gvm/libmmengine.a" build/native-candidate/
+          cp "$OUT/gluonfx/arm64-ios/gvm/mmengine/"*.h build/native-candidate/include/
+          cp "$MM_GRAALVM_HOME/lib/svm/clibraries/27/ios-arm64/"*.a build/native-candidate/clib/
+          cp build/ios-native-home/.gluon/substrate/javaStaticSdk/18-ea+prep18-9/ios-arm64/staticjdk/lib/static/*.a build/native-candidate/jdk/
+          cp "$OUT/class-snapshot.sha256" build/native-candidate/
+          cp -R "$OUT/color-patch" build/native-candidate/
+          cp -R "$OUT/engine/mage/mobile" build/native-candidate/catalogue
+          cp build/generated/platform/repository-patch-manifest.json build/native-candidate/
+          cp build/native-metadata/reflect-config.json build/native-candidate/
+          cp build/generated/registry-report.json build/native-candidate/
+          git rev-parse HEAD > build/native-candidate/commit.txt
+          find build/ios-compiler-patch-* -name compiler-patch-manifest.json -exec cp '{}' build/native-candidate/ \;
+          (cd build/native-candidate && find . -type f ! -name SHA256SUMS -print | LC_ALL=C sort | while IFS= read -r p; do shasum -a 256 "$p"; done > SHA256SUMS)
+          echo 'Full engine archive only. Unsigned product linkage and device execution are separate gates.' > build/native-candidate/SCOPE.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue4-far-call-evidence-${{ github.sha }}
+          path: |
+            packages/ondevice-engine/evidence/
+            packages/ondevice-engine/build/ios-compiler-patch-*/compiler-patch-manifest.json
+            packages/ondevice-engine/build/ios-compiler-patch-*/javac-arguments.json
+            packages/ondevice-engine/build/ios-compiler-patch-*/compiler-module-descriptors.json
+            packages/ondevice-engine/build/ios-compiler-patch-*/sources/
+            packages/ondevice-engine/build/ios-native-*/gluonfx/arm64-ios/gvm/log/
+            packages/ondevice-engine/build/ios-native-*/builder-gc.log*
+            packages/ondevice-engine/build/color-native-*/*.log
+            packages/ondevice-engine/build/builder-heap-*/*.log
+            packages/ondevice-engine/build/token-native-*/*.log
+            packages/ondevice-engine/build/token-native-*/inputs.json
+            packages/ondevice-engine/build/card-catalogue-native-*/*.log
+            packages/ondevice-engine/build/card-catalogue-native-*/inputs.json
+            packages/ondevice-engine/build/card-catalogue-native-*/reflect-config.json
+            packages/ondevice-engine/build/ios-native-*/color-patch/
+          retention-days: 7
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: issue4-full-native-candidate-${{ github.sha }}
+          path: packages/ondevice-engine/build/native-candidate/
+          retention-days: 7
+          if-no-files-found: error
+
+# No simulator execution, signing, upload, larger runner, or gameplay server.

@@ -13,6 +13,11 @@ final class OnDeviceSetupUITests: XCTestCase {
         app.launchArguments = [
             "-magicmobile.playerDisplayName", "",
             "-magicmobile.portraitModeEnabled", "YES",
+            "-magicmobile.ondevice.selectedDeckID", "precon:token-triumph",
+            "-magicmobile.ondevice.aiPreconID", "grave-danger",
+            "-magicmobile.ondevice.aiOpponentCount", "1",
+            "-magicmobile.ondevice.humanPlayerCount", "2",
+            "-magicmobile.ondevice.playWithFriends", "NO",
             "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
             "--ondevice-setup-ui-test"
         ]

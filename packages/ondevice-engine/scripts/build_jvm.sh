@@ -17,9 +17,12 @@ javac --release 17 -cp "$ROOT/build/core" -d "$ROOT/build/tools" "$ROOT/engine/t
 # Exporter needs all Mage/Mage.Sets class definitions, NOT test classes or server UI classes.
 java -Xmx4g -cp "$ROOT/build/core:$ROOT/build/tools:$CP" RegistryExporter "$ROOT/build/generated" \
  "$U/Mage/target/classes" "$U/Mage.Sets/target/classes" "$U/Mage.Common/target/classes"
-find "$ROOT/engine/xmage/src/main/java" "$ROOT/build/generated/java" -name '*.java' | sort > "$ROOT/build/engine-sources.txt"
+python3 "$ROOT/scripts/prepare_mobile_repository.py" --mode runtime --output "$ROOT/build/generated/platform"
+find "$ROOT/engine/xmage/src/main/java" "$ROOT/build/generated/java" "$ROOT/build/generated/platform" \
+  "$ROOT/platform/java" -name '*.java' | sort > "$ROOT/build/engine-sources.txt"
 javac --release 17 -cp "$ROOT/build/core:$CP" -d "$ROOT/build/engine" @"$ROOT/build/engine-sources.txt"
 echo "$ROOT/build/core:$ROOT/build/engine:$CP" > "$ROOT/build/runtime-classpath.txt"
+bash "$ROOT/scripts/build_card_metadata.sh"
 javac --release 17 -cp "$ROOT/build/core:$ROOT/build/engine:$CP" -d "$ROOT/build/tools" "$ROOT/engine/tools/CommanderSetExporter.java"
 java -Xmx384m -cp "$ROOT/build/core:$ROOT/build/engine:$ROOT/build/tools:$CP" CommanderSetExporter "$ROOT/build/generated/commander-set-codes.json"
 # Compiler success is distinct from a completed game.

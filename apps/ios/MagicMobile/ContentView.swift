@@ -2632,7 +2632,8 @@ struct NativeGameView: View {
                                             snapshot: snapshot,
                                             pendingActionId: pendingActionId,
                                             runAction: runAction,
-                                            runCommand: runCommand
+                                            runCommand: runCommand,
+                                            openDetails: { isPromptDetailOpen = true }
                                         )
                                         .frame(maxWidth: .infinity)
                                     } else {
@@ -3125,7 +3126,8 @@ struct NativeGameView: View {
                                 snapshot: snapshot,
                                 pendingActionId: pendingActionId,
                                 runAction: runAction,
-                                runCommand: runCommand
+                                runCommand: runCommand,
+                                openDetails: { isPromptDetailOpen = true }
                             )
                             .frame(maxWidth: .infinity)
                         } else {
@@ -5308,6 +5310,7 @@ struct InlinePaymentPromptBar: View {
     let pendingActionId: String?
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
+    let openDetails: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -5339,6 +5342,14 @@ struct InlinePaymentPromptBar: View {
             }
 
             Spacer(minLength: 0)
+            if snapshot.source == "xmage-ondevice" {
+                Button(action: openDetails) {
+                    Image(systemName: "list.bullet.rectangle")
+                }
+                .buttonStyle(IconButtonStyle(small: true))
+                .disabled(pendingActionId != nil)
+                .accessibilityLabel("Payment choices")
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
@@ -6281,7 +6292,7 @@ struct UniversalPromptActionPanel: View {
             ForEach(choices) { choice in
                 let symbol = choice.manaType ?? choice.id
                 Button {
-                    if let command = command(type: prompt.responseCommand?.type ?? "play_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [symbol], manaType: symbol) {
+                    if let command = command(type: snapshot.source == "xmage-ondevice" ? "play_mana" : prompt.responseCommand?.type ?? "play_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [symbol], manaType: symbol) {
                         runCommand(command, choice.label, "\(prompt.id)-mana-choice-\(choice.id)")
                     }
                 } label: {
@@ -7925,7 +7936,8 @@ struct ManaPaymentTray: View {
         HStack(spacing: 7) {
             paymentPipRow
             if let choices = prompt.manaChoices, !choices.isEmpty {
-                ForEach(choices.prefix(6)) { choice in
+                // Keep room for cancel/special actions; Payment choices exposes every color.
+                ForEach(choices.prefix(snapshot.source == "xmage-ondevice" ? 2 : 6)) { choice in
                     let symbol = choice.manaType ?? choice.id
                     paymentManaButton(symbol: symbol, label: choice.label, pendingId: "\(prompt.id)-mana-choice-\(choice.id)", size: 22)
                 }
@@ -8086,8 +8098,10 @@ struct ManaPaymentTray: View {
     }
 
     private func paymentManaButton(symbol: String, label: String, pendingId: String, size: CGFloat) -> some View {
-        Button {
-            if let command = command(type: prompt.responseCommand?.type ?? "play_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [symbol], manaType: symbol) {
+        let type = snapshot.source == "xmage-ondevice" ? "play_mana" : prompt.responseCommand?.type ?? "play_mana"
+        let paymentCommand = command(type: type, promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [symbol], manaType: symbol)
+        return Button {
+            if let command = paymentCommand {
                 runCommand(command, label, pendingId)
             }
         } label: {
@@ -8095,11 +8109,15 @@ struct ManaPaymentTray: View {
                 .opacity(canPay(symbol) && promptExposesManaChoice(symbol) ? 1 : 0.42)
         }
         .buttonStyle(.plain)
-        .disabled(pendingActionId != nil || !canPay(symbol) || !promptExposesManaChoice(symbol) || command(type: prompt.responseCommand?.type ?? "play_mana", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [symbol], manaType: symbol) == nil)
+        .disabled(pendingActionId != nil || !canPay(symbol) || !promptExposesManaChoice(symbol) || paymentCommand == nil)
     }
 
     private func canPay(_ symbol: String) -> Bool {
-        Self.canPay(symbol: symbol, in: snapshot)
+        if snapshot.source == "xmage-ondevice" {
+            // The prompt can belong to a controlled player's pool, not the viewer's.
+            return (prompt.manaChoices?.first { ($0.manaType ?? $0.id) == symbol }?.amount ?? 0) > 0
+        }
+        return Self.canPay(symbol: symbol, in: snapshot)
     }
 
     private func promptExposesManaChoice(_ symbol: String) -> Bool {

@@ -1,0 +1,2 @@
+# Preserve the entire page-aligned Graal code image before native code/stubs.
+___text

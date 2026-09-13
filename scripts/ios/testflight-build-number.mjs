@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const infoPlist = resolve(repoRoot, "apps/ios/MagicMobile/Info.plist");
 const ledgerPath = resolve(repoRoot, "release/testflight/build-ledger.json");
+const projectPath = resolve(repoRoot, "apps/ios/project.yml");
 const plistBuddy = "/usr/libexec/PlistBuddy";
 
 function usage() {
@@ -21,6 +22,44 @@ function argValue(name) {
 
 function plist(command) {
   return execFileSync(plistBuddy, ["-c", command, infoPlist], { encoding: "utf8" }).trim();
+}
+
+// Deliberately support the reviewed XcodeGen settings.base scalar form only.
+// Reject overrides/indirection instead of approximating YAML or Xcode evaluation.
+function projectVersions() {
+  const text = readFileSync(projectPath, "utf8");
+  if (/^\s*["']?(?:<<|include|settingGroups|templates|targetTemplates|configFiles)["']?\s*:/m.test(text)) {
+    throw new Error("Cannot resolve indirect project.yml version settings");
+  }
+  const settings = [...text.matchAll(/^settings:\s*(?:#.*)?\r?\n((?:[ \t]+[^\n]*\n|\r?\n)*)/gm)];
+  if (settings.length !== 1) throw new Error("Expected one project.yml settings block");
+  const bases = [...settings[0][1].matchAll(/^  base:\s*(?:#.*)?\r?\n((?: {4}[^\n]*\n|\r?\n)*)/gm)];
+  if (bases.length !== 1) throw new Error("Expected one project.yml settings.base block");
+  const values = {};
+  for (const key of ["MARKETING_VERSION", "CURRENT_PROJECT_VERSION"]) {
+    const occurrences = [...text.replace(/#[^\n]*/g, "").matchAll(new RegExp(`\\b${key}\\b`, "g"))];
+    const scalar = new RegExp(`^    ${key}: *(["']?)([0-9]+(?:\\.[0-9]+)*)\\1 *(?:#.*)?\\r?$`, "gm");
+    const matches = [...bases[0][1].matchAll(scalar)];
+    if (occurrences.length !== 1 || matches.length !== 1) {
+      throw new Error(`Expected one literal settings.base.${key} in project.yml`);
+    }
+    values[key] = matches[0][2];
+  }
+  if (!/^\d+$/.test(values.CURRENT_PROJECT_VERSION)) throw new Error("Invalid CURRENT_PROJECT_VERSION");
+  return { text, ...values };
+}
+
+function versions(project) {
+  function value(plistKey, setting, pattern) {
+    const raw = plist(`Print :${plistKey}`);
+    const resolved = raw === `$(${setting})` ? project[setting] : raw;
+    if (!pattern.test(resolved)) throw new Error(`Unsupported ${plistKey}: ${raw}`);
+    return resolved;
+  }
+  return {
+    marketingVersion: value("CFBundleShortVersionString", "MARKETING_VERSION", /^\d+(?:\.\d+){0,2}$/),
+    build: value("CFBundleVersion", "CURRENT_PROJECT_VERSION", /^\d+$/)
+  };
 }
 
 function readLedger() {
@@ -67,12 +106,15 @@ function prepare() {
   if (!/^\d{8}$/.test(datePrefix)) {
     throw new Error(`Expected YYYYMMDD build date, received ${datePrefix}`);
   }
-  const marketingVersion = plist("Print :CFBundleShortVersionString");
-  const currentBuild = plist("Print :CFBundleVersion");
+  const project = projectVersions();
+  const { marketingVersion, build: currentBuild } = versions(project);
   const ledger = readLedger();
   const nextBuild = nextBuildNumber(ledger, currentBuild, datePrefix);
 
   execFileSync(plistBuddy, ["-c", `Set :CFBundleVersion ${nextBuild}`, infoPlist], { stdio: "inherit" });
+  writeFileSync(projectPath, project.text.replace(
+    /^(    CURRENT_PROJECT_VERSION: *)(["']?)[0-9]+\2( *(?:#.*)?\r?)$/m,
+    (_, prefix, quote, suffix) => `${prefix}${quote}${nextBuild}${quote}${suffix}`));
   ledger.bundleId = "com.calebfeliciano.magicmobile";
   ledger.marketingVersion = marketingVersion;
   ledger.lastPreparedBuild = nextBuild;
@@ -91,8 +133,7 @@ function record() {
   const uploadLog = argValue("--upload-log");
   const ipaPath = argValue("--ipa");
   if (!uploadLog || !ipaPath) usage();
-  const marketingVersion = plist("Print :CFBundleShortVersionString");
-  const build = plist("Print :CFBundleVersion");
+  const { marketingVersion, build } = versions(projectVersions());
   const deliveryUuid = deliveryUuidFromLog(uploadLog);
   if (!deliveryUuid) {
     throw new Error(`Could not find Delivery UUID in ${uploadLog}`);

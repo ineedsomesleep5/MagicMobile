@@ -80,6 +80,7 @@ public final class XmageEngine implements EnginePort {
                 } catch(CancellationException ignored) {
                     // Expected on destroy; a stopped match never claims to have completed.
                 } catch(Throwable e) {
+                    EngineDiagnostics.capture("game-worker",e);
                     // Explicit developer opt-in only; exceptions can contain private card data.
                     if(Boolean.getBoolean("magicmobile.debug")) e.printStackTrace(System.err);
                     mailbox.fail(e instanceof BridgeException?((BridgeException)e).code():"engine_failure","The local engine stopped. This match cannot continue.");

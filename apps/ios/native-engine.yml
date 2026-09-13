@@ -3,14 +3,15 @@
 #   cd apps/ios && xcodegen generate --spec native-engine.yml
 # Use project.yml for unlinked hosted UI work. This overlay does not enable a
 # simulator backend. Do not use both specs as mutual includes.
-# Link flags mirror packages/ondevice-engine/scripts/test_ios_link.sh. They
-# have not yet been validated against the full ARM64 engine or a signed app.
+# The full Graal image stays contiguous and precedes native code/stubs. Product
+# veneers reach its C entrypoints without range-limited ARM64 branch islands.
 include:
   - project.yml
 targets:
   MagicMobile:
     sources:
-      - path: ../../packages/ondevice-engine/native/mm_graal_backend.c
+      - path: NativeLink/mm_graal_backend_far.c
+      - path: NativeLink/graal_far_calls.S
     preBuildScripts:
       - name: Verify staged native input hashes (device only)
         basedOnDependencyAnalysis: false
@@ -21,7 +22,8 @@ targets:
           fi
     settings:
       base:
-        "EXCLUDED_SOURCE_FILE_NAMES[sdk=iphonesimulator*]": "$(inherited) mm_graal_backend.c"
+        "MM_ENGINE_MODE[sdk=iphoneos*]": "embedded-xmage"
+        "EXCLUDED_SOURCE_FILE_NAMES[sdk=iphonesimulator*]": "$(inherited) mm_graal_backend_far.c graal_far_calls.S"
         "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphoneos*]": "$(inherited) XMAGE_NATIVE_LINKED"
         "GCC_PREPROCESSOR_DEFINITIONS[sdk=iphoneos*]": "$(inherited) XMAGE_NATIVE_LINKED=1"
         "SWIFT_OBJC_BRIDGING_HEADER[sdk=iphoneos*]": "$(SRCROOT)/MagicMobile/NativeEngine-Bridging-Header.h"
@@ -35,5 +37,6 @@ targets:
           - '"$(SRCROOT)/NativeEngine/lib"'
         "OTHER_LDFLAGS[sdk=iphoneos*]": >-
           $(inherited) -lmmengine -ljava -lnio -lzip -lnet -lprefs -ljvm -lfdlibm
+          -Wl,-order_file,"$(SRCROOT)/NativeLink/graal-first.order"
           -lz -ldl -lj2pkcs11 -ljaas -lextnet -lc++ -lpthread -llibchelper -lffi -ldarwin
           -framework Foundation -framework UIKit -framework CoreGraphics -framework Security

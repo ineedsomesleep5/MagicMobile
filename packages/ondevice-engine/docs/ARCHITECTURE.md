@@ -3,13 +3,13 @@
 ## Executable boundaries
 
 ```
-Native SwiftUI product UI (inspection harness supplied)
+Existing apps/ios portrait/landscape SwiftUI product UI
                   |
          Swift EngineClient actor transport
                   |
            C memory/lifetime boundary
                   |
-   NativeEntryPoints + XmageEngine (AOT path unproven)
+   NativeEntryPoints + XmageEngine (ARM64 AOT compiled/linked)
                   |
       actual XMage Java rules/cards, compiled native
 ```
@@ -36,10 +36,10 @@ Registration does not solve every native issue. Gson/Java resources, runtime cla
 
 `mm_runtime` owns a native backend state/isolate. Requests on one runtime are mutex-serialized. The backend owns the initial response; the wrapper copies it, frees the original, and returns length-delimited bytes to Swift. Swift frees those bytes exactly once. No assumption is made that returned bytes are NUL-terminated.
 
-Backend registration occurs once at startup; it does not use dlopen or load a downloaded JAR. The Graal binding creates/attaches/detaches threads and exposes explicit shutdown. The actual iOS toolchain may need ABI adaptation; its compatibility has not been demonstrated here.
+Backend registration occurs once at startup; it does not use dlopen or load a downloaded JAR. The Graal binding creates/attaches/detaches threads and exposes explicit shutdown. The ARM64 product uses seven far-call veneers around the intact Graal image; actual device Release and signed export passed. Native phone execution remains unverified. Busy shutdown retains isolate ownership for explicit retry.
 
 ## Scope decisions
 
-Initial runtime source: one active match per engine instance, 2–4 human seats, casual Commander FreeForAll semantics (not tournament Duel Commander). AI is off. A two-seat match still uses this selected variant, which must be made explicit in the product UI.
+One active match per engine instance, 2–4 total seats: local human with 1–3 actual MAD opponents, or 2–4 Game Center humans. Rules are casual Commander FreeForAll, not tournament Duel Commander. AI JVM behavior is tested; native device validation flags remain false until phone acceptance.
 
-The provided native app is a development inspection tool. It can import a resolved configuration, call the real boundary when linked, inspect per-seat views and respond to prompt types. It is not an Arena-style battlefield or a completed Game Center client. The old MagicMobile app is retained as a reference during installation; its UI model needs an adapter or replacement for the new state schema.
+The existing apps/ios product now has native setup/session/snapshot/prompt adapters and authenticated Game Center lobby/transport integration. apps/ios-ondevice remains only a diagnostic harness. Source and portable tests are not real multi-phone or rendered-UI acceptance. No host migration or persistent game resume is implemented. See TESTFLIGHT_ACCEPTANCE.md and UPSTREAM_MAINTENANCE.md for the remaining runtime gates and signed update process.

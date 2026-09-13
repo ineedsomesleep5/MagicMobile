@@ -1,0 +1,10 @@
+{
+  "commit": "8aea65ae9ae3c89970fe865e1316105539e097ca",
+  "blobs": {
+    "CardRepository.java": "68d564fb1d0fef60a9966e5c2593bee9de03ef44",
+    "ExpansionRepository.java": "ddee9612d9407b1bef8251014eb1fe3ff0f20c35",
+    "CardCriteria.java": "286f619846a3d0e054efbf7a56617dc3e280a274",
+    "DatabaseUtils.java": "1c94a2a3996f5a667da6b396a38e563b7fdf6198",
+    "CardInfo.java": "ecf3225f6fc8ce252c9593b54aef44a98212304d"
+  }
+}

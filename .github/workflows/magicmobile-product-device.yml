@@ -1,0 +1,105 @@
+name: Issue 4 real engine unsigned product
+on:
+  push:
+    branches: [codex/issue-4-verified-continuation]
+    paths:
+      - '.github/workflows/magicmobile-product-device.yml'
+      - 'apps/ios/**'
+      - 'packages/ondevice-engine/swift/**'
+      - 'packages/ondevice-engine/scripts/verify_native_candidate.py'
+      - 'packages/ondevice-engine/scripts/verify_issue4_unsigned_product.py'
+      - 'packages/ondevice-engine/scripts/build_issue4_unsigned_app.sh'
+      - 'packages/ondevice-engine/scripts/download_issue4_native.py'
+      - 'packages/ondevice-engine/scripts/wait_issue4_native.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: issue4-product-${{ github.ref }}
+  cancel-in-progress: true
+# The engine build is already running and will not be duplicated here. Reuse is
+# refused if any engine/compiler input differs from the product source revision.
+env:
+  ENGINE_RUN_ID: '34762171820'
+  ENGINE_COMMIT: '00b33cb223f93caed6bc752f87d2384e146c9a1c'
+jobs:
+  exact-native-artifact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 215
+    outputs:
+      artifact_id: ${{ steps.native.outputs.artifact_id }}
+      artifact_digest: ${{ steps.native.outputs.artifact_digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require successful exact-source full engine build
+        id: native
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 packages/ondevice-engine/scripts/wait_issue4_native.py
+          --run-id "$ENGINE_RUN_ID" --commit "$ENGINE_COMMIT"
+          --timeout 12600
+          --output "$RUNNER_TEMP/native-run.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: issue4-native-provenance-${{ github.sha }}
+          path: ${{ runner.temp }}/native-run.json
+          if-no-files-found: error
+  unsigned-product:
+    needs: exact-native-artifact
+    runs-on: macos-26-intel
+    timeout-minutes: 40
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Fetch exact successful engine artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ needs.exact-native-artifact.outputs.artifact_id }}
+          ARTIFACT_DIGEST: ${{ needs.exact-native-artifact.outputs.artifact_digest }}
+        run: >-
+          python3 packages/ondevice-engine/scripts/download_issue4_native.py
+          --artifact-id "$ARTIFACT_ID" --digest "$ARTIFACT_DIGEST"
+          --destination "$RUNNER_TEMP/native-candidate"
+      - name: Verify matching engine and application source inputs
+        env:
+          ARTIFACT_ID: ${{ needs.exact-native-artifact.outputs.artifact_id }}
+          ARTIFACT_DIGEST: ${{ needs.exact-native-artifact.outputs.artifact_digest }}
+        run: >-
+          python3 packages/ondevice-engine/scripts/verify_native_candidate.py
+          --directory "$RUNNER_TEMP/native-candidate" --engine-commit "$ENGINE_COMMIT"
+          --run-id "$ENGINE_RUN_ID" --artifact-id "$ARTIFACT_ID" --artifact-digest "$ARTIFACT_DIGEST"
+          --output packages/ondevice-engine/build/native-candidate-provenance.json
+      - name: Stage only verified native inputs in the existing product
+        run: |
+          set -euo pipefail
+          python3 packages/ondevice-engine/scripts/prepare_ios_app_native.py \
+            --archive "$RUNNER_TEMP/native-candidate/libmmengine.a" \
+            --header "$RUNNER_TEMP/native-candidate/include/io.magicmobile.nativebridge.ioslibrarymain.h" \
+            --clib-dir "$RUNNER_TEMP/native-candidate/clib" \
+            --jdk-lib-dir "$RUNNER_TEMP/native-candidate/jdk" --apply
+      - name: Compile and link actual Release product without signing
+        run: |
+          set -euo pipefail
+          command -v xcodegen >/dev/null || brew install xcodegen
+          bash packages/ondevice-engine/scripts/build_issue4_unsigned_app.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue4-product-link-evidence-${{ github.sha }}
+          path: |
+            packages/ondevice-engine/evidence/
+            packages/ondevice-engine/build/native-candidate-provenance.json
+            packages/ondevice-engine/build/issue4-device-link.*/settings.json
+            packages/ondevice-engine/build/issue4-device-link.*/product-receipt.json
+            apps/ios/NativeEngine/manifest.json
+          if-no-files-found: error
+          retention-days: 14
+# No simulator, signing, distribution, TestFlight upload, or runtime claim.

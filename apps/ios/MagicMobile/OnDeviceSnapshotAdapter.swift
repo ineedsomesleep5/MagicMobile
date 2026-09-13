@@ -5,7 +5,7 @@ import MagicMobileOnDevice
 enum OnDeviceSnapshotAdapter {
     private typealias J = MagicMobileOnDevice.JSONValue
 
-    static func snapshot(_ poll: MatchPoll, expectedSeatID: String) throws -> GameSnapshot {
+    static func snapshot(_ poll: MatchPoll, expectedSeatID: String, log: [GameLogEntry] = []) throws -> GameSnapshot {
         guard poll.seatID == expectedSeatID, let root = poll.snapshot,
               root["schema"]?.string == "xmage-gameview-v1", let view = root["gameView"],
               let viewer = root["enginePlayerId"]?.string, UUID(uuidString: viewer) != nil,
@@ -127,14 +127,27 @@ enum OnDeviceSnapshotAdapter {
         } + decodedXmage.stack.compactMap(\.sourceCard)
             + (decodedXmage.exileZones + decodedXmage.revealed + decodedXmage.lookedAt + decodedXmage.companion).flatMap(\.cards)
         let prompt = poll.prompt.flatMap { $0.submitted ? nil : $0 }
-        let presentation = try prompt.map { try OnDevicePromptAdapter.presentation($0, viewerPlayerID: viewer, cards: allCards, players: decodedPlayers) }
+        let presentation = try prompt.map { prompt in
+            var attackerID: String?
+            if prompt.kind == "SELECT", prompt.payload["selectMode"]?.string == "attackers" {
+                guard let active = view["activePlayerId"]?.string, ids.contains(active),
+                      active == viewer || (root["controlledPlayerViews"]?[active]?["myPlayerId"]?.string == active
+                        && root["controlledPlayerViews"]?[active]?["activePlayerId"]?.string == active) else {
+                    throw EngineError.invalidMessage("Missing or unauthorized acting attacker identity")
+                }
+                // ViewProjector emits this map only for the current, non-nested controller.
+                attackerID = active
+            }
+            return try OnDevicePromptAdapter.presentation(prompt, viewerPlayerID: viewer, cards: allCards,
+                                                          players: decodedPlayers, actingAttackerPlayerID: attackerID)
+        }
         let cardActions: [LegalAction] = try decode(.array(playability.actions))
         return GameSnapshot(
             id: poll.matchID, source: "xmage-ondevice", activePlayerId: view["activePlayerId"]?.string,
             phase: view["phase"]?.string ?? poll.phase, step: view["step"]?.string,
             turn: Int(view["turn"]?.integer ?? 0), priorityPlayerId: priority?.string,
             waitingOnPlayerId: prompt == nil ? nil : viewer, promptText: presentation?.envelope.message,
-            players: decodedPlayers, log: [], legalActions: cardActions + (presentation?.legalActions ?? []),
+            players: decodedPlayers, log: log, legalActions: cardActions + (presentation?.legalActions ?? []),
             choicePrompt: nil, promptEnvelope: nil, promptEnvelopeV2: presentation?.envelope,
             startupOpeningPrompts: nil, xmage: decodedXmage, engineHealth: nil,
             bridgeRevision: Int(poll.revision), xmageCycle: view["gameCycle"]?.integer.map(Int.init),

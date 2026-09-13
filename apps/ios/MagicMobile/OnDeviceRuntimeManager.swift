@@ -4,18 +4,34 @@ import MagicMobileOnDevice
 /// Retains the native handle until the engine confirms all workers have stopped.
 @MainActor
 final class OnDeviceRuntimeManager {
+    private static let registration = OnDeviceBackendRegistration()
     private var transport: NativeEngineTransport?
     private var changing = false
     private var destroyedMatchID: String?
     private(set) var capabilities: MagicMobileOnDevice.JSONValue?
     var isOpen: Bool { transport != nil }
 
+    // Uses only this phone's native transport, never a multiplayer peer endpoint.
+    func diagnosticReport() async throws -> String? {
+        guard let transport, !changing else { return nil }
+        let value = try await EngineClient(transport: transport).call("diagnostics")
+        return value["report"]?.string
+    }
+
+    func clearDiagnostics() async throws {
+        guard let transport else { return }
+        guard !changing else { throw EngineError.invalidMessage("Wait for the native operation to finish") }
+        _ = try await EngineClient(transport: transport).call("clearDiagnostics")
+    }
+
     func makeClient(identity: BuildIdentity) async throws -> EngineClient {
         guard !changing, transport == nil else { throw EngineError.invalidMessage("Close the previous native runtime first") }
         changing = true; defer { changing = false }
         #if XMAGE_NATIVE_LINKED
-        guard mm_install_graal_backend() == MM_OK else {
-            throw EngineError.invalidMessage("Could not register the compiled XMage library")
+        try Self.registration.ensureInstalled {
+            guard mm_install_graal_backend() == MM_OK else {
+                throw EngineError.invalidMessage("Could not register the compiled XMage library")
+            }
         }
         #else
         throw EngineError.nativeEngineNotLinked

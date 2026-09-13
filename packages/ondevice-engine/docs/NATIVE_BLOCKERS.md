@@ -1,49 +1,115 @@
-# Unresolved native/engine work — do not hide these gates
+# Remaining native/runtime gates — 2026-09-13 UTC
 
-## Pause update — 2026-09-12
+## Active gate — manually test the TestFlight candidate
 
-[Web Pro issue #4](https://github.com/ineedsomesleep5/MagicMobile/issues/4) is the
-current continuation checklist. Older ARM64 run 34664591026 reached image
-creation and failed with `value too large to fit into space` in the Graal
-AArch64 instruction patcher; it did not merely time out. AI-inclusive ARM64 run
-34669182960 was still compiling at handoff. Simulator/UI jobs were canceled at
-the user's request. Final portable presentation suite: 76 passing tests;
-latest small SwiftUI patch has syntax checks, not an executed SDK test pass.
-The table below is the preceding baseline; the new status supersedes its active
-run counts. Web Pro must use non-simulator checks and leave native gameplay and
-phone acceptance explicitly unverified until actual execution.
+The corrected full native **34762171820**, privacy-corrected product
+**34775393085**, local native Release, signature and signed-layout checks pass.
+Build **2026091301** is **VALID / IN_BETA_TESTING**, and existing Internal group
+access is confirmed. The physical phone has not
+accepted this candidate. See [the release handoff](TESTFLIGHT_2026091301.md).
 
-| Gate | Current state | Required proof |
+## Previous gate — rebuild and deliver through TestFlight
+
+Full native **34740553245** and its product wait **34740596789** failed by timeout.
+The compiler log shows Parallel old-generation saturation; a same-heap G1
+builder policy passes the bounded retention and small ARM64/iOS compiler/link
+checks. It has not yet passed full native compilation. The audit also fixes
+native token resource omission, replaces desktop database reads with bundled
+original XMage metadata, and preserves AI-worker failures in private diagnostics.
+Full JVM regressions, metadata native execution, matching native/product artifacts
+and signing/upload are still gates. See [current status](LOCAL_CONTINUATION_STATUS.md).
+
+The authorized delivery route is now **TestFlight**, not direct installation.
+No Wi-Fi/USB connection to the development Mac is required for that delivery.
+The old staged native library and prepared build number 2026091301 are not proof
+that these changes have shipped. Phone acceptance remains a separate manual test.
+
+## Prior Color/AWT failure
+
+The diagnostic build 2026091203 captured the missing-AWT library error during
+Color initialization in the human mulligan prompt. A small native baseline
+reproduces it. Full native run **34737322860**, source `017b9c5`, rejected the first
+Color build-time policy because it initializes Toolkit against the iOS runtime
+constraint. The strengthened local probe reproduces both failures. A pinned,
+generated Color source patch now passes native value comparisons while keeping
+Color/Toolkit runtime-initialized and preserving explicit desktop failure.
+Build **2026091301** is prepared but not installed or uploaded. A new full native
+artifact and phone acceptance remain required. The shared-probe caller
+failure in run **34740086280** is corrected; the small revised ARM64/iOS probe
+compiles and links locally. The phone is connected and charging. iPhone Mirroring
+input reached the old build's starting-player prompt and reproduced its stopped
+engine, but the new fix is not installed. See [the analysis](NATIVE_COLOR_COMPATIBILITY.md).
+
+## Previous startup failure and diagnostic release
+
+The user installed 2026091202 and observed "The local engine stopped" during
+default human Token Triumph with one AI. Grave Danger is the source default AI
+deck, not a confirmed saved phone selection. Desktop JVM replay
+reaches turn one, but the actual native exception is not yet known. Full-game
+acceptance has failed at startup. User-approved diagnostic build **2026091203**
+is now **VALID / IN_BETA_TESTING**, with verified existing Internal group access.
+App source `7c27eaa`, engine `76c18bf` (diagnostics introduced in `c355eee`), full
+far-call native run **34731298892** and actual product run **34732453251** passed.
+It is not yet verified on an iPhone. Capture remains private to the host and is
+shared only by explicit user action. Do not close source/runtime tracking or
+promote this as a gameplay fix before the actual failing scenario is verified.
+See [the diagnostic handoff](DIAGNOSTIC_TESTFLIGHT_2026091203.md) for evidence and
+explicit review/share/delete instructions.
+
+## Previous replacement source/build gates passed
+
+Opening-selection cancellation race was reproduced, fixed in `a34fb08`, and the
+complete real JVM suite passed. New ARM64 run **34723517045** and actual product
+run **34724909323** passed. Build 2026091202 subsequently failed during phone startup.
+Use **2026091203** for the diagnostic retest; neither older build is accepted.
+
+## Resolved source/build blockers
+
+The replacement full XMage+MAD ARM64 archive passed in run **34723517045**, artifact
+**10308242189**. Apple's final-link `arm64_b26` failure was reproduced
+and fixed by placing the intact Graal image first and using seven ARM64 far-call
+veneers. No cards/AI were removed and no rules fallback was introduced.
+
+Actual unsigned product Release `55be4f4` passed. Archive, distribution export,
+signature, Game Center entitlement and Apple validation/upload passed for
+internal **0.1.0 (2026091202)**. Apple processing is **VALID**, internal state
+**IN_BETA_TESTING**, with verified access for the existing **Internal** group.
+See [current status](LOCAL_CONTINUATION_STATUS.md) for exact hashes/artifacts.
+
+## Remaining gates
+
+| Gate | Evidence now | Still required |
 |---|---|---|
-| Complete XMage + adapter compile | Passed against pinned real sources on 2026-09-11; adapter fixes remain under regression | Real selected modules, generated registry and adapter compile together without fake Mage classes |
-| Actual match semantics | Current adapter completed two- and four-human-seat Commander games at turns 16 and 41, plus a token/mulligan game; ten seeded Commander rule groups passed | Broader representative games and prompt/combat UI acceptance, then expand coverage |
-| Card/set registry on full catalogue | 32,275 card factories, 587 sets, 92,166 printings exported; no unregistered printing reference | Exclusions remain reviewed implementation categories, not claimed universal playable coverage |
-| Native runtime/toolchain | ORMLite compiler fault minimized and dependency fix tested; local 4/5 GiB compiler configurations saturated; unsigned Intel hosted build started | Working full-engine AOT compilation and genuine XMage execution |
-| iOS libraries | Non-XMage x86_64 iOS simulator probe executed create/call/teardown successfully in run 34666765499; longer full ARM64 engine build remains running after the earlier 75-minute timeout | Full XMage device + simulator engine artifacts, correct ABI/platform slices, runtime dependencies, and genuine gameplay |
-| SwiftUI/GameKit SDK code | 32 package tests and 73 portable presentation tests passed; existing product compiled build-for-testing; hosted UI/geometry run 34669768265 active | Native-engine Xcode integration and device execution |
-| Human prompt completeness | Typed native adapters and 23 prompt tests cover current query families, exact revisions, mana cancellation and nullable special choices | Real-engine UI fixtures for every gameplay prompt subtype and metadata shape |
-| Turn/player control | Proxy, routing and permitted-visibility regression groups passed on JVM; nested control explicitly unsupported | Native UI consumption and full controlled-turn card-game acceptance |
-| Hidden information | Real query/control/privacy regressions and per-seat hand-ID checks passed; not exhaustive zone coverage | Broader native XMage hands, morphs, libraries, exile and looked-at/controlled-player leak tests |
-| Storage/restart | Not implemented | Durable, versioned full-game restore with random/hidden state preservation |
-| Host migration | Not implemented | Correct state/authority transfer; do not substitute partial snapshots |
-| Game Center lobby/client routing | Authenticated lobby, private deck exchange, ordered bounded RPC, correlations, suspension and retry implemented; bundle capability enabled | Real two-/four-phone matches, signing entitlement and background/disconnection acceptance; no host migration/reconnect claimed |
-| AI | Real upstream MAD integrated; JVM tests observe land/cast/attack and cancellation/recreate; diagnostic native capability remains unvalidated | Native integration/runtime, mobile RAM/CPU/thermal benchmarks |
-| Product UI | Existing board now has native snapshot/prompt adapters, setup names/AI/Game Center, four-seat opponent focus and authorized zones; release switch held for native linkage | Hosted UI acceptance, actual native gameplay and physical acceptance delivered through existing TestFlight |
+| Registry | 32,275 card factories, 587 sets, 92,166 printings; no unregistered printing references | Reviewed exclusions are not universal card/gameplay proof |
+| Rules/AI | Real JVM Commander, query/control/privacy, lifecycle, MAD play/cancellation and five exact precons passed | Genuine native iPhone execution |
+| Native image | Complete ARM64 engine compiled; actual product links; code/922 relocations/seven veneers inspected | Runtime class initialization, reflection/resources and real card paths on iOS |
+| Product UI | Native entrypoint, setup and prompt/zone adapters; 114 portable app tests; SDK build | Rendered portrait/landscape, accessibility and touch acceptance |
+| Ownership | C ASan/UBSan, Swift cleanup fixtures and real JVM busy/resolving/AI tests passed | Repeated native isolate start/leave/restart and busy retry |
+| Game Center | Authenticated routing/correlation/suspension source and portable tests; distribution entitlement verified | Real 2–4-phone matches across networks and interruptions |
+| Performance | No native measurements | Phone RAM, thermal, battery, AI latency and crash evidence |
+| Distribution | Diagnostic 2026091203 internal-only upload succeeded; VALID / IN_BETA_TESTING; Internal group access verified | Install and native diagnostic capture on 2026091203; 2026091202 startup failed |
 
-## Specific source/runtime hazards
+## Explicit limitations
 
-- `java.awt` appears even in HumanPlayer. Headless behavior on a JVM does not establish availability on iOS. Trace actual reachable classes and replace only their non-rules presentation dependencies where needed.
-- Upstream includes SQL/H2/ORMLite paths. Direct deck loading avoids the ordinary deck lookup path, but other rules/helpers/validators may still access repository services. Audit and adapt those reachable paths; do not assume the database is gone.
-- Dynamic reflection, serialized copies, plugin lookups and resources may occur beyond the patched card and set entry points. The supplied reflection metadata is broad and provisional, not a complete validated native manifest.
-- Set singleton constructors may have initialization dependencies. If catalogue export touches a card before factories exist, separate source generation, generated-class compilation and catalogue execution into explicit phases.
-- `GameView.toJson()` uses Gson. Validate nested types, reflection configuration and face-down/controller rules on the real engine. Do not strip unknown fields just to make serialization pass if they are semantically required.
-- HumanPlayer copies and game rollback/simulation copies share response semantics. Macros and controlled-turn proxies are deliberately not silently emulated. Add genuine fixtures before extending them.
-- An iPhone app can be suspended or terminated. The source only stops UI activity on backgrounding, and the host router can reject input while suspended. That is not game checkpointing or guaranteed continued hosting.
-- Native destruction now uses ABI v2 and the distinct `mm_engine_shutdown_v2` export. Busy/failed shutdown retains ownership and does not tear down the isolate; Swift has explicit retryable close. C failure-path and Swift fixtures passed, but actual Graal/iPhone shutdown is unverified. Failed deinit or ambiguous SDK teardown intentionally retains allocations until process exit; production lifecycle must explicitly close/retry rather than rely on deinit.
-- Gluon automatically copies objects from the package's `build/native` folder. Swift-close and C boundary test outputs now use separate fixture directories. A macOS runtime object from the old fixture output was observed in a toolchain probe's staging directory (not in its archive), then moved to a quarantine directory. Do not reintroduce fixture objects into Gluon's reserved native-input folder.
+Durable match restore, host migration, draft/tournament construction and nested
+turn control are not implemented. Backgrounding suspends submissions; it is not
+checkpointing or guaranteed continued hosting. Host termination may lose the
+match. The UI must say so, not imply reconnect/resume works.
 
-## What counts as progress
+## Runtime risks to exercise
 
-A desktop JVM match is valuable but not on-device execution. A desktop native shared library is valuable but not an iOS binary. A simulator build is valuable but not a physical iPhone RAM/thermal/offline result. Record each separately.
+- Native image success does not prove every reachable AWT, repository, Gson,
+  reflection, serialization or resource path works on iOS. Keep real failing
+  card/prompt evidence; never substitute approximate rules to silence it.
+- Shutdown ABI v2 retains ownership on busy/failure and exposes retry. Never tear
+  down an isolate while a worker owns it. Ambiguous final teardown may deliberately
+  retain allocations until process exit; explicitly close/retry in the lifecycle.
+- Keep C/Swift fixture outputs outside Gluon's reserved `build/native` directory.
+  Do not accidentally include host-platform fixture objects in native artifacts.
+- Preserve source/blob/compiler hashes and all paired generated/static inputs.
+  A changed upstream needs reviewed regeneration and fresh gates, not relaxed checks.
 
-Do not weaken the source-hash checks to auto-apply patches to a changed upstream revision. Review the new sources and update lock hashes deliberately. Do not replace missing functionality with a rules approximation or a remote service without Caleb explicitly changing the product goal.
+Physical installation/startup was attempted and **FAILED** on 2026091202;
+remaining gameplay, multi-phone and performance checks are **NOT RUN**. Track them in
+[TESTFLIGHT_ACCEPTANCE.md](TESTFLIGHT_ACCEPTANCE.md), independently from issue #4
+source/build completion.
