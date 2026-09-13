@@ -21,12 +21,12 @@ concurrency:
 # The engine build is already running and will not be duplicated here. Reuse is
 # refused if any engine/compiler input differs from the product source revision.
 env:
-  ENGINE_RUN_ID: '34740553245'
-  ENGINE_COMMIT: '28185e5e3aea67a2b5a932a0cb213160e7b2c51b'
+  ENGINE_RUN_ID: '34762171820'
+  ENGINE_COMMIT: '00b33cb223f93caed6bc752f87d2384e146c9a1c'
 jobs:
   exact-native-artifact:
     runs-on: ubuntu-latest
-    timeout-minutes: 185
+    timeout-minutes: 215
     outputs:
       artifact_id: ${{ steps.native.outputs.artifact_id }}
       artifact_digest: ${{ steps.native.outputs.artifact_digest }}
@@ -41,6 +41,7 @@ jobs:
         run: >-
           python3 packages/ondevice-engine/scripts/wait_issue4_native.py
           --run-id "$ENGINE_RUN_ID" --commit "$ENGINE_COMMIT"
+          --timeout 12600
           --output "$RUNNER_TEMP/native-run.json"
       - uses: actions/upload-artifact@v4
         with:

@@ -9,7 +9,9 @@ the Parallel collector's old generation essentially full. The product wait in
 retaining the same guarded 10 GiB heap on the existing hosted runner; it does
 not change the iOS runtime collector. A bounded retention probe fails under
 the previous policy and passes with G1. The small actual ARM64/iOS ABI compile,
-archive and independent link also pass. Full-engine recompilation is pending.
+archive and independent link also pass. Full-engine run **34762171820** at
+`00b33cb223f93caed6bc752f87d2384e146c9a1c` is running; the product workflow is
+pinned to that exact source/run. Neither new native nor product gate has passed.
 
 The conversion audit additionally reproduced missing token metadata in native
 code and empty card-name choices from the desktop repository on a fresh JVM.
