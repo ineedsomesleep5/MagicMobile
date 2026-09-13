@@ -280,9 +280,13 @@ struct OnDeviceRootView: View {
                     if let report = diagnostics.report {
                         ShareLink(item: report) { Label("Share report", systemImage: "square.and.arrow.up") }
                             .accessibilityIdentifier("ondevice.shareReport")
+                    }
+                    if diagnostics.report != nil || diagnostics.errorMessage != nil {
                         Button("Delete saved report", role: .destructive) { confirmDeleteReport = true }
+                    }
+                    if let report = diagnostics.report {
                         Text(report).font(.caption.monospaced()).textSelection(.enabled)
-                    } else {
+                    } else if diagnostics.errorMessage == nil {
                         Text("No engine exception has been captured yet. Try starting the match again, then return here if it stops.")
                     }
                 }.padding()

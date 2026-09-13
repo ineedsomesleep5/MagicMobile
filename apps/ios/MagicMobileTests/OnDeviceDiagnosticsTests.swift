@@ -65,4 +65,18 @@ final class OnDeviceDiagnosticsTests: XCTestCase {
         XCTAssertTrue(store.report?.contains("retain this report") == true)
         XCTAssertEqual(OnDeviceDiagnostics(directory: directory).report, store.report)
     }
+
+    func testUnreadableReportCanBeDeleted() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data(repeating: 65, count: OnDeviceDiagnostics.maxBytes + 1)
+            .write(to: directory.appendingPathComponent("latest-engine-failure.txt"))
+        let store = OnDeviceDiagnostics(directory: directory)
+        XCTAssertNil(store.report)
+        XCTAssertNotNil(store.errorMessage)
+        try store.clear()
+        XCTAssertNil(store.errorMessage)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+    }
 }
