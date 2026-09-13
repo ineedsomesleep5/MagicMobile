@@ -7,6 +7,7 @@ PROBE_BUILD=$(cd "$1" && pwd)
 [[ "$PROBE_BUILD" == "$ROOT/build/ios-abi-"* ]]
 GVM="$PROBE_BUILD/gluonfx/arm64-ios/gvm"
 [[ -s "$GVM/libmmengine.a" ]]
+[[ -s "$PROBE_BUILD/color-patch/classes/java/awt/Color.class" ]]
 export GRAALVM_HOME="${MM_GRAALVM_HOME:-$ROOT/build/toolchains/graalvm-svm-java17-darwin-m1-gluon-22.1.0.1-Final/Contents/Home}"
 export JAVA_HOME="$GRAALVM_HOME"
 export PATH="$JAVA_HOME/bin:$PATH"
@@ -20,6 +21,7 @@ mvn --batch-mode --no-transfer-progress -f "$ROOT/native/gluon/pom.xml" \
   "-Dmaven.repo.local=$ROOT/build/ios-native-maven" "-Dengine.root=$ROOT" \
   "-Dnative.build=$PROBE_BUILD" "-Dnative.classpath=$PROBE_BUILD/native-java" \
   "-Dnative.reflection.config=$ROOT/native/gluon/probes/empty-reflect-config.json" \
+  "-Dnative.color.patch=$PROBE_BUILD/color-patch/classes" \
   com.gluonhq:gluonfx-maven-plugin:1.0.29:link
 CLIB="$JAVA_HOME/lib/svm/clibraries/27/ios-arm64"
 JDKLIB="$ROOT/build/ios-native-home/.gluon/substrate/javaStaticSdk/18-ea+prep18-9/ios-arm64/staticjdk/lib/static"

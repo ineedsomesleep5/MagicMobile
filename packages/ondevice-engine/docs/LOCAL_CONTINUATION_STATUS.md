@@ -13,13 +13,22 @@ value methods, and keeps Color/Toolkit runtime initialization. Native/JVM value
 comparisons and the explicit unsupported-Toolkit guard pass locally.
 See [the compatibility analysis](NATIVE_COLOR_COMPATIBILITY.md).
 
-The failed `017b9c5` run produced no accepted full engine artifact. App build
+The failed `017b9c5` run produced no accepted full engine artifact. The next run
+**34740086280** at `1f5eadd` stopped in the shared compiler probe because that
+caller lacked the new patch-directory argument. This caller wiring is corrected;
+the small Color-exercising ARM64/iOS compile/archive/independent link passes
+locally in `build/ios-abi-ueIYy7/`. A fresh full engine build remains required.
+App build
 **2026091301** remains prepared for the revised artifact; it is not installed or
 uploaded yet. The previous library cannot verify this fix.
 Caleb's paired physical iPhone 16 Pro Max is connected and charging;
 device details, installed build 2026091203, launch and a stopped-game screenshot
 were obtained directly. The Mac is unlocked and both Device Hub and iPhone
-Mirroring display the real app. Automated touch control is not yet confirmed.
+Mirroring display the real app. iPhone Mirroring taps started Token Triumph
+against one Grave Danger AI and selected the human starting player; old build
+2026091203 then stopped before mulligans, confirming the before-fix failure.
+Mirroring input intermittently needs a window-size refresh; verify each action's
+visible result rather than treating a tool call as a successful tap.
 New native startup/gameplay acceptance remains pending.
 
 ## Previous diagnostic distribution — report captured successfully

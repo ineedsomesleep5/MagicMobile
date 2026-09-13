@@ -19,10 +19,13 @@ mkdir -p "$PROBE_BUILD/native-java"
 "$JAVA_HOME/bin/javac" -J-Xmx128m -source 17 -target 17 --add-modules org.graalvm.sdk \
   -d "$PROBE_BUILD/native-java" native/gluon/src/main/java/io/magicmobile/nativebridge/IosLibraryMain.java \
   native/gluon/probes/IosToolchainProbe.java
+python3 "$ROOT/scripts/prepare_native_color.py" --graalvm-home "$JAVA_HOME" \
+  --output "$PROBE_BUILD/color-patch"
 mvn --batch-mode --no-transfer-progress -f native/gluon/pom.xml \
   "-Dmaven.repo.local=$ROOT/build/ios-native-maven" "-Dengine.root=$ROOT" \
   "-Dnative.build=$PROBE_BUILD" "-Dnative.classpath=$PROBE_BUILD/native-java" \
   "-Dnative.reflection.config=$ROOT/native/gluon/probes/empty-reflect-config.json" \
+  "-Dnative.color.patch=$PROBE_BUILD/color-patch/classes" \
   -Dnative.max.heap=1g com.gluonhq:gluonfx-maven-plugin:1.0.29:compile \
   com.gluonhq:gluonfx-maven-plugin:1.0.29:staticlib
 [[ -s "$PROBE_BUILD/builder-gc.log" ]]

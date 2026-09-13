@@ -24,6 +24,19 @@ class NativeColorPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Unreviewed JDK Color source'):
             module.patched_source(module.DESKTOP_INIT.encode())
 
+    def test_each_shared_pom_caller_prepares_and_passes_the_patch(self):
+        for name, build_variable in [('build_native_ios.sh', 'NATIVE_BUILD'),
+                                     ('test_ios_toolchain.sh', 'PROBE_BUILD'),
+                                     ('test_ios_simulator_toolchain.sh', 'PROBE_BUILD')]:
+            with self.subTest(script=name):
+                script = (ROOT / 'scripts' / name).read_text()
+                self.assertIn('"$ROOT/scripts/prepare_native_color.py"', script)
+                self.assertIn(f'--output "${build_variable}/color-patch"', script)
+                self.assertIn(f'"-Dnative.color.patch=${build_variable}/color-patch/classes"', script)
+        link = (ROOT / 'scripts/test_ios_link.sh').read_text()
+        self.assertIn('"-Dnative.color.patch=$PROBE_BUILD/color-patch/classes"', link)
+        self.assertIn('[[ -s "$PROBE_BUILD/color-patch/classes/java/awt/Color.class" ]]', link)
+
 
 if __name__ == '__main__':
     unittest.main()

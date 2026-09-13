@@ -117,11 +117,14 @@ bounded 60 "$JAVA_HOME/bin/javac" -J-Xmx128m -source 17 -target 17 --add-modules
   -d "$PROBE_BUILD/native-java" \
   "$ROOT/native/gluon/src/main/java/io/magicmobile/nativebridge/IosLibraryMain.java" \
   "$ROOT/native/gluon/probes/IosToolchainProbe.java"
+python3 "$ROOT/scripts/prepare_native_color.py" --graalvm-home "$JAVA_HOME" \
+  --output "$PROBE_BUILD/color-patch"
 # The link goal obtains the target static JDK libraries; no Gluon package/install/run.
 bounded 1200 mvn --batch-mode --no-transfer-progress -f "$ROOT/native/gluon/pom.xml" \
   "-Dmaven.repo.local=$PROBE_BUILD/maven" "-Dengine.root=$ROOT" \
   "-Dnative.build=$PROBE_BUILD" "-Dnative.classpath=$PROBE_BUILD/native-java" \
   "-Dnative.reflection.config=$ROOT/native/gluon/probes/empty-reflect-config.json" \
+  "-Dnative.color.patch=$PROBE_BUILD/color-patch/classes" \
   -Dnative.target=ios-sim -Dnative.max.heap=1g \
   com.gluonhq:gluonfx-maven-plugin:1.0.29:compile \
   com.gluonhq:gluonfx-maven-plugin:1.0.29:staticlib \

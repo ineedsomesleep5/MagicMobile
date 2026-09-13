@@ -10,9 +10,11 @@ constraint. The strengthened local probe reproduces both failures. A pinned,
 generated Color source patch now passes native value comparisons while keeping
 Color/Toolkit runtime-initialized and preserving explicit desktop failure.
 Build **2026091301** is prepared but not installed or uploaded. A new full native
-artifact and direct phone acceptance remain required. The phone is connected
-and charging; automated touch control is not yet confirmed despite live screen
-access. See [the analysis](NATIVE_COLOR_COMPATIBILITY.md).
+artifact and direct phone acceptance remain required. The shared-probe caller
+failure in run **34740086280** is corrected; the small revised ARM64/iOS probe
+compiles and links locally. The phone is connected and charging. iPhone Mirroring
+input reached the old build's starting-player prompt and reproduced its stopped
+engine, but the new fix is not installed. See [the analysis](NATIVE_COLOR_COMPATIBILITY.md).
 
 ## Previous startup failure and diagnostic release
 

@@ -58,6 +58,14 @@ JVM (fingerprint `326ce1c7edb97d65`). Both headless settings pass after adaptati
 The workflow executes this dependency regression before the full ARM64 build
 and preserves its logs. These are real host-native tests, not iPhone execution.
 
+The shared iOS compiler probe also exercises Color's constructor under the same
+policy. Run **34740086280** exposed a missing patch-directory argument in that
+probe's Maven call, before the full engine build. All shared-POM callers now
+prepare or require the matching patch directory and pass it explicitly.
+The local ARM64/iOS compile, archive, header caller and independent link passed
+in `build/ios-abi-ueIYy7/` (1 GiB builder heap, peak RSS 1.37 GiB). This small
+toolchain artifact was not installed and is not an engine backend.
+
 ## Why not patch just mulligans?
 
 The mulligan call evaluates `Color.GREEN`/`YELLOW` before entering `HintUtils`.
