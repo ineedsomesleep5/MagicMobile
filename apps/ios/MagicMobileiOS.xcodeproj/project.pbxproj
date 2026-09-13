@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0177F7BB151A10AEDA526F73 /* PreconCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EC7F366BBFC899D5DD7671C /* PreconCatalog.swift */; };
 		037F8C88A7F2DD19D445DEE4 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6872434C0866DDE9DEF3FB8C /* Models.swift */; };
+		073A3C37624E019DB68DAA84 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AB97F71C7BB6CE1666D6C0EF /* PrivacyInfo.xcprivacy */; };
 		0C3D3FB20C2428C51C43991D /* GameBoardInteractionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1747ED595E46B6112F92E2D2 /* GameBoardInteractionState.swift */; };
 		14011F2FA8FBAA4DDD745BC8 /* ondevice-catalogue.json in Resources */ = {isa = PBXBuildFile; fileRef = 6B0D8FE0F5FC4C7001C4233F /* ondevice-catalogue.json */; };
 		17D75322AC32988D39F6FAC0 /* OnDeviceSnapshotAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CB96C4C95B38B6E59222035 /* OnDeviceSnapshotAdapter.swift */; };
@@ -106,6 +107,7 @@
 		A6CE7415CD82D2670CB0A706 /* OnDeviceRuntimeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceRuntimeManager.swift; sourceTree = "<group>"; };
 		A75CAB8DE1CF7219F75D6196 /* OnDeviceDeckResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceDeckResolverTests.swift; sourceTree = "<group>"; };
 		A8847ABC91603BF5DA5F4CE5 /* MagicMobileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MagicMobileTests.swift; sourceTree = "<group>"; };
+		AB97F71C7BB6CE1666D6C0EF /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		ABC7582C9646B73124076299 /* MagicMobile.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MagicMobile.entitlements; sourceTree = "<group>"; };
 		B50E196EBB64CC33F92B990B /* OnDeviceModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceModelTests.swift; sourceTree = "<group>"; };
 		B9F3D91659B183C793814CA9 /* OnDevicePromptAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDevicePromptAdapterTests.swift; sourceTree = "<group>"; };
@@ -179,6 +181,7 @@
 				C6362475A26B1690B16AA7CE /* OnDeviceSession.swift */,
 				1CB96C4C95B38B6E59222035 /* OnDeviceSnapshotAdapter.swift */,
 				1EC7F366BBFC899D5DD7671C /* PreconCatalog.swift */,
+				AB97F71C7BB6CE1666D6C0EF /* PrivacyInfo.xcprivacy */,
 				C7BA23D5B9BCF29F6619B8FB /* PromptCommandBuilder.swift */,
 				925E09D8BD9E18CC5EA8A35D /* Resources */,
 			);
@@ -368,6 +371,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C1511A400C8C25B7D7B72191 /* Assets.xcassets in Resources */,
+				073A3C37624E019DB68DAA84 /* PrivacyInfo.xcprivacy in Resources */,
 				14011F2FA8FBAA4DDD745BC8 /* ondevice-catalogue.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -1,6 +1,14 @@
 # Remaining native/runtime gates — 2026-09-13 UTC
 
-## Active gate — rebuild the corrected conversion, then deliver through TestFlight
+## Active gate — manually test the TestFlight candidate
+
+The corrected full native **34762171820**, privacy-corrected product
+**34775393085**, local native Release, signature and signed-layout checks pass.
+Build **2026091301** is **VALID / IN_BETA_TESTING**, and existing Internal group
+access is confirmed. The physical phone has not
+accepted this candidate. See [the release handoff](TESTFLIGHT_2026091301.md).
+
+## Previous gate — rebuild and deliver through TestFlight
 
 Full native **34740553245** and its product wait **34740596789** failed by timeout.
 The compiler log shows Parallel old-generation saturation; a same-heap G1

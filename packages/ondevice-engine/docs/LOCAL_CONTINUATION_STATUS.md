@@ -1,6 +1,19 @@
 # Local continuation status — 2026-09-13 UTC
 
-## Current work — compiler heap and runtime catalogue fixes; TestFlight requested
+## Current result — corrected native engine built; TestFlight upload succeeded
+
+Full native **34762171820** at `00b33cb` passed in 87m 47s. Both original
+product **34762192464** and privacy-corrected app product **34775393085** passed.
+App source `2bdbc8027f6bafb6dbd98d5c29bdf36481f78e49` passed the local native
+Release and signed-layout checks. Internal-only **0.1.0 (2026091301)** validated
+and uploaded successfully at 18:46 UTC, delivery
+`4384ed1f-51ca-4df8-8a6e-ac41451d1133`. Apple processing is **VALID** and state
+**IN_BETA_TESTING**, with existing Internal group access confirmed. Phone
+acceptance remains separate and unverified.
+See [the release handoff](TESTFLIGHT_2026091301.md) for exact artifact hashes,
+preserved prior inputs, checks and the manual first test.
+
+## Previous work — compiler heap and runtime catalogue fixes
 
 Full native run **34740553245** timed out after 180 minutes; it did not produce
 a replacement engine. Its builder log shows repeated full collections with
