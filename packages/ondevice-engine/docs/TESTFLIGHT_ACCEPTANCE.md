@@ -1,22 +1,39 @@
-# Physical TestFlight acceptance — NOT RUN
+# Physical TestFlight acceptance — startup failed; diagnostic retest pending
 
 Tracked separately from source/build issue #4 in
 [issue #7](https://github.com/ineedsomesleep5/MagicMobile/issues/7).
 
-Candidate: **0.1.0 (2026091202)**, product source `55be4f4`, engine `a34fb08`, existing ASC app
+Candidate: **0.1.0 (2026091203)**, product source `7c27eaa`, engine `76c18bf`, existing ASC app
 `6784735182` / `com.calebfeliciano.magicmobile`. Internal-only upload succeeded;
 Apple processing is **VALID**, internal state **IN_BETA_TESTING**, and access for
-the existing **Internal** group is verified. Physical install is still **NOT RUN**.
-Upload ID: `ceccf78d-c836-4216-8df3-8f725f7aac31`. No USB connection is required.
+the existing **Internal** group is verified. This candidate's physical install
+and diagnostic capture are still **NOT RUN**.
+Upload ID: `92c6be87-4cbf-4708-ae0c-8421932e1395`. No USB connection is required.
 The build's English (US) **What to Test** notes include these test areas and the
 known recovery limits, with a link to issue #7.
 Compilation, JVM gameplay and signing are separate evidence, not phone acceptance.
 
-This replacement includes the tested opening-selection shutdown fix. The initial
-build **2026091201** is superseded and must not be used for final acceptance.
+Build **2026091202** was installed and **FAILED during native startup** with
+Token Triumph and one AI. The underlying native exception is unknown. This
+replacement adds local-only error capture and is **not a confirmed gameplay fix**.
+Builds **2026091201** and **2026091202** are not final accepted candidates.
+
+## Immediate diagnostic retest
+
+- [ ] Install **2026091203**. Explicitly select human **Token Triumph**, AI
+  **Grave Danger**, and **one AI opponent**, then start normally.
+- [ ] If the engine stops, open **Review engine error report** (or **Engine
+  error report** on setup), review it and select **Share report**. Copy/paste
+  privately into the current support conversation with iPhone model/iOS version.
+  Do not post raw reports to public GitHub; error text may contain private cards.
+- [ ] If no report appears, record that result and the visible message. Check
+  saved-report persistence/recovery and confirmed deletion separately.
+
+See [the exact diagnostic release handoff](DIAGNOSTIC_TESTFLIGHT_2026091203.md).
 
 Record iPhone model, iOS version, build, player/device count, decks, elapsed time,
-observed result and screenshots/crash logs. Every unchecked item is unexecuted.
+observed result and screenshots/crash logs. Every unchecked item is **not
+accepted**; some may have partial or failed attempts rather than no execution.
 
 ## Offline and local AI
 

@@ -1,9 +1,10 @@
 # Local continuation status — 2026-09-13 UTC
 
-## Current result — physical startup failed; diagnostic replacement in progress
+## Current result — diagnostic replacement available; native report awaited
 
 The user confirmed installing **2026091202** and reported a stopped engine during
-startup with default **Token Triumph**, one AI opponent (default **Grave Danger**).
+startup with default human **Token Triumph** and one AI opponent. **Grave Danger**
+is the source default AI deck; the phone's saved AI selection was not confirmed.
 This is a failed native play attempt, not successful full-game acceptance.
 The same matchup reached turn one with seven cards in a desktop JVM replay;
 that does not reproduce or fix the iPhone exception. The installed engine
@@ -14,10 +15,19 @@ The user approved a local-only diagnostic TestFlight update. Engine revision
 `c355eeea2277c6234207fe756eb757f86b58bde8` retains one bounded exception report,
 separate from peer polls and ordinary error replies. Full native run
 **34731298892**, using the validated far-call compiler pipeline at source
-`76c18bfc76ca652cbd7a979cbb8910531ccb280e`, is rebuilding that engine. App build **2026091203** adds explicit
-review/share/delete and protected, backup-excluded latest-report storage.
-It has **not been uploaded yet**. No gameplay fix or native performance claim
-is made. PR #6 remains draft; issues #4 and #7 remain open.
+`76c18bfc76ca652cbd7a979cbb8910531ccb280e`, **passed**, artifact **10311165739**.
+App source `7c27eaa20f10a7e05727f1e2fa17d1210d1932fd` passed actual product run
+**34732453251** and the local Release/native-layout checks. Build **2026091203**
+adds explicit review/share/delete and protected, backup-excluded latest-report
+storage. Archive/export/signature/Apple validation/upload passed; processing is
+**VALID**, internal state **IN_BETA_TESTING**, with verified existing **Internal**
+group access. Delivery UUID: `92c6be87-4cbf-4708-ae0c-8421932e1395`.
+
+See [the diagnostic handoff](DIAGNOSTIC_TESTFLIGHT_2026091203.md) for exact
+hashes, passing checks and phone instructions. The next step is a known-deck
+startup retest and, if it stops, an explicitly shared **private** error report.
+Native diagnostic capture, successful gameplay and performance remain unverified.
+No gameplay fix is claimed. PR #6 remains draft; issues #4 and #7 remain open.
 
 The first diagnostic dispatch (**34730780807**) selected the older, unpatched
 native workflow. The product provenance guard correctly rejected that workflow
@@ -49,7 +59,7 @@ commits document this binary; they are not its compiled source revision.
   `ceccf78d-c836-4216-8df3-8f725f7aac31`; Apple processing **VALID**, internal state
   **IN_BETA_TESTING**, audience **INTERNAL_ONLY**. Membership in the existing
   **Internal** group (`dd37d7bb-26d8-4a0c-b8a3-7811d648a699`) is verified.
-  Installation and physical acceptance remain unverified. Artifacts:
+  Installation was later user-confirmed; startup failed as recorded above. Artifacts:
   `build_output/testflight/issue4-2026091202-55be4f4/`.
   IPA SHA-256: `5ce0fb7bb1db27b614c2bf178d35547ca7486e8d3c5f4780adc239e3df1a96d4`.
   Exported native layout passed with UUID-matched dSYM
@@ -59,9 +69,10 @@ commits document this binary; they are not its compiled source revision.
   portable app tests, 32 Swift protocol tests, 153 tooling tests, 394 core assertions,
   9,000 C fixture requests/five shutdown scenarios, generic SDK/test compilation,
   real JVM rules/AI/lifecycle/completed games and all five exact bundled precons.
-- Native phone launch/gameplay, AI resource behavior, repeated native cleanup,
-  rendered portrait/landscape accessibility and real 2–4-phone matches remain
-  **NOT RUN** in [issue #7](https://github.com/ineedsomesleep5/MagicMobile/issues/7).
+- Native startup later **FAILED** on 2026091202; complete gameplay, AI resource
+  behavior, repeated native cleanup, rendered portrait/landscape accessibility
+  and real 2–4-phone matches remain unverified in
+  [issue #7](https://github.com/ineedsomesleep5/MagicMobile/issues/7).
   No simulator/UI workflow or public App Store release was run in this continuation.
 
 ## Resolved regression — opening-selection shutdown

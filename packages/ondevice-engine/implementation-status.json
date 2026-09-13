@@ -6,9 +6,55 @@
   "pullRequest": 6,
   "sourceBuildIssue": 4,
   "physicalAcceptanceIssue": 7,
-  "status": "source-build-and-internal-testflight-passed-physical-acceptance-not-run",
+  "status": "diagnostic-internal-testflight-available-awaiting-native-startup-error-report",
   "upstreamCommit": "8aea65ae9ae3c89970fe865e1316105539e097ca",
   "currentCandidate": {
+    "appSourceCommit": "7c27eaa20f10a7e05727f1e2fa17d1210d1932fd",
+    "engineSourceCommit": "76c18bfc76ca652cbd7a979cbb8910531ccb280e",
+    "purpose": "bounded-local-only-diagnostics-not-confirmed-gameplay-fix",
+    "nativeRun": 34731298892,
+    "nativeAttempt": 1,
+    "nativeState": "passed",
+    "nativeArtifact": 10311165739,
+    "nativeArtifactZipSHA256": "ddb999760395493f98cee24f3d531f2b510f2b67a1b77ebadab64d54299288a0",
+    "nativeArchiveSHA256": "ae22adf2a8ee5082d37e4adcea22a06a1dc909ca7a97937ae99dace5ef752db2",
+    "pairedInputsPreserved": true,
+    "preparedVersion": "0.1.0",
+    "preparedBuild": "2026091203",
+    "productLink": "passed-local-and-hosted",
+    "productRun": 34732453251,
+    "productEvidenceArtifact": 10310992227,
+    "productEvidenceZipSHA256": "2c301a81254a8989add2f70e0cef9672c560cabf8831a0f7a5a79f030edadba2",
+    "graalCodeBytes": 196899504,
+    "verifiedRelocatedInstructions": 922,
+    "verifiedFarCallVeneers": 7,
+    "signedCodeImageIntact": true,
+    "signedDSYMUUID": "50AB91B4-72E5-32F5-9081-B891779E2296",
+    "distributionSignature": "verified",
+    "signedGameCenterEntitlement": "verified-in-app-and-profile",
+    "testFlightUpload": "passed",
+    "testFlight": {
+      "appId": "6784735182",
+      "version": "0.1.0",
+      "build": "2026091203",
+      "internalOnly": true,
+      "uploadId": "92c6be87-4cbf-4708-ae0c-8421932e1395",
+      "uploadState": "COMPLETE",
+      "processingState": "VALID",
+      "internalBuildState": "IN_BETA_TESTING",
+      "buildAudienceType": "INTERNAL_ONLY",
+      "testerAvailability": "verified-existing-Internal-group",
+      "internalGroupId": "dd37d7bb-26d8-4a0c-b8a3-7811d648a699",
+      "testNotesLocale": "en-US",
+      "testNotesId": "868b747b-2b56-4b09-8231-e51221189d87",
+      "ipaSHA256": "f51bcd732f236bf22d5dd1baf3e9a38b9e5195d9455fac2282080055943d34cf",
+      "physicalInstall": "not-run"
+    },
+    "physicalAcceptance": "not-run-awaiting-private-native-error-report",
+    "releaseHandoff": "docs/DIAGNOSTIC_TESTFLIGHT_2026091203.md"
+  },
+  "previousCandidate": {
+    "reason": "user-reported-native-startup-failure-diagnostic-replacement-required",
     "appSourceCommit": "55be4f417dded8c22b97987536dc6dc3cf825b4a",
     "engineSourceCommit": "a34fb08abd7c4f32b643701349f99f0b59ee2771",
     "nativeRun": 34723517045,
@@ -48,9 +94,9 @@
       "testNotesLocale": "en-US",
       "testNotesId": "40013fbd-fef8-4097-9a24-e614ac69ec0b",
       "ipaSHA256": "5ce0fb7bb1db27b614c2bf178d35547ca7486e8d3c5f4780adc239e3df1a96d4",
-      "physicalInstall": "not-run"
+      "physicalInstall": "user-confirmed"
     },
-    "physicalAcceptance": "not-run"
+    "physicalAcceptance": "failed-at-native-startup-user-reported"
   },
   "supersededCandidate": {
     "reason": "opening-selection shutdown race fixed after initial upload; production engine changed",
@@ -92,18 +138,18 @@
     }
   },
   "verification": {
-    "sourceCommit": "55be4f417dded8c22b97987536dc6dc3cf825b4a",
-    "ciRun": 34724759396,
+    "sourceCommit": "7c27eaa20f10a7e05727f1e2fa17d1210d1932fd",
+    "ciRun": 34732454795,
     "ciState": "passed",
-    "onDevicePackageRun": 34724759413,
+    "onDevicePackageRun": 34732454790,
     "onDevicePackageState": "passed",
-    "nonSimulatorRun": 34724758131,
+    "nonSimulatorRun": 34732453204,
     "nonSimulatorState": "passed",
     "executedCheckCounts": {
-      "portableAppTests": 108,
-      "swiftProtocolTests": 32,
+      "portableAppTests": 114,
+      "swiftProtocolTests": 33,
       "pythonToolingTests": 153,
-      "javaCoreAssertions": 394,
+      "javaCoreAssertions": 405,
       "cFixtureRequests": 9000,
       "cShutdownFixtureScenarios": 5,
       "exactBundledPrecons": 5,
@@ -114,6 +160,8 @@
       "realJVMPortraitGroups": 9
     },
     "openingCancellationStress": {
+      "sourceCommit": "a34fb08abd7c4f32b643701349f99f0b59ee2771",
+      "evidenceReuse": "historical-JVM-only-not-rerun-on-diagnostic-native-artifact",
       "scope": "real JVM only, not native execution or complete gameplay",
       "cycles": 30,
       "aiCounts": [
@@ -125,7 +173,7 @@
       "maxDestroyMilliseconds": 74.68
     },
     "realJVMGameplay": "query-control-privacy-Commander-portrait-AI-lifecycle-two-and-four-human-complete-games-and-token-mulligan-game-passed",
-    "signedLayoutVerifier": "31 fixtures and replacement signed app with UUID-matched dSYM passed; no native execution"
+    "signedLayoutVerifier": "31 fixtures and diagnostic signed app with UUID-matched dSYM passed; no native execution"
   },
   "implementation": {
     "ai": "actual-upstream-MAD-integrated-JVM-tested-native-device-not-validated",
@@ -133,7 +181,7 @@
     "controlledTurns": "authorized-proxy-routing-visibility-and-attacker-deselection-tested-nested-control-unsupported",
     "userInterface": "existing-portrait-landscape-integrated-portable-tested-SDK-built-no-rendered-phone-acceptance"
   },
-  "physicalIPhoneOfflineGameplay": "not-run",
+  "physicalIPhoneOfflineGameplay": "build-2026091202-failed-at-startup-build-2026091203-not-run",
   "nativeAIPerformance": "not-run",
   "multiDeviceGameplay": "not-run",
   "hostMigration": "not-implemented",

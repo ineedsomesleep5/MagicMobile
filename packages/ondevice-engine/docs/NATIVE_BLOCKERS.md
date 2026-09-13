@@ -3,21 +3,25 @@
 ## Active blocker — native startup failure on build 2026091202
 
 The user installed 2026091202 and observed "The local engine stopped" during
-default Token Triumph versus one Grave Danger AI startup. Desktop JVM replay
+default human Token Triumph with one AI. Grave Danger is the source default AI
+deck, not a confirmed saved phone selection. Desktop JVM replay
 reaches turn one, but the actual native exception is not yet known. Full-game
-acceptance has failed at startup. User-approved diagnostic build 2026091203 is
-being prepared from source `76c18bf` (diagnostics introduced in `c355eee`),
-full far-call native run **34731298892**; it is not yet
-uploaded or verified on an iPhone. Capture remains private to the host and is
+acceptance has failed at startup. User-approved diagnostic build **2026091203**
+is now **VALID / IN_BETA_TESTING**, with verified existing Internal group access.
+App source `7c27eaa`, engine `76c18bf` (diagnostics introduced in `c355eee`), full
+far-call native run **34731298892** and actual product run **34732453251** passed.
+It is not yet verified on an iPhone. Capture remains private to the host and is
 shared only by explicit user action. Do not close source/runtime tracking or
 promote this as a gameplay fix before the actual failing scenario is verified.
+See [the diagnostic handoff](DIAGNOSTIC_TESTFLIGHT_2026091203.md) for evidence and
+explicit review/share/delete instructions.
 
 ## Previous replacement source/build gates passed
 
 Opening-selection cancellation race was reproduced, fixed in `a34fb08`, and the
 complete real JVM suite passed. New ARM64 run **34723517045** and actual product
-run **34724909323** passed. Physical acceptance must use replacement build
-**2026091202**, not the superseded build 2026091201.
+run **34724909323** passed. Build 2026091202 subsequently failed during phone startup.
+Use **2026091203** for the diagnostic retest; neither older build is accepted.
 
 ## Resolved source/build blockers
 
@@ -39,11 +43,11 @@ See [current status](LOCAL_CONTINUATION_STATUS.md) for exact hashes/artifacts.
 | Registry | 32,275 card factories, 587 sets, 92,166 printings; no unregistered printing references | Reviewed exclusions are not universal card/gameplay proof |
 | Rules/AI | Real JVM Commander, query/control/privacy, lifecycle, MAD play/cancellation and five exact precons passed | Genuine native iPhone execution |
 | Native image | Complete ARM64 engine compiled; actual product links; code/922 relocations/seven veneers inspected | Runtime class initialization, reflection/resources and real card paths on iOS |
-| Product UI | Native entrypoint, setup and prompt/zone adapters; 108 portable app tests; SDK build | Rendered portrait/landscape, accessibility and touch acceptance |
+| Product UI | Native entrypoint, setup and prompt/zone adapters; 114 portable app tests; SDK build | Rendered portrait/landscape, accessibility and touch acceptance |
 | Ownership | C ASan/UBSan, Swift cleanup fixtures and real JVM busy/resolving/AI tests passed | Repeated native isolate start/leave/restart and busy retry |
 | Game Center | Authenticated routing/correlation/suspension source and portable tests; distribution entitlement verified | Real 2–4-phone matches across networks and interruptions |
 | Performance | No native measurements | Phone RAM, thermal, battery, AI latency and crash evidence |
-| Distribution | Internal-only upload succeeded; VALID / IN_BETA_TESTING; Internal group access verified | Actual tester install/launch |
+| Distribution | Diagnostic 2026091203 internal-only upload succeeded; VALID / IN_BETA_TESTING; Internal group access verified | Install and native diagnostic capture on 2026091203; 2026091202 startup failed |
 
 ## Explicit limitations
 
