@@ -94,7 +94,10 @@ public final class MatchMailbox implements AutoCloseable {
                 if(closed || pending.get(authenticatedSeat)!=p) return;
             }
             try { p.sink.deliver(answer); }
-            catch(Exception ex) { fail("response_delivery_failed","XMage could not consume the queued response. Inspect the local engine log."); }
+            catch(Exception ex) {
+                EngineDiagnostics.capture("response-delivery",ex);
+                fail("response_delivery_failed","XMage could not consume the queued response. Inspect the local engine log.");
+            }
         });
         return result;
     }

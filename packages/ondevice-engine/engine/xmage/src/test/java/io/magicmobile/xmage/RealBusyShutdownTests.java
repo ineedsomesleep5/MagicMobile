@@ -2,6 +2,7 @@ package io.magicmobile.xmage;
 
 import io.magicmobile.core.BridgeException;
 import io.magicmobile.core.Json;
+import io.magicmobile.core.EngineDiagnostics;
 import mage.game.Game;
 import mage.game.events.Listener;
 import mage.game.events.PlayerQueryEvent;
@@ -35,7 +36,38 @@ public final class RealBusyShutdownTests {
         System.out.println("XmageEngine classes: "+XmageEngine.class.getProtectionDomain().getCodeSource().getLocation());
         destroyRetry(configuration);
         closeRetry(configuration);
-        System.out.println("RealBusyShutdownTests: 2 passed, 0 failed");
+        workerDiagnostics(configuration);
+        System.out.println("RealBusyShutdownTests: 3 passed, 0 failed");
+    }
+
+    private static void workerDiagnostics(Map<String,Object> configuration) throws Exception {
+        EngineDiagnostics.clear();
+        try(Rig r=new Rig(configuration)) {
+            String id=r.start();
+            Map<String,Object> pending=r.prompt(id),prompt=Json.object(pending.get("prompt"));
+            List<Object> candidates=Json.array(Json.object(prompt.get("payload")).get("candidates"));
+            r.started.get(0).game.addPlayerQueryEventListener(event->{
+                if(event.getQueryType()!=PlayerQueryEvent.QueryType.PERSONAL_MESSAGE)
+                    throw new IllegalStateException("TEST-ONLY private worker failure",new IllegalArgumentException("TEST-ONLY cause"));
+            });
+            r.engine.respond(id,Json.requiredString(pending,"seat"),Json.map("requestId",UUID.randomUUID().toString(),
+                "promptId",prompt.get("promptId"),"promptRevision",prompt.get("revision"),
+                "answer",Json.map("kind","uuid","value",candidates.get(0))));
+            long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(10);
+            Map<String,Object> poll;
+            do {
+                poll=r.engine.poll(id,r.seatIds.get(0),0);
+                if("failed".equals(poll.get("phase"))) break;
+                Thread.sleep(10);
+            } while(System.nanoTime()<deadline);
+            check("failed".equals(poll.get("phase")),"injected real worker failure reaches failed poll");
+            for(String seat:r.seatIds)
+                check(!Json.write(r.engine.poll(id,seat,0)).contains("TEST-ONLY"),"private worker exception excluded from every seat");
+            String report=Json.write(EngineDiagnostics.read());
+            check(report.contains("game-worker") && report.contains("IllegalStateException")
+                && report.contains("TEST-ONLY cause") && report.contains("RealBusyShutdownTests"),"actual worker catch retains cause and call site locally");
+            System.out.println("PASS diagnostics: real worker injection captured locally; all viewer polls sanitized (NOT the reported native bug)");
+        } finally { EngineDiagnostics.clear(); }
     }
 
     private static void destroyRetry(Map<String,Object> configuration) throws Exception {
