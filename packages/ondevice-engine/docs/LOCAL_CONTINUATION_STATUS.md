@@ -1,6 +1,45 @@
-# Local continuation status — 2026-09-12
+# Local continuation status — 2026-09-13 UTC
 
-## New regression finding — replacement native candidate required
+## Current result — replacement native/product passed; internal TestFlight available
+
+The release binary uses app source `55be4f417dded8c22b97987536dc6dc3cf825b4a`
+and engine source `a34fb08abd7c4f32b643701349f99f0b59ee2771`. Later status/ledger
+commits document this binary; they are not its compiled source revision.
+
+- Full XMage+MAD ARM64 run **34723517045**, attempt 2, passed. Candidate
+  **10308242189** ZIP SHA-256:
+  `4f306aec6e6591bf576a337119e303120656fe46eda012048c12b1819cdc8c0c`.
+  The paired archive/headers/static dependencies/compiler manifest/registry report
+  are hash-verified and preserved in `packages/ondevice-engine/build/verified-native-10308242189`.
+  Archive SHA-256: `897f55bceeb1f4b71156b9542edf9aabf47b7abacfbd94291e3afe81099800c6`.
+- Actual generic-iPhone Release passed locally and in hosted run **34724909323**.
+  Hosted product evidence: **10308617788**, ZIP SHA-256
+  `129bde95d9f2db45e78c124a8fd83878db27c894bd0f42f29e2533426b2f508f`.
+  Local receipt: `packages/ondevice-engine/build/issue4-device-link.XeypPM/product-receipt.json`.
+  Both verify the full 196,881,504-byte Graal code image, 922 relocated instructions
+  and targets, all seven far-call veneers, ARM64/iOS, native entrypoint and provenance.
+- Signed archive/export, distribution signature, Game Center in both profile and
+  signed app, Apple validation and internal-only upload passed for existing ASC app
+  **6784735182**, **0.1.0 (2026091202)**. Upload ID:
+  `ceccf78d-c836-4216-8df3-8f725f7aac31`; Apple processing **VALID**, internal state
+  **IN_BETA_TESTING**, audience **INTERNAL_ONLY**. Membership in the existing
+  **Internal** group (`dd37d7bb-26d8-4a0c-b8a3-7811d648a699`) is verified.
+  Installation and physical acceptance remain unverified. Artifacts:
+  `build_output/testflight/issue4-2026091202-55be4f4/`.
+  IPA SHA-256: `5ce0fb7bb1db27b614c2bf178d35547ca7486e8d3c5f4780adc239e3df1a96d4`.
+  Exported native layout passed with UUID-matched dSYM
+  `CF9E4267-2AC5-3AB0-AF21-7FFED19FBAA1`; this is inspection, not execution.
+- App-source **55be4f4** CI **34724759396**, package gates **34724759413** and
+  full non-simulator verification **34724758131** passed. Evidence includes 108
+  portable app tests, 32 Swift protocol tests, 153 tooling tests, 394 core assertions,
+  9,000 C fixture requests/five shutdown scenarios, generic SDK/test compilation,
+  real JVM rules/AI/lifecycle/completed games and all five exact bundled precons.
+- Native phone launch/gameplay, AI resource behavior, repeated native cleanup,
+  rendered portrait/landscape accessibility and real 2–4-phone matches remain
+  **NOT RUN** in [issue #7](https://github.com/ineedsomesleep5/MagicMobile/issues/7).
+  No simulator/UI workflow or public App Store release was run in this continuation.
+
+## Resolved regression — opening-selection shutdown
 
 After the initial upload, bounded teardown tests exposed an opening-selection
 race: interrupting the GAME worker makes every upstream player unable to respond,
@@ -10,9 +49,9 @@ The deterministic regression failed before the fix. `MobileCommanderGame` now
 includes the same durable cancellation signal in `hasEnded()`, including copies.
 Full real-engine regressions passed, including both MAD configurations and complete
 two-/four-seat plus token/mulligan games. Commit `a34fb08abd7c4f32b643701349f99f0b59ee2771`
-is building in ARM64 run **34723517045**. This changes production engine
-source: the old archive/build below cannot validate or ship the new fix. A fresh
-source-verified ARM64 build and replacement internal TestFlight build are required.
+passed in ARM64 run **34723517045**. This changes production engine
+source: the old archive/build below cannot validate or ship the new fix. The fresh
+source-verified archive and replacement internal upload are recorded above.
 Do not call build 2026091201 the final accepted candidate.
 
 App source `c2f62e2e4acbfa01351d3ddee2a6569fbe983ab5` prepared replacement
@@ -23,8 +62,8 @@ start/destroy cycles across 1/2/3 AI passed with zero busy replies (maximum 75 m
 These timings are not native mobile measurements.
 
 Native run **34723517045** attempt 1 stopped on Maven repository DNS resolution
-after module compilation, before AOT. Logs are retained; attempt 2 retries the same
-source/settings. New product link/signing/upload must wait for its valid artifact.
+after module compilation, before AOT. Logs are retained; attempt 2 passed with the
+same source/settings, followed by actual product linking and signing/upload.
 Physical acceptance is tracked separately in [issue #7](https://github.com/ineedsomesleep5/MagicMobile/issues/7).
 
 ## Initial desktop result — native product linked; internal TestFlight uploaded

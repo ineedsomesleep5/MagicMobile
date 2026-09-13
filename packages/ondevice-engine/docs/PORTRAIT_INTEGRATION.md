@@ -27,7 +27,8 @@ and exact typed responses. Setup includes names, bundled/imported local decks,
 
 See the [source/control ledger](ISSUE4_SOURCE_CONTROL_LEDGER.md) for regression
 entrypoints. 108 portable app tests and real JVM projections passed for uploaded
-source `62789b0`; actual native-linked device Release and signing/export passed.
+source `55be4f4`, build `0.1.0 (2026091202)`; actual native-linked device Release
+and signing/export passed. Upload is distinct from rendered phone acceptance.
 
 ## Unexecuted acceptance
 

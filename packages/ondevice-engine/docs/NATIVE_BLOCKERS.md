@@ -1,23 +1,23 @@
-# Remaining native/runtime gates — 2026-09-12
+# Remaining native/runtime gates — 2026-09-13 UTC
 
-## New candidate in progress
+## Replacement source/build gates passed
 
 Opening-selection cancellation race was reproduced, fixed in `a34fb08`, and the
-complete real JVM suite passed. New ARM64 run **34723517045** is required: the old
-archive/upload below cannot represent changed production engine source. Physical
-acceptance must use the replacement candidate, not build 2026091201.
+complete real JVM suite passed. New ARM64 run **34723517045** and actual product
+run **34724909323** passed. Physical acceptance must use replacement build
+**2026091202**, not the superseded build 2026091201.
 
 ## Resolved source/build blockers
 
-The full XMage+MAD ARM64 archive passed in run **34673638060**, artifact
-**10292778783**. The later Apple final-link `arm64_b26` failure was reproduced
+The replacement full XMage+MAD ARM64 archive passed in run **34723517045**, artifact
+**10308242189**. Apple's final-link `arm64_b26` failure was reproduced
 and fixed by placing the intact Graal image first and using seven ARM64 far-call
 veneers. No cards/AI were removed and no rules fallback was introduced.
 
-Actual unsigned product Release `62789b0` passed. Archive, distribution export,
+Actual unsigned product Release `55be4f4` passed. Archive, distribution export,
 signature, Game Center entitlement and Apple validation/upload passed for
-internal **0.1.0 (2026091201)**. Processing is **VALID** with internal state
-**MISSING_EXPORT_COMPLIANCE**; that initial candidate is superseded.
+internal **0.1.0 (2026091202)**. Apple processing is **VALID**, internal state
+**IN_BETA_TESTING**, with verified access for the existing **Internal** group.
 See [current status](LOCAL_CONTINUATION_STATUS.md) for exact hashes/artifacts.
 
 ## Remaining gates
@@ -31,7 +31,7 @@ See [current status](LOCAL_CONTINUATION_STATUS.md) for exact hashes/artifacts.
 | Ownership | C ASan/UBSan, Swift cleanup fixtures and real JVM busy/resolving/AI tests passed | Repeated native isolate start/leave/restart and busy retry |
 | Game Center | Authenticated routing/correlation/suspension source and portable tests; distribution entitlement verified | Real 2–4-phone matches across networks and interruptions |
 | Performance | No native measurements | Phone RAM, thermal, battery, AI latency and crash evidence |
-| Distribution | Internal-only upload succeeded | Apple processing and actual tester install/launch |
+| Distribution | Internal-only upload succeeded; VALID / IN_BETA_TESTING; Internal group access verified | Actual tester install/launch |
 
 ## Explicit limitations
 

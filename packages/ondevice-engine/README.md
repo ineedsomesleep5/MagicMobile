@@ -6,7 +6,7 @@ The native iOS product embeds XMage's actual rules engine. A player must not nee
 
 ## Actual delivery status
 
-Full XMage+MAD ARM64 AOT compilation, actual product linkage and an initial internal TestFlight upload passed. Subsequent lifecycle tests exposed an opening-selection cancellation race, fixed in engine source `a34fb08`; a fresh native candidate is building in run **34723517045**. The earlier upload is superseded, not final acceptance. Real JVM rules/AI/complete-game and portable app/protocol tests passed. **Native iPhone gameplay, AI resource behavior and real multi-device execution remain unverified.** See [current status](docs/LOCAL_CONTINUATION_STATUS.md) and [physical acceptance](docs/TESTFLIGHT_ACCEPTANCE.md) for the exact current candidate and separate gates.
+Full XMage+MAD ARM64 AOT compilation (**34723517045**), actual product linkage (**34724909323**) and internal TestFlight **0.1.0 (2026091202)** passed. This replacement includes the opening-selection cancellation fix in engine `a34fb08`, with app source `55be4f4`; Apple reports **VALID / IN_BETA_TESTING**, with verified Internal group access. The earlier build 2026091201 is superseded. Real JVM rules/AI/complete-game and portable app/protocol tests passed. **Native iPhone gameplay, AI resource behavior and real multi-device execution remain unverified.** See [current status](docs/LOCAL_CONTINUATION_STATUS.md) and [physical acceptance](docs/TESTFLIGHT_ACCEPTANCE.md) for exact provenance and separate gates.
 
 The product retains and adapts the existing **vertical/portrait playing mode** and landscape support in `apps/ios/MagicMobile`; `apps/ios-ondevice` remains a diagnostic harness. See [PORTRAIT_INTEGRATION.md](docs/PORTRAIT_INTEGRATION.md).
 

@@ -5,6 +5,12 @@ that every card, UI interaction, native runtime, or phone configuration passed.
 Executed results and exact commits belong in the release handoff and workflow
 artifacts. The rules source remains XMage `8aea65ae9ae3c89970fe865e1316105539e097ca`.
 
+Release evidence: app source `55be4f4`, engine `a34fb08`, full native run
+**34723517045**, actual product run **34724909323**, non-simulator run **34724758131**.
+Internal upload **0.1.0 (2026091202)** succeeded; physical acceptance remains
+unexecuted in [issue #7](https://github.com/ineedsomesleep5/MagicMobile/issues/7).
+See [current status](LOCAL_CONTINUATION_STATUS.md) for hashes and Apple availability.
+
 ## Decision path
 
 `PlayerQueryEvent` → `QueryEncoder` → `DecisionSpec` / `MatchMailbox` → native JSON

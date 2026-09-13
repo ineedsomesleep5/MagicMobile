@@ -3,13 +3,17 @@
 Tracked separately from source/build issue #4 in
 [issue #7](https://github.com/ineedsomesleep5/MagicMobile/issues/7).
 
-Candidate: **0.1.0 (2026091201)**, product source `62789b0`, existing ASC app
+Candidate: **0.1.0 (2026091202)**, product source `55be4f4`, engine `a34fb08`, existing ASC app
 `6784735182` / `com.calebfeliciano.magicmobile`. Internal-only upload succeeded;
-check processing/availability before testing. No USB connection is required.
+Apple processing is **VALID**, internal state **IN_BETA_TESTING**, and access for
+the existing **Internal** group is verified. Physical install is still **NOT RUN**.
+Upload ID: `ceccf78d-c836-4216-8df3-8f725f7aac31`. No USB connection is required.
+The build's English (US) **What to Test** notes include these test areas and the
+known recovery limits, with a link to issue #7.
 Compilation, JVM gameplay and signing are separate evidence, not phone acceptance.
 
-This initial candidate is superseded by a newly found opening-selection shutdown
-race. Wait for the replacement native candidate before recording final acceptance.
+This replacement includes the tested opening-selection shutdown fix. The initial
+build **2026091201** is superseded and must not be used for final acceptance.
 
 Record iPhone model, iOS version, build, player/device count, decks, elapsed time,
 observed result and screenshots/crash logs. Every unchecked item is unexecuted.
