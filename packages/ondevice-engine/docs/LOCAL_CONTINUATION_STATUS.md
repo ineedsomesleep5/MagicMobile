@@ -1,6 +1,21 @@
 # Local continuation status — 2026-09-13 UTC
 
-## Current result — diagnostic replacement available; native report awaited
+## Current result — Color/AWT cause reproduced; fixed native candidate building
+
+The user's 2026091203 report identifies `Color.<clinit>` loading the unavailable
+desktop AWT library during `HumanPlayer.chooseMulligan`. A real small native
+executable reproduces the exact `UnsatisfiedLinkError`; the Color-only build-time
+initialization policy makes that regression pass, including actual XMage colored
+hint formatting. See [the compatibility analysis](NATIVE_COLOR_COMPATIBILITY.md).
+
+Fix source `017b9c5fbe1f76740a2e1435df3aa9a331059dc0` is building in full native run
+**34737322860**. App build **2026091301** is prepared for the fresh artifact; it is
+not installed or uploaded yet. The previous library cannot verify this fix.
+Caleb's paired physical iPhone 16 Pro Max is now connected over the local network;
+device details, installed build 2026091203, launch and a stopped-game screenshot
+were obtained directly. New native startup/gameplay acceptance remains pending.
+
+## Previous diagnostic distribution — report captured successfully
 
 The user confirmed installing **2026091202** and reported a stopped engine during
 startup with default human **Token Triumph** and one AI opponent. **Grave Danger**

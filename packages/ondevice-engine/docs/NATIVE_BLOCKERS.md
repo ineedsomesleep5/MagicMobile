@@ -1,6 +1,16 @@
 # Remaining native/runtime gates — 2026-09-13 UTC
 
-## Active blocker — native startup failure on build 2026091202
+## Active gate — verify the Color/AWT fix on the physical phone
+
+The diagnostic build 2026091203 captured the missing-AWT library error during
+Color initialization in the human mulligan prompt. A small native baseline
+reproduces it; the exact Color-only initialization policy passes actual XMage
+hint/value regressions. Full native run **34737322860**, source `017b9c5`, is
+building the changed engine. Build **2026091301** is prepared but not installed
+or uploaded. The paired phone is reachable over Wi-Fi; full-engine direct phone
+acceptance remains required. See [the analysis](NATIVE_COLOR_COMPATIBILITY.md).
+
+## Previous startup failure and diagnostic release
 
 The user installed 2026091202 and observed "The local engine stopped" during
 default human Token Triumph with one AI. Grave Danger is the source default AI
