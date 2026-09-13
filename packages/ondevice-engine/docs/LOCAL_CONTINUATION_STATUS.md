@@ -13,10 +13,17 @@ record at inspection; the engine catches this failure without crashing the app.
 The user approved a local-only diagnostic TestFlight update. Engine revision
 `c355eeea2277c6234207fe756eb757f86b58bde8` retains one bounded exception report,
 separate from peer polls and ordinary error replies. Full native run
-**34730780807** is rebuilding that source. App build **2026091203** adds explicit
+**34731298892**, using the validated far-call compiler pipeline at source
+`76c18bfc76ca652cbd7a979cbb8910531ccb280e`, is rebuilding that engine. App build **2026091203** adds explicit
 review/share/delete and protected, backup-excluded latest-report storage.
 It has **not been uploaded yet**. No gameplay fix or native performance claim
 is made. PR #6 remains draft; issues #4 and #7 remain open.
+
+The first diagnostic dispatch (**34730780807**) selected the older, unpatched
+native workflow. The product provenance guard correctly rejected that workflow
+identity (**34731246989**); the wrong run was cancelled before full AOT. The
+replacement above uses `magicmobile-far-calls.yml` and its paired full-engine
+artifact. The guard was not weakened and no incorrect artifact was packaged.
 
 ## Previous distribution — replacement native/product passed; internal TestFlight available
 

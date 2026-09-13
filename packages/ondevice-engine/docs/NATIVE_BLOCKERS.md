@@ -6,7 +6,8 @@ The user installed 2026091202 and observed "The local engine stopped" during
 default Token Triumph versus one Grave Danger AI startup. Desktop JVM replay
 reaches turn one, but the actual native exception is not yet known. Full-game
 acceptance has failed at startup. User-approved diagnostic build 2026091203 is
-being prepared from engine `c355eee`, native run **34730780807**; it is not yet
+being prepared from source `76c18bf` (diagnostics introduced in `c355eee`),
+full far-call native run **34731298892**; it is not yet
 uploaded or verified on an iPhone. Capture remains private to the host and is
 shared only by explicit user action. Do not close source/runtime tracking or
 promote this as a gameplay fix before the actual failing scenario is verified.
