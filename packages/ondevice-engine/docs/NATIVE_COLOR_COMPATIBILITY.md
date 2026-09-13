@@ -11,32 +11,52 @@ the embedded iOS app. Setting headless mode alone does not bypass that call.
 `scripts/test_color_native.sh` reproduces the same
 `UnsatisfiedLinkError: no awt in java.library.path` in a small real native
 executable. The baseline reaches `Toolkit` and `Color.<clinit>`, not a simulated
-exception. Local evidence: `build/color-native-xFtM1D/`. The baseline went red;
-the production policy below made the adapted executable pass.
+exception. Current local evidence: `build/color-native-lYcHrQ/`.
+
+## Rejected first policy
+
+The first Color-only build-time policy passed a host-native probe but failed
+full iOS run **34737322860** at source `017b9c5`. Color initialized Toolkit on
+the builder, violating the iOS Toolkit runtime-initialization constraint.
+Adding that exact constraint to the host probe reproduces the compiler failure
+in approximately 13 seconds. The earlier host-only pass is not iOS evidence.
+The regression now retains this failing-policy build as well as the original
+runtime missing-AWT reproduction.
 
 ## Narrow adaptation
 
-`native/gluon/pom.xml` explicitly initializes **only `java.awt.Color`** at build
-time. Its pinned static state consists of the standard RGB Color values and
-primitive constants. Their RGB construction does not create a ColorSpace,
-desktop peer, image, window or display. Runtime constructors and color methods
-remain Java's original implementation. XMage and mobile adapters remain
-runtime-initialized; no rules, choice logic or desktop service is replaced.
-Hosted Color initialization can run Toolkit's bootstrap on the build machine;
-the required value operations do not depend on that bootstrap's platform caches.
-The headless test variants establish value compatibility, not runtime reconfiguration
-of Toolkit or support for its graphics operations.
+`scripts/prepare_native_color.py` reads Color.java from the pinned Gluon
+JDK's `lib/src.zip`. It refuses any source other than SHA-256
+`4010cb2e2fee98b0f285a7a191997fd23a140430d8aa344917c7c55f8b87bc30`.
+The generated source removes only the desktop JNI bootstrap block:
+`Toolkit.loadLibraries()` and the headless-conditional `initIDs()` call.
+All original fields, constants, constructors, validation and color methods remain
+unchanged. The original copyright/GPL-with-Classpath-exception header is retained.
+The installed JDK and upstream XMage sources are never modified.
+
+The helper compiles only `java/awt/Color.class` into an owned build directory.
+The native builder receives it through the JVM's `--patch-module=java.desktop`
+option. **Both Color and Toolkit remain explicitly runtime-initialized.**
+Color's original static RGB constant assignments still execute on the device;
+no desktop JNI registration is needed for these Java value operations.
+No new private Graal substitution API or fake desktop implementation is used.
+The compiler artifact preserves and hashes the generated source, class and
+manifest alongside the exact native library and paired SDK inputs.
 
 Do not replace this with a package-wide `java.awt`/Toolkit initialization policy,
-swallow native-library failures, or supply fake graphics services. ColorSpace/ICC,
-painting, images and desktop GUI operations are not made supported by this fix.
-Re-review the initializer if the JDK changes.
+swallow native-library failures, or supply fake graphics services. Toolkit's
+original implementation remains intact. After Color succeeds, an explicit
+Toolkit initialization in the native regression still throws the missing-AWT
+error. ColorSpace/ICC, painting, images and desktop GUI operations are not made
+supported by this fix. Re-review the initializer if the JDK changes.
 
 The regression compares native and JVM RGB/alpha values, constants, HSB
 conversion, invalid-input rejection, and actual upstream `HintUtils` output for
-free/paid mulligan and colored cost hints. Both headless settings pass after
-adaptation. The workflow executes this dependency regression before the full
-ARM64 build and preserves its logs.
+free/paid mulligan and colored cost hints. An additional 1,024 samples compare
+float construction, brighter/darker colors and transparency with the original
+JVM (fingerprint `326ce1c7edb97d65`). Both headless settings pass after adaptation.
+The workflow executes this dependency regression before the full ARM64 build
+and preserves its logs. These are real host-native tests, not iPhone execution.
 
 ## Why not patch just mulligans?
 

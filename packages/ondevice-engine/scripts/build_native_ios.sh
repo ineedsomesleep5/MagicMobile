@@ -129,6 +129,8 @@ printf 'ORM profile: %s\n' "${MM_NATIVE_ORM_PROFILE:-runtime}"
   -cp "$JAVA_HOME/lib/svm/builder/svm.jar:$NATIVE_CP" -d "$NATIVE_BUILD/native-java" \
   "${NATIVE_SOURCES[@]}"
 printf 'Real NativeEntryPoints compilation passed.\n'
+python3 "$ROOT/scripts/prepare_native_color.py" --graalvm-home "$JAVA_HOME" \
+  --output "$NATIVE_BUILD/color-patch"
 
 # Keep Maven dependencies and Gluon downloads within the authorized build tree.
 export MAVEN_OPTS="-Xmx512m -Duser.home=$ROOT/build/ios-native-home"
@@ -148,6 +150,7 @@ mvn --batch-mode --no-transfer-progress \
   "-Dnative.orm.arg=$NATIVE_ORM_ARG" \
   "-Dnative.new.ratio=$NATIVE_NEW_RATIO" \
   "-Dnative.max.heap=$NATIVE_MAX_HEAP" \
+  "-Dnative.color.patch=$NATIVE_BUILD/color-patch/classes" \
   "-Dnative.target=$NATIVE_TARGET" \
   "${NATIVE_GOALS[@]}"
 

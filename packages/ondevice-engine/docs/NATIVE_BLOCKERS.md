@@ -4,11 +4,15 @@
 
 The diagnostic build 2026091203 captured the missing-AWT library error during
 Color initialization in the human mulligan prompt. A small native baseline
-reproduces it; the exact Color-only initialization policy passes actual XMage
-hint/value regressions. Full native run **34737322860**, source `017b9c5`, is
-building the changed engine. Build **2026091301** is prepared but not installed
-or uploaded. The paired phone is reachable over Wi-Fi; full-engine direct phone
-acceptance remains required. See [the analysis](NATIVE_COLOR_COMPATIBILITY.md).
+reproduces it. Full native run **34737322860**, source `017b9c5`, rejected the first
+Color build-time policy because it initializes Toolkit against the iOS runtime
+constraint. The strengthened local probe reproduces both failures. A pinned,
+generated Color source patch now passes native value comparisons while keeping
+Color/Toolkit runtime-initialized and preserving explicit desktop failure.
+Build **2026091301** is prepared but not installed or uploaded. A new full native
+artifact and direct phone acceptance remain required. The phone is connected
+and charging; automated touch control is not yet confirmed despite live screen
+access. See [the analysis](NATIVE_COLOR_COMPATIBILITY.md).
 
 ## Previous startup failure and diagnostic release
 

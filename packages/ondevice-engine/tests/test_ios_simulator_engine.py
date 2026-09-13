@@ -1,6 +1,7 @@
 """Small orchestration checks only; these do not compile or run XMage."""
 import os
 import copy
+import json
 from pathlib import Path
 import subprocess
 import shutil
@@ -35,6 +36,12 @@ class NativeTargetTests(unittest.TestCase):
             script = root / 'scripts/build_native_ios.sh'
             script.parent.mkdir()
             script.write_text((ROOT / 'scripts/build_native_ios.sh').read_text())
+            # This orchestration fixture records the preparation boundary only.
+            # Real Color patch compilation/execution lives in test_color_native.sh.
+            (script.parent / 'prepare_native_color.py').write_text(
+                'import json, sys\nfrom pathlib import Path\n'
+                'Path(__file__).resolve().parents[1].joinpath("color-args.json")'
+                '.write_text(json.dumps(sys.argv[1:]))\n')
             for name in ('core', 'engine', 'generated'):
                 (root / 'build' / name).mkdir(parents=True)
             (root / 'build/core/Core.class').write_text('tooling fixture only')
@@ -66,7 +73,12 @@ class NativeTargetTests(unittest.TestCase):
             result = subprocess.run(['bash', str(script)], env=env,
                                     capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 73, result.stdout + result.stderr)
-            return (root / 'args.txt').read_text().splitlines()
+            args = (root / 'args.txt').read_text().splitlines()
+            color_args = json.loads((root / 'color-args.json').read_text())
+            self.assertEqual(color_args[:3], ['--graalvm-home', str(compiler), '--output'])
+            self.assertTrue(color_args[3].endswith('/color-patch'))
+            self.assertIn('-Dnative.color.patch=' + color_args[3] + '/classes', args)
+            return args
 
     def test_default_keeps_device_compile_and_staticlib(self):
         args = self.build_to_maven_boundary(None)

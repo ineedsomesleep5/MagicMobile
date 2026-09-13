@@ -34,6 +34,10 @@ class ReceiptTests(unittest.TestCase):
         (self.root / 'SHA256SUMS').write_text('\n'.join(lines) + '\n')
     def test_consistent_receipt(self):
         self.assertEqual(set(candidate.validate_receipt(self.root, SHA)), candidate.REQUIRED_FILES)
+    def test_color_patch_is_a_required_hash_covered_build_input(self):
+        names = {'color-patch/src/java/awt/Color.java', 'color-patch/classes/java/awt/Color.class',
+                 'color-patch/color-patch-manifest.json'}
+        self.assertTrue(names <= candidate.REQUIRED_FILES)
     def test_missing_required_file(self):
         (self.root / 'libmmengine.a').unlink()
         with self.assertRaises(ValueError): candidate.validate_receipt(self.root, SHA)

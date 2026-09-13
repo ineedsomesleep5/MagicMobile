@@ -29,6 +29,8 @@ REQUIRED_FILES = {
     'libmmengine.a', 'include/io.magicmobile.nativebridge.ioslibrarymain.h', 'include/graal_isolate.h',
     'class-snapshot.sha256', 'reflect-config.json', 'registry-report.json',
     'commit.txt', 'compiler-patch-manifest.json',
+    'color-patch/src/java/awt/Color.java', 'color-patch/classes/java/awt/Color.class',
+    'color-patch/color-patch-manifest.json',
 } | {'clib/lib' + name + '.a' for name in ('jvm', 'libchelper', 'ffi', 'darwin')} | {
     'jdk/lib' + name + '.a' for name in ('java', 'nio', 'zip', 'net', 'prefs', 'fdlibm', 'j2pkcs11', 'jaas', 'extnet')
 }

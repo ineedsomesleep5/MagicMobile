@@ -80,6 +80,7 @@ jobs:
           cp "$MM_GRAALVM_HOME/lib/svm/clibraries/27/ios-arm64/"*.a build/native-candidate/clib/
           cp build/ios-native-home/.gluon/substrate/javaStaticSdk/18-ea+prep18-9/ios-arm64/staticjdk/lib/static/*.a build/native-candidate/jdk/
           cp "$OUT/class-snapshot.sha256" build/native-candidate/
+          cp -R "$OUT/color-patch" build/native-candidate/
           cp build/native-metadata/reflect-config.json build/native-candidate/
           cp build/generated/registry-report.json build/native-candidate/
           git rev-parse HEAD > build/native-candidate/commit.txt
@@ -99,6 +100,7 @@ jobs:
             packages/ondevice-engine/build/ios-native-*/gluonfx/arm64-ios/gvm/log/
             packages/ondevice-engine/build/ios-native-*/builder-gc.log*
             packages/ondevice-engine/build/color-native-*/*.log
+            packages/ondevice-engine/build/ios-native-*/color-patch/
           retention-days: 7
           if-no-files-found: error
       - uses: actions/upload-artifact@v4

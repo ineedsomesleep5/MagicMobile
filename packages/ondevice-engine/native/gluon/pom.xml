@@ -37,9 +37,10 @@
             <arg>-J-Xlog:gc*:file=${native.build}/builder-gc.log:time,uptime,level,tags:filecount=2,filesize=8M</arg>
             <arg>-H:NumberOfThreads=2</arg>
             <arg>--initialize-at-run-time=io.magicmobile,mage</arg>
-            <!-- Color's immutable RGB constants need no desktop peers; its JDK 17
-                 runtime initializer nevertheless loads AWT. Do not initialize all AWT. -->
-            <arg>--initialize-at-build-time=java.awt.Color</arg>
+            <!-- Isolated, source-pinned Color patch removes only desktop JNI bootstrap.
+                 Preserve the iOS Toolkit runtime constraint and all original value methods. -->
+            <arg>-J--patch-module=java.desktop=${native.color.patch}</arg>
+            <arg>--initialize-at-run-time=java.awt.Color,java.awt.Toolkit</arg>
             <arg>${native.init.arg}</arg>
             <arg>${native.orm.arg}</arg>
             <arg>-H:+IncludeAllLocales</arg>
