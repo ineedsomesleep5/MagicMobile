@@ -17,8 +17,9 @@ The failed `017b9c5` run produced no accepted full engine artifact. The next run
 **34740086280** at `1f5eadd` stopped in the shared compiler probe because that
 caller lacked the new patch-directory argument. This caller wiring is corrected;
 the small Color-exercising ARM64/iOS compile/archive/independent link passes
-locally in `build/ios-abi-ueIYy7/`. A fresh full engine build remains required.
-App build
+locally in `build/ios-abi-ueIYy7/`. Full engine run **34740553245** at source
+`28185e5e3aea67a2b5a932a0cb213160e7b2c51b` is dispatched; the product gate is
+pinned to that exact run and source. Neither gate has passed yet. App build
 **2026091301** remains prepared for the revised artifact; it is not installed or
 uploaded yet. The previous library cannot verify this fix.
 Caleb's paired physical iPhone 16 Pro Max is connected and charging;
@@ -27,8 +28,9 @@ were obtained directly. The Mac is unlocked and both Device Hub and iPhone
 Mirroring display the real app. iPhone Mirroring taps started Token Triumph
 against one Grave Danger AI and selected the human starting player; old build
 2026091203 then stopped before mulligans, confirming the before-fix failure.
-Mirroring input intermittently needs a window-size refresh; verify each action's
-visible result rather than treating a tool call as a successful tap.
+The user now prefers to perform phone taps manually, following one specific
+test instruction at a time. Do not resume automated phone controls; build,
+install and inspect reported errors, then request the next manual test.
 New native startup/gameplay acceptance remains pending.
 
 ## Previous diagnostic distribution — report captured successfully
