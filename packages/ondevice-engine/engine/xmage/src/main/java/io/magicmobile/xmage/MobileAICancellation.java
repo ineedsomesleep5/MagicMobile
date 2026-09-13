@@ -1,5 +1,6 @@
 package io.magicmobile.xmage;
 
+import io.magicmobile.core.EngineDiagnostics;
 import mage.constants.RangeOfInfluence;
 import mage.player.ai.ComputerPlayerControllableProxy;
 import mage.player.ai.SimulationNode2;
@@ -45,6 +46,13 @@ final class MobileAICancellation {
         @Override protected int addActions(SimulationNode2 node,int depth,int alpha,int beta) {
             cancellation.enterSimulation();
             try { return super.addActions(node,depth,alpha,beta); }
+            catch(Throwable failure) {
+                // Upstream addActionsTimed can consume the Future's ExecutionException.
+                // Keep the original failure private before it crosses that boundary.
+                if(!(failure instanceof CancellationException))
+                    cancellation.runIfOpen(()->EngineDiagnostics.capture("ai-simulation",failure));
+                throw failure;
+            }
             finally { cancellation.leaveSimulation(); }
         }
     }

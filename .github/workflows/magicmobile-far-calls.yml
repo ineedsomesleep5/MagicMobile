@@ -46,6 +46,8 @@ jobs:
           set -euo pipefail
           python3 scripts/prepare_gluon_far_calls.py --result-file "$RUNNER_TEMP/patched-gluon-home.txt" 2>&1 | tee evidence/far-call-compiler-build.log
           echo "MM_GRAALVM_HOME=$(cat "$RUNNER_TEMP/patched-gluon-home.txt")" >> "$GITHUB_ENV"
+      - name: Verify bounded builder-heap regression (not engine execution)
+        run: bash scripts/test_builder_heap.sh
       - name: Force veneers in a separate unsigned ARM64 toolchain-only probe
         env:
           JAVA_TOOL_OPTIONS: -Dmagicmobile.farCallLimit=256
@@ -59,13 +61,16 @@ jobs:
         run: bash scripts/test_real_engine.sh 2>&1 | tee evidence/far-call-real-jvm.log
       - name: Reproduce and verify native Color compatibility (not iPhone acceptance)
         run: bash scripts/test_color_native.sh 2>&1 | tee evidence/native-color-regression.log
+      - name: Verify real token repository resource inclusion (not iPhone acceptance)
+        run: bash scripts/test_token_native.sh 2>&1 | tee evidence/native-token-regression.log
+      - name: Verify bundled catalogue native decoding (not engine or iPhone acceptance)
+        run: bash scripts/test_card_catalogue_native.sh 2>&1 | tee evidence/native-catalogue-regression.log
       - name: Build full ARM64 engine using verified compiler backport
         timeout-minutes: 180
         env:
           MM_NATIVE_REFLECTION_PROFILE: targeted
           MM_NATIVE_INIT_PROFILE: reviewed-enums
           MM_NATIVE_ORM_PROFILE: runtime-defaults
-          MM_NATIVE_NEW_RATIO: '7'
           MM_NATIVE_MAX_HEAP: 10g
           MM_NATIVE_RESULT_FILE: ${{ runner.temp }}/full-native-build.txt
         run: bash scripts/build_native_ios.sh
@@ -81,6 +86,8 @@ jobs:
           cp build/ios-native-home/.gluon/substrate/javaStaticSdk/18-ea+prep18-9/ios-arm64/staticjdk/lib/static/*.a build/native-candidate/jdk/
           cp "$OUT/class-snapshot.sha256" build/native-candidate/
           cp -R "$OUT/color-patch" build/native-candidate/
+          cp -R "$OUT/engine/mage/mobile" build/native-candidate/catalogue
+          cp build/generated/platform/repository-patch-manifest.json build/native-candidate/
           cp build/native-metadata/reflect-config.json build/native-candidate/
           cp build/generated/registry-report.json build/native-candidate/
           git rev-parse HEAD > build/native-candidate/commit.txt
@@ -100,6 +107,12 @@ jobs:
             packages/ondevice-engine/build/ios-native-*/gluonfx/arm64-ios/gvm/log/
             packages/ondevice-engine/build/ios-native-*/builder-gc.log*
             packages/ondevice-engine/build/color-native-*/*.log
+            packages/ondevice-engine/build/builder-heap-*/*.log
+            packages/ondevice-engine/build/token-native-*/*.log
+            packages/ondevice-engine/build/token-native-*/inputs.json
+            packages/ondevice-engine/build/card-catalogue-native-*/*.log
+            packages/ondevice-engine/build/card-catalogue-native-*/inputs.json
+            packages/ondevice-engine/build/card-catalogue-native-*/reflect-config.json
             packages/ondevice-engine/build/ios-native-*/color-patch/
           retention-days: 7
           if-no-files-found: error

@@ -18,8 +18,9 @@ ROOT = Path(__file__).resolve().parents[3]
 ENGINE = 'packages/ondevice-engine/'
 # Keep broad directories; do not accidentally omit new files inside them.
 INPUT_PATHS = tuple(ENGINE + name for name in (
-    'engine', 'native', 'patches', 'tools', 'upstream.lock.json',
+    'engine', 'native', 'platform', 'patches', 'tools', 'upstream.lock.json',
     'scripts/build_jvm.sh', 'scripts/build_native_ios.sh',
+    'scripts/build_card_metadata.sh', 'scripts/prepare_mobile_repository.py',
     'scripts/prepare_upstream.py', 'scripts/generate_registry.py',
     'scripts/generate_native_metadata.py', 'scripts/setup_gluon_intel.sh',
     'scripts/prepare_gluon_far_calls.py', 'scripts/prepare_ios_orm.py',
@@ -31,6 +32,8 @@ REQUIRED_FILES = {
     'commit.txt', 'compiler-patch-manifest.json',
     'color-patch/src/java/awt/Color.java', 'color-patch/classes/java/awt/Color.class',
     'color-patch/color-patch-manifest.json',
+    'catalogue/card-metadata-report.json', 'catalogue/card-metadata.jsonl.gz',
+    'catalogue/card-names.json.gz', 'repository-patch-manifest.json',
 } | {'clib/lib' + name + '.a' for name in ('jvm', 'libchelper', 'ffi', 'darwin')} | {
     'jdk/lib' + name + '.a' for name in ('java', 'nio', 'zip', 'net', 'prefs', 'fdlibm', 'j2pkcs11', 'jaas', 'extnet')
 }

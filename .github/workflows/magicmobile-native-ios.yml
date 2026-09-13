@@ -51,7 +51,6 @@ jobs:
           MM_NATIVE_REFLECTION_PROFILE: targeted
           MM_NATIVE_INIT_PROFILE: reviewed-enums
           MM_NATIVE_ORM_PROFILE: runtime-defaults
-          MM_NATIVE_NEW_RATIO: '7'
           MM_NATIVE_MAX_HEAP: 10g
         run: bash scripts/build_native_ios.sh
       - name: Upload diagnostic evidence

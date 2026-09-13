@@ -116,6 +116,9 @@ class SourceTests(unittest.TestCase):
     def test_build_input_change_rejected(self):
         self.write('scripts/build_native_ios.sh', '# changed'); self.commit()
         with self.assertRaises(ValueError): candidate.source_identity(self.root, self.base)
+    def test_platform_adapter_change_rejected(self):
+        self.write('platform/java/mage/cards/repository/Fixture.java', '// platform fixture'); self.commit()
+        with self.assertRaises(ValueError): candidate.source_identity(self.root, self.base)
     def test_dirty_tracked_source_rejected(self):
         self.write('engine/core/Fixture.java', 'uncommitted')
         with self.assertRaises(subprocess.CalledProcessError): candidate.source_identity(self.root, self.base)

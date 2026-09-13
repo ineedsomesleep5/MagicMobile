@@ -50,6 +50,9 @@ public final class NativeReflectionExporter {
         }
         for(String root:List.of("mage.view.GameView","mage.view.AbilityPickerView"))
             visit(Class.forName(root,false,loader));
+        // Bundled immutable metadata is decoded and defensively copied, never exposed as game state.
+        Class<?> metadata=Class.forName("mage.cards.repository.CardInfo",false,loader);
+        visit(metadata);entry(metadata).put("methods",List.of(Json.map("name","<init>","parameterTypes",List.of())));
         if(entries.containsKey("mage.remote.SessionImpl") || entries.containsKey("mage.game.GameState"))
             throw new IllegalStateException("Client DTO graph unexpectedly roots server/private engine state");
         if(cardClasses<30000 || watchers==0 || dynamicObjects==0)

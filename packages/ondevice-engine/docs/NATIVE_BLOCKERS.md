@@ -1,6 +1,22 @@
 # Remaining native/runtime gates — 2026-09-13 UTC
 
-## Active gate — verify the Color/AWT fix on the physical phone
+## Active gate — rebuild the corrected conversion, then deliver through TestFlight
+
+Full native **34740553245** and its product wait **34740596789** failed by timeout.
+The compiler log shows Parallel old-generation saturation; a same-heap G1
+builder policy passes the bounded retention and small ARM64/iOS compiler/link
+checks. It has not yet passed full native compilation. The audit also fixes
+native token resource omission, replaces desktop database reads with bundled
+original XMage metadata, and preserves AI-worker failures in private diagnostics.
+Full JVM regressions, metadata native execution, matching native/product artifacts
+and signing/upload are still gates. See [current status](LOCAL_CONTINUATION_STATUS.md).
+
+The authorized delivery route is now **TestFlight**, not direct installation.
+No Wi-Fi/USB connection to the development Mac is required for that delivery.
+The old staged native library and prepared build number 2026091301 are not proof
+that these changes have shipped. Phone acceptance remains a separate manual test.
+
+## Prior Color/AWT failure
 
 The diagnostic build 2026091203 captured the missing-AWT library error during
 Color initialization in the human mulligan prompt. A small native baseline
@@ -10,7 +26,7 @@ constraint. The strengthened local probe reproduces both failures. A pinned,
 generated Color source patch now passes native value comparisons while keeping
 Color/Toolkit runtime-initialized and preserving explicit desktop failure.
 Build **2026091301** is prepared but not installed or uploaded. A new full native
-artifact and direct phone acceptance remain required. The shared-probe caller
+artifact and phone acceptance remain required. The shared-probe caller
 failure in run **34740086280** is corrected; the small revised ARM64/iOS probe
 compiles and links locally. The phone is connected and charging. iPhone Mirroring
 input reached the old build's starting-player prompt and reproduced its stopped

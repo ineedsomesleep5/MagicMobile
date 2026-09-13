@@ -1,6 +1,37 @@
 # Local continuation status — 2026-09-13 UTC
 
-## Current result — iOS Color policy conflict reproduced; revised patch validated locally
+## Current work — compiler heap and runtime catalogue fixes; TestFlight requested
+
+Full native run **34740553245** timed out after 180 minutes; it did not produce
+a replacement engine. Its builder log shows repeated full collections with
+the Parallel collector's old generation essentially full. The product wait in
+**34740596789** also expired. The candidate changes the compiler JVM to G1,
+retaining the same guarded 10 GiB heap on the existing hosted runner; it does
+not change the iOS runtime collector. A bounded retention probe fails under
+the previous policy and passes with G1. The small actual ARM64/iOS ABI compile,
+archive and independent link also pass. Full-engine recompilation is pending.
+
+The conversion audit additionally reproduced missing token metadata in native
+code and empty card-name choices from the desktop repository on a fresh JVM.
+The token resource inclusion now passes a native/JVM comparison. The new
+read-only catalogue exports original XMage/H2 metadata at build time: 92,166
+printings, 92,738 rows including split halves, and 33,070 names. Runtime queries
+use bundled data, not H2 or a desktop service. Real JVM lookup/factory/choice
+and AI error-capture regressions pass. Full JVM compilation and the full real
+regression suite pass, including completed two-/four-seat and token/mulligan
+games. The metadata criteria oracle passes 326 checks against in-memory H2;
+166 Python build-tool tests pass. The real catalogue host-native test passes
+all nine naming categories, metadata decoding/reflection, filters and copies
+(`build/card-catalogue-native-744Kt3`); full native engine/iOS execution is separate.
+
+The user now requests **TestFlight updates**, because the phone will be away
+from the Mac's Wi-Fi. Do not require USB or resume automated phone taps.
+Build **2026091301** is prepared but **not uploaded**; its currently staged old
+library cannot validate these changes. Verify a fresh matching native artifact,
+product, signing and App Store Connect build-number availability before upload.
+Phone startup, gameplay, performance and full-card parity remain unaccepted.
+
+## Previous result — iOS Color policy conflict reproduced; revised patch validated locally
 
 The user's 2026091203 report identifies `Color.<clinit>` loading the unavailable
 desktop AWT library during `HumanPlayer.chooseMulligan`. A real small native
@@ -18,8 +49,8 @@ The failed `017b9c5` run produced no accepted full engine artifact. The next run
 caller lacked the new patch-directory argument. This caller wiring is corrected;
 the small Color-exercising ARM64/iOS compile/archive/independent link passes
 locally in `build/ios-abi-ueIYy7/`. Full engine run **34740553245** at source
-`28185e5e3aea67a2b5a932a0cb213160e7b2c51b` is dispatched; the product gate is
-pinned to that exact run and source. Neither gate has passed yet. App build
+`28185e5e3aea67a2b5a932a0cb213160e7b2c51b` subsequently timed out; the product gate
+was pinned to that exact run and source and also timed out. App build
 **2026091301** remains prepared for the revised artifact; it is not installed or
 uploaded yet. The previous library cannot verify this fix.
 Caleb's paired physical iPhone 16 Pro Max is connected and charging;

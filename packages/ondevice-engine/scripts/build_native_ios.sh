@@ -26,11 +26,6 @@ NATIVE_LOG="$ROOT/evidence/$(basename "$NATIVE_BUILD").log"
 exec > >(tee "$NATIVE_LOG") 2>&1
 trap 'rc=$?; printf "\nDiagnostic exit code: %s\nBuild directory: %s\nLog: %s\n" "$rc" "$NATIVE_BUILD" "$NATIVE_LOG"' EXIT
 printf 'AOT diagnostic target=%s, UTC %s\n' "$NATIVE_TARGET" "$(date -u +%FT%TZ)"
-NATIVE_NEW_RATIO=${MM_NATIVE_NEW_RATIO:-2}
-case "$NATIVE_NEW_RATIO" in
-  2|7) ;;
-  *) printf 'MM_NATIVE_NEW_RATIO must be 2 (baseline) or 7 (retained-data diagnostic)\n' >&2; exit 2 ;;
-esac
 NATIVE_MAX_HEAP=${MM_NATIVE_MAX_HEAP:-4g}
 case "$NATIVE_MAX_HEAP" in
   4g|5g) ;;
@@ -42,7 +37,7 @@ case "$NATIVE_MAX_HEAP" in
     ;;
   *) printf 'MM_NATIVE_MAX_HEAP must be 4g, 5g, or guarded 10g\n' >&2; exit 2 ;;
 esac
-printf 'Builder heap: %s; Parallel GC NewRatio: %s\n' "$NATIVE_MAX_HEAP" "$NATIVE_NEW_RATIO"
+printf 'Builder heap: %s; builder GC: G1 (iOS runtime collector unchanged)\n' "$NATIVE_MAX_HEAP"
 
 [[ -x "$JAVA_HOME/bin/native-image" ]]
 [[ -s "$ROOT/build/runtime-classpath.txt" ]]
@@ -62,11 +57,12 @@ cp -R "$ROOT/build/engine" "$NATIVE_BUILD/engine"
 NATIVE_CP="$NATIVE_BUILD/core:$NATIVE_BUILD/engine:${NATIVE_CP#"$NATIVE_BASELINE_PREFIX"}"
 (
   cd "$NATIVE_BUILD"
-  find core engine -name '*.class' -type f -print | LC_ALL=C sort | while IFS= read -r native_class; do
+  # Include generated catalogue resources as well as bytecode in the frozen input receipt.
+  find core engine -type f -print | LC_ALL=C sort | while IFS= read -r native_class; do
     shasum -a 256 "$native_class"
   done
 ) > "$NATIVE_BUILD/class-snapshot.sha256"
-printf 'JVM class snapshot captured: %s\n' "$NATIVE_BUILD"
+printf 'JVM class/resource snapshot captured: %s\n' "$NATIVE_BUILD"
 shasum -a 256 "$NATIVE_BUILD/class-snapshot.sha256"
 NATIVE_REFLECTION_PROFILE=${MM_NATIVE_REFLECTION_PROFILE:-broad}
 NATIVE_REFLECTION_CONFIG="$ROOT/build/generated/reflect-config.json"
@@ -148,7 +144,6 @@ mvn --batch-mode --no-transfer-progress \
   "-Dnative.reflection.config=$NATIVE_REFLECTION_CONFIG" \
   "-Dnative.init.arg=$NATIVE_INIT_ARG" \
   "-Dnative.orm.arg=$NATIVE_ORM_ARG" \
-  "-Dnative.new.ratio=$NATIVE_NEW_RATIO" \
   "-Dnative.max.heap=$NATIVE_MAX_HEAP" \
   "-Dnative.color.patch=$NATIVE_BUILD/color-patch/classes" \
   "-Dnative.target=$NATIVE_TARGET" \

@@ -11,7 +11,6 @@
     <native.reflection.config>${engine.root}/build/generated/reflect-config.json</native.reflection.config>
     <native.init.arg>--initialize-at-run-time=io.magicmobile,mage</native.init.arg>
     <native.orm.arg>--initialize-at-run-time=io.magicmobile</native.orm.arg>
-    <native.new.ratio>2</native.new.ratio>
     <native.max.heap>4g</native.max.heap>
   </properties>
   <build>
@@ -32,7 +31,9 @@
             <arg>${native.classpath}</arg>
             <arg>--no-fallback</arg>
             <arg>-J-Xmx${native.max.heap}</arg>
-            <arg>-J-XX:NewRatio=${native.new.ratio}</arg>
+            <!-- Builder only: avoid a fixed old-generation ceiling near retained-data peak. -->
+            <arg>-J-XX:-UseParallelGC</arg>
+            <arg>-J-XX:+UseG1GC</arg>
             <!-- Builder-only GC telemetry; does not change the iOS runtime collector. -->
             <arg>-J-Xlog:gc*:file=${native.build}/builder-gc.log:time,uptime,level,tags:filecount=2,filesize=8M</arg>
             <arg>-H:NumberOfThreads=2</arg>
