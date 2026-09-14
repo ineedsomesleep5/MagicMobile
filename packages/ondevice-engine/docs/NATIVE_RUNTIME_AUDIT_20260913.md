@@ -59,8 +59,9 @@ passed 9,000 fixture requests and five shutdown scenarios. The 16 release-guard
 tests are a subset of the tooling suite, not 16 additional tests. The isolated
 Swift lifecycle runner passed 18 assertions using actual session/runtime code
 with test-only presentation/observation/backend fixtures; it is not an Apple SDK
-build. On the hosted Mac, all **119** complete presentation tests, **33** protocol
-tests and **six** build-number/ledger tests passed. Actual unsigned generic-iOS
+build. The latest downloaded artifact for **101985d** records **121** complete Mac
+presentation tests, **33** protocol tests and **five** build-number/ledger tests
+passed. These exact logs supersede earlier summary counts. Actual unsigned generic-iOS
 app and SDK-only tests compiled successfully (`build-for-testing`); no simulator
 or device execution occurred. Those hosted checks resolve the earlier five
 Linux build-number skips; they do not validate native-linked Release execution.
@@ -127,3 +128,27 @@ https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-
 The selected engine remains f8e1680 / run 34803650513. A product rerun on the
 new app/test/workflow-only head still has to pass exact-source and actual
 native-linked Release inspection. Do not reuse the old TestFlight engine.
+
+## Current evidence and static desktop-API audit
+
+The complete non-simulator run **34805592973** passed on **101985d**. Its Mac
+evidence artifact **10333157959** and real-JVM artifact **10333039647** were
+downloaded and hash-verified. The latter records four busy-shutdown cases,
+completed two-/four-seat and token/mulligan games, and validation/first prompt
+of all five bundled precons. See `implementation-status.json` for exact hashes.
+The source-tree comparison also confirms no engine input changes between the
+f8e1680 native build and the 101985d application code. This does not replace
+inspection of the real native archive or the actual linked product.
+
+The existing non-simulator workflow now preserves a `jdeps` audit of desktop
+API references and missing dependencies in the selected compiled XMage modules.
+This is static evidence for reviewing possible additional Color-style platform
+risks, not method reachability or a native execution claim. The helper does not
+execute a game, Graal executable or simulator; it is a test-only diagnostic and
+does not alter engine/compiler inputs. Its actual engine audit still needs to
+complete in the new workflow run before its findings can be reported.
+
+The current handoff/status/checklist now distinguish the new runtime candidate
+from the older uploaded build 2026091301 and the superseded diagnostic 1203.
+The source/build, signing/upload and physical acceptance boundaries remain
+separate; old chronological notes are preserved in the linked Git history.

@@ -130,6 +130,8 @@ jobs:
           cache: maven
       - run: mkdir -p evidence; bash scripts/build_jvm.sh 2>&1 | tee evidence/issue4-jvm-build.log
       - run: bash scripts/test_real_engine.sh 2>&1 | tee evidence/issue4-real-engine.log
+      - name: Audit compiled desktop API references (static only, not native execution)
+        run: bash scripts/test_desktop_dependencies.sh
       - name: Retrieve exact same-commit Swift-exported bundled decks
         uses: actions/download-artifact@v4
         with:

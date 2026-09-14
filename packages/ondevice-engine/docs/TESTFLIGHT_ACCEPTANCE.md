@@ -1,35 +1,38 @@
-# Physical TestFlight acceptance — startup failed; diagnostic retest pending
+# Physical acceptance of the next runtime-hardened TestFlight build
 
 Tracked separately from source/build issue #4 in
 [issue #7](https://github.com/ineedsomesleep5/MagicMobile/issues/7).
 
-Candidate: **0.1.0 (2026091203)**, product source `7c27eaa`, engine `76c18bf`, existing ASC app
-`6784735182` / `com.calebfeliciano.magicmobile`. Internal-only upload succeeded;
-Apple processing is **VALID**, internal state **IN_BETA_TESTING**, and access for
-the existing **Internal** group is verified. This candidate's physical install
-and diagnostic capture are still **NOT RUN**.
-Upload ID: `92c6be87-4cbf-4708-ae0c-8421932e1395`. No USB connection is required.
-The build's English (US) **What to Test** notes include these test areas and the
-known recovery limits, with a link to issue #7.
-Compilation, JVM gameplay and signing are separate evidence, not phone acceptance.
+## Candidate identity comes first
 
-Build **2026091202** was installed and **FAILED during native startup** with
-Token Triumph and one AI. The underlying native exception is unknown. This
-replacement adds local-only error capture and is **not a confirmed gameplay fix**.
-Builds **2026091201** and **2026091202** are not final accepted candidates.
+Use the new build that desktop Codex uploads after the exact PR #9 native and
+Release-product gates pass. Record its actual version/build, app source, engine
+source and upload/processing result. No new build number, upload or physical
+pass is asserted by this checklist. Keep `com.calebfeliciano.magicmobile`, ASC
+app `6784735182`, and the existing Internal group. USB is not required.
 
-## Immediate diagnostic retest
+The last recorded upload, **2026091301**, is older and does not contain PR #9's
+runtime hardening. **2026091203** was an earlier diagnostic build: its mulligan
+failure was identified as Color initialization loading desktop AWT. The narrow
+Color adaptation is already part of the source; the new build must still prove
+it and subsequent gameplay on the phone. Do not reinstall 1203 as the current
+candidate or claim that the remaining exception is still unknown.
 
-- [ ] Install **2026091203**. Explicitly select human **Token Triumph**, AI
-  **Grave Danger**, and **one AI opponent**, then start normally.
-- [ ] If the engine stops, open **Review engine error report** (or **Engine
-  error report** on setup), review it and select **Share report**. Copy/paste
-  privately into the current support conversation with iPhone model/iOS version.
-  Do not post raw reports to public GitHub; error text may contain private cards.
-- [ ] If no report appears, record that result and the visible message. Check
-  saved-report persistence/recovery and confirmed deletion separately.
+## First manual test and private diagnostics
 
-See [the exact diagnostic release handoff](DIAGNOSTIC_TESTFLIGHT_2026091203.md).
+- [ ] Confirm the exact new internal build is installed. Cold-launch normally,
+  choose human **Token Triumph**, **one AI opponent**, and **Grave Danger**.
+  Select the human starting player and reach mulligan/keep-hand.
+- [ ] If the engine stops, review the local engine error report and share it
+  explicitly and privately with phone model, iOS version and exact build.
+  Do not post raw reports to public GitHub; they can contain private card data.
+- [ ] Verify a startup report remains reviewable after failed startup cleanup,
+  can be explicitly deleted, and does not appear in ordinary errors or peer
+  traffic. If no report is available, record that fact and the visible error.
+
+See [current continuation](LOCAL_CONTINUATION_STATUS.md) and
+[the runtime audit](NATIVE_RUNTIME_AUDIT_20260913.md), not old diagnostic release
+instructions, for source/build evidence and handoff details.
 
 Record iPhone model, iOS version, build, player/device count, decks, elapsed time,
 observed result and screenshots/crash logs. Every unchecked item is **not
