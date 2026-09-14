@@ -132,6 +132,17 @@ def answer(prompt, snapshot, rng):
     raise AssertionError("Unhandled soak prompt family: " + kind)
 
 
+def human_recipients(engine, config, created):
+    # create.seats describes the complete match, including AI. Input authority
+    # belongs to the mailbox and must be checked through actual access rejection.
+    assert created['seats'] == [s['seatId'] for s in config['seats']], 'Created roster differs from configuration'
+    for seat in config['seats']:
+        if seat['controller'] == 'ai':
+            result = engine.request('poll', matchId=created['matchId'], viewerId=seat['seatId'], after=0)
+            assert not result['ok'] and result['error']['code'] == 'unauthorized_seat', 'AI seat gained mailbox access'
+    return [s['seatId'] for s in config['seats'] if s['controller'] == 'human']
+
+
 def scenario(base, seats, ai, seed, report):
     config = configuration(base, seats, ai, seed)
     rng = random.Random(seed)
@@ -142,13 +153,15 @@ def scenario(base, seats, ai, seed, report):
               "result": "failed"}
     started = time.monotonic()
     try:
+        record['stage'] = 'cached-identity'
         record['cachedIdentity'] = cached_identity()
         with EngineProcess(timeout=15) as engine:
             for cycle in range(2):
+                record['stage'] = f'cycle-{cycle}-create-and-authority'
                 created = engine.call("create", configuration=config)
                 match = created["matchId"]
-                expected = [s["seatId"] for s in config["seats"] if s["controller"] == "human"]
-                assert created["seats"] == expected, "AI must not become an input recipient"
+                expected = human_recipients(engine, config, created)
+                record['stage'] = f'cycle-{cycle}-prompt-progression'
                 seen = set()
                 families = set()
                 deadline = time.monotonic() + 35
@@ -191,6 +204,7 @@ def scenario(base, seats, ai, seed, report):
                 assert progressed, "Opening/post-answer progression not reached before deadline"
                 if cycle:
                     assert "SELECT" in families, "Did not reach actual priority"
+                record['stage'] = f'cycle-{cycle}-teardown'
                 close_start = time.monotonic()
                 while True:
                     reply = engine.request("destroy", matchId=match)
@@ -201,10 +215,12 @@ def scenario(base, seats, ai, seed, report):
                     time.sleep(.05)
                 stale = engine.request("poll", matchId=match, viewerId=expected[0], after=0)
                 assert not stale["ok"] and stale["error"]["code"] == "unknown_match"
+            record['stage'] = 'shutdown-and-closed-rejection'
             engine.call("shutdown")
             closed = engine.request("create", configuration=config)
             assert not closed["ok"] and closed["error"]["code"] == "engine_closed"
         record["result"] = "passed"
+        record['stage'] = 'complete'
     except Exception as error:
         record["failureType"] = type(error).__name__
         raise

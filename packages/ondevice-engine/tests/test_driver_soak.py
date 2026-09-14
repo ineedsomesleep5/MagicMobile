@@ -48,6 +48,21 @@ class SoakDriverTests(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 soak.answer({"kind": kind, "payload": {"message": "Sacrifice a creature?"}}, {}, random.Random(1))
 
+    def test_complete_roster_is_not_mailbox_authority(self):
+        config = {'seats': [{'seatId': 'human', 'controller': 'human'}, {'seatId': 'bot', 'controller': 'ai'}]}
+        created = {'matchId': 'match', 'seats': ['human', 'bot']}
+        engine = Mock()
+        engine.request.return_value = {'ok': False, 'error': {'code': 'unauthorized_seat'}}
+        self.assertEqual(soak.human_recipients(engine, config, created), ['human'])
+        engine.request.assert_called_once_with('poll', matchId='match', viewerId='bot', after=0)
+        for response in ({'ok': True}, {'ok': False, 'error': {'code': 'unknown_match'}}):
+            engine.request.return_value = response
+            with self.assertRaisesRegex(AssertionError, 'mailbox access'):
+                soak.human_recipients(engine, config, created)
+        created['seats'] = ['human']
+        with self.assertRaisesRegex(AssertionError, 'roster'):
+            soak.human_recipients(engine, config, created)
+
 
 class LifecycleProgressTests(unittest.TestCase):
     def exercise(self, final_state):
@@ -62,7 +77,7 @@ class LifecycleProgressTests(unittest.TestCase):
             def call(self, op, **fields):
                 if op == 'create':
                     self.responses = 0
-                    return {'matchId': 'm', 'seats': ['seat-0']}
+                    return {'matchId': 'm', 'seats': ['seat-0', 'seat-1']}
                 if op == 'poll':
                     state = {'phase': 'running', 'snapshot': {}, 'prompt': {
                         'kind': 'SELECT', 'payload': {}, 'promptId': 'p' + str(self.responses),
@@ -93,6 +108,8 @@ class LifecycleProgressTests(unittest.TestCase):
             def request(self, op, **fields):
                 if op == 'destroy':
                     return {'ok': True}
+                if op == 'poll' and fields['viewerId'] == 'seat-1':
+                    return {'ok': False, 'error': {'code': 'unauthorized_seat'}}
                 return {'ok': False, 'error': {'code': 'unknown_match' if op == 'poll' else 'engine_closed'}}
 
         report = Mock()

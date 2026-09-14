@@ -100,3 +100,29 @@ product linkage and publication identities will be recorded after execution.
 The maintenance schedule and publisher remain inactive; no real upstream upgrade
 has been selected or executed. No signing, TestFlight, native phone gameplay or
 multi-device Game Center acceptance is claimed.
+
+## First published verification and justified driver correction
+
+Published source `258b78d8134b01e798ab1ff596d4aca6b339a3f5`, policy
+`ccd5ea578760e8ac8e20c916c09a3e7a48898121`: CI `34869095016` and package
+`34869094959` passed. The latter executed the new mana-identity regression,
+15 real query cases, controlled turns/privacy, commander and lifecycle suites.
+Package upstream reporting was intentionally skipped on the PR event.
+
+Non-simulator `34869089547` passed four jobs (including Apple SDK compilation)
+but failed the new matrix. Retained JVM artifact `10358961581`, ZIP SHA-256
+`975917eb8cee2b13f500d8efff22d9b7500af6ae2a69efc5ccceaaa556e2ac15`, was
+downloaded/hash-verified. Four human-only scenarios passed; the first 2-player,
+1-AI case failed before any response. The driver incorrectly expected `create.seats`
+to omit AI. Production `XmageEngine.create` correctly returns the complete roster;
+mailbox authorization separately limits input recipients to humans.
+
+Correction checks the full configured roster and asserts actual AI-seat polling
+returns `unauthorized_seat`; it does not weaken the engine, progress assertion,
+scenario count or deadlines. Seventeen driver fixtures pass. A new exact-source
+hosted run is required. No native build was dispatched on the failed cheap gate.
+
+Apple artifact `10358328354`, ZIP SHA-256
+`6b577fd71ea6c9d7d0df1aafbce3324f1a25d57a12571e1170f3b33ac0a7e2f5`, was
+also downloaded/hash-verified: 124 app tests, 21+33 protocol cases, 27 runtime
+fixtures, five exact exported decks and successful generic SDK test compilation.
