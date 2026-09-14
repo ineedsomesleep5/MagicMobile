@@ -313,7 +313,9 @@ struct MagicMobileAPI {
         }
 
         if action.type == "choose_amount" || action.type == "play_x_mana" {
-            guard let amount = action.amount ?? templateInt(action, "amount") ?? (action.targetIds?.first ?? action.validTargetIds?.first ?? action.choiceIds?.first).flatMap(Int.init) else {
+            let optionID: String? = action.targetIds?.first ?? action.validTargetIds?.first ?? action.choiceIds?.first
+            let optionAmount: Int? = optionID.flatMap { Int($0) }
+            guard let amount = action.amount ?? templateInt(action, "amount") ?? optionAmount else {
                 throw missingActionData(action, "amount")
             }
             return GameCommand(

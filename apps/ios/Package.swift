@@ -25,7 +25,7 @@ let package = Package(
             dependencies: ["MagicMobile"],
             path: "MagicMobileTests",
             exclude: ["MagicMobileTests.swift", "OnDeviceBoardIdentityTests.swift", "OnDeviceDeckPersistenceTests.swift"],
-            sources: ["OnDeviceAppConfigurationTests.swift", "OnDeviceModelTests.swift", "OnDeviceSnapshotAdapterTests.swift", "OnDevicePromptAdapterTests.swift", "OnDeviceMultiplayerTests.swift", "OnDeviceSessionTests.swift", "OnDeviceDeckResolverTests.swift", "OnDeviceBackendRegistrationTests.swift", "OnDeviceMessageLogTests.swift", "OnDeviceMessageSessionTests.swift", "OnDeviceDiagnosticsTests.swift"],
+            sources: ["OnDeviceAppConfigurationTests.swift", "OnDeviceModelTests.swift", "OnDeviceSnapshotAdapterTests.swift", "OnDevicePromptAdapterTests.swift", "OnDeviceMultiplayerTests.swift", "OnDeviceSessionTests.swift", "OnDeviceReleaseRecoveryTests.swift", "OnDeviceDeckResolverTests.swift", "OnDeviceBackendRegistrationTests.swift", "OnDeviceMessageLogTests.swift", "OnDeviceMessageSessionTests.swift", "OnDeviceDiagnosticsTests.swift"],
             resources: [.copy("Fixtures/OnDevice")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         )

@@ -84,8 +84,12 @@ public final class MatchMailbox implements AutoCloseable {
             throw new BridgeException("stale_prompt","Prompt changed; use the latest exact prompt metadata");
         if(p.submitted) throw new BridgeException("response_pending","An answer is already queued for this prompt");
         Map<String,Object> answer=p.spec.validate(Json.object(command.get("answer")));
+        // submitted changes the visible poll state. Give it its own aggregate
+        // revision so an older in-flight poll cannot restore an unsubmitted prompt.
+        // p.revision remains the original decision revision for exact retries.
+        p.submitted=true;revision++;
+        record(authenticatedSeat,"response_queued",Json.map("promptId",p.token));
         Map<String,Object> result=Json.object(Json.freeze(Json.map("status","queued","requestId",requestId,"promptId",p.token,"revision",revision)));
-        p.submitted=true;
         receipts.put(key,new Receipt(fingerprint,result));
         while(receipts.size()>RECEIPT_LIMIT) receipts.remove(receipts.keySet().iterator().next());
         delivery.execute(() -> {

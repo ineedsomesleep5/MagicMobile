@@ -112,6 +112,9 @@ public final class RealControlPrivacyTests {
             r.nextEvent();
             Map<String,Object> prompt=r.prompt("a");
             eq(Json.object(prompt.get("payload")).get("manaPlayerId"),r.player("b").getId().toString());
+            expectCode("invalid_response",()->r.mailbox.submit("a",command(prompt,"mana",Json.map("playerId",r.player("a").getId().toString(),"manaType","GREEN"))));
+            expectCode("invalid_response",()->r.mailbox.submit("a",command(prompt,"mana",Json.map("playerId",r.player("c").getId().toString(),"manaType","GREEN"))));
+            check(!Boolean.TRUE.equals(r.prompt("a").get("submitted")),"mismatched pool never consumes the real decision");
             r.mailbox.submit("a",command(prompt,"mana",Json.map("playerId",r.player("b").getId().toString(),"manaType","GREEN")));
             eq(await(result),true);
             eq(r.player("b").getManaPool().getUnlockedManaType(),ManaType.GREEN);

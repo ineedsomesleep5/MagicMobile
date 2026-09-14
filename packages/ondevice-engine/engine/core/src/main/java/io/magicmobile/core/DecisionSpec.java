@@ -60,7 +60,15 @@ public final class DecisionSpec {
             case "mana": {
                 Map<String,Object> mana=Json.object(value);
                 if(!mana.keySet().equals(Set.of("playerId","manaType"))) reject("Malformed mana response");
-                UUID.fromString(Json.requiredString(mana,"playerId"));
+                // Bind to the acted player named by XMage, not a peer-supplied pool
+                // or necessarily the controller's own seat (controlled turns differ).
+                String player=Json.requiredString(mana,"playerId");
+                Object expected=payload.get("manaPlayerId");
+                try {
+                    if(!UUID.fromString(player).toString().equalsIgnoreCase(player)) reject("Noncanonical mana player UUID");
+                } catch(IllegalArgumentException ex) { reject("Invalid mana player UUID"); }
+                if(!(expected instanceof String) || !player.equalsIgnoreCase((String)expected))
+                    reject("Mana response is not for the engine-selected player");
                 if(!Set.of("WHITE","BLUE","BLACK","RED","GREEN","COLORLESS","GENERIC").contains(Json.requiredString(mana,"manaType"))) reject("Unknown mana type");
                 break;
             }

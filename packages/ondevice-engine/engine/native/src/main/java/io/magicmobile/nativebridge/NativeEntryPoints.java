@@ -14,8 +14,12 @@ public final class NativeEntryPoints {
     private static XmageEngine engine;
     private static EngineService service;
     private static synchronized EngineService service() {
-        if(service==null) {engine=new XmageEngine("native-aot");service=new EngineService(engine);}
+        if(service==null) service=EngineService.lazy(NativeEntryPoints::engine);
         return service;
+    }
+    private static synchronized XmageEngine engine() {
+        if(engine==null) engine=new XmageEngine("native-aot");
+        return engine;
     }
     @CEntryPoint(name="mm_engine_request")
     public static CCharPointer request(IsolateThread thread,CCharPointer input,int length) {
@@ -26,6 +30,8 @@ public final class NativeEntryPoints {
                 .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString();
             return allocation(service().request(request));
         } catch(Throwable e) {
+            // Local-only: preserve faults outside EngineService (e.g. native encoding).
+            EngineDiagnostics.capture("native-request",e);
             try {return allocation("{\"protocol\":1,\"ok\":false,\"error\":{\"code\":\"native_failure\",\"message\":\"Native engine failed\"}}");}
             catch(Throwable ignored) {return WordFactory.nullPointer();}
         }
@@ -44,6 +50,6 @@ public final class NativeEntryPoints {
     public static synchronized int shutdown(IsolateThread thread) {
         try {if(engine!=null)engine.close();return 0;} // MM_OK: all workers terminated
         catch(BridgeException e) {return "engine_busy_shutdown".equals(e.code())?5:4;} // MM_BUSY / MM_ENGINE_FAILED
-        catch(Throwable e) {return 4;} // Never permit teardown after an unconfirmed shutdown.
+        catch(Throwable e) {EngineDiagnostics.capture("native-shutdown",e);return 4;} // Retain an unconfirmed isolate.
     }
 }

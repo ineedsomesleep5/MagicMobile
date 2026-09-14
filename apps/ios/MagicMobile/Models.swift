@@ -286,9 +286,16 @@ struct MobilePromptPresentation: Equatable {
     }
 
     private static func optionCount(_ prompt: PromptEnvelopeV2) -> Int {
-        (prompt.choices?.count ?? 0) + (prompt.cards?.count ?? 0) + (prompt.targets?.count ?? 0) +
-            (prompt.players?.count ?? 0) + (prompt.abilities?.count ?? 0) + (prompt.piles?.count ?? 0) +
-            (prompt.amounts?.count ?? 0) + (prompt.multiAmounts?.count ?? 0) + (prompt.orderedItems?.count ?? 0)
+        var count = prompt.choices?.count ?? 0
+        count += prompt.cards?.count ?? 0
+        count += prompt.targets?.count ?? 0
+        count += prompt.players?.count ?? 0
+        count += prompt.abilities?.count ?? 0
+        count += prompt.piles?.count ?? 0
+        count += prompt.amounts?.count ?? 0
+        count += prompt.multiAmounts?.count ?? 0
+        count += prompt.orderedItems?.count ?? 0
+        return count
     }
 
     private static func isCombatSelection(_ snapshot: GameSnapshot, legalActions: [LegalAction]) -> Bool {

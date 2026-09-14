@@ -42,6 +42,15 @@ A response command has exactly:
 
 Answer kinds: `boolean`, `uuid`, `string`, `integer`, `integers`, `mana`. Mana values have `playerId` (engine UUID) and `manaType`. Integer-array constraints include element bounds and total bounds. The adapter converts multi-amount arrays to upstream **space-separated** response text.
 
+Mana answers must name the canonical engine UUID in the prompt's `payload.manaPlayerId`.
+This may be the acted player rather than the authenticated controller during a controlled
+turn. A caller cannot substitute another mana pool; missing authoritative metadata fails closed.
+
+Queueing an answer advances the aggregate poll revision and emits a viewer-scoped
+`response_queued` event. The decision's `promptRevision` and token stay unchanged until
+consumption/replacement, so an identical retry returns the original receipt without another
+revision increment. Clients must ignore older aggregate poll revisions.
+
 `queued` is receipt of the command, not proof of resolution or game legality. Preserve the same request UUID and identical command when retrying an uncertain submission. A fresh prompt uses a new token. Do not replay an old answer against a new prompt.
 
 Poll results contain match/viewer IDs, global revision, phase, viewer snapshot, viewer prompt, bounded viewer events, a resync flag and any terminal failure. Snapshots are always full current per-view projections; events notify changes. A global revision can skip numbers for one viewer without indicating loss.

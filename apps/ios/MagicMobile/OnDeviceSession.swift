@@ -19,6 +19,8 @@ final class OnDeviceSession: ObservableObject {
     private var pollingTask: Task<Void, Never>?
     private var closeEndpoint: (@MainActor () async throws -> Void)?
     private var epoch = UUID()
+    private var visibilityEpoch = UUID()
+    private var isClosing = false
     private var isForeground = true
     private var automaticPolling = true
     private struct Submission {
@@ -41,10 +43,18 @@ final class OnDeviceSession: ObservableObject {
     }
 
     func refresh() async throws {
-        guard let client, let matchID, let seatID, isForeground else { return }
-        let token = epoch
-        let next = try await client.poll(matchID: matchID, seatID: seatID, after: poll?.revision ?? 0)
-        guard epoch == token, self.matchID == matchID else { return }
+        guard let client, let matchID, let seatID, isForeground, !isClosing else { return }
+        let token = epoch, visibility = visibilityEpoch
+        let next: MatchPoll
+        do {
+            next = try await client.poll(matchID: matchID, seatID: seatID, after: poll?.revision ?? 0)
+        } catch {
+            // An old read failure must not surface in a closed/replaced or suspended view.
+            guard epoch == token, visibilityEpoch == visibility, isForeground, !isClosing else { return }
+            throw error
+        }
+        guard epoch == token, self.matchID == matchID, visibilityEpoch == visibility,
+              isForeground, !isClosing else { return }
         guard next.matchID == matchID, next.seatID == seatID else { throw EngineError.unboundPeer }
         if let poll, next.revision < poll.revision { return }
         var nextLog = messageLog
@@ -83,7 +93,7 @@ final class OnDeviceSession: ObservableObject {
 
     func send(_ command: GameCommand, label: String, actionID: String) async throws {
         guard client != nil, let matchID, seatID != nil, let snapshot, let prompt = poll?.prompt,
-              !isWorking, pendingActionID == nil, isForeground, !snapshot.isCompleted,
+              !isWorking, !isClosing, pendingActionID == nil, isForeground, !snapshot.isCompleted,
               command.gameId == matchID, command.playerId == snapshot.viewerID,
               command.expectedBridgeRevision == nil || command.expectedBridgeRevision == snapshot.bridgeRevision else {
             throw EngineError.invalidMessage("The game or decision changed. Refresh before choosing again.")
@@ -95,24 +105,28 @@ final class OnDeviceSession: ObservableObject {
     }
 
     func retryPending() async throws {
-        guard let pending, let client, let matchID, let seatID, isForeground, !isWorking else {
+        guard let pending, let client, let matchID, let seatID, isForeground, !isWorking, !isClosing else {
             throw EngineError.invalidMessage("There is no pending response to retry")
         }
         isWorking = true
         let token = epoch
         defer { if epoch == token { isWorking = false } }
+        var responseAcknowledged = false
         do {
             _ = try await client.respond(matchID: matchID, seatID: seatID, prompt: pending.prompt,
                                          answer: pending.answer, requestID: pending.requestID)
+            responseAcknowledged = true
             guard epoch == token else { return }
-            errorMessage = nil; status = "\(pending.label) sent; waiting for XMage"
+            if isForeground { errorMessage = nil; status = "\(pending.label) sent; waiting for XMage" }
             try await refresh()
         } catch {
             if epoch == token {
                 errorMessage = error.localizedDescription
                 // An engine rejection is certain. A transport timeout or busy RPC is not:
                 // retain the exact request ID and answer for a safe user-triggered retry.
-                if case EngineError.rejected(let code, _) = error, code != "rpc_busy" {
+                // A rejected follow-up *poll* says nothing about the acknowledged
+                // answer. Retain its request ID until consumption or a definite rejection.
+                if !responseAcknowledged, case EngineError.rejected(let code, _) = error, code != "rpc_busy" {
                     self.pending = nil; pendingActionID = nil; pendingCardID = nil
                     try? await refresh()
                 }
@@ -124,23 +138,34 @@ final class OnDeviceSession: ObservableObject {
     func close() async throws {
         guard !isWorking else { throw EngineError.invalidMessage("Wait for the current operation before closing") }
         guard let closeEndpoint else { return }
-        isWorking = true; pollingTask?.cancel(); pollingTask = nil
+        isClosing = true; isWorking = true; pollingTask?.cancel(); pollingTask = nil
         epoch = UUID()
         defer { isWorking = false }
-        try await closeEndpoint()
+        do { try await closeEndpoint() }
+        catch {
+            // The engine may already have cancelled its workers. Retain ownership
+            // for cleanup, but do not resume gameplay against a closing runtime.
+            errorMessage = error.localizedDescription; status = "Closing interrupted. Retry closing the game."
+            throw error
+        }
         epoch = UUID(); client = nil; matchID = nil; seatID = nil; poll = nil; snapshot = nil
+        isClosing = false
         messageLog = OnDeviceMessageLog()
         self.closeEndpoint = nil; pending = nil; pendingActionID = nil; pendingCardID = nil; errorMessage = nil; status = "Ready"
     }
 
     func setForeground(_ value: Bool) {
+        if isForeground != value { visibilityEpoch = UUID() }
         isForeground = value
         if value { beginPolling() }
-        else { pollingTask?.cancel(); pollingTask = nil; status = "Paused while this app is in the background" }
+        else {
+            pollingTask?.cancel(); pollingTask = nil
+            if !isClosing { status = "Paused while this app is in the background" }
+        }
     }
 
     private func beginPolling() {
-        guard pollingTask == nil, automaticPolling, client != nil, isForeground,
+        guard pollingTask == nil, automaticPolling, client != nil, isForeground, !isClosing,
               !["ended", "failed", "closed"].contains(poll?.phase ?? "") else { return }
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -153,8 +178,7 @@ final class OnDeviceSession: ObservableObject {
                         self.pollingTask = nil
                         return
                     }
-                } catch is CancellationError { return }
-                catch {
+                } catch {
                     guard let self, !Task.isCancelled else { return }
                     self.pollingTask = nil
                     self.errorMessage = error.localizedDescription; self.status = "Updates interrupted. Refresh to retry."
