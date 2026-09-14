@@ -27,7 +27,7 @@ persists only the latest report plus app/OS/time/status metadata, capped at
 deletes it explicitly; no automatic upload is added. No game state or action
 payload recorder is enabled. Temporary capture is tagged `[DEBUG-native-failure]`.
 
-A configuration has 2–4 unique seats with `seatId`, `name`, `controller: "human"`, and `deck`. Deck keys are `name`, `main`, `commanders` and optional `companions`. Card rows have `count`, `setCode`, `collectorNumber`, optional exact `name`. They do **not** accept `className`, caller-supplied rules or rarity.
+A configuration has 2–4 unique seats with `seatId`, `name`, `controller: "human"` or `"ai"`, and `deck`, with at least one human. AI seats use actual upstream MAD and are not poll/response recipients. Deck keys are `name`, `main`, `commanders` and optional `companions`. Card rows have `count`, `setCode`, `collectorNumber`, optional exact `name`. They do **not** accept `className`, caller-supplied rules or rarity.
 
 A response command has exactly:
 
@@ -54,4 +54,4 @@ Build identity includes protocol version, upstream commit, catalogue fingerprint
 
 `PacketChunk` splits messages into 8 KiB parts. `PacketAssembler` scopes buffers by authenticated peer+message ID, enforces 4 MiB/message, per-peer/global concurrency and aggregate byte quotas, validates indexes and duplicate content, and expires stale assemblies. A bounded chunk layer is not transport authentication or matchmaking.
 
-Still required in the actual app: lobby/host election, deck exchange, request/reply correlation, reconnect state and guest UI orchestration. The host is trusted with the full game, including hidden information; guest filtering is not host anti-cheat.
+The production app implements lobby/host election, deck exchange, request/reply correlation, suspension/cleanup and guest UI orchestration in `OnDeviceMultiplayer` and `GameKitTransport`. Portable tests do not establish actual Game Center or multi-phone execution. Guaranteed reconnect, host migration and durable match restoration remain outside the MVP. The host is trusted with the full game, including hidden information; guest filtering is not host anti-cheat.

@@ -1,12 +1,16 @@
 # MagicMobile · On-device XMage migration
 
-**Maintained XMage port; desktop continuation updated September 13, 2026 UTC.**
+**Maintained XMage port; desktop continuation updated September 14, 2026.**
 
 The native iOS product embeds XMage's actual rules engine. A player must not need a desktop JVM, Docker container, browser simulator, local gateway, or external computer. The selected host's phone owns the authoritative multiplayer game; real multi-phone execution remains an acceptance gate.
 
 ## Actual delivery status
 
-Diagnostic internal TestFlight **0.1.0 (2026091203)** is **VALID / IN_BETA_TESTING**, with verified existing Internal group access. Full XMage+MAD ARM64 compilation (**34731298892**) and actual product linkage (**34732453251**) passed at engine `76c18bf` / app `7c27eaa`. **Build 2026091202 was installed but failed during native startup.** The replacement adds private, bounded error capture with explicit review/share/delete; it is **not a confirmed gameplay fix**. Real JVM and portable tests passed, but successful native gameplay, AI resource behavior and real multi-device execution remain unverified. See [the diagnostic handoff](docs/DIAGNOSTIC_TESTFLIGHT_2026091203.md), [current status](docs/LOCAL_CONTINUATION_STATUS.md) and [physical acceptance](docs/TESTFLIGHT_ACCEPTANCE.md).
+Runtime hardening in PR #9 has successful full XMage+MAD ARM64 compilation (**34803650513**, engine `f8e1680`) and native-linked unsigned Release product verification (**34805592902**, app `101985d`). The native archive and product evidence were downloaded and hash-checked on September 14. The last recorded internal TestFlight **2026091301** predates these repairs; App Store Connect was not queried in this maintenance task. Successful native phone gameplay, AI resource behavior and real multi-device execution remain unverified. See [current status](docs/LOCAL_CONTINUATION_STATUS.md) and [physical acceptance](docs/TESTFLIGHT_ACCEPTANCE.md).
+
+The new September 14 maintenance fixes change guarded Java inputs and therefore
+require a new full ARM64 artifact; the preceding success is historical evidence,
+not acceptance of those changes. See [the checkpoint](docs/MAINTENANCE_CHECKPOINT.md).
 
 The product retains and adapts the existing **vertical/portrait playing mode** and landscape support in `apps/ios/MagicMobile`; `apps/ios-ondevice` remains a diagnostic harness. See [PORTRAIT_INTEGRATION.md](docs/PORTRAIT_INTEGRATION.md).
 

@@ -19,7 +19,7 @@ public final class CoreTests {
     private static Map<String,Object> answer(String kind,Object value) {return Json.map("kind",kind,"value",value);}
     private static Map<String,Object> pending(MatchMailbox m,String s) {return Json.object(m.poll(s,0).get("prompt"));}
     public static void main(String[] args) throws Exception {
-        json();decisions();singleRecipient();mailbox();concurrent();service();diagnostics();
+        json();decisions();manaIdentity();singleRecipient();mailbox();concurrent();service();diagnostics();
         System.out.println("PASS: "+checks+" assertions; scope=standalone-core (NOT XMage gameplay or iOS)");
     }
     private static void json() {
@@ -76,6 +76,34 @@ public final class CoreTests {
         error("invalid_response",()->allocations.validate(answer("integers",List.of(2,2))));
         error("invalid_response",()->allocations.validate(answer("integers",List.of(5))));
         error("invalid_response",()->allocations.validate(answer("integers",List.of(-1,6))));
+    }
+    private static void manaIdentity() throws Exception {
+        String acting=UUID.randomUUID().toString(),controller=UUID.randomUUID().toString();
+        for(String kind:List.of("SELECT","PLAY_MANA","PLAY_X_MANA")) {
+            DecisionSpec decision=new DecisionSpec(kind,Json.map("manaPlayerId",acting),Set.of("mana"),null,null,0,0,null);
+            Map<String,Object> valid=answer("mana",Json.map("playerId",acting,"manaType","GREEN"));
+            ok(decision.validate(valid).equals(valid),"acting mana identity preserved for "+kind);
+            error("invalid_response",()->decision.validate(answer("mana",Json.map("playerId",controller,"manaType","GREEN"))));
+            error("invalid_response",()->decision.validate(answer("mana",Json.map("playerId","not-a-uuid","manaType","GREEN"))));
+        }
+        DecisionSpec missing=new DecisionSpec("PLAY_MANA",Json.map(),Set.of("mana"),null,null,0,0,null);
+        error("invalid_response",()->missing.validate(answer("mana",Json.map("playerId",acting,"manaType","GREEN"))));
+        // The authenticated controller answers using the acted player's pool, not its own.
+        try(MatchMailbox mailbox=new MatchMailbox("controlled-mana",List.of(controller))) {
+            DecisionSpec decision=new DecisionSpec("PLAY_MANA",Json.map("manaPlayerId",acting),Set.of("mana"),null,null,0,0,null);
+            CountDownLatch delivered=new CountDownLatch(1);
+            List<Map<String,Object>> received=new CopyOnWriteArrayList<>();
+            mailbox.ask(controller,decision,value->{received.add(value);delivered.countDown();});
+            Map<String,Object> prompt=pending(mailbox,controller);
+            String request=UUID.randomUUID().toString();
+            error("invalid_response",()->mailbox.submit(controller,command(prompt,request,
+                answer("mana",Json.map("playerId",controller,"manaType","GREEN")))));
+            ok(Boolean.FALSE.equals(pending(mailbox,controller).get("submitted")),"wrong pool leaves prompt unsubmitted");
+            Map<String,Object> valid=answer("mana",Json.map("playerId",acting,"manaType","GREEN"));
+            mailbox.submit(controller,command(prompt,request,valid));
+            ok(delivered.await(2,TimeUnit.SECONDS),"controller can answer with acting pool after rejection");
+            ok(received.equals(List.of(valid)),"only exact acting-pool answer delivered");
+        }
     }
     private static void singleRecipient() throws Exception {
         try(MatchMailbox m=new MatchMailbox("human-and-ai",List.of("human"))) {

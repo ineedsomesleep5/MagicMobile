@@ -47,6 +47,7 @@ public final class RealQueryTests {
         run("integer and allocation bounds/cancellation",RealQueryTests::amounts);
         run("real HumanPlayer integer/allocation answers",RealQueryTests::amountLoops);
         run("mana source versus floating mana",RealQueryTests::mana);
+        run("mana identity validation preserves controlled-player pool",RealQueryTests::manaIdentity);
         run("choice hints, sorting and special tokens",RealQueryTests::choices);
         run("real HumanPlayer remembered replacement choice",RealQueryTests::replacementLoop);
         run("split/MDFC ability labels and exact IDs",RealQueryTests::abilityFaces);
@@ -187,6 +188,38 @@ public final class RealQueryTests {
             // PLAY_X_MANA's factory exists, but the pinned HumanPlayer never emits it.
             DecisionSpec x=encode(PlayerQueryEvent.playXManaEvent(PLAYER,"Pay X"));
             accepts(x,"integer",5);rejects(x,"integer",-1);accepts(x,"uuid",source.toString());
+        }
+    }
+
+    private static void manaIdentity() {
+        UUID other=UUID.randomUUID();
+        for(PlayerQueryEvent event:List.of(PlayerQueryEvent.selectEvent(PLAYER,"Priority"),
+                PlayerQueryEvent.playManaEvent(PLAYER,"Pay {1}",options()),PlayerQueryEvent.playXManaEvent(PLAYER,"Pay X"))) {
+            DecisionSpec spec=encode(event);
+            eq(spec.payload.get("manaPlayerId"),PLAYER.toString());
+            accepts(spec,"mana",Json.map("playerId",PLAYER.toString(),"manaType","GREEN"));
+            rejects(spec,"mana",Json.map("playerId",other.toString(),"manaType","GREEN"));
+            rejects(spec,"mana",Json.map("playerId","not-a-uuid","manaType","GREEN"));
+        }
+        try(Fixture f=new Fixture()) {
+            MobileHumanPlayer controlled=new MobileHumanPlayer("Controlled mana player");
+            try {
+                f.game.getState().addPlayer(controlled);
+                controlled.updateRange(f.game);f.player.updateRange(f.game);
+                check(f.player.controlPlayersTurn(f.game,controlled.getId(),"mana identity regression"),"real turn control applied");
+                f.answer(spec->{
+                    eq(spec.kind,"PLAY_MANA");
+                    eq(spec.payload.get("manaPlayerId"),controlled.getId().toString());
+                    rejects(spec,"mana",Json.map("playerId",f.player.getId().toString(),"manaType","GREEN"));
+                    rejects(spec,"mana",Json.map("playerId",other.toString(),"manaType","GREEN"));
+                    return answer("mana",Json.map("playerId",controlled.getId().toString(),"manaType","GREEN"));
+                });
+                // Fixture delivers to the controller channel; upstream acts on the controlled pool.
+                check(controlled.playMana(null,new GenericManaCost(1),"{1}",f.game),"controlled floating mana accepted");
+                eq(controlled.getManaPool().getUnlockedManaType(),ManaType.GREEN);
+                eq(f.player.getManaPool().getUnlockedManaType(),null);
+                f.drained();
+            } finally { controlled.closeChannel(); }
         }
     }
 

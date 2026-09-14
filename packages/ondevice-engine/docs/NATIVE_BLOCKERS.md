@@ -6,18 +6,21 @@ Do not treat the older 2026091301 release as proof of the new runtime repairs.
 
 ## GitHub source/build gates
 
-The production engine source is `f8e16802bf033adfd844b878248b30042b838481`.
-Its full ARM64 run is **34803650513**. The current code is
+The prior verified engine source is `f8e16802bf033adfd844b878248b30042b838481`.
+Its full ARM64 run is **34803650513**. Its paired app source is
 `101985d7f8175c2ec4ddb3c2945b7062055b704d`; its native-linked unsigned Release
-product gate is **34805592902**. Both require an actual successful conclusion
-and matching artifacts. If a selected run fails, fix the recorded cause and
-rerun the affected gate; do not use an old/probe archive or mark it passed.
+product gate is **34805592902**. Both succeeded; the archive and product evidence
+were downloaded and hash-checked September 14 (identities in current status).
+The current maintenance change to production mana validation requires a new
+native candidate; those artifacts cannot validate that repair. Final hosted
+checks, ARM64 compilation and matching product linkage remain pending in
+[MAINTENANCE_CHECKPOINT.md](MAINTENANCE_CHECKPOINT.md).
 
 The original compiler call-range, Apple linker layout, Color/AWT, token resource
 and desktop-catalogue problems have targeted repairs and regression evidence.
-The fresh native build and real product link still determine whether this exact
-candidate crosses the build gate. See the current machine-readable status for
-recorded conclusions, rather than historical pending/passed notes.
+The runtime-hardened candidate crossed the native compilation and unsigned
+product-link gates. See the current machine-readable status for exact evidence;
+the remaining signing, native execution and phone gates below are unexecuted.
 
 ## Desktop signing and distribution
 

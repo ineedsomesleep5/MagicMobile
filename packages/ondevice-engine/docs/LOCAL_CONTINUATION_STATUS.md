@@ -5,7 +5,18 @@ Use [PR #9](https://github.com/ineedsomesleep5/MagicMobile/pull/9), branch
 and PR #6's native engine integration. Do not reinstall an earlier ZIP or reset
 the project to its original checkpoint. Preserve uncommitted desktop work.
 
-## Exact candidate, not an already-uploaded app
+## Maintenance continuation in progress
+
+The September 14 continuation adds mana-player validation, authenticated lobby
+error handling, bounded lifecycle coverage and inactive upstream automation.
+The Java change requires a **new ARM64 build and matching unsigned product gate**.
+The prior artifacts below do not contain it. Follow
+[MAINTENANCE_CHECKPOINT.md](MAINTENANCE_CHECKPOINT.md) and
+[PRODUCTION_COVERAGE_LEDGER.md](PRODUCTION_COVERAGE_LEDGER.md) for current scope;
+final hosted/source identities are pending. No signing or upload is authorized in
+this implementation task.
+
+## Prior verified candidate, not an already-uploaded app
 
 - Reviewed application code: `101985d7f8175c2ec4ddb3c2945b7062055b704d`.
 - Production engine source: `f8e16802bf033adfd844b878248b30042b838481`.
@@ -15,11 +26,16 @@ the project to its original checkpoint. Preserve uncommitted desktop work.
 - CI [34805598621](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34805598621) and
   package gates [34805598624](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34805598624), passed.
 
-The native and product gates must actually conclude successfully before staging
-or release. Their names, queued/running state, small probes, and old green builds
-are not substitutes. Read `implementation-status.json` and the latest PR #9
-evidence for their recorded conclusions and exact artifacts. A documentation-only
-continuation can retain the code/engine identities above; verify source equality.
+Both native and product gates concluded successfully, verified live September 14.
+Native artifact `10334439109` ZIP SHA-256 is
+`4fcb8e958f9e4b95082f0b6e0f242312b8232072d038215eeb885cf82b91fbba`;
+all 51 hash-covered paired inputs passed receipt verification. The engine archive
+SHA-256 is `99c8d7ef186c37d3c409473101eaeb89abc8075cbb5eaddad9196eff43e97a9b`.
+Product evidence `10334294606` ZIP SHA-256 is
+`1d002beee11ac869a333923e5f14e4e16b677e1a7e6e920755ffba918d68f306`.
+Its receipt records 191,665,664 intact Graal code bytes, 818 verified relocated
+instructions and seven veneers. These are compilation/linkage results, not
+native gameplay. Maintenance continuation must recheck final guarded-input equality.
 
 ## Implemented and verified boundaries
 

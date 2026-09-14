@@ -3,6 +3,9 @@ name: Issue 4 non-simulator verification
 on:
   push:
     branches: [codex/issue-4-native-mvp, codex/issue-4-verified-continuation, codex/testflight-readiness-audit, codex/native-runtime-hardening]
+    paths-ignore:
+      - '**/*.md'
+      - 'packages/ondevice-engine/implementation-status.json'
   workflow_dispatch:
 
 permissions:
@@ -53,6 +56,10 @@ jobs:
           distribution: temurin
           java-version: '21'
       - run: bash scripts/test_tooling.sh
+      - name: Test native approval and upstream maintenance orchestration
+        run: |
+          python3 -B -m unittest discover -s ../../scripts/magicmobile-native-gate -p 'test_*.py' -v
+          python3 -B -m unittest discover -s ../../scripts/magicmobile-maintenance -p 'test_*.py' -v
       - run: bash scripts/test_native_boundary.sh
       - uses: actions/upload-artifact@v4
         if: always()
@@ -130,6 +137,8 @@ jobs:
           cache: maven
       - run: mkdir -p evidence; bash scripts/build_jvm.sh 2>&1 | tee evidence/issue4-jvm-build.log
       - run: bash scripts/test_real_engine.sh 2>&1 | tee evidence/issue4-real-engine.log
+      - name: Bounded seeded driver lifecycle matrix (real JVM, not seeded XMage RNG)
+        run: python3 scripts/test_seeded_soak.py
       - name: Audit compiled desktop API references (static only, not native execution)
         run: bash scripts/test_desktop_dependencies.sh
       - name: Retrieve exact same-commit Swift-exported bundled decks

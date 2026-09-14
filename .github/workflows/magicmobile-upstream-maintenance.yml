@@ -1,0 +1,137 @@
+name: XMage upstream maintenance (manual)
+
+# Deliberately no schedule, automatic triggers or credential-bearing PR publisher.
+on:
+  # Inactive proposal: uncomment only with explicit activation approval.
+  # schedule:
+  #   - cron: '23 9 * * 1' # Weekly Monday 09:23 UTC; detection only.
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Detection, or explicitly approved candidate preparation and JVM regeneration'
+        type: choice
+        options: [detect, candidate]
+        default: detect
+      candidate:
+        description: 'Optional exact upstream commit; blank resolves master once'
+        required: false
+        type: string
+      reviewed_detection_digest:
+        description: 'Candidate mode requires the previously reviewed canonical detection digest'
+        required: false
+        type: string
+      reviewed_generated_digest:
+        description: 'Optional separate human approval of regenerated hashes AND inventory; enables post-review gates'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fixture tests (no upstream execution)
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/magicmobile-maintenance -p 'test_*.py'
+      - name: Inspect public Git objects only
+        env:
+          CANDIDATE: ${{ inputs.candidate }}
+        shell: bash
+        run: |
+          args=()
+          if [[ -n "$CANDIDATE" ]]; then args+=(--candidate "$CANDIDATE"); fi
+          python3 scripts/magicmobile-maintenance/upstream.py detect "${args[@]}" --output upstream-detection.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: upstream-detection
+          path: upstream-detection.json
+          if-no-files-found: error
+          retention-days: 30
+  candidate:
+    if: inputs.mode == 'candidate'
+    runs-on: macos-26-intel
+    timeout-minutes: 180
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Check authorized builder tools
+        run: |
+          java -version
+          mvn -version
+          swift --version
+          xcodebuild -version
+      - name: Require reviewed exact candidate
+        env:
+          CANDIDATE: ${{ inputs.candidate }}
+          REVIEW: ${{ inputs.reviewed_detection_digest }}
+        run: |
+          [[ "$CANDIDATE" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$REVIEW" =~ ^[0-9a-f]{64}$ ]]
+      - name: Prepare exact approved tree and regenerate without credentials
+        env:
+          CANDIDATE: ${{ inputs.candidate }}
+          REVIEW: ${{ inputs.reviewed_detection_digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          upstream="$RUNNER_TEMP/upstream-objects"
+          target="$RUNNER_TEMP/maintenance-candidate"
+          git init --bare "$upstream"
+          old=$(python3 -c 'import json; print(json.load(open("packages/ondevice-engine/upstream.lock.json"))["commit"])')
+          git -C "$upstream" fetch --depth=1 https://github.com/magefree/mage.git "$old" "$CANDIDATE"
+          python3 scripts/magicmobile-maintenance/upstream.py detect --upstream "$upstream" --candidate "$CANDIDATE" --output "$RUNNER_TEMP/detection.json"
+          python3 scripts/magicmobile-maintenance/upstream.py prepare --project "$GITHUB_WORKSPACE" --upstream "$upstream" --report "$RUNNER_TEMP/detection.json" --approve-digest "$REVIEW" --destination "$target"
+          python3 scripts/magicmobile-maintenance/upstream.py regenerate "$target" --execute
+      - name: Explicitly accept reviewed generated hashes and execute post-review gates
+        if: inputs.reviewed_generated_digest != ''
+        env:
+          GENERATED_REVIEW: ${{ inputs.reviewed_generated_digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GENERATED_REVIEW" =~ ^[0-9a-f]{64}$ ]]
+          target="$RUNNER_TEMP/maintenance-candidate"
+          python3 scripts/magicmobile-maintenance/upstream.py accept-generated "$target" --approve-digest "$GENERATED_REVIEW"
+          python3 scripts/magicmobile-maintenance/upstream.py validate "$target" --execute
+      - name: Preserve reports for separate human hash review
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: candidate-review-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/detection.json
+            ${{ runner.temp }}/maintenance-candidate/maintenance-*.json
+            ${{ runner.temp }}/maintenance-candidate/maintenance-build-*.log
+            ${{ runner.temp }}/maintenance-candidate/maintenance-validation-*.log
+            ${{ runner.temp }}/maintenance-candidate/maintenance-precons/
+            ${{ runner.temp }}/maintenance-candidate/apps/ios/MagicMobile/Resources/ondevice-catalogue.json
+            ${{ runner.temp }}/maintenance-candidate/packages/ondevice-engine/build/generated/
+            ${{ runner.temp }}/maintenance-candidate/packages/ondevice-engine/upstream.lock.json
+            ${{ runner.temp }}/maintenance-candidate/packages/ondevice-engine/platform/repository-sources.json
+            ${{ runner.temp }}/maintenance-candidate/packages/ondevice-engine/implementation-status.json
+            ${{ runner.temp }}/maintenance-candidate/packages/ondevice-engine/engine/xmage/src/main/java/io/magicmobile/xmage/XmageEngine.java
+            ${{ runner.temp }}/maintenance-candidate/packages/ondevice-engine/engine/tools/CommanderSetExporter.java
+            ${{ runner.temp }}/maintenance-candidate/packages/ondevice-engine/engine/tools/CardMetadataExporter.java
+            ${{ runner.temp }}/maintenance-candidate/packages/ondevice-engine/scripts/export_ios_catalogue.py
+          if-no-files-found: warn
+          retention-days: 30

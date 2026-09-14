@@ -22,8 +22,29 @@ for input in "${INPUTS[@]}"; do
 done
 mkdir -p evidence/desktop-api
 {
-  printf 'MagicMobile source: '
-  git rev-parse HEAD
+  # Exports intentionally have no .git. Never mistake an enclosing repository
+  # for the source checkout, and never treat observed HEAD as compiled provenance.
+  PROJECT_ROOT=$(cd "$ROOT/../.." && pwd -P)
+  SOURCE_HEAD=''
+  if GIT_ROOT=$(git -C "$PROJECT_ROOT" rev-parse --show-toplevel 2>/dev/null) &&
+     [[ "$(cd "$GIT_ROOT" && pwd -P)" == "$PROJECT_ROOT" ]]; then
+    SOURCE_HEAD=$(git -C "$PROJECT_ROOT" rev-parse --verify HEAD 2>/dev/null) || SOURCE_HEAD=''
+  fi
+  if [[ "$SOURCE_HEAD" =~ ^[0-9a-f]{40}$ ]]; then
+    printf 'MagicMobile observed checkout HEAD: %s\n' "$SOURCE_HEAD"
+    if TRACKED_STATUS=$(GIT_OPTIONAL_LOCKS=0 git -C "$PROJECT_ROOT" status --porcelain --untracked-files=no 2>/dev/null); then
+      if [[ -n "$TRACKED_STATUS" ]]; then
+        printf 'MagicMobile tracked worktree: dirty\n'
+      else
+        printf 'MagicMobile tracked worktree: clean\n'
+      fi
+    else
+      printf 'MagicMobile tracked worktree: unverified\n'
+    fi
+  else
+    printf 'MagicMobile source: unverified-exported-source (no exact project Git HEAD)\n'
+  fi
+  printf 'Source scope: observation only; not proof of compiled class source provenance.\n'
   printf 'XMage source: '
   git -C .upstream/mage rev-parse HEAD
   jdeps --version
