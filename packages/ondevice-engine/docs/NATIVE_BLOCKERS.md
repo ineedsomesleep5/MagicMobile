@@ -23,12 +23,12 @@ product-link gates. See the current machine-readable status for exact evidence;
 the subsequent signed upload is recorded below, while native execution and phone
 acceptance remain unexecuted.
 
-## Signed upload completed; Apple processing pending
+## Signed upload and Internal availability confirmed
 
 The separately authorized [build 2026091401](TESTFLIGHT_2026091401.md) passed
 archive/export, distribution-signature/profile, Game Center, UUID-matched dSYM/
 native layout, privacy and Apple validation checks, then uploaded successfully.
-Apple reports PROCESSING; confirm availability in the existing Internal group.
+Apple confirms VALID/IN_BETA_TESTING and exact existing Internal-group access.
 Do not reupload or reuse the previous build number. Retain all signed artifacts
 and receipts. No public distribution or phone acceptance occurred.
 

@@ -6,7 +6,7 @@
   "pullRequest": 9,
   "sourceBuildIssue": 4,
   "physicalAcceptanceIssue": 7,
-  "status": "internal-testflight-uploaded-apple-processing-phone-acceptance-pending",
+  "status": "internal-testflight-available-physical-acceptance-pending",
   "maintenanceContinuation": {
     "baselineCommit": "56d94497ba887dfff49ea46c6c03d49deb73df3f",
     "state": "authorized-pre-phone-matrix-complete",
@@ -58,15 +58,18 @@
     "engineSourceCommit": "d04f9cac88d680af10fe7174fab85f624e5ad491",
     "deliveryUuid": "4e99955e-55eb-4371-9fc2-46e9c5ab0da2",
     "uploadedAt": "2026-09-14T19:26:41Z",
-    "recordedProcessingState": "PROCESSING",
-    "recordedInternalState": "awaiting-processing",
+    "recordedProcessingState": "VALID",
+    "recordedInternalState": "IN_BETA_TESTING",
     "internalOnly": true,
     "containsCurrentRuntimeHardening": true,
     "physicalAcceptance": "not-verified",
     "evidence": "docs/TESTFLIGHT_2026091401.md",
     "liveAppStoreConnectQueriedInThisContinuation": true,
     "ipaSHA256": "a9daf91926a58b38aa4f95ee4d65bfd19562facc14f4e9b7804ce13ec707cb32",
-    "signedBinarySHA256": "47859493751e35b17d2c5a734a530ef15ee0b59d88e74d4c5fc63adf53f28f3a"
+    "signedBinarySHA256": "47859493751e35b17d2c5a734a530ef15ee0b59d88e74d4c5fc63adf53f28f3a",
+    "internalGroupID": "dd37d7bb-26d8-4a0c-b8a3-7811d648a699",
+    "internalGroupAccessVerified": true,
+    "availabilityVerifiedAt": "2026-09-14T19:41:00Z"
   },
   "verification": {
     "sourceCommit": "d04f9cac88d680af10fe7174fab85f624e5ad491",

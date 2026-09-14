@@ -10,8 +10,8 @@ the project to its original checkpoint. Preserve uncommitted desktop work.
 [Build 2026091401](TESTFLIGHT_2026091401.md), release source
 `a718978e59b0fe4ef90568cf190d5fe5b0ecff41`, passed archive/export/signing/layout
 and Apple validation, then uploaded successfully. Delivery UUID:
-`4e99955e-55eb-4371-9fc2-46e9c5ab0da2`. Apple currently reports PROCESSING;
-Internal availability is pending. It uses the exact new engine below, not the
+`4e99955e-55eb-4371-9fc2-46e9c5ab0da2`. Apple confirms VALID and IN_BETA_TESTING, with verified access for the existing
+Internal group. Build 2026091401 is available in internal TestFlight. It uses the exact new engine below, not the
 older 2026091301 archive. No public release or physical acceptance occurred.
 The following pre-phone/old-build sections are historical evidence for this release;
 the separate release handoff supersedes their no-upload/build-number statements.

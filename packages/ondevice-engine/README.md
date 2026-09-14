@@ -8,8 +8,8 @@ The native iOS product embeds XMage's actual rules engine. A player must not nee
 
 **New authorized internal upload:** [0.1.0 (2026091401)](docs/TESTFLIGHT_2026091401.md)
 passed signing/layout/Apple validation and uploaded successfully on September 14.
-Apple processing and Internal-group availability are pending; phone acceptance
-remains unverified. The pre-phone evidence below describes the preceding stage.
+Apple confirms VALID/IN_BETA_TESTING and exact existing Internal-group access;
+phone acceptance remains unverified. The pre-phone evidence below describes the preceding stage.
 
 PR #9's functional source `d04f9cac88d680af10fe7174fab85f624e5ad491` passed the full XMage+MAD ARM64 build **34872508758** and native-linked unsigned Release product gate **34883826069**. Both new artifacts were downloaded and hash-checked on September 14; the new engine was required by guarded Java changes. Final non-simulator **34871098576**, CI **34871103720** and package **34871103725** passed. See [current source/artifact identities](docs/LOCAL_CONTINUATION_STATUS.md) and [the checkpoint](docs/MAINTENANCE_CHECKPOINT.md).
 
