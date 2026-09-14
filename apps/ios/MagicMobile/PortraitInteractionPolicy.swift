@@ -2,6 +2,10 @@ import Foundation
 
 /// Presentation decisions never rewrite an engine action or a seat identity.
 enum PortraitInteractionPolicy {
+    static func automaticCardAction(_ cardActions: [LegalAction]) -> LegalAction? {
+        cardActions.count == 1 ? cardActions.first : nil
+    }
+
     static func authorizedCards(_ snapshot: GameSnapshot) -> [ZoneCard] {
         var cards: [ZoneCard] = []
         for player in snapshot.players {

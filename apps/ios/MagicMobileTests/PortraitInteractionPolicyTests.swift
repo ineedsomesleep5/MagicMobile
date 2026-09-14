@@ -2,6 +2,13 @@ import XCTest
 @testable import MagicMobile
 
 final class PortraitInteractionPolicyTests: XCTestCase {
+    func testAmbiguousCardTapDoesNotChooseAnAbilityForThePlayer() throws {
+        let actions = try JSONDecoder().decode([LegalAction].self, from: Data(#"[{"id":"mana","type":"make_mana","playerId":"a","label":"Tap","sourceInstanceId":"card"},{"id":"other","type":"activate_ability","playerId":"a","label":"Sacrifice","sourceInstanceId":"card"}]"#.utf8))
+        XCTAssertNil(PortraitInteractionPolicy.automaticCardAction(actions))
+        XCTAssertNil(PortraitInteractionPolicy.automaticCardAction([]))
+        XCTAssertEqual(PortraitInteractionPolicy.automaticCardAction([actions[0]])?.id, "mana")
+    }
+
     func testZoneInspectionUsesOnlyCurrentSuppliedCards() throws {
         for zone in ["hand", "library", "battlefield", "graveyard", "exile", "command", "stack"] {
             let snapshot = try makeSnapshot(active: "a", turn: 1, visibleZone: zone)

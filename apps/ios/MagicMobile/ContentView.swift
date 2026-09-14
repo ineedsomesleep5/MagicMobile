@@ -2778,12 +2778,14 @@ struct NativeGameView: View {
                                 DragActionChoicePopup(
                                     choice: dragActionChoice,
                                     pendingActionId: pendingActionId,
-                                    runAction: { action in
-                                        self.dragActionChoice = nil
-                                        runAction(action)
+                                runAction: { action in
+                                    self.dragActionChoice = nil
+                                    selectedCard = nil
+                                    runAction(action)
                                     },
-                                    cancel: {
-                                        self.dragActionChoice = nil
+                                cancel: {
+                                    self.dragActionChoice = nil
+                                    selectedCard = nil
                                     }
                                 )
                                 .frame(width: min(max(metrics.size.width * 0.30, 260), 340))
@@ -3365,10 +3367,12 @@ struct NativeGameView: View {
                         pendingActionId: pendingActionId,
                         runAction: { action in
                             self.dragActionChoice = nil
+                            selectedCard = nil
                             runAction(action)
                         },
                         cancel: {
                             self.dragActionChoice = nil
+                            selectedCard = nil
                         }
                     )
                     .frame(width: metrics.compactPromptRect.width)
@@ -9128,8 +9132,8 @@ struct PortraitOverlappingBattlefieldRow: View {
                                     GameHaptics.warning()
                                 } else if combatHighlighted, runCombatCardAction(card) {
                                     return
-                                } else if let action, Self.tapRunnableActionTypes.contains(action.type) {
-                                    runAction(action)
+                                } else if let immediate = PortraitInteractionPolicy.automaticCardAction(GameBoardInteractionState.cardActions(for: card, actions: legalActions)), Self.tapRunnableActionTypes.contains(immediate.type) {
+                                    runAction(immediate)
                                 } else {
                                     selectedCard = card
                                     inspectedCard = nil
@@ -10001,8 +10005,8 @@ struct BattlefieldRow: View {
             GameHaptics.warning()
         } else if combatHighlighted, runCombatCardAction(card) {
             GameHaptics.selection()
-        } else if let action, Self.tapRunnableActionTypes.contains(action.type) {
-            runAction(action)
+        } else if let immediate = PortraitInteractionPolicy.automaticCardAction(GameBoardInteractionState.cardActions(for: card, actions: legalActions)), Self.tapRunnableActionTypes.contains(immediate.type) {
+            runAction(immediate)
         } else {
             selectedCard = selectedCard?.instanceId == card.instanceId ? nil : card
             inspectedCard = nil
