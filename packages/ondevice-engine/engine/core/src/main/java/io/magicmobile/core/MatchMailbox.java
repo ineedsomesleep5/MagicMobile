@@ -94,9 +94,14 @@ public final class MatchMailbox implements AutoCloseable {
                 if(closed || pending.get(authenticatedSeat)!=p) return;
             }
             try { p.sink.deliver(answer); }
-            catch(Exception ex) {
-                EngineDiagnostics.capture("response-delivery",ex);
-                fail("response_delivery_failed","XMage could not consume the queued response. Inspect the local engine log.");
+            catch(Throwable ex) {
+                synchronized(MatchMailbox.this) {
+                    // A close interrupt is expected. Never replace a game's original native
+                    // failure with a secondary callback exception while disposing that game.
+                    if(closed || phase.equals("ended") || phase.equals("failed")) return;
+                    EngineDiagnostics.capture("response-delivery",ex);
+                    fail("response_delivery_failed","XMage could not consume the queued response. Inspect the local engine log.");
+                }
             }
         });
         return result;
@@ -145,6 +150,14 @@ public final class MatchMailbox implements AutoCloseable {
     }
     private void checkOpen() {
         if(closed || phase.equals("ended") || phase.equals("failed")) throw new BridgeException("match_unavailable","Match is "+phase);
+    }
+    /**
+     * Wait outside the mailbox monitor: a finishing callback may need that monitor.
+     * The native owner must retain the isolate until GAME, AI and CALL workers stop.
+     * The absolute deadline is shared with the other worker-shutdown checks.
+     */
+    public boolean awaitDeliveryTermination(long deadlineNanos) throws InterruptedException {
+        return delivery.awaitTermination(Math.max(0,deadlineNanos-System.nanoTime()),TimeUnit.NANOSECONDS);
     }
     @Override public synchronized void close() {
         if(closed) return;closed=true;phase="closed";pending.clear();revision++;delivery.shutdownNow();

@@ -21,6 +21,7 @@ final class OnDeviceSession: ObservableObject {
     private var epoch = UUID()
     private var isForeground = true
     private var automaticPolling = true
+    private var isClosing = false
     private struct Submission {
         let prompt: EnginePrompt
         let answer: MagicMobileOnDevice.JSONValue
@@ -41,15 +42,19 @@ final class OnDeviceSession: ObservableObject {
     }
 
     func refresh() async throws {
-        guard let client, let matchID, let seatID, isForeground else { return }
+        guard let client, let matchID, let seatID, isForeground, !isClosing else { return }
         let token = epoch
         let next = try await client.poll(matchID: matchID, seatID: seatID, after: poll?.revision ?? 0)
-        guard epoch == token, self.matchID == matchID else { return }
+        // A poll may finish after backgrounding, cancellation, or teardown began.
+        guard epoch == token, self.matchID == matchID, isForeground, !isClosing, !Task.isCancelled else { return }
         guard next.matchID == matchID, next.seatID == seatID else { throw EngineError.unboundPeer }
         if let poll, next.revision < poll.revision { return }
         var nextLog = messageLog
         try nextLog.ingest(next)
-        if next.snapshot != nil {
+        if next.phase == "closed" {
+            snapshot = nil
+            nextLog = OnDeviceMessageLog()
+        } else if next.snapshot != nil {
             snapshot = try OnDeviceSnapshotAdapter.snapshot(next, expectedSeatID: seatID, log: nextLog.entries)
         }
         messageLog = nextLog
@@ -57,7 +62,12 @@ final class OnDeviceSession: ObservableObject {
         if let pending, next.prompt?.id != pending.prompt.id || next.prompt?.revision != pending.prompt.revision {
             self.pending = nil; pendingActionID = nil; pendingCardID = nil
         }
-        status = next.phase == "ended" ? "Game complete" : next.phase == "failed" ? "Game stopped" : "Live"
+        switch next.phase {
+        case "ended": status = "Game complete"
+        case "failed": status = "Game stopped"
+        case "closed": status = "Game closed"
+        default: status = "Live"
+        }
         errorMessage = next.raw["failure"]?["message"]?.string
         beginPolling()
     }
@@ -124,9 +134,9 @@ final class OnDeviceSession: ObservableObject {
     func close() async throws {
         guard !isWorking else { throw EngineError.invalidMessage("Wait for the current operation before closing") }
         guard let closeEndpoint else { return }
-        isWorking = true; pollingTask?.cancel(); pollingTask = nil
+        isClosing = true; isWorking = true; pollingTask?.cancel(); pollingTask = nil
         epoch = UUID()
-        defer { isWorking = false }
+        defer { isWorking = false; isClosing = false }
         try await closeEndpoint()
         epoch = UUID(); client = nil; matchID = nil; seatID = nil; poll = nil; snapshot = nil
         messageLog = OnDeviceMessageLog()
@@ -140,7 +150,7 @@ final class OnDeviceSession: ObservableObject {
     }
 
     private func beginPolling() {
-        guard pollingTask == nil, automaticPolling, client != nil, isForeground,
+        guard pollingTask == nil, automaticPolling, client != nil, isForeground, !isClosing,
               !["ended", "failed", "closed"].contains(poll?.phase ?? "") else { return }
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {

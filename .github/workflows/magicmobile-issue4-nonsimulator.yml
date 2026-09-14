@@ -2,7 +2,7 @@ name: Issue 4 non-simulator verification
 
 on:
   push:
-    branches: [codex/issue-4-native-mvp, codex/issue-4-verified-continuation]
+    branches: [codex/issue-4-native-mvp, codex/issue-4-verified-continuation, codex/native-runtime-audit-20260914]
   workflow_dispatch:
 
 permissions:
@@ -52,6 +52,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - run: bash scripts/test_core.sh
       - run: bash scripts/test_tooling.sh
       - run: bash scripts/test_native_boundary.sh
       - uses: actions/upload-artifact@v4

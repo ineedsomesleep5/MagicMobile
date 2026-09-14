@@ -95,6 +95,7 @@ public final class XmageEngine implements EnginePort {
             worker.shutdownNow();mailbox.close();
             try {
                 if(!worker.awaitTermination(Math.max(0,deadline-System.nanoTime()),TimeUnit.NANOSECONDS)) return false;
+                if(!mailbox.awaitDeliveryTermination(deadline)) return false;
                 return cancellation.awaitQuiescence(deadline);
             }
             catch(InterruptedException e) {Thread.currentThread().interrupt();return false;}

@@ -2,11 +2,19 @@ name: ARM64 far-call compiler verification
 
 on:
   push:
-    branches: [codex/issue-4-native-mvp, codex/issue-4-verified-continuation]
+    branches: [codex/issue-4-native-mvp, codex/issue-4-verified-continuation, codex/native-runtime-audit-20260914]
     paths:
       - '.github/workflows/magicmobile-far-calls.yml'
-      - 'packages/ondevice-engine/native/gluon/compiler-patches/**'
-      - 'packages/ondevice-engine/scripts/prepare_gluon_far_calls.py'
+      - 'packages/ondevice-engine/engine/**'
+      - 'packages/ondevice-engine/platform/**'
+      - 'packages/ondevice-engine/native/**'
+      - 'packages/ondevice-engine/upstream.lock.json'
+      - 'packages/ondevice-engine/scripts/build_jvm.sh'
+      - 'packages/ondevice-engine/scripts/build_card_metadata.sh'
+      - 'packages/ondevice-engine/scripts/build_native_ios.sh'
+      - 'packages/ondevice-engine/scripts/prepare_*.py'
+      - 'packages/ondevice-engine/scripts/setup_gluon_intel.sh'
+      - 'packages/ondevice-engine/scripts/classpath.py'
   workflow_dispatch:
 
 permissions:
