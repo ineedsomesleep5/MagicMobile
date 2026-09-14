@@ -27,9 +27,9 @@ jobs:
       contents: read
       actions: read
     env:
-      # Root replaces this with the reviewed helper + cheap-workflow commit.
+      # Reviewed helper + cheap-workflow commit, independent of candidate inputs.
       # This is workflow policy, never a dispatch input or mutable branch name.
-      TRUSTED_POLICY_SHA: 'REPLACE_WITH_REVIEWED_POLICY_COMMIT'
+      TRUSTED_POLICY_SHA: 'ccd5ea578760e8ac8e20c916c09a3e7a48898121'
     steps:
       - name: Require an immutable reviewed policy pin
         shell: bash
