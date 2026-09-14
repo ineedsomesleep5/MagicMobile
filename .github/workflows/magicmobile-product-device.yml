@@ -1,7 +1,7 @@
 name: Issue 4 real engine unsigned product
 on:
   push:
-    branches: [codex/issue-4-verified-continuation, codex/testflight-readiness-audit]
+    branches: [codex/issue-4-verified-continuation, codex/testflight-readiness-audit, codex/native-runtime-hardening]
     paths:
       - '.github/workflows/magicmobile-product-device.yml'
       - 'apps/ios/**'
@@ -20,11 +20,12 @@ permissions:
 concurrency:
   group: issue4-product-${{ github.ref }}
   cancel-in-progress: true
-# The engine build is already running and will not be duplicated here. Reuse is
-# refused if any engine/compiler input differs from the product source revision.
+# The selected repair build must SUCCEED before its artifact is accepted. This
+# workflow waits for that exact run; it does not duplicate the native build or
+# substitute an older archive. Reuse requires equal engine/compiler inputs.
 env:
-  ENGINE_RUN_ID: '34762171820'
-  ENGINE_COMMIT: '00b33cb223f93caed6bc752f87d2384e146c9a1c'
+  ENGINE_RUN_ID: '34803650513'
+  ENGINE_COMMIT: 'f8e16802bf033adfd844b878248b30042b838481'
 jobs:
   exact-native-artifact:
     runs-on: ubuntu-latest

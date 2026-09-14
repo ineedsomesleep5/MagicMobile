@@ -43,9 +43,15 @@ deadlock. These are injected boundary faults, not gameplay or phone acceptance.
 `RealBusyShutdownTests` now additionally holds the actual XmageEngine CALL
 executor while letting its GAME worker terminate. It requires busy shutdown,
 retention of the same match, explicit release and successful cleanup retry.
-This real-JVM integration regression needs the full pinned engine build; do not
-label it passed until its run completes. Native compilation and actual product
-linking are still distinct from real-device execution.
+This regression passed with the full pinned engine in non-simulator run
+**34803650505** at engine source **f8e16802bf033adfd844b878248b30042b838481**.
+Its four actual-JVM cases passed, including the new held CALL worker. The full
+real-JVM suite, completed two-/four-seat and token/mulligan games, and all five
+exact Swift-exported bundled precons passed in the same run. JVM evidence
+artifact **10332427518**, ZIP SHA-256
+`e95b04319f66f663a97abea9d9e33e557693d97e783e5f74ca41fc7a7e03b7f2`,
+was downloaded and hash-verified. Native compilation and actual product linking
+remain distinct from real-device execution.
 
 Additional local checks: 182 tooling tests completed (two platform-dependent
 checks skipped); 33 Swift protocol/transport tests passed; C boundary sanitizers
@@ -53,9 +59,20 @@ passed 9,000 fixture requests and five shutdown scenarios. The 16 release-guard
 tests are a subset of the tooling suite, not 16 additional tests. The isolated
 Swift lifecycle runner passed 18 assertions using actual session/runtime code
 with test-only presentation/observation/backend fixtures; it is not an Apple SDK
-build. Five build-number tests were skipped on Linux and are now explicitly
-executed by the existing macOS non-simulator job. The complete presentation suite
-and the new real-XMage delivery regression still require those hosted results.
+build. On the hosted Mac, all **119** complete presentation tests, **33** protocol
+tests and **six** build-number/ledger tests passed. Actual unsigned generic-iOS
+app and SDK-only tests compiled successfully (`build-for-testing`); no simulator
+or device execution occurred. Those hosted checks resolve the earlier five
+Linux build-number skips; they do not validate native-linked Release execution.
+
+The additional `scripts/test_runtime_manager.sh` compiles the actual production
+Swift manager/client/C boundary in an isolated process with a clearly test-only
+native ABI backend. Its **27** assertions pass locally; **eight** fail against
+the unmodified PR #8 runtime manager. It tests startup diagnostic retention,
+overlapping destroy/close, busy cleanup retry without duplicate destruction,
+and creation of a new runtime after teardown. Its files stay under `tests/`,
+never enter a product target, and are not a rules simulator. The existing Mac
+non-simulator job also executes this new regression and preserves its log.
 
 The continuation branch runs the existing non-simulator workflow. The existing
 full ARM64 compiler workflow also runs for the changed engine inputs, with its
@@ -64,12 +81,16 @@ TestFlight upload, larger runner or remote rules engine is enabled here.
 
 ## Release handoff
 
-1. Use the final continuation commit and its successful full ARM64 run. Preserve
-   archive, generated headers, static dependencies, manifests and hashes together.
-2. Point the product workflow's ENGINE_RUN_ID/ENGINE_COMMIT at that exact new
-   successful native run/source, enable the continuation branch for the existing
-   product gate, and verify the actual unsigned native-linked Release product.
-   Do not bypass any mismatch or package the older 2026091301 engine.
+1. The selected full ARM64 run is **34803650513**, engine source
+   **f8e16802bf033adfd844b878248b30042b838481**. It was still running when this
+   record was written; it is NOT passing native evidence yet. Preserve archive,
+   generated headers, static dependencies, manifests and hashes only after success.
+2. The existing product workflow is now pinned to that exact run/source and
+   enabled on this repair branch. Its unchanged success/artifact/source guards
+   wait for the real candidate and refuse failed, missing or mismatched inputs.
+   A later test/workflow-only commit can reuse f8e1680 only after source identity
+   verification. Require actual unsigned native-linked Release success; do not
+   bypass a mismatch or package the older 2026091301 engine.
 3. Desktop Codex should preserve the existing app identity, check App Store
    Connect for an unused build number, prepare/commit it, stage verified matching
    inputs, and use PR #8's guarded native release script for signing/export and
