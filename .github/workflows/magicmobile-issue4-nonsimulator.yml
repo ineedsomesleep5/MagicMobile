@@ -2,7 +2,7 @@ name: Issue 4 non-simulator verification
 
 on:
   push:
-    branches: [codex/issue-4-native-mvp, codex/issue-4-verified-continuation, codex/testflight-readiness-audit]
+    branches: [codex/issue-4-native-mvp, codex/issue-4-verified-continuation, codex/testflight-readiness-audit, codex/native-runtime-hardening]
   workflow_dispatch:
 
 permissions:
@@ -86,6 +86,8 @@ jobs:
         env:
           MAGICMOBILE_PRECON_EXPORT_DIR: ${{ github.workspace }}/build_output/issue4/precons
         run: swift test --package-path apps/ios --jobs 2 2>&1 | tee build_output/issue4/swift-presentation.log
+      - name: Execute macOS build-number and upload-ledger regressions
+        run: node --test scripts/ios/testflight-build-number.test.mjs 2>&1 | tee build_output/issue4/build-number.log
       - name: Native-close fixture tests (not XMage runtime)
         run: bash packages/ondevice-engine/scripts/test_swift_close.sh
       - name: Compile existing product and SDK-only tests without signing or execution

@@ -50,7 +50,7 @@ final class OnDeviceSession: ObservableObject {
         refreshSequence += 1
         let sequence = refreshSequence
         let next = try await client.poll(matchID: matchID, seatID: seatID, after: poll?.revision ?? 0)
-        guard epoch == token, self.matchID == matchID else { return }
+        guard epoch == token, self.matchID == matchID, isForeground, !isClosing, !Task.isCancelled else { return }
         guard next.matchID == matchID, next.seatID == seatID else { throw EngineError.unboundPeer }
         // Submission can change at the same mailbox revision. Do not let an older
         // in-flight poll restore a choice after a newer response hid it.
