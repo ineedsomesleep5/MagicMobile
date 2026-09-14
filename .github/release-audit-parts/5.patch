@@ -1,0 +1,108 @@
+diff --git a/packages/ondevice-engine/engine/core/src/main/java/io/magicmobile/core/EngineService.java b/packages/ondevice-engine/engine/core/src/main/java/io/magicmobile/core/EngineService.java
+index abcb247..0edd665 100644
+--- a/packages/ondevice-engine/engine/core/src/main/java/io/magicmobile/core/EngineService.java
++++ b/packages/ondevice-engine/engine/core/src/main/java/io/magicmobile/core/EngineService.java
+@@ -3,33 +3,42 @@ package io.magicmobile.core;
+ import java.util.Map;
+ import java.util.Set;
+ import java.util.Objects;
++import java.util.function.Supplier;
+ 
+ /** A trusted, in-process API. Do NOT expose it directly to unauthenticated peers. */
+ public final class EngineService {
+     public static final int PROTOCOL=1;
+-    private final EnginePort engine;
+-    public EngineService(EnginePort engine) { this.engine=Objects.requireNonNull(engine); }
++    private EnginePort engine;
++    private final Supplier<? extends EnginePort> factory;
++    public EngineService(EnginePort engine) { this.engine=Objects.requireNonNull(engine);this.factory=null; }
++    private EngineService(Supplier<? extends EnginePort> factory) { this.factory=Objects.requireNonNull(factory); }
++    /** Keep the trusted diagnostics API reachable even if native engine initialization fails. */
++    public static EngineService lazy(Supplier<? extends EnginePort> factory) { return new EngineService(factory); }
++    private synchronized EnginePort engine() {
++        if(engine==null) engine=Objects.requireNonNull(factory.get(),"Engine factory returned null");
++        return engine;
++    }
+     public String request(String json) {
+         try {
+             Map<String,Object> r=Json.parseObject(json);
+             if(Json.integer(r.get("protocol"))!=PROTOCOL) throw new BridgeException("protocol_mismatch","Expected protocol 1");
+             String op=Json.requiredString(r,"op"); Object result;
+             switch(op) {
+-                case "capabilities": keys(r,"protocol","op");result=engine.capabilities();break;
++                case "capabilities": keys(r,"protocol","op");result=engine().capabilities();break;
+                 // Trusted local API only. HostRouter independently rejects these for peers.
+                 case "diagnostics": keys(r,"protocol","op");result=EngineDiagnostics.read();break;
+                 case "clearDiagnostics": keys(r,"protocol","op");EngineDiagnostics.clear();result=Json.map("cleared",true);break;
+-                case "create": keys(r,"protocol","op","configuration");result=engine.create(Json.object(r.get("configuration")));break;
+-                case "poll": keys(r,"protocol","op","matchId","viewerId","after");result=engine.poll(Json.requiredString(r,"matchId"),Json.requiredString(r,"viewerId"),Json.integer(r.get("after")));break;
+-                case "respond": keys(r,"protocol","op","matchId","viewerId","command");result=engine.respond(Json.requiredString(r,"matchId"),Json.requiredString(r,"viewerId"),Json.object(r.get("command")));break;
+-                case "destroy": keys(r,"protocol","op","matchId");engine.destroy(Json.requiredString(r,"matchId"));result=Json.map("destroyed",true);break;
+-                case "shutdown": keys(r,"protocol","op");engine.close();result=Json.map("closed",true);break;
++                case "create": keys(r,"protocol","op","configuration");result=engine().create(Json.object(r.get("configuration")));break;
++                case "poll": keys(r,"protocol","op","matchId","viewerId","after");result=engine().poll(Json.requiredString(r,"matchId"),Json.requiredString(r,"viewerId"),Json.integer(r.get("after")));break;
++                case "respond": keys(r,"protocol","op","matchId","viewerId","command");result=engine().respond(Json.requiredString(r,"matchId"),Json.requiredString(r,"viewerId"),Json.object(r.get("command")));break;
++                case "destroy": keys(r,"protocol","op","matchId");engine().destroy(Json.requiredString(r,"matchId"));result=Json.map("destroyed",true);break;
++                case "shutdown": keys(r,"protocol","op");engine().close();result=Json.map("closed",true);break;
+                 default: throw new BridgeException("unknown_operation","Unknown operation");
+             }
+             return Json.write(Json.map("protocol",PROTOCOL,"ok",true,"result",result));
+         } catch(BridgeException e) {
+             return Json.write(Json.map("protocol",PROTOCOL,"ok",false,"error",Json.map("code",e.code(),"message",e.getMessage())));
+-        } catch(Exception e) {
++        } catch(Exception | LinkageError e) {
+             // Diagnostics must stay on the host; do not leak card-bearing exception messages.
+             EngineDiagnostics.capture("engine-request",e);
+             return Json.write(Json.map("protocol",PROTOCOL,"ok",false,"error",Json.map("code","engine_failure","message","Engine operation failed.")));
+diff --git a/packages/ondevice-engine/engine/core/src/main/java/io/magicmobile/core/MatchMailbox.java b/packages/ondevice-engine/engine/core/src/main/java/io/magicmobile/core/MatchMailbox.java
+index c1cb4d9..0cdc079 100644
+--- a/packages/ondevice-engine/engine/core/src/main/java/io/magicmobile/core/MatchMailbox.java
++++ b/packages/ondevice-engine/engine/core/src/main/java/io/magicmobile/core/MatchMailbox.java
+@@ -84,8 +84,12 @@ public final class MatchMailbox implements AutoCloseable {
+             throw new BridgeException("stale_prompt","Prompt changed; use the latest exact prompt metadata");
+         if(p.submitted) throw new BridgeException("response_pending","An answer is already queued for this prompt");
+         Map<String,Object> answer=p.spec.validate(Json.object(command.get("answer")));
++        // submitted changes the visible poll state. Give it its own aggregate
++        // revision so an older in-flight poll cannot restore an unsubmitted prompt.
++        // p.revision remains the original decision revision for exact retries.
++        p.submitted=true;revision++;
++        record(authenticatedSeat,"response_queued",Json.map("promptId",p.token));
+         Map<String,Object> result=Json.object(Json.freeze(Json.map("status","queued","requestId",requestId,"promptId",p.token,"revision",revision)));
+-        p.submitted=true;
+         receipts.put(key,new Receipt(fingerprint,result));
+         while(receipts.size()>RECEIPT_LIMIT) receipts.remove(receipts.keySet().iterator().next());
+         delivery.execute(() -> {
+diff --git a/packages/ondevice-engine/engine/core/src/test/java/io/magicmobile/core/LazyEngineServiceTests.java b/packages/ondevice-engine/engine/core/src/test/java/io/magicmobile/core/LazyEngineServiceTests.java
+new file mode 100644
+index 0000000..f0e718f
+--- /dev/null
++++ b/packages/ondevice-engine/engine/core/src/test/java/io/magicmobile/core/LazyEngineServiceTests.java
+@@ -0,0 +1,28 @@
++package io.magicmobile.core;
++
++import java.util.concurrent.atomic.AtomicInteger;
++
++/** Tests lazy diagnostic routing, not native execution or gameplay. */
++public final class LazyEngineServiceTests {
++    private static void check(boolean value,String message) { if(!value) throw new AssertionError(message); }
++    public static void main(String[] args) {
++        AtomicInteger constructions=new AtomicInteger();
++        EngineService service=EngineService.lazy(()->{
++            constructions.incrementAndGet();
++            throw new UnsatisfiedLinkError("PRIVATE-INITIALIZER");
++        });
++        EngineDiagnostics.clear();
++        service.request("{\"protocol\":1,\"op\":\"diagnostics\"}");
++        service.request("{\"protocol\":1,\"op\":\"clearDiagnostics\"}");
++        check(constructions.get()==0,"Diagnostics initialized XMage");
++        String failure=service.request("{\"protocol\":1,\"op\":\"capabilities\"}");
++        check(Boolean.FALSE.equals(Json.parseObject(failure).get("ok")),"Initializer fault was not signalled");
++        check(!failure.contains("PRIVATE-INITIALIZER"),"Initializer leaked to normal request");
++        String report=service.request("{\"protocol\":1,\"op\":\"diagnostics\"}");
++        check(report.contains("PRIVATE-INITIALIZER") && report.contains("UnsatisfiedLinkError"),"Original initializer report is inaccessible");
++        check(constructions.get()==1,"Report request retried the broken initializer");
++        service.request("{\"protocol\":1,\"op\":\"clearDiagnostics\"}");
++        check(constructions.get()==1 && EngineDiagnostics.read().get("report")==null,"Clear cannot work after initialization failure");
++        System.out.println("PASS: 6 lazy engine diagnostic checks; scope=standalone-core");
++    }
++}

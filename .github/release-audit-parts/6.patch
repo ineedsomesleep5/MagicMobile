@@ -1,0 +1,93 @@
+diff --git a/packages/ondevice-engine/engine/core/src/test/java/io/magicmobile/core/ReleaseRecoveryTests.java b/packages/ondevice-engine/engine/core/src/test/java/io/magicmobile/core/ReleaseRecoveryTests.java
+new file mode 100644
+index 0000000..6c26f29
+--- /dev/null
++++ b/packages/ondevice-engine/engine/core/src/test/java/io/magicmobile/core/ReleaseRecoveryTests.java
+@@ -0,0 +1,87 @@
++package io.magicmobile.core;
++
++import java.util.*;
++import java.util.concurrent.atomic.AtomicInteger;
++
++/** Transport/lifecycle regressions only; not a substitute for XMage or device tests. */
++public final class ReleaseRecoveryTests {
++    private static int passed, failed;
++    public static void main(String[] args) {
++        run("mana replies remain bound to the engine-selected player", ReleaseRecoveryTests::manaBinding);
++        run("queued responses advance poll revision without changing prompt token", ReleaseRecoveryTests::queuedRevision);
++        run("native linkage failures remain private and diagnosable", ReleaseRecoveryTests::linkageDiagnostics);
++        System.out.println("ReleaseRecoveryTests: " + passed + " passed, " + failed + " failed; scope=standalone-core");
++        if (failed != 0) throw new AssertionError("Release recovery regression failure");
++    }
++    private static void check(boolean value, String message) {
++        if (!value) throw new AssertionError(message);
++    }
++    private static void run(String name, Runnable test) {
++        try { test.run(); passed++; System.out.println("PASS " + name); }
++        catch (Throwable failure) { failed++; System.out.println("FAIL " + name + ": " + failure); }
++        finally { EngineDiagnostics.clear(); }
++    }
++    private static Map<String,Object> mana(String player) {
++        return Json.map("kind", "mana", "value", Json.map("playerId", player, "manaType", "GREEN"));
++    }
++    private static void rejected(Runnable operation) {
++        try { operation.run(); throw new AssertionError("Accepted a mismatched or invalid mana player"); }
++        catch (BridgeException failure) { check("invalid_response".equals(failure.code()), "Wrong rejection code"); }
++    }
++    private static void manaBinding() {
++        String acting = "00000000-0000-0000-0000-00000000000b";
++        String controller = "00000000-0000-0000-0000-00000000000a";
++        for (String kind : List.of("SELECT", "PLAY_MANA", "PLAY_X_MANA")) {
++            DecisionSpec spec = new DecisionSpec(kind, Json.map("manaPlayerId", acting), Set.of("mana"), null, null, 0, 0, null);
++            check(spec.validate(mana(acting)).equals(mana(acting)), "Changed the valid acted-player reply");
++            rejected(() -> spec.validate(mana(controller)));
++            rejected(() -> spec.validate(mana("1-1-1-1-1")));
++            rejected(() -> spec.validate(mana("not-a-uuid")));
++        }
++        DecisionSpec missing = new DecisionSpec("PLAY_MANA", Json.map(), Set.of("mana"), null, null, 0, 0, null);
++        rejected(() -> missing.validate(mana(acting)));
++    }
++    private static void queuedRevision() {
++        try (MatchMailbox mailbox = new MatchMailbox("revision-test", List.of("seat"))) {
++            mailbox.publishSnapshots(Map.of("seat", Json.map("visible", true)));
++            DecisionSpec spec = new DecisionSpec("ASK", Json.map(), Set.of("boolean"), null, null, 0, 0, null);
++            AtomicInteger deliveries = new AtomicInteger();
++            mailbox.ask("seat", spec, answer -> deliveries.incrementAndGet());
++            Map<String,Object> before = mailbox.poll("seat", 0);
++            Map<String,Object> prompt = Json.object(before.get("prompt"));
++            Map<String,Object> command = Json.map("requestId", UUID.randomUUID().toString(),
++                "promptId", prompt.get("promptId"), "promptRevision", prompt.get("revision"),
++                "answer", Json.map("kind", "boolean", "value", false));
++            Map<String,Object> receipt = mailbox.submit("seat", command);
++            Map<String,Object> after = mailbox.poll("seat", Json.integer(before.get("revision")));
++            check(Json.integer(after.get("revision")) > Json.integer(before.get("revision")), "Queued state reused the old poll revision");
++            Map<String,Object> queued = Json.object(after.get("prompt"));
++            check(Boolean.TRUE.equals(queued.get("submitted")), "Missing queued state");
++            check(queued.get("revision").equals(prompt.get("revision")), "Changed authoritative prompt revision");
++            check(queued.get("promptId").equals(prompt.get("promptId")), "Changed authoritative prompt ID");
++            check(Json.array(after.get("events")).stream().map(Json::object)
++                .anyMatch(event -> "response_queued".equals(event.get("kind"))), "Missing queued event");
++            check(mailbox.submit("seat", command).equals(receipt), "Retry changed its receipt");
++            check(mailbox.revision() == Json.integer(after.get("revision")), "Idempotent retry advanced revision twice");
++        }
++    }
++    private static void linkageDiagnostics() {
++        EngineDiagnostics.clear();
++        EngineService service = new EngineService(new LinkageFailurePort());
++        String result = service.request("{\"protocol\":1,\"op\":\"capabilities\"}");
++        check(Boolean.FALSE.equals(Json.parseObject(result).get("ok")), "Linkage failure did not return an error envelope");
++        check(!result.contains("PRIVATE-CARD") && !result.contains("UnsatisfiedLinkError"), "Failure leaked into normal replies");
++        String diagnostic = service.request("{\"protocol\":1,\"op\":\"diagnostics\"}");
++        check(diagnostic.contains("UnsatisfiedLinkError") && diagnostic.contains("PRIVATE-CARD"), "Native linkage cause was discarded");
++        service.request("{\"protocol\":1,\"op\":\"clearDiagnostics\"}");
++        check(EngineDiagnostics.read().get("report") == null, "Clear did not delete the private report");
++    }
++    private static final class LinkageFailurePort implements EnginePort {
++        public Map<String,Object> capabilities() { throw new UnsatisfiedLinkError("PRIVATE-CARD native dependency"); }
++        public Map<String,Object> create(Map<String,Object> configuration) { throw new AssertionError("Unexpected create"); }
++        public Map<String,Object> poll(String match, String seat, long after) { throw new AssertionError("Unexpected poll"); }
++        public Map<String,Object> respond(String match, String seat, Map<String,Object> command) { throw new AssertionError("Unexpected response"); }
++        public void destroy(String match) { throw new AssertionError("Unexpected destroy"); }
++        public void close() {}
++    }
++}

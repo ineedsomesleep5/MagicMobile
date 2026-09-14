@@ -1,0 +1,28 @@
+diff --git a/apps/ios/MagicMobile/OnDeviceSnapshotAdapter.swift b/apps/ios/MagicMobile/OnDeviceSnapshotAdapter.swift
+index b0b74f2..649ef9d 100644
+--- a/apps/ios/MagicMobile/OnDeviceSnapshotAdapter.swift
++++ b/apps/ios/MagicMobile/OnDeviceSnapshotAdapter.swift
+@@ -122,10 +122,19 @@ enum OnDeviceSnapshotAdapter {
+         let priority = rawPlayers.first { $0["hasPriority"]?.bool == true }?["playerId"]
+         let decodedPlayers: [PlayerGameState] = try decode(.array(players))
+         let decodedXmage: XmageMobileSnapshot = try decode(xmage)
+-        let allCards = decodedPlayers.flatMap { player in
+-            player.zones.hand + player.zones.battlefield + player.zones.graveyard + player.zones.exile + player.zones.command
+-        } + decodedXmage.stack.compactMap(\.sourceCard)
+-            + (decodedXmage.exileZones + decodedXmage.revealed + decodedXmage.lookedAt + decodedXmage.companion).flatMap(\.cards)
++        var allCards: [ZoneCard] = []
++        for player in decodedPlayers {
++            allCards.append(contentsOf: player.zones.hand)
++            allCards.append(contentsOf: player.zones.battlefield)
++            allCards.append(contentsOf: player.zones.graveyard)
++            allCards.append(contentsOf: player.zones.exile)
++            allCards.append(contentsOf: player.zones.command)
++        }
++        allCards.append(contentsOf: decodedXmage.stack.compactMap(\.sourceCard))
++        allCards.append(contentsOf: decodedXmage.exileZones.flatMap(\.cards))
++        allCards.append(contentsOf: decodedXmage.revealed.flatMap(\.cards))
++        allCards.append(contentsOf: decodedXmage.lookedAt.flatMap(\.cards))
++        allCards.append(contentsOf: decodedXmage.companion.flatMap(\.cards))
+         let prompt = poll.prompt.flatMap { $0.submitted ? nil : $0 }
+         let presentation = try prompt.map { prompt in
+             var attackerID: String?

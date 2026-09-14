@@ -1,0 +1,72 @@
+diff --git a/.github/workflows/magicmobile-release-audit.yml b/.github/workflows/magicmobile-release-audit.yml
+index b639b82..082d9f6 100644
+--- a/.github/workflows/magicmobile-release-audit.yml
++++ b/.github/workflows/magicmobile-release-audit.yml
+@@ -61,7 +61,25 @@ jobs:
+       - uses: actions/checkout@v4
+         with:
+           persist-credentials: false
+-      - run: swift test --package-path packages/ondevice-engine/swift
+-      - run: swift test --package-path apps/ios
+-      - run: bash packages/ondevice-engine/scripts/test_swift_close.sh
++          fetch-depth: 0
++      - name: Record exact tested source
++        run: |
++          mkdir -p packages/ondevice-engine/evidence
++          git rev-parse HEAD | tee packages/ondevice-engine/evidence/release-audit-source.txt
++          swift --version | tee packages/ondevice-engine/evidence/release-audit-swift.txt
++      - name: Swift protocol and transport regressions
++        run: set -o pipefail; swift test --package-path packages/ondevice-engine/swift 2>&1 | tee packages/ondevice-engine/evidence/release-audit-swift-boundary.log
++      - name: Prove session regressions on the original session implementation
++        run: bash packages/ondevice-engine/scripts/test_session_recovery_baseline.sh
++      - name: Run all presentation tests on restored candidate sources
++        run: set -o pipefail; swift test --package-path apps/ios 2>&1 | tee packages/ondevice-engine/evidence/release-audit-presentation.log
++      - name: Swift shutdown retention regressions
++        run: set -o pipefail; bash packages/ondevice-engine/scripts/test_swift_close.sh 2>&1 | tee packages/ondevice-engine/evidence/release-audit-swift-close.log
++      - uses: actions/upload-artifact@v4
++        if: always()
++        with:
++          name: issue4-audit-swift-${{ github.sha }}
++          path: packages/ondevice-engine/evidence/
++          retention-days: 3
++          if-no-files-found: error
+ # These checks do not build, sign, upload, or attest to physical-device gameplay.
+diff --git a/apps/ios/MagicMobile/MagicMobileAPI.swift b/apps/ios/MagicMobile/MagicMobileAPI.swift
+index 0ffedd2..5c8dd86 100644
+--- a/apps/ios/MagicMobile/MagicMobileAPI.swift
++++ b/apps/ios/MagicMobile/MagicMobileAPI.swift
+@@ -313,7 +313,9 @@ struct MagicMobileAPI {
+         }
+ 
+         if action.type == "choose_amount" || action.type == "play_x_mana" {
+-            guard let amount = action.amount ?? templateInt(action, "amount") ?? (action.targetIds?.first ?? action.validTargetIds?.first ?? action.choiceIds?.first).flatMap(Int.init) else {
++            let optionID: String? = action.targetIds?.first ?? action.validTargetIds?.first ?? action.choiceIds?.first
++            let optionAmount: Int? = optionID.flatMap { Int($0) }
++            guard let amount = action.amount ?? templateInt(action, "amount") ?? optionAmount else {
+                 throw missingActionData(action, "amount")
+             }
+             return GameCommand(
+diff --git a/apps/ios/MagicMobile/Models.swift b/apps/ios/MagicMobile/Models.swift
+index b25353c..72c6f48 100644
+--- a/apps/ios/MagicMobile/Models.swift
++++ b/apps/ios/MagicMobile/Models.swift
+@@ -286,9 +286,16 @@ struct MobilePromptPresentation: Equatable {
+     }
+ 
+     private static func optionCount(_ prompt: PromptEnvelopeV2) -> Int {
+-        (prompt.choices?.count ?? 0) + (prompt.cards?.count ?? 0) + (prompt.targets?.count ?? 0) +
+-            (prompt.players?.count ?? 0) + (prompt.abilities?.count ?? 0) + (prompt.piles?.count ?? 0) +
+-            (prompt.amounts?.count ?? 0) + (prompt.multiAmounts?.count ?? 0) + (prompt.orderedItems?.count ?? 0)
++        var count = prompt.choices?.count ?? 0
++        count += prompt.cards?.count ?? 0
++        count += prompt.targets?.count ?? 0
++        count += prompt.players?.count ?? 0
++        count += prompt.abilities?.count ?? 0
++        count += prompt.piles?.count ?? 0
++        count += prompt.amounts?.count ?? 0
++        count += prompt.multiAmounts?.count ?? 0
++        count += prompt.orderedItems?.count ?? 0
++        return count
+     }
+ 
+     private static func isCombatSelection(_ snapshot: GameSnapshot, legalActions: [LegalAction]) -> Bool {

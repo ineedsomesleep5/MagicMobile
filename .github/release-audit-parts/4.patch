@@ -1,0 +1,54 @@
+diff --git a/apps/ios/Package.swift b/apps/ios/Package.swift
+index 9e1cbd9..429dc55 100644
+--- a/apps/ios/Package.swift
++++ b/apps/ios/Package.swift
+@@ -25,7 +25,7 @@ let package = Package(
+             dependencies: ["MagicMobile"],
+             path: "MagicMobileTests",
+             exclude: ["MagicMobileTests.swift", "OnDeviceBoardIdentityTests.swift", "OnDeviceDeckPersistenceTests.swift"],
+-            sources: ["OnDeviceAppConfigurationTests.swift", "OnDeviceModelTests.swift", "OnDeviceSnapshotAdapterTests.swift", "OnDevicePromptAdapterTests.swift", "OnDeviceMultiplayerTests.swift", "OnDeviceSessionTests.swift", "OnDeviceDeckResolverTests.swift", "OnDeviceBackendRegistrationTests.swift", "OnDeviceMessageLogTests.swift", "OnDeviceMessageSessionTests.swift", "OnDeviceDiagnosticsTests.swift"],
++            sources: ["OnDeviceAppConfigurationTests.swift", "OnDeviceModelTests.swift", "OnDeviceSnapshotAdapterTests.swift", "OnDevicePromptAdapterTests.swift", "OnDeviceMultiplayerTests.swift", "OnDeviceSessionTests.swift", "OnDeviceReleaseRecoveryTests.swift", "OnDeviceDeckResolverTests.swift", "OnDeviceBackendRegistrationTests.swift", "OnDeviceMessageLogTests.swift", "OnDeviceMessageSessionTests.swift", "OnDeviceDiagnosticsTests.swift"],
+             resources: [.copy("Fixtures/OnDevice")],
+             swiftSettings: [.swiftLanguageMode(.v5)]
+         )
+diff --git a/packages/ondevice-engine/docs/PROTOCOL.md b/packages/ondevice-engine/docs/PROTOCOL.md
+index 2893e40..c3c9fed 100644
+--- a/packages/ondevice-engine/docs/PROTOCOL.md
++++ b/packages/ondevice-engine/docs/PROTOCOL.md
+@@ -42,6 +42,15 @@ A response command has exactly:
+ 
+ Answer kinds: `boolean`, `uuid`, `string`, `integer`, `integers`, `mana`. Mana values have `playerId` (engine UUID) and `manaType`. Integer-array constraints include element bounds and total bounds. The adapter converts multi-amount arrays to upstream **space-separated** response text.
+ 
++Mana answers must name the canonical engine UUID in the prompt's `payload.manaPlayerId`.
++This may be the acted player rather than the authenticated controller during a controlled
++turn. A caller cannot substitute another mana pool; missing authoritative metadata fails closed.
++
++Queueing an answer advances the aggregate poll revision and emits a viewer-scoped
++`response_queued` event. The decision's `promptRevision` and token stay unchanged until
++consumption/replacement, so an identical retry returns the original receipt without another
++revision increment. Clients must ignore older aggregate poll revisions.
++
+ `queued` is receipt of the command, not proof of resolution or game legality. Preserve the same request UUID and identical command when retrying an uncertain submission. A fresh prompt uses a new token. Do not replay an old answer against a new prompt.
+ 
+ Poll results contain match/viewer IDs, global revision, phase, viewer snapshot, viewer prompt, bounded viewer events, a resync flag and any terminal failure. Snapshots are always full current per-view projections; events notify changes. A global revision can skip numbers for one viewer without indicating loss.
+diff --git a/packages/ondevice-engine/engine/core/src/main/java/io/magicmobile/core/DecisionSpec.java b/packages/ondevice-engine/engine/core/src/main/java/io/magicmobile/core/DecisionSpec.java
+index b60e7ba..3443d77 100644
+--- a/packages/ondevice-engine/engine/core/src/main/java/io/magicmobile/core/DecisionSpec.java
++++ b/packages/ondevice-engine/engine/core/src/main/java/io/magicmobile/core/DecisionSpec.java
+@@ -60,7 +60,15 @@ public final class DecisionSpec {
+             case "mana": {
+                 Map<String,Object> mana=Json.object(value);
+                 if(!mana.keySet().equals(Set.of("playerId","manaType"))) reject("Malformed mana response");
+-                UUID.fromString(Json.requiredString(mana,"playerId"));
++                // Bind to the acted player named by XMage, not a peer-supplied pool
++                // or necessarily the controller's own seat (controlled turns differ).
++                String player=Json.requiredString(mana,"playerId");
++                Object expected=payload.get("manaPlayerId");
++                try {
++                    if(!UUID.fromString(player).toString().equalsIgnoreCase(player)) reject("Noncanonical mana player UUID");
++                } catch(IllegalArgumentException ex) { reject("Invalid mana player UUID"); }
++                if(!(expected instanceof String) || !player.equalsIgnoreCase((String)expected))
++                    reject("Mana response is not for the engine-selected player");
+                 if(!Set.of("WHITE","BLUE","BLACK","RED","GREEN","COLORLESS","GENERIC").contains(Json.requiredString(mana,"manaType"))) reject("Unknown mana type");
+                 break;
+             }

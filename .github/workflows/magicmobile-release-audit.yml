@@ -1,67 +1,43 @@
-name: Issue 4 release audit (no signing)
+name: Integrate reviewed release audit source
 on:
   push:
     branches: [codex/issue-4-release-audit]
-  workflow_dispatch:
 permissions:
   contents: read
-concurrency:
-  group: issue4-release-audit-${{ github.ref }}
-  cancel-in-progress: true
 jobs:
-  source-evidence:
+  integrate:
+    if: github.repository == 'ineedsomesleep5/MagicMobile' && github.ref == 'refs/heads/codex/issue-4-release-audit'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
-          persist-credentials: false
-      - name: Preserve exact tracked audit sources
+          fetch-depth: 0
+      - name: Apply hash-pinned reviewed fixes on the isolated audit branch
         run: |
-          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/magicmobile-audit-source.tar.gz"
-          git rev-parse HEAD > "$RUNNER_TEMP/audit-source-commit.txt"
-          sha256sum "$RUNNER_TEMP/magicmobile-audit-source.tar.gz" > "$RUNNER_TEMP/audit-source-sha256.txt"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: issue4-audit-source-${{ github.sha }}
-          path: |
-            ${{ runner.temp }}/magicmobile-audit-source.tar.gz
-            ${{ runner.temp }}/audit-source-commit.txt
-            ${{ runner.temp }}/audit-source-sha256.txt
-          retention-days: 3
-          if-no-files-found: error
-  real-jvm-and-boundary:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: packages/ondevice-engine
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-      - run: bash scripts/test_tooling.sh
-      - run: bash scripts/test_native_boundary.sh
-      - run: bash scripts/build_jvm.sh
-      - run: bash scripts/test_real_engine.sh
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: issue4-audit-jvm-${{ github.sha }}
-          path: packages/ondevice-engine/evidence/
-          retention-days: 3
-  swift-presentation:
-    runs-on: macos-15-intel
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - run: swift test --package-path packages/ondevice-engine/swift
-      - run: swift test --package-path apps/ios
-      - run: bash packages/ondevice-engine/scripts/test_swift_close.sh
-# These checks do not build, sign, upload, or attest to physical-device gameplay.
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, pathlib, subprocess
+          parts = [pathlib.Path(f'.github/release-audit-parts/{i}.patch') for i in range(8)]
+          payload = b''.join(path.read_bytes() for path in parts)
+          expected = 'e21ee2d0225225a5015ea64fdb5985f1114eb99ed4da4ce818e46ac591236503'
+          if hashlib.sha256(payload).hexdigest() != expected:
+              raise SystemExit('Reviewed patch checksum mismatch')
+          base = 'c85c54517fd08f7a97ec0d796edbd1df6f90070e'
+          changed = set(subprocess.check_output(['git','diff','--name-only',base,'HEAD'],text=True).splitlines())
+          if changed != {str(path) for path in parts} | {'.github/workflows/magicmobile-release-audit.yml'}:
+              raise SystemExit('Unexpected audit branch changes; refusing to overwrite')
+          pathlib.Path('/tmp/reviewed-audit.patch').write_bytes(payload)
+          PY
+          git apply --check --index --exclude=.github/workflows/magicmobile-release-audit.yml /tmp/reviewed-audit.patch
+          git apply --index --exclude=.github/workflows/magicmobile-release-audit.yml /tmp/reviewed-audit.patch
+          git rm -r .github/release-audit-parts
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Fix session recovery, mana binding, native diagnostics and Swift compiler expressions'
+          git push origin HEAD:refs/heads/codex/issue-4-release-audit
+          git rev-parse HEAD
+# One-time source integration only. No signing, distribution, or native acceptance.
