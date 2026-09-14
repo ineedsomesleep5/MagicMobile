@@ -264,7 +264,7 @@ enum OnDeviceSnapshotAdapter {
                     guard let abilityID = row["id"]?.string, let label = row["value"]?.string else {
                         throw EngineError.invalidMessage("Incomplete engine playable ability")
                     }
-                    abilities.append(.object(["id": .string(abilityID), "label": .string(label), "category": .string(category)]))
+                    abilities.append(.object(["id": .string(abilityID), "label": .string(EngineDisplayText.label(label)), "category": .string(category)]))
                 }
                 guard !rows.isEmpty, let prompt, !prompt.submitted, prompt.responseTypes.contains("uuid"),
                       (prompt.kind == "SELECT" && prompt.payload["selectMode"]?.string == "priority") ||
@@ -273,7 +273,7 @@ enum OnDeviceSnapshotAdapter {
                 // Never turn an ability label or card type into an invented response UUID.
                 actions.append(.object([
                     "id": .string("\(prompt.id):\(category):\(id)"), "type": .string(commandType),
-                    "playerId": .string(viewer), "label": rows[0]["value"]!,
+                    "playerId": .string(viewer), "label": .string(EngineDisplayText.label(rows[0]["value"]!.string!)),
                     "cardInstanceId": .string(id), "sourceInstanceId": .string(id), "sourceZone": .string(zone),
                     "cardName": card["card"]?["name"] ?? .string("Card"),
                     "promptId": .string(prompt.id), "messageId": .integer(prompt.revision)

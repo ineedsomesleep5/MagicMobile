@@ -12,7 +12,9 @@
 		073A3C37624E019DB68DAA84 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AB97F71C7BB6CE1666D6C0EF /* PrivacyInfo.xcprivacy */; };
 		0C3D3FB20C2428C51C43991D /* GameBoardInteractionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1747ED595E46B6112F92E2D2 /* GameBoardInteractionState.swift */; };
 		14011F2FA8FBAA4DDD745BC8 /* ondevice-catalogue.json in Resources */ = {isa = PBXBuildFile; fileRef = 6B0D8FE0F5FC4C7001C4233F /* ondevice-catalogue.json */; };
+		17AF48820DE92A70CCEE17E2 /* PortraitInteractionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6975249AF3F911A584D24C03 /* PortraitInteractionPolicy.swift */; };
 		17D75322AC32988D39F6FAC0 /* OnDeviceSnapshotAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CB96C4C95B38B6E59222035 /* OnDeviceSnapshotAdapter.swift */; };
+		1A1C13307BD020E5919ABD1A /* PortraitInteractionPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5ADEEA6719E8EF6079D8800 /* PortraitInteractionPolicyTests.swift */; };
 		1CC47A197455A972FEDAED12 /* OnDeviceAppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608026E3694B102F64D58954 /* OnDeviceAppConfiguration.swift */; };
 		2569C98BD1FBA5565C1A6372 /* OnDeviceBoardIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1280DE929C3D03FB11B33A1C /* OnDeviceBoardIdentityTests.swift */; };
 		279961B648C10EF650644D7A /* OnDeviceSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F134EEE83531B994E0FDA7CB /* OnDeviceSessionTests.swift */; };
@@ -21,6 +23,8 @@
 		3F4314DA60472BEFFF15C67F /* OnDevicePromptAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9F3D91659B183C793814CA9 /* OnDevicePromptAdapterTests.swift */; };
 		424AB2CF8B4D94F4DF2B1AAC /* OnDeviceRuntimeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6CE7415CD82D2670CB0A706 /* OnDeviceRuntimeManager.swift */; };
 		4366471B4E4E0A2EEBE8D8F6 /* OnDeviceDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 430EDA5F98E74E9E01D809E3 /* OnDeviceDiagnostics.swift */; };
+		437DE6E56E58F930089867EE /* OnDeviceYieldPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 592630ACFEBA2C259D86A03A /* OnDeviceYieldPolicyTests.swift */; };
+		46C654118FE25509AF4A6E15 /* OnDeviceYieldPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFC719A2D4CD649677617480 /* OnDeviceYieldPolicy.swift */; };
 		4B8DFA7151989EE4F97D4BE8 /* GameBoardPreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C9CE37525D6289CCBF098B8 /* GameBoardPreviewFixtures.swift */; };
 		50BF7D06B2BBBE2E1533857C /* OnDeviceDeckPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB39789F444BECD1BC439F88 /* OnDeviceDeckPersistenceTests.swift */; };
 		551A8C60BC9EF53BC42CE492 /* MagicMobileAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5880A440F12FAFCB5E9DB6 /* MagicMobileAPI.swift */; };
@@ -91,12 +95,14 @@
 		434AEA4E564EE069F504B192 /* GameBoardTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardTheme.swift; sourceTree = "<group>"; };
 		436CBF6B62656080C4BC10E9 /* OnDeviceAppConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceAppConfigurationTests.swift; sourceTree = "<group>"; };
 		506D866D794460DAD58344BA /* OnDeviceMessageLogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceMessageLogTests.swift; sourceTree = "<group>"; };
+		592630ACFEBA2C259D86A03A /* OnDeviceYieldPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceYieldPolicyTests.swift; sourceTree = "<group>"; };
 		5A3AD25E36EAC5A475AF5E31 /* GameBoardZones.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardZones.swift; sourceTree = "<group>"; };
 		5A5880A440F12FAFCB5E9DB6 /* MagicMobileAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MagicMobileAPI.swift; sourceTree = "<group>"; };
 		608026E3694B102F64D58954 /* OnDeviceAppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceAppConfiguration.swift; sourceTree = "<group>"; };
 		6110FD6C7D0281A6D0C9E48A /* OnDeviceSetupUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceSetupUITests.swift; sourceTree = "<group>"; };
 		6872434C0866DDE9DEF3FB8C /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		6944BF96B15C9CEF357D0B30 /* MagicMobileUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MagicMobileUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		6975249AF3F911A584D24C03 /* PortraitInteractionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortraitInteractionPolicy.swift; sourceTree = "<group>"; };
 		69B2CFE17C03F7A7CC6CFEC3 /* MagicMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MagicMobileApp.swift; sourceTree = "<group>"; };
 		6B0D8FE0F5FC4C7001C4233F /* ondevice-catalogue.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "ondevice-catalogue.json"; sourceTree = "<group>"; };
 		7192BE431A0A5F389E034747 /* GameBoardScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardScreen.swift; sourceTree = "<group>"; };
@@ -115,12 +121,14 @@
 		ABC7582C9646B73124076299 /* MagicMobile.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MagicMobile.entitlements; sourceTree = "<group>"; };
 		B50E196EBB64CC33F92B990B /* OnDeviceModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceModelTests.swift; sourceTree = "<group>"; };
 		B9F3D91659B183C793814CA9 /* OnDevicePromptAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDevicePromptAdapterTests.swift; sourceTree = "<group>"; };
+		BFC719A2D4CD649677617480 /* OnDeviceYieldPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceYieldPolicy.swift; sourceTree = "<group>"; };
 		C27EE3CDC455B9EB8C93EE49 /* OnDeviceDiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceDiagnosticsTests.swift; sourceTree = "<group>"; };
 		C5892EABA017C78F89597233 /* OnDeviceRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceRootView.swift; sourceTree = "<group>"; };
 		C6362475A26B1690B16AA7CE /* OnDeviceSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceSession.swift; sourceTree = "<group>"; };
 		C7BA23D5B9BCF29F6619B8FB /* PromptCommandBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptCommandBuilder.swift; sourceTree = "<group>"; };
 		D1246E1EFE7ADC14F6CC9B0C /* NativeEngine-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NativeEngine-Bridging-Header.h"; sourceTree = "<group>"; };
 		D59BA72DAE656609C8EA9241 /* OnDeviceMessageLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceMessageLog.swift; sourceTree = "<group>"; };
+		D5ADEEA6719E8EF6079D8800 /* PortraitInteractionPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortraitInteractionPolicyTests.swift; sourceTree = "<group>"; };
 		D9FAFE026DBDEE8AABAE0553 /* OnDeviceMultiplayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceMultiplayer.swift; sourceTree = "<group>"; };
 		E13EC4CC09BB14F446DB7424 /* DeckLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckLibrary.swift; sourceTree = "<group>"; };
 		E25161EF0DCBD6D130249073 /* OnDevice */ = {isa = PBXFileReference; lastKnownFileType = folder; name = OnDevice; path = MagicMobileTests/Fixtures/OnDevice; sourceTree = SOURCE_ROOT; };
@@ -184,6 +192,8 @@
 				A6CE7415CD82D2670CB0A706 /* OnDeviceRuntimeManager.swift */,
 				C6362475A26B1690B16AA7CE /* OnDeviceSession.swift */,
 				1CB96C4C95B38B6E59222035 /* OnDeviceSnapshotAdapter.swift */,
+				BFC719A2D4CD649677617480 /* OnDeviceYieldPolicy.swift */,
+				6975249AF3F911A584D24C03 /* PortraitInteractionPolicy.swift */,
 				1EC7F366BBFC899D5DD7671C /* PreconCatalog.swift */,
 				AB97F71C7BB6CE1666D6C0EF /* PrivacyInfo.xcprivacy */,
 				C7BA23D5B9BCF29F6619B8FB /* PromptCommandBuilder.swift */,
@@ -221,6 +231,8 @@
 				9C3713BAC2F8354AD17630E1 /* OnDeviceSessionLifecycleTests.swift */,
 				F134EEE83531B994E0FDA7CB /* OnDeviceSessionTests.swift */,
 				82174CD2213C389DEF7B246E /* OnDeviceSnapshotAdapterTests.swift */,
+				592630ACFEBA2C259D86A03A /* OnDeviceYieldPolicyTests.swift */,
+				D5ADEEA6719E8EF6079D8800 /* PortraitInteractionPolicyTests.swift */,
 			);
 			path = MagicMobileTests;
 			sourceTree = "<group>";
@@ -442,6 +454,8 @@
 				424AB2CF8B4D94F4DF2B1AAC /* OnDeviceRuntimeManager.swift in Sources */,
 				CB579F1D301D4239AF1B54B2 /* OnDeviceSession.swift in Sources */,
 				17D75322AC32988D39F6FAC0 /* OnDeviceSnapshotAdapter.swift in Sources */,
+				46C654118FE25509AF4A6E15 /* OnDeviceYieldPolicy.swift in Sources */,
+				17AF48820DE92A70CCEE17E2 /* PortraitInteractionPolicy.swift in Sources */,
 				0177F7BB151A10AEDA526F73 /* PreconCatalog.swift in Sources */,
 				F85438C40C05270AA997FC8A /* PromptCommandBuilder.swift in Sources */,
 				854D2E623A6B06AA1CDB0F09 /* graal_far_calls.S in Sources */,
@@ -469,6 +483,8 @@
 				B2AF4D98FFB71A24F5225343 /* OnDeviceSessionLifecycleTests.swift in Sources */,
 				279961B648C10EF650644D7A /* OnDeviceSessionTests.swift in Sources */,
 				86B8A7C74336B1F0191650C2 /* OnDeviceSnapshotAdapterTests.swift in Sources */,
+				437DE6E56E58F930089867EE /* OnDeviceYieldPolicyTests.swift in Sources */,
+				1A1C13307BD020E5919ABD1A /* PortraitInteractionPolicyTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -633,7 +649,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2026091401;
+				CURRENT_PROJECT_VERSION = 2026091402;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 82HPAY85M8;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -718,7 +734,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2026091401;
+				CURRENT_PROJECT_VERSION = 2026091402;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 82HPAY85M8;
 				ENABLE_NS_ASSERTIONS = NO;

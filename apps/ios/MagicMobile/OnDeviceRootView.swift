@@ -46,7 +46,17 @@ struct OnDeviceRootView: View {
         validName && selectedDeck != nil && (playWithFriends || aiPrecon != nil) && setup.identity != nil && !setup.isBusy && !setup.needsLeave
     }
 
-    var body: some View {
+    private var turnControl: NativeTurnControl {
+        NativeTurnControl(
+            canEndTurn: session.canEndTurn, canSkipResponses: session.canEndTurnSkippingResponses,
+            canSkipToMyTurn: session.canSkipToMyTurn, isAutoPassing: session.isAutoPassing,
+            status: session.autoPassStatus, endTurn: { session.endTurn() },
+            skipResponses: { session.endTurnSkippingResponses() }, skipToMyTurn: { session.skipToMyTurn() },
+            stop: { session.stopAutoPass() }
+        )
+    }
+
+    private var presentedContent: some View {
         ZStack {
             if activeGame {
                 game
@@ -56,6 +66,7 @@ struct OnDeviceRootView: View {
             }
         }
         .overlay(alignment: .top) { recoveryBanner }
+        .environment(\.nativeTurnControl, turnControl)
         .sheet(isPresented: $showImport) {
             OnDeviceTextImportView(library: library, selectedDeckID: $selectedDeckID)
         }
@@ -72,12 +83,17 @@ struct OnDeviceRootView: View {
                  ? "You are hosting. Leaving ends this match for everyone; it cannot be resumed."
                  : "This closes the current match. It cannot be resumed after leaving.")
         }
-        .task {
-            MagicMobileOrientationController.shared.setPortraitModeEnabled(portraitModeEnabled)
-            restoreSetupPreferences()
-            setup.prepare()
-            setup.setSceneActive(scenePhase == .active)
-        }
+    }
+
+    private func preparePresentation() async {
+        MagicMobileOrientationController.shared.setPortraitModeEnabled(portraitModeEnabled)
+        restoreSetupPreferences()
+        setup.prepare()
+        setup.setSceneActive(scenePhase == .active)
+    }
+
+    private var lifecycleContent: some View {
+        presentedContent.task { await preparePresentation() }
         .onChange(of: library.decks.map(\.id)) { _, _ in
             if !activeGame { restoreSetupPreferences() }
         }
@@ -91,11 +107,26 @@ struct OnDeviceRootView: View {
         .onChange(of: setup.errorMessage) { _, message in
             if message != nil { Task { await setup.captureDiagnostics(in: diagnostics) } }
         }
+    }
+
+    var body: some View {
+        lifecycleContent
         .onChange(of: setup.multiplayer?.isConnected) { _, _ in setup.updateSessionForeground() }
         .onChange(of: setup.multiplayer?.isSuspended) { _, _ in setup.updateSessionForeground() }
         .onChange(of: setup.multiplayer?.endpoint?.matchID) { _, matchID in
             if matchID != nil { Task { await setup.attachMultiplayer() } }
         }
+        .onChange(of: session.snapshot?.bridgeRevision) { _, _ in refreshInspections() }
+    }
+
+    private func refreshInspections() {
+        guard let snapshot = session.snapshot else { zone = nil; inspectedCard = nil; return }
+        let cards = PortraitInteractionPolicy.authorizedCards(snapshot)
+        if let current = zone {
+            let updated: [ZoneCard] = current.cards.compactMap { old in cards.first { $0.id == old.id } }
+            zone = InspectedZone(title: current.title, cards: updated)
+        }
+        if let current = inspectedCard { inspectedCard = cards.first { $0.id == current.id } }
     }
 
     private var game: some View {
@@ -424,7 +455,7 @@ private final class OnDeviceSetupModel: ObservableObject {
             }
             aiMatchID = matchID
             updateSessionForeground()
-            try await session.attach(client: client, matchID: matchID, seatID: "player1", close: { [self] in try await closeAI() })
+            try await session.attach(client: client, matchID: matchID, seatID: "player1", allowsLocalAutoYield: true, close: { [self] in try await closeAI() })
             status = "Game started"
         } catch {
             errorMessage = error.localizedDescription

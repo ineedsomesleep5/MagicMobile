@@ -24,6 +24,164 @@ final class OnDevicePromptAdapterTests: XCTestCase {
         ]))
     }
 
+    func testEngineHTMLMessagesAreDisplayTextWithoutChangingPromptOrAnswer() throws {
+        let p = try prompt("ASK", types: ["boolean"], payload: [
+            "message": .string("Mulligan <font color=#00ff00>for free</font>, draw another 7 cards?"),
+            "options": .object(["UI.left.btn.text": .string("<b>Keep</b> &amp; play")])
+        ])
+        let original = p.payload
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(view.envelope.message, "Mulligan for free, draw another 7 cards?")
+        XCTAssertEqual(view.envelope.confirmation?.yesLabel, "Keep & play")
+        XCTAssertEqual(p.payload, original)
+        XCTAssertEqual(view.envelope.id, p.id)
+        let command = GameCommand(type: "answer_yes_no", gameId: "match", playerId: viewer,
+                                  promptId: p.id, messageId: 37, confirmed: true)
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("boolean", .bool(true)))
+    }
+
+    func testEngineChoiceDisplayNeverSanitizesResponseTokens() throws {
+        let token = "<b>exact&amp;token</b>"
+        let p = try prompt("CHOOSE_CHOICE", types: ["string"], payload: [
+            "choices": .object([token: .string("<b>Pay</b> {2/U} &amp; {G/P}")]),
+            "choiceOrder": .array([.string(token)])
+        ])
+        let original = p.payload
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(view.envelope.choices?.first?.label, "Pay {2/U} & {G/P}")
+        XCTAssertEqual(view.envelope.choices?.first?.id, token)
+        let command = GameCommand(type: "resolve_choice", gameId: "match", playerId: viewer,
+                                  promptId: p.id, messageId: 37, choiceIds: [token])
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("string", .string(token)))
+        XCTAssertEqual(p.payload, original)
+    }
+
+    func testDisplayTextRemovesActiveMarkupAttributesAndIsIdempotent() {
+        let inputs = [
+            "<script>secret<script>nested</script>still secret</script><b>Keep</b>",
+            "<style>hidden</style><iframe src='https://example.invalid'>hidden</iframe>Keep",
+            "<!-- hidden --><span title='not > a delimiter' onclick='bad()'>Keep</span>",
+            "&amp;lt;b&amp;gt;Keep&amp;lt;/b&amp;gt;",
+            "<svg><text>hidden</text></svg>Keep<img src='https://example.invalid/private' onerror='bad()'>",
+            "Keep<script>unterminated hidden content",
+            "<unknown data-private='do not show'>Keep</unknown>"
+        ]
+        for input in inputs {
+            let once = EngineDisplayText.text(input)
+            XCTAssertEqual(once, "Keep", input)
+            XCTAssertEqual(EngineDisplayText.text(once), once, input)
+        }
+    }
+
+    func testDisplayTextPreservesPunctuationEntitiesComparisonsAndRuleBreaks() {
+        XCTAssertEqual(EngineDisplayText.text("<b>Urza</b>&apos;s &amp; Mishra’s &#8212; &#x221E; &bogus;"), "Urza's & Mishra’s — ∞ &bogus;")
+        XCTAssertEqual(EngineDisplayText.text("2 < 3 and 5 > 4; A&B"), "2 < 3 and 5 > 4; A&B")
+        XCTAssertEqual(EngineDisplayText.text("<div>First {T}.</div><div>Second {Q}.<br/>Third {E}.</div>"), "First {T}.\nSecond {Q}.\nThird {E}.")
+        XCTAssertEqual(EngineDisplayText.label("<div>A</div><div>B</div>"), "A B")
+        XCTAssertEqual(EngineDisplayText.label("<script>gone</script>", fallback: "Continue"), "Continue")
+        XCTAssertEqual(EngineDisplayText.text("A&#0;&#x202E;B"), "AB")
+        XCTAssertEqual(EngineDisplayText.text("A&#10;B&#9;C"), "A\nB C")
+        XCTAssertEqual(EngineDisplayText.text("&#xD800; &#999999999999999999999;"), "&#xD800; &#999999999999999999999;")
+    }
+
+    func testDisplaySymbolsUseOnlyExplicitCanonicalAltAndPreserveManaTokens() {
+        let text = "Pay {X}{2}{W/U}{G/P}; &#123;T&#125;: <img alt='{C}' src='ignored'><img alt='{Q}'><img alt='{E}'>"
+        XCTAssertEqual(EngineDisplayText.text(text), "Pay {X}{2}{W/U}{G/P}; {T}: {C}{Q}{E}")
+        for markup in ["<img src='https://example.invalid/W.png'>", "<img alt='hidden card name'>",
+                       "<img title=\" alt='{W}'\">", "<img alt='{W}' alt='{B}'>"] {
+            XCTAssertEqual(EngineDisplayText.text(markup), "")
+        }
+        XCTAssertEqual(EngineDisplayText.text("{W}{U}{B}{R}{G}{C}{S}{2/U}{W/U/P}{UNKNOWN}"), "{W}{U}{B}{R}{G}{C}{S}{2/U}{W/U/P}{UNKNOWN}")
+    }
+
+    func testPhaseDisplayFormatsOnlyPresentationNotHumanNames() {
+        XCTAssertEqual(EngineDisplayText.phaseLabel("PRECOMBAT_MAIN"), "Precombat main")
+        XCTAssertEqual(EngineDisplayText.phaseLabel("POSTCOMBAT_MAIN"), "Postcombat main")
+        XCTAssertEqual(EngineDisplayText.phaseLabel("DECLARE_ATTACKERS"), "Declare attackers")
+        XCTAssertEqual(EngineDisplayText.phaseLabel("FIRST_COMBAT_DAMAGE"), "First-strike damage")
+        XCTAssertEqual(EngineDisplayText.phaseLabel("FUTURE_STEP"), "Future step")
+        XCTAssertEqual(EngineDisplayText.phaseLabel("Alice’s draw step"), "Alice’s draw step")
+        XCTAssertEqual(EngineDisplayText.phaseLabel("<b>Draw</b>"), "Draw")
+        XCTAssertEqual(EngineDisplayText.phaseLabel(""), "")
+    }
+
+    func testManaMessageAndSpecialActionArePlainButCommandMetadataIsOriginal() throws {
+        let message = "Pay {W}<div style='font-size:11pt'><font object_id='private-attribute'>Isamaru, Hound of Konda</font> [d80]</div>"
+        let p = try prompt("PLAY_MANA", types: ["mana", "string", "boolean"], payload: [
+            "message": .string(message), "manaPlayerId": .string(viewer),
+            "options": .object(["specialButton": .string("<b>Convoke</b> &amp; delve")])
+        ])
+        let original = p.payload
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(view.envelope.message, "Pay {W}\nIsamaru, Hound of Konda [d80]")
+        XCTAssertEqual(view.manaPayment?.remainingText, view.envelope.message)
+        let action = try XCTUnwrap(view.legalActions.first { $0.type == "resolve_choice" })
+        XCTAssertEqual(action.label, "Convoke & delve")
+        XCTAssertEqual(action.choiceIds, ["special"])
+        XCTAssertEqual(action.id, p.id + ":resolve_choice")
+        XCTAssertEqual(action.messageId, 37)
+        XCTAssertEqual(p.payload, original)
+    }
+
+    func testAbilityAllocationAndExplicitCardRulesAreDisplayOnly() throws {
+        let ability = try prompt("CHOOSE_ABILITY", types: ["uuid"], payload: ["abilities": .array([
+            .object(["id": .string(first), "label": .string("<b>{T}</b>: Add {G}.")])])])
+        let view = try OnDevicePromptAdapter.presentation(ability, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(view.envelope.abilities?.first?.label, "{T}: Add {G}.")
+        XCTAssertEqual(view.envelope.abilities?.first?.id, first)
+        let allocation = try prompt("MULTI_AMOUNT", types: ["integers"], payload: ["allocations": .array([
+            .object(["message": .string("<b>Damage</b> &amp; counters"), "min": .integer(0), "max": .integer(2)])])], min: 0, max: 2)
+        XCTAssertEqual(try OnDevicePromptAdapter.presentation(allocation, viewerPlayerID: viewer, cards: []).envelope.multiAmounts?.first?.label, "Damage & counters")
+        let card = try prompt("PICK_TARGET", types: ["uuid"], payload: ["candidates": .array([.string(first)]), "cards": .array([
+            .object(["id": .string(first), "name": .string("<b>Known</b> card"), "rules": .array([.string("<b>{T}</b>: Add {G}."), .string("<script>hidden</script>Second ability.")])])])])
+        let original = card.payload
+        let cardView = try OnDevicePromptAdapter.presentation(card, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(cardView.envelope.cards?.first?.card.name, "Known card")
+        XCTAssertEqual(cardView.envelope.cards?.first?.card.oracleText, "{T}: Add {G}.\nSecond ability.")
+        XCTAssertEqual(cardView.envelope.cards?.map(\.id), [first])
+        XCTAssertEqual(card.payload, original)
+    }
+
+    func testPlayableSnapshotLabelsAreDisplayOnlyAndPreserveManaCommand() throws {
+        #if SWIFT_PACKAGE
+        let bundle = Bundle.module
+        #else
+        let bundle = Bundle(for: Self.self)
+        #endif
+        let url = try XCTUnwrap(bundle.url(forResource: "2p-mana", withExtension: "json", subdirectory: "OnDevice"))
+        let original = try MatchPoll(MagicMobileOnDevice.JSONValue.decode(Data(contentsOf: url)))
+        var raw = try XCTUnwrap(original.raw.object)
+        var root = try XCTUnwrap(original.snapshot?.object)
+        var view = try XCTUnwrap(root["gameView"]?.object)
+        var canPlay = try XCTUnwrap(view["canPlayObjects"]?.object)
+        var objects = try XCTUnwrap(canPlay["objects"]?.object)
+        let source = try XCTUnwrap(objects.keys.first { objects[$0]?["basicManaAbilities"]?.array?.isEmpty == false })
+        var stats = try XCTUnwrap(objects[source]?.object)
+        var rows = try XCTUnwrap(stats["basicManaAbilities"]?.array)
+        var row = try XCTUnwrap(rows[0].object)
+        let abilityID = try XCTUnwrap(row["id"]?.string)
+        row["value"] = .string("<b>{T}</b>: Add {W} &amp; {C}.")
+        rows[0] = .object(row); stats["basicManaAbilities"] = .array(rows)
+        objects[source] = .object(stats); canPlay["objects"] = .object(objects)
+        view["canPlayObjects"] = .object(canPlay); root["gameView"] = .object(view); raw["snapshot"] = .object(root)
+        let poll = try MatchPoll(.object(raw))
+        let originalRaw = poll.raw
+        let snapshot = try OnDeviceSnapshotAdapter.snapshot(poll, expectedSeatID: poll.seatID)
+        let ability = try XCTUnwrap(snapshot.xmage?.playableObjects.first { $0.sourceInstanceId == source }?.abilities.first { $0.id == abilityID })
+        XCTAssertEqual(ability.label, "{T}: Add {W} & {C}.")
+        XCTAssertEqual(ability.id, abilityID)
+        let action = try XCTUnwrap(snapshot.legalActions?.first { $0.type == "make_mana" && $0.sourceInstanceId == source })
+        XCTAssertEqual(action.label, "{T}: Add {W} & {C}.")
+        XCTAssertEqual(action.cardInstanceId, source)
+        XCTAssertEqual(action.messageId, Int(original.prompt!.revision))
+        XCTAssertEqual(action.id, original.prompt!.id + ":basicManaAbilities:" + source)
+        let command = GameCommand(type: action.type, gameId: snapshot.id, playerId: action.playerId,
+                                  sourceInstanceId: source, promptId: action.promptId, messageId: action.messageId)
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: XCTUnwrap(poll.prompt), viewerPlayerID: snapshot.viewerID),
+                       EnginePrompt.answer("uuid", .string(source)))
+        XCTAssertEqual(poll.raw, originalRaw)
+    }
+
     func testFloatingManaChoicesUseThePayloadPlayersPoolAndExactResponses() throws {
         let players = try [player(viewer, mana: ["R": 9]), player(first, mana: ["G": 1, "C": 2])]
         for kind in ["PLAY_MANA", "PLAY_X_MANA"] {
