@@ -1,0 +1,67 @@
+name: Issue 4 release audit (no signing)
+on:
+  push:
+    branches: [codex/issue-4-release-audit]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: issue4-release-audit-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Preserve exact tracked audit sources
+        run: |
+          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/magicmobile-audit-source.tar.gz"
+          git rev-parse HEAD > "$RUNNER_TEMP/audit-source-commit.txt"
+          sha256sum "$RUNNER_TEMP/magicmobile-audit-source.tar.gz" > "$RUNNER_TEMP/audit-source-sha256.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: issue4-audit-source-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/magicmobile-audit-source.tar.gz
+            ${{ runner.temp }}/audit-source-commit.txt
+            ${{ runner.temp }}/audit-source-sha256.txt
+          retention-days: 3
+          if-no-files-found: error
+  real-jvm-and-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: packages/ondevice-engine
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: bash scripts/test_tooling.sh
+      - run: bash scripts/test_native_boundary.sh
+      - run: bash scripts/build_jvm.sh
+      - run: bash scripts/test_real_engine.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue4-audit-jvm-${{ github.sha }}
+          path: packages/ondevice-engine/evidence/
+          retention-days: 3
+  swift-presentation:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: swift test --package-path packages/ondevice-engine/swift
+      - run: swift test --package-path apps/ios
+      - run: bash packages/ondevice-engine/scripts/test_swift_close.sh
+# These checks do not build, sign, upload, or attest to physical-device gameplay.
