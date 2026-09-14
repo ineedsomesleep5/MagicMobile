@@ -11,6 +11,7 @@ final class OnDeviceSession: ObservableObject {
     @Published private(set) var pendingActionID: String?
     @Published private(set) var pendingCardID: String?
     @Published private(set) var isWorking = false
+    @Published private(set) var isClosing = false
     @Published private(set) var status = "Ready"
     @Published private(set) var errorMessage: String?
     private var client: EngineClient?
@@ -19,6 +20,8 @@ final class OnDeviceSession: ObservableObject {
     private var pollingTask: Task<Void, Never>?
     private var closeEndpoint: (@MainActor () async throws -> Void)?
     private var epoch = UUID()
+    private var refreshSequence: UInt64 = 0
+    private var appliedRefreshSequence: UInt64 = 0
     private var isForeground = true
     private var automaticPolling = true
     private struct Submission {
@@ -34,6 +37,7 @@ final class OnDeviceSession: ObservableObject {
         guard self.client == nil, !isWorking else { throw EngineError.invalidMessage("Close the active game first") }
         self.client = client; self.matchID = matchID; self.seatID = seatID
         closeEndpoint = close; automaticPolling = autoPoll; epoch = UUID()
+        refreshSequence = 0; appliedRefreshSequence = 0; isClosing = false
         messageLog = OnDeviceMessageLog()
         status = "Starting local game"
         try await refresh()
@@ -41,23 +45,39 @@ final class OnDeviceSession: ObservableObject {
     }
 
     func refresh() async throws {
-        guard let client, let matchID, let seatID, isForeground else { return }
+        guard let client, let matchID, let seatID, isForeground, !isClosing else { return }
         let token = epoch
+        refreshSequence += 1
+        let sequence = refreshSequence
         let next = try await client.poll(matchID: matchID, seatID: seatID, after: poll?.revision ?? 0)
         guard epoch == token, self.matchID == matchID else { return }
         guard next.matchID == matchID, next.seatID == seatID else { throw EngineError.unboundPeer }
-        if let poll, next.revision < poll.revision { return }
+        // Submission can change at the same mailbox revision. Do not let an older
+        // in-flight poll restore a choice after a newer response hid it.
+        if let poll, next.revision < poll.revision ||
+            (next.revision == poll.revision && sequence <= appliedRefreshSequence) { return }
         var nextLog = messageLog
         try nextLog.ingest(next)
-        if next.snapshot != nil {
+        if next.phase == "closed" {
+            snapshot = nil
+            nextLog = OnDeviceMessageLog()
+            pending = nil; pendingActionID = nil; pendingCardID = nil
+        } else if next.snapshot != nil {
             snapshot = try OnDeviceSnapshotAdapter.snapshot(next, expectedSeatID: seatID, log: nextLog.entries)
         }
         messageLog = nextLog
         poll = next
+        appliedRefreshSequence = max(appliedRefreshSequence, sequence)
         if let pending, next.prompt?.id != pending.prompt.id || next.prompt?.revision != pending.prompt.revision {
             self.pending = nil; pendingActionID = nil; pendingCardID = nil
         }
-        status = next.phase == "ended" ? "Game complete" : next.phase == "failed" ? "Game stopped" : "Live"
+        switch next.phase {
+        case "ended": status = "Game complete"
+        case "failed": status = "Game stopped"
+        case "closed": status = "Game closed"
+        case "starting": status = "Starting local game"
+        default: status = "Live"
+        }
         errorMessage = next.raw["failure"]?["message"]?.string
         beginPolling()
     }
@@ -83,7 +103,8 @@ final class OnDeviceSession: ObservableObject {
 
     func send(_ command: GameCommand, label: String, actionID: String) async throws {
         guard client != nil, let matchID, seatID != nil, let snapshot, let prompt = poll?.prompt,
-              !isWorking, pendingActionID == nil, isForeground, !snapshot.isCompleted,
+              !isWorking, !isClosing, pendingActionID == nil, isForeground, !snapshot.isCompleted,
+              !["ended", "failed", "closed"].contains(poll?.phase ?? ""),
               command.gameId == matchID, command.playerId == snapshot.viewerID,
               command.expectedBridgeRevision == nil || command.expectedBridgeRevision == snapshot.bridgeRevision else {
             throw EngineError.invalidMessage("The game or decision changed. Refresh before choosing again.")
@@ -95,7 +116,7 @@ final class OnDeviceSession: ObservableObject {
     }
 
     func retryPending() async throws {
-        guard let pending, let client, let matchID, let seatID, isForeground, !isWorking else {
+        guard let pending, let client, let matchID, let seatID, isForeground, !isWorking, !isClosing else {
             throw EngineError.invalidMessage("There is no pending response to retry")
         }
         isWorking = true
@@ -124,10 +145,18 @@ final class OnDeviceSession: ObservableObject {
     func close() async throws {
         guard !isWorking else { throw EngineError.invalidMessage("Wait for the current operation before closing") }
         guard let closeEndpoint else { return }
-        isWorking = true; pollingTask?.cancel(); pollingTask = nil
+        isWorking = true; isClosing = true; pollingTask?.cancel(); pollingTask = nil
+        status = "Closing game"
         epoch = UUID()
         defer { isWorking = false }
-        try await closeEndpoint()
+        do { try await closeEndpoint() }
+        catch {
+            errorMessage = error.localizedDescription
+            status = "Closing interrupted. Leave again to retry cleanup."
+            throw error
+        }
+        isClosing = false
+        refreshSequence = 0; appliedRefreshSequence = 0
         epoch = UUID(); client = nil; matchID = nil; seatID = nil; poll = nil; snapshot = nil
         messageLog = OnDeviceMessageLog()
         self.closeEndpoint = nil; pending = nil; pendingActionID = nil; pendingCardID = nil; errorMessage = nil; status = "Ready"
@@ -136,11 +165,16 @@ final class OnDeviceSession: ObservableObject {
     func setForeground(_ value: Bool) {
         isForeground = value
         if value { beginPolling() }
-        else { pollingTask?.cancel(); pollingTask = nil; status = "Paused while this app is in the background" }
+        else {
+            pollingTask?.cancel(); pollingTask = nil
+            if !isClosing, client != nil, !["ended", "failed", "closed"].contains(poll?.phase ?? "") {
+                status = "Paused while this app is in the background"
+            }
+        }
     }
 
     private func beginPolling() {
-        guard pollingTask == nil, automaticPolling, client != nil, isForeground,
+        guard pollingTask == nil, automaticPolling, client != nil, isForeground, !isClosing,
               !["ended", "failed", "closed"].contains(poll?.phase ?? "") else { return }
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {

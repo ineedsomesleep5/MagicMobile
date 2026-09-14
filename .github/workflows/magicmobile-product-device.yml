@@ -1,10 +1,12 @@
 name: Issue 4 real engine unsigned product
 on:
   push:
-    branches: [codex/issue-4-verified-continuation]
+    branches: [codex/issue-4-verified-continuation, codex/testflight-readiness-audit]
     paths:
       - '.github/workflows/magicmobile-product-device.yml'
       - 'apps/ios/**'
+      - 'scripts/ios/testflight_native_guard.py'
+      - 'scripts/ios/deploy-testflight.sh'
       - 'packages/ondevice-engine/swift/**'
       - 'packages/ondevice-engine/scripts/verify_native_candidate.py'
       - 'packages/ondevice-engine/scripts/verify_issue4_unsigned_product.py'
@@ -85,11 +87,33 @@ jobs:
             --header "$RUNNER_TEMP/native-candidate/include/io.magicmobile.nativebridge.ioslibrarymain.h" \
             --clib-dir "$RUNNER_TEMP/native-candidate/clib" \
             --jdk-lib-dir "$RUNNER_TEMP/native-candidate/jdk" --apply
+      - name: Verify native release source guard against the actual paired artifact
+        run: >-
+          python3 scripts/ios/testflight_native_guard.py source
+          --repo "$GITHUB_WORKSPACE" --export-options release/testflight/ExportOptions.plist
+          --output packages/ondevice-engine/evidence/issue4-release-source.json
       - name: Compile and link actual Release product without signing
         run: |
           set -euo pipefail
           command -v xcodegen >/dev/null || brew install xcodegen
           bash packages/ondevice-engine/scripts/build_issue4_unsigned_app.sh
+      - name: Inspect actual native Release upload settings without signing
+        run: |
+          set -euo pipefail
+          xcodebuild -project apps/ios/MagicMobileiOS.xcodeproj -scheme MagicMobile \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -showBuildSettings -json > packages/ondevice-engine/evidence/issue4-release-settings.json
+          python3 - <<'PYCODE'
+          import json, pathlib, plistlib, sys
+          sys.path.insert(0, 'scripts/ios')
+          from testflight_native_guard import inspect_settings, export_policy, unchanged_inputs
+          root = pathlib.Path.cwd()
+          evidence = root / 'packages/ondevice-engine/evidence'
+          identity = inspect_settings(json.loads((evidence/'issue4-release-settings.json').read_text()))
+          export_policy(plistlib.loads((root/'release/testflight/ExportOptions.plist').read_bytes()))
+          unchanged_inputs(root, json.loads((evidence/'issue4-release-source.json').read_text()))
+          print(json.dumps({**identity, 'scope': 'Actual Release configuration only; no signing, upload or phone execution'}))
+          PYCODE
       - uses: actions/upload-artifact@v4
         if: always()
         with:
