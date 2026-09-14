@@ -102,3 +102,28 @@ TestFlight upload, larger runner or remote rules engine is enabled here.
 
 Do not close physical acceptance issue #7 or claim perfect/full-card behavior
 from fixtures, JVM games, a native library, successful linking or an upload.
+
+
+## Follow-up: resilient exact-run API reads
+
+`wait_issue4_native.py` previously aborted after a single transient API failure.
+A fault injection against the unchanged version reproduced HTTP 503 stopping
+on its first request, without attempting the next available successful reply.
+The repaired GET helper retries a bounded five attempts within the SAME overall
+monotonic gate deadline; per-request timeouts are clamped to the remaining window.
+It honors valid Retry-After and exhausted-rate reset hints, waits at least a
+minute for rate limits without usable hints, and never retries ordinary
+permission/not-found/validation errors or malformed JSON. Logs exclude tokens,
+response bodies and private exception text. This does not dispatch or restart
+an engine workflow, and does not change Java/native/compiler inputs.
+
+Sixteen additional network-free fault tests cover recovery, finite retries,
+rate limits, deadlines, and unchanged refusal of failed/cancelled builds,
+wrong commits and missing/expired/duplicate/digestless artifacts. These are
+orchestration fixtures, not additional gameplay or iPhone acceptance.
+GitHub's rate-limit guidance is the reference:
+https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api
+
+The selected engine remains f8e1680 / run 34803650513. A product rerun on the
+new app/test/workflow-only head still has to pass exact-source and actual
+native-linked Release inspection. Do not reuse the old TestFlight engine.
