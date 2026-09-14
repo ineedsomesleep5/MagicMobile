@@ -5,6 +5,17 @@ Use [PR #9](https://github.com/ineedsomesleep5/MagicMobile/pull/9), branch
 and PR #6's native engine integration. Do not reinstall an earlier ZIP or reset
 the project to its original checkpoint. Preserve uncommitted desktop work.
 
+## Subsequent authorized internal TestFlight upload
+
+[Build 2026091401](TESTFLIGHT_2026091401.md), release source
+`a718978e59b0fe4ef90568cf190d5fe5b0ecff41`, passed archive/export/signing/layout
+and Apple validation, then uploaded successfully. Delivery UUID:
+`4e99955e-55eb-4371-9fc2-46e9c5ab0da2`. Apple currently reports PROCESSING;
+Internal availability is pending. It uses the exact new engine below, not the
+older 2026091301 archive. No public release or physical acceptance occurred.
+The following pre-phone/old-build sections are historical evidence for this release;
+the separate release handoff supersedes their no-upload/build-number statements.
+
 ## Verified pre-phone candidate — September 14, 2026
 
 Functional application and engine source: `d04f9cac88d680af10fe7174fab85f624e5ad491`.

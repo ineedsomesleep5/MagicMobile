@@ -6,7 +6,7 @@
   "pullRequest": 9,
   "sourceBuildIssue": 4,
   "physicalAcceptanceIssue": 7,
-  "status": "pre-phone-implementation-verified-signing-and-physical-acceptance-pending",
+  "status": "internal-testflight-uploaded-apple-processing-phone-acceptance-pending",
   "maintenanceContinuation": {
     "baselineCommit": "56d94497ba887dfff49ea46c6c03d49deb73df3f",
     "state": "authorized-pre-phone-matrix-complete",
@@ -14,7 +14,7 @@
     "reason": "Production DecisionSpec mana identity validation and guarded engine regressions changed",
     "upstreamPinAdvanced": false,
     "scheduledAutomationActive": false,
-    "releaseActionsAuthorized": false,
+    "releaseActionsAuthorized": true,
     "functionalCommit": "d04f9cac88d680af10fe7174fab85f624e5ad491",
     "newNativeArtifactBuilt": true,
     "upstreamCandidateObserved": "e709c4d324caba2fe63bfad9b5f99eabcf64d25a",
@@ -42,26 +42,31 @@
     "verifiedRelocatedInstructions": 818,
     "verifiedFarCallVeneers": 7,
     "preparedVersion": "0.1.0",
-    "preparedBuild": null,
-    "distributionSignature": "not-run-in-this-continuation",
-    "testFlightUpload": "not-run-in-this-continuation",
+    "preparedBuild": "2026091401",
+    "distributionSignature": "passed-signed-export-profile-game-center-dsym-layout",
+    "testFlightUpload": "succeeded",
     "physicalAcceptance": "not-run",
-    "releaseHandoff": "docs/LOCAL_CONTINUATION_STATUS.md",
+    "releaseHandoff": "docs/TESTFLIGHT_2026091401.md",
     "unsignedProductBuildSetting": "2026091301",
-    "unusedReleaseBuildNumberSelected": false
+    "unusedReleaseBuildNumberSelected": true,
+    "releaseSourceCommit": "a718978e59b0fe4ef90568cf190d5fe5b0ecff41"
   },
   "lastRecordedUploadedCandidate": {
-    "build": "2026091301",
+    "build": "2026091401",
     "version": "0.1.0",
-    "appSourceCommit": "2bdbc8027f6bafb6dbd98d5c29bdf36481f78e49",
-    "engineSourceCommit": "00b33cb223f93caed6bc752f87d2384e146c9a1c",
-    "recordedProcessingState": "VALID",
-    "recordedInternalState": "IN_BETA_TESTING",
+    "appSourceCommit": "a718978e59b0fe4ef90568cf190d5fe5b0ecff41",
+    "engineSourceCommit": "d04f9cac88d680af10fe7174fab85f624e5ad491",
+    "deliveryUuid": "4e99955e-55eb-4371-9fc2-46e9c5ab0da2",
+    "uploadedAt": "2026-09-14T19:26:41Z",
+    "recordedProcessingState": "PROCESSING",
+    "recordedInternalState": "awaiting-processing",
     "internalOnly": true,
-    "containsCurrentRuntimeHardening": false,
+    "containsCurrentRuntimeHardening": true,
     "physicalAcceptance": "not-verified",
-    "evidence": "docs/TESTFLIGHT_2026091301.md",
-    "liveAppStoreConnectQueriedInThisContinuation": false
+    "evidence": "docs/TESTFLIGHT_2026091401.md",
+    "liveAppStoreConnectQueriedInThisContinuation": true,
+    "ipaSHA256": "a9daf91926a58b38aa4f95ee4d65bfd19562facc14f4e9b7804ce13ec707cb32",
+    "signedBinarySHA256": "47859493751e35b17d2c5a734a530ef15ee0b59d88e74d4c5fc63adf53f28f3a"
   },
   "verification": {
     "sourceCommit": "d04f9cac88d680af10fe7174fab85f624e5ad491",
@@ -181,5 +186,18 @@
       "equivalentInputTreeSHA256": "dd57fe2d37bf0e8fa3a80785fa85b0eec5783eb7550f7886658d9264d295ff6f",
       "engineInputChanges": []
     }
+  },
+  "previousUploadedCandidate": {
+    "build": "2026091301",
+    "version": "0.1.0",
+    "appSourceCommit": "2bdbc8027f6bafb6dbd98d5c29bdf36481f78e49",
+    "engineSourceCommit": "00b33cb223f93caed6bc752f87d2384e146c9a1c",
+    "recordedProcessingState": "VALID",
+    "recordedInternalState": "IN_BETA_TESTING",
+    "internalOnly": true,
+    "containsCurrentRuntimeHardening": false,
+    "physicalAcceptance": "not-verified",
+    "evidence": "docs/TESTFLIGHT_2026091301.md",
+    "liveAppStoreConnectQueriedInThisContinuation": false
   }
 }

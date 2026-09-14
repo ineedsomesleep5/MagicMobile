@@ -20,16 +20,17 @@ The original compiler call-range, Apple linker layout, Color/AWT, token resource
 and desktop-catalogue problems have targeted repairs and regression evidence.
 The runtime-hardened candidate crossed the native compilation and unsigned
 product-link gates. See the current machine-readable status for exact evidence;
-the remaining signing, native execution and phone gates below are unexecuted.
+the subsequent signed upload is recorded below, while native execution and phone
+acceptance remain unexecuted.
 
-## Desktop signing and distribution
+## Signed upload completed; Apple processing pending
 
-Only after separate release authorization, desktop Codex must select an unused build number,
-regenerate and verify the native Release product, sign/archive/export it, verify
-the exported binary and UUID-matched dSYM/code layout/Game Center entitlement,
-and perform an authorized internal TestFlight validation/upload. Apple processing
-and tester availability must be checked separately. No new upload or signing is
-performed by this GitHub continuation. Keep prior signed archives and receipts.
+The separately authorized [build 2026091401](TESTFLIGHT_2026091401.md) passed
+archive/export, distribution-signature/profile, Game Center, UUID-matched dSYM/
+native layout, privacy and Apple validation checks, then uploaded successfully.
+Apple reports PROCESSING; confirm availability in the existing Internal group.
+Do not reupload or reuse the previous build number. Retain all signed artifacts
+and receipts. No public distribution or phone acceptance occurred.
 
 ## Physical acceptance remains separate
 
