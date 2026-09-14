@@ -221,10 +221,16 @@ and dispatch preview, remote-SHA mismatch and explicit mocked dispatch.
 The actual prepare_mobile_repository.py guard/export transformation also runs on
 synthetic local original-source fixtures, proving the coordinated repository lock
 accepts the reviewed candidate and rejects old pins and source tampering without
-a mocked builder or JVM. Production regeneration, dependency compatibility, real JVM/Swift/C execution,
-hosted workflow behavior, native/device acceptance and external publishing remain
-unverified. Hash receipts alone cannot prove outputs were produced by a particular
-build; preserve hosted provenance and apply the independent exact-SHA gate.
+a mocked builder or JVM. For an actual upstream upgrade, production regeneration,
+dependency compatibility and end-to-end candidate publication remain unverified.
+Hash receipts alone cannot prove outputs were produced by a particular build;
+preserve hosted provenance and apply the independent exact-SHA gate.
 
-No live upstream advancement, full real JVM build, schedule activation, dispatch,
-external write, commit or push was performed during implementation.
+The current pinned runtime (not an upstream upgrade) separately passed real JVM,
+Swift/C, ARM64 compilation and unsigned product gates at `d04f9cac88d680af10fe7174fab85f624e5ad491`;
+see [the checkpoint](../../packages/ondevice-engine/docs/MAINTENANCE_CHECKPOINT.md).
+Read-only live detection observed candidate `e709c4d324caba2fe63bfad9b5f99eabcf64d25a`
+with 66 changed paths and unchanged original patch blobs. It did not approve or
+apply that revision. The production pin, schedule and publisher remain unchanged/
+inactive. No actual upstream candidate was built or published, and no signing,
+upload, phone execution or multi-device acceptance occurred.

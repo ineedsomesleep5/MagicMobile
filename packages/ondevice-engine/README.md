@@ -6,11 +6,9 @@ The native iOS product embeds XMage's actual rules engine. A player must not nee
 
 ## Actual delivery status
 
-Runtime hardening in PR #9 has successful full XMage+MAD ARM64 compilation (**34803650513**, engine `f8e1680`) and native-linked unsigned Release product verification (**34805592902**, app `101985d`). The native archive and product evidence were downloaded and hash-checked on September 14. The last recorded internal TestFlight **2026091301** predates these repairs; App Store Connect was not queried in this maintenance task. Successful native phone gameplay, AI resource behavior and real multi-device execution remain unverified. See [current status](docs/LOCAL_CONTINUATION_STATUS.md) and [physical acceptance](docs/TESTFLIGHT_ACCEPTANCE.md).
+PR #9's functional source `d04f9cac88d680af10fe7174fab85f624e5ad491` passed the full XMage+MAD ARM64 build **34872508758** and native-linked unsigned Release product gate **34883826069**. Both new artifacts were downloaded and hash-checked on September 14; the new engine was required by guarded Java changes. Final non-simulator **34871098576**, CI **34871103720** and package **34871103725** passed. See [current source/artifact identities](docs/LOCAL_CONTINUATION_STATUS.md) and [the checkpoint](docs/MAINTENANCE_CHECKPOINT.md).
 
-The new September 14 maintenance fixes change guarded Java inputs and therefore
-require a new full ARM64 artifact; the preceding success is historical evidence,
-not acceptance of those changes. See [the checkpoint](docs/MAINTENANCE_CHECKPOINT.md).
+This is source-reviewed, real-JVM-tested, ARM64-compiled and product-linked, not phone acceptance. No signing/upload occurred. Last recorded internal TestFlight **2026091301** predates these repairs; App Store Connect was not queried. Native gameplay, AI resource behavior and multi-device Game Center remain [physical acceptance gates](docs/TESTFLIGHT_ACCEPTANCE.md). Upstream detection/publishing automation remains inactive; no production pin was advanced.
 
 The product retains and adapts the existing **vertical/portrait playing mode** and landscape support in `apps/ios/MagicMobile`; `apps/ios-ondevice` remains a diagnostic harness. See [PORTRAIT_INTEGRATION.md](docs/PORTRAIT_INTEGRATION.md).
 

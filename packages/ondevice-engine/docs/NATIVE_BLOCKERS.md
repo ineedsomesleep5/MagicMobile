@@ -6,15 +6,15 @@ Do not treat the older 2026091301 release as proof of the new runtime repairs.
 
 ## GitHub source/build gates
 
-The prior verified engine source is `f8e16802bf033adfd844b878248b30042b838481`.
-Its full ARM64 run is **34803650513**. Its paired app source is
-`101985d7f8175c2ec4ddb3c2945b7062055b704d`; its native-linked unsigned Release
-product gate is **34805592902**. Both succeeded; the archive and product evidence
-were downloaded and hash-checked September 14 (identities in current status).
-The current maintenance change to production mana validation requires a new
-native candidate; those artifacts cannot validate that repair. Final hosted
-checks, ARM64 compilation and matching product linkage remain pending in
-[MAINTENANCE_CHECKPOINT.md](MAINTENANCE_CHECKPOINT.md).
+The final functional source is `d04f9cac88d680af10fe7174fab85f624e5ad491`.
+Full ARM64 run **34872508758** and paired native-linked unsigned Release product
+run **34883826069** both passed. Their artifacts were downloaded/hash-checked;
+all required job steps passed. Exact identities and 51-file native provenance are
+in [current status](LOCAL_CONTINUATION_STATUS.md). Non-simulator **34871098576**,
+CI **34871103720**, and package **34871103725** passed on that same source.
+The new archive contains the mana validation repair; the earlier `f8e1680`
+archive is historical only. The agreed pre-phone implementation/check matrix is
+complete; signing, native execution and physical acceptance below remain separate.
 
 The original compiler call-range, Apple linker layout, Color/AWT, token resource
 and desktop-catalogue problems have targeted repairs and regression evidence.
@@ -24,7 +24,7 @@ the remaining signing, native execution and phone gates below are unexecuted.
 
 ## Desktop signing and distribution
 
-After those gates pass, desktop Codex must select an unused build number,
+Only after separate release authorization, desktop Codex must select an unused build number,
 regenerate and verify the native Release product, sign/archive/export it, verify
 the exported binary and UUID-matched dSYM/code layout/Game Center entitlement,
 and perform an authorized internal TestFlight validation/upload. Apple processing

@@ -126,3 +126,94 @@ Apple artifact `10358328354`, ZIP SHA-256
 `6b577fd71ea6c9d7d0df1aafbce3324f1a25d57a12571e1170f3b33ac0a7e2f5`, was
 also downloaded/hash-verified: 124 app tests, 21+33 protocol cases, 27 runtime
 fixtures, five exact exported decks and successful generic SDK test compilation.
+
+## Verified pre-phone candidate — September 14, 2026
+
+Functional application and engine source: `d04f9cac88d680af10fe7174fab85f624e5ad491`.
+[Non-simulator 34871098576](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34871098576),
+[CI 34871103720](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34871103720)
+and [package 34871103725](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34871103725)
+passed. All five non-simulator jobs and their required steps executed successfully;
+package upstream reporting was intentionally skipped on the PR event.
+
+A **new** full ARM64 engine was required by the production mana validation and
+guarded engine regressions. [Native 34872508758](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34872508758)
+passed on attempt 1 after the exact-SHA cheap approval gate.
+[Unsigned Release product 34883826069](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/34883826069)
+passed on the same application source with that exact artifact; all required
+verification, staging, release-source, linking and settings steps passed.
+
+Native artifact `10363785536`, ZIP SHA-256
+`b82f90f08f7ac0b3505b96cf23e83e1759e517bbf4243b4543dd296051fa4c0a`,
+was downloaded safely and all 51 hash-covered inputs verified. Archive SHA-256:
+`b4e361b5687474e658dcc25470e70de6f8816c08c8f11e4fd49be78eec9424f8`.
+Guarded input digest:
+`1a9a449fd8af68bd96bc7f5d4b3f729ff1ecc5c4122e4b38c69c8ff1ffe2db95`.
+Product evidence artifact `10364317309`, ZIP SHA-256
+`0458ffd778cd4b207be53fe8011302dcd93637554350f5b7c1d0359d88ff743b`,
+was downloaded/hash-checked. Its receipt binds the exact engine provenance and
+records unsigned binary SHA-256
+`3c7deafd526ed09a2d85cdfe6dc2c48b34089b3f3cead652167d898c05f8442c`,
+191,584,800 intact Graal code bytes, 818 verified relocated instructions and seven
+verified veneers. This is ARM64 compilation/product linkage, **not native execution**.
+
+The final documentation commit may be newer than this functional source. Reuse
+requires unchanged guarded engine and application/product inputs; a newer document
+timestamp is not a new hosted build. No signing, upload, simulator, phone execution
+or actual Game Center transport acceptance occurred. The unsigned product still
+uses the old build-number setting `2026091301`; it is not upload-ready with that
+number. Select an unused number only in a separately authorized release task.
+
+## Final bounded verification and maintenance result
+
+The first matrix-driver correction was published as `d04f9cac88d680af10fe7174fab85f624e5ad491`.
+Non-simulator run 34871098576 passed all ten scenarios: eight human answers each,
+observed priority and a newer post-answer running prompt, lifecycle cleanup and
+AI-seat authorization rejection. No deadline, scenario count or production guard
+was weakened. Real query tests: 15; controlled turns: 5; privacy: 8; commander: 10;
+projection: 9; busy shutdown: 4; resolving cancellation: 2. Completed two/four-seat
+and token/mulligan JVM games and all five exact exported precons passed separately.
+Real-JVM artifact `10359357164`, ZIP SHA-256
+`8302fd995c8f3d4e9d9e0bef4e7928e4ed752c77fb9d78b249acacf556db7848`,
+was downloaded/hash-checked and all ten complete scenario receipts inspected.
+
+Final local/hosted counts supersede the chronological intermediate counts above:
+419 core + 72 failure-boundary assertions; 228 tooling cases with two skips;
+124 macOS app XCTest cases; 21 protocol XCTest + 33 Swift Testing cases;
+27 runtime-manager assertions; 17 soak-driver fixtures; 27 maintenance fixtures;
+12 approval fixtures; six exported-tree static-audit fixtures. C checks exercised
+8,000 normal plus 1,000 sanitizer requests and five shutdown failure cases.
+Generic device SDK tests compiled but were not executed.
+
+Independent critics reviewed the actual runtime, lobby, maintenance, soak and gate
+diffs. All reproduced findings were repaired before the final cheap/native gates.
+No known demonstrated defect remains in that bounded scope; no exhaustive-card,
+native gameplay, rendered-UI or multi-phone acceptance is implied.
+
+Read-only live detection was also executed:
+`python3 -B scripts/magicmobile-maintenance/upstream.py detect --output packages/ondevice-engine/build/maintenance-live-detection-d04f9ca.json`.
+It observed upstream `e709c4d324caba2fe63bfad9b5f99eabcf64d25a`: 66 changed paths,
+zero detected dependency-file changes, all three main and five repository patch
+blobs unchanged. Report SHA-256:
+`596e524c3ec98f70c511afe9d959293f83e4c647f5261c59a7c5216826a9cbfa`.
+This observation did not select or approve an upgrade. Production remains pinned
+to `8aea65ae9ae3c89970fe865e1316105539e097ca`.
+Schedule, notifications and candidate publisher remain inactive; candidate
+preparation/publication and failure handling were fixture/dry-run tested, not
+end-to-end executed against an actual upstream upgrade. See the maintenance README
+for explicit future activation, review and dispatch instructions.
+
+## Separate signing/internal-TestFlight handoff
+
+With separate release authorization, use this PR #9 continuation and the exact
+verified new native artifact; check final source equality, preserve paired inputs
+and `com.calebfeliciano.magicmobile`, select an unused App Store Connect build
+number, regenerate/stage the actual product and run all existing Release/signing/
+archive/dSYM/layout/privacy guards. Use internal-only TestFlight, verify Apple
+processing and existing Internal-group access. No public release or new audience.
+Do not reuse build 2026091301 or infer phone acceptance from this unsigned build.
+
+First phone test: Token Triumph versus one Grave Danger MAD opponent, human starting
+player, mulligan/keep-hand; then mana, commander, AI, combat/tokens, background/resume,
+exit/new match. Use explicit private diagnostics on failure. Issue #7 remains the
+unexecuted physical and multi-device acceptance gate.
