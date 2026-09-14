@@ -2,6 +2,17 @@
 
 ## Current review checkpoint — 2026-09-14
 
+Final zone-membership follow-up: `BoardZoneReference` binds by exact player ID and
+zone, or named kind and group ID, and resolves directly from the current snapshot.
+It handles moved cards, new arrivals, duplicate player names and revoked groups.
+Hand/library titles mean visible cards, never hidden-card reconstruction. Both
+board overlays render from the reference; close clears it. Unscoped legacy
+inspections close on state changes. Valid card-action choosers remain open across
+unrelated revisions while their IDs/message IDs remain current. Independent
+read-only review found no blocker in this bounded follow-up. Root executed 162
+portable tests and compiled the iPhone app/test SDK targets successfully afterward.
+These are not rendered phone/multiplayer acceptance.
+
 The checklist below records fixes verified in the current uncommitted source in
 `MagicMobile-runtime-hardening`. Rawls's original routing ledger is preserved below
 as historical review evidence; its unchecked baseline gaps are not a claim that

@@ -122,10 +122,9 @@ struct OnDeviceRootView: View {
     private func refreshInspections() {
         guard let snapshot = session.snapshot else { zone = nil; inspectedCard = nil; return }
         let cards = PortraitInteractionPolicy.authorizedCards(snapshot)
-        if let current = zone {
-            let updated: [ZoneCard] = current.cards.compactMap { old in cards.first { $0.id == old.id } }
-            zone = InspectedZone(title: current.title, cards: updated)
-        }
+        // Unscoped legacy callbacks must reopen after a state change rather than
+        // keep a moved card under a stale zone heading. The board uses exact refs.
+        zone = nil
         if let current = inspectedCard { inspectedCard = cards.first { $0.id == current.id } }
     }
 

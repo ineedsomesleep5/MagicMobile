@@ -2438,6 +2438,7 @@ struct NativeGameView: View {
     @State private var inspectingZoneTitle: String? = nil
     @State private var inspectingZoneCards: [ZoneCard] = []
     @State private var isPromptDetailOpen = false
+    @State private var inspectingZoneReference: BoardZoneReference?
     @State private var dragActionChoice: DragActionChoice?
     @State private var combatSelection = CombatSelectionState()
     @State private var combatPreviewArrows: [CombatArrow] = []
@@ -2452,8 +2453,17 @@ struct NativeGameView: View {
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     private func localViewZone(title: String, cards: [ZoneCard]) {
+        inspectingZoneReference = nil
         inspectingZoneTitle = title
         inspectingZoneCards = cards
+    }
+
+    private func inspectBoardZone(_ reference: BoardZoneReference) {
+        guard let snapshot else { return }
+        inspectingZoneReference = reference
+        inspectingZoneTitle = reference.title(in: snapshot)
+        inspectingZoneCards = reference.cards(in: snapshot)
+        inspectedCard = nil
     }
 
     private var boardOverlayTransition: AnyTransition {
@@ -2633,12 +2643,12 @@ struct NativeGameView: View {
                                     let lookedAtCards = snapshot.xmage?.lookedAt.flatMap(\.cards) ?? []
                                     if !revealedCards.isEmpty {
                                         FloatingZoneChip(title: "Revealed", count: revealedCards.count, icon: "eye") {
-                                            localViewZone(title: "Revealed", cards: revealedCards)
+                                            inspectBoardZone(.collection(.revealed))
                                         }
                                     }
                                     if !lookedAtCards.isEmpty {
                                         FloatingZoneChip(title: "Looked", count: lookedAtCards.count, icon: "eye.trianglebadge.exclamationmark") {
-                                            localViewZone(title: "Looked", cards: lookedAtCards)
+                                            inspectBoardZone(.collection(.lookedAt))
                                         }
                                     }
                                 }
@@ -2726,8 +2736,8 @@ struct NativeGameView: View {
                             // Floating Zone Inspector overlay
                             if let inspectingZoneTitle {
                                 CompactZoneInspectorOverlay(
-                                    title: inspectingZoneTitle,
-                                    cards: inspectingZoneCards,
+                                    title: inspectingZoneReference?.title(in: snapshot) ?? inspectingZoneTitle,
+                                    cards: inspectingZoneReference?.cards(in: snapshot) ?? inspectingZoneCards,
                                     legalActions: snapshot.legalActions ?? [],
                                     pendingActionId: pendingActionId,
                                     selectedCard: $selectedCard,
@@ -2736,6 +2746,7 @@ struct NativeGameView: View {
                                     closeAction: {
                                         self.inspectingZoneTitle = nil
                                         self.inspectingZoneCards = []
+                                        self.inspectingZoneReference = nil
                                     },
                                     targetableIDs: targetableIds,
                                     runTargetAction: { submitTarget($0, snapshot: snapshot) }
@@ -3004,6 +3015,7 @@ struct NativeGameView: View {
                 } message: {
                     Text(gameMenuConfirmation?.message ?? "")
                 }
+            .environment(\.boardZoneInspectionAction, inspectBoardZone)
             .onAppear {
                 updateAIWaitStart(for: snapshot)
             }
@@ -3012,6 +3024,7 @@ struct NativeGameView: View {
                 lastTurnCueKey = nil
                 inspectingZoneTitle = nil
                 inspectingZoneCards = []
+                inspectingZoneReference = nil
                 selectedCard = nil
                 inspectedCard = nil
             }
@@ -3019,8 +3032,17 @@ struct NativeGameView: View {
                 let cards = PortraitInteractionPolicy.authorizedCards(snapshot)
                 if let card = inspectedCard { inspectedCard = cards.first { $0.id == card.id } }
                 if let card = selectedCard { selectedCard = cards.first { $0.id == card.id } }
-                inspectingZoneCards = inspectingZoneCards.compactMap { previous in cards.first { $0.id == previous.id } }
-                dragActionChoice = nil
+                if let reference = inspectingZoneReference, inspectingZoneTitle != nil {
+                    inspectingZoneCards = reference.cards(in: snapshot)
+                    inspectingZoneTitle = reference.title(in: snapshot)
+                } else if inspectingZoneTitle != nil {
+                    // Unscoped legacy inspections cannot safely infer zone membership.
+                    inspectingZoneCards = []
+                    inspectingZoneTitle = nil
+                }
+                if let choice = dragActionChoice, !choice.actions.allSatisfy({ old in
+                    snapshot.legalActions?.contains(where: { $0.id == old.id && $0.messageId == old.messageId }) == true
+                }) { dragActionChoice = nil }
             }
             .onChange(of: snapshot.promptEnvelopeV2?.id) { _, _ in
                 isPromptDetailOpen = false
@@ -3181,12 +3203,12 @@ struct NativeGameView: View {
                         let lookedAtCards = snapshot.xmage?.lookedAt.flatMap(\.cards) ?? []
                         if !revealedCards.isEmpty {
                             FloatingZoneChip(title: "Revealed", count: revealedCards.count, icon: "eye") {
-                                localViewZone(title: "Revealed", cards: revealedCards)
+                                inspectBoardZone(.collection(.revealed))
                             }
                         }
                         if !lookedAtCards.isEmpty {
                             FloatingZoneChip(title: "Looked", count: lookedAtCards.count, icon: "eye.trianglebadge.exclamationmark") {
-                                localViewZone(title: "Looked", cards: lookedAtCards)
+                                inspectBoardZone(.collection(.lookedAt))
                             }
                         }
                     }
@@ -3313,8 +3335,8 @@ struct NativeGameView: View {
 
                 if let inspectingZoneTitle {
                     CompactZoneInspectorOverlay(
-                        title: inspectingZoneTitle,
-                        cards: inspectingZoneCards,
+                        title: inspectingZoneReference?.title(in: snapshot) ?? inspectingZoneTitle,
+                        cards: inspectingZoneReference?.cards(in: snapshot) ?? inspectingZoneCards,
                         legalActions: actions,
                         pendingActionId: pendingActionId,
                         selectedCard: $selectedCard,
@@ -3323,6 +3345,7 @@ struct NativeGameView: View {
                         closeAction: {
                             self.inspectingZoneTitle = nil
                             self.inspectingZoneCards = []
+                            self.inspectingZoneReference = nil
                         },
                         targetableIDs: targetableIds,
                         runTargetAction: { submitTarget($0, snapshot: snapshot) }
@@ -9359,11 +9382,19 @@ struct NativeTurnControl {
     let stop: () -> Void
 }
 
+private struct BoardZoneInspectionActionKey: EnvironmentKey {
+    static let defaultValue: ((BoardZoneReference) -> Void)? = nil
+}
+
 private struct NativeTurnControlKey: EnvironmentKey {
     static let defaultValue: NativeTurnControl? = nil
 }
 
 extension EnvironmentValues {
+    var boardZoneInspectionAction: ((BoardZoneReference) -> Void)? {
+        get { self[BoardZoneInspectionActionKey.self] }
+        set { self[BoardZoneInspectionActionKey.self] = newValue }
+    }
     var nativeTurnControl: NativeTurnControl? {
         get { self[NativeTurnControlKey.self] }
         set { self[NativeTurnControlKey.self] = newValue }
@@ -9708,22 +9739,26 @@ struct PortraitBottomCommandBar: View {
 
 /// Only the engine's authorized zone projection is ever presented.
 private struct PlayerZoneMenu: View {
+    @Environment(\.boardZoneInspectionAction) private var inspectZone
     let player: PlayerGameState
     let viewZone: (String, [ZoneCard]) -> Void
     var snapshot: GameSnapshot? = nil
 
     var body: some View {
         Menu {
-            Button("Command · \(player.zones.command.count)") { open("Command", player.zones.command) }
-            Button("Graveyard · \(player.zones.graveyard.count)") { open("Graveyard", player.zones.graveyard) }
-            Button("Exile · \(player.zones.exile.count)") { open("Exile", player.zones.exile) }
-            Button("Hand · \(player.zones.visibleHandCount)") { open("Hand — visible cards", player.zones.hand) }
-            Button("Library · \(player.zones.visibleLibraryCount)") { open("Library — visible cards", player.zones.library) }
-            Button("Battlefield · \(player.zones.battlefield.count)") { open("Battlefield", player.zones.battlefield) }
-            if let xmage = snapshot?.xmage {
+            Button("Command · \(player.zones.command.count)") { open(.command, player.zones.command) }
+            Button("Graveyard · \(player.zones.graveyard.count)") { open(.graveyard, player.zones.graveyard) }
+            Button("Exile · \(player.zones.exile.count)") { open(.exile, player.zones.exile) }
+            Button("Hand · \(player.zones.visibleHandCount)") { open(.hand, player.zones.hand) }
+            Button("Library · \(player.zones.visibleLibraryCount)") { open(.library, player.zones.library) }
+            Button("Battlefield · \(player.zones.battlefield.count)") { open(.battlefield, player.zones.battlefield) }
+            if let snapshot {
                 Divider()
-                ForEach(xmage.exileZones + (xmage.companion ?? []) + xmage.revealed + xmage.lookedAt) { group in
-                    Button("\(group.name) · \(group.cards.count)") { viewZone(group.name, group.cards) }
+                ForEach(BoardZoneReference.namedReferences(in: snapshot), id: \.self) { reference in
+                    Button("\(reference.title(in: snapshot)) · \(reference.cards(in: snapshot).count)") {
+                        if let inspectZone { inspectZone(reference) }
+                        else { viewZone(reference.title(in: snapshot), reference.cards(in: snapshot)) }
+                    }
                 }
             }
         } label: {
@@ -9735,8 +9770,9 @@ private struct PlayerZoneMenu: View {
         .accessibilityLabel("\(player.displayName ?? player.playerId) zones")
     }
 
-    private func open(_ name: String, _ cards: [ZoneCard]) {
-        viewZone("\(player.displayName ?? player.playerId) · \(name)", cards)
+    private func open(_ zone: BoardZoneReference.PlayerZone, _ cards: [ZoneCard]) {
+        if let inspectZone { inspectZone(.player(playerID: player.playerId, zone: zone)) }
+        else { viewZone("\(player.displayName ?? player.playerId) · \(zone.rawValue.capitalized)", cards) }
     }
 }
 

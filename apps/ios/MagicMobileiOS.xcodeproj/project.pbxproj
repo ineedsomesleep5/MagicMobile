@@ -54,9 +54,11 @@
 		C8CEF09268A8C2A2A7968A9D /* OnDeviceBackendRegistrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF5D01538DEB4023EFFA69C5 /* OnDeviceBackendRegistrationTests.swift */; };
 		CB579F1D301D4239AF1B54B2 /* OnDeviceSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6362475A26B1690B16AA7CE /* OnDeviceSession.swift */; };
 		CD5B6023C3D5D9771AEF754F /* mm_graal_backend_far.c in Sources */ = {isa = PBXBuildFile; fileRef = E9F5A56B34259B0BDEB31AF6 /* mm_graal_backend_far.c */; };
+		D786849AAF75733AD7291FD6 /* BoardZoneReferenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F4E6F7237174E453B09E62B /* BoardZoneReferenceTests.swift */; };
 		DD64135BC47659C44970D607 /* GameBoardZones.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A3AD25E36EAC5A475AF5E31 /* GameBoardZones.swift */; };
 		DE661E8AFEF09CF49F4A7F36 /* GameBoardDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34AB998C3D5AA8E4DFD8EAF1 /* GameBoardDesignTokens.swift */; };
 		E491D37C55579D77885C5866 /* OnDeviceReadinessRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 776D2E2CB103D87AA90BF6AA /* OnDeviceReadinessRegressionTests.swift */; };
+		EBED9598B43CE2C232029321 /* BoardZoneReference.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF9DCCA6FD608F763C72ABDA /* BoardZoneReference.swift */; };
 		F29CABBC0F86CA39828ACF59 /* OnDeviceMessageLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D59BA72DAE656609C8EA9241 /* OnDeviceMessageLog.swift */; };
 		F80316B61D6D3F67389C8DAB /* OnDeviceAppConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 436CBF6B62656080C4BC10E9 /* OnDeviceAppConfigurationTests.swift */; };
 		F85438C40C05270AA997FC8A /* PromptCommandBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7BA23D5B9BCF29F6619B8FB /* PromptCommandBuilder.swift */; };
@@ -90,6 +92,7 @@
 		1EC7F366BBFC899D5DD7671C /* PreconCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreconCatalog.swift; sourceTree = "<group>"; };
 		268E12F4889571947D93BF23 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		29DCFFDEC2E73604A42C81C3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		2F4E6F7237174E453B09E62B /* BoardZoneReferenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardZoneReferenceTests.swift; sourceTree = "<group>"; };
 		34AB998C3D5AA8E4DFD8EAF1 /* GameBoardDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardDesignTokens.swift; sourceTree = "<group>"; };
 		430EDA5F98E74E9E01D809E3 /* OnDeviceDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceDiagnostics.swift; sourceTree = "<group>"; };
 		434AEA4E564EE069F504B192 /* GameBoardTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardTheme.swift; sourceTree = "<group>"; };
@@ -130,6 +133,7 @@
 		D59BA72DAE656609C8EA9241 /* OnDeviceMessageLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceMessageLog.swift; sourceTree = "<group>"; };
 		D5ADEEA6719E8EF6079D8800 /* PortraitInteractionPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortraitInteractionPolicyTests.swift; sourceTree = "<group>"; };
 		D9FAFE026DBDEE8AABAE0553 /* OnDeviceMultiplayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceMultiplayer.swift; sourceTree = "<group>"; };
+		DF9DCCA6FD608F763C72ABDA /* BoardZoneReference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardZoneReference.swift; sourceTree = "<group>"; };
 		E13EC4CC09BB14F446DB7424 /* DeckLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckLibrary.swift; sourceTree = "<group>"; };
 		E25161EF0DCBD6D130249073 /* OnDevice */ = {isa = PBXFileReference; lastKnownFileType = folder; name = OnDevice; path = MagicMobileTests/Fixtures/OnDevice; sourceTree = SOURCE_ROOT; };
 		E9F5A56B34259B0BDEB31AF6 /* mm_graal_backend_far.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = mm_graal_backend_far.c; sourceTree = "<group>"; };
@@ -166,6 +170,7 @@
 			isa = PBXGroup;
 			children = (
 				268E12F4889571947D93BF23 /* Assets.xcassets */,
+				DF9DCCA6FD608F763C72ABDA /* BoardZoneReference.swift */,
 				29DCFFDEC2E73604A42C81C3 /* ContentView.swift */,
 				E13EC4CC09BB14F446DB7424 /* DeckLibrary.swift */,
 				34AB998C3D5AA8E4DFD8EAF1 /* GameBoardDesignTokens.swift */,
@@ -215,6 +220,7 @@
 		6E268242740097E706C9C7DF /* MagicMobileTests */ = {
 			isa = PBXGroup;
 			children = (
+				2F4E6F7237174E453B09E62B /* BoardZoneReferenceTests.swift */,
 				A8847ABC91603BF5DA5F4CE5 /* MagicMobileTests.swift */,
 				436CBF6B62656080C4BC10E9 /* OnDeviceAppConfigurationTests.swift */,
 				FF5D01538DEB4023EFFA69C5 /* OnDeviceBackendRegistrationTests.swift */,
@@ -431,6 +437,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EBED9598B43CE2C232029321 /* BoardZoneReference.swift in Sources */,
 				C8623EC979ACF45B170D1881 /* ContentView.swift in Sources */,
 				B9C204367A644D4365AAA00C /* DeckLibrary.swift in Sources */,
 				DE661E8AFEF09CF49F4A7F36 /* GameBoardDesignTokens.swift in Sources */,
@@ -467,6 +474,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D786849AAF75733AD7291FD6 /* BoardZoneReferenceTests.swift in Sources */,
 				5E56D36ECA96BCF27A83C003 /* MagicMobileTests.swift in Sources */,
 				F80316B61D6D3F67389C8DAB /* OnDeviceAppConfigurationTests.swift in Sources */,
 				C8CEF09268A8C2A2A7968A9D /* OnDeviceBackendRegistrationTests.swift in Sources */,

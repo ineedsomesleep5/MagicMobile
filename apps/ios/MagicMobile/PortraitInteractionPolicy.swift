@@ -20,7 +20,7 @@ enum PortraitInteractionPolicy {
         }
         if let xmage = snapshot.xmage {
             cards.append(contentsOf: xmage.stack.compactMap(\.displaySourceCard))
-            for group in xmage.revealed + xmage.lookedAt + xmage.exileZones + (xmage.companion ?? []) {
+            for group in xmage.revealed + xmage.lookedAt + xmage.exileZones + xmage.companion {
                 cards.append(contentsOf: group.cards)
             }
         }
