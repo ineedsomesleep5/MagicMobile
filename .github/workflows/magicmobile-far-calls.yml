@@ -29,7 +29,8 @@ jobs:
     env:
       # Reviewed helper + cheap-workflow commit, independent of candidate inputs.
       # This is workflow policy, never a dispatch input or mutable branch name.
-      TRUSTED_POLICY_SHA: 'ccd5ea578760e8ac8e20c916c09a3e7a48898121'
+      # Includes the reviewed real card-choice/payment regression step; helper unchanged.
+      TRUSTED_POLICY_SHA: 'a5dc8e032cbdd91827765d0313589649687a5354'
     steps:
       - name: Require an immutable reviewed policy pin
         shell: bash
