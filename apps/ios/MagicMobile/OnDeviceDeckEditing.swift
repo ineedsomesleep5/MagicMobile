@@ -18,6 +18,38 @@ struct NativeDeckDraft {
     var name: String
     var rows: [NativeDeckRow]
 
+    static let basicLandNames = ["Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes"]
+
+    private func isMainBasicLand(_ row: NativeDeckRow, name: String) -> Bool {
+        row.cardName == name && !row.isPrimaryCommander &&
+            ["deck", "main"].contains(row.section.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+
+    func basicLandCount(_ name: String) -> Int {
+        rows.filter { isMainBasicLand($0, name: name) }.reduce(0) { $0 + $1.quantity }
+    }
+
+    /// A deliberate main-deck edit, never an automatic mana-base recommendation.
+    /// Preserve sideboards, commander roles and the original draft on failure.
+    mutating func setBasicLandCount(_ name: String, quantity: Int) throws {
+        guard Self.basicLandNames.contains(name), (0...2000).contains(quantity) else {
+            throw OnDeviceDeckEditing.Error.invalidEntry
+        }
+        var updated = self
+        let existing = rows.first { isMainBasicLand($0, name: name) }
+        updated.rows.removeAll { isMainBasicLand($0, name: name) }
+        if quantity > 0 {
+            var row = existing ?? NativeDeckRow(cardName: name)
+            row.quantity = quantity
+            updated.rows.append(row)
+        }
+        // Check entries/count without making an unfinished name prevent editing.
+        var validation = updated
+        validation.name = "Draft"
+        _ = try validation.deck()
+        self = updated
+    }
+
     init(name: String = "New Commander Deck", rows: [NativeDeckRow] = []) {
         self.name = name; self.rows = rows
     }

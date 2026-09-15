@@ -3,6 +3,38 @@ import XCTest
 @testable import MagicMobile
 
 final class OnDeviceDeckEditingTests: XCTestCase {
+    func testBasicLandToolsOnlyChangeMainDeckAndPreserveStableIdentity() throws {
+        var draft = NativeDeckDraft(name: "", rows: [
+            NativeDeckRow(cardName: "Forest", quantity: 4),
+            NativeDeckRow(cardName: "Forest", quantity: 2, section: "main"),
+            NativeDeckRow(cardName: "Forest", quantity: 3, section: "sideboard"),
+            NativeDeckRow(cardName: "Forest", quantity: 1, section: "commanders", isPrimaryCommander: true)
+        ])
+        let firstID = draft.rows[0].id
+        let protected = Array(draft.rows.suffix(2))
+        XCTAssertEqual(draft.basicLandCount("Forest"), 6)
+        try draft.setBasicLandCount("Forest", quantity: 10)
+        XCTAssertEqual(draft.basicLandCount("Forest"), 10)
+        XCTAssertEqual(draft.rows.last?.id, firstID)
+        XCTAssertEqual(Array(draft.rows.prefix(2)), protected)
+        try draft.setBasicLandCount("Forest", quantity: 0)
+        XCTAssertEqual(draft.rows, protected)
+        try draft.setBasicLandCount("Wastes", quantity: 2)
+        XCTAssertEqual(draft.basicLandCount("Wastes"), 2)
+    }
+
+    func testInvalidBasicLandEditsAreAtomic() throws {
+        var draft = NativeDeckDraft(name: "Limit", rows: [NativeDeckRow(cardName: "Island", quantity: 2000)])
+        let original = draft.rows
+        for (name, count) in [("Forest", 1), ("Island", -1), ("Island", 2001), ("Sol Ring", 1)] {
+            XCTAssertThrowsError(try draft.setBasicLandCount(name, quantity: count))
+            XCTAssertEqual(draft.rows, original)
+        }
+        try draft.setBasicLandCount("Island", quantity: 1999)
+        try draft.setBasicLandCount("Forest", quantity: 1)
+        XCTAssertEqual(try draft.deck().totalCards, 2000)
+    }
+
     func testPrimaryCommanderRoleSurvivesDifferentSectionAndJSONRoundTrip() throws {
         for section in ["deck", "companions", " Unknown original section "] {
             let original = DeckList(name: "Role", commander: DeckEntry(cardName: "Tymna the Weaver", quantity: 1, section: section),

@@ -11,6 +11,9 @@ struct NativeDeckLibraryView: View {
     @State private var search = ""
     @State private var sheet: DeckSheet?
     @State private var errorMessage: String?
+    @State private var metadata: NativeDeckMetadataCatalogue?
+    @State private var resolver: OnDeviceDeckResolver?
+    @State private var catalogueError: String?
 
     private enum DeckSheet: Identifiable {
         case importer
@@ -24,17 +27,18 @@ struct NativeDeckLibraryView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Text("Your spellbooks").font(.largeTitle.bold()).foregroundStyle(MagicPalette.parchment)
-                    Text("Build on this device. Bring a list from the web. Find your next table.")
-                        .font(.subheadline).foregroundStyle(.secondary)
+                    Text("Your decks").font(.largeTitle.bold()).foregroundStyle(MagicPalette.parchment)
+                    Text("Local drafts and included Commander decks.").font(.subheadline).foregroundStyle(.secondary)
                     HStack {
                         Button { sheet = .importer } label: { Label("Import", systemImage: "square.and.arrow.down").frame(maxWidth: .infinity) }
                             .buttonStyle(MagicPrimaryButtonStyle(compact: true))
                         Button { sheet = .editor(nil) } label: { Label("New deck", systemImage: "plus").frame(maxWidth: .infinity) }
                             .buttonStyle(MagicSecondaryButtonStyle(fillsWidth: true, compact: true))
                     }
-                    NativeArtworkPreferenceView()
+                    DisclosureGroup("Artwork & privacy") { NativeArtworkPreferenceView().padding(.vertical, 8) }
                     if let errorMessage { Text(errorMessage).foregroundStyle(MagicPalette.warningAmber) }
+                    if let catalogueError { Text(catalogueError).foregroundStyle(MagicPalette.warningAmber) }
+                    else if metadata == nil { ProgressView("Loading local card catalogue…") }
                     if let notice = library.notice { Text(notice).foregroundStyle(MagicPalette.warningAmber) }
                     deckSection("Saved on this device", records: library.decks, bundled: false)
                     if library.decks.isEmpty && search.isEmpty {
@@ -55,10 +59,24 @@ struct NativeDeckLibraryView: View {
                 case .importer:
                     NativeDeckImportSheet(library: library) { record in selectedDeckID = "local:\(record.id)" }
                 case .editor(let record):
-                    NativeDeckEditorSheet(library: library, record: record) { saved in selectedDeckID = "local:\(saved.id)" }
+                    NativeDeckEditorSheet(library: library, record: record, metadata: metadata, catalogueError: catalogueError) { saved in selectedDeckID = "local:\(saved.id)" }
                 }
             }
         }.preferredColorScheme(.dark).tint(MagicPalette.antiqueGold)
+            .task {
+                guard resolver == nil else { return }
+                catalogueError = nil
+                do {
+                    let loaded = try await Task.detached(priority: .userInitiated) {
+                        (try NativeDeckMetadataCatalogue.bundled(), try OnDeviceDeckResolver.bundled())
+                    }.value
+                    try Task.checkCancellation()
+                    metadata = loaded.0
+                    resolver = loaded.1
+                } catch is CancellationError { } catch {
+                    catalogueError = "Local card catalogue could not load. Deck selection is unavailable: \(error.localizedDescription)"
+                }
+            }
     }
 
     private func deckSection(_ title: String, records: [DeckLibraryRecord], bundled: Bool) -> some View {
@@ -68,20 +86,10 @@ struct NativeDeckLibraryView: View {
                 ForEach(records.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) || ($0.commander?.cardName.localizedCaseInsensitiveContains(search) ?? false) }) { record in
                     NavigationLink {
                         NativeDeckDetailView(library: library, original: record, bundled: bundled,
-                                             selectedDeckID: $selectedDeckID)
+                                             selectedDeckID: $selectedDeckID, metadata: metadata,
+                                             resolver: resolver, catalogueError: catalogueError)
                     } label: {
-                        VStack(alignment: .leading, spacing: 8) {
-                            NativeDeckCardImage(name: record.commander?.cardName ?? record.entries.first?.cardName ?? "", inspection: false)
-                                .frame(height: 160).frame(maxWidth: .infinity)
-                            Text(record.name).font(.headline).lineLimit(2)
-                            Text(record.commander?.cardName ?? "Choose a commander").font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                            HStack {
-                                Text("\(record.cardCount) cards")
-                                Spacer()
-                                if selectedDeckID == (bundled ? record.id : "local:\(record.id)") { Image(systemName: "checkmark.circle.fill") }
-                            }.font(.caption.bold()).foregroundStyle(MagicPalette.antiqueGold)
-                        }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
-                            .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
+                        NativeDeckCover(record: record, selected: selectedDeckID == (bundled ? record.id : "local:\(record.id)"))
                     }.buttonStyle(.plain)
                         .accessibilityIdentifier("nativeDeck.\(bundled ? "bundled" : "saved").\(record.name)")
                 }
@@ -105,8 +113,9 @@ struct NativeArtworkPreferenceView: View {
 struct NativeDeckCardImage: View {
     let name: String
     var inspection = false
+    var contentMode: ContentMode = .fit
     var body: some View {
-        NativeCardArtworkView(name: name, variant: inspection ? .inspection : .board) { _, failed in
+        NativeCardArtworkView(name: name, variant: inspection ? .inspection : .board, contentMode: contentMode) { _, failed in
             VStack(spacing: 10) {
                 Image(systemName: "rectangle.portrait.on.rectangle.portrait").font(.largeTitle)
                 Text(name.isEmpty ? "Your next deck" : name).font(.caption.bold()).multilineTextAlignment(.center)
@@ -136,6 +145,7 @@ enum NativeCardArtworkPolicy {
 struct NativeCardArtworkView<Placeholder: View>: View {
     let name: String
     let variant: CardImageCacheVariant
+    var contentMode: ContentMode = .fit
     @ViewBuilder let placeholder: (_ loading: Bool, _ failed: Bool) -> Placeholder
     @AppStorage("magicmobile.deckArtworkNetworkEnabled") private var remoteArtwork = false
     @State private var artwork: UIImage?
@@ -153,7 +163,7 @@ struct NativeCardArtworkView<Placeholder: View>: View {
         let permitted = NativeCardArtworkPolicy.permitsLookup(name: name)
         Group {
             if permitted, completedRequest == request, let artwork {
-                Image(uiImage: artwork).resizable().scaledToFit()
+                Image(uiImage: artwork).resizable().aspectRatio(contentMode: contentMode)
             } else {
                 placeholder(permitted && remoteArtwork && completedRequest != request && failedRequest != request,
                             permitted && failedRequest == request)
@@ -191,7 +201,12 @@ private struct NativeDeckDetailView: View {
     @State private var editRecord: DeckLibraryRecord?
     @State private var inspection: DeckCardSelection?
     @State private var search = ""
-    @State private var showGrid = true
+    @State private var detailTab = "Cards"
+    let metadata: NativeDeckMetadataCatalogue?
+    let resolver: OnDeviceDeckResolver?
+    let catalogueError: String?
+    @State private var cardType = ""
+    @State private var color = ""
     @State private var confirmDelete = false
     @State private var errorMessage: String?
     private var record: DeckLibraryRecord { bundled ? original : library.decks.first { $0.id == original.id } ?? original }
@@ -209,57 +224,38 @@ private struct NativeDeckDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text(record.name).font(.largeTitle.bold())
-                Text("\(record.cardCount) cards · \(bundled ? "Included deck" : "Saved locally")").foregroundStyle(.secondary)
+                Text(record.name).font(.title2.bold()).lineLimit(2).textSelection(.enabled)
+                Text("\(NativeDeckDisplay.cardCount(record.cardCount)) · \(bundled ? "Included deck" : "Saved locally")").foregroundStyle(.secondary)
                 Text("XMage checks Commander legality when you start a game. Saved drafts may be incomplete.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Button {
+                        guard let resolver else { return }
                         do {
-                            _ = try OnDeviceDeckResolver.bundled().resolve(record.deckList)
+                            _ = try resolver.resolve(record.deckList)
                             selectedDeckID = selectionID
                         } catch { errorMessage = error.localizedDescription }
                     } label: { Label(selectedDeckID == selectionID ? "Selected" : "Use for play", systemImage: "checkmark.shield").frame(maxWidth: .infinity) }
                         .buttonStyle(MagicPrimaryButtonStyle(compact: true))
+                        .disabled(resolver == nil)
                     Button {
                         editRecord = bundled || record.isCloudBacked ? DeckLibraryRecord(deck: DeckList(name: "\(record.name) — My copy", commander: record.commander, entries: record.entries), sourceURL: record.sourceURL) : record
                     } label: { Label(bundled || record.isCloudBacked ? "Edit a local copy" : "Edit", systemImage: "pencil").frame(maxWidth: .infinity) }
                         .buttonStyle(MagicSecondaryButtonStyle(fillsWidth: true, compact: true))
                 }
                 if let errorMessage { Text(errorMessage).foregroundStyle(MagicPalette.warningAmber) }
-                Picker("Card view", selection: $showGrid) {
-                    Text("Cards").tag(true); Text("List").tag(false)
-                }.pickerStyle(.segmented)
-                ForEach(Array(Set(allEntries.map(\.section))).sorted(), id: \.self) { section in
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(section.capitalized).font(.headline).foregroundStyle(MagicPalette.antiqueGold)
-                        let entries = allEntries.enumerated().filter { $0.element.section == section && (search.isEmpty || $0.element.cardName.localizedCaseInsensitiveContains(search)) }
-                        if showGrid {
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 115), spacing: 10)], spacing: 12) {
-                                ForEach(entries, id: \.offset) { _, entry in
-                                    Button { inspection = DeckCardSelection(name: entry.cardName) } label: {
-                                        VStack(spacing: 5) {
-                                            NativeDeckCardImage(name: entry.cardName).frame(height: 165)
-                                            Text("\(entry.quantity) × \(entry.cardName)").font(.caption.bold()).lineLimit(2)
-                                        }.frame(maxWidth: .infinity)
-                                    }.buttonStyle(.plain).accessibilityIdentifier("nativeDeck.inspect.\(entry.cardName)")
-                                }
-                            }
-                        } else {
-                            ForEach(entries, id: \.offset) { _, entry in
-                                Button { inspection = DeckCardSelection(name: entry.cardName) } label: {
-                                    HStack { Text("\(entry.quantity)×").monospacedDigit(); Text(entry.cardName); Spacer(); Image(systemName: "magnifyingglass") }
-                                        .frame(minHeight: 44)
-                                }.buttonStyle(.plain).accessibilityIdentifier("nativeDeck.inspect.\(entry.cardName)")
-                            }
-                        }
-                    }
+                if let catalogueError {
+                    Text(catalogueError).foregroundStyle(MagicPalette.warningAmber)
+                } else if resolver == nil {
+                    Text("Loading local card catalogue before deck selection…").font(.caption).foregroundStyle(.secondary)
                 }
-                ShareLink(item: exportedText) { Label("Export deck text", systemImage: "square.and.arrow.up") }
-                if let exportedJSON {
-                    ShareLink(item: exportedJSON) { Label("Export complete draft (JSON)", systemImage: "doc.badge.arrow.up") }
-                    Text("JSON preserves the deck name, commander role and every section, including unfinished drafts. Paste it back into Import to restore a copy.")
-                        .font(.caption).foregroundStyle(.secondary)
+                Picker("Deck section", selection: $detailTab) {
+                    ForEach(["Cards", "Stats", "Info"], id: \.self) { Text($0).tag($0) }
+                }.pickerStyle(.segmented).accessibilityIdentifier("nativeDeck.sections")
+                switch detailTab {
+                case "Stats": NativeDeckStatisticsView(deck: record.deckList, metadata: metadata)
+                case "Info": infoSection
+                default: cardsSection
                 }
                 if !bundled && !record.isCloudBacked {
                     Button("Delete local deck", role: .destructive) { confirmDelete = true }.padding(.top)
@@ -269,9 +265,9 @@ private struct NativeDeckDetailView: View {
         .background(BattlefieldSurface().ignoresSafeArea())
         .navigationTitle("Deck details").navigationBarTitleDisplayMode(.inline)
         .searchable(text: $search, prompt: "Find a card in this deck")
-        .sheet(item: $inspection) { card in NativeDeckInspectionSheet(name: card.name) }
+        .sheet(item: $inspection) { card in NativeDeckInspectionSheet(name: card.name, card: metadata?.card(named: card.name)) }
         .sheet(item: $editRecord) { draft in
-            NativeDeckEditorSheet(library: library, record: draft) { saved in selectedDeckID = "local:\(saved.id)" }
+            NativeDeckEditorSheet(library: library, record: draft, metadata: metadata, catalogueError: catalogueError) { saved in selectedDeckID = "local:\(saved.id)" }
         }
         .confirmationDialog("Delete this local deck?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete local deck", role: .destructive) {
@@ -283,6 +279,53 @@ private struct NativeDeckDetailView: View {
             }.accessibilityIdentifier("nativeDeck.confirmDelete")
         } message: { Text("The source website and included decks will not be changed. Export a copy first if you want a backup.") }
     }
+
+    private var cardsSection: some View {
+        VStack(spacing: 10) {
+            NativeDeckFilterBar(cardType: $cardType, color: $color)
+            let indexed = Array(allEntries.enumerated()).filter {
+                NativeDeckDisplay.matches(name: $0.element.cardName, query: search, type: cardType, color: color, metadata: metadata)
+            }
+            let groups = Dictionary(grouping: indexed) { item in
+                NativeDeckDisplay.group(section: item.element.section,
+                    primary: record.commander != nil && item.offset == 0,
+                    card: metadata?.card(named: item.element.cardName))
+            }
+            ForEach(groups.keys.sorted(by: NativeDeckDisplay.groupOrder), id: \.self) { title in
+                let rows = groups[title] ?? []
+                NativeDeckGroupHeader(title: title, count: rows.reduce(0) { $0 + $1.element.quantity })
+                ForEach(rows.sorted { $0.element.cardName < $1.element.cardName }, id: \.offset) { item in
+                    let entry = item.element
+                    let card = metadata?.card(named: entry.cardName)
+                    NativeDeckCardRow(name: entry.cardName, quantity: entry.quantity, manaCost: card?.manaCost,
+                                      typeLine: card?.typeLine, inspect: { inspection = DeckCardSelection(name: entry.cardName) })
+                    Divider()
+                }
+            }
+            if indexed.isEmpty { Text(search.isEmpty ? "No cards match these filters." : "No cards match this search.").foregroundStyle(.secondary) }
+        }
+    }
+
+    private var infoSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            LabeledContent("Source", value: bundled ? "Included precon · copy to edit" : (record.isCloudBacked ? "Cloud record · copy to edit" : "Local draft"))
+            if let source = record.sourceURL {
+                Text("Imported from").font(.headline)
+                Text(source).font(.caption).textSelection(.enabled)
+            }
+            LabeledContent("Saved revision", value: String(record.revision))
+            if !bundled { LabeledContent("Updated", value: record.updatedAt.formatted(date: .abbreviated, time: .shortened)) }
+            Text("No automatic uploads or edits to the source deck. Selected-printing metadata is local; Commander legality is checked by XMage at game start.")
+                .font(.caption).foregroundStyle(.secondary)
+            ShareLink(item: exportedText) { Label("Export deck text", systemImage: "square.and.arrow.up") }
+            if let exportedJSON {
+                ShareLink(item: exportedJSON) { Label("Export complete draft (JSON)", systemImage: "doc.badge.arrow.up") }
+                Text("JSON preserves the deck name, commander role and every section, including unfinished drafts. Paste it back into Import to restore a copy.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            NativeArtworkPreferenceView()
+        }
+    }
 }
 
 private struct DeckCardSelection: Identifiable {
@@ -292,10 +335,30 @@ private struct DeckCardSelection: Identifiable {
 
 private struct NativeDeckInspectionSheet: View {
     let name: String
+    let card: NativeDeckMetadataCatalogue.Card?
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationStack {
-            NativeDeckCardImage(name: name, inspection: true).padding(16)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    NativeCardArtworkView(name: name, variant: .inspection) { _, failed in
+                        Label(failed ? "Artwork unavailable" : "Artwork downloads are optional", systemImage: "photo")
+                            .font(.caption).foregroundStyle(.secondary).padding(12)
+                    }
+                        .frame(maxWidth: 360, maxHeight: 400).frame(maxWidth: .infinity)
+                    Text(name).font(.title2.bold())
+                    if let card {
+                        Text(card.typeLine ?? "Type unavailable").font(.headline)
+                        NativeDeckManaCost(cost: card.manaCost)
+                        Text(card.oracleText ?? "Rules text unavailable in the local catalogue.")
+                            .textSelection(.enabled)
+                        Text("Local selected-printing metadata. XMage remains authoritative for play.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text("Card text unavailable in the local catalogue.").foregroundStyle(.secondary)
+                    }
+                }.padding(16)
+            }
                 .background(BattlefieldSurface().ignoresSafeArea())
                 .navigationTitle(name).navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
@@ -397,20 +460,25 @@ private struct NativeDeckImportSheet: View {
 private struct NativeDeckEditorSheet: View {
     @ObservedObject var library: DeckLibraryStore
     let record: DeckLibraryRecord?
+    let metadata: NativeDeckMetadataCatalogue?
+    let catalogueError: String?
     let didSave: (DeckLibraryRecord) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var draft: NativeDeckDraft
-    @State private var resolver: OnDeviceDeckResolver?
     @State private var search = ""
     @State private var results: [String] = []
     @State private var section = "deck"
+    @State private var cardType = ""
+    @State private var color = ""
     @State private var errorMessage: String?
     @State private var inspection: DeckCardSelection?
     @State private var confirmDiscard = false
     @State private var changed = false
 
-    init(library: DeckLibraryStore, record: DeckLibraryRecord?, didSave: @escaping (DeckLibraryRecord) -> Void) {
+    init(library: DeckLibraryStore, record: DeckLibraryRecord?, metadata: NativeDeckMetadataCatalogue?, catalogueError: String?, didSave: @escaping (DeckLibraryRecord) -> Void) {
         self.library = library; self.record = record; self.didSave = didSave
+        self.metadata = metadata
+        self.catalogueError = catalogueError
         _draft = State(initialValue: record.map { NativeDeckDraft(deck: $0.deckList) } ?? NativeDeckDraft())
     }
 
@@ -419,12 +487,19 @@ private struct NativeDeckEditorSheet: View {
             List {
                 Section {
                     TextField("Deck name", text: $draft.name).onChange(of: draft.name) { _, _ in changed = true }
-                    Text("\(draft.rows.reduce(0) { $0 + $1.quantity }) cards · local draft").foregroundStyle(.secondary)
+                    Text("\(NativeDeckDisplay.cardCount(totalQuantity)) · local draft").foregroundStyle(.secondary)
                     Text("Save as you build. The real XMage validator checks Commander rules before play.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Add from the compiled card catalogue") {
                     TextField("Search exact card names", text: $search).autocorrectionDisabled()
+                        .accessibilityIdentifier("nativeDeck.cardSearch")
+                    NativeDeckFilterBar(cardType: $cardType, color: $color)
+                    if metadata == nil {
+                        if let catalogueError {
+                            Text(catalogueError).font(.caption).foregroundStyle(MagicPalette.warningAmber)
+                        } else { ProgressView("Loading local card catalogue…") }
+                    }
                     Picker("Add to", selection: $section) {
                         Text("Main deck").tag("deck")
                         Text("Commander / partner").tag("commanders")
@@ -437,6 +512,7 @@ private struct NativeDeckEditorSheet: View {
                             }.buttonStyle(.borderless)
                             Spacer()
                             Button {
+                                guard totalQuantity < 2000 else { return }
                                 if let index = draft.rows.firstIndex(where: { $0.cardName == name && $0.section == section }) {
                                     guard draft.rows[index].quantity < 2000 else { return }
                                     draft.rows[index].quantity += 1
@@ -444,18 +520,32 @@ private struct NativeDeckEditorSheet: View {
                                 changed = true
                             } label: { Image(systemName: "plus.circle.fill").frame(minWidth: 44, minHeight: 44) }
                                 .buttonStyle(.borderless).accessibilityLabel("Add \(name) to \(section)")
+                                .disabled(totalQuantity >= 2000)
                         }
                     }
-                    if !search.isEmpty && results.isEmpty { Text("No compiled card matches this search.").foregroundStyle(.secondary) }
+                    if metadata != nil && !search.isEmpty && results.isEmpty { Text("No compiled card matches this search.").foregroundStyle(.secondary) }
                 }
-                Section("Cards · swipe to remove") {
+                Section {
+                    NativeDeckBasicLandTools(count: { draft.basicLandCount($0) },
+                        supported: { metadata?.card(named: $0) != nil },
+                        change: { name, delta in
+                            do {
+                                try draft.setBasicLandCount(name, quantity: draft.basicLandCount(name) + delta)
+                                changed = true
+                            } catch { errorMessage = error.localizedDescription }
+                        }, canAdd: totalQuantity < 2000)
+                }
+                ForEach(editorGroups, id: \.self) { group in
+                  Section(group) {
                     ForEach($draft.rows) { $row in
+                      if groupName(row) == group {
                         VStack(alignment: .leading, spacing: 8) {
-                            Button { inspection = DeckCardSelection(name: row.cardName) } label: {
-                                Label(row.cardName, systemImage: "rectangle.portrait").font(.headline)
-                            }.buttonStyle(.borderless)
-                            Stepper("Quantity: \(row.quantity)", value: $row.quantity, in: 1...2000)
-                                .onChange(of: row.quantity) { _, _ in changed = true }
+                            NativeDeckCardRow(name: row.cardName, quantity: row.quantity,
+                                manaCost: metadata?.card(named: row.cardName)?.manaCost,
+                                typeLine: metadata?.card(named: row.cardName)?.typeLine,
+                                inspect: { inspection = DeckCardSelection(name: row.cardName) },
+                                decrease: { changeQuantity(id: row.id, delta: -1) },
+                                increase: totalQuantity < 2000 ? { changeQuantity(id: row.id, delta: 1) } : nil)
                             Picker("Section", selection: $row.section) {
                                 Text("Main deck").tag("deck")
                                 Text("Commander / partner").tag("commanders")
@@ -468,11 +558,20 @@ private struct NativeDeckEditorSheet: View {
                                 changed = true
                             }
                         }.padding(.vertical, 5)
-                    }.onDelete { draft.rows.remove(atOffsets: $0); changed = true }
+                        .swipeActions {
+                            Button("Remove", role: .destructive) {
+                                let id = row.id
+                                draft.rows.removeAll { $0.id == id }; changed = true
+                            }
+                        }
+                      }
+                    }
+                  }
                 }
                 if let errorMessage { Section { Text(errorMessage).foregroundStyle(MagicPalette.warningAmber) } }
             }
             .scrollContentBackground(.hidden).background(BattlefieldSurface().ignoresSafeArea())
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle(record == nil ? "Build a deck" : "Edit deck").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Button("Cancel") { if changed { confirmDiscard = true } else { dismiss() } } }
@@ -482,16 +581,41 @@ private struct NativeDeckEditorSheet: View {
             .confirmationDialog("Discard unsaved edits?", isPresented: $confirmDiscard, titleVisibility: .visible) {
                 Button("Discard edits", role: .destructive) { dismiss() }
             }
-            .sheet(item: $inspection) { card in NativeDeckInspectionSheet(name: card.name) }
-            .task {
-                do { resolver = try .bundled() } catch { errorMessage = error.localizedDescription }
-            }
-            .task(id: search) {
+            .sheet(item: $inspection) { card in NativeDeckInspectionSheet(name: card.name, card: metadata?.card(named: card.name)) }
+            .task(id: [search, cardType, color, metadata == nil ? "loading" : "ready"]) {
                 do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
                 guard !Task.isCancelled else { return }
-                results = resolver?.searchCardNames(query: search, limit: 20) ?? []
+                refreshResults()
             }
         }.preferredColorScheme(.dark)
+    }
+
+    private var totalQuantity: Int { draft.rows.reduce(0) { $0 + $1.quantity } }
+    private func groupName(_ row: NativeDeckRow) -> String {
+        NativeDeckDisplay.group(section: row.section, primary: row.isPrimaryCommander,
+                                card: metadata?.card(named: row.cardName))
+    }
+    private var editorGroups: [String] { Set(draft.rows.map(groupName)).sorted(by: NativeDeckDisplay.groupOrder) }
+
+    private func changeQuantity(id: UUID, delta: Int) {
+        guard let index = draft.rows.firstIndex(where: { $0.id == id }), delta < 0 || totalQuantity < 2000 else { return }
+        if draft.rows[index].quantity + delta <= 0 { draft.rows.remove(at: index) }
+        else { draft.rows[index].quantity += delta }
+        changed = true
+    }
+
+    private func refreshResults() {
+        guard !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !cardType.isEmpty || !color.isEmpty else {
+            results = []; return
+        }
+        if let metadata {
+            var filter = NativeDeckMetadataCatalogue.SearchFilter()
+            filter.query = search; filter.type = cardType
+            filter.colors = color.isEmpty ? nil : (color == "C" ? [] : [color])
+            results = metadata.search(filter, limit: 40).map(\.name)
+        } else {
+            results = []
+        }
     }
 
     private func save() {

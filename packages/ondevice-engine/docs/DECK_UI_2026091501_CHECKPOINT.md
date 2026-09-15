@@ -7,6 +7,89 @@ already uncommitted in this checkout and are being preserved/integrated.
 
 ## Delivery boundary
 
+### ManaBox-inspired follow-up (September 14, 22:04 local)
+
+The user added ManaBox deck-building references after publication of
+`80d2927ca14ffd7fa8a27384506b9796ec782884`. Native compilation and installation
+are held while the new deck-library/editor work is implemented and checked.
+The scope is Commander deck building, not collection/scanning, card purchases,
+speculative bracket ratings or unsupported future card sets.
+
+Acceptance: visual deck covers; readable grouped card rows and inspection;
+quantity/section editing that preserves commander roles and durable saves;
+truthful pinned-metadata search and statistics; deliberate basic-land controls;
+and an explicitly supported recommendations route. Search results must stay
+within the compiled catalogue. Unknown metadata must not appear as zero or as
+proof of legality. The existing real-engine play routing must remain intact.
+
+Baseline `80d2927` completed the actual simulator app suite: 370 unit cases
+(one opt-in live import skipped) and all nine UI journeys passed. Result:
+`build_output/deck-ui-complete-candidate.xcresult`; log:
+`/tmp/magicmobile-deck-ui-complete-candidate.log`. CI 34922961049 and on-device
+gates 34922961126 succeeded; non-simulator 34922958699 also succeeded, with
+compiler-source-inspection, source-provenance, apple-source-and-sdk,
+portable-contracts and real-jvm jobs completed successfully. This evidence
+predates the ManaBox follow-up and is not its clearance.
+
+Follow-up local checks so far: 198 portable presentation tests, one opt-in live
+import skipped, zero failures (`/tmp/magicmobile-manabox-presentation.log`);
+exporter seven self-tests and exact bundled-byte check passed. Basic-land edits
+have regression coverage for protected sections, stable IDs, zero/removal and
+atomic limit rejection. UI source and independent-review repairs are still in
+progress; no native build or install was dispatched for this follow-up.
+
+EDHREC research: [ManaBox documents its integration](https://www.manabox.app/guides/decks/faq/)
+and [EDHREC Recs](https://edhrec.com/recs) provides a user-facing form with
+commander/partner and deck-list inputs. No official public API contract was
+verified. [EDHREC terms](https://edhrec.com/terms) restrict automated requests.
+Do not use undocumented endpoints or present local heuristics as EDHREC results.
+The user has been asked whether a labeled website/manual-copy flow is acceptable
+pending approved embedded integration. No user deck was sent to EDHREC.
+
+Implemented follow-up surfaces: art-cover library, grouped card rows, direct
+quantity controls, Cards/Stats/Info detail pages, local rules/type/mana inspection,
+name/rules search with type and exact printed-color filters, main-deck mana curve,
+type totals, printed-symbol occurrences and deliberate basic-land counts.
+Metadata and the play resolver are loaded off-main and passed to child views.
+Artwork remains opt-in; offline inspection shows card text without a large blank
+image. Long deck titles are bounded visually, not truncated in saved data.
+
+This is not complete ManaBox parity. Color identity is unavailable in the pinned
+CardInfo export and remains unknown (not inferred from printed color). Set codes
+exist in the model but there is no full set-browser UI. There is no production
+mana estimate, automatic mana-base balancing, bracket score, market pricing,
+collection/scanner feature or embedded EDHREC integration. These are not silently
+represented by fake data or disabled decorative controls.
+
+The full follow-up simulator run `build_output/manabox-complete.xcresult` passed
+383 app unit tests (one opt-in live test skipped), but **failed** one of ten UI
+tests during cleanup. The import/inspect/rename/save/reopen assertions passed;
+cleanup swiped immediately after opening the library without waiting for the
+destination/search field. Cleanup now waits for both visible controls and retains
+diagnostics on failure. The original failed result remains retained.
+
+Final focused rerun `build_output/manabox-final-focused.xcresult` passed 23 app
+unit tests and four UI journeys: land tools/stats/inspection, catalogue quantity
+editing, included-deck copy protection, and the original import/rename/relaunch
+flow including cleanup. Log: `/tmp/magicmobile-manabox-final-focused.log`.
+Screenshot review then found overflowing offline thumbnail placeholders; compact,
+clipped placeholders fixed it. `build_output/manabox-thumbnail.xcresult` passed
+four presentation tests plus the included-deck copy journey after that fix.
+The corrected screenshot is
+`build_output/manabox-thumbnail-screenshots/F60BC6C2-B674-4400-8E90-FC766EDD27E0.png`.
+Offline inspector and stats captures are in `build_output/manabox-final-screenshots`.
+These screenshots intentionally keep artwork downloads off; they verify offline
+layout, not live artwork retrieval or native gameplay.
+
+Final portable presentation suite passed 201 tests with one opt-in live import
+skipped (`/tmp/magicmobile-manabox-final-presentation.log`). The seven exporter
+self-tests and exact byte check passed (`/tmp/magicmobile-manabox-exporter.log`).
+No single post-fix full simulator suite is claimed: the failed broad run and
+successful affected reruns are recorded separately. The ManaBox follow-up has
+not been published, natively compiled, signed, installed or uploaded. Resolve the
+EDHREC route and Moxfield fallback choice before freezing a release candidate;
+then publish it and run same-source hosted/native/product/device gates.
+
 The user changed delivery from internal TestFlight to **direct installation on
 Caleb's iPhone over Wi-Fi**. Do not upload this candidate to App Store Connect.
 Build `0.1.0 (2026091501)` was prepared before that change; both ASC build and

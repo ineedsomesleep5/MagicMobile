@@ -11,6 +11,7 @@ import argparse
 from collections import Counter
 import hashlib
 import gzip
+import math
 import json
 from pathlib import Path
 import unittest
@@ -94,6 +95,39 @@ def name_aliases(cards: list[dict], metadata: list[dict]) -> dict[str, str]:
     return dict(sorted(aliases.items()))
 
 
+def card_metadata(cards: list[dict], metadata: list[dict], source_rows: list[dict]) -> dict:
+    selected = {(c['name'], c['setCode'], c['collectorNumber']): c['name'] for c in cards}
+    sets = {}
+    for row in source_rows:
+        sets.setdefault(row['name'], set()).add(row['setCode'])
+    result = {}
+    def tokens(value):
+        return list(dict.fromkeys(v for v in value.split('@@@') if v)) if isinstance(value, str) else None
+    for row in metadata:
+        key = (row.get('name'), row.get('setCode'), row.get('cardNumber'))
+        if key not in selected:
+            continue
+        name = selected[key]
+        if name in result:
+            raise ValueError('Ambiguous selected printing metadata')
+        types, supers, subs = (tokens(row.get(k)) for k in ('types', 'supertypes', 'subtypes'))
+        type_line = None
+        if types is not None and supers is not None and subs is not None:
+            type_line = ' '.join(v.title() for v in supers + types)
+            if subs:
+                type_line += ' — ' + ' '.join(subs)
+        value = row.get('manaValue')
+        if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or value < 0):
+            raise ValueError('Invalid metadata mana value')
+        color_keys = [('W', 'white'), ('U', 'blue'), ('B', 'black'), ('R', 'red'), ('G', 'green')]
+        colors = [symbol for symbol, key in color_keys if row[key]] if all(type(row.get(key)) is bool for _, key in color_keys) else None
+        result[name] = dict(typeLine=type_line, types=types,
+                            oracleText=row['rules'].replace('@@@', '\n').rstrip('\n') if isinstance(row.get('rules'), str) else None,
+                            manaValue=value, manaCost=row['manaCosts'].replace('@@@', '') if isinstance(row.get('manaCosts'), str) else None,
+                            colors=colors, colorIdentity=None, setCodes=sorted(sets.get(name, set())))
+    return dict(sorted(result.items()))
+
+
 def export() -> bytes:
     lock = json.loads((ROOT / 'upstream.lock.json').read_bytes())
     if lock['commit'] != UPSTREAM:
@@ -105,18 +139,39 @@ def export() -> bytes:
     eligibility = json.loads(checked_bytes(ROOT / 'build/generated/commander-set-codes.json', SET_ELIGIBILITY_SHA256))
     if eligibility['upstreamCommit'] != UPSTREAM:
         raise ValueError('Commander set eligibility belongs to a different upstream')
-    cards, stats = normalize([json.loads(line) for line in source.splitlines() if line.strip()], set(eligibility['eternalLegalSetCodes']))
+    source_rows = [json.loads(line) for line in source.splitlines() if line.strip()]
+    cards, stats = normalize(source_rows, set(eligibility['eternalLegalSetCodes']))
     metadata = gzip.decompress(checked_bytes(ROOT / 'build/engine/mage/mobile/card-metadata.jsonl.gz', METADATA_SHA256))
-    aliases = name_aliases(cards, [json.loads(line) for line in metadata.splitlines() if line.strip()])
+    metadata_rows = [json.loads(line) for line in metadata.splitlines() if line.strip()]
+    aliases = name_aliases(cards, metadata_rows)
     payload = dict(schemaVersion=1, upstreamCommit=UPSTREAM, catalogueHash=REGISTRY_HASH,
                    sourceCatalogueSHA256=CATALOGUE_SHA256, sourceRegistrySHA256=REPORT_SHA256,
                    sourceSetEligibilitySHA256=SET_ELIGIBILITY_SHA256,
                    sourceMetadataSHA256=METADATA_SHA256, nameAliases=aliases,
+                   cardMetadata=card_metadata(cards, metadata_rows, source_rows),
                    cards=cards, statistics=stats)
     return (json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')) + '\n').encode('utf-8')
 
 
 class ExportTests(unittest.TestCase):
+    def test_metadata_preserves_unknowns_and_selected_printing(self):
+        cards = [dict(name='Front', setCode='SET', collectorNumber='1')]
+        row = dict(name='Front', setCode='SET', cardNumber='1', types='CREATURE@@@', supertypes='LEGENDARY@@@', subtypes='Elf@@@',
+                   rules='First@@@Second@@@', manaCosts='{2}@@@{G/W}@@@', manaValue=3, white=True, blue=False, black=False, red=False, green=True)
+        out = card_metadata(cards, [row, row | dict(cardNumber='2', manaValue=9)], cards)['Front']
+        self.assertEqual(out['typeLine'], 'Legendary Creature — Elf')
+        self.assertEqual(out['oracleText'], 'First\nSecond')
+        self.assertEqual(out['manaCost'], '{2}{G/W}')
+        self.assertEqual(out['manaValue'], 3)
+        self.assertEqual(out['colors'], ['W', 'G'])
+        self.assertIsNone(out['colorIdentity'])
+        self.assertEqual(out['setCodes'], ['SET'])
+        missing = card_metadata(cards, [dict(name='Front', setCode='SET', cardNumber='1')], cards)['Front']
+        for key in ['typeLine', 'types', 'oracleText', 'manaValue', 'manaCost', 'colors', 'colorIdentity']:
+            self.assertIsNone(missing[key])
+        with self.assertRaises(ValueError):
+            card_metadata(cards, [row, row], cards)
+
     def test_uses_commander_eligible_printing_without_changing_card_name(self):
         rows = [dict(name='Hornet Queen', setCode='AKR', collectorNumber='196'),
                 dict(name='Hornet Queen', setCode='C21', collectorNumber='194'),

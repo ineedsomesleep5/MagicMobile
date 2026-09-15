@@ -157,6 +157,8 @@ final class OnDeviceSetupUITests: XCTestCase {
         let bundled = app.buttons["nativeDeck.bundled.Token Triumph"]
         XCTAssertTrue(bundled.waitForExistence(timeout: 5))
         reveal(bundled); bundled.tap()
+        XCTAssertTrue(app.buttons["nativeDeck.inspect.Emmara, Soul of the Accord"].waitForExistence(timeout: 5))
+        capture("Included Commander deck grouped cards")
         let editCopy = app.buttons["Edit a local copy"]
         reveal(editCopy); editCopy.tap()
         let name = app.textFields["Deck name"]
@@ -204,10 +206,9 @@ final class OnDeviceSetupUITests: XCTestCase {
         let add = app.buttons["Add Sol Ring to deck"]
         XCTAssertTrue(add.waitForExistence(timeout: 10))
         reveal(add); add.tap()
-        let quantity = app.steppers.firstMatch
-        reveal(quantity)
-        quantity.buttons["Increment"].tap()
-        XCTAssertTrue(app.staticTexts["Quantity: 2"].waitForExistence(timeout: 5))
+        let increase = app.buttons["Add one Sol Ring"]
+        reveal(increase); increase.tap()
+        XCTAssertTrue(app.staticTexts["Quantity 2"].waitForExistence(timeout: 5))
         app.buttons["Save"].tap()
         waitFor(name, predicate: "exists == false")
         app.terminate(); app.launch()
@@ -233,6 +234,46 @@ final class OnDeviceSetupUITests: XCTestCase {
         waitFor(start, predicate: "enabled == true")
         XCTAssertTrue(playerName.exists, "A failed start must leave the real setup visible.")
         XCTAssertFalse(app.staticTexts["Game started"].exists)
+    }
+
+    func testBasicLandToolsPersistAndStatisticsUseActualQuantities() {
+        let draftName = uniqueDeckName("LandTools")
+        openLibrary()
+        app.buttons["New deck"].tap()
+        let name = app.textFields["Deck name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        replaceText(name, with: draftName)
+        let tools = app.buttons["Basic lands · manual counts"]
+        reveal(tools); tools.tap()
+        let addForest = app.buttons["Add one basic Forest"]
+        reveal(addForest)
+        waitFor(addForest, predicate: "enabled == true")
+        addForest.tap(); addForest.tap()
+        let removeForest = app.buttons["Remove one basic Forest"]
+        removeForest.tap()
+        capture("Deck builder basic-land controls")
+        app.buttons["Save"].tap()
+        waitFor(name, predicate: "exists == false")
+        app.terminate(); app.launch()
+        openLibrary(); openSavedDeck(draftName)
+        XCTAssertTrue(app.staticTexts["1 card · Saved locally"].waitForExistence(timeout: 5))
+        let stats = app.segmentedControls.buttons["Stats"]
+        reveal(stats); stats.tap()
+        XCTAssertTrue(app.staticTexts["Main deck only · 1 card"].waitForExistence(timeout: 5))
+        capture("Deck statistics from saved quantities")
+        app.segmentedControls.buttons["Cards"].tap()
+        let forest = app.buttons["nativeDeck.inspect.Forest"]
+        reveal(forest); forest.tap()
+        XCTAssertTrue(app.navigationBars["Forest"].waitForExistence(timeout: 5))
+        capture("Offline card inspection")
+        app.buttons["Done"].tap()
+    }
+
+    private func capture(_ title: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = title
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     private func openSetup() {
@@ -297,7 +338,17 @@ final class OnDeviceSetupUITests: XCTestCase {
                 XCTFail("Cleanup could not reach library; retained test deck: \(name)"); continue
             }
             menu.tap()
+            // Wait for the sheet's actual destination before scrolling. A swipe
+            // during presentation can dismiss the sheet instead of revealing search.
+            guard app.buttons["Import"].waitForExistence(timeout: 10) else {
+                capture("Cleanup library navigation failure")
+                XCTFail("Cleanup library did not open; retained test deck: \(name)"); continue
+            }
             let search = app.searchFields["Find a deck or commander"]
+            guard search.waitForExistence(timeout: 10) else {
+                capture("Cleanup library search failure")
+                XCTFail("Cleanup search did not appear; retained test deck: \(name)"); continue
+            }
             for _ in 0..<5 {
                 if search.exists && search.isHittable { break }
                 app.swipeDown()
