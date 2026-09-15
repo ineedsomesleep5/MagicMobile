@@ -703,4 +703,28 @@ final class OnDevicePromptAdapterTests: XCTestCase {
         XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: done, prompt: required, viewerPlayerID: viewer))
         XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: one, prompt: required, viewerPlayerID: viewer))
     }
+
+    func testSixSacrificeProgressRetainsRemainingAndRemovableTargetsWithExplicitCancel() throws {
+        let ids = (1...7).map { String(format: "00000000-0000-0000-0000-%012d", $0) }
+        for chosen in 0...5 {
+            let p = try prompt("PICK_TARGET", types: ["uuid", "boolean"], payload: [
+                "required": .bool(false), "message": .string("Sacrifice permanents (selected \(chosen) of 6, min 6)"),
+                "candidates": .array(ids.map { .string($0) }), "cards": .array([]),
+                "options": .object(["chosenTargets": .array(ids.prefix(chosen).map { .string($0) }), "targetZone": .string("BATTLEFIELD")])
+            ], revision: Int64(37 + chosen))
+            let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+            XCTAssertEqual(view.envelope.targets?.map(\.id), ids)
+            XCTAssertEqual(view.envelope.minChoices, 1)
+            XCTAssertEqual(view.envelope.maxChoices, 1)
+            XCTAssertEqual(view.legalActions.first { $0.type == "answer_yes_no" }?.label, "Cancel")
+            for id in ids {
+                let command = GameCommand(type: "choose_target", gameId: "match", playerId: viewer,
+                    promptId: p.id, messageId: 37 + chosen, targetIds: [id])
+                XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("uuid", .string(id)))
+            }
+            let stale = GameCommand(type: "choose_target", gameId: "match", playerId: viewer,
+                promptId: p.id, messageId: 36 + chosen, targetIds: [ids[chosen]])
+            XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: stale, prompt: p, viewerPlayerID: viewer))
+        }
+    }
 }

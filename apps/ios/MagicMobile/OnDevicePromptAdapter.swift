@@ -195,6 +195,7 @@ enum OnDevicePromptAdapter {
             for card in cards where candidates.contains(card.id) && !boardIDs.contains(card.id) && seen.insert(card.id).inserted {
                 var identity: [String: Any] = ["name": card.card.name, "typeLine": card.card.typeLine]
                 identity["oracleText"] = card.card.oracleText
+                identity["manaCost"] = card.card.manaCost
                 mapped.append(["instanceId": card.id, "card": identity, "selectable": true])
             }
             fields["cards"] = mapped
@@ -203,7 +204,7 @@ enum OnDevicePromptAdapter {
                 ["id": id, "label": targetLabel(id)]
             }
             if prompt.responseTypes.contains("boolean"), prompt.payload["required"]?.bool == false {
-                actions.append(try action("answer_yes_no", prompt.payload["options"]?["UI.right.btn.text"]?.string ?? "Done", ["confirmed": false]))
+                actions.append(try action("answer_yes_no", prompt.payload["options"]?["UI.right.btn.text"]?.string ?? "Cancel", ["confirmed": false]))
             }
         default: throw invalid("Unsupported prompt: \(prompt.kind)")
         }
@@ -392,6 +393,7 @@ enum OnDevicePromptAdapter {
         let name = hidden ? "Face-down card" : value["displayName"]?.string ?? value["name"]?.string ?? "Card details unavailable"
         let types = hidden ? [] : value["cardTypes"]?.array?.compactMap(\.string) ?? []
         var card: [String: Any] = ["name": EngineDisplayText.label(name), "typeLine": types.joined(separator: " ")]
+        card["manaCost"] = OnDeviceSnapshotAdapter.printedManaCost(value)
         if !hidden, let rules = value["rules"]?.array?.compactMap(\.string) { card["oracleText"] = EngineDisplayText.text(rules.joined(separator: "\n")) }
         return ["instanceId": id, "card": card]
     }

@@ -5,11 +5,14 @@ ROOT=$(cd "$(dirname "$0")/../../../.." && pwd)
 ENGINE="$ROOT/packages/ondevice-engine"
 CP=$(<"$ENGINE/build/runtime-classpath.txt")
 OUT=$(mktemp -d "$ENGINE/build/card-choice-check.XXXXXX")
-python3 - "$CP" "$OUT" "$ROOT/apps/ios/MagicMobileTests/EngineChecks/RealCardChoiceTests.java" <<'PY'
+python3 - "$CP" "$OUT" "$ROOT/apps/ios/MagicMobileTests/EngineChecks" <<'PY'
 import subprocess, sys
 cp, output, source = sys.argv[1:]
+suites = ['RealCardChoiceTests', 'RealPaymentInteractionTests']
 subprocess.run(['javac', '-J-Xmx256m', '--release', '17', '-proc:none',
-                '-sourcepath', output, '-cp', cp, '-d', output, source], check=True, timeout=60)
-subprocess.run(['java', '-Xmx384m', '-Djava.awt.headless=true', '-cp', cp + ':' + output,
-                'io.magicmobile.xmage.RealCardChoiceTests'], cwd=output, check=True, timeout=90)
+                '-sourcepath', output, '-cp', cp, '-d', output,
+                *[source + '/' + suite + '.java' for suite in suites]], check=True, timeout=60)
+for suite in suites:
+    subprocess.run(['java', '-Xmx384m', '-Djava.awt.headless=true', '-cp', cp + ':' + output,
+                    'io.magicmobile.xmage.' + suite], cwd=output, check=True, timeout=90)
 PY
