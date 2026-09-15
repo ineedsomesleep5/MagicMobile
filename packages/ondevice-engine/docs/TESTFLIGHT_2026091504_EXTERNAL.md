@@ -17,8 +17,7 @@ reported the build `VALID` with `APP_STORE_ELIGIBLE` audience.
 
 The build is assigned to both the existing all-builds **Internal** group and the
 existing **External** group. An English Beta App Description and build-specific
-What to Test notes were added. External access is not active yet: Apple refused the
-Beta App Review submission because required review information is still missing.
-The app-level Beta App Review detail currently exposes no contact fields. Submission
-requires the owner's review contact first name, last name, email and phone number.
-No values were guessed, and no public link or tester membership was changed.
+What to Test notes were added. The required review contact was completed and the
+build was submitted to Beta App Review on 2026-09-15. Apple reports the submission
+as `WAITING_FOR_REVIEW`. External access will become active after Apple's approval;
+no public link or tester membership was changed.
