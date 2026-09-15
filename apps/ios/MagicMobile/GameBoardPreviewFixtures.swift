@@ -107,6 +107,34 @@ enum GameBoardPreviewFixtures {
             }
         }
         root["xmage"] = xmage
+        if [.scryChoice, .libraryChoice, .emptyLibraryChoice, .mixedCardChoice].contains(state) {
+            let count = [.scryChoice, .mixedCardChoice].contains(state) ? 2 : 12
+            let options = (0..<count).map { index -> [String: Any] in
+                var value = card("choice-\(index)", index.isMultiple(of: 2) ? "Forest" : "Serra Angel",
+                                 index.isMultiple(of: 2) ? "Basic Land" : "Creature", "", "Development choice fixture.")
+                value["selectable"] = state != .emptyLibraryChoice && (state == .scryChoice || index.isMultiple(of: 2))
+                return value
+            }
+            root["promptEnvelopeV2"] = ["id": "preview-card-choice", "method": "GAME_PICK_TARGET", "messageId": 10,
+                "playerId": "human", "responseKind": "target", "message": state == .scryChoice ? "Select up to two cards to put on the bottom of your library (Scry)" : "Search your library for a land card",
+                "required": false, "minChoices": 1, "maxChoices": 1, "cards": options, "targets": [],
+                "targetIds": options.filter { $0["selectable"] as? Bool == true }.map { $0["instanceId"]! },
+                "responseCommand": ["type": "choose_target", "promptId": "preview-card-choice", "messageId": 10]]
+            root["legalActions"] = [["id": "choice-done", "type": "answer_yes_no", "playerId": "human", "label": "Done",
+                                     "promptId": "preview-card-choice", "messageId": 10, "confirmed": false]]
+            if state == .mixedCardChoice, var mixed = root["promptEnvelopeV2"] as? [String: Any] {
+                mixed["message"] = "Choose a card or a player"
+                mixed["targets"] = [["id": "ai-1", "label": "AI 1"]]
+                mixed["targetIds"] = ["choice-0", "ai-1"]
+                root["promptEnvelopeV2"] = mixed
+            }
+        }
+        if state == .normalBattlefield {
+            root["log"] = [
+                ["id": "log-1", "message": "TURN 1 for <font color='#20B2AA'>Caleb</font> (40 - 40)", "createdAt": "preview"],
+                ["id": "log-2", "message": "<font color='#20B2AA'>Caleb</font> plays <font color='#B0C4DE' object_id='36fc54d7-1afc-4506-92f8-a4f8cceace1c'>Temple of Plenty</font> [36f]", "createdAt": "preview"]
+            ]
+        }
         if state == .playerTargetPrompt || state == .cardTargetPrompt {
             root["legalActions"] = []
             let ids = state == .playerTargetPrompt ? players.map { $0["playerId"] as! String } : ["ai-creature-1", "human-commander"]

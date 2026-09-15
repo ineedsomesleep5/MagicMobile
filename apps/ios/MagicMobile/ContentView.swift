@@ -179,6 +179,15 @@ struct ContentView: View {
                 .padding(.vertical, 8)
             }
         }
+        .overlay(alignment: .top) {
+            #if DEBUG
+            if snapshot?.source == "design-preview", status.hasPrefix("Development fixture: captured") {
+                Text(status).font(.caption2).padding(4).background(.black)
+                    .accessibilityIdentifier("preview.captured-command")
+                    .allowsHitTesting(false)
+            }
+            #endif
+        }
         .alert("MagicMobile", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) { errorMessage = nil }
         } message: {
@@ -2518,6 +2527,7 @@ struct NativeGameView: View {
     @State private var inspectingZoneTitle: String? = nil
     @State private var inspectingZoneCards: [ZoneCard] = []
     @State private var isPromptDetailOpen = false
+    @State private var isCardChoiceOpen = false
     @State private var isLandscapeStackOpen = false
     @State private var inspectingZoneReference: BoardZoneReference?
     @State private var dragActionChoice: DragActionChoice?
@@ -2532,6 +2542,14 @@ struct NativeGameView: View {
     @State private var didAutoReconnectAIWaitKey: String?
     @State private var didAutoDiagnoseAIWaitKey: String?
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+
+    private func openPromptDetails() {
+        if let snapshot, PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil {
+            isCardChoiceOpen = true
+        } else {
+            isPromptDetailOpen = true
+        }
+    }
 
     private func localViewZone(title: String, cards: [ZoneCard]) {
         inspectingZoneReference = nil
@@ -2717,7 +2735,7 @@ struct NativeGameView: View {
                                             pendingActionId: pendingActionId,
                                             runAction: runAction,
                                             runCommand: runCommand,
-                                            openDetails: { isPromptDetailOpen = true }
+                                            openDetails: openPromptDetails
                                         )
                                         .frame(maxWidth: .infinity)
                                     } else {
@@ -2933,7 +2951,9 @@ struct NativeGameView: View {
                         GameLogAccessButton(entryCount: snapshot.log.count, openLog: { isLogOpen = true })
                             .padding(.horizontal, 8)
 
-                        Button { isLandscapeStackOpen = true } label: {
+                        Button {
+                            isLandscapeStackOpen = true
+                        } label: {
                             Label("Stack · \(snapshot.stackTopFirst.count)", systemImage: "square.stack.3d.up")
                                 .font(.system(size: 13, weight: .semibold))
                                 .frame(maxWidth: .infinity, minHeight: 44)
@@ -2968,7 +2988,7 @@ struct NativeGameView: View {
                             yieldActions: GameplayActionPresentation.yieldActions(in: snapshot.legalActions ?? []),
                             pendingActionId: pendingActionId,
                             compact: true,
-                            openPromptDetails: { isPromptDetailOpen = true },
+                            openPromptDetails: openPromptDetails,
                             openLog: { isLogOpen = true },
                             openSettings: { isGameMenuOpen = true },
                             runAction: runAction
@@ -3058,6 +3078,7 @@ struct NativeGameView: View {
                         },
                         showsGameSurfaceSections: true
                     )
+                    .id("\(snapshot.promptEnvelopeV2?.id ?? ""):\(snapshot.promptEnvelopeV2?.messageId ?? 0)")
                     .padding(14)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
@@ -3129,6 +3150,8 @@ struct NativeGameView: View {
             .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? .easeOut(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.88), value: inspectedCard?.id)
             .onAppear {
                 updateAIWaitStart(for: snapshot)
+                isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil
+                isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snapshot) != nil
             }
             .onChange(of: snapshot.id) { _, _ in
                 focusedOpponentId = nil
@@ -3156,7 +3179,24 @@ struct NativeGameView: View {
                 }) { dragActionChoice = nil }
             }
             .onChange(of: snapshot.promptEnvelopeV2?.id) { _, _ in
-                isPromptDetailOpen = false
+                isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snapshot) != nil
+            }
+            .onChange(of: PortraitInteractionPolicy.detailChoiceKey(snapshot)) { _, key in
+                isPromptDetailOpen = key != nil
+            }
+            .onChange(of: PortraitInteractionPolicy.cardChoiceKey(snapshot)) { _, key in
+                isCardChoiceOpen = key != nil
+                inspectedCard = nil
+                selectedCard = nil
+                if key != nil { isPromptDetailOpen = false; isLandscapeStackOpen = false }
+            }
+            .accessibilityHidden(isCardChoiceOpen)
+            .overlay {
+                if isCardChoiceOpen, let key = PortraitInteractionPolicy.cardChoiceKey(snapshot), let prompt = snapshot.promptEnvelopeV2 {
+                    BoardCardChoiceView(snapshot: snapshot, prompt: prompt, pendingActionId: pendingActionId,
+                                        runCommand: runCommand, runAction: runAction, close: { isCardChoiceOpen = false })
+                        .id(key)
+                }
             }
             .onChange(of: selectedCard?.id) { _, _ in
                 guard let card = selectedCard, pendingActionId == nil,
@@ -3302,7 +3342,7 @@ struct NativeGameView: View {
                                 pendingActionId: pendingActionId,
                                 runAction: runAction,
                                 runCommand: runCommand,
-                                openDetails: { isPromptDetailOpen = true }
+                                openDetails: openPromptDetails
                             )
                             .frame(maxWidth: .infinity)
                         } else {
@@ -3397,7 +3437,7 @@ struct NativeGameView: View {
                     inspectedCard: $inspectedCard,
                     openLog: { isLogOpen = true },
                     openSettings: { isGameMenuOpen = true },
-                    openPromptDetails: { isPromptDetailOpen = true },
+                    openPromptDetails: openPromptDetails,
                     viewZone: { localViewZone(title: $0, cards: $1) },
                     runAction: runAction,
                     runCommand: runCommand
@@ -5089,7 +5129,7 @@ private struct LatestGameEventButton: View {
                 .font(.system(size: 8, weight: .black))
                 .foregroundStyle(MagicPalette.antiqueGold)
 
-                Text(entry.message)
+                GameLogText(message: entry.message, usesDarkBackground: true)
                     .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(MagicPalette.parchment.opacity(0.78))
                     .lineLimit(2)
@@ -5101,7 +5141,7 @@ private struct LatestGameEventButton: View {
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.borderBronze.opacity(0.30)))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Open game log. Latest event: \(entry.message)")
+        .accessibilityLabel("Open game log. Latest event: \(GameLogPresentation(entry.message).plainText)")
     }
 }
 
@@ -9431,6 +9471,11 @@ struct PortraitScrollScrubber: View {
     }
 }
 
+private struct HandViewportKey: PreferenceKey {
+    static var defaultValue: CGRect { .zero }
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
+}
+
 struct PortraitHandRow: View {
     let cards: [ZoneCard]
     let legalActions: [LegalAction]
@@ -9451,21 +9496,20 @@ struct PortraitHandRow: View {
     @State private var dragOffset: CGSize = .zero
     @State private var dragStartCenter: CGPoint = .zero
     @State private var handCardBounds: [String: CGRect] = [:]
-    @State private var scrollProgress: CGFloat = 0
+    @State private var handViewport = CGRect.zero
+
+    private var contentWidth: CGFloat { CGFloat(cards.count) * cardWidth + CGFloat(max(cards.count - 1, 0)) * 6 }
+    private var scrollProgress: CGFloat {
+        guard let first = cards.first, let bounds = handCardBounds[first.id], handViewport.width > 0,
+              contentWidth > handViewport.width else { return 0 }
+        return min(1, max(0, (handViewport.minX - bounds.minX) / (contentWidth - handViewport.width)))
+    }
 
     var body: some View {
         ScrollViewReader { scrollProxy in
-            let plan = PortraitOverlapLayout.plan(
-                count: cards.count,
-                containerWidth: rowWidth,
-                cardWidth: cardWidth,
-                visibleLimit: 4,
-                minVisibleWidth: cardWidth * 0.82,
-                spacing: 6
-            )
             VStack(spacing: 4) {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    ZStack(alignment: .bottomLeading) {
+                    HStack(alignment: .bottom, spacing: 6) {
                         ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
                             let playableActions = GameBoardInteractionState.legalPlayActions(for: card, actions: legalActions)
                             let selected = selectedCard?.id == card.id
@@ -9486,14 +9530,13 @@ struct PortraitHandRow: View {
                                     value: [card.id: geometry.frame(in: .named("portrait-board"))])
                             } }
                             .scaleEffect(selected ? 1.05 : 1.0)
-                            .offset(
-                                x: plan.xOffset(for: index),
-                                y: selected ? -10 : 0
-                            )
+                            .offset(y: selected ? -10 : 0)
                             .opacity(isDragging ? 0 : 1)
                             .zIndex(isDragging ? 1000 : selected ? 900 : Double(index))
                             .animation(GameBoardMotion.reduced(reduceMotion) ? nil : .spring(response: 0.28, dampingFraction: 0.8), value: isDragging)
                             .accessibilityHint("Tap to inspect. Drag to your battlefield to play.")
+                            .accessibilityAction { selectedCard = nil; inspectedCard = card }
+                            .accessibilityAction(named: "Inspect card") { selectedCard = nil; inspectedCard = card }
                             .accessibilityAction(named: "Play card") {
                                 switch DragCastDropResolver.resolve(card: card, legalActions: legalActions, droppedInPlayArea: true) {
                                 case let .submit(action): runAction(action)
@@ -9502,14 +9545,8 @@ struct PortraitHandRow: View {
                                 case .ignored: break
                                 }
                             }
-                            .onTapGesture { selectedCard = nil; inspectedCard = card }
-                            .onLongPressGesture(minimumDuration: 0.35) {
-                                inspectedCard = card
-                            }
-                            .simultaneousGesture(
-                                DragGesture(minimumDistance: 12, coordinateSpace: .named("portrait-board"))
-                                    .onChanged { value in
-                                        guard draggingCardId != nil || abs(value.translation.height) > abs(value.translation.width) else { return }
+                            .overlay {
+                                HandCardPan(changed: { translation, start in
                                         if draggingCardId == nil {
                                             guard let bounds = handCardBounds[card.id] else { return }
                                             dragStartCenter = CGPoint(x: bounds.midX, y: bounds.midY)
@@ -9517,17 +9554,20 @@ struct PortraitHandRow: View {
                                         selectedCard = nil
                                         inspectedCard = nil
                                         draggingCardId = card.id
-                                        dragOffset = value.translation
-                                        isOverPlayerDropZone = playerDropZone.contains(value.location)
+                                        dragOffset = translation
+                                        let point = CGPoint(x: dragStartCenter.x - cardWidth / 2 + start.x + translation.width,
+                                                            y: dragStartCenter.y - cardHeight / 2 + start.y + translation.height)
+                                        isOverPlayerDropZone = playerDropZone.contains(point)
                                         interactionState.mode = .draggingCard(
                                             cardId: card.instanceId,
                                             legalActionIds: playableActions.map(\.id)
                                         )
-                                    }
-                                    .onEnded { value in
+                                    }, ended: { translation, start, cancelled in
                                         guard draggingCardId == card.id else { return }
                                         selectedCard = nil
-                                        let shouldPlay = playerDropZone.contains(value.location)
+                                        let point = CGPoint(x: dragStartCenter.x - cardWidth / 2 + start.x + translation.width,
+                                                            y: dragStartCenter.y - cardHeight / 2 + start.y + translation.height)
+                                        let shouldPlay = !cancelled && playerDropZone.contains(point)
                                         draggingCardId = nil
                                         dragOffset = .zero
                                         isOverPlayerDropZone = false
@@ -9549,17 +9589,19 @@ struct PortraitHandRow: View {
                                             interactionState.mode = .awaitingCastSnapshot(actionId: action.id)
                                             runAction(action)
                                         }
-                                    }
-                            )
+                                    }, inspect: { selectedCard = nil; inspectedCard = card })
+                            }
                         }
                     }
-                    .frame(width: max(plan.contentWidth, cardWidth), height: cardHeight + 18, alignment: .bottomLeading)
+                    .frame(height: cardHeight + 18, alignment: .bottomLeading)
                     .padding(.horizontal, 0)
                 }
-                .scrollDisabled(draggingCardId != nil)
+                .accessibilityIdentifier("board.hand.scroll")
+                .background { GeometryReader { geometry in
+                    Color.clear.preference(key: HandViewportKey.self, value: geometry.frame(in: .named("portrait-board")))
+                } }
 
-                PortraitScrollScrubber(progress: scrollProgress, visible: plan.needsScrolling) { progress in
-                    scrollProgress = progress
+                PortraitScrollScrubber(progress: scrollProgress, visible: contentWidth > rowWidth + 1) { progress in
                     guard !cards.isEmpty else { return }
                     let index = min(max(Int(round(progress * CGFloat(max(cards.count - 1, 0)))), 0), max(cards.count - 1, 0))
                     withAnimation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeOut(duration: 0.16)) {
@@ -9568,6 +9610,7 @@ struct PortraitHandRow: View {
                 }
             }
             .onPreferenceChange(HandCardBoundsKey.self) { handCardBounds = $0 }
+            .onPreferenceChange(HandViewportKey.self) { handViewport = $0 }
             .overlay {
                 GeometryReader { geometry in
                     if let draggingCardId, let card = cards.first(where: { $0.id == draggingCardId }) {
@@ -11414,7 +11457,7 @@ struct MiniLog: View {
                 .font(.caption.weight(.black))
                 .foregroundStyle(.orange)
             ForEach(log.suffix(5)) { entry in
-                Text(entry.message)
+                GameLogText(message: entry.message, usesDarkBackground: true)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.72))
                     .lineLimit(2)
@@ -11427,10 +11470,16 @@ struct MiniLog: View {
     }
 }
 
+private struct GameLogBottomKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
 struct GameLogDrawer: View {
     let log: [GameLogEntry]
     let close: () -> Void
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @State private var followingLatest = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -11447,19 +11496,36 @@ struct GameLogDrawer: View {
             }
 
             ScrollViewReader { proxy in
+                GeometryReader { viewport in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 6) {
+                    LazyVStack(alignment: .leading, spacing: 10) {
                         if log.isEmpty {
                             Text("No public game actions yet.")
                                 .font(.subheadline).foregroundStyle(.secondary)
                         }
-                        ForEach(log.suffix(48)) { entry in
-                            Text(entry.message)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.white.opacity(0.78))
+                        ForEach(log) { entry in
+                            GameLogText(message: entry.message, usesDarkBackground: true)
+                                .font(.subheadline)
+                                .padding(.top, GameLogPresentation(entry.message).plainText.hasPrefix("TURN ") ? 12 : 0)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .id(entry.id)
                         }
+                        Color.clear.frame(height: 1).id("log-bottom")
+                            .background(GeometryReader { geometry in
+                                Color.clear.preference(key: GameLogBottomKey.self, value: geometry.frame(in: .named("game-log-scroll")).maxY)
+                            })
+                    }
+                }
+                .coordinateSpace(name: "game-log-scroll")
+                .onPreferenceChange(GameLogBottomKey.self) { bottom in
+                    followingLatest = bottom > 0 && bottom < viewport.size.height + 80
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if !followingLatest {
+                        Button("Latest actions ↓") {
+                            proxy.scrollTo("log-bottom", anchor: .bottom)
+                            followingLatest = true
+                        }.buttonStyle(.borderedProminent).padding(8)
                     }
                 }
                 .onAppear {
@@ -11467,8 +11533,8 @@ struct GameLogDrawer: View {
                         proxy.scrollTo(lastId, anchor: .bottom)
                     }
                 }
-                .onChange(of: log.count) { _, _ in
-                    if let lastId = log.last?.id {
+                .onChange(of: log.last?.id) { _, _ in
+                    if followingLatest, let lastId = log.last?.id {
                         if GameBoardMotion.reduced(accessibilityReduceMotion) {
                             proxy.scrollTo(lastId, anchor: .bottom)
                         } else {
@@ -11477,6 +11543,7 @@ struct GameLogDrawer: View {
                             }
                         }
                     }
+                }
                 }
             }
         }

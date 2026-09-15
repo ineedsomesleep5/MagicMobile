@@ -491,6 +491,93 @@ final class OnDevicePromptAdapterTests: XCTestCase {
         XCTAssertEqual(try OnDevicePromptAdapter.answer(for: c, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("uuid", .string(second)))
     }
 
+    func testVisibleSearchCardsAreNotAllLegalTargets() throws {
+        let p = try prompt("PICK_TARGET", types: ["uuid", "boolean"], payload: [
+            "required": .bool(false), "candidates": .array([.string(first)]),
+            "cards": .array([first, second].map { .object(["id": .string($0), "name": .string($0 == first ? "Valid land" : "Visible creature"), "cardTypes": .array([.string("CARD")])]) })
+        ])
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(view.envelope.cards?.map(\.id), [first, second])
+        XCTAssertEqual(view.envelope.cards?.map(\.isPromptSelectable), [true, false])
+        XCTAssertEqual(view.envelope.targetIds, [first])
+        let illegal = GameCommand(type: "choose_target", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, targetIds: [second])
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: illegal, prompt: p, viewerPlayerID: viewer))
+    }
+
+    func testSearchEligibilityUsesPossibleAndChosenNotBrowseableCandidates() throws {
+        for possible in [true, false] {
+            var options: [String: MagicMobileOnDevice.JSONValue] = ["chosenTargets": .array([])]
+            if possible { options["possibleTargets"] = .array([.string(first)]) }
+            let p = try prompt("PICK_TARGET", types: ["uuid", "boolean"], payload: [
+                "required": .bool(false), "candidates": .array([.string(first), .string(second)]), "options": .object(options),
+                "cards": .array([first, second].map { .object(["id": .string($0), "name": .string("Visible card")]) })
+            ])
+            let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+            XCTAssertEqual(view.envelope.cards?.map(\.isPromptSelectable), [possible, false])
+            let invalid = GameCommand(type: "choose_target", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, targetIds: [second])
+            XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: invalid, prompt: p, viewerPlayerID: viewer))
+            let done = GameCommand(type: "answer_yes_no", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, confirmed: false)
+            XCTAssertEqual(try OnDevicePromptAdapter.answer(for: done, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("boolean", .bool(false)))
+        }
+    }
+
+    func testHiddenPromptCardNeverExposesNameRulesOrSecondFace() throws {
+        let p = try prompt("PICK_TARGET", types: ["uuid"], payload: ["candidates": .array([.string(first)]), "cards": .array([
+            .object(["id": .string(first), "name": .string("Secret"), "hideInfo": .bool(true), "rules": .array([.string("Private rules")]),
+                     "secondCardFace": .object(["id": .string(second), "name": .string("Secret reverse")])])
+        ])])
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+        XCTAssertEqual(view.envelope.cards?.count, 1)
+        XCTAssertEqual(view.envelope.cards?.first?.card.name, "Face-down card")
+        XCTAssertNil(view.envelope.cards?.first?.card.oracleText)
+    }
+
+    func testSearchFaceAliasIsSelectableOnlyWhenItsBaseIsLegal() throws {
+        for legal in [false, true] {
+            let p = try prompt("PICK_TARGET", types: ["uuid"], payload: [
+                "candidates": .array([.string(first)]), "responseAliases": .object([second: .string(first)]),
+                "cards": .array([.object(["id": .string(first), "name": .string("Front"),
+                    "secondCardFace": .object(["id": .string(second), "name": .string("Back")])])]),
+                "options": .object(["chosenTargets": .array([]), "possibleTargets": .array(legal ? [.string(first)] : [])])
+            ])
+            let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+            XCTAssertEqual(view.envelope.cards?.map(\.isPromptSelectable), [legal, legal])
+            let command = GameCommand(type: "choose_target", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, targetIds: [second])
+            if legal {
+                XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("uuid", .string(second)))
+            } else {
+                XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: command, prompt: p, viewerPlayerID: viewer))
+            }
+        }
+    }
+
+    func testSearchChosenCardRemainsSelectableForDeselectionAndMalformedEligibilityFailsClosed() throws {
+        for malformed in [false, true] {
+            let p = try prompt("PICK_TARGET", types: ["uuid"], payload: [
+                "candidates": .array([.string(first), .string(second)]),
+                "cards": .array([.object(["id": .string(first), "name": .string("Chosen card")])]),
+                "options": .object(["chosenTargets": malformed ? .string(first) : .array([.string(first)]),
+                                    "possibleTargets": .array([])])
+            ])
+            let command = GameCommand(type: "choose_target", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, targetIds: [first])
+            if malformed {
+                XCTAssertThrowsError(try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: []))
+                XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: command, prompt: p, viewerPlayerID: viewer))
+            } else {
+                XCTAssertEqual(try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: []).envelope.targetIds, [first])
+                XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("uuid", .string(first)))
+            }
+        }
+    }
+
+    func testTargetWithoutCardPayloadUsesOnlyMatchingAuthorizedOffboardCard() throws {
+        let graveyard = try player(viewer, hand: [["instanceId": first, "card": ["name": "Visible card", "typeLine": "Creature"]]])
+        let p = try prompt("PICK_TARGET", types: ["uuid"], payload: ["candidates": .array([.string(first), .string(second)])])
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: graveyard.zones.hand)
+        XCTAssertEqual(view.envelope.cards?.map(\.id), [first])
+        XCTAssertEqual(view.envelope.targets?.map(\.id), [second], "Unknown IDs must not manufacture hidden cards")
+    }
+
     func testPlayerTargetsUseFourPlayerNamesAndStillSubmitTargetUUIDs() throws {
         let third = "33333333-0000-0000-0000-000000000000"
         let zones = PlayerZones(library: [], hand: [], battlefield: [], graveyard: [], exile: [], command: [], stack: [])

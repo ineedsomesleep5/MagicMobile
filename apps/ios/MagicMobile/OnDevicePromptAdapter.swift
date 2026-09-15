@@ -166,7 +166,7 @@ enum OnDevicePromptAdapter {
             fields["modes"] = try choices(prompt)
         case "PICK_TARGET":
             guard prompt.responseTypes.contains("uuid") else { throw invalid("Target requires UUID responses") }
-            let candidates = try targetIDs(prompt)
+            let candidates = try selectableTargetIDs(prompt)
             fields["responseKind"] = "target"; fields["responseCommand"] = response("choose_target")
             fields["minChoices"] = 1; fields["maxChoices"] = 1
             fields["targetIds"] = candidates
@@ -175,19 +175,32 @@ enum OnDevicePromptAdapter {
             // options.orderedViews. Do not turn the viewer's other zone cards into choices.
             let suppliedCards = ((prompt.payload["options"]?["orderedViews"]?.array ?? []) + (prompt.payload["cards"]?.array ?? [])).flatMap { card in
                 // The candidate/responseAliases filter below still governs face IDs.
-                card["secondCardFace"]?.object != nil ? [card, card["secondCardFace"]!] : [card]
+                card["hideInfo"]?.bool != true && card["secondCardFace"]?.object != nil ? [card, card["secondCardFace"]!] : [card]
             }
-            if !suppliedCards.isEmpty {
-                var seen: Set<String> = []
-                let mapped = try suppliedCards.filter {
-                    guard let id = $0["id"]?.string, candidates.contains(id) else { return false }
-                    return seen.insert(id).inserted
-                }.map(promptCard)
-                fields["cards"] = mapped
-                let shownIDs = Set(mapped.compactMap { $0["instanceId"] as? String })
-                fields["targets"] = candidates.filter { !shownIDs.contains($0) }.map { id in
-                    ["id": id, "label": targetLabel(id)]
-                }
+            var seen: Set<String> = []
+            var mapped = try suppliedCards.filter {
+                guard let id = $0["id"]?.string else { return false }
+                return seen.insert(id).inserted
+            }.map { value -> [String: Any] in
+                var card = try promptCard(value)
+                let legal = candidates.contains(value["id"]!.string!)
+                card["selectable"] = legal
+                if !legal { card["disabledReason"] = "Not a legal choice" }
+                return card
+            }
+            // A query may supply only IDs (e.g. graveyard/hand selections). Recover
+            // only matching cards from the current authenticated view, never a deck
+            // list or a cached lookup. Battlefield targets remain direct board taps.
+            let boardIDs = Set(players.flatMap { $0.zones.battlefield }.map(\.id))
+            for card in cards where candidates.contains(card.id) && !boardIDs.contains(card.id) && seen.insert(card.id).inserted {
+                var identity: [String: Any] = ["name": card.card.name, "typeLine": card.card.typeLine]
+                identity["oracleText"] = card.card.oracleText
+                mapped.append(["instanceId": card.id, "card": identity, "selectable": true])
+            }
+            fields["cards"] = mapped
+            let shownIDs = Set(mapped.compactMap { $0["instanceId"] as? String })
+            fields["targets"] = candidates.filter { !shownIDs.contains($0) }.map { id in
+                ["id": id, "label": targetLabel(id)]
             }
             if prompt.responseTypes.contains("boolean"), prompt.payload["required"]?.bool == false {
                 actions.append(try action("answer_yes_no", prompt.payload["options"]?["UI.right.btn.text"]?.string ?? "Done", ["confirmed": false]))
@@ -283,7 +296,7 @@ enum OnDevicePromptAdapter {
             default: selections = command.orderedIds
             }
             let id = try single(selections)
-            guard try targetIDs(prompt).contains(id) else { throw invalid("Target is not a candidate") }
+            guard try selectableTargetIDs(prompt).contains(id) else { throw invalid("Target is not a legal choice") }
             return try answer("uuid", .string(id), prompt: prompt)
         case ("PICK_TARGET", "answer_yes_no"), ("CHOOSE_ABILITY", "answer_yes_no"), ("PICK_ABILITY", "answer_yes_no"):
             guard prompt.payload["required"]?.bool == false, command.confirmed == false else { throw invalid("Target choice cannot be cancelled") }
@@ -341,6 +354,29 @@ enum OnDevicePromptAdapter {
         return ids
     }
 
+    /// Transport candidates also include browseable, nonmatching search cards.
+    /// HumanPlayer's Cards overload omits possibleTargets when that set is empty.
+    private static func selectableTargetIDs(_ prompt: MagicMobileOnDevice.EnginePrompt) throws -> [String] {
+        let candidates = try targetIDs(prompt)
+        let options = prompt.payload["options"]
+        let hasCardSelection = prompt.payload["cards"]?.array?.isEmpty == false && options?["chosenTargets"] != nil
+        guard options?["possibleTargets"] != nil || hasCardSelection else { return candidates }
+        var legal = Set<String>()
+        for key in ["possibleTargets", "chosenTargets"] {
+            if let value = options?[key] {
+                guard let values = value.array else { throw invalid("Malformed target eligibility") }
+                for value in values {
+                    guard let id = value.string, UUID(uuidString: id) != nil, candidates.contains(id) else { throw invalid("Invalid selectable target") }
+                    legal.insert(id)
+                }
+            }
+        }
+        for (alias, base) in prompt.payload["responseAliases"]?.object ?? [:] {
+            if let base = base.string, legal.contains(base) { legal.insert(alias) }
+        }
+        return candidates.filter { legal.contains($0) }
+    }
+
     private static func choices(_ prompt: MagicMobileOnDevice.EnginePrompt) throws -> [[String: String]] {
         guard let values = prompt.payload["choices"]?.object, let order = prompt.payload["choiceOrder"]?.array else { throw invalid("Missing ordered choices") }
         return try order.map { item in
@@ -351,10 +387,12 @@ enum OnDevicePromptAdapter {
 
     /// Only CardViews explicitly supplied to this viewer's query enter this mapper.
     private static func promptCard(_ value: MagicMobileOnDevice.JSONValue) throws -> [String: Any] {
-        guard let id = value["id"]?.string, UUID(uuidString: id) != nil, let name = value["name"]?.string else { throw invalid("Unrepresentable prompt card") }
-        let types = value["cardTypes"]?.array?.compactMap(\.string) ?? []
+        guard let id = value["id"]?.string, UUID(uuidString: id) != nil else { throw invalid("Unrepresentable prompt card") }
+        let hidden = value["hideInfo"]?.bool == true
+        let name = hidden ? "Face-down card" : value["displayName"]?.string ?? value["name"]?.string ?? "Card details unavailable"
+        let types = hidden ? [] : value["cardTypes"]?.array?.compactMap(\.string) ?? []
         var card: [String: Any] = ["name": EngineDisplayText.label(name), "typeLine": types.joined(separator: " ")]
-        if let rules = value["rules"]?.array?.compactMap(\.string) { card["oracleText"] = EngineDisplayText.text(rules.joined(separator: "\n")) }
+        if !hidden, let rules = value["rules"]?.array?.compactMap(\.string) { card["oracleText"] = EngineDisplayText.text(rules.joined(separator: "\n")) }
         return ["instanceId": id, "card": card]
     }
 

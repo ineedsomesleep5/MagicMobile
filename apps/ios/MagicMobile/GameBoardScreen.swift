@@ -18,6 +18,11 @@ enum GameBoardDesignPreviewState: String, CaseIterable, Identifiable {
     case cardTargetPrompt = "card-target-prompt"
     case combatArrows = "combat-arrows"
     case fullHandInspection = "full-hand-inspection"
+    case scryChoice = "scry-choice"
+    case libraryChoice = "library-choice"
+    case emptyLibraryChoice = "empty-library-choice"
+    case mixedCardChoice = "mixed-card-choice"
+    case handDrag = "hand-drag"
     case zoneInspection = "zone-inspection"
     case largeText = "large-text"
 

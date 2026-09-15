@@ -137,6 +137,8 @@ jobs:
           cache: maven
       - run: mkdir -p evidence; bash scripts/build_jvm.sh 2>&1 | tee evidence/issue4-jvm-build.log
       - run: bash scripts/test_real_engine.sh 2>&1 | tee evidence/issue4-real-engine.log
+      - name: Real scry and restricted card-choice interaction regressions
+        run: bash ../../apps/ios/MagicMobileTests/EngineChecks/run.sh 2>&1 | tee evidence/real-card-choices.log
       - name: Bounded seeded driver lifecycle matrix (real JVM, not seeded XMage RNG)
         run: python3 scripts/test_seeded_soak.py
       - name: Audit compiled desktop API references (static only, not native execution)

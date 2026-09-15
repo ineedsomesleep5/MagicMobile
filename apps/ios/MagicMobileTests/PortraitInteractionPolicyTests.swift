@@ -2,11 +2,31 @@ import XCTest
 @testable import MagicMobile
 
 final class PortraitInteractionPolicyTests: XCTestCase {
+    func testCardChoiceRoutingUsesViewerAndPromptRevision() throws {
+        func snapshot(viewer: String = "a", revision: Int = 1, type: String = "choose_target", hasCards: Bool = true) throws -> GameSnapshot {
+            let prompt: [String: Any] = ["id": "same-id", "method": "GAME_PICK_TARGET", "messageId": revision, "playerId": viewer,
+                "responseKind": "target", "message": "Choose", "maxChoices": 1,
+                "responseCommand": ["type": type], "cards": hasCards ? [["instanceId": "card", "card": ["name": "Forest", "typeLine": "Land"]]] : []]
+            return try makeSnapshot(active: "a", turn: 1, prompt: prompt)
+        }
+        XCTAssertNotNil(PortraitInteractionPolicy.cardChoiceKey(try snapshot()))
+        XCTAssertNil(PortraitInteractionPolicy.cardChoiceKey(try snapshot(viewer: "b")))
+        XCTAssertNil(PortraitInteractionPolicy.cardChoiceKey(try snapshot(hasCards: false)))
+        XCTAssertNotEqual(PortraitInteractionPolicy.cardChoiceKey(try snapshot()), PortraitInteractionPolicy.cardChoiceKey(try snapshot(revision: 2)))
+    }
+
     func testAmbiguousCardTapDoesNotChooseAnAbilityForThePlayer() throws {
         let actions = try JSONDecoder().decode([LegalAction].self, from: Data(#"[{"id":"mana","type":"make_mana","playerId":"a","label":"Tap","sourceInstanceId":"card"},{"id":"other","type":"activate_ability","playerId":"a","label":"Sacrifice","sourceInstanceId":"card"}]"#.utf8))
         XCTAssertNil(PortraitInteractionPolicy.automaticCardAction(actions))
         XCTAssertNil(PortraitInteractionPolicy.automaticCardAction([]))
         XCTAssertEqual(PortraitInteractionPolicy.automaticCardAction([actions[0]])?.id, "mana")
+    }
+
+    func testPriorityChoiceDoesNotAutoOpenDetailsOverStack() throws {
+        let prompt: [String: Any] = ["id": "priority", "method": "GAME_PRIORITY", "messageId": 1,
+            "playerId": "a", "responseKind": "pass_priority", "message": "Respond",
+            "choices": [["id": "pass", "label": "Pass priority"]], "responseCommand": ["type": "pass_priority"]]
+        XCTAssertNil(PortraitInteractionPolicy.detailChoiceKey(try makeSnapshot(active: "a", turn: 1, prompt: prompt)))
     }
 
     func testZoneInspectionUsesOnlyCurrentSuppliedCards() throws {
@@ -47,7 +67,7 @@ final class PortraitInteractionPolicyTests: XCTestCase {
         XCTAssertNil(PortraitInteractionPolicy.turnCueKey(try makeSnapshot(active: "b", turn: 1)))
     }
 
-    private func makeSnapshot(active: String, turn: Int, visibleZone: String? = nil) throws -> GameSnapshot {
+    private func makeSnapshot(active: String, turn: Int, visibleZone: String? = nil, prompt: [String: Any]? = nil) throws -> GameSnapshot {
         var zones: [String: Any] = ["library": [], "hand": [], "battlefield": [], "graveyard": [], "exile": [], "command": [], "stack": [], "handCount": 7, "libraryCount": 92]
         if let visibleZone {
             zones[visibleZone] = [["instanceId": "visible-card", "card": ["name": "Visible", "typeLine": "Creature"]]]
@@ -55,8 +75,9 @@ final class PortraitInteractionPolicyTests: XCTestCase {
         let players: [[String: Any]] = ["a", "b", "c", "d"].map {
             ["playerId": $0, "displayName": $0, "life": 40, "poison": 0, "commanderTax": 0, "zones": zones]
         }
-        let json: [String: Any] = ["id": "match", "phase": "PRECOMBAT_MAIN", "turn": turn, "activePlayerId": active,
+        var json: [String: Any] = ["id": "match", "phase": "PRECOMBAT_MAIN", "turn": turn, "activePlayerId": active,
                                    "viewerPlayerId": "a", "priorityPlayerId": "a", "players": players, "log": []]
+        json["promptEnvelopeV2"] = prompt
         return try JSONDecoder().decode(GameSnapshot.self, from: JSONSerialization.data(withJSONObject: json))
     }
 }

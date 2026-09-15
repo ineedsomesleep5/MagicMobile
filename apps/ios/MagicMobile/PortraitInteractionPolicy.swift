@@ -2,6 +2,24 @@ import Foundation
 
 /// Presentation decisions never rewrite an engine action or a seat identity.
 enum PortraitInteractionPolicy {
+    static func cardChoiceKey(_ snapshot: GameSnapshot) -> String? {
+        guard !snapshot.isCompleted, let prompt = snapshot.promptEnvelopeV2,
+              snapshot.isViewer(prompt.playerId), prompt.cards?.isEmpty == false,
+              prompt.responseCommand?.type == "choose_target", prompt.maxChoices == 1 else { return nil }
+        return "\(snapshot.id):\(prompt.playerId):\(prompt.id):\(prompt.messageId)"
+    }
+
+    static func detailChoiceKey(_ snapshot: GameSnapshot) -> String? {
+        guard cardChoiceKey(snapshot) == nil, !snapshot.isCompleted,
+              let prompt = snapshot.promptEnvelopeV2, snapshot.isViewer(prompt.playerId) else { return nil }
+        // Priority can contain a "pass" choice, but it belongs in the dock, not
+        // an automatically opened card-choice sheet over the stack inspector.
+        guard prompt.responseCommand?.type != "pass_priority", prompt.responseKind != "priority" else { return nil }
+        let kind = MobilePromptPresentation.kind(for: prompt)
+        guard [.cardChoice, .search, .abilityChoice, .order, .amount, .multiAmount, .pile].contains(kind) else { return nil }
+        return "\(snapshot.id):\(prompt.playerId):\(prompt.id):\(prompt.messageId)"
+    }
+
     static func automaticCardAction(_ cardActions: [LegalAction]) -> LegalAction? {
         cardActions.count == 1 ? cardActions.first : nil
     }
