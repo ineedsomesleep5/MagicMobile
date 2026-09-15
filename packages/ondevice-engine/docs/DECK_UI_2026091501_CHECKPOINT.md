@@ -1,5 +1,15 @@
 # Deck builder and board polish — candidate checkpoint
 
+## Delivery completed — September 15, 2026
+
+The final candidate `72249f37ffe86f291c4750143adb65643d3b5ea8` was built,
+development-signed, installed directly and launched on Caleb's iPhone as
+**0.1.0 (2026091501)**. The device's installed-app listing independently confirms
+that version/build. No TestFlight upload or app-data reset occurred. See
+[the direct-install receipt](DIRECT_INSTALL_2026091501.md). Pending statements
+below retain the earlier chronological checkpoints, not current delivery status.
+
+
 Selected checkout: `/Users/calebfeliciano/Documents/MagicMobile-runtime-hardening`,
 branch `codex/native-runtime-hardening`, stacked PR #9. Starting HEAD:
 `30749724f369812555ddba242d79fc97373b1b03`. The approved UI-thread changes were
