@@ -54,7 +54,7 @@ struct NativeDeckLibraryView: View {
             .navigationTitle("Decks").navigationBarTitleDisplayMode(.inline)
             .searchable(text: $search, prompt: "Find a deck or commander")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
-            .sheet(item: $sheet) { destination in
+            .fullScreenCover(item: $sheet) { destination in
                 switch destination {
                 case .importer:
                     NativeDeckImportSheet(library: library) { record in selectedDeckID = "local:\(record.id)" }
@@ -154,12 +154,12 @@ struct NativeCardArtworkView<Placeholder: View>: View {
 
     private struct Request: Hashable {
         let name: String
-        let variant: String
+        let variant: NativeDeckArtwork.Variant
         let allowNetwork: Bool
     }
 
     var body: some View {
-        let request = Request(name: name, variant: variant.queryVersion, allowNetwork: remoteArtwork)
+        let request = Request(name: name, variant: variant == .inspection ? .inspection : .board, allowNetwork: remoteArtwork)
         let permitted = NativeCardArtworkPolicy.permitsLookup(name: name)
         Group {
             if permitted, completedRequest == request, let artwork {
@@ -171,16 +171,36 @@ struct NativeCardArtworkView<Placeholder: View>: View {
         }
             .task(id: request) {
                 guard permitted else { artwork = nil; completedRequest = nil; failedRequest = nil; return }
+                artwork = nil; completedRequest = nil; failedRequest = nil
                 // CardImageURL only supplies a generated cache path here; never fetch its remote fallback.
                 if let url = CardImageURL.image(name, variant: variant), url.isFileURL,
-                   let image = UIImage(contentsOfFile: url.path) {
+                   let data = NativeDeckArtwork.localImageData(at: url),
+                   let image = NativeDeckArtwork.decodedImage(data, variant: request.variant) {
                     guard !Task.isCancelled else { return }
-                    artwork = image; completedRequest = request; failedRequest = nil; return
+                    artwork = UIImage(cgImage: image); completedRequest = request
+                    if NativeDeckArtwork.isSufficient(data, for: request.variant) { return }
+                    // Keep a safe low-resolution image visible offline or if upgrade fails.
+                } else if request.variant == .inspection,
+                          let url = CardImageURL.image(name, variant: .board), url.isFileURL,
+                          let data = NativeDeckArtwork.localImageData(at: url),
+                          let image = NativeDeckArtwork.decodedImage(data, variant: .inspection) {
+                    guard !Task.isCancelled else { return }
+                    artwork = UIImage(cgImage: image); completedRequest = request
                 }
                 do {
-                    let data = try await NativeDeckArtwork.shared.imageData(name: name, allowNetwork: request.allowNetwork)
+                    if artwork == nil, request.variant == .inspection,
+                       let cached = try await NativeDeckArtwork.shared.imageData(name: name, variant: .board, allowNetwork: false),
+                       let image = NativeDeckArtwork.decodedImage(cached, variant: .inspection) {
+                        try Task.checkCancellation()
+                        artwork = UIImage(cgImage: image); completedRequest = request
+                    }
+                    guard !Task.isCancelled, request.allowNetwork == remoteArtwork else { return }
+                    let data = try await NativeDeckArtwork.shared.imageData(name: name, variant: request.variant, allowNetwork: request.allowNetwork)
                     try Task.checkCancellation()
-                    artwork = data.flatMap(UIImage.init(data:))
+                    guard request.allowNetwork == remoteArtwork else { return }
+                    if let data, let image = NativeDeckArtwork.decodedImage(data, variant: request.variant) {
+                        artwork = UIImage(cgImage: image)
+                    }
                     completedRequest = request
                     failedRequest = request.allowNetwork && artwork == nil ? request : nil
                 } catch is CancellationError { } catch {
@@ -198,8 +218,8 @@ private struct NativeDeckDetailView: View {
     let bundled: Bool
     @Binding var selectedDeckID: String
     @Environment(\.dismiss) private var dismiss
-    @State private var editRecord: DeckLibraryRecord?
     @State private var inspection: DeckCardSelection?
+    @State private var editRecord: DeckLibraryRecord?
     @State private var search = ""
     @State private var detailTab = "Cards"
     let metadata: NativeDeckMetadataCatalogue?
@@ -277,7 +297,7 @@ private struct NativeDeckDetailView: View {
         .background(BattlefieldSurface().ignoresSafeArea())
         .navigationTitle("Deck details").navigationBarTitleDisplayMode(.inline)
         .sheet(item: $inspection) { card in NativeDeckInspectionSheet(name: card.name, card: metadata?.card(named: card.name)) }
-        .sheet(item: $editRecord) { draft in
+        .fullScreenCover(item: $editRecord) { draft in
             NativeDeckEditorSheet(library: library, record: draft, metadata: metadata, catalogueError: catalogueError) { saved in selectedDeckID = "local:\(saved.id)" }
         }
         .confirmationDialog("Delete this local deck?", isPresented: $confirmDelete, titleVisibility: .visible) {
@@ -528,7 +548,13 @@ private struct NativeDeckEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var draft: NativeDeckDraft
     @State private var search = ""
-    @State private var results: [String] = []
+    @State private var results: [NativeDeckMetadataCatalogue.Card] = []
+    @State private var resultLimit = 60
+    @State private var portraitPane = "Collection"
+    private enum EditorField: Hashable { case search, name }
+    @FocusState private var focusedField: EditorField?
+    @State private var lastAdded: String?
+    @State private var searching = true
     @State private var section = "deck"
     @State private var cardType = ""
     @State private var color = ""
@@ -546,94 +572,31 @@ private struct NativeDeckEditorSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    TextField("Deck name", text: $draft.name).onChange(of: draft.name) { _, _ in changed = true }
-                    Text("\(NativeDeckDisplay.cardCount(totalQuantity)) · local draft").foregroundStyle(.secondary)
-                    Text("Save as you build. The real XMage validator checks Commander rules before play.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Section("Add from the compiled card catalogue") {
-                    TextField("Search exact card names", text: $search).autocorrectionDisabled()
-                        .accessibilityIdentifier("nativeDeck.cardSearch")
-                    NativeDeckFilterBar(cardType: $cardType, color: $color)
-                    if metadata == nil {
-                        if let catalogueError {
-                            Text(catalogueError).font(.caption).foregroundStyle(MagicPalette.warningAmber)
-                        } else { ProgressView("Loading local card catalogue…") }
+            GeometryReader { geometry in
+                VStack(spacing: 0) {
+                    if NativeDeckBuilderLayout.usesColumns(width: geometry.size.width) {
+                        HStack(spacing: 0) {
+                            collectionPane.frame(maxWidth: .infinity, maxHeight: .infinity)
+                            Rectangle().fill(MagicPalette.antiqueGold.opacity(0.35)).frame(width: 1)
+                            deckPane.frame(width: NativeDeckBuilderLayout.deckWidth(width: geometry.size.width))
+                        }.accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("nativeDeck.builder.split")
+                    } else {
+                        Picker("Builder view", selection: $portraitPane) {
+                            Text("Collection").tag("Collection")
+                            Text("Deck (\(totalQuantity))").tag("Deck")
+                        }.pickerStyle(.segmented).padding(12)
+                            .accessibilityIdentifier("nativeDeck.builder.mode")
+                        if portraitPane == "Collection" { collectionPane }
+                        else { deckPane }
                     }
-                    Picker("Add to", selection: $section) {
-                        Text("Main deck").tag("deck")
-                        Text("Commander / partner").tag("commanders")
-                        Text("Companion").tag("companions")
+                    if let errorMessage {
+                        Text(errorMessage).font(.caption).foregroundStyle(MagicPalette.warningAmber)
+                            .padding(10).frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    ForEach(results, id: \.self) { name in
-                        HStack {
-                            Button { inspection = DeckCardSelection(name: name) } label: {
-                                Label(name, systemImage: "magnifyingglass")
-                            }.buttonStyle(.borderless)
-                            Spacer()
-                            Button {
-                                guard totalQuantity < 2000 else { return }
-                                if let index = draft.rows.firstIndex(where: { $0.cardName == name && $0.section == section }) {
-                                    guard draft.rows[index].quantity < 2000 else { return }
-                                    draft.rows[index].quantity += 1
-                                } else { draft.rows.append(NativeDeckRow(cardName: name, quantity: 1, section: section)) }
-                                changed = true
-                            } label: { Image(systemName: "plus.circle.fill").frame(minWidth: 44, minHeight: 44) }
-                                .buttonStyle(.borderless).accessibilityLabel("Add \(name) to \(section)")
-                                .disabled(totalQuantity >= 2000)
-                        }
-                    }
-                    if metadata != nil && !search.isEmpty && results.isEmpty { Text("No compiled card matches this search.").foregroundStyle(.secondary) }
                 }
-                Section {
-                    NativeDeckBasicLandTools(count: { draft.basicLandCount($0) },
-                        supported: { metadata?.card(named: $0) != nil },
-                        change: { name, delta in
-                            do {
-                                try draft.setBasicLandCount(name, quantity: draft.basicLandCount(name) + delta)
-                                changed = true
-                            } catch { errorMessage = error.localizedDescription }
-                        }, canAdd: totalQuantity < 2000)
-                }
-                ForEach(editorGroups, id: \.self) { group in
-                  Section(group) {
-                    ForEach($draft.rows) { $row in
-                      if groupName(row) == group {
-                        VStack(alignment: .leading, spacing: 8) {
-                            NativeDeckCardRow(name: row.cardName, quantity: row.quantity,
-                                manaCost: metadata?.card(named: row.cardName)?.manaCost,
-                                typeLine: metadata?.card(named: row.cardName)?.typeLine,
-                                inspect: { inspection = DeckCardSelection(name: row.cardName) },
-                                decrease: { changeQuantity(id: row.id, delta: -1) },
-                                increase: totalQuantity < 2000 ? { changeQuantity(id: row.id, delta: 1) } : nil)
-                            Picker("Section", selection: $row.section) {
-                                Text("Main deck").tag("deck")
-                                Text("Commander / partner").tag("commanders")
-                                Text("Companion").tag("companions")
-                                if !["deck", "commanders", "companions"].contains(row.section) {
-                                    Text(row.section.capitalized).tag(row.section)
-                                }
-                            }.onChange(of: row.section) { _, _ in
-                                row.isPrimaryCommander = false
-                                changed = true
-                            }
-                        }.padding(.vertical, 5)
-                        .swipeActions {
-                            Button("Remove", role: .destructive) {
-                                let id = row.id
-                                draft.rows.removeAll { $0.id == id }; changed = true
-                            }
-                        }
-                      }
-                    }
-                  }
-                }
-                if let errorMessage { Section { Text(errorMessage).foregroundStyle(MagicPalette.warningAmber) } }
             }
-            .scrollContentBackground(.hidden).background(BattlefieldSurface().ignoresSafeArea())
-            .scrollDismissesKeyboard(.interactively)
+            .background(BattlefieldSurface().ignoresSafeArea())
             .navigationTitle(record == nil ? "Build a deck" : "Edit deck").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -641,7 +604,7 @@ private struct NativeDeckEditorSheet: View {
                         .accessibilityIdentifier("nativeDeck.editor.cancel")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Save", action: save).disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Button("Save", action: save).disabled(!canSave)
                         .accessibilityIdentifier("nativeDeck.editor.save")
                 }
             }
@@ -651,11 +614,147 @@ private struct NativeDeckEditorSheet: View {
             }
             .sheet(item: $inspection) { card in NativeDeckInspectionSheet(name: card.name, card: metadata?.card(named: card.name)) }
             .task(id: [search, cardType, color, metadata == nil ? "loading" : "ready"]) {
+                searching = true; results = []; resultLimit = 60
                 do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
                 guard !Task.isCancelled else { return }
                 refreshResults()
             }
         }.preferredColorScheme(.dark)
+    }
+
+    private var canSave: Bool { !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    private var collectionPane: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 4) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(MagicPalette.antiqueGold)
+                    TextField("Search exact card names", text: $search)
+                        .autocorrectionDisabled().textInputAutocapitalization(.never)
+                        .focused($focusedField, equals: .search).submitLabel(.search)
+                        .onSubmit { focusedField = nil }
+                        .accessibilityIdentifier("nativeDeck.cardSearch")
+                    if !search.isEmpty {
+                        Button { search = "" } label: { Image(systemName: "xmark.circle.fill").frame(width: 44, height: 44) }
+                            .accessibilityLabel("Clear card search")
+                    }
+                }.padding(.leading, 10).frame(minHeight: 44)
+                    .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 10))
+                NativeDeckBuilderFilters(cardType: $cardType, color: $color)
+                HStack {
+                    Text("Printed colors · exact match").font(.caption2).foregroundStyle(.secondary)
+                    Spacer()
+                    Picker("Add to", selection: $section) {
+                        Text("Main deck").tag("deck")
+                        Text("Commander / partner").tag("commanders")
+                        Text("Companion").tag("companions")
+                    }.pickerStyle(.menu).font(.caption)
+                }
+            }.padding(.horizontal, 12).padding(.top, 8)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    if metadata == nil {
+                        if let catalogueError { Text(catalogueError).foregroundStyle(MagicPalette.warningAmber) }
+                        else { ProgressView("Loading local card catalogue…") }
+                    } else if searching {
+                        ProgressView("Searching local cards…")
+                    } else if results.isEmpty {
+                        Text("No compiled cards match these filters.").foregroundStyle(.secondary)
+                    }
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 125), spacing: 12)], spacing: 12) {
+                        ForEach(results) { card in
+                            NativeDeckCollectionTile(card: card,
+                                count: draft.rows.filter { $0.cardName == card.name }.reduce(0) { $0 + $1.quantity },
+                                canAdd: totalQuantity < 2000, section: section,
+                                inspect: { inspection = DeckCardSelection(name: card.name) },
+                                add: { addCard(card.name) })
+                        }
+                    }
+                    if results.count == resultLimit {
+                        if resultLimit < 2000 {
+                            Button("Show more cards") { resultLimit = min(2000, resultLimit + 60); refreshResults() }
+                                .frame(minHeight: 44).accessibilityIdentifier("nativeDeck.collection.more")
+                        } else { Text("Showing 2,000 matches. Refine your search to find more.").font(.caption) }
+                    }
+                    DisclosureGroup("Artwork & privacy") { NativeArtworkPreferenceView().padding(.vertical, 8) }
+                }.padding(12)
+            }.scrollDismissesKeyboard(.interactively)
+                .accessibilityIdentifier("nativeDeck.collection.scroll")
+            if let lastAdded {
+                Text("Added \(lastAdded) · \(NativeDeckDisplay.cardCount(totalQuantity))")
+                    .font(.caption).lineLimit(2).padding(8).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(MagicPalette.antiqueGold.opacity(0.12))
+            }
+        }.frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var deckPane: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                TextField("Deck name", text: $draft.name).font(.headline)
+                    .focused($focusedField, equals: .name).submitLabel(.done)
+                    .onSubmit { focusedField = nil }
+                    .onChange(of: draft.name) { _, _ in changed = true }
+                Text("\(NativeDeckDisplay.cardCount(totalQuantity)) · \(changed ? "Unsaved changes" : "Local draft")")
+                    .font(.caption).foregroundStyle(MagicPalette.antiqueGold)
+            }.padding(12)
+            Divider()
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    NativeDeckBasicLandTools(count: { draft.basicLandCount($0) },
+                        supported: { metadata?.card(named: $0) != nil },
+                        change: { name, delta in
+                            do {
+                                try draft.setBasicLandCount(name, quantity: draft.basicLandCount(name) + delta)
+                                changed = true
+                            } catch { errorMessage = error.localizedDescription }
+                        }, canAdd: totalQuantity < 2000)
+                    ForEach(editorGroups, id: \.self) { group in
+                        let rows = draft.rows.filter { groupName($0) == group }
+                        NativeDeckGroupHeader(title: group, count: rows.reduce(0) { $0 + $1.quantity })
+                        ForEach(rows) { row in
+                            NativeDeckBuilderRow(row: row, card: metadata?.card(named: row.cardName),
+                                canAdd: totalQuantity < 2000,
+                                inspect: { inspection = DeckCardSelection(name: row.cardName) },
+                                increase: { changeQuantity(id: row.id, delta: 1) },
+                                decrease: { changeQuantity(id: row.id, delta: -1) },
+                                remove: { draft.rows.removeAll { $0.id == row.id }; changed = true },
+                                move: { moveRow(id: row.id, to: $0) })
+                        }
+                    }
+                    if draft.rows.isEmpty {
+                        Text("Your deck is empty. Add cards from the collection.")
+                            .font(.subheadline).foregroundStyle(.secondary).padding(.vertical, 20)
+                    }
+                    Text("XMage checks Commander legality before play.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }.padding(10)
+            }.scrollDismissesKeyboard(.interactively)
+                .accessibilityIdentifier("nativeDeck.editor.rows")
+            VStack(spacing: 6) {
+                Button(action: save) { Text("Done").font(.headline).frame(maxWidth: .infinity, minHeight: 44) }
+                    .buttonStyle(MagicPrimaryButtonStyle(compact: true)).disabled(!canSave)
+                    .accessibilityIdentifier("nativeDeck.editor.done")
+            }.padding(10)
+        }.frame(maxHeight: .infinity).background(.black.opacity(0.25))
+    }
+
+    private func addCard(_ name: String) {
+        guard metadata?.card(named: name) != nil, totalQuantity < 2000 else { return }
+        if let index = draft.rows.firstIndex(where: {
+            let effectiveSection = $0.isPrimaryCommander ? "commanders" : $0.section.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return $0.cardName == name && (effectiveSection == section || (section == "deck" && effectiveSection == "main"))
+        }) {
+            draft.rows[index].quantity += 1
+        } else { draft.rows.append(NativeDeckRow(cardName: name, quantity: 1, section: section)) }
+        changed = true; lastAdded = name
+    }
+
+    private func moveRow(id: UUID, to section: String) {
+        guard let index = draft.rows.firstIndex(where: { $0.id == id }) else { return }
+        draft.rows[index].section = section
+        draft.rows[index].isPrimaryCommander = false
+        changed = true
     }
 
     private var totalQuantity: Int { draft.rows.reduce(0) { $0 + $1.quantity } }
@@ -673,17 +772,15 @@ private struct NativeDeckEditorSheet: View {
     }
 
     private func refreshResults() {
-        guard !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !cardType.isEmpty || !color.isEmpty else {
-            results = []; return
-        }
         if let metadata {
             var filter = NativeDeckMetadataCatalogue.SearchFilter()
             filter.query = search; filter.type = cardType
             filter.colors = color.isEmpty ? nil : (color == "C" ? [] : [color])
-            results = metadata.search(filter, limit: 40).map(\.name)
+            results = metadata.search(filter, limit: resultLimit)
         } else {
             results = []
         }
+        searching = false
     }
 
     private func save() {

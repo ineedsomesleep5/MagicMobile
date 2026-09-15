@@ -26,6 +26,8 @@ final class BoardPolishUITests: XCTestCase {
     // Independent cases keep one failed control from hiding the remaining surfaces.
     func testPortraitCrowdedBattlefield() { runMatrix(portrait: true, selectedFixtures: ["crowded-battlefield"]) }
     func testLandscapeCrowdedBattlefield() { runMatrix(portrait: false, selectedFixtures: ["crowded-battlefield"]) }
+    func testPortraitOffscreenCombatInspection() { runMatrix(portrait: true, selectedFixtures: ["combat-arrows"]) }
+    func testLandscapeOffscreenCombatInspection() { runMatrix(portrait: false, selectedFixtures: ["combat-arrows"]) }
     func testPortraitManaPayment() { runMatrix(portrait: true, selectedFixtures: ["mana-payment-prompt"]) }
     func testLandscapeManaPayment() { runMatrix(portrait: false, selectedFixtures: ["mana-payment-prompt"]) }
     func testPortraitOpponentFocus() { runMatrix(portrait: true, selectedFixtures: ["four-player-focus"]) }
@@ -38,6 +40,8 @@ final class BoardPolishUITests: XCTestCase {
     func testLandscapeHandInspection() { runMatrix(portrait: false, selectedFixtures: ["full-hand-inspection"]) }
     func testPortraitHandArtworkScroll() { runMatrix(portrait: true, selectedFixtures: ["normal-battlefield"]) }
     func testLandscapeHandArtworkScroll() { runMatrix(portrait: false, selectedFixtures: ["normal-battlefield"]) }
+    func testPortraitLargeHandScrubber() { runMatrix(portrait: true, selectedFixtures: ["hand-scrubber"]) }
+    func testLandscapeLargeHandScrubber() { runMatrix(portrait: false, selectedFixtures: ["hand-scrubber"]) }
     func testPortraitHandDrag() { runMatrix(portrait: true, selectedFixtures: ["hand-drag"]) }
     func testLandscapeHandDrag() { runMatrix(portrait: false, selectedFixtures: ["hand-drag"]) }
     func testPortraitMixedChoices() { runMatrix(portrait: true, selectedFixtures: ["mixed-card-choice"]) }
@@ -93,7 +97,51 @@ final class BoardPolishUITests: XCTestCase {
 
     private func verify(_ fixture: String, in app: XCUIApplication, portrait: Bool) {
         switch fixture {
+        case "combat-arrows":
+            let lane = app.scrollViews["board.battlefield.Your board"]
+            visible(lane, in: app)
+            let edge = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "board.combat.offscreen.")).firstMatch
+            for _ in 0..<5 {
+                if edge.exists && edge.isHittable { break }
+                lane.swipeLeft()
+            }
+            visible(edge, in: app)
+            capture(app, name: currentCapture + "-edge")
+            edge.tap()
+            let inspect = app.buttons["Inspect Silvercoat Lion"].firstMatch
+            visible(inspect, in: app)
+            inspect.tap()
+            visible(card(in: app, identifierPrefix: "card-inspector-silvercoat-lion"), in: app)
+        case "hand-scrubber":
+            let scrubber = app.descendants(matching: .any)["board.hand.scrubber"].firstMatch
+            visible(scrubber, in: app)
+            XCTAssertGreaterThanOrEqual(scrubber.frame.height, 44)
+            let hand = app.scrollViews["board.hand.scroll"]
+            let first = card(in: app, identifierPrefix: "card-hand-sol-ring")
+            let last = card(in: app, identifierPrefix: "card-hand-spirited-companion-last-han")
+            scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)).tap()
+            visible(last, in: app)
+            XCTAssertEqual(scrubber.value as? String, "100 percent")
+            XCTAssertGreaterThanOrEqual(last.frame.minX, hand.frame.minX - 1)
+            XCTAssertLessThanOrEqual(last.frame.maxX, hand.frame.maxX + 1)
+            app.buttons["board.hand.expand"].tap()
+            scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)).tap()
+            visible(last, in: app)
+            XCTAssertTrue(hand.frame.insetBy(dx: -1, dy: -1).contains(last.frame))
+            scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            XCTAssertEqual(scrubber.value as? String, "50 percent")
+            scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                .press(forDuration: 0.05, thenDragTo: scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5)))
+            visible(first, in: app)
+            XCTAssertEqual(scrubber.value as? String, "0 percent")
+            hand.swipeLeft()
+            XCTAssertNotEqual(scrubber.value as? String, "0 percent", "Card swipes update the same slider")
+            XCTAssertFalse(app.staticTexts["preview.captured-command"].exists, "Scrubbing must not cast a card")
+            scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5)).tap()
+            first.press(forDuration: 0.6)
+            visible(card(in: app, identifierPrefix: "card-inspector-sol-ring"), in: app)
         case "hand-drag":
+            app.buttons["board.hand.expand"].tap()
             let source = card(in: app, identifierPrefix: "card-hand-sol-ring")
             let destination = card(in: app, identifierPrefix: "card-your-board-isamaru")
             visible(source, in: app)
@@ -139,12 +187,40 @@ final class BoardPolishUITests: XCTestCase {
             XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "object_id=")).firstMatch.exists)
             XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "<font")).firstMatch.exists)
             capture(app, name: currentCapture + "-formatted-log")
+            let logCard = app.links["Temple of Plenty"].firstMatch
+            visible(logCard, in: app)
+            logCard.tap()
+            visible(app.staticTexts["From the game log"], in: app)
+            let historicalCard = card(in: app, identifierPrefix: "card-inspector-temple-of-plenty-36fc54d7")
+            visible(historicalCard, in: app)
+            XCTAssertFalse(app.staticTexts["preview.captured-command"].exists)
+            capture(app, name: currentCapture + "-log-card-inspection")
+            app.buttons["Done"].firstMatch.tap()
+            XCTAssertTrue(historicalCard.waitForNonExistence(timeout: 5))
             app.buttons["Close game log"].tap()
             XCTAssertTrue(app.buttons["Close game log"].waitForNonExistence(timeout: 5))
+            let expandHand = app.buttons["board.hand.expand"]
+            XCTAssertTrue(expandHand.isHittable)
+            expandHand.tap()
+            XCTAssertEqual(expandHand.label, "Tuck hand")
             let first = card(in: app, identifierPrefix: "card-hand-sol-ring")
             visible(first, in: app)
             let last = card(in: app, identifierPrefix: "card-hand-spirited-companion")
             let hand = app.scrollViews["board.hand.scroll"]
+            let scrubber = app.descendants(matching: .any)["board.hand.scrubber"].firstMatch
+            visible(scrubber, in: app)
+            XCTAssertGreaterThanOrEqual(scrubber.frame.height, 44)
+            // Drag the thumb to the end, then tap the track to return to the start.
+            // The actual cards must move, not merely the indicator.
+            scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.04, dy: 0.5))
+                .press(forDuration: 0.05, thenDragTo: scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)))
+            visible(last, in: app)
+            XCTAssertTrue(hand.frame.insetBy(dx: -1, dy: -1).contains(last.frame))
+            XCTAssertEqual(scrubber.value as? String, "100 percent")
+            scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5)).tap()
+            visible(first, in: app)
+            XCTAssertTrue(hand.frame.insetBy(dx: -1, dy: -1).contains(first.frame))
+            XCTAssertEqual(scrubber.value as? String, "0 percent")
             for _ in 0..<5 {
                 if last.isHittable && hand.frame.insetBy(dx: -1, dy: -1).contains(last.frame) { break }
                 hand.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.65))
@@ -156,6 +232,13 @@ final class BoardPolishUITests: XCTestCase {
             last.press(forDuration: 0.6)
             visible(card(in: app, identifierPrefix: "card-inspector-spirited-companion"), in: app)
         case "crowded-battlefield":
+            XCTAssertFalse(app.staticTexts["YOUR DECISION"].exists, "Routine priority must not cover the battlefield with a redundant banner")
+            let firstRow = card(in: app, identifierPrefix: "card-your-board-isamaru")
+            let secondRow = card(in: app, identifierPrefix: "card-your-board-sun-titan")
+            visible(firstRow, in: app)
+            visible(secondRow, in: app)
+            XCTAssertGreaterThan(secondRow.frame.minY, firstRow.frame.midY, "Crowded permanents use the reclaimed height for a second row")
+            XCTAssertGreaterThanOrEqual(secondRow.frame.width, 44)
             XCTAssertFalse(app.buttons["Close game log"].exists, "Log must start closed")
             let log = app.buttons[portrait ? "Game log" : "Open game log"].firstMatch
             visible(log, in: app)

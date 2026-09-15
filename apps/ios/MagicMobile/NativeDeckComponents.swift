@@ -164,8 +164,10 @@ struct NativeDeckBasicLandTools: View {
                         HStack(spacing: 0) {
                             Button { change(name, -1) } label: { Image(systemName: "minus").frame(width: 44, height: 44) }
                                 .disabled(count(name) == 0).accessibilityLabel("Remove one basic \(name)")
+                                .accessibilityIdentifier("nativeDeck.basic.remove.\(name)")
                             Button { change(name, 1) } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
                                 .disabled(!supported(name) || !canAdd).accessibilityLabel("Add one basic \(name)")
+                                .accessibilityIdentifier("nativeDeck.basic.add.\(name)")
                         }.buttonStyle(.borderless)
                     }.padding(.top, 8).background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
                 }

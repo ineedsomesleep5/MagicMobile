@@ -44,8 +44,12 @@ enum GameBoardPreviewFixtures {
             players[index]["displayName"] = index == 0 ? "You" : ["", "Aurelia", "Kozilek", "Meren"][index]
             var zones = players[index]["zones"] as! [String: Any]
             var battlefield = zones["battlefield"] as! [[String: Any]]
-            for (number, creature) in creatures.prefix(crowded ? 6 : 2).enumerated() {
-                var permanent = card("\(seat)-preview-creature-\(number)", creature.0, "Creature", creature.1, "Development fixture permanent.", power: creature.2)
+            let previewCreatures = state == .combatArrows
+                ? Array(repeating: creatures, count: 3).flatMap { $0 }
+                : Array(creatures.prefix(crowded ? 6 : 2))
+            for (number, creature) in previewCreatures.enumerated() {
+                let power = creature.2 + (state == .combatArrows ? number / creatures.count : 0)
+                var permanent = card("\(seat)-preview-creature-\(number)", creature.0, "Creature", creature.1, "Development fixture permanent.", power: power)
                 permanent["tapped"] = number == 2; battlefield.append(permanent)
             }
             for number in 2...(crowded ? 5 : 2) {
@@ -57,8 +61,12 @@ enum GameBoardPreviewFixtures {
             if index == 0 {
                 battlefield.append(card("human-sol-ring", "Sol Ring", "Artifact", "{1}", "{T}: Add {C}{C}."))
                 var hand = zones["hand"] as! [[String: Any]]
-                for (number, creature) in creatures.prefix(5).enumerated() {
-                    hand.append(card("hand-preview-\(number)", creature.0, "Creature", creature.1, "Development inspection fixture.", power: creature.2))
+                let handCreatures = state == .handScrubber
+                    ? Array(repeating: Array(creatures.prefix(5)), count: 4).flatMap { $0 }
+                    : Array(creatures.prefix(5))
+                for (number, creature) in handCreatures.enumerated() {
+                    let id = state == .handScrubber && number == handCreatures.count - 1 ? "last-hand-card" : "hand-preview-\(number)"
+                    hand.append(card(id, creature.0, "Creature", creature.1, "Development inspection fixture.", power: creature.2))
                 }
                 zones["hand"] = hand
                 zones["exile"] = [card("human-exile-1", "Swords to Plowshares", "Instant", "{W}", "Exile target creature. Its controller gains life equal to its power.")]

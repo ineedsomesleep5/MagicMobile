@@ -25,7 +25,7 @@ final class OnDeviceSetupUITests: XCTestCase {
 
     override func tearDownWithError() throws {
         if let app {
-            let attachment = XCTAttachment(screenshot: app.screenshot())
+            let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             attachment.name = name
             attachment.lifetime = .keepAlways
             add(attachment)
@@ -147,6 +147,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         app.buttons["Done"].tap()
         let edit = app.buttons["Edit"]
         reveal(edit, scrollingUp: false); edit.tap()
+        selectDeckBuilderPane("Deck")
         let editorName = app.textFields["Deck name"]
         XCTAssertTrue(editorName.waitForExistence(timeout: 5))
         replaceText(editorName, with: editedName)
@@ -173,6 +174,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         capture("Included Commander deck grouped cards")
         let editCopy = app.buttons["Edit a local copy"]
         reveal(editCopy); editCopy.tap()
+        selectDeckBuilderPane("Deck")
         let name = app.textFields["Deck name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         replaceText(name, with: copyName)
@@ -218,6 +220,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         let draftName = uniqueDeckName("EmptyDraft")
         openLibrary()
         app.buttons["New deck"].tap()
+        selectDeckBuilderPane("Deck")
         let name = app.textFields["Deck name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         replaceText(name, with: draftName)
@@ -234,14 +237,17 @@ final class OnDeviceSetupUITests: XCTestCase {
         let draftName = uniqueDeckName("Catalogue")
         openLibrary()
         app.buttons["New deck"].tap()
+        selectDeckBuilderPane("Deck")
         let name = app.textFields["Deck name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         replaceText(name, with: draftName)
+        selectDeckBuilderPane("Collection")
         let search = app.textFields["Search exact card names"]
         reveal(search); replaceText(search, with: "Sol Ring\n")
         let add = app.buttons["Add Sol Ring to deck"]
         XCTAssertTrue(add.waitForExistence(timeout: 10))
         reveal(add); add.tap()
+        selectDeckBuilderPane("Deck")
         let increase = app.buttons["Add one Sol Ring"]
         reveal(increase); increase.tap()
         XCTAssertTrue(app.staticTexts["Quantity 2"].waitForExistence(timeout: 5))
@@ -250,6 +256,20 @@ final class OnDeviceSetupUITests: XCTestCase {
         app.terminate(); app.launch()
         openLibrary(); openSavedDeck(draftName)
         XCTAssertTrue(app.staticTexts["2 cards · Saved locally"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["nativeDeck.inspect.Sol Ring"].exists)
+        // Verify the persisted row itself, then save a decrement and relaunch again.
+        let edit = app.buttons["Edit"]
+        reveal(edit, scrollingUp: false); tapDiagnosed(edit)
+        selectDeckBuilderPane("Deck")
+        XCTAssertTrue(app.staticTexts["Quantity 2"].waitForExistence(timeout: 5))
+        let decrease = app.buttons["Remove one Sol Ring"]
+        reveal(decrease); tapDiagnosed(decrease)
+        XCTAssertTrue(app.staticTexts["Quantity 1"].waitForExistence(timeout: 5))
+        tapDiagnosed(app.navigationBars.buttons["nativeDeck.editor.save"])
+        waitFor(name, predicate: "exists == false")
+        app.terminate(); app.launch()
+        openLibrary(); openSavedDeck(draftName)
+        XCTAssertTrue(app.staticTexts["1 card · Saved locally"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["nativeDeck.inspect.Sol Ring"].exists)
     }
 
@@ -275,17 +295,23 @@ final class OnDeviceSetupUITests: XCTestCase {
     func testBasicLandToolsPersistAndStatisticsUseActualQuantities() {
         let draftName = uniqueDeckName("LandTools")
         openLibrary()
-        app.buttons["New deck"].tap()
+        tapDiagnosed(app.buttons["New deck"])
+        selectDeckBuilderPane("Deck")
         let name = app.textFields["Deck name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
-        replaceText(name, with: draftName)
+        replaceText(name, with: draftName + "\n")
         let tools = app.buttons["Basic lands · manual counts"]
         reveal(tools); tools.tap()
-        let addForest = app.buttons["Add one basic Forest"]
-        reveal(addForest)
+        let addForest = app.buttons["nativeDeck.basic.add.Forest"]
+        let rows = app.scrollViews["nativeDeck.editor.rows"]
+        for _ in 0..<5 {
+            if addForest.isHittable { break }
+            rows.swipeUp()
+        }
+        XCTAssertTrue(addForest.isHittable)
         waitFor(addForest, predicate: "enabled == true")
         addForest.tap(); addForest.tap()
-        let removeForest = app.buttons["Remove one basic Forest"]
+        let removeForest = app.buttons["nativeDeck.basic.remove.Forest"]
         removeForest.tap()
         capture("Deck builder basic-land controls")
         tapDiagnosed(app.navigationBars.buttons["nativeDeck.editor.save"])
@@ -309,8 +335,125 @@ final class OnDeviceSetupUITests: XCTestCase {
         app.buttons["Done"].tap()
     }
 
+    func testLandscapeDeckBuilderSplitAddRotateAndDonePersist() {
+        let draftName = uniqueDeckName("LandscapeSplit")
+        openLibrary()
+        tapDiagnosed(app.buttons["New deck"])
+        selectDeckBuilderPane("Deck")
+        let name = app.textFields["Deck name"]
+        replaceText(name, with: draftName + "\n")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let split = app.otherElements["nativeDeck.builder.split"]
+        XCTAssertTrue(split.waitForExistence(timeout: 10))
+        let search = app.textFields["Search exact card names"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        XCTAssertTrue(name.isHittable, "Deck editor remains visible beside collection.")
+        XCTAssertLessThan(search.frame.midX, name.frame.minX)
+        replaceText(search, with: "Sol Ring\n")
+        let add = app.buttons["nativeDeck.collection.add.Sol Ring"]
+        XCTAssertTrue(add.waitForExistence(timeout: 10))
+        let collection = app.scrollViews["nativeDeck.collection.scroll"]
+        XCTAssertTrue(collection.waitForExistence(timeout: 5))
+        for _ in 0..<5 {
+            if add.isHittable { break }
+            collection.swipeUp()
+        }
+        capture("Landscape collection before adding card")
+        tapDiagnosed(add)
+        let row = app.buttons["nativeDeck.inspect.Sol Ring"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(row.frame.minX, search.frame.midX)
+        XCTAssertTrue(app.staticTexts["Quantity 1"].exists)
+        let deckScroll = app.scrollViews["nativeDeck.editor.rows"]
+        let increase = app.buttons["Add one Sol Ring"]
+        for _ in 0..<4 {
+            if increase.isHittable { break }
+            deckScroll.swipeUp()
+        }
+        XCTAssertTrue(increase.isHittable)
+        tapDiagnosed(increase)
+        XCTAssertTrue(app.staticTexts["Quantity 2"].waitForExistence(timeout: 5))
+        let decrease = app.buttons["Remove one Sol Ring"]
+        XCTAssertTrue(decrease.isHittable)
+        tapDiagnosed(decrease)
+        XCTAssertTrue(app.staticTexts["Quantity 1"].waitForExistence(timeout: 5))
+        let done = app.buttons["nativeDeck.editor.done"]
+        XCTAssertTrue(done.isHittable, "Done stays visible outside the scrolling deck list.")
+        capture("Landscape collection and persistent deck pane")
+        XCUIDevice.shared.orientation = .portrait
+        selectDeckBuilderPane("Deck")
+        XCTAssertEqual(name.value as? String, draftName)
+        XCTAssertTrue(app.staticTexts["Quantity 1"].waitForExistence(timeout: 5))
+        tapDiagnosed(done)
+        waitFor(name, predicate: "exists == false")
+        app.terminate(); app.launch()
+        openLibrary(); openSavedDeck(draftName)
+        XCTAssertTrue(app.staticTexts["1 card · Saved locally"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["nativeDeck.inspect.Sol Ring"].exists)
+    }
+
+    func testLandscapePartnerDeckKeepsQuantityControlsReachable() {
+        let draftName = uniqueDeckName("PartnerLayout")
+        openLibrary()
+        app.buttons["Import"].tap()
+        replaceText(app.textFields["Deck name"], with: draftName)
+        let text = app.textViews["Deck list text"]
+        text.tap()
+        text.typeText("Commander\n1 Rograkh, Son of Rohgahh\n1 Ardenn, Intrepid Archaeologist\n\nDeck\n1 Sol Ring")
+        let submit = app.buttons["nativeDeck.import.submit"]
+        reveal(submit); tapDiagnosed(submit)
+        waitForImportDismissal(text)
+        openSavedDeck(draftName)
+        let edit = app.buttons["Edit"]
+        reveal(edit, scrollingUp: false); tapDiagnosed(edit)
+        selectDeckBuilderPane("Deck")
+        waitFor(app.textFields["Deck name"], predicate: "exists == true AND hittable == true")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let landscape = NSPredicate { _, _ in self.app.frame.width > self.app.frame.height }
+        let rotationResult = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: landscape, object: app)], timeout: 10)
+        if rotationResult != .completed {
+            captureTransitionDiagnostics("Editor rotation before restoring portrait", control: app.otherElements["nativeDeck.builder.split"])
+        }
+        XCTAssertEqual(rotationResult, .completed)
+        waitFor(app.otherElements["nativeDeck.builder.split"], predicate: "exists == true")
+        let rows = app.scrollViews["nativeDeck.editor.rows"]
+        let card = rows.buttons["nativeDeck.inspect.Sol Ring"]
+        let increase = rows.buttons["Add one Sol Ring"]
+        let decrease = rows.buttons["Remove one Sol Ring"]
+        for _ in 0..<10 {
+            if card.isHittable && increase.isHittable && rows.frame.contains(card.frame) && rows.frame.contains(increase.frame) { break }
+            rows.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+                .press(forDuration: 0.05, thenDragTo: rows.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)))
+        }
+        XCTAssertTrue(rows.frame.contains(card.frame), "A complete row must fit, not just its quantity buttons.")
+        XCTAssertTrue(rows.frame.contains(increase.frame))
+        XCTAssertTrue(increase.isHittable && decrease.isHittable)
+        tapDiagnosed(increase)
+        XCTAssertTrue(app.staticTexts["Quantity 2"].waitForExistence(timeout: 5))
+        tapDiagnosed(decrease)
+        XCTAssertTrue(app.buttons["nativeDeck.editor.done"].isHittable)
+        capture("Two commanders with complete editable landscape row")
+        tapDiagnosed(app.buttons["nativeDeck.editor.done"])
+        XCTAssertTrue(rows.waitForNonExistence(timeout: 5))
+    }
+
+    private func selectDeckBuilderPane(_ pane: String) {
+        let modes = app.segmentedControls["nativeDeck.builder.mode"]
+        XCTAssertTrue(modes.waitForExistence(timeout: 10))
+        let button = pane == "Deck"
+            ? modes.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Deck (")).firstMatch
+            : modes.buttons["Collection"]
+        XCTAssertTrue(button.waitForExistence(timeout: 5))
+        tapDiagnosed(button)
+        waitFor(button, predicate: "selected == true")
+        if pane == "Deck" { XCTAssertTrue(app.textFields["Deck name"].waitForExistence(timeout: 5)) }
+        else { XCTAssertTrue(app.textFields["Search exact card names"].waitForExistence(timeout: 5)) }
+    }
+
     private func capture(_ title: String) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = title
         attachment.lifetime = .keepAlways
         add(attachment)
@@ -327,8 +470,8 @@ final class OnDeviceSetupUITests: XCTestCase {
     private func openLibrary() {
         let decks = app.buttons["menu.decks"]
         XCTAssertTrue(decks.waitForExistence(timeout: 15))
-        reveal(decks); decks.tap()
-        XCTAssertTrue(app.buttons["Import"].waitForExistence(timeout: 5))
+        reveal(decks); tapDiagnosed(decks)
+        waitFor(app.buttons["Import"], predicate: "exists == true AND hittable == true")
     }
 
     private func uniqueDeckName(_ suffix: String) -> String {

@@ -130,4 +130,83 @@ final class GameLogPresentationTests: XCTestCase {
         XCTAssertEqual(entry.id, "seat-scoped-event")
         XCTAssertNil(entry.createdAt)
     }
+
+    func testValidatedCardReferenceSurvivesEmphasisAndRoutesOnlyGeneratedURL() throws {
+        let value = GameLogPresentation("casts <font object_id='\(id)'>Serra <i>Angel</i></font> [d80].")
+        let references = value.spans.compactMap(\.cardReference)
+        XCTAssertEqual(references.count, 2)
+        XCTAssertTrue(references.allSatisfy { $0.objectID == UUID(uuidString: id) && $0.name == "Serra Angel" })
+        let index = try XCTUnwrap(value.spans.firstIndex { $0.cardReference != nil })
+        let url = try XCTUnwrap(value.inspectionURL(at: index))
+        XCTAssertEqual(value.cardReference(for: url), references.first)
+        for invalid in ["https://example.com/\(index)", "magicmobile-log://inspect/\(index)?other=1",
+                        "magicmobile-log://inspect/999", "magicmobile-log://other/\(index)",
+                        "magicmobile-log://inspect/0"] {
+            XCTAssertNil(value.cardReference(for: try XCTUnwrap(URL(string: invalid))))
+        }
+    }
+
+    func testColorOnlyMalformedHiddenAndAttributeNamesNeverBecomeReferences() {
+        for source in ["<font color='#90EE90'>Card</font>",
+                       "<font object_id='invalid'>Card</font>",
+                       "<font object_id='\(id)' object_id='\(id)'>Card</font>",
+                       "<font object_id='\(id)'>unclosed",
+                       "<font object_id='\(id)'>Face-down card</font>",
+                       "<script><font object_id='\(id)'>Secret</font></script>",
+                       "<a href='magicmobile-log://inspect/0' title='Secret'>Card</a>"] {
+            XCTAssertTrue(GameLogPresentation(source).spans.allSatisfy { $0.cardReference == nil }, source)
+        }
+    }
+
+    func testRepeatedAndDifferentObjectIDsRemainDistinct() throws {
+        let other = "d80199fe-06bb-486b-b9f7-a3d4a685bdd6"
+        let value = GameLogPresentation("<font object_id='\(id)'>Army</font> blocks <font object_id='\(other)'>Army</font>")
+        XCTAssertEqual(value.spans.compactMap(\.cardReference).map(\.objectID), [UUID(uuidString: id)!, UUID(uuidString: other)!])
+        XCTAssertEqual(value.plainText, "Army blocks Army")
+    }
+
+    func testRulesCleanMarkupEntitiesSelfReferenceAndManaWithoutLookup() {
+        let source = "<b>{this}</b> gets +1/+1.<br><i>Pay <img alt='{W}' src='secret'> &amp; {T}.</i> [choice]"
+        XCTAssertEqual(GameRulesPresentation(source: source, cardName: "Army").plainText,
+                       "Army gets +1/+1.\nPay {W} & {T}. [choice]")
+        XCTAssertEqual(GameRulesPresentation(source: "&amp;lt;b&amp;gt;Flying&amp;lt;/b&amp;gt;").plainText, "Flying")
+        XCTAssertEqual(GameRulesPresentation(source: "{this} attacks").plainText, "This card attacks")
+        XCTAssertEqual(GameRulesPresentation(source: "{this} attacks", cardName: "A&B").plainText, "A&B attacks")
+    }
+
+    func testRulesHiddenAndNestedHiddenMarkupCannotDiscloseDetails() {
+        XCTAssertEqual(GameRulesPresentation(source: "Secret rules", cardName: "Secret name", isHidden: true).plainText, "")
+        XCTAssertEqual(GameRulesPresentation(source: "<object><svg>secret</object>Flying").plainText, "Flying")
+        XCTAssertEqual(GameRulesPresentation(source: "&lt;script&gt;secret&lt;/script&gt;Flying").plainText, "Flying")
+        XCTAssertEqual(GameRulesPresentation(source: "<img alt='Secret name' src='secret'>Flying").plainText, "Flying")
+    }
+
+    func testRulesNormalizationLimitFailsClosedForDeeplyEncodedHiddenContent() {
+        var source = "<script>private payload</script>Flying"
+        for _ in 0...GameRulesPresentation.maximumNormalizationPasses {
+            source = source.replacingOccurrences(of: "&", with: "&amp;")
+                .replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;")
+        }
+        XCTAssertEqual(GameRulesPresentation(source: source).plainText, GameRulesPresentation.unavailableText)
+        XCTAssertEqual(GameRulesPresentation(source: source, isHidden: true).plainText, "")
+        // Normal two-level engine escaping still works below the bound.
+        XCTAssertEqual(GameRulesPresentation(source: "&amp;lt;i&amp;gt;Flying&amp;lt;/i&amp;gt;").plainText, "Flying")
+    }
+
+    func testRulesInputAndSelfReferenceExpansionAreByteBounded() {
+        let limit = GameRulesPresentation.maximumBytes
+        let exact = String(repeating: "A", count: limit)
+        XCTAssertEqual(GameRulesPresentation(source: exact).plainText, exact)
+        XCTAssertEqual(GameRulesPresentation(source: exact + "A").plainText, GameRulesPresentation.unavailableText)
+        XCTAssertEqual(GameRulesPresentation(source: String(repeating: "🃏", count: limit / 4 + 1)).plainText,
+                       GameRulesPresentation.unavailableText)
+        XCTAssertEqual(GameRulesPresentation(source: String(repeating: "{this}", count: 100),
+                                             cardName: String(repeating: "N", count: 512)).plainText,
+                       GameRulesPresentation.unavailableText)
+        XCTAssertEqual(GameRulesPresentation(source: "{this} attacks", cardName: String(repeating: "N", count: 513)).plainText,
+                       "This card attacks")
+        XCTAssertEqual(GameRulesPresentation(source: "{this} attacks", cardName: "&lt;b&gt;Army&lt;/b&gt;").plainText,
+                       "Army attacks")
+    }
 }

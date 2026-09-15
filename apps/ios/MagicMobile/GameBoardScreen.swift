@@ -23,6 +23,7 @@ enum GameBoardDesignPreviewState: String, CaseIterable, Identifiable {
     case emptyLibraryChoice = "empty-library-choice"
     case mixedCardChoice = "mixed-card-choice"
     case handDrag = "hand-drag"
+    case handScrubber = "hand-scrubber"
     case zoneInspection = "zone-inspection"
     case largeText = "large-text"
 

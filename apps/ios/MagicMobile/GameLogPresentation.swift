@@ -6,11 +6,18 @@ import SwiftUI
 struct GameLogPresentation: Equatable {
     enum Role: Equatable { case action, player, card }
 
+    /// Identity and label already disclosed by this log entry. Not lookup authorization.
+    struct CardReference: Equatable, Hashable {
+        let objectID: UUID
+        let name: String
+    }
+
     struct Span: Equatable {
         let text: String
         let role: Role
         let bold: Bool
         let italic: Bool
+        var cardReference: CardReference? = nil
     }
 
     let spans: [Span]
@@ -119,6 +126,11 @@ struct GameLogPresentation: Equatable {
                 if let id = frame.objectID, !label.isEmpty,
                    label.contains(where: { $0.isLetter }), !label.hasPrefix("[") {
                     pendingCardID = String(id.uuidString.prefix(3))
+                    if !["hidden card", "face-down card", "face down card", "card details unavailable"].contains(label.lowercased()) {
+                        for position in frame.start..<result.count where result[position].cardReference == nil {
+                            result[position].cardReference = CardReference(objectID: id, name: label)
+                        }
+                    }
                 }
             } else if !token.hasSuffix("/>") {
                 let attrs = Self.readAttributes(token)
@@ -136,6 +148,18 @@ struct GameLogPresentation: Equatable {
         }
         append(textBuffer + ns.substring(from: cursor))
         spans = result
+    }
+
+    /// URLs are generated locally per span; never trust an href from the message.
+    func inspectionURL(at index: Int) -> URL? {
+        guard spans.indices.contains(index), spans[index].cardReference != nil else { return nil }
+        return URL(string: "magicmobile-log://inspect/\(index)")
+    }
+
+    func cardReference(for url: URL) -> CardReference? {
+        guard let index = Int(url.lastPathComponent), spans.indices.contains(index),
+              inspectionURL(at: index) == url else { return nil }
+        return spans[index].cardReference
     }
 
     private static func readAttributes(_ tag: String) -> [String: String] {
@@ -173,6 +197,7 @@ struct GameLogPresentation: Equatable {
 struct GameLogText: View {
     let message: String
     var usesDarkBackground = false
+    var onInspect: ((GameLogPresentation.CardReference) -> Void)? = nil
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
@@ -183,14 +208,73 @@ struct GameLogText: View {
         let foreground: Color = usesDarkBackground ? .white : .primary
         let player = dark ? Color(red: 0.45, green: 0.86, blue: 0.82) : Color(red: 0, green: 0.34, blue: 0.32)
         let card = dark ? Color(red: 1, green: 0.84, blue: 0.46) : Color(red: 0.40, green: 0.25, blue: 0.04)
-        let text = presentation.spans.reduce(Text(verbatim: "")) { partial, span in
+        let text = presentation.spans.enumerated().reduce(Text(verbatim: "")) { partial, item in
+            let (index, span) = item
             let color = contrast == .increased || differentiateWithoutColor ? foreground
                 : (span.role == .player ? player : span.role == .card ? card : foreground)
-            var fragment = Text(verbatim: span.text).foregroundColor(color)
+            var attributed = AttributedString(span.text)
+            if onInspect != nil { attributed.link = presentation.inspectionURL(at: index) }
+            var fragment = Text(attributed).foregroundColor(color)
             if span.bold || span.role == .player { fragment = fragment.bold() }
             if span.italic || span.role == .card { fragment = fragment.italic() }
             return partial + fragment
         }
-        text.accessibilityLabel(Text(verbatim: presentation.plainText))
+        if let onInspect {
+            text.environment(\.openURL, OpenURLAction { url in
+                guard let reference = presentation.cardReference(for: url) else { return .discarded }
+                onInspect(reference)
+                return .handled
+            })
+        } else {
+            text.accessibilityLabel(Text(verbatim: presentation.plainText))
+        }
+    }
+}
+
+/// Rules use the same inert tokenizer, but decode escaped markup to plain native
+/// text as well. Self references are substituted only after markup is removed.
+struct GameRulesPresentation: Equatable {
+    static let maximumBytes = 32 * 1024
+    static let maximumNormalizationPasses = 8
+    static let unavailableText = "Rules unavailable."
+    let plainText: String
+
+    init(source: String, cardName: String? = nil, isHidden: Bool = false) {
+        guard !isHidden else { plainText = ""; return }
+        guard let text = Self.normalized(source, maximumBytes: Self.maximumBytes) else {
+            plainText = Self.unavailableText; return
+        }
+        let name = cardName.flatMap { Self.normalized($0, maximumBytes: 512) }
+            .flatMap { $0.isEmpty ? nil : $0 } ?? "This card"
+        let replacements = text.components(separatedBy: "{this}").count - 1
+        // Bound expansion before allocating repeated self-reference replacements.
+        guard text.utf8.count + replacements * (name.utf8.count - 6) <= Self.maximumBytes else {
+            plainText = Self.unavailableText; return
+        }
+        plainText = text.replacingOccurrences(of: "{this}", with: name)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func normalized(_ source: String, maximumBytes: Int) -> String? {
+        guard source.utf8.prefix(maximumBytes + 1).count <= maximumBytes else { return nil }
+        var text = source
+        for _ in 0..<maximumNormalizationPasses {
+            let next = GameLogPresentation(text).plainText
+            guard next.utf8.prefix(maximumBytes + 1).count <= maximumBytes else { return nil }
+            if next == text { return next }
+            text = next
+        }
+        // Never return partially decoded tags or hidden-region contents at the limit.
+        return nil
+    }
+}
+
+struct GameRulesText: View {
+    let source: String
+    var cardName: String? = nil
+    var isHidden = false
+
+    var body: some View {
+        Text(verbatim: GameRulesPresentation(source: source, cardName: cardName, isHidden: isHidden).plainText)
     }
 }

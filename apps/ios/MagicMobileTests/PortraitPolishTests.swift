@@ -27,7 +27,7 @@ final class PortraitPolishTests: XCTestCase {
                     safeArea: EdgeInsets(top: 20, leading: 0, bottom: 0, trailing: 0), paymentActive: payment)
                 metrics.largeText = large
                 XCTAssertTrue(metrics.usesCompactLanes)
-                XCTAssertGreaterThanOrEqual(metrics.handRect.height, metrics.handCardHeight + 30)
+                XCTAssertGreaterThanOrEqual(metrics.handRect.height, ArenaHandLayout.restingHeight(cardHeight: metrics.handCardHeight))
                 XCTAssertTrue(metrics.safeFrame.contains(metrics.handRect))
                 XCTAssertFalse(metrics.playerBattlefieldRect.intersects(metrics.playerLandsRect))
                 XCTAssertLessThan(metrics.playerLandsRect.maxY, metrics.handRect.minY)
@@ -103,7 +103,7 @@ final class PortraitPolishTests: XCTestCase {
             XCTAssertLessThan(metrics.playerBattlefieldRect.maxY, metrics.handRect.minY)
             XCTAssertLessThanOrEqual(metrics.permanentCardHeight + 12, metrics.playerBattlefieldRect.height)
             XCTAssertLessThanOrEqual(metrics.landCardHeight + 12, metrics.playerLandsRect.height)
-            XCTAssertGreaterThanOrEqual(metrics.handRect.height, metrics.handCardHeight + 30)
+            XCTAssertGreaterThanOrEqual(metrics.handRect.height, ArenaHandLayout.restingHeight(cardHeight: metrics.handCardHeight))
             XCTAssertTrue(metrics.safeFrame.contains(metrics.handRect))
         }
     }
@@ -137,9 +137,8 @@ final class PortraitPolishTests: XCTestCase {
 
     func testHandBudgetFitsActualCardLiftAndScrollScrubber() {
         for metrics in layouts {
-            // PortraitHandRow uses cardHeight + 18, then 4 spacing and an 8pt scrubber.
-            // Rect separation alone cannot detect unclipped content overflowing its frame.
-            XCTAssertGreaterThanOrEqual(metrics.handRect.height, metrics.handCardHeight + 30,
+            // Resting hand is tucked; expansion grows upward without moving controls.
+            XCTAssertGreaterThanOrEqual(metrics.handRect.height, ArenaHandLayout.restingHeight(cardHeight: metrics.handCardHeight),
                                         "\(metrics.size), top inset \(metrics.safeArea.top)")
         }
     }
@@ -148,16 +147,16 @@ final class PortraitPolishTests: XCTestCase {
         let metrics = PortraitBattlefieldLayoutMetrics(size: CGSize(width: 390, height: 844), safeArea: EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0), paymentActive: true)
         XCTAssertGreaterThanOrEqual(metrics.centerStripRect.height, 56)
         XCTAssertLessThan(metrics.centerStripRect.maxY, metrics.playerBattlefieldRect.minY)
-        XCTAssertGreaterThanOrEqual(metrics.handRect.height, metrics.handCardHeight + 30)
+        XCTAssertGreaterThanOrEqual(metrics.handRect.height, ArenaHandLayout.restingHeight(cardHeight: metrics.handCardHeight))
     }
 
-    func testPortraitCardsPreservePrintedAspectRatio() {
+    func testPrintedHandAndCompactBattlefieldHaveDistinctAspectRatios() {
         for metrics in layouts {
-            for (width, height) in [(metrics.handCardWidth, metrics.handCardHeight),
-                                    (metrics.permanentCardWidth, metrics.permanentCardHeight),
+            XCTAssertEqual(metrics.handCardHeight / metrics.handCardWidth, 88.0 / 63.0, accuracy: 0.0001)
+            for (width, height) in [(metrics.permanentCardWidth, metrics.permanentCardHeight),
                                     (metrics.landCardWidth, metrics.landCardHeight)] {
                 XCTAssertGreaterThan(width, 0)
-                XCTAssertEqual(height / width, 88.0 / 63.0, accuracy: 0.0001)
+                XCTAssertEqual(height / width, 1.08, accuracy: 0.0001)
             }
         }
     }

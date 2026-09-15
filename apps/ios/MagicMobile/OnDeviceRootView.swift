@@ -77,7 +77,7 @@ struct OnDeviceRootView: View {
         .sheet(isPresented: $showAppearance) { AppearanceSettingsView(portraitModeEnabled: $portraitModeEnabled) }
         .overlay(alignment: .top) { recoveryBanner }
         .environment(\.nativeTurnControl, turnControl)
-        .sheet(isPresented: $showImport) {
+        .fullScreenCover(isPresented: $showImport) {
             NativeDeckLibraryView(library: library, selectedDeckID: $selectedDeckID)
         }
         .sheet(isPresented: $showDiagnostics) { diagnosticSheet }
