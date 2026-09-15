@@ -22,6 +22,8 @@ struct OnDeviceRootView: View {
     @AppStorage(OnDeviceSetupPreferences.aiCountKey) private var opponentCount = 1
     @AppStorage(OnDeviceSetupPreferences.humanCountKey) private var playerCount = 2
     @AppStorage(OnDeviceSetupPreferences.friendsKey) private var playWithFriends = false
+    @State private var showSetup = false
+    @State private var showAppearance = false
     @State private var showImport = false
     @State private var confirmLeave = false
     @State private var showDiagnostics = false
@@ -62,13 +64,21 @@ struct OnDeviceRootView: View {
                 game
             } else {
                 MenuBackgroundSurface(portraitModeEnabled: portraitModeEnabled).ignoresSafeArea()
-                setupContent
+                if showSetup || setup.needsLeave {
+                    setupContent
+                } else {
+                    TavernMainMenu(deckName: selectedDeck?.name ?? "Choose a deck", playerName: playerDisplayName,
+                                   play: { showSetup = true }, decks: { showImport = true },
+                                   settings: { showAppearance = true })
+                }
             }
         }
+        .preferredColorScheme(.dark)
+        .sheet(isPresented: $showAppearance) { AppearanceSettingsView(portraitModeEnabled: $portraitModeEnabled) }
         .overlay(alignment: .top) { recoveryBanner }
         .environment(\.nativeTurnControl, turnControl)
         .sheet(isPresented: $showImport) {
-            OnDeviceTextImportView(library: library, selectedDeckID: $selectedDeckID)
+            NativeDeckLibraryView(library: library, selectedDeckID: $selectedDeckID)
         }
         .sheet(isPresented: $showDiagnostics) { diagnosticSheet }
         .background {
@@ -183,13 +193,20 @@ struct OnDeviceRootView: View {
     private var setupContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("MagicMobile").font(.largeTitle.bold()).foregroundStyle(MagicPalette.parchment)
+                HStack {
+                    Button { showSetup = false } label: { Label("Main menu", systemImage: "chevron.left") }
+                        .disabled(setup.isBusy || setup.needsLeave)
+                    Spacer()
+                    Button { showAppearance = true } label: { Image(systemName: "gearshape.fill") }
+                        .accessibilityLabel("Settings")
+                }
+                Text("Gather your table").font(.largeTitle.bold()).foregroundStyle(MagicPalette.parchment)
                 VStack(alignment: .leading, spacing: 12) {
                     TextField("Player name", text: $playerDisplayName)
                         .textContentType(.nickname).autocorrectionDisabled()
                         .textFieldStyle(GameTextFieldStyle()).accessibilityIdentifier("ondevice.playerName")
                     Text("Choose a name with 1–24 characters.").font(.caption).foregroundStyle(.secondary)
-                    Toggle("Portrait layout", isOn: $portraitModeEnabled)
+                    PortraitModeToggle(isOn: $portraitModeEnabled)
                     Picker("Your deck", selection: $selectedDeckID) {
                         Section("Included precons") {
                             ForEach(PreconCatalog.all) { Text($0.name).tag("precon:\($0.id)") }
@@ -198,7 +215,7 @@ struct OnDeviceRootView: View {
                             ForEach(library.decks) { Text($0.name).tag("local:\($0.id)") }
                         }
                     }
-                    Button { showImport = true } label: { Label("Import deck text", systemImage: "doc.badge.plus") }
+                    Button { showImport = true } label: { Label("Browse, import or edit decks", systemImage: "rectangle.stack.badge.plus") }
                         .buttonStyle(MagicSecondaryButtonStyle(fillsWidth: true, compact: true))
                 }
                 .magicPanel(.leather, prominence: .elevated, cornerRadius: 14, padding: 16)

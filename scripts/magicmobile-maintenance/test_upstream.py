@@ -148,9 +148,15 @@ class MaintenanceTests(unittest.TestCase):
         self.put(generated / 'catalogue.jsonl', '{"name":"fixture","setCode":"A","collectorNumber":"2"}\n')
         self.put(generated / 'registry-report.json', json.dumps({'registryHash': 'b' * 64}))
         self.put(generated / 'commander-set-codes.json', json.dumps({'upstreamCommit': self.new, 'eternalLegalSetCodes': ['A']}))
+        metadata = generated.parent / 'engine/mage/mobile/card-metadata.jsonl.gz'
+        self.put(metadata, 'fixture metadata bytes')
         review = tool.generated_review(self.dest)
+        self.assertEqual(review['hashes']['METADATA_SHA256'], tool.digest(metadata.read_bytes()))
         approval = tool.digest(tool.encoded(review))
         with self.assertRaises(ValueError): tool.accept_generated(self.dest, 'no')
+        self.put(metadata, 'changed metadata bytes')
+        with self.assertRaises(ValueError): tool.accept_generated(self.dest, approval)
+        self.put(metadata, 'fixture metadata bytes')
         self.put(generated / 'catalogue.jsonl', '{"name":"changed","setCode":"A","collectorNumber":"2"}\n')
         with self.assertRaises(ValueError): tool.accept_generated(self.dest, approval)
         review = tool.generated_review(self.dest)
@@ -215,6 +221,7 @@ class MaintenanceTests(unittest.TestCase):
             commands.append(command)
             if len(commands) == 1:
                 self.put(generated / 'catalogue.jsonl', '{"name":"fixture","setCode":"A","collectorNumber":"2"}\n')
+                self.put(generated.parent / 'engine/mage/mobile/card-metadata.jsonl.gz', 'fixture metadata bytes')
                 self.put(generated / 'registry-report.json', json.dumps({'registryHash': 'b' * 64}))
                 self.put(generated / 'commander-set-codes.json', json.dumps({'upstreamCommit': self.new, 'eternalLegalSetCodes': ['A']}))
         with patch.object(tool.subprocess, 'run', side_effect=build):
@@ -255,6 +262,7 @@ class MaintenanceTests(unittest.TestCase):
         rows = [{'name': name, 'setCode': code, 'collectorNumber': number} for name, code, number in
                 [('Now available', 'A', '2'), ('Excluded', 'B', '3')]]
         self.put(generated / 'catalogue.jsonl', '\n'.join(json.dumps(v) for v in rows))
+        self.put(generated.parent / 'engine/mage/mobile/card-metadata.jsonl.gz', 'fixture metadata bytes')
         self.put(generated / 'registry-report.json', json.dumps({'registryHash': 'b' * 64}))
         self.put(generated / 'commander-set-codes.json', json.dumps({'upstreamCommit': self.new, 'eternalLegalSetCodes': ['A']}))
         review = tool.generated_review(self.dest)

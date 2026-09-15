@@ -7,6 +7,7 @@ import mage.cards.MobileCardFactories;
 import mage.constants.*;
 import mage.game.*;
 import mage.game.events.PlayerQueryEvent;
+import mage.game.events.TableEvent;
 import mage.players.Player;
 import java.util.*;
 import java.util.concurrent.*;
@@ -34,6 +35,18 @@ public final class XmageEngine implements EnginePort {
             this.cancellation=cancellation;((MobileCommanderGame)game).setCancellation(cancellation);
             mailbox=new MatchMailbox(game.getId().toString(),seats.keySet());
             worker=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"GAME mobile-"+game.getId());t.setDaemon(true);return t;});
+            game.addTableEventListener(this::tableEvent);
+        }
+        void tableEvent(TableEvent event) {
+            // Pinned GameImpl.informPlayers/fireStatusEvent and GameController broadcast
+            // INFO/STATUS publicly. Other table events can carry private cards or errors.
+            if(event.getGame()!=game || (event.getEventType()!=TableEvent.EventType.INFO
+                    && event.getEventType()!=TableEvent.EventType.STATUS)) return;
+            String message=event.getMessage();
+            if(message==null || message.isEmpty()) return;
+            cancellation.runIfOpen(()->{
+                for(String seat:seats.keySet()) mailbox.inform(seat,Json.map("message",message));
+            });
         }
         String seatFor(UUID engineId) {
             for(Map.Entry<String,MobileHumanPlayer> s:seats.entrySet()) if(s.getValue().getId().equals(engineId))return s.getKey();

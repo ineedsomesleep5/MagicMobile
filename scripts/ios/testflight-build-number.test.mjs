@@ -67,6 +67,18 @@ test("existing uploaded numbers and future prefixes are not reused", { skip: pro
   assert.equal(f.prepare().lastPreparedBuild, "2026091308");
 });
 
+test("a directly installed build is not reused or mislabeled as uploaded", { skip: process.platform !== "darwin" }, t => {
+  const f = fixture(t);
+  const installed = f.prepare();
+  installed.lastInstalledBuild = installed.lastPreparedBuild;
+  writeFileSync(f.ledger, JSON.stringify(installed));
+  const next = f.prepare();
+  assert.equal(next.lastPreparedBuild, "2026091202");
+  assert.equal(next.lastInstalledBuild, "2026091201");
+  assert.equal(next.lastUploadedBuild, undefined);
+  assert.deepEqual(next.uploads, []);
+});
+
 test("unknown references and ambiguous YAML fail before writes", { skip: process.platform !== "darwin" }, t => {
   const f = fixture(t);
   const original = readFileSync(f.project, "utf8");

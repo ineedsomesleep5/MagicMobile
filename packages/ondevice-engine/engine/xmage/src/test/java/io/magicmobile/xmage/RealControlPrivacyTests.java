@@ -8,6 +8,7 @@ import mage.cards.g.GrizzlyBears;
 import mage.constants.*;
 import mage.game.Game;
 import mage.game.events.PlayerQueryEvent;
+import mage.game.events.TableEvent;
 import mage.game.permanent.PermanentCard;
 import mage.game.turn.PreCombatMainPhase;
 import mage.game.turn.PreCombatMainStep;
@@ -40,8 +41,78 @@ public final class RealControlPrivacyTests {
         run("replaced controller cannot retain hand disclosure",RealControlPrivacyTests::replacedController);
         run("controlled views expose permitted hidden information only while authorized",RealControlPrivacyTests::hiddenZones);
         run("unknown and chained control fail explicitly",RealControlPrivacyTests::invalidControl);
+        run("real public INFO/STATUS preserve private notices and pending prompts",RealControlPrivacyTests::publicMessages);
+        run("public history is bounded and teardown rejects late messages",RealControlPrivacyTests::publicMessageLifecycle);
         System.out.println("RealControlPrivacyTests: "+passed+" passed, "+failed+" failed");
         if(failed!=0) throw new AssertionError("Real control/privacy verification failed");
+    }
+
+    private static void publicMessages() throws Exception {
+        try(Rig r=new Rig()) {
+            r.query(PlayerQueryEvent.amountEvent(r.player("a").getId(),"Private decision",0,9));
+            Map<String,Object> prompt=r.prompt("a");
+            long before=r.mailbox.revision();
+            // Real pinned GameImpl event sources, not projected/synthetic game log entries.
+            r.game.informPlayers("Public action <b>exact upstream text</b>");
+            r.game.fireStatusEvent("Public turn status",false,true);
+            r.game.informPlayer(r.player("b"),"Private notice for b");
+            for(String seat:r.seats.keySet()) {
+                List<String> expected=new ArrayList<>(List.of("Public action <b>exact upstream text</b>","Public turn status"));
+                if(seat.equals("b")) expected.add("Private notice for b");
+                eq(messages(r.mailbox.poll(seat,before)),expected);
+            }
+            eq(r.prompt("a"),prompt);eq(r.prompt("b"),null);eq(r.prompt("c"),null);
+            long unchanged=r.mailbox.revision();
+            r.game.informPlayers("");
+            r.game.fireStatusEvent(null,false,false);
+            r.game.fireUpdatePlayersEvent();
+            // Explicitly exercise every rejected event type: never serialize its payload.
+            Method listener=r.running.getClass().getDeclaredMethod("tableEvent",TableEvent.class);
+            listener.setAccessible(true);
+            for(TableEvent.EventType type:TableEvent.EventType.values()) {
+                if(type!=TableEvent.EventType.INFO && type!=TableEvent.EventType.STATUS)
+                    listener.invoke(r.running,new TableEvent(type,"PRIVATE ERROR/CARD PAYLOAD",r.game));
+            }
+            listener.invoke(r.running,new TableEvent(TableEvent.EventType.INFO,"Foreign game",new MobileCommanderGame()));
+            eq(r.mailbox.revision(),unchanged);
+        }
+    }
+
+    private static void publicMessageLifecycle() throws Exception {
+        try(Rig r=new Rig()) {
+            r.query(PlayerQueryEvent.amountEvent(r.player("a").getId(),"Still pending",0,9));
+            Map<String,Object> prompt=r.prompt("a");
+            for(int i=0;i<140;i++) r.game.informPlayers("Public "+i);
+            for(String seat:r.seats.keySet()) {
+                Map<String,Object> poll=r.mailbox.poll(seat,0);
+                List<String> messages=messages(poll);
+                eq(messages.size(),128);eq(messages.get(0),"Public 12");eq(messages.get(127),"Public 139");
+                eq(poll.get("resyncRequired"),true);
+            }
+            eq(r.prompt("a"),prompt);
+            check(Boolean.TRUE.equals(r.close.invoke(r.running)),"running closes without a game worker");
+            long closedRevision=r.mailbox.revision();
+            r.game.informPlayers("Late public action");
+            r.game.fireStatusEvent("Late public status",true,true);
+            r.game.informPlayer(r.player("b"),"Late private notice");
+            eq(r.mailbox.revision(),closedRevision);
+            for(String seat:r.seats.keySet()) {
+                eq(messages(r.mailbox.poll(seat,closedRevision)),List.of());
+                eq(r.prompt(seat),null);
+            }
+        }
+    }
+
+    private static List<String> messages(Map<String,Object> poll) {
+        List<String> result=new ArrayList<>();
+        for(Object value:Json.array(poll.get("events"))) {
+            Map<String,Object> event=Json.object(value);
+            if(!"message".equals(event.get("kind"))) continue;
+            Map<String,Object> body=Json.object(event.get("body"));
+            eq(body.keySet(),Set.of("message"));
+            result.add(Json.requiredString(body,"message"));
+        }
+        return result;
     }
 
     private static void routing() throws Exception {

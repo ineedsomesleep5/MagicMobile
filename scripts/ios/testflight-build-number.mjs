@@ -79,7 +79,7 @@ function todayStamp() {
 }
 
 function numericBuilds(ledger, currentBuild) {
-  return [currentBuild, ledger.lastPreparedBuild, ledger.lastUploadedBuild, ...(ledger.uploads ?? []).map((entry) => entry.build)]
+  return [currentBuild, ledger.lastPreparedBuild, ledger.lastUploadedBuild, ledger.lastInstalledBuild, ...(ledger.uploads ?? []).map((entry) => entry.build)]
     .filter((build) => /^\d{10}$/.test(String(build)))
     .map((build) => String(build));
 }
@@ -87,7 +87,8 @@ function numericBuilds(ledger, currentBuild) {
 function nextBuildNumber(ledger, currentBuild, datePrefix) {
   if (/^\d{10}$/.test(String(currentBuild))
       && currentBuild === ledger.lastPreparedBuild
-      && currentBuild !== ledger.lastUploadedBuild) {
+      && currentBuild !== ledger.lastUploadedBuild
+      && currentBuild !== ledger.lastInstalledBuild) {
     return currentBuild;
   }
   const builds = numericBuilds(ledger, currentBuild);

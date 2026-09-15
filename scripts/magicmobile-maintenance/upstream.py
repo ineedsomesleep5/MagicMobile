@@ -24,9 +24,10 @@ IDENTITIES = (
     'engine/tools/CardMetadataExporter.java',
     'scripts/export_ios_catalogue.py',
 )
-GENERATED = {'CATALOGUE_SHA256': 'catalogue.jsonl',
-             'REPORT_SHA256': 'registry-report.json',
-             'SET_ELIGIBILITY_SHA256': 'commander-set-codes.json'}
+GENERATED = {'CATALOGUE_SHA256': 'generated/catalogue.jsonl',
+             'REPORT_SHA256': 'generated/registry-report.json',
+             'SET_ELIGIBILITY_SHA256': 'generated/commander-set-codes.json',
+             'METADATA_SHA256': 'engine/mage/mobile/card-metadata.jsonl.gz'}
 
 
 def encoded(value):
@@ -273,7 +274,7 @@ def generated_review(candidate):
         if digest((package / '.upstream/mage' / path).read_bytes()) != expected:
             raise ValueError('Prepared source changed: ' + path)
     generated = package / 'build/generated'
-    hashes = {key: digest((generated / name).read_bytes()) for key, name in GENERATED.items()}
+    hashes = {key: digest((package / 'build' / name).read_bytes()) for key, name in GENERATED.items()}
     registry = json.loads((generated / 'registry-report.json').read_bytes())
     eligibility = json.loads((generated / 'commander-set-codes.json').read_bytes())
     if eligibility['upstreamCommit'] != state['candidate']:

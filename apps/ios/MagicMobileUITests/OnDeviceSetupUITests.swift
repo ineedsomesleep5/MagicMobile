@@ -4,26 +4,21 @@ import XCTest
 @MainActor
 final class OnDeviceSetupUITests: XCTestCase {
     private var app: XCUIApplication!
+    private var createdDeckNames: [String] = []
 
     override func setUpWithError() throws {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
         app = XCUIApplication()
-        // Argument-domain preferences override only this launch; never reset stored user data.
+        // A private preference suite stays writable and survives this test's relaunches.
+        // Argument-domain game settings would override AppStorage writes during interaction.
+        app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
         app.launchArguments = [
-            "-magicmobile.playerDisplayName", "",
-            "-magicmobile.portraitModeEnabled", "YES",
-            "-magicmobile.ondevice.selectedDeckID", "precon:token-triumph",
-            "-magicmobile.ondevice.aiPreconID", "grave-danger",
-            "-magicmobile.ondevice.aiOpponentCount", "1",
-            "-magicmobile.ondevice.humanPlayerCount", "2",
-            "-magicmobile.ondevice.playWithFriends", "NO",
             "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
             "--ondevice-setup-ui-test"
         ]
         app.launch()
-        XCTAssertTrue(app.textFields["ondevice.playerName"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.staticTexts["Choose your deck and players."].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 15))
     }
 
     override func tearDownWithError() throws {
@@ -32,12 +27,14 @@ final class OnDeviceSetupUITests: XCTestCase {
             attachment.name = name
             attachment.lifetime = .keepAlways
             add(attachment)
+            cleanupCreatedDecks()
             app.terminate()
         }
         app = nil
     }
 
     func testEmptyNameDisablesStartAndEnteringNameEnablesIt() {
+        openSetup()
         let start = app.buttons["Start game"]
         reveal(start)
         XCTAssertFalse(start.isEnabled)
@@ -50,7 +47,19 @@ final class OnDeviceSetupUITests: XCTestCase {
         waitFor(start, predicate: "enabled == true")
     }
 
+    func testPlayButtonWholeLabelRoutesToSetup() {
+        for horizontal in [0.15, 0.5, 0.85] {
+            let play = app.buttons["menu.play"]
+            XCTAssertTrue(play.waitForExistence(timeout: 10))
+            reveal(play)
+            play.coordinate(withNormalizedOffset: CGVector(dx: horizontal, dy: 0.5)).tap()
+            XCTAssertTrue(app.textFields["ondevice.playerName"].waitForExistence(timeout: 5))
+            app.buttons["Main menu"].tap()
+        }
+    }
+
     func testGameCenterSettingsAllowTwoThroughFourHumansWithoutSigningIn() {
+        openSetup()
         let gameCenter = app.segmentedControls.buttons["Game Center"]
         reveal(gameCenter)
         gameCenter.tap()
@@ -76,10 +85,11 @@ final class OnDeviceSetupUITests: XCTestCase {
     }
 
     func testInvalidImportRetainsDraftUntilCancelled() {
-        app.buttons["Import deck text"].tap()
+        openLibrary()
+        app.buttons["Import"].tap()
         let editor = app.textViews["Deck list text"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        let submit = app.buttons["Import and use deck"]
+        let submit = app.buttons["Import and select"]
         XCTAssertFalse(submit.isEnabled)
         let deckName = app.textFields["Deck name"]
         let originalName = deckName.value as? String
@@ -101,11 +111,113 @@ final class OnDeviceSetupUITests: XCTestCase {
         add(attachment)
         app.buttons["Cancel"].tap()
         waitFor(editor, predicate: "exists == false")
-        XCTAssertTrue(app.textFields["ondevice.playerName"].exists)
-        XCTAssertTrue(app.buttons["Import deck text"].exists)
+        XCTAssertTrue(app.buttons["Import"].waitForExistence(timeout: 5))
+    }
+
+    func testPasteValidDraftInspectEditSaveAndRelaunch() {
+        let originalName = uniqueDeckName("Imported")
+        let editedName = uniqueDeckName("Renamed")
+        openLibrary()
+        app.buttons["Import"].tap()
+        let name = app.textFields["Deck name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        replaceText(name, with: originalName)
+        let text = app.textViews["Deck list text"]
+        text.tap()
+        text.typeText("Commander\n1 Emmara, Soul of the Accord\n\nDeck\n1 Forest")
+        let submit = app.buttons["Import and select"]
+        reveal(submit); submit.tap()
+        XCTAssertTrue(app.buttons["Import"].waitForExistence(timeout: 10))
+        openSavedDeck(originalName)
+        let inspect = app.buttons["nativeDeck.inspect.Emmara, Soul of the Accord"]
+        reveal(inspect); inspect.tap()
+        XCTAssertTrue(app.navigationBars["Emmara, Soul of the Accord"].waitForExistence(timeout: 5))
+        app.buttons["Done"].tap()
+        let edit = app.buttons["Edit"]
+        reveal(edit, scrollingUp: false); edit.tap()
+        let editorName = app.textFields["Deck name"]
+        XCTAssertTrue(editorName.waitForExistence(timeout: 5))
+        replaceText(editorName, with: editedName)
+        app.buttons["Save"].tap()
+        waitFor(editorName, predicate: "exists == false")
+        app.terminate(); app.launch()
+        openLibrary()
+        openSavedDeck(editedName)
+        XCTAssertTrue(app.staticTexts["2 cards · Saved locally"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["nativeDeck.inspect.Emmara, Soul of the Accord"].exists)
+        let forest = app.buttons["nativeDeck.inspect.Forest"]
+        reveal(forest)
+        // Artwork/network availability is not an acceptance condition for deck persistence.
+    }
+
+    func testIncludedDeckEditingCopyDoesNotMutateBundledDeck() {
+        let copyName = uniqueDeckName("PreconCopy")
+        openLibrary()
+        searchLibrary("Token Triumph")
+        let bundled = app.buttons["nativeDeck.bundled.Token Triumph"]
+        XCTAssertTrue(bundled.waitForExistence(timeout: 5))
+        reveal(bundled); bundled.tap()
+        let editCopy = app.buttons["Edit a local copy"]
+        reveal(editCopy); editCopy.tap()
+        let name = app.textFields["Deck name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        replaceText(name, with: copyName)
+        app.buttons["Save"].tap()
+        waitFor(name, predicate: "exists == false")
+        app.terminate(); app.launch()
+        openLibrary(); openSavedDeck(copyName)
+        XCTAssertTrue(app.staticTexts["100 cards · Saved locally"].waitForExistence(timeout: 5))
+        app.terminate(); app.launch()
+        openLibrary(); searchLibrary("Token Triumph")
+        XCTAssertTrue(bundled.waitForExistence(timeout: 5))
+        reveal(bundled); bundled.tap()
+        XCTAssertTrue(app.staticTexts["100 cards · Included deck"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Edit a local copy"].exists)
+        XCTAssertFalse(app.buttons["Delete local deck"].exists)
+    }
+
+    func testEmptyNamedDraftPersistsWithoutClaimingPlayLegality() {
+        let draftName = uniqueDeckName("EmptyDraft")
+        openLibrary()
+        app.buttons["New deck"].tap()
+        let name = app.textFields["Deck name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        replaceText(name, with: draftName)
+        app.buttons["Save"].tap()
+        waitFor(name, predicate: "exists == false")
+        app.terminate(); app.launch()
+        openLibrary(); openSavedDeck(draftName)
+        XCTAssertTrue(app.staticTexts["0 cards · Saved locally"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["XMage checks Commander legality when you start a game. Saved drafts may be incomplete."].exists)
+        // Deliberately do not select/start an incomplete draft.
+    }
+
+    func testCatalogueSearchAddAndQuantityPersistInDraft() {
+        let draftName = uniqueDeckName("Catalogue")
+        openLibrary()
+        app.buttons["New deck"].tap()
+        let name = app.textFields["Deck name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        replaceText(name, with: draftName)
+        let search = app.textFields["Search exact card names"]
+        reveal(search); replaceText(search, with: "Sol Ring\n")
+        let add = app.buttons["Add Sol Ring to deck"]
+        XCTAssertTrue(add.waitForExistence(timeout: 10))
+        reveal(add); add.tap()
+        let quantity = app.steppers.firstMatch
+        reveal(quantity)
+        quantity.buttons["Increment"].tap()
+        XCTAssertTrue(app.staticTexts["Quantity: 2"].waitForExistence(timeout: 5))
+        app.buttons["Save"].tap()
+        waitFor(name, predicate: "exists == false")
+        app.terminate(); app.launch()
+        openLibrary(); openSavedDeck(draftName)
+        XCTAssertTrue(app.staticTexts["2 cards · Saved locally"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["nativeDeck.inspect.Sol Ring"].exists)
     }
 
     func testMissingNativeLibraryReportsFailureAndKeepsSetupAvailable() {
+        openSetup()
         let playerName = app.textFields["ondevice.playerName"]
         playerName.tap()
         playerName.typeText("Setup Tester")
@@ -121,6 +233,112 @@ final class OnDeviceSetupUITests: XCTestCase {
         waitFor(start, predicate: "enabled == true")
         XCTAssertTrue(playerName.exists, "A failed start must leave the real setup visible.")
         XCTAssertFalse(app.staticTexts["Game started"].exists)
+    }
+
+    private func openSetup() {
+        let play = app.buttons["menu.play"]
+        XCTAssertTrue(play.waitForExistence(timeout: 15))
+        reveal(play); play.tap()
+        XCTAssertTrue(app.textFields["ondevice.playerName"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Gather your table"].exists)
+    }
+
+    private func openLibrary() {
+        let decks = app.buttons["menu.decks"]
+        XCTAssertTrue(decks.waitForExistence(timeout: 15))
+        reveal(decks); decks.tap()
+        XCTAssertTrue(app.buttons["Import"].waitForExistence(timeout: 5))
+    }
+
+    private func uniqueDeckName(_ suffix: String) -> String {
+        let name = "UI-\(UUID().uuidString)-\(suffix)"
+        createdDeckNames.append(name)
+        return name
+    }
+
+    private func searchLibrary(_ name: String) {
+        let search = app.searchFields["Find a deck or commander"]
+        reveal(search, scrollingUp: false)
+        replaceText(search, with: name + "\n")
+    }
+
+    private func openSavedDeck(_ name: String) {
+        searchLibrary(name)
+        let deck = app.buttons["nativeDeck.saved.\(name)"]
+        XCTAssertTrue(deck.waitForExistence(timeout: 5))
+        reveal(deck); deck.tap()
+        XCTAssertTrue(app.navigationBars["Deck details"].waitForExistence(timeout: 5))
+    }
+
+    private func replaceText(_ field: XCUIElement, with text: String) {
+        field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        let existing = field.value as? String ?? ""
+        if !existing.isEmpty && existing != field.placeholderValue {
+            // Exercise the visible iPhone edit menu. Hardware Command-A can be
+            // ignored by the simulator; backspace depends on the caret position.
+            field.press(forDuration: 1.2)
+            let selectAll = app.menuItems["Select All"]
+            XCTAssertTrue(selectAll.waitForExistence(timeout: 5))
+            selectAll.tap()
+        }
+        field.typeText(text)
+        let expected = text.trimmingCharacters(in: .newlines)
+        XCTAssertEqual(field.value as? String, expected, "Verify the entered value before saving or searching.")
+    }
+
+    /// Never clears the library, defaults, app container, or another test/user's decks.
+    /// Relaunch also recovers from a failed test leaving an editor/confirmation open.
+    private func cleanupCreatedDecks() {
+        for name in createdDeckNames {
+            app.terminate(); app.launch()
+            let menu = app.buttons["menu.decks"]
+            guard menu.waitForExistence(timeout: 15) else {
+                XCTFail("Cleanup could not reach library; retained test deck: \(name)"); continue
+            }
+            menu.tap()
+            let search = app.searchFields["Find a deck or commander"]
+            for _ in 0..<5 {
+                if search.exists && search.isHittable { break }
+                app.swipeDown()
+            }
+            guard search.exists && search.isHittable else {
+                XCTFail("Cleanup search unavailable; retained test deck: \(name)"); continue
+            }
+            replaceText(search, with: name + "\n")
+            let deck = app.buttons["nativeDeck.saved.\(name)"]
+            guard deck.waitForExistence(timeout: 3) else { continue } // Never saved, or renamed.
+            deck.tap()
+            // Filter card rows away so deleting a 100-card copy does not require
+            // an unbounded scroll through its artwork. This only changes UI search.
+            let cardSearch = app.searchFields["Find a card in this deck"]
+            for _ in 0..<5 {
+                if cardSearch.exists && cardSearch.isHittable { break }
+                app.swipeDown()
+            }
+            guard cardSearch.exists && cardSearch.isHittable else {
+                XCTFail("Cleanup card search unavailable; retained test deck: \(name)"); continue
+            }
+            replaceText(cardSearch, with: name + "\n")
+            let delete = app.buttons["Delete local deck"]
+            for _ in 0..<5 {
+                if delete.exists && delete.isHittable { break }
+                app.swipeUp()
+            }
+            guard delete.exists && delete.isHittable else {
+                XCTFail("Cleanup delete unavailable; retained test deck: \(name)"); continue
+            }
+            delete.tap()
+            // iOS 26 exposes the confirmation action as nested buttons with the
+            // same identifier; both represent this one destructive action.
+            let confirm = app.buttons.matching(identifier: "nativeDeck.confirmDelete").firstMatch
+            guard confirm.waitForExistence(timeout: 5) else {
+                XCTFail("Cleanup confirmation unavailable; retained test deck: \(name)"); continue
+            }
+            confirm.tap()
+            waitFor(deck, predicate: "exists == false")
+        }
+        createdDeckNames.removeAll()
     }
 
     private func waitFor(_ element: XCUIElement, predicate: String,
