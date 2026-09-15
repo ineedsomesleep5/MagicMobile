@@ -7,6 +7,124 @@ already uncommitted in this checkout and are being preserved/integrated.
 
 ## Delivery boundary
 
+### Final orientation review and direct-install continuation
+
+The user approved the EDHREC website/manual-copy and Moxfield paste fallbacks,
+then requested final portrait/landscape UI review and direct phone installation.
+The ManaBox follow-up is local commit `aa50beea953d7c820417826128d88de72123686b`;
+the following final review changes are not yet published or installed.
+The committed ManaBox/engine candidate `aa50bee` was subsequently pushed normally
+to PR #9 while this UI-only working diff remained local. Same-SHA hosted runs
+34929429473 (non-simulator), 34929433077 (CI), and 34929433076 (on-device gates)
+all completed successfully, including the non-simulator real-JVM job. This permits native inputs
+to be verified independently of the final app UI, but later artifact reuse still
+requires the unmodified provenance verifier and clean final application source.
+
+EDHREC now has an explicit Info-page handoff: commander names, local-only clipboard
+copy of main/deck rows, disclosure of excluded sections and external browsing,
+and the fixed official Recs URL. No deck data is embedded in the URL or sent
+automatically; recommendations are requested manually on EDHREC's website.
+
+Landscape review reproduced a width overflow in the player/mana sidebar and
+missing opponent-zone access. Compact summaries, a bounded mana grid and shared
+seat-specific zone menus repair those differences. Both orientations now share
+the full stack sheet, authorized target labels, and accessible Stop skipping
+while inspecting a stack card. Landscape's upper information rail scrolls while
+the action dock remains fixed. Inspector motion respects Reduce Motion.
+
+The portable suite passed 204 tests (one opt-in live test skipped), including
+three EDHREC handoff regressions: `/tmp/magicmobile-final-polish-portable.log`.
+Actual final simulator board checks are in progress; no success is asserted yet.
+The user's follow-up requests count-aware landscape card sizing and a closed-by-
+default game log. Four landscape rows now shrink rendered slots toward a
+`min(44, original maximum)` point floor, accounting for rotated tapped widths,
+collapsed/expanded groups, and existing scrolling. Resizing honors Reduce Motion.
+Combat-participant groups expand individually so measured arrows retain distinct
+endpoints. Log content is hidden until its button is opened; the compact landscape
+button shows a count, not an always-open event feed.
+
+Sizing follow-up: 212 portable tests passed (one opt-in live test skipped),
+including eight adaptive-sizing regressions, in
+`/tmp/magicmobile-final-adaptive-portable.log`. The broad simulator run
+`build_output/final-adaptive-board-matrix.xcresult` passed 397 app unit tests
+(one opt-in live test skipped) before the additional combat-group regression;
+its UI matrix finished with six failures across board/deck transitions. Those
+failures remain retained, not counted as passing evidence. The following focused
+run passed 17 layout/combat tests, but inspection proved its active UI runner was
+mapped from CoreSimulator's retired `containermanagerd/Dead` bundle while the
+installed binary contained different test methods. That run was interrupted.
+Attribution of those UI failures to the current source is therefore unresolved.
+The app and runner were explicitly reinstalled without erasing simulator data;
+`final-verified-installed-ui.xcresult` now exercises the fresh build separately
+from compilation. Its active runner mapping and installed/built XCTest binary
+were verified identical (SHA-256
+`0ab568ed92bff7aff148e1c8ff2081eff94fa2c1fcbe1622cda97dc54e66b95b`), and the new
+independent test names are actually executing. The active app binary also matched
+the built debug dylib (`769b97e42c260fdf4c85f8df95c28ab751b9e60fc13313ac586f42c172b32401`).
+The 17 layout/combat tests passed again. All seven landscape scenarios passed;
+portrait long-press after log dismissal and second-stack-item scrolling still
+failed and need diagnosis. Other portrait scenarios passed. Deck journeys are
+still running; basic-land save/statistics and catalogue add/quantity/relaunch
+passed. This is not final UI clearance.
+
+Follow-up `final-portrait-exclusive.xcresult` verified the portrait long-press
+repair: a single exclusive long-press-before-tap gesture prevents the tap branch
+from clearing inspection. Ordinary tap selection and hold inspection both passed.
+The stack failure persisted with both blank-area and artwork drags. An experimental
+content hit shape did not help and was removed. The sheet now explicitly uses
+`.presentationContentInteraction(.scrolls)` so content scrolling takes precedence
+over detent resizing ([Apple behavior contract](https://developer.apple.com/documentation/swiftui/view/presentationcontentinteraction(_:))).
+`final-stack-scroll-priority.xcresult` passed all three cases: landscape, portrait
+artwork drag, and portrait blank-area drag, each reaching the second source/card
+and dismissing through Done. EDHREC's
+manual-copy journey also completed successfully before the previous run was
+interrupted; diagnostic per-label queries were reduced to one hierarchy snapshot.
+
+Final visual fixes remove the redundant landscape Scroll badge that covered card
+names, raise empty-zone text contrast, keep deck-card search only on Cards (not
+Stats/Info), and give the entire main-menu Decks/Settings label a hit shape. Valid
+paste/edit/reopen assertions passed; its test cleanup had failed to open Decks.
+A whole-label Decks regression and the affected tab journeys are in the final
+combined run `final-complete-ui-candidate.xcresult`. It completed successfully at
+00:43 local September 15: 398 app tests (one opt-in live test skipped) and all
+27 UI journeys (15 board, 12 setup/deck), zero failures. Exact log:
+`/tmp/magicmobile-final-complete-ui-candidate.log`. Compilation and execution were
+separated using the freshly installed app/runner and the generated xctestrun.
+Final captures are in `build_output/final-complete-ui-screenshots`; visual review
+confirmed the unobstructed landscape cards and Stats/Info without card search.
+Fixtures intentionally use placeholder art and do not establish native gameplay.
+The scoped final diff received independent source and screenshot review; no
+remaining blocking layout/control defect was found in the exercised matrix.
+Further discretionary visual changes are frozen pending phone feedback.
+
+Read-only native approval accepted exact `aa50bee`, cheap run 34929429473 attempt
+1 and trusted policy `ccd5ea578760e8ac8e20c916c09a3e7a48898121`. Native workflow
+34930407016 was explicitly dispatched once. Compilation, product and installation
+remain pending; the final UI working diff is not part of that engine-source SHA.
+
+Stack diagnostic history is retained: the original UI test ambiguously selected
+UIKit's Done control and then the underlying 54x76 quick-peek card rather than
+the modal's card with the same instance identity. The corrected test scopes to
+`board.stack.items`. Whole-device capture
+`build_output/final-stack-geometry-screenshots/EF11479E-B2A7-47BE-88DA-0A6BBD8EB9AF.png`
+and accessibility bounds show the 150x210 landscape modal card fully contained.
+App-only XCTest screenshots included an oversized offscreen presentation
+container and were misleading; board captures now use `XCUIScreen.main`.
+Landscape stack rows now place card art beside source/target/rules text; portrait
+retains its vertical layout. A root-hosting-wrapper experiment did not establish
+a benefit and was reverted completely. Automatic simulator rotation with the
+portrait-enabled preference did not change interface orientation; explicit
+portrait and landscape modes are being tested separately. This is not proof of
+physical automatic-rotation failure or acceptance.
+
+The EDHREC manual-copy UI journey passed without opening a website or submitting
+deck data (`build_output/final-stack-landscape-fix.xcresult`, which failed its
+separate stack selector check). No native or release clearance is implied.
+Caleb's iPhone 16 Pro Max was verified connected over localNetwork with Developer
+Mode enabled; this is connectivity only, not installation or gameplay acceptance.
+Native compilation, matched product linkage, signing and direct installation
+remain pending. Do not upload to TestFlight under this request.
+
 ### ManaBox-inspired follow-up (September 14, 22:04 local)
 
 The user added ManaBox deck-building references after publication of
@@ -43,8 +161,8 @@ and [EDHREC Recs](https://edhrec.com/recs) provides a user-facing form with
 commander/partner and deck-list inputs. No official public API contract was
 verified. [EDHREC terms](https://edhrec.com/terms) restrict automated requests.
 Do not use undocumented endpoints or present local heuristics as EDHREC results.
-The user has been asked whether a labeled website/manual-copy flow is acceptable
-pending approved embedded integration. No user deck was sent to EDHREC.
+The user approved a labeled website/manual-copy flow pending supported embedded
+integration. No user deck was sent to EDHREC.
 
 Implemented follow-up surfaces: art-cover library, grouped card rows, direct
 quantity controls, Cards/Stats/Info detail pages, local rules/type/mana inspection,
@@ -86,9 +204,11 @@ skipped (`/tmp/magicmobile-manabox-final-presentation.log`). The seven exporter
 self-tests and exact byte check passed (`/tmp/magicmobile-manabox-exporter.log`).
 No single post-fix full simulator suite is claimed: the failed broad run and
 successful affected reruns are recorded separately. The ManaBox follow-up has
-not been published, natively compiled, signed, installed or uploaded. Resolve the
-EDHREC route and Moxfield fallback choice before freezing a release candidate;
-then publish it and run same-source hosted/native/product/device gates.
+now been published as `aa50bee`, but not natively compiled, signed, installed or
+uploaded. Resolve the
+final orientation review before freezing a release candidate; then publish it
+and run same-source hosted/native/product/device gates. The EDHREC and Moxfield
+fallback choices are now approved.
 
 The user changed delivery from internal TestFlight to **direct installation on
 Caleb's iPhone over Wi-Fi**. Do not upload this candidate to App Store Connect.

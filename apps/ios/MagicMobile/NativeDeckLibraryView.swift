@@ -221,7 +221,7 @@ private struct NativeDeckDetailView: View {
         return String(data: data, encoding: .utf8)
     }
 
-    var body: some View {
+    private var deckContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text(record.name).font(.title2.bold()).lineLimit(2).textSelection(.enabled)
@@ -250,7 +250,9 @@ private struct NativeDeckDetailView: View {
                     Text("Loading local card catalogue before deck selection…").font(.caption).foregroundStyle(.secondary)
                 }
                 Picker("Deck section", selection: $detailTab) {
-                    ForEach(["Cards", "Stats", "Info"], id: \.self) { Text($0).tag($0) }
+                    ForEach(["Cards", "Stats", "Info"], id: \.self) {
+                        Text($0).tag($0).accessibilityIdentifier("nativeDeck.section.\($0.lowercased())")
+                    }
                 }.pickerStyle(.segmented).accessibilityIdentifier("nativeDeck.sections")
                 switch detailTab {
                 case "Stats": NativeDeckStatisticsView(deck: record.deckList, metadata: metadata)
@@ -262,9 +264,18 @@ private struct NativeDeckDetailView: View {
                 }
             }.padding(16)
         }
+    }
+
+    var body: some View {
+        Group {
+            if detailTab == "Cards" {
+                deckContent.searchable(text: $search, prompt: "Find a card in this deck")
+            } else {
+                deckContent
+            }
+        }
         .background(BattlefieldSurface().ignoresSafeArea())
         .navigationTitle("Deck details").navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $search, prompt: "Find a card in this deck")
         .sheet(item: $inspection) { card in NativeDeckInspectionSheet(name: card.name, card: metadata?.card(named: card.name)) }
         .sheet(item: $editRecord) { draft in
             NativeDeckEditorSheet(library: library, record: draft, metadata: metadata, catalogueError: catalogueError) { saved in selectedDeckID = "local:\(saved.id)" }
@@ -324,7 +335,54 @@ private struct NativeDeckDetailView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             NativeArtworkPreferenceView()
+            NativeDeckEDHRECSection(deck: record.deckList)
         }
+    }
+}
+
+private struct NativeDeckEDHRECSection: View {
+    let deck: DeckList
+    @Environment(\.openURL) private var openURL
+    @State private var copied = false
+    @State private var openFailed = false
+
+    var body: some View {
+        let handoff = NativeDeckEDHREC(deck: deck)
+        VStack(alignment: .leading, spacing: 12) {
+            Divider()
+            Text("EDHREC · manual recommendations").font(.headline)
+            Text("1. Copy the main deck below. 2. Open EDHREC, enter your commander(s), paste into Decklist, and submit there. Return here to edit your deck manually.")
+                .font(.subheadline)
+            Text("Commander(s)").font(.subheadline.bold())
+            if handoff.commanders.isEmpty {
+                Text("No commander set in this draft. Choose one before requesting recommendations.")
+                    .font(.caption).foregroundStyle(MagicPalette.warningAmber)
+            } else {
+                ForEach(handoff.commanders, id: \.self) { Text($0).textSelection(.enabled) }
+            }
+            Text("Copies main/deck rows only, with quantities. Commander(s) are entered separately; companion, sideboard and other sections are excluded. Your saved deck is unchanged.")
+                .font(.caption).foregroundStyle(.secondary)
+            Text("External website: opening EDHREC shares your IP address and browser information. MagicMobile does not send your deck or scrape recommendations. Card names are shared only if you paste them into the website. Copy uses this device’s clipboard only.")
+                .font(.caption).foregroundStyle(.secondary)
+            Button {
+                UIPasteboard.general.setItems([[UTType.utf8PlainText.identifier: handoff.deckText]],
+                                             options: [.localOnly: true])
+                copied = true
+            } label: {
+                Label("Copy main deck text", systemImage: "doc.on.doc").frame(minHeight: 44)
+            }.disabled(handoff.deckText.isEmpty).accessibilityIdentifier("nativeDeck.edhrec.copy")
+            if copied { Text("Main deck copied. Paste it into EDHREC’s Decklist field.").font(.caption) }
+            Button {
+                openFailed = false
+                openURL(NativeDeckEDHREC.websiteURL) { accepted in openFailed = !accepted }
+            } label: {
+                Label("Open EDHREC website", systemImage: "arrow.up.right.square").frame(minHeight: 44)
+            }.accessibilityIdentifier("nativeDeck.edhrec.open")
+            if openFailed {
+                Text("Could not open the website. Open https://edhrec.com/recs in your browser.")
+                    .font(.caption).textSelection(.enabled).foregroundStyle(MagicPalette.warningAmber)
+            }
+        }.onChange(of: deck) { _, _ in copied = false }
     }
 }
 
@@ -410,11 +468,15 @@ private struct NativeDeckImportSheet: View {
                     Button(action: beginImport) {
                         HStack { if importing { ProgressView() }; Text(importing ? "Importing…" : "Import and select") }
                     }.disabled(importing || (useLink ? link : text).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("nativeDeck.import.submit")
                 } footer: { Text("Exact compiled card names are checked locally. XMage validates deck legality when starting a game.") }
             }
             .scrollContentBackground(.hidden).background(BattlefieldSurface().ignoresSafeArea())
             .navigationTitle("Import deck").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Cancel") { importTask?.cancel(); dismiss() } } }
+            .toolbar { ToolbarItem(placement: .topBarLeading) {
+                Button("Cancel") { importTask?.cancel(); dismiss() }
+                    .accessibilityIdentifier("nativeDeck.import.cancel")
+            } }
             .fileImporter(isPresented: $filePicker, allowedContentTypes: [.plainText, .json, UTType(filenameExtension: "dec") ?? .plainText]) { result in
                 do {
                     let url = try result.get()
@@ -574,8 +636,14 @@ private struct NativeDeckEditorSheet: View {
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle(record == nil ? "Build a deck" : "Edit deck").navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Cancel") { if changed { confirmDiscard = true } else { dismiss() } } }
-                ToolbarItem(placement: .topBarTrailing) { Button("Save", action: save).disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { if changed { confirmDiscard = true } else { dismiss() } }
+                        .accessibilityIdentifier("nativeDeck.editor.cancel")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save", action: save).disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("nativeDeck.editor.save")
+                }
             }
             .interactiveDismissDisabled(changed)
             .confirmationDialog("Discard unsaved edits?", isPresented: $confirmDiscard, titleVisibility: .visible) {

@@ -5,9 +5,11 @@ import XCTest
 final class OnDeviceSetupUITests: XCTestCase {
     private var app: XCUIApplication!
     private var createdDeckNames: [String] = []
+    private var lastTappedControl: XCUIElement?
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        lastTappedControl = nil
         XCUIDevice.shared.orientation = .portrait
         app = XCUIApplication()
         // A private preference suite stays writable and survives this test's relaunches.
@@ -84,12 +86,23 @@ final class OnDeviceSetupUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Start game"].waitForExistence(timeout: 5))
     }
 
+    func testDeckButtonWholeLabelRoutesToLibrary() {
+        for horizontal in [0.15, 0.5, 0.85] {
+            let decks = app.buttons["menu.decks"]
+            reveal(decks)
+            decks.coordinate(withNormalizedOffset: CGVector(dx: horizontal, dy: 0.5)).tap()
+            XCTAssertTrue(app.buttons["Import"].waitForExistence(timeout: 10))
+            app.navigationBars["Decks"].buttons["Done"].tap()
+            XCTAssertTrue(app.navigationBars["Decks"].waitForNonExistence(timeout: 5))
+        }
+    }
+
     func testInvalidImportRetainsDraftUntilCancelled() {
         openLibrary()
         app.buttons["Import"].tap()
         let editor = app.textViews["Deck list text"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        let submit = app.buttons["Import and select"]
+        let submit = app.buttons["nativeDeck.import.submit"]
         XCTAssertFalse(submit.isEnabled)
         let deckName = app.textFields["Deck name"]
         let originalName = deckName.value as? String
@@ -99,7 +112,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         // A scroll dismisses the editor keyboard and exposes the import action.
         app.swipeUp()
         reveal(submit)
-        submit.tap()
+        tapDiagnosed(submit)
         let error = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Cannot import line 1:")).firstMatch
         XCTAssertTrue(error.waitForExistence(timeout: 5))
         reveal(editor, scrollingUp: false)
@@ -109,9 +122,8 @@ final class OnDeviceSetupUITests: XCTestCase {
         attachment.name = "Invalid import retains draft"
         attachment.lifetime = .keepAlways
         add(attachment)
-        app.buttons["Cancel"].tap()
-        waitFor(editor, predicate: "exists == false")
-        XCTAssertTrue(app.buttons["Import"].waitForExistence(timeout: 5))
+        tapDiagnosed(app.navigationBars["Import deck"].buttons["nativeDeck.import.cancel"])
+        waitForImportDismissal(editor)
     }
 
     func testPasteValidDraftInspectEditSaveAndRelaunch() {
@@ -125,9 +137,9 @@ final class OnDeviceSetupUITests: XCTestCase {
         let text = app.textViews["Deck list text"]
         text.tap()
         text.typeText("Commander\n1 Emmara, Soul of the Accord\n\nDeck\n1 Forest")
-        let submit = app.buttons["Import and select"]
-        reveal(submit); submit.tap()
-        XCTAssertTrue(app.buttons["Import"].waitForExistence(timeout: 10))
+        let submit = app.buttons["nativeDeck.import.submit"]
+        reveal(submit); tapDiagnosed(submit)
+        waitForImportDismissal(text)
         openSavedDeck(originalName)
         let inspect = app.buttons["nativeDeck.inspect.Emmara, Soul of the Accord"]
         reveal(inspect); inspect.tap()
@@ -138,7 +150,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         let editorName = app.textFields["Deck name"]
         XCTAssertTrue(editorName.waitForExistence(timeout: 5))
         replaceText(editorName, with: editedName)
-        app.buttons["Save"].tap()
+        tapDiagnosed(app.navigationBars.buttons["nativeDeck.editor.save"])
         waitFor(editorName, predicate: "exists == false")
         app.terminate(); app.launch()
         openLibrary()
@@ -164,7 +176,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         let name = app.textFields["Deck name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         replaceText(name, with: copyName)
-        app.buttons["Save"].tap()
+        tapDiagnosed(app.navigationBars.buttons["nativeDeck.editor.save"])
         waitFor(name, predicate: "exists == false")
         app.terminate(); app.launch()
         openLibrary(); openSavedDeck(copyName)
@@ -178,6 +190,30 @@ final class OnDeviceSetupUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Delete local deck"].exists)
     }
 
+    func testEDHRECManualHandoffCopiesWithoutOpeningWebsite() {
+        openLibrary()
+        searchLibrary("Token Triumph")
+        let bundled = app.buttons["nativeDeck.bundled.Token Triumph"]
+        reveal(bundled); bundled.tap()
+        let info = app.segmentedControls["nativeDeck.sections"].buttons["nativeDeck.section.info"]
+        reveal(info); tapDiagnosed(info)
+        waitFor(info, predicate: "selected == true")
+        XCTAssertTrue(app.searchFields["Find a card in this deck"].waitForNonExistence(timeout: 5))
+        waitFor(app.staticTexts["EDHREC · manual recommendations"], predicate: "exists == true")
+        let copy = app.buttons["nativeDeck.edhrec.copy"]
+        reveal(copy)
+        XCTAssertTrue(copy.isEnabled)
+        tapDiagnosed(copy)
+        let confirmation = app.staticTexts["Main deck copied. Paste it into EDHREC’s Decklist field."]
+        reveal(confirmation)
+        XCTAssertTrue(confirmation.exists)
+        let website = app.buttons["nativeDeck.edhrec.open"]
+        reveal(website)
+        XCTAssertTrue(website.isEnabled)
+        capture("EDHREC explicit manual handoff")
+        // No external browser is opened and no deck is submitted by this test.
+    }
+
     func testEmptyNamedDraftPersistsWithoutClaimingPlayLegality() {
         let draftName = uniqueDeckName("EmptyDraft")
         openLibrary()
@@ -185,7 +221,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         let name = app.textFields["Deck name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         replaceText(name, with: draftName)
-        app.buttons["Save"].tap()
+        tapDiagnosed(app.navigationBars.buttons["nativeDeck.editor.save"])
         waitFor(name, predicate: "exists == false")
         app.terminate(); app.launch()
         openLibrary(); openSavedDeck(draftName)
@@ -209,7 +245,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         let increase = app.buttons["Add one Sol Ring"]
         reveal(increase); increase.tap()
         XCTAssertTrue(app.staticTexts["Quantity 2"].waitForExistence(timeout: 5))
-        app.buttons["Save"].tap()
+        tapDiagnosed(app.navigationBars.buttons["nativeDeck.editor.save"])
         waitFor(name, predicate: "exists == false")
         app.terminate(); app.launch()
         openLibrary(); openSavedDeck(draftName)
@@ -252,16 +288,20 @@ final class OnDeviceSetupUITests: XCTestCase {
         let removeForest = app.buttons["Remove one basic Forest"]
         removeForest.tap()
         capture("Deck builder basic-land controls")
-        app.buttons["Save"].tap()
+        tapDiagnosed(app.navigationBars.buttons["nativeDeck.editor.save"])
         waitFor(name, predicate: "exists == false")
         app.terminate(); app.launch()
         openLibrary(); openSavedDeck(draftName)
         XCTAssertTrue(app.staticTexts["1 card · Saved locally"].waitForExistence(timeout: 5))
-        let stats = app.segmentedControls.buttons["Stats"]
-        reveal(stats); stats.tap()
+        let stats = app.segmentedControls["nativeDeck.sections"].buttons["nativeDeck.section.stats"]
+        reveal(stats); tapDiagnosed(stats)
+        waitFor(stats, predicate: "selected == true")
+        XCTAssertTrue(app.searchFields["Find a card in this deck"].waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Main deck only · 1 card"].waitForExistence(timeout: 5))
         capture("Deck statistics from saved quantities")
-        app.segmentedControls.buttons["Cards"].tap()
+        let cards = app.segmentedControls["nativeDeck.sections"].buttons["nativeDeck.section.cards"]
+        tapDiagnosed(cards)
+        waitFor(cards, predicate: "selected == true")
         let forest = app.buttons["nativeDeck.inspect.Forest"]
         reveal(forest); forest.tap()
         XCTAssertTrue(app.navigationBars["Forest"].waitForExistence(timeout: 5))
@@ -395,7 +435,43 @@ final class OnDeviceSetupUITests: XCTestCase {
     private func waitFor(_ element: XCUIElement, predicate: String,
                          file: StaticString = #filePath, line: UInt = #line) {
         let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: predicate), object: element)
-        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 5), .completed, file: file, line: line)
+        let result = XCTWaiter.wait(for: [expectation], timeout: 10)
+        if result != .completed {
+            captureTransitionDiagnostics("Failed transition: \(predicate)", control: element)
+        }
+        XCTAssertEqual(result, .completed, file: file, line: line)
+    }
+
+    private func waitForImportDismissal(_ editor: XCUIElement,
+                                        file: StaticString = #filePath, line: UInt = #line) {
+        waitFor(editor, predicate: "exists == false", file: file, line: line)
+        waitFor(app.navigationBars["Import deck"], predicate: "exists == false", file: file, line: line)
+        waitFor(app.searchFields["Find a deck or commander"], predicate: "exists == true AND hittable == true",
+                file: file, line: line)
+    }
+
+    private func tapDiagnosed(_ control: XCUIElement,
+                              file: StaticString = #filePath, line: UInt = #line) {
+        waitFor(control, predicate: "exists == true AND enabled == true AND hittable == true", file: file, line: line)
+        lastTappedControl = control
+        captureTransitionDiagnostics("Before tap: \(control.identifier)", control: control)
+        control.tap() // Exactly one tap; a failed transition is never retried.
+    }
+
+    private func captureTransitionDiagnostics(_ title: String, control: XCUIElement) {
+        func describe(_ element: XCUIElement) -> String {
+            guard element.exists else { return "\(element): absent" }
+            return "id=\(element.identifier) label=\(element.label) frame=\(element.frame) enabled=\(element.isEnabled) selected=\(element.isSelected) hittable=\(element.isHittable)"
+        }
+        var lines = ["App frame: \(app.frame)", "Control: \(describe(control))"]
+        if let lastTappedControl { lines.append("Last tapped: \(describe(lastTappedControl))") }
+        // One hierarchy snapshot includes windows and offscreen error labels;
+        // querying every card label separately makes a 100-card deck prohibitively slow.
+        lines.append(app.debugDescription)
+        let details = XCTAttachment(string: lines.joined(separator: "\n"))
+        details.name = title; details.lifetime = .keepAlways; add(details)
+        let screen = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screen.name = title + " — whole screen"; screen.lifetime = .keepAlways; add(screen)
     }
 
     private func reveal(_ element: XCUIElement, scrollingUp: Bool = true,

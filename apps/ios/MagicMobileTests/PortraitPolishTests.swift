@@ -3,6 +3,44 @@ import SwiftUI
 @testable import MagicMobile
 
 final class PortraitPolishTests: XCTestCase {
+    func testCombatGroupsKeepIndividualCardsForMeasuredArrows() throws {
+        func group(_ extra: String) throws -> BattlefieldCardGroup {
+            let cards = try JSONDecoder().decode([ZoneCard].self, from: Data("""
+            [{"instanceId":"one","card":{"name":"Soldier","typeLine":"Creature"}\(extra)},
+             {"instanceId":"two","card":{"name":"Soldier","typeLine":"Creature"}\(extra)}]
+            """.utf8))
+            let groups = BattlefieldDensityPlanner.groups(cards: cards)
+            XCTAssertEqual(groups.count, 1)
+            return try XCTUnwrap(groups.first)
+        }
+        let ordinary = try group("")
+        XCTAssertFalse(BattlefieldRow.requiresIndividualCombatCards(ordinary, highlightedIDs: []))
+        XCTAssertTrue(BattlefieldRow.requiresIndividualCombatCards(ordinary, highlightedIDs: ["two"]))
+        XCTAssertTrue(BattlefieldRow.requiresIndividualCombatCards(try group(",\"isAttacking\":true"), highlightedIDs: []))
+        XCTAssertTrue(BattlefieldRow.requiresIndividualCombatCards(try group(",\"blocking\":[\"attacker\"]"), highlightedIDs: []))
+    }
+
+    func testCompactPortraitPreservesFullHandAndSeparateLanes() {
+        for large in [false, true] {
+            for payment in [false, true] {
+                var metrics = PortraitBattlefieldLayoutMetrics(size: CGSize(width: 375, height: 667),
+                    safeArea: EdgeInsets(top: 20, leading: 0, bottom: 0, trailing: 0), paymentActive: payment)
+                metrics.largeText = large
+                XCTAssertTrue(metrics.usesCompactLanes)
+                XCTAssertGreaterThanOrEqual(metrics.handRect.height, metrics.handCardHeight + 30)
+                XCTAssertTrue(metrics.safeFrame.contains(metrics.handRect))
+                XCTAssertFalse(metrics.playerBattlefieldRect.intersects(metrics.playerLandsRect))
+                XCTAssertLessThan(metrics.playerLandsRect.maxY, metrics.handRect.minY)
+            }
+        }
+    }
+
+    func testStackTargetsUseOnlyAuthorizedNames() {
+        let snapshot = GameBoardPreviewFixtures.snapshot(.stackResponsePrompt)
+        XCTAssertEqual(StackTargetPresentation.labels(for: ["human", "ai-creature-1", "missing", "library-ai-1"], in: snapshot),
+                       ["You", "Serra Angel", "Unavailable target", "Hidden card"])
+    }
+
     func testNativeArtworkNeverLooksUpRedactedCardNames() {
         for name in ["", "Hidden card", "Face-down card", "Face down card", "Face-down", "Face down",
                      "Card details unavailable", "  HIDDEN CARD\n", " FACE-DOWN CARD "] {

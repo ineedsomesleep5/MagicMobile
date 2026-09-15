@@ -1347,6 +1347,7 @@ struct TavernMainMenu: View {
             .frame(minHeight: 45).padding(12)
             .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 9))
             .overlay(RoundedRectangle(cornerRadius: 9).stroke(MagicPalette.antiqueGold.opacity(0.25)))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -2517,6 +2518,7 @@ struct NativeGameView: View {
     @State private var inspectingZoneTitle: String? = nil
     @State private var inspectingZoneCards: [ZoneCard] = []
     @State private var isPromptDetailOpen = false
+    @State private var isLandscapeStackOpen = false
     @State private var inspectingZoneReference: BoardZoneReference?
     @State private var dragActionChoice: DragActionChoice?
     @State private var combatSelection = CombatSelectionState()
@@ -2609,7 +2611,7 @@ struct NativeGameView: View {
                     HStack(spacing: 0) {
                     // LEFT COLUMN
                     VStack(alignment: .leading, spacing: 0) {
-                        OpponentVerticalHUD(
+                        LandscapePlayerSummary(
                             name: opponentName,
                             player: opponent,
                             active: snapshot.activePlayerId == opponent.playerId,
@@ -2624,7 +2626,10 @@ struct NativeGameView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, 12)
 
-                        OpponentFocusMenu(snapshot: snapshot) { focusedOpponentId = $0 }
+                        HStack(spacing: 4) {
+                            PlayerZoneMenu(player: opponent, viewZone: localViewZone)
+                            OpponentFocusMenu(snapshot: snapshot) { focusedOpponentId = $0 }
+                        }
 
                         Spacer()
 
@@ -2632,9 +2637,10 @@ struct NativeGameView: View {
                             .background(MagicPalette.antiqueGold.opacity(0.18))
                             .padding(.vertical, 8)
 
-                        HStack(alignment: .bottom, spacing: 4) {
-                            ManaPoolHUD(manaPool: human.manaPool, vertical: true)
-                            PlayerVerticalHUD(name: humanName, player: human, active: snapshot.activePlayerId == human.playerId, opponentId: opponent.playerId, viewZone: { localViewZone(title: $0, cards: $1) })
+                        VStack(alignment: .leading, spacing: 4) {
+                            ManaPoolHUD(manaPool: human.manaPool, compact: true, grid: true)
+                            LandscapePlayerSummary(name: humanName, player: human, active: snapshot.activePlayerId == human.playerId, opponentId: opponent.playerId)
+                            PlayerZoneMenu(player: human, viewZone: localViewZone, snapshot: snapshot)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.bottom, 12)
@@ -2671,11 +2677,11 @@ struct NativeGameView: View {
                         )
 
                         ZStack {
-                            BattlefieldRow(title: "Opponent board", cards: nonLandPermanents(opponent.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.opponentBattlefieldRect.width, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                            BattlefieldRow(title: "Opponent board", cards: nonLandPermanents(opponent.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.opponentBattlefieldRect.width, adaptsToDensity: true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                                 .frame(width: metrics.opponentBattlefieldRect.width, height: metrics.opponentBattlefieldRect.height)
                                 .position(x: metrics.opponentBattlefieldRect.midX, y: metrics.opponentBattlefieldRect.midY)
 
-                            BattlefieldRow(title: "Opponent lands", cards: landPermanents(opponent.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.opponentLandsRect.width, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                            BattlefieldRow(title: "Opponent lands", cards: landPermanents(opponent.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.opponentLandsRect.width, adaptsToDensity: true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                                 .frame(width: metrics.opponentLandsRect.width, height: metrics.opponentLandsRect.height)
                                 .position(x: metrics.opponentLandsRect.midX, y: metrics.opponentLandsRect.midY)
 
@@ -2684,11 +2690,11 @@ struct NativeGameView: View {
                                 .frame(width: max(metrics.centerStripRect.width - 28, 80), height: 1.5)
                                 .position(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.midY)
 
-                            BattlefieldRow(title: "Your board", cards: nonLandPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.playerBattlefieldRect.width, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                            BattlefieldRow(title: "Your board", cards: nonLandPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.playerBattlefieldRect.width, adaptsToDensity: true, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                                 .frame(width: metrics.playerBattlefieldRect.width, height: metrics.playerBattlefieldRect.height)
                                 .position(x: metrics.playerBattlefieldRect.midX, y: metrics.playerBattlefieldRect.midY)
 
-                            BattlefieldRow(title: "Your lands", cards: landPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.playerLandsRect.width, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                            BattlefieldRow(title: "Your lands", cards: landPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.playerLandsRect.width, adaptsToDensity: true, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                                 .frame(width: metrics.playerLandsRect.width, height: metrics.playerLandsRect.height)
                                 .position(x: metrics.playerLandsRect.midX, y: metrics.playerLandsRect.midY)
 
@@ -2832,9 +2838,10 @@ struct NativeGameView: View {
                                         self.inspectingZoneReference = nil
                                     },
                                     targetableIDs: targetableIds,
-                                    runTargetAction: { submitTarget($0, snapshot: snapshot) }
+                                    runTargetAction: { submitTarget($0, snapshot: snapshot) },
+                                    availableHeight: metrics.safeFrame.height
                                 )
-                                .position(x: metrics.size.width / 2, y: metrics.size.height / 2)
+                                .position(x: metrics.safeFrame.midX, y: metrics.safeFrame.midY)
                                 .transition(boardOverlayTransition)
                             }
                             if let inspectedCard {
@@ -2906,6 +2913,8 @@ struct NativeGameView: View {
 
                     // RIGHT COLUMN
                     VStack(alignment: .trailing, spacing: 8) {
+                        ScrollView(.vertical) {
+                        VStack(spacing: 8) {
                         MagicPathPhaseRail(
                             snapshot: snapshot,
                             passAction: passAction(in: snapshot.legalActions ?? []),
@@ -2921,17 +2930,15 @@ struct NativeGameView: View {
                             .background(MagicPalette.antiqueGold.opacity(0.18))
                             .padding(.horizontal, 8)
 
-                        if let latestEntry = snapshot.log.last {
-                            LatestGameEventButton(entry: latestEntry) {
-                                isLogOpen = true
-                            }
+                        GameLogAccessButton(entryCount: snapshot.log.count, openLog: { isLogOpen = true })
                             .padding(.horizontal, 8)
-                        } else {
-                            GameLogAccessButton(openLog: { isLogOpen = true })
-                                .padding(.horizontal, 8)
-                        }
 
-                        Spacer(minLength: 0)
+                        Button { isLandscapeStackOpen = true } label: {
+                            Label("Stack · \(snapshot.stackTopFirst.count)", systemImage: "square.stack.3d.up")
+                                .font(.system(size: 13, weight: .semibold))
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .accessibilityLabel("Inspect stack")
 
                         if let xmageStack = snapshot.xmage?.stack, !xmageStack.isEmpty {
                             XmageStackPeek(
@@ -2947,6 +2954,8 @@ struct NativeGameView: View {
                             StackPeek(cards: human.zones.stack, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
                             .frame(maxWidth: .infinity)
                             .padding(.horizontal, 10)
+                        }
+                        }
                         }
 
                         Divider()
@@ -3031,6 +3040,9 @@ struct NativeGameView: View {
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
                 }
+                .sheet(isPresented: $isLandscapeStackOpen) {
+                    BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+                }
                 .sheet(isPresented: $isPromptDetailOpen) {
                     UniversalPromptActionPanel(
                         snapshot: snapshot,
@@ -3113,6 +3125,8 @@ struct NativeGameView: View {
                     Text(gameMenuConfirmation?.message ?? "")
                 }
             .environment(\.boardZoneInspectionAction, inspectBoardZone)
+            .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? .easeOut(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.88), value: inspectingZoneTitle)
+            .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? .easeOut(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.88), value: inspectedCard?.id)
             .onAppear {
                 updateAIWaitStart(for: snapshot)
             }
@@ -4098,7 +4112,7 @@ struct PortraitBattlefieldLayoutMetrics {
             x: safeArea.leading + margin,
             y: safeArea.top + 8,
             width: max(size.width - safeArea.leading - safeArea.trailing - margin * 2, 300),
-            height: max(size.height - safeArea.top - safeArea.bottom - 16, 620)
+            height: max(size.height - safeArea.top - safeArea.bottom - 16, 0)
         )
     }
 
@@ -4107,11 +4121,15 @@ struct PortraitBattlefieldLayoutMetrics {
     }
 
     var opponentBattlefieldRect: CGRect {
-        CGRect(x: safeFrame.minX + 10, y: topHUDRect.maxY + 10, width: safeFrame.width - 20, height: permanentGroupHeight)
+        CGRect(x: safeFrame.minX + 10, y: topHUDRect.maxY + 10, width: creatureLaneWidth, height: permanentGroupHeight)
     }
 
     var opponentLandsRect: CGRect {
-        CGRect(x: safeFrame.minX + 10, y: opponentBattlefieldRect.maxY + 5, width: safeFrame.width - 20, height: landCardHeight + 8)
+        if usesCompactLanes {
+            return CGRect(x: opponentBattlefieldRect.maxX + 8, y: opponentBattlefieldRect.minY,
+                          width: safeFrame.maxX - 10 - opponentBattlefieldRect.maxX - 8, height: permanentGroupHeight)
+        }
+        return CGRect(x: safeFrame.minX + 10, y: opponentBattlefieldRect.maxY + 5, width: safeFrame.width - 20, height: landCardHeight + 8)
     }
 
     var centerStripRect: CGRect {
@@ -4119,11 +4137,15 @@ struct PortraitBattlefieldLayoutMetrics {
     }
 
     var playerBattlefieldRect: CGRect {
-        CGRect(x: safeFrame.minX + 10, y: centerStripRect.maxY + 10, width: safeFrame.width - 20, height: permanentGroupHeight)
+        CGRect(x: safeFrame.minX + 10, y: centerStripRect.maxY + 10, width: creatureLaneWidth, height: permanentGroupHeight)
     }
 
     var playerLandsRect: CGRect {
-        CGRect(x: safeFrame.minX + 10, y: playerBattlefieldRect.maxY + 5, width: safeFrame.width - 20, height: landCardHeight + 8)
+        if usesCompactLanes {
+            return CGRect(x: playerBattlefieldRect.maxX + 8, y: playerBattlefieldRect.minY,
+                          width: safeFrame.maxX - 10 - playerBattlefieldRect.maxX - 8, height: permanentGroupHeight)
+        }
+        return CGRect(x: safeFrame.minX + 10, y: playerBattlefieldRect.maxY + 5, width: safeFrame.width - 20, height: landCardHeight + 8)
     }
 
     var bottomControlsRect: CGRect {
@@ -4241,7 +4263,17 @@ struct PortraitBattlefieldLayoutMetrics {
     }
 
     var permanentGroupHeight: CGFloat {
-        max(80, (safeFrame.height - topHUDRect.height - bottomControlsRect.height - handCardHeight - 36 - centerStripHeight - 2 * (landCardHeight + 8) - 56) / 2)
+        max(80, (safeFrame.height - topHUDRect.height - bottomControlsRect.height - handCardHeight - 36 - centerStripHeight - (usesCompactLanes ? 0 : 2 * (landCardHeight + 8)) - 56) / 2)
+    }
+
+    // Preserve readable hand height on short phones by putting lands beside
+    // permanents, using the same independently scrolling lanes as landscape.
+    var usesCompactLanes: Bool {
+        safeFrame.height < topHUDRect.height + bottomControlsRect.height + handCardHeight + 36 + centerStripHeight + 2 * (landCardHeight + 8) + 56 + 160
+    }
+
+    private var creatureLaneWidth: CGFloat {
+        (safeFrame.width - 20) * (usesCompactLanes ? 0.68 : 1)
     }
 
     var landCardWidth: CGFloat {
@@ -4732,6 +4764,39 @@ struct CommanderHudSummary: Equatable {
     }
 }
 
+/// Fits the narrow landscape rail without intruding into the battlefield.
+private struct LandscapePlayerSummary: View {
+    let name: String
+    let player: PlayerGameState
+    var active = false
+    var opponentId: String?
+    var combatTargetable = false
+    var combatTargetAction: (() -> Void)?
+
+    var body: some View {
+        let summary = CommanderHudSummary(player: player, opponentId: opponentId)
+        VStack(alignment: .leading, spacing: 3) {
+            Text(name).font(.system(size: 11, weight: .bold)).lineLimit(1)
+            Label("\(summary.life)", systemImage: "heart.fill")
+                .font(.system(size: 23, weight: .bold, design: .rounded))
+                .foregroundStyle(MagicPalette.antiqueGold)
+            Text("Hand \(summary.handCount) · Lib \(summary.libraryCount)")
+                .font(.system(size: 9, weight: .semibold)).lineLimit(1)
+            Text("Tax \(summary.commanderTaxLabel) · Dmg \(summary.commanderDamageLabel)")
+                .font(.system(size: 9, weight: .semibold)).lineLimit(1)
+        }
+        .foregroundStyle(MagicPalette.parchment)
+        .padding(6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(MagicPalette.iron.opacity(0.64), in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(
+            combatTargetable ? MagicPalette.oxblood : MagicPalette.antiqueGold.opacity(active ? 0.8 : 0.3),
+            lineWidth: combatTargetable ? 2 : 1))
+        .contentShape(Rectangle())
+        .onTapGesture { if combatTargetable { combatTargetAction?() } }
+    }
+}
+
 struct PlayerVerticalHUD: View {
     let name: String
     let player: PlayerGameState
@@ -5041,6 +5106,7 @@ private struct LatestGameEventButton: View {
 }
 
 private struct GameLogAccessButton: View {
+    var entryCount = 0
     let openLog: () -> Void
 
     var body: some View {
@@ -5052,7 +5118,7 @@ private struct GameLogAccessButton: View {
                     Text("GAME LOG")
                         .font(.system(size: 8, weight: .black))
                         .foregroundStyle(MagicPalette.antiqueGold)
-                    Text("No events yet")
+                    Text(entryCount == 0 ? "No events yet" : "\(entryCount) actions")
                         .font(.system(size: 8, weight: .bold))
                         .foregroundStyle(MagicPalette.parchment.opacity(0.68))
                 }
@@ -5065,6 +5131,7 @@ private struct GameLogAccessButton: View {
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .background(.black.opacity(0.30), in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.borderBronze.opacity(0.28)))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Open game log")
@@ -5179,6 +5246,7 @@ struct ManaPoolHUD: View {
     let manaPool: ManaPool?
     var vertical = false
     var compact = false
+    var grid = false
 
     private var values: [(String, Int)] {
         [
@@ -5193,7 +5261,12 @@ struct ManaPoolHUD: View {
 
     var body: some View {
         Group {
-            if vertical {
+            if grid {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 3), spacing: 5) {
+                    manaContent
+                }
+                .padding(5)
+            } else if vertical {
                 VStack(spacing: 5) {
                     manaContent
                 }
@@ -9267,21 +9340,28 @@ struct PortraitOverlappingBattlefieldRow: View {
                             .background { GeometryReader { geometry in Color.clear.preference(key: PortraitCardBoundsKey.self, value: [card.instanceId: geometry.frame(in: .named("portrait-board"))]) } }
                             .offset(x: plan.xOffset(for: index) + (cardHeight - cardWidth) / 2, y: 4)
                             .zIndex(zIndex(for: index, card: card))
-                            .onTapGesture {
-                                if targetable {
-                                    runTargetAction(card)
-                                } else if !targetableIds.isEmpty {
-                                    GameHaptics.warning()
-                                } else if combatHighlighted, runCombatCardAction(card) {
-                                    return
-                                } else if let immediate = PortraitInteractionPolicy.automaticCardAction(GameBoardInteractionState.cardActions(for: card, actions: legalActions)), Self.tapRunnableActionTypes.contains(immediate.type) {
-                                    runAction(immediate)
-                                } else {
-                                    selectedCard = card
-                                    inspectedCard = nil
-                                }
-                            }
-                            .onLongPressGesture(minimumDuration: 0.35) { inspectedCard = card }
+                            .gesture(LongPressGesture(minimumDuration: 0.35)
+                                .exclusively(before: TapGesture())
+                                .onEnded { gesture in
+                                    switch gesture {
+                                    case .first:
+                                        selectedCard = nil
+                                        inspectedCard = card
+                                    case .second:
+                                        if targetable {
+                                            runTargetAction(card)
+                                        } else if !targetableIds.isEmpty {
+                                            GameHaptics.warning()
+                                        } else if combatHighlighted, runCombatCardAction(card) {
+                                            return
+                                        } else if let immediate = PortraitInteractionPolicy.automaticCardAction(GameBoardInteractionState.cardActions(for: card, actions: legalActions)), Self.tapRunnableActionTypes.contains(immediate.type) {
+                                            runAction(immediate)
+                                        } else {
+                                            selectedCard = card
+                                            inspectedCard = nil
+                                        }
+                                    }
+                                })
                     }
                 }
                 .frame(width: max(plan.contentWidth, rowWidth), height: max(cardHeight + 8, 44), alignment: .topLeading)
@@ -9860,23 +9940,52 @@ struct PortraitBottomCommandBar: View {
                 #endif
             }
             .sheet(isPresented: $isStackOpen) {
-                PortraitStackLane(snapshot: snapshot, humanStack: human.zones.stack,
-                                  legalActions: snapshot.legalActions ?? [],
-                                  selectedCard: $selectedCard, inspectedCard: $inspectedCard)
-                    .padding(16)
-                    .overlay {
-                        if let inspectedCard {
-                            CardInspector(card: inspectedCard)
-                                .overlay(alignment: .topTrailing) {
-                                    Button("Close card") { self.inspectedCard = nil }
-                                        .frame(minHeight: 44).padding(8)
-                                }
-                        }
-                    }
-                    .presentationDetents([.height(460), .large])
-                    .presentationDragIndicator(.visible)
+                BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
             }
         }
+    }
+}
+
+private struct BoardStackInspector: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.nativeTurnControl) private var turnControl
+    let snapshot: GameSnapshot
+    @Binding var selectedCard: ZoneCard?
+    @Binding var inspectedCard: ZoneCard?
+
+    var body: some View {
+        GeometryReader { geometry in
+        VStack(spacing: 0) {
+            HStack {
+                Text("Stack").font(.headline)
+                Spacer()
+                if let turnControl, turnControl.isAutoPassing {
+                    Button("Stop skipping", action: turnControl.stop)
+                        .frame(minHeight: 44)
+                }
+                Button("Done") { inspectedCard = nil; dismiss() }
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("board.stack.done")
+            }
+            PortraitStackLane(snapshot: snapshot, humanStack: snapshot.human?.zones.stack ?? [],
+                              legalActions: snapshot.legalActions ?? [],
+                              selectedCard: $selectedCard, inspectedCard: $inspectedCard,
+                              horizontal: geometry.size.width > geometry.size.height)
+                .overlay {
+                    if let inspectedCard {
+                        CardInspector(card: inspectedCard)
+                            .overlay(alignment: .topTrailing) {
+                                Button("Close card") { self.inspectedCard = nil }
+                                    .frame(minHeight: 44).padding(8)
+                            }
+                    }
+                }
+        }
+        .padding(12)
+        }
+        .presentationDetents([.height(460), .large])
+        .presentationContentInteraction(.scrolls)
+        .presentationDragIndicator(.visible)
     }
 }
 
@@ -9919,12 +10028,31 @@ private struct PlayerZoneMenu: View {
     }
 }
 
+enum StackTargetPresentation {
+    static func labels(for ids: [String], in snapshot: GameSnapshot) -> [String] {
+        let cards = PortraitInteractionPolicy.authorizedCards(snapshot)
+        return ids.map { id in
+            if let player = snapshot.players.first(where: { CombatPlayerIdentity.ids(for: $0.playerId, in: snapshot).contains(id) }) {
+                return snapshot.playerLabel(player.playerId)
+            }
+            if let card = cards.first(where: { $0.id == id }) {
+                return NativeCardArtworkPolicy.permitsLookup(card: card) ? card.card.name : "Hidden card"
+            }
+            if let object = snapshot.xmage?.stack.first(where: { $0.id == id || $0.objectId == id }) {
+                return object.displayName
+            }
+            return "Unavailable target"
+        }
+    }
+}
+
 struct PortraitStackLane: View {
     let snapshot: GameSnapshot
     let humanStack: [ZoneCard]
     let legalActions: [LegalAction]
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
+    var horizontal = false
 
     var body: some View {
         VStack(spacing: 5) {
@@ -9961,7 +10089,7 @@ struct PortraitStackLane: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView(.vertical, showsIndicators: stackCount > 2) {
+                ScrollView(.vertical, showsIndicators: true) {
                     VStack(spacing: 6) {
                         ForEach(Array(xmageObjects.enumerated()), id: \.element.id) { _, object in
                             stackObjectView(object)
@@ -9974,6 +10102,7 @@ struct PortraitStackLane: View {
                     }
                     .frame(maxWidth: .infinity)
                 }
+                .accessibilityIdentifier("board.stack.items")
             }
         }
         .padding(7)
@@ -9984,22 +10113,36 @@ struct PortraitStackLane: View {
 
     @ViewBuilder
     private func stackObjectView(_ object: XmageStackObject) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let layout = horizontal ? AnyLayout(HStackLayout(alignment: .top, spacing: 16)) : AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+        layout {
+            if horizontal { stackArtwork(object) }
+            VStack(alignment: .leading, spacing: 8) {
             Text(object.displayName).font(.headline).foregroundStyle(MagicPalette.parchment)
             Text("Source: \(object.displaySourceName)").font(.caption).foregroundStyle(.secondary)
-            if let card = object.displaySourceCard {
-                stackCardView(card)
-            } else {
-                SyntheticStackObjectTile(object: object, width: 180, height: 252)
+            if let targets = object.targetIds, !targets.isEmpty {
+                Text("Targets: \(StackTargetPresentation.labels(for: targets, in: snapshot).joined(separator: ", "))")
+                    .font(.subheadline).foregroundStyle(MagicPalette.parchment)
             }
+            if !horizontal { stackArtwork(object) }
             if let rules = object.rulesText { Text(rules).font(.body).foregroundStyle(MagicPalette.parchment) }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
     }
 
+    @ViewBuilder
+    private func stackArtwork(_ object: XmageStackObject) -> some View {
+        if let card = object.displaySourceCard {
+            stackCardView(card)
+        } else {
+            SyntheticStackObjectTile(object: object, width: horizontal ? 150 : 180, height: horizontal ? 210 : 252)
+        }
+    }
+
     private func stackCardView(_ card: ZoneCard) -> some View {
-        CardTile(card: card, selected: false, legal: false, zoneName: "Stack", width: 180, height: 252, ignoreTappedRotation: true, imageVariant: .inspection)
+        CardTile(card: card, selected: false, legal: false, zoneName: "Stack", width: horizontal ? 150 : 180, height: horizontal ? 210 : 252, ignoreTappedRotation: true, imageVariant: .inspection)
             .onTapGesture { inspectedCard = card }
             .accessibilityHint("Tap to inspect source card")
     }
@@ -10043,19 +10186,50 @@ struct BattlefieldRow: View {
     let cardWidth: CGFloat
     let cardHeight: CGFloat
     let rowWidth: CGFloat
+    var adaptsToDensity = false
     var allowsManaUndo = false
     var manaPaymentActive = false
     let runAction: (LegalAction) -> Void
     let runTargetAction: (ZoneCard) -> Void
     let runCombatCardAction: (ZoneCard) -> Bool
     @State private var expandedGroupIds: Set<String> = []
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var visibleCards: [ZoneCard] {
+        cardGroups.flatMap { group in
+            isExpanded(group) ? group.cards : [group.representative]
+        }
+    }
+
+    private func isExpanded(_ group: BattlefieldCardGroup) -> Bool {
+        expandedGroupIds.contains(group.id) || Self.requiresIndividualCombatCards(group, highlightedIDs: combatHighlightIds)
+    }
+
+    static func requiresIndividualCombatCards(_ group: BattlefieldCardGroup, highlightedIDs: Set<String>) -> Bool {
+        group.cards.contains {
+            $0.isAttacking == true || $0.blocking?.isEmpty == false ||
+            highlightedIDs.contains($0.instanceId) || highlightedIDs.contains($0.id)
+        }
+    }
+
+    private var renderedCardWidth: CGFloat {
+        guard adaptsToDensity else { return cardWidth }
+        return BattlefieldAdaptiveSizing.cardWidth(
+            availableRowWidth: rowWidth, maxCardWidth: cardWidth,
+            heightRatio: cardHeight / max(cardWidth, 1),
+            tappedSlots: visibleCards.map { $0.tapped == true })
+    }
+
+    private var renderedCardHeight: CGFloat {
+        cardHeight * renderedCardWidth / max(cardWidth, 1)
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             ScrollView(.horizontal, showsIndicators: showsOverflowIndicator) {
                 HStack(alignment: .center, spacing: 4) {
                     ForEach(cardGroups) { group in
-                        if group.count > 1, !expandedGroupIds.contains(group.id) {
+                        if group.count > 1, !isExpanded(group) {
                             collapsedGroupTile(group)
                         } else {
                             ForEach(group.cards) { card in
@@ -10068,23 +10242,8 @@ struct BattlefieldRow: View {
                 .frame(minWidth: rowWidth, minHeight: max(cardHeight + 6, 44), alignment: .center)
             }
 
-            if showsOverflowIndicator {
-                HStack(spacing: 3) {
-                    Image(systemName: "arrow.left.and.right")
-                        .font(.system(size: 7, weight: .black))
-                    Text("Scroll")
-                        .font(.system(size: 7, weight: .black))
-                }
-                .foregroundStyle(MagicPalette.parchment.opacity(0.82))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(MagicPalette.iron.opacity(0.62), in: Capsule())
-                .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.28), lineWidth: 0.8))
-                .padding(.leading, 7)
-                .padding(.top, 3)
-                .allowsHitTesting(false)
-            }
         }
+        .animation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.2), value: renderedCardWidth)
     }
 
     private var cardGroups: [BattlefieldCardGroup] {
@@ -10093,7 +10252,7 @@ struct BattlefieldRow: View {
 
     private var visibleCardCount: Int {
         cardGroups.reduce(0) { count, group in
-            count + (expandedGroupIds.contains(group.id) ? group.count : 1)
+            count + (isExpanded(group) ? group.count : 1)
         }
     }
 
@@ -10111,10 +10270,10 @@ struct BattlefieldRow: View {
             legal: legal,
             targetable: targetable || combatHighlighted,
             zoneName: title,
-            width: cardWidth,
-            height: cardHeight
+            width: renderedCardWidth,
+            height: renderedCardHeight
         )
-        .frame(width: card.tapped == true ? cardHeight : cardWidth, height: cardHeight)
+        .frame(width: card.tapped == true ? renderedCardHeight : renderedCardWidth, height: renderedCardHeight)
         .background { GeometryReader { geometry in
             Color.clear.preference(key: PortraitCardBoundsKey.self, value: [card.instanceId: geometry.frame(in: .named("portrait-board"))])
         } }
@@ -10137,10 +10296,10 @@ struct BattlefieldRow: View {
             inspectedCard = nil
             GameHaptics.selection()
         }
-        .onLongPressGesture(minimumDuration: 0.35) {
+        .highPriorityGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in
             inspectedCard = card
             GameHaptics.impact()
-        }
+        })
         .accessibilityLabel("\(group.count) grouped \(card.card.name) cards in \(title)")
         .accessibilityHint("Tap to expand the group. Long press to inspect a card.")
         .accessibilityAction(named: Text("Expand group")) {
@@ -10163,10 +10322,10 @@ struct BattlefieldRow: View {
             legal: action != nil,
             targetable: targetable || combatHighlighted,
             zoneName: title,
-            width: cardWidth,
-            height: cardHeight
+            width: renderedCardWidth,
+            height: renderedCardHeight
         )
-        .frame(width: card.tapped == true ? cardHeight : cardWidth, height: cardHeight)
+        .frame(width: card.tapped == true ? renderedCardHeight : renderedCardWidth, height: renderedCardHeight)
         .background { GeometryReader { geometry in
             Color.clear.preference(key: PortraitCardBoundsKey.self, value: [card.instanceId: geometry.frame(in: .named("portrait-board"))])
         } }
@@ -10175,10 +10334,10 @@ struct BattlefieldRow: View {
         .onTapGesture {
             handleCardTap(card, action: action, targetable: targetable, combatHighlighted: combatHighlighted)
         }
-        .onLongPressGesture(minimumDuration: 0.35) {
+        .highPriorityGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in
             inspectedCard = card
             GameHaptics.impact()
-        }
+        })
         .accessibilityAction(named: Text(targetable ? "Choose target" : "Select")) {
             handleCardTap(card, action: action, targetable: targetable, combatHighlighted: combatHighlighted)
         }
@@ -10204,7 +10363,9 @@ struct BattlefieldRow: View {
     }
 
     private var showsOverflowIndicator: Bool {
-        let contentWidth = CGFloat(visibleCardCount) * cardWidth + CGFloat(max(visibleCardCount - 1, 0)) * 4 + 16
+        let contentWidth = visibleCards.reduce(CGFloat(16)) {
+            $0 + ($1.tapped == true ? renderedCardHeight : renderedCardWidth)
+        } + CGFloat(max(visibleCardCount - 1, 0)) * 4
         return contentWidth > rowWidth
     }
 
@@ -11288,6 +11449,10 @@ struct GameLogDrawer: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 6) {
+                        if log.isEmpty {
+                            Text("No public game actions yet.")
+                                .font(.subheadline).foregroundStyle(.secondary)
+                        }
                         ForEach(log.suffix(48)) { entry in
                             Text(entry.message)
                                 .font(.caption.weight(.semibold))
@@ -12031,6 +12196,7 @@ struct CompactZoneInspectorOverlay: View {
     let closeAction: () -> Void
     var targetableIDs: Set<String> = []
     var runTargetAction: ((ZoneCard) -> Void)? = nil
+    var availableHeight: CGFloat = 410
 
     var body: some View {
         VStack(spacing: 8) {
@@ -12060,8 +12226,8 @@ struct CompactZoneInspectorOverlay: View {
             ScrollView {
                 if cards.isEmpty {
                     Text("No cards in this zone.")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(MagicPalette.parchment.opacity(0.4))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(MagicPalette.parchment.opacity(0.78))
                         .padding(.top, 20)
                 } else {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 12, alignment: .top)], alignment: .leading, spacing: 12) {
@@ -12136,7 +12302,7 @@ struct CompactZoneInspectorOverlay: View {
             }
         }
         .frame(maxWidth: 360)
-        .frame(height: cards.isEmpty ? 150 : min(410, cards.count <= 3 ? 290 : 410))
+        .frame(height: min(availableHeight, cards.isEmpty ? 150 : (cards.count <= 3 ? 290 : 410)))
         .background(MagicPalette.iron.opacity(0.94), in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(MagicPalette.antiqueGold.opacity(0.38), lineWidth: 1))
         .shadow(color: .black.opacity(0.45), radius: 16, y: 8)
