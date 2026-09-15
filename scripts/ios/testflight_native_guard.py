@@ -42,11 +42,12 @@ def read_json(path):
     return json.loads(Path(path).read_text())
 
 
-def export_policy(options):
+def export_policy(options, audience='internal'):
+    require(audience in ('internal', 'external'), 'Unknown TestFlight audience')
     require(options.get('method') == 'app-store-connect' and options.get('destination') == 'export',
             'Require an App Store Connect export, not automatic upload')
-    require(options.get('testFlightInternalTestingOnly') is True,
-            'Only internal TestFlight distribution is authorized by this script')
+    require(options.get('testFlightInternalTestingOnly') is (audience == 'internal'),
+            'Export options do not match the explicitly selected TestFlight audience')
     require(options.get('manageAppVersionAndBuildNumber') is False,
             'Xcode must not replace the prepared build number')
     require(options.get('teamID') == TEAM, 'Wrong export team')
@@ -99,9 +100,9 @@ def paired_staging(manifest, hashes):
                 'Staged input is not paired with the verified engine: ' + staged)
 
 
-def preflight(repo, options_path):
+def preflight(repo, options_path, audience='internal'):
     options_path = options_path.resolve()
-    export_policy(plistlib.loads(options_path.read_bytes()))
+    export_policy(plistlib.loads(options_path.read_bytes()), audience)
     provenance_path = repo / ENGINE / 'build/native-candidate-provenance.json'
     proof = read_json(provenance_path)
     require(proof.get('schema') == 1 and proof.get('repository') == REPOSITORY, 'Wrong native provenance repository/schema')
@@ -122,6 +123,7 @@ def preflight(repo, options_path):
             'engineWorkflowRunID': proof['workflowRunID'], 'engineArchiveSHA256': hashes['libmmengine.a'],
             'stagedManifestSHA256': digest(manifest_path), 'provenanceSHA256': digest(provenance_path),
             'exportOptionsPath': str(options_path), 'exportOptionsSHA256': digest(options_path),
+            'testFlightAudience': audience,
             'scope': 'Source/artifact integrity only; not native execution or App Store Connect build availability'}
 
 
@@ -255,12 +257,13 @@ def main():
     parser.add_argument('--ipa', type=Path)
     parser.add_argument('--archive', type=Path)
     parser.add_argument('--output', type=Path)
+    parser.add_argument('--audience', choices=('internal', 'external'), default='internal')
     args = parser.parse_args()
     try:
         repo = args.repo.resolve()
         if args.operation == 'source':
             require(args.export_options is not None, 'Source check requires export options')
-            result = preflight(repo, args.export_options)
+            result = preflight(repo, args.export_options, args.audience)
         else:
             require(args.receipt is not None, 'A preceding release receipt is required')
             receipt = read_json(args.receipt)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Native internal TestFlight only. Never replaces previous archives or proof.
+# Native TestFlight release. Audience must be selected explicitly for external builds.
 set -euo pipefail
 umask 077
 
@@ -10,6 +10,7 @@ CONFIGURATION="${CONFIGURATION:-Release}"
 BUNDLE_ID="${BUNDLE_ID:-com.calebfeliciano.magicmobile}"
 TEAM_ID="${TEAM_ID:-82HPAY85M8}"
 EXPORT_OPTIONS="${EXPORT_OPTIONS:-$REPO_ROOT/release/testflight/ExportOptions.plist}"
+TESTFLIGHT_AUDIENCE="${TESTFLIGHT_AUDIENCE:-internal}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-$REPO_ROOT/build_output/testflight}"
 BUILD_NUMBER_SCRIPT="$REPO_ROOT/scripts/ios/testflight-build-number.mjs"
 GUARD="$REPO_ROOT/scripts/ios/testflight_native_guard.py"
@@ -31,6 +32,9 @@ fi
 if [[ "${PREPARE_TESTFLIGHT_BUILD_NUMBER:-0}" != 0 ]]; then
   echo "Run 'node scripts/ios/testflight-build-number.mjs prepare', check App Store Connect availability, and commit before releasing." >&2
   exit 2
+fi
+if [[ "$TESTFLIGHT_AUDIENCE" != internal && "$TESTFLIGHT_AUDIENCE" != external ]]; then
+  echo "TESTFLIGHT_AUDIENCE must be internal or external." >&2; exit 2
 fi
 if [[ ! -f "$ASC_KEY_PATH" ]]; then
   echo "The configured App Store Connect API key file is missing." >&2; exit 2
@@ -60,6 +64,7 @@ echo "This script requires a committed, prepared build number. App Store Connect
 
 # Must be a clean, reviewed source tree paired with a verified complete engine.
 python3 "$GUARD" source --repo "$REPO_ROOT" --export-options "$EXPORT_OPTIONS" \
+  --audience "$TESTFLIGHT_AUDIENCE" \
   --output "$RUN_ROOT/source-receipt.json" > "$RUN_ROOT/source-check.log"
 
 # SDK-only checks can leave the reference project generated. Always select the real product.
@@ -90,5 +95,5 @@ python3 "$GUARD" upload-input --repo "$REPO_ROOT" --receipt "$RUN_ROOT/signed-re
 xcrun altool --upload-app -f "$IPA_PATH" --api-key "$ASC_KEY_ID" \
   --api-issuer "$ASC_ISSUER_ID" 2>&1 | tee "$UPLOAD_LOG"
 node "$BUILD_NUMBER_SCRIPT" record --upload-log "$UPLOAD_LOG" --ipa "$IPA_PATH"
-echo "Upload completed. Confirm Apple processing/Internal group access separately; phone gameplay is not verified by this script."
+echo "Upload completed for $TESTFLIGHT_AUDIENCE TestFlight eligibility. Confirm Apple processing/group access separately; phone gameplay is not verified by this script."
 echo "Keep the archive, dSYM, paired engine and receipts in $RUN_ROOT."

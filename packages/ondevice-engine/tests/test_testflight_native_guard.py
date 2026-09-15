@@ -41,14 +41,19 @@ def signing():
 
 
 class ReleaseGuardTests(unittest.TestCase):
-    def test_actual_internal_export_policy(self):
+    def test_actual_export_policies_require_explicit_audience(self):
         options = plistlib.loads((REPO / 'release/testflight/ExportOptions.plist').read_bytes())
-        guard.export_policy(options)
+        external = plistlib.loads((REPO / 'release/testflight/ExportOptionsExternal.plist').read_bytes())
+        guard.export_policy(options, 'internal')
+        guard.export_policy(external, 'external')
         for key, bad in [('destination', 'upload'), ('method', 'development'),
-                         ('teamID', 'other'), ('testFlightInternalTestingOnly', False),
+                         ('teamID', 'other'),
                          ('manageAppVersionAndBuildNumber', True)]:
             with self.subTest(key=key), self.assertRaises(ValueError):
                 guard.export_policy({**options, key: bad})
+        with self.assertRaises(ValueError): guard.export_policy(options, 'external')
+        with self.assertRaises(ValueError): guard.export_policy(external, 'internal')
+        with self.assertRaises(ValueError): guard.export_policy(external, 'public')
 
     def test_linked_release_settings(self):
         self.assertEqual(guard.inspect_settings(settings())['appBuild'], '2026091401')
