@@ -4,6 +4,42 @@ XMage remains the rules authority. Maintain the upstream Java implementation and
 
 This is a maintenance procedure, not release acceptance. Current evidence and outstanding gates belong in [LOCAL_CONTINUATION_STATUS.md](LOCAL_CONTINUATION_STATUS.md) and [NATIVE_BLOCKERS.md](NATIVE_BLOCKERS.md).
 
+## Implemented orchestration and activation boundary
+
+[Maintenance tooling](../../../scripts/magicmobile-maintenance/README.md) provides
+read-only detection, reviewed isolated preparation, regeneration, and explicitly
+activated candidate publication. The maintenance workflow is manual-only; there is
+no active schedule, notification service, or automatic candidate PR. The production
+upstream pin is unchanged. Fixture verification does not represent a hosted upstream
+upgrade. Follow the tooling's separate source/hash approvals and failure procedures.
+
+[Native approval policy](../../../scripts/magicmobile-native-gate/README.md)
+requires an immutable candidate SHA and successful exact-source non-simulator jobs
+before the full ARM64 workflow may start. Ordinary pushes no longer start native
+compilation. The unsigned product workflow is also dispatch-only and requires
+`engine_run_id` and `engine_commit`; its existing source/artifact guards still apply.
+Only a separately authorized release task may sign or distribute the result.
+
+### Candidate outcomes and recovery
+
+| Outcome | Maintainer action |
+| --- | --- |
+| Clean upstream movement | Review detection digest, both source manifests and dependency diff; prepare a fresh exact candidate, regenerate, review inventory/hash digest, then run post-review and exact-commit hosted gates. |
+| Original-blob or patch conflict | Preserve the rejected report/tree. Review the changed upstream implementation and adapt only the required transformation and regression. Start a fresh candidate; never accept fuzz or copy hashes to bypass the conflict. |
+| Dependency/toolchain change | Review resolved versions, licenses, static references, native reachability and compiler compatibility. Existing native evidence is not reusable when protected inputs differ. Do not change runners, heap, secrets or billing without separate authority. |
+| Registry/catalogue or bundled-deck regression | Inspect additions/removals/exclusions and all five exported-deck results. Fix the supported integration or explicitly reject the candidate; do not reduce the registry or silently replace decks. |
+| JVM, protocol, boundary or lifecycle failure | Retain failing seed/command transcript privately where necessary. Reproduce the focused failure, fix and rerun affected gates before broader/native work. Two different unsuccessful attempts require a new hypothesis, not blind retries. |
+| Native-image failure | Preserve the exact SHA, compiler manifest, logs and class snapshots. Diagnose the actual failed stage; no product staging or automatic heap/time increase. A new dispatch needs justified changed evidence. |
+| Product-link/layout failure | Keep the successful paired engine artifact. Investigate exact app/configuration/linker differences and code/relocation checks; never soften source or layout guards. |
+| Candidate passes, awaiting TestFlight | Record exact source/run/artifact hashes and unsigned result. Stop at the release boundary; separate approval is required for a fresh build number, signing, internal upload and Apple processing verification. |
+| Rejected candidate / rollback | Leave the production pin unchanged and record the candidate decision for deduplication. Preserve closed PR history. If a reviewed source change must be reversed, use a new reviewed revert/forward-fix commit, not a force push/reset; a shipped rollback still requires an authorized signed app update. |
+
+Activation requires explicit owner approval of the documented schedule or publisher
+command. Disable recurrence by removing the schedule in a reviewed source change;
+stop invoking publisher commands. Do not automatically cancel a valuable native
+run already in progress. Detection alone must never trigger ARM64 compilation or
+send executable updates to phones.
+
 ## 1. Select and review an exact upstream revision
 
 Start in the explicitly selected MagicMobile checkout; record its root, branch, commit and diff. Use a fresh maintenance checkout/build tree for a new upstream candidate so stale classes, generated registries and patched sources cannot enter it. Preserve existing work and evidence; do not reset an occupied checkout.

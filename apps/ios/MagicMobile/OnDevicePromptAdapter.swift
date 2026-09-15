@@ -13,7 +13,7 @@ enum OnDevicePromptAdapter {
         let revision = Int(prompt.revision)
         var fields: [String: Any] = [
             "id": prompt.id, "method": "GAME_\(prompt.kind)", "messageId": revision, "playerId": viewerPlayerID,
-            "responseKind": "unsupported", "message": prompt.payload["message"]?.string ?? "",
+            "responseKind": "unsupported", "message": EngineDisplayText.text(prompt.payload["message"]?.string ?? ""),
             "required": prompt.payload["required"]?.bool ?? true
         ]
         var actions: [LegalAction] = []
@@ -21,15 +21,15 @@ enum OnDevicePromptAdapter {
         fields["options"] = try prompt.payload["options"].map { try JSONSerialization.jsonObject(with: $0.encoded()) }
         func response(_ type: String) -> [String: Any] { ["type": type, "promptId": prompt.id, "messageId": revision] }
         func action(_ type: String, _ label: String, _ extras: [String: Any] = [:]) throws -> LegalAction {
-            var value: [String: Any] = ["id": "\(prompt.id):\(type)", "type": type, "label": label, "playerId": viewerPlayerID, "promptId": prompt.id, "messageId": revision]
+            var value: [String: Any] = ["id": "\(prompt.id):\(type)", "type": type, "label": EngineDisplayText.label(label), "playerId": viewerPlayerID, "promptId": prompt.id, "messageId": revision]
             value.merge(extras) { _, value in value }
             return try decode(value)
         }
         func targetLabel(_ id: String) -> String {
             if id == viewerPlayerID { return "You" }
-            return players.first(where: { $0.playerId == id })?.displayName
+            return EngineDisplayText.label(players.first(where: { $0.playerId == id })?.displayName
                 ?? cards.first(where: { $0.id == id })?.card.name
-                ?? id
+                ?? id)
         }
         switch prompt.kind {
         case "ASK":
@@ -69,7 +69,7 @@ enum OnDevicePromptAdapter {
                 for card in battlefield where card.isAttacking == true {
                     guard UUID(uuidString: card.id) != nil else { throw invalid("Invalid combat UUID") }
                     if !targets.contains(where: { $0["id"] == card.id }) {
-                        targets.append(["id": card.id, "label": card.card.name])
+                        targets.append(["id": card.id, "label": EngineDisplayText.label(card.card.name)])
                     }
                 }
                 fields["targets"] = targets
@@ -90,7 +90,7 @@ enum OnDevicePromptAdapter {
                         ["id": symbol, "manaType": symbol, "label": "Pay {\(symbol)}", "amount": amount]
                     }
             }
-            payment = try decode(["active": true, "remainingText": prompt.payload["message"]?.string ?? ""])
+            payment = try decode(["active": true, "remainingText": EngineDisplayText.text(prompt.payload["message"]?.string ?? "")])
             if prompt.responseTypes.contains("boolean") { actions.append(try action("cancel_payment", "Cancel", ["confirmed": false])) }
             if prompt.kind == "PLAY_MANA", prompt.responseTypes.contains("string") {
                 // The pinned PLAY_MANA protocol publishes exactly the string "special".
@@ -105,7 +105,7 @@ enum OnDevicePromptAdapter {
             fields["multiAmounts"] = try rows.enumerated().map { index, row -> [String: Any] in
                 guard let min = row["min"]?.integer, let max = row["max"]?.integer, min <= max,
                       let label = row["message"]?.string else { throw invalid("Malformed allocation row") }
-                var value: [String: Any] = ["id": String(index), "label": label, "min": min, "max": max]
+                var value: [String: Any] = ["id": String(index), "label": EngineDisplayText.label(label), "min": min, "max": max]
                 if let initial = row["defaultValue"]?.integer { value["defaultValue"] = initial }
                 return value
             }
@@ -134,7 +134,7 @@ enum OnDevicePromptAdapter {
             fields["minChoices"] = 1; fields["maxChoices"] = 1
             fields["abilities"] = try abilities.map { item -> [String: String] in
                 guard let id = item["id"]?.string, UUID(uuidString: id) != nil, let label = item["label"]?.string else { throw invalid("Malformed ability choice") }
-                return ["id": id, "label": label]
+                return ["id": id, "label": EngineDisplayText.label(label)]
             }
             if prompt.responseTypes.contains("boolean"), prompt.payload["required"]?.bool == false {
                 actions.append(try action("answer_yes_no", "Cancel", ["confirmed": false]))
@@ -151,7 +151,7 @@ enum OnDevicePromptAdapter {
                 for row in rows {
                     let key = "#" + row["id"]!
                     if let label = prompt.payload["specialChoices"]?[key]?.string {
-                        rows.append(["id": key, "label": "\(prompt.payload["specialText"]?.string ?? "Special"): \(label)"])
+                        rows.append(["id": key, "label": EngineDisplayText.label("\(prompt.payload["specialText"]?.string ?? "Special"): \(label)")])
                     }
                 }
             }
@@ -166,7 +166,7 @@ enum OnDevicePromptAdapter {
             fields["modes"] = try choices(prompt)
         case "PICK_TARGET":
             guard prompt.responseTypes.contains("uuid") else { throw invalid("Target requires UUID responses") }
-            let candidates = try targetIDs(prompt)
+            let candidates = try selectableTargetIDs(prompt)
             fields["responseKind"] = "target"; fields["responseCommand"] = response("choose_target")
             fields["minChoices"] = 1; fields["maxChoices"] = 1
             fields["targetIds"] = candidates
@@ -175,22 +175,36 @@ enum OnDevicePromptAdapter {
             // options.orderedViews. Do not turn the viewer's other zone cards into choices.
             let suppliedCards = ((prompt.payload["options"]?["orderedViews"]?.array ?? []) + (prompt.payload["cards"]?.array ?? [])).flatMap { card in
                 // The candidate/responseAliases filter below still governs face IDs.
-                card["secondCardFace"]?.object != nil ? [card, card["secondCardFace"]!] : [card]
+                card["hideInfo"]?.bool != true && card["secondCardFace"]?.object != nil ? [card, card["secondCardFace"]!] : [card]
             }
-            if !suppliedCards.isEmpty {
-                var seen: Set<String> = []
-                let mapped = try suppliedCards.filter {
-                    guard let id = $0["id"]?.string, candidates.contains(id) else { return false }
-                    return seen.insert(id).inserted
-                }.map(promptCard)
-                fields["cards"] = mapped
-                let shownIDs = Set(mapped.compactMap { $0["instanceId"] as? String })
-                fields["targets"] = candidates.filter { !shownIDs.contains($0) }.map { id in
-                    ["id": id, "label": targetLabel(id)]
-                }
+            var seen: Set<String> = []
+            var mapped = try suppliedCards.filter {
+                guard let id = $0["id"]?.string else { return false }
+                return seen.insert(id).inserted
+            }.map { value -> [String: Any] in
+                var card = try promptCard(value)
+                let legal = candidates.contains(value["id"]!.string!)
+                card["selectable"] = legal
+                if !legal { card["disabledReason"] = "Not a legal choice" }
+                return card
+            }
+            // A query may supply only IDs (e.g. graveyard/hand selections). Recover
+            // only matching cards from the current authenticated view, never a deck
+            // list or a cached lookup. Battlefield targets remain direct board taps.
+            let boardIDs = Set(players.flatMap { $0.zones.battlefield }.map(\.id))
+            for card in cards where candidates.contains(card.id) && !boardIDs.contains(card.id) && seen.insert(card.id).inserted {
+                var identity: [String: Any] = ["name": card.card.name, "typeLine": card.card.typeLine]
+                identity["oracleText"] = card.card.oracleText
+                identity["manaCost"] = card.card.manaCost
+                mapped.append(["instanceId": card.id, "card": identity, "selectable": true])
+            }
+            fields["cards"] = mapped
+            let shownIDs = Set(mapped.compactMap { $0["instanceId"] as? String })
+            fields["targets"] = candidates.filter { !shownIDs.contains($0) }.map { id in
+                ["id": id, "label": targetLabel(id)]
             }
             if prompt.responseTypes.contains("boolean"), prompt.payload["required"]?.bool == false {
-                actions.append(try action("answer_yes_no", prompt.payload["options"]?["UI.right.btn.text"]?.string ?? "Done", ["confirmed": false]))
+                actions.append(try action("answer_yes_no", prompt.payload["options"]?["UI.right.btn.text"]?.string ?? "Cancel", ["confirmed": false]))
             }
         default: throw invalid("Unsupported prompt: \(prompt.kind)")
         }
@@ -283,7 +297,7 @@ enum OnDevicePromptAdapter {
             default: selections = command.orderedIds
             }
             let id = try single(selections)
-            guard try targetIDs(prompt).contains(id) else { throw invalid("Target is not a candidate") }
+            guard try selectableTargetIDs(prompt).contains(id) else { throw invalid("Target is not a legal choice") }
             return try answer("uuid", .string(id), prompt: prompt)
         case ("PICK_TARGET", "answer_yes_no"), ("CHOOSE_ABILITY", "answer_yes_no"), ("PICK_ABILITY", "answer_yes_no"):
             guard prompt.payload["required"]?.bool == false, command.confirmed == false else { throw invalid("Target choice cannot be cancelled") }
@@ -341,20 +355,46 @@ enum OnDevicePromptAdapter {
         return ids
     }
 
+    /// Transport candidates also include browseable, nonmatching search cards.
+    /// HumanPlayer's Cards overload omits possibleTargets when that set is empty.
+    private static func selectableTargetIDs(_ prompt: MagicMobileOnDevice.EnginePrompt) throws -> [String] {
+        let candidates = try targetIDs(prompt)
+        let options = prompt.payload["options"]
+        let hasCardSelection = prompt.payload["cards"]?.array?.isEmpty == false && options?["chosenTargets"] != nil
+        guard options?["possibleTargets"] != nil || hasCardSelection else { return candidates }
+        var legal = Set<String>()
+        for key in ["possibleTargets", "chosenTargets"] {
+            if let value = options?[key] {
+                guard let values = value.array else { throw invalid("Malformed target eligibility") }
+                for value in values {
+                    guard let id = value.string, UUID(uuidString: id) != nil, candidates.contains(id) else { throw invalid("Invalid selectable target") }
+                    legal.insert(id)
+                }
+            }
+        }
+        for (alias, base) in prompt.payload["responseAliases"]?.object ?? [:] {
+            if let base = base.string, legal.contains(base) { legal.insert(alias) }
+        }
+        return candidates.filter { legal.contains($0) }
+    }
+
     private static func choices(_ prompt: MagicMobileOnDevice.EnginePrompt) throws -> [[String: String]] {
         guard let values = prompt.payload["choices"]?.object, let order = prompt.payload["choiceOrder"]?.array else { throw invalid("Missing ordered choices") }
         return try order.map { item in
             guard let id = item.string, let label = values[id]?.string else { throw invalid("Invalid choice key or label") }
-            return ["id": id, "label": label]
+            return ["id": id, "label": EngineDisplayText.label(label)]
         }
     }
 
     /// Only CardViews explicitly supplied to this viewer's query enter this mapper.
     private static func promptCard(_ value: MagicMobileOnDevice.JSONValue) throws -> [String: Any] {
-        guard let id = value["id"]?.string, UUID(uuidString: id) != nil, let name = value["name"]?.string else { throw invalid("Unrepresentable prompt card") }
-        let types = value["cardTypes"]?.array?.compactMap(\.string) ?? []
-        var card: [String: Any] = ["name": name, "typeLine": types.joined(separator: " ")]
-        if let rules = value["rules"]?.array?.compactMap(\.string) { card["oracleText"] = rules.joined(separator: "\n") }
+        guard let id = value["id"]?.string, UUID(uuidString: id) != nil else { throw invalid("Unrepresentable prompt card") }
+        let hidden = value["hideInfo"]?.bool == true
+        let name = hidden ? "Face-down card" : value["displayName"]?.string ?? value["name"]?.string ?? "Card details unavailable"
+        let types = hidden ? [] : value["cardTypes"]?.array?.compactMap(\.string) ?? []
+        var card: [String: Any] = ["name": EngineDisplayText.label(name), "typeLine": types.joined(separator: " ")]
+        card["manaCost"] = OnDeviceSnapshotAdapter.printedManaCost(value)
+        if !hidden, let rules = value["rules"]?.array?.compactMap(\.string) { card["oracleText"] = EngineDisplayText.text(rules.joined(separator: "\n")) }
         return ["instanceId": id, "card": card]
     }
 
@@ -364,25 +404,110 @@ enum OnDevicePromptAdapter {
 
     /// Plain display text only. Never render markup or alter the response tokens.
     private static func plainLabel(_ value: String?, fallback: String) -> String {
-        guard let value else { return fallback }
-        var text = value.replacingOccurrences(of: "(?is)<(script|style)\\b[^>]*>.*?</\\1\\s*>", with: "", options: .regularExpression)
-            .replacingOccurrences(of: "<[^>]*>", with: " ", options: .regularExpression)
-        let entities = ["amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " "]
-        if let pattern = try? NSRegularExpression(pattern: "&(#x[0-9a-fA-F]+|#[0-9]+|amp|lt|gt|quot|apos|nbsp);") {
-            let decoded = NSMutableString(string: text)
-            for match in pattern.matches(in: text, range: NSRange(text.startIndex..., in: text)).reversed() {
-                let token = (text as NSString).substring(with: match.range(at: 1))
-                let replacement: String?
-                if token.hasPrefix("#") {
-                    let hexadecimal = token.hasPrefix("#x")
-                    let number = UInt32(token.dropFirst(hexadecimal ? 2 : 1), radix: hexadecimal ? 16 : 10)
-                    replacement = number.flatMap(UnicodeScalar.init).map(String.init)
-                } else { replacement = entities[token] }
-                if let replacement { decoded.replaceCharacters(in: match.range, with: replacement) }
-            }
-            text = decoded as String
+        EngineDisplayText.label(value ?? "", fallback: fallback)
+    }
+}
+
+/// Plain-text presentation only: never use these results as engine IDs or answers.
+/// No HTML renderer, network requests, attributed links, or hidden-card lookup.
+enum EngineDisplayText {
+    static func label(_ source: String, fallback: String = "") -> String {
+        let value = text(source).split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return value.isEmpty ? fallback : value
+    }
+
+    static func phaseLabel(_ source: String) -> String {
+        let value = label(source)
+        let known = ["PRECOMBAT_MAIN": "Precombat main", "POSTCOMBAT_MAIN": "Postcombat main",
+                     "BEGIN_COMBAT": "Beginning of combat", "END_COMBAT": "End of combat",
+                     "DECLARE_ATTACKERS": "Declare attackers", "DECLARE_BLOCKERS": "Declare blockers",
+                     "FIRST_COMBAT_DAMAGE": "First-strike damage", "COMBAT_DAMAGE": "Combat damage",
+                     "END_TURN": "End step", "CLEANUP": "Cleanup", "UNTAP": "Untap",
+                     "UPKEEP": "Upkeep", "DRAW": "Draw", "BEGINNING": "Beginning", "COMBAT": "Combat",
+                     "ENDING": "Ending"]
+        if let name = known[value] { return name }
+        // Preserve already-human text; only reformat enum-style all-caps identifiers.
+        guard !value.isEmpty, value == value.uppercased(),
+              value.allSatisfy({ $0.isLetter || $0 == "_" || $0.isWhitespace }) else { return value }
+        let words = value.replacingOccurrences(of: "_", with: " ").lowercased()
+        return words.prefix(1).uppercased() + words.dropFirst()
+    }
+
+    static func text(_ source: String) -> String {
+        var current = source
+        // Decode before parsing and reach a fixed point, including nested entities.
+        // This prevents a second display pass from exposing previously encoded markup.
+        while true {
+            let next = stripMarkup(decodeEntities(current)).components(separatedBy: .newlines)
+                .map { $0.split(whereSeparator: \.isWhitespace).joined(separator: " ") }
+                .filter { !$0.isEmpty }.joined(separator: "\n")
+            if next == current { return next }
+            current = next
         }
-        let label = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        return label.isEmpty ? fallback : label
+    }
+
+    private static func decodeEntities(_ source: String) -> String {
+        let named = ["amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " ",
+                     "ndash": "–", "mdash": "—", "hellip": "…", "lsquo": "‘", "rsquo": "’", "times": "×"]
+        let pattern = try! NSRegularExpression(pattern: "&(#(?:[xX][0-9a-fA-F]+|[0-9]+)|[A-Za-z]+);")
+        let result = NSMutableString(string: source)
+        for match in pattern.matches(in: source, range: NSRange(source.startIndex..., in: source)).reversed() {
+            let token = (source as NSString).substring(with: match.range(at: 1))
+            var replacement = named[token]
+            if token.hasPrefix("#") {
+                let hexadecimal = token.lowercased().hasPrefix("#x")
+                if let number = UInt32(token.dropFirst(hexadecimal ? 2 : 1), radix: hexadecimal ? 16 : 10),
+                   let scalar = UnicodeScalar(number) {
+                    // Never introduce control or bidirectional-override characters.
+                    replacement = ((number < 32 && ![9, 10, 13].contains(number)) || (127...159).contains(number) || (0x202A...0x202E).contains(number)
+                                   || (0x2066...0x2069).contains(number)) ? "" : String(scalar)
+                }
+            }
+            if let replacement { result.replaceCharacters(in: match.range, with: replacement) }
+        }
+        return result as String
+    }
+
+    private static func stripMarkup(_ source: String) -> String {
+        let pattern = try! NSRegularExpression(pattern: #"(?s)<!--.*?(?:-->|$)|</?([A-Za-z][A-Za-z0-9:-]*)\b(?:[^<>"']|"[^"]*"|'[^']*')*>"#)
+        let blocks: Set<String> = ["br", "p", "div", "li", "ul", "ol", "table", "tr", "td", "hr"]
+        let suppressed: Set<String> = ["script", "style", "iframe", "object", "svg", "math", "head", "template"]
+        let ns = source as NSString
+        var output = "", cursor = 0
+        var hidden: [String] = []
+        for match in pattern.matches(in: source, range: NSRange(location: 0, length: ns.length)) {
+            if hidden.isEmpty { output += ns.substring(with: NSRange(location: cursor, length: match.range.location - cursor)) }
+            cursor = NSMaxRange(match.range)
+            let tag = ns.substring(with: match.range)
+            if tag.hasPrefix("<!--") { continue }
+            let name = ns.substring(with: match.range(at: 1)).lowercased()
+            let closing = tag.hasPrefix("</")
+            if suppressed.contains(name) {
+                if closing {
+                    if hidden.last == name { hidden.removeLast() }
+                } else if !tag.hasSuffix("/>") { hidden.append(name) }
+                continue
+            }
+            guard hidden.isEmpty else { continue }
+            if blocks.contains(name) { output += "\n" }
+            else if name == "img" { output += imageSymbol(tag) }
+            // Inline/unknown tags contribute no attributes or executable markup.
+        }
+        if hidden.isEmpty { output += ns.substring(from: cursor) }
+        return output
+    }
+
+    private static func imageSymbol(_ tag: String) -> String {
+        // Only an explicit canonical symbol alt is supported. Never infer a label
+        // from src, a URL, object_id, title, CSS, or an arbitrary image description.
+        let attributes = try! NSRegularExpression(pattern: #"(?i)\s+([a-z][a-z0-9-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"#)
+        let symbol = #"^\{(?:[0-9]+|[WUBRGCXYZSTQE]|[WUBRGC2]/[WUBRGCP])\}$"#
+        let ns = tag as NSString
+        let matches = attributes.matches(in: tag, range: NSRange(tag.startIndex..., in: tag))
+            .filter { ns.substring(with: $0.range(at: 1)).lowercased() == "alt" }
+        guard matches.count == 1, let match = matches.first,
+              let range = (2...4).map({ match.range(at: $0) }).first(where: { $0.location != NSNotFound }) else { return "" }
+        let value = ns.substring(with: range).uppercased()
+        return value.range(of: symbol, options: .regularExpression) != nil ? value : ""
     }
 }

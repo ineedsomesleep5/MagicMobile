@@ -60,7 +60,11 @@ public final class DecisionSpec {
             case "mana": {
                 Map<String,Object> mana=Json.object(value);
                 if(!mana.keySet().equals(Set.of("playerId","manaType"))) reject("Malformed mana response");
-                UUID.fromString(Json.requiredString(mana,"playerId"));
+                String playerId=Json.requiredString(mana,"playerId");
+                try { UUID.fromString(playerId); }
+                catch(IllegalArgumentException invalid) { reject("Malformed mana player identity"); }
+                // Turn controllers answer for the acting pool identified by the query.
+                if(!playerId.equals(payload.get("manaPlayerId"))) reject("Mana player does not match this prompt");
                 if(!Set.of("WHITE","BLUE","BLACK","RED","GREEN","COLORLESS","GENERIC").contains(Json.requiredString(mana,"manaType"))) reject("Unknown mana type");
                 break;
             }

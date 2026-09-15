@@ -3,6 +3,84 @@ import MagicMobileOnDevice
 @testable import MagicMobile
 
 final class OnDeviceSnapshotAdapterTests: XCTestCase {
+    func testPrintedManaCostUsesNativeSymbolArraysAndNeverPaymentOrHiddenIdentity() throws {
+        let original = try fixture("2p-priority")
+        for (left, right, hidden, expected) in [
+            (["{3}", "{W}"], [], false, "{3}{W}" as String?),
+            (["{X}", "{2/U}", "{G/P}"], [], false, "{X}{2/U}{G/P}"),
+            (["{R}"], ["{1}", "{U}"], false, "{R} // {1}{U}"),
+            (["{0}"], [], false, "{0}"), ([], [], false, nil),
+            (["{3}", "{W}"], [], true, nil)
+        ] {
+            var raw = try XCTUnwrap(original.raw.object)
+            var root = try XCTUnwrap(original.snapshot?.object)
+            var view = try XCTUnwrap(root["gameView"]?.object)
+            var hand = try XCTUnwrap(view["myHand"]?.object)
+            let id = try XCTUnwrap(hand.keys.sorted().first)
+            var card = try XCTUnwrap(hand[id]?.object)
+            card["manaCostLeftStr"] = .array(left.map { .string($0) })
+            card["manaCostRightStr"] = .array(right.map { .string($0) })
+            card["hideInfo"] = .bool(hidden)
+            card["rules"] = .array([.string("Pay {9} instead; commander tax {2}.")])
+            hand[id] = .object(card); view["myHand"] = .object(hand)
+            root["gameView"] = .object(view); raw["snapshot"] = .object(root)
+            let snapshot = try OnDeviceSnapshotAdapter.snapshot(MatchPoll(.object(raw)), expectedSeatID: original.seatID)
+            XCTAssertEqual(snapshot.human?.zones.hand.first { $0.id == id }?.card.manaCost, expected)
+        }
+        XCTAssertNil(CardIdentity(name: "Legacy", typeLine: "Creature", oracleText: nil).manaCost)
+        let legacy = try JSONDecoder().decode(CardIdentity.self, from: Data(#"{"name":"Legacy","typeLine":"Land"}"#.utf8))
+        XCTAssertNil(legacy.manaCost)
+    }
+
+    func testNativeIconCategoriesSurviveAndMenaceRequiresAnExplicitEngineIcon() throws {
+        let original = try fixture("2p-priority")
+        var raw = try XCTUnwrap(original.raw.object)
+        var root = try XCTUnwrap(original.snapshot?.object)
+        var view = try XCTUnwrap(root["gameView"]?.object)
+        var hand = try XCTUnwrap(view["myHand"]?.object)
+        let id = try XCTUnwrap(hand.keys.sorted().first)
+        var card = try XCTUnwrap(hand[id]?.object)
+        card["rules"] = .array([.string("Menace")])
+        for explicitMenace in [false, true] {
+            let names = ["ABILITY_FLYING", "COMMANDER", "PLAYABLE_COUNT", "SYSTEM_COMBINED", "UNKNOWN"] + (explicitMenace ? ["ABILITY_MENACE"] : [])
+            card["cardIcons"] = .array(names.map { .object(["cardIconType": .string($0)]) })
+            hand[id] = .object(card); view["myHand"] = .object(hand)
+            root["gameView"] = .object(view); raw["snapshot"] = .object(root)
+            let snapshot = try OnDeviceSnapshotAdapter.snapshot(MatchPoll(.object(raw)), expectedSeatID: original.seatID)
+            let mapped = try XCTUnwrap(snapshot.human?.zones.hand.first { $0.id == id })
+            XCTAssertEqual(mapped.visibleXmageIcons.map(\.iconType), ["ABILITY_FLYING", "COMMANDER"] + (explicitMenace ? ["ABILITY_MENACE"] : []))
+            XCTAssertEqual(mapped.visibleXmageIcons.compactMap(\.textBadge), explicitMenace ? ["Menace"] : [])
+        }
+    }
+
+    func testNonbasicManaRowsUseSourceUUIDWithoutEnablingNonmanaAbilitiesDuringPayment() throws {
+        let original = try fixture("2p-mana")
+        for manaType in [true, false, nil] as [Bool?] {
+            var raw = try XCTUnwrap(original.raw.object)
+            var root = try XCTUnwrap(original.snapshot?.object)
+            var view = try XCTUnwrap(root["gameView"]?.object)
+            var playable = try XCTUnwrap(view["canPlayObjects"]?.object)
+            let entries = try XCTUnwrap(playable["objects"]?.object)
+            let source = try XCTUnwrap(entries.keys.sorted().first)
+            var row = try XCTUnwrap(entries[source]?["basicManaAbilities"]?.array?.first?.object)
+            row["manaAbility"] = manaType.map { .bool($0) }
+            row["value"] = .string("{T}: Add {C}{C}.") // Same label must never determine legality.
+            playable["objects"] = .object([source: .object(["other": .array([.object(row)])])])
+            view["canPlayObjects"] = .object(playable); root["gameView"] = .object(view); raw["snapshot"] = .object(root)
+            let poll = try MatchPoll(.object(raw))
+            let snapshot = try OnDeviceSnapshotAdapter.snapshot(poll, expectedSeatID: poll.seatID)
+            let actions = snapshot.legalActions?.filter { $0.sourceInstanceId == source } ?? []
+            XCTAssertEqual(actions.count, manaType == true ? 1 : 0)
+            if let action = actions.first {
+                XCTAssertEqual(action.type, "make_mana")
+                let command = GameCommand(type: action.type, gameId: snapshot.id, playerId: action.playerId,
+                    sourceInstanceId: source, promptId: action.promptId, messageId: action.messageId)
+                XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: XCTUnwrap(poll.prompt), viewerPlayerID: snapshot.viewerID), EnginePrompt.answer("uuid", .string(source)))
+                XCTAssertNotEqual(source, row["id"]?.string)
+            }
+        }
+    }
+
     func testLocalAndAuthorizedControlledAttackersRemainSelectableWithViewerCommands() throws {
         for controlled in [false, true] {
             let poll = try attackerPoll(controlled: controlled)

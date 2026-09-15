@@ -5,14 +5,14 @@ that every card, UI interaction, native runtime, or phone configuration passed.
 Executed results and exact commits belong in the release handoff and workflow
 artifacts. The rules source remains XMage `8aea65ae9ae3c89970fe865e1316105539e097ca`.
 
-Diagnostic release evidence: app source `7c27eaa`, engine `76c18bf`, full native run
-**34731298892**, actual product run **34732453251**, non-simulator run **34732453204**.
-Internal-only upload **0.1.0 (2026091203)** succeeded. Build 2026091202 was installed
-but failed during native startup; the new diagnostic capture and successful
-gameplay still require phone validation in
-[issue #7](https://github.com/ineedsomesleep5/MagicMobile/issues/7).
-See [the diagnostic handoff](DIAGNOSTIC_TESTFLIGHT_2026091203.md) for hashes,
-Apple availability and private report instructions. Compilation is not runtime acceptance.
+Current candidate and executed build evidence are in
+[LOCAL_CONTINUATION_STATUS.md](LOCAL_CONTINUATION_STATUS.md),
+`implementation-status.json` and [PR #9](https://github.com/ineedsomesleep5/MagicMobile/pull/9).
+The last recorded uploaded build 2026091301 predates the runtime hardening;
+2026091203 is historical diagnostic evidence, not the new candidate. Phone
+acceptance remains [issue #7](https://github.com/ineedsomesleep5/MagicMobile/issues/7).
+The tables below map source/control coverage; they do not override exact build
+artifacts or imply native/full-card acceptance.
 
 ## Decision path
 

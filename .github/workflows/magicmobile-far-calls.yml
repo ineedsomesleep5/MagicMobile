@@ -1,23 +1,69 @@
 name: ARM64 far-call compiler verification
 
 on:
-  push:
-    branches: [codex/issue-4-native-mvp, codex/issue-4-verified-continuation]
-    paths:
-      - '.github/workflows/magicmobile-far-calls.yml'
-      - 'packages/ondevice-engine/native/gluon/compiler-patches/**'
-      - 'packages/ondevice-engine/scripts/prepare_gluon_far_calls.py'
   workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: 'Reviewed immutable 40-character candidate SHA; dispatch ref must resolve to it'
+        required: true
+        type: string
+      cheap_run_id:
+        description: 'Successful same-SHA Issue 4 non-simulator workflow run ID'
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: issue4-far-calls-${{ github.ref }}
+  group: issue4-far-calls-${{ inputs.candidate_sha }}
   cancel-in-progress: false
 
 jobs:
+  approve-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    env:
+      # Reviewed helper + cheap-workflow commit, independent of candidate inputs.
+      # This is workflow policy, never a dispatch input or mutable branch name.
+      # Includes the reviewed real card-choice/payment regression step; helper unchanged.
+      TRUSTED_POLICY_SHA: 'a5dc8e032cbdd91827765d0313589649687a5354'
+    steps:
+      - name: Require an immutable reviewed policy pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$TRUSTED_POLICY_SHA" =~ ^[0-9a-f]{40}$ && "$TRUSTED_POLICY_SHA" != 0000000000000000000000000000000000000000 ]] || {
+            echo 'Native approval blocked: set the reviewed policy commit in workflow source.' >&2
+            exit 2
+          }
+      # Never execute the candidate's validator with an API token. The reviewed
+      # immutable policy commit is the trust root; no default-branch merge needed.
+      - name: Check out trusted approval policy only
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TRUSTED_POLICY_SHA }}
+          persist-credentials: false
+          sparse-checkout: scripts/magicmobile-native-gate
+      - name: Validate explicit candidate and completed cheap evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          CHEAP_RUN_ID: ${{ inputs.cheap_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TRUSTED_POLICY_SHA"
+          python3 -I scripts/magicmobile-native-gate/approve_native.py \
+            --candidate-sha "$CANDIDATE_SHA" --cheap-run-id "$CHEAP_RUN_ID" \
+            --repository "$GITHUB_REPOSITORY" --dispatch-ref "$GITHUB_REF" \
+            --dispatch-sha "$GITHUB_SHA" --trusted-sha "$TRUSTED_POLICY_SHA"
+
   compiler-probe:
+    needs: approve-candidate
     runs-on: macos-26-intel
     timeout-minutes: 210
     env:
@@ -29,6 +75,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.candidate_sha }}
           persist-credentials: false
       - uses: actions/setup-java@v4
         with:

@@ -22,6 +22,8 @@ struct OnDeviceRootView: View {
     @AppStorage(OnDeviceSetupPreferences.aiCountKey) private var opponentCount = 1
     @AppStorage(OnDeviceSetupPreferences.humanCountKey) private var playerCount = 2
     @AppStorage(OnDeviceSetupPreferences.friendsKey) private var playWithFriends = false
+    @State private var showSetup = false
+    @State private var showAppearance = false
     @State private var showImport = false
     @State private var confirmLeave = false
     @State private var showDiagnostics = false
@@ -46,18 +48,37 @@ struct OnDeviceRootView: View {
         validName && selectedDeck != nil && (playWithFriends || aiPrecon != nil) && setup.identity != nil && !setup.isBusy && !setup.needsLeave
     }
 
-    var body: some View {
+    private var turnControl: NativeTurnControl {
+        NativeTurnControl(
+            canEndTurn: session.canEndTurn, canSkipResponses: session.canEndTurnSkippingResponses,
+            canSkipToMyTurn: session.canSkipToMyTurn, isAutoPassing: session.isAutoPassing,
+            status: session.autoPassStatus, endTurn: { session.endTurn() },
+            skipResponses: { session.endTurnSkippingResponses() }, skipToMyTurn: { session.skipToMyTurn() },
+            stop: { session.stopAutoPass() }
+        )
+    }
+
+    private var presentedContent: some View {
         ZStack {
             if activeGame {
                 game
             } else {
                 MenuBackgroundSurface(portraitModeEnabled: portraitModeEnabled).ignoresSafeArea()
-                setupContent
+                if showSetup || setup.needsLeave {
+                    setupContent
+                } else {
+                    TavernMainMenu(deckName: selectedDeck?.name ?? "Choose a deck", playerName: playerDisplayName,
+                                   play: { showSetup = true }, decks: { showImport = true },
+                                   settings: { showAppearance = true })
+                }
             }
         }
+        .preferredColorScheme(.dark)
+        .sheet(isPresented: $showAppearance) { AppearanceSettingsView(portraitModeEnabled: $portraitModeEnabled) }
         .overlay(alignment: .top) { recoveryBanner }
-        .sheet(isPresented: $showImport) {
-            OnDeviceTextImportView(library: library, selectedDeckID: $selectedDeckID)
+        .environment(\.nativeTurnControl, turnControl)
+        .fullScreenCover(isPresented: $showImport) {
+            NativeDeckLibraryView(library: library, selectedDeckID: $selectedDeckID)
         }
         .sheet(isPresented: $showDiagnostics) { diagnosticSheet }
         .background {
@@ -72,12 +93,17 @@ struct OnDeviceRootView: View {
                  ? "You are hosting. Leaving ends this match for everyone; it cannot be resumed."
                  : "This closes the current match. It cannot be resumed after leaving.")
         }
-        .task {
-            MagicMobileOrientationController.shared.setPortraitModeEnabled(portraitModeEnabled)
-            restoreSetupPreferences()
-            setup.prepare()
-            setup.setSceneActive(scenePhase == .active)
-        }
+    }
+
+    private func preparePresentation() async {
+        MagicMobileOrientationController.shared.setPortraitModeEnabled(portraitModeEnabled)
+        restoreSetupPreferences()
+        setup.prepare()
+        setup.setSceneActive(scenePhase == .active)
+    }
+
+    private var lifecycleContent: some View {
+        presentedContent.task { await preparePresentation() }
         .onChange(of: library.decks.map(\.id)) { _, _ in
             if !activeGame { restoreSetupPreferences() }
         }
@@ -91,11 +117,25 @@ struct OnDeviceRootView: View {
         .onChange(of: setup.errorMessage) { _, message in
             if message != nil { Task { await setup.captureDiagnostics(in: diagnostics) } }
         }
+    }
+
+    var body: some View {
+        lifecycleContent
         .onChange(of: setup.multiplayer?.isConnected) { _, _ in setup.updateSessionForeground() }
         .onChange(of: setup.multiplayer?.isSuspended) { _, _ in setup.updateSessionForeground() }
         .onChange(of: setup.multiplayer?.endpoint?.matchID) { _, matchID in
             if matchID != nil { Task { await setup.attachMultiplayer() } }
         }
+        .onChange(of: session.snapshot?.bridgeRevision) { _, _ in refreshInspections() }
+    }
+
+    private func refreshInspections() {
+        guard let snapshot = session.snapshot else { zone = nil; inspectedCard = nil; return }
+        let cards = PortraitInteractionPolicy.authorizedCards(snapshot)
+        // Unscoped legacy callbacks must reopen after a state change rather than
+        // keep a moved card under a stale zone heading. The board uses exact refs.
+        zone = nil
+        if let current = inspectedCard { inspectedCard = cards.first { $0.id == current.id } }
     }
 
     private var game: some View {
@@ -153,13 +193,20 @@ struct OnDeviceRootView: View {
     private var setupContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("MagicMobile").font(.largeTitle.bold()).foregroundStyle(MagicPalette.parchment)
+                HStack {
+                    Button { showSetup = false } label: { Label("Main menu", systemImage: "chevron.left") }
+                        .disabled(setup.isBusy || setup.needsLeave)
+                    Spacer()
+                    Button { showAppearance = true } label: { Image(systemName: "gearshape.fill") }
+                        .accessibilityLabel("Settings")
+                }
+                Text("Gather your table").font(.largeTitle.bold()).foregroundStyle(MagicPalette.parchment)
                 VStack(alignment: .leading, spacing: 12) {
                     TextField("Player name", text: $playerDisplayName)
                         .textContentType(.nickname).autocorrectionDisabled()
                         .textFieldStyle(GameTextFieldStyle()).accessibilityIdentifier("ondevice.playerName")
                     Text("Choose a name with 1–24 characters.").font(.caption).foregroundStyle(.secondary)
-                    Toggle("Portrait layout", isOn: $portraitModeEnabled)
+                    PortraitModeToggle(isOn: $portraitModeEnabled)
                     Picker("Your deck", selection: $selectedDeckID) {
                         Section("Included precons") {
                             ForEach(PreconCatalog.all) { Text($0.name).tag("precon:\($0.id)") }
@@ -168,7 +215,7 @@ struct OnDeviceRootView: View {
                             ForEach(library.decks) { Text($0.name).tag("local:\($0.id)") }
                         }
                     }
-                    Button { showImport = true } label: { Label("Import deck text", systemImage: "doc.badge.plus") }
+                    Button { showImport = true } label: { Label("Browse, import or edit decks", systemImage: "rectangle.stack.badge.plus") }
                         .buttonStyle(MagicSecondaryButtonStyle(fillsWidth: true, compact: true))
                 }
                 .magicPanel(.leather, prominence: .elevated, cornerRadius: 14, padding: 16)
@@ -424,7 +471,7 @@ private final class OnDeviceSetupModel: ObservableObject {
             }
             aiMatchID = matchID
             updateSessionForeground()
-            try await session.attach(client: client, matchID: matchID, seatID: "player1", close: { [self] in try await closeAI() })
+            try await session.attach(client: client, matchID: matchID, seatID: "player1", allowsLocalAutoYield: true, close: { [self] in try await closeAI() })
             status = "Game started"
         } catch {
             errorMessage = error.localizedDescription

@@ -2,7 +2,10 @@ name: Issue 4 non-simulator verification
 
 on:
   push:
-    branches: [codex/issue-4-native-mvp, codex/issue-4-verified-continuation, codex/testflight-readiness-audit]
+    branches: [codex/issue-4-native-mvp, codex/issue-4-verified-continuation, codex/testflight-readiness-audit, codex/native-runtime-hardening]
+    paths-ignore:
+      - '**/*.md'
+      - 'packages/ondevice-engine/implementation-status.json'
   workflow_dispatch:
 
 permissions:
@@ -53,6 +56,10 @@ jobs:
           distribution: temurin
           java-version: '21'
       - run: bash scripts/test_tooling.sh
+      - name: Test native approval and upstream maintenance orchestration
+        run: |
+          python3 -B -m unittest discover -s ../../scripts/magicmobile-native-gate -p 'test_*.py' -v
+          python3 -B -m unittest discover -s ../../scripts/magicmobile-maintenance -p 'test_*.py' -v
       - run: bash scripts/test_native_boundary.sh
       - uses: actions/upload-artifact@v4
         if: always()
@@ -86,8 +93,12 @@ jobs:
         env:
           MAGICMOBILE_PRECON_EXPORT_DIR: ${{ github.workspace }}/build_output/issue4/precons
         run: swift test --package-path apps/ios --jobs 2 2>&1 | tee build_output/issue4/swift-presentation.log
+      - name: Execute macOS build-number and upload-ledger regressions
+        run: node --test scripts/ios/testflight-build-number.test.mjs 2>&1 | tee build_output/issue4/build-number.log
       - name: Native-close fixture tests (not XMage runtime)
         run: bash packages/ondevice-engine/scripts/test_swift_close.sh
+      - name: Runtime-manager native-ABI fixtures (not XMage runtime)
+        run: bash packages/ondevice-engine/scripts/test_runtime_manager.sh 2>&1 | tee build_output/issue4/runtime-manager.log
       - name: Compile existing product and SDK-only tests without signing or execution
         run: |
           set -euo pipefail
@@ -126,6 +137,12 @@ jobs:
           cache: maven
       - run: mkdir -p evidence; bash scripts/build_jvm.sh 2>&1 | tee evidence/issue4-jvm-build.log
       - run: bash scripts/test_real_engine.sh 2>&1 | tee evidence/issue4-real-engine.log
+      - name: Real scry and restricted card-choice interaction regressions
+        run: bash ../../apps/ios/MagicMobileTests/EngineChecks/run.sh 2>&1 | tee evidence/real-card-choices.log
+      - name: Bounded seeded driver lifecycle matrix (real JVM, not seeded XMage RNG)
+        run: python3 scripts/test_seeded_soak.py
+      - name: Audit compiled desktop API references (static only, not native execution)
+        run: bash scripts/test_desktop_dependencies.sh
       - name: Retrieve exact same-commit Swift-exported bundled decks
         uses: actions/download-artifact@v4
         with:

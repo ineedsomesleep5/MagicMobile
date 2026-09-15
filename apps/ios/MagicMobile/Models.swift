@@ -859,6 +859,8 @@ struct CardIdentity: Decodable, Hashable {
     let name: String
     let typeLine: String
     let oracleText: String?
+    /// CardView's visible face cost, not the cost to pay after modifiers or taxes.
+    var manaCost: String? = nil
 }
 
 struct FlexibleInt: Decodable, Equatable {
@@ -1593,6 +1595,20 @@ struct XmageCardIcon: Decodable, Hashable {
     let text: String?
     let hint: String?
 
+    /// Native Gson serializes CardIconType as an enum name, without its category.
+    static func nativeCategory(for iconType: String) -> String? {
+        switch iconType.uppercased() {
+        case "PLAYABLE_COUNT": return "PLAYABLE_COUNT"
+        case "COMMANDER", "RINGBEARER", "OTHER_HAS_TARGETS": return "COMMANDER"
+        case "SYSTEM_COMBINED", "SYSTEM_DEBUG": return "SYSTEM"
+        case "ABILITY_MENACE": return "ABILITY"
+        default: return assetName(for: iconType) == nil ? nil : "ABILITY"
+        }
+    }
+
+    /// No bundled XMage menace asset exists. Render this engine signal as text.
+    var textBadge: String? { iconType == "ABILITY_MENACE" ? "Menace" : nil }
+
     static func assetName(for iconType: String) -> String? {
         switch iconType.uppercased() {
         case "PLAYABLE_COUNT": return "xmage-icon-playable-count"
@@ -1637,7 +1653,7 @@ extension ZoneCard {
             guard icon.category?.caseInsensitiveCompare("ABILITY") == .orderedSame || icon.category?.caseInsensitiveCompare("COMMANDER") == .orderedSame else {
                 return false
             }
-            return XmageCardIcon.assetName(for: icon.iconType) != nil
+            return XmageCardIcon.assetName(for: icon.iconType) != nil || icon.textBadge != nil
         }
     }
 

@@ -12,6 +12,20 @@ enum GameBoardDesignPreviewState: String, CaseIterable, Identifiable {
     case aiThinking = "ai-thinking"
     case bridgeUnavailable = "bridge-unavailable"
     case missingCardArt = "missing-card-art"
+    case crowdedBattlefield = "crowded-battlefield"
+    case fourPlayerFocus = "four-player-focus"
+    case playerTargetPrompt = "player-target-prompt"
+    case cardTargetPrompt = "card-target-prompt"
+    case combatArrows = "combat-arrows"
+    case fullHandInspection = "full-hand-inspection"
+    case scryChoice = "scry-choice"
+    case libraryChoice = "library-choice"
+    case emptyLibraryChoice = "empty-library-choice"
+    case mixedCardChoice = "mixed-card-choice"
+    case handDrag = "hand-drag"
+    case handScrubber = "hand-scrubber"
+    case zoneInspection = "zone-inspection"
+    case largeText = "large-text"
 
     var id: String { rawValue }
 

@@ -69,7 +69,7 @@ xcodebuild -project "$PROJECT_PATH" -scheme "$SCHEME" -configuration Release -sd
 python3 "$GUARD" settings --repo "$REPO_ROOT" --receipt "$RUN_ROOT/source-receipt.json" \
   --settings "$RUN_ROOT/settings.json" --output "$RUN_ROOT/configured-receipt.json" > "$RUN_ROOT/settings-check.log"
 
-xcodebuild -project "$PROJECT_PATH" -scheme "$SCHEME" -configuration Release -sdk iphoneos \
+xcodebuild -project "$PROJECT_PATH" -scheme "$SCHEME" -configuration Release -sdk iphoneos -jobs 2 \
   -destination 'generic/platform=iOS' -derivedDataPath "$RUN_ROOT/DerivedData" \
   -archivePath "$ARCHIVE_PATH" -allowProvisioningUpdates \
   -authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" \

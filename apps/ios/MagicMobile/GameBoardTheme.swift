@@ -7,8 +7,8 @@ struct GameBoardTheme {
     let charredOak = Color(red: 0.08, green: 0.045, blue: 0.025)
     let oak = Color(red: 0.18, green: 0.10, blue: 0.05)
     let oakHighlight = Color(red: 0.28, green: 0.16, blue: 0.08)
-    let leatherDark = Color(red: 0.11, green: 0.07, blue: 0.05)
-    let leatherMid = Color(red: 0.20, green: 0.13, blue: 0.09)
+    let leatherDark = Color(red: 0.045, green: 0.055, blue: 0.075)
+    let leatherMid = Color(red: 0.13, green: 0.15, blue: 0.18)
     let carvedWood = Color(red: 0.29, green: 0.17, blue: 0.09)
     let agedParchment = Color(red: 0.72, green: 0.58, blue: 0.37)
     let parchmentLight = Color(red: 0.91, green: 0.84, blue: 0.68)
@@ -16,8 +16,8 @@ struct GameBoardTheme {
     let antiqueGold = Color(red: 0.84, green: 0.65, blue: 0.25)
     let brass = Color(red: 0.66, green: 0.47, blue: 0.17)
     let brassShadow = Color(red: 0.31, green: 0.20, blue: 0.07)
-    let iron = Color(red: 0.09, green: 0.08, blue: 0.08)
-    let ironRaised = Color(red: 0.16, green: 0.14, blue: 0.13)
+    let iron = Color(red: 0.055, green: 0.065, blue: 0.085)
+    let ironRaised = Color(red: 0.14, green: 0.16, blue: 0.19)
 
     // State colors. Mana colors remain owned by the mana system.
     let emeraldPriority = Color(red: 0.18, green: 0.78, blue: 0.47)

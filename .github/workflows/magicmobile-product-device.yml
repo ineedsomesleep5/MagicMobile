@@ -1,30 +1,27 @@
 name: Issue 4 real engine unsigned product
 on:
-  push:
-    branches: [codex/issue-4-verified-continuation, codex/testflight-readiness-audit]
-    paths:
-      - '.github/workflows/magicmobile-product-device.yml'
-      - 'apps/ios/**'
-      - 'scripts/ios/testflight_native_guard.py'
-      - 'scripts/ios/deploy-testflight.sh'
-      - 'packages/ondevice-engine/swift/**'
-      - 'packages/ondevice-engine/scripts/verify_native_candidate.py'
-      - 'packages/ondevice-engine/scripts/verify_issue4_unsigned_product.py'
-      - 'packages/ondevice-engine/scripts/build_issue4_unsigned_app.sh'
-      - 'packages/ondevice-engine/scripts/download_issue4_native.py'
-      - 'packages/ondevice-engine/scripts/wait_issue4_native.py'
   workflow_dispatch:
+    inputs:
+      engine_run_id:
+        description: 'Exact successful full ARM64 workflow run ID'
+        required: true
+        type: string
+      engine_commit:
+        description: 'Exact 40-character engine source SHA from that run'
+        required: true
+        type: string
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: issue4-product-${{ github.ref }}
-  cancel-in-progress: true
-# The engine build is already running and will not be duplicated here. Reuse is
-# refused if any engine/compiler input differs from the product source revision.
+  group: issue4-product-${{ github.sha }}-${{ inputs.engine_commit }}
+  cancel-in-progress: false
+# The selected repair build must SUCCEED before its artifact is accepted. This
+# workflow waits for that exact run; it does not duplicate the native build or
+# substitute an older archive. Reuse requires equal engine/compiler inputs.
 env:
-  ENGINE_RUN_ID: '34762171820'
-  ENGINE_COMMIT: '00b33cb223f93caed6bc752f87d2384e146c9a1c'
+  ENGINE_RUN_ID: ${{ inputs.engine_run_id }}
+  ENGINE_COMMIT: ${{ inputs.engine_commit }}
 jobs:
   exact-native-artifact:
     runs-on: ubuntu-latest

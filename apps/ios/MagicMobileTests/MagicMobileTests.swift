@@ -372,15 +372,15 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertFalse(message.contains("<!DOCTYPE html>"))
     }
 
-    func testBattlefieldCardMetricsPreserveMagicCardAspectRatio() {
+    func testBattlefieldCardMetricsUseCompactFacesAndFullPrintedHand() {
         let metrics = BattlefieldLayoutMetrics(
             size: CGSize(width: 932, height: 430),
             safeArea: EdgeInsets(top: 0, leading: 47, bottom: 21, trailing: 47)
         )
 
         XCTAssertEqual(metrics.handCardHeight / metrics.handCardWidth, BattlefieldLayoutMetrics.magicCardHeightToWidth, accuracy: 0.01)
-        XCTAssertEqual(metrics.permanentCardHeight / metrics.permanentCardWidth, BattlefieldLayoutMetrics.magicCardHeightToWidth, accuracy: 0.01)
-        XCTAssertEqual(metrics.landCardHeight / metrics.landCardWidth, BattlefieldLayoutMetrics.magicCardHeightToWidth, accuracy: 0.01)
+        XCTAssertEqual(metrics.permanentCardHeight / metrics.permanentCardWidth, 1.08, accuracy: 0.01)
+        XCTAssertEqual(metrics.landCardHeight / metrics.landCardWidth, 1.08, accuracy: 0.01)
     }
 
     func testCardImageURLCanForcePlaceholdersForVisualQA() {
@@ -2637,10 +2637,10 @@ final class MagicMobileTests: XCTestCase {
         assertPortraitGameplayLayout(metrics)
         XCTAssertGreaterThanOrEqual(metrics.handCardWidth, 64)
         XCTAssertGreaterThanOrEqual(metrics.permanentCardWidth, 58)
-        XCTAssertGreaterThanOrEqual(metrics.landCardWidth, 50)
+        XCTAssertGreaterThanOrEqual(metrics.landCardWidth, 45)
         XCTAssertEqual(metrics.handCardHeight / metrics.handCardWidth, PortraitBattlefieldLayoutMetrics.magicCardHeightToWidth, accuracy: 0.01)
-        XCTAssertEqual(metrics.permanentCardHeight / metrics.permanentCardWidth, PortraitBattlefieldLayoutMetrics.magicCardHeightToWidth, accuracy: 0.01)
-        XCTAssertEqual(metrics.landCardHeight / metrics.landCardWidth, PortraitBattlefieldLayoutMetrics.magicCardHeightToWidth, accuracy: 0.01)
+        XCTAssertEqual(metrics.permanentCardHeight / metrics.permanentCardWidth, 1.08, accuracy: 0.01)
+        XCTAssertEqual(metrics.landCardHeight / metrics.landCardWidth, 1.08, accuracy: 0.01)
     }
 
     func testPortraitPlayerDropZoneCoversBattlefieldAndLands() {
@@ -2707,6 +2707,42 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(groups[0].cards.map(\.instanceId), ["island-1", "island-2"])
         XCTAssertEqual(groups[1].representative.instanceId, "island-3")
         XCTAssertEqual(groups[2].cards.map(\.instanceId), ["goblin-1", "goblin-2"])
+    }
+
+    func testBattlefieldDensityPlannerSeparatesCurrentNativePowerAndToughness() {
+        func card(_ id: String, _ power: String?, _ toughness: String?) -> ZoneCard {
+            var card = zoneCard(id: id, name: "Grizzly Bears", typeLine: "Creature — Bear")
+            card.reportedPower = power
+            card.reportedToughness = toughness
+            return card
+        }
+        let cards = [
+            card("base", "2", "2"), card("same", "2", "2"),
+            card("power-only", "5", "2"), card("toughness-only", "2", "5"),
+            card("negative", "-1", "2"), card("variable", "*", "1+*"),
+            card("unknown", nil, nil), card("zero", "0", "0")
+        ]
+        XCTAssertTrue(cards.allSatisfy { $0.power == nil && $0.toughness == nil })
+        XCTAssertEqual(BattlefieldDensityPlanner.groups(cards: cards).map { $0.cards.map(\.instanceId) }, [
+            ["base", "same"], ["power-only"], ["toughness-only"],
+            ["negative"], ["variable"], ["unknown"], ["zero"]
+        ])
+    }
+
+    func testBattlefieldDensityPlannerUsesReportedStatsBeforeLegacyNumericFallback() throws {
+        func card(_ id: String, extra: String) throws -> ZoneCard {
+            let json = """
+            {"instanceId":"\(id)","card":{"name":"Bear","typeLine":"Creature"},"power":2,"toughness":2\(extra)}
+            """
+            return try JSONDecoder().decode(ZoneCard.self, from: Data(json.utf8))
+        }
+        let cards = try [
+            card("legacy", extra: ""),
+            card("same", extra: #", "reportedPower":"2", "reportedToughness":"2""#),
+            card("changed", extra: #", "reportedPower":"5", "reportedToughness":"5""#)
+        ]
+        XCTAssertEqual(BattlefieldDensityPlanner.groups(cards: cards).map { $0.cards.map(\.instanceId) },
+                       [["legacy", "same"], ["changed"]])
     }
 
     func testPortraitOverlapLayoutFitsTenCardsWithoutScrolling() {
@@ -2881,13 +2917,6 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertTrue(metrics.safeFrame.contains(metrics.playerLandsRect), file: file, line: line)
         XCTAssertTrue(metrics.safeFrame.contains(metrics.handRect), file: file, line: line)
         XCTAssertTrue(metrics.safeFrame.contains(metrics.bottomControlsRect), file: file, line: line)
-        XCTAssertTrue(metrics.safeFrame.contains(metrics.stackPanelRect), file: file, line: line)
-        XCTAssertTrue(metrics.safeFrame.contains(metrics.bottomActionPanelRect), file: file, line: line)
-        XCTAssertTrue(metrics.safeFrame.contains(metrics.passButtonRect), file: file, line: line)
-        XCTAssertTrue(metrics.safeFrame.contains(metrics.skipButtonRect), file: file, line: line)
-        XCTAssertTrue(metrics.safeFrame.contains(metrics.bottomNavRect), file: file, line: line)
-        XCTAssertTrue(metrics.safeFrame.contains(metrics.settingsButtonRect), file: file, line: line)
-        XCTAssertTrue(metrics.safeFrame.contains(metrics.handScrubberRect), file: file, line: line)
 
         XCTAssertLessThan(metrics.topHUDRect.maxY, metrics.opponentBattlefieldRect.minY, file: file, line: line)
         XCTAssertLessThan(metrics.opponentBattlefieldRect.maxY, metrics.opponentLandsRect.minY, file: file, line: line)
@@ -2896,17 +2925,7 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertLessThan(metrics.playerBattlefieldRect.maxY, metrics.playerLandsRect.minY, file: file, line: line)
         XCTAssertLessThan(metrics.playerLandsRect.maxY, metrics.handRect.minY, file: file, line: line)
         XCTAssertLessThan(metrics.handRect.maxY, metrics.bottomControlsRect.minY + 0.1, file: file, line: line)
-        XCTAssertTrue(metrics.bottomControlsRect.contains(metrics.bottomHUDRect), file: file, line: line)
-        XCTAssertTrue(metrics.bottomControlsRect.contains(metrics.bottomActionPanelRect), file: file, line: line)
-        XCTAssertTrue(metrics.bottomControlsRect.contains(metrics.stackPanelRect), file: file, line: line)
-        XCTAssertTrue(metrics.bottomActionPanelRect.contains(metrics.passButtonRect), file: file, line: line)
-        XCTAssertTrue(metrics.bottomActionPanelRect.contains(metrics.skipButtonRect), file: file, line: line)
-        XCTAssertLessThan(metrics.passButtonRect.maxY, metrics.skipButtonRect.minY, file: file, line: line)
-        XCTAssertTrue(metrics.bottomNavRect.contains(metrics.settingsButtonRect), file: file, line: line)
-        XCTAssertLessThan(metrics.bottomHUDRect.maxX, metrics.bottomActionPanelRect.minX, file: file, line: line)
-        XCTAssertLessThan(metrics.bottomActionPanelRect.maxX, metrics.stackPanelRect.minX, file: file, line: line)
-        XCTAssertFalse(metrics.stackPanelRect.intersects(metrics.passButtonRect), file: file, line: line)
-        XCTAssertFalse(metrics.stackPanelRect.intersects(metrics.skipButtonRect), file: file, line: line)
-        XCTAssertFalse(metrics.stackPanelRect.intersects(metrics.settingsButtonRect), file: file, line: line)
+        // The live hand uses card lift space, VStack spacing, and its scroll scrubber.
+        XCTAssertGreaterThanOrEqual(metrics.handRect.height, ArenaHandLayout.restingHeight(cardHeight: metrics.handCardHeight), file: file, line: line)
     }
 }

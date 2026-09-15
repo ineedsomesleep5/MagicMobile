@@ -1,6 +1,20 @@
 import SwiftUI
 import UIKit
 
+enum MagicMobilePreferences {
+    static let current: UserDefaults = {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ondevice-setup-ui-test"),
+           let value = ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_PREFERENCES"],
+           let id = UUID(uuidString: value),
+           let store = UserDefaults(suiteName: "MagicMobile.UITests.\(id.uuidString)") {
+            return store
+        }
+        #endif
+        return .standard
+    }()
+}
+
 enum PortraitModePreference {
     static let key = "magicmobile.portraitModeEnabled"
 }
@@ -22,10 +36,10 @@ final class MagicMobileOrientationController {
     private(set) var portraitEnabled: Bool
 
     private init() {
-        if UserDefaults.standard.object(forKey: PortraitModePreference.key) == nil {
+        if MagicMobilePreferences.current.object(forKey: PortraitModePreference.key) == nil {
             portraitEnabled = true
         } else {
-            portraitEnabled = UserDefaults.standard.bool(forKey: PortraitModePreference.key)
+            portraitEnabled = MagicMobilePreferences.current.bool(forKey: PortraitModePreference.key)
         }
     }
 
@@ -35,7 +49,7 @@ final class MagicMobileOrientationController {
 
     func setPortraitModeEnabled(_ enabled: Bool) {
         portraitEnabled = enabled
-        UserDefaults.standard.set(enabled, forKey: PortraitModePreference.key)
+        MagicMobilePreferences.current.set(enabled, forKey: PortraitModePreference.key)
         updateSupportedOrientations()
     }
 
@@ -90,6 +104,7 @@ struct MagicMobileApp: App {
                 switch OnDeviceAppConfiguration.entryPoint {
                 case .embedded, .setupPreview:
                     OnDeviceRootView()
+                        .defaultAppStorage(MagicMobilePreferences.current)
                 case .referencePreview:
                     ContentView()
                 case .engineMissing:

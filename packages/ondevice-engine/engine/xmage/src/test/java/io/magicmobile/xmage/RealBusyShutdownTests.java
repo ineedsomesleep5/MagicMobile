@@ -3,6 +3,8 @@ package io.magicmobile.xmage;
 import io.magicmobile.core.BridgeException;
 import io.magicmobile.core.Json;
 import io.magicmobile.core.EngineDiagnostics;
+import io.magicmobile.core.DecisionSpec;
+import io.magicmobile.core.MatchMailbox;
 import mage.game.Game;
 import mage.game.events.Listener;
 import mage.game.events.PlayerQueryEvent;
@@ -37,7 +39,46 @@ public final class RealBusyShutdownTests {
         destroyRetry(configuration);
         closeRetry(configuration);
         workerDiagnostics(configuration);
-        System.out.println("RealBusyShutdownTests: 3 passed, 0 failed");
+        deliveryRetry(configuration);
+        System.out.println("RealBusyShutdownTests: 4 passed, 0 failed");
+    }
+
+    /** Stall the actual CALL executor, not the GAME worker. No production rules are replaced. */
+    private static void deliveryRetry(Map<String,Object> configuration) throws Exception {
+        try(Rig r=new Rig(configuration)) {
+            String id=r.start();r.prompt(id);
+            Running running=r.started.get(0);
+            MatchMailbox mailbox=(MatchMailbox)field(running.value,"mailbox");
+            String seat=r.seatIds.get(0);
+            CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);
+            AtomicBoolean expired=new AtomicBoolean();
+            try {
+                mailbox.ask(seat,new DecisionSpec("ASK",Json.map(),Set.of("boolean"),null,null,0,0,null),answer->{
+                    entered.countDown();long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(20);
+                    while(release.getCount()!=0) {
+                        long remaining=deadline-System.nanoTime();
+                        if(remaining<=0) {expired.set(true);return;}
+                        try {release.await(remaining,TimeUnit.NANOSECONDS);}
+                        catch(InterruptedException ignored) { /* test-only bounded CALL barrier */ }
+                    }
+                });
+                Map<String,Object> prompt=Json.object(mailbox.poll(seat,0).get("prompt"));
+                r.engine.respond(id,seat,Json.map("requestId",UUID.randomUUID().toString(),
+                    "promptId",prompt.get("promptId"),"promptRevision",prompt.get("revision"),
+                    "answer",Json.map("kind","boolean","value",true)));
+                check(entered.await(5,TimeUnit.SECONDS),"actual mailbox delivery entered barrier");
+                r.expect("engine_busy_shutdown",()->r.engine.destroy(id));
+                check(running.worker.isTerminated(),"GAME worker stopped while CALL executor is still held");
+                check(r.lookup(id)==running.value,"busy CALL executor retains exact match for cleanup retry");
+                check(!expired.get(),"CALL barrier has not reached its emergency deadline");
+            } finally {
+                release.countDown();mailbox.close();
+                check(mailbox.awaitDeliveryTermination(System.nanoTime()+TimeUnit.SECONDS.toNanos(5)),"CALL executor stopped after release");
+            }
+            r.call(()->r.engine.destroy(id));
+            r.expect("unknown_match",()->r.engine.poll(id,seat,0));
+            System.out.println("PASS delivery: real CALL worker stalls shutdown; retained match drains and closes on retry (injected stall, NOT native/iOS)");
+        }
     }
 
     private static void workerDiagnostics(Map<String,Object> configuration) throws Exception {

@@ -13,10 +13,10 @@ let package = Package(
             path: "MagicMobile",
             exclude: ["Assets.xcassets", "Info.plist", "PrivacyInfo.xcprivacy", "MagicMobile.entitlements", "ContentView.swift", "DeckLibrary.swift",
                       "GameBoardDesignTokens.swift", "GameBoardInteractionState.swift",
-                      "GameBoardLayoutMetrics.swift", "GameBoardPreviewFixtures.swift",
+                      "GameBoardLayoutMetrics.swift", "GameBoardPreviewFixtures.swift", "HandCardPan.swift", "BoardCardChoiceView.swift",
                       "GameBoardScreen.swift", "GameBoardTheme.swift", "GameBoardZones.swift",
-                      "MagicMobileApp.swift", "OnDeviceRootView.swift", "NativeEngine-Bridging-Header.h"],
-            sources: ["OnDeviceAppConfiguration.swift", "Models.swift", "MagicMobileAPI.swift", "PromptCommandBuilder.swift", "PreconCatalog.swift", "OnDeviceDeckResolver.swift", "OnDeviceSnapshotAdapter.swift", "OnDevicePromptAdapter.swift", "OnDeviceMultiplayer.swift", "OnDeviceSession.swift", "OnDeviceRuntimeManager.swift", "OnDeviceBackendRegistration.swift", "OnDeviceMessageLog.swift", "OnDeviceDiagnostics.swift"],
+                      "MagicMobileApp.swift", "OnDeviceRootView.swift", "NativeDeckLibraryView.swift", "NativeDeckComponents.swift", "NativeEngine-Bridging-Header.h"],
+            sources: ["GameLogPresentation.swift", "BattlefieldAdaptiveSizing.swift", "NativeDeckEDHREC.swift", "NativeDeckMetadataCatalogue.swift", "OnDeviceAppConfiguration.swift", "Models.swift", "MagicMobileAPI.swift", "PromptCommandBuilder.swift", "PreconCatalog.swift", "OnDeviceDeckResolver.swift", "OnDeviceDeckEditing.swift", "OnDeviceDeckLinkImporter.swift", "NativeDeckArtwork.swift", "OnDeviceSnapshotAdapter.swift", "OnDevicePromptAdapter.swift", "OnDeviceMultiplayer.swift", "OnDeviceSession.swift", "OnDeviceRuntimeManager.swift", "OnDeviceBackendRegistration.swift", "OnDeviceMessageLog.swift", "OnDeviceDiagnostics.swift", "PortraitInteractionPolicy.swift", "OnDeviceYieldPolicy.swift", "BoardZoneReference.swift"],
             resources: [.copy("Resources/ondevice-catalogue.json")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
@@ -24,8 +24,8 @@ let package = Package(
             name: "OnDevicePresentationTests",
             dependencies: ["MagicMobile"],
             path: "MagicMobileTests",
-            exclude: ["MagicMobileTests.swift", "OnDeviceBoardIdentityTests.swift", "OnDeviceDeckPersistenceTests.swift"],
-            sources: ["OnDeviceAppConfigurationTests.swift", "OnDeviceModelTests.swift", "OnDeviceSnapshotAdapterTests.swift", "OnDevicePromptAdapterTests.swift", "OnDeviceMultiplayerTests.swift", "OnDeviceSessionTests.swift", "OnDeviceReadinessRegressionTests.swift", "OnDeviceDeckResolverTests.swift", "OnDeviceBackendRegistrationTests.swift", "OnDeviceMessageLogTests.swift", "OnDeviceMessageSessionTests.swift", "OnDeviceDiagnosticsTests.swift"],
+            exclude: ["EngineChecks", "MagicMobileTests.swift", "OnDeviceBoardIdentityTests.swift", "OnDeviceDeckPersistenceTests.swift", "NativeDeckPresentationTests.swift", "PortraitPolishTests.swift"],
+            sources: ["GameLogPresentationTests.swift", "BattlefieldAdaptiveSizingTests.swift", "NativeDeckEDHRECTests.swift", "NativeDeckMetadataCatalogueTests.swift", "OnDeviceAppConfigurationTests.swift", "OnDeviceModelTests.swift", "OnDeviceSnapshotAdapterTests.swift", "OnDevicePromptAdapterTests.swift", "OnDeviceMultiplayerTests.swift", "OnDeviceSessionTests.swift", "OnDeviceReadinessRegressionTests.swift", "OnDeviceSessionLifecycleTests.swift", "OnDeviceDeckResolverTests.swift", "OnDeviceDeckEditingTests.swift", "OnDeviceDeckLinkImporterTests.swift", "NativeDeckArtworkTests.swift", "OnDeviceBackendRegistrationTests.swift", "OnDeviceMessageLogTests.swift", "OnDeviceMessageSessionTests.swift", "OnDeviceDiagnosticsTests.swift", "PortraitInteractionPolicyTests.swift", "OnDeviceYieldPolicyTests.swift", "BoardZoneReferenceTests.swift"],
             resources: [.copy("Fixtures/OnDevice")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         )

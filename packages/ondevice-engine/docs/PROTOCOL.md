@@ -27,7 +27,7 @@ persists only the latest report plus app/OS/time/status metadata, capped at
 deletes it explicitly; no automatic upload is added. No game state or action
 payload recorder is enabled. Temporary capture is tagged `[DEBUG-native-failure]`.
 
-A configuration has 2–4 unique seats with `seatId`, `name`, `controller: "human"`, and `deck`. Deck keys are `name`, `main`, `commanders` and optional `companions`. Card rows have `count`, `setCode`, `collectorNumber`, optional exact `name`. They do **not** accept `className`, caller-supplied rules or rarity.
+A configuration has 2–4 unique seats with `seatId`, `name`, `controller: "human"` or `"ai"`, and `deck`, with at least one human. AI seats use actual upstream MAD and are not poll/response recipients. Deck keys are `name`, `main`, `commanders` and optional `companions`. Card rows have `count`, `setCode`, `collectorNumber`, optional exact `name`. They do **not** accept `className`, caller-supplied rules or rarity.
 
 A response command has exactly:
 
@@ -46,6 +46,29 @@ Answer kinds: `boolean`, `uuid`, `string`, `integer`, `integers`, `mana`. Mana v
 
 Poll results contain match/viewer IDs, global revision, phase, viewer snapshot, viewer prompt, bounded viewer events, a resync flag and any terminal failure. Snapshots are always full current per-view projections; events notify changes. A global revision can skip numbers for one viewer without indicating loss.
 
+### Additive CardView presentation metadata
+
+`gameView.canPlayObjects.objects[objectUUID][category]` rows preserve upstream
+`id` (ability UUID) and `value` (label), and add `manaAbility: boolean` from current
+`ActivatedManaAbilityImpl` objects. Upstream puts non-basic mana abilities in
+`other`; that category alone is not a mana classification. Source actions still
+answer with the object UUID, not the ability UUID. XMage may then ask for an exact
+ability, additional cost, or color. Old payloads safely identify only
+`basicManaAbilities` as mana during payment. Playability is upstream's offered
+action estimate, not proof that a complete payment sequence exists.
+
+Visible battlefield CardViews may carry the additive `ABILITY_MENACE` icon with
+category `ABILITY` and text `Menace`, derived only from current permanent
+abilities. It is omitted for face-down permanents and does not parse printed
+rules. Older native icons omit categories; clients may map known pinned
+CardIconType names to their upstream categories. No menace asset is implied.
+
+Printed/visible-face costs already use CardView's `manaCostLeftStr` and
+`manaCostRightStr` ordered symbol arrays (including hybrid, phyrexian and X).
+They are not a payable amount, tax, discount, remaining cost or affordability
+signal. Clients must not recover costs from hidden/facedown cards; absent/empty
+costs remain absent, not guessed as zero. Split halves remain separate.
+
 ## Untrusted multiplayer boundary
 
 The trusted API above must **not** be exposed raw to guests. `HostRouter` accepts a framed `hello`, `poll` or `respond`, with epoch and monotonically increasing sequence. Its peer ID is supplied by authenticated GameKit transport, outside the JSON body. The host's binding supplies the seat. Guests cannot create/destroy/shutdown the host engine or select another viewer.
@@ -54,4 +77,4 @@ Build identity includes protocol version, upstream commit, catalogue fingerprint
 
 `PacketChunk` splits messages into 8 KiB parts. `PacketAssembler` scopes buffers by authenticated peer+message ID, enforces 4 MiB/message, per-peer/global concurrency and aggregate byte quotas, validates indexes and duplicate content, and expires stale assemblies. A bounded chunk layer is not transport authentication or matchmaking.
 
-Still required in the actual app: lobby/host election, deck exchange, request/reply correlation, reconnect state and guest UI orchestration. The host is trusted with the full game, including hidden information; guest filtering is not host anti-cheat.
+The production app implements lobby/host election, deck exchange, request/reply correlation, suspension/cleanup and guest UI orchestration in `OnDeviceMultiplayer` and `GameKitTransport`. Portable tests do not establish actual Game Center or multi-phone execution. Guaranteed reconnect, host migration and durable match restoration remain outside the MVP. The host is trusted with the full game, including hidden information; guest filtering is not host anti-cheat.
