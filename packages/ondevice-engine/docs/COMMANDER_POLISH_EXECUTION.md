@@ -18,26 +18,31 @@ Two implementation subagents maximum; one build process and one simulator.
 No agent may change another owner's files without handoff. No fixture result is
 native gameplay evidence. Existing engine rules and response UUIDs remain authoritative.
 
-## Acceptance checklist
+## Implementation and verification checklist
 
-- [ ] Actionable deck validation; useful reports without native exceptions;
+Checks below refer to the source, JVM and simulator evidence recorded here, not
+physical-device acceptance or exhaustive card parity.
+
+- [x] Actionable deck validation; useful reports without native exceptions;
   historical identity; scoped failed-start cleanup; report privacy.
-- [ ] Card-backed ability selection with exact duplicate identities and source
+- [x] Card-backed ability selection with exact duplicate identities and source
   metadata; readable actual stack; ordering distinct from resolution.
-- [ ] Centered phase/step announcements for both players, deduplicated across
+- [x] Centered phase/step announcements for both players, deduplicated across
   priority/polls, replacing stale cues; persistent compact phase label; life delta
   animation; Reduce Motion. User added phase announcements during implementation.
-- [ ] Portrait/landscape density, five-card lanes, hand clipping and scrubber,
+- [x] Portrait/landscape density, five-card lanes, hand clipping and scrubber,
   drag/inspect separation, artwork/rules inspection, offscreen combat indicators.
-- [ ] Authoritative castability, mana rocks/convoke/special payments, undo,
+- [x] Engine-offered cast actions, mana rocks/convoke/special payments, undo,
   target/sacrifice/search/pile/mode selection; meaningful phase/action labels.
-- [ ] Compact deck editor with art, filters, groups, counts, editing/persistence,
+- [x] Compact deck editor with art, filters, groups, counts, editing/persistence,
   import preview/errors, basic lands/stats; honest EDHREC integration status.
-- [ ] Closed-by-default readable and inspectable logs; coherent menu/news.
-- [ ] Weekly upstream detection and candidate PR preparation with review gates.
-- [ ] Independent review and affected tests; simulator visuals/interactions.
-- [ ] Native artifact and product verification; physical acceptance recorded.
-- [ ] Exact build uploaded, processed and assigned to requested TestFlight groups;
+- [x] Closed-by-default readable and inspectable logs; coherent menu/news.
+- [x] Weekly upstream heartbeat and candidate-preparation helper with review gates;
+  GitHub schedule still requires default-branch integration.
+- [x] Independent review and affected tests; simulator visuals/interactions.
+- [x] Native artifact, linked product and signed upload verification.
+- [ ] Physical-iPhone gameplay acceptance recorded.
+- [x] Exact build uploaded, processed and assigned to requested TestFlight groups;
   external beta review/availability reported separately.
 
 ## Evidence
@@ -149,3 +154,14 @@ Evidence bundles: `commander-polish-verified.xcresult`,
 under `build_output`. Test failures were retained, not reclassified as passes.
 Automatic simulator-wide diagnostic gathering on the first completed run was
 interrupted after logs/screenshots were retained; all test results were exported.
+
+The final four-case motion capture run passed and its phase/life images were
+inspected. App source `298c2ae` and engine source `fca652a` passed exact-source
+native build 35048126381 and product link 35051733562. Signed build 2026091601
+passed archive/export/native layout and Apple validation, then uploaded with
+delivery UUID `283fbc18-a35c-4d9f-b68d-b2331e9ff4e4`. Apple processing is VALID,
+internal testing is available, and existing Internal/External group membership
+and tester notes are verified. External review submission is blocked by older
+build 2026091504 in WAITING_FOR_REVIEW. The new build remains READY_FOR_BETA_SUBMISSION;
+retry after that review completes. No older review was cancelled. Physical-phone
+acceptance remains pending; see the matching release note for final state.
