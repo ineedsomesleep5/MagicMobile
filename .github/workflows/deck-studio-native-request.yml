@@ -1,0 +1,123 @@
+name: Deck Studio explicit native verification request
+on:
+  push:
+    branches: [codex/deck-studio-2-native-validation]
+    paths: ['.github/workflows/deck-studio-native-request.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deck-studio-native-request-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  request-existing-gates:
+    if: github.repository == 'ineedsomesleep5/MagicMobile' && github.ref == 'refs/heads/codex/deck-studio-2-native-validation'
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      # No candidate code is executed with this token. This isolated build branch
+      # only requests the existing cheap and immutable-policy full-native gates.
+      - name: Verify fixed source and request existing verification workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, re, time, urllib.error, urllib.parse, urllib.request
+          from pathlib import Path
+          REPO = 'ineedsomesleep5/MagicMobile'
+          REF = 'codex/deck-studio-2-native-validation'
+          BASE = '7239ca4785146ce5f96aa0524a21cc58951f2ea3'
+          CONTROL = '.github/workflows/deck-studio-native-request.yml'
+          CHEAP = 'magicmobile-issue4-nonsimulator.yml'
+          NATIVE = 'magicmobile-far-calls.yml'
+          EXPECTED = {CHEAP: '2de46e69eefbba43a78309337863f4201b1066cf',
+                      NATIVE: '510802c117c5da1571f82d79ec7e7b7761cd6b03'}
+          SHA = os.environ['GITHUB_SHA']
+          assert os.environ['GITHUB_REPOSITORY'] == REPO
+          assert os.environ['GITHUB_REF'] == 'refs/heads/' + REF
+          assert re.fullmatch('[0-9a-f]{40}', SHA)
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl): return None
+          opener = urllib.request.build_opener(NoRedirect)
+          def api(path, payload=None):
+              assert path.startswith('/') and not path.startswith('//')
+              request = urllib.request.Request('https://api.github.com/repos/' + REPO + path,
+                  data=None if payload is None else json.dumps(payload).encode(),
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json',
+                           'User-Agent': 'MagicMobile-DeckStudio-NativeVerification',
+                           'X-GitHub-Api-Version': '2022-11-28'})
+              try:
+                  with opener.open(request, timeout=30) as response:
+                      data = response.read(8 * 1024 * 1024 + 1)
+                      assert len(data) <= 8 * 1024 * 1024
+                      return json.loads(data) if data else {}
+              except urllib.error.HTTPError as error:
+                  status = error.code; error.close()
+                  raise RuntimeError('GitHub verification request failed with HTTP ' + str(status)) from None
+          def same_ref():
+              result = api('/commits/' + urllib.parse.quote('refs/heads/' + REF, safe=''))
+              assert result.get('sha') == SHA, 'Build ref moved; no new workflow is dispatched'
+          same_ref()
+          comparison = api('/compare/' + BASE + '...' + SHA)
+          assert comparison.get('merge_base_commit', {}).get('sha') == BASE
+          assert {f['filename'] for f in comparison.get('files', [])} == {CONTROL}, 'Only the reviewed build-request workflow may differ from the engine checkpoint'
+          for workflow, digest in EXPECTED.items():
+              value = api('/contents/.github/workflows/' + workflow + '?ref=' + SHA)
+              assert value.get('sha') == digest, 'Existing verification policy changed'
+          receipt = {'repository': REPO, 'candidateSHA': SHA, 'engineCheckpoint': BASE,
+                     'nativeRuntimeTested': False, 'signed': False, 'uploaded': False}
+          def save():
+              Path('native-request.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          def matching(run, workflow):
+              return (run.get('head_sha') == SHA and run.get('head_branch') == REF
+                      and run.get('event') == 'workflow_dispatch'
+                      and run.get('path') == '.github/workflows/' + workflow)
+          def discover(workflow):
+              query = urllib.parse.urlencode({'head_sha': SHA, 'event': 'workflow_dispatch', 'per_page': 100})
+              runs = api('/actions/workflows/' + workflow + '/runs?' + query).get('workflow_runs', [])
+              matches = [r for r in runs if matching(r, workflow)]
+              return max(matches, key=lambda r: r['id']) if matches else None
+          def dispatch(workflow, inputs=None):
+              found = discover(workflow)
+              if found: return found
+              same_ref()
+              payload = {'ref': REF}
+              if inputs is not None: payload['inputs'] = inputs
+              response = api('/actions/workflows/' + workflow + '/dispatches', payload)
+              identifier = response.get('workflow_run_id')
+              for attempt in range(30):
+                  found = api('/actions/runs/' + str(identifier)) if type(identifier) is int else discover(workflow)
+                  if found:
+                      assert matching(found, workflow)
+                      return found
+                  time.sleep(3)
+              raise RuntimeError('Dispatched workflow has not appeared; inspect GitHub before retrying')
+          cheap = dispatch(CHEAP)
+          receipt['cheapRunID'] = cheap['id']; save()
+          print('Cheap verification:', cheap['id'], flush=True)
+          deadline = time.monotonic() + 55 * 60
+          while cheap.get('status') != 'completed':
+              assert time.monotonic() < deadline, 'Cheap verification deadline reached; native not requested'
+              time.sleep(20)
+              cheap = api('/actions/runs/' + str(cheap['id']))
+              assert matching(cheap, CHEAP)
+          assert cheap.get('conclusion') == 'success', 'Cheap verification failed; full native build remains blocked'
+          receipt['cheapConclusion'] = 'success'; save()
+          native = dispatch(NATIVE, {'candidate_sha': SHA, 'cheap_run_id': str(cheap['id'])})
+          receipt['nativeRunID'] = native['id']; receipt['nativeStatusAtDispatch'] = native.get('status'); save()
+          print('Full native verification requested:', native['id'], flush=True)
+          print('This is a dispatch receipt, not a completed native build or iPhone gameplay result.', flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deck-studio-native-dispatch-${{ github.sha }}
+          path: native-request.json
+          if-no-files-found: warn
+          retention-days: 14
