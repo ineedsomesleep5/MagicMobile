@@ -3,7 +3,7 @@ import SwiftUI
 enum NativeDeckBuilderLayout {
     // Width-based so presenting the keyboard does not switch portrait into a split.
     static func usesColumns(width: CGFloat) -> Bool { width >= 650 }
-    static func deckWidth(width: CGFloat) -> CGFloat { max(270, width * 0.35) }
+    static func deckWidth(width: CGFloat) -> CGFloat { max(320, width * 0.48) }
 }
 
 struct NativeDeckBuilderFilters: View {
@@ -44,30 +44,29 @@ struct NativeDeckCollectionTile: View {
     let add: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
+        HStack(spacing: 8) {
             Button(action: inspect) {
-                VStack(alignment: .leading, spacing: 6) {
-                    NativeDeckCardImage(name: card.name).frame(height: 174)
-                        .frame(maxWidth: .infinity).clipped()
-                    Text(card.name).font(.subheadline.weight(.semibold))
-                        .foregroundStyle(MagicPalette.parchment)
-                        .lineLimit(2).frame(height: 40, alignment: .topLeading)
-                    NativeDeckManaCost(cost: card.manaCost)
-                }.padding(8).frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 8) {
+                    NativeDeckCardImage(name: card.name).frame(width: 40, height: 54).clipped()
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(card.name).font(.subheadline.weight(.semibold))
+                            .foregroundStyle(MagicPalette.parchment).fixedSize(horizontal: false, vertical: true)
+                        NativeDeckManaCost(cost: card.manaCost)
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityLabel("Inspect \(card.name)")
                 .accessibilityIdentifier("nativeDeck.collection.inspect.\(card.name)")
             Button(action: add) {
-                HStack {
-                    Label("Add", systemImage: "plus")
-                    Spacer(minLength: 2)
-                    Text("\(count) in deck").font(.caption).monospacedDigit()
-                }.padding(.horizontal, 10).frame(minHeight: 44).contentShape(Rectangle())
+                VStack(spacing: 2) {
+                    Image(systemName: "plus")
+                    Text("\(count) in deck").font(.caption2).monospacedDigit()
+                }.frame(minWidth: 54, minHeight: 54).contentShape(Rectangle())
             }.buttonStyle(.plain).disabled(!canAdd)
                 .accessibilityLabel("Add \(card.name) to \(section)")
                 .accessibilityIdentifier("nativeDeck.collection.add.\(card.name)")
                 .background(MagicPalette.antiqueGold.opacity(0.12))
-        }
+        }.padding(6)
         .background(.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 10))
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(
@@ -86,18 +85,20 @@ struct NativeDeckBuilderRow: View {
     let move: (String) -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
+        HStack(spacing: 0) {
             Button(action: inspect) {
                 HStack(spacing: 8) {
+                    NativeDeckCardImage(name: row.cardName).frame(width: 36, height: 50).clipped()
                     Text("\(row.quantity)×").font(.headline).monospacedDigit()
                     VStack(alignment: .leading, spacing: 4) {
                         Text(row.cardName).font(.subheadline.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
                         NativeDeckManaCost(cost: card?.manaCost)
                     }
                     Spacer(minLength: 0)
-                }.padding(10).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }.padding(.vertical, 4).padding(.leading, 6).frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
                     .contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("nativeDeck.inspect.\(row.cardName)")
+                .accessibilityValue("\(row.quantity) copies")
             HStack(spacing: 0) {
                 Menu {
                     Button("Main deck") { move("deck") }
@@ -105,16 +106,13 @@ struct NativeDeckBuilderRow: View {
                     Button("Companion") { move("companions") }
                     Button("Remove all copies", role: .destructive, action: remove)
                 } label: {
-                    Label(row.isPrimaryCommander ? "Commander" : row.section.capitalized, systemImage: "ellipsis.circle")
-                        .font(.caption).lineLimit(1).frame(minHeight: 44)
+                    Image(systemName: "ellipsis").frame(width: 44, height: 44)
                 }.accessibilityLabel("Section and actions for \(row.cardName)")
-                Spacer(minLength: 0)
-                Text("\(row.quantity)").font(.caption).accessibilityLabel("Quantity \(row.quantity)")
                 Button(action: decrease) { Image(systemName: "minus").frame(width: 44, height: 44) }
                     .accessibilityLabel("Remove one \(row.cardName)")
                 Button(action: increase) { Image(systemName: "plus").frame(width: 44, height: 44) }
                     .disabled(!canAdd).accessibilityLabel("Add one \(row.cardName)")
-            }.padding(.horizontal, 8).buttonStyle(.borderless)
+            }.buttonStyle(.borderless)
         }.background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.1)))
     }

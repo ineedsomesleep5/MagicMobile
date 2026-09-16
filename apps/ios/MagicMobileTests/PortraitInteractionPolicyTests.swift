@@ -44,6 +44,17 @@ final class PortraitInteractionPolicyTests: XCTestCase {
         XCTAssertEqual(actions.first?.sourceInstanceId, "land")
     }
 
+    func testAbilitySourceInspectionExpiresWithItsAuthorizedPrompt() throws {
+        let prompt: [String: Any] = ["id": "ability", "method": "PICK_ABILITY", "messageId": 1,
+            "playerId": "a", "responseKind": "ability", "message": "Choose ability",
+            "abilities": [["id": "choice", "label": "Draw", "sourceCard": ["instanceId": "source",
+                "card": ["name": "Public source", "typeLine": "Artifact"]]]]]
+        XCTAssertTrue(PortraitInteractionPolicy.authorizedCards(try makeSnapshot(active: "a", turn: 1, prompt: prompt))
+            .contains { $0.id == "source" })
+        XCTAssertFalse(PortraitInteractionPolicy.authorizedCards(try makeSnapshot(active: "a", turn: 1))
+            .contains { $0.id == "source" })
+    }
+
     func testEveryOpponentFocusPreservesViewerAndRouting() throws {
         let snapshot = try makeSnapshot(active: "a", turn: 1)
         for id in ["b", "c", "d"] {
@@ -65,6 +76,29 @@ final class PortraitInteractionPolicyTests: XCTestCase {
         XCTAssertNotEqual(PortraitInteractionPolicy.turnCueKey(try makeSnapshot(active: "a", turn: 1)),
                           PortraitInteractionPolicy.turnCueKey(try makeSnapshot(active: "a", turn: 2)))
         XCTAssertNil(PortraitInteractionPolicy.turnCueKey(try makeSnapshot(active: "b", turn: 1)))
+    }
+
+    func testPhaseAnnouncementsFollowStepsIncludingOpponentsAndIgnorePriority() throws {
+        let original = try makeSnapshot(active: "b", turn: 3)
+        let first = try XCTUnwrap(BoardPhaseAnnouncement.make(original))
+        XCTAssertEqual(first.title, "Main phase 1")
+        XCTAssertEqual(first.owner, "b’s turn")
+        XCTAssertEqual(first, BoardPhaseAnnouncement.make(original))
+        func changed(step: String, priority: String) throws -> GameSnapshot {
+            let data = #"{"id":"match","phase":"COMBAT","step":"\#(step)","turn":3,"activePlayerId":"b","viewerPlayerId":"a","priorityPlayerId":"\#(priority)","players":[],"log":[]}"#
+            return try JSONDecoder().decode(GameSnapshot.self, from: Data(data.utf8))
+        }
+        let blocks = try XCTUnwrap(BoardPhaseAnnouncement.make(changed(step: "DECLARE_BLOCKERS", priority: "a")))
+        XCTAssertEqual(blocks.title, "Declare blockers")
+        XCTAssertNotEqual(blocks.key, first.key)
+        XCTAssertEqual(blocks.key, try BoardPhaseAnnouncement.make(changed(step: "DECLARE_BLOCKERS", priority: "b"))?.key)
+        for (step, title) in [("UNTAP", "Untap"), ("UPKEEP", "Upkeep"), ("DRAW", "Draw"),
+                              ("DECLARE_ATTACKERS", "Declare attackers"), ("POSTCOMBAT_MAIN", "Main phase 2"),
+                              ("FIRST_COMBAT_DAMAGE", "First-strike damage"), ("END_TURN", "End step"),
+                              ("CLEANUP", "Cleanup")] {
+            XCTAssertEqual(try BoardPhaseAnnouncement.make(changed(step: step, priority: "a"))?.title, title)
+        }
+        XCTAssertNil(try BoardPhaseAnnouncement.make(changed(step: "unknown-step", priority: "a")))
     }
 
     private func makeSnapshot(active: String, turn: Int, visibleZone: String? = nil, prompt: [String: Any]? = nil) throws -> GameSnapshot {

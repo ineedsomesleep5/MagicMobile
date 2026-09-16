@@ -15,6 +15,7 @@ final class OnDeviceRuntimeManager {
 
     // Uses only this phone's native transport, never a multiplayer peer endpoint.
     func diagnosticReport() async throws -> String? {
+        if let startupDiagnostic { return startupDiagnostic }
         guard let transport, !changing else { return startupDiagnostic }
         let value = try await EngineClient(transport: transport).call("diagnostics")
         return value["report"]?.string ?? startupDiagnostic
@@ -22,8 +23,8 @@ final class OnDeviceRuntimeManager {
 
     func clearDiagnostics() async throws {
         guard !changing else { throw EngineError.invalidMessage("Wait for the native operation to finish") }
-        startupDiagnostic = nil
         if let transport { _ = try await EngineClient(transport: transport).call("clearDiagnostics") }
+        startupDiagnostic = nil
     }
 
     func makeClient(identity: BuildIdentity) async throws -> EngineClient {
@@ -55,10 +56,28 @@ final class OnDeviceRuntimeManager {
                 startupDiagnostic = String(report.prefix(16_384))
             }
             // A failed close deliberately retains the handle so the UI can retry cleanup.
-            do { try await native.close(); transport = nil } catch { throw error }
+            do { try await native.close(); transport = nil } catch { /* Retain ownership for retry. */ }
             throw error
         }
         #endif
+    }
+
+    /// Failed creation owns no usable match. Capture locally before releasing the isolate.
+    func create(client: EngineClient, configuration: MagicMobileOnDevice.JSONValue) async throws -> MagicMobileOnDevice.JSONValue {
+        guard !changing else { throw EngineError.invalidMessage("Native runtime is still processing an operation") }
+        changing = true; defer { changing = false }
+        do { return try await client.create(configuration: configuration) }
+        catch {
+            if let report = try? await client.call("diagnostics")["report"]?.string {
+                startupDiagnostic = String(report.prefix(16_384))
+            } else {
+                // Older engines may not capture expected rejections. Preserve a local incident.
+                startupDiagnostic = "[local-engine-incident] create\nOccurred: \(ISO8601DateFormatter().string(from: Date()))\n\(error.localizedDescription.prefix(12_000))"
+            }
+            // A failed close retains the handle for explicit retry; never replace the create error.
+            try? await closeTransport()
+            throw error
+        }
     }
 
     func close() async throws {

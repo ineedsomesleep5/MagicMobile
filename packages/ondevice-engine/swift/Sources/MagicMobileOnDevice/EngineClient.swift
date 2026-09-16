@@ -56,6 +56,10 @@ public struct EngineClient: Sendable {
         let reply = try JSONValue.decode(try await transport.request(JSONValue.object(object).encoded()))
         guard reply["protocol"]?.integer == 1, let success = reply["ok"]?.bool else { throw EngineError.invalidMessage("Invalid engine response envelope") }
         guard success else {
+            if let details = reply["error"]?["details"], details.object != nil {
+                throw EngineError.rejectionDetails(code: reply["error"]?["code"]?.string ?? "unknown",
+                    message: reply["error"]?["message"]?.string ?? "Engine rejected request", details: details)
+            }
             throw EngineError.rejected(code: reply["error"]?["code"]?.string ?? "unknown", message: reply["error"]?["message"]?.string ?? "Engine rejected request")
         }
         guard let result = reply["result"] else { throw EngineError.invalidMessage("Missing result") }

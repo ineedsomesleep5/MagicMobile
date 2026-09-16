@@ -1,9 +1,18 @@
 import Foundation
 
 enum GameBoardPreviewFixtures {
-    static func snapshot(_ state: GameBoardDesignPreviewState) -> GameSnapshot {
+    static func snapshot(_ state: GameBoardDesignPreviewState, step: String? = nil, life: Int? = nil) -> GameSnapshot {
         var root = try! JSONSerialization.jsonObject(with: Data(json(for: state).utf8)) as! [String: Any]
         enrich(&root, for: state)
+        if let step {
+            root["step"] = step
+            root["activePlayerId"] = "ai-1"
+        }
+        if let life, var players = root["players"] as? [[String: Any]],
+           let viewer = players.firstIndex(where: { $0["playerId"] as? String == "human" }) {
+            players[viewer]["life"] = life
+            root["players"] = players
+        }
         if let prompt = root["promptEnvelopeV2"] as? [String: Any] { root["promptText"] = prompt["message"] }
         let data = try! JSONSerialization.data(withJSONObject: root)
         return try! JSONDecoder.magicMobile.decode(GameSnapshot.self, from: data)
@@ -115,6 +124,17 @@ enum GameBoardPreviewFixtures {
             }
         }
         root["xmage"] = xmage
+        if state == .abilityChoice {
+            let source = card("human-sol-ring", "Sol Ring", "Artifact", "{1}", "{T}: Add {C}{C}.")
+            root["legalActions"] = []
+            root["promptEnvelopeV2"] = ["id": "preview-ability", "method": "PICK_ABILITY", "messageId": 12,
+                "playerId": "human", "responseKind": "ability", "message": "Choose which triggered ability goes on the stack first",
+                "required": true, "minChoices": 1, "maxChoices": 1,
+                "abilities": [
+                    ["id": "11111111-1111-4111-8111-111111111111", "label": "Add {C}{C}.", "sourceName": "Sol Ring", "sourceCard": source],
+                    ["id": "22222222-2222-4222-8222-222222222222", "label": "Add {C}{C}.", "sourceName": "Sol Ring", "sourceCard": source]],
+                "responseCommand": ["type": "choose_ability", "promptId": "preview-ability", "messageId": 12]]
+        }
         if [.scryChoice, .libraryChoice, .emptyLibraryChoice, .mixedCardChoice].contains(state) {
             let count = [.scryChoice, .mixedCardChoice].contains(state) ? 2 : 12
             let options = (0..<count).map { index -> [String: Any] in

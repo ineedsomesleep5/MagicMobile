@@ -93,6 +93,56 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual(self.report, tool.detect(self.repo, self.lock, self.new, self.repository_lock))
         self.assertFalse(tool.detect(self.repo, self.lock, self.old, self.repository_lock)['updateAvailable'])
 
+    def test_draft_packet_patch_applies_exactly_without_build_or_publication(self):
+        self.prepare()
+        output = self.root / 'draft-pr'
+        original = tool.subprocess.check_output
+        commands = []
+        def local_only(command, **kwargs):
+            self.assertEqual(command[0], 'git')
+            self.assertFalse(any(value in command for value in ('push', 'fetch', 'commit')))
+            commands.append(command)
+            return original(command, **kwargs)
+        with patch.object(tool.subprocess, 'check_output', side_effect=local_only):
+            plan = tool.draft_packet(self.project, self.dest, output)
+        self.assertTrue(commands)
+        self.assertTrue(plan['draft'])
+        self.assertFalse(plan['published'])
+        self.assertEqual(plan['branch'], 'maintenance/xmage-' + self.new)
+        self.assertEqual(plan['detectionDigest'], tool.digest(tool.encoded(self.report)))
+        self.assertEqual(len(plan['files']), 7)
+        self.assertEqual(plan['patchSHA256'], tool.digest((output / 'candidate.patch').read_bytes()))
+        self.assertEqual(tool.git(self.project, 'status', '--porcelain'), b'')
+        self.assertFalse((self.dest / 'packages/ondevice-engine/build').exists())
+        # Exercise Git's real patch parser, including original files without a trailing newline.
+        tool.git(self.project, 'apply', '--check', str(output / 'candidate.patch'))
+        tool.git(self.project, 'apply', str(output / 'candidate.patch'))
+        for path, expected in plan['files'].items():
+            self.assertEqual(tool.digest((self.project / path).read_bytes()), expected)
+        self.assertIn('not merge-ready', (output / 'body.md').read_text())
+        self.assertIn('no automatic release', (output / 'body.md').read_text())
+
+    def test_draft_packet_refuses_overwrite_dirty_base_and_changed_lock(self):
+        self.prepare()
+        output = self.root / 'draft-pr'
+        tool.draft_packet(self.project, self.dest, output)
+        with self.assertRaises(FileExistsError): tool.draft_packet(self.project, self.dest, output)
+        self.put(self.project / 'unreviewed', 'dirty')
+        with self.assertRaisesRegex(ValueError, 'original clean'):
+            tool.draft_packet(self.project, self.dest, self.root / 'dirty-draft')
+        (self.project / 'unreviewed').unlink()
+        self.put(self.dest / 'packages/ondevice-engine/upstream.lock.json', json.dumps({'commit': self.old}))
+        with self.assertRaisesRegex(ValueError, 'candidate lock changed'):
+            tool.draft_packet(self.project, self.dest, self.root / 'changed-draft')
+
+    def test_draft_packet_rejects_symlink_source(self):
+        self.prepare()
+        source = self.dest / 'packages/ondevice-engine' / tool.IDENTITIES[0]
+        source.unlink()
+        source.symlink_to(self.project / 'packages/ondevice-engine' / tool.IDENTITIES[0])
+        with self.assertRaisesRegex(ValueError, 'symlink'):
+            tool.draft_packet(self.project, self.dest, self.root / 'unsafe-draft')
+
     def test_invalid_sha_and_wrong_old_blob(self):
         with self.assertRaises(ValueError): tool.detect(self.repo, self.lock, 'master', self.repository_lock)
         self.lock['sourceBlobs'][next(iter(self.lock['sourceBlobs']))] = '0' * 40

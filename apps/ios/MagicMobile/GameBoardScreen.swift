@@ -25,6 +25,9 @@ enum GameBoardDesignPreviewState: String, CaseIterable, Identifiable {
     case handDrag = "hand-drag"
     case handScrubber = "hand-scrubber"
     case zoneInspection = "zone-inspection"
+    case abilityChoice = "ability-choice"
+    case phaseAnnouncement = "phase-announcement"
+    case lifeChange = "life-change"
     case largeText = "large-text"
 
     var id: String { rawValue }

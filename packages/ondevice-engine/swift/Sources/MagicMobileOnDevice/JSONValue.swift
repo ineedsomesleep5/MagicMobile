@@ -60,12 +60,20 @@ public enum WireLimits {
 public enum EngineError: Error, Equatable, Sendable, LocalizedError {
     case nativeEngineNotLinked, messageTooLarge, invalidMessage(String), rejected(code: String, message: String)
     case incompatibleBuild, unboundPeer, replayedMessage, hostSuspended, runtimeFailure(Int32)
+    case rejectionDetails(code: String, message: String, details: JSONValue)
     public var errorDescription: String? {
         switch self {
         case .nativeEngineNotLinked: return "The native XMage library is not linked. No remote engine or simulator was substituted."
         case .messageTooLarge: return "Message exceeds the supported size."
         case .invalidMessage(let s): return s
         case .rejected(_, let s): return s
+        case .rejectionDetails(_, let message, let details):
+            let issues = details["issues"]?.array?.compactMap { issue -> String? in
+                guard let text = issue["message"]?.string else { return nil }
+                let group = issue["group"]?.string ?? ""
+                return group.isEmpty ? text : "\(group): \(text)"
+            } ?? []
+            return ([message] + issues).joined(separator: "\n")
         case .incompatibleBuild: return "Players must use the same engine, catalogue, and protocol build."
         case .unboundPeer: return "This authenticated peer has not been assigned a seat."
         case .replayedMessage: return "Duplicate or out-of-order transport message."

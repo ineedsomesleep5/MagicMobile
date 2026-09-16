@@ -24,6 +24,7 @@ struct OnDeviceRootView: View {
     @AppStorage(OnDeviceSetupPreferences.friendsKey) private var playWithFriends = false
     @State private var showSetup = false
     @State private var showAppearance = false
+    @State private var showUpdates = false
     @State private var showImport = false
     @State private var confirmLeave = false
     @State private var showDiagnostics = false
@@ -69,12 +70,13 @@ struct OnDeviceRootView: View {
                 } else {
                     TavernMainMenu(deckName: selectedDeck?.name ?? "Choose a deck", playerName: playerDisplayName,
                                    play: { showSetup = true }, decks: { showImport = true },
-                                   settings: { showAppearance = true })
+                                   settings: { showAppearance = true }, news: { showUpdates = true })
                 }
             }
         }
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showAppearance) { AppearanceSettingsView(portraitModeEnabled: $portraitModeEnabled) }
+        .sheet(isPresented: $showUpdates) { NativeUpdateNewsView(upstreamCommit: setup.identity?.upstreamCommit) }
         .overlay(alignment: .top) { recoveryBanner }
         .environment(\.nativeTurnControl, turnControl)
         .fullScreenCover(isPresented: $showImport) {
@@ -310,6 +312,7 @@ struct OnDeviceRootView: View {
     }
 
     private func startAI() {
+        diagnostics.beginAttempt()
         guard let deck = selectedDeck, let aiPrecon else { return }
         Task {
             do { playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName) }
@@ -325,6 +328,8 @@ struct OnDeviceRootView: View {
                     Text("Only the latest engine error report is kept on this phone, excluded from backups. Error text may contain private card information. Nothing is uploaded automatically; review it before sharing.")
                     if let error = diagnostics.errorMessage { Text(error).foregroundStyle(.red) }
                     if let report = diagnostics.report {
+                        Text(diagnostics.isHistorical ? "Saved report from an earlier session" : "Latest local incident")
+                            .font(.headline)
                         ShareLink(item: report) { Label("Share report", systemImage: "square.and.arrow.up") }
                             .accessibilityIdentifier("ondevice.shareReport")
                     }
@@ -353,6 +358,7 @@ struct OnDeviceRootView: View {
         guard let deck = selectedDeck else { return }
         do {
             playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName)
+            diagnostics.beginAttempt()
             try setup.startMatchmaking(name: playerDisplayName, deck: deck, playerCount: playerCount)
         } catch { setup.errorMessage = error.localizedDescription }
     }
@@ -465,7 +471,7 @@ private final class OnDeviceSetupModel: ObservableObject {
             }
             let client = try await runtime.makeClient(identity: identity)
             aiClient = client
-            let created = try await client.create(configuration: .object(["seats": .array(seats)]))
+            let created = try await runtime.create(client: client, configuration: .object(["seats": .array(seats)]))
             guard let matchID = created["matchId"]?.string, !matchID.isEmpty else {
                 throw EngineError.invalidMessage("XMage did not return a match ID. Close the runtime before trying again.")
             }
@@ -475,6 +481,7 @@ private final class OnDeviceSetupModel: ObservableObject {
             status = "Game started"
         } catch {
             errorMessage = error.localizedDescription
+            if !runtime.isOpen, aiMatchID == nil { aiClient = nil }
             status = needsLeave ? "Game startup interrupted. Refresh or leave before starting again." : "Unable to start local game"
         }
     }

@@ -132,9 +132,19 @@ enum OnDevicePromptAdapter {
             guard prompt.responseTypes.contains("uuid"), let abilities = prompt.payload["abilities"]?.array else { throw invalid("Missing UUID ability choices") }
             fields["responseKind"] = "ability"; fields["responseCommand"] = response("choose_ability")
             fields["minChoices"] = 1; fields["maxChoices"] = 1
-            fields["abilities"] = try abilities.map { item -> [String: String] in
+            fields["abilities"] = try abilities.map { item -> [String: Any] in
                 guard let id = item["id"]?.string, UUID(uuidString: id) != nil, let label = item["label"]?.string else { throw invalid("Malformed ability choice") }
-                return ["id": id, "label": EngineDisplayText.label(label)]
+                var row: [String: Any] = ["id": id, "label": EngineDisplayText.label(label)]
+                if let sourceID = item["sourceId"]?.string, UUID(uuidString: sourceID) != nil {
+                    row["sourceInstanceId"] = sourceID
+                    if let source = item["sourceCard"], source["id"]?.string == sourceID,
+                       source["hideInfo"]?.bool != true {
+                        row["sourceCard"] = try promptCard(source)
+                        row["sourceName"] = EngineDisplayText.label(source["displayName"]?.string ?? source["name"]?.string ?? "Card details unavailable")
+                    }
+                }
+                if row["sourceCard"] == nil { row["sourceUnavailableReason"] = "Source details unavailable" }
+                return row
             }
             if prompt.responseTypes.contains("boolean"), prompt.payload["required"]?.bool == false {
                 actions.append(try action("answer_yes_no", "Cancel", ["confirmed": false]))

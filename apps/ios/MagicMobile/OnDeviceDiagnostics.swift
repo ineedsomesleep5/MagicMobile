@@ -6,6 +6,8 @@ import Combine
 final class OnDeviceDiagnostics: ObservableObject {
     static let maxBytes = 65_536
     @Published private(set) var report: String?
+    private var persistedReport: String?
+    @Published private(set) var isHistorical = false
     @Published var errorMessage: String?
     private let directory: URL
     private var captureGeneration = 0
@@ -20,11 +22,21 @@ final class OnDeviceDiagnostics: ObservableObject {
                 let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
                 guard size <= Self.maxBytes else { throw CocoaError(.fileReadTooLarge) }
                 report = try String(contentsOf: file, encoding: .utf8)
+                persistedReport = report
+                isHistorical = true
             }
         } catch { errorMessage = "Could not load the saved engine report: \(error.localizedDescription)" }
     }
 
+    func beginAttempt() {
+        captureGeneration += 1
+        if report != nil { isHistorical = true }
+    }
+
     func save(engineReport: String, status: String) throws {
+        // Reopening the sheet must not date an existing incident as a new failure.
+        if let report, persistedReport == report, let range = report.range(of: "\n\n"),
+           engineReport.hasPrefix(String(report[range.upperBound...])) { return }
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
         let text = """
@@ -41,6 +53,7 @@ final class OnDeviceDiagnostics: ObservableObject {
         // A byte limit may land inside a Unicode scalar; trim only that incomplete tail.
         while String(data: bytes, encoding: .utf8) == nil { bytes.removeLast() }
         report = String(data: bytes, encoding: .utf8)
+        isHistorical = false
         errorMessage = nil
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
@@ -53,6 +66,7 @@ final class OnDeviceDiagnostics: ObservableObject {
             #else
             try bytes.write(to: file, options: .atomic)
             #endif
+            persistedReport = report
         } catch {
             errorMessage = "Report is available to share now, but could not be saved on this device: \(error.localizedDescription)"
             throw error
@@ -62,7 +76,7 @@ final class OnDeviceDiagnostics: ObservableObject {
     func clear() throws {
         captureGeneration += 1
         if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }
-        report = nil; errorMessage = nil
+        report = nil; persistedReport = nil; errorMessage = nil; isHistorical = false
     }
 
     func capture(status: String, read: () async throws -> String?) async {

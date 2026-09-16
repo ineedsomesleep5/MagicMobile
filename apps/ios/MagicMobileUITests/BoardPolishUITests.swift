@@ -44,6 +44,12 @@ final class BoardPolishUITests: XCTestCase {
     func testLandscapeLargeHandScrubber() { runMatrix(portrait: false, selectedFixtures: ["hand-scrubber"]) }
     func testPortraitHandDrag() { runMatrix(portrait: true, selectedFixtures: ["hand-drag"]) }
     func testLandscapeHandDrag() { runMatrix(portrait: false, selectedFixtures: ["hand-drag"]) }
+    func testPortraitCardBackedAbilityChoice() { runMatrix(portrait: true, selectedFixtures: ["ability-choice"]) }
+    func testLandscapeCardBackedAbilityChoice() { runMatrix(portrait: false, selectedFixtures: ["ability-choice"]) }
+    func testPortraitPhaseAnnouncement() { runMatrix(portrait: true, selectedFixtures: ["phase-announcement"]) }
+    func testLandscapePhaseAnnouncement() { runMatrix(portrait: false, selectedFixtures: ["phase-announcement"]) }
+    func testPortraitLifeChange() { runMatrix(portrait: true, selectedFixtures: ["life-change"]) }
+    func testLandscapeLifeChange() { runMatrix(portrait: false, selectedFixtures: ["life-change"]) }
     func testPortraitMixedChoices() { runMatrix(portrait: true, selectedFixtures: ["mixed-card-choice"]) }
     func testLandscapeMixedChoices() { runMatrix(portrait: false, selectedFixtures: ["mixed-card-choice"]) }
     func testPortraitScryChoices() { runMatrix(portrait: true, selectedFixtures: ["scry-choice"]) }
@@ -97,6 +103,34 @@ final class BoardPolishUITests: XCTestCase {
 
     private func verify(_ fixture: String, in app: XCUIApplication, portrait: Bool) {
         switch fixture {
+        case "phase-announcement":
+            app.buttons["preview.advance"].tap()
+            captureImage(name: currentCapture + "-visible")
+            let cue = app.staticTexts["Declare blockers"].firstMatch
+            XCTAssertTrue(cue.exists || cue.waitForExistence(timeout: 6))
+            XCTAssertGreaterThan(cue.frame.midY, app.frame.height * 0.25)
+            XCTAssertLessThan(cue.frame.midY, app.frame.height * 0.75)
+            XCTAssertTrue(cue.waitForNonExistence(timeout: 5))
+            XCTAssertTrue(app.buttons["board.hand.expand"].isHittable)
+        case "life-change":
+            app.buttons["preview.advance"].tap()
+            captureImage(name: currentCapture + "-loss")
+            XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "35 life")).firstMatch.waitForExistence(timeout: 5))
+            app.buttons["preview.advance"].tap()
+            captureImage(name: currentCapture + "-gain")
+            XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "43 life")).firstMatch.waitForExistence(timeout: 5))
+        case "ability-choice":
+            let inspect = app.buttons["Inspect Sol Ring"].firstMatch
+            visible(inspect, in: app)
+            let choices = app.buttons.matching(NSPredicate(format: "label == %@", "Choose ability"))
+            XCTAssertEqual(choices.count, 2, "Identical abilities retain separate engine choices")
+            capture(app, name: currentCapture + "-cards")
+            choices.element(boundBy: 1).tap()
+            // Fixtures capture commands without advancing an engine snapshot.
+            // Dismiss the sheet to expose the capture on the underlying board.
+            app.buttons["Cancel prompt details"].tap()
+            XCTAssertTrue(app.staticTexts["preview.captured-command"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.staticTexts["preview.captured-command"].label.contains("22222222-2222-4222-8222-222222222222"))
         case "combat-arrows":
             let lane = app.scrollViews["board.battlefield.Your board"]
             visible(lane, in: app)
@@ -259,7 +293,9 @@ final class BoardPolishUITests: XCTestCase {
         case "mana-payment-prompt":
             visible(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "Pay")).firstMatch, in: app)
             visible(card(in: app, identifierPrefix: "card-your-board-sol-ring"), in: app)
-            // Do not tap a mana action: preview fixtures are not a rules engine.
+            card(in: app, identifierPrefix: "card-your-board-sol-ring").tap()
+            XCTAssertTrue(app.staticTexts["preview.captured-command"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.staticTexts["preview.captured-command"].label.contains("Tap Sol Ring"))
         case "stack-response-prompt":
             if !portrait && !app.buttons["board.stack.done"].exists {
                 let inspectStack = app.buttons["Inspect stack"]
@@ -346,10 +382,15 @@ final class BoardPolishUITests: XCTestCase {
     }
 
     private func capture(_ app: XCUIApplication, name: String) {
+        captureImage(name: name)
         let hierarchy = XCTAttachment(string: app.debugDescription)
         hierarchy.name = name + "-accessibility"
         hierarchy.lifetime = .keepAlways
         add(hierarchy)
+    }
+
+    // Capture short-lived feedback before the slower accessibility-tree export.
+    private func captureImage(name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name
         attachment.lifetime = .keepAlways

@@ -1,5 +1,26 @@
 import Foundation
 
+/// A cue follows engine steps, never priority changes or repeated polls.
+struct BoardPhaseAnnouncement: Equatable {
+    let key: String
+    let title: String
+    let owner: String
+
+    static func make(_ snapshot: GameSnapshot) -> Self? {
+        guard !snapshot.isCompleted, let active = snapshot.activePlayerId else { return nil }
+        let raw = (snapshot.step ?? snapshot.phase).lowercased().replacingOccurrences(of: "_", with: "-")
+        let titles = ["beginning": "Beginning phase", "untap": "Untap", "upkeep": "Upkeep", "draw": "Draw",
+                      "precombat-main": "Main phase 1", "postcombat-main": "Main phase 2",
+                      "combat": "Combat", "begin-combat": "Begin combat", "declare-attackers": "Declare attackers",
+                      "declare-blockers": "Declare blockers", "first-combat-damage": "First-strike damage",
+                      "combat-damage": "Combat damage", "end-combat": "End combat", "ending": "End step",
+                      "end-turn": "End step", "cleanup": "Cleanup"]
+        guard let title = titles[raw] else { return nil }
+        return Self(key: "\(snapshot.id):\(snapshot.turn):\(active):\(raw)", title: title,
+                    owner: snapshot.isViewer(active) ? "Your turn" : "\(snapshot.playerLabel(active))’s turn")
+    }
+}
+
 /// Presentation decisions never rewrite an engine action or a seat identity.
 enum PortraitInteractionPolicy {
     static func cardChoiceKey(_ snapshot: GameSnapshot) -> String? {
@@ -43,6 +64,7 @@ enum PortraitInteractionPolicy {
             }
         }
         cards.append(contentsOf: snapshot.promptEnvelopeV2?.cards ?? [])
+        cards.append(contentsOf: snapshot.promptEnvelopeV2?.abilities?.compactMap(\.sourceCard) ?? [])
         for pile in snapshot.promptEnvelopeV2?.piles ?? [] { cards.append(contentsOf: pile.cards) }
         return cards
     }

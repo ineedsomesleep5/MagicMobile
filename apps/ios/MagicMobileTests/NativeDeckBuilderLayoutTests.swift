@@ -10,8 +10,8 @@ final class NativeDeckBuilderLayoutTests: XCTestCase {
     func testLandscapeKeepsCollectionAndDeckSideBySide() {
         XCTAssertTrue(NativeDeckBuilderLayout.usesColumns(width: 650))
         XCTAssertTrue(NativeDeckBuilderLayout.usesColumns(width: 844))
-        XCTAssertEqual(NativeDeckBuilderLayout.deckWidth(width: 844), 295.4, accuracy: 0.01)
-        XCTAssertGreaterThanOrEqual(NativeDeckBuilderLayout.deckWidth(width: 650), 270)
-        XCTAssertGreaterThan(650 - NativeDeckBuilderLayout.deckWidth(width: 650), 375)
+        XCTAssertEqual(NativeDeckBuilderLayout.deckWidth(width: 844), 405.12, accuracy: 0.01)
+        XCTAssertGreaterThanOrEqual(NativeDeckBuilderLayout.deckWidth(width: 650), 320)
+        XCTAssertGreaterThanOrEqual(650 - NativeDeckBuilderLayout.deckWidth(width: 650), 320)
     }
 }

@@ -6,7 +6,7 @@ native package; no source-identity guard is weakened. The
 [maintenance procedure](../../packages/ondevice-engine/docs/UPSTREAM_MAINTENANCE.md)
 remains authoritative for release acceptance.
 
-## Detection and inactive schedule
+## Detection and weekly schedule
 
 ```sh
 python3 scripts/magicmobile-maintenance/upstream.py detect
@@ -31,11 +31,11 @@ directories present in either commit, not an evaluated Maven reactor. Dependenci
 inventory, not transitive resolution; review changed parent/BOM/plugins and notices.
 Renames are delete/add. Missing objects, mismatched old blobs and network errors fail.
 
-The manual workflow defaults to detection. A commented activation proposal is
-`23 9 * * 1`: Mondays at 09:23 UTC, weekly detection only. To activate later, the
-owner must explicitly approve uncommenting schedule and merging that workflow to
-the default branch. Change that cron for a different conservative cadence. Nothing
-scheduled is active, and a schedule cannot activate candidate mode or publication.
+The manual workflow defaults to detection. The workflow declares
+`23 9 * * 1`: Mondays at 09:23 UTC, weekly detection only. GitHub scheduling becomes
+active only after default-branch integration and when Actions schedules are enabled.
+The schedule cannot activate candidate mode or publication. See
+[the weekly handoff](WEEKLY_HANDOFF.md) for the draft packet and review gates.
 
 Detection prints a canonical JSON SHA-256 digest. Approval means a human reviewed
 that exact report; it is not a signature or automated source-safety proof. Inspect

@@ -1083,6 +1083,10 @@ struct XmagePromptAbility: Decodable, Identifiable {
     let id: String
     let label: String
     let rulesText: String?
+    let sourceInstanceId: String?
+    let sourceCard: ZoneCard?
+    let sourceName: String?
+    let sourceUnavailableReason: String?
 }
 
 struct XmagePromptMultiAmount: Decodable, Identifiable {

@@ -39,6 +39,16 @@ struct NativeDeckManaCost: View {
     }
 
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            symbolsRow
+            Text(cost?.replacingOccurrences(of: "{*}", with: " // ") ?? "")
+                .font(.caption).fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(cost.map { "Mana cost \($0.replacingOccurrences(of: "{*}", with: " // "))" } ?? "Mana cost unavailable")
+    }
+
+    private var symbolsRow: some View {
         HStack(spacing: 3) {
             ForEach(Array(symbols.enumerated()), id: \.offset) { _, symbol in
                 if symbol == "*" {
@@ -53,8 +63,6 @@ struct NativeDeckManaCost: View {
                 }
             }
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(cost.map { "Mana cost \($0.replacingOccurrences(of: "{*}", with: " // "))" } ?? "Mana cost unavailable")
     }
 
 }
@@ -89,6 +97,7 @@ struct NativeDeckCardRow: View {
                     Spacer(minLength: 0)
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("nativeDeck.inspect.\(name)")
+                .accessibilityValue("\(quantity) copies")
             if decrease != nil || increase != nil {
                 VStack(spacing: 0) {
                     Text("\(quantity)").font(.subheadline.bold()).monospacedDigit()

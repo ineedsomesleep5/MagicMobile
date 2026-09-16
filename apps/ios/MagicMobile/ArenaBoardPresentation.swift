@@ -1,5 +1,43 @@
 import SwiftUI
 
+/// Changes are visual feedback only; life always comes from the current snapshot.
+struct BoardLifeTotal: View {
+    let life: Int
+    var suffix = ""
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var delta = 0
+    @State private var changeToken = UUID()
+
+    var body: some View {
+        Text("\(life)\(suffix)")
+            .monospacedDigit()
+            .contentTransition(.numericText(value: Double(life)))
+            .foregroundStyle(delta == 0 ? MagicPalette.antiqueGold : delta < 0 ? Color.red : Color.green)
+            .scaleEffect(delta == 0 || reduceMotion ? 1 : 1.16)
+            .overlay(alignment: .topTrailing) {
+                if delta != 0 {
+                    Text(delta > 0 ? "+\(delta)" : "\(delta)")
+                        .font(.caption.bold()).foregroundStyle(delta < 0 ? .red : .green)
+                        .padding(3).background(.black.opacity(0.9), in: Capsule())
+                        .offset(x: 18, y: -16)
+                        .accessibilityHidden(true)
+                }
+            }
+            .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.65), value: life)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: delta)
+            .onChange(of: life) { old, new in
+                delta = new - old
+                changeToken = UUID()
+            }
+            .task(id: changeToken) {
+                guard delta != 0 else { return }
+                do { try await Task.sleep(for: .seconds(1.2)) } catch { return }
+                delta = 0
+            }
+            .accessibilityLabel("\(life) life")
+    }
+}
+
 /// A second permanent row is used only when both rows retain 44-point targets.
 /// Very narrow screens scroll by actual content width, never by card count alone.
 struct ArenaPermanentLayout {
@@ -107,7 +145,8 @@ struct ArenaBattlefieldCard: View {
             }
         }
         .overlay(RoundedRectangle(cornerRadius: 7).stroke(accent, lineWidth: legal || targetable || selected ? 2 : 1))
-        .saturation(card.tapped == true ? 0.55 : 1)
+        .saturation(card.tapped == true ? 0.15 : 1)
+        .brightness(card.tapped == true ? -0.16 : 0)
         .rotationEffect(.degrees(card.tapped == true ? -7 : 0))
         .shadow(color: accent.opacity(legal || targetable ? 0.45 : 0.1), radius: 5)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: card.tapped)

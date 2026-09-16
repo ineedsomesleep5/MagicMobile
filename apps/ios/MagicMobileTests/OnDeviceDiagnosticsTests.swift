@@ -4,6 +4,26 @@ import XCTest
 
 @MainActor
 final class OnDeviceDiagnosticsTests: XCTestCase {
+    func testRepeatedCapturePreservesTimestampAndHistoricalIdentity() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = OnDeviceDiagnostics(directory: directory)
+        let incident = "[local-engine-incident] invalid_deck\nOccurred: 2026-09-15T01:02:03Z\nExact validator issue"
+        try store.save(engineReport: incident, status: "First failure")
+        XCTAssertFalse(store.isHistorical)
+        let original = store.report
+        store.beginAttempt()
+        XCTAssertTrue(store.isHistorical)
+        await store.capture(status: "Different status") { incident }
+        XCTAssertEqual(store.report, original)
+        let reopened = OnDeviceDiagnostics(directory: directory)
+        XCTAssertTrue(reopened.isHistorical)
+        await reopened.capture(status: "Reopened sheet") { incident }
+        XCTAssertEqual(reopened.report, original)
+        XCTAssertTrue(reopened.isHistorical)
+        try reopened.save(engineReport: "New incident", status: "New failure")
+        XCTAssertFalse(reopened.isHistorical)
+    }
     func testReportSurvivesRestartReplacesOldReportAndDeletes() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -39,6 +59,10 @@ final class OnDeviceDiagnosticsTests: XCTestCase {
         let store = OnDeviceDiagnostics(directory: directory)
         XCTAssertThrowsError(try store.save(engineReport: "failure to preserve", status: "Game stopped"))
         XCTAssertTrue(store.report?.contains("failure to preserve") == true)
+        try FileManager.default.removeItem(at: directory)
+        try store.save(engineReport: "failure to preserve", status: "Game stopped")
+        XCTAssertNil(store.errorMessage)
+        XCTAssertEqual(OnDeviceDiagnostics(directory: directory).report, store.report)
     }
 
     func testLateCaptureCannotRestoreDeletedReport() async throws {

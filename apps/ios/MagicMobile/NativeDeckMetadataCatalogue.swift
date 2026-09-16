@@ -210,4 +210,24 @@ struct NativeDeckMetadataCatalogue {
         init(_ message: String) { self.message = message }
         var errorDescription: String? { message }
     }
+
+    /// Preview only. Distributes additional basics by printed mono-color pips;
+    /// never infers commander identity, hybrid choices or mana production.
+    func basicLandSuggestion(for deck: DeckList, target: Int = 37) throws -> [(name: String, quantity: Int)] {
+        let stats = try statistics(for: deck)
+        guard stats.unknownTypeCount == 0, stats.unknownManaCostCount == 0 else { return [] }
+        let needed = max(0, min(100, target) - stats.landCount)
+        let pairs = [("W", "Plains"), ("U", "Island"), ("B", "Swamp"), ("R", "Mountain"), ("G", "Forest")]
+        let weights = pairs.map { stats.manaSymbolCounts[$0.0, default: 0] }
+        let total = weights.reduce(0, +)
+        guard needed > 0, total > 0 else { return [] }
+        var counts = weights.map { needed * $0 / total }
+        let priority = weights.indices.sorted {
+            let a = needed * weights[$0] % total, b = needed * weights[$1] % total
+            return a == b ? $0 < $1 : a > b
+        }
+        for index in priority.prefix(needed - counts.reduce(0, +)) { counts[index] += 1 }
+        guard pairs.indices.allSatisfy({ counts[$0] == 0 || card(named: pairs[$0].1) != nil }) else { return [] }
+        return pairs.indices.filter { counts[$0] > 0 }.map { (pairs[$0].1, counts[$0]) }
+    }
 }

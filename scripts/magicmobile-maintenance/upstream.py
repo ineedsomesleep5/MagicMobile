@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Inspect upstream objects and prepare an explicitly reviewed, isolated candidate."""
 import argparse
+import difflib
 import hashlib
 import io
 import json
@@ -382,6 +383,60 @@ def candidate_branch(project, commit):
     return 'maintenance/xmage-' + upstream
 
 
+def draft_packet(project, candidate, output):
+    """Local review packet only; never stage, commit, publish or run candidate code."""
+    state = json.loads((candidate / 'maintenance-candidate.json').read_bytes())
+    base = exact(state['projectCommit'])
+    upstream = exact(state['candidate'])
+    if git(project, 'rev-parse', 'HEAD').decode().strip() != base or git(
+            project, 'status', '--porcelain', '--untracked-files=all').strip():
+        raise ValueError('Draft packet requires the original clean project commit')
+    package = candidate / 'packages/ondevice-engine'
+    if json.loads((package / 'upstream.lock.json').read_bytes())['commit'] != upstream:
+        raise ValueError('Prepared candidate lock changed')
+    if digest((package / 'platform/repository-sources.json').read_bytes()) != state['repositorySourceLockSHA256']:
+        raise ValueError('Prepared repository source lock changed')
+    # Only the existing preparer's seven source/identity files enter the patch.
+    # No upstream checkout, workflow, generated executable or arbitrary artifact is imported.
+    paths = ['packages/ondevice-engine/' + path for path in (
+        'upstream.lock.json', 'platform/repository-sources.json', 'implementation-status.json', *IDENTITIES)]
+    changes, hashes = [], {}
+    for path in paths:
+        source = candidate / path
+        if source.is_symlink() or any((candidate / parent).is_symlink() for parent in Path(path).parents):
+            raise ValueError('Draft source must not be a symlink: ' + path)
+        before = git(project, 'show', base + ':' + path).decode()
+        after = source.read_text()
+        hashes[path] = digest(after.encode())
+        for line in difflib.unified_diff(before.splitlines(keepends=True), after.splitlines(keepends=True),
+                                         fromfile='a/' + path, tofile='b/' + path):
+            changes.append(line if line.endswith('\n') else line + '\n\\ No newline at end of file\n')
+    patch = ''.join(changes).encode()
+    if not patch:
+        raise ValueError('No candidate changes to review')
+    plan = {'schema': 1, 'repository': REPOSITORY, 'baseProjectCommit': base,
+            'upstreamCommit': upstream, 'detectionDigest': state['detectionDigest'],
+            'branch': 'maintenance/xmage-' + upstream, 'draft': True, 'published': False,
+            'title': 'Review XMage maintenance candidate ' + upstream[:12],
+            'patchSHA256': digest(patch), 'files': hashes,
+            'validation': 'not-run; regeneration, generated-pin review and runtime gates required'}
+    body = (f'Prepare the pinned XMage update to `{upstream}` for manual review.\n\n'
+            f'Base MagicMobile commit: `{base}`. Detection digest: `{state["detectionDigest"]}`.\n\n'
+            'This draft packet updates source pins and identity references only. Generated catalogue/hash pins '
+            'still describe the previous version; this patch is not merge-ready. No candidate build or '
+            'runtime validation is implied.\n\n'
+            '- Review the exact upstream diff, dependency changes and port transformations.\n'
+            '- Explicitly regenerate, review generated inventory/hashes, then run the existing validation gates.\n'
+            '- Require the final exact MagicMobile commit for native and device acceptance.\n'
+            '- A human must approve merge and separately authorize release; no automatic release.\n\n'
+            'No branch, commit, PR, workflow dispatch or release was created by packet preparation.\n')
+    output.mkdir()
+    write_new(output / 'candidate.patch', patch)
+    write_new(output / 'draft-pr.json', encoded(plan))
+    write_new(output / 'body.md', body.encode())
+    return plan
+
+
 def publish(project, commit, base, execute=False):
     """One upstream candidate branch; subsequent reviewed app commits fast-forward it."""
     branch = candidate_branch(project, commit)
@@ -472,6 +527,10 @@ def main():
     pub.add_argument('--candidate-commit', required=True)
     pub.add_argument('--base', required=True)
     pub.add_argument('--execute', action='store_true', help='Push exact commit and create/reuse draft PR')
+    packet = sub.add_parser('draft-packet', help='Prepare a local patch and draft PR text; no remote writes')
+    packet.add_argument('--project', type=Path, required=True)
+    packet.add_argument('--candidate', type=Path, required=True)
+    packet.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     if args.command == 'detect':
         lock = json.loads(args.lock.read_bytes())
@@ -511,6 +570,8 @@ def main():
         print(encoded(regenerate(args.candidate, args.execute)).decode())
     elif args.command == 'publish':
         print(encoded(publish(args.project, args.candidate_commit, args.base, args.execute)).decode())
+    elif args.command == 'draft-packet':
+        print(encoded(draft_packet(args.project, args.candidate, args.output)).decode())
     elif args.command == 'validate':
         print(encoded(validate(args.candidate, args.execute)).decode())
     elif args.command == 'dispatch-non-sim':

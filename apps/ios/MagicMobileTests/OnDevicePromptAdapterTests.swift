@@ -362,6 +362,63 @@ final class OnDevicePromptAdapterTests: XCTestCase {
         }
     }
 
+    func testAbilitySourceMetadataRetainsDuplicatesAndOmitsHiddenSources() throws {
+        for kind in ["CHOOSE_ABILITY", "PICK_ABILITY"] {
+            let card: MagicMobileOnDevice.JSONValue = .object(["id": .string(second), "name": .string("<b>Forest</b>"),
+                "cardTypes": .array([.string("LAND")]), "rules": .array([.string("{T}: Add {G}.")])])
+            let row: MagicMobileOnDevice.JSONValue = .object(["id": .string(first), "label": .string("<b>Add</b> {G}"),
+                "sourceId": .string(second), "sourceCard": card])
+            let p = try prompt(kind, types: ["uuid"], payload: ["abilities": .array([row, row])])
+            let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+            let choices = try XCTUnwrap(view.envelope.abilities)
+            XCTAssertEqual(choices.map(\.id), [first, first])
+            XCTAssertEqual(choices.map(\.label), ["Add {G}", "Add {G}"])
+            XCTAssertEqual(choices.map(\.sourceInstanceId), [second, second])
+            XCTAssertEqual(choices.first?.sourceCard?.instanceId, second)
+            XCTAssertEqual(choices.first?.sourceName, "Forest")
+            XCTAssertEqual(choices.first?.sourceCard?.card.oracleText, "{T}: Add {G}.")
+            XCTAssertNil(choices.first?.sourceUnavailableReason)
+            let command = GameCommand(type: "choose_ability", gameId: "match", playerId: viewer,
+                                      abilityId: first, promptId: p.id, messageId: 37)
+            XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: p, viewerPlayerID: viewer),
+                           EnginePrompt.answer("uuid", .string(first)))
+            XCTAssertEqual(p.payload["abilities"], .array([row, row]))
+            var hidden = try XCTUnwrap(card.object); hidden["hideInfo"] = .bool(true)
+            let unavailable = try prompt(kind, types: ["uuid"], payload: ["abilities": .array([
+                .object(["id": .string(first), "label": .string("Add {G}"), "sourceId": .string(second), "sourceCard": .object(hidden)]),
+                .object(["id": .string(first), "label": .string("Add {G}"), "sourceId": .string(second)])
+            ])])
+            let omitted = try OnDevicePromptAdapter.presentation(unavailable, viewerPlayerID: viewer, cards: [])
+            for choice in try XCTUnwrap(omitted.envelope.abilities) {
+                XCTAssertNil(choice.sourceCard); XCTAssertNil(choice.sourceName)
+                XCTAssertEqual(choice.sourceUnavailableReason, "Source details unavailable")
+            }
+        }
+    }
+
+    func testAbilitySourceMetadataRequiresMatchingSourceIdentityAndSupportsLegacyRows() throws {
+        for kind in ["CHOOSE_ABILITY", "PICK_ABILITY"] {
+            let card: MagicMobileOnDevice.JSONValue = .object(["id": .string(second), "name": .string("Private source")])
+            let rows: [MagicMobileOnDevice.JSONValue] = [
+                .object(["id": .string(first), "label": .string("Legacy ability")]),
+                .object(["id": .string(first), "label": .string("Missing source ID"), "sourceCard": card]),
+                .object(["id": .string(first), "label": .string("Invalid source ID"), "sourceId": .string("invalid"), "sourceCard": card]),
+                .object(["id": .string(first), "label": .string("Mismatched source"), "sourceId": .string(viewer), "sourceCard": card])
+            ]
+            let p = try prompt(kind, types: ["uuid"], payload: ["abilities": .array(rows)])
+            let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
+            let choices = try XCTUnwrap(view.envelope.abilities)
+            XCTAssertEqual(choices.count, rows.count)
+            XCTAssertEqual(choices.map(\.sourceInstanceId), [nil, nil, nil, viewer])
+            for choice in choices {
+                XCTAssertEqual(choice.id, first)
+                XCTAssertNil(choice.sourceCard)
+                XCTAssertNil(choice.sourceName)
+                XCTAssertEqual(choice.sourceUnavailableReason, "Source details unavailable")
+            }
+        }
+    }
+
     func testPileSelectionTranslatesToBooleanAndMapsOnlyExplicitCards() throws {
         let p = try prompt("CHOOSE_PILE", types: ["boolean"], payload: ["pile1": .array([.object(["id": .string(first), "name": .string("Forest"), "cardTypes": .array([.string("LAND")])])]), "pile2": .array([])])
         let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])

@@ -9,6 +9,33 @@ struct OnDeviceDeckLinkImporter {
     static let maximumBytes = 2 * 1024 * 1024
     let resolver: OnDeviceDeckResolver
 
+    struct Preview {
+        let deck: DeckList
+        let unresolvedNames: [String]
+        var annotations: [OnDeviceDeckEditing.TextAnnotation] = []
+    }
+
+    func preview(_ deck: DeckList) throws -> Preview {
+        try OnDeviceDeckEditing.validateDraft(deck)
+        var unresolved = Set<String>()
+        func entry(_ row: DeckEntry) -> DeckEntry {
+            let canonical = resolver.canonicalCardName(row.cardName)
+            if canonical == nil { unresolved.insert(row.cardName) }
+            return DeckEntry(cardName: canonical ?? row.cardName, quantity: row.quantity, section: row.section)
+        }
+        let result = DeckList(name: deck.name, commander: deck.commander.map(entry), entries: deck.entries.map(entry))
+        return Preview(deck: result, unresolvedNames: unresolved.sorted())
+    }
+
+    /// Review-only parsing retains names, sections and provider export annotations.
+    /// The strict play resolver remains separate from importing an editable draft.
+    func preview(text: String, name: String) throws -> Preview {
+        let imported = try OnDeviceDeckEditing.importText(text, name: name)
+        var result = try preview(imported.deck)
+        result.annotations = imported.annotations
+        return result
+    }
+
     static func importDeck(url: URL, resolver: OnDeviceDeckResolver, excludeSideboards: Bool = false) async throws -> DeckList {
         try await Self(resolver: resolver).importDeck(url: url.absoluteString, excludeSideboards: excludeSideboards)
     }
@@ -58,7 +85,7 @@ struct OnDeviceDeckLinkImporter {
         try resolver.importDeck(text: text, name: name)
     }
 
-    func importDeck(url: String, excludeSideboards: Bool = false) async throws -> DeckList {
+    func importDeck(url: String, excludeSideboards: Bool = false, reviewOnly: Bool = false) async throws -> DeckList {
         let source = try Self.source(for: url)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil
@@ -82,7 +109,7 @@ struct OnDeviceDeckLinkImporter {
                 guard data.count < Self.maximumBytes else { throw ImportError(message: "Provider response exceeds 2 MiB.") }
                 data.append(byte)
             }
-            return try decode(data: data, source: source, excludeSideboards: excludeSideboards)
+            return try decode(data: data, source: source, excludeSideboards: excludeSideboards, reviewOnly: reviewOnly)
         } catch is CancellationError {
             throw CancellationError()
         } catch let error as ImportError {
@@ -105,7 +132,7 @@ struct OnDeviceDeckLinkImporter {
         }
     }
 
-    func decode(data: Data, source: Source, excludeSideboards: Bool = false) throws -> DeckList {
+    func decode(data: Data, source: Source, excludeSideboards: Bool = false, reviewOnly: Bool = false) throws -> DeckList {
         guard data.count <= Self.maximumBytes else { throw ImportError(message: "Provider response exceeds 2 MiB.") }
         do {
             let deck: DeckList
@@ -132,7 +159,7 @@ struct OnDeviceDeckLinkImporter {
                         entries.append(DeckEntry(cardName: row.card.name, quantity: row.quantity, section: section))
                     }
                 }
-                deck = try checkedDeck(name: value.name, entries: entries)
+                deck = try checkedDeck(name: value.name, entries: entries, reviewOnly: reviewOnly)
             case .archidekt:
                 let value = try JSONDecoder().decode(ArchidektDeck.self, from: data)
                 guard String(value.id) == source.id, !value.isPrivate, !value.unlisted else {
@@ -167,7 +194,7 @@ struct OnDeviceDeckLinkImporter {
                     let section = roles.contains("commander") ? "commanders" : (companion ? "companions" : "main")
                     entries.append(DeckEntry(cardName: row.card.oracleCard.name, quantity: row.quantity, section: section))
                 }
-                deck = try checkedDeck(name: value.name, entries: entries)
+                deck = try checkedDeck(name: value.name, entries: entries, reviewOnly: reviewOnly)
             }
             return deck
         } catch let error as ImportError { throw error }
@@ -181,11 +208,13 @@ struct OnDeviceDeckLinkImporter {
         _ = try resolver.resolve(DeckList(name: "Excluded cards", commander: nil, entries: entries))
     }
 
-    private func checkedDeck(name: String, entries: [DeckEntry]) throws -> DeckList {
+    private func checkedDeck(name: String, entries: [DeckEntry], reviewOnly: Bool = false) throws -> DeckList {
         guard !entries.isEmpty, entries.count <= 2000, name.utf8.count <= 512 else { throw ImportError(message: "Deck is empty or too large.") }
         var remaining = entries
         let firstCommander = remaining.firstIndex { $0.section == "commanders" }.map { remaining.remove(at: $0) }
-        let deck = try resolver.canonicalized(DeckList(name: name, commander: firstCommander, entries: remaining))
+        let raw = DeckList(name: name, commander: firstCommander, entries: remaining)
+        if reviewOnly { return try preview(raw).deck }
+        let deck = try resolver.canonicalized(raw)
         _ = try resolver.resolve(deck)
         return deck
     }

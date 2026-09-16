@@ -2,6 +2,53 @@ import XCTest
 @testable import MagicMobile
 
 final class OnDeviceDeckLinkImporterTests: XCTestCase {
+    func testPreviewRetainsUnresolvedCardsAndCanonicalizesKnownAliases() throws {
+        let importer = OnDeviceDeckLinkImporter(resolver: try resolver())
+        let preview = try importer.preview(text: "Commander\n1 Front // Back\nDeck\n3 Missing\n2 Forest (SET) 1 *F*", name: "Review")
+        XCTAssertEqual(preview.deck.commander?.cardName, "Front")
+        XCTAssertEqual(preview.deck.totalCards, 6)
+        XCTAssertEqual(preview.unresolvedNames, ["Missing"])
+        XCTAssertEqual(preview.deck.entries.last?.cardName, "Forest")
+        XCTAssertThrowsError(try importer.importDeck(text: "3 Missing", name: "Strict"))
+        for text in ["0 Forest", "2000 Forest\n1 Missing", ""] {
+            XCTAssertThrowsError(try importer.preview(text: text, name: "Invalid"))
+        }
+    }
+
+    func testProviderTextExportPreviewPreservesQuantitiesRolesAndAnnotations() throws {
+        let importer = OnDeviceDeckLinkImporter(resolver: try resolver())
+        let archidekt = try importer.preview(text: "1x Leader (SET) [Commander{top}]\n3x Forest (SET) 12 *F* [Land]\n1x Missing [Maybeboard]", name: "Archidekt paste")
+        XCTAssertEqual(archidekt.deck.commander?.cardName, "Leader")
+        XCTAssertEqual(archidekt.deck.totalCards, 5)
+        XCTAssertEqual(archidekt.deck.entries.first?.section, "deck")
+        XCTAssertEqual(archidekt.deck.entries.first?.quantity, 3)
+        XCTAssertEqual(archidekt.deck.entries.last?.section, "maybeboard")
+        XCTAssertEqual(archidekt.unresolvedNames, ["Missing"])
+        XCTAssertTrue(archidekt.annotations.contains { $0.line == 2 && $0.text.contains("Land") })
+        let moxfield = try importer.preview(text: "Commander\n1 Leader\nDeck\n2 Forest (SET) 12 #!Mana\nSideboard\n1 Island", name: "Moxfield paste")
+        XCTAssertEqual(moxfield.deck.totalCards, 4)
+        XCTAssertEqual(moxfield.deck.entries.last?.section, "sideboard")
+        XCTAssertTrue(moxfield.unresolvedNames.isEmpty)
+        XCTAssertTrue(moxfield.annotations.contains { $0.text == "#!Mana" })
+        XCTAssertEqual(moxfield.deck.entries.first?.cardName, "Forest")
+    }
+
+    func testBothProviderPreviewsKeepUnknownNamesButStrictImportStillRejects() throws {
+        let importer = OnDeviceDeckLinkImporter(resolver: try resolver())
+        let cases: [(String, [String: Any])] = [
+            ("https://archidekt.com/decks/123", arch([archRow("Missing", quantity: 3)])),
+            ("https://moxfield.com/decks/abcdefghijklmnopqrstuv", mox(["mainboard": board("Missing", quantity: 3)]))
+        ]
+        for (url, payload) in cases {
+            let source = try OnDeviceDeckLinkImporter.source(for: url)
+            let bytes = try data(payload)
+            let deck = try importer.decode(data: bytes, source: source, reviewOnly: true)
+            XCTAssertEqual(try importer.preview(deck).unresolvedNames, ["Missing"])
+            XCTAssertEqual(deck.totalCards, 3)
+            XCTAssertThrowsError(try importer.decode(data: bytes, source: source))
+        }
+    }
+
     private func resolver() throws -> OnDeviceDeckResolver {
         let names = ["Forest", "Island", "Leader", "Partner", "Companion", "Fire // Ice", "Front"]
         let json: [String: Any] = ["schemaVersion": 1, "upstreamCommit": "test", "catalogueHash": "test", "sourceCatalogueSHA256": "test", "sourceRegistrySHA256": "test",

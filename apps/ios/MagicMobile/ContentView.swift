@@ -186,6 +186,20 @@ struct ContentView: View {
                     .accessibilityIdentifier("preview.captured-command")
                     .allowsHitTesting(false)
             }
+            if snapshot?.source == "design-preview" {
+                let fixture = ProcessInfo.processInfo.environment["MAGICMOBILE_DESIGN_PREVIEW"]
+                if fixture == "phase-announcement" || fixture == "life-change" {
+                    Button(fixture == "phase-announcement" ? "Advance preview phase" : "Preview life change") {
+                        if fixture == "phase-announcement" {
+                            snapshot = GameBoardPreviewFixtures.snapshot(.phaseAnnouncement, step: "DECLARE_BLOCKERS")
+                        } else {
+                            snapshot = GameBoardPreviewFixtures.snapshot(.lifeChange, life: snapshot?.human?.life == 37 ? 35 : 43)
+                        }
+                    }
+                    .font(.caption).padding(8).background(.black)
+                    .padding(.top, 24).accessibilityIdentifier("preview.advance")
+                }
+            }
             #endif
         }
         .alert("MagicMobile", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
@@ -749,7 +763,8 @@ struct ContentView: View {
     private func run(command: GameCommand, label: String, pendingId: String) async {
         #if DEBUG
         if snapshot?.source == "design-preview" {
-            status = "Development fixture: captured \(label). No engine command sent."
+            let identity = command.abilityId.map { " [\($0)]" } ?? ""
+            status = "Development fixture: captured \(label)\(identity). No engine command sent."
             print(status)
             return
         }
@@ -1241,6 +1256,7 @@ struct TavernMainMenu: View {
     let play: () -> Void
     let decks: () -> Void
     let settings: () -> Void
+    var news: (() -> Void)? = nil
 
     var body: some View {
         GeometryReader { proxy in
@@ -1270,6 +1286,10 @@ struct TavernMainMenu: View {
                         menuAction("Decks", subtitle: "Build, import and browse.", icon: "rectangle.stack.fill", action: decks)
                             .accessibilityIdentifier("menu.decks")
                         menuAction("Settings", subtitle: "Make this table yours.", icon: "gearshape.fill", action: settings)
+                        if let news {
+                            menuAction("Updates", subtitle: "This build and XMage news.", icon: "newspaper", action: news)
+                                .accessibilityIdentifier("menu.updates")
+                        }
                         HStack(spacing: 10) {
                             Image(systemName: "shield.lefthalf.filled")
                                 .font(.system(size: 26)).foregroundStyle(MagicPalette.antiqueGold)
@@ -3087,7 +3107,7 @@ struct NativeGameView: View {
                             isPromptDetailOpen = false
                             localViewZone(title: title, cards: cards)
                         },
-                        showsGameSurfaceSections: true
+                        showsGameSurfaceSections: snapshot.promptEnvelopeV2 == nil
                     )
                     .id("\(snapshot.promptEnvelopeV2?.id ?? ""):\(snapshot.promptEnvelopeV2?.messageId ?? 0)")
                     .padding(14)
@@ -3217,27 +3237,33 @@ struct NativeGameView: View {
                     dragActionChoice = DragActionChoice(message: card.card.name, actions: actions)
                 }
             }
-            .overlay(alignment: .top) {
-                if showsTurnCue {
-                    Text("Your turn")
-                        .font(.system(size: 26, weight: .bold, design: .serif))
+            .overlay {
+                if showsTurnCue, let cue = BoardPhaseAnnouncement.make(snapshot), !isCardChoiceOpen, !isPromptDetailOpen {
+                    VStack(spacing: 8) {
+                        Text(cue.owner.uppercased()).font(.headline.weight(.semibold))
+                            .foregroundStyle(MagicPalette.antiqueGold)
+                        Text(cue.title).font(.system(size: 36, weight: .bold, design: .serif))
+                            .multilineTextAlignment(.center).minimumScaleFactor(0.7)
+                    }
                         .foregroundStyle(MagicPalette.parchment)
-                        .padding(.horizontal, 28).padding(.vertical, 12)
-                        .background(MagicPalette.iron.opacity(0.96), in: Capsule())
-                        .overlay(Capsule().stroke(MagicPalette.antiqueGold, lineWidth: 1))
-                        .padding(.top, 100)
-                        .transition(GameBoardMotion.reduced(accessibilityReduceMotion) ? .opacity : .move(edge: .top).combined(with: .opacity))
+                        .padding(.horizontal, 28).padding(.vertical, 22)
+                        .background(MagicPalette.iron.opacity(0.95), in: RoundedRectangle(cornerRadius: 20))
+                        .overlay(RoundedRectangle(cornerRadius: 20).stroke(MagicPalette.antiqueGold.opacity(0.8), lineWidth: 1))
+                        .shadow(color: .black.opacity(0.45), radius: 20)
+                        .padding(.horizontal, 24)
+                        .transition(GameBoardMotion.reduced(accessibilityReduceMotion) ? .opacity : .scale(scale: 0.92).combined(with: .opacity))
                         .allowsHitTesting(false)
+                        .accessibilityIdentifier("board.phase.announcement")
                 }
             }
-            .task(id: PortraitInteractionPolicy.turnCueKey(snapshot)) {
-                guard let key = PortraitInteractionPolicy.turnCueKey(snapshot), key != lastTurnCueKey else {
+            .task(id: BoardPhaseAnnouncement.make(snapshot)?.key) {
+                guard let key = BoardPhaseAnnouncement.make(snapshot)?.key, key != lastTurnCueKey else {
                     showsTurnCue = false
                     return
                 }
                 lastTurnCueKey = key
                 withAnimation(.easeOut(duration: 0.2)) { showsTurnCue = true }
-                do { try await Task.sleep(for: .seconds(1.2)) } catch { showsTurnCue = false; return }
+                do { try await Task.sleep(for: .seconds(1.5)) } catch { return }
                 withAnimation(.easeOut(duration: 0.2)) { showsTurnCue = false }
             }
             .onChange(of: snapshot.aiWaitSignature) { _, _ in
@@ -4847,7 +4873,7 @@ private struct LandscapePlayerSummary: View {
             Text(name).font(.system(size: 11, weight: .bold)).lineLimit(1)
             HStack(spacing: 4) {
                 Image(systemName: "heart.fill").font(.system(size: 16))
-                Text("\(summary.life)")
+                BoardLifeTotal(life: summary.life).id(player.playerId)
                     .font(.system(size: 23, weight: .bold, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -5501,6 +5527,15 @@ struct XmageStackPeek: View {
                 }
 
                 Spacer(minLength: 0)
+            }
+
+            if let topObject {
+                Text(topObject.displayName).font(.caption.bold()).foregroundStyle(MagicPalette.parchment)
+                if let rules = topObject.rulesText, !rules.isEmpty {
+                    Text(EngineDisplayText.label(rules)).font(.caption)
+                        .foregroundStyle(MagicPalette.parchment.opacity(0.9))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .padding(8)
@@ -6470,15 +6505,40 @@ struct UniversalPromptActionPanel: View {
     @ViewBuilder
     private func abilityPicker(abilities: [XmagePromptAbility], prompt: PromptEnvelopeV2) -> some View {
         PromptMiniLabel("Abilities")
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 6)], spacing: 6) {
-            ForEach(abilities) { ability in
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 12)], spacing: 12) {
+            // Occurrences are distinct rows even if XMage repeats an ability UUID.
+            // Only presentation identity changes; answers retain the engine UUID.
+            ForEach(Array(abilities.enumerated()), id: \.offset) { _, ability in
+                VStack(alignment: .leading, spacing: 8) {
+                    if let source = ability.sourceCard {
+                        Button { inspectedCard = source } label: {
+                            CardTile(card: source, selected: false, legal: false,
+                                     zoneName: "Ability source", width: 100, height: 140)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Inspect \(source.card.name)")
+                    }
+                    Text(ability.sourceName ?? "Ability")
+                        .font(.subheadline.bold()).foregroundStyle(MagicPalette.parchment)
+                    Text(EngineDisplayText.label(ability.rulesText ?? ability.label))
+                        .font(.callout).foregroundStyle(MagicPalette.parchment)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if ability.sourceCard == nil {
+                        Text(ability.sourceUnavailableReason ?? "Source details unavailable")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 promptButton(
-                    label: ability.label,
-                    subtitle: ability.rulesText,
+                    label: "Choose ability",
+                    subtitle: nil,
                     systemImage: "bolt.fill",
                     pendingId: "\(prompt.id)-\(ability.id)",
                     command: command(type: "choose_ability", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [ability.id])
                 )
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .background(MagicPalette.iron.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
             }
         }
     }
@@ -9123,7 +9183,7 @@ struct PortraitOpponentStatusBar: View {
             Button { if combatTargetable { combatTargetAction() } } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(opponentName).font(.caption2.bold()).lineLimit(1).minimumScaleFactor(0.7)
-                    Text("\(opponent.life) life")
+                    BoardLifeTotal(life: opponent.life, suffix: " life").id(opponent.playerId)
                         .font(.title3.bold()).lineLimit(1).minimumScaleFactor(0.65).foregroundStyle(MagicPalette.antiqueGold)
                 }
             }
@@ -9579,8 +9639,11 @@ struct PortraitHandRow: View {
     private var contentWidth: CGFloat { CGFloat(cards.count) * cardWidth + CGFloat(max(cards.count - 1, 0)) * handSpacing }
 
     var body: some View {
+        let layout = handExpanded
+            ? AnyLayout(VStackLayout(spacing: 4))
+            : AnyLayout(ZStackLayout(alignment: .bottom))
         Group {
-            VStack(spacing: 4) {
+            layout {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: handSpacing) {
                         ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
@@ -9678,7 +9741,7 @@ struct PortraitHandRow: View {
                     .padding(.horizontal, 4)
                     .background(HandScrollConnection(controller: handScroll))
                 }
-                .frame(height: handExpanded ? cardHeight + 20 : max(44, cardHeight * 0.62), alignment: .top)
+                .frame(height: handExpanded ? cardHeight + 20 : ArenaHandLayout.restingHeight(cardHeight: cardHeight), alignment: .top)
                 .clipped()
                 .accessibilityIdentifier("board.hand.scroll")
                 .background { GeometryReader { geometry in
@@ -10066,7 +10129,7 @@ struct PortraitBottomCommandBar: View {
                     VStack(spacing: 0) {
                         Image(systemName: "heart.fill").font(.system(size: 9))
                             .foregroundStyle(MagicPalette.antiqueGold)
-                        Text("\(human.life)")
+                        BoardLifeTotal(life: human.life).id(human.playerId)
                             .font(.system(size: 23, weight: .bold, design: .serif))
                             .foregroundStyle(.white).monospacedDigit()
                     }
@@ -10287,7 +10350,12 @@ struct PortraitStackLane: View {
                     .font(.subheadline).foregroundStyle(MagicPalette.parchment)
             }
             if !horizontal { stackArtwork(object) }
-            if let rules = object.rulesText { Text(rules).font(.body).foregroundStyle(MagicPalette.parchment) }
+            if let rules = object.rulesText {
+                GameRulesText(source: rules,
+                              cardName: object.displaySourceCard?.card.name ?? object.sourceName,
+                              isHidden: object.displaySourceCard.map { !NativeCardArtworkPolicy.permitsLookup(card: $0) } ?? false)
+                    .font(.body).foregroundStyle(MagicPalette.parchment)
+            }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -10848,6 +10916,14 @@ struct CardTile: View {
             }
         }
         .overlay {
+            if castOffered && !selected && !pending && !targetable {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(.white.opacity(0.98), lineWidth: 2.8)
+                    .shadow(color: .white.opacity(0.85), radius: 7)
+                    .shadow(color: .white.opacity(0.45), radius: 14)
+                    .padding(-2)
+                    .allowsHitTesting(false)
+            }
             if legal && !selected && !pending && !targetable {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(MagicPalette.legalEmerald.opacity(0.92), lineWidth: max(width * 0.030, 2.1))
@@ -10888,13 +10964,13 @@ struct CardTile: View {
         if legal {
             return MagicPalette.legalEmerald.opacity(0.72)
         }
-        if castOffered { return .white.opacity(0.65) }
+        if castOffered { return .white }
         return .black.opacity(0.55)
     }
 
     private var strokeWidth: CGFloat {
         if selected || pending || targetable { return 3 }
-        if legal { return 2.2 }
+        if legal || castOffered { return 2.2 }
         return 1
     }
 
@@ -11673,11 +11749,30 @@ struct GameLogDrawer: View {
                             GameLogText(message: entry.message, usesDarkBackground: true, onInspect: { reference in
                                 // The public log authorizes the printed identity, not a lookup
                                 // of this object's current (possibly hidden) game state.
+                                guard NativeCardArtworkPolicy.permitsLookup(name: reference.name) else { return }
                                 inspectedLogCard = ZoneCard(instanceId: reference.objectID.uuidString,
-                                    card: CardIdentity(name: reference.name, typeLine: "Card referenced in game log", oracleText: nil),
+                                    card: CardIdentity(name: reference.name, typeLine: "Card referenced in game log",
+                                                       oracleText: "Loading local card text…"),
                                     tapped: nil, summoningSickness: nil, cardIcons: nil, counters: nil,
                                     power: nil, toughness: nil, isCreaturePermanent: nil, damage: nil,
                                     isAttacking: nil, blocking: nil, attachedToInstanceId: nil)
+                                Task { @MainActor in
+                                    // Disk-only catalogue lookup off the UI thread. Never resolve
+                                    // the historical object UUID against live/private game state.
+                                    let printed = await Task.detached(priority: .userInitiated) {
+                                        (try? NativeDeckMetadataCatalogue.bundled())?.card(named: reference.name)
+                                    }.value
+                                    guard inspectedLogCard?.instanceId == reference.objectID.uuidString,
+                                          inspectedLogCard?.card.name == reference.name else { return }
+                                    inspectedLogCard = ZoneCard(instanceId: reference.objectID.uuidString,
+                                        card: CardIdentity(name: reference.name,
+                                            typeLine: printed?.typeLine ?? "Card referenced in game log",
+                                            oracleText: printed?.oracleText ?? "Rules unavailable in the local catalogue.",
+                                            manaCost: printed?.manaCost),
+                                        tapped: nil, summoningSickness: nil, cardIcons: nil, counters: nil,
+                                        power: nil, toughness: nil, isCreaturePermanent: nil, damage: nil,
+                                        isAttacking: nil, blocking: nil, attachedToInstanceId: nil)
+                                }
                             })
                                 .font(.subheadline)
                                 .padding(.top, GameLogPresentation(entry.message).plainText.hasPrefix("TURN ") ? 12 : 0)
@@ -12214,20 +12309,24 @@ extension String {
             return "UPKEEP"
         case "draw":
             return "DRAW"
-        case "precombat-main", "postcombat-main":
-            return "MAIN"
+        case "precombat-main":
+            return "MAIN 1"
+        case "postcombat-main":
+            return "MAIN 2"
         case "combat", "begin-combat":
             return "COMBAT"
         case "declare-attackers":
             return "ATTACK"
         case "declare-blockers":
             return "BLOCK"
-        case "first-strike-damage", "combat-damage":
+        case "first-combat-damage", "first-strike-damage", "combat-damage":
             return "DAMAGE"
         case "end-combat":
             return "END C"
-        case "ending", "end", "cleanup":
+        case "ending", "end", "end-turn":
             return "END"
+        case "cleanup":
+            return "CLEANUP"
         default:
             return EngineDisplayText.phaseLabel(self)
         }

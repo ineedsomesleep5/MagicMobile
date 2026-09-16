@@ -1,14 +1,13 @@
-name: XMage upstream maintenance (manual)
+name: XMage upstream maintenance
 
-# Deliberately no schedule, automatic triggers or credential-bearing PR publisher.
+# Scheduled detection only. Candidate preparation needs manual digest approval.
 on:
-  # Inactive proposal: uncomment only with explicit activation approval.
-  # schedule:
-  #   - cron: '23 9 * * 1' # Weekly Monday 09:23 UTC; detection only.
+  schedule:
+    - cron: '23 9 * * 1' # Weekly Monday 09:23 UTC; detection only.
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Detection, or explicitly approved candidate preparation and JVM regeneration'
+        description: 'Detection, or reviewed candidate patch and draft PR packet (no publication)'
         type: choice
         options: [detect, candidate]
         default: detect
@@ -24,9 +23,17 @@ on:
         description: 'Optional separate human approval of regenerated hashes AND inventory; enables post-review gates'
         required: false
         type: string
+      regenerate:
+        description: 'Explicitly execute upstream JVM regeneration on a disposable builder'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+
+concurrency:
+  group: xmage-maintenance-${{ github.event_name }}-${{ inputs.mode || 'detect' }}
+  cancel-in-progress: false
 
 jobs:
   detect:
@@ -56,8 +63,8 @@ jobs:
           if-no-files-found: error
           retention-days: 30
   candidate:
-    if: inputs.mode == 'candidate'
-    runs-on: macos-26-intel
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'candidate'
+    runs-on: ${{ inputs.regenerate && 'macos-26-intel' || 'ubuntu-latest' }}
     timeout-minutes: 180
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
@@ -71,10 +78,12 @@ jobs:
         with:
           python-version: '3.12'
       - uses: actions/setup-java@v4
+        if: inputs.regenerate
         with:
           distribution: temurin
           java-version: '21'
       - name: Check authorized builder tools
+        if: inputs.regenerate
         run: |
           java -version
           mvn -version
@@ -84,10 +93,13 @@ jobs:
         env:
           CANDIDATE: ${{ inputs.candidate }}
           REVIEW: ${{ inputs.reviewed_detection_digest }}
+          GENERATED_REVIEW: ${{ inputs.reviewed_generated_digest }}
+          REGENERATE: ${{ inputs.regenerate }}
         run: |
           [[ "$CANDIDATE" =~ ^[0-9a-f]{40}$ ]]
           [[ "$REVIEW" =~ ^[0-9a-f]{64}$ ]]
-      - name: Prepare exact approved tree and regenerate without credentials
+          [[ -z "$GENERATED_REVIEW" || "$REGENERATE" == 'true' ]]
+      - name: Prepare exact approved tree and draft PR packet without upstream execution
         env:
           CANDIDATE: ${{ inputs.candidate }}
           REVIEW: ${{ inputs.reviewed_detection_digest }}
@@ -101,9 +113,14 @@ jobs:
           git -C "$upstream" fetch --depth=1 https://github.com/magefree/mage.git "$old" "$CANDIDATE"
           python3 scripts/magicmobile-maintenance/upstream.py detect --upstream "$upstream" --candidate "$CANDIDATE" --output "$RUNNER_TEMP/detection.json"
           python3 scripts/magicmobile-maintenance/upstream.py prepare --project "$GITHUB_WORKSPACE" --upstream "$upstream" --report "$RUNNER_TEMP/detection.json" --approve-digest "$REVIEW" --destination "$target"
+          python3 scripts/magicmobile-maintenance/upstream.py draft-packet --project "$GITHUB_WORKSPACE" --candidate "$target" --output "$RUNNER_TEMP/draft-pr"
+      - name: Explicitly regenerate without credentials
+        if: inputs.regenerate
+        run: |
+          target="$RUNNER_TEMP/maintenance-candidate"
           python3 scripts/magicmobile-maintenance/upstream.py regenerate "$target" --execute
       - name: Explicitly accept reviewed generated hashes and execute post-review gates
-        if: inputs.reviewed_generated_digest != ''
+        if: inputs.regenerate && inputs.reviewed_generated_digest != ''
         env:
           GENERATED_REVIEW: ${{ inputs.reviewed_generated_digest }}
         shell: bash
@@ -120,6 +137,7 @@ jobs:
           name: candidate-review-${{ github.sha }}
           path: |
             ${{ runner.temp }}/detection.json
+            ${{ runner.temp }}/draft-pr/
             ${{ runner.temp }}/maintenance-candidate/maintenance-*.json
             ${{ runner.temp }}/maintenance-candidate/maintenance-build-*.log
             ${{ runner.temp }}/maintenance-candidate/maintenance-validation-*.log

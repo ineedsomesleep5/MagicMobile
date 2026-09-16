@@ -2,6 +2,32 @@ import XCTest
 @testable import MagicMobile
 
 final class NativeDeckMetadataCatalogueTests: XCTestCase {
+    func testLandPreviewUsesQuantitiesAndPreservesDeck() throws {
+        let payload: [String: Any] = [
+            "schemaVersion": 1, "sourceMetadataSHA256": String(repeating: "a", count: 64),
+            "cards": ["Forest", "Island", "Green", "Blue"].map { ["name": $0] },
+            "cardMetadata": [
+                "Forest": ["types": ["LAND"], "manaCost": "", "setCodes": []],
+                "Island": ["types": ["LAND"], "manaCost": "", "setCodes": []],
+                "Green": ["types": ["CREATURE"], "manaCost": "{G}", "setCodes": []],
+                "Blue": ["types": ["INSTANT"], "manaCost": "{U}", "setCodes": []]
+            ]
+        ]
+        let catalogue = try NativeDeckMetadataCatalogue(catalogueData: JSONSerialization.data(withJSONObject: payload))
+        let deck = DeckList(name: "Preview", commander: nil, entries: [
+            DeckEntry(cardName: "Forest", quantity: 32, section: "deck"),
+            DeckEntry(cardName: "Green", quantity: 3, section: "deck"),
+            DeckEntry(cardName: "Blue", quantity: 2, section: "deck"),
+            DeckEntry(cardName: "Island", quantity: 10, section: "sideboard")
+        ])
+        let suggestion = try catalogue.basicLandSuggestion(for: deck)
+        XCTAssertEqual(Dictionary(uniqueKeysWithValues: suggestion.map { ($0.name, $0.quantity) }), ["Forest": 3, "Island": 2])
+        XCTAssertEqual(deck.entries.first?.quantity, 32)
+        XCTAssertTrue(try catalogue.basicLandSuggestion(for: deck, target: 30).isEmpty)
+        let unknown = DeckList(name: "Unknown", commander: nil, entries: [DeckEntry(cardName: "Missing", quantity: 1, section: "deck")])
+        XCTAssertTrue(try catalogue.basicLandSuggestion(for: unknown).isEmpty)
+    }
+
     private func validationPayload(_ metadata: [String: Any] = [:], aliases: [String: String] = [:]) throws -> Data {
         var row: [String: Any] = ["setCodes": []]
         row.merge(metadata) { _, new in new }

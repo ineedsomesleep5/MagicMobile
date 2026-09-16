@@ -4,6 +4,32 @@ import XCTest
 final class GameLogPresentationTests: XCTestCase {
     private let id = "d80199fe-06bb-486b-b9f7-a3d4a685bdd5"
 
+    func testStackRulesUseSourceIdentityAndNormalizeEncodedMarkup() {
+        let rules = "&lt;b&gt;{this}&lt;/b&gt; deals 1 damage.<br>Pay <img alt='{R}' src='ignored'>."
+        XCTAssertEqual(GameRulesPresentation(source: rules, cardName: "Prodigal Pyromancer").plainText,
+                       "Prodigal Pyromancer deals 1 damage.\nPay {R}.")
+        XCTAssertEqual(GameRulesPresentation(source: rules, cardName: "Private source", isHidden: true).plainText, "")
+    }
+
+    func testPublicLogReferenceCanResolveBundledRulesWithoutChangingHistoricalIdentity() throws {
+        let presentation = GameLogPresentation("<font object_id='\(id)'>Sol Ring</font> was sacrificed.")
+        let reference = try XCTUnwrap(presentation.spans.compactMap(\.cardReference).first)
+        let catalogue = try NativeDeckMetadataCatalogue.bundled()
+        let printed = try XCTUnwrap(catalogue.card(named: reference.name))
+        XCTAssertEqual(reference.objectID, UUID(uuidString: id))
+        XCTAssertEqual(reference.name, "Sol Ring")
+        XCTAssertEqual(printed.name, reference.name)
+        let rules = try XCTUnwrap(printed.oracleText)
+        XCTAssertFalse(GameRulesPresentation(source: rules, cardName: reference.name).plainText.isEmpty)
+        XCTAssertNotNil(printed.manaCost)
+        XCTAssertNil(catalogue.card(named: "Not a real catalogue card"))
+        // Redacted log labels authorize no reference, even though a UUID exists.
+        for name in ["Hidden card", "Face-down card", "Card details unavailable"] {
+            XCTAssertTrue(GameLogPresentation("<font object_id='\(id)'>\(name)</font>")
+                .spans.compactMap(\.cardReference).isEmpty)
+        }
+    }
+
     func testEngineMessageKeepsActionsAndStylesNames() {
         let source = "<font color='White'><font color='#20B2AA'>Alice</font> casts <font color='#F0E68C' object_id='\(id)'>Isamaru, Hound of Konda</font> [d80] from hand.</font>"
         let value = GameLogPresentation(source)
