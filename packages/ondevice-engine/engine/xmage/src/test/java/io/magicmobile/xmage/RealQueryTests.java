@@ -51,6 +51,7 @@ public final class RealQueryTests {
         run("choice hints, sorting and special tokens",RealQueryTests::choices);
         run("real HumanPlayer remembered replacement choice",RealQueryTests::replacementLoop);
         run("split/MDFC ability labels and exact IDs",RealQueryTests::abilityFaces);
+        run("ability source privacy and duplicate rows",RealQueryTests::abilitySources);
         run("MDFC target face mapping and zone boundaries",RealQueryTests::targetFaces);
         run("trigger ordering and metadata boundaries",RealQueryTests::orderingMetadata);
         run("real HumanPlayer library ordering",RealQueryTests::libraryOrder);
@@ -261,6 +262,41 @@ public final class RealQueryTests {
         checkAbilityFaces(split.getLeftHalfCard(),split.getRightHalfCard(),split.getName(),"Fire","Ice");
         ValkiGodOfLies modal=new ValkiGodOfLies(PLAYER,info("Valki, God of Lies","KHM","114"));
         checkAbilityFaces(modal.getLeftHalfCard(),modal.getRightHalfCard(),modal.getName(),"Valki","Tibalt");
+    }
+
+    private static void abilitySources() {
+        try(Fixture f=new Fixture()) {
+            Card source=f.bear();
+            ActivatedAbility ability=source.getSpellAbility();
+            PlayerQueryEvent event=PlayerQueryEvent.chooseAbilityEvent(f.player.getId(),"Choose",source.getName(),List.of(ability,ability));
+            DecisionSpec spec=QueryEncoder.encode(event,f.game);
+            List<Object> rows=Json.array(spec.payload.get("abilities"));
+            eq(rows.size(),2);eq(rows.get(0),rows.get(1));
+            eq(Json.object(rows.get(0)).get("id"),ability.getId().toString());
+            eq(Json.object(Json.object(rows.get(0)).get("sourceCard")).get("id"),source.getId().toString());
+            accepts(spec,"uuid",ability.getId().toString());rejects(spec,"uuid",source.getId().toString());
+            for(Zone zone:List.of(Zone.LIBRARY,Zone.OUTSIDE)) {
+                f.game.setZone(source.getId(),zone);
+                check(!Json.object(Json.array(QueryEncoder.encode(event,f.game).payload.get("abilities")).get(0)).containsKey("sourceCard"),"private zone source omitted");
+            }
+            f.game.setZone(source.getId(),Zone.HAND);
+            PlayerQueryEvent opponent=PlayerQueryEvent.chooseAbilityEvent(UUID.randomUUID(),"Choose",source.getName(),List.of(ability));
+            check(!Json.object(Json.array(QueryEncoder.encode(opponent,f.game).payload.get("abilities")).get(0)).containsKey("sourceCard"),"opponent hand source omitted");
+            for(Zone zone:List.of(Zone.GRAVEYARD,Zone.EXILED,Zone.COMMAND)) {
+                f.game.setZone(source.getId(),zone);
+                check(Json.object(Json.array(QueryEncoder.encode(event,f.game).payload.get("abilities")).get(0)).containsKey("sourceCard"),"public source available");
+            }
+            EntersBattlefieldTriggeredAbility trigger=new EntersBattlefieldTriggeredAbility(new GainLifeEffect(1));
+            trigger.setSourceId(source.getId());trigger.setControllerId(f.player.getId());
+            spec=QueryEncoder.encode(PlayerQueryEvent.targetEvent(f.player.getId(),"Pick",List.of(trigger,trigger)),f.game);
+            rows=Json.array(spec.payload.get("abilities"));eq(rows.size(),2);eq(rows.get(0),rows.get(1));
+            check(Json.object(rows.get(0)).containsKey("sourceCard"),"trigger source available");
+            PermanentCard permanent=new PermanentCard(source,f.player.getId(),f.game);
+            f.game.getBattlefield().addPermanent(permanent);f.game.setZone(source.getId(),Zone.BATTLEFIELD);
+            permanent.setFaceDown(true,f.game);
+            spec=QueryEncoder.encode(event,f.game);
+            check(!Json.object(Json.array(spec.payload.get("abilities")).get(0)).containsKey("sourceCard"),"face-down source omitted");
+        }
     }
 
     private static void checkAbilityFaces(Card left,Card right,String name,String leftName,String rightName) {

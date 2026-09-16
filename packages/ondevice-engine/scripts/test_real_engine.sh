@@ -13,7 +13,7 @@ javac -J-Xmx384m --release 17 -cp "$CP" -d build/test-real @build/real-test-sour
 java -Xmx256m -Djava.awt.headless=true -cp "$CP:build/test-real" mage.cards.repository.MobileCardCriteriaTests \
   2>&1 | tee evidence/MobileCardCriteriaTests.txt
 # Production classes first: stale adapter classes in a developer test folder must not override them.
-for suite in RealQueryTests RealControlledTurnTests RealControlPrivacyTests RealCommanderRulesTests RealPortraitProjectionTests RealAIDiagnosticsTests; do
+for suite in RealQueryTests RealDeckValidationTests RealControlledTurnTests RealControlPrivacyTests RealCommanderRulesTests RealPortraitProjectionTests RealAIDiagnosticsTests; do
   java -Xmx384m -Djava.awt.headless=true -cp "$CP:build/test-real" "io.magicmobile.xmage.$suite" \
     2>&1 | tee "evidence/$suite.txt"
 done

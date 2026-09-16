@@ -50,7 +50,8 @@ public final class EngineService implements AutoCloseable {
             }
             return Json.write(Json.map("protocol",PROTOCOL,"ok",true,"result",result));
         } catch(BridgeException e) {
-            return Json.write(Json.map("protocol",PROTOCOL,"ok",false,"error",Json.map("code",e.code(),"message",e.getMessage())));
+            if("invalid_deck".equals(e.code())) EngineDiagnostics.captureIncident("create-deck-validation",e);
+            return Json.write(Json.map("protocol",PROTOCOL,"ok",false,"error",e.envelope()));
         } catch(Exception | LinkageError e) {
             // Diagnostics must stay on the host; do not leak card-bearing exception messages.
             EngineDiagnostics.capture("engine-request",e);

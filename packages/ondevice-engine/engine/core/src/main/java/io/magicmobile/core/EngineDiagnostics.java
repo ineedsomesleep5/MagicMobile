@@ -7,11 +7,22 @@ public final class EngineDiagnostics {
     public static final int MAX_CHARS=16384;
     private static String report;
     private EngineDiagnostics() {}
+    public static synchronized void captureIncident(String boundary,BridgeException failure) {
+        try {
+            StringBuilder text=new StringBuilder("[local-engine-incident] ");
+            append(text,boundary);append(text,"\nOccurred: "+java.time.Instant.now()+"\n");
+            append(text,Json.write(failure.envelope()));
+            report=text.toString();
+        } catch(Throwable ignored) {
+            report="[local-engine-incident] Report unavailable; original rejection retained.";
+        }
+    }
     public static synchronized void capture(String boundary,Throwable failure) {
         // Diagnostics must never replace or prevent the original failure signal.
         try {
             StringBuilder text=new StringBuilder("[DEBUG-native-failure] ");
             append(text,boundary);append(text,"\n");
+            append(text,"Occurred: "+java.time.Instant.now()+"\n");
             Set<Throwable> seen=Collections.newSetFromMap(new IdentityHashMap<>());
             Throwable cause=failure;
             for(int depth=0;cause!=null && depth<8 && seen.add(cause);depth++,cause=cause.getCause()) {

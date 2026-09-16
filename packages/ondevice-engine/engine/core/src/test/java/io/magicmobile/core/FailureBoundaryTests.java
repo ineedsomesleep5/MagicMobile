@@ -23,11 +23,28 @@ public final class FailureBoundaryTests {
     }
     public static void main(String[] args) throws Exception {
         checks=0;failures.clear();
-        requestErrors();deliveryErrors();lazyInitialization();retryableShutdown();closedService();deliveryShutdown();
+        deckRejection();requestErrors();deliveryErrors();lazyInitialization();retryableShutdown();closedService();deliveryShutdown();
         EngineDiagnostics.clear();
         for(String failure:failures) System.err.println("FAIL: "+failure);
         if(!failures.isEmpty()) throw new AssertionError(failures.size()+" failures in "+checks+" boundary checks");
         System.out.println("PASS: "+checks+" failure-boundary assertions; injected faults, NOT native/iOS acceptance");
+    }
+    private static void deckRejection() {
+        EngineDiagnostics.clear();
+        Map<String,Object> details=Json.map("issues",List.of(Json.map("type","CARD","group","Example","message","Exact upstream issue","cardName","Example")));
+        EngineService service=EngineService.lazy(()->{throw new BridgeException("invalid_deck","Invalid deck",details);});
+        Map<String,Object> envelope=Json.parseObject(service.request(CREATE));
+        Map<String,Object> failure=Json.object(envelope.get("error"));
+        check(Boolean.FALSE.equals(envelope.get("ok")),"invalid deck remains rejected");
+        check(details.equals(failure.get("details")),"optional issue details survive error envelope");
+        String report=(String)EngineDiagnostics.read().get("report");
+        check(report.contains("Exact upstream issue") && report.contains("Occurred:"),"expected rejection captures timestamped local incident");
+        check(!report.contains("  at ") && !report.contains("BridgeException"),"expected rejection has no Java stack");
+        check(report.equals(EngineDiagnostics.read().get("report")),"reading incident retains original timestamp");
+        service.request(CLEAR);
+        check(EngineDiagnostics.read().get("report")==null,"expected incident clears explicitly");
+        check(!new BridgeException("legacy","Legacy").envelope().containsKey("details"),"legacy error envelope unchanged");
+        service.close();
     }
     private static void requestErrors() {
         for(Error error:List.of(new UnsatisfiedLinkError("PRIVATE-native-symbol"),
