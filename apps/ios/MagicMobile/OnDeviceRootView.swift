@@ -80,7 +80,9 @@ struct OnDeviceRootView: View {
         .overlay(alignment: .top) { recoveryBanner }
         .environment(\.nativeTurnControl, turnControl)
         .fullScreenCover(isPresented: $showImport) {
-            NativeDeckLibraryView(library: library, selectedDeckID: $selectedDeckID)
+            DeckStudioRootView(library: library, selectedDeckID: $selectedDeckID, preparePlay: {
+                showImport = false; showSetup = true
+            })
         }
         .sheet(isPresented: $showDiagnostics) { diagnosticSheet }
         .background {
