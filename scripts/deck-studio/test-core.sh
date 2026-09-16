@@ -8,3 +8,4 @@ swiftc -swift-version 5 -warnings-as-errors \
   "$root/scripts/deck-studio/core-checks.swift" -o "$build/checks"
 "$build/checks"
 bash "$root/scripts/deck-studio/test-spellbook.sh"
+bash "$root/scripts/deck-studio/test-roles.sh"

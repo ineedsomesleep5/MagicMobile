@@ -238,6 +238,7 @@ struct DeckStudioWorkspaceScreen: View {
                         DeckStudioPanel {
                             DeckStudioNotice(title: "MagicMobile Insights", message: "Structural facts from the bundled metadata, not EDHREC popularity or a deck-quality score.", icon: "sparkles")
                         }
+                        DeckStudioRoleInsightsView(draft: model.draft, metadata: metadata, contextID: model.record?.id, inspect: inspect)
                         DeckStudioAnalysisContent(draft: model.draft, metadata: metadata, curveOnly: false, inspect: inspect)
                         DeckStudioPanel {
                             VStack(alignment: .leading, spacing: 10) {

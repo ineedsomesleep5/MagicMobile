@@ -24,10 +24,10 @@ final class DeckStudioComboModel: ObservableObject {
             snapshot = stored; cacheNote = "Previously saved lookup for this exact deck. The provider may have newer data."
         }
     }
-    func analyze(approvedDeck: SpellbookDeck, more: Bool = false) {
-        guard input == approvedDeck, !loading else { return }
+    @discardableResult func analyze(approvedDeck: SpellbookDeck, more: Bool = false) -> Task<Void, Never>? {
+        guard input == approvedDeck, !loading else { return nil }
         let previous = more ? snapshot : nil
-        if more && (previous?.deck != approvedDeck || previous?.nextOffset == nil) { return }
+        if more && (previous?.deck != approvedDeck || previous?.nextOffset == nil) { return nil }
         token = UUID(); let captured = token
         loading = true; error = nil
         task = Task { [weak self, client] in
@@ -47,6 +47,7 @@ final class DeckStudioComboModel: ObservableObject {
                 self.loading = false; self.task = nil
             }
         }
+        return task
     }
     func cancel() { token = UUID(); task?.cancel(); task = nil; loading = false }
     func clear() async {

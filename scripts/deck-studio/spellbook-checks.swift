@@ -11,9 +11,11 @@ private final class TestClock: @unchecked Sendable {
     func advance(_ interval: TimeInterval = 3) { lock.lock(); value.addTimeInterval(interval); lock.unlock() }
 }
 private actor FixtureTransport: SpellbookHTTPTransport {
-    enum Response: Sendable { case data(Data), failure(SpellbookError), delayed(Data) }
+    enum Response: Sendable { case data(Data), failure(SpellbookError), held(Data) }
     var responses: [Response]
     var requests: [URLRequest] = []
+    private var held: CheckedContinuation<Void, Never>?
+    private var starters: [CheckedContinuation<Void, Never>] = []
     init(_ responses: [Response]) { self.responses = responses }
     func send(_ request: URLRequest) async throws -> Data {
         requests.append(request)
@@ -21,9 +23,16 @@ private actor FixtureTransport: SpellbookHTTPTransport {
         switch responses.removeFirst() {
         case .data(let data): return data
         case .failure(let error): throw error
-        case .delayed(let data): try? await Task.sleep(nanoseconds: 80_000_000); return data
+        case .held(let data):
+            await withCheckedContinuation { held = $0; starters.forEach { $0.resume() }; starters.removeAll() }
+            return data // Deliberately ignores cancellation; production must reject late data.
         }
     }
+    func waitUntilHeld() async {
+        if held != nil { return }
+        await withCheckedContinuation { starters.append($0) }
+    }
+    func release() { let pending = held; held = nil; pending?.resume() }
     func count() -> Int { requests.count }
     func all() -> [URLRequest] { requests }
 }
@@ -92,6 +101,13 @@ struct SpellbookChecks {
                                 commanderColors: colors, canonicalName: resolve)
     }
     static func main() async throws {
+        // Only a failure watchdog uses wall time. Successful race tests use gates,
+        // not assumptions about macOS task/timer scheduling.
+        let watchdog = Task.detached {
+            do { try await Task.sleep(nanoseconds: 30_000_000_000) } catch { return }
+            fatalError("Spellbook checks deadlocked or exceeded 30 seconds")
+        }
+        defer { watchdog.cancel() }
         let first = try deck(), complete = try deck(["Alpha", "Beta"])
         let duplicate = try SpellbookDeck(main: [.init(card: " Alpha ", quantity: 1), .init(card: "Alpha", quantity: 2)], commanders: [.init(card: "Commander", quantity: 1)])
         check(duplicate.main == [.init(card: "Alpha", quantity: 3)], "quantity-aware normalization")
@@ -200,17 +216,19 @@ struct SpellbookChecks {
         do { _ = try await throttledClient.lookup(deck: first); check(false, "cooldown expected") }
         catch { check((error as? SpellbookError) == .rateLimited(seconds: 60), "429 cooldown honored") }
         check(await throttled.count() == 1, "no hidden retry")
-        let slow = FixtureTransport([.delayed(try page(["included": [variant()]]))])
+        let slow = FixtureTransport([.held(try page(["included": [variant()]]))])
         let slowClient = CommanderSpellbookClient(transport: slow, cacheDirectory: directory)
         let pending = Task { try await slowClient.lookup(deck: first) }
-        try await Task.sleep(nanoseconds: 10_000_000)
+        await slow.waitUntilHeld()
         try await slowClient.clearCache()
+        await slow.release()
         do { _ = try await pending.value; check(false, "clear invalidates in-flight cache") }
         catch { check(error is CancellationError, "late result after clear rejected") }
         check(await slowClient.cached(for: first) == nil, "cleared data not resurrected")
-        let cancelledClient = CommanderSpellbookClient(transport: FixtureTransport([.delayed(try page())]), cacheDirectory: directory)
+        let cancellingTransport = FixtureTransport([.held(try page())])
+        let cancelledClient = CommanderSpellbookClient(transport: cancellingTransport, cacheDirectory: directory)
         let cancelled = Task { try await cancelledClient.lookup(deck: first) }
-        try await Task.sleep(nanoseconds: 10_000_000); cancelled.cancel()
+        await cancellingTransport.waitUntilHeld(); cancelled.cancel(); await cancellingTransport.release()
         do { _ = try await cancelled.value; check(false, "cancel expected") }
         catch { check(error is CancellationError, "cancelled request cannot publish") }
         check(await cancelledClient.cached(for: first) == nil, "cancelled response not cached")
@@ -247,20 +265,21 @@ struct SpellbookChecks {
     #if canImport(Combine)
     @MainActor static func modelChecks(_ first: SpellbookDeck, other: SpellbookDeck) async throws {
         let clock = TestClock()
-        let transport = FixtureTransport([.delayed(try page(["included": [variant()]])), .data(try page(["included": [variant()]]))])
+        let transport = FixtureTransport([.held(try page(["included": [variant()]])), .data(try page(["included": [variant()]]))])
         let model = DeckStudioComboModel(client: CommanderSpellbookClient(transport: transport, cacheDirectory: nil, now: { clock.now() }))
         await model.setInput(first)
         check(await transport.count() == 0, "model initialization/input observation is offline")
-        model.analyze(approvedDeck: first)
-        try await Task.sleep(nanoseconds: 10_000_000)
+        let firstWork = model.analyze(approvedDeck: first)
+        await transport.waitUntilHeld()
         await model.setInput(other)
-        try await Task.sleep(nanoseconds: 100_000_000)
+        await transport.release()
+        await firstWork?.value
         check(model.snapshot == nil && model.input == other && !model.loading, "stale async response discarded after edit")
         model.analyze(approvedDeck: first)
         check(await transport.count() == 1, "approval for old deck cannot share new deck")
         clock.advance()
-        model.analyze(approvedDeck: other)
-        try await Task.sleep(nanoseconds: 80_000_000)
+        let nextWork = model.analyze(approvedDeck: other)
+        await nextWork?.value
         check(model.snapshot?.deck == other && !model.loading, "explicit approval publishes current result")
         model.cancel()
         await model.setInput(other)
