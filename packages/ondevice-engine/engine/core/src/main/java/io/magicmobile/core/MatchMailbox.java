@@ -95,9 +95,12 @@ public final class MatchMailbox implements AutoCloseable {
             }
             try { p.sink.deliver(answer); }
             catch(Throwable ex) {
-                // Error subclasses also terminate a delivery thread. Do not leave its prompt queued forever.
-                EngineDiagnostics.capture("response-delivery",ex);
-                fail("response_delivery_failed","XMage could not consume the queued response. Inspect the local engine log.");
+                synchronized(MatchMailbox.this) {
+                    // Late callbacks during teardown must preserve the original game failure.
+                    if(closed || phase.equals("ended") || phase.equals("failed")) return;
+                    EngineDiagnostics.capture("response-delivery",ex);
+                    fail("response_delivery_failed","XMage could not consume the queued response. Inspect the local engine log.");
+                }
             }
         });
         return result;

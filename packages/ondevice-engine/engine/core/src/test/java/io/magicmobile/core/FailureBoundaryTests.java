@@ -23,7 +23,7 @@ public final class FailureBoundaryTests {
     }
     public static void main(String[] args) throws Exception {
         checks=0;failures.clear();
-        deckRejection();requestErrors();deliveryErrors();lazyInitialization();retryableShutdown();closedService();deliveryShutdown();
+        deckRejection();requestErrors();deliveryErrors();lazyInitialization();retryableShutdown();closedService();deliveryShutdown();terminalDeliveryDiagnostics();
         EngineDiagnostics.clear();
         for(String failure:failures) System.err.println("FAIL: "+failure);
         if(!failures.isEmpty()) throw new AssertionError(failures.size()+" failures in "+checks+" boundary checks");
@@ -168,6 +168,45 @@ public final class FailureBoundaryTests {
         service.close();
         check(closes.get()==2,"successful shutdown does not close the underlying port twice");
         check(operations.get()==0,"closed port never receives later operations");
+    }
+
+    private static void terminalDeliveryDiagnostics() throws Exception {
+        for(String terminal:List.of("failed","ended","closed")) {
+            EngineDiagnostics.clear();
+            MatchMailbox mailbox=new MatchMailbox("terminal-diagnostic-fixture",List.of("A"));
+            CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);
+            mailbox.ask("A",new DecisionSpec("ASK",Json.map(),Set.of("boolean"),null,null,0,0,null),answer->{
+                entered.countDown();
+                long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);
+                while(release.getCount()!=0 && System.nanoTime()<deadline) {
+                    try {release.await(50,TimeUnit.MILLISECONDS);}
+                    catch(InterruptedException ignored) { /* test-only late callback */ }
+                }
+                throw new AssertionError("PRIVATE-secondary-delivery");
+            });
+            Map<String,Object> prompt=Json.object(mailbox.poll("A",0).get("prompt"));
+            try {
+                mailbox.submit("A",Json.map("requestId",UUID.randomUUID().toString(),
+                    "promptId",prompt.get("promptId"),"promptRevision",prompt.get("revision"),
+                    "answer",Json.map("kind","boolean","value",true)));
+                check(entered.await(2,TimeUnit.SECONDS),"delivery entered before "+terminal);
+                EngineDiagnostics.capture("game-worker",new AssertionError("PRIVATE-original-game-error"));
+                String original=Json.write(EngineDiagnostics.read());
+                if(terminal.equals("failed")) mailbox.fail("engine_failure","Game failed");
+                else if(terminal.equals("ended")) mailbox.finish();
+                else mailbox.close();
+                release.countDown();
+                // Queue a barrier after the throwing delivery so its catch has completed.
+                if(!terminal.equals("closed")) {
+                    var field=MatchMailbox.class.getDeclaredField("delivery");
+                    field.setAccessible(true);
+                    ((ExecutorService)field.get(mailbox)).submit(()->{}).get(2,TimeUnit.SECONDS);
+                }
+                mailbox.close();
+                check(mailbox.awaitDeliveryTermination(System.nanoTime()+TimeUnit.SECONDS.toNanos(2)),"delivery terminates after "+terminal);
+                check(original.equals(Json.write(EngineDiagnostics.read())),"late delivery preserves original report after "+terminal);
+            } finally {release.countDown();mailbox.close();}
+        }
     }
 
     private static void deliveryShutdown() throws Exception {

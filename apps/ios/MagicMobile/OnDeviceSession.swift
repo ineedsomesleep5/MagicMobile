@@ -29,6 +29,7 @@ final class OnDeviceSession: ObservableObject {
     private var pollingTask: Task<Void, Never>?
     private var closeEndpoint: (@MainActor () async throws -> Void)?
     private var epoch = UUID()
+    private var visibilityEpoch = UUID()
     private var refreshSequence: UInt64 = 0
     private var appliedRefreshSequence: UInt64 = 0
     private var isForeground = true
@@ -68,10 +69,20 @@ final class OnDeviceSession: ObservableObject {
         activeRefreshes += 1
         defer { activeRefreshes -= 1 }
         let token = epoch
+        let visibility = visibilityEpoch
         refreshSequence += 1
         let sequence = refreshSequence
-        let next = try await client.poll(matchID: matchID, seatID: seatID, after: poll?.revision ?? 0)
-        guard epoch == token, self.matchID == matchID, isForeground, !isClosing, !Task.isCancelled else { return }
+        let next: MatchPoll
+        do {
+            next = try await client.poll(matchID: matchID, seatID: seatID, after: poll?.revision ?? 0)
+        } catch {
+            // Obsolete reads must not interrupt a replacement or resumed session.
+            guard epoch == token, visibilityEpoch == visibility, isForeground,
+                  !isClosing, !Task.isCancelled else { return }
+            throw error
+        }
+        guard epoch == token, self.matchID == matchID, visibilityEpoch == visibility,
+              isForeground, !isClosing, !Task.isCancelled else { return }
         guard next.matchID == matchID, next.seatID == seatID else { throw EngineError.unboundPeer }
         // Submission can change at the same mailbox revision. Do not let an older
         // in-flight poll restore a choice after a newer response hid it.
@@ -300,11 +311,13 @@ final class OnDeviceSession: ObservableObject {
             throw EngineError.invalidMessage("There is no pending response to retry")
         }
         let token = epoch
+        var responseAcknowledged = false
         do {
             responding = true
             waitingForPolls = false
             _ = try await client.respond(matchID: matchID, seatID: seatID, prompt: pending.prompt,
                                          answer: pending.answer, requestID: pending.requestID)
+            responseAcknowledged = true
             responding = false
             guard epoch == token else { return }
             errorMessage = nil; status = "\(pending.label) sent; waiting for XMage"
@@ -315,7 +328,8 @@ final class OnDeviceSession: ObservableObject {
                 errorMessage = error.localizedDescription
                 // An engine rejection is certain. A transport timeout or busy RPC is not:
                 // retain the exact request ID and answer for a safe user-triggered retry.
-                if case EngineError.rejected(let code, _) = error, code != "rpc_busy" {
+                // A rejected follow-up poll cannot retract an acknowledged answer.
+                if !responseAcknowledged, case EngineError.rejected(let code, _) = error, code != "rpc_busy" {
                     self.pending = nil; pendingActionID = nil; pendingCardID = nil
                     try? await refresh()
                 }
@@ -346,6 +360,7 @@ final class OnDeviceSession: ObservableObject {
     }
 
     func setForeground(_ value: Bool) {
+        if isForeground != value { visibilityEpoch = UUID() }
         if !value { stopAutoPass() }
         isForeground = value
         if value { beginPolling() }
@@ -372,8 +387,7 @@ final class OnDeviceSession: ObservableObject {
                         self.pollingTask = nil
                         return
                     }
-                } catch is CancellationError { return }
-                catch {
+                } catch {
                     guard let self, !Task.isCancelled else { return }
                     self.pollingTask = nil
                     self.errorMessage = error.localizedDescription; self.status = "Updates interrupted. Refresh to retry."
