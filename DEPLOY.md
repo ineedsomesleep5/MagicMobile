@@ -1,5 +1,8 @@
 # Deploying MagicMobile
 
+> Historical hosted web/gateway deployment. For the current embedded iOS app,
+> use the [repository guide](README.md) and [TestFlight records](release/testflight).
+
 This documents how code reaches the **hosted server** that the iOS app and web client
 talk to in production. The hosted server is the source of truth for live play; GitHub
 `main` is the source of truth for code. Always land changes in `main` first, then deploy.

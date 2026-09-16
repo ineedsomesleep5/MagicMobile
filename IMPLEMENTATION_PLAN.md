@@ -1,5 +1,9 @@
 # MagicMobile Implementation Plan
 
+> Historical initial web/Expo plan. Current development focuses on native iOS;
+> see the [repository guide](README.md) and
+> [Commander implementation ledger](packages/ondevice-engine/docs/COMMANDER_POLISH_EXECUTION.md).
+
 ## Milestone Goal
 
 Build a working foundation for a Commander-first web and iOS mobile app. This milestone uses mocks and stubs where full production integrations would be premature, but every boundary should be explicit and testable.

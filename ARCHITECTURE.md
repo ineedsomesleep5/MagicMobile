@@ -1,5 +1,9 @@
 # MagicMobile Architecture
 
+> Historical web/hosted architecture. The active product is native iOS.
+> See the [repository guide](README.md) and
+> [embedded engine architecture](packages/ondevice-engine/docs/ARCHITECTURE.md).
+
 ## Overview
 
 MagicMobile is a Commander-first multiplayer foundation with a web app, an iOS mobile app, shared TypeScript contracts, local deck/card intelligence, mockable game engines, and replaceable video/recommendation providers.
