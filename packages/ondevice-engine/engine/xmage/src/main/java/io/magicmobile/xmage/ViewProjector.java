@@ -11,6 +11,9 @@ import mage.constants.CommanderCardType;
 import mage.constants.Zone;
 import mage.game.Game;
 import mage.players.Player;
+import mage.players.PlayerImpl;
+import mage.abilities.mana.ActivatedManaAbilityImpl;
+import mage.abilities.keyword.MenaceAbility;
 import mage.view.GameView;
 import mage.view.CardView;
 import mage.view.SimpleCardView;
@@ -57,6 +60,36 @@ public final class ViewProjector {
                 }
             }
             Map<String,Object> data=Json.parseObject(view.toJson());
+            // PlayableObjectStats places non-basic mana abilities in `other` alongside
+            // non-mana abilities. Preserve its authoritative choices and add only type
+            // information, from the current ability objects (never rule-text parsing).
+            if(priority!=null && viewer.equals(priority.getTurnControlledBy())) {
+                Set<String> manaIds=new HashSet<>();
+                ((PlayerImpl)priority).getPlayable(source,true,Zone.ALL,false).stream()
+                    .filter(ActivatedManaAbilityImpl.class::isInstance)
+                    .forEach(ability->manaIds.add(ability.getId().toString()));
+                Map<String,Object> playable=Json.object(data.get("canPlayObjects"));
+                for(Object stats:Json.object(playable.get("objects")).values())
+                    for(Object rows:Json.object(stats).values())
+                        for(Object row:Json.array(rows)) {
+                            Map<String,Object> fields=Json.object(row);
+                            fields.put("manaAbility",manaIds.contains(fields.get("id")));
+                        }
+            }
+            // Pinned XMage has no menace CardIconType. Emit a text-badge extension
+            // only for a currently visible permanent's current keyword ability.
+            for(Object playerView:Json.array(data.get("players")))
+                for(Object cardView:Json.object(Json.object(playerView).get("battlefield")).values()) {
+                    Map<String,Object> fields=Json.object(cardView);
+                    var permanent=source.getPermanent(UUID.fromString(Json.requiredString(fields,"id")));
+                    if(permanent==null || permanent.isFaceDown(source) || Boolean.TRUE.equals(fields.get("hideInfo"))) continue;
+                    if(permanent.getAbilities(source).stream().anyMatch(MenaceAbility.class::isInstance)) {
+                        List<Object> icons=new ArrayList<>(Json.array(fields.get("cardIcons")));
+                        icons.add(Json.map("cardIconType","ABILITY_MENACE","category","ABILITY","text","Menace",
+                            "hint","This creature can't be blocked except by two or more creatures."));
+                        fields.put("cardIcons",icons);
+                    }
+                }
             List<Object> namedExiles=new ArrayList<>();
             for(int i=0;i<view.getExile().size();i++) {
                 var exile=view.getExile().get(i);

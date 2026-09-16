@@ -3,6 +3,12 @@ import MagicMobileOnDevice
 
 /// IDs come exclusively from GKMatch.players and GKLocalPlayer, never packet fields.
 struct OnDeviceMultiplayerLobby {
+    enum HandshakeFailure: Error, LocalizedError {
+        case differentBuild
+        var errorDescription: String? {
+            "Players have different MagicMobile builds. Update every device to the same build and try again."
+        }
+    }
     let peerIDs: [String]
     let localPeerID: String
     var hostID: String { peerIDs[0] }
@@ -30,7 +36,7 @@ struct OnDeviceMultiplayerLobby {
               ["offer", "submission", "start"].contains(type) else { throw EngineError.incompatibleBuild }
         let keys: Set<String> = type == "submission" ? ["type", "epoch", "build", "roster", "player"] :
             type == "start" ? ["type", "epoch", "build", "roster", "matchId"] : ["type", "epoch", "build", "roster"]
-        guard Set(fields.keys) == keys, value["build"] == identity.json,
+        guard Set(fields.keys) == keys,
               value["roster"] == .array(peerIDs.map(MagicMobileOnDevice.JSONValue.string)),
               let epochString = value["epoch"]?.string, let incomingEpoch = UUID(uuidString: epochString),
               epoch.map({ $0 == incomingEpoch }) ?? (type == "offer") else { throw EngineError.incompatibleBuild }
@@ -39,6 +45,22 @@ struct OnDeviceMultiplayerLobby {
         } else {
             guard localPeerID != hostID, authenticatedPeerID == hostID else { throw EngineError.unboundPeer }
         }
+        guard let build = value["build"]?.object,
+              Set(build.keys) == ["protocolVersion", "upstreamCommit", "catalogueHash", "adapterVersion"],
+              build["protocolVersion"]?.integer != nil,
+              build["upstreamCommit"]?.string != nil, build["catalogueHash"]?.string != nil,
+              build["adapterVersion"]?.string != nil else { throw EngineError.incompatibleBuild }
+        if type == "submission" {
+            guard let player = value["player"] else { throw EngineError.incompatibleBuild }
+            try Self.validateSubmission(player)
+        } else if type == "start" {
+            guard let matchID = value["matchId"]?.string, UUID(uuidString: matchID) != nil else {
+                throw EngineError.incompatibleBuild
+            }
+        }
+        // Only a well-formed handshake from the expected authenticated peer and
+        // current epoch may end the lobby with an actionable build explanation.
+        guard value["build"] == identity.json else { throw HandshakeFailure.differentBuild }
         return incomingEpoch
     }
 
@@ -426,6 +448,9 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
             transport.onPacket = { [weak self] packet, peer in
                 guard let self, self.generation == token, !self.failed, !self.closing else { return }
                 do { try self.receive(packet, from: peer) }
+                catch let error as OnDeviceMultiplayerLobby.HandshakeFailure {
+                    self.fail(error.localizedDescription)
+                }
                 catch { /* Reject malformed, stale or unauthorized packets without ending the match. */ }
             }
             transport.onDisconnect = { [weak self] _ in

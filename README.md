@@ -1,84 +1,89 @@
 # MagicMobile
 
-MagicMobile is a Commander-only digital play client powered by XMage. The current product focus is a smooth mobile/web Commander experience where players can import or build valid 100-card Commander decks and play digitally against XMage AI first, then against human opponents, and later in 3-4 player Commander pods.
+MagicMobile is a native iOS Commander game powered by an embedded XMage rules
+engine. The active product is the SwiftUI app in `apps/ios`, with portrait and
+landscape play, local deck building/import, and on-device games against XMage AI.
+XMage owns rules, legal choices, priority, the stack and authoritative game state.
 
-The real game path uses XMage as the rules, AI, priority, stack, prompt, Commander, and game-state authority. The app UI may show immediate local feedback while an action is pending, but authoritative board state must come from XMage snapshots.
+## Start here
 
-## Apps and Packages
+- [iOS application](apps/ios/MagicMobile): gameplay, Deck Studio, card inspection,
+  phase/life feedback, diagnostics and the Updates menu.
+- [Embedded engine](packages/ondevice-engine/README.md): Java/XMage adapter,
+  native iOS compilation and Swift transport.
+- [Native architecture](packages/ondevice-engine/docs/ARCHITECTURE.md) and
+  [app/board integration](packages/ondevice-engine/docs/PORTRAIT_INTEGRATION.md).
+- [Latest recorded release](release/testflight/COMMANDER_POLISH_20260916.md):
+  build 0.1.0 (2026091601), verification, screenshots and known limitations.
+  Apple review status in release records is a dated observation.
+- [Release records](release/testflight) and
+  [native continuation](packages/ondevice-engine/docs/LOCAL_CONTINUATION_STATUS.md).
 
-- `apps/web`: Next.js App Router scaffold with Commander deck, card, play, room, settings, and dev routes.
-- `apps/mobile`: Expo scaffold kept compiling while the native iOS client is the primary phone target.
-- `apps/ios`: Native Swift iOS client for Commander setup and landscape gameplay.
-- `apps/xmage-gateway`: Local HTTP gateway that exposes the XMage engine API, AI difficulty mapping, health checks, WebSocket updates, and a dev-only simulator.
-- `packages/ui`: Reusable React UI primitives for Commander gameplay surfaces.
-- `packages/shared`: Shared TypeScript contracts owned by the architecture workstream.
-- `packages/card-data` and `packages/deck`: Seed card data, deck parsing, Commander validation, stats, Rule 0, and bracket scoring.
-- `packages/engine`: Mock `EngineAdapter` plus HTTP `XmageEngineAdapter`.
-- `packages/realtime` and `packages/video`: In-memory room/realtime services and mock video provider boundaries.
-- `packages/recommendations`: Mock/local recommendation providers and disabled EDHREC integration boundary.
+The signed product uses `apps/ios/native-engine.yml` and the existing
+`com.calebfeliciano.magicmobile` identity. `apps/ios-ondevice` is an engineering
+inspection harness. Fixture previews exercise the real presentation code with
+prepared states; they do not establish real-engine gameplay acceptance.
 
-## Getting Started
+## Local development
 
-```sh
-pnpm install
-pnpm dev
-```
-
-Optional local Scryfall cache:
-
-```sh
-pnpm sync:scryfall
-```
-
-Useful checks:
+Use `/Applications/Xcode.app/Contents/Developer` for Xcode tooling. Lightweight
+presentation and protocol checks can run without launching a simulator:
 
 ```sh
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm build
-docker compose config
+swift test --package-path apps/ios --jobs 2
+swift test --package-path packages/ondevice-engine/swift --jobs 2
 ```
 
-Local XMage services:
+For native linking, follow the engine documentation and use the verified native
+artifact preparation/release scripts. Regenerate the native project, when needed,
+with `xcodegen generate --spec apps/ios/native-engine.yml`. A native app requires
+a compatible compiled engine; a successful presentation test is not a substitute.
+Docker and the old hosted gateway are not prerequisites for the native product.
 
-```sh
-docker compose up --build xmage-bridge xmage-gateway
-```
+## XMage updates and news
 
-Live XMage smoke is intentionally separate from normal CI because it depends on Docker and a healthy XMage runtime:
+The app's **Updates** menu shows its installed version/XMage revision, bundled
+release notes, and links to upstream XMage news. New upstream cards and abilities
+arrive through a tested app release, not automatic executable downloads.
 
-```sh
-XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage
-XMAGE_GATEWAY_URL=http://localhost:17171 pnpm smoke:xmage:gauntlet
-```
+The [maintenance workflow](.github/workflows/magicmobile-upstream-maintenance.yml)
+runs detection weekly on Mondays at 09:23 UTC when enabled on `main`. Manual
+`detect` runs use the same path. It inspects pinned upstream Git objects and
+produces a change report without executing the new engine. The separate Codex
+heartbeat provides review/notification follow-up.
 
-Smoke reports are generated under `build_output/smoke/*.json` and are ignored by git. Treat them as local or CI artifacts, not committed proof. Simulator/dev-route success does not count as real gameplay evidence.
+The [maintenance guide](scripts/magicmobile-maintenance/README.md) documents the
+remaining sequence: review the report, prepare a candidate, regenerate and review
+the catalogue, validate engine/app compatibility, publish a draft PR, then review,
+merge and release. Candidate builds, PR publication, native signing and TestFlight
+delivery are explicit steps; the weekly job does not automatically merge or ship.
 
-## Environment
+## Repository layout and retained earlier work
 
-Copy `.env.example` into a local `.env` file when a package needs runtime configuration. Use `ENGINE_MODE=xmage` with `XMAGE_GATEWAY_URL=http://localhost:17171` to route real game calls through the gateway.
+| Path | Role |
+| --- | --- |
+| `apps/ios` | Active native iOS product and its unit/UI tests |
+| `packages/ondevice-engine` | Embedded XMage engine, native bridge and verification |
+| `apps/ios-ondevice` | Engineering inspection harness |
+| `scripts/ios`, `release/testflight` | Native release tooling and delivery records |
+| `scripts/magicmobile-maintenance` | Upstream detection and reviewed update preparation |
+| `apps/web`, `apps/mobile`, `apps/xmage-gateway` | Earlier web/Expo/hosted-engine work, retained for reference and possible future web development |
+| TypeScript packages under `packages/` | Earlier web contracts, UI and service integrations |
 
-## Milestone Boundaries
+The historical [web architecture](ARCHITECTURE.md), [hosted deployment](DEPLOY.md)
+and [initial implementation plan](IMPLEMENTATION_PLAN.md) describe that earlier
+direction. Legacy web checks remain in CI to catch regressions in retained code.
+The on-device workflow runs engine/protocol and portable app checks for native
+changes on PRs and `main`. Full simulator and native release gates remain separate.
 
-- No Wizards logos or official branding are included.
-- Commander-only is the current production scope: 100-card decks, command zone, commander tax, commander damage, 40 life, color identity, singleton rules, Commander legality, and XMage-backed Commander prompts.
-- 1v1 Commander vs XMage AI is the first playable target. Human-vs-human and 3-4 player digital Commander pods are later milestones.
-- Draft, sealed, tournaments, non-Commander formats, webcam play, hybrid paper/digital play, and SpellTable-style recognition are not current implementation targets.
-- EDHREC support is limited to documented link-outs and disabled provider stubs. No scraping is included.
-- The production `/play` route must use XMage through the gateway and Java bridge. It must not silently fall back to simulator mode.
-- The simulator remains available only for fast UI development and should stay clearly labeled under dev-only routes such as `/dev/play-simulator`.
-- The current integration hardening focus is prompt/action parity: every XMage prompt should render in iOS/web, respond with exact prompt metadata, reject stale prompts, and reconcile through server-authoritative snapshots.
+A future browser client could reuse the web UI/contracts and a hosted XMage
+service. The embedded iOS binary and SwiftUI interface do not run directly in a
+browser; that would be a separate delivery project. No web deployment is required
+for the current iOS app.
 
-## CI and Release Evidence
+## Verification boundaries
 
-Normal GitHub Actions CI runs on `pull_request` and pushes to `main`, and covers `pnpm install`, `pnpm typecheck`, `pnpm lint`, `pnpm test`, and `pnpm build`. Live XMage smoke is available as a manual workflow (`XMage Smoke`) and should not be required for ordinary PRs until Docker/XMage startup is reliable enough for a required gate.
-
-## Performance Goals
-
-MagicMobile should feel like a polished mobile Commander client, not a frozen remote control for a desktop Java app. See [docs/PERFORMANCE_TARGETS.md](docs/PERFORMANCE_TARGETS.md) for the current latency targets, pending-state requirements, WebSocket-first update path, and measurement checklist.
-
-
-## New primary direction: embedded iOS XMage
-
-The on-device migration lives in `packages/ondevice-engine`; its native iOS harness is `apps/ios-ondevice`. Read `packages/ondevice-engine/CODEX_START_HERE.md` first. The old gateway/client path is retained for regression/reference, not a production on-device fallback. This is an experimental port, not a completed iPhone engine.
+Simulator fixtures, real JVM games, native compilation/linkage, physical iPhone
+play, multiplayer acceptance and TestFlight availability are recorded separately.
+See the release report for remaining device checks. EDHREC currently uses an
+explicit website handoff; deck paste supports Moxfield and Archidekt text exports.

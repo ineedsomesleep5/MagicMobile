@@ -94,7 +94,14 @@ public final class MatchMailbox implements AutoCloseable {
                 if(closed || pending.get(authenticatedSeat)!=p) return;
             }
             try { p.sink.deliver(answer); }
-            catch(Exception ex) { fail("response_delivery_failed","XMage could not consume the queued response. Inspect the local engine log."); }
+            catch(Throwable ex) {
+                synchronized(MatchMailbox.this) {
+                    // Late callbacks during teardown must preserve the original game failure.
+                    if(closed || phase.equals("ended") || phase.equals("failed")) return;
+                    EngineDiagnostics.capture("response-delivery",ex);
+                    fail("response_delivery_failed","XMage could not consume the queued response. Inspect the local engine log.");
+                }
+            }
         });
         return result;
     }
@@ -142,6 +149,10 @@ public final class MatchMailbox implements AutoCloseable {
     }
     private void checkOpen() {
         if(closed || phase.equals("ended") || phase.equals("failed")) throw new BridgeException("match_unavailable","Match is "+phase);
+    }
+    /** Caller closes first, then waits without holding the mailbox monitor. */
+    public boolean awaitDeliveryTermination(long deadline) throws InterruptedException {
+        return delivery.awaitTermination(Math.max(0,deadline-System.nanoTime()),TimeUnit.NANOSECONDS);
     }
     @Override public synchronized void close() {
         if(closed) return;closed=true;phase="closed";pending.clear();revision++;delivery.shutdownNow();

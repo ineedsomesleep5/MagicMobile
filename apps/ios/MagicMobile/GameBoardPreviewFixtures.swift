@@ -1,14 +1,181 @@
 import Foundation
 
 enum GameBoardPreviewFixtures {
-    static func snapshot(_ state: GameBoardDesignPreviewState) -> GameSnapshot {
-        let data = json(for: state).data(using: .utf8)!
+    static func snapshot(_ state: GameBoardDesignPreviewState, step: String? = nil, life: Int? = nil) -> GameSnapshot {
+        var root = try! JSONSerialization.jsonObject(with: Data(json(for: state).utf8)) as! [String: Any]
+        enrich(&root, for: state)
+        if let step {
+            root["step"] = step
+            root["activePlayerId"] = "ai-1"
+        }
+        if let life, var players = root["players"] as? [[String: Any]],
+           let viewer = players.firstIndex(where: { $0["playerId"] as? String == "human" }) {
+            players[viewer]["life"] = life
+            root["players"] = players
+        }
+        if let prompt = root["promptEnvelopeV2"] as? [String: Any] { root["promptText"] = prompt["message"] }
+        let data = try! JSONSerialization.data(withJSONObject: root)
         return try! JSONDecoder.magicMobile.decode(GameSnapshot.self, from: data)
     }
 
     static func selectedCard(for state: GameBoardDesignPreviewState, snapshot: GameSnapshot) -> ZoneCard? {
-        guard state == .selectedCardActionTray || state == .missingCardArt else { return nil }
+        guard state == .selectedCardActionTray || state == .missingCardArt || state == .fullHandInspection else { return nil }
         return snapshot.human?.zones.hand.first
+    }
+
+    // Development fixture projection only. These actions never enter a live engine session.
+    private static func enrich(_ root: inout [String: Any], for state: GameBoardDesignPreviewState) {
+        func card(_ id: String, _ name: String, _ type: String, _ cost: String, _ rules: String, power: Int? = nil) -> [String: Any] {
+            var value: [String: Any] = ["instanceId": id, "card": ["name": name, "typeLine": type, "manaCost": cost, "oracleText": rules], "tapped": false]
+            if let power { value.merge(["power": power, "toughness": power, "isCreaturePermanent": true]) { _, new in new } }
+            return value
+        }
+        let creatures = [("Silvercoat Lion", "{1}{W}", 2), ("Serra Angel", "{3}{W}{W}", 4), ("Grizzly Bears", "{1}{G}", 2), ("Llanowar Elves", "{G}", 1), ("Spirited Companion", "{1}{W}", 1), ("Sun Titan", "{4}{W}{W}", 6)]
+        let crowded = [GameBoardDesignPreviewState.crowdedBattlefield, .fourPlayerFocus, .manaPaymentPrompt, .combatArrows, .largeText].contains(state)
+        var players = root["players"] as! [[String: Any]]
+        if state == .fourPlayerFocus || state == .playerTargetPrompt {
+            for number in 2...3 {
+                var opponent = players[1]
+                opponent["playerId"] = "ai-\(number)"
+                opponent["life"] = 40 - number * 3
+                var zones = opponent["zones"] as! [String: Any]
+                for (zone, contents) in zones {
+                    guard let cards = contents as? [[String: Any]] else { continue }
+                    zones[zone] = cards.map { original in
+                        var copy = original; copy["instanceId"] = "ai-\(number)-\(original["instanceId"]!)"; return copy
+                    }
+                }
+                opponent["zones"] = zones; players.append(opponent)
+            }
+        }
+        for index in players.indices {
+            let seat = players[index]["playerId"] as! String
+            players[index]["displayName"] = index == 0 ? "You" : ["", "Aurelia", "Kozilek", "Meren"][index]
+            var zones = players[index]["zones"] as! [String: Any]
+            var battlefield = zones["battlefield"] as! [[String: Any]]
+            let previewCreatures = state == .combatArrows
+                ? Array(repeating: creatures, count: 3).flatMap { $0 }
+                : Array(creatures.prefix(crowded ? 6 : 2))
+            for (number, creature) in previewCreatures.enumerated() {
+                let power = creature.2 + (state == .combatArrows ? number / creatures.count : 0)
+                var permanent = card("\(seat)-preview-creature-\(number)", creature.0, "Creature", creature.1, "Development fixture permanent.", power: power)
+                permanent["tapped"] = number == 2; battlefield.append(permanent)
+            }
+            for number in 2...(crowded ? 5 : 2) {
+                battlefield.append(card("\(seat)-preview-land-\(number)", "Forest", "Basic Land — Forest", "", "{T}: Add {G}."))
+            }
+            if state == .stackResponsePrompt && index == 1 {
+                battlefield.append(card("ai-1-ability-source", "Prodigal Pyromancer", "Creature — Human Wizard", "{2}{R}", "{T}: This creature deals 1 damage to any target.", power: 1))
+            }
+            if index == 0 {
+                battlefield.append(card("human-sol-ring", "Sol Ring", "Artifact", "{1}", "{T}: Add {C}{C}."))
+                var hand = zones["hand"] as! [[String: Any]]
+                let handCreatures = state == .handScrubber
+                    ? Array(repeating: Array(creatures.prefix(5)), count: 4).flatMap { $0 }
+                    : Array(creatures.prefix(5))
+                for (number, creature) in handCreatures.enumerated() {
+                    let id = state == .handScrubber && number == handCreatures.count - 1 ? "last-hand-card" : "hand-preview-\(number)"
+                    hand.append(card(id, creature.0, "Creature", creature.1, "Development inspection fixture.", power: creature.2))
+                }
+                zones["hand"] = hand
+                zones["exile"] = [card("human-exile-1", "Swords to Plowshares", "Instant", "{W}", "Exile target creature. Its controller gains life equal to its power.")]
+            }
+            if state == .combatArrows {
+                let id = index == 0 ? "human-preview-creature-0" : "ai-1-preview-creature-0"
+                if let offset = battlefield.firstIndex(where: { $0["instanceId"] as? String == id }) {
+                    if index == 0 { battlefield[offset]["isAttacking"] = true; battlefield[offset]["tapped"] = true }
+                    else { battlefield[offset]["blocking"] = ["human-preview-creature-0"] }
+                }
+            }
+            if state == .manaPaymentPrompt, index == 0, let ring = battlefield.firstIndex(where: { $0["instanceId"] as? String == "human-sol-ring" }) {
+                battlefield.insert(battlefield.remove(at: ring), at: 0)
+            }
+            zones["battlefield"] = battlefield; players[index]["zones"] = zones
+        }
+        root["players"] = players
+        var actions = root["legalActions"] as! [[String: Any]]
+        if ![GameBoardDesignPreviewState.aiThinking, .bridgeUnavailable, .unsupportedPromptFallback].contains(state) {
+            actions.append(["id": "make-mana-sol-ring", "type": "make_mana", "playerId": "human", "label": "Tap Sol Ring", "sourceInstanceId": "human-sol-ring", "cardName": "Sol Ring", "sourceZone": "battlefield", "producedMana": ["C", "C"]])
+        }
+        root["legalActions"] = actions
+        let skip = Dictionary(uniqueKeysWithValues: ["passedTurn", "passedUntilEndOfTurn", "passedUntilNextMain", "passedUntilStackResolved", "passedAllTurns", "passedUntilEndStepBeforeMyTurn"].map { ($0, false) })
+        let enginePlayers: [[String: Any]] = players.map { player in
+            let zones = player["zones"] as! [String: Any]
+            return ["playerId": player["playerId"]!, "name": player["displayName"]!, "active": player["playerId"] as? String == "human", "hasPriority": (player["playerId"] as? String) == (root["priorityPlayerId"] as? String), "timerActive": false, "skipState": skip, "manaPool": player["manaPool"]!, "command": zones["command"]!, "zones": ["battlefield": zones["battlefield"]!, "graveyard": zones["graveyard"]!, "exile": zones["exile"]!, "sideboard": []]]
+        }
+        var xmage: [String: Any] = ["schemaVersion": 1, "gameId": root["id"]!, "bridgeRevision": 99, "callbackCoverage": [], "players": enginePlayers, "stack": [], "combat": [], "exileZones": [], "revealed": [], "lookedAt": [], "companion": [], "playableObjects": [], "panels": ["stack": state == .stackResponsePrompt, "command": true, "graveyard": true, "exile": true, "revealed": false, "lookedAt": false, "search": false]]
+        if state == .stackResponsePrompt {
+            let source = card("ai-1-ability-source", "Prodigal Pyromancer", "Creature — Human Wizard", "{2}{R}", "{T}: This creature deals 1 damage to any target.", power: 1)
+            let spell = card("stack-swords-card", "Swords to Plowshares", "Instant", "{W}", "Exile target creature. Its controller gains life equal to its power.")
+            xmage["stack"] = [
+                ["id": "stack-ability-object", "objectId": "stack-ability-object", "objectType": "ACTIVATED_ABILITY", "name": "Deal 1 damage", "rulesText": "Prodigal Pyromancer deals 1 damage to any target.", "sourceInstanceId": "ai-1-ability-source", "sourceName": "Prodigal Pyromancer", "sourceZone": "battlefield", "sourceCard": source, "controllerId": "ai-1", "targetIds": ["human"], "paid": true],
+                ["id": "stack-spell-object", "objectId": "stack-spell-object", "objectType": "SPELL", "name": "Swords to Plowshares", "sourceName": "Swords to Plowshares", "sourceCard": spell, "controllerId": "human", "targetIds": ["ai-creature-1"], "paid": true]
+            ]
+        }
+        if state == .combatArrows {
+            let own = (players[0]["zones"] as! [String: Any])["battlefield"] as! [[String: Any]]
+            let opposing = (players[1]["zones"] as! [String: Any])["battlefield"] as! [[String: Any]]
+            xmage["combat"] = [["defenderId": "ai-1", "defenderName": "Aurelia", "defenderKind": "player", "blocked": true, "attackers": own.filter { $0["isAttacking"] as? Bool == true }, "blockers": opposing.filter { $0["blocking"] != nil }]]
+            root["phase"] = "combat"; root["step"] = "declare-blockers"
+        }
+        if state == .zoneInspection {
+            for key in ["exileZones", "revealed", "lookedAt", "companion"] {
+                xmage[key] = [["id": "preview-\(key)", "name": "Development \(key)", "cards": [card("preview-\(key)-card", "Forest", "Basic Land — Forest", "", "{T}: Add {G}.")]]]
+            }
+        }
+        root["xmage"] = xmage
+        if state == .abilityChoice {
+            let source = card("human-sol-ring", "Sol Ring", "Artifact", "{1}", "{T}: Add {C}{C}.")
+            root["legalActions"] = []
+            root["promptEnvelopeV2"] = ["id": "preview-ability", "method": "PICK_ABILITY", "messageId": 12,
+                "playerId": "human", "responseKind": "ability", "message": "Choose which triggered ability goes on the stack first",
+                "required": true, "minChoices": 1, "maxChoices": 1,
+                "abilities": [
+                    ["id": "11111111-1111-4111-8111-111111111111", "label": "Add {C}{C}.", "sourceName": "Sol Ring", "sourceCard": source],
+                    ["id": "22222222-2222-4222-8222-222222222222", "label": "Add {C}{C}.", "sourceName": "Sol Ring", "sourceCard": source]],
+                "responseCommand": ["type": "choose_ability", "promptId": "preview-ability", "messageId": 12]]
+        }
+        if [.scryChoice, .libraryChoice, .emptyLibraryChoice, .mixedCardChoice].contains(state) {
+            let count = [.scryChoice, .mixedCardChoice].contains(state) ? 2 : 12
+            let options = (0..<count).map { index -> [String: Any] in
+                var value = card("choice-\(index)", index.isMultiple(of: 2) ? "Forest" : "Serra Angel",
+                                 index.isMultiple(of: 2) ? "Basic Land" : "Creature", "", "Development choice fixture.")
+                value["selectable"] = state != .emptyLibraryChoice && (state == .scryChoice || index.isMultiple(of: 2))
+                return value
+            }
+            root["promptEnvelopeV2"] = ["id": "preview-card-choice", "method": "GAME_PICK_TARGET", "messageId": 10,
+                "playerId": "human", "responseKind": "target", "message": state == .scryChoice ? "Select up to two cards to put on the bottom of your library (Scry)" : "Search your library for a land card",
+                "required": false, "minChoices": 1, "maxChoices": 1, "cards": options, "targets": [],
+                "targetIds": options.filter { $0["selectable"] as? Bool == true }.map { $0["instanceId"]! },
+                "responseCommand": ["type": "choose_target", "promptId": "preview-card-choice", "messageId": 10]]
+            root["legalActions"] = [["id": "choice-done", "type": "answer_yes_no", "playerId": "human", "label": "Done",
+                                     "promptId": "preview-card-choice", "messageId": 10, "confirmed": false]]
+            if state == .mixedCardChoice, var mixed = root["promptEnvelopeV2"] as? [String: Any] {
+                mixed["message"] = "Choose a card or a player"
+                mixed["targets"] = [["id": "ai-1", "label": "AI 1"]]
+                mixed["targetIds"] = ["choice-0", "ai-1"]
+                root["promptEnvelopeV2"] = mixed
+            }
+        }
+        if state == .normalBattlefield {
+            root["log"] = [
+                ["id": "log-1", "message": "TURN 1 for <font color='#20B2AA'>Caleb</font> (40 - 40)", "createdAt": "preview"],
+                ["id": "log-2", "message": "<font color='#20B2AA'>Caleb</font> plays <font color='#B0C4DE' object_id='36fc54d7-1afc-4506-92f8-a4f8cceace1c'>Temple of Plenty</font> [36f]", "createdAt": "preview"]
+            ]
+        }
+        if state == .playerTargetPrompt || state == .cardTargetPrompt {
+            root["legalActions"] = []
+            let ids = state == .playerTargetPrompt ? players.map { $0["playerId"] as! String } : ["ai-creature-1", "human-commander"]
+            let labels = state == .playerTargetPrompt ? players.map { $0["displayName"] as! String } : ["Serra Angel", "Isamaru, Hound of Konda"]
+            root["promptEnvelopeV2"] = ["id": "preview-target", "method": "GAME_PICK_TARGET", "messageId": 9, "playerId": "human", "responseKind": "target", "message": state == .playerTargetPrompt ? "Choose a player to take the first turn" : "Choose target creature", "required": true, "minChoices": 1, "maxChoices": 1, "targetIds": ids, "targets": zip(ids, labels).map { ["id": $0.0, "label": $0.1] }, "responseCommand": ["type": "choose_target", "promptId": "preview-target", "messageId": 9]]
+        }
+        if state == .manaPaymentPrompt {
+            root["legalActions"] = actions.filter { $0["type"] as? String == "make_mana" }
+            var paymentPrompt = root["promptEnvelopeV2"] as! [String: Any]
+            paymentPrompt["message"] = "Pay {2}{W}"
+            root["promptEnvelopeV2"] = paymentPrompt
+            root["manaPayment"] = ["active": true, "spellName": "Serra Angel", "manaCostText": "{3}{W}{W}", "remainingText": "{2}{W}", "remaining": ["generic": 2, "W": 1, "U": 0, "B": 0, "R": 0, "G": 0, "C": 0, "total": 3]]
+        }
     }
 
     private static func json(for state: GameBoardDesignPreviewState) -> String {

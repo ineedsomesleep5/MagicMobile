@@ -86,6 +86,15 @@ struct SafetyTests {
         let (r,_,_,e) = try await setup()
         await #expect(throws:(any Error).self) { try await r.handle(PeerFrame(epoch:e,sequence:2,operation:"destroy",payload:.object([:])),authenticatedPeerID:"peer") }
     }
+    @Test func diagnosticsNeverReachEngineFromPeer() async throws {
+        for operation in ["diagnostics", "clearDiagnostics"] {
+            let (router, transport, _, epoch) = try await setup()
+            await #expect(throws: (any Error).self) {
+                try await router.handle(PeerFrame(epoch: epoch, sequence: 2, operation: operation, payload: .object([:])), authenticatedPeerID: "peer")
+            }
+            #expect(await transport.calls().isEmpty)
+        }
+    }
     @Test func suspensionBlocksInput() async throws {
         let (r,_,_,e) = try await setup(); await r.setSuspended(true)
         await #expect(throws:EngineError.hostSuspended) { try await r.handle(PeerFrame(epoch:e,sequence:2,operation:"respond",payload:.object([:])),authenticatedPeerID:"peer") }

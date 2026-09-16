@@ -11,10 +11,9 @@ import java.nio.charset.*;
 
 /** Compiled ahead of time; no JIT or downloaded bytecode on an iPhone. */
 public final class NativeEntryPoints {
-    private static XmageEngine engine;
     private static EngineService service;
     private static synchronized EngineService service() {
-        if(service==null) {engine=new XmageEngine("native-aot");service=new EngineService(engine);}
+        if(service==null) service=EngineService.lazy(()->new XmageEngine("native-aot"));
         return service;
     }
     @CEntryPoint(name="mm_engine_request")
@@ -26,6 +25,7 @@ public final class NativeEntryPoints {
                 .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString();
             return allocation(service().request(request));
         } catch(Throwable e) {
+            EngineDiagnostics.capture("native-request",e);
             try {return allocation("{\"protocol\":1,\"ok\":false,\"error\":{\"code\":\"native_failure\",\"message\":\"Native engine failed\"}}");}
             catch(Throwable ignored) {return WordFactory.nullPointer();}
         }
@@ -42,8 +42,11 @@ public final class NativeEntryPoints {
     // Version the export so an old void-returning AOT library cannot satisfy this ABI.
     @CEntryPoint(name="mm_engine_shutdown_v2")
     public static synchronized int shutdown(IsolateThread thread) {
-        try {if(engine!=null)engine.close();return 0;} // MM_OK: all workers terminated
-        catch(BridgeException e) {return "engine_busy_shutdown".equals(e.code())?5:4;} // MM_BUSY / MM_ENGINE_FAILED
-        catch(Throwable e) {return 4;} // Never permit teardown after an unconfirmed shutdown.
+        try {if(service!=null)service.close();return 0;} // MM_OK: all workers terminated
+        catch(BridgeException e) {
+            if("engine_busy_shutdown".equals(e.code())) return 5;
+            EngineDiagnostics.capture("native-shutdown",e);return 4;
+        } // MM_BUSY / MM_ENGINE_FAILED
+        catch(Throwable e) {EngineDiagnostics.capture("native-shutdown",e);return 4;} // Never permit teardown after an unconfirmed shutdown.
     }
 }

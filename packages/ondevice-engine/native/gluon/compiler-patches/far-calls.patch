@@ -1,0 +1,236 @@
+--- a/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/LIRNativeImageCodeCache.java
++++ b/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/LIRNativeImageCodeCache.java
+@@ -25,6 +25,7 @@
+ package com.oracle.svm.hosted.image;
+ 
+ import java.nio.ByteBuffer;
++import java.util.ArrayList;
+ import java.util.HashMap;
+ import java.util.HashSet;
+ import java.util.List;
+@@ -36,6 +37,7 @@
+ import java.util.stream.Stream;
+ import java.util.stream.StreamSupport;
+ 
++import org.graalvm.compiler.asm.aarch64.AArch64MacroAssembler;
+ import org.graalvm.compiler.code.CompilationResult;
+ import org.graalvm.compiler.code.CompilationResult.CodeAnnotation;
+ import org.graalvm.compiler.core.common.NumUtil;
+@@ -47,6 +49,7 @@
+ import com.oracle.objectfile.ObjectFile;
+ import com.oracle.svm.core.SubstrateOptions;
+ import com.oracle.svm.core.config.ConfigurationValues;
++import com.oracle.svm.core.graal.code.PatchConsumerFactory;
+ import com.oracle.svm.core.meta.MethodPointer;
+ import com.oracle.svm.core.meta.SubstrateObjectConstant;
+ import com.oracle.svm.core.util.VMError;
+@@ -57,6 +60,7 @@
+ import com.oracle.svm.hosted.image.NativeImageHeap.ObjectInfo;
+ import com.oracle.svm.hosted.meta.HostedMethod;
+ 
++import jdk.vm.ci.aarch64.AArch64;
+ import jdk.vm.ci.code.TargetDescription;
+ import jdk.vm.ci.code.site.Call;
+ import jdk.vm.ci.code.site.DataPatch;
+@@ -71,6 +75,13 @@
+ 
+     private final TargetDescription target;
+ 
++    // Backport of post-22.1 AArch64 far-call veneers. Original method bodies and
++    // safepoints are untouched. The same checked planner is executed in unit tests.
++    private FarCallPlanner.Layout farLayout;
++    private List<HostedMethod> farMethods;
++    private Map<HostedMethod, Integer> farIndices;
++
++
+     public LIRNativeImageCodeCache(Map<HostedMethod, CompilationResult> compilations, NativeImageHeap imageHeap) {
+         super(compilations, imageHeap);
+         target = ConfigurationValues.getTarget();
+@@ -88,23 +99,80 @@
+ 
+         try (Indent indent = debug.logAndIndent("layout methods")) {
+ 
+-            // Assign a location to all methods.
+             assert codeCacheSize == 0;
+             HostedMethod firstMethod = null;
+-            for (Entry<HostedMethod, CompilationResult> entry : compilations.entrySet()) {
+-
+-                HostedMethod method = entry.getKey();
+-                if (firstMethod == null) {
+-                    firstMethod = method;
+-                }
+-                CompilationResult compilation = entry.getValue();
+-                compilationsByStart.put(codeCacheSize, compilation);
+-                method.setCodeAddressOffset(codeCacheSize);
+-                codeCacheSize = NumUtil.roundUp(codeCacheSize + compilation.getTargetCodeSize(), SubstrateOptions.codeAlignment());
++            if (target.arch instanceof AArch64) {
++                farMethods = new ArrayList<>(compilations.keySet());
++                farIndices = new HashMap<>();
++                int[] sizes = new int[farMethods.size()];
++                for (int i = 0; i < farMethods.size(); ++i) {
++                    HostedMethod method = farMethods.get(i);
++                    farIndices.put(method, i);
++                    sizes[i] = compilations.get(method).getTargetCodeSize();
++                }
++                List<FarCallPlanner.CallSite> calls = new ArrayList<>();
++                for (int i = 0; i < farMethods.size(); ++i) {
++                    for (Infopoint infopoint : compilations.get(farMethods.get(i)).getInfopoints()) {
++                        if (infopoint instanceof Call && ((Call) infopoint).direct) {
++                            Call call = (Call) infopoint;
++                            Integer callee = farIndices.get((HostedMethod) call.target);
++                            VMError.guarantee(callee != null, "Direct call target missing from full code cache");
++                            calls.add(new FarCallPlanner.CallSite(i, callee, call.pcOffset));
++                        }
++                    }
++                }
++                int distance = Integer.parseInt(System.getProperty("magicmobile.farCallLimit",
++                        Integer.toString(FarCallPlanner.MAX_DISTANCE)));
++                farLayout = FarCallPlanner.plan(sizes, calls, SubstrateOptions.codeAlignment(), distance);
++                for (int i = 0; i < farMethods.size(); ++i) {
++                    HostedMethod method = farMethods.get(i);
++                    method.setCodeAddressOffset(farLayout.start(i));
++                    compilationsByStart.put(farLayout.start(i), compilations.get(method));
++                }
++                firstMethod = farMethods.get(0);
++                codeCacheSize = farLayout.size;
++                System.out.println("MAGICMOBILE_FAR_CALLS_V1 methods=" + sizes.length
++                        + " calls=" + calls.size() + " veneers=" + farLayout.veneerCount
++                        + " codeBytes=" + codeCacheSize + " passes=" + farLayout.passes
++                        + " distance=" + distance);
++            } else {
++                // Non-AArch64 behavior is unchanged.
++                for (Entry<HostedMethod, CompilationResult> entry : compilations.entrySet()) {
++                    HostedMethod method = entry.getKey();
++                    if (firstMethod == null) firstMethod = method;
++                    CompilationResult compilation = entry.getValue();
++                    compilationsByStart.put(codeCacheSize, compilation);
++                    method.setCodeAddressOffset(codeCacheSize);
++                    codeCacheSize = NumUtil.roundUp(Math.addExact(codeCacheSize,
++                            compilation.getTargetCodeSize()), SubstrateOptions.codeAlignment());
++                }
+             }
+ 
+             buildRuntimeMetadata(new MethodPointer(firstMethod), WordFactory.unsigned(codeCacheSize));
+         }
++    }
++
++    @Override
++    protected int codeSizeFor(HostedMethod method, CompilationResult compilation) {
++        return farLayout == null ? compilation.getTargetCodeSize() : farLayout.extent(farIndices.get(method));
++    }
++
++    // This is the upstream 22.3 sequence using the existing 22.1 assembler and
++    // patch consumer, not hand-encoded instructions or truncated branch offsets.
++    private byte[] createVeneer(HostedMethod callee, int start) {
++        AArch64MacroAssembler masm = new AArch64MacroAssembler(target);
++        CompilationResult result = new CompilationResult("MagicMobile far-call veneer");
++        masm.setCodePatchingAnnotationConsumer(PatchConsumerFactory.HostedPatchConsumerFactory.factory().newConsumer(result));
++        try (AArch64MacroAssembler.ScratchRegister scratch = masm.getScratchRegister()) {
++            masm.adrpAdd(scratch.getRegister());
++            masm.jmp(scratch.getRegister());
++        }
++        byte[] code = masm.close(true);
++        VMError.guarantee(code.length == FarCallPlanner.VENEER_SIZE, "Unexpected AArch64 veneer size");
++        VMError.guarantee(result.getCodeAnnotations().size() == 1, "Unexpected veneer patch count");
++        HostedPatcher patcher = (HostedPatcher) result.getCodeAnnotations().get(0);
++        patcher.patch(start, callee.getCodeAddressOffset() - start, code);
++        return code;
+     }
+ 
+     /**
+@@ -190,6 +258,13 @@
+ 
+                     // Patch a PC-relative call.
+                     // This code handles the case of section-local calls only.
++                    if (farLayout != null) {
++                        int caller = farIndices.get(method);
++                        int callee = farIndices.get((HostedMethod) call.target);
++                        callTargetStart = farLayout.veneers(caller).getOrDefault(callee, callTargetStart);
++                        VMError.guarantee(FarCallPlanner.fitsBranch((long) callTargetStart - compStart - call.pcOffset),
++                                "AArch64 direct call still out of range after veneer layout");
++                    }
+                     int pcDisplacement = callTargetStart - (compStart + call.pcOffset);
+                     patches.get(call.pcOffset).patch(compStart, pcDisplacement, compilation.getTargetCode());
+                     boolean noPriorMatch = patchedOffsets.add(call.pcOffset);
+@@ -234,8 +309,14 @@
+             int codeSize = compilation.getTargetCodeSize();
+             bufferBytes.put(compilation.getTargetCode(), 0, codeSize);
+ 
+-            for (int i = codeSize; i < NumUtil.roundUp(codeSize, SubstrateOptions.codeAlignment()); i++) {
+-                bufferBytes.put(CODE_FILLER_BYTE);
++            int methodExtent = farLayout == null ? NumUtil.roundUp(codeSize, SubstrateOptions.codeAlignment())
++                    : farLayout.extent(farIndices.get(method));
++            for (int i = codeSize; i < methodExtent; i++) bufferBytes.put(CODE_FILLER_BYTE);
++            if (farLayout != null) {
++                for (Entry<Integer, Integer> veneer : farLayout.veneers(farIndices.get(method)).entrySet()) {
++                    bufferBytes.position(startPos + veneer.getValue());
++                    bufferBytes.put(createVeneer(farMethods.get(veneer.getKey()), veneer.getValue()));
++                }
+             }
+         }
+         bufferBytes.position(startPos);
+@@ -246,7 +327,7 @@
+         return new NativeTextSectionImpl(buffer, objectFile, codeCache) {
+             @Override
+             protected void defineMethodSymbol(String name, boolean global, ObjectFile.Element section, HostedMethod method, CompilationResult result) {
+-                final int size = result == null ? 0 : result.getTargetCodeSize();
++                final int size = result == null ? 0 : codeSizeFor(method, result);
+                 objectFile.createDefinedSymbol(name, section, method.getCodeAddressOffset(), size, true, global);
+             }
+         };
+--- a/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/NativeImageCodeCache.java
++++ b/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/NativeImageCodeCache.java
+@@ -228,6 +228,11 @@
+         return ConfigurationValues.getObjectLayout().alignUp(getConstantsSize());
+     }
+ 
++    /** Includes any build-time veneers in the metadata coverage of their caller. */
++    protected int codeSizeFor(HostedMethod method, CompilationResult compilation) {
++        return compilation.getTargetCodeSize();
++    }
++
+     public void buildRuntimeMetadata(CFunctionPointer firstMethod, UnsignedWord codeSize) {
+         // Build run-time metadata.
+         HostedFrameInfoCustomization frameInfoCustomization = new HostedFrameInfoCustomization();
+@@ -236,7 +241,7 @@
+         for (Entry<HostedMethod, CompilationResult> entry : compilations.entrySet()) {
+             final HostedMethod method = entry.getKey();
+             final CompilationResult compilation = entry.getValue();
+-            codeInfoEncoder.addMethod(method, compilation, method.getCodeAddressOffset());
++            codeInfoEncoder.addMethod(method, compilation, method.getCodeAddressOffset(), codeSizeFor(method, compilation));
+         }
+ 
+         ReflectionMetadataEncoder reflectionMetadataEncoder = ImageSingletons.lookup(ReflectionMetadataEncoderFactory.class).create(encoders);
+--- a/substratevm/src/com.oracle.svm.core/src/com/oracle/svm/core/code/CodeInfoEncoder.java
++++ b/substratevm/src/com.oracle.svm.core/src/com/oracle/svm/core/code/CodeInfoEncoder.java
+@@ -182,6 +182,12 @@
+     }
+ 
+     public void addMethod(SharedMethod method, CompilationResult compilation, int compilationOffset) {
++        addMethod(method, compilation, compilationOffset, compilation.getTargetCodeSize());
++    }
++
++    /** Backported size override so far-call veneers are covered by the caller's metadata. */
++    public void addMethod(SharedMethod method, CompilationResult compilation, int compilationOffset, int codeSize) {
++        VMError.guarantee(codeSize >= compilation.getTargetCodeSize(), "Invalid expanded method size");
+         int totalFrameSize = compilation.getTotalFrameSize();
+         boolean isEntryPoint = method.isEntryPoint();
+         boolean hasCalleeSavedRegisters = method.hasCalleeSavedRegisters();
+@@ -192,7 +198,7 @@
+ 
+         /* Register the frame size for all entries that are starting points for the index. */
+         long entryIP = CodeInfoDecoder.lookupEntryIP(CodeInfoDecoder.indexGranularity() + compilationOffset);
+-        while (entryIP <= CodeInfoDecoder.lookupEntryIP(compilation.getTargetCodeSize() + compilationOffset - 1)) {
++        while (entryIP <= CodeInfoDecoder.lookupEntryIP(codeSize + compilationOffset - 1)) {
+             IPData entry = makeEntry(entryIP);
+             entry.frameSizeEncoding = encodeFrameSize(totalFrameSize, false, isEntryPoint, hasCalleeSavedRegisters);
+             entryIP += CodeInfoDecoder.indexGranularity();
+@@ -220,7 +226,7 @@
+         }
+ 
+         ImageSingletons.lookup(Counters.class).methodCount.inc();
+-        ImageSingletons.lookup(Counters.class).codeSize.add(compilation.getTargetCodeSize());
++        ImageSingletons.lookup(Counters.class).codeSize.add(codeSize);
+     }
+ 
+     private IPData makeEntry(long ip) {

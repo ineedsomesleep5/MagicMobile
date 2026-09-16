@@ -20,7 +20,15 @@ public final class DeckLoader {
             throw new BridgeException("invalid_deck","Deck exceeds mobile resource limit");
         // Upstream handles 100-card/companion/Rulebreaker sizes. Do not duplicate those rules.
         Commander validator=new Commander();
-        if(!validator.validate(d)) throw new BridgeException("invalid_deck","Deck failed the pinned XMage Commander validator");
+        if(!validator.validate(d)) {
+            List<Object> issues=new ArrayList<>();
+            for(mage.cards.decks.DeckValidatorError issue:validator.getErrorsList()) {
+                issues.add(Json.map("type",issue.getErrorType().name(),"group",issue.getGroup(),
+                    "message",issue.getMessage(),"cardName",issue.getCardName()));
+            }
+            throw new BridgeException("invalid_deck","Deck failed the pinned XMage Commander validator",
+                Json.map("validator","Commander","issues",issues));
+        }
         return d;
     }
     private static void loadCards(List<Object> rows,Set<Card> cards) {

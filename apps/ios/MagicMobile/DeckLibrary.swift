@@ -326,6 +326,8 @@ final class DeckLibraryStore: ObservableObject {
     @Published var notice: String?
 
     private let cacheURL: URL
+    private var cacheBaseline: Data?
+    private var cacheReadFailed = false
 
     init(cacheURL: URL? = nil) {
         self.cacheURL = cacheURL ?? Self.defaultCacheURL
@@ -359,14 +361,70 @@ final class DeckLibraryStore: ObservableObject {
         return record
     }
 
-    func addLocalDurably(_ deck: DeckList) throws -> DeckLibraryRecord {
-        let record = DeckLibraryRecord(deck: deck)
+    func addLocalDurably(_ deck: DeckList, sourceURL: String? = nil) throws -> DeckLibraryRecord {
+        try OnDeviceDeckEditing.validateDraft(deck)
+        let record = DeckLibraryRecord(deck: deck, sourceURL: sourceURL)
         let candidate = [record] + decks
+        try persistDurably(candidate)
+        return record
+    }
+
+    /// Draft persistence only: this does not certify card support or engine legality.
+    func updateLocalDurably(_ record: DeckLibraryRecord) throws -> DeckLibraryRecord {
+        try updateLocalDurably(record.deckList, id: record.id, expectedRevision: record.revision)
+    }
+
+    func deleteLocalDurably(id: String) throws {
+        guard let record = decks.first(where: { $0.id == id }) else { throw OnDeviceDeckEditing.Error.missingRecord }
+        try deleteLocalDurably(id: id, expectedRevision: record.revision)
+    }
+
+    /// Draft persistence only: this does not certify card support or engine legality.
+    func updateLocalDurably(_ deck: DeckList, id: String, expectedRevision: Int) throws -> DeckLibraryRecord {
+        try OnDeviceDeckEditing.validateDraft(deck)
+        let index = try localIndex(id: id, expectedRevision: expectedRevision)
+        var record = decks[index]
+        guard record.revision < Int.max else { throw OnDeviceDeckEditing.Error.staleRevision }
+        record.name = deck.name; record.commander = deck.commander; record.entries = deck.entries
+        record.revision += 1; record.updatedAt = .now
+        var candidate = decks; candidate[index] = record
+        try persistDurably(candidate)
+        return record
+    }
+
+    func deleteLocalDurably(id: String, expectedRevision: Int) throws {
+        let index = try localIndex(id: id, expectedRevision: expectedRevision)
+        var candidate = decks; candidate.remove(at: index)
+        try persistDurably(candidate)
+    }
+
+    /// Copies imported/cloud records without mutating their identity or provenance.
+    func duplicateLocalDurably(_ record: DeckLibraryRecord, name: String) throws -> DeckLibraryRecord {
+        let deck = DeckList(name: name, commander: record.commander, entries: record.entries)
+        try OnDeviceDeckEditing.validateDraft(deck)
+        let copy = DeckLibraryRecord(name: name, format: record.format, commander: deck.commander,
+                                     entries: deck.entries, sourceURL: record.sourceURL)
+        try persistDurably([copy] + decks)
+        return copy
+    }
+
+    private func localIndex(id: String, expectedRevision: Int) throws -> Int {
+        guard let index = decks.firstIndex(where: { $0.id == id }) else { throw OnDeviceDeckEditing.Error.missingRecord }
+        guard !decks[index].isCloudBacked else { throw OnDeviceDeckEditing.Error.copyRequired }
+        guard decks[index].revision == expectedRevision else { throw OnDeviceDeckEditing.Error.staleRevision }
+        return index
+    }
+
+    private func persistDurably(_ candidate: [DeckLibraryRecord]) throws {
+        // Never replace an unreadable cache or another store's newer saved data.
+        guard !cacheReadFailed else { throw OnDeviceDeckEditing.Error.unreadableCache }
+        let disk = FileManager.default.fileExists(atPath: cacheURL.path) ? try Data(contentsOf: cacheURL) : nil
+        guard disk == cacheBaseline else { throw OnDeviceDeckEditing.Error.staleRevision }
         let data = try JSONEncoder.magicMobileDecks.encode(candidate)
         try FileManager.default.createDirectory(at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: cacheURL, options: .atomic)
+        cacheBaseline = data
         decks = candidate
-        return record
     }
 
     func importURL(_ rawValue: String, serverURL: String) async -> DeckLibraryRecord? {
@@ -440,15 +498,19 @@ final class DeckLibraryStore: ObservableObject {
     }
 
     private func loadCache() {
-        guard let data = try? Data(contentsOf: cacheURL),
-              let cached = try? JSONDecoder.magicMobileDecks.decode([DeckLibraryRecord].self, from: data) else { return }
-        decks = cached
+        guard FileManager.default.fileExists(atPath: cacheURL.path) else { return }
+        do {
+            let data = try Data(contentsOf: cacheURL)
+            decks = try JSONDecoder.magicMobileDecks.decode([DeckLibraryRecord].self, from: data)
+            cacheBaseline = data
+        } catch { cacheReadFailed = true; notice = "The saved deck library could not be read. It has not been replaced." }
     }
 
     private func persist() {
         guard let data = try? JSONEncoder.magicMobileDecks.encode(decks) else { return }
         try? FileManager.default.createDirectory(at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: cacheURL, options: .atomic)
+        do { try data.write(to: cacheURL, options: .atomic); cacheBaseline = data }
+        catch { }
     }
 
     private static var defaultCacheURL: URL {

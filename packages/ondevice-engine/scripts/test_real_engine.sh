@@ -10,11 +10,18 @@ find engine/xmage/src/main/java -name '*.java' | sort > build/adapter-sources.tx
 find engine/xmage/src/test/java -name '*.java' | sort > build/real-test-sources.txt
 javac -J-Xmx384m --release 17 -cp "$CP" -d build/engine @build/adapter-sources.txt
 javac -J-Xmx384m --release 17 -cp "$CP" -d build/test-real @build/real-test-sources.txt
+java -Xmx256m -Djava.awt.headless=true -cp "$CP:build/test-real" mage.cards.repository.MobileCardCriteriaTests \
+  2>&1 | tee evidence/MobileCardCriteriaTests.txt
 # Production classes first: stale adapter classes in a developer test folder must not override them.
-for suite in RealQueryTests RealControlledTurnTests RealControlPrivacyTests RealCommanderRulesTests RealPortraitProjectionTests; do
+for suite in RealQueryTests RealDeckValidationTests RealControlledTurnTests RealControlPrivacyTests RealCommanderRulesTests RealPortraitProjectionTests RealAIDiagnosticsTests; do
   java -Xmx384m -Djava.awt.headless=true -cp "$CP:build/test-real" "io.magicmobile.xmage.$suite" \
     2>&1 | tee "evidence/$suite.txt"
 done
+REPOSITORY_TEST=$(mktemp -d "$ROOT/build/card-repo-test-XXXXXX")
+(
+  cd "$REPOSITORY_TEST"
+  java -Xmx768m -Djava.awt.headless=true -cp "$CP:$ROOT/build/test-real" io.magicmobile.xmage.RealCardRepositoryTests
+) 2>&1 | tee "$ROOT/evidence/RealCardRepositoryTests.txt"
 for humans in one-human two-humans; do
   args=(java -Xmx768m -Djava.awt.headless=true -cp "$CP:build/test-real" io.magicmobile.xmage.RealAILifecycleTests)
   [[ "$humans" == one-human ]] || args+=(two-humans)

@@ -20,3 +20,6 @@ apps/xmage-gateway/smoke-report.json
 apps/xmage-gateway/smoke-report-*.json
 .vercel
 .env*
+
+# Python tooling caches.
+__pycache__/

@@ -3,7 +3,8 @@
     "includes": [
       {"pattern": "mage/.*"},
       {"pattern": "META-INF/services/.*"},
-      {"pattern": ".*\\.properties$"}
+      {"pattern": ".*\\.properties$"},
+      {"pattern": "tokens-database\\.txt"}
     ]
   }
 }

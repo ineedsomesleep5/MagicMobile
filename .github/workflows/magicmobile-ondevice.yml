@@ -1,10 +1,10 @@
 name: On-device engine gates
 on:
   pull_request:
-    paths: ['packages/ondevice-engine/**', 'apps/ios-ondevice/**', '.github/workflows/magicmobile-ondevice.yml']
+    paths: ['packages/ondevice-engine/**', 'apps/ios/**', 'apps/ios-ondevice/**', '.github/workflows/magicmobile-ondevice.yml']
   push:
     branches: [main]
-    paths: ['packages/ondevice-engine/**', 'apps/ios-ondevice/**', '.github/workflows/magicmobile-ondevice.yml']
+    paths: ['packages/ondevice-engine/**', 'apps/ios/**', 'apps/ios-ondevice/**', '.github/workflows/magicmobile-ondevice.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -32,6 +32,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: swift test --package-path packages/ondevice-engine/swift
+      - name: Test native iOS presentation and deck contracts
+        run: swift test --package-path apps/ios --jobs 2
       - run: bash packages/ondevice-engine/scripts/test_swift_close.sh
       - run: command -v xcodegen || brew install xcodegen
       - run: bash packages/ondevice-engine/scripts/test_ios_harness.sh

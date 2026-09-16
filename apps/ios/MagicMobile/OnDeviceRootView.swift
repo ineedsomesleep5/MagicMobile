@@ -13,16 +13,22 @@ struct OnDeviceRootView: View {
     @StateObject private var session: OnDeviceSession
     @StateObject private var setup: OnDeviceSetupModel
     @StateObject private var library = DeckLibraryStore()
+    @StateObject private var diagnostics = OnDeviceDiagnostics()
     @State private var selectedCard: ZoneCard?
     @State private var inspectedCard: ZoneCard?
     @State private var zone: InspectedZone?
-    @State private var selectedDeckID = "precon:token-triumph"
-    @State private var aiPrecon = PreconCatalog.all[1]
-    @State private var opponentCount = 1
-    @State private var playerCount = 2
-    @State private var playWithFriends = false
+    @AppStorage(OnDeviceSetupPreferences.deckKey) private var selectedDeckID = OnDeviceSetupPreferences.defaultDeckID
+    @AppStorage(OnDeviceSetupPreferences.aiDeckKey) private var aiPreconID = OnDeviceSetupPreferences.defaultAIDeckID
+    @AppStorage(OnDeviceSetupPreferences.aiCountKey) private var opponentCount = 1
+    @AppStorage(OnDeviceSetupPreferences.humanCountKey) private var playerCount = 2
+    @AppStorage(OnDeviceSetupPreferences.friendsKey) private var playWithFriends = false
+    @State private var showSetup = false
+    @State private var showAppearance = false
+    @State private var showUpdates = false
     @State private var showImport = false
     @State private var confirmLeave = false
+    @State private var showDiagnostics = false
+    @State private var confirmDeleteReport = false
 
     init() {
         let session = OnDeviceSession()
@@ -31,6 +37,7 @@ struct OnDeviceRootView: View {
     }
 
     private var activeGame: Bool { session.matchID != nil }
+    private var aiPrecon: PreconDeck? { PreconCatalog.all.first { $0.id == aiPreconID } }
     private var selectedDeck: DeckList? {
         if let precon = PreconCatalog.all.first(where: { "precon:\($0.id)" == selectedDeckID }) {
             return precon.deckList
@@ -39,22 +46,43 @@ struct OnDeviceRootView: View {
     }
     private var validName: Bool { (try? OnDeviceSetupModel.playerName(playerDisplayName)) != nil }
     private var mayStart: Bool {
-        validName && selectedDeck != nil && setup.identity != nil && !setup.isBusy && !setup.needsLeave
+        validName && selectedDeck != nil && (playWithFriends || aiPrecon != nil) && setup.identity != nil && !setup.isBusy && !setup.needsLeave
     }
 
-    var body: some View {
+    private var turnControl: NativeTurnControl {
+        NativeTurnControl(
+            canEndTurn: session.canEndTurn, canSkipResponses: session.canEndTurnSkippingResponses,
+            canSkipToMyTurn: session.canSkipToMyTurn, isAutoPassing: session.isAutoPassing,
+            status: session.autoPassStatus, endTurn: { session.endTurn() },
+            skipResponses: { session.endTurnSkippingResponses() }, skipToMyTurn: { session.skipToMyTurn() },
+            stop: { session.stopAutoPass() }
+        )
+    }
+
+    private var presentedContent: some View {
         ZStack {
             if activeGame {
                 game
             } else {
                 MenuBackgroundSurface(portraitModeEnabled: portraitModeEnabled).ignoresSafeArea()
-                setupContent
+                if showSetup || setup.needsLeave {
+                    setupContent
+                } else {
+                    TavernMainMenu(deckName: selectedDeck?.name ?? "Choose a deck", playerName: playerDisplayName,
+                                   play: { showSetup = true }, decks: { showImport = true },
+                                   settings: { showAppearance = true }, news: { showUpdates = true })
+                }
             }
         }
+        .preferredColorScheme(.dark)
+        .sheet(isPresented: $showAppearance) { AppearanceSettingsView(portraitModeEnabled: $portraitModeEnabled) }
+        .sheet(isPresented: $showUpdates) { NativeUpdateNewsView(upstreamCommit: setup.identity?.upstreamCommit) }
         .overlay(alignment: .top) { recoveryBanner }
-        .sheet(isPresented: $showImport) {
-            OnDeviceTextImportView(library: library, selectedDeckID: $selectedDeckID)
+        .environment(\.nativeTurnControl, turnControl)
+        .fullScreenCover(isPresented: $showImport) {
+            NativeDeckLibraryView(library: library, selectedDeckID: $selectedDeckID)
         }
+        .sheet(isPresented: $showDiagnostics) { diagnosticSheet }
         .background {
             if let multiplayer = setup.multiplayer {
                 OnDeviceGameCenterPresentation(multiplayer: multiplayer)
@@ -63,22 +91,53 @@ struct OnDeviceRootView: View {
         .confirmationDialog("Leave this game?", isPresented: $confirmLeave, titleVisibility: .visible) {
             Button("Leave game", role: .destructive) { closeGame() }
         } message: {
-            Text("This closes the current match. It cannot be resumed after leaving.")
+            Text(setup.multiplayer?.endpoint?.isHost == true
+                 ? "You are hosting. Leaving ends this match for everyone; it cannot be resumed."
+                 : "This closes the current match. It cannot be resumed after leaving.")
         }
-        .task {
-            MagicMobileOrientationController.shared.setPortraitModeEnabled(portraitModeEnabled)
-            setup.prepare()
-            setup.setSceneActive(scenePhase == .active)
+    }
+
+    private func preparePresentation() async {
+        MagicMobileOrientationController.shared.setPortraitModeEnabled(portraitModeEnabled)
+        restoreSetupPreferences()
+        setup.prepare()
+        setup.setSceneActive(scenePhase == .active)
+    }
+
+    private var lifecycleContent: some View {
+        presentedContent.task { await preparePresentation() }
+        .onChange(of: library.decks.map(\.id)) { _, _ in
+            if !activeGame { restoreSetupPreferences() }
         }
         .onChange(of: portraitModeEnabled) { _, enabled in
             MagicMobileOrientationController.shared.setPortraitModeEnabled(enabled)
         }
         .onChange(of: scenePhase) { _, phase in setup.setSceneActive(phase == .active) }
+        .onChange(of: session.errorMessage) { _, message in
+            if message != nil { Task { await setup.captureDiagnostics(in: diagnostics) } }
+        }
+        .onChange(of: setup.errorMessage) { _, message in
+            if message != nil { Task { await setup.captureDiagnostics(in: diagnostics) } }
+        }
+    }
+
+    var body: some View {
+        lifecycleContent
         .onChange(of: setup.multiplayer?.isConnected) { _, _ in setup.updateSessionForeground() }
         .onChange(of: setup.multiplayer?.isSuspended) { _, _ in setup.updateSessionForeground() }
         .onChange(of: setup.multiplayer?.endpoint?.matchID) { _, matchID in
             if matchID != nil { Task { await setup.attachMultiplayer() } }
         }
+        .onChange(of: session.snapshot?.bridgeRevision) { _, _ in refreshInspections() }
+    }
+
+    private func refreshInspections() {
+        guard let snapshot = session.snapshot else { zone = nil; inspectedCard = nil; return }
+        let cards = PortraitInteractionPolicy.authorizedCards(snapshot)
+        // Unscoped legacy callbacks must reopen after a state change rather than
+        // keep a moved card under a stale zone heading. The board uses exact refs.
+        zone = nil
+        if let current = inspectedCard { inspectedCard = cards.first { $0.id == current.id } }
     }
 
     private var game: some View {
@@ -95,7 +154,7 @@ struct OnDeviceRootView: View {
             },
             refreshGame: refresh, reconnectGame: refresh,
             checkBridgeHealth: { setup.localHealth() },
-            newGame: closeGame, quitGame: closeGame,
+            newGame: requestLeave, quitGame: requestLeave,
             loadProtocolDebug: { _ in
                 throw EngineError.invalidMessage("Protocol debug export is not available for this on-device session.")
             },
@@ -136,13 +195,20 @@ struct OnDeviceRootView: View {
     private var setupContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("MagicMobile").font(.largeTitle.bold()).foregroundStyle(MagicPalette.parchment)
+                HStack {
+                    Button { showSetup = false } label: { Label("Main menu", systemImage: "chevron.left") }
+                        .disabled(setup.isBusy || setup.needsLeave)
+                    Spacer()
+                    Button { showAppearance = true } label: { Image(systemName: "gearshape.fill") }
+                        .accessibilityLabel("Settings")
+                }
+                Text("Gather your table").font(.largeTitle.bold()).foregroundStyle(MagicPalette.parchment)
                 VStack(alignment: .leading, spacing: 12) {
                     TextField("Player name", text: $playerDisplayName)
                         .textContentType(.nickname).autocorrectionDisabled()
                         .textFieldStyle(GameTextFieldStyle()).accessibilityIdentifier("ondevice.playerName")
                     Text("Choose a name with 1–24 characters.").font(.caption).foregroundStyle(.secondary)
-                    Toggle("Portrait layout", isOn: $portraitModeEnabled)
+                    PortraitModeToggle(isOn: $portraitModeEnabled)
                     Picker("Your deck", selection: $selectedDeckID) {
                         Section("Included precons") {
                             ForEach(PreconCatalog.all) { Text($0.name).tag("precon:\($0.id)") }
@@ -151,7 +217,7 @@ struct OnDeviceRootView: View {
                             ForEach(library.decks) { Text($0.name).tag("local:\($0.id)") }
                         }
                     }
-                    Button { showImport = true } label: { Label("Import deck text", systemImage: "doc.badge.plus") }
+                    Button { showImport = true } label: { Label("Browse, import or edit decks", systemImage: "rectangle.stack.badge.plus") }
                         .buttonStyle(MagicSecondaryButtonStyle(fillsWidth: true, compact: true))
                 }
                 .magicPanel(.leather, prominence: .elevated, cornerRadius: 14, padding: 16)
@@ -180,8 +246,8 @@ struct OnDeviceRootView: View {
                     } else {
                         Stepper("AI opponents: \(opponentCount)", value: $opponentCount, in: 1...3)
                             .disabled(setup.isBusy || setup.needsLeave)
-                        Picker("AI deck", selection: $aiPrecon) {
-                            ForEach(PreconCatalog.all) { Text($0.name).tag($0) }
+                        Picker("AI deck", selection: $aiPreconID) {
+                            ForEach(PreconCatalog.all) { Text($0.name).tag($0.id) }
                         }.disabled(setup.isBusy || setup.needsLeave)
                         Text("XMage AI · Normal").font(.caption).foregroundStyle(.secondary)
                         Button("Start game") { startAI() }
@@ -199,6 +265,8 @@ struct OnDeviceRootView: View {
                     Button("Retry loading local catalogue") { setup.prepare() }
                         .buttonStyle(MagicSecondaryButtonStyle(fillsWidth: true, compact: true))
                 }
+                Button("Engine error report") { showDiagnostics = true }
+                    .accessibilityIdentifier("ondevice.diagnostics")
             }
             .foregroundStyle(MagicPalette.parchment)
             .frame(maxWidth: 640).padding(16).frame(maxWidth: .infinity)
@@ -232,6 +300,10 @@ struct OnDeviceRootView: View {
                     }
                     .disabled(setup.isBusy || session.isWorking)
                 }
+                if setup.errorMessage != nil || session.errorMessage != nil {
+                    Button("Review engine error report") { showDiagnostics = true }
+                        .accessibilityIdentifier("ondevice.failureReport")
+                }
             }
             .foregroundStyle(MagicPalette.parchment)
             .magicPanel(.iron, prominence: .elevated, cornerRadius: 12, padding: 12)
@@ -240,7 +312,8 @@ struct OnDeviceRootView: View {
     }
 
     private func startAI() {
-        guard let deck = selectedDeck else { return }
+        diagnostics.beginAttempt()
+        guard let deck = selectedDeck, let aiPrecon else { return }
         Task {
             do { playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName) }
             catch { setup.errorMessage = error.localizedDescription; return }
@@ -248,16 +321,66 @@ struct OnDeviceRootView: View {
         }
     }
 
+    private var diagnosticSheet: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Only the latest engine error report is kept on this phone, excluded from backups. Error text may contain private card information. Nothing is uploaded automatically; review it before sharing.")
+                    if let error = diagnostics.errorMessage { Text(error).foregroundStyle(.red) }
+                    if let report = diagnostics.report {
+                        Text(diagnostics.isHistorical ? "Saved report from an earlier session" : "Latest local incident")
+                            .font(.headline)
+                        ShareLink(item: report) { Label("Share report", systemImage: "square.and.arrow.up") }
+                            .accessibilityIdentifier("ondevice.shareReport")
+                    }
+                    if diagnostics.report != nil || diagnostics.errorMessage != nil {
+                        Button("Delete saved report", role: .destructive) { confirmDeleteReport = true }
+                    }
+                    if let report = diagnostics.report {
+                        Text(report).font(.caption.monospaced()).textSelection(.enabled)
+                    } else if diagnostics.errorMessage == nil {
+                        Text("No engine exception has been captured yet. Try starting the match again, then return here if it stops.")
+                    }
+                }.padding()
+            }
+            .navigationTitle("Engine error report").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { showDiagnostics = false } } }
+            .task { await setup.captureDiagnostics(in: diagnostics) }
+            .confirmationDialog("Delete the local engine report?", isPresented: $confirmDeleteReport, titleVisibility: .visible) {
+                Button("Delete report", role: .destructive) {
+                    Task { await setup.clearDiagnostics(in: diagnostics) }
+                }
+            } message: { Text("This removes the saved report and its in-memory copy. Reports you already shared are not removed.") }
+        }
+    }
+
     private func startMatchmaking() {
         guard let deck = selectedDeck else { return }
         do {
             playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName)
+            diagnostics.beginAttempt()
             try setup.startMatchmaking(name: playerDisplayName, deck: deck, playerCount: playerCount)
         } catch { setup.errorMessage = error.localizedDescription }
     }
 
     private func refresh() {
         Task { await setup.perform { try await session.refresh(); setup.updateSessionForeground() } }
+    }
+
+    private func restoreSetupPreferences() {
+        let selected = OnDeviceSetupPreferences.normalize(
+            .init(deckID: selectedDeckID, aiDeckID: aiPreconID, aiOpponents: opponentCount,
+                  humanPlayers: playerCount, friends: playWithFriends),
+            deckIDs: Set(PreconCatalog.all.map { "precon:\($0.id)" } + library.decks.map { "local:\($0.id)" }),
+            aiDeckIDs: PreconCatalog.all.map(\.id)
+        )
+        selectedDeckID = selected.deckID; aiPreconID = selected.aiDeckID
+        opponentCount = selected.aiOpponents; playerCount = selected.humanPlayers
+    }
+
+    private func requestLeave() {
+        guard !setup.isBusy, !session.isWorking else { return }
+        confirmLeave = true
     }
 
     private func closeGame() {
@@ -348,16 +471,17 @@ private final class OnDeviceSetupModel: ObservableObject {
             }
             let client = try await runtime.makeClient(identity: identity)
             aiClient = client
-            let created = try await client.create(configuration: .object(["seats": .array(seats)]))
+            let created = try await runtime.create(client: client, configuration: .object(["seats": .array(seats)]))
             guard let matchID = created["matchId"]?.string, !matchID.isEmpty else {
                 throw EngineError.invalidMessage("XMage did not return a match ID. Close the runtime before trying again.")
             }
             aiMatchID = matchID
             updateSessionForeground()
-            try await session.attach(client: client, matchID: matchID, seatID: "player1", close: { [self] in try await closeAI() })
+            try await session.attach(client: client, matchID: matchID, seatID: "player1", allowsLocalAutoYield: true, close: { [self] in try await closeAI() })
             status = "Game started"
         } catch {
             errorMessage = error.localizedDescription
+            if !runtime.isOpen, aiMatchID == nil { aiClient = nil }
             status = needsLeave ? "Game startup interrupted. Refresh or leave before starting again." : "Unable to start local game"
         }
     }
@@ -440,6 +564,16 @@ private final class OnDeviceSetupModel: ObservableObject {
             : "Local runtime \(runtime.isOpen ? "open" : "closed"); capabilities \(runtime.capabilities == nil ? "unavailable" : "loaded")."
         return EngineHealth(status: connected ? "ok" : "unavailable", reason: reason,
                             checkedAt: ISO8601DateFormatter().string(from: Date()), recoveryAction: nil)
+    }
+
+    func captureDiagnostics(in store: OnDeviceDiagnostics) async {
+        await store.capture(status: session.status) { try await runtime.diagnosticReport() }
+    }
+
+    func clearDiagnostics(in store: OnDeviceDiagnostics) async {
+        do {
+            try await store.clear(engine: { try await runtime.clearDiagnostics() })
+        } catch { store.errorMessage = "Could not delete the local engine report: \(error.localizedDescription)" }
     }
 }
 

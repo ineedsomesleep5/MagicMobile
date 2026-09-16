@@ -11,13 +11,27 @@ final class OnDeviceSession: ObservableObject {
     @Published private(set) var pendingActionID: String?
     @Published private(set) var pendingCardID: String?
     @Published private(set) var isWorking = false
+    @Published private(set) var isClosing = false
     @Published private(set) var status = "Ready"
     @Published private(set) var errorMessage: String?
+    @Published private(set) var isAutoPassing = false
+    @Published private(set) var autoPassStatus = ""
+    @Published private var activeRefreshes = 0
+    private var allowsLocalAutoYield = false
+    private var responding = false
+    private var waitingForPolls = false
+    private var yieldPolicy = OnDeviceYieldPolicy()
+    private var yieldTask: Task<Void, Never>?
+    private var yieldGeneration = UUID()
     private var client: EngineClient?
     private var poll: MatchPoll?
+    private var messageLog = OnDeviceMessageLog()
     private var pollingTask: Task<Void, Never>?
     private var closeEndpoint: (@MainActor () async throws -> Void)?
     private var epoch = UUID()
+    private var visibilityEpoch = UUID()
+    private var refreshSequence: UInt64 = 0
+    private var appliedRefreshSequence: UInt64 = 0
     private var isForeground = true
     private var automaticPolling = true
     private struct Submission {
@@ -29,33 +43,187 @@ final class OnDeviceSession: ObservableObject {
     private var pending: Submission?
 
     func attach(client: EngineClient, matchID: String, seatID: String, autoPoll: Bool = true,
+                allowsLocalAutoYield: Bool = false,
                 close: @escaping @MainActor () async throws -> Void) async throws {
         guard self.client == nil, !isWorking else { throw EngineError.invalidMessage("Close the active game first") }
         self.client = client; self.matchID = matchID; self.seatID = seatID
+        // Root opts in only for the local human/native route, never a peer session.
+        self.allowsLocalAutoYield = allowsLocalAutoYield
+        autoPassStatus = ""
         closeEndpoint = close; automaticPolling = autoPoll; epoch = UUID()
+        refreshSequence = 0; appliedRefreshSequence = 0; isClosing = false
+        messageLog = OnDeviceMessageLog()
         status = "Starting local game"
         try await refresh()
         beginPolling()
     }
 
     func refresh() async throws {
-        guard let client, let matchID, let seatID, isForeground else { return }
+        do { try await performRefresh() }
+        catch { stopAutoPass(reason: OnDeviceYieldPolicy.StopReason.interrupted.message); throw error }
+    }
+
+    private func performRefresh() async throws {
+        guard let client, let matchID, let seatID, isForeground, !isClosing, !responding, !waitingForPolls,
+              !isAutoPassing || activeRefreshes == 0 else { return }
+        activeRefreshes += 1
+        defer { activeRefreshes -= 1 }
         let token = epoch
-        let next = try await client.poll(matchID: matchID, seatID: seatID, after: poll?.revision ?? 0)
-        guard epoch == token, self.matchID == matchID else { return }
+        let visibility = visibilityEpoch
+        refreshSequence += 1
+        let sequence = refreshSequence
+        let next: MatchPoll
+        do {
+            next = try await client.poll(matchID: matchID, seatID: seatID, after: poll?.revision ?? 0)
+        } catch {
+            // Obsolete reads must not interrupt a replacement or resumed session.
+            guard epoch == token, visibilityEpoch == visibility, isForeground,
+                  !isClosing, !Task.isCancelled else { return }
+            throw error
+        }
+        guard epoch == token, self.matchID == matchID, visibilityEpoch == visibility,
+              isForeground, !isClosing, !Task.isCancelled else { return }
         guard next.matchID == matchID, next.seatID == seatID else { throw EngineError.unboundPeer }
-        if let poll, next.revision < poll.revision { return }
-        if next.snapshot != nil { snapshot = try OnDeviceSnapshotAdapter.snapshot(next, expectedSeatID: seatID) }
+        // Submission can change at the same mailbox revision. Do not let an older
+        // in-flight poll restore a choice after a newer response hid it.
+        if let poll, next.revision < poll.revision ||
+            (next.revision == poll.revision && sequence <= appliedRefreshSequence) { return }
+        var nextLog = messageLog
+        try nextLog.ingest(next)
+        if next.phase == "closed" {
+            snapshot = nil
+            nextLog = OnDeviceMessageLog()
+            pending = nil; pendingActionID = nil; pendingCardID = nil
+        } else if next.snapshot != nil {
+            snapshot = try OnDeviceSnapshotAdapter.snapshot(next, expectedSeatID: seatID, log: nextLog.entries)
+        }
+        messageLog = nextLog
         poll = next
+        appliedRefreshSequence = max(appliedRefreshSequence, sequence)
         if let pending, next.prompt?.id != pending.prompt.id || next.prompt?.revision != pending.prompt.revision {
             self.pending = nil; pendingActionID = nil; pendingCardID = nil
         }
-        status = next.phase == "ended" ? "Game complete" : next.phase == "failed" ? "Game stopped" : "Live"
+        switch next.phase {
+        case "ended": status = "Game complete"
+        case "failed": status = "Game stopped"
+        case "closed": status = "Game closed"
+        case "starting": status = "Starting local game"
+        default: status = "Live"
+        }
         errorMessage = next.raw["failure"]?["message"]?.string
+        if errorMessage != nil { stopAutoPass(reason: OnDeviceYieldPolicy.StopReason.interrupted.message) }
+        if isAutoPassing {
+            if let context = yieldContext {
+                if case .stop(let reason) = yieldPolicy.evaluate(context, now: ProcessInfo.processInfo.systemUptime) {
+                    stopAutoPass(reason: reason.message)
+                }
+            } else { stopAutoPass(reason: OnDeviceYieldPolicy.StopReason.interrupted.message) }
+        }
         beginPolling()
     }
 
+    var canEndTurn: Bool {
+        canStartYield(.safeEndTurn)
+    }
+
+    var canEndTurnSkippingResponses: Bool { canStartYield(.endTurnSkippingResponses) }
+    var canSkipToMyTurn: Bool { canStartYield(.untilMyTurn) }
+
+    private func canStartYield(_ mode: OnDeviceYieldPolicy.Mode) -> Bool {
+        guard !isAutoPassing, !isWorking, !isClosing, activeRefreshes == 0,
+              pending == nil, pendingActionID == nil, errorMessage == nil, let context = yieldContext else { return false }
+        return OnDeviceYieldPolicy.canStart(context, mode: mode)
+    }
+
+    /// Cancellable local scheduling of ordinary passes, not an engine skip-turn command.
+    func endTurn() {
+        startYield(.safeEndTurn)
+    }
+
+    func endTurnSkippingResponses() { startYield(.endTurnSkippingResponses) }
+    func skipToMyTurn() { startYield(.untilMyTurn) }
+
+    private func startYield(_ mode: OnDeviceYieldPolicy.Mode) {
+        guard canStartYield(mode), let context = yieldContext,
+              yieldPolicy.start(context, now: ProcessInfo.processInfo.systemUptime, mode: mode) else { return }
+        isAutoPassing = true
+        autoPassStatus = mode.status
+        yieldGeneration = UUID()
+        let generation = yieldGeneration
+        let token = epoch
+        yieldTask = Task { [weak self] in
+            do {
+                while !Task.isCancelled {
+                    try await Task.sleep(for: .milliseconds(300))
+                    guard let self, self.epoch == token, self.yieldGeneration == generation, self.isAutoPassing else { return }
+                    guard !self.isWorking, self.activeRefreshes == 0 else { continue }
+                    // A new authenticated poll, never just the rendered snapshot, authorizes each pass.
+                    try await self.refresh()
+                    guard !Task.isCancelled, self.epoch == token, self.yieldGeneration == generation,
+                          self.isAutoPassing else { return }
+                    guard !self.isWorking, self.activeRefreshes == 0 else { continue }
+                    guard let context = self.yieldContext else {
+                        self.stopAutoPass(reason: OnDeviceYieldPolicy.StopReason.interrupted.message); return
+                    }
+                    switch self.yieldPolicy.evaluate(context, now: ProcessInfo.processInfo.systemUptime) {
+                    case .wait: continue
+                    case .stop(let reason): self.stopAutoPass(reason: reason.message); return
+                    case .pass(let identity):
+                        guard self.pending == nil, let prompt = self.poll?.prompt,
+                              prompt.id == identity.id, prompt.revision == identity.revision,
+                              let snapshot = self.snapshot else { continue }
+                        self.yieldPolicy.recordPass(identity)
+                        let command = GameCommand(type: "pass_priority", gameId: context.matchID,
+                                                  playerId: context.viewerID, promptId: prompt.id,
+                                                  messageId: Int(prompt.revision), expectedBridgeRevision: snapshot.bridgeRevision)
+                        try await self.submit(command, label: String(localized: "Pass priority"), actionID: "auto-pass-\(prompt.id)")
+                    }
+                }
+            } catch {
+                guard let self, self.yieldGeneration == generation else { return }
+                // Keep uncertain pending responses for the existing explicit retry UI.
+                // Scheduling never retries, guesses a new prompt, or changes request identity.
+                self.stopAutoPass(reason: OnDeviceYieldPolicy.StopReason.interrupted.message)
+            }
+        }
+    }
+
+    func stopAutoPass() {
+        stopAutoPass(reason: String(localized: "Auto-pass stopped. A pass already sent may still finish."))
+    }
+
+    private func stopAutoPass(reason: String) {
+        guard isAutoPassing || yieldTask != nil else { return }
+        yieldGeneration = UUID(); yieldPolicy.stop(); isAutoPassing = false
+        yieldTask?.cancel(); yieldTask = nil; autoPassStatus = reason
+    }
+
+    private var yieldContext: OnDeviceYieldPolicy.Context? {
+        guard let poll, let root = poll.snapshot, let view = root["gameView"],
+              let viewer = root["enginePlayerId"]?.string, view["myPlayerId"]?.string == viewer,
+              let turn = view["turn"]?.integer, let active = view["activePlayerId"]?.string,
+              let stack = view["stack"]?.object, let controls = root["controlledPlayerViews"]?.object,
+              let players = view["players"]?.array,
+              let owner = players.first(where: { $0["playerId"]?.string == viewer }),
+              owner["isHuman"]?.bool == true,
+              let priority = owner["hasPriority"]?.bool, let timer = owner["timerActive"]?.bool else { return nil }
+        let prompt = poll.prompt.map {
+            OnDeviceYieldPolicy.Prompt(id: $0.id, revision: $0.revision, kind: $0.kind,
+                                       selectMode: $0.payload["selectMode"]?.string,
+                                       allowsBoolean: $0.responseTypes.contains("boolean"), submitted: $0.submitted,
+                                       manaPlayerID: $0.payload["manaPlayerId"]?.string)
+        }
+        // `controlled` is only a viewer marker upstream, not turn-control proof.
+        // A routed self-priority prompt and active timer are required to send.
+        let selfAuthority = controls.isEmpty && (!priority || timer) && (prompt == nil || priority)
+        return .init(matchID: poll.matchID, seatID: poll.seatID, viewerID: viewer, activePlayerID: active,
+                     turn: turn, phase: poll.phase, localHumanEnabled: allowsLocalAutoYield,
+                     foreground: isForeground && !isClosing, emptyStack: stack.isEmpty,
+                     selfAuthority: selfAuthority, resyncRequired: poll.resyncRequired, prompt: prompt)
+    }
+
     func send(action: LegalAction) async throws {
+        stopAutoPass()
         guard let snapshot, let current = snapshot.legalActions?.first(where: { $0.id == action.id }) else {
             throw EngineError.invalidMessage("This action is no longer available")
         }
@@ -75,8 +243,17 @@ final class OnDeviceSession: ObservableObject {
     }
 
     func send(_ command: GameCommand, label: String, actionID: String) async throws {
+        stopAutoPass()
+        try await submit(command, label: label, actionID: actionID)
+    }
+
+    private func submit(_ command: GameCommand, label: String, actionID: String) async throws {
+        let token = epoch
+        try await acquireResponseSlot()
+        defer { if epoch == token { isWorking = false; responding = false; waitingForPolls = false } }
         guard client != nil, let matchID, seatID != nil, let snapshot, let prompt = poll?.prompt,
-              !isWorking, pendingActionID == nil, isForeground, !snapshot.isCompleted,
+              !isClosing, pendingActionID == nil, isForeground, !snapshot.isCompleted,
+              !["ended", "failed", "closed"].contains(poll?.phase ?? ""),
               command.gameId == matchID, command.playerId == snapshot.viewerID,
               command.expectedBridgeRevision == nil || command.expectedBridgeRevision == snapshot.bridgeRevision else {
             throw EngineError.invalidMessage("The game or decision changed. Refresh before choosing again.")
@@ -84,28 +261,75 @@ final class OnDeviceSession: ObservableObject {
         let answer = try OnDevicePromptAdapter.answer(for: command, prompt: prompt, viewerPlayerID: snapshot.viewerID)
         pending = Submission(prompt: prompt, answer: answer, requestID: UUID(), label: label)
         pendingActionID = actionID; pendingCardID = command.cardInstanceId ?? command.sourceInstanceId
-        try await retryPending()
+        try await performPendingResponse()
     }
 
     func retryPending() async throws {
-        guard let pending, let client, let matchID, let seatID, isForeground, !isWorking else {
+        stopAutoPass()
+        let requestID = pending?.requestID
+        let token = epoch
+        try await acquireResponseSlot()
+        defer { if epoch == token { isWorking = false; responding = false; waitingForPolls = false } }
+        guard let pending, pending.requestID == requestID,
+              poll?.prompt?.id == pending.prompt.id, poll?.prompt?.revision == pending.prompt.revision,
+              !["ended", "failed", "closed"].contains(poll?.phase ?? "") else {
             throw EngineError.invalidMessage("There is no pending response to retry")
         }
-        isWorking = true
+        try await performPendingResponse()
+    }
+
+    /// Reserve the response lane before suspending so periodic/manual refreshes
+    /// cannot overtake the tap. Existing polls finish; callers then revalidate
+    /// their original command or retry identity against the newly applied poll.
+    private func acquireResponseSlot() async throws {
+        guard !isWorking, !isClosing, isForeground, client != nil else {
+            throw EngineError.invalidMessage("Wait for the current operation before responding")
+        }
         let token = epoch
-        defer { if epoch == token { isWorking = false } }
+        isWorking = true
+        waitingForPolls = true
         do {
+            while activeRefreshes > 0 {
+                try Task.checkCancellation()
+                guard epoch == token, isForeground, !isClosing else {
+                    throw EngineError.invalidMessage("The game changed while waiting to respond")
+                }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            try Task.checkCancellation()
+            guard epoch == token, isForeground, !isClosing else {
+                throw EngineError.invalidMessage("The game changed while waiting to respond")
+            }
+        } catch {
+            if epoch == token { isWorking = false; waitingForPolls = false }
+            throw error
+        }
+    }
+
+    private func performPendingResponse() async throws {
+        guard let pending, let client, let matchID, let seatID else {
+            throw EngineError.invalidMessage("There is no pending response to retry")
+        }
+        let token = epoch
+        var responseAcknowledged = false
+        do {
+            responding = true
+            waitingForPolls = false
             _ = try await client.respond(matchID: matchID, seatID: seatID, prompt: pending.prompt,
                                          answer: pending.answer, requestID: pending.requestID)
+            responseAcknowledged = true
+            responding = false
             guard epoch == token else { return }
             errorMessage = nil; status = "\(pending.label) sent; waiting for XMage"
             try await refresh()
         } catch {
+            responding = false
             if epoch == token {
                 errorMessage = error.localizedDescription
                 // An engine rejection is certain. A transport timeout or busy RPC is not:
                 // retain the exact request ID and answer for a safe user-triggered retry.
-                if case EngineError.rejected(let code, _) = error, code != "rpc_busy" {
+                // A rejected follow-up poll cannot retract an acknowledged answer.
+                if !responseAcknowledged, case EngineError.rejected(let code, _) = error, code != "rpc_busy" {
                     self.pending = nil; pendingActionID = nil; pendingCardID = nil
                     try? await refresh()
                 }
@@ -115,38 +339,55 @@ final class OnDeviceSession: ObservableObject {
     }
 
     func close() async throws {
+        stopAutoPass()
         guard !isWorking else { throw EngineError.invalidMessage("Wait for the current operation before closing") }
         guard let closeEndpoint else { return }
-        isWorking = true; pollingTask?.cancel(); pollingTask = nil
+        isWorking = true; isClosing = true; pollingTask?.cancel(); pollingTask = nil
+        status = "Closing game"
         epoch = UUID()
         defer { isWorking = false }
-        try await closeEndpoint()
+        do { try await closeEndpoint() }
+        catch {
+            errorMessage = error.localizedDescription
+            status = "Closing interrupted. Leave again to retry cleanup."
+            throw error
+        }
+        isClosing = false
+        refreshSequence = 0; appliedRefreshSequence = 0
         epoch = UUID(); client = nil; matchID = nil; seatID = nil; poll = nil; snapshot = nil
+        messageLog = OnDeviceMessageLog()
         self.closeEndpoint = nil; pending = nil; pendingActionID = nil; pendingCardID = nil; errorMessage = nil; status = "Ready"
     }
 
     func setForeground(_ value: Bool) {
+        if isForeground != value { visibilityEpoch = UUID() }
+        if !value { stopAutoPass() }
         isForeground = value
         if value { beginPolling() }
-        else { pollingTask?.cancel(); pollingTask = nil; status = "Paused while this app is in the background" }
+        else {
+            pollingTask?.cancel(); pollingTask = nil
+            if !isClosing, client != nil, !["ended", "failed", "closed"].contains(poll?.phase ?? "") {
+                status = "Paused while this app is in the background"
+            }
+        }
     }
 
     private func beginPolling() {
-        guard pollingTask == nil, automaticPolling, client != nil, isForeground,
+        guard pollingTask == nil, automaticPolling, client != nil, isForeground, !isClosing,
               !["ended", "failed", "closed"].contains(poll?.phase ?? "") else { return }
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
                 do {
                     try await Task.sleep(for: .milliseconds(300))
                     guard let self, !Task.isCancelled else { return }
+                    if self.isAutoPassing { continue }
                     try await self.refresh()
                     guard !Task.isCancelled else { return }
                     if ["ended", "failed", "closed"].contains(self.poll?.phase ?? "") {
                         self.pollingTask = nil
                         return
                     }
-                } catch is CancellationError { return }
-                catch {
+                } catch {
                     guard let self, !Task.isCancelled else { return }
                     self.pollingTask = nil
                     self.errorMessage = error.localizedDescription; self.status = "Updates interrupted. Refresh to retry."

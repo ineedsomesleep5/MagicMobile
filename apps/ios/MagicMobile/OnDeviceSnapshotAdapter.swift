@@ -5,7 +5,7 @@ import MagicMobileOnDevice
 enum OnDeviceSnapshotAdapter {
     private typealias J = MagicMobileOnDevice.JSONValue
 
-    static func snapshot(_ poll: MatchPoll, expectedSeatID: String) throws -> GameSnapshot {
+    static func snapshot(_ poll: MatchPoll, expectedSeatID: String, log: [GameLogEntry] = []) throws -> GameSnapshot {
         guard poll.seatID == expectedSeatID, let root = poll.snapshot,
               root["schema"]?.string == "xmage-gameview-v1", let view = root["gameView"],
               let viewer = root["enginePlayerId"]?.string, UUID(uuidString: viewer) != nil,
@@ -127,14 +127,27 @@ enum OnDeviceSnapshotAdapter {
         } + decodedXmage.stack.compactMap(\.sourceCard)
             + (decodedXmage.exileZones + decodedXmage.revealed + decodedXmage.lookedAt + decodedXmage.companion).flatMap(\.cards)
         let prompt = poll.prompt.flatMap { $0.submitted ? nil : $0 }
-        let presentation = try prompt.map { try OnDevicePromptAdapter.presentation($0, viewerPlayerID: viewer, cards: allCards, players: decodedPlayers) }
+        let presentation = try prompt.map { prompt in
+            var attackerID: String?
+            if prompt.kind == "SELECT", prompt.payload["selectMode"]?.string == "attackers" {
+                guard let active = view["activePlayerId"]?.string, ids.contains(active),
+                      active == viewer || (root["controlledPlayerViews"]?[active]?["myPlayerId"]?.string == active
+                        && root["controlledPlayerViews"]?[active]?["activePlayerId"]?.string == active) else {
+                    throw EngineError.invalidMessage("Missing or unauthorized acting attacker identity")
+                }
+                // ViewProjector emits this map only for the current, non-nested controller.
+                attackerID = active
+            }
+            return try OnDevicePromptAdapter.presentation(prompt, viewerPlayerID: viewer, cards: allCards,
+                                                          players: decodedPlayers, actingAttackerPlayerID: attackerID)
+        }
         let cardActions: [LegalAction] = try decode(.array(playability.actions))
         return GameSnapshot(
             id: poll.matchID, source: "xmage-ondevice", activePlayerId: view["activePlayerId"]?.string,
             phase: view["phase"]?.string ?? poll.phase, step: view["step"]?.string,
             turn: Int(view["turn"]?.integer ?? 0), priorityPlayerId: priority?.string,
             waitingOnPlayerId: prompt == nil ? nil : viewer, promptText: presentation?.envelope.message,
-            players: decodedPlayers, log: [], legalActions: cardActions + (presentation?.legalActions ?? []),
+            players: decodedPlayers, log: log, legalActions: cardActions + (presentation?.legalActions ?? []),
             choicePrompt: nil, promptEnvelope: nil, promptEnvelopeV2: presentation?.envelope,
             startupOpeningPrompts: nil, xmage: decodedXmage, engineHealth: nil,
             bridgeRevision: Int(poll.revision), xmageCycle: view["gameCycle"]?.integer.map(Int.init),
@@ -199,12 +212,16 @@ enum OnDeviceSnapshotAdapter {
         if !subs.isEmpty { typeLine += " — " + subs.map { $0.capitalized }.joined(separator: " ") }
         let rules = hidden ? "" : (value["rules"]?.array ?? []).compactMap(\.string).joined(separator: "\n")
         var result: [String: J] = ["instanceId": .string(id), "card": .object([
-            "name": .string(name), "typeLine": .string(typeLine), "oracleText": .string(rules)
+            "name": .string(name), "typeLine": .string(typeLine), "oracleText": .string(rules),
+            "manaCost": printedManaCost(value).map(J.string) ?? .null
         ])]
         for key in ["tapped", "summoningSickness", "damage"] { result[key] = value[key] }
         result["attachedToInstanceId"] = value["attachedTo"]
         result["cardIcons"] = .array((value["cardIcons"]?.array ?? []).map { icon in
-            .object(["iconType": icon["cardIconType"] ?? .string(""), "text": icon["text"] ?? .null, "hint": icon["hint"] ?? .null])
+            .object(["iconType": icon["cardIconType"] ?? .string(""),
+                     "category": icon["category"] ?? XmageCardIcon.nativeCategory(for: icon["cardIconType"]?.string ?? "").map(J.string) ?? .null,
+                     "resourceName": icon["resourceName"] ?? .null,
+                     "text": icon["text"] ?? .null, "hint": icon["hint"] ?? .null])
         })
         if !hidden {
             if let power = value["power"]?.string, !power.isEmpty { result["reportedPower"] = .string(power) }
@@ -222,6 +239,20 @@ enum OnDeviceSnapshotAdapter {
         .object(Dictionary(uniqueKeysWithValues: [("W", "white"), ("U", "blue"), ("B", "black"),
                                                  ("R", "red"), ("G", "green"), ("C", "colorless")]
             .map { ($0.0, value?[$0.1] ?? .integer(0)) }))
+    }
+
+    /// The pinned CardView stores ordered symbol arrays, not a `manaCost` string.
+    /// Keep the two printed halves separate; never consult rules, mana value or payment text.
+    static func printedManaCost(_ value: MagicMobileOnDevice.JSONValue) -> String? {
+        guard value["hideInfo"]?.bool != true, value["faceDown"]?.bool != true else { return nil }
+        var halves: [String] = []
+        for key in ["manaCostLeftStr", "manaCostRightStr"] {
+            guard let raw = value[key] else { continue }
+            guard let symbols = raw.array, symbols.allSatisfy({ $0.string != nil }) else { return nil }
+            let cost = symbols.compactMap(\.string).joined()
+            if !cost.isEmpty { halves.append(cost) }
+        }
+        return halves.isEmpty ? nil : halves.joined(separator: " // ")
     }
 
     private static func playableObjects(view: J, players: [J], extraZones: [(String, [J])], prompt: EnginePrompt?, viewer: String) throws -> (objects: [J], actions: [J]) {
@@ -251,20 +282,28 @@ enum OnDeviceSnapshotAdapter {
                     guard let abilityID = row["id"]?.string, let label = row["value"]?.string else {
                         throw EngineError.invalidMessage("Incomplete engine playable ability")
                     }
-                    abilities.append(.object(["id": .string(abilityID), "label": .string(label), "category": .string(category)]))
+                    abilities.append(.object(["id": .string(abilityID), "label": .string(EngineDisplayText.label(label)), "category": .string(category)]))
                 }
-                guard !rows.isEmpty, let prompt, !prompt.submitted, prompt.responseTypes.contains("uuid"),
-                      (prompt.kind == "SELECT" && prompt.payload["selectMode"]?.string == "priority") ||
-                      (["PLAY_MANA", "PLAY_X_MANA"].contains(prompt.kind) && category == "basicManaAbilities") else { continue }
-                // Selecting an object lets XMage ask for the exact ability when needed.
-                // Never turn an ability label or card type into an invented response UUID.
-                actions.append(.object([
-                    "id": .string("\(prompt.id):\(category):\(id)"), "type": .string(commandType),
-                    "playerId": .string(viewer), "label": rows[0]["value"]!,
-                    "cardInstanceId": .string(id), "sourceInstanceId": .string(id), "sourceZone": .string(zone),
-                    "cardName": card["card"]?["name"] ?? .string("Card"),
-                    "promptId": .string(prompt.id), "messageId": .integer(prompt.revision)
-                ]))
+                guard !rows.isEmpty, let prompt, !prompt.submitted, prompt.responseTypes.contains("uuid") else { continue }
+                let priority = prompt.kind == "SELECT" && prompt.payload["selectMode"]?.string == "priority"
+                let paying = ["PLAY_MANA", "PLAY_X_MANA"].contains(prompt.kind)
+                // New native payloads distinguish mana abilities inside `other`.
+                // Older payloads identify only BasicManaAbility; never guess from a label.
+                let manaRows = rows.filter { $0["manaAbility"]?.bool ?? (category == "basicManaAbilities") }
+                let otherRows = rows.filter { !($0["manaAbility"]?.bool ?? (category == "basicManaAbilities")) }
+                for (actionType, actionRows) in [("make_mana", manaRows), (commandType, otherRows)] {
+                    guard !actionRows.isEmpty, priority || (paying && actionType == "make_mana") else { continue }
+                    // Selecting an object lets XMage ask for the exact ability when needed.
+                    // Never turn an ability label or card type into an invented response UUID.
+                    let actionID = "\(prompt.id):\(category):\(id)" + (actionType == commandType ? "" : ":\(actionType)")
+                    actions.append(.object([
+                        "id": .string(actionID), "type": .string(actionType),
+                        "playerId": .string(viewer), "label": .string(EngineDisplayText.label(actionRows[0]["value"]!.string!)),
+                        "cardInstanceId": .string(id), "sourceInstanceId": .string(id), "sourceZone": .string(zone),
+                        "cardName": card["card"]?["name"] ?? .string("Card"),
+                        "promptId": .string(prompt.id), "messageId": .integer(prompt.revision)
+                    ]))
+                }
             }
             if !abilities.isEmpty {
                 objects.append(.object(["sourceInstanceId": .string(id), "sourceZone": .string(zone),

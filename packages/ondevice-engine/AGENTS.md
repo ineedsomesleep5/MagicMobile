@@ -11,4 +11,4 @@
 - The inspected source APIs are pinned; real compilation is still a gate, not a completed fact.
 - Do not mark unavailable capabilities true or weaken validation to make a demo look complete.
 - Avoid new remote writes or deleting legacy work outside the authorized repository. Keep changes reviewable in a local branch.
-- Run the available tests after changes and keep real-engine/device results separate from fixture evidence.
+- Run affected tests after code changes and the required release gates before release. For documentation-only changes, validate the instructions and references; do not compile the engine. Keep real-engine/device results separate from fixture evidence.

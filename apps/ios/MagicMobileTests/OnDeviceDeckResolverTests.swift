@@ -3,6 +3,56 @@ import XCTest
 @testable import MagicMobile
 
 final class OnDeviceDeckResolverTests: XCTestCase {
+    private func aliasCatalogue(aliases: [String: String] = ["Front // Back": "Front", "Fire // Ice": "Fire"]) throws -> Data {
+        let names = ["Front", "Fire", "Fire // Ice"]
+        return try JSONSerialization.data(withJSONObject: [
+            "schemaVersion": 1, "upstreamCommit": "upstream", "catalogueHash": "registry",
+            "sourceCatalogueSHA256": "source", "sourceRegistrySHA256": "report",
+            "sourceMetadataSHA256": String(repeating: "a", count: 64), "nameAliases": aliases,
+            "cards": names.enumerated().map { ["name": $0.element, "setCode": "SET", "collectorNumber": String($0.offset)] }
+        ])
+    }
+
+    func testPinnedAliasCanonicalizesImportAndFinalResolutionButExactSplitWins() throws {
+        let resolver = try OnDeviceDeckResolver(catalogueData: aliasCatalogue())
+        XCTAssertEqual(resolver.canonicalCardName("Front // Back"), "Front")
+        XCTAssertEqual(resolver.canonicalCardName("Fire // Ice"), "Fire // Ice")
+        XCTAssertNil(resolver.canonicalCardName("Front // Wrong"))
+        XCTAssertNil(resolver.canonicalCardName("front // Back"))
+        XCTAssertEqual(resolver.searchCardNames(query: "Front"), ["Front"])
+        let deck = try resolver.importDeck(text: "Commander\n1 Front // Back\nDeck\n2 Fire // Ice", name: "Aliases")
+        XCTAssertEqual(deck.commander?.cardName, "Front")
+        XCTAssertEqual(deck.entries.first?.cardName, "Fire // Ice")
+        XCTAssertEqual(deck.totalCards, 3)
+        let direct = DeckList(name: "Direct", commander: nil, entries: [DeckEntry(cardName: "Front // Back", quantity: 2, section: "Companion")])
+        let config = try resolver.resolve(direct)
+        XCTAssertEqual(config["companions"]?.array?.first?["name"]?.string, "Front")
+        XCTAssertEqual(config["companions"]?.array?.first?["count"]?.integer, 2)
+        let duplicate = DeckList(name: "Duplicate", commander: DeckEntry(cardName: "Front", quantity: 1, section: "commander"), entries: direct.entries)
+        XCTAssertThrowsError(try resolver.resolve(duplicate))
+        XCTAssertThrowsError(try resolver.importDeck(text: "1 Front // Wrong", name: "Invalid"))
+    }
+
+    func testInvalidAliasTargetsAndMissingMetadataIdentityReject() throws {
+        for aliases in [["Front // Back": "Missing"], ["Front // Back": "Front // Other"], ["Wrong // Back": "Front"], ["Front // ": "Front"]] {
+            XCTAssertThrowsError(try OnDeviceDeckResolver(catalogueData: aliasCatalogue(aliases: aliases)))
+        }
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: aliasCatalogue()) as? [String: Any])
+        json.removeValue(forKey: "sourceMetadataSHA256")
+        XCTAssertThrowsError(try OnDeviceDeckResolver(catalogueData: JSONSerialization.data(withJSONObject: json)))
+    }
+
+    func testBundledWestvaleAliasUsesExistingSelectedPrinting() throws {
+        let resolver = try OnDeviceDeckResolver.bundled()
+        XCTAssertEqual(resolver.canonicalCardName("Westvale Abbey // Ormendahl, Profane Prince"), "Westvale Abbey")
+        XCTAssertNil(resolver.canonicalCardName("Westvale Abbey // Wrong Back"))
+        let deck = try resolver.importDeck(text: "1 Westvale Abbey // Ormendahl, Profane Prince", name: "Metadata")
+        let row = try XCTUnwrap(resolver.resolve(deck)["main"]?.array?.first)
+        XCTAssertEqual(row["name"]?.string, "Westvale Abbey")
+        XCTAssertEqual(row["setCode"]?.string, "INR")
+        XCTAssertEqual(row["collectorNumber"]?.string, "287")
+    }
+
     private func fixtureResolver() throws -> OnDeviceDeckResolver {
         try OnDeviceDeckResolver(catalogueData: Data(#"{"schemaVersion":1,"upstreamCommit":"upstream","catalogueHash":"registry","sourceCatalogueSHA256":"source","sourceRegistrySHA256":"report","cards":[{"name":"Forest","setCode":"ONE","collectorNumber":"1"},{"name":"Emmara, Soul of the Accord","setCode":"GRN","collectorNumber":"168"}]}"#.utf8))
     }

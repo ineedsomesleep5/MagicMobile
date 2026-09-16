@@ -9,6 +9,9 @@ settings:
     CODE_SIGN_STYLE: Automatic
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "2026091601"
+    MM_ENGINE_MODE: "unlinked-reference"
 packages:
   OnDeviceCore:
     path: ../../packages/ondevice-engine/swift
@@ -36,6 +39,7 @@ targets:
       - path: MagicMobileTests
         excludes:
           - Fixtures
+          - EngineChecks
       - path: MagicMobileTests/Fixtures/OnDevice
         type: folder
         buildPhase: resources

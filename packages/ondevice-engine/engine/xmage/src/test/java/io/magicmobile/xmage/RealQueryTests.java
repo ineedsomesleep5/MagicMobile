@@ -47,9 +47,11 @@ public final class RealQueryTests {
         run("integer and allocation bounds/cancellation",RealQueryTests::amounts);
         run("real HumanPlayer integer/allocation answers",RealQueryTests::amountLoops);
         run("mana source versus floating mana",RealQueryTests::mana);
+        run("mana identity validation preserves controlled-player pool",RealQueryTests::manaIdentity);
         run("choice hints, sorting and special tokens",RealQueryTests::choices);
         run("real HumanPlayer remembered replacement choice",RealQueryTests::replacementLoop);
         run("split/MDFC ability labels and exact IDs",RealQueryTests::abilityFaces);
+        run("ability source privacy and duplicate rows",RealQueryTests::abilitySources);
         run("MDFC target face mapping and zone boundaries",RealQueryTests::targetFaces);
         run("trigger ordering and metadata boundaries",RealQueryTests::orderingMetadata);
         run("real HumanPlayer library ordering",RealQueryTests::libraryOrder);
@@ -190,6 +192,38 @@ public final class RealQueryTests {
         }
     }
 
+    private static void manaIdentity() {
+        UUID other=UUID.randomUUID();
+        for(PlayerQueryEvent event:List.of(PlayerQueryEvent.selectEvent(PLAYER,"Priority"),
+                PlayerQueryEvent.playManaEvent(PLAYER,"Pay {1}",options()),PlayerQueryEvent.playXManaEvent(PLAYER,"Pay X"))) {
+            DecisionSpec spec=encode(event);
+            eq(spec.payload.get("manaPlayerId"),PLAYER.toString());
+            accepts(spec,"mana",Json.map("playerId",PLAYER.toString(),"manaType","GREEN"));
+            rejects(spec,"mana",Json.map("playerId",other.toString(),"manaType","GREEN"));
+            rejects(spec,"mana",Json.map("playerId","not-a-uuid","manaType","GREEN"));
+        }
+        try(Fixture f=new Fixture()) {
+            MobileHumanPlayer controlled=new MobileHumanPlayer("Controlled mana player");
+            try {
+                f.game.getState().addPlayer(controlled);
+                controlled.updateRange(f.game);f.player.updateRange(f.game);
+                check(f.player.controlPlayersTurn(f.game,controlled.getId(),"mana identity regression"),"real turn control applied");
+                f.answer(spec->{
+                    eq(spec.kind,"PLAY_MANA");
+                    eq(spec.payload.get("manaPlayerId"),controlled.getId().toString());
+                    rejects(spec,"mana",Json.map("playerId",f.player.getId().toString(),"manaType","GREEN"));
+                    rejects(spec,"mana",Json.map("playerId",other.toString(),"manaType","GREEN"));
+                    return answer("mana",Json.map("playerId",controlled.getId().toString(),"manaType","GREEN"));
+                });
+                // Fixture delivers to the controller channel; upstream acts on the controlled pool.
+                check(controlled.playMana(null,new GenericManaCost(1),"{1}",f.game),"controlled floating mana accepted");
+                eq(controlled.getManaPool().getUnlockedManaType(),ManaType.GREEN);
+                eq(f.player.getManaPool().getUnlockedManaType(),null);
+                f.drained();
+            } finally { controlled.closeChannel(); }
+        }
+    }
+
     private static void choices() {
         ChoiceImpl choice=new ChoiceImpl(true,ChoiceHintType.GAME_OBJECT);
         choice.setMessage("Choose effect");choice.setSubMessage("Resolve first");choice.setSearchText("effect");
@@ -228,6 +262,41 @@ public final class RealQueryTests {
         checkAbilityFaces(split.getLeftHalfCard(),split.getRightHalfCard(),split.getName(),"Fire","Ice");
         ValkiGodOfLies modal=new ValkiGodOfLies(PLAYER,info("Valki, God of Lies","KHM","114"));
         checkAbilityFaces(modal.getLeftHalfCard(),modal.getRightHalfCard(),modal.getName(),"Valki","Tibalt");
+    }
+
+    private static void abilitySources() {
+        try(Fixture f=new Fixture()) {
+            Card source=f.bear();
+            ActivatedAbility ability=source.getSpellAbility();
+            PlayerQueryEvent event=PlayerQueryEvent.chooseAbilityEvent(f.player.getId(),"Choose",source.getName(),List.of(ability,ability));
+            DecisionSpec spec=QueryEncoder.encode(event,f.game);
+            List<Object> rows=Json.array(spec.payload.get("abilities"));
+            eq(rows.size(),2);eq(rows.get(0),rows.get(1));
+            eq(Json.object(rows.get(0)).get("id"),ability.getId().toString());
+            eq(Json.object(Json.object(rows.get(0)).get("sourceCard")).get("id"),source.getId().toString());
+            accepts(spec,"uuid",ability.getId().toString());rejects(spec,"uuid",source.getId().toString());
+            for(Zone zone:List.of(Zone.LIBRARY,Zone.OUTSIDE)) {
+                f.game.setZone(source.getId(),zone);
+                check(!Json.object(Json.array(QueryEncoder.encode(event,f.game).payload.get("abilities")).get(0)).containsKey("sourceCard"),"private zone source omitted");
+            }
+            f.game.setZone(source.getId(),Zone.HAND);
+            PlayerQueryEvent opponent=PlayerQueryEvent.chooseAbilityEvent(UUID.randomUUID(),"Choose",source.getName(),List.of(ability));
+            check(!Json.object(Json.array(QueryEncoder.encode(opponent,f.game).payload.get("abilities")).get(0)).containsKey("sourceCard"),"opponent hand source omitted");
+            for(Zone zone:List.of(Zone.GRAVEYARD,Zone.EXILED,Zone.COMMAND)) {
+                f.game.setZone(source.getId(),zone);
+                check(Json.object(Json.array(QueryEncoder.encode(event,f.game).payload.get("abilities")).get(0)).containsKey("sourceCard"),"public source available");
+            }
+            EntersBattlefieldTriggeredAbility trigger=new EntersBattlefieldTriggeredAbility(new GainLifeEffect(1));
+            trigger.setSourceId(source.getId());trigger.setControllerId(f.player.getId());
+            spec=QueryEncoder.encode(PlayerQueryEvent.targetEvent(f.player.getId(),"Pick",List.of(trigger,trigger)),f.game);
+            rows=Json.array(spec.payload.get("abilities"));eq(rows.size(),2);eq(rows.get(0),rows.get(1));
+            check(Json.object(rows.get(0)).containsKey("sourceCard"),"trigger source available");
+            PermanentCard permanent=new PermanentCard(source,f.player.getId(),f.game);
+            f.game.getBattlefield().addPermanent(permanent);f.game.setZone(source.getId(),Zone.BATTLEFIELD);
+            permanent.setFaceDown(true,f.game);
+            spec=QueryEncoder.encode(event,f.game);
+            check(!Json.object(Json.array(spec.payload.get("abilities")).get(0)).containsKey("sourceCard"),"face-down source omitted");
+        }
     }
 
     private static void checkAbilityFaces(Card left,Card right,String name,String leftName,String rightName) {

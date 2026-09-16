@@ -4,6 +4,94 @@ import MagicMobileOnDevice
 @testable import MagicMobile
 
 final class OnDeviceMultiplayerTests: XCTestCase {
+    func testSubmissionSchemaIsValidatedBeforeBuildMismatch() throws {
+        let lobby = try OnDeviceMultiplayerLobby(peerIDs: ["alice", "bob"], localPeerID: "alice")
+        let identity = BuildIdentity(upstreamCommit: "commit", catalogueHash: "catalogue")
+        let other = BuildIdentity(upstreamCommit: "commit", catalogueHash: "catalogue", adapterVersion: "other-build")
+        let epoch = UUID()
+        let valid: MagicMobileOnDevice.JSONValue = .object([
+            "name": .string("Bob"), "deck": .object(["main": .array([]), "commanders": .array([])])
+        ])
+        let malformed: [MagicMobileOnDevice.JSONValue] = [
+            .null, .string("Bob"), .object(["name": .string("Bob")]),
+            .object(["name": .string("Bob"), "deck": .object(["main": .string("bad"), "commanders": .array([])])])
+        ]
+        for build in [identity, other] {
+            var packet: [String: MagicMobileOnDevice.JSONValue] = [
+                "type": .string("submission"), "epoch": .string(epoch.uuidString), "build": build.json,
+                "roster": .array([.string("alice"), .string("bob")]), "player": valid
+            ]
+            if build.json == identity.json {
+                XCTAssertEqual(try lobby.verifyHandshake(.object(packet), from: "bob", identity: identity, epoch: epoch), epoch)
+            } else {
+                XCTAssertThrowsError(try lobby.verifyHandshake(.object(packet), from: "bob", identity: identity, epoch: epoch)) {
+                    XCTAssertTrue($0 is OnDeviceMultiplayerLobby.HandshakeFailure)
+                }
+            }
+            for player in malformed {
+                packet["player"] = player
+                XCTAssertThrowsError(try lobby.verifyHandshake(.object(packet), from: "bob", identity: identity, epoch: epoch)) {
+                    XCTAssertFalse($0 is OnDeviceMultiplayerLobby.HandshakeFailure)
+                }
+            }
+        }
+    }
+
+    func testStartSchemaIsValidatedBeforeBuildMismatch() throws {
+        let lobby = try OnDeviceMultiplayerLobby(peerIDs: ["alice", "bob"], localPeerID: "bob")
+        let identity = BuildIdentity(upstreamCommit: "commit", catalogueHash: "catalogue")
+        let other = BuildIdentity(upstreamCommit: "commit", catalogueHash: "catalogue", adapterVersion: "other-build")
+        let epoch = UUID()
+        for build in [identity, other] {
+            var packet: [String: MagicMobileOnDevice.JSONValue] = [
+                "type": .string("start"), "epoch": .string(epoch.uuidString), "build": build.json,
+                "roster": .array([.string("alice"), .string("bob")]), "matchId": .string(UUID().uuidString)
+            ]
+            if build.json == identity.json {
+                XCTAssertEqual(try lobby.verifyHandshake(.object(packet), from: "alice", identity: identity, epoch: epoch), epoch)
+            } else {
+                XCTAssertThrowsError(try lobby.verifyHandshake(.object(packet), from: "alice", identity: identity, epoch: epoch)) {
+                    XCTAssertTrue($0 is OnDeviceMultiplayerLobby.HandshakeFailure)
+                }
+            }
+            let malformed: [MagicMobileOnDevice.JSONValue] = [.null, .integer(1), .string(""), .string("not-a-uuid")]
+            for matchID in malformed {
+                packet["matchId"] = matchID
+                XCTAssertThrowsError(try lobby.verifyHandshake(.object(packet), from: "alice", identity: identity, epoch: epoch)) {
+                    XCTAssertFalse($0 is OnDeviceMultiplayerLobby.HandshakeFailure)
+                }
+            }
+        }
+    }
+
+    func testOnlyAuthenticatedCurrentHandshakeReportsDifferentBuild() throws {
+        let lobby = try OnDeviceMultiplayerLobby(peerIDs: ["alice", "bob", "charlie"], localPeerID: "bob")
+        let identity = BuildIdentity(upstreamCommit: "commit", catalogueHash: "catalogue")
+        let epoch = UUID()
+        let offer: MagicMobileOnDevice.JSONValue = .object([
+            "type": .string("offer"), "epoch": .string(epoch.uuidString),
+            "roster": .array(lobby.peerIDs.map(MagicMobileOnDevice.JSONValue.string)),
+            "build": BuildIdentity(upstreamCommit: "commit", catalogueHash: "catalogue", adapterVersion: "other-build").json
+        ])
+        XCTAssertThrowsError(try lobby.verifyHandshake(offer, from: "alice", identity: identity, epoch: epoch)) {
+            XCTAssertTrue($0 is OnDeviceMultiplayerLobby.HandshakeFailure)
+            XCTAssertTrue($0.localizedDescription.contains("same build"))
+        }
+        for peer in ["charlie", "unknown"] {
+            XCTAssertThrowsError(try lobby.verifyHandshake(offer, from: peer, identity: identity, epoch: epoch)) {
+                XCTAssertFalse($0 is OnDeviceMultiplayerLobby.HandshakeFailure)
+            }
+        }
+        XCTAssertThrowsError(try lobby.verifyHandshake(offer, from: "alice", identity: identity, epoch: UUID())) {
+            XCTAssertFalse($0 is OnDeviceMultiplayerLobby.HandshakeFailure)
+        }
+        var malformed = offer.object!
+        malformed["build"] = .object(["protocolVersion": .string("bad")])
+        XCTAssertThrowsError(try lobby.verifyHandshake(.object(malformed), from: "alice", identity: identity, epoch: epoch)) {
+            XCTAssertFalse($0 is OnDeviceMultiplayerLobby.HandshakeFailure)
+        }
+    }
+
     func testAuthenticatedRosterDeterminesHostAndSeats() throws {
         let lobby = try OnDeviceMultiplayerLobby(peerIDs: ["charlie", "alice", "bob"], localPeerID: "bob")
         XCTAssertEqual(lobby.hostID, "alice")

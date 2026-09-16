@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "upstreamRepository": "https://github.com/oracle/graal",
+  "upstreamCommit": "da6a62d607552fc958ccb63f4ca1d81e1817cadc",
+  "upstreamTag": "vm-22.1.0",
+  "referenceFix": "https://github.com/oracle/graal/blob/vm-22.3.0/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/code/aarch64/AArch64HostedTrampolineSupport.java",
+  "files": [
+    {
+      "path": "substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/LIRNativeImageCodeCache.java",
+      "sha256": "3f93bfe0717518ab20e470327c028637d66d6257de73eccf041bbb5cbf961937",
+      "patchedSha256": "2caf070627da2dcaa1ce9d88b72fbea0ff3f79540fcbb1888d1dae3d7ae55312"
+    },
+    {
+      "path": "substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/NativeImageCodeCache.java",
+      "sha256": "b3d59a05ac067e24873a99cc42acb101b74913feef30846ddb46f497bceb4ef0",
+      "patchedSha256": "4747be5a3a9ce0ab9b675c58e6129bd05ed8b3fa17f08dced055b0d997b4d550"
+    },
+    {
+      "path": "substratevm/src/com.oracle.svm.core/src/com/oracle/svm/core/code/CodeInfoEncoder.java",
+      "sha256": "c01c2df62721f775e44266f00b0e9b7b2811db69adc47545313391a2e5bbe8fa",
+      "patchedSha256": "05e40454b92d14e4af36388df26fca695733d2237395a8dc800fafc18f0b1a5b"
+    }
+  ]
+}

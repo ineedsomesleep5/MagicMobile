@@ -19,7 +19,7 @@ public final class CoreTests {
     private static Map<String,Object> answer(String kind,Object value) {return Json.map("kind",kind,"value",value);}
     private static Map<String,Object> pending(MatchMailbox m,String s) {return Json.object(m.poll(s,0).get("prompt"));}
     public static void main(String[] args) throws Exception {
-        json();decisions();singleRecipient();mailbox();concurrent();service();
+        json();decisions();manaIdentity();singleRecipient();mailbox();concurrent();service();diagnostics();
         System.out.println("PASS: "+checks+" assertions; scope=standalone-core (NOT XMage gameplay or iOS)");
     }
     private static void json() {
@@ -76,6 +76,34 @@ public final class CoreTests {
         error("invalid_response",()->allocations.validate(answer("integers",List.of(2,2))));
         error("invalid_response",()->allocations.validate(answer("integers",List.of(5))));
         error("invalid_response",()->allocations.validate(answer("integers",List.of(-1,6))));
+    }
+    private static void manaIdentity() throws Exception {
+        String acting=UUID.randomUUID().toString(),controller=UUID.randomUUID().toString();
+        for(String kind:List.of("SELECT","PLAY_MANA","PLAY_X_MANA")) {
+            DecisionSpec decision=new DecisionSpec(kind,Json.map("manaPlayerId",acting),Set.of("mana"),null,null,0,0,null);
+            Map<String,Object> valid=answer("mana",Json.map("playerId",acting,"manaType","GREEN"));
+            ok(decision.validate(valid).equals(valid),"acting mana identity preserved for "+kind);
+            error("invalid_response",()->decision.validate(answer("mana",Json.map("playerId",controller,"manaType","GREEN"))));
+            error("invalid_response",()->decision.validate(answer("mana",Json.map("playerId","not-a-uuid","manaType","GREEN"))));
+        }
+        DecisionSpec missing=new DecisionSpec("PLAY_MANA",Json.map(),Set.of("mana"),null,null,0,0,null);
+        error("invalid_response",()->missing.validate(answer("mana",Json.map("playerId",acting,"manaType","GREEN"))));
+        // The authenticated controller answers using the acted player's pool, not its own.
+        try(MatchMailbox mailbox=new MatchMailbox("controlled-mana",List.of(controller))) {
+            DecisionSpec decision=new DecisionSpec("PLAY_MANA",Json.map("manaPlayerId",acting),Set.of("mana"),null,null,0,0,null);
+            CountDownLatch delivered=new CountDownLatch(1);
+            List<Map<String,Object>> received=new CopyOnWriteArrayList<>();
+            mailbox.ask(controller,decision,value->{received.add(value);delivered.countDown();});
+            Map<String,Object> prompt=pending(mailbox,controller);
+            String request=UUID.randomUUID().toString();
+            error("invalid_response",()->mailbox.submit(controller,command(prompt,request,
+                answer("mana",Json.map("playerId",controller,"manaType","GREEN")))));
+            ok(Boolean.FALSE.equals(pending(mailbox,controller).get("submitted")),"wrong pool leaves prompt unsubmitted");
+            Map<String,Object> valid=answer("mana",Json.map("playerId",acting,"manaType","GREEN"));
+            mailbox.submit(controller,command(prompt,request,valid));
+            ok(delivered.await(2,TimeUnit.SECONDS),"controller can answer with acting pool after rejection");
+            ok(received.equals(List.of(valid)),"only exact acting-pool answer delivered");
+        }
     }
     private static void singleRecipient() throws Exception {
         try(MatchMailbox m=new MatchMailbox("human-and-ai",List.of("human"))) {
@@ -144,6 +172,7 @@ public final class CoreTests {
             while(!m.poll("A",0).get("phase").equals("failed")&&System.nanoTime()<deadline)Thread.sleep(2);
             ok(m.poll("A",0).get("phase").equals("failed"),"delivery failure terminates match");
             ok(!Json.write(m.poll("A",0)).contains("private card name"),"exception data not leaked");
+            ok(Json.write(EngineDiagnostics.read()).contains("private card name"),"delivery error retained only in local diagnostic");
         }
     }
     private static void concurrent() throws Exception {
@@ -175,7 +204,29 @@ public final class CoreTests {
         ok(service.request("{\"protocol\":1,\"op\":\"capabilities\",\"extra\":1}").contains("invalid_request"),"unknown keys rejected");
         ok(service.request("{\"protocol\":1,\"op\":\"create\",\"configuration\":{}}").contains("engine_failure"),"contained exception");
         ok(!service.request("{\"protocol\":1,\"op\":\"create\",\"configuration\":{}}").contains("hidden"),"sanitized error");
+        String diagnostic=service.request("{\"protocol\":1,\"op\":\"diagnostics\"}");
+        ok(diagnostic.contains("IllegalArgumentException") && diagnostic.contains("hidden"),"trusted local diagnostics retain the actual exception");
+        ok(service.request("{\"protocol\":1,\"op\":\"diagnostics\",\"viewerId\":\"A\"}").contains("invalid_request"),"diagnostics never accepts a viewer or peer payload");
+        ok(service.request("{\"protocol\":1,\"op\":\"clearDiagnostics\"}").contains("\"ok\":true"),"local diagnostics can be cleared");
+        ok(service.request("{\"protocol\":1,\"op\":\"diagnostics\"}").contains("\"report\":null"),"cleared report releases private data");
         ok(service.request("{\"protocol\":1,\"op\":\"nonsense\"}").contains("unknown_operation"),"operation whitelist");
         ok(service.request("bad").contains("invalid_json"),"malformed request");
+    }
+    private static void diagnostics() {
+        RuntimeException first=new RuntimeException("private diagnostic message");
+        RuntimeException second=new RuntimeException("cause message",first);first.initCause(second);
+        EngineDiagnostics.capture("fixture",first);
+        String report=(String)EngineDiagnostics.read().get("report");
+        ok(report.contains("cause message") && report.contains("CoreTests"),"cause and call site retained");
+        ok(report.contains("cyclic causes omitted"),"cyclic causes bounded");
+        Throwable huge=new RuntimeException("private-".repeat(10000));
+        StackTraceElement[] frames=new StackTraceElement[100];
+        Arrays.fill(frames,new StackTraceElement("Class".repeat(1000),"method","File.java",1));
+        huge.setStackTrace(frames);EngineDiagnostics.capture("fixture",huge);
+        report=(String)EngineDiagnostics.read().get("report");
+        ok(report.length()<=EngineDiagnostics.MAX_CHARS,"stored report bounded");
+        ok(!report.contains("cause message"),"only newest report retained");
+        ok(Json.parseObject(Json.write(EngineDiagnostics.read())).containsKey("report"),"bounded report serializes");
+        EngineDiagnostics.clear();ok(EngineDiagnostics.read().get("report")==null,"clear releases report");
     }
 }

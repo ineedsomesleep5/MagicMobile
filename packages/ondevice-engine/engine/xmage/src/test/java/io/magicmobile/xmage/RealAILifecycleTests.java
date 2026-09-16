@@ -14,20 +14,22 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Real production interface; fixture answers are only ever sent to human seats.
  * Default: one human plus AI. Optional "two-humans": two humans plus AI.
  * Compile fresh adapter sources with AI and AI.MAD target/classes ahead of the baseline
- * runtime classpath; run this main in an externally bounded 120-second JVM, -Xmx768m.
+ * runtime classpath; run this main in an externally bounded 180-second JVM, -Xmx768m.
  */
 public final class RealAILifecycleTests {
     public static void main(String[] args) throws Exception {
+        cancelledOpeningSelection();
         boolean twoHumans=args.length>0;
         Map<String,Object> configuration=config(twoHumans);
-        try(XmageEngine engine=new XmageEngine("jvm-ai-lifecycle-test")) {
+        XmageEngine engine=new XmageEngine("jvm-ai-lifecycle-test");
+        try(AutoCloseable cleanup=()->teardown("engine cleanup",engine::close)) {
             Map<String,Object> created=engine.create(configuration);
             String id=Json.requiredString(created,"matchId");
             check(!Boolean.TRUE.equals(engine.capabilities().get("aiEnabled")),"native AI capability remains unvalidated");
             engine.poll(id,"human",0);
             try {engine.poll(id,"ai",0);throw new AssertionError("AI must not be a response recipient");}
             catch(BridgeException e){check("unauthorized_seat".equals(e.code()),"AI recipient rejected");}
-            engine.destroy(id);
+            teardown("initial destroy",()->engine.destroy(id));
             System.out.println("PASS real MAD seat accepted; human-only recipient; destroy");
             expect("invalid_seats",()->engine.create(Json.map("seats",List.of(seat("a","ai"),seat("b","ai")))));
             expect("invalid_seat",()->engine.create(Json.map("seats",List.of(seat("same","ai"),seat("same","human")))));
@@ -36,13 +38,13 @@ public final class RealAILifecycleTests {
             List<Object> maximum=new ArrayList<>(Json.array(configuration.get("seats")));
             for(int n=maximum.size();n<4;n++)maximum.add(seat("extra"+n,"ai"));
             String four=Json.requiredString(engine.create(Json.map("seats",maximum)),"matchId");
-            engine.destroy(four);
+            teardown("four-seat destroy",()->engine.destroy(four));
             maximum.add(seat("fifth","ai"));
             expect("invalid_seats",()->engine.create(Json.map("seats",maximum)));
             System.out.println("PASS seat bounds and duplicate/controller validation; human recipients="+(twoHumans?2:1));
             String playing=Json.requiredString(engine.create(configuration),"matchId");
             drive(engine,playing,twoHumans,false);
-            engine.destroy(playing);
+            teardown("played-game destroy",()->engine.destroy(playing));
             for(boolean close:List.of(false,true)) {
                 String active=Json.requiredString(engine.create(configuration),"matchId");
                 Game game=game(engine,active); // read-only observation of upstream errors and worker identity
@@ -51,7 +53,7 @@ public final class RealAILifecycleTests {
                     && !(e.getException() instanceof CancellationException))errors.incrementAndGet();});
                 Thread worker=drive(engine,active,twoHumans,true);
                 long start=System.nanoTime();
-                if(close)engine.close();else engine.destroy(active);
+                teardown(close?"active close":"active destroy",()->{if(close)engine.close();else engine.destroy(active);});
                 worker.join(1000);
                 check(!worker.isAlive(),"shutdown joins actual GAME worker");
                 check(errors.get()==0,"cancel must not enter upstream error-recovery loop: errors="+errors.get());
@@ -61,12 +63,48 @@ public final class RealAILifecycleTests {
                 System.out.println("PASS active MAD "+(close?"close":"destroy")+" in "+TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start)+"ms; game worker exited, simulations idle");
             }
         }
-        try(XmageEngine fresh=new XmageEngine("jvm-ai-recreate-test")) {
+        XmageEngine fresh=new XmageEngine("jvm-ai-recreate-test");
+        try(AutoCloseable cleanup=()->teardown("fresh engine cleanup",fresh::close)) {
             String id=Json.requiredString(fresh.create(configuration),"matchId");
             drive(fresh,id,twoHumans,true);
-            fresh.destroy(id);
+            teardown("fresh destroy",()->fresh.destroy(id));
             awaitIdlePool();
             System.out.println("PASS fresh engine reaches real MAD simulation after prior close");
+        }
+    }
+    private static void cancelledOpeningSelection() throws Exception {
+        MobileAICancellation cancellation=new MobileAICancellation();
+        MobileCommanderGame game=new MobileCommanderGame();
+        game.setCancellation(cancellation);
+        MobileCommanderGame copy=game.copy();
+        check(!game.hasEnded()&&!copy.hasEnded(),"open games are not ended");
+        cancellation.close();
+        check(game.hasEnded()&&copy.hasEnded(),"opening selection and copies observe durable cancellation");
+        var choosing=mage.game.GameImpl.class.getDeclaredMethod("pickChoosingPlayer");
+        choosing.setAccessible(true);
+        check(choosing.invoke(game)==null,"cancelled upstream opening selection returns without choosing a player");
+        System.out.println("PASS cancelled opening selection and copied game end checks");
+    }
+    private static void teardown(String label,Runnable action)throws InterruptedException {
+        long start=System.nanoTime(),deadline=start+TimeUnit.SECONDS.toNanos(20);
+        int busyRetries=0;boolean completed=false;
+        BridgeException lastBusy=null;
+        try {
+            while(System.nanoTime()<deadline) {
+                try {
+                    action.run();
+                    check(System.nanoTime()<deadline,label+" exceeded 20-second teardown deadline");
+                    completed=true;return;
+                } catch(BridgeException e) {
+                    if(!"engine_busy_shutdown".equals(e.code()))throw e;
+                    lastBusy=e;busyRetries++;
+                }
+                Thread.sleep(50);
+            }
+            throw new AssertionError(label+" remained busy after 20 seconds; busyRetries="+busyRetries,lastBusy);
+        } finally {
+            System.out.println("TEARDOWN "+label+" completed="+completed+" busyRetries="+busyRetries
+                +" elapsedMs="+TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start));
         }
     }
     private static Thread drive(XmageEngine engine,String id,boolean twoHumans,boolean stopAtSimulation)throws Exception {

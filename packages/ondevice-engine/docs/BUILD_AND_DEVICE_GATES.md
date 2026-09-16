@@ -1,78 +1,109 @@
 # Build and acceptance sequence
 
-## 1. Repeat the delivered portable checks
+Run from the repository root unless stated otherwise. Use JDK 21 and the reviewed
+Xcode 26.6 installation (`DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`
+on the continuation Mac). Do not boot simulators or dispatch UI-test workflows.
+
+## 1. Portable and real-engine regressions
 
 ```sh
-bash scripts/test_tooling.sh
-bash scripts/test_native_boundary.sh
-swift test --package-path swift
+bash packages/ondevice-engine/scripts/test_tooling.sh
+bash packages/ondevice-engine/scripts/test_native_boundary.sh
+bash packages/ondevice-engine/scripts/test_swift_close.sh
+swift test --package-path packages/ondevice-engine/swift --jobs 2
+swift test --package-path apps/ios --jobs 2
+node --test scripts/ios/testflight-build-number.test.mjs
+bash packages/ondevice-engine/scripts/build_jvm.sh
+bash packages/ondevice-engine/scripts/test_real_engine.sh
 ```
 
-The package was tested with OpenJDK 21 targeting Java 17, Swift 6.2.1 on Linux, Python and clang ASan/UBSan. Apple SDK code is excluded from that Linux compilation.
+Also export the exact bundled decks with the portable app exporter and run
+`test_ios_precons.py` as wired in `magicmobile-issue4-nonsimulator.yml`. Inspect the workflow
+before dispatch. These tests validate real JVM rules separately from C/Swift
+fixtures; none executes native phone gameplay.
 
-## 2. Compile the genuine XMage path
+## 2. Preserve and verify the native candidate
 
-On a machine with JDK, Maven and source/dependency download access:
+Full ARM64 XMage+MAD diagnostic build **34731298892** passed at engine source
+`76c18bfc76ca652cbd7a979cbb8910531ccb280e`. Artifact **10311165739** ZIP SHA-256:
+`ddb999760395493f98cee24f3d531f2b510f2b67a1b77ebadab64d54299288a0`.
+
+Use `download_issue4_native.py`, `verify_native_candidate.py` and
+`prepare_ios_app_native.py` (see their `--help`) to verify and stage the paired
+archive, generated headers, static dependencies and manifests. Never mix artifacts.
+The preserved local candidate is `packages/ondevice-engine/build/verified-native-10311165739`.
+Earlier candidates and their staged inputs were retained separately; never
+reuse an old engine for changed production source.
+Source equivalence conservatively guards production/compiler/build inputs and
+all engine source directories, including tests.
+
+Rebuild native inputs only when required by provenance or a reviewed engine change;
+see [UPSTREAM_MAINTENANCE.md](UPSTREAM_MAINTENANCE.md). No card pruning or fallback.
+
+## 3. Actual product link
+
+Commit reviewed source before producing the receipt:
 
 ```sh
-bash scripts/build_jvm.sh
-python3 scripts/audit_upstream.py .upstream/mage --output evidence/pinned-upstream-audit.json
+bash packages/ondevice-engine/scripts/build_issue4_unsigned_app.sh
 ```
 
-The build is pinned and patches only reviewed entry points. Inspect `build/generated/registry-report.json`; no skipped/missing class may be treated as supported. Expect to fix compatibility faults in this first full build. This command has not passed in the delivery environment.
+This generates the Xcode project from `apps/ios/native-engine.yml`, selects generic iphoneos Release,
+links the full library and inspects the actual product. It checks ARM64/iOS,
+embedded startup, source/artifact hashes, native exports, paired dependencies and
+absence of conflicting entrypoints. The Graal-first order and seven far-call
+veneers preserve the entire 196,899,504-byte diagnostic native code image. The verifier checks
+922 relocated instructions/targets and every veneer. Do not atomize or patch
+prelinked internal Graal branches without a separate correctness proof.
 
-## 3. Resolve decks and run the actual first-prompt probe
-
-A text file contains counts and names, including its explicitly identified commander(s). Optional exact printing syntax is `1 Name (SET) COLLECTOR`.
+Product source `7c27eaa` passed hosted run **34732453251** and locally at
+`packages/ondevice-engine/build/issue4-device-link.eLgbee/product-receipt.json`.
+The maintained unsigned verifier uses unstripped native symbols; do not pass a
+stripped distribution binary and assume missing symbols imply missing engine.
+For a stripped exported app, use the same layout verifier with the actual paired
+DWARF file (not just the dSYM directory):
 
 ```sh
-python3 scripts/resolve_deck.py --catalogue build/generated/catalogue.jsonl \
-  --input your-deck.txt --commander 'Your Commander Name' --output deck-a.json
-# Resolve a second legal deck in the same way into deck-b.json.
-python3 scripts/make_match.py deck-a.json deck-b.json --output match.json
-python3 scripts/smoke_jvm.py match.json
+python3 packages/ondevice-engine/scripts/verify_graal_product_layout.py \
+  --archive /absolute/verified-candidate/libmmengine.a \
+  --executable /absolute/exported/Payload/MagicMobile.app/MagicMobile \
+  --dsym /absolute/MagicMobile.xcarchive/dSYMs/MagicMobile.app.dSYM/Contents/Resources/DWARF/MagicMobile
 ```
 
-`--commander` may be repeated for partners; `--companion` is separate. The resolver chooses a deterministic printing when none is specified; legality is still decided by XMage. It is not an Archidekt account scraper or an oracle text parser. No sample data is secretly playable.
+It requires matching nonzero UUIDs, exact section bounds and defined symbols;
+existing app symbols must agree. It still checks the actual executable's code,
+relocations and veneers, never the dSYM's placeholder text. Neither path executes
+the native runtime.
 
-The smoke creates real cards/game objects and waits for a real prompt. It deliberately reports `completedGame: false`. Extend it with actual scripted gameplay after this first gate. For manual protocol work, run the line-oriented `EngineCli` using `build/runtime-classpath.txt`; that CLI is a developer harness, not a required user PC service.
+## 4. Authorized internal TestFlight
 
-## 4. Native compilation diagnostics
+Use existing app **6784735182**, bundle **com.calebfeliciano.magicmobile**. Check
+live ASC build numbers, then use the reviewed `scripts/ios/deploy-testflight.sh`
+workflow. Verify archive identity/orientations, distribution provisioning and
+Game Center in both profile and signed app, export, signature, Apple validation
+and upload. Do not submit an App Store release.
 
-With a supported GraalVM JDK:
+Diagnostic **0.1.0 (2026091203)**, source `7c27eaa`, was successfully uploaded internal-only.
+Artifacts: `build_output/testflight/issue4-2026091203-7c27eaa/`.
+Upload ID: `92c6be87-4cbf-4708-ae0c-8421932e1395`.
+Apple processing is **VALID**; internal state is **IN_BETA_TESTING** and audience
+is **INTERNAL_ONLY**. Membership in the existing **Internal** group is verified.
+Distribution signature and Game Center in the actual exported app/profile passed.
+The exported code image/relocations/veneers passed with its UUID-matched dSYM.
+Builds **2026091201** and **2026091202** are superseded. Do not reuse uploaded numbers.
 
-```sh
-GRAALVM_HOME=/absolute/path/to/graalvm bash scripts/build_native_desktop.sh
-```
+Build **2026091203** was checked unused in both builds and in-flight uploads
+before the successful upload. See [the diagnostic handoff](DIAGNOSTIC_TESTFLIGHT_2026091203.md).
+The app plist declares no non-exempt encryption: inspected app/XMage sources
+have no custom encryption calls; network transport uses Apple's URLSession/GameKit.
+Apple's [export-compliance guidance](https://developer.apple.com/documentation/security/complying-with-encryption-export-regulations)
+distinguishes OS-provided encryption from non-exempt encryption. Reassess this
+declaration if dependencies or encryption functionality change.
 
-Supply `GRAAL_SDK_CP` if that distribution requires an explicit Native Image SDK classpath. SDK/version details, metadata and resource dependencies must be validated for the actual toolchain. Compiler and probe failure must fail the gate. This output is for the developer's desktop platform, not iOS.
+## 5. Physical acceptance — separate gate
 
-Next, establish and pin the iOS compilation setup on the Mac (Gluon/Graal first candidate; J2ObjC alternative if necessary). No untested magic command is supplied as a claimed finished iOS build. This is substantive remaining porting work.
-
-After genuine iOS device/simulator static libraries and generated headers exist:
-
-```sh
-bash scripts/package_xcframework.sh \
-  /absolute/device/libmmengine.a /absolute/device/headers \
-  /absolute/simulator/libmmengine.a /absolute/simulator/headers
-```
-
-Inspect architecture **and platform**—arm64 can be either device or simulator. Do not package a macOS library as iOS. The AOT library must include any runtime libraries needed by its toolchain.
-
-## 5. Xcode harness
-
-`ios-app/project.yml` builds the inspection app with a deliberately unlinked engine boundary. Using XcodeGen from that directory:
-
-```sh
-xcodegen generate --spec project.yml
-```
-
-This is a useful Apple SDK UI/package compile gate, but a successful launch should report the missing native library. It is not gameplay proof.
-
-After the real native framework exists, generate `project.native.yml` instead, check the generated native headers/link flags and select a signing team. The installer rewrites paths correctly when the harness lives in `apps/ios-ondevice` inside MagicMobile.
-
-## 6. Required device evidence
-
-Complete a match on a physical iPhone in airplane mode after installation. Record real device/iOS version, app/engine build IDs, cold start, resident/peak memory, battery/thermal behavior and any unsupported card/prompt. No numeric target is claimed as measured in this delivery.
-
-Then test two and four physical devices over internet connections after Game Center lobby/orchestration is implemented. Include duplicated/stale messages, wrong build IDs, temporary disconnection, host app switching, device lock, force quit and version mismatch. Clearly document whether the match pauses, reconnects or is lost. Do not label nonpersistent in-memory state as save/resume.
+Use [TESTFLIGHT_ACCEPTANCE.md](TESTFLIGHT_ACCEPTANCE.md). No USB is required.
+Build 2026091202 failed during native startup. The diagnostic retest on 2026091203,
+complete offline games, AI/mobile resource behavior, complex UI prompts, repeated
+cleanup and 2–4 real phones remain unverified. No durable restore, host migration
+or guaranteed reconnect is implemented.

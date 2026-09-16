@@ -69,8 +69,11 @@ public final class QueryEncoder {
                     e.getAbilities()==null?Collections.emptyList():e.getAbilities(),e.getMessage()).getChoices();
                 if(e.getAbilities()!=null) for(Ability ability:e.getAbilities()) {
                     String id=ability.getId().toString();ids.add(id);
-                    choices.add(Json.map("id",id,"label",labels.get(ability.getId()),
-                        "sourceId",safe(ability.getSourceId(),0),"originalId",safe(ability.getOriginalId(),0)));
+                    Map<String,Object> row=Json.map("id",id,"label",labels.get(ability.getId()),
+                        "sourceId",safe(ability.getSourceId(),0),"originalId",safe(ability.getOriginalId(),0));
+                    Object source=abilitySource(ability,e.getPlayerId(),game);
+                    if(source!=null) row.put("sourceCard",source);
+                    choices.add(row);
                 }
                 p.put("objectName",objectName);
                 p.put("abilities",choices);types.add("uuid");
@@ -154,6 +157,19 @@ public final class QueryEncoder {
     private static Object card(Card c,Game game) {
         // Only called for cards explicitly supplied to this seat's query by XMage.
         return Json.parse(GSON.toJson(new CardView(c,game)));
+    }
+    private static Object abilitySource(Ability ability,UUID viewer,Game game) {
+        if(game==null || ability.getSourceId()==null) return null;
+        UUID id=ability.getSourceId();
+        Card source=game.getPermanent(id);
+        if(source==null) source=game.getCard(id);
+        if(source==null || source.isFaceDown(game)) return null;
+        Zone zone=game.getState().getZone(id);
+        boolean visible=zone==Zone.BATTLEFIELD || zone==Zone.STACK || zone==Zone.GRAVEYARD
+            || zone==Zone.EXILED || zone==Zone.COMMAND
+            || (zone==Zone.HAND && viewer.equals(source.getOwnerId()));
+        // An offered ability is not permission to reveal a private source or library card.
+        return visible?card(source,game):null;
     }
     private static BridgeException unsupported(String kind) {
         return new BridgeException("unsupported_prompt","Unmapped XMage prompt: "+kind);
