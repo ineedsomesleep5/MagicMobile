@@ -4,6 +4,7 @@ import SwiftUI
 struct DeckStudioWorkspaceScreen: View {
     @StateObject private var model: DeckStudioEditorModel
     @StateObject private var browser = DeckStudioEDHRECModel()
+    @StateObject private var combos = DeckStudioComboModel()
     let metadata: NativeDeckMetadataCatalogue?
     let resolver: OnDeviceDeckResolver?
     let selectForPlay: (String) -> Void
@@ -74,10 +75,10 @@ struct DeckStudioWorkspaceScreen: View {
                 Button("Keep recovery draft and close") { if model.persistRecovery() { dismiss() } }
             } message: { Text("Your existing saved deck is unchanged until you save. An incomplete deck can remain a local draft.") }
             .interactiveDismissDisabled(model.isDirty)
-            .onChange(of: scenePhase) { _, phase in if phase != .active { model.persistRecovery(); browser.pause() } }
+            .onChange(of: scenePhase) { _, phase in if phase != .active { model.persistRecovery(); browser.pause(); combos.cancel() } }
             .onChange(of: tab) { _, value in if value != "Ideas" { browser.pause() } }
             .onChange(of: ideas) { _, value in if value != "EDHREC" { browser.pause() } }
-            .onDisappear { model.persistRecovery(); browser.pause() }
+            .onDisappear { model.persistRecovery(); browser.pause(); combos.cancel() }
         }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light)
     }
 
@@ -220,10 +221,18 @@ struct DeckStudioWorkspaceScreen: View {
     private var ideasTab: some View {
         VStack(spacing: 12) {
             Picker("Ideas source", selection: $ideas) {
-                ForEach(["Insights", "EDHREC"], id: \.self) { Text($0).tag($0) }
+                ForEach(["Insights", "Combos", "EDHREC"], id: \.self) { Text($0).tag($0) }
             }.pickerStyle(.segmented).padding(.horizontal, 20)
             if ideas == "EDHREC" { DeckStudioEDHRECPanel(model: browser, commanders: DeckStudioDraftPresentation.commanders(model.draft)) }
-            else {
+            else if ideas == "Combos" {
+                DeckStudioComboPanel(model: combos, draft: model.draft, metadata: metadata, resolver: resolver,
+                    readOnly: model.readOnly, add: { name, section, approvedDeck in
+                        // Recheck the live model, not a rendered row's captured draft.
+                        guard approvedDeck == DeckStudioSpellbookInput.make(model.draft, resolver: resolver),
+                              resolver?.canonicalCardName(name) == name else { return false }
+                        return model.add(name, section: section)
+                    }, inspect: inspect)
+            } else {
                 ScrollView {
                     VStack(spacing: 16) {
                         DeckStudioPanel {

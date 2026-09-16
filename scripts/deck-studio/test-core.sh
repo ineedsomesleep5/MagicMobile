@@ -7,3 +7,4 @@ swiftc -swift-version 5 -warnings-as-errors \
   "$root/apps/ios/MagicMobile/DeckStudio/Core/DeckStudioCore.swift" \
   "$root/scripts/deck-studio/core-checks.swift" -o "$build/checks"
 "$build/checks"
+bash "$root/scripts/deck-studio/test-spellbook.sh"
