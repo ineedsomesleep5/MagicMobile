@@ -10,3 +10,4 @@ swiftc -swift-version 5 -warnings-as-errors \
 bash "$root/scripts/deck-studio/test-spellbook.sh"
 bash "$root/scripts/deck-studio/test-roles.sh"
 bash "$root/scripts/deck-studio/test-observations.sh"
+bash "$root/scripts/deck-studio/test-scryfall.sh"

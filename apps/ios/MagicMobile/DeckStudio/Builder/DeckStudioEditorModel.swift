@@ -1,8 +1,8 @@
 import Foundation
 import Combine
 
-/// One source of truth for the editable draft, disk revision and undo/redo.
-/// All writes use the existing durable local store. No cloud API is involved.
+/// One source of truth for draft, disk revision and undo/redo. Existing durable
+/// local storage and recovery remain authoritative; no cloud writes occur here.
 @MainActor
 final class DeckStudioEditorModel: ObservableObject {
     @Published private(set) var history: DeckStudioEditHistory<NativeDeckDraft>
@@ -33,7 +33,6 @@ final class DeckStudioEditorModel: ObservableObject {
             }
         }
     }
-
     var draft: NativeDeckDraft { history.value }
     var isDirty: Bool { history.isDirty }
     var canSave: Bool { !readOnly && (try? draft.deck()) != nil }
@@ -45,15 +44,12 @@ final class DeckStudioEditorModel: ObservableObject {
         if isDirty { return "Unsaved changes · recovery kept locally" }
         return record == nil ? "New local draft" : "Saved on this device"
     }
-
     @discardableResult func change(_ operation: (inout NativeDeckDraft) throws -> Void) -> Bool {
         guard !readOnly else { return false }
         do {
             try history.edit { value in
                 try operation(&value)
-                var checked = value
-                // A temporarily blank title may be recovered but cannot be saved as a deck.
-                checked.name = "Draft"
+                var checked = value; checked.name = "Draft"
                 _ = try checked.deck()
             }
             persistRecovery()
@@ -62,7 +58,6 @@ final class DeckStudioEditorModel: ObservableObject {
     }
     func undo() { guard !readOnly else { return }; history.undo(); persistRecovery() }
     func redo() { guard !readOnly else { return }; history.redo(); persistRecovery() }
-
     func makeEditableCopy() {
         guard readOnly, let source = record else { return }
         do {
@@ -75,10 +70,7 @@ final class DeckStudioEditorModel: ObservableObject {
     @discardableResult func add(_ name: String, section: String = "deck") -> Bool {
         change { value in
             let effective = DeckStudioDraftPresentation.normalizedSection(section)
-            if let index = value.rows.firstIndex(where: {
-                !$0.isPrimaryCommander && $0.cardName == name &&
-                DeckStudioDraftPresentation.normalizedSection($0.section) == effective
-            }) { value.rows[index].quantity += 1 }
+            if let index = value.rows.firstIndex(where: { !$0.isPrimaryCommander && $0.cardName == name && DeckStudioDraftPresentation.normalizedSection($0.section) == effective }) { value.rows[index].quantity += 1 }
             else { value.rows.append(NativeDeckRow(cardName: name, section: section)) }
         }
     }
@@ -96,16 +88,35 @@ final class DeckStudioEditorModel: ObservableObject {
         }
     }
     func remove(id: UUID) { change { $0.rows.removeAll { $0.id == id } } }
-
+    func replace(rowID: UUID, name: String) -> Bool { change { try DeckStudioEditorOperations.replaceCard(in: &$0, rowID: rowID, name: name) } }
+    func commander(_ name: String, keepOld: Bool) -> Bool { change { try DeckStudioEditorOperations.replacePrimaryCommander(in: &$0, name: name, keepOld: keepOld) } }
+    func basics(_ values: [String: Int], expected: NativeDeckDraft) -> Bool {
+        guard expected == draft else { error = "The draft changed. Reopen the land tool."; return false }
+        return change { try DeckStudioEditorOperations.setBasicLands(in: &$0, quantities: values) }
+    }
+    /// A draft with non-playing boards produces a separate playable copy. It is
+    /// never rewritten to satisfy the resolver; unsaved source changes are saved first.
+    func preparePlayable(_ playing: DeckList, resolver: OnDeviceDeckResolver) -> String? {
+        do {
+            let projection = try DeckStudioPlayProjection(draft.deck())
+            guard try projection.resolve(resolver) == resolver.resolve(playing) else { throw OnDeviceDeckEditing.Error.staleRevision }
+            if projection.excluded.isEmpty {
+                if readOnly, let record { return record.id.hasPrefix("precon:") ? record.id : "local:\(record.id)" }
+                return save().map { "local:\($0.id)" }
+            }
+            if !readOnly, isDirty || record == nil { guard save() != nil else { return nil } }
+            let copy = DeckList(name: String(playing.name.prefix(96)) + " — Playtest", commander: playing.commander, entries: playing.entries)
+            let saved = try library.addLocalDurably(copy, sourceURL: sourceURL)
+            return "local:\(saved.id)"
+        } catch { self.error = error.localizedDescription; return nil }
+    }
     @discardableResult func save() -> DeckLibraryRecord? {
         guard canSave else { return nil }
         do {
             let deck = try draft.deck()
             let saved: DeckLibraryRecord
-            if let record {
-                // Missing records and stale revisions must fail, not become silent duplicates.
-                saved = try library.updateLocalDurably(deck, id: record.id, expectedRevision: record.revision)
-            } else { saved = try library.addLocalDurably(deck, sourceURL: sourceURL) }
+            if let record { saved = try library.updateLocalDurably(deck, id: record.id, expectedRevision: record.revision) }
+            else { saved = try library.addLocalDurably(deck, sourceURL: sourceURL) }
             if !recoveryBlocked { NativeDeckDraftRecovery.clear(key: recoveryKey, defaults: defaults) }
             record = saved; recoveryKey = "\(saved.id).\(saved.revision)"
             history.markSaved(); recovered = false; error = nil
@@ -121,10 +132,8 @@ final class DeckStudioEditorModel: ObservableObject {
             return true
         } catch { self.error = "Draft recovery could not be saved: \(error.localizedDescription)"; return false }
     }
-
 }
 
-/// Display-only transformations. No structural check here certifies Commander legality.
 enum DeckStudioDraftPresentation {
     static func normalizedSection(_ raw: String) -> String {
         switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
@@ -135,12 +144,8 @@ enum DeckStudioDraftPresentation {
         }
     }
     static func section(_ row: NativeDeckRow) -> String { row.isPrimaryCommander ? "commanders" : normalizedSection(row.section) }
-    static func commanders(_ draft: NativeDeckDraft) -> [String] {
-        draft.rows.filter { section($0) == "commanders" }.map(\.cardName)
-    }
-    static func gameCount(_ draft: NativeDeckDraft) -> Int {
-        draft.rows.filter { ["deck", "commanders"].contains(section($0)) }.reduce(0) { $0 + $1.quantity }
-    }
+    static func commanders(_ draft: NativeDeckDraft) -> [String] { draft.rows.filter { section($0) == "commanders" }.map(\.cardName) }
+    static func gameCount(_ draft: NativeDeckDraft) -> Int { draft.rows.filter { ["deck", "commanders"].contains(section($0)) }.reduce(0) { $0 + $1.quantity } }
     static func colors(_ draft: NativeDeckDraft, metadata: NativeDeckMetadataCatalogue?) -> [String]? {
         let commanders = commanders(draft)
         guard !commanders.isEmpty else { return nil }

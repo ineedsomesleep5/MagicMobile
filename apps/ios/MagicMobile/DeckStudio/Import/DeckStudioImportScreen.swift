@@ -9,6 +9,7 @@ struct DeckStudioImportScreen: View {
     @ObservedObject var library: DeckLibraryStore
     let resolver: OnDeviceDeckResolver?
     let didImport: (DeckLibraryRecord) -> Void
+    @StateObject private var validation = DeckStudioValidationState()
     @Environment(\.dismiss) private var dismiss
     @State private var method = "Paste"
     @State private var name = "Imported Commander Deck"
@@ -45,12 +46,15 @@ struct DeckStudioImportScreen: View {
                             .disabled(busy || resolver == nil || saved != nil || (method == "Link" ? link : text).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                             .accessibilityIdentifier("deckStudio.import.review")
                     }
-                    if let preview { review(preview) }
+                    if let preview {
+                        review(preview)
+                        DeckStudioValidationPanel(state: validation, deck: preview.deck, resolver: resolver)
+                    }
                 }.padding(20).frame(maxWidth: 720).frame(maxWidth: .infinity)
             }
             .background(DeckStudioPalette.background).scrollDismissesKeyboard(.interactively)
             .navigationTitle("Import deck").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { task?.cancel(); dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { task?.cancel(); validation.cancelPending(); dismiss() } } }
             .safeAreaInset(edge: .bottom) {
                 if let preview {
                     Button(saved == nil ? "Save reviewed draft" : "Finish import") { save(preview) }
@@ -77,7 +81,7 @@ struct DeckStudioImportScreen: View {
             .onChange(of: method) { _, _ in invalidate() }
             .onChange(of: excludeSideboards) { _, _ in invalidate() }
             .onChange(of: photo) { _, item in if let item { beginScan(item) } }
-            .onDisappear { task?.cancel() }
+            .onDisappear { task?.cancel(); validation.cancelPending() }
         }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light)
     }
     private var inputPanel: some View {
@@ -88,8 +92,7 @@ struct DeckStudioImportScreen: View {
                     TextEditor(text: $text).font(.body.monospaced()).frame(minHeight: 220)
                         .scrollContentBackground(.hidden).padding(10).background(.white, in: RoundedRectangle(cornerRadius: 12))
                         .textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityLabel("Decklist text")
-                    Text("Commander\n1 Your Commander\n\nDeck\n1 Sol Ring")
-                        .font(.caption.monospaced()).foregroundStyle(DeckStudioPalette.secondaryInk)
+                    Text("Commander\n1 Your Commander\n\nDeck\n1 Sol Ring").font(.caption.monospaced()).foregroundStyle(DeckStudioPalette.secondaryInk)
                     Button("Open text or native JSON file", systemImage: "doc") { filePicker = true }.frame(minHeight: 44)
                 } else if method == "Link" {
                     TextField("Public Archidekt or Moxfield deck URL", text: $link)
@@ -99,10 +102,8 @@ struct DeckStudioImportScreen: View {
                         .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                     Button("Switch to pasted export") { method = "Paste" }.frame(minHeight: 44)
                 } else {
-                    PhotosPicker(selection: $photo, matching: .images) {
-                        Label("Choose decklist photo or screenshot", systemImage: "text.viewfinder").frame(minHeight: 60)
-                    }
-                    Text("Apple Vision recognizes text on this device. Images are not uploaded. You will review and correct the recognized text before parsing; this is not a physical-card scanner.")
+                    PhotosPicker(selection: $photo, matching: .images) { Label("Choose decklist photo or screenshot", systemImage: "text.viewfinder").frame(minHeight: 60) }
+                    Text("Apple Vision recognizes text on this device. Images are not uploaded. Review and correct the recognized text before parsing; this is not a physical-card scanner.")
                         .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                 }
             }.disabled(busy || saved != nil)
@@ -116,10 +117,9 @@ struct DeckStudioImportScreen: View {
                 Label("Parsed · syntax accepted", systemImage: "checkmark.circle")
                 Label(preview.unresolvedNames.isEmpty ? "Names resolved in the compiled catalogue" : "\(preview.unresolvedNames.count) unresolved names retained",
                       systemImage: preview.unresolvedNames.isEmpty ? "checkmark.circle" : "exclamationmark.triangle")
-                Label("XMage Commander validation: not run", systemImage: "clock")
                 Text("\(DeckStudioDraftPresentation.gameCount(draft)) main + commander cards; \(preview.deck.totalCards) across all imported sections.")
                     .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
-                Text("Saving a draft does not certify legality. Exact rules validation remains in game setup until the dedicated editor validation service is added.")
+                Text("Parsing and name resolution do not certify Commander legality. Check with XMage below, or save an unfinished draft and continue editing. Validation never silently discards other boards.")
                     .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                 DisclosureGroup("Review cards and sections") {
                     ForEach(draft.rows) { row in
@@ -129,9 +129,7 @@ struct DeckStudioImportScreen: View {
                 }
                 if !preview.annotations.isEmpty {
                     DisclosureGroup("\(preview.annotations.count) source annotations") {
-                        ForEach(Array(preview.annotations.enumerated()), id: \.offset) { _, note in
-                            Text("Line \(note.line): \(note.text)").font(.caption)
-                        }
+                        ForEach(Array(preview.annotations.enumerated()), id: \.offset) { _, note in Text("Line \(note.line): \(note.text)").font(.caption) }
                     }
                     Text("An on-device import receipt preserves these annotations and the reviewed deck. Printing annotations do not change the compiled gameplay identity.").font(.caption2)
                 }
@@ -140,7 +138,7 @@ struct DeckStudioImportScreen: View {
     }
     private func invalidate() {
         guard saved == nil else { return }
-        generation = UUID(); task?.cancel(); busy = false; preview = nil; receiptURL = nil
+        generation = UUID(); task?.cancel(); busy = false; preview = nil; receiptURL = nil; validation.prepare(nil)
     }
     private func beginPreview() {
         guard let resolver else { return }
@@ -178,7 +176,6 @@ struct DeckStudioImportScreen: View {
     }
     private func save(_ preview: OnDeviceDeckLinkImporter.Preview) {
         do {
-            // Archive review information first; a library write failure cannot lose it.
             if receiptURL == nil { receiptURL = try DeckStudioImportReceipt.store(preview, sourceURL: sourceURL) }
             if saved == nil { saved = try library.addLocalDurably(preview.deck, sourceURL: sourceURL) }
             if let saved { didImport(saved); dismiss() }
@@ -190,25 +187,20 @@ private enum DeckStudioOCR {
     static func recognize(_ data: Data) throws -> String {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let width = properties[kCGImagePropertyPixelWidth] as? Int,
-              let height = properties[kCGImagePropertyPixelHeight] as? Int,
-              width > 0, height > 0, width <= 20_000, height <= 20_000,
-              Int64(width) * Int64(height) <= 80_000_000,
+              let width = properties[kCGImagePropertyPixelWidth] as? Int, let height = properties[kCGImagePropertyPixelHeight] as? Int,
+              width > 0, height > 0, width <= 20_000, height <= 20_000, Int64(width) * Int64(height) <= 80_000_000,
               let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
                 kCGImageSourceThumbnailMaxPixelSize: 3000
               ] as CFDictionary) else { throw OnDeviceDeckResolver.ResolutionError("The image is unsupported or too large to read safely.") }
         let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate; request.usesLanguageCorrection = false
-        request.recognitionLanguages = ["en-US"]
+        request.recognitionLevel = .accurate; request.usesLanguageCorrection = false; request.recognitionLanguages = ["en-US"]
         try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
         let text = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
         guard !text.isEmpty, text.utf8.count <= OnDeviceDeckLinkImporter.maximumBytes else { throw OnDeviceDeckResolver.ResolutionError("No usable decklist text was found. Try a clearer image or paste an export.") }
         return text
     }
 }
-
 private struct DeckStudioImportReceipt: Codable {
     struct Annotation: Codable { let line: Int; let text: String }
     let schemaVersion: Int
@@ -226,8 +218,7 @@ private struct DeckStudioImportReceipt: Codable {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         var url = directory.appendingPathComponent(UUID().uuidString + ".json")
         try data.write(to: url, options: [.atomic, .completeFileProtection])
-        var values = URLResourceValues(); values.isExcludedFromBackup = true
-        try url.setResourceValues(values)
+        var values = URLResourceValues(); values.isExcludedFromBackup = true; try url.setResourceValues(values)
         return url
     }
 }
