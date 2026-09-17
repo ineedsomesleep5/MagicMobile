@@ -6074,6 +6074,7 @@ private struct AbilityChoiceTouchSurface: UIViewRepresentable {
 }
 
 struct UniversalPromptActionPanel: View {
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     let snapshot: GameSnapshot
     let selectedCardActions: [LegalAction]
     @Binding var selectedCard: ZoneCard?
@@ -6213,6 +6214,7 @@ struct UniversalPromptActionPanel: View {
                 .padding(.vertical, 1)
                 .padding(.bottom, 10)
             }
+            .accessibilityIdentifier("prompt.details.scroll")
         }
         .padding(8)
         .background(
@@ -6693,7 +6695,9 @@ struct UniversalPromptActionPanel: View {
                             runCommand(choiceCommand, "Choose ability", "\(prompt.id)-\(ability.id)")
                         }
                         CardTile(card: source, selected: false, legal: false,
-                                 zoneName: "Ability source", width: 100, height: 140)
+                                 zoneName: "Ability source",
+                                 width: verticalSizeClass == .compact ? 80 : 100,
+                                 height: verticalSizeClass == .compact ? 112 : 140)
                         .frame(maxWidth: .infinity)
                         .contentShape(Rectangle())
                         .disabled(pendingActionId != nil || choiceCommand == nil)

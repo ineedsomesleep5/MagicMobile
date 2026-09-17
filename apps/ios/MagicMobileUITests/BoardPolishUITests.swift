@@ -126,6 +126,10 @@ final class BoardPolishUITests: XCTestCase {
                            "Ability details should have only the outer heading")
             let choices = app.buttons.matching(NSPredicate(format: "label == %@", "Choose ability"))
             XCTAssertEqual(choices.count, 2, "Identical abilities retain separate engine choices")
+            if app.frame.width > app.frame.height {
+                XCTAssertLessThanOrEqual(choices.firstMatch.frame.maxY, app.scrollViews["prompt.details.scroll"].frame.maxY,
+                                  "Short ability actions should fit the landscape sheet")
+            }
             capture(app, name: currentCapture + "-cards")
             let swipeStart = cards.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
             swipeStart.press(forDuration: 0.05, thenDragTo: swipeStart.withOffset(CGVector(dx: 0, dy: -60)))
