@@ -67,6 +67,21 @@ test("existing uploaded numbers and future prefixes are not reused", { skip: pro
   assert.equal(f.prepare().lastPreparedBuild, "2026091308");
 });
 
+test("configured floor starts a durable sequential TestFlight counter", { skip: process.platform !== "darwin" }, t => {
+  const f = fixture(t);
+  writeFileSync(f.ledger, JSON.stringify({
+    schemaVersion: 1,
+    uploads: [{ build: "2026091702" }],
+    lastUploadedBuild: "2026091702",
+    nextBuildFloor: "5000000000"
+  }));
+  assert.equal(f.prepare().lastPreparedBuild, "5000000000");
+  const log = join(f.root, "upload.log");
+  writeFileSync(log, "Delivery UUID: 01234567-89ab-cdef-0123-456789abcdef\n");
+  assert.equal(f.run("record", "--upload-log", log, "--ipa", join(f.root, "app.ipa")).status, 0);
+  assert.equal(f.prepare().lastPreparedBuild, "5000000001");
+});
+
 test("a directly installed build is not reused or mislabeled as uploaded", { skip: process.platform !== "darwin" }, t => {
   const f = fixture(t);
   const installed = f.prepare();
