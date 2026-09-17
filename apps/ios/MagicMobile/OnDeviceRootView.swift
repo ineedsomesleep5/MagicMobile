@@ -20,6 +20,7 @@ struct OnDeviceRootView: View {
     @AppStorage(OnDeviceSetupPreferences.deckKey) private var selectedDeckID = OnDeviceSetupPreferences.defaultDeckID
     @AppStorage(OnDeviceSetupPreferences.aiDeckKey) private var aiPreconID = OnDeviceSetupPreferences.defaultAIDeckID
     @AppStorage(OnDeviceSetupPreferences.aiCountKey) private var opponentCount = 1
+    @AppStorage(OnDeviceSetupPreferences.aiSkillKey) private var aiSkill = 2
     @AppStorage(OnDeviceSetupPreferences.humanCountKey) private var playerCount = 2
     @AppStorage(OnDeviceSetupPreferences.friendsKey) private var playWithFriends = false
     @State private var showSetup = false
@@ -252,7 +253,10 @@ struct OnDeviceRootView: View {
                         Picker("AI deck", selection: $aiPreconID) {
                             ForEach(PreconCatalog.all) { Text($0.name).tag($0.id) }
                         }.disabled(setup.isBusy || setup.needsLeave)
-                        Text("XMage AI · Normal").font(.caption).foregroundStyle(.secondary)
+                        Stepper("AI skill: \(aiSkill)", value: $aiSkill, in: 1...10)
+                            .disabled(setup.isBusy || setup.needsLeave)
+                            .accessibilityIdentifier("onDevice.aiSkill")
+                        Text("Higher skill levels allow more thinking and may slow turns.").font(.caption).foregroundStyle(.secondary)
                         Button("Start game") { startAI() }
                             .buttonStyle(MagicPrimaryButtonStyle()).disabled(!mayStart)
                     }
@@ -320,7 +324,7 @@ struct OnDeviceRootView: View {
         Task {
             do { playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName) }
             catch { setup.errorMessage = error.localizedDescription; return }
-            await setup.startAI(name: playerDisplayName, deck: deck, aiDeck: aiPrecon.deckList, opponents: opponentCount)
+            await setup.startAI(name: playerDisplayName, deck: deck, aiDeck: aiPrecon.deckList, opponents: opponentCount, aiSkill: aiSkill)
         }
     }
 
@@ -373,12 +377,13 @@ struct OnDeviceRootView: View {
     private func restoreSetupPreferences() {
         let selected = OnDeviceSetupPreferences.normalize(
             .init(deckID: selectedDeckID, aiDeckID: aiPreconID, aiOpponents: opponentCount,
-                  humanPlayers: playerCount, friends: playWithFriends),
+                  humanPlayers: playerCount, friends: playWithFriends, aiSkill: OnDeviceSetupPreferences.readAISkill(from: MagicMobilePreferences.current)),
             deckIDs: Set(PreconCatalog.all.map { "precon:\($0.id)" } + library.decks.map { "local:\($0.id)" }),
             aiDeckIDs: PreconCatalog.all.map(\.id)
         )
         selectedDeckID = selected.deckID; aiPreconID = selected.aiDeckID
         opponentCount = selected.aiOpponents; playerCount = selected.humanPlayers
+        aiSkill = selected.aiSkill
     }
 
     private func requestLeave() {
@@ -457,21 +462,15 @@ private final class OnDeviceSetupModel: ObservableObject {
         } catch { errorMessage = error.localizedDescription; status = "Local setup unavailable" }
     }
 
-    func startAI(name: String, deck: DeckList, aiDeck: DeckList, opponents: Int) async {
+    func startAI(name: String, deck: DeckList, aiDeck: DeckList, opponents: Int, aiSkill: Int = 2) async {
         guard !isBusy, !needsLeave, let resolver, let identity else { return }
         isBusy = true; errorMessage = nil; feedback = nil; status = "Starting XMage"
         defer { isBusy = false }
         do {
             let name = try Self.playerName(name)
-            guard (1...3).contains(opponents) else { throw EngineError.invalidMessage("Choose 1–3 AI opponents.") }
             let humanDeck = try resolver.resolve(deck), opponentDeck = try resolver.resolve(aiDeck)
-            var seats: [MagicMobileOnDevice.JSONValue] = [.object([
-                "seatId": .string("player1"), "name": .string(name), "controller": .string("human"), "deck": humanDeck
-            ])]
-            for index in 1...opponents {
-                seats.append(.object(["seatId": .string("player\(index + 1)"), "name": .string("AI \(index)"),
-                                      "controller": .string("ai"), "deck": opponentDeck]))
-            }
+            let seats = try OnDeviceAppConfiguration.aiGameSeats(name: name, humanDeck: humanDeck,
+                aiDeck: opponentDeck, opponents: opponents, aiSkill: aiSkill)
             let client = try await runtime.makeClient(identity: identity)
             aiClient = client
             let created = try await runtime.create(client: client, configuration: .object(["seats": .array(seats)]))

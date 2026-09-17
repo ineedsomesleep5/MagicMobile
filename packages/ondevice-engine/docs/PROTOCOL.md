@@ -29,6 +29,13 @@ payload recorder is enabled. Temporary capture is tagged `[DEBUG-native-failure]
 
 A configuration has 2–4 unique seats with `seatId`, `name`, `controller: "human"` or `"ai"`, and `deck`, with at least one human. AI seats use actual upstream MAD and are not poll/response recipients. Deck keys are `name`, `main`, `commanders` and optional `companions`. Card rows have `count`, `setCode`, `collectorNumber`, optional exact `name`. They do **not** accept `className`, caller-supplied rules or rarity.
 
+AI seats additionally accept optional `aiSkill`, an integer from 1 to 10 matching the pinned
+XMage desktop Skill control. Omission preserves the prior level-1 engine behavior; the app's
+new setup control defaults to desktop level 2. The value goes directly to the upstream MAD
+constructor (search depth `max(4, skill)` and thinking budget `skill * 3` seconds per calculation).
+Higher levels allow more thinking, not different rules or access to additional private information.
+Human seats reject this field. Invalid values fail rather than silently becoming a different level.
+
 A response command has exactly:
 
 ```

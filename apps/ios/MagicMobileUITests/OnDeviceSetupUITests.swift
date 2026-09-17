@@ -35,6 +35,23 @@ final class OnDeviceSetupUITests: XCTestCase {
         app = nil
     }
 
+    func testAISkillCanChangeAndSurvivesRelaunch() {
+        openSetup()
+        let skill = app.steppers["onDevice.aiSkill"]
+        reveal(skill)
+        XCTAssertTrue(app.staticTexts["AI skill: 2"].exists)
+        skill.buttons["Increment"].tap()
+        XCTAssertTrue(app.staticTexts["AI skill: 3"].exists)
+        capture("AI skill selection")
+        app.terminate()
+        app.launch()
+        openSetup()
+        reveal(app.steppers["onDevice.aiSkill"])
+        XCTAssertTrue(app.staticTexts["AI skill: 3"].exists)
+        app.steppers["onDevice.aiSkill"].buttons["Decrement"].tap()
+        XCTAssertTrue(app.staticTexts["AI skill: 2"].exists)
+    }
+
     func testUpdatesShowsInstalledBuildAndSeparatesUpstreamNews() {
         app.buttons["menu.updates"].tap()
         XCTAssertTrue(app.navigationBars["Updates"].waitForExistence(timeout: 5))

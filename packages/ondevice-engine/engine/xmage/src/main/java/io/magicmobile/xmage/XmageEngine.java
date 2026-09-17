@@ -132,15 +132,16 @@ public final class XmageEngine implements EnginePort {
         MobileAICancellation cancellation=new MobileAICancellation();
         MobileCommanderMatch match=new MobileCommanderMatch();
         for(Object value:configSeats) {
-            Map<String,Object> s=Json.object(value);Json.onlyKeys(s,Set.of("seatId","name","controller","deck"));String id=Json.requiredString(s,"seatId");
+            Map<String,Object> s=Json.object(value);Json.onlyKeys(s,Set.of("seatId","name","controller","deck","aiSkill"));String id=Json.requiredString(s,"seatId");
             if(id.isEmpty() || id.length()>128 || players.containsKey(id)) throw new BridgeException("invalid_seat","Seat IDs must be unique and nonempty");
             String controller=Json.optionalString(s,"controller","human");
             Player player;
             if(controller.equals("human")) {
+                if(s.containsKey("aiSkill")) throw new BridgeException("invalid_ai_skill","AI skill applies only to AI seats");
                 MobileHumanPlayer human=new MobileHumanPlayer(Json.requiredString(s,"name"));
                 player=human;seats.put(id,human);
             } else if(controller.equals("ai")) {
-                player=cancellation.player(Json.requiredString(s,"name"));
+                player=cancellation.player(Json.requiredString(s,"name"),aiSkill(s));
             } else throw new BridgeException("invalid_controller","Controller must be human or ai");
             match.addPlayer(player,DeckLoader.load(Json.object(s.get("deck"))));players.put(id,player);
         }
@@ -150,6 +151,14 @@ public final class XmageEngine implements EnginePort {
         Running running=new Running(match,players,seats,cancellation);String id=match.getGame().getId().toString();
         matches.put(id,running);running.start();
         return Json.map("matchId",id,"seats",new ArrayList<>(players.keySet()),"engine",capabilities());
+    }
+    static int aiSkill(Map<String,Object> seat) {
+        if(!seat.containsKey("aiSkill")) return 1; // Preserve existing callers' upstream budget.
+        long skill;
+        try { skill=Json.integer(seat.get("aiSkill")); }
+        catch(BridgeException invalid) { throw new BridgeException("invalid_ai_skill","AI skill must be an integer from 1 to 10"); }
+        if(skill<1 || skill>10) throw new BridgeException("invalid_ai_skill","AI skill must be an integer from 1 to 10");
+        return (int)skill;
     }
     private synchronized Running match(String id) {
         Running r=matches.get(id);if(r==null) throw new BridgeException("unknown_match","Match does not exist");return r;
