@@ -120,12 +120,40 @@ final class BoardPolishUITests: XCTestCase {
             captureImage(name: currentCapture + "-gain")
             XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "43 life")).firstMatch.waitForExistence(timeout: 5))
         case "ability-choice":
-            let inspect = app.buttons["Inspect Sol Ring"].firstMatch
-            visible(inspect, in: app)
+            let cards = app.buttons.matching(NSPredicate(format: "label == %@", "Choose Sol Ring ability"))
+            visible(cards.firstMatch, in: app)
+            XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", "CHOOSE ABILITY")).count, 1,
+                           "Ability details should have only the outer heading")
             let choices = app.buttons.matching(NSPredicate(format: "label == %@", "Choose ability"))
             XCTAssertEqual(choices.count, 2, "Identical abilities retain separate engine choices")
             capture(app, name: currentCapture + "-cards")
-            choices.element(boundBy: 1).tap()
+            let swipeStart = cards.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+            swipeStart.press(forDuration: 0.05, thenDragTo: swipeStart.withOffset(CGVector(dx: 0, dy: -60)))
+            XCTAssertFalse(app.buttons["Close card"].exists, "Scrolling must not inspect or select an ability")
+            app.buttons["Cancel prompt details"].tap()
+            XCTAssertFalse(app.staticTexts["preview.captured-command"].exists, "Scrolling must not submit an ability")
+            app.buttons["board.action.primary"].tap()
+            visible(cards.firstMatch, in: app)
+            // Leave margin for simulator scroll-view touch-delivery delay.
+            // The app's recognition threshold remains 0.35 seconds.
+            cards.firstMatch.press(forDuration: 1)
+            let inspected = app.buttons["Close card"].waitForExistence(timeout: 5)
+            capture(app, name: currentCapture + "-after-hold")
+            if !inspected {
+                app.buttons["Cancel prompt details"].tap()
+                let captured = app.staticTexts["preview.captured-command"]
+                XCTFail("Hold must inspect without submitting. Captured command: \(captured.exists ? captured.label : "none")")
+                return
+            }
+            app.buttons["Close card"].tap()
+            app.buttons["Cancel prompt details"].tap()
+            XCTAssertFalse(app.staticTexts["preview.captured-command"].exists, "Inspection must not submit an ability")
+            app.buttons["board.action.primary"].tap()
+            visible(cards.element(boundBy: 1), in: app)
+            // A tap on the card-backed choice must submit, not open a second
+            // inspector that makes the user choose the same ability again.
+            cards.element(boundBy: 1).tap()
+            XCTAssertFalse(app.buttons["Close card"].exists, "Tapping a choice should not open inspection")
             // Fixtures capture commands without advancing an engine snapshot.
             // Dismiss the sheet to expose the capture on the underlying board.
             app.buttons["Cancel prompt details"].tap()

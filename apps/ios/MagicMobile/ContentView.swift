@@ -3018,7 +3018,7 @@ struct NativeGameView: View {
                                     .zIndex(100)
                             }
 
-                            if shouldShowCompactPrompt && CompactPromptPopup.compactLegalPromptActions(in: snapshot).isEmpty {
+                            if shouldShowCompactPrompt && !isPromptDetailOpen && CompactPromptPopup.compactLegalPromptActions(in: snapshot).isEmpty {
                                 CompactPromptPopup(
                                     snapshot: snapshot,
                                     pendingActionId: pendingActionId,
@@ -3672,7 +3672,7 @@ struct NativeGameView: View {
                         .zIndex(100)
                 }
 
-                if shouldShowCompactPrompt && (targetableIds.isEmpty || targetableIds.contains(where: { id in snapshot.players.contains { CombatPlayerIdentity.ids(for: $0.playerId, in: snapshot).contains(id) } })) {
+                if shouldShowCompactPrompt && !isPromptDetailOpen && (targetableIds.isEmpty || targetableIds.contains(where: { id in snapshot.players.contains { CombatPlayerIdentity.ids(for: $0.playerId, in: snapshot).contains(id) } })) {
                     CompactPromptPopup(
                         snapshot: snapshot,
                         pendingActionId: pendingActionId,
@@ -6035,6 +6035,44 @@ struct PromptEnvelopeV2Badge: View {
     }
 }
 
+/// UIKit arbitrates the hold before selection, including inside a scrolling sheet.
+/// A recognized hold can never also invoke the tap action.
+private struct AbilityChoiceTouchSurface: UIViewRepresentable {
+    let enabled: Bool
+    let choose: () -> Void
+    let inspect: () -> Void
+
+    func makeUIView(context: Context) -> TouchView { TouchView() }
+    func updateUIView(_ view: TouchView, context: Context) {
+        view.isUserInteractionEnabled = enabled
+        view.choose = choose
+        view.inspect = inspect
+    }
+
+    final class TouchView: UIView {
+        var choose: (() -> Void)?
+        var inspect: (() -> Void)?
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            backgroundColor = .clear
+            isAccessibilityElement = false
+            let hold = UILongPressGestureRecognizer(target: self, action: #selector(held(_:)))
+            hold.minimumPressDuration = 0.35
+            hold.allowableMovement = 8
+            let tap = UITapGestureRecognizer(target: self, action: #selector(tapped))
+            tap.require(toFail: hold)
+            addGestureRecognizer(hold)
+            addGestureRecognizer(tap)
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        @objc private func tapped() { choose?() }
+        @objc private func held(_ gesture: UILongPressGestureRecognizer) {
+            if gesture.state == .began { inspect?() }
+        }
+    }
+}
+
 struct UniversalPromptActionPanel: View {
     let snapshot: GameSnapshot
     let selectedCardActions: [LegalAction]
@@ -6207,7 +6245,8 @@ struct UniversalPromptActionPanel: View {
 
     @ViewBuilder
     private func promptEnvelopeV2Section(_ prompt: PromptEnvelopeV2) -> some View {
-        PromptPanelSection(title: promptPresentation?.title ?? "Choose", detail: "", isHighlighted: true) {
+        PromptPanelSection(title: promptPresentation?.title ?? "Choose", detail: "", isHighlighted: true,
+                           isEmbedded: prompt.abilities?.isEmpty == false) {
             Text(prompt.message)
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(.white.opacity(0.86))
@@ -6645,15 +6684,35 @@ struct UniversalPromptActionPanel: View {
             // Occurrences are distinct rows even if XMage repeats an ability UUID.
             // Only presentation identity changes; answers retain the engine UUID.
             ForEach(Array(abilities.enumerated()), id: \.offset) { _, ability in
+                let choiceCommand = command(type: "choose_ability", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [ability.id])
                 VStack(alignment: .leading, spacing: 8) {
                     if let source = ability.sourceCard {
-                        Button { inspectedCard = source } label: {
-                            CardTile(card: source, selected: false, legal: false,
-                                     zoneName: "Ability source", width: 100, height: 140)
-                                .frame(maxWidth: .infinity)
+                        let selectAbility = {
+                            guard pendingActionId == nil, let choiceCommand else { return }
+                            inspectedCard = nil
+                            runCommand(choiceCommand, "Choose ability", "\(prompt.id)-\(ability.id)")
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Inspect \(source.card.name)")
+                        CardTile(card: source, selected: false, legal: false,
+                                 zoneName: "Ability source", width: 100, height: 140)
+                        .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
+                        .disabled(pendingActionId != nil || choiceCommand == nil)
+                        .overlay {
+                            AbilityChoiceTouchSurface(
+                                enabled: pendingActionId == nil && choiceCommand != nil,
+                                choose: selectAbility,
+                                inspect: { inspectedCard = source }
+                            ).accessibilityHidden(true)
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityLabel("Choose \(source.card.name) ability")
+                        .accessibilityHint("Tap to choose. Hold to inspect the source card.")
+                        .accessibilityAction { selectAbility() }
+                        .accessibilityAction(named: Text("Inspect card")) {
+                            guard pendingActionId == nil else { return }
+                            inspectedCard = source
+                        }
                     }
                     Text(ability.sourceName ?? "Ability")
                         .font(.subheadline.bold()).foregroundStyle(MagicPalette.parchment)
@@ -6669,7 +6728,7 @@ struct UniversalPromptActionPanel: View {
                     subtitle: nil,
                     systemImage: "bolt.fill",
                     pendingId: "\(prompt.id)-\(ability.id)",
-                    command: command(type: "choose_ability", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [ability.id])
+                    command: choiceCommand
                 )
                 }
                 .padding(12)
@@ -7613,9 +7672,18 @@ struct PromptPanelSection<Content: View>: View {
     let title: String
     let detail: String
     var isHighlighted = false
+    var isEmbedded = false
     @ViewBuilder let content: Content
 
     var body: some View {
+        if isEmbedded {
+            VStack(alignment: .leading, spacing: 7) { content }
+        } else {
+            framedSection
+        }
+    }
+
+    private var framedSection: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 5) {
                 Text(title.uppercased())
@@ -8030,6 +8098,11 @@ struct CompactPromptPopup: View {
         return PortraitInteractionPolicy.dockActions(legalActions)
             .filter { action in
                 if action.type == "concede" { return false }
+                // The card-backed picker owns these choices. Keep separate
+                // cancel/confirmation actions, but do not repeat abilities as
+                // a second compact text chooser underneath it.
+                if snapshot.source == "xmage-ondevice", snapshot.promptEnvelopeV2?.abilities?.isEmpty == false,
+                   action.type == "choose_ability" { return false }
                 if let promptId, action.promptId == promptId { return true }
                 if let responseType, action.type == responseType { return true }
                 return allowedTypes.contains(action.type)
