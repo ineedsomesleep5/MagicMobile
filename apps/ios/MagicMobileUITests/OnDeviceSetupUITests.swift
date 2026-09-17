@@ -39,17 +39,17 @@ final class OnDeviceSetupUITests: XCTestCase {
         openSetup()
         let skill = app.steppers["onDevice.aiSkill"]
         reveal(skill)
-        XCTAssertTrue(app.staticTexts["AI skill: 2"].exists)
-        skill.buttons["Increment"].tap()
-        XCTAssertTrue(app.staticTexts["AI skill: 3"].exists)
+        waitFor(skill, predicate: "label == 'AI skill: 2'")
+        skill.buttons["onDevice.aiSkill-Increment"].tap()
+        waitFor(skill, predicate: "label == 'AI skill: 3'")
         capture("AI skill selection")
         app.terminate()
         app.launch()
         openSetup()
         reveal(app.steppers["onDevice.aiSkill"])
-        XCTAssertTrue(app.staticTexts["AI skill: 3"].exists)
-        app.steppers["onDevice.aiSkill"].buttons["Decrement"].tap()
-        XCTAssertTrue(app.staticTexts["AI skill: 2"].exists)
+        waitFor(app.steppers["onDevice.aiSkill"], predicate: "label == 'AI skill: 3'")
+        app.steppers["onDevice.aiSkill"].buttons["onDevice.aiSkill-Decrement"].tap()
+        waitFor(app.steppers["onDevice.aiSkill"], predicate: "label == 'AI skill: 2'")
     }
 
     func testUpdatesShowsInstalledBuildAndSeparatesUpstreamNews() {
@@ -562,8 +562,8 @@ final class OnDeviceSetupUITests: XCTestCase {
     private func openSetup() {
         let play = app.buttons["menu.play"]
         XCTAssertTrue(play.waitForExistence(timeout: 15))
-        reveal(play); play.tap()
-        XCTAssertTrue(app.textFields["ondevice.playerName"].waitForExistence(timeout: 5))
+        reveal(play); tapDiagnosed(play)
+        waitFor(app.textFields["ondevice.playerName"], predicate: "exists == true AND hittable == true")
         XCTAssertTrue(app.staticTexts["Gather your table"].exists)
     }
 
