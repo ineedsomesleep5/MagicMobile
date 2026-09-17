@@ -26,6 +26,9 @@ final class NativeDeckPresentationTests: XCTestCase {
         let metadata = try NativeDeckMetadataCatalogue.bundled()
         XCTAssertTrue(NativeDeckDisplay.matches(name: "Forest", query: "", type: "Land", color: "C", metadata: metadata))
         XCTAssertFalse(NativeDeckDisplay.matches(name: "Forest", query: "", type: "", color: "G", metadata: metadata))
-        XCTAssertNil(metadata.card(named: "Forest")?.colorIdentity)
+        // The printed-color filter and commander color identity genuinely disagree here:
+        // Forest prints no colored mana symbol, but its land type gives it a green identity.
+        XCTAssertEqual(metadata.card(named: "Forest")?.colors, [])
+        XCTAssertEqual(metadata.card(named: "Forest")?.colorIdentity, ["G"])
     }
 }
