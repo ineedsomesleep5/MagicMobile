@@ -5,6 +5,8 @@ struct DeckStudioCardSearch: View {
     let colors: [String]?
     let add: (String, String) -> Bool
     var resolver: OnDeviceDeckResolver? = nil
+    @ObservedObject var model: DeckStudioEditorModel
+    var embedded = false
     @Environment(\.dismiss) private var dismiss
     @State private var source = "Local"
     @State private var query = ""
@@ -22,16 +24,28 @@ struct DeckStudioCardSearch: View {
     private struct Request: Equatable { let query: String; let type: String; let identity: [String]?; let set: String; let min: String; let max: String }
     private var requestKey: Request { Request(query: query, type: type, identity: constrainIdentity ? colors : nil, set: setCode, min: minMV, max: maxMV) }
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 12) {
-                Picker("Search source", selection: $source) { Text("Local catalogue").tag("Local"); Text("Scryfall — online").tag("Online") }.pickerStyle(.segmented).padding(.horizontal, 20)
-                Picker("Add to", selection: $section) { Text("Main deck").tag("deck"); Text("Commander(s)").tag("commanders"); Text("Maybeboard").tag("maybeboard") }.pickerStyle(.menu)
-                if source == "Online" { DeckStudioOnlineSearch(resolver: resolver, destination: section, add: add).padding(.horizontal, 20) }
-                else { localSearch }
-            }.background(DeckStudioPalette.background).navigationTitle("Add cards").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-                .sheet(item: $inspection) { card in DeckStudioCardInspector(name: card.name, metadata: card) }
-        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light)
+        Group {
+            if embedded { searchContent }
+            else {
+                NavigationStack {
+                    searchContent.navigationTitle("Add cards").navigationBarTitleDisplayMode(.inline)
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+                }
+            }
+        }
+        .sheet(item: $inspection) { card in DeckStudioCardInspector(name: card.name, metadata: card) }
+        .tint(DeckStudioPalette.ink).preferredColorScheme(.light)
+    }
+    private var searchContent: some View {
+        VStack(spacing: 8) {
+            Picker("Search source", selection: $source) { Text("Local catalogue").tag("Local"); Text("Scryfall — online").tag("Online") }.pickerStyle(.segmented).padding(.horizontal, 20)
+            Picker("Add to", selection: $section) {
+                Text("Main deck").tag("deck"); Text("Commander(s)").tag("commanders")
+                Text("Maybeboard").tag("maybeboard"); Text("Sideboard").tag("sideboard"); Text("Companion").tag("companions")
+            }.pickerStyle(.menu)
+            if source == "Online" { DeckStudioOnlineSearch(resolver: resolver, destination: section, add: add, model: model).padding(.horizontal, 20) }
+            else { localSearch }
+        }.background(DeckStudioPalette.background)
     }
     private var localSearch: some View {
         VStack(spacing: 12) {
@@ -56,16 +70,27 @@ struct DeckStudioCardSearch: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(card.name).font(.subheadline.weight(.medium))
                             Text(card.typeLine ?? "Type unavailable").font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
-                            if let cost = card.manaCost { Text(cost).font(.caption2.monospaced()) }
+                            if let cost = card.manaCost { NativeDeckManaCost(cost: cost) }
+                            if model.cardCount(card.name) > 0 {
+                                Text("\(model.cardCount(card.name)) in deck · \(model.cardCount(card.name, section: section)) here").font(.caption2).foregroundStyle(DeckStudioPalette.success)
+                            }
+                            if model.needsSingletonReview(card.name, metadata: card, destination: section) {
+                                Text("Already in playing deck · check copy limit").font(.caption2).foregroundStyle(DeckStudioPalette.warning)
+                            }
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }.buttonStyle(.plain)
+                    if model.cardCount(card.name, section: section) > 0 {
+                        Button { model.removeOne(card.name, section: section) } label: { Image(systemName: "minus.circle").frame(width: 44, height: 44) }
+                            .buttonStyle(.borderless).accessibilityLabel("Remove one \(card.name) from \(section)")
+                    }
                     Button {
                         if add(card.name, section) { lastAdded = card.name; addError = nil }
                         else { lastAdded = nil; addError = "Could not add this card. Check the draft quantity or section limits." }
                     } label: { Image(systemName: "plus.circle.fill").font(.title2).frame(width: 44, height: 44) }.buttonStyle(.borderless).accessibilityLabel("Add \(card.name) to \(section)")
                 }.listRowBackground(DeckStudioPalette.surface)
             }.scrollContentBackground(.hidden)
-            Text("Bundled XMage catalogue · up to 80 matches. Refine the filters for more. Color identity and name resolution are not Commander validation.").font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk).padding(.horizontal, 20).padding(.bottom, 12)
+            Text("\(results.count) matches\(results.count == 80 ? " · refine search for more" : "") · validate before playing")
+                .font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk).padding(.horizontal, 20).padding(.bottom, 8)
         }.task(id: requestKey) { await search() }
     }
     private func search() async {
@@ -102,8 +127,8 @@ struct DeckStudioCardInspector: View {
                         .frame(maxWidth: 340, minHeight: 120, maxHeight: 420).frame(maxWidth: .infinity)
                     Text(name).font(.system(.title, design: .serif).weight(.bold))
                     Text(metadata?.typeLine ?? "Type not in the loaded catalogue").font(.headline)
-                    if let cost = metadata?.manaCost { Text(cost).font(.body.monospaced()) }
-                    Text(metadata?.oracleText ?? "Text unavailable in the bundled metadata.").textSelection(.enabled)
+                    if let cost = metadata?.manaCost { NativeDeckManaCost(cost: cost) }
+                    Text(GameRulesPresentation(source: metadata?.oracleText ?? "Text unavailable in the bundled metadata.", cardName: name).plainText).textSelection(.enabled)
                     Text("Bundled selected-printing metadata. Rules and legality follow the installed XMage version.").font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                     DeckStudioScryfallReference(name: name)
                 }.padding(24)

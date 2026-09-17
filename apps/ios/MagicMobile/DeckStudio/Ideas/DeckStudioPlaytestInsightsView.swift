@@ -16,18 +16,16 @@ struct DeckStudioPlaytestInsightsView: View {
                     enabled = value
                     Task { await DeckStudioPlaytestStore.shared.setEnabled(value) }
                 }))
-                Text("Opt-in, on this device only. Records new one-human-versus-AI games: elapsed time, highest observed turn, native commander cast counters and explicitly reported outcomes. No hand snapshots, opponent decks or online analytics are saved.")
+                Text("Private, on-device summaries of new games against AI. Your hand and opponents' decks are never recorded.")
                     .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                 if let error { Text(error).font(.caption).foregroundStyle(DeckStudioPalette.warning) }
                 if signature == nil { Text("Resolve the playing deck's card names to match its history.").font(.caption) }
                 else if matching.isEmpty {
                     Text("No recorded games for these playing cards yet.").font(.subheadline)
-                    Text("Enable recording, validate the deck, then start a local AI game. Past games are not reconstructed or invented.").font(.caption)
+                    Text("Enable recording, validate your deck, then start a game against AI.").font(.caption)
                 } else {
                     let completed = matching.filter { $0.end == .completed }
-                    Text("\(matching.count) recorded sessions · \(completed.count) engine-completed").font(.subheadline.weight(.semibold))
-                    Text("Samples are specific to these card quantities/commander roles. App and engine versions are listed per game; different versions are not represented as controlled comparisons.")
-                        .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
+                    Text("\(matching.count) recorded sessions · \(completed.count) completed").font(.subheadline.weight(.semibold))
                     ForEach(matching.prefix(12)) { game in
                         VStack(alignment: .leading, spacing: 5) {
                             HStack { Text(game.startedAt, format: .dateTime.month().day().hour().minute()); Spacer(); Text(label(game)) }
@@ -39,8 +37,10 @@ struct DeckStudioPlaytestInsightsView: View {
                             Text("App \(game.appBuild) · XMage \(game.upstream.prefix(8))").font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk)
                         }.padding(.vertical, 8)
                     }
-                    Text("Elapsed time includes pauses/background time. A killed app is interrupted, never a loss. Turns/casts are the last observed native values, not a complete action log. Draw rates, mulligan averages, first-cast timing and stranded-card recommendations are not inferred from incomplete polling.")
-                        .font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk)
+                    DisclosureGroup("What these summaries measure") {
+                        Text("History matches these exact playing cards and quantities. Time includes pauses; turns and commander casts are the last observed values. Interrupted games are not losses. These summaries do not measure every draw, mulligan or mana payment. App and engine versions are shown for each game.")
+                            .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
+                    }.font(.caption)
                     if let json = export {
                         ShareLink(item: json) { Label("Export this deck's summaries", systemImage: "square.and.arrow.up") }.frame(minHeight: 44)
                     }

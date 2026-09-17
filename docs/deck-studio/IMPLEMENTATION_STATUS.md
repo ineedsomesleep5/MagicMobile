@@ -24,6 +24,19 @@ All remote features are optional. EDHREC is a website view, not an EDHREC API in
 
 ## Repairs in this continuation
 
+### Desktop editor finishing pass — September 17
+
+- Compact card rows put artwork, readable names, mana symbols, quantities and a visible options menu together. Narrow widths and accessibility text fall back to stacked controls with 44-point targets.
+- Editable workspaces at least 700 points wide show catalogue search beside the deck. Short landscape windows use a compact deck summary; portrait keeps the Add cards sheet. Read-only included decks still require an editable copy.
+- Local and Scryfall search show live draft/destination counts and allow removing a copy without leaving search. Local search gives advisory singleton reminders, respecting basic lands and explicit copy-limit rules; XMage still decides legality.
+- Cards / Ideas / Analysis / Playtest have distinct responsibilities. Curve, probabilities and local role analysis live together; recorded games and validation live under Playtest. Explanatory recording details are collapsed rather than filling the screen.
+- Library tiles expose an options menu without requiring long press. Library and editor can share standard-board plain text, including partners, companions and optional boards. Export round-trips through the production importer before sharing; empty drafts, custom boards and names that cannot survive text normalization explicitly retain JSON export instead.
+- Inspection uses the existing rules-markup normalizer and mana-symbol renderer. Validation failures give player-facing recovery instructions without hiding the retained engine diagnostics.
+
+Verification for this pass: the portable app suite passed 296 tests (one existing skip); native transport/protocol suites passed 34 tests; Deck Studio scripts passed 4,478 core, 93 Spellbook, 70 role, 45 recording/receipt, 40 Scryfall, 26 recording-integrity and 26 organization assertions. Generic-device app/test compilation passed. The added app-model search/undo regression is compiled, not executed on a phone. Scryfall's live Scarab God reference resolved to EDHREC's commander page (HTTP 200); that is endpoint evidence, not embedded-browser or phone visual acceptance.
+
+Release candidate preparation: build `2026091701`. A successful full engine already exists at source `3f6405a08610790b1d09d15f446f31c0e9cb8579`, run `35162245370`; reuse is permitted only after the existing source-equivalence, archive digest and paired-header guards pass. Upload and Apple processing evidence must be recorded separately below when completed.
+
 - The recorder expected uppercase terminal phases, but `MatchMailbox` emits lowercase `failed` and `closed`. Corrected the production parser and the existing unrealistic uppercase fixture; added real-protocol-shape regression cases. A failed or interrupted game is not a loss.
 - Wrong nested viewer identity cannot advance the recorded revision and block a later valid update. Unknown phases, negative revisions, malformed/nonfinite dates and unrelated commander names cannot poison persisted summaries. Terminal results remain immutable.
 - Playtest summaries and optional private deck details are excluded from system backup and use iOS file protection. Recording does not persist hand snapshots or opponent deck contents.

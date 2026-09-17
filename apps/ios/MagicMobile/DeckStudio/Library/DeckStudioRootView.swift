@@ -189,12 +189,15 @@ struct DeckStudioRootView: View {
                 Spacer()
                 Button { toggleFavorite(id) } label: { Image(systemName: favorites.contains(id) ? "star.fill" : "star").frame(width: 44, height: 44) }
                     .foregroundStyle(DeckStudioPalette.gold).accessibilityLabel(favorites.contains(id) ? "Unfavorite \(record.name)" : "Favorite \(record.name)")
+                Menu { deckActions(record, included: included) } label: { Image(systemName: "ellipsis.circle").frame(width: 44, height: 44) }.accessibilityLabel("Options for \(record.name)")
             }.padding(.horizontal, 14)
         }
         .background(DeckStudioPalette.surface, in: RoundedRectangle(cornerRadius: 20))
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .overlay(RoundedRectangle(cornerRadius: 20).stroke(id == selectedDeckID ? DeckStudioPalette.gold : DeckStudioPalette.separator, lineWidth: id == selectedDeckID ? 2 : 1))
-        .contextMenu {
+        .contextMenu { deckActions(record, included: included) }
+    }
+    @ViewBuilder private func deckActions(_ record: DeckLibraryRecord, included: Bool) -> some View {
             Button("Open deck", systemImage: "pencil") { route = .deck(record, included) }
             Button("Duplicate locally", systemImage: "doc.on.doc") {
                 Task {
@@ -209,10 +212,12 @@ struct DeckStudioRootView: View {
             if let data = try? OnDeviceDeckEditing(record.deckList).exportJSON(), let text = String(data: data, encoding: .utf8) {
                 ShareLink(item: text) { Label("Export native JSON", systemImage: "square.and.arrow.up") }
             }
+            if let text = try? DeckStudioTextExport.text(record.deckList) {
+                ShareLink(item: text) { Label("Export plain text", systemImage: "doc.plaintext") }
+            } else { Text("Plain text unavailable · use JSON to preserve this draft") }
             if !included && !record.isCloudBacked {
                 Button("Delete local deck", systemImage: "trash", role: .destructive) { pendingDelete = record }
             }
-        }
     }
     private func delete(_ record: DeckLibraryRecord) {
         do {

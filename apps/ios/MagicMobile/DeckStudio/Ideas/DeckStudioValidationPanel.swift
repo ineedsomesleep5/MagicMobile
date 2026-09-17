@@ -49,12 +49,12 @@ struct DeckStudioValidationPanel: View {
                 } else { Text("Commander validation: not checked for this draft").font(.caption) }
                 if let error = state.error { Text(error).font(.caption).foregroundStyle(DeckStudioPalette.danger).textSelection(.enabled) }
                 if state.checking {
-                    ProgressView("Checking the real engine…")
-                    Button("Cancel result") { state.cancelPending() }
-                    Text("Cancellation discards the result; native cleanup finishes before another engine can open.").font(.caption2)
+                    ProgressView("Checking Commander rules…")
+                    Button("Cancel check") { state.cancelPending() }
+                    Text("Please wait for the engine to finish closing before playing.").font(.caption2)
                 }
                 if service.cleanupRequired {
-                    Button("Retry native cleanup") {
+                    Button("Finish closing") {
                         Task { do { try await service.retryCleanup(); state.error = nil } catch { state.error = error.localizedDescription } }
                     }.buttonStyle(DeckStudioButtonStyle(primary: false)).disabled(service.busy)
                 } else {

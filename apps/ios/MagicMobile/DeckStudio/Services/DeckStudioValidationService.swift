@@ -21,7 +21,7 @@ final class DeckStudioValidationService: ObservableObject {
             try Task.checkCancellation()
             let client = try await runtime.makeClient(identity: identity, observePlaytests: false)
             guard runtime.capabilities?["deckValidation"]?.bool == true else {
-                throw EngineError.invalidMessage("This installed engine does not expose standalone deck validation. A fresh native-engine build is required; the draft is not marked legal.")
+                throw EngineError.invalidMessage("Update MagicMobile to validate this deck. Your draft is saved separately and has not been marked legal.")
             }
             try Task.checkCancellation()
             do {
@@ -36,7 +36,7 @@ final class DeckStudioValidationService: ObservableObject {
         do { try await runtime.close(); cleanupRequired = false }
         catch {
             cleanupRequired = runtime.isOpen
-            throw EngineError.invalidMessage("Validation cleanup has not completed. Retry cleanup before playing or validating again. The engine handle is still safely retained.")
+            throw EngineError.invalidMessage("The rules engine is still closing. Tap Finish closing before trying again. Your deck is unchanged.")
         }
         try Task.checkCancellation()
         return try result.get()

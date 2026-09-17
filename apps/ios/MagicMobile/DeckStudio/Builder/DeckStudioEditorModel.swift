@@ -85,9 +85,29 @@ final class DeckStudioEditorModel: ObservableObject {
     @discardableResult func add(_ name: String, section: String = "deck") -> Bool {
         change { value in
             let effective = DeckStudioDraftPresentation.normalizedSection(section)
-            if let index = value.rows.firstIndex(where: { !$0.isPrimaryCommander && $0.cardName == name && DeckStudioDraftPresentation.normalizedSection($0.section) == effective }) { value.rows[index].quantity += 1 }
+            if let index = value.rows.firstIndex(where: { $0.cardName == name && DeckStudioDraftPresentation.section($0) == effective }) {
+                let (quantity, overflow) = value.rows[index].quantity.addingReportingOverflow(1)
+                guard !overflow else { throw OnDeviceDeckEditing.Error.invalidEntry }
+                value.rows[index].quantity = quantity
+            }
             else { value.rows.append(NativeDeckRow(cardName: name, section: section)) }
         }
+    }
+    func cardCount(_ name: String, section: String? = nil) -> Int {
+        let destination = section.map(DeckStudioDraftPresentation.normalizedSection)
+        return draft.rows.filter { $0.cardName == name && (destination == nil || DeckStudioDraftPresentation.section($0) == destination) }.reduce(0) { $0 + $1.quantity }
+    }
+    func removeOne(_ name: String, section: String) {
+        guard let row = draft.rows.last(where: { $0.cardName == name && DeckStudioDraftPresentation.section($0) == DeckStudioDraftPresentation.normalizedSection(section) }) else { return }
+        quantity(id: row.id, delta: -1)
+    }
+    /// Advisory only: XMage remains responsible for exceptions and exact legality.
+    func needsSingletonReview(_ name: String, metadata: NativeDeckMetadataCatalogue.Card?, destination: String) -> Bool {
+        guard ["deck", "commanders"].contains(DeckStudioDraftPresentation.normalizedSection(destination)),
+              cardCount(name, section: "deck") + cardCount(name, section: "commanders") > 0 else { return false }
+        if metadata?.typeLine?.hasPrefix("Basic ") == true { return false }
+        if metadata?.oracleText?.localizedCaseInsensitiveContains("A deck can have") == true { return false }
+        return true
     }
     func quantity(id: UUID, delta: Int) {
         change { value in

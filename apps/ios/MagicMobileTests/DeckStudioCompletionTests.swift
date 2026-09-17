@@ -6,6 +6,33 @@ import MagicMobileOnDevice
 /// Production editor/projection/observer code with explicit synthetic inputs.
 /// No native game, network provider, or physical-device acceptance is implied.
 final class DeckStudioCompletionTests: XCTestCase {
+    func testPlainTextExportRoundTripIncludesPartnersAndEveryStandardBoard() throws {
+        let entries = [
+            DeckEntry(cardName: "Partner", quantity: 1, section: "commanders"),
+            DeckEntry(cardName: "Forest", quantity: 30, section: "deck"),
+            DeckEntry(cardName: "Fire // Ice", quantity: 1, section: "deck"),
+            DeckEntry(cardName: "Companion card", quantity: 1, section: "companions"),
+            DeckEntry(cardName: "Side card", quantity: 2, section: "sideboard"),
+            DeckEntry(cardName: "Maybe card", quantity: 1, section: "maybeboard")
+        ]
+        let deck = DeckList(name: "Export test", commander: DeckEntry(cardName: "Primary", quantity: 1, section: "commanders"), entries: entries)
+        let text = try DeckStudioTextExport.text(deck)
+        let imported = try OnDeviceDeckEditing.importText(text, name: deck.name).deck
+        XCTAssertEqual(imported.commander?.cardName, "Primary")
+        XCTAssertEqual(Set(imported.entries), Set(entries))
+        XCTAssertTrue(text.contains("30 Forest"))
+        XCTAssertTrue(text.contains("Commander\n1 Primary\n1 Partner"))
+    }
+    func testPlainTextExportDoesNotSilentlyDropCustomBoardsOrDecoratedNames() throws {
+        let custom = DeckList(name: "Custom", commander: nil, entries: [DeckEntry(cardName: "Sol Ring", quantity: 1, section: "My custom board")])
+        XCTAssertThrowsError(try DeckStudioTextExport.text(custom))
+        let decorated = DeckList(name: "Custom", commander: nil, entries: [DeckEntry(cardName: "Forest [Special]", quantity: 1, section: "deck")])
+        XCTAssertThrowsError(try DeckStudioTextExport.text(decorated))
+    }
+    func testEmptyDraftRequiresJSONRatherThanUnimportableBlankText() throws {
+        let deck = DeckList(name: "Empty", commander: nil, entries: [])
+        XCTAssertThrowsError(try DeckStudioTextExport.text(deck)) { XCTAssertTrue($0 is DeckStudioTextExport.ExportError) }
+    }
     func testReplacementRetainsIdentityQuantityAndSectionAndUndo() throws {
         let row = NativeDeckRow(cardName: "Old card", quantity: 2, section: "maybeboard")
         let draft = NativeDeckDraft(name: "Draft", rows: [row])

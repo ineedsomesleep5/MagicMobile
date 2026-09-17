@@ -63,6 +63,7 @@ struct DeckStudioOnlineSearch: View {
     let resolver: OnDeviceDeckResolver?
     let destination: String
     let add: (String, String) -> Bool
+    @ObservedObject var model: DeckStudioEditorModel
     @State private var query = ""
     @State private var result: DeckStudioScryfallPage?
     @State private var error: String?
@@ -74,8 +75,10 @@ struct DeckStudioOnlineSearch: View {
     var body: some View {
         VStack(spacing: 12) {
             Text("Online Scryfall search").font(.headline)
-            Text("Search sends only your query to Scryfall. The local card catalogue and gameplay remain offline. Cards absent from the installed engine are reference-only here.")
-                .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
+            DisclosureGroup("About online search") {
+                Text("Only your search query is sent to Scryfall. Cards not supported by the installed engine are available for reference, not play.")
+                    .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
+            }.font(.caption)
             HStack {
                 TextField("Name or Scryfall query", text: $query).textFieldStyle(.roundedBorder).autocorrectionDisabled().textInputAutocapitalization(.never)
                 Button("Search") { search(page: 1) }.disabled(busy || query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).frame(minHeight: 44)
@@ -91,10 +94,17 @@ struct DeckStudioOnlineSearch: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(card.name).font(.subheadline.weight(.medium))
                                 Text(card.typeLine ?? "Type unavailable").font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
+                                if let name = resolver?.canonicalCardName(card.name), model.cardCount(name) > 0 {
+                                    Text("\(model.cardCount(name)) in deck · \(model.cardCount(name, section: destination)) here").font(.caption2).foregroundStyle(DeckStudioPalette.success)
+                                }
                                 if resolver?.canonicalCardName(card.name) == nil { Text("Not playable in this engine build").font(.caption2).foregroundStyle(DeckStudioPalette.warning) }
                             }.frame(maxWidth: .infinity, alignment: .leading)
                         }.buttonStyle(.plain)
                         if let name = resolver?.canonicalCardName(card.name) {
+                            if model.cardCount(name, section: destination) > 0 {
+                                Button { model.removeOne(name, section: destination) } label: { Image(systemName: "minus.circle").frame(width: 44, height: 44) }.buttonStyle(.borderless)
+                                    .accessibilityLabel("Remove one \(name) from \(destination)")
+                            }
                             Button {
                                 feedback = add(name, destination) ? "Added \(name) to \(destination)" : "Could not add this card; check the draft."
                             } label: { Image(systemName: "plus.circle.fill").frame(width: 44, height: 44) }.buttonStyle(.borderless)

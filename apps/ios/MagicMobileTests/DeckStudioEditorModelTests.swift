@@ -23,6 +23,24 @@ final class DeckStudioEditorModelTests: XCTestCase {
     private var deck: DeckList {
         DeckList(name: "My deck", commander: nil, entries: [DeckEntry(cardName: "Forest", quantity: 1, section: "deck")])
     }
+    func testSearchQuantitiesTrackSectionsUndoAndPrimaryCommander() throws {
+        let original = DeckList(name: "Search", commander: DeckEntry(cardName: "Commander", quantity: 1, section: "commanders"), entries: [DeckEntry(cardName: "Forest", quantity: 2, section: "deck"), DeckEntry(cardName: "Forest", quantity: 3, section: "maybeboard")])
+        let library = store(), record = try library.addLocalDurably(original)
+        let model = DeckStudioEditorModel(library: library, record: record, defaults: defaults)
+        XCTAssertEqual(model.cardCount("Forest"), 5)
+        model.removeOne("Forest", section: "main")
+        XCTAssertEqual(model.cardCount("Forest", section: "deck"), 1)
+        XCTAssertEqual(model.cardCount("Forest", section: "maybeboard"), 3)
+        model.undo()
+        XCTAssertEqual(model.cardCount("Forest"), 5)
+        XCTAssertTrue(model.add("Commander", section: "commanders"))
+        XCTAssertEqual(model.draft.rows.filter { $0.cardName == "Commander" }.count, 1)
+        XCTAssertEqual(model.cardCount("Commander", section: "commanders"), 2)
+        model.removeOne("Commander", section: "commanders")
+        XCTAssertEqual(model.cardCount("Commander", section: "commanders"), 1)
+        XCTAssertTrue(model.needsSingletonReview("Commander", metadata: nil, destination: "deck"))
+        XCTAssertFalse(model.needsSingletonReview("Commander", metadata: nil, destination: "maybeboard"))
+    }
     func testSaveReopenAndUndoPreserveStableRowAndDiskRevision() throws {
         let library = store(), saved = try library.addLocalDurably(deck)
         let model = DeckStudioEditorModel(library: library, record: saved, defaults: defaults)

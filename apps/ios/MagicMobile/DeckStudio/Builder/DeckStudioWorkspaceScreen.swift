@@ -13,7 +13,7 @@ struct DeckStudioWorkspaceScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicType
     @State private var tab = "Cards"
-    @State private var ideas = "Insights"
+    @State private var ideas = "Combos"
     @State private var query = ""
     @State private var grouping = "Type"
     @State private var sorting = "Name"
@@ -45,23 +45,44 @@ struct DeckStudioWorkspaceScreen: View {
     }
     var body: some View {
         NavigationStack {
+            GeometryReader { geometry in
+            let split = geometry.size.width >= 700 && !dynamicType.isAccessibilitySize && !model.readOnly
             VStack(spacing: 0) {
-                header.padding(.horizontal, 20).padding(.vertical, 12)
+                if geometry.size.height > 500 { header.padding(.horizontal, 20).padding(.vertical, 12) }
+                else {
+                    HStack {
+                        Text(model.draft.name.isEmpty ? "Untitled draft" : model.draft.name).font(.headline).lineLimit(1)
+                        Spacer()
+                        Text("\(DeckStudioDraftPresentation.gameCount(model.draft)) cards").font(.caption)
+                        Text(model.saveLabel).font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk)
+                    }.padding(.horizontal, 20).padding(.vertical, 6)
+                }
                 if let error = model.error { DeckStudioNotice(title: "Check this draft", message: error, icon: "exclamationmark.triangle").padding(.horizontal, 20).padding(.bottom, 10) }
                 workspaceTabs.padding(.horizontal, 20).padding(.bottom, 12)
-                if tab == "Cards" { cardsTab }
+                if tab == "Cards" {
+                    HStack(spacing: 0) {
+                        if split {
+                            cardSearch(embedded: true).frame(width: geometry.size.width * 0.48)
+                            Divider()
+                        }
+                        cardsTab(showAddButton: !split)
+                    }
+                }
                 else if tab == "Ideas" { ideasTab }
                 else {
                     ScrollView {
                         VStack(spacing: 16) {
-                            DeckStudioAnalysisContent(draft: model.draft, metadata: metadata, curveOnly: tab == "Curve", inspect: inspect)
-                            if tab == "Stats" {
+                            if tab == "Analysis" {
+                                DeckStudioAnalysisContent(draft: model.draft, metadata: metadata, curveOnly: false, inspect: inspect)
+                                DeckStudioRoleInsightsView(draft: model.draft, metadata: metadata, contextID: model.record?.id, inspect: inspect)
+                            } else {
                                 DeckStudioValidationPanel(state: validation, deck: deck, resolver: resolver, play: preparePlay)
                                 DeckStudioPlaytestInsightsView(signature: signature)
                             }
                         }.padding(20)
                     }
                 }
+            }
             }
             .background(DeckStudioPalette.background.ignoresSafeArea())
             .navigationTitle("Deck Studio").navigationBarTitleDisplayMode(.inline)
@@ -80,12 +101,14 @@ struct DeckStudioWorkspaceScreen: View {
                         Button("Change primary commander", systemImage: "crown") { showCommander = true }.disabled(model.readOnly || metadata == nil)
                         Button("Basic lands", systemImage: "leaf") { showBasics = true }.disabled(model.readOnly)
                         Button("Rename deck", systemImage: "pencil") { showRename = true }.disabled(model.readOnly)
+                        if let deck, let text = try? DeckStudioTextExport.text(deck) { ShareLink(item: text) { Label("Export plain text", systemImage: "doc.plaintext") } }
+                        else { Text("Plain text unavailable · use JSON to preserve this draft") }
                         if let data = try? model.draft.exportJSON(), let json = String(data: data, encoding: .utf8) { ShareLink(item: json) { Label("Export native JSON", systemImage: "square.and.arrow.up") } }
                     } label: { Image(systemName: "ellipsis.circle").frame(width: 44, height: 44) }
                 }
             }
             .sheet(isPresented: $showSearch) {
-                DeckStudioCardSearch(metadata: metadata, colors: DeckStudioDraftPresentation.colors(model.draft, metadata: metadata), add: { model.add($0, section: $1) }, resolver: resolver)
+                cardSearch(embedded: false)
             }
             .sheet(item: $inspection) { item in DeckStudioCardInspector(name: item.name, metadata: metadata?.card(named: item.name)) }
             .sheet(isPresented: $showCommander) { DeckStudioReplacementPicker(metadata: metadata, commander: true) { model.commander($0, keepOld: $1) } }
@@ -118,9 +141,9 @@ struct DeckStudioWorkspaceScreen: View {
     }
     @ViewBuilder private var workspaceTabs: some View {
         if dynamicType.isAccessibilitySize {
-            Picker("Deck workspace", selection: $tab) { ForEach(["Cards", "Ideas", "Curve", "Stats"], id: \.self) { Text($0).tag($0) } }.pickerStyle(.menu)
+            Picker("Deck workspace", selection: $tab) { ForEach(["Cards", "Ideas", "Analysis", "Playtest"], id: \.self) { Text($0).tag($0) } }.pickerStyle(.menu)
         } else {
-            Picker("Deck workspace", selection: $tab) { ForEach(["Cards", "Ideas", "Curve", "Stats"], id: \.self) { Text($0).tag($0) } }.pickerStyle(.segmented)
+            Picker("Deck workspace", selection: $tab) { ForEach(["Cards", "Ideas", "Analysis", "Playtest"], id: \.self) { Text($0).tag($0) } }.pickerStyle(.segmented)
         }
     }
     private var header: some View {
@@ -139,7 +162,10 @@ struct DeckStudioWorkspaceScreen: View {
             Spacer(minLength: 0)
         }
     }
-    private var cardsTab: some View {
+    private func cardSearch(embedded: Bool) -> some View {
+        DeckStudioCardSearch(metadata: metadata, colors: DeckStudioDraftPresentation.colors(model.draft, metadata: metadata), add: { model.add($0, section: $1) }, resolver: resolver, model: model, embedded: embedded)
+    }
+    private func cardsTab(showAddButton: Bool) -> some View {
         VStack(spacing: 0) {
             VStack(spacing: 10) {
                 HStack { Image(systemName: "magnifyingglass"); TextField("Search this deck", text: $query).autocorrectionDisabled().accessibilityIdentifier("deckStudio.cards.search") }.padding(12).background(.white, in: RoundedRectangle(cornerRadius: 12))
@@ -169,37 +195,52 @@ struct DeckStudioWorkspaceScreen: View {
                     }
                 }.padding(.horizontal, 20).padding(.bottom, 16)
             }.scrollDismissesKeyboard(.interactively)
-            if !model.readOnly {
+            if !model.readOnly && showAddButton {
                 Button { showSearch = true } label: { Label("Add cards", systemImage: "plus").frame(maxWidth: .infinity) }.buttonStyle(DeckStudioButtonStyle()).padding(.horizontal, 20).padding(.bottom, 12).disabled(metadata == nil).accessibilityIdentifier("deckStudio.addCards")
             }
         }
     }
     private func cardRow(_ row: NativeDeckRow) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        ViewThatFits(in: .horizontal) {
             HStack(spacing: 10) {
-                if !dynamicType.isAccessibilitySize { DeckStudioArtwork(name: row.cardName).frame(width: 34, height: 48).clipShape(RoundedRectangle(cornerRadius: 5)) }
-                Button { inspect(row.cardName) } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(row.cardName).font(.subheadline.weight(.medium)).multilineTextAlignment(.leading)
-                        Text(metadata?.card(named: row.cardName)?.typeLine ?? "Unresolved metadata — replace or review this card").font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk)
-                        if let cost = metadata?.card(named: row.cardName)?.manaCost { Text(cost).font(.caption2.monospaced()) }
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                }.buttonStyle(.plain).accessibilityLabel("Inspect \(row.cardName), quantity \(row.quantity)")
-                Text("×\(row.quantity)").font(.caption.monospacedDigit())
+                cardIdentity(row).frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
+                cardControls(row)
             }
+            VStack(alignment: .leading, spacing: 6) {
+                cardIdentity(row)
+                HStack { Spacer(); cardControls(row) }
+            }
+        }.padding(8).background(DeckStudioPalette.surface, in: RoundedRectangle(cornerRadius: 12))
+    }
+    private func cardIdentity(_ row: NativeDeckRow) -> some View {
+        Button { inspect(row.cardName) } label: {
+            HStack(spacing: 8) {
+                if !dynamicType.isAccessibilitySize { DeckStudioArtwork(name: row.cardName).frame(width: 38, height: 52).clipShape(RoundedRectangle(cornerRadius: 5)) }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(row.cardName).font(.subheadline.weight(.medium)).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                    if let card = metadata?.card(named: row.cardName) {
+                        if let cost = card.manaCost, !cost.isEmpty { NativeDeckManaCost(cost: cost) }
+                        else { Text(card.typeLine ?? "Card").font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk) }
+                    } else { Text("Unknown card · tap to review").font(.caption2).foregroundStyle(DeckStudioPalette.warning) }
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading).frame(minHeight: 52)
+        }.buttonStyle(.plain).accessibilityLabel("Inspect \(row.cardName), quantity \(row.quantity)")
+    }
+    private func cardControls(_ row: NativeDeckRow) -> some View {
+        HStack(spacing: 0) {
             if !model.readOnly {
-                HStack {
                     Button { model.quantity(id: row.id, delta: -1) } label: { Image(systemName: "minus").frame(width: 44, height: 44) }.accessibilityLabel("Remove one \(row.cardName)")
+            }
+            Text("\(row.quantity)").font(.subheadline.monospacedDigit()).frame(minWidth: 20)
+            if !model.readOnly {
                     Button { model.quantity(id: row.id, delta: 1) } label: { Image(systemName: "plus").frame(width: 44, height: 44) }.accessibilityLabel("Add one \(row.cardName)")
-                    Spacer()
                     Menu {
                         Button("Replace card", systemImage: "arrow.triangle.2.circlepath") { replacement = row }
                         Menu("Move to…") { ForEach(["deck", "commanders", "companions", "sideboard", "maybeboard"], id: \.self) { destination in Button(destination.capitalized) { model.move(id: row.id, to: destination) } } }
                         Button("Remove row", systemImage: "trash", role: .destructive) { model.remove(id: row.id) }
-                    } label: { Label("Edit", systemImage: "ellipsis").font(.caption).frame(minHeight: 44) }
-                }
+                    } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }.accessibilityLabel("More options for \(row.cardName)")
             }
-        }.padding(10).background(DeckStudioPalette.surface, in: RoundedRectangle(cornerRadius: 12))
+        }.fixedSize(horizontal: true, vertical: false)
     }
     private var filteredRows: [NativeDeckRow] {
         model.draft.rows.filter { row in
@@ -234,22 +275,13 @@ struct DeckStudioWorkspaceScreen: View {
     }
     private var ideasTab: some View {
         VStack(spacing: 12) {
-            Picker("Ideas source", selection: $ideas) { ForEach(["Insights", "Combos", "EDHREC"], id: \.self) { Text($0).tag($0) } }.pickerStyle(.segmented).padding(.horizontal, 20)
+            Picker("Ideas source", selection: $ideas) { ForEach(["Combos", "EDHREC"], id: \.self) { Text($0).tag($0) } }.pickerStyle(.segmented).padding(.horizontal, 20)
             if ideas == "EDHREC" { DeckStudioEDHRECPanel(model: browser, commanders: DeckStudioDraftPresentation.commanders(model.draft)) }
             else if ideas == "Combos" {
                 DeckStudioComboPanel(model: combos, draft: model.draft, metadata: metadata, resolver: resolver, readOnly: model.readOnly, add: { name, section, approved in
                     guard approved == DeckStudioSpellbookInput.make(model.draft, resolver: resolver), resolver?.canonicalCardName(name) == name else { return false }
                     return model.add(name, section: section)
                 }, inspect: inspect)
-            } else {
-                ScrollView {
-                    VStack(spacing: 16) {
-                        DeckStudioNotice(title: "MagicMobile Insights", message: "Explained local analysis, not EDHREC popularity or a deck-quality score.", icon: "sparkles")
-                        DeckStudioRoleInsightsView(draft: model.draft, metadata: metadata, contextID: model.record?.id, inspect: inspect)
-                        DeckStudioAnalysisContent(draft: model.draft, metadata: metadata, curveOnly: false, inspect: inspect)
-                        Button("Validate & playtest with real rules") { showValidation = true }.buttonStyle(DeckStudioButtonStyle())
-                    }.padding(20)
-                }
             }
         }
     }
