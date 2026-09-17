@@ -21,6 +21,6 @@ enum DeckStudioCatalogueSearch {
             filter.colorIdentity = Set(identity.indices.filter { mask & (1 << $0) != 0 }.map { identity[$0] })
             results.append(contentsOf: catalogue.search(filter, limit: cap))
         }
-        return Array(results.sorted { $0.name < $1.name }.prefix(cap))
+        return Array(NativeDeckMetadataCatalogue.ranked(results, query: query).prefix(cap))
     }
 }

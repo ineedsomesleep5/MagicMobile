@@ -164,20 +164,39 @@ struct NativeDeckMetadataCatalogue {
         index[name] ?? aliases[name].flatMap { index[$0] }
     }
 
+    /// The same ordering applies within identity buckets and after their merge.
+    static func ranked(_ cards: [Card], query: String) -> [Card] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return cards.sorted { $0.name < $1.name } }
+        let scored: [(card: Card, rank: Int)] = cards.map { card in
+            guard let match = card.name.range(of: query, options: .caseInsensitive,
+                                             locale: Locale(identifier: "en_US_POSIX")) else { return (card, 3) }
+            let rank = match.lowerBound == card.name.startIndex
+                ? (match.upperBound == card.name.endIndex ? 0 : 1) : 2
+            return (card, rank)
+        }
+        return scored.sorted { lhs, rhs in
+            lhs.rank == rhs.rank ? lhs.card.name < rhs.card.name : lhs.rank < rhs.rank
+        }.map(\.card)
+    }
+
     func search(_ filter: SearchFilter = SearchFilter(), limit: Int = 40) -> [Card] {
         guard limit > 0 else { return [] }
+        let query = filter.query.trimmingCharacters(in: .whitespacesAndNewlines)
         func contains(_ text: String?, _ query: String) -> Bool {
             text?.range(of: query, options: .caseInsensitive, locale: Locale(identifier: "en_US_POSIX")) != nil
         }
-        return Array(cards.lazy.filter { card in
-            (filter.query.isEmpty || contains(card.name, filter.query) || contains(card.oracleText, filter.query)) &&
+        let matches = cards.lazy.filter { card in
+            (query.isEmpty || contains(card.name, query) || contains(card.oracleText, query)) &&
             (filter.type.isEmpty || contains(card.typeLine, filter.type)) &&
             (filter.setCode.isEmpty || card.setCodes.contains { $0.caseInsensitiveCompare(filter.setCode) == .orderedSame }) &&
             (filter.colors == nil || card.colors.map(Set.init) == filter.colors) &&
             (filter.colorIdentity == nil || card.colorIdentity.map(Set.init) == filter.colorIdentity) &&
             (filter.minimumManaValue == nil || card.manaValue.map { $0 >= filter.minimumManaValue! } == true) &&
             (filter.maximumManaValue == nil || card.manaValue.map { $0 <= filter.maximumManaValue! } == true)
-        }.prefix(min(limit, 2000)))
+        }
+        if query.isEmpty { return Array(matches.prefix(min(limit, 2000))) }
+        return Array(Self.ranked(Array(matches), query: query).prefix(min(limit, 2000)))
     }
 
     func statistics(for deck: DeckList, sections: Set<String> = ["main", "deck"]) throws -> Statistics {

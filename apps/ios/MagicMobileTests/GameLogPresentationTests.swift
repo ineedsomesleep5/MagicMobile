@@ -4,6 +4,52 @@ import XCTest
 final class GameLogPresentationTests: XCTestCase {
     private let id = "d80199fe-06bb-486b-b9f7-a3d4a685bdd5"
 
+    func testRulesSymbolsPreserveTextAndSpeakManaAndActions() {
+        let source = "Pay {2}{C}{W/U}{B/P}{2/R}{G/U/P}, {T}: Add {X}.\n{Q} then {S}."
+        let symbols = GameRulesSymbols(GameRulesPresentation(source: source))
+        XCTAssertEqual(symbols.fragments.map(\.literal).joined(), source)
+        XCTAssertEqual(symbols.fragments.compactMap(\.code), ["2", "C", "W/U", "B/P", "2/R", "G/U/P", "T", "X", "Q", "S"])
+        XCTAssertEqual(symbols.accessibilityText,
+                       "Pay 2 generic mana colorless mana white or blue mana black mana or two life two generic or red mana green or blue mana or two life , tap : Add X generic mana .\n untap then snow mana .")
+    }
+
+    func testRulesSymbolsRecognizeAllBasicColorsAndBoundedGenericValues() {
+        let symbols = GameRulesSymbols(GameRulesPresentation(source: "{W}{U}{B}{R}{G}{C}{0}{16}{999}{Y}{Z}"))
+        XCTAssertEqual(symbols.fragments.compactMap(\.code), ["W", "U", "B", "R", "G", "C", "0", "16", "999", "Y", "Z"])
+        XCTAssertEqual(symbols.fragments.compactMap(\.spoken), ["white mana", "blue mana", "black mana", "red mana", "green mana", "colorless mana", "0 generic mana", "16 generic mana", "999 generic mana", "Y generic mana", "Z generic mana"])
+    }
+
+    func testRulesSymbolsKeepUnknownMalformedAndOverlongTokensLiteral() {
+        let source = "{CHAOS} {W/W} {P} {W//U} {1234} {abcdefghijklmnop} {oops {T} {u}"
+        let symbols = GameRulesSymbols(GameRulesPresentation(source: source))
+        XCTAssertEqual(symbols.fragments.map(\.literal).joined(), source)
+        XCTAssertEqual(symbols.fragments.compactMap(\.code), ["T", "U"])
+        XCTAssertTrue(symbols.accessibilityText.hasPrefix("{CHAOS} {W/W} {P} {W//U} {1234}"))
+        XCTAssertTrue(symbols.accessibilityText.hasSuffix("{oops tap blue mana"))
+    }
+
+    func testRulesSymbolsOnlyReadNormalizedVisibleText() {
+        let source = "&lt;script&gt;Secret {B}&lt;/script&gt;<img alt='{C}' src='https://private.invalid'> {T} {this}"
+        let visible = GameRulesSymbols(GameRulesPresentation(source: source, cardName: "Test card"))
+        XCTAssertEqual(visible.fragments.compactMap(\.code), ["C", "T"])
+        XCTAssertEqual(visible.accessibilityText, "colorless mana tap Test card")
+        let hidden = GameRulesSymbols(GameRulesPresentation(source: source, cardName: "Secret", isHidden: true))
+        XCTAssertTrue(hidden.fragments.isEmpty)
+        XCTAssertEqual(hidden.accessibilityText, "")
+        XCTAssertFalse(visible.accessibilityText.contains("private"))
+    }
+
+    func testRulesSymbolWorkIsBoundedWithoutDroppingVisibleText() {
+        let source = String(repeating: "{C}", count: GameRulesSymbols.maximumSymbols + 10)
+        let symbols = GameRulesSymbols(GameRulesPresentation(source: source))
+        XCTAssertEqual(symbols.fragments.compactMap(\.code).count, GameRulesSymbols.maximumSymbols)
+        XCTAssertEqual(symbols.fragments.map(\.literal).joined(), source)
+        XCTAssertEqual(symbols.fragments.last?.literal, String(repeating: "{C}", count: 10))
+        let oversized = GameRulesSymbols(GameRulesPresentation(source: String(repeating: "{T}", count: GameRulesPresentation.maximumBytes)))
+        XCTAssertEqual(oversized.accessibilityText, GameRulesPresentation.unavailableText)
+        XCTAssertTrue(oversized.fragments.compactMap(\.code).isEmpty)
+    }
+
     func testStackRulesUseSourceIdentityAndNormalizeEncodedMarkup() {
         let rules = "&lt;b&gt;{this}&lt;/b&gt; deals 1 damage.<br>Pay <img alt='{R}' src='ignored'>."
         XCTAssertEqual(GameRulesPresentation(source: rules, cardName: "Prodigal Pyromancer").plainText,

@@ -12,6 +12,8 @@ struct DeckStudioWorkspaceScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicType
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    private var compactLandscape: Bool { verticalSizeClass == .compact && !dynamicType.isAccessibilitySize }
     @State private var tab = "Cards"
     @State private var ideas = "Combos"
     @State private var query = ""
@@ -31,7 +33,7 @@ struct DeckStudioWorkspaceScreen: View {
     @FocusState private var deckSearchFocused: Bool
     init(library: DeckLibraryStore, record: DeckLibraryRecord?, included: Bool,
          metadata: NativeDeckMetadataCatalogue?, resolver: OnDeviceDeckResolver?, selectForPlay: @escaping (String) -> Void) {
-        _model = StateObject(wrappedValue: DeckStudioEditorModel(library: library, record: record, included: included))
+        _model = StateObject(wrappedValue: DeckStudioEditorModel(library: library, record: record, included: included, defaults: MagicMobilePreferences.current))
         self.metadata = metadata; self.resolver = resolver; self.selectForPlay = selectForPlay
     }
     private struct InspectedCard: Identifiable { let name: String; var id: String { name } }
@@ -50,8 +52,8 @@ struct DeckStudioWorkspaceScreen: View {
             GeometryReader { geometry in
             let split = geometry.size.width >= 700 && !dynamicType.isAccessibilitySize && !model.readOnly
             VStack(spacing: 0) {
-                if geometry.size.height > 500 { header.padding(.horizontal, 20).padding(.vertical, 12) }
-                else {
+                if !compactLandscape && geometry.size.height > 500 { header.padding(.horizontal, 20).padding(.vertical, 12) }
+                else if !compactLandscape {
                     HStack {
                         Text(model.draft.name.isEmpty ? "Untitled draft" : model.draft.name).font(.headline).lineLimit(1)
                         Spacer()
@@ -60,7 +62,7 @@ struct DeckStudioWorkspaceScreen: View {
                     }.padding(.horizontal, 20).padding(.vertical, 6)
                 }
                 if let error = model.error { DeckStudioNotice(title: "Check this draft", message: error, icon: "exclamationmark.triangle").padding(.horizontal, 20).padding(.bottom, 10) }
-                workspaceTabs.padding(.horizontal, 20).padding(.bottom, 12)
+                if !compactLandscape { workspaceTabs.padding(.horizontal, 20).padding(.bottom, 12) }
                 if tab == "Cards" {
                     HStack(spacing: 0) {
                         if split {
@@ -89,6 +91,18 @@ struct DeckStudioWorkspaceScreen: View {
             .background(DeckStudioPalette.background.ignoresSafeArea())
             .navigationTitle("Deck Studio").navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                if compactLandscape {
+                    ToolbarItem(placement: .principal) {
+                        HStack(spacing: 12) {
+                            Text(model.draft.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                            Picker("Deck workspace", selection: $tab) {
+                                ForEach(["Cards", "Ideas", "Analysis", "Playtest"], id: \.self) { Text($0).tag($0) }
+                            }.pickerStyle(.menu).accessibilityIdentifier("deckStudio.workspace")
+                            Text("\(DeckStudioDraftPresentation.gameCount(model.draft))").font(.caption).monospacedDigit()
+                                .accessibilityLabel("\(DeckStudioDraftPresentation.gameCount(model.draft)) cards")
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarLeading) { Button("Done") { if model.isDirty { confirmClose = true } else { dismiss() } }.accessibilityIdentifier("deckStudio.close") }
                 ToolbarItem(placement: .topBarTrailing) {
                     if model.readOnly { Button("Edit a copy") { model.makeEditableCopy() } }
@@ -185,23 +199,34 @@ struct DeckStudioWorkspaceScreen: View {
                     if !query.isEmpty {
                         Button { query = "" } label: { Image(systemName: "xmark.circle.fill").frame(width: 44, height: 44) }.accessibilityLabel("Clear deck search")
                     }
-                }.padding(.horizontal, 12).frame(minHeight: 44).background(.white, in: RoundedRectangle(cornerRadius: 12))
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 14) {
+                    if compactLandscape {
                         Menu {
-                            Picker("Section", selection: $sectionFilter) { Text("All sections").tag(""); ForEach(Set(model.draft.rows.map(DeckStudioDraftPresentation.section)).sorted(), id: \.self) { Text($0.capitalized).tag($0) } }
-                            Picker("Card color", selection: $colorFilter) { Text("Any color").tag(""); ForEach(["W", "U", "B", "R", "G", "C"], id: \.self) { Text($0 == "C" ? "Colorless" : $0).tag($0) } }
-                            Button("Clear filters") { sectionFilter = ""; colorFilter = "" }
-                        } label: { Label("Filter", systemImage: sectionFilter.isEmpty && colorFilter.isEmpty ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill").frame(minHeight: 44) }
-                        Menu { Picker("Group cards", selection: $grouping) { ForEach(["Type", "Section", "Mana value", "Color", "Name"], id: \.self) { Text($0).tag($0) } } } label: { Label("Group", systemImage: "square.grid.2x2").frame(minHeight: 44) }
-                        Menu { Picker("Sort cards", selection: $sorting) { ForEach(["Name", "Quantity", "Mana value"], id: \.self) { Text($0).tag($0) } } } label: { Label("Sort", systemImage: "arrow.up.arrow.down").frame(minHeight: 44) }
-                        Button { model.undo() } label: { Image(systemName: "arrow.uturn.backward").frame(width: 44, height: 44) }.disabled(!model.history.canUndo || model.readOnly).accessibilityLabel("Undo deck edit")
-                        Button { model.redo() } label: { Image(systemName: "arrow.uturn.forward").frame(width: 44, height: 44) }.disabled(!model.history.canRedo || model.readOnly).accessibilityLabel("Redo deck edit")
-                    }.font(.caption)
+                            deckFilterOptions
+                            Picker("Group cards", selection: $grouping) { ForEach(["Type", "Section", "Mana value", "Color", "Name"], id: \.self) { Text($0).tag($0) } }
+                            Picker("Sort cards", selection: $sorting) { ForEach(["Name", "Quantity", "Mana value"], id: \.self) { Text($0).tag($0) } }
+                            Button("Undo deck edit", systemImage: "arrow.uturn.backward") { model.undo() }.disabled(!model.history.canUndo || model.readOnly)
+                            Button("Redo deck edit", systemImage: "arrow.uturn.forward") { model.redo() }.disabled(!model.history.canRedo || model.readOnly)
+                        } label: {
+                            Image(systemName: sectionFilter.isEmpty && colorFilter.isEmpty ? "slider.horizontal.3" : "line.3.horizontal.decrease.circle.fill").frame(width: 44, height: 44)
+                        }.accessibilityLabel("Deck filters, grouping and editing").accessibilityIdentifier("deckStudio.cards.options")
+                    }
+                }.padding(.horizontal, 12).frame(minHeight: 44).background(.white, in: RoundedRectangle(cornerRadius: 12))
+                if !compactLandscape {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 14) {
+                            Menu {
+                                deckFilterOptions
+                            } label: { Label("Filter", systemImage: sectionFilter.isEmpty && colorFilter.isEmpty ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill").frame(minHeight: 44) }
+                            Menu { Picker("Group cards", selection: $grouping) { ForEach(["Type", "Section", "Mana value", "Color", "Name"], id: \.self) { Text($0).tag($0) } } } label: { Label("Group", systemImage: "square.grid.2x2").frame(minHeight: 44) }
+                            Menu { Picker("Sort cards", selection: $sorting) { ForEach(["Name", "Quantity", "Mana value"], id: \.self) { Text($0).tag($0) } } } label: { Label("Sort", systemImage: "arrow.up.arrow.down").frame(minHeight: 44) }
+                            Button { model.undo() } label: { Image(systemName: "arrow.uturn.backward").frame(width: 44, height: 44) }.disabled(!model.history.canUndo || model.readOnly).accessibilityLabel("Undo deck edit")
+                            Button { model.redo() } label: { Image(systemName: "arrow.uturn.forward").frame(width: 44, height: 44) }.disabled(!model.history.canRedo || model.readOnly).accessibilityLabel("Redo deck edit")
+                        }.font(.caption)
+                    }
                 }
             }.padding(.horizontal, 20)
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 8, pinnedViews: [.sectionHeaders]) {
+                LazyVStack(alignment: .leading, spacing: 8, pinnedViews: compactLandscape ? [] : [.sectionHeaders]) {
                     if model.draft.rows.isEmpty { ContentUnavailableView("A deck of possibilities", systemImage: "plus.rectangle.on.rectangle", description: Text("Add your commander and cards. Incomplete drafts are welcome.")) }
                     else if filteredRows.isEmpty {
                         ContentUnavailableView("No matching cards", systemImage: "line.3.horizontal.decrease", description: Text("Clear the search or filters to see the full draft."))
@@ -211,15 +236,20 @@ struct DeckStudioWorkspaceScreen: View {
                     ForEach(groupNames, id: \.self) { group in
                         Section { ForEach(filteredRows.filter { groupName($0) == group }) { cardRow($0) } } header: {
                             HStack { Text(group).font(.subheadline.weight(.semibold)); Spacer(); Text("\(filteredRows.filter { groupName($0) == group }.reduce(0) { $0 + $1.quantity })").font(.caption) }
-                                .padding(.vertical, 10).background(DeckStudioPalette.background)
+                                .padding(.vertical, compactLandscape ? 4 : 10).background(DeckStudioPalette.background)
                         }
                     }
                 }.padding(.horizontal, 20).padding(.bottom, 16)
-            }.scrollDismissesKeyboard(.interactively)
+            }.scrollDismissesKeyboard(.interactively).accessibilityIdentifier("deckStudio.cards.list")
             if !model.readOnly && showAddButton {
                 Button { showSearch = true } label: { Label("Add cards", systemImage: "plus").frame(maxWidth: .infinity) }.buttonStyle(DeckStudioButtonStyle()).padding(.horizontal, 20).padding(.bottom, 12).accessibilityIdentifier("deckStudio.addCards")
             }
         }
+    }
+    @ViewBuilder private var deckFilterOptions: some View {
+        Picker("Section", selection: $sectionFilter) { Text("All sections").tag(""); ForEach(Set(model.draft.rows.map(DeckStudioDraftPresentation.section)).sorted(), id: \.self) { Text($0.capitalized).tag($0) } }
+        Picker("Card color", selection: $colorFilter) { Text("Any color").tag(""); ForEach(["W", "U", "B", "R", "G", "C"], id: \.self) { Text($0 == "C" ? "Colorless" : $0).tag($0) } }
+        Button("Clear filters") { sectionFilter = ""; colorFilter = "" }
     }
     private func cardRow(_ row: NativeDeckRow) -> some View {
         ViewThatFits(in: .horizontal) {
@@ -244,7 +274,7 @@ struct DeckStudioWorkspaceScreen: View {
                         else { Text(card.typeLine ?? "Card").font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk) }
                     } else { Text("Unknown card · tap to review").font(.caption2).foregroundStyle(DeckStudioPalette.warning) }
                 }
-            }.frame(maxWidth: .infinity, alignment: .leading).frame(minHeight: 52)
+            }.frame(maxWidth: .infinity, alignment: .leading).frame(minHeight: 52).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel("Inspect \(row.cardName), quantity \(row.quantity)")
     }
     private func cardControls(_ row: NativeDeckRow) -> some View {

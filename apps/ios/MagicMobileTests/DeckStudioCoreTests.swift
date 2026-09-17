@@ -2,6 +2,55 @@ import XCTest
 @testable import MagicMobile
 
 final class DeckStudioCoreTests: XCTestCase {
+    private func searchRankingCatalogue() throws -> NativeDeckMetadataCatalogue {
+        var metadata: [String: Any] = [:]
+        for index in 0..<2101 {
+            metadata[String(format: "A%04d", index)] = ["types": ["CREATURE"], "typeLine": "Creature",
+                "oracleText": "Search for a Forest.", "manaValue": 3, "colorIdentity": ["G"], "setCodes": ["TST"]]
+        }
+        for (name, type, identity, set, mana) in [
+            ("Forest", "LAND", ["G"], "TST", 0),
+            ("Forest Brook", "CREATURE", ["W"], "ALT", 3),
+            ("Forest Glade", "CREATURE", ["G"], "TST", 3),
+            ("Z Forest", "CREATURE", ["G"], "TST", 3)
+        ] {
+            metadata[name] = ["types": [type], "typeLine": type.capitalized, "manaValue": mana,
+                              "colorIdentity": identity, "setCodes": [set]]
+        }
+        return try NativeDeckMetadataCatalogue(catalogueData: JSONSerialization.data(withJSONObject: [
+            "schemaVersion": 1, "sourceMetadataSHA256": String(repeating: "a", count: 64),
+            "cards": metadata.keys.sorted().reversed().map { ["name": $0] }, "cardMetadata": metadata]))
+    }
+
+    func testSearchRankingBeforeCapsAndIdentitySubsetMerge() throws {
+        let catalogue = try searchRankingCatalogue()
+        for identity: [String]? in [nil, ["W", "G"]] {
+            let results = DeckStudioCatalogueSearch.cards(in: catalogue, query: "  fOrEsT\n", allowedIdentity: identity)
+            XCTAssertEqual(results.count, 80)
+            XCTAssertEqual(Array(results.prefix(6)).map(\.name), ["Forest", "Forest Brook", "Forest Glade", "Z Forest", "A0000", "A0001"])
+            XCTAssertEqual(DeckStudioCatalogueSearch.cards(in: catalogue, query: "forest", allowedIdentity: identity, limit: 1).map(\.name), ["Forest"])
+            XCTAssertEqual(DeckStudioCatalogueSearch.cards(in: catalogue, query: "forest", allowedIdentity: identity, limit: 3000).count, 2000)
+            XCTAssertEqual(DeckStudioCatalogueSearch.cards(in: catalogue, query: " \n", allowedIdentity: identity, limit: 2).map(\.name), ["A0000", "A0001"])
+        }
+        var filter = NativeDeckMetadataCatalogue.SearchFilter(); filter.query = " FOREST "
+        XCTAssertEqual(catalogue.search(filter, limit: 1).map(\.name), ["Forest"])
+        XCTAssertTrue(DeckStudioCatalogueSearch.cards(in: catalogue, query: "forest", limit: 0).isEmpty)
+    }
+
+    func testSearchRankingNeverRestoresFilteredExactMatch() throws {
+        let catalogue = try searchRankingCatalogue()
+        for identity: [String]? in [nil, ["G", "W"]] {
+            XCTAssertEqual(DeckStudioCatalogueSearch.cards(in: catalogue, query: "forest", type: "Creature", allowedIdentity: identity, limit: 1).map(\.name), ["Forest Brook"])
+            XCTAssertEqual(DeckStudioCatalogueSearch.cards(in: catalogue, query: "forest", allowedIdentity: identity, setCode: "ALT", limit: 1).map(\.name), ["Forest Brook"])
+            XCTAssertEqual(DeckStudioCatalogueSearch.cards(in: catalogue, query: "forest", allowedIdentity: identity, minimumManaValue: 2, maximumManaValue: 4, limit: 1).map(\.name), ["Forest Brook"])
+            XCTAssertTrue(DeckStudioCatalogueSearch.cards(in: catalogue, query: "forest", allowedIdentity: identity, minimumManaValue: 4).isEmpty)
+        }
+        XCTAssertEqual(DeckStudioCatalogueSearch.cards(in: catalogue, query: "forest", allowedIdentity: ["W"], limit: 1).map(\.name), ["Forest Brook"])
+        XCTAssertTrue(DeckStudioCatalogueSearch.cards(in: catalogue, query: "forest", allowedIdentity: []).isEmpty)
+        var filter = NativeDeckMetadataCatalogue.SearchFilter(); filter.query = "forest"; filter.colorIdentity = ["W"]
+        XCTAssertEqual(catalogue.search(filter, limit: 1).map(\.name), ["Forest Brook"])
+    }
+
     func testSearchIncludesPartnerAndDiacriticsAndStableTies() {
         let first = DeckStudioShelfItem(id: "local:a", name: "Élan", commanders: ["One", "Partner"], tags: ["Tokens"], origin: .local, updatedAt: nil)
         let second = DeckStudioShelfItem(id: "precon:a", name: "Élan", commanders: ["Two"], tags: [], origin: .included, updatedAt: nil)

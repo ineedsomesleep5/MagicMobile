@@ -22,6 +22,7 @@ struct DeckStudioCardSearch: View {
     @State private var loading = false
     @State private var addError: String?
     @State private var inspection: NativeDeckMetadataCatalogue.Card?
+    @State private var showEmbeddedFilters = false
     @FocusState private var searchFocused: Bool
     private struct Request: Equatable { let query: String; let type: String; let identity: [String]?; let set: String; let min: String; let max: String }
     private var requestKey: Request { Request(query: query, type: type, identity: constrainIdentity ? colors : nil, set: setCode, min: minMV, max: maxMV) }
@@ -40,13 +41,13 @@ struct DeckStudioCardSearch: View {
     }
     private var searchContent: some View {
         VStack(spacing: 8) {
-            if embedded {
+            if embedded && source != "Local" {
                 HStack {
                     sourcePicker.pickerStyle(.menu)
                     Spacer(minLength: 8)
                     destinationPicker
                 }.padding(.horizontal, 12)
-            } else {
+            } else if !embedded {
                 Group {
                     if dynamicType.isAccessibilitySize {
                         sourcePicker.pickerStyle(.menu)
@@ -73,16 +74,27 @@ struct DeckStudioCardSearch: View {
     private var localSearch: some View {
         List {
             VStack(spacing: 10) {
-                TextField("Card name or rules text", text: $query).textFieldStyle(.roundedBorder).autocorrectionDisabled()
-                    .focused($searchFocused).submitLabel(.search).onSubmit { searchFocused = false }
-                DisclosureGroup("Filters") {
-                    VStack(spacing: 12) {
-                        Picker("Type", selection: $type) { Text("All types").tag(""); ForEach(["Creature", "Artifact", "Enchantment", "Instant", "Sorcery", "Land", "Planeswalker", "Battle"], id: \.self) { Text($0).tag($0) } }
-                        HStack { TextField("Min MV", text: $minMV).keyboardType(.decimalPad); TextField("Max MV", text: $maxMV).keyboardType(.decimalPad); TextField("Set code", text: $setCode).autocorrectionDisabled().textInputAutocapitalization(.characters) }.textFieldStyle(.roundedBorder)
-                        if colors != nil { Toggle("Within commander color identity", isOn: $constrainIdentity).font(.caption) }
-                        Button("Reset filters") { type = ""; minMV = ""; maxMV = ""; setCode = ""; constrainIdentity = true }
-                    }.padding(.vertical, 10)
-                }.font(.caption)
+                HStack {
+                    TextField("Card name or rules text", text: $query).textFieldStyle(.roundedBorder).autocorrectionDisabled()
+                        .focused($searchFocused).submitLabel(.search).onSubmit { searchFocused = false }
+                    if !query.isEmpty {
+                        Button { query = "" } label: { Image(systemName: "xmark.circle.fill").frame(width: 44, height: 44) }
+                            .accessibilityLabel("Clear collection search")
+                    }
+                    if embedded {
+                        Menu {
+                            sourcePicker
+                            destinationPicker
+                            Button(showEmbeddedFilters ? "Hide filters" : "Show filters", systemImage: "line.3.horizontal.decrease") { showEmbeddedFilters.toggle() }
+                        } label: { Image(systemName: "slider.horizontal.3").frame(width: 44, height: 44) }
+                            .accessibilityLabel("Collection source, destination and filters")
+                    }
+                }
+                if embedded {
+                    if showEmbeddedFilters { filterFields }
+                } else {
+                    DisclosureGroup("Filters") { filterFields }.font(.caption)
+                }
                 if !embedded { DeckStudioArtworkInvitation() }
                 if let addError { Text(addError).font(.caption).foregroundStyle(DeckStudioPalette.danger) }
                 if let feedback { Text(feedback).font(.caption).foregroundStyle(DeckStudioPalette.success).accessibilityAddTraits(.updatesFrequently) }
@@ -133,7 +145,16 @@ struct DeckStudioCardSearch: View {
                 .font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk).listRowBackground(Color.clear).listRowSeparator(.hidden)
         }.listStyle(.plain).buttonStyle(.borderless).scrollContentBackground(.hidden).scrollDismissesKeyboard(.interactively)
             .contentMargins(.top, 0, for: .scrollContent)
+            .accessibilityIdentifier("deckStudio.collection.list")
             .task(id: requestKey) { await search() }
+    }
+    private var filterFields: some View {
+        VStack(spacing: 12) {
+            Picker("Type", selection: $type) { Text("All types").tag(""); ForEach(["Creature", "Artifact", "Enchantment", "Instant", "Sorcery", "Land", "Planeswalker", "Battle"], id: \.self) { Text($0).tag($0) } }
+            HStack { TextField("Min MV", text: $minMV).keyboardType(.decimalPad); TextField("Max MV", text: $maxMV).keyboardType(.decimalPad); TextField("Set code", text: $setCode).autocorrectionDisabled().textInputAutocapitalization(.characters) }.textFieldStyle(.roundedBorder)
+            if colors != nil { Toggle("Within commander color identity", isOn: $constrainIdentity).font(.caption) }
+            Button("Reset filters") { type = ""; minMV = ""; maxMV = ""; setCode = ""; constrainIdentity = true }
+        }.padding(.vertical, 10)
     }
     private func search() async {
         guard let metadata else { return }
@@ -171,7 +192,7 @@ struct DeckStudioCardInspector: View {
                     DeckStudioArtworkInvitation()
                     Text(metadata?.typeLine ?? "Type not in the loaded catalogue").font(.headline)
                     if let cost = metadata?.manaCost { NativeDeckManaCost(cost: cost) }
-                    Text(GameRulesPresentation(source: metadata?.oracleText ?? "Text unavailable in the bundled metadata.", cardName: name).plainText).textSelection(.enabled)
+                    GameRulesText(source: metadata?.oracleText ?? "Text unavailable in the bundled metadata.", cardName: name).textSelection(.enabled)
                     Text("Bundled selected-printing metadata. Rules and legality follow the installed XMage version.").font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                     DeckStudioScryfallReference(name: name)
                 }.padding(24)

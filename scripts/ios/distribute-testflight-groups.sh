@@ -82,7 +82,7 @@ try:
     elif mode == "groups":
         build_id, external_id, internal_path = args
         require(result["buildId"] == build_id, "Membership belongs to another build")
-        require(result["complete"] is True and result.get("failures") == [], "Incomplete membership lookup")
+        require(result["complete"] is True and result.get("failures", []) == [], "Incomplete membership lookup")
         groups = result["groups"]
         require(result["groupCount"] == len(groups), "Inconsistent group count")
         with open(internal_path) as source:

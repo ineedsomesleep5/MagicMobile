@@ -117,6 +117,11 @@ class DistributionTests(unittest.TestCase):
             self.assertNotIn('--submit', call)
             self.assertNotIn('--confirm', call)
 
+    def test_successful_live_cli_shape_omits_empty_failures(self):
+        self.config['groups'].pop('failures')
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_wait_invalid_failed_or_timeout_stops(self):
         for code in (1, 3, 4):
             with self.subTest(code=code):

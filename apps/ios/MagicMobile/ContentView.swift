@@ -5668,7 +5668,7 @@ struct XmageStackPeek: View {
             if let topObject {
                 Text(topObject.displayName).font(.caption.bold()).foregroundStyle(MagicPalette.parchment)
                 if let rules = topObject.rulesText, !rules.isEmpty {
-                    Text(EngineDisplayText.label(rules)).font(.caption)
+                    GameRulesText(source: rules, cardName: topObject.displayName).font(.caption)
                         .foregroundStyle(MagicPalette.parchment.opacity(0.9))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -6657,7 +6657,7 @@ struct UniversalPromptActionPanel: View {
                     }
                     Text(ability.sourceName ?? "Ability")
                         .font(.subheadline.bold()).foregroundStyle(MagicPalette.parchment)
-                    Text(EngineDisplayText.label(ability.rulesText ?? ability.label))
+                    GameRulesText(source: ability.rulesText ?? ability.label, cardName: ability.sourceName)
                         .font(.callout).foregroundStyle(MagicPalette.parchment)
                         .fixedSize(horizontal: false, vertical: true)
                     if ability.sourceCard == nil {

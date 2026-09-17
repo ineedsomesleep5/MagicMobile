@@ -19,12 +19,12 @@ struct DeckStudioScryfallReference: View {
                     Text(card.name).font(.subheadline.weight(.semibold))
                     if let value { Text("\(value.cached ? "Cached" : "Fetched") \(value.fetchedAt.formatted(date: .abbreviated, time: .shortened))").font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk) }
                     else { Text("From the selected Scryfall search result").font(.caption2) }
-                    if let cost = card.manaCost { Text(cost).font(.caption.monospaced()) }
-                    if let text = card.oracleText { Text(text).font(.subheadline).textSelection(.enabled) }
+                    if let cost = card.manaCost { NativeDeckManaCost(cost: cost) }
+                    if let text = card.oracleText { GameRulesText(source: text, cardName: card.name).font(.subheadline).textSelection(.enabled) }
                     ForEach(Array((card.faces ?? []).enumerated()), id: \.offset) { _, face in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(face.name).font(.subheadline.weight(.semibold))
-                            if let text = face.oracleText { Text(text).font(.subheadline).textSelection(.enabled) }
+                            if let text = face.oracleText { GameRulesText(source: text, cardName: face.name).font(.subheadline).textSelection(.enabled) }
                         }
                     }
                     if let legal = card.legalities?["commander"] { Text("Scryfall Commander status: \(legal)").font(.caption) }

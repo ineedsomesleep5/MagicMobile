@@ -434,7 +434,7 @@ private struct NativeDeckInspectionSheet: View {
                     if let card {
                         Text(card.typeLine ?? "Type unavailable").font(.headline)
                         NativeDeckManaCost(cost: card.manaCost)
-                        Text(card.oracleText ?? "Rules text unavailable in the local catalogue.")
+                        GameRulesText(source: card.oracleText ?? "Rules text unavailable in the local catalogue.", cardName: card.name)
                             .textSelection(.enabled)
                         Text("Local selected-printing metadata. XMage remains authoritative for play.")
                             .font(.caption).foregroundStyle(.secondary)
