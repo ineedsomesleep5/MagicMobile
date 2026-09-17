@@ -13,7 +13,6 @@ import hashlib
 import gzip
 import math
 import json
-import re
 from pathlib import Path
 import unittest
 import tempfile
@@ -25,7 +24,7 @@ CATALOGUE_SHA256 = '7ac98264dee413be459cdcdd01839de3af51d68060adb28f48881f3a1a5d
 REPORT_SHA256 = '0ded410be118be4bbb5ae0f59c7657bacc97cfcef6493aeade7e3ac509fa0175'
 REGISTRY_HASH = '807f3deda781f1e912c17c6648e4fb81dc4b00d08b33ee2c308e3f161206267a'
 SET_ELIGIBILITY_SHA256 = '27902e939769f396d3d17bdb29cddbabc5da7db909466c816e37e5a8e4ae9ebb'
-METADATA_SHA256 = '7e640da2dc242f904d0c5a16a54c89441b7e83ac7f1a11ecd3e9bc01778a79f7'
+METADATA_SHA256 = 'a279c66dd82246d5c1601d8dbac930cc058f512f22a8e349a3c81db2b92616a8'
 ROLE_TAGS_SHA256 = 'f0b9f48e4e0c43f6f847dcd8f51954ede58bcdaca58effbf6d8710237fcdbf86'
 
 
@@ -98,37 +97,17 @@ def name_aliases(cards: list[dict], metadata: list[dict]) -> dict[str, str]:
 
 
 COLOR_SYMBOLS = ('W', 'U', 'B', 'R', 'G')
-# CR 903.4: a basic land type carries its intrinsic mana ability, which counts for identity.
-BASIC_LAND_COLORS = {'PLAINS': 'W', 'ISLAND': 'U', 'SWAMP': 'B', 'MOUNTAIN': 'R', 'FOREST': 'G'}
-REMINDER_TEXT = re.compile(r'<i>.*?</i>', re.DOTALL)
-MANA_SYMBOL = re.compile(r'\{([^{}]{1,10})\}')
 
 
-def symbol_colors(text: str) -> set[str]:
-    """Colors named by mana symbols in text. Covers hybrid ({G/W}), monocolor hybrid
-    ({2/W}) and Phyrexian ({W/P}); {C}, {T}, {X} and generic costs name no color."""
-    found = set()
-    for token in MANA_SYMBOL.findall(text):
-        found.update(c for c in token.upper() if c in COLOR_SYMBOLS)
-    return found
-
-
-def color_identity(colors, mana_cost, rules, subtypes) -> list[str] | None:
-    """CR 903.4 color identity: the card's own colors (which carry any color indicator),
-    plus mana symbols in the mana cost and in the rules text excluding reminder text,
-    plus the intrinsic abilities of any basic land type. Unknown metadata stays unknown."""
-    if colors is None:
+def color_identity(value) -> list[str] | None:
+    """Validate XMage's build-time identity, including every face. Never infer
+    legality from display text, which lacks reverse-face color indicators."""
+    if value is None:
         return None
-    identity = set(colors)
-    if isinstance(mana_cost, str):
-        identity |= symbol_colors(mana_cost)
-    if isinstance(rules, str):
-        identity |= symbol_colors(REMINDER_TEXT.sub(' ', rules))
-    for subtype in subtypes or []:
-        color = BASIC_LAND_COLORS.get(subtype.upper())
-        if color:
-            identity.add(color)
-    return [symbol for symbol in COLOR_SYMBOLS if symbol in identity]
+    if (not isinstance(value, list) or any(v not in COLOR_SYMBOLS for v in value)
+            or len(set(value)) != len(value)):
+        raise ValueError('Invalid XMage color identity')
+    return [symbol for symbol in COLOR_SYMBOLS if symbol in value]
 
 
 def card_metadata(cards: list[dict], metadata: list[dict], source_rows: list[dict]) -> dict:
@@ -161,7 +140,7 @@ def card_metadata(cards: list[dict], metadata: list[dict], source_rows: list[dic
                             oracleText=row['rules'].replace('@@@', '\n').rstrip('\n') if isinstance(row.get('rules'), str) else None,
                             manaValue=value, manaCost=row['manaCosts'].replace('@@@', '') if isinstance(row.get('manaCosts'), str) else None,
                             colors=colors,
-                            colorIdentity=color_identity(colors, row.get('manaCosts'), row.get('rules'), subs),
+                            colorIdentity=color_identity(row.get('colorIdentity')),
                             setCodes=sorted(sets.get(name, set())))
     return dict(sorted(result.items()))
 
@@ -204,10 +183,12 @@ def export() -> bytes:
     metadata = gzip.decompress(checked_bytes(ROOT / 'build/engine/mage/mobile/card-metadata.jsonl.gz', METADATA_SHA256))
     metadata_rows = [json.loads(line) for line in metadata.splitlines() if line.strip()]
     aliases = name_aliases(cards, metadata_rows)
-    role_tags = json.loads(checked_bytes(ROOT / 'build/generated/role-tags.json', ROLE_TAGS_SHA256))
+    role_tags = json.loads(checked_bytes(ROOT / 'engine/data/role-tags.json', ROLE_TAGS_SHA256))
     if role_tags['schemaVersion'] != 1:
         raise ValueError('Role tags use an unexpected schema version')
     entries, tagged = apply_role_tags(card_metadata(cards, metadata_rows, source_rows), aliases, role_tags['tags'])
+    if any(entry['colorIdentity'] is None for entry in entries.values()):
+        raise ValueError('Selected printing lacks XMage color identity; rebuild card metadata')
     stats = stats | dict(roleTaggedNames=tagged)
     payload = dict(schemaVersion=1, upstreamCommit=UPSTREAM, catalogueHash=REGISTRY_HASH,
                    sourceCatalogueSHA256=CATALOGUE_SHA256, sourceRegistrySHA256=REPORT_SHA256,
@@ -223,7 +204,8 @@ class ExportTests(unittest.TestCase):
     def test_metadata_preserves_unknowns_and_selected_printing(self):
         cards = [dict(name='Front', setCode='SET', collectorNumber='1')]
         row = dict(name='Front', setCode='SET', cardNumber='1', types='CREATURE@@@', supertypes='LEGENDARY@@@', subtypes='Elf@@@',
-                   rules='First@@@Second@@@', manaCosts='{2}@@@{G/W}@@@', manaValue=3, white=True, blue=False, black=False, red=False, green=True)
+                   rules='First@@@Second@@@', manaCosts='{2}@@@{G/W}@@@', manaValue=3, white=True, blue=False, black=False, red=False, green=True,
+                   colorIdentity=['W', 'G'])
         out = card_metadata(cards, [row, row | dict(cardNumber='2', manaValue=9)], cards)['Front']
         self.assertEqual(out['typeLine'], 'Legendary Creature — Elf')
         self.assertEqual(out['oracleText'], 'First\nSecond')
@@ -238,27 +220,20 @@ class ExportTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             card_metadata(cards, [row, row], cards)
 
-    def test_color_identity_follows_cr_903_4(self):
-        # Colorless artifact: {C} names no color.
-        self.assertEqual(color_identity([], '{1}', '{T}: Add {C}{C}.', []), [])
-        # Colorless land whose identity comes only from a rules-text mana symbol.
-        self.assertEqual(color_identity([], None, "This land enters tapped.@@@When it enters, exile target player's graveyard.@@@{T}: Add {B}.", []), ['B'])
-        # Gold card from its mana cost.
-        self.assertEqual(color_identity(['U', 'B'], '{3}{U}{B}', 'Creature text.', []), ['U', 'B'])
-        # Hybrid, monocolor hybrid and Phyrexian all name their colors.
-        self.assertEqual(color_identity([], '{G/W}', '', []), ['W', 'G'])
-        self.assertEqual(color_identity([], '{2/W}', '', []), ['W'])
-        self.assertEqual(color_identity([], '{W/P}', '', []), ['W'])
-        # A basic land type carries its intrinsic mana ability.
-        self.assertEqual(color_identity([], None, 'As this enters, you may pay 2 life.', ['Mountain', 'Plains']), ['W', 'R'])
-        # Reminder text never contributes identity.
-        self.assertEqual(color_identity([], '{2}', 'Equip {3} <i>({3}: Attach to target creature. Add {R} is only a reminder.)</i>', []), [])
-        # A color indicator reaches us through the card's own colors.
-        self.assertEqual(color_identity(['U'], None, 'Suspend 4.', []), ['U'])
-        # Unknown metadata stays unknown rather than being asserted as colorless.
-        self.assertIsNone(color_identity(None, '{1}', 'text', []))
-        # Output is always in WUBRG order regardless of discovery order.
-        self.assertEqual(color_identity(['G'], '{W}{U}', '{T}: Add {B} or {R}.', []), ['W', 'U', 'B', 'R', 'G'])
+    def test_color_identity_preserves_engine_faces_and_unknowns(self):
+        self.assertEqual(color_identity(['R', 'W']), ['W', 'R'])
+        self.assertEqual(color_identity([]), [])
+        self.assertIsNone(color_identity(None))
+        for invalid in ['W', ['W', 'W'], ['C'], [True]]:
+            with self.assertRaises(ValueError):
+                color_identity(invalid)
+        cards = [dict(name='Front', setCode='SET', collectorNumber='1')]
+        row = dict(name='Front', setCode='SET', cardNumber='1', doubleFaced=True,
+                   white=True, blue=False, black=False, red=False, green=False,
+                   manaCosts='{W}', rules='Transform this.', colorIdentity=['W', 'R'])
+        result = card_metadata(cards, [row], cards)['Front']
+        self.assertEqual(result['colors'], ['W'])
+        self.assertEqual(result['colorIdentity'], ['W', 'R'])
 
     def test_role_tags_resolve_through_aliases_and_front_faces(self):
         metadata = {'Sol Ring': {}, 'Aberrant Researcher': {}, 'Wrath of God': {}}

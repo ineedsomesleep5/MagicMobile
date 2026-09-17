@@ -63,14 +63,32 @@ enum DeckStudioRoleClassifier {
         var normalized = text.precomposedStringWithCanonicalMapping
             .lowercased(with: Locale(identifier: "en_US_POSIX"))
             .replacingOccurrences(of: "’", with: "'")
-        // Reminder text restates rules in parentheses and must not create a match of its own.
-        normalized = normalized.replacingOccurrences(of: "\\([^()]*\\)", with: " ", options: .regularExpression)
+        // Track nesting so an inner parenthesis cannot expose the rest of a reminder.
+        var depth = 0
+        var withoutReminders = ""
+        for character in normalized {
+            if character == "(" { depth += 1; withoutReminders.append(" ") }
+            else if character == ")" {
+                guard depth > 0 else { return [] }
+                depth -= 1
+            } else if depth == 0 { withoutReminders.append(character) }
+        }
+        guard depth == 0 else { return [] }
+        normalized = withoutReminders
+        // A mode or a granted/quoted ability may span lines. Its sentences are not
+        // independent instructions for this card. Curated roles remain available.
+        guard !normalized.contains(where: { "\"“”•".contains($0) }),
+              normalized.range(of: #"\bchoose (?:one|two|three|four|any)\b"#, options: .regularExpression) == nil else { return [] }
         func tidy(_ value: Substring) -> String? {
             let cleaned = value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
             return cleaned.isEmpty ? nil : (cleaned.hasSuffix(".") ? cleaned : cleaned + ".")
         }
         var pieces: [String] = []
         for line in normalized.components(separatedBy: .newlines) {
+            // Conditions and triggers scope the entire ability, including sentences
+            // after its first period. Preserve independent abilities on other lines.
+            guard line.range(of: #"\b(?:when|whenever|at the beginning|at the end|if|unless|activate only|activate (?:as|during)|only any time)\b"#,
+                             options: .regularExpression) == nil else { continue }
             var candidates: [Substring] = [Substring(line)]
             candidates += line.split(whereSeparator: { $0 == "." || $0 == ";" })
             for candidate in candidates {

@@ -27,6 +27,8 @@ struct DeckStudioWorkspaceScreen: View {
     @State private var inspection: InspectedCard?
     @State private var confirmClose = false
     @State private var showRename = false
+    @State private var showArtworkPreferences = false
+    @FocusState private var deckSearchFocused: Bool
     init(library: DeckLibraryStore, record: DeckLibraryRecord?, included: Bool,
          metadata: NativeDeckMetadataCatalogue?, resolver: OnDeviceDeckResolver?, selectForPlay: @escaping (String) -> Void) {
         _model = StateObject(wrappedValue: DeckStudioEditorModel(library: library, record: record, included: included))
@@ -87,7 +89,7 @@ struct DeckStudioWorkspaceScreen: View {
             .background(DeckStudioPalette.background.ignoresSafeArea())
             .navigationTitle("Deck Studio").navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Done") { if model.isDirty { confirmClose = true } else { dismiss() } } }
+                ToolbarItem(placement: .topBarLeading) { Button("Done") { if model.isDirty { confirmClose = true } else { dismiss() } }.accessibilityIdentifier("deckStudio.close") }
                 ToolbarItem(placement: .topBarTrailing) {
                     if model.readOnly { Button("Edit a copy") { model.makeEditableCopy() } }
                     else { Button("Save") { model.save() }.disabled(!model.canSave).accessibilityIdentifier("deckStudio.save") }
@@ -101,6 +103,7 @@ struct DeckStudioWorkspaceScreen: View {
                         Button("Change primary commander", systemImage: "crown") { showCommander = true }.disabled(model.readOnly || metadata == nil)
                         Button("Basic lands", systemImage: "leaf") { showBasics = true }.disabled(model.readOnly)
                         Button("Rename deck", systemImage: "pencil") { showRename = true }.disabled(model.readOnly)
+                        Button("Artwork & privacy", systemImage: "photo") { showArtworkPreferences = true }
                         if let deck, let text = try? DeckStudioTextExport.text(deck) { ShareLink(item: text) { Label("Export plain text", systemImage: "doc.plaintext") } }
                         else { Text("Plain text unavailable · use JSON to preserve this draft") }
                         if let data = try? model.draft.exportJSON(), let json = String(data: data, encoding: .utf8) { ShareLink(item: json) { Label("Export native JSON", systemImage: "square.and.arrow.up") } }
@@ -127,11 +130,18 @@ struct DeckStudioWorkspaceScreen: View {
                         .navigationTitle("Rename deck").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showRename = false } } }
                 }.presentationDetents([.medium]).preferredColorScheme(.light)
             }
+            .sheet(isPresented: $showArtworkPreferences) {
+                NavigationStack {
+                    Form { NativeArtworkPreferenceView() }
+                        .navigationTitle("Artwork & privacy")
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showArtworkPreferences = false } } }
+                }.preferredColorScheme(.light)
+            }
             .confirmationDialog("Save your changes?", isPresented: $confirmClose, titleVisibility: .visible) {
                 Button("Save and close") { if model.save() != nil { dismiss() } }.disabled(!model.canSave)
-                Button("Keep recovery draft and close") { if model.persistRecovery() { dismiss() } }
+                Button("Keep recovery draft and close") { if model.persistRecovery() { dismiss() } }.disabled(model.recoveryBlocked)
                 Button("Discard unsaved changes and close", role: .destructive) { model.discardUnsavedChanges(); dismiss() }
-            } message: { Text("Your existing saved deck is unchanged until you save. An incomplete deck can remain a local draft.") }
+            } message: { Text(model.recoveryBlocked ? "Recovery is paused to preserve unreadable data. Save this deck before closing to keep your edits, or cancel to continue editing." : "Your existing saved deck is unchanged until you save. An incomplete deck can remain a local draft.") }
             .interactiveDismissDisabled(model.isDirty)
             .onChange(of: scenePhase) { _, phase in if phase != .active { model.persistRecovery(); browser.pause(); combos.cancel(); validation.cancelPending() } }
             .onChange(of: tab) { _, value in if value != "Ideas" { browser.pause() } }
@@ -168,7 +178,14 @@ struct DeckStudioWorkspaceScreen: View {
     private func cardsTab(showAddButton: Bool) -> some View {
         VStack(spacing: 0) {
             VStack(spacing: 10) {
-                HStack { Image(systemName: "magnifyingglass"); TextField("Search this deck", text: $query).autocorrectionDisabled().accessibilityIdentifier("deckStudio.cards.search") }.padding(12).background(.white, in: RoundedRectangle(cornerRadius: 12))
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                    TextField("Search this deck", text: $query).autocorrectionDisabled().accessibilityIdentifier("deckStudio.cards.search")
+                        .focused($deckSearchFocused).submitLabel(.search).onSubmit { deckSearchFocused = false }
+                    if !query.isEmpty {
+                        Button { query = "" } label: { Image(systemName: "xmark.circle.fill").frame(width: 44, height: 44) }.accessibilityLabel("Clear deck search")
+                    }
+                }.padding(.horizontal, 12).frame(minHeight: 44).background(.white, in: RoundedRectangle(cornerRadius: 12))
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 14) {
                         Menu {
@@ -186,7 +203,11 @@ struct DeckStudioWorkspaceScreen: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8, pinnedViews: [.sectionHeaders]) {
                     if model.draft.rows.isEmpty { ContentUnavailableView("A deck of possibilities", systemImage: "plus.rectangle.on.rectangle", description: Text("Add your commander and cards. Incomplete drafts are welcome.")) }
-                    else if filteredRows.isEmpty { ContentUnavailableView("No matching cards", systemImage: "line.3.horizontal.decrease", description: Text("Clear the search or filters to see the full draft.")) }
+                    else if filteredRows.isEmpty {
+                        ContentUnavailableView("No matching cards", systemImage: "line.3.horizontal.decrease", description: Text("Clear the search or filters to see the full draft."))
+                        Button("Clear search and filters") { query = ""; sectionFilter = ""; colorFilter = "" }
+                            .buttonStyle(DeckStudioButtonStyle(primary: false))
+                    }
                     ForEach(groupNames, id: \.self) { group in
                         Section { ForEach(filteredRows.filter { groupName($0) == group }) { cardRow($0) } } header: {
                             HStack { Text(group).font(.subheadline.weight(.semibold)); Spacer(); Text("\(filteredRows.filter { groupName($0) == group }.reduce(0) { $0 + $1.quantity })").font(.caption) }
@@ -196,7 +217,7 @@ struct DeckStudioWorkspaceScreen: View {
                 }.padding(.horizontal, 20).padding(.bottom, 16)
             }.scrollDismissesKeyboard(.interactively)
             if !model.readOnly && showAddButton {
-                Button { showSearch = true } label: { Label("Add cards", systemImage: "plus").frame(maxWidth: .infinity) }.buttonStyle(DeckStudioButtonStyle()).padding(.horizontal, 20).padding(.bottom, 12).disabled(metadata == nil).accessibilityIdentifier("deckStudio.addCards")
+                Button { showSearch = true } label: { Label("Add cards", systemImage: "plus").frame(maxWidth: .infinity) }.buttonStyle(DeckStudioButtonStyle()).padding(.horizontal, 20).padding(.bottom, 12).accessibilityIdentifier("deckStudio.addCards")
             }
         }
     }

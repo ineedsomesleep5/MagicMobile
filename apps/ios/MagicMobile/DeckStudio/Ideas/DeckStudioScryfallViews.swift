@@ -73,8 +73,10 @@ struct DeckStudioOnlineSearch: View {
     @State private var generation = UUID()
     @State private var selected: DeckStudioScryfallCard?
     @State private var feedback: String?
+    @FocusState private var searchFocused: Bool
     var body: some View {
-        VStack(spacing: 12) {
+        List {
+            VStack(alignment: .leading, spacing: 12) {
             Text("Online Scryfall search").font(.headline)
             DisclosureGroup("About online search") {
                 Text("Only your search query is sent to Scryfall. Cards not supported by the installed engine are available for reference, not play.")
@@ -82,15 +84,17 @@ struct DeckStudioOnlineSearch: View {
             }.font(.caption)
             HStack {
                 TextField("Name or Scryfall query", text: $query).textFieldStyle(.roundedBorder).autocorrectionDisabled().textInputAutocapitalization(.never)
-                Button("Search") { search(page: 1) }.disabled(busy || query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).frame(minHeight: 44)
+                    .focused($searchFocused).submitLabel(.search).onSubmit { submitSearch() }
+                Button("Search") { submitSearch() }.disabled(busy || query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).frame(minHeight: 44)
             }
             DeckStudioArtworkInvitation()
             if busy { HStack { ProgressView("Searching…"); Button("Cancel") { cancel() } } }
             if let error { Text(error).font(.caption).foregroundStyle(DeckStudioPalette.warning) }
             if let feedback { Text(feedback).font(.caption).foregroundStyle(DeckStudioPalette.success) }
+            }.listRowBackground(Color.clear).listRowSeparator(.hidden)
             if let result {
                 Text("Page \(result.page) · \(result.cached ? "cached" : "fetched") \(result.fetchedAt.formatted(date: .abbreviated, time: .shortened))").font(.caption2)
-                List(result.cards) { card in
+                ForEach(result.cards) { card in
                     HStack(spacing: 12) {
                         if !dynamicType.isAccessibilitySize {
                             DeckStudioArtwork(name: card.name).frame(width: 52, height: 73)
@@ -107,25 +111,34 @@ struct DeckStudioOnlineSearch: View {
                             }.frame(maxWidth: .infinity, alignment: .leading)
                         }.buttonStyle(.plain)
                         if let name = resolver?.canonicalCardName(card.name) {
+                            VStack(spacing: 0) {
                             if model.cardCount(name, section: destination) > 0 {
-                                Button { model.removeOne(name, section: destination) } label: { Image(systemName: "minus.circle").frame(width: 44, height: 44) }.buttonStyle(.borderless)
+                                Button {
+                                    let before = model.cardCount(name, section: destination)
+                                    model.removeOne(name, section: destination)
+                                    if model.cardCount(name, section: destination) < before { feedback = "Removed one \(name) from \(destination)"; error = nil }
+                                    else { feedback = nil; error = "Could not remove this card; check the draft." }
+                                } label: { Image(systemName: "minus.circle").frame(width: 44, height: 44) }.buttonStyle(.borderless)
                                     .accessibilityLabel("Remove one \(name) from \(destination)")
                             }
                             Button {
-                                feedback = add(name, destination) ? "Added \(name) to \(destination)" : "Could not add this card; check the draft."
+                                if add(name, destination) { feedback = "Added \(name) to \(destination)"; error = nil }
+                                else { feedback = nil; error = "Could not add this card; check the draft." }
                             } label: { Image(systemName: "plus.circle.fill").frame(width: 44, height: 44) }.buttonStyle(.borderless)
                                 .accessibilityLabel("Add \(name) to \(destination)")
+                            }
                         }
                     }.listRowBackground(DeckStudioPalette.surface)
-                }.listStyle(.plain).scrollContentBackground(.hidden)
+                }
                 HStack {
                     if result.page > 1 { Button("Previous page") { search(page: result.page - 1) }.frame(minHeight: 44) }
                     Spacer()
                     if result.hasMore, result.page < 10 { Button("Next page") { search(page: result.page + 1) }.frame(minHeight: 44) }
                 }.disabled(busy)
             }
-        }
+        }.listStyle(.plain).buttonStyle(.borderless).scrollContentBackground(.hidden).scrollDismissesKeyboard(.interactively)
         .onChange(of: query) { _, _ in cancel(); result = nil; feedback = nil }
+        .onChange(of: destination) { _, _ in feedback = nil }
         .onDisappear { cancel() }
         .sheet(item: $selected) { card in
             NavigationStack {
@@ -135,6 +148,11 @@ struct DeckStudioOnlineSearch: View {
                     .background(DeckStudioPalette.background)
             }.preferredColorScheme(.light)
         }
+    }
+    private func submitSearch() {
+        guard !busy, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        searchFocused = false
+        search(page: 1)
     }
     private func cancel() { generation = UUID(); task?.cancel(); task = nil; busy = false }
     private func search(page: Int) {

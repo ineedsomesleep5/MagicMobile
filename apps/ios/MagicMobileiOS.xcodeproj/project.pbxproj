@@ -14,6 +14,7 @@
 		0C3D3FB20C2428C51C43991D /* GameBoardInteractionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1747ED595E46B6112F92E2D2 /* GameBoardInteractionState.swift */; };
 		0FD7B90F22B27A4C103C3E9C /* OnDeviceDeckLinkImporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBA9BCE84178425A31CDAB15 /* OnDeviceDeckLinkImporterTests.swift */; };
 		10950A48F21DD8F1D1A46CB6 /* NativeDeckBuilderLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43757BDA8C9BB55A8A1C9FFB /* NativeDeckBuilderLayoutTests.swift */; };
+		1197E403C9CDCBA1F5C6F9E5 /* DeckStudioReleaseUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 325A347B3CF808C7166B7925 /* DeckStudioReleaseUITests.swift */; };
 		14011F2FA8FBAA4DDD745BC8 /* ondevice-catalogue.json in Resources */ = {isa = PBXBuildFile; fileRef = 6B0D8FE0F5FC4C7001C4233F /* ondevice-catalogue.json */; };
 		14452F264A2B210B0A7F8B5F /* NativeDeckEDHRECTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A327243294AE676E55AD08 /* NativeDeckEDHRECTests.swift */; };
 		17AF48820DE92A70CCEE17E2 /* PortraitInteractionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6975249AF3F911A584D24C03 /* PortraitInteractionPolicy.swift */; };
@@ -163,6 +164,7 @@
 		29DCFFDEC2E73604A42C81C3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		2D6E81D58ACA7C6A40D0C88C /* OnDeviceDeckLinkImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceDeckLinkImporter.swift; sourceTree = "<group>"; };
 		2F4E6F7237174E453B09E62B /* BoardZoneReferenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardZoneReferenceTests.swift; sourceTree = "<group>"; };
+		325A347B3CF808C7166B7925 /* DeckStudioReleaseUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioReleaseUITests.swift; sourceTree = "<group>"; };
 		327B6E116B54238C1BF459E0 /* DeckStudioScryfall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioScryfall.swift; sourceTree = "<group>"; };
 		34AB998C3D5AA8E4DFD8EAF1 /* GameBoardDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardDesignTokens.swift; sourceTree = "<group>"; };
 		39CD7AD491EA8ECBCEC2998A /* DeckStudioRecordingTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioRecordingTransport.swift; sourceTree = "<group>"; };
@@ -470,6 +472,7 @@
 			isa = PBXGroup;
 			children = (
 				92D223C6A8D6C0570CDA2369 /* BoardPolishUITests.swift */,
+				325A347B3CF808C7166B7925 /* DeckStudioReleaseUITests.swift */,
 				6110FD6C7D0281A6D0C9E48A /* OnDeviceSetupUITests.swift */,
 			);
 			path = MagicMobileUITests;
@@ -800,6 +803,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E156FE50612F3319F345B3CE /* BoardPolishUITests.swift in Sources */,
+				1197E403C9CDCBA1F5C6F9E5 /* DeckStudioReleaseUITests.swift in Sources */,
 				553AB2472E9D51782D1584E7 /* OnDeviceSetupUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -859,6 +863,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -875,6 +880,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -957,7 +963,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2026091702;
+				CURRENT_PROJECT_VERSION = 5000000000;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 82HPAY85M8;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1042,7 +1048,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2026091702;
+				CURRENT_PROJECT_VERSION = 5000000000;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 82HPAY85M8;
 				ENABLE_NS_ASSERTIONS = NO;

@@ -1,4 +1,6 @@
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import mage.filter.FilterMana;
 import com.j256.ormlite.dao.DaoManager;
 import com.j256.ormlite.dao.Dao;
 import com.j256.ormlite.jdbc.JdbcConnectionSource;
@@ -52,7 +54,26 @@ public final class CardMetadataExporter {
         Path metadata = output.resolve("card-metadata.jsonl.gz");
         try (BufferedWriter stream = compressed(metadata)) {
             stream.write(Json.write(Json.map("format", 1, "rows", rows.size())));stream.newLine();
-            for (CardInfo row : rows) {stream.write(GSON.toJson(row));stream.newLine();}
+            for (CardInfo row : rows) {
+                JsonObject data = GSON.toJsonTree(row).getAsJsonObject();
+                // Synthetic split-half repository rows are not independently creatable.
+                // The main card already includes both halves in its engine identity.
+                if (row.isSplitCardHalf()) {
+                    stream.write(GSON.toJson(data));stream.newLine();
+                    continue;
+                }
+                // Ask the actual card, including its reverse/spell/split face. Repository
+                // display metadata alone does not contain those faces' color indicators.
+                FilterMana identity = row.createCard().getColorIdentity();
+                List<String> colors = new ArrayList<>();
+                if (identity.isWhite()) colors.add("W");
+                if (identity.isBlue()) colors.add("U");
+                if (identity.isBlack()) colors.add("B");
+                if (identity.isRed()) colors.add("R");
+                if (identity.isGreen()) colors.add("G");
+                data.add("colorIdentity", GSON.toJsonTree(colors));
+                stream.write(GSON.toJson(data));stream.newLine();
+            }
         }
         Map<String, Supplier<Set<String>>> queries = new LinkedHashMap<>();
         queries.put("getNames", CardRepository.instance::getNames);

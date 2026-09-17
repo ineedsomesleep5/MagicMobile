@@ -152,6 +152,14 @@ final class NativeDeckMetadataCatalogueTests: XCTestCase {
         // Identity from a rules-text mana symbol on an otherwise colorless land.
         XCTAssertEqual(catalogue.card(named: "Bojuka Bog")?.colorIdentity, ["B"])
         XCTAssertEqual(catalogue.card(named: "The Scarab God")?.colorIdentity, ["U", "B"])
+        // The reverse face contributes even when its color is absent from front text/cost.
+        XCTAssertEqual(catalogue.card(named: "Archangel Avacyn")?.colorIdentity, ["W", "R"])
+        XCTAssertEqual(catalogue.card(named: "Westvale Abbey")?.colorIdentity, ["B"])
+        XCTAssertEqual(catalogue.card(named: "Elbrus, the Binding Blade")?.colorIdentity, ["B"])
+        XCTAssertEqual(catalogue.card(named: "Brutal Cathar")?.colorIdentity, ["W", "R"])
+        XCTAssertEqual(catalogue.card(named: "Blex, Vexing Pest")?.colorIdentity, ["B", "G"])
+        XCTAssertEqual(catalogue.card(named: "Transguild Courier")?.colorIdentity, ["W", "U", "B", "R", "G"])
+        XCTAssertEqual(catalogue.card(named: "Sacred Foundry")?.colorIdentity, ["W", "R"])
         XCTAssertTrue(forest.types?.contains("LAND") == true)
         XCTAssertFalse(forest.setCodes.isEmpty)
         let split = try XCTUnwrap(catalogue.card(named: "Fire // Ice"))

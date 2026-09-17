@@ -18,10 +18,11 @@ struct DeckStudioCardSearch: View {
     @State private var maxMV = ""
     @State private var constrainIdentity = true
     @State private var results: [NativeDeckMetadataCatalogue.Card] = []
-    @State private var lastAdded: String?
+    @State private var feedback: String?
     @State private var loading = false
     @State private var addError: String?
     @State private var inspection: NativeDeckMetadataCatalogue.Card?
+    @FocusState private var searchFocused: Bool
     private struct Request: Equatable { let query: String; let type: String; let identity: [String]?; let set: String; let min: String; let max: String }
     private var requestKey: Request { Request(query: query, type: type, identity: constrainIdentity ? colors : nil, set: setCode, min: minMV, max: maxMV) }
     var body: some View {
@@ -30,7 +31,7 @@ struct DeckStudioCardSearch: View {
             else {
                 NavigationStack {
                     searchContent.navigationTitle("Add cards").navigationBarTitleDisplayMode(.inline)
-                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("deckStudio.search.close") } }
                 }
             }
         }
@@ -39,22 +40,41 @@ struct DeckStudioCardSearch: View {
     }
     private var searchContent: some View {
         VStack(spacing: 8) {
-            Picker("Search source", selection: $source) { Text("Local catalogue").tag("Local"); Text("Scryfall — online").tag("Online") }.pickerStyle(.segmented).padding(.horizontal, 20)
-            Picker("Add to", selection: $section) {
-                Text("Main deck").tag("deck"); Text("Commander(s)").tag("commanders")
-                Text("Maybeboard").tag("maybeboard"); Text("Sideboard").tag("sideboard"); Text("Companion").tag("companions")
-            }.pickerStyle(.menu)
-            if source == "Online" { DeckStudioOnlineSearch(resolver: resolver, destination: section, add: add, model: model).padding(.horizontal, 20) }
+            if embedded {
+                HStack {
+                    sourcePicker.pickerStyle(.menu)
+                    Spacer(minLength: 8)
+                    destinationPicker
+                }.padding(.horizontal, 12)
+            } else {
+                Group {
+                    if dynamicType.isAccessibilitySize {
+                        sourcePicker.pickerStyle(.menu)
+                    } else {
+                        sourcePicker.pickerStyle(.segmented)
+                    }
+                }.padding(.horizontal, 20)
+                destinationPicker
+            }
+            if source == "Online" { DeckStudioOnlineSearch(resolver: resolver, destination: section, add: add, model: model) }
             else { localSearch }
-            // Before any results arrive the online branch has nothing that expands, so the
-            // whole search block would otherwise sit centred in the sheet.
-            Spacer(minLength: 0)
         }.frame(maxHeight: .infinity, alignment: .top).background(DeckStudioPalette.background)
+            .onChange(of: section) { _, _ in feedback = nil; addError = nil }
+    }
+    private var sourcePicker: some View {
+        Picker("Search source", selection: $source) { Text("Local catalogue").tag("Local"); Text("Scryfall — online").tag("Online") }
+    }
+    private var destinationPicker: some View {
+        Picker("Add to", selection: $section) {
+            Text("Main deck").tag("deck"); Text("Commander(s)").tag("commanders")
+            Text("Maybeboard").tag("maybeboard"); Text("Sideboard").tag("sideboard"); Text("Companion").tag("companions")
+        }.pickerStyle(.menu)
     }
     private var localSearch: some View {
-        VStack(spacing: 12) {
+        List {
             VStack(spacing: 10) {
                 TextField("Card name or rules text", text: $query).textFieldStyle(.roundedBorder).autocorrectionDisabled()
+                    .focused($searchFocused).submitLabel(.search).onSubmit { searchFocused = false }
                 DisclosureGroup("Filters") {
                     VStack(spacing: 12) {
                         Picker("Type", selection: $type) { Text("All types").tag(""); ForEach(["Creature", "Artifact", "Enchantment", "Instant", "Sorcery", "Land", "Planeswalker", "Battle"], id: \.self) { Text($0).tag($0) } }
@@ -63,15 +83,20 @@ struct DeckStudioCardSearch: View {
                         Button("Reset filters") { type = ""; minMV = ""; maxMV = ""; setCode = ""; constrainIdentity = true }
                     }.padding(.vertical, 10)
                 }.font(.caption)
-                DeckStudioArtworkInvitation()
+                if !embedded { DeckStudioArtworkInvitation() }
                 if let addError { Text(addError).font(.caption).foregroundStyle(DeckStudioPalette.danger) }
-                if let lastAdded { Text("Added \(lastAdded)").font(.caption).foregroundStyle(DeckStudioPalette.success).accessibilityAddTraits(.updatesFrequently) }
-            }.padding(.horizontal, 20)
+                if let feedback { Text(feedback).font(.caption).foregroundStyle(DeckStudioPalette.success).accessibilityAddTraits(.updatesFrequently) }
+            }.listRowBackground(Color.clear).listRowSeparator(.hidden)
             if loading { ProgressView("Searching local cards") }
-            List(results) { card in
+            if metadata == nil {
+                DeckStudioNotice(title: "Local catalogue unavailable", message: "Close this editor and retry the catalogue from your library, or use online search for reference.")
+            } else if !loading && results.isEmpty {
+                ContentUnavailableView("No matching cards", systemImage: "magnifyingglass", description: Text("Try another name or reset the filters."))
+            }
+            ForEach(results) { card in
                 HStack(spacing: 12) {
                     if !dynamicType.isAccessibilitySize {
-                        DeckStudioArtwork(name: card.name).frame(width: 52, height: 73)
+                        DeckStudioArtwork(name: card.name).frame(width: embedded ? 36 : 52, height: embedded ? 50 : 73)
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
                     Button { inspection = card } label: {
@@ -85,25 +110,34 @@ struct DeckStudioCardSearch: View {
                             if model.needsSingletonReview(card.name, metadata: card, destination: section) {
                                 Text("Already in playing deck · check copy limit").font(.caption2).foregroundStyle(DeckStudioPalette.warning)
                             }
-                        }.frame(maxWidth: .infinity, alignment: .leading)
-                    }.buttonStyle(.plain)
+                        }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityLabel("Inspect \(card.name)")
+                    VStack(spacing: 0) {
                     if model.cardCount(card.name, section: section) > 0 {
-                        Button { model.removeOne(card.name, section: section) } label: { Image(systemName: "minus.circle").frame(width: 44, height: 44) }
+                        Button {
+                            let before = model.cardCount(card.name, section: section)
+                            model.removeOne(card.name, section: section)
+                            if model.cardCount(card.name, section: section) < before { feedback = "Removed one \(card.name) from \(section)"; addError = nil }
+                            else { feedback = nil; addError = "Could not remove this card; check the draft." }
+                        } label: { Image(systemName: "minus.circle").frame(width: 44, height: 44) }
                             .buttonStyle(.borderless).accessibilityLabel("Remove one \(card.name) from \(section)")
                     }
                     Button {
-                        if add(card.name, section) { lastAdded = card.name; addError = nil }
-                        else { lastAdded = nil; addError = "Could not add this card. Check the draft quantity or section limits." }
+                        if add(card.name, section) { feedback = "Added \(card.name) to \(section)"; addError = nil }
+                        else { feedback = nil; addError = "Could not add this card. Check the draft quantity or section limits." }
                     } label: { Image(systemName: "plus.circle.fill").font(.title2).frame(width: 44, height: 44) }.buttonStyle(.borderless).accessibilityLabel("Add \(card.name) to \(section)")
+                    }
                 }.listRowBackground(DeckStudioPalette.surface)
-            }.scrollContentBackground(.hidden)
+            }
             Text("\(results.count) matches\(results.count == 80 ? " · refine search for more" : "") · validate before playing")
-                .font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk).padding(.horizontal, 20).padding(.bottom, 8)
-        }.task(id: requestKey) { await search() }
+                .font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk).listRowBackground(Color.clear).listRowSeparator(.hidden)
+        }.listStyle(.plain).buttonStyle(.borderless).scrollContentBackground(.hidden).scrollDismissesKeyboard(.interactively)
+            .contentMargins(.top, 0, for: .scrollContent)
+            .task(id: requestKey) { await search() }
     }
     private func search() async {
         guard let metadata else { return }
-        loading = true
+        loading = true; results = []; feedback = nil; addError = nil
         let captured = requestKey
         let lower = captured.min.isEmpty ? nil : Double(captured.min)
         let upper = captured.max.isEmpty ? nil : Double(captured.max)
@@ -134,6 +168,7 @@ struct DeckStudioCardInspector: View {
                     NativeCardArtworkView(name: name, variant: .inspection) { _, _ in DeckStudioNotice(title: name, message: "Artwork is optional. Card text remains available offline.", icon: "rectangle.portrait") }
                         .frame(maxWidth: 340, minHeight: 120, maxHeight: 420).frame(maxWidth: .infinity)
                     Text(name).font(.system(.title, design: .serif).weight(.bold))
+                    DeckStudioArtworkInvitation()
                     Text(metadata?.typeLine ?? "Type not in the loaded catalogue").font(.headline)
                     if let cost = metadata?.manaCost { NativeDeckManaCost(cost: cost) }
                     Text(GameRulesPresentation(source: metadata?.oracleText ?? "Text unavailable in the bundled metadata.", cardName: name).plainText).textSelection(.enabled)
@@ -141,7 +176,7 @@ struct DeckStudioCardInspector: View {
                     DeckStudioScryfallReference(name: name)
                 }.padding(24)
             }.background(DeckStudioPalette.background).navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("deckStudio.inspector.close") } }
         }.foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light)
     }
 }

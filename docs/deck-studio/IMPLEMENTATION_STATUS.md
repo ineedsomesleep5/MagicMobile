@@ -55,13 +55,13 @@ No cloud accounts/sync, collection/price tracking, EDHREC partner feed, full tou
 
 ## Catalogue data added this pass
 
-- **Color identity** is now derived in `packages/ondevice-engine/scripts/export_ios_catalogue.py` per CR 903.4 —
-  mana-cost symbols, rules-text symbols excluding reminder text, and basic land types — instead of the previous
-  hardcoded `null` on all 31,726 cards. That `null` was the source of the "Identity unknown" deck chip, the
-  Spellbook "commander color identity is unknown" warning, and a color filter that could never match.
+- **Color identity** is exported from the pinned XMage card implementation by `CardMetadataExporter.java`.
+  This supersedes the front-face heuristic: transform, modal double-faced and split cards include their
+  other faces. The iOS exporter validates and preserves the engine's identity, separately from printed color.
 - **Curated role tags** are fetched by `packages/ondevice-engine/scripts/fetch_role_tags.py` from Scryfall's
-  public oracle-tag search, intersected with the shipped catalogue, and stored per card. The fetch is a build
-  step; the phone resolves roles entirely offline. Scryfall tag data is CC-BY and is credited in the analysis
+  public oracle-tag search, intersected with the shipped catalogue, and stored per card. A reviewed snapshot
+  is committed in `engine/data/role-tags.json`; normal builds do not fetch live tags. The phone resolves roles
+  entirely offline. Scryfall tag data is CC-BY and is credited in the analysis
   panel. Re-running the fetch changes `ROLE_TAGS_SHA256`, which must be repinned in the exporter alongside the
   other source SHAs.
 

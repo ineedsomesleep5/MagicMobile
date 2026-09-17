@@ -120,6 +120,20 @@ struct RoleChecks {
         check(roles("Cycling {2} (Draw two cards.)").isEmpty, "reminder text never creates a match")
         check(roles("At the beginning of your upkeep, draw two cards.").isEmpty, "triggered effect still not guessed")
         check(roles("If you control a Dragon, draw two cards.").isEmpty, "conditional effect still not guessed")
+        for text in [
+            "Creatures you control have \"{T}: Draw two cards.\"",
+            "Creatures you control have “{T}: Draw two cards.”",
+            "Whenever this creature attacks, you may pay {1}. Draw two cards.",
+            "If you control a Dragon, gain 2 life. Draw two cards.",
+            "Choose one —\n• Gain 2 life. Draw two cards.\n• Create a token.",
+            "Cycling {2} (Discard this card (from your hand): Draw two cards.)",
+            "{T}: Draw two cards. Activate only if you control a Dragon."
+        ] {
+            check(roles(text).isEmpty, "scoped or granted instructions are not standalone effects: \(text)")
+            check(roles(text, curated: [.protection]) == [.protection], "conservative fallback preserves curated evidence")
+        }
+        check(roles("Whenever this creature attacks, gain 1 life.\n{T}: Draw two cards.") == [.cardFlow],
+              "independent activated ability survives a triggered paragraph")
         check(DeckStudioRoleClassifier.clauses(in: "Draw a card.\nDestroy all creatures.").contains("destroy all creatures."),
               "clauses split on sentence and line boundaries")
         check(DeckStudioRoleClassifier.clauses(in: "{T}: Add {G}.").contains("{t}: add {g}."),

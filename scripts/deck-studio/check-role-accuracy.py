@@ -7,8 +7,9 @@ regression in the tag fetch, the role mapping or the exporter shows up here rath
 on a phone.
 
 Labels below are the roles a Commander player would expect to see for that card. They
-are a deliberate floor, not an exhaustive description: extra roles are reported but do
-not fail, because a card can legitimately do more than one thing.
+are a deliberate floor. Explicitly allowed secondary roles keep legitimate multi-role
+cards valid, while missing fixture cards and unreviewed extra labels always fail.
+This checks bundled tags; test-roles.sh separately exercises the runtime fallback.
 
 Run: python3 check-role-accuracy.py [--min-recall 0.95]
 """
@@ -62,44 +63,85 @@ STAPLES: dict[str, set[str]] = {
     'Mystical Tutor': {'tutor'}, 'Worldly Tutor': {'tutor'}, 'Gamble': {'tutor'},
 }
 
+# Reviewed secondary labels, not an unrestricted allowance for any extra role.
+# Path can target your own creature, and Sun Titan can return a land; retain those
+# legitimate uses rather than treating broad community tags as primary-role claims.
+SECONDARY: dict[str, set[str]] = {
+    **{name: {'tutor'} for name in (
+        'Cultivate', "Kodama's Reach", 'Rampant Growth', 'Farseek', "Nature's Lore", 'Three Visits'
+    )},
+    'Path to Exile': {'ramp', 'tutor'},
+    'Cyclonic Rift': {'interaction'}, 'Farewell': {'graveyardHate'},
+    'Boros Charm': {'interaction'}, 'Veil of Summer': {'cardFlow'},
+    'Relic of Progenitus': {'cardFlow'}, 'Soul-Guide Lantern': {'cardFlow'},
+    'Eternal Witness': {'cardFlow'}, 'Regrowth': {'cardFlow'}, 'Sun Titan': {'ramp'},
+}
+# Negative controls catch broad tag mappings that recall-only fixtures cannot see.
+NEGATIVE_CONTROLS = {'Plains', 'Island', 'Swamp', 'Mountain', 'Forest', 'Grizzly Bears'}
+KNOWN_ROLES = {'ramp', 'cardFlow', 'interaction', 'boardWipe', 'protection',
+               'graveyardHate', 'recursion', 'tutor'}
+
+
+def recall_threshold(value: str) -> float:
+    result = float(value)
+    if not 0 <= result <= 1:
+        raise argparse.ArgumentTypeError('recall must be between 0 and 1')
+    return result
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--min-recall', type=float, default=0.95)
+    parser.add_argument('--min-recall', type=recall_threshold, default=0.95)
     parser.add_argument('--catalogue', type=Path, default=CATALOGUE)
     args = parser.parse_args()
 
     metadata = json.loads(args.catalogue.read_bytes())['cardMetadata']
     missing_from_catalogue, expected, found = [], 0, 0
     misses: list[str] = []
-    for name, wanted in sorted(STAPLES.items()):
+    inappropriate: list[str] = []
+    fixtures = STAPLES | {name: set() for name in NEGATIVE_CONTROLS}
+    for name, wanted in sorted(fixtures.items()):
+        expected += len(wanted)
         entry = metadata.get(name)
         if entry is None:
             missing_from_catalogue.append(name)
             continue
-        roles = set(entry.get('roles', []))
-        expected += len(wanted)
+        labels = entry.get('roles', []) if isinstance(entry, dict) else None
+        if not isinstance(labels, list) or any(not isinstance(role, str) for role in labels):
+            inappropriate.append(f'  {name}: roles must be a list of role names')
+            continue
+        roles = set(labels)
+        if len(labels) != len(roles):
+            inappropriate.append(f'  {name}: duplicate role labels')
+        extras = roles - (wanted | SECONDARY.get(name, set()))
+        if extras:
+            inappropriate.append(f'  {name}: inappropriate/unreviewed roles {sorted(extras)}')
+        if roles - KNOWN_ROLES:
+            inappropriate.append(f'  {name}: unknown roles {sorted(roles - KNOWN_ROLES)}')
         found += len(wanted & roles)
         if wanted - roles:
             misses.append(f'  {name}: expected {sorted(wanted)}, got {sorted(roles) or "no roles"}')
 
     if missing_from_catalogue:
-        print(f'Not in the shipped catalogue ({len(missing_from_catalogue)}), skipped:', file=sys.stderr)
+        print(f'Missing required fixture cards ({len(missing_from_catalogue)}):', file=sys.stderr)
         for name in missing_from_catalogue:
             print(f'  {name}', file=sys.stderr)
     if misses:
         print(f'Missed labels ({len(misses)}):', file=sys.stderr)
         print('\n'.join(misses), file=sys.stderr)
+    if inappropriate:
+        print(f'Invalid role labels ({len(inappropriate)}):', file=sys.stderr)
+        print('\n'.join(inappropriate), file=sys.stderr)
 
     recall = found / expected if expected else 0.0
-    checked = len(STAPLES) - len(missing_from_catalogue)
+    checked = len(fixtures) - len(missing_from_catalogue)
     print(f'Role recall on hand-labelled staples: {found}/{expected} = {recall:.1%} '
           f'across {checked} cards (bar {args.min_recall:.0%}).')
-    if recall < args.min_recall:
-        print('FAIL: curated role coverage regressed below the bar.', file=sys.stderr)
+    if missing_from_catalogue or inappropriate or recall < args.min_recall:
+        print('FAIL: missing fixtures, invalid labels, or curated recall below the bar.', file=sys.stderr)
         return 1
-    print('PASS: curated role coverage meets the bar. Label set is a floor, not exhaustive '
-          'card evaluation or phone acceptance.')
+    print('PASS: curated roles meet the recall bar and fixture label constraints. '
+          'Not exhaustive card evaluation or phone acceptance.')
     return 0
 
 
