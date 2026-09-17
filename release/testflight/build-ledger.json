@@ -3,7 +3,7 @@
   "bundleId": "com.calebfeliciano.magicmobile",
   "marketingVersion": "0.1.0",
   "nextBuildFloor": "5000000000",
-  "lastPreparedBuild": "2026091702",
+  "lastPreparedBuild": "5000000000",
   "lastInstalledBuild": "2026091501",
   "lastUploadedBuild": "2026091702",
   "uploads": [
@@ -156,5 +156,5 @@
       "ipaPath": "build_output/testflight/deck-studio-external-2026091702/native-release.TUZq5q/export/MagicMobile.ipa"
     }
   ],
-  "lastPreparedAt": "2026-09-17T04:20:17.532Z"
+  "lastPreparedAt": "2026-09-17T13:59:31.899Z"
 }
