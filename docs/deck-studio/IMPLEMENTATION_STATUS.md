@@ -1,5 +1,7 @@
 # Deck Studio 2.0 — source implementation and release boundary
 
+Latest desktop delivery: **0.1.0 (2026091701)** uploaded to internal TestFlight on September 17 UTC. See [the exact source, artifact and verification receipt](RELEASE_2026091701.md). Apple availability and the remaining physical acceptance checklist are distinct from upload success.
+
 Continue **PR #10**, branch `codex/deck-studio-2`, targeting `main`. Do not create another Deck Studio PR, reset to an old checkpoint, overwrite newer desktop work, or reinstall an earlier ZIP. The main baseline is merged PR #9 at `1f7bd7213875f181d35bac5d88b97b2cb2f76634`.
 
 This pass resumes the implemented validation, Scryfall and recording work at `72d6c5a38e4b47a66cd33f85daa2d7a47cacd6b5`. Source commit `2598c7dc7a6896527c5e2ad1426acf41c6d0af83` adds the deck-detail/import linkage and recording/editor hardening described below. Consult the PR's current head and check runs for final evidence, rather than the older descriptions in the conversation.

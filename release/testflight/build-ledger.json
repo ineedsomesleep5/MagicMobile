@@ -4,7 +4,7 @@
   "marketingVersion": "0.1.0",
   "lastPreparedBuild": "2026091701",
   "lastInstalledBuild": "2026091501",
-  "lastUploadedBuild": "2026091601",
+  "lastUploadedBuild": "2026091701",
   "uploads": [
     {
       "build": "2026062701",
@@ -139,6 +139,13 @@
       "uploadedAt": "2026-09-16T03:56:34.731Z",
       "deliveryUuid": "283fbc18-a35c-4d9f-b68d-b2331e9ff4e4",
       "ipaPath": "build_output/testflight/commander-2026091601/native-release.HXlhwO/export/MagicMobile.ipa"
+    },
+    {
+      "build": "2026091701",
+      "marketingVersion": "0.1.0",
+      "uploadedAt": "2026-09-17T04:10:50.918Z",
+      "deliveryUuid": "d6a34695-2ee5-48dd-80b9-db562ff925c5",
+      "ipaPath": "build_output/testflight/deck-studio-2026091701/native-release.wFPPLd/export/MagicMobile.ipa"
     }
   ],
   "lastPreparedAt": "2026-09-17T04:00:22.116Z"
