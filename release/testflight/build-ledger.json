@@ -5,7 +5,7 @@
   "nextBuildFloor": "5000000000",
   "lastPreparedBuild": "5000000000",
   "lastInstalledBuild": "2026091501",
-  "lastUploadedBuild": "2026091702",
+  "lastUploadedBuild": "5000000000",
   "uploads": [
     {
       "build": "2026062701",
@@ -154,6 +154,13 @@
       "uploadedAt": "2026-09-17T04:27:00.086Z",
       "deliveryUuid": "b2c57ff9-d313-454e-b571-c5606f81b57a",
       "ipaPath": "build_output/testflight/deck-studio-external-2026091702/native-release.TUZq5q/export/MagicMobile.ipa"
+    },
+    {
+      "build": "5000000000",
+      "marketingVersion": "0.1.0",
+      "uploadedAt": "2026-09-17T19:08:30.463Z",
+      "deliveryUuid": "9e157783-012d-4a41-8cda-c2ca28c829e9",
+      "ipaPath": "build_output/testflight/deck-studio-5000000000/native-release.kDDrF8/export/MagicMobile.ipa"
     }
   ],
   "lastPreparedAt": "2026-09-17T13:59:31.899Z"
