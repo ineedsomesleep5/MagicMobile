@@ -73,6 +73,7 @@ struct DeckStudioValidationPanel: View {
         }
         .onAppear { state.prepare(request) }
         .onChange(of: request) { _, value in state.prepare(value) }
+        .onChange(of: deck) { _, _ in acknowledgeExclusions = false }
         .onDisappear { state.cancelPending() }
     }
     private func preparationError(_ deck: DeckList, _ resolver: OnDeviceDeckResolver) -> String {
