@@ -10,8 +10,9 @@ struct RoleChecks {
     static func rejected(_ label: String, _ body: () throws -> Void) {
         do { try body(); check(false, label) } catch { check(true, label) }
     }
-    static func roles(_ text: String?, types: [String]? = ["INSTANT"], reviewed: Set<DeckStudioRole>? = nil) -> Set<DeckStudioRole> {
-        Set(DeckStudioRoleClassifier.classify(text: text, types: types, reviewed: reviewed).map(\.role))
+    static func roles(_ text: String?, types: [String]? = ["INSTANT"], curated: [DeckStudioRole] = [],
+                      reviewed: Set<DeckStudioRole>? = nil) -> [DeckStudioRole] {
+        DeckStudioRoleClassifier.classify(text: text, types: types, curated: curated, reviewed: reviewed).map(\.role)
     }
     static func main() throws {
         let examples: [(String, DeckStudioRole)] = [
@@ -93,6 +94,53 @@ struct RoleChecks {
         check(defaults.data(forKey: key) == corrupted, "corrupt original preserved")
         defaults.set(Data(repeating: 0, count: 512 * 1024 + 1), forKey: key)
         rejected("oversized preferences rejected before decode") { _ = try DeckStudioRolePreferences.load(key: key, defaults: defaults) }
+        // Curated Scryfall oracle tags, bundled at build time, are the primary source.
+        check(roles(nil, curated: [.boardWipe]) == [.boardWipe], "curated tag classifies without any rules text")
+        check(DeckStudioRoleClassifier.classify(text: nil, types: nil, curated: [.protection]).first?.source == .curated,
+              "curated attribution distinguishable from a text pattern")
+        check(DeckStudioRoleClassifier.classify(text: nil, types: nil, curated: [.protection]).first.map { !$0.explanation.isEmpty } == true,
+              "curated hints stay explained")
+        // A card the taggers reached for one role can still match a pattern for another.
+        check(roles("Draw two cards.", curated: [.boardWipe]) == [.cardFlow, .boardWipe],
+              "curated and pattern roles combine, in declared role order")
+        // The same role from both sources is reported once, and credited to the curated data.
+        let both = DeckStudioRoleClassifier.classify(text: "Draw two cards.", types: ["SORCERY"], curated: [.cardFlow])
+        check(both.count == 1 && both.first?.source == .curated, "curated wins over an equivalent pattern, without duplicating")
+        // Your own review still overrides everything, including curated data.
+        check(roles("Draw two cards.", curated: [.boardWipe], reviewed: [.tutor]) == [.tutor], "review overrides curated tags")
+        check(roles("Draw two cards.", curated: [.boardWipe], reviewed: []).isEmpty, "explicit empty review clears curated tags")
+        // Oversized or absent text must not discard curated data.
+        check(roles(String(repeating: "x", count: 32769), curated: [.ramp]) == [.ramp], "oversized text still keeps curated roles")
+
+        // Clause extraction: an effect is found after a cost or an earlier sentence, but a
+        // triggered or conditional effect is still left for curated data and manual review.
+        check(roles("Sacrifice a creature: Draw two cards.") == [.cardFlow], "effect after an activation cost is found")
+        check(roles("Flying.\nDraw two cards.") == [.cardFlow], "effect in a later sentence is found")
+        check(roles("Draw two cards. Destroy all creatures.") == [.cardFlow, .boardWipe], "several effects in one card")
+        check(roles("Cycling {2} (Draw two cards.)").isEmpty, "reminder text never creates a match")
+        check(roles("At the beginning of your upkeep, draw two cards.").isEmpty, "triggered effect still not guessed")
+        check(roles("If you control a Dragon, draw two cards.").isEmpty, "conditional effect still not guessed")
+        check(DeckStudioRoleClassifier.clauses(in: "Draw a card.\nDestroy all creatures.").contains("destroy all creatures."),
+              "clauses split on sentence and line boundaries")
+        check(DeckStudioRoleClassifier.clauses(in: "{T}: Add {G}.").contains("{t}: add {g}."),
+              "an activated ability is also offered whole, so cost-shaped patterns still match")
+
+        // Entries carry curated roles through grouping and quantity weighting.
+        let curatedEntries: [DeckStudioRoleAnalysis.Entry] = [
+            .init(name: "Wipe", quantity: 1, text: "Some text.", types: ["SORCERY"], curated: [.boardWipe]),
+            .init(name: "Wipe", quantity: 1, text: "Some text.", types: ["SORCERY"], curated: [.boardWipe]),
+            .init(name: "Shield", quantity: 1, text: "Other text.", types: ["INSTANT"], curated: [.protection])
+        ]
+        let curatedSummary = try DeckStudioRoleAnalysis(entries: curatedEntries, overrides: [:])
+        check(curatedSummary.count(.boardWipe) == 2 && curatedSummary.count(.protection) == 1, "curated roles counted by quantity")
+        check(curatedSummary.unclassifiedCount == 0, "curated cards are not reported as unclassified")
+        rejected("the same name may not arrive with conflicting curated roles") {
+            _ = try DeckStudioRoleAnalysis(entries: [
+                .init(name: "Same", quantity: 1, text: "t", types: ["INSTANT"], curated: [.ramp]),
+                .init(name: "Same", quantity: 1, text: "t", types: ["INSTANT"], curated: [.tutor])
+            ], overrides: [:])
+        }
+
         print("PASS: \(assertions) role-analysis and preference assertions. Pattern/fixture coverage, not full-card strategic or phone validation.")
     }
 }

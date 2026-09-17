@@ -286,3 +286,32 @@ struct DeckStudioArtwork: View {
         }.accessibilityHidden(true)
     }
 }
+
+/// Card art is off until the player opts in, and the setting otherwise lives behind a
+/// toolbar button. Lists that are mostly artwork say so inline, so an empty-looking list
+/// reads as a choice rather than a failure. Declining leaves everything else working.
+struct DeckStudioArtworkInvitation: View {
+    @AppStorage(NativeArtworkPreference.key) private var remoteArtwork = false
+    var body: some View {
+        if !remoteArtwork {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "photo.on.rectangle.angled").foregroundStyle(DeckStudioPalette.gold)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Card images are off").font(.caption.weight(.semibold))
+                    Text("Turn them on and Scryfall receives the card names shown here and your IP address. Card rules stay on this device either way.")
+                        .font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Button("Turn on") { remoteArtwork = true }
+                    .font(.caption.weight(.semibold))
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("deckStudio.artwork.enable")
+            }
+            .foregroundStyle(DeckStudioPalette.ink)
+            .padding(12)
+            .background(DeckStudioPalette.surface, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(DeckStudioPalette.separator))
+        }
+    }
+}

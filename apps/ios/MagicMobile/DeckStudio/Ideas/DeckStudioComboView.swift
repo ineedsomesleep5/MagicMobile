@@ -25,6 +25,7 @@ struct DeckStudioComboPanel: View {
     let readOnly: Bool
     let add: (String, String, SpellbookDeck) -> Bool
     let inspect: (String) -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicType
     @State private var approval: SpellbookDeck?
     @State private var selected: SpellbookVariant?
     @State private var feedback: String?
@@ -130,10 +131,24 @@ struct DeckStudioComboPanel: View {
                         }
                         readiness(assessment)
                         Text(assessment.explanation).font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
-                        ForEach(Array(variant.uses.enumerated()), id: \.offset) { _, ingredient in
-                            Button { inspect(resolver?.canonicalCardName(ingredient.card.name) ?? ingredient.card.name) } label: {
-                                HStack { Text(ingredient.card.name).multilineTextAlignment(.leading); Spacer(); Text("×\(ingredient.quantity)") }
-                            }.font(.caption).frame(minHeight: 44)
+                        LazyVStack(alignment: .leading, spacing: 8) {
+                            ForEach(Array(variant.uses.enumerated()), id: \.offset) { _, ingredient in
+                                let canonical = resolver?.canonicalCardName(ingredient.card.name) ?? ingredient.card.name
+                                Button { inspect(canonical) } label: {
+                                    HStack(spacing: 10) {
+                                        // Artwork uses the engine's name for this card, because a
+                                        // provider spelling need not be an exact Scryfall name.
+                                        if !dynamicType.isAccessibilitySize {
+                                            DeckStudioArtwork(name: canonical).frame(width: 44, height: 61)
+                                                .clipShape(RoundedRectangle(cornerRadius: 5))
+                                        }
+                                        Text(ingredient.card.name).multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                        Spacer(minLength: 8)
+                                        Text("×\(ingredient.quantity)")
+                                    }
+                                }.font(.caption).frame(minHeight: 44)
+                            }
                         }
                         Button("Prerequisites and steps", systemImage: "list.bullet.rectangle") { selected = variant }.frame(minHeight: 44)
                         if case .oneCardAway(let name) = assessment.readiness, !readOnly {

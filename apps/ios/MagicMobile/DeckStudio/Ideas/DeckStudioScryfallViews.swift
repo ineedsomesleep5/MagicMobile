@@ -64,6 +64,7 @@ struct DeckStudioOnlineSearch: View {
     let destination: String
     let add: (String, String) -> Bool
     @ObservedObject var model: DeckStudioEditorModel
+    @Environment(\.dynamicTypeSize) private var dynamicType
     @State private var query = ""
     @State private var result: DeckStudioScryfallPage?
     @State private var error: String?
@@ -83,13 +84,18 @@ struct DeckStudioOnlineSearch: View {
                 TextField("Name or Scryfall query", text: $query).textFieldStyle(.roundedBorder).autocorrectionDisabled().textInputAutocapitalization(.never)
                 Button("Search") { search(page: 1) }.disabled(busy || query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).frame(minHeight: 44)
             }
+            DeckStudioArtworkInvitation()
             if busy { HStack { ProgressView("Searching…"); Button("Cancel") { cancel() } } }
             if let error { Text(error).font(.caption).foregroundStyle(DeckStudioPalette.warning) }
             if let feedback { Text(feedback).font(.caption).foregroundStyle(DeckStudioPalette.success) }
             if let result {
                 Text("Page \(result.page) · \(result.cached ? "cached" : "fetched") \(result.fetchedAt.formatted(date: .abbreviated, time: .shortened))").font(.caption2)
                 List(result.cards) { card in
-                    HStack {
+                    HStack(spacing: 12) {
+                        if !dynamicType.isAccessibilitySize {
+                            DeckStudioArtwork(name: card.name).frame(width: 52, height: 73)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                        }
                         Button { selected = card } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(card.name).font(.subheadline.weight(.medium))

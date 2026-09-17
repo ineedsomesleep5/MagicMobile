@@ -1257,6 +1257,7 @@ struct TavernMainMenu: View {
     let decks: () -> Void
     let settings: () -> Void
     var news: (() -> Void)? = nil
+    var commanderName: String? = nil
 
     var body: some View {
         GeometryReader { proxy in
@@ -1290,27 +1291,15 @@ struct TavernMainMenu: View {
                             menuAction("Updates", subtitle: "This build and XMage news.", icon: "newspaper", action: news)
                                 .accessibilityIdentifier("menu.updates")
                         }
-                        HStack(spacing: 10) {
-                            Image(systemName: "shield.lefthalf.filled")
-                                .font(.system(size: 26)).foregroundStyle(MagicPalette.antiqueGold)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("YOUR DECK").font(.system(size: 9, weight: .black)).tracking(1.5)
-                                    .foregroundStyle(MagicPalette.antiqueGold)
-                                Text(deckName).font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(MagicPalette.parchment).lineLimit(2)
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .padding(14)
-                        .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
+                        deckTile
                     }
                     .padding(horizontal ? 18 : 20)
                     .frame(maxWidth: 400)
                     .background {
-                        RoundedRectangle(cornerRadius: 20)
+                        RoundedRectangle(cornerRadius: GameBoardDesignTokens.current.radius.heroPanel)
                             .fill(LinearGradient(colors: [Color(red: 0.20, green: 0.14, blue: 0.10), Color(red: 0.075, green: 0.06, blue: 0.055)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .overlay(RoundedRectangle(cornerRadius: 20).stroke(MagicPalette.antiqueGold.opacity(0.6), lineWidth: 1))
-                            .overlay(RoundedRectangle(cornerRadius: 15).stroke(MagicPalette.antiqueGold.opacity(0.16), lineWidth: 1).padding(5))
+                            .overlay(RoundedRectangle(cornerRadius: GameBoardDesignTokens.current.radius.heroPanel).stroke(MagicPalette.antiqueGold.opacity(0.6), lineWidth: 1))
+                            .overlay(RoundedRectangle(cornerRadius: GameBoardDesignTokens.current.radius.heroPanel - 5).stroke(MagicPalette.antiqueGold.opacity(0.16), lineWidth: 1).padding(5))
                             .shadow(color: .black.opacity(0.65), radius: 20, y: 12)
                     }
                 }
@@ -1325,21 +1314,13 @@ struct TavernMainMenu: View {
 
     private func identity(compact: Bool) -> some View {
         VStack(spacing: compact ? 12 : 16) {
-            ZStack {
-                Circle().fill(Color(red: 0.15, green: 0.06, blue: 0.24)).blur(radius: 22)
-                Circle().stroke(MagicPalette.antiqueGold.opacity(0.3), lineWidth: 1)
-                Circle().stroke(MagicPalette.antiqueGold.opacity(0.6), lineWidth: 2).padding(8)
-                RoundedRectangle(cornerRadius: 9)
-                    .fill(LinearGradient(colors: [Color(red: 0.49, green: 0.30, blue: 0.70), Color(red: 0.13, green: 0.06, blue: 0.23)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(MagicPalette.antiqueGold, lineWidth: 2))
-                    .frame(width: compact ? 54 : 68, height: compact ? 76 : 96).rotationEffect(.degrees(-12))
-                Image(systemName: "sparkles")
-                    .font(.system(size: compact ? 35 : 45, weight: .light))
-                    .foregroundStyle(Color(red: 1, green: 0.88, blue: 0.61))
-                    .shadow(color: .purple.opacity(0.7), radius: 14)
-            }
-            .frame(width: compact ? 114 : 146, height: compact ? 114 : 146)
-            .accessibilityHidden(true)
+            // The shipped app mark, not a stand-in built from SF Symbols. It is cut out of
+            // its plate so it sits on whatever background the menu is wearing.
+            Image("mage-mobile-logo")
+                .resizable().scaledToFit()
+                .frame(width: compact ? 132 : 168)
+                .shadow(color: .black.opacity(0.55), radius: 16, y: 8)
+                .accessibilityHidden(true)
             VStack(spacing: 6) {
                 Text("MAGICMOBILE")
                     .font(.system(size: compact ? 31 : 36, weight: .black, design: .serif))
@@ -1351,15 +1332,58 @@ struct TavernMainMenu: View {
                     .foregroundStyle(MagicPalette.parchment.opacity(0.78))
                     .multilineTextAlignment(.center)
             }
-            HStack(spacing: 12) {
-                ForEach(["sun.max.fill", "drop.fill", "moon.fill", "flame.fill", "tree.fill"], id: \.self) { symbol in
-                    Image(systemName: symbol).font(.system(size: 12)).foregroundStyle(MagicPalette.antiqueGold.opacity(0.65))
+            // The real mana symbols ship in the bundle; weather icons stood in for them.
+            HStack(spacing: 10) {
+                ForEach(["mana-w", "mana-u", "mana-b", "mana-r", "mana-g"], id: \.self) { asset in
+                    Image(asset).resizable().scaledToFit().frame(width: 17, height: 17)
+                        .opacity(0.9)
                 }
             }.accessibilityHidden(true)
             if !playerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text("Welcome back, \(playerName)").font(.caption).foregroundStyle(MagicPalette.parchment.opacity(0.7))
             }
         }
+    }
+
+    /// The selected deck was the second largest element on the menu and showed only a name.
+    /// Showing the commander it is actually built around makes it worth the space, and
+    /// reuses the same consent-aware artwork route as the rest of the app.
+    private var deckTile: some View {
+        HStack(spacing: 12) {
+            Group {
+                if let commanderName, !commanderName.isEmpty {
+                    NativeCardArtworkView(name: commanderName, variant: .board, contentMode: .fill) { _, _ in
+                        ZStack {
+                            LinearGradient(colors: [MagicPalette.carvedWood, MagicPalette.iron], startPoint: .top, endPoint: .bottom)
+                            Image(systemName: "crown.fill").font(.system(size: 20)).foregroundStyle(MagicPalette.antiqueGold.opacity(0.8))
+                        }
+                    }
+                } else {
+                    ZStack {
+                        LinearGradient(colors: [MagicPalette.carvedWood, MagicPalette.iron], startPoint: .top, endPoint: .bottom)
+                        Image(systemName: "shield.lefthalf.filled").font(.system(size: 20)).foregroundStyle(MagicPalette.antiqueGold)
+                    }
+                }
+            }
+            .frame(width: 46, height: 64).clipped()
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(MagicPalette.antiqueGold.opacity(0.45)))
+            VStack(alignment: .leading, spacing: 3) {
+                Text("YOUR DECK").font(.system(size: 9, weight: .black)).tracking(1.5)
+                    .foregroundStyle(MagicPalette.antiqueGold)
+                Text(deckName).font(.subheadline.weight(.semibold))
+                    .foregroundStyle(MagicPalette.parchment).lineLimit(2)
+                if let commanderName, !commanderName.isEmpty {
+                    Text(commanderName).font(.caption2)
+                        .foregroundStyle(MagicPalette.parchment.opacity(0.65)).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: GameBoardDesignTokens.current.radius.panel))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(commanderName.map { "Your deck: \(deckName), commander \($0)" } ?? "Your deck: \(deckName)")
     }
 
     private func menuAction(_ title: String, subtitle: String, icon: String, action: @escaping () -> Void) -> some View {
@@ -1382,8 +1406,25 @@ struct TavernMainMenu: View {
     }
 }
 
+/// One spelling for each stored appearance, with a deliberate fallback. An unrecognised
+/// stored value previously fell through to "midnight" by accident rather than returning
+/// to the real default.
+enum BoardAppearancePreference {
+    static let key = "magicmobile.boardAppearance"
+    static let defaultValue = "arena"
+    static let options = ["arena", "midnight", "wood"]
+    static func normalized(_ value: String) -> String { options.contains(value) ? value : defaultValue }
+}
+
+enum MenuAppearancePreference {
+    static let key = "magicmobile.menuAppearance"
+    static let defaultValue = "tavern"
+    static let options = ["tavern", "arena", "midnight"]
+    static func normalized(_ value: String) -> String { options.contains(value) ? value : defaultValue }
+}
+
 struct BoardAppearancePicker: View {
-    @AppStorage("magicmobile.boardAppearance") private var appearance = "arena"
+    @AppStorage(BoardAppearancePreference.key) private var appearance = BoardAppearancePreference.defaultValue
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Battlefield").font(.headline).foregroundStyle(MagicPalette.parchment)
@@ -1398,31 +1439,101 @@ struct BoardAppearancePicker: View {
     }
     private func choice(_ title: String, value: String) -> some View {
         Button { appearance = value } label: {
-            VStack(spacing: 8) {
-                ZStack {
-                    if value == "arena" {
-                        Image("commander-stone-arena").resizable().scaledToFill()
-                    } else if value == "wood" {
-                        Image(MagicMobileAssetName.boardBackground).resizable().scaledToFill()
-                    } else {
-                        LinearGradient(colors: [Color(red: 0.055, green: 0.085, blue: 0.10), Color(red: 0.10, green: 0.16, blue: 0.16)], startPoint: .top, endPoint: .bottom)
-                    }
-                }
-                .frame(height: 68).clipped().clipShape(RoundedRectangle(cornerRadius: 8))
-                HStack {
-                    Text(title).font(.subheadline.weight(.semibold))
-                    Spacer(minLength: 0)
-                    Image(systemName: appearance == value ? "checkmark.circle.fill" : "circle")
-                }
+            AppearanceSwatch(title: title, selected: appearance == value) {
+                BoardAppearanceArt(value: value)
             }
-            .padding(8)
-            .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(appearance == value ? MagicPalette.antiqueGold : .white.opacity(0.15), lineWidth: 2))
-            .foregroundStyle(MagicPalette.parchment)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title + " battlefield")
         .accessibilityAddTraits(appearance == value ? .isSelected : [])
+    }
+}
+
+/// The menu had no equivalent control: its background was hard-coded while the board's
+/// was selectable, so the two surfaces could never be made to agree.
+struct MenuAppearancePicker: View {
+    @AppStorage(MenuAppearancePreference.key) private var appearance = MenuAppearancePreference.defaultValue
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Menu").font(.headline).foregroundStyle(MagicPalette.parchment)
+            HStack(spacing: 12) {
+                choice("Tavern", value: "tavern")
+                choice("Stone Arena", value: "arena")
+                choice("Midnight", value: "midnight")
+            }
+            Text("Saved on this device. The battlefield keeps its own setting.")
+                .font(.caption).foregroundStyle(MagicPalette.parchment.opacity(0.65))
+        }
+    }
+    private func choice(_ title: String, value: String) -> some View {
+        Button { appearance = value } label: {
+            AppearanceSwatch(title: title, selected: appearance == value) {
+                MenuAppearanceArt(value: value)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title + " menu background")
+        .accessibilityAddTraits(appearance == value ? .isSelected : [])
+    }
+}
+
+private struct AppearanceSwatch<Art: View>: View {
+    let title: String
+    let selected: Bool
+    @ViewBuilder let art: Art
+    var body: some View {
+        // Each swatch takes an equal share of the row. Aspect-filled artwork otherwise
+        // claimed width from its neighbours, squeezing the gradient option to a sliver
+        // and truncating the labels beside it.
+        VStack(spacing: 8) {
+            // A resizable image still reports a large ideal width, which wins the HStack's
+            // space. Letting an empty container own the size and drawing the art inside it
+            // keeps every swatch identical regardless of what it shows.
+            Color.clear
+                .frame(maxWidth: .infinity).frame(height: 68)
+                .overlay { art }
+                .clipped().clipShape(RoundedRectangle(cornerRadius: GameBoardDesignTokens.current.radius.panel))
+            HStack(spacing: 4) {
+                Text(title).font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
+                Spacer(minLength: 0)
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle").font(.caption)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(8)
+        .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(selected ? MagicPalette.antiqueGold : .white.opacity(0.15), lineWidth: 2))
+        .foregroundStyle(MagicPalette.parchment)
+    }
+}
+
+/// Swatches render the same art the surfaces do, so a preview cannot drift from reality.
+struct BoardAppearanceArt: View {
+    let value: String
+    var body: some View {
+        switch value {
+        case "arena": Image(MagicMobileAssetName.stoneArena).resizable().scaledToFill()
+        case "wood": Image(MagicMobileAssetName.boardBackground).resizable().scaledToFill()
+        default: MidnightSurfaceGradient()
+        }
+    }
+}
+
+struct MenuAppearanceArt: View {
+    let value: String
+    var body: some View {
+        switch value {
+        case "arena": Image(MagicMobileAssetName.stoneArena).resizable().scaledToFill()
+        case "midnight": MidnightSurfaceGradient()
+        default: Image(MagicMobileAssetName.menuBackground).resizable().scaledToFill()
+        }
+    }
+}
+
+struct MidnightSurfaceGradient: View {
+    var body: some View {
+        LinearGradient(colors: [Color(red: 0.055, green: 0.085, blue: 0.10), Color(red: 0.10, green: 0.16, blue: 0.16)],
+                       startPoint: .top, endPoint: .bottom)
     }
 }
 
@@ -1435,6 +1546,7 @@ struct AppearanceSettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     Text("Your game, your table").font(.system(size: 28, weight: .bold, design: .serif))
+                    MenuAppearancePicker()
                     BoardAppearancePicker()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
                     if nativeTurnControl != nil { NativeArtworkPreferenceView() }
@@ -1736,6 +1848,7 @@ struct SettingsView: View {
                 }
 
                 Panel(title: "Display") {
+                    MenuAppearancePicker()
                     BoardAppearancePicker()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
                     Text("When enabled, gameplay and menus automatically adapt between portrait and landscape on iPhone.")
@@ -4427,29 +4540,37 @@ struct LoadingGameView: View {
     }
 }
 
+/// Names kept for the many call sites that use them, but every value now resolves through
+/// GameBoardTheme so the app has one palette rather than two near-identical ones. This
+/// previously held its own gold (0.82/0.62/0.27) alongside the theme's (0.84/0.65/0.25),
+/// which is why the menu and the board never quite matched. Prefer GameBoardTheme.current
+/// in new code; DESIGN.md treats it as canonical.
 enum MagicPalette {
-    static let antiqueGold = Color(red: 0.82, green: 0.62, blue: 0.27)
-    static let brass = Color(red: 0.62, green: 0.44, blue: 0.18)
-    static let warningAmber = Color(red: 0.95, green: 0.63, blue: 0.20)
-    static let moss = Color(red: 0.16, green: 0.25, blue: 0.14)
-    static let deepMoss = Color(red: 0.04, green: 0.10, blue: 0.07)
-    static let iron = Color(red: 0.055, green: 0.065, blue: 0.085)
-    static let parchment = Color(red: 0.91, green: 0.90, blue: 0.84)
-    static let parchmentShadow = Color(red: 0.46, green: 0.34, blue: 0.20)
-    static let oxblood = Color(red: 0.80, green: 0.19, blue: 0.13)
-    static let leather = Color(red: 0.13, green: 0.15, blue: 0.18)
-    static let carvedWood = Color(red: 0.30, green: 0.17, blue: 0.09)
-    static let emerald = Color(red: 0.18, green: 0.56, blue: 0.34)
-    static let arcaneBlue = Color(red: 0.22, green: 0.57, blue: 0.78)
+    private static let theme = GameBoardTheme.current
+    static let antiqueGold = theme.antiqueGold
+    static let brass = theme.brass
+    static let warningAmber = theme.warningAmber
+    static let moss = theme.mossMid
+    static let deepMoss = theme.backgroundDeepMoss
+    static let iron = theme.iron
+    static let parchment = theme.whiteReadable
+    static let parchmentShadow = theme.parchmentShadow
+    static let oxblood = theme.dangerOxblood
+    static let leather = theme.leatherMid
+    static let carvedWood = theme.carvedWood
+    static let emerald = theme.emeraldPriority
+    static let arcaneBlue = theme.arcaneBlue
     static let legalEmerald = emerald
     static let priorityArcane = arcaneBlue
-    static let panelParchment = Color(red: 0.70, green: 0.57, blue: 0.36)
-    static let borderBronze = Color(red: 0.58, green: 0.39, blue: 0.15)
-    static let borderIron = Color(red: 0.20, green: 0.18, blue: 0.15)
-    static let laneWood = Color(red: 0.22, green: 0.13, blue: 0.07)
+    static let panelParchment = theme.agedParchment
+    static let borderBronze = theme.brass
+    static let borderIron = theme.borderIron
+    static let laneWood = theme.oak
 }
 
 enum MagicMobileAssetName {
+    static let stoneArena = "commander-stone-arena"
+    static let portraitStoneArena = "commander-stone-arena-portrait"
     static let boardBackground = "mage-mobile-board-background"
     static let menuBackground = "mage-mobile-menu-background"
     static let portraitBoardBackground = "mage-mobile-board-background-portrait"
@@ -4458,16 +4579,23 @@ enum MagicMobileAssetName {
 
 struct BattlefieldSurface: View {
     var portraitModeEnabled = false
-    @AppStorage("magicmobile.boardAppearance") private var appearance = "arena"
+    @AppStorage(BoardAppearancePreference.key) private var appearance = BoardAppearancePreference.defaultValue
 
     var body: some View {
         GeometryReader { proxy in
+            // The parameter existed but was never read, so the board decided orientation
+            // from raw geometry and ignored the player's auto-rotate choice, unlike the
+            // menu. Both surfaces now answer the same question the same way.
+            let portrait = GameOrientationMode.isPortraitLayout(size: proxy.size, portraitEnabled: portraitModeEnabled)
             ZStack {
                 if appearance == "arena" {
-                    Image("commander-stone-arena").resizable().scaledToFill()
+                    // A landscape-only arena aspect-filled on a tall screen kept about a
+                    // quarter of its width, cropping the brass frame and crystals away.
+                    Image(portrait ? MagicMobileAssetName.portraitStoneArena : MagicMobileAssetName.stoneArena)
+                        .resizable().scaledToFill()
                         .frame(width: proxy.size.width, height: proxy.size.height).clipped()
                 } else if appearance == "wood" {
-                    Image(proxy.size.width > proxy.size.height ? MagicMobileAssetName.boardBackground : MagicMobileAssetName.portraitBoardBackground)
+                    Image(portrait ? MagicMobileAssetName.portraitBoardBackground : MagicMobileAssetName.boardBackground)
                         .resizable().scaledToFill()
                         .frame(width: proxy.size.width, height: proxy.size.height).clipped()
                 } else {
@@ -4503,18 +4631,26 @@ struct BattlefieldSurface: View {
 
 struct MenuBackgroundSurface: View {
     var portraitModeEnabled = false
+    @AppStorage(MenuAppearancePreference.key) private var appearance = MenuAppearancePreference.defaultValue
 
     var body: some View {
         GeometryReader { proxy in
-            let imageName = GameOrientationMode.isPortraitLayout(size: proxy.size, portraitEnabled: portraitModeEnabled)
-                ? MagicMobileAssetName.portraitMenuBackground
-                : MagicMobileAssetName.menuBackground
+            let portrait = GameOrientationMode.isPortraitLayout(size: proxy.size, portraitEnabled: portraitModeEnabled)
             ZStack {
-                Image(imageName)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .clipped()
+                Group {
+                    switch MenuAppearancePreference.normalized(appearance) {
+                    case "arena":
+                        Image(portrait ? MagicMobileAssetName.portraitStoneArena : MagicMobileAssetName.stoneArena)
+                            .resizable().scaledToFill()
+                    case "midnight":
+                        MidnightSurfaceGradient()
+                    default:
+                        Image(portrait ? MagicMobileAssetName.portraitMenuBackground : MagicMobileAssetName.menuBackground)
+                            .resizable().scaledToFill()
+                    }
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .clipped()
                 Rectangle()
                     .fill(
                         LinearGradient(

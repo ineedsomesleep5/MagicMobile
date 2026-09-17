@@ -7,6 +7,7 @@ struct DeckStudioRoleInsightsView: View {
     let metadata: NativeDeckMetadataCatalogue?
     let contextID: String?
     let inspect: (String) -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicType
     @State private var preferences = DeckStudioRolePreferences()
     @State private var loadedKey: String?
     @State private var blocked = false
@@ -26,16 +27,24 @@ struct DeckStudioRoleInsightsView: View {
         let rows = draft.rows.filter { DeckStudioDraftPresentation.section($0) == "deck" }
         return try? DeckStudioRoleAnalysis(entries: rows.map { row in
             let card = metadata?.card(named: row.cardName)
-            return .init(name: row.cardName, quantity: row.quantity, text: card?.oracleText, types: card?.types)
+            return .init(name: row.cardName, quantity: row.quantity, text: card?.oracleText, types: card?.types,
+                         curated: (card?.roles ?? []).compactMap(DeckStudioRole.init(rawValue:)))
         }, overrides: preferences.overrides)
+    }
+    private func sourceLabel(_ source: DeckStudioRoleEvidence.Source) -> String {
+        switch source {
+        case .reviewed: return "Your tag"
+        case .curated: return "Curated tag"
+        case .textPattern: return "Text-pattern hint"
+        }
     }
     var body: some View {
         DeckStudioPanel {
             VStack(alignment: .leading, spacing: 14) {
                 Text("What your cards do").font(.system(.title2, design: .serif).weight(.semibold))
-                Text("MagicMobile role hints · reviewable, not a deck score")
+                Text("Card roles · reviewable, not a deck score")
                     .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
-                Text("Automatic hints use a small set of direct rules-text patterns. Triggers, complex modes and conditional effects often remain unclassified. Draw includes cantrips, not just net card advantage. Assign or correct roles yourself.")
+                Text("Roles come from Scryfall's community-curated oracle tags, bundled with this build and used offline. Cards those tags miss fall back to conservative rules-text patterns, which leave triggered and conditional effects unclassified. Draw includes cantrips, not just net card advantage. Your own tags override everything here.")
                     .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                 if let error { Text(error).font(.caption).foregroundStyle(DeckStudioPalette.warning) }
                 if contextID == nil { Text("Save this draft once to customize role tags and target ranges for this deck.").font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk) }
@@ -58,14 +67,24 @@ struct DeckStudioRoleInsightsView: View {
                         if selectedRole == role {
                             let matching = analysis.cards.filter { $0.evidence.contains { $0.role == role } }
                             if matching.isEmpty {
-                                Text("No cards tagged for this role. This is not proof your deck lacks the effect.")
+                                Text("No cards tagged for this role. Curated tags and text patterns are not exhaustive, so check the cards yourself before concluding your deck lacks the effect.")
                                     .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                             }
                             ForEach(matching) { card in
                                 VStack(alignment: .leading, spacing: 5) {
-                                    Button { inspect(card.name) } label: { Text("\(card.quantity) × \(card.name)").font(.subheadline) }.frame(minHeight: 44)
+                                    Button { inspect(card.name) } label: {
+                                        HStack(spacing: 10) {
+                                            if !dynamicType.isAccessibilitySize {
+                                                DeckStudioArtwork(name: card.name).frame(width: 40, height: 56)
+                                                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                                            }
+                                            Text("\(card.quantity) × \(card.name)").font(.subheadline)
+                                                .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                                            Spacer(minLength: 0)
+                                        }
+                                    }.frame(minHeight: 44)
                                     ForEach(card.evidence.filter { $0.role == role }, id: \.role) { evidence in
-                                        Text("\(evidence.source == .reviewed ? "Your tag" : "Text-pattern hint"): \(evidence.explanation)")
+                                        Text("\(sourceLabel(evidence.source)): \(evidence.explanation)")
                                             .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                                     }
                                 }.padding(.leading, 12)

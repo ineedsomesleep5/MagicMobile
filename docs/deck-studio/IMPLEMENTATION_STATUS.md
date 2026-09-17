@@ -15,7 +15,7 @@ This pass resumes the implemented validation, Scryfall and recording work at `72
 | Local organization | Saved deck tags, searchable in My Decks; private building notes; revision-checked storage; separate undo/redo; deliberate export; duplicate/delete integration | Sharing UI, simultaneous-window interaction and storage failure presentation |
 | Import | Paste, file, public supported provider links, Apple Vision image text recognition, parsed/resolved review, unknown names preserved, explicit XMage validation | Real provider access, actual photos/OCR, photo permissions and import completion |
 | Original import information | Full original receipt linked to the saved deck; annotations visible under the tag/details button; full receipt export; large annotations remain in the complete receipt rather than being silently truncated | Export/open full receipt after quitting/relaunching and after duplication |
-| MagicMobile Insights | Counts, curve, printed pips, probabilities, conservative explained functional-role hints, user-reviewed roles and personal target ranges | Readability and accuracy on representative real decks; no exhaustive classification claim |
+| MagicMobile Insights | Counts, curve, printed pips, probabilities, explained functional roles from curated Scryfall oracle tags baked into the catalogue at build time, conservative text-pattern fallback, user-reviewed roles and personal target ranges | Readability and accuracy on representative real decks; curated tags are community-maintained, so no exhaustive classification claim |
 | Commander Spellbook | Explicitly approved deck lookup, all response groups, prerequisites/results, carefully gated missing-piece additions, bounded cache/HTTP, manual pagination | Live lookup, server schema/access, offline/cancellation behavior on phone |
 | Scryfall | Optional exact-name reference and explicit online search, dated cache, provider attribution, shared request pacing with artwork, no remote replacement of engine identity | Live service access, dual-faced references, unsupported-engine result UX |
 | Inline EDHREC | User-driven commander buttons resolve Scryfall's public related link; normal browsing fallback, real embedded website, back/forward/reload/Safari, retained workspace session, clear session | Correct destination, return-to-scroll, memory pressure and external navigation behavior |
@@ -49,9 +49,21 @@ Release candidate preparation: build `2026091701`. A successful full engine alre
 
 ## Deliberately not claimed
 
-Phase 8 is a **recording foundation**, not the complete future analytics wishlist. The current poll-level signals do not reliably expose every draw, mulligan, mana payment, land play or exact first-cast turn. Therefore the app does **not** fabricate those metrics, stranded-card diagnoses, perfect mana-source recommendations, matchup win rates or AI batch simulation results. Adding richer event telemetry later requires explicit authoritative event instrumentation, privacy tests, real-game tests and a new native build. Complex role patterns may remain unclassified, and an available named combo is not proof of executable game state.
+Phase 8 is a **recording foundation**, not the complete future analytics wishlist. The current poll-level signals do not reliably expose every draw, mulligan, mana payment, land play or exact first-cast turn. Therefore the app does **not** fabricate those metrics, stranded-card diagnoses, perfect mana-source recommendations, matchup win rates or AI batch simulation results. Adding richer event telemetry later requires explicit authoritative event instrumentation, privacy tests, real-game tests and a new native build. Role hints now come first from Scryfall's community-curated oracle tags, bundled at build time and resolved offline; cards those tags miss fall back to conservative text patterns that still leave triggered and conditional effects unclassified. Curated coverage is measured against a hand-labelled staple set by `scripts/deck-studio/check-role-accuracy.py`, which is a floor and not exhaustive card evaluation. An available named combo is still not proof of executable game state.
 
 No cloud accounts/sync, collection/price tracking, EDHREC partner feed, full tournament-format editor, drag-based custom groups or social collaboration was added. These were outside the first scoped product or explicitly later work in the approved plan.
+
+## Catalogue data added this pass
+
+- **Color identity** is now derived in `packages/ondevice-engine/scripts/export_ios_catalogue.py` per CR 903.4 —
+  mana-cost symbols, rules-text symbols excluding reminder text, and basic land types — instead of the previous
+  hardcoded `null` on all 31,726 cards. That `null` was the source of the "Identity unknown" deck chip, the
+  Spellbook "commander color identity is unknown" warning, and a color filter that could never match.
+- **Curated role tags** are fetched by `packages/ondevice-engine/scripts/fetch_role_tags.py` from Scryfall's
+  public oracle-tag search, intersected with the shipped catalogue, and stored per card. The fetch is a build
+  step; the phone resolves roles entirely offline. Scryfall tag data is CC-BY and is credited in the analysis
+  panel. Re-running the fetch changes `ROLE_TAGS_SHA256`, which must be repinned in the exporter alongside the
+  other source SHAs.
 
 ## Verification commands and scope
 

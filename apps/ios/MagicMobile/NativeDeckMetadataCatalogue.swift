@@ -15,6 +15,9 @@ struct NativeDeckMetadataCatalogue {
         let colorIdentity: [String]?
         /// Sets present in the pinned registry, not a promise that each printing is selectable.
         let setCodes: [String]
+        /// Curated functional roles baked in at build time from Scryfall's oracle tags.
+        /// Empty means no curated tag, which is not a claim that the card has no such effect.
+        let roles: [String]
     }
 
     struct SearchFilter {
@@ -54,6 +57,7 @@ struct NativeDeckMetadataCatalogue {
         let colors: [String]?
         let colorIdentity: [String]?
         let setCodes: [String]
+        let roles: [String]?
     }
     private struct Payload: Decodable {
         struct Printing: Decodable { let name: String }
@@ -109,6 +113,18 @@ struct NativeDeckMetadataCatalogue {
             }
         }
         let knownTypes: Set<String> = ["ARTIFACT", "BATTLE", "CONSPIRACY", "CREATURE", "DUNGEON", "ENCHANTMENT", "INSTANT", "LAND", "PHENOMENON", "PLANE", "PLANESWALKER", "SCHEME", "SORCERY", "KINDRED", "VANGUARD"]
+        // Roles are a fixed build-time vocabulary; anything else means a stale or tampered
+        // catalogue, and silently dropping it would understate a deck's real contents.
+        let knownRoles: Set<String> = ["ramp", "cardFlow", "interaction", "boardWipe",
+                                       "protection", "graveyardHate", "recursion", "tutor"]
+        func validatedRoles(_ roles: [String]?) throws -> [String] {
+            guard let roles else { return [] }
+            guard roles.count <= knownRoles.count, Set(roles).count == roles.count,
+                  Set(roles).isSubset(of: knownRoles) else {
+                throw CatalogueError("Invalid metadata roles; expected unique known role keys.")
+            }
+            return roles
+        }
         func validateColors(_ colors: [String]?) throws {
             guard let colors else { return }
             guard colors.count <= 5, Set(colors).count == colors.count, Set(colors).isSubset(of: ["W", "U", "B", "R", "G"]) else {
@@ -137,7 +153,7 @@ struct NativeDeckMetadataCatalogue {
                                types: types, oracleText: value?.oracleText.map { EngineDisplayText.text($0) },
                                manaValue: value?.manaValue, manaCost: value?.manaCost,
                                colors: value?.colors, colorIdentity: value?.colorIdentity,
-                               setCodes: value?.setCodes ?? []))
+                               setCodes: value?.setCodes ?? [], roles: try validatedRoles(value?.roles)))
         }
         cards = result.sorted { $0.name < $1.name }
         index = Dictionary(uniqueKeysWithValues: cards.map { ($0.name, $0) })

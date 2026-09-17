@@ -18,6 +18,10 @@ struct GameBoardTheme {
     let brassShadow = Color(red: 0.31, green: 0.20, blue: 0.07)
     let iron = Color(red: 0.055, green: 0.065, blue: 0.085)
     let ironRaised = Color(red: 0.14, green: 0.16, blue: 0.19)
+    // Tones that previously existed only in the duplicate ContentView palette.
+    let mossMid = Color(red: 0.16, green: 0.25, blue: 0.14)
+    let parchmentShadow = Color(red: 0.46, green: 0.34, blue: 0.20)
+    let borderIron = Color(red: 0.20, green: 0.18, blue: 0.15)
 
     // State colors. Mana colors remain owned by the mana system.
     let emeraldPriority = Color(red: 0.18, green: 0.78, blue: 0.47)

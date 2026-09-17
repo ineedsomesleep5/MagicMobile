@@ -79,7 +79,17 @@ struct DeckStudioAnalysisContent: View {
                             }
                         }
                         if let selectedBin {
-                            ForEach(mainRows.filter { curveBin($0) == selectedBin }) { row in Button { inspect(row.cardName) } label: { metric(row.cardName, "×\(row.quantity)") }.frame(minHeight: 44) }
+                            ForEach(mainRows.filter { curveBin($0) == selectedBin }) { row in
+                                Button { inspect(row.cardName) } label: {
+                                    HStack(spacing: 10) {
+                                        if !dynamicType.isAccessibilitySize {
+                                            DeckStudioArtwork(name: row.cardName).frame(width: 36, height: 50)
+                                                .clipShape(RoundedRectangle(cornerRadius: 5))
+                                        }
+                                        metric(row.cardName, "×\(row.quantity)")
+                                    }
+                                }.frame(minHeight: 44)
+                            }
                         }
                         if statistics.unknownTypeCount > 0 || statistics.unknownManaValueCount > 0 {
                             DeckStudioNotice(title: "Incomplete metadata", message: "\(statistics.unknownTypeCount) unknown types; \(statistics.unknownManaValueCount) unknown mana values. Missing data is excluded, not treated as zero.")

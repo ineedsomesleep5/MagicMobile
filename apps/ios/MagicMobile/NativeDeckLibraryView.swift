@@ -98,8 +98,13 @@ struct NativeDeckLibraryView: View {
     }
 }
 
+enum NativeArtworkPreference {
+    /// One spelling of the consent key, so a new surface cannot drift onto its own store.
+    static let key = "magicmobile.deckArtworkNetworkEnabled"
+}
+
 struct NativeArtworkPreferenceView: View {
-    @AppStorage("magicmobile.deckArtworkNetworkEnabled") private var remoteArtwork = false
+    @AppStorage(NativeArtworkPreference.key) private var remoteArtwork = false
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle("Download card artwork", isOn: $remoteArtwork)
@@ -147,7 +152,7 @@ struct NativeCardArtworkView<Placeholder: View>: View {
     let variant: CardImageCacheVariant
     var contentMode: ContentMode = .fit
     @ViewBuilder let placeholder: (_ loading: Bool, _ failed: Bool) -> Placeholder
-    @AppStorage("magicmobile.deckArtworkNetworkEnabled") private var remoteArtwork = false
+    @AppStorage(NativeArtworkPreference.key) private var remoteArtwork = false
     @State private var artwork: UIImage?
     @State private var completedRequest: Request?
     @State private var failedRequest: Request?

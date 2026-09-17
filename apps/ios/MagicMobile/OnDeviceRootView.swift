@@ -70,7 +70,8 @@ struct OnDeviceRootView: View {
                 } else {
                     TavernMainMenu(deckName: selectedDeck?.name ?? "Choose a deck", playerName: playerDisplayName,
                                    play: { showSetup = true }, decks: { showImport = true },
-                                   settings: { showAppearance = true }, news: { showUpdates = true })
+                                   settings: { showAppearance = true }, news: { showUpdates = true },
+                                   commanderName: selectedDeck?.commander?.cardName)
                 }
             }
         }

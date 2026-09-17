@@ -1,7 +1,8 @@
 import Foundation
 
-/// Explainable, deliberately incomplete role hints. This is neither EDHREC data
-/// nor a rules engine. User-reviewed tags override all automatic hints for a card.
+/// Explainable functional-role hints. Curated Scryfall oracle tags bundled with the build
+/// do most of the work; conservative text patterns cover cards those tags miss. This is
+/// neither a rules engine nor a deck score, and your own tags override everything here.
 enum DeckStudioRole: String, Codable, CaseIterable, Identifiable, Sendable {
     case ramp, cardFlow, interaction, boardWipe, protection, graveyardHate, recursion, tutor
     var id: String { rawValue }
@@ -20,7 +21,7 @@ enum DeckStudioRole: String, Codable, CaseIterable, Identifiable, Sendable {
 }
 
 struct DeckStudioRoleEvidence: Equatable, Sendable {
-    enum Source: String, Codable, Sendable { case reviewed, textPattern }
+    enum Source: String, Codable, Sendable { case reviewed, curated, textPattern }
     let role: DeckStudioRole
     let source: Source
     let explanation: String
@@ -51,30 +52,72 @@ enum DeckStudioRoleClassifier {
         Rule(.recursion, #"^return target (?:(?:creature|artifact|enchantment|permanent) )?card from your graveyard to (?:your hand|the battlefield)\."#, "A direct instruction returns a card from your graveyard."),
         Rule(.tutor, #"^search your library for a card, put that card into your hand, then shuffle\."#, "A direct unrestricted library-search instruction is present.")
     ]
-    static func classify(text: String?, types: [String]?, reviewed: Set<DeckStudioRole>? = nil) -> [DeckStudioRoleEvidence] {
+    /// Rules text arrives already stripped of engine markup by EngineDisplayText, so the
+    /// remaining noise is reminder text. Remove that, then offer each sentence and each
+    /// activated ability's effect as its own candidate, because anchoring every pattern to
+    /// the start of the whole card missed any effect that followed a cost or an earlier
+    /// sentence. Triggered and conditional effects are deliberately NOT split apart: their
+    /// condition and symmetry change what the effect means, so they stay for curated tags
+    /// and for your own review rather than being guessed at here.
+    static func clauses(in text: String) -> [String] {
+        var normalized = text.precomposedStringWithCanonicalMapping
+            .lowercased(with: Locale(identifier: "en_US_POSIX"))
+            .replacingOccurrences(of: "’", with: "'")
+        // Reminder text restates rules in parentheses and must not create a match of its own.
+        normalized = normalized.replacingOccurrences(of: "\\([^()]*\\)", with: " ", options: .regularExpression)
+        func tidy(_ value: Substring) -> String? {
+            let cleaned = value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            return cleaned.isEmpty ? nil : (cleaned.hasSuffix(".") ? cleaned : cleaned + ".")
+        }
+        var pieces: [String] = []
+        for line in normalized.components(separatedBy: .newlines) {
+            var candidates: [Substring] = [Substring(line)]
+            candidates += line.split(whereSeparator: { $0 == "." || $0 == ";" })
+            for candidate in candidates {
+                guard let whole = tidy(candidate) else { continue }
+                pieces.append(whole)
+                // An activation cost precedes its effect: "{T}: Add {G}." keeps the whole
+                // form for cost-shaped rules, and also offers "add {g}." on its own.
+                if let colon = candidate.firstIndex(of: ":"), let effect = tidy(candidate[candidate.index(after: colon)...]) {
+                    pieces.append(effect)
+                }
+            }
+        }
+        var seen = Set<String>()
+        return pieces.filter { seen.insert($0).inserted }
+    }
+
+    static func classify(text: String?, types: [String]?, curated: [DeckStudioRole] = [],
+                         reviewed: Set<DeckStudioRole>? = nil) -> [DeckStudioRoleEvidence] {
         if let reviewed {
             return DeckStudioRole.allCases.filter { reviewed.contains($0) }.map {
                 DeckStudioRoleEvidence(role: $0, source: .reviewed, explanation: "You assigned this role. It overrides automatic hints for this card.")
             }
         }
-        guard let text, text.utf8.count <= 32768 else { return [] }
-        // Match only the beginning of the actual rules text. Do not mine quotations,
-        // reminder text, triggers, opposing-player effects or conditional sentences.
-        let normalized = text.precomposedStringWithCanonicalMapping
-            .lowercased(with: Locale(identifier: "en_US_POSIX"))
-            .replacingOccurrences(of: "’", with: "'")
-            .split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        let range = NSRange(normalized.startIndex..<normalized.endIndex, in: normalized)
         var matches: [DeckStudioRole: DeckStudioRoleEvidence] = [:]
+        for role in curated where matches[role] == nil {
+            matches[role] = DeckStudioRoleEvidence(
+                role: role, source: .curated,
+                explanation: "Tagged by Scryfall's community-curated oracle tags, bundled with this build. Correct it if you disagree.")
+        }
+        func resolved() -> [DeckStudioRoleEvidence] { DeckStudioRole.allCases.compactMap { matches[$0] } }
+        guard let text, text.utf8.count <= 32768 else { return resolved() }
+        let pieces = clauses(in: text)
+        guard pieces.count <= 512 else { return resolved() }
         for rule in rules {
+            if matches[rule.role] != nil { continue }
             if rule.role == .ramp {
                 guard let types, !types.contains("LAND") else { continue }
             }
-            if rule.expression.firstMatch(in: normalized, range: range) != nil {
-                matches[rule.role] = DeckStudioRoleEvidence(role: rule.role, source: .textPattern, explanation: rule.explanation)
+            for piece in pieces {
+                let range = NSRange(piece.startIndex..<piece.endIndex, in: piece)
+                if rule.expression.firstMatch(in: piece, range: range) != nil {
+                    matches[rule.role] = DeckStudioRoleEvidence(role: rule.role, source: .textPattern, explanation: rule.explanation)
+                    break
+                }
             }
         }
-        return DeckStudioRole.allCases.compactMap { matches[$0] }
+        return resolved()
     }
 }
 
@@ -84,6 +127,8 @@ struct DeckStudioRoleAnalysis {
         let quantity: Int
         let text: String?
         let types: [String]?
+        /// Curated roles bundled with the build. Empty means no curated tag for this card.
+        var curated: [DeckStudioRole] = []
     }
     struct Card: Identifiable {
         var id: String { name }
@@ -109,14 +154,16 @@ struct DeckStudioRoleAnalysis {
             total += entry.quantity
             if entry.text == nil || entry.types == nil { missing += entry.quantity }
             if let prior = grouped[entry.name] {
-                guard prior.0.text == entry.text, prior.0.types == entry.types else { throw AnalysisError.inconsistentMetadata }
+                guard prior.0.text == entry.text, prior.0.types == entry.types,
+                      prior.0.curated == entry.curated else { throw AnalysisError.inconsistentMetadata }
                 grouped[entry.name] = (entry, prior.1 + entry.quantity)
             } else { grouped[entry.name] = (entry, entry.quantity) }
         }
         cards = grouped.keys.sorted().map { name in
             let (entry, count) = grouped[name]!
             return Card(name: name, quantity: count,
-                evidence: DeckStudioRoleClassifier.classify(text: entry.text, types: entry.types, reviewed: overrides[name]),
+                evidence: DeckStudioRoleClassifier.classify(text: entry.text, types: entry.types,
+                                                            curated: entry.curated, reviewed: overrides[name]),
                 userReviewed: overrides[name] != nil)
         }
         mainCount = total; missingMetadataCount = missing

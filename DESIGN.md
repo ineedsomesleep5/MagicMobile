@@ -263,6 +263,33 @@ material values, `GameBoardDesignTokens.current` for dimensions and motion, and
 the reusable `magicPanel`, `magicBadge`, `MagicPrimaryButtonStyle`,
 `MagicSecondaryButtonStyle`, and `MagicIconButtonStyle` primitives. Feature
 views should not introduce raw rustic colors when one of these semantics fits.
+`MagicPalette` in `ContentView.swift` is a compatibility layer whose members all
+resolve through `GameBoardTheme`; it previously held a second, slightly different
+gold, which is why the menu and the board never quite matched. Prefer
+`GameBoardTheme.current` in new code.
+
+## Two modes, one spine
+
+The app has two deliberate modes rather than one look:
+
+- **Table mode** — menu and battlefield. Dark, atmospheric, art-forward, so the
+  cards are the bright objects on screen.
+- **Workshop mode** — Deck Studio. Light and high-contrast, because deckbuilding
+  is long reading over dense lists, which a parchment surface serves better than
+  the battlefield's near-black one.
+
+They are not separate design systems. Both take geometry from
+`GameBoardDesignTokens`, titles from the system serif, the same 44pt minimum
+touch target, and the same antique gold — darkened in Deck Studio so it still
+passes contrast on a light surface. Deck Studio's light values live in
+`DeckStudioPalette` and its shared geometry in `DeckStudioMetrics`; changing
+either never changes the battlefield.
+
+## Brand
+
+The app mark ships as `mage-mobile-logo` and is used on the main menu. Mana
+identity on the menu uses the real `mana-w/u/b/r/g` assets, never substitute
+icons. Do not rebuild the brand out of SF Symbols.
 
 ## Do's and Don'ts
 

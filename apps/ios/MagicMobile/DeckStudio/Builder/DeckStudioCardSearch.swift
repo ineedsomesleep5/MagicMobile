@@ -8,6 +8,7 @@ struct DeckStudioCardSearch: View {
     @ObservedObject var model: DeckStudioEditorModel
     var embedded = false
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicType
     @State private var source = "Local"
     @State private var query = ""
     @State private var type = ""
@@ -45,7 +46,10 @@ struct DeckStudioCardSearch: View {
             }.pickerStyle(.menu)
             if source == "Online" { DeckStudioOnlineSearch(resolver: resolver, destination: section, add: add, model: model).padding(.horizontal, 20) }
             else { localSearch }
-        }.background(DeckStudioPalette.background)
+            // Before any results arrive the online branch has nothing that expands, so the
+            // whole search block would otherwise sit centred in the sheet.
+            Spacer(minLength: 0)
+        }.frame(maxHeight: .infinity, alignment: .top).background(DeckStudioPalette.background)
     }
     private var localSearch: some View {
         VStack(spacing: 12) {
@@ -59,13 +63,17 @@ struct DeckStudioCardSearch: View {
                         Button("Reset filters") { type = ""; minMV = ""; maxMV = ""; setCode = ""; constrainIdentity = true }
                     }.padding(.vertical, 10)
                 }.font(.caption)
+                DeckStudioArtworkInvitation()
                 if let addError { Text(addError).font(.caption).foregroundStyle(DeckStudioPalette.danger) }
                 if let lastAdded { Text("Added \(lastAdded)").font(.caption).foregroundStyle(DeckStudioPalette.success).accessibilityAddTraits(.updatesFrequently) }
             }.padding(.horizontal, 20)
             if loading { ProgressView("Searching local cards") }
             List(results) { card in
                 HStack(spacing: 12) {
-                    DeckStudioArtwork(name: card.name).frame(width: 36, height: 50)
+                    if !dynamicType.isAccessibilitySize {
+                        DeckStudioArtwork(name: card.name).frame(width: 52, height: 73)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
                     Button { inspection = card } label: {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(card.name).font(.subheadline.weight(.medium))
