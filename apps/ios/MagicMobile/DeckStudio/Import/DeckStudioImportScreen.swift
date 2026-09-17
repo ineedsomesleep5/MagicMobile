@@ -20,6 +20,7 @@ struct DeckStudioImportScreen: View {
     @State private var sourceURL: String?
     @State private var error: String?
     @State private var busy = false
+    @State private var saving = false
     @State private var task: Task<Void, Never>?
     @State private var generation = UUID()
     @State private var photo: PhotosPickerItem?
@@ -40,7 +41,7 @@ struct DeckStudioImportScreen: View {
                     inputPanel
                     if let scanNotice { DeckStudioNotice(title: "Check recognized text", message: scanNotice) }
                     if let error { DeckStudioNotice(title: "Import needs attention", message: error, icon: "exclamationmark.triangle") }
-                    if busy { ProgressView(method == "Scan" ? "Reading image on this device…" : "Preparing review…") }
+                    if busy { ProgressView(saving ? "Saving deck and import details…" : (method == "Scan" ? "Reading image on this device…" : "Preparing review…")) }
                     if method != "Scan" {
                         Button("Review decklist", action: beginPreview).buttonStyle(DeckStudioButtonStyle())
                             .disabled(busy || resolver == nil || saved != nil || (method == "Link" ? link : text).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -54,7 +55,8 @@ struct DeckStudioImportScreen: View {
             }
             .background(DeckStudioPalette.background).scrollDismissesKeyboard(.interactively)
             .navigationTitle("Import deck").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { task?.cancel(); validation.cancelPending(); dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { task?.cancel(); validation.cancelPending(); dismiss() }.disabled(saving) } }
+            .interactiveDismissDisabled(saving)
             .safeAreaInset(edge: .bottom) {
                 if let preview {
                     Button(saved == nil ? "Save reviewed draft" : "Finish import") { save(preview) }
@@ -175,12 +177,25 @@ struct DeckStudioImportScreen: View {
         }
     }
     private func save(_ preview: OnDeviceDeckLinkImporter.Preview) {
-        do {
-            if receiptURL == nil { receiptURL = try DeckStudioImportReceipt.store(preview, sourceURL: sourceURL) }
-            if saved == nil { saved = try library.addLocalDurably(preview.deck, sourceURL: sourceURL) }
-            if let saved { didImport(saved); dismiss() }
-        } catch { self.error = error.localizedDescription }
+        guard !busy else { return }
+        busy = true; saving = true; error = nil
+        task = Task { @MainActor in
+            defer { busy = false; saving = false }
+            do {
+                if receiptURL == nil { receiptURL = try DeckStudioImportReceipt.store(preview, sourceURL: sourceURL) }
+                if saved == nil { saved = try library.addLocalDurably(preview.deck, sourceURL: sourceURL) }
+                guard let saved, let receiptURL else { return }
+                try await DeckStudioOrganizationStore.shared.retainImport(recordID: saved.id,
+                    annotations: preview.annotations.map { "Line \($0.line): \($0.text)" },
+                    source: sourceURL, receiptFile: receiptURL.lastPathComponent)
+                didImport(saved); dismiss()
+            } catch {
+                self.error = saved == nil ? error.localizedDescription :
+                    "The deck is saved and its full receipt is archived, but linking the details failed. Tap Finish import to retry without making another deck. " + error.localizedDescription
+            }
+        }
     }
+
 }
 
 private enum DeckStudioOCR {

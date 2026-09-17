@@ -22,7 +22,7 @@ import Foundation
             "commanders": ["public-id": ["ownerPlayerId": player, "name": "Commander", "castsFromCommandZone": casts],
                            "opponent-id": ["ownerPlayerId": other, "name": "Opponent Commander", "castsFromCommandZone": 99]],
             "outcome": ["ended": ended, "winnerPlayerIds": winner.map { [$0] } ?? []]]
-        return (input("poll", ["matchId": match, "viewerId": seat, "after": 0]), output(["matchId": match, "viewerId": seat, "revision": revision, "phase": "RUNNING", "snapshot": root]))
+        return (input("poll", ["matchId": match, "viewerId": seat, "after": 0]), output(["matchId": match, "viewerId": seat, "revision": revision, "phase": "running", "snapshot": root]))
     }
     static func main() async throws {
         let d = try DeckStudioDeckSignature.native(deck)

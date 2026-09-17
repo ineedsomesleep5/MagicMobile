@@ -72,6 +72,9 @@ struct DeckStudioWorkspaceScreen: View {
                     else { Button("Save") { model.save() }.disabled(!model.canSave).accessibilityIdentifier("deckStudio.save") }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
+                    DeckStudioOrganizationButton(recordID: model.record?.id, title: model.draft.name).id(model.record?.id ?? "new")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button("Validate & playtest", systemImage: "checkmark.shield") { showValidation = true }
                         Button("Change primary commander", systemImage: "crown") { showCommander = true }.disabled(model.readOnly || metadata == nil)
@@ -104,6 +107,7 @@ struct DeckStudioWorkspaceScreen: View {
             .confirmationDialog("Save your changes?", isPresented: $confirmClose, titleVisibility: .visible) {
                 Button("Save and close") { if model.save() != nil { dismiss() } }.disabled(!model.canSave)
                 Button("Keep recovery draft and close") { if model.persistRecovery() { dismiss() } }
+                Button("Discard unsaved changes and close", role: .destructive) { model.discardUnsavedChanges(); dismiss() }
             } message: { Text("Your existing saved deck is unchanged until you save. An incomplete deck can remain a local draft.") }
             .interactiveDismissDisabled(model.isDirty)
             .onChange(of: scenePhase) { _, phase in if phase != .active { model.persistRecovery(); browser.pause(); combos.cancel(); validation.cancelPending() } }

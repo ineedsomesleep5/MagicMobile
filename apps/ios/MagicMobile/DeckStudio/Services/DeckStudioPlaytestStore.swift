@@ -70,7 +70,12 @@ actor DeckStudioPlaytestStore {
         guard let url else { throw StorageFailure.unavailable }
         let data = try JSONEncoder().encode(Payload(schema: 1, games: values))
         guard data.count <= Self.maximumBytes else { throw StorageFailure.invalid }
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var directory = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        #if os(iOS) || os(macOS)
+        var resourceValues = URLResourceValues(); resourceValues.isExcludedFromBackup = true
+        try directory.setResourceValues(resourceValues)
+        #endif
         #if os(iOS)
         try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         #else

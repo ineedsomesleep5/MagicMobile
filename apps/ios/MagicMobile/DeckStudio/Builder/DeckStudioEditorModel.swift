@@ -58,6 +58,14 @@ final class DeckStudioEditorModel: ObservableObject {
     }
     func undo() { guard !readOnly else { return }; history.undo(); persistRecovery() }
     func redo() { guard !readOnly else { return }; history.redo(); persistRecovery() }
+    /// Explicit discard never overwrites the saved record or unreadable recovery.
+    func discardUnsavedChanges() {
+        guard !readOnly else { return }
+        history = DeckStudioEditHistory(history.baseline)
+        recovered = false
+        if !recoveryBlocked { NativeDeckDraftRecovery.clear(key: recoveryKey, defaults: defaults) }
+        error = nil
+    }
     func makeEditableCopy() {
         guard readOnly, let source = record else { return }
         do {
@@ -65,6 +73,13 @@ final class DeckStudioEditorModel: ObservableObject {
             record = copy; readOnly = false; recoveryKey = "\(copy.id).\(copy.revision)"
             history = DeckStudioEditHistory(NativeDeckDraft(deck: copy.deckList))
             recovered = false; error = nil
+            Task { [weak self] in
+                do { try await DeckStudioOrganizationStore.shared.duplicate(from: source.id, to: copy.id) }
+                catch {
+                    guard let self, self.record?.id == copy.id else { return }
+                    self.error = "The deck cards were copied, but their optional notes/tags could not be copied. The original details remain intact."
+                }
+            }
         } catch { self.error = error.localizedDescription }
     }
     @discardableResult func add(_ name: String, section: String = "deck") -> Bool {
@@ -77,7 +92,8 @@ final class DeckStudioEditorModel: ObservableObject {
     func quantity(id: UUID, delta: Int) {
         change { value in
             guard let index = value.rows.firstIndex(where: { $0.id == id }) else { throw OnDeviceDeckEditing.Error.missingEntry }
-            let next = value.rows[index].quantity + delta
+            let (next, overflow) = value.rows[index].quantity.addingReportingOverflow(delta)
+            guard !overflow else { throw OnDeviceDeckEditing.Error.invalidEntry }
             if next <= 0 { value.rows.remove(at: index) } else { value.rows[index].quantity = next }
         }
     }

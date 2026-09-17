@@ -85,10 +85,16 @@ struct DeckStudioRecordedGame: Codable, Equatable, Identifiable, Sendable {
         guard UUID(uuidString: matchID) != nil, !seatID.isEmpty, seatID.utf8.count <= 128,
               title.utf8.count <= 512, upstream.utf8.count <= 128, catalogue.utf8.count <= 256,
               appBuild.utf8.count <= 128, (1...3).contains(aiOpponents), (0...1_000_000).contains(observedTurn),
-              startedAt.timeIntervalSince1970.isFinite, observedAt >= startedAt,
-              finishedAt.map({ $0 >= startedAt }) ?? true,
+              startedAt.timeIntervalSince1970.isFinite, observedAt.timeIntervalSince1970.isFinite,
+              observedAt >= startedAt, observedAt.timeIntervalSince(startedAt) <= 31_536_000,
+              finishedAt.map({ $0.timeIntervalSince1970.isFinite && $0 >= startedAt && $0 <= observedAt }) ?? true,
+              lastRevision >= -1, viewerPlayerID.map({ UUID(uuidString: $0) != nil }) ?? true,
+              !upstream.isEmpty, !catalogue.isEmpty, !appBuild.isEmpty,
               commandZoneCasts.count <= 12,
-              commandZoneCasts.allSatisfy({ !$0.key.isEmpty && $0.key.utf8.count <= 2000 && (0...1_000_000).contains($0.value) }),
+              commandZoneCasts.allSatisfy({ item in
+                  deck.rows.contains { $0.section == "commanders" && $0.name == item.key } &&
+                  (0...1_000_000).contains(item.value)
+              }),
               deck == (try DeckStudioDeckSignature(rows: deck.rows)),
               (end == .completed || won == nil), (end == .inProgress) == (finishedAt == nil)
         else { throw DeckStudioDeckSignature.Failure.invalidDeck }
@@ -101,7 +107,8 @@ struct DeckStudioPlaytestAccumulator {
     private(set) var game: DeckStudioRecordedGame?
 
     mutating func observe(request: Data, response: Data, enabled: Bool, appBuild: String, now: Date) -> Bool {
-        guard let input = DeckStudioJSON.object(request), let reply = DeckStudioJSON.object(response),
+        guard enabled, now.timeIntervalSince1970.isFinite,
+              let input = DeckStudioJSON.object(request), let reply = DeckStudioJSON.object(response),
               DeckStudioJSON.integer(input["protocol"]) == 1, DeckStudioJSON.integer(reply["protocol"]) == 1,
               DeckStudioJSON.boolean(reply["ok"]) == true,
               let result = reply["result"] as? [String: Any], let op = input["op"] as? String else { return false }
@@ -118,20 +125,34 @@ struct DeckStudioPlaytestAccumulator {
                   let engine = result["engine"] as? [String: Any], engine["engine"] as? String == "xmage",
                   engine["execution"] as? String == "native-aot",
                   let upstream = engine["upstream"] as? String, let catalogue = engine["catalogueHash"] as? String else { return false }
-            game = DeckStudioRecordedGame(id: UUID(), matchID: match, seatID: seat, deck: signature,
+            let created = DeckStudioRecordedGame(id: UUID(), matchID: match, seatID: seat, deck: signature,
                 title: String((deck["name"] as? String ?? "Commander deck").prefix(128)),
                 upstream: upstream, catalogue: catalogue, appBuild: appBuild,
                 aiOpponents: seats.count - 1, startedAt: now, observedAt: now)
+            guard (try? created.validate()) != nil else { return false }
+            game = created
             return true
         }
         guard var current = game, current.end == .inProgress, input["matchId"] as? String == current.matchID else { return false }
         if op == "destroy" {
-            current.end = .left; current.finishedAt = max(now, current.startedAt); current.observedAt = current.finishedAt!
+            guard DeckStudioJSON.boolean(result["destroyed"]) == true else { return false }
+            current.end = .left; current.finishedAt = max(now, current.observedAt); current.observedAt = current.finishedAt!
+            guard (try? current.validate()) != nil else { return false }
             game = current; return true
         }
         guard op == "poll", input["viewerId"] as? String == current.seatID,
               result["matchId"] as? String == current.matchID, result["viewerId"] as? String == current.seatID,
-              let revision = DeckStudioJSON.integer(result["revision"]), revision > current.lastRevision else { return false }
+              let revision = DeckStudioJSON.integer(result["revision"]), revision >= 0, revision > current.lastRevision,
+              let phase = result["phase"] as? String,
+              ["starting", "running", "ended", "failed", "closed"].contains(phase) else { return false }
+        // Reject a mismatched inner view before advancing the recorded revision.
+        // A malformed update must not block a later valid lower-revision reply.
+        if let raw = result["snapshot"], !(raw is NSNull) {
+            guard let root = raw as? [String: Any], root["schema"] as? String == "xmage-gameview-v1",
+                  let viewer = root["enginePlayerId"] as? String, UUID(uuidString: viewer) != nil,
+                  current.viewerPlayerID == nil || current.viewerPlayerID == viewer,
+                  let view = root["gameView"] as? [String: Any], view["myPlayerId"] as? String == viewer else { return false }
+        }
         current.lastRevision = revision
         current.observedAt = max(now, current.observedAt)
         if let root = result["snapshot"] as? [String: Any], root["schema"] as? String == "xmage-gameview-v1",
@@ -150,22 +171,29 @@ struct DeckStudioPlaytestAccumulator {
                     current.commandZoneCasts[name] = max(current.commandZoneCasts[name, default: 0], count)
                 }
             }
-            if let outcome = root["outcome"] as? [String: Any], DeckStudioJSON.boolean(outcome["ended"]) == true {
+            if phase != "failed", phase != "closed", let outcome = root["outcome"] as? [String: Any], DeckStudioJSON.boolean(outcome["ended"]) == true {
                 current.end = .completed; current.finishedAt = current.observedAt
                 if let winners = outcome["winnerPlayerIds"] as? [String], winners.allSatisfy({ UUID(uuidString: $0) != nil }) {
                     current.won = winners.isEmpty ? nil : winners.contains(viewer)
                 }
             }
         }
-        if current.end == .inProgress, result["phase"] as? String == "FAILED" {
-            current.end = .engineFailed; current.finishedAt = current.observedAt
+        if current.end == .inProgress {
+            switch phase {
+            case "failed": current.end = .engineFailed
+            case "closed": current.end = .interrupted
+            case "ended": current.end = .completed // Engine termination, not an inferred winner.
+            default: break
+            }
+            if current.end != .inProgress { current.finishedAt = current.observedAt }
         }
+        guard (try? current.validate()) != nil else { return false }
         game = current; return true
     }
     mutating func close(now: Date) -> DeckStudioRecordedGame? {
-        if var value = game, value.end == .inProgress {
+        if now.timeIntervalSince1970.isFinite, var value = game, value.end == .inProgress {
             value.end = .interrupted; value.finishedAt = max(now, value.observedAt); value.observedAt = value.finishedAt!
-            game = value
+            if (try? value.validate()) != nil { game = value }
         }
         return game
     }

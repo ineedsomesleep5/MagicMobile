@@ -9,7 +9,9 @@ struct DeckStudioRootView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicType
     @State private var query = DeckStudioLibraryQuery()
-    @State private var grid = true
+    @AppStorage("deckStudio.library.grid.v1") private var grid = true
+    @State private var tags: [String: [String]] = [:]
+    @State private var tagLoadToken = UUID()
     @State private var favorites: Set<String> = []
     @State private var favoritesReadable = true
     @State private var metadata: NativeDeckMetadataCatalogue?
@@ -45,7 +47,7 @@ struct DeckStudioRootView: View {
         let items = all.map { value in
             DeckStudioShelfItem(id: selectionID(value.record, included: value.included), name: value.record.name,
                 commanders: DeckStudioDraftPresentation.commanders(NativeDeckDraft(deck: value.record.deckList)),
-                tags: [], origin: value.included ? .included : .local, updatedAt: value.included ? nil : value.record.updatedAt)
+                tags: tags[value.record.id] ?? [], origin: value.included ? .included : .local, updatedAt: value.included ? nil : value.record.updatedAt)
         }
         let indices = Dictionary(uniqueKeysWithValues: all.enumerated().map { (selectionID($0.element.record, included: $0.element.included), $0.offset) })
         return query.apply(to: items, favorites: favorites).compactMap { item in indices[item.id].map { all[$0] } }
@@ -96,7 +98,7 @@ struct DeckStudioRootView: View {
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showPreferences = false } } } }
                     .preferredColorScheme(.light)
             }
-            .fullScreenCover(item: $route) { route in
+            .fullScreenCover(item: $route, onDismiss: { Task { await reloadTags() } }) { route in
                 switch route {
                 case .deck(let record, let included):
                     DeckStudioWorkspaceScreen(library: library, record: record, included: included,
@@ -116,7 +118,8 @@ struct DeckStudioRootView: View {
             } message: { Text("Included decks and source websites are never changed.") }
         }
         .tint(DeckStudioPalette.ink).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light)
-        .task { loadFavorites(); await loadCatalogue() }
+        .task { loadFavorites(); await loadCatalogue(); await reloadTags() }
+        .onChange(of: library.decks.map(\.id)) { _, _ in Task { await reloadTags() } }
     }
 
     private var header: some View {
@@ -143,7 +146,7 @@ struct DeckStudioRootView: View {
         VStack(spacing: 12) {
             HStack {
                 Image(systemName: "magnifyingglass")
-                TextField("Search decks or commanders", text: $query.text).autocorrectionDisabled()
+                TextField("Search decks, commanders or tags", text: $query.text).autocorrectionDisabled()
                     .accessibilityIdentifier("deckStudio.library.search")
                 if !query.text.isEmpty { Button { query.text = "" } label: { Image(systemName: "xmark.circle.fill") }.accessibilityLabel("Clear search") }
             }.padding(14).background(.white, in: RoundedRectangle(cornerRadius: 14))
@@ -172,6 +175,9 @@ struct DeckStudioRootView: View {
                         Text(DeckStudioDraftPresentation.commanders(draft).joined(separator: " • "))
                             .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk).lineLimit(2)
                         DeckStudioColorIdentity(colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata))
+                        if let labels = tags[record.id], !labels.isEmpty {
+                            Text(labels.joined(separator: " · ")).font(.caption2).foregroundStyle(DeckStudioPalette.gold).lineLimit(2)
+                        }
                         Text("\(DeckStudioDraftPresentation.gameCount(draft)) cards · \(included ? "Included" : "Local draft")")
                             .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                     }.padding(.horizontal, 14).padding(.bottom, 10)
@@ -191,8 +197,14 @@ struct DeckStudioRootView: View {
         .contextMenu {
             Button("Open deck", systemImage: "pencil") { route = .deck(record, included) }
             Button("Duplicate locally", systemImage: "doc.on.doc") {
-                do { let copy = try library.duplicateLocalDurably(record, name: record.name + " — Copy"); route = .deck(copy, false) }
-                catch { self.error = error.localizedDescription }
+                Task {
+                    do {
+                        let copy = try library.duplicateLocalDurably(record, name: record.name + " — Copy")
+                        do { try await DeckStudioOrganizationStore.shared.duplicate(from: record.id, to: copy.id) }
+                        catch { self.error = "Cards were copied, but their optional details could not be copied: \(error.localizedDescription)" }
+                        await reloadTags(); route = .deck(copy, false)
+                    } catch { self.error = error.localizedDescription }
+                }
             }
             if let data = try? OnDeviceDeckEditing(record.deckList).exportJSON(), let text = String(data: data, encoding: .utf8) {
                 ShareLink(item: text) { Label("Export native JSON", systemImage: "square.and.arrow.up") }
@@ -206,6 +218,11 @@ struct DeckStudioRootView: View {
         do {
             try library.deleteLocalDurably(id: record.id, expectedRevision: record.revision)
             NativeDeckDraftRecovery.clear(recordID: record.id)
+            tags.removeValue(forKey: record.id)
+            Task {
+                do { try await DeckStudioOrganizationStore.shared.delete(recordID: record.id) }
+                catch { self.error = "Deck cards were deleted, but optional local details could not be removed: \(error.localizedDescription)" }
+            }
             favorites.remove("local:\(record.id)"); saveFavorites()
             if selectedDeckID == "local:\(record.id)" { selectedDeckID = OnDeviceSetupPreferences.defaultDeckID }
         } catch { self.error = error.localizedDescription }
@@ -229,6 +246,13 @@ struct DeckStudioRootView: View {
         guard favoritesReadable else { error = "Unreadable favorite preferences are preserved; no changes were written."; return }
         if favorites.contains(id) { favorites.remove(id) } else if favorites.count < 4000 { favorites.insert(id) }
         saveFavorites()
+    }
+    private func reloadTags() async {
+        let token = UUID(); tagLoadToken = token
+        let ids = records.map { $0.record.id }
+        let result = await DeckStudioOrganizationStore.shared.tagIndex(recordIDs: ids)
+        guard tagLoadToken == token, !Task.isCancelled else { return }
+        tags = result
     }
     private func loadCatalogue() async {
         guard metadata == nil else { return }

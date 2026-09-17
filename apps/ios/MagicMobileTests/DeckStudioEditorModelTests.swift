@@ -79,4 +79,40 @@ final class DeckStudioEditorModelTests: XCTestCase {
         XCTAssertEqual(model.draft, before)
         XCTAssertNotNil(model.error)
     }
+    func testExplicitDiscardCanLeaveInvalidNameWithoutLosingSavedDeck() throws {
+        let library = store(), record = try library.addLocalDurably(deck)
+        let model = DeckStudioEditorModel(library: library, record: record, defaults: defaults)
+        let baseline = model.draft
+        model.change { $0.name = "" }
+        XCTAssertTrue(model.isDirty)
+        XCTAssertFalse(model.canSave)
+        model.discardUnsavedChanges()
+        XCTAssertEqual(model.draft, baseline)
+        XCTAssertFalse(model.isDirty)
+        XCTAssertEqual(library.decks.first?.name, "My deck")
+        XCTAssertNil(defaults.data(forKey: "deckStudio.draft.\(record.id).\(record.revision)"))
+    }
+    func testDiscardPreservesUnreadableRecoveryAndUnrelatedDrafts() throws {
+        let library = store(), record = try library.addLocalDurably(deck)
+        let key = "deckStudio.draft.\(record.id).\(record.revision)"
+        let corrupt = Data("preserve original".utf8)
+        defaults.set(corrupt, forKey: key)
+        defaults.set(corrupt, forKey: "deckStudio.draft.unrelated.1")
+        let model = DeckStudioEditorModel(library: library, record: record, defaults: defaults)
+        model.change { $0.name = "" }
+        model.discardUnsavedChanges()
+        XCTAssertFalse(model.isDirty)
+        XCTAssertTrue(model.recoveryBlocked)
+        XCTAssertEqual(defaults.data(forKey: key), corrupt)
+        XCTAssertEqual(defaults.data(forKey: "deckStudio.draft.unrelated.1"), corrupt)
+    }
+    func testQuantityOverflowIsRejectedWithoutChangingHistory() throws {
+        let library = store(), record = try library.addLocalDurably(deck)
+        let model = DeckStudioEditorModel(library: library, record: record, defaults: defaults)
+        let before = model.draft, generation = model.history.generation
+        model.quantity(id: before.rows[0].id, delta: Int.max)
+        XCTAssertEqual(model.draft, before)
+        XCTAssertEqual(model.history.generation, generation)
+        XCTAssertNotNil(model.error)
+    }
 }
