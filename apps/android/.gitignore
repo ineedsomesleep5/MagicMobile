@@ -1,0 +1,7 @@
+.gradle/
+**/build/
+local.properties
+native-artifact/
+*.jks
+*.keystore
+.idea/

@@ -18,6 +18,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -29,10 +30,13 @@ jobs:
       - name: Prepare Android build SDK
         run: |
           set -euo pipefail
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358'
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'
       - name: Cross-compile full Android ARM64 engine
         env:
           MM_ANDROID_NATIVE_HEAP: 10g
+          # Host JDK17.0.3 MXBean crashes on newer cgroup layouts. Heap/CPU limits
+          # are explicit in the build; this is NOT an Android runtime option.
+          JAVA_TOOL_OPTIONS: -XX:-UseContainerSupport
         run: |
           set -euo pipefail
           export ANDROID_SDK="$ANDROID_HOME"
@@ -56,5 +60,22 @@ jobs:
           name: android-full-native-${{ github.sha }}
           path: apps/android/native-artifact/
           compression-level: 1
+          retention-days: 14
+          if-no-files-found: error
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Build the actual native-linked test APK
+        run: |
+          set -euo pipefail
+          gradle -p apps/android --no-daemon -PwithNative=true :core:contractChecks :app:assembleDebug :app:lintDebug
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 -v 4 apps/android/app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose apps/android/app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MagicMobile-Android-NATIVE-APK-${{ github.sha }}
+          path: |
+            apps/android/app/build/outputs/apk/debug/app-debug.apk
+            apps/android/native-artifact/manifest.json
           retention-days: 14
           if-no-files-found: error
