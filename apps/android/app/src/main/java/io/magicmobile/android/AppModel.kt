@@ -19,7 +19,7 @@ class AppModel(application: Application): AndroidViewModel(application) {
     val store=DeckStore(application)
     @Volatile var catalogue: Catalogue? = null; private set
     private var token=0L
-    private var session: PollState?=null
+    @Volatile private var session: PollState?=null
     private val visibility=AtomicLong(0)
     @Volatile private var foreground=true
     private var shuttingDown=false
@@ -30,7 +30,19 @@ class AppModel(application: Application): AndroidViewModel(application) {
             val saved=store.all(); val recovery=store.recover()
             mutable.update { it.copy(loaded=true,decks=saved,precons=precons,recovered=recovery,status=if(BuildConfig.NATIVE_ENGINE) "Local XMage ready to start" else "Diagnostic build — engine NOT packaged") }
         } }
-        executor.scheduleWithFixedDelay({ if(foreground && !shuttingDown && session != null && !session!!.terminal) poll() },350,350,TimeUnit.MILLISECONDS)
+        // ScheduledExecutorService cancels a periodic task for good if it ever throws, and
+        // the guard below runs outside poll()'s own error handling. A single escaped
+        // throwable would silently stop every future refresh and the game would look
+        // frozen while the engine kept running, so nothing may escape this Runnable.
+        executor.scheduleWithFixedDelay({
+            try {
+                val active = session
+                if(foreground && !shuttingDown && active != null && !active.terminal) poll()
+            } catch(e: Throwable) {
+                if(e is VirtualMachineError) throw e
+                android.util.Log.w("MagicMobilePoll", "Poll tick failed; polling continues", e)
+            }
+        },350,350,TimeUnit.MILLISECONDS)
     }
     private fun native(op: String,vararg fields: Pair<String,Any?>): Obj = Wire.result(NativeBridge.request(token,Wire.request(op,*fields)))
     private fun attempt(block:()->Unit) { try { block() } catch(e:Throwable) {

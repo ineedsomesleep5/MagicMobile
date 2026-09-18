@@ -35,6 +35,8 @@ object Artwork {
     private const val MAX_BYTES = 2 * 1024 * 1024
     private val ALLOWED_HOSTS = setOf("api.scryfall.com", "cards.scryfall.io")
     private const val REQUEST_SPACING_MS = 120L
+    private const val MAX_REDIRECTS = 5
+    private val ALLOWED_TYPES = setOf("image/jpeg", "image/png")
 
     private val memory = object : LruCache<String, Bitmap>(24 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
@@ -81,38 +83,57 @@ object Artwork {
         if (due > now) runCatching { Thread.sleep(minOf(due - now, 2000)) }
 
         val encoded = URLEncoder.encode(name, "UTF-8")
-        val url = URL("https://api.scryfall.com/cards/named?exact=$encoded&format=image&version=normal")
-        var connection: HttpURLConnection? = null
-        return try {
-            connection = (url.openConnection() as HttpURLConnection).apply {
-                instanceFollowRedirects = true
-                connectTimeout = 15000
-                readTimeout = 20000
-                setRequestProperty("User-Agent", "MagicMobile-Android/0.1 (artwork)")
-                setRequestProperty("Accept", "image/jpeg,image/png;q=0.9")
-            }
-            if (connection.responseCode != 200) return null
-            // Redirects are followed, so validate where we actually landed.
-            if (connection.url.protocol != "https" || connection.url.host !in ALLOWED_HOSTS) return null
-            if (connection.contentType?.substringBefore(';')?.trim() !in setOf("image/jpeg", "image/png")) return null
-            if (connection.contentLength > MAX_BYTES) return null
-            val out = java.io.ByteArrayOutputStream()
-            val buffer = ByteArray(16384)
-            connection.inputStream.use { input ->
-                while (true) {
-                    val read = input.read(buffer)
-                    if (read < 0) break
-                    if (out.size() + read > MAX_BYTES) return null
-                    out.write(buffer, 0, read)
+        var url = URL("https://api.scryfall.com/cards/named?exact=$encoded&format=image&version=normal")
+        // Redirects are followed by hand so every hop is checked, not just where we land.
+        // A blind follow would let an unexpected Location send the request elsewhere first.
+        for (hop in 0..MAX_REDIRECTS) {
+            if (!allowed(url)) return null
+            var connection: HttpURLConnection? = null
+            try {
+                connection = (url.openConnection() as HttpURLConnection).apply {
+                    instanceFollowRedirects = false
+                    connectTimeout = 15000
+                    readTimeout = 20000
+                    useCaches = false
+                    setRequestProperty("User-Agent", "MagicMobile-Android/0.1 (artwork)")
+                    setRequestProperty("Accept", "image/jpeg,image/png;q=0.9")
                 }
+                val code = connection.responseCode
+                if (code in 300..399) {
+                    if (hop == MAX_REDIRECTS) return null
+                    val location = connection.getHeaderField("Location") ?: return null
+                    url = runCatching { URL(url, location) }.getOrNull() ?: return null
+                    continue
+                }
+                if (code != 200) return null
+                if (connection.contentType?.substringBefore(';')?.trim() !in ALLOWED_TYPES) return null
+                if (connection.contentLength > MAX_BYTES) return null
+                val out = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(16384)
+                connection.inputStream.use { input ->
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        if (out.size() + read > MAX_BYTES) return null
+                        out.write(buffer, 0, read)
+                    }
+                }
+                return out.toByteArray().takeIf { it.isNotEmpty() }
+            } catch (_: Throwable) {
+                return null
+            } finally {
+                connection?.disconnect()
             }
-            out.toByteArray().takeIf { it.isNotEmpty() }
-        } catch (_: Throwable) {
-            null
-        } finally {
-            connection?.disconnect()
         }
+        return null
     }
+
+    /** HTTPS only, Scryfall hosts only, no embedded credentials, default port only. */
+    internal fun allowed(url: URL): Boolean =
+        url.protocol == "https" &&
+            url.host.lowercase() in ALLOWED_HOSTS &&
+            url.userInfo == null &&
+            (url.port == -1 || url.port == 443)
 }
 
 @Composable

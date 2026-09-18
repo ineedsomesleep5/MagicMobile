@@ -48,7 +48,7 @@ STUB="$BUILD/awtstub"; mkdir -p "$STUB"
 "$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang" \
   -shared -fPIC -O2 -Wall -Wextra -Werror \
   -o "$STUB/libmmawtstub.so" "$REPO/apps/android/app/src/main/cpp/mm_awt_stub.c" \
-  -Wl,-soname,libmmawtstub.so -Wl,-z,max-page-size=16384
+  -llog -Wl,-soname,libmmawtstub.so -Wl,-z,max-page-size=16384
 "$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" -D --defined-only "$STUB/libmmawtstub.so" \
   | grep -q JNI_OnLoad_awt || { echo "AWT stub did not export its entry points" >&2; exit 2; }
 
