@@ -42,15 +42,25 @@ if [[ "$HEAP" == 10g ]]; then
   [[ $(awk '/MemTotal/ {print $2}' /proc/meminfo) -ge 12582912 ]]
 fi
 export MAVEN_OPTS="-Xmx512m -Duser.home=$OUT/home"
-# staticlib performs its own compilation; do not compile the huge image twice.
-mvn --batch-mode --no-transfer-progress -f "$ROOT/native/gluon/pom.xml" \
+# Gluon 1.0.29 staticlib is a no-op for this Android target. Use its
+# reviewed shared-library path (compile + link), not an empty successful task.
+# Generate an Android-only POM so no iOS build/link options are changed.
+python3 - "$ROOT/native/gluon/pom.xml" "$BUILD/android-pom.xml" <<'PY'
+import sys, xml.etree.ElementTree as E
+ns='http://maven.apache.org/POM/4.0.0'; E.register_namespace('',ns)
+t=E.parse(sys.argv[1]); config=t.find('.//{%s}configuration'%ns)
+args=E.SubElement(config,'{%s}linkerArgs'%ns)
+for value in ['-Wl,-z,max-page-size=16384','-Wl,-soname,libmmengine.so']:
+ E.SubElement(args,'{%s}arg'%ns).text=value
+t.write(sys.argv[2],encoding='utf-8',xml_declaration=True)
+PY
+mvn --batch-mode --no-transfer-progress -f "$BUILD/android-pom.xml" \
   "-Dmaven.repo.local=$OUT/maven" "-Dengine.root=$ROOT" "-Dnative.build=$BUILD" \
   "-Dnative.classpath=$CP" "-Dnative.reflection.config=$BUILD/metadata/reflect-config.json" \
   "-Dnative.init.arg=--initialize-at-build-time=$INIT_TYPES" \
   '-Dnative.orm.arg=--initialize-at-build-time=com.j256.ormlite.field.types' \
   "-Dnative.max.heap=$HEAP" "-Dnative.color.patch=$BUILD/color-patch/classes" \
-  -Dnative.target=android \
-  com.gluonhq:gluonfx-maven-plugin:1.0.29:staticlib \
+  -Dnative.target=android com.gluonhq:gluonfx-maven-plugin:1.0.29:sharedlib \
   2>&1 | tee "$OUT/full-native.log"
-find "$BUILD/gluonfx" -type f \( -name '*.a' -o -name '*.h' \) -print | tee "$OUT/native-output-files.txt"
+find "$BUILD/gluonfx" -type f \( -name '*.so' -o -name '*.dylib' -o -name '*.h' \) -print | tee "$OUT/native-output-files.txt"
 python3 "$REPO/scripts/android/stage_native.py" "$REPO" "$BUILD"
