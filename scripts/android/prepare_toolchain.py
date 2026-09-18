@@ -7,9 +7,9 @@ from pathlib import Path
 import platform
 import shutil
 import subprocess
-import tarfile
 import tempfile
 import urllib.request
+from toolchain_archive import extract_toolchain
 
 ROOT = Path(__file__).resolve().parents[2]
 ENGINE = ROOT / 'packages/ondevice-engine'
@@ -40,8 +40,9 @@ def main():
         temporary.rename(archive)
     shared.verify(archive, ARCHIVE_SHA256)
     build = Path(tempfile.mkdtemp(prefix='compiler-', dir=root))
-    with tarfile.open(archive) as source:
-        source.extractall(build, filter='data')
+    omitted = extract_toolchain(archive, build)
+    shutil.copyfile(build / 'archive-omissions.json', ROOT / 'build_output/android/archive-omissions.json')
+    print('Omitted unused producer links:', json.dumps(omitted), flush=True)
     home = build / TOOLCHAIN
     release = (home / 'release').read_text().splitlines()
     for line in ['GRAALVM_VERSION="22.1.0.1"', 'JAVA_VERSION="17.0.3"', 'VENDOR=Gluon', 'OS_NAME="Linux"', 'OS_ARCH="x86_64"']:
@@ -71,7 +72,7 @@ def main():
                     originalSvmJarSha256=original, patchedSvmJarSha256=shared.sha256(jar),
                     patchSha256=shared.sha256(shared.PATCH_ROOT / 'far-calls.patch'),
                     sourceManifestSha256=shared.sha256(shared.PATCH_ROOT / 'upstream-sources.json'),
-                    replacementClasses=replacements, javaHome=str(home))
+                    replacementClasses=replacements, javaHome=str(home), archiveOmissions=omitted)
     (build / 'compiler-patch-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     shutil.copyfile(build / 'compiler-patch-manifest.json', ROOT / 'build_output/android/compiler-patch-manifest.json')
     args.result_file.parent.mkdir(parents=True, exist_ok=True)

@@ -7,6 +7,7 @@ OUT="$REPO/build_output/android"
 : "${ANDROID_SDK:?Set ANDROID_SDK to the installed SDK}"
 : "${ANDROID_NDK:?Set ANDROID_NDK to the installed NDK}"
 [[ -s "$ROOT/build/runtime-classpath.txt" ]]
+python3 -m unittest discover -s "$REPO/scripts/android/tests" -v
 mkdir -p "$OUT"
 [[ -f "$OUT/JAVA_HOME.txt" ]] || python3 "$REPO/scripts/android/prepare_toolchain.py" --result-file "$OUT/JAVA_HOME.txt"
 export GRAALVM_HOME=$(cat "$OUT/JAVA_HOME.txt")
@@ -41,6 +42,7 @@ if [[ "$HEAP" == 10g ]]; then
   [[ $(awk '/MemTotal/ {print $2}' /proc/meminfo) -ge 12582912 ]]
 fi
 export MAVEN_OPTS="-Xmx512m -Duser.home=$OUT/home"
+# staticlib performs its own compilation; do not compile the huge image twice.
 mvn --batch-mode --no-transfer-progress -f "$ROOT/native/gluon/pom.xml" \
   "-Dmaven.repo.local=$OUT/maven" "-Dengine.root=$ROOT" "-Dnative.build=$BUILD" \
   "-Dnative.classpath=$CP" "-Dnative.reflection.config=$BUILD/metadata/reflect-config.json" \
@@ -48,7 +50,7 @@ mvn --batch-mode --no-transfer-progress -f "$ROOT/native/gluon/pom.xml" \
   '-Dnative.orm.arg=--initialize-at-build-time=com.j256.ormlite.field.types' \
   "-Dnative.max.heap=$HEAP" "-Dnative.color.patch=$BUILD/color-patch/classes" \
   -Dnative.target=android \
-  com.gluonhq:gluonfx-maven-plugin:1.0.29:compile com.gluonhq:gluonfx-maven-plugin:1.0.29:staticlib \
+  com.gluonhq:gluonfx-maven-plugin:1.0.29:staticlib \
   2>&1 | tee "$OUT/full-native.log"
 find "$BUILD/gluonfx" -type f \( -name '*.a' -o -name '*.h' \) -print | tee "$OUT/native-output-files.txt"
 python3 "$REPO/scripts/android/stage_native.py" "$REPO" "$BUILD"
