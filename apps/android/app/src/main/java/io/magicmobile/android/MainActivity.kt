@@ -55,7 +55,7 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null)
                     else -> LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                         item { Text("My Decks",style=MaterialTheme.typography.headlineLarge,fontFamily=FontFamily.Serif);Text("Build. Refine. Play.",style=MaterialTheme.typography.bodyMedium) }
                         item { Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){Button(onClick={editor=EditorRequest(Deck("New Commander deck",emptyList()))}){Text("Create deck")};OutlinedButton(onClick={importing=true}){Text("Import")}} }
-                        if(state.recovered!=null) item { OutlinedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)){Text("Recovered draft: ${state.recovered!!.name}");Row { TextButton(onClick={editor=EditorRequest(state.recovered!!)}){Text("Open as copy")};TextButton(onClick={model.discardRecovery()}){Text("Discard recovery")}}} }
+                        if(state.recovered!=null) item { OutlinedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)){Text("Recovered draft: ${state.recovered!!.name}");Row { TextButton(onClick={editor=EditorRequest(state.recovered!!)}){Text("Open as copy")};TextButton(onClick={model.discardRecovery()}){Text("Discard recovery")}}} } }
                         items(state.decks,key={it.id}) { saved -> DeckTile(saved.deck,"Saved on this device",{editor=EditorRequest(saved.deck,saved)},{play=saved.deck}) }
                         item { Text("Included Commander decks",style=MaterialTheme.typography.titleLarge,fontFamily=FontFamily.Serif) }
                         items(state.precons,key={it.name}) { deck -> DeckTile(deck,"Included · edit a local copy",{editor=EditorRequest(deck)},{play=deck}) }
@@ -86,7 +86,7 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null)
     Card(Modifier.fillMaxWidth()){Column(Modifier.padding(18.dp)){Text(deck.name,style=MaterialTheme.typography.titleLarge,fontFamily=FontFamily.Serif)
         Text(deck.entries.filter { it.section=="commanders" }.joinToString(" + "){it.name},style=MaterialTheme.typography.bodyMedium)
         Text("${deck.entries.sumOf { it.quantity }} cards · $subtitle",style=MaterialTheme.typography.bodySmall)
-        Row {TextButton(onClick=edit){Text("Open deck")};TextButton(onClick=play){Text("Playtest")}}}
+        Row {TextButton(onClick=edit){Text("Open deck")};TextButton(onClick=play){Text("Playtest")}}}}
 }
 @Composable private fun ImportDialog(close:()->Unit,import:(Deck)->Unit) {
     var name by remember {mutableStateOf("Imported Commander deck")};var text by remember {mutableStateOf("")};var error by remember {mutableStateOf<String?>(null)}
@@ -150,7 +150,7 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null)
                 var expanded by remember {mutableStateOf(false)}
                 TextButton(onClick={expanded=!expanded}){Text(if(expanded)"Hide other zones" else "Graveyard / exile / commanders")}
                 if(expanded){Zone("Graveyard",player.obj("graveyard"),inspect);Zone("Exile",player.obj("exile"),inspect);player.array("commandList").forEach {card->PublicCard(card,inspect)}}
-            }}
+            }}}
             item {Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){Zone("Your hand",game?.obj("myHand"),inspect)}}}
             item {Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){Zone("Stack",game?.obj("stack"),inspect)}}}
             if(decision!=null)item {Card(Modifier.fillMaxWidth()){Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {

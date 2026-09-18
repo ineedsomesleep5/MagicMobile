@@ -41,10 +41,24 @@ def main():
         if path.name in found and digest(found[path.name]) != digest(path): raise ValueError('Conflicting generated headers')
         found[path.name] = path
     for name, path in found.items(): shutil.copyfile(path, include/name)
-    matches = [p for p in include.glob('*.h') if 'mm_engine_request' in p.read_text()]
+    # Graal emits both `<entrypoint>.h` and `<entrypoint>_dynamic.h`; the dynamic variant
+    # declares the same symbols as function-pointer typedefs for runtime loading, so a
+    # substring search matches both. The C ABI we compile against is the static header, so
+    # select it the same way the iOS staging does: by name, not by scanning contents.
+    ENTRIES = ('mm_engine_request', 'mm_engine_free', 'mm_engine_shutdown_v2')
+    def declares_abi(path):
+        text = path.read_text()
+        return all(entry in text for entry in ENTRIES)
     if not (include/'libmmengine.h').exists():
-        if len(matches) != 1: raise ValueError('Missing paired native engine ABI header')
-        shutil.copyfile(matches[0], include/'libmmengine.h')
+        static = [p for p in sorted(include.glob('*.h'))
+                  if not p.stem.endswith('_dynamic') and declares_abi(p)]
+        if len(static) != 1:
+            dynamic = sorted(p.name for p in include.glob('*_dynamic.h') if declares_abi(p))
+            raise ValueError('Expected exactly one static engine ABI header, found %r (dynamic variants present: %r)'
+                             % ([p.name for p in static], dynamic))
+        shutil.copyfile(static[0], include/'libmmengine.h')
+    if not declares_abi(include/'libmmengine.h'):
+        raise ValueError('Staged libmmengine.h does not declare the full engine ABI')
     if not (include/'graal_isolate.h').exists(): raise ValueError('Missing paired isolate header')
     (stage/'elf-layout.txt').write_text(layout + '\n' + dynamic + '\n' + symbols)
     shutil.copyfile(repo/'build_output/android/compiler-patch-manifest.json', stage/'compiler-patch-manifest.json')
