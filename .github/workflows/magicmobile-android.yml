@@ -10,40 +10,51 @@ concurrency:
   group: android-${{ github.ref }}
   cancel-in-progress: false
 jobs:
-  toolchain-inventory:
+  full-native:
+    if: contains(github.event.head_commit.message, '[android-native]') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Inventory official Linux toolchain without executing it
-        shell: bash
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build the full real XMage JVM input
+        run: bash packages/ondevice-engine/scripts/build_jvm.sh
+      - name: Real XMage JVM regression tests
+        run: bash packages/ondevice-engine/scripts/test_real_engine.sh
+      - name: Prepare Android build SDK
         run: |
           set -euo pipefail
-          mkdir -p build_output/android
-          URL=https://github.com/gluonhq/graal/releases/download/gluon-22.1.0.1-Final/graalvm-svm-java17-linux-gluon-22.1.0.1-Final.tar.gz
-          curl --fail --location --retry 2 --max-time 300 "$URL" -o "$RUNNER_TEMP/gluon-linux.tar.gz"
-          test "$(stat -c%s "$RUNNER_TEMP/gluon-linux.tar.gz")" = 387711216
-          sha256sum "$RUNNER_TEMP/gluon-linux.tar.gz" | tee build_output/android/toolchain.sha256
-          python3 - <<'PY'
-          import os, tarfile, json
-          from pathlib import Path
-          p=Path(os.environ['RUNNER_TEMP'])/'gluon-linux.tar.gz'
-          with tarfile.open(p) as t:
-              names=[x.name for x in t.getmembers()]
-              selected=[n for n in names if n.endswith('/release') or ('/clibraries/' in n and n.endswith('.a'))]
-              for n in selected:
-                  print(n)
-                  if n.endswith('/release'): print(t.extractfile(n).read().decode())
-              Path('build_output/android/toolchain-layout.json').write_text(json.dumps(selected,indent=2))
-          PY
-          git rev-parse HEAD > build_output/android/source.txt
-          ls "$ANDROID_HOME/ndk" || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358'
+      - name: Cross-compile full Android ARM64 engine
+        env:
+          MM_ANDROID_NATIVE_HEAP: 10g
+        run: |
+          set -euo pipefail
+          export ANDROID_SDK="$ANDROID_HOME"
+          export ANDROID_NDK="$ANDROID_HOME/ndk/28.2.13676358"
+          bash scripts/android/build_native.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: android-toolchain-inventory-${{ github.sha }}
-          path: build_output/android/
+          name: android-native-evidence-${{ github.sha }}
+          path: |
+            build_output/android/*.log
+            build_output/android/*.json
+            build_output/android/*.txt
+            build_output/android/native-*/gluonfx/**/log/**
+            packages/ondevice-engine/evidence/
           retention-days: 7
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: android-full-native-${{ github.sha }}
+          path: apps/android/native-artifact/
+          compression-level: 1
+          retention-days: 14
           if-no-files-found: error
