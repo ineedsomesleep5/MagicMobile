@@ -36,6 +36,21 @@ def main():
     stage = repo / 'apps/android/native-artifact'; stage.mkdir(parents=True, exist_ok=False)
     include = stage / 'include'; include.mkdir()
     shutil.copyfile(library, stage / 'libmmengine.so')
+    stub = next(iter(sorted((build / 'awtstub').glob('libmmawtstub.so'))), None)
+    if stub is None: raise ValueError('Missing the AWT stub the engine links against')
+    shutil.copyfile(stub, stage / 'libmmawtstub.so')
+    # A green link is not a loadable engine: Android resolves every symbol at dlopen, so
+    # an undefined reference outside the declared DT_NEEDED set fails on the device only.
+    provided = {line.split()[-1] for line in subprocess.check_output(
+        [str(ndk/'llvm-nm'), '-D', '--defined-only', str(stage / 'libmmawtstub.so')],
+        text=True).splitlines() if line.split()}
+    unresolved = {line.split()[-1] for line in subprocess.check_output(
+        [str(ndk/'llvm-nm'), '-D', '--undefined-only', str(library)], text=True).splitlines()
+        if line.split() and '@' not in line.split()[-1]}
+    system = {'crc32','inflate','inflateEnd','inflateInit2_','inflateReset','getgrgid_r','stderr'}
+    missing = unresolved - provided - system
+    if missing:
+        raise ValueError('Engine has undefined symbols nothing provides: ' + repr(sorted(missing)))
     found = {}
     for path in (build/'gluonfx').rglob('*.h'):
         if path.name in found and digest(found[path.name]) != digest(path): raise ValueError('Conflicting generated headers')

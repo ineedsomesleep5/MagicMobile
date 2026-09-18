@@ -41,16 +41,28 @@ HEAP=${MM_ANDROID_NATIVE_HEAP:-10g}
 if [[ "$HEAP" == 10g ]]; then
   [[ $(awk '/MemTotal/ {print $2}' /proc/meminfo) -ge 12582912 ]]
 fi
+# The AOT image references the JDK's AWT JNI bootstrap, which Android does not have.
+# Build a tiny stub so the engine resolves at dlopen; see mm_awt_stub.c for why the
+# entry points fail loudly rather than pretending a toolkit exists.
+STUB="$BUILD/awtstub"; mkdir -p "$STUB"
+"$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang" \
+  -shared -fPIC -O2 -Wall -Wextra -Werror \
+  -o "$STUB/libmmawtstub.so" "$REPO/apps/android/app/src/main/cpp/mm_awt_stub.c" \
+  -Wl,-soname,libmmawtstub.so -Wl,-z,max-page-size=16384
+"$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" -D --defined-only "$STUB/libmmawtstub.so" \
+  | grep -q JNI_OnLoad_awt || { echo "AWT stub did not export its entry points" >&2; exit 2; }
+
 export MAVEN_OPTS="-Xmx512m -Duser.home=$OUT/home"
 # Gluon 1.0.29 staticlib is a no-op for this Android target. Use its
 # reviewed shared-library path (compile + link), not an empty successful task.
 # Generate an Android-only POM so no iOS build/link options are changed.
-python3 - "$ROOT/native/gluon/pom.xml" "$BUILD/android-pom.xml" <<'PY'
+python3 - "$ROOT/native/gluon/pom.xml" "$BUILD/android-pom.xml" "$STUB" <<'PY'
 import sys, xml.etree.ElementTree as E
 ns='http://maven.apache.org/POM/4.0.0'; E.register_namespace('',ns)
 t=E.parse(sys.argv[1]); config=t.find('.//{%s}configuration'%ns)
 args=E.SubElement(config,'{%s}linkerArgs'%ns)
-for value in ['-Wl,-z,max-page-size=16384','-Wl,-soname,libmmengine.so']:
+for value in ['-Wl,-z,max-page-size=16384','-Wl,-soname,libmmengine.so',
+              '-L'+sys.argv[3],'-lmmawtstub']:
  E.SubElement(args,'{%s}arg'%ns).text=value
 t.write(sys.argv[2],encoding='utf-8',xml_declaration=True)
 PY
