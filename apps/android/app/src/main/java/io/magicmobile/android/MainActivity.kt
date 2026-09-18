@@ -17,6 +17,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -59,6 +62,7 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null)
                         items(state.decks,key={it.id}) { saved -> DeckTile(saved.deck,"Saved on this device",{editor=EditorRequest(saved.deck,saved)},{play=saved.deck}) }
                         item { Text("Included Commander decks",style=MaterialTheme.typography.titleLarge,fontFamily=FontFamily.Serif) }
                         items(state.precons,key={it.name}) { deck -> DeckTile(deck,"Included · edit a local copy",{editor=EditorRequest(deck)},{play=deck}) }
+                        item { ArtworkConsentRow() }
                         item { Text(state.status,style=MaterialTheme.typography.bodySmall);Text("Games run locally with the packaged XMage engine. No external computer or account. Cross-device multiplayer is not in this Android alpha.",style=MaterialTheme.typography.bodySmall) }
                     }
                 }
@@ -78,7 +82,7 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null)
         }
         if(inspect!=null) {
             val card=model.catalogue?.find(inspect!!)
-            AlertDialog(onDismissRequest={inspect=null},title={Text(inspect!!)},text={Column(Modifier.verticalScroll(rememberScrollState())) {Text(card?.cost.orEmpty());Text(card?.type.orEmpty());Text(Decisions.plain(card?.rules ?: "No local metadata for this object."))}},confirmButton={TextButton(onClick={inspect=null}){Text("Done")}})
+            AlertDialog(onDismissRequest={inspect=null},title={Text(inspect!!)},text={Column(Modifier.verticalScroll(rememberScrollState())) {CardArtwork(inspect!!,Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(10.dp))){ArtworkHint()};Spacer(Modifier.height(10.dp));ManaCost(card?.cost,size=20);Text(card?.type.orEmpty());Text(Decisions.plain(card?.rules ?: "No local metadata for this object."))}},confirmButton={TextButton(onClick={inspect=null}){Text("Done")}})
         }
     }
 }
@@ -117,11 +121,11 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null)
         }
         item {OutlinedTextField(value=search,onValueChange={search=it.take(200)},label={Text("Add cards · name or rules text")},modifier=Modifier.fillMaxWidth())
             Row {listOf("deck","commanders","maybeboard").forEach{target->FilterChip(selected=section==target,onClick={section=target},label={Text(target)})}}}
-        items(results,key={it.name}) { card -> OutlinedCard(Modifier.fillMaxWidth()){Row(Modifier.padding(10.dp)){Column(Modifier.weight(1f)){Text(card.name);Text(card.cost.orEmpty()+" · "+card.type.orEmpty(),style=MaterialTheme.typography.bodySmall)};TextButton(onClick={try{change(draft.copy(entries=draft.entries+CardEntry(card.name,1,section)));message=null}catch(e:Exception){message=e.message}}){Text("+ Add")}}} }
+        items(results,key={it.name}) { card -> OutlinedCard(Modifier.fillMaxWidth()){Row(Modifier.padding(10.dp),verticalAlignment=Alignment.CenterVertically){CardArtwork(card.name,Modifier.size(38.dp,52.dp).clip(RoundedCornerShape(4.dp))){Text(card.name.take(1),style=MaterialTheme.typography.labelSmall)};Spacer(Modifier.width(10.dp));Column(Modifier.weight(1f)){Text(card.name);Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)){ManaCost(card.cost);Text(card.type.orEmpty(),style=MaterialTheme.typography.bodySmall)}};TextButton(onClick={try{change(draft.copy(entries=draft.entries+CardEntry(card.name,1,section)));message=null}catch(e:Exception){message=e.message}}){Text("+ Add")}}} }
         if(search.isNotBlank())item{Text("Local compiled catalogue · up to 80 results",style=MaterialTheme.typography.bodySmall)}
         draft.entries.withIndex().groupBy{it.value.section}.forEach { (section,rows) ->
             item(key="header-$section"){Text("${section.replaceFirstChar{it.uppercase()}} · ${rows.sumOf {it.value.quantity}}",style=MaterialTheme.typography.titleMedium)}
-            items(rows,key={"row-${it.index}"}) { (index,row) -> Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){Text(row.name);Text(model.catalogue?.find(row.name)?.cost ?: "Unresolved in local catalogue",style=MaterialTheme.typography.bodySmall)
+            items(rows,key={"row-${it.index}"}) { (index,row) -> Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){Text(row.name);model.catalogue?.find(row.name).let { info -> if(info?.cost != null) ManaCost(info.cost) else Text(if(info==null) "Unresolved in local catalogue" else info.type.orEmpty(),style=MaterialTheme.typography.bodySmall) }
                 Row {TextButton(onClick={try{change(draft.change(index,-1))}catch(e:Exception){message=e.message}}){Text("−")};Text("${row.quantity}",modifier=Modifier.padding(12.dp));TextButton(onClick={try{change(draft.change(index,1))}catch(e:Exception){message=e.message}}){Text("+")}
                     TextButton(onClick={val destination=if(row.section=="commanders")"deck" else "commanders";change(draft.copy(entries=draft.entries.toMutableList().apply {set(index,row.copy(section=destination))}))}){Text(if(row.section=="commanders")"To main" else "Commander")}} }} }
         }
