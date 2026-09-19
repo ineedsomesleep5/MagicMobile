@@ -4,6 +4,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import io.magicmobile.android.core.*
 import org.junit.Assert.*
 import org.junit.Test
+import java.util.concurrent.TimeUnit
 
 /** Exercises the packaged JNI/AOT engine, not a fixture or network substitute. */
 class NativeGameTest {
@@ -91,6 +92,61 @@ class NativeGameTest {
                 var status=NativeBridge.close(token)
                 repeat(30){if(status!=0){Thread.sleep(100);status=NativeBridge.close(token)}}
                 assertEquals("Native runtime releases after game",0,status)
+            }
+        }
+    }
+
+    @Test fun nativeRuntimeAcceptsThreeDistinctAiDecks() {
+        assertTrue("This test requires -PwithNative=true",BuildConfig.NATIVE_ENGINE)
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val catalogue=Catalogue(context.assets.open("catalogue.jsonl"))
+        val included=Wire.decode(context.assets.open("precons.json").use {it.readBytes()})
+            .array("decks").map {Deck.decode(Wire.objectValue(it))}
+        val human=included.first {it.name=="Token Triumph"}
+        val opponents=listOf("First Flight","Grave Danger","Chaos Incarnate").map {name->included.first {it.name==name}}
+        val expectedCommanders=opponents.mapIndexed {index,deck->
+            "AI ${index+1}" to deck.entries.filter {it.section=="commanders"}.map {it.name}.toSet()
+        }.toMap()
+        var token=NativeBridge.open()
+        assertTrue("Native isolate opens",token!=0L)
+        fun request(op:String,vararg fields:Pair<String,Any?>)=Wire.result(NativeBridge.request(token,Wire.request(op,*fields)))
+        try {
+            val resolved=(listOf(human)+opponents).map {deck->
+                catalogue.resolve(deck,false).also {configuration->
+                    val validation=request("validateDeck","deck" to configuration)
+                    assertTrue("${deck.name} remains valid for packaged Commander",validation.flag("valid"))
+                }
+            }
+            val seats=localGameSeats("You",resolved.first(),resolved.drop(1),2)
+            val created=request("create","configuration" to mapOf("seats" to seats))
+            assertEquals(listOf("player-1","player-2","player-3","player-4"),created.array("seats"))
+            val match=Wire.string(created["matchId"])
+            val deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(20)
+            while(System.nanoTime()<deadline) {
+                val poll=GamePoll.parse(request("poll","matchId" to match,"viewerId" to "player-1","after" to 0L),match,"player-1")
+                if(poll.phase=="failed")fail("Four-seat game failed: ${poll.failure}")
+                val snapshot=poll.snapshot
+                if(snapshot!=null) {
+                    val playerIds=snapshot.obj("gameView")!!.array("players").map(Wire::objectValue)
+                        .associate {Wire.string(it["name"]) to Wire.string(it["playerId"])}
+                    val publicCommanders=snapshot.obj("commanders")!!.values.map(Wire::objectValue)
+                    expectedCommanders.forEach { (name,commanders)->
+                        val owner=playerIds[name]
+                        assertNotNull("Public player identity exists for $name",owner)
+                        assertEquals("$name has the commander from its selected deck",commanders,
+                            publicCommanders.filter {it["ownerPlayerId"]==owner}.mapNotNull {it.text("name")}.toSet())
+                    }
+                    return
+                }
+                Thread.sleep(25)
+            }
+            fail("Four-seat game did not publish its public starting snapshot")
+        } finally {
+            if(token!=0L) {
+                var status=NativeBridge.close(token)
+                repeat(30){if(status!=0){Thread.sleep(100);status=NativeBridge.close(token)}}
+                assertEquals("Native four-seat runtime releases without playing a full game",0,status)
+                token=0L
             }
         }
     }
