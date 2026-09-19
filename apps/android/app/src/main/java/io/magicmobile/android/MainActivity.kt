@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -33,6 +34,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.core.view.WindowCompat
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -192,7 +195,7 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
     }
 }
 @Composable private fun HomeHeading(){Text("MAGICMOBILE",style=MaterialTheme.typography.headlineLarge,fontFamily=FontFamily.Serif,color=Parchment);Text("Your next great game.",style=MaterialTheme.typography.titleMedium,color=Parchment.copy(alpha=.78f))}
-@Composable private fun HomeDeck(featured:Deck?){featured?.let{deck->CardArtwork(deck.entries.firstOrNull{it.section=="commanders"}?.name.orEmpty(),Modifier.fillMaxWidth().heightIn(min=220.dp,max=360.dp).clip(RoundedCornerShape(16.dp))){};Text(deck.name,style=MaterialTheme.typography.headlineSmall,fontFamily=FontFamily.Serif,color=Parchment,maxLines=2,overflow=TextOverflow.Ellipsis);Text(deck.entries.filter{it.section=="commanders"}.joinToString(" + "){it.name},style=MaterialTheme.typography.bodyMedium,color=Parchment.copy(alpha=.75f),maxLines=2,overflow=TextOverflow.Ellipsis)}?:Text("Create or import a Commander deck to begin.",color=Parchment)}
+@Composable private fun HomeDeck(featured:Deck?){featured?.let{deck->CardArtwork(deck.entries.firstOrNull{it.section=="commanders"}?.name.orEmpty(),Modifier.fillMaxWidth().heightIn(min=220.dp,max=360.dp).clip(RoundedCornerShape(16.dp))){ArtworkCoverPlaceholder()};Text(deck.name,style=MaterialTheme.typography.headlineSmall,fontFamily=FontFamily.Serif,color=Parchment,maxLines=2,overflow=TextOverflow.Ellipsis);Text(deck.entries.filter{it.section=="commanders"}.joinToString(" + "){it.name},style=MaterialTheme.typography.bodyMedium,color=Parchment.copy(alpha=.75f),maxLines=2,overflow=TextOverflow.Ellipsis)}?:Text("Create or import a Commander deck to begin.",color=Parchment)}
 @Composable private fun HomeNavigation(featured:Deck?,play:(Deck)->Unit,decks:()->Unit,downloads:()->Unit,settings:()->Unit,updates:()->Unit,wide:Boolean){
     featured?.let{Button(onClick={play(it)},modifier=Modifier.fillMaxWidth().heightIn(min=56.dp),colors=ButtonDefaults.buttonColors(containerColor=Color(0xFFB95435),contentColor=Color.White)){Text("Play Commander")}}
     OutlinedButton(onClick=decks,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp),colors=ButtonDefaults.outlinedButtonColors(contentColor=Parchment)){Text("Decks")}
@@ -223,7 +226,7 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
 }
 @Composable private fun DeckTile(deck:Deck,subtitle:String,saved:SavedDeck?,edit:()->Unit,play:()->Unit,organize:()->Unit,duplicate:()->Unit,delete:()->Unit,selected:Boolean=false,compact:Boolean=false) {
     var menu by remember{mutableStateOf(false)}
-    Card(Modifier.fillMaxWidth()){Column{CardArtwork(deck.entries.firstOrNull{it.section=="commanders"}?.name.orEmpty(),Modifier.fillMaxWidth().height(if(compact)142.dp else 210.dp),artOnly=true){}
+    Card(Modifier.fillMaxWidth()){Column{CardArtwork(deck.entries.firstOrNull{it.section=="commanders"}?.name.orEmpty(),Modifier.fillMaxWidth().height(if(compact)142.dp else 210.dp),artOnly=true){ArtworkCoverPlaceholder()}
         Column(Modifier.padding(if(compact)12.dp else 18.dp)){Text(deck.name,style=if(compact)MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,fontFamily=FontFamily.Serif,maxLines=2,overflow=TextOverflow.Ellipsis)
         Text(deck.entries.filter { it.section=="commanders" }.joinToString(" + "){it.name},style=MaterialTheme.typography.bodyMedium,maxLines=2,overflow=TextOverflow.Ellipsis)
         Text("${if(saved?.favorite==true)"★ · " else ""}${deck.entries.sumOf { it.quantity }} cards · $subtitle",style=MaterialTheme.typography.bodySmall)
@@ -232,6 +235,13 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
         if(compact){TextButton(onClick=edit){Text("Open deck")};Box{TextButton(onClick={menu=true}){Text("Deck actions")};DropdownMenu(expanded=menu,onDismissRequest={menu=false}){DropdownMenuItem(text={Text("Playtest")},onClick={menu=false;play()});if(saved!=null){DropdownMenuItem(text={Text("Organize")},onClick={menu=false;organize()});DropdownMenuItem(text={Text("Copy")},onClick={menu=false;duplicate()});DropdownMenuItem(text={Text("Delete")},onClick={menu=false;delete()})}}}}
         else{Row {TextButton(onClick=edit){Text("Open")};TextButton(onClick=play){Text("Playtest")}}
         if(saved!=null)Row {TextButton(onClick=organize){Text("Organize")};TextButton(onClick=duplicate){Text("Copy")};TextButton(onClick=delete){Text("Delete")}}}}}}
+}
+@Composable private fun ArtworkCoverPlaceholder() {
+    Column(Modifier.fillMaxSize().padding(16.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center) {
+        Box(Modifier.size(38.dp,52.dp).border(2.dp,MaterialTheme.colorScheme.outline,RoundedCornerShape(6.dp)).semantics{contentDescription="Card artwork placeholder"},contentAlignment=Alignment.Center){Text("✦",style=MaterialTheme.typography.titleMedium)}
+        Spacer(Modifier.height(8.dp))
+        Text("Artwork not downloaded",style=MaterialTheme.typography.labelMedium,textAlign=androidx.compose.ui.text.style.TextAlign.Center,maxLines=2)
+    }
 }
 @Composable private fun OrganizationDialog(saved:SavedDeck,close:()->Unit,save:(Boolean,List<String>,String)->Unit) {
     var favorite by remember(saved){mutableStateOf(saved.favorite)};var tags by remember(saved){mutableStateOf(saved.tags.joinToString(", "))};var notes by remember(saved){mutableStateOf(saved.notes)}
