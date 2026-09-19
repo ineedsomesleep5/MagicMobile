@@ -67,3 +67,15 @@ These additions remain iOS-only. Token disclosure already exists in the engine p
 - Native Settings drops the redundant headline and shortens orientation/artwork explanations. No consent, storage, download or engine behavior changed.
 - `Downloads-simplified.xcresult` compiled successfully but missed the menu tap before entering Downloads; this attempt does not validate the changed screen.
 - `Downloads-simplified-rerun.xcresult` passed the complete consent/confirmation/cancel flow and verified technical details start collapsed. Reviewed its screenshot: compact counts and short consent replace the previous paragraphs. The missing-card/token lists were then also collapsed by default; that final presentation-only adjustment is compiled in the release archive.
+
+## Upload receipt
+
+- Source checkout: `/Users/calebfeliciano/.codex/worktrees/6288/MagicMobile`, branch `codex/ios-commander-presentation`.
+- Shipped source commit: `345a88e731c9ff7a4a9206eb928c45a37c43c65f`.
+- Version/build: **0.1.0 (5000000001)**, bundle `com.calebfeliciano.magicmobile`.
+- IPA: `build_output/testflight/menu-redesign-5000000001/native-release.RvGNvp/export/MagicMobile.ipa` (171,659,234 bytes).
+- Delivery UUID: `ece28b8e-c394-411e-b10f-b13a6b0598a5`.
+- Archive/export, signed native product and identity checks passed. Apple validation and upload succeeded without errors at 15:57 CDT on 2026-09-19. The repo-owned uploader recorded this exact build and delivery in `release/testflight/build-ledger.json`.
+- The engine artifact remains the unchanged build-5000000000 artifact. No engine compilation or Android changes.
+- Apple build discovery/processing was still pending approximately six minutes after upload. The release script remains in its bounded processing wait before existing-group assignment and Beta App Review submission. Upload success does **not** yet establish tester availability or review approval.
+- New-build phone acceptance, full multi-gigabyte artwork transfer on a phone and actual gameplay with this UI remain user acceptance checks. The public TestFlight URL remains `https://testflight.apple.com/join/2mSHE8rZ`; it may continue to offer the prior build until processing/review finishes.
