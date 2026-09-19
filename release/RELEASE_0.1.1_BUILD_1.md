@@ -1,6 +1,6 @@
-# MagicMobile September presentation and parity update
+# MagicMobile 0.1.1 — build 1
 
-The user requested retaining the existing TestFlight version 0.1.0 to avoid starting a new version's review. Platform build numbers remain independent and monotonic. Shared update labeling is pending their preference; do not claim parity from matching version strings alone.
+The user explicitly selected **0.1.1 (1)** as the new baseline. Future updates retain 0.1.1 and increment the release build (2, 3, ...). iOS uses that build as CFBundleVersion. Android retains a monotonic installation versionCode (2026091902 for this build), independent of the shared visible release build, so existing installs can update safely. Do not claim parity from matching version strings alone.
 
 ## Approved scope
 
@@ -33,7 +33,7 @@ iOS 0.3.0 (5000000002) uploaded September 19, 2026, 16:45 CDT, but was supersede
 - Native engine: reused verified artifact `10514723423` from source `f2ffad10e26a25885902e963a13810d8786ed9bc`; no engine rebuild.
 - Archive/export, signed product guards and Apple validation/upload passed; this is not physical-phone acceptance.
 
-Replacement prepared: **0.1.0 (5000000003)**, unchanged functional source and engine. Signing/upload and availability pending.
+The intermediate 0.1.0 (5000000003) preparation was never uploaded. Final user-requested baseline: **0.1.1 (1)**, unchanged functional source and engine. Signing/upload and availability pending.
 
 Android artifact, Apple availability, website deployment and main merge will be recorded after verification.
 
@@ -47,3 +47,4 @@ Android artifact, Apple availability, website deployment and main merge will be 
 - Website candidate: production build and mobile/desktop rendering passed; candidate links are not deployed until artifacts are available.
 - Apple filtered group discovery returned HTTP 500; app-scoped discovery returned both existing groups. Release discovery now paginates the app-scoped endpoint and validates/filter groups locally, preserving all membership gates.
 - Distribution helper regressions: 17 offline tests passed, including incomplete discovery, all-internal membership and review failure cases.
+- New baseline tracking: 10 build-number fixtures, 2 short-build/version guard tests, and 18 version-scoped distribution tests passed. Preparing again reused unuploaded 0.1.1 (1); it did not skip to build 2.
