@@ -6,3 +6,4 @@ native-artifact/
 *.jks
 *.keystore
 .idea/
+**/.cxx/

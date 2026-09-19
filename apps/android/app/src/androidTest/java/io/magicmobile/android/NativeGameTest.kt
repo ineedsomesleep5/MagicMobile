@@ -7,6 +7,19 @@ import org.junit.Test
 
 /** Exercises the packaged JNI/AOT engine, not a fixture or network substitute. */
 class NativeGameTest {
+    @Test fun nativeRuntimeClosesAndReopens() {
+        assertTrue(BuildConfig.NATIVE_ENGINE)
+        android.util.Log.i("MagicMobileAcceptance","Opening native runtime")
+        val token=NativeBridge.open()
+        assertTrue(token!=0L)
+        android.util.Log.i("MagicMobileAcceptance","Native runtime opened")
+        assertEquals(0,NativeBridge.close(token))
+        android.util.Log.i("MagicMobileAcceptance","Native runtime closed")
+        val reopened=NativeBridge.open()
+        assertTrue(reopened!=0L && reopened!=token)
+        android.util.Log.i("MagicMobileAcceptance","Native runtime reopened without requests")
+        assertEquals(0,NativeBridge.close(reopened))
+    }
     @Test fun packagedEngineCompletesCommanderGame() {
         assertTrue("This test requires -PwithNative=true", BuildConfig.NATIVE_ENGINE)
         val context=InstrumentationRegistry.getInstrumentation().targetContext
@@ -17,15 +30,19 @@ class NativeGameTest {
         val opponent=decks.first {it.name.contains("Grave Danger",true)}
         var token=NativeBridge.open()
         assertTrue("Native isolate opens",token!=0L)
+        android.util.Log.i("MagicMobileAcceptance","Game test: runtime opened; validating bundled deck")
         fun request(op:String,vararg fields:Pair<String,Any?>)=Wire.result(NativeBridge.request(token,Wire.request(op,*fields)))
         try {
             val valid=request("validateDeck","deck" to catalogue.resolve(human,false))
+            android.util.Log.i("MagicMobileAcceptance","Game test: validation returned")
             assertTrue(valid.flag("valid"))
             assertEquals(catalogue.upstreamCommit,valid.text("upstream"))
             assertEquals(catalogue.registryHash,valid.text("catalogueHash"))
             // Validate teardown/reopen, the same transition used by the Play dialog.
             assertEquals(0,NativeBridge.close(token));token=0
+            android.util.Log.i("MagicMobileAcceptance","Game test: validation runtime closed; reopening")
             token=NativeBridge.open();assertTrue(token!=0L)
+            android.util.Log.i("MagicMobileAcceptance","Game test: runtime reopened; creating match")
             val created=request("create","configuration" to mapOf("seats" to listOf(
                 mapOf("seatId" to "player-1","name" to "You","controller" to "human","deck" to catalogue.resolve(human,false)),
                 mapOf("seatId" to "player-2","name" to "AI","controller" to "ai","aiSkill" to 1,"deck" to catalogue.resolve(opponent,false)))))

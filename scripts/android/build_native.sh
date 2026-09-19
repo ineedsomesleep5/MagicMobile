@@ -60,6 +60,11 @@ python3 - "$ROOT/native/gluon/pom.xml" "$BUILD/android-pom.xml" "$STUB" <<'PY'
 import sys, xml.etree.ElementTree as E
 ns='http://maven.apache.org/POM/4.0.0'; E.register_namespace('',ns)
 t=E.parse(sys.argv[1]); config=t.find('.//{%s}configuration'%ns)
+# Substrate disables isolate spawning for ordinary Android executables. This is
+# an embedded library: validation and games must support teardown and reopening.
+# User compiler arguments follow the target defaults, so override only Android.
+compiler=config.find('{%s}nativeImageArgs'%ns)
+E.SubElement(compiler,'{%s}arg'%ns).text='-H:+SpawnIsolates'
 args=E.SubElement(config,'{%s}linkerArgs'%ns)
 for value in ['-Wl,-z,max-page-size=16384','-Wl,-soname,libmmengine.so',
               '-L'+sys.argv[3],'-lmmawtstub']:
