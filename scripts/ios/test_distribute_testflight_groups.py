@@ -25,7 +25,7 @@ elif a[:2] == ['builds', 'list']:
     assert a[a.index('--build-number') + 1] == '5000000000'
     command = 'build'
 elif a[:3] == ['testflight', 'groups', 'list']:
-    assert '--internal' in a
+    assert '--internal' not in a and '--paginate' in a
     command = 'internal'
 elif a[:3] == ['builds', 'beta-app-review-submission', 'view']:
     marker = root / 'review-read'
@@ -173,6 +173,22 @@ class DistributionTests(unittest.TestCase):
     def test_all_internal_groups_required(self):
         self.config['internal']['data'].append({'id': 'internal-2', 'attributes': {'isInternalGroup': True}})
         self.assert_failure()
+
+    def test_app_scoped_discovery_filters_external_groups(self):
+        self.config['internal']['data'].append({'id': EXTERNAL, 'attributes': {'isInternalGroup': False}})
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        discovered = json.loads((self.evidence / 'testflight-internal-groups.json').read_text())
+        self.assertEqual([g['id'] for g in discovered['data']], ['internal-1'])
+
+    def test_incomplete_or_untyped_app_groups_stop(self):
+        for payload in (
+            {'data': self.config['internal']['data'], 'links': {'next': 'another-page'}},
+            {'data': [{'id': 'x', 'attributes': {'isInternalGroup': 'true'}}]},
+        ):
+            with self.subTest(payload=payload):
+                self.config['internal'] = payload
+                self.assert_failure(before_add=True)
 
     def test_final_review_failures_never_report_success(self):
         self.config['review_before'] = review('IN_REVIEW')

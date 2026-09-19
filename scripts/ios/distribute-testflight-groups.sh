@@ -68,9 +68,13 @@ try:
         print(build["id"])
     elif mode == "internal":
         groups = result["data"]
-        require(groups and not result.get("links", {}).get("next"), "Internal groups missing or incomplete")
-        require(all(g.get("id") and g["attributes"]["isInternalGroup"] is True for g in groups),
-                "Invalid Internal group records")
+        require(groups and not result.get("links", {}).get("next"), "App groups missing or incomplete")
+        require(all(g.get("id") and type(g["attributes"]["isInternalGroup"]) is bool for g in groups),
+                "Invalid app group records")
+        internal = [g for g in groups if g["attributes"]["isInternalGroup"]]
+        require(internal, "Internal groups missing")
+        with open(args[0], "w") as output:
+            json.dump({"data": internal}, output)
     elif mode == "review":
         review = result["data"]
         require(review.get("id") and review["type"] == "betaAppReviewSubmissions", "Missing review identity")
@@ -104,8 +108,10 @@ asc builds list --app "$APP_ID" --build-number "$BUILD_NUMBER" --platform IOS --
   --output json > "$RELEASE_ROOT/apple-build.json"
 BUILD_ID="$(validate build "$RELEASE_ROOT/apple-build.json" "$BUILD_NUMBER")"
 # Preserve ASC's default: the configured External group plus all Internal groups.
-asc testflight groups list --app "$APP_ID" --internal --output json > "$RELEASE_ROOT/testflight-internal-groups.json"
-validate internal "$RELEASE_ROOT/testflight-internal-groups.json"
+# Apple's top-level filtered betaGroups endpoint can return 500 while the
+# app-scoped endpoint works. Fetch every page there, then select internal groups.
+asc testflight groups list --app "$APP_ID" --paginate --output json > "$RELEASE_ROOT/testflight-app-groups.json"
+validate internal "$RELEASE_ROOT/testflight-app-groups.json" "$RELEASE_ROOT/testflight-internal-groups.json"
 
 SUBMIT_ARGS=()
 if asc builds beta-app-review-submission view --build-id "$BUILD_ID" --output json \
