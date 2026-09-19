@@ -40,7 +40,7 @@ The intermediate 0.1.0 (5000000003) preparation was never uploaded. Final user-r
 - SHA-256: `8e2e1e59442250a7aaead24e3c4f047206d60490818339f1fddeaea26db2f86b`.
 - Apple validation and upload passed September 19, 2026, 17:10 CDT.
 - Delivery UUID: `f0ebba45-30e3-45a2-a8f5-2c89d546ef80`.
-- Processing and tester availability remain separate pending gates; this is not physical-phone acceptance.
+- Apple processing: VALID. Assigned to the existing Internal and External groups; Beta App Review is WAITING_FOR_REVIEW. Public access to this build remains pending Apple's approval; this is not physical-phone acceptance.
 
 Android artifact, Apple availability, website deployment and main merge will be recorded after verification.
 

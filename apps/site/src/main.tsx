@@ -278,7 +278,7 @@ function App() {
               <small>
                 {platform === "android"
                   ? "Android 8+ · ARM64. Hosted on GitHub. No account needed."
-                  : "iOS 17+. Install TestFlight, then accept the invitation."}
+                  : `iOS 17+. ${releases.ios.status} Install TestFlight, then accept the invitation.`}
               </small>
             </div>
           </div>

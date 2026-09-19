@@ -28,6 +28,7 @@ elif a[:2] == ['builds', 'list']:
     command = 'build'
 elif a[:3] == ['testflight', 'groups', 'list']:
     assert '--internal' not in a and '--paginate' in a
+    assert a[a.index('--app') + 1] == '6784735182'
     command = 'internal'
 elif a[:3] == ['builds', 'beta-app-review-submission', 'view']:
     marker = root / 'review-read'

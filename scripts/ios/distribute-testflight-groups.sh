@@ -3,7 +3,8 @@
 set -euo pipefail
 umask 077
 
-APP_ID="com.calebfeliciano.magicmobile"
+# App-scoped beta-group discovery requires Apple's numeric app ID.
+APP_ID="6784735182"
 BUILD_NUMBER=""
 APP_VERSION=""
 RELEASE_ROOT=""

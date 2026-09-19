@@ -14,5 +14,6 @@ export const releases = {
     version: sharedAppVersion,
     build: sharedReleaseBuild,
     url: "https://testflight.apple.com/join/2mSHE8rZ",
+    status: "Build 1 is awaiting Apple review for public TestFlight access.",
   },
 };

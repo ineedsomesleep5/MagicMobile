@@ -8,9 +8,9 @@ From `apps/site`, run `npm ci`, `npm run dev`, or `npm run build`. Production fi
 
 ## Deploy
 
-Deploy from `apps/site` with framework Vite and output `dist`. The existing CLI-linked project uses root directory `.` relative to this uploaded directory; a future repository-root Git integration would instead need `apps/site`. `vercel.json` carries the install/build configuration. Use the existing download-site project; do not overwrite the separate MagicMobile game project.
+The Git-linked Vercel project uses root directory `apps/site`, framework Vite and output `dist`. `vercel.json` carries the install/build configuration. Use the existing download-site project; do not overwrite the separate MagicMobile game project.
 
-Production: https://magicmobile-downloads.vercel.app, project `magicmobile-downloads` in `caleb-felicianos-projects`. Deploy from this directory with `vercel --prod --yes --scope caleb-felicianos-projects`.
+Production: https://magicmobile-downloads.vercel.app, project `magicmobile-downloads` in `caleb-felicianos-projects`. Pull requests create previews; `main` is the production branch. Verify download artifacts before merging. Do not upload this subdirectory alone while the project expects a repository-relative root.
 
 ## Updating downloads
 
