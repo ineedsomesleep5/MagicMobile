@@ -37,7 +37,7 @@ struct DeckStudioComboPanel: View {
             LazyVStack(alignment: .leading, spacing: 16) {
                 DeckStudioPanel {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Discover the connections.").font(.system(.title2, design: .serif).weight(.semibold))
+                        Text("Discover the connections.").font(.title2.weight(.semibold))
                         Text("Commander Spellbook finds documented combos and nearby possibilities. Results are not EDHREC recommendations or proof a combo will execute in a game.")
                             .font(.subheadline).foregroundStyle(DeckStudioPalette.secondaryInk)
                         Text("A lookup shares resolved main-deck and commander names, quantities, and your network address with Commander Spellbook. Other sections, deck title and private notes stay here.")
@@ -190,7 +190,7 @@ private struct DeckStudioComboDetail: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Commander Spellbook").font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
-                    Text(variant.uses.map(\.card.name).joined(separator: " + ")).font(.system(.title2, design: .serif).weight(.semibold))
+                    Text(variant.uses.map(\.card.name).joined(separator: " + ")).font(.title2.weight(.semibold))
                     section("Mana required", variant.manaNeeded)
                     ForEach(Array(variant.uses.enumerated()), id: \.offset) { _, row in
                         section("\(row.quantity) × \(row.card.name)",

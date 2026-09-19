@@ -16,10 +16,10 @@ struct NativeUpdateNewsView: View {
                     }
                 }
                 Section("What's new") {
-                    Label("Deck-first editing, card artwork, search, undo and local draft recovery.", systemImage: "rectangle.stack")
-                    Label("Import review before saving and clearer deck validation reports.", systemImage: "square.and.arrow.down")
-                    Label("Card-backed ability choices and clearer stack details.", systemImage: "square.3.layers.3d")
-                    Label("Centered phase announcements, life-change feedback and stronger playable-card highlights.", systemImage: "sparkles")
+                    Label("A new commander-led menu with charcoal surfaces and clean, borderless controls.", systemImage: "rectangle.stack")
+                    Label("A refreshed Deck Studio with larger artwork, clearer tabs and a calm ivory workspace.", systemImage: "square.grid.2x2")
+                    Label("See your deck and opponent deck together before starting a game.", systemImage: "person.2")
+                    Label("Quick transitions and responsive controls, with Reduce Motion support.", systemImage: "sparkles")
                 }
                 Section {
                     Link(destination: URL(string: "https://github.com/magefree/mage/releases")!) {
@@ -34,7 +34,7 @@ struct NativeUpdateNewsView: View {
                     Text("Opens GitHub. Upstream changes are not installed automatically. New cards and abilities become available only after a compatible MagicMobile build is tested and released.")
                 }
             }
-            .tint(MagicPalette.antiqueGold)
+            .tint(CommanderPresentation.accent)
             .navigationTitle("Updates")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }

@@ -109,6 +109,7 @@
 		D1A0CA21C310A71A3D482701 /* NativeDeckPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E323E614FEAF91B792C023CE /* NativeDeckPresentationTests.swift */; };
 		D6F34A2AC883611AC41BD711 /* NativeDeckArtworkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1722A4752D3856C3BE4097AE /* NativeDeckArtworkTests.swift */; };
 		D786849AAF75733AD7291FD6 /* BoardZoneReferenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F4E6F7237174E453B09E62B /* BoardZoneReferenceTests.swift */; };
+		D88DC08849D680807DE5E64B /* CommanderPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E170200DA8F0A65EBA233D74 /* CommanderPresentation.swift */; };
 		DAE6D268DD599C73DE5A3AB9 /* DeckStudioRoleAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = D436C065EC7F640B89DE98B1 /* DeckStudioRoleAnalysis.swift */; };
 		DD64135BC47659C44970D607 /* GameBoardZones.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A3AD25E36EAC5A475AF5E31 /* GameBoardZones.swift */; };
 		DE661E8AFEF09CF49F4A7F36 /* GameBoardDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34AB998C3D5AA8E4DFD8EAF1 /* GameBoardDesignTokens.swift */; };
@@ -249,6 +250,7 @@
 		DD616D9917FF26F6512FA5EF /* DeckStudioEditorModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioEditorModelTests.swift; sourceTree = "<group>"; };
 		DF9DCCA6FD608F763C72ABDA /* BoardZoneReference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardZoneReference.swift; sourceTree = "<group>"; };
 		E13EC4CC09BB14F446DB7424 /* DeckLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckLibrary.swift; sourceTree = "<group>"; };
+		E170200DA8F0A65EBA233D74 /* CommanderPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommanderPresentation.swift; sourceTree = "<group>"; };
 		E25161EF0DCBD6D130249073 /* OnDevice */ = {isa = PBXFileReference; lastKnownFileType = folder; name = OnDevice; path = MagicMobileTests/Fixtures/OnDevice; sourceTree = SOURCE_ROOT; };
 		E323E614FEAF91B792C023CE /* NativeDeckPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeDeckPresentationTests.swift; sourceTree = "<group>"; };
 		E557CD5B9182F00AB74366F4 /* NativeDeckMetadataCatalogue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeDeckMetadataCatalogue.swift; sourceTree = "<group>"; };
@@ -358,6 +360,7 @@
 				039B77208AFBED6A6EA40C3D /* BattlefieldAdaptiveSizing.swift */,
 				4BA70C9674983BCF14FFA981 /* BoardCardChoiceView.swift */,
 				DF9DCCA6FD608F763C72ABDA /* BoardZoneReference.swift */,
+				E170200DA8F0A65EBA233D74 /* CommanderPresentation.swift */,
 				29DCFFDEC2E73604A42C81C3 /* ContentView.swift */,
 				E13EC4CC09BB14F446DB7424 /* DeckLibrary.swift */,
 				34AB998C3D5AA8E4DFD8EAF1 /* GameBoardDesignTokens.swift */,
@@ -683,6 +686,7 @@
 				CA5EFC25898ACFEDEA8D650C /* BattlefieldAdaptiveSizing.swift in Sources */,
 				707F9022D3F7045C138C3B27 /* BoardCardChoiceView.swift in Sources */,
 				EBED9598B43CE2C232029321 /* BoardZoneReference.swift in Sources */,
+				D88DC08849D680807DE5E64B /* CommanderPresentation.swift in Sources */,
 				55A331D598FB652583F948C2 /* CommanderSpellbookClient.swift in Sources */,
 				F7F09CF11D0ACCA5A4E5E57E /* CommanderSpellbookModels.swift in Sources */,
 				C8623EC979ACF45B170D1881 /* ContentView.swift in Sources */,
@@ -963,7 +967,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 5000000000;
+				CURRENT_PROJECT_VERSION = 5000000001;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 82HPAY85M8;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1048,7 +1052,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 5000000000;
+				CURRENT_PROJECT_VERSION = 5000000001;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 82HPAY85M8;
 				ENABLE_NS_ASSERTIONS = NO;

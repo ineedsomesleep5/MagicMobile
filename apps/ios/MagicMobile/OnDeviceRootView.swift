@@ -10,6 +10,9 @@ struct OnDeviceRootView: View {
     @AppStorage("magicmobile.playerDisplayName") private var playerDisplayName = ""
     @AppStorage(PortraitModePreference.key) private var portraitModeEnabled = true
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicType
+    @Namespace private var commanderTransition
     @StateObject private var session: OnDeviceSession
     @StateObject private var setup: OnDeviceSetupModel
     @StateObject private var library = DeckLibraryStore()
@@ -65,18 +68,21 @@ struct OnDeviceRootView: View {
             if activeGame {
                 game
             } else {
-                MenuBackgroundSurface(portraitModeEnabled: portraitModeEnabled).ignoresSafeArea()
+                CommanderPresentation.canvas.ignoresSafeArea()
                 if showSetup || setup.needsLeave {
                     setupContent
                 } else {
                     TavernMainMenu(deckName: selectedDeck?.name ?? "Choose a deck", playerName: playerDisplayName,
                                    play: { showSetup = true }, decks: { showImport = true },
                                    settings: { showAppearance = true }, news: { showUpdates = true },
-                                   commanderName: selectedDeck?.commander?.cardName)
+                                   commanderName: selectedDeck?.commander?.cardName,
+                                   commanderNamespace: reduceMotion ? nil : commanderTransition)
                 }
             }
         }
         .preferredColorScheme(.dark)
+        .animation(reduceMotion ? .easeOut(duration: 0.12) : .easeOut(duration: 0.26), value: showSetup)
+        .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: activeGame)
         .sheet(isPresented: $showAppearance) { AppearanceSettingsView(portraitModeEnabled: $portraitModeEnabled) }
         .sheet(isPresented: $showUpdates) { NativeUpdateNewsView(upstreamCommit: setup.identity?.upstreamCommit) }
         .overlay(alignment: .top) { recoveryBanner }
@@ -206,13 +212,20 @@ struct OnDeviceRootView: View {
                     Button { showAppearance = true } label: { Image(systemName: "gearshape.fill") }
                         .accessibilityLabel("Settings")
                 }
-                Text("Gather your table").font(.largeTitle.bold()).foregroundStyle(MagicPalette.parchment)
+                Text("Your next game.").font(.largeTitle.weight(.bold)).foregroundStyle(CommanderPresentation.ink)
+                Text("Choose your deck. Take your seat.")
+                    .font(.subheadline).foregroundStyle(CommanderPresentation.secondary)
+                setupDecks
                 VStack(alignment: .leading, spacing: 12) {
+                    Text("YOUR SEAT").font(.caption.weight(.bold)).tracking(1.4)
+                        .foregroundStyle(CommanderPresentation.secondary)
                     TextField("Player name", text: $playerDisplayName)
                         .textContentType(.nickname).autocorrectionDisabled()
-                        .textFieldStyle(GameTextFieldStyle()).accessibilityIdentifier("ondevice.playerName")
+                        .padding(12).background(CommanderPresentation.canvas, in: RoundedRectangle(cornerRadius: 10))
+                        .accessibilityIdentifier("ondevice.playerName")
                     Text("Choose a name with 1–24 characters.").font(.caption).foregroundStyle(.secondary)
-                    PortraitModeToggle(isOn: $portraitModeEnabled)
+                    Toggle("Auto-Rotate", isOn: $portraitModeEnabled)
+                        .font(.subheadline).tint(CommanderPresentation.accent)
                     Picker("Your deck", selection: $selectedDeckID) {
                         Section("Included precons") {
                             ForEach(PreconCatalog.all) { Text($0.name).tag("precon:\($0.id)") }
@@ -222,9 +235,9 @@ struct OnDeviceRootView: View {
                         }
                     }
                     Button { showImport = true } label: { Label("Browse, import or edit decks", systemImage: "rectangle.stack.badge.plus") }
-                        .buttonStyle(MagicSecondaryButtonStyle(fillsWidth: true, compact: true))
+                        .buttonStyle(CommanderActionStyle(primary: false))
                 }
-                .magicPanel(.leather, prominence: .elevated, cornerRadius: 14, padding: 16)
+                .commanderPanel()
                 .disabled(setup.isBusy || setup.needsLeave)
 
                 VStack(alignment: .leading, spacing: 12) {
@@ -241,11 +254,11 @@ struct OnDeviceRootView: View {
                         Text(setup.multiplayer?.status ?? setup.status).font(.callout)
                         if setup.multiplayer?.isAuthenticated != true {
                             Button("Sign in to Game Center") { setup.multiplayer?.authenticate() }
-                                .buttonStyle(MagicSecondaryButtonStyle(fillsWidth: true, compact: true))
+                                .buttonStyle(CommanderActionStyle(primary: false))
                                 .disabled(setup.multiplayer == nil || setup.isBusy || setup.needsLeave)
                         }
                         Button("Find players") { startMatchmaking() }
-                            .buttonStyle(MagicPrimaryButtonStyle())
+                            .buttonStyle(CommanderActionStyle())
                             .disabled(!mayStart || setup.multiplayer?.isAuthenticated != true)
                     } else {
                         Stepper("AI opponents: \(opponentCount)", value: $opponentCount, in: 1...3)
@@ -258,27 +271,62 @@ struct OnDeviceRootView: View {
                             .accessibilityIdentifier("onDevice.aiSkill")
                         Text("Higher skill levels allow more thinking and may slow turns.").font(.caption).foregroundStyle(.secondary)
                         Button("Start game") { startAI() }
-                            .buttonStyle(MagicPrimaryButtonStyle()).disabled(!mayStart)
+                            .buttonStyle(CommanderActionStyle()).disabled(!mayStart)
                     }
                 }
-                .magicPanel(.iron, prominence: .standard, cornerRadius: 14, padding: 16)
+                .commanderPanel()
                 Text(setup.status).font(.caption).foregroundStyle(.secondary)
                 if setup.needsLeave {
                     Button("Leave / retry closing", role: .destructive) { confirmLeave = true }
-                        .buttonStyle(MagicSecondaryButtonStyle(fillsWidth: true, compact: true))
+                        .buttonStyle(CommanderActionStyle(primary: false))
                         .disabled(setup.isBusy || session.isWorking)
                 }
                 if setup.identity == nil {
                     Button("Retry loading local catalogue") { setup.prepare() }
-                        .buttonStyle(MagicSecondaryButtonStyle(fillsWidth: true, compact: true))
+                        .buttonStyle(CommanderActionStyle(primary: false))
                 }
                 Button("Engine error report") { showDiagnostics = true }
                     .accessibilityIdentifier("ondevice.diagnostics")
             }
-            .foregroundStyle(MagicPalette.parchment)
+            .foregroundStyle(CommanderPresentation.ink)
+            .tint(CommanderPresentation.accent)
             .frame(maxWidth: 640).padding(16).frame(maxWidth: .infinity)
         }
         .scrollDismissesKeyboard(.interactively)
+    }
+
+    private var setupDecks: some View {
+        let layout = dynamicType.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 20))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 24))
+        return layout {
+            VStack(alignment: .leading, spacing: 10) {
+                CommanderDeckPortrait(name: selectedDeck?.commander?.cardName,
+                                       namespace: reduceMotion ? nil : commanderTransition)
+                    .frame(width: 112, height: 156)
+                Text("Your deck").font(.caption).foregroundStyle(CommanderPresentation.secondary)
+                Text(selectedDeck?.name ?? "Choose a deck").font(.headline).fixedSize(horizontal: false, vertical: true)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 10) {
+                if playWithFriends {
+                    Image(systemName: "person.2.fill")
+                        .font(.largeTitle).foregroundStyle(CommanderPresentation.secondary)
+                        .frame(width: 112, height: 156)
+                        .background(CommanderPresentation.surface, in: RoundedRectangle(cornerRadius: 12))
+                    Text("Game Center").font(.caption).foregroundStyle(CommanderPresentation.secondary)
+                    Text("\(playerCount) seats").font(.headline)
+                } else {
+                    CommanderDeckPortrait(name: aiPrecon?.deckList.commander?.cardName)
+                        .frame(width: 112, height: 156)
+                    Text("\(opponentCount) AI \(opponentCount == 1 ? "opponent" : "opponents")")
+                        .font(.caption).foregroundStyle(CommanderPresentation.secondary)
+                    Text(aiPrecon?.name ?? "Choose opponents").font(.headline).fixedSize(horizontal: false, vertical: true)
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 12)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Selected decks")
     }
 
     @ViewBuilder

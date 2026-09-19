@@ -1258,151 +1258,132 @@ struct TavernMainMenu: View {
     let settings: () -> Void
     var news: (() -> Void)? = nil
     var commanderName: String? = nil
+    var commanderNamespace: Namespace.ID? = nil
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var appeared = false
 
     var body: some View {
         GeometryReader { proxy in
-            let horizontal = proxy.size.width > proxy.size.height
-            let layout = horizontal ? AnyLayout(HStackLayout(alignment: .center, spacing: 36)) : AnyLayout(VStackLayout(spacing: 24))
+            let horizontal = proxy.size.width > proxy.size.height && !dynamicTypeSize.isAccessibilitySize
+            let cardWidth = horizontal ? min(210, proxy.size.height * 0.5) : min(210, proxy.size.width * 0.53)
+            let layout = horizontal ? AnyLayout(HStackLayout(alignment: .center, spacing: 48)) : AnyLayout(VStackLayout(spacing: 28))
             ScrollView(.vertical, showsIndicators: false) {
                 layout {
-                    identity(compact: horizontal)
-                        .frame(maxWidth: .infinity)
-                    VStack(spacing: 12) {
-                        Text("THE COMMANDER'S TABLE")
-                            .font(.system(size: 10, weight: .bold, design: .serif)).tracking(2.5)
-                            .foregroundStyle(MagicPalette.parchment.opacity(0.7))
-                        Button(action: play) {
-                            HStack {
-                                Image(systemName: "sparkles")
-                                Spacer()
-                                Text("Play Commander").font(.system(size: 24, weight: .black, design: .serif)).lineLimit(1).minimumScaleFactor(0.75)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                            }
-                            .frame(minHeight: 48)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(MagicPrimaryButtonStyle(fillsWidth: true))
-                        .accessibilityIdentifier("menu.play")
-                        menuAction("Decks", subtitle: "Build, import and browse.", icon: "rectangle.stack.fill", action: decks)
-                            .accessibilityIdentifier("menu.decks")
-                        menuAction("Settings", subtitle: "Make this table yours.", icon: "gearshape.fill", action: settings)
-                        if let news {
-                            menuAction("Updates", subtitle: "This build and XMage news.", icon: "newspaper", action: news)
-                                .accessibilityIdentifier("menu.updates")
-                        }
+                    VStack(spacing: 18) {
+                        if !horizontal { identity(compact: false) }
+                        CommanderDeckPortrait(name: commanderName, namespace: commanderNamespace)
+                            .frame(width: cardWidth, height: cardWidth / 0.716)
+                            .rotationEffect(.degrees(reduceMotion ? 0 : -4))
+                            .padding(.vertical, 8)
                         deckTile
                     }
-                    .padding(horizontal ? 18 : 20)
-                    .frame(maxWidth: 400)
-                    .background {
-                        RoundedRectangle(cornerRadius: GameBoardDesignTokens.current.radius.heroPanel)
-                            .fill(LinearGradient(colors: [Color(red: 0.20, green: 0.14, blue: 0.10), Color(red: 0.075, green: 0.06, blue: 0.055)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .overlay(RoundedRectangle(cornerRadius: GameBoardDesignTokens.current.radius.heroPanel).stroke(MagicPalette.antiqueGold.opacity(0.6), lineWidth: 1))
-                            .overlay(RoundedRectangle(cornerRadius: GameBoardDesignTokens.current.radius.heroPanel - 5).stroke(MagicPalette.antiqueGold.opacity(0.16), lineWidth: 1).padding(5))
-                            .shadow(color: .black.opacity(0.65), radius: 20, y: 12)
+                    .frame(maxWidth: .infinity)
+                    VStack(alignment: .leading, spacing: 12) {
+                        if horizontal { identity(compact: true).padding(.bottom, 14) }
+                        Button(action: play) {
+                            HStack(spacing: 16) {
+                                Text("Play Commander")
+                                    .font(.title3.weight(.bold))
+                                    .multilineTextAlignment(.leading)
+                                Spacer()
+                                Image(systemName: "arrow.up.right")
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(CommanderActionStyle())
+                        .accessibilityIdentifier("menu.play")
+                        Button(action: decks) {
+                            HStack(spacing: 16) {
+                                Image(systemName: "rectangle.stack")
+                                Text("Decks")
+                                Spacer()
+                                Image(systemName: "arrow.right")
+                            }
+                        }
+                        .buttonStyle(CommanderActionStyle(primary: false))
+                        .accessibilityIdentifier("menu.decks")
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 24) { utilityActions }
+                            VStack(alignment: .leading, spacing: 0) { utilityActions }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 4)
                     }
+                    .frame(maxWidth: 400)
                 }
-                .padding(.horizontal, horizontal ? 24 : 12)
-                .padding(.vertical, horizontal ? 16 : 24)
+                .padding(.horizontal, horizontal ? 36 : 26)
+                .padding(.vertical, horizontal ? 24 : 28)
                 .frame(maxWidth: 960, minHeight: proxy.size.height)
                 .frame(maxWidth: .infinity)
+                .opacity(appeared ? 1 : 0)
+                .offset(y: appeared || reduceMotion ? 0 : 12)
             }
         }
+        .background(CommanderPresentation.canvas.ignoresSafeArea())
         .preferredColorScheme(.dark)
+        .onAppear {
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.24)) { appeared = true }
+        }
     }
 
     private func identity(compact: Bool) -> some View {
-        VStack(spacing: compact ? 12 : 16) {
-            // The shipped app mark, not a stand-in built from SF Symbols. It is cut out of
-            // its plate so it sits on whatever background the menu is wearing.
-            Image("mage-mobile-logo")
-                .resizable().scaledToFit()
-                .frame(width: compact ? 132 : 168)
-                .shadow(color: .black.opacity(0.55), radius: 16, y: 8)
-                .accessibilityHidden(true)
-            VStack(spacing: 6) {
-                Text("MAGICMOBILE")
-                    .font(.system(size: compact ? 31 : 36, weight: .black, design: .serif))
-                    .tracking(1).minimumScaleFactor(0.7).lineLimit(1)
-                    .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.93, blue: 0.73), MagicPalette.antiqueGold], startPoint: .top, endPoint: .bottom))
-                    .shadow(color: .black, radius: 3, y: 3)
-                Text("A seat at the table. A world in your deck.")
-                    .font(.system(size: 13, weight: .medium, design: .serif))
-                    .foregroundStyle(MagicPalette.parchment.opacity(0.78))
-                    .multilineTextAlignment(.center)
-            }
-            // The real mana symbols ship in the bundle; weather icons stood in for them.
-            HStack(spacing: 10) {
-                ForEach(["mana-w", "mana-u", "mana-b", "mana-r", "mana-g"], id: \.self) { asset in
-                    Image(asset).resizable().scaledToFit().frame(width: 17, height: 17)
-                        .opacity(0.9)
-                }
-            }.accessibilityHidden(true)
+        VStack(alignment: compact ? .leading : .center, spacing: 8) {
+            Text("MAGICMOBILE")
+                .font(.caption.weight(.bold)).tracking(3)
+                .foregroundStyle(CommanderPresentation.secondary)
+            Text("Your next\ngreat game.")
+                .font(.system(.largeTitle, design: .default, weight: .black))
+                .tracking(-1)
+                .foregroundStyle(CommanderPresentation.ink)
+                .multilineTextAlignment(compact ? .leading : .center)
+                .fixedSize(horizontal: false, vertical: true)
             if !playerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text("Welcome back, \(playerName)").font(.caption).foregroundStyle(MagicPalette.parchment.opacity(0.7))
+                Text("Welcome back, \(playerName)")
+                    .font(.subheadline).foregroundStyle(CommanderPresentation.secondary)
+                    .multilineTextAlignment(compact ? .leading : .center)
             }
         }
     }
 
-    /// The selected deck was the second largest element on the menu and showed only a name.
-    /// Showing the commander it is actually built around makes it worth the space, and
-    /// reuses the same consent-aware artwork route as the rest of the app.
     private var deckTile: some View {
-        HStack(spacing: 12) {
-            Group {
-                if let commanderName, !commanderName.isEmpty {
-                    NativeCardArtworkView(name: commanderName, variant: .board, contentMode: .fill) { _, _ in
-                        ZStack {
-                            LinearGradient(colors: [MagicPalette.carvedWood, MagicPalette.iron], startPoint: .top, endPoint: .bottom)
-                            Image(systemName: "crown.fill").font(.system(size: 20)).foregroundStyle(MagicPalette.antiqueGold.opacity(0.8))
-                        }
-                    }
-                } else {
-                    ZStack {
-                        LinearGradient(colors: [MagicPalette.carvedWood, MagicPalette.iron], startPoint: .top, endPoint: .bottom)
-                        Image(systemName: "shield.lefthalf.filled").font(.system(size: 20)).foregroundStyle(MagicPalette.antiqueGold)
-                    }
-                }
+        VStack(spacing: 5) {
+            Text("YOUR DECK")
+                .font(.caption2.weight(.bold)).tracking(2)
+                .foregroundStyle(CommanderPresentation.accent)
+            Text(deckName)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(CommanderPresentation.ink)
+            if let commanderName, !commanderName.isEmpty {
+                Text(commanderName).font(.caption)
+                    .foregroundStyle(CommanderPresentation.secondary)
             }
-            .frame(width: 46, height: 64).clipped()
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(MagicPalette.antiqueGold.opacity(0.45)))
-            VStack(alignment: .leading, spacing: 3) {
-                Text("YOUR DECK").font(.system(size: 9, weight: .black)).tracking(1.5)
-                    .foregroundStyle(MagicPalette.antiqueGold)
-                Text(deckName).font(.subheadline.weight(.semibold))
-                    .foregroundStyle(MagicPalette.parchment).lineLimit(2)
-                if let commanderName, !commanderName.isEmpty {
-                    Text(commanderName).font(.caption2)
-                        .foregroundStyle(MagicPalette.parchment.opacity(0.65)).lineLimit(1)
-                }
-            }
-            Spacer(minLength: 0)
         }
-        .padding(12)
-        .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: GameBoardDesignTokens.current.radius.panel))
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(commanderName.map { "Your deck: \(deckName), commander \($0)" } ?? "Your deck: \(deckName)")
     }
 
-    private func menuAction(_ title: String, subtitle: String, icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: icon).font(.system(size: 21)).frame(width: 28).foregroundStyle(MagicPalette.antiqueGold)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title).font(.system(size: 19, weight: .bold, design: .serif)).foregroundStyle(MagicPalette.parchment)
-                    Text(subtitle).font(.caption2).foregroundStyle(MagicPalette.parchment.opacity(0.65))
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.caption).foregroundStyle(MagicPalette.antiqueGold.opacity(0.7))
-            }
-            .frame(minHeight: 45).padding(12)
-            .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 9))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(MagicPalette.antiqueGold.opacity(0.25)))
-            .contentShape(Rectangle())
+    @ViewBuilder private var utilityActions: some View {
+        Button(action: settings) {
+            Label("Settings", systemImage: "gearshape")
+                .font(.subheadline).frame(minHeight: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .foregroundStyle(CommanderPresentation.secondary)
+        .accessibilityIdentifier("menu.settings")
+        if let news {
+            Button(action: news) {
+                Label("Updates", systemImage: "arrow.down.circle")
+                    .font(.subheadline).frame(minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(CommanderPresentation.secondary)
+            .accessibilityIdentifier("menu.updates")
+        }
     }
 }
 
@@ -1546,7 +1527,6 @@ struct AppearanceSettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     Text("Your game, your table").font(.system(size: 28, weight: .bold, design: .serif))
-                    MenuAppearancePicker()
                     BoardAppearancePicker()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
                     if nativeTurnControl != nil { NativeArtworkPreferenceView() }

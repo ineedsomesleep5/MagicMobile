@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The deck feature has its own palette/navigation; the battle UI is unchanged.
+/// The collection and editor share a quiet, artwork-led workshop.
 @MainActor
 struct DeckStudioRootView: View {
     @ObservedObject var library: DeckLibraryStore
@@ -8,6 +8,7 @@ struct DeckStudioRootView: View {
     var preparePlay: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicType
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var query = DeckStudioLibraryQuery()
     @AppStorage("deckStudio.library.grid.v1") private var grid = true
     @State private var tags: [String: [String]] = [:]
@@ -58,6 +59,7 @@ struct DeckStudioRootView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     header
+                    DeckStudioArtworkInvitation()
                     if let error = error ?? library.notice {
                         DeckStudioNotice(title: "Your library is preserved", message: error, icon: "exclamationmark.triangle")
                     }
@@ -85,7 +87,9 @@ struct DeckStudioRootView: View {
                 }.padding(20).frame(maxWidth: 1000).frame(maxWidth: .infinity)
             }
             .background(DeckStudioPalette.background.ignoresSafeArea())
-            .navigationTitle("MagicMobile").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("Deck Studio").navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(DeckStudioPalette.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -124,9 +128,9 @@ struct DeckStudioRootView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("YOUR COMMANDER WORKSPACE").font(.caption.weight(.semibold)).tracking(1.5).foregroundStyle(DeckStudioPalette.gold)
-            Text("My Decks").font(.system(.largeTitle, design: .serif).weight(.bold))
-            Text("Build. Refine. Play.").font(.subheadline).foregroundStyle(DeckStudioPalette.secondaryInk)
+            Text("YOUR COLLECTION").font(.caption.weight(.semibold)).tracking(1.8).foregroundStyle(DeckStudioPalette.secondaryInk)
+            Text("My Decks").font(.system(.largeTitle, design: .default).weight(.bold)).tracking(-1)
+            Text("Find your next move.").font(.subheadline).foregroundStyle(DeckStudioPalette.secondaryInk)
             ViewThatFits(in: .horizontal) {
                 HStack { createButton; importButton }
                 VStack { createButton; importButton }
@@ -153,7 +157,7 @@ struct DeckStudioRootView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(DeckStudioLibraryQuery.Filter.allCases) { filter in
-                        Button { query.filter = filter } label: {
+                        Button { withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { query.filter = filter } } label: {
                             Text(filter.rawValue).font(.subheadline.weight(.medium)).padding(.horizontal, 14).frame(minHeight: 44)
                                 .foregroundStyle(query.filter == filter ? .white : DeckStudioPalette.ink)
                                 .background(query.filter == filter ? DeckStudioPalette.ink : DeckStudioPalette.surface, in: Capsule())
@@ -169,32 +173,40 @@ struct DeckStudioRootView: View {
         return VStack(alignment: .leading, spacing: 0) {
             Button { route = .deck(record, included) } label: {
                 VStack(alignment: .leading, spacing: 10) {
-                    DeckStudioArtwork(name: record.commander?.cardName ?? "", hero: true).frame(height: grid ? 132 : 110).clipped()
+                    DeckStudioArtwork(name: record.commander?.cardName ?? "", hero: true)
+                        .frame(height: grid ? 164 : 130).clipped()
+                        .overlay(alignment: .topLeading) {
+                            if id == selectedDeckID {
+                                Label("Selected", systemImage: "checkmark.circle.fill")
+                                    .font(.caption2.weight(.semibold)).padding(.horizontal, 10).padding(.vertical, 7)
+                                    .foregroundStyle(.white).background(DeckStudioPalette.ink, in: Capsule()).padding(10)
+                            }
+                        }
                     VStack(alignment: .leading, spacing: 6) {
                         Text(record.name).font(.headline).lineLimit(2).multilineTextAlignment(.leading)
                         Text(DeckStudioDraftPresentation.commanders(draft).joined(separator: " • "))
                             .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk).lineLimit(2)
                         DeckStudioColorIdentity(colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata))
                         if let labels = tags[record.id], !labels.isEmpty {
-                            Text(labels.joined(separator: " · ")).font(.caption2).foregroundStyle(DeckStudioPalette.gold).lineLimit(2)
+                            Text(labels.joined(separator: " · ")).font(.caption2).foregroundStyle(DeckStudioPalette.accent).lineLimit(2)
                         }
                         Text("\(DeckStudioDraftPresentation.gameCount(draft)) cards · \(included ? "Included" : "Local draft")")
                             .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                     }.padding(.horizontal, 14).padding(.bottom, 10)
                 }
-            }.buttonStyle(.plain).accessibilityIdentifier("deckStudio.deck.\(id)")
+            }.buttonStyle(DeckStudioArtworkButtonStyle()).accessibilityIdentifier("deckStudio.deck.\(id)")
             HStack {
                 if !included { Text(record.updatedAt, style: .date).font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk) }
                 else { Text("Make it your own").font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk) }
                 Spacer()
                 Button { toggleFavorite(id) } label: { Image(systemName: favorites.contains(id) ? "star.fill" : "star").frame(width: 44, height: 44) }
-                    .foregroundStyle(DeckStudioPalette.gold).accessibilityLabel(favorites.contains(id) ? "Unfavorite \(record.name)" : "Favorite \(record.name)")
+                    .foregroundStyle(DeckStudioPalette.ink).accessibilityLabel(favorites.contains(id) ? "Unfavorite \(record.name)" : "Favorite \(record.name)")
                 Menu { deckActions(record, included: included) } label: { Image(systemName: "ellipsis.circle").frame(width: 44, height: 44) }.accessibilityLabel("Options for \(record.name)")
             }.padding(.horizontal, 14)
         }
         .background(DeckStudioPalette.surface, in: RoundedRectangle(cornerRadius: 20))
         .clipShape(RoundedRectangle(cornerRadius: 20))
-        .overlay(RoundedRectangle(cornerRadius: 20).stroke(id == selectedDeckID ? DeckStudioPalette.gold : DeckStudioPalette.separator, lineWidth: id == selectedDeckID ? 2 : 1))
+        .shadow(color: DeckStudioPalette.ink.opacity(0.04), radius: 12, y: 4)
         .contextMenu { deckActions(record, included: included) }
     }
     @ViewBuilder private func deckActions(_ record: DeckLibraryRecord, included: Bool) -> some View {
@@ -281,7 +293,7 @@ struct DeckStudioArtwork: View {
                 VStack(spacing: 8) {
                     Image(systemName: hero ? "rectangle.stack" : "sparkle").font(hero ? .largeTitle : .body)
                     if hero { Text(failed ? "Artwork unavailable" : "A new story to build").font(.caption) }
-                }.foregroundStyle(DeckStudioPalette.gold)
+                }.foregroundStyle(DeckStudioPalette.secondaryInk)
             }
         }.accessibilityHidden(true)
     }

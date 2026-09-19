@@ -43,7 +43,7 @@ struct DeckStudioAnalysisContent: View {
                 if !curveOnly {
                     DeckStudioPanel {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Your deck at a glance").font(.system(.title2, design: .serif).weight(.semibold))
+                            Text("Your deck at a glance").font(.title2.weight(.semibold))
                             metric("Main deck", "\(statistics.cardCount)")
                             metric("Commander(s)", "\(draft.rows.filter { DeckStudioDraftPresentation.section($0) == "commanders" }.reduce(0) { $0 + $1.quantity })")
                             metric("Other sections", "\(draft.rows.filter { !["deck", "commanders"].contains(DeckStudioDraftPresentation.section($0)) }.reduce(0) { $0 + $1.quantity })")
@@ -69,7 +69,7 @@ struct DeckStudioAnalysisContent: View {
                                         Button { selectedBin = selectedBin == bin ? nil : bin } label: {
                                             VStack(spacing: 7) {
                                                 Text("\(binCount(bin))").font(.caption.monospacedDigit())
-                                                RoundedRectangle(cornerRadius: 5).fill(selectedBin == bin ? DeckStudioPalette.gold : DeckStudioPalette.ink)
+                                                RoundedRectangle(cornerRadius: 5).fill(selectedBin == bin ? DeckStudioPalette.accent : DeckStudioPalette.ink)
                                                     .frame(height: max(3, 100 * Double(binCount(bin)) / Double(max(1, (0...7).map(binCount).max() ?? 1))))
                                                 Text(bin == 7 ? "7+" : "\(bin)").font(.caption)
                                             }.frame(width: 44, height: 144, alignment: .bottom)

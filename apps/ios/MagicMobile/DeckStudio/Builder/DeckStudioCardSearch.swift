@@ -188,7 +188,7 @@ struct DeckStudioCardInspector: View {
                 VStack(alignment: .leading, spacing: 20) {
                     NativeCardArtworkView(name: name, variant: .inspection) { _, _ in DeckStudioNotice(title: name, message: "Artwork is optional. Card text remains available offline.", icon: "rectangle.portrait") }
                         .frame(maxWidth: 340, minHeight: 120, maxHeight: 420).frame(maxWidth: .infinity)
-                    Text(name).font(.system(.title, design: .serif).weight(.bold))
+                    Text(name).font(.title.weight(.bold))
                     DeckStudioArtworkInvitation()
                     Text(metadata?.typeLine ?? "Type not in the loaded catalogue").font(.headline)
                     if let cost = metadata?.manaCost { NativeDeckManaCost(cost: cost) }

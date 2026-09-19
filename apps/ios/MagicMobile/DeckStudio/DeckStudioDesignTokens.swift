@@ -1,31 +1,26 @@
 import SwiftUI
 
-/// Deck Studio is the app's light "workshop" mode: deckbuilding means long reading
-/// sessions over dense lists, which a light surface serves better than the battlefield's
-/// dark one. It stays light on purpose, but it is no longer a separate design system —
-/// its geometry and type come from GameBoardDesignTokens and MagicTypography, and its
-/// accent is the app's one gold darkened for contrast on parchment. Changing it here
-/// never changes the battlefield palette.
+/// A quiet ivory workspace lets real card artwork supply the color.
 enum DeckStudioPalette {
-    static let background = Color(red: 0.97, green: 0.95, blue: 0.91)
-    static let surface = Color(red: 0.99, green: 0.985, blue: 0.965)
+    static let background = Color(red: 0.94, green: 0.935, blue: 0.91)
+    static let surface = Color(red: 0.98, green: 0.976, blue: 0.96)
     static let surfaceElevated = Color.white
     static let ink = Color(red: 0.13, green: 0.15, blue: 0.15)
     static let secondaryInk = Color(red: 0.34, green: 0.36, blue: 0.35)
-    /// The shared antique gold, darkened so it still passes contrast on a light surface.
-    static let gold = Color(red: 0.43, green: 0.33, blue: 0.16)
+    // The menu's ember hue, darkened for readable text on ivory.
+    static let accent = Color(red: 0.57, green: 0.25, blue: 0.15)
     static let success = Color(red: 0.17, green: 0.36, blue: 0.26)
     static let warning = Color(red: 0.48, green: 0.27, blue: 0.07)
     static let danger = Color(red: 0.64, green: 0.15, blue: 0.15)
-    static let separator = Color(red: 0.83, green: 0.81, blue: 0.77)
+    static let separator = Color(red: 0.83, green: 0.83, blue: 0.81)
 }
 
 /// Geometry and motion shared with the rest of the app, so a Deck Studio control has the
 /// same shape and touch target as a battlefield one.
 enum DeckStudioMetrics {
     private static let tokens = GameBoardDesignTokens.current
-    static let controlRadius = tokens.radius.sheet - 4      // 14
-    static let panelRadius = tokens.radius.heroPanel        // 20
+    static let controlRadius: CGFloat = 16
+    static let panelRadius: CGFloat = 22
     static let cardRadius = tokens.radius.card              // 6
     static let controlHeight = tokens.control.standardHeight // 48
     static let touchTarget = tokens.control.minimumTouchTarget // 44
@@ -45,6 +40,18 @@ struct DeckStudioButtonStyle: ButtonStyle {
             .overlay(RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius).stroke(primary ? .clear : DeckStudioPalette.separator))
             .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: configuration.isPressed)
+    }
+}
+
+/// Artwork buttons lift only through their own press; list edits remain immediate.
+struct DeckStudioArtworkButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.86 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: configuration.isPressed)
     }
 }
 
@@ -53,7 +60,6 @@ struct DeckStudioPanel<Content: View>: View {
     var body: some View {
         content.padding(DeckStudioMetrics.panelPadding).frame(maxWidth: .infinity, alignment: .leading)
             .background(DeckStudioPalette.surface, in: RoundedRectangle(cornerRadius: DeckStudioMetrics.panelRadius))
-            .overlay(RoundedRectangle(cornerRadius: DeckStudioMetrics.panelRadius).stroke(DeckStudioPalette.separator.opacity(0.7)))
     }
 }
 

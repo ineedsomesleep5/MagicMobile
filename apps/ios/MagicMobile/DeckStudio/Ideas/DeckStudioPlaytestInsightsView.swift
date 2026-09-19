@@ -11,7 +11,7 @@ struct DeckStudioPlaytestInsightsView: View {
     var body: some View {
         DeckStudioPanel {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Playtest Insights").font(.system(.title2, design: .serif).weight(.semibold))
+                Text("Playtest Insights").font(.title2.weight(.semibold))
                 Toggle("Record local AI playtest summaries", isOn: Binding(get: { enabled }, set: { value in
                     enabled = value
                     Task { await DeckStudioPlaytestStore.shared.setEnabled(value) }

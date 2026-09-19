@@ -3,6 +3,30 @@ import XCTest
 /// Shipping Deck Studio views with an isolated preferences suite; no engine fixture gameplay.
 @MainActor
 final class DeckStudioReleaseUITests: XCTestCase {
+    func testCommanderMenuSetupAndLibraryNavigation() throws {
+        let app = XCUIApplication()
+        continueAfterFailure = false
+        app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
+        app.launchArguments = ["--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        defer { app.terminate(); XCUIDevice.shared.orientation = .portrait }
+        XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 20))
+        capture("Commander menu portrait")
+        app.buttons["menu.play"].tap()
+        XCTAssertTrue(app.textFields["ondevice.playerName"].waitForExistence(timeout: 10))
+        capture("Commander table setup portrait")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        capture("Commander table setup landscape")
+        app.buttons["Main menu"].tap()
+        XCTAssertTrue(app.buttons["menu.decks"].waitForExistence(timeout: 10))
+        capture("Commander menu landscape")
+        XCUIDevice.shared.orientation = .portrait
+        app.buttons["menu.decks"].tap()
+        XCTAssertTrue(app.buttons["deckStudio.create"].waitForExistence(timeout: 10))
+        capture("Commander deck library portrait")
+    }
+
     func testNewDraftSearchAddInspectRotateAndDiscard() throws {
         let app = XCUIApplication()
         continueAfterFailure = false
