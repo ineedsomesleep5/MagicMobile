@@ -133,11 +133,15 @@ are separate evidence categories. Neither the iOS binary nor an empty Android
 screen establishes Android engine execution. No store upload or production
 signing or gameplay acceptance is established by a compilation check alone.
 
-The earlier Android branch was manually exercised on an Android 15 ARM64 emulator
-through engine load, isolate creation, a Commander prompt and an AI turn. That
-artifact predates the merged Deck Studio engine and is not release evidence for
-this branch. A fresh Linux ARM64 native build, completed emulator game and separate
-physical-phone pass remain required.
+The signed `0.2.0-alpha.1` APK was verified on an Android 15 ARM64 emulator with all
+eight instrumentation tests, including a completed real-engine Commander game and
+ten native open/close cycles. The final UI pass covered validation through live play
+and background/foreground continuation. Its exact source, checksum, test scope and
+remaining limits are recorded in the
+[release acceptance receipt](https://github.com/ineedsomesleep5/MagicMobile/releases/tag/android-v0.2.0-alpha.1).
+Physical-phone acceptance remains pending. Live games do not survive process death;
+decks and drafts persist. Android's native presentation is not pixel-for-pixel parity
+with every iOS skin and animation. Multiplayer remains excluded.
 
 Reference documentation:
 - https://docs.gluonhq.com/#_android
