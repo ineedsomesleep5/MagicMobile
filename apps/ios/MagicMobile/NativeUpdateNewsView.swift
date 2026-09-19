@@ -20,6 +20,9 @@ struct NativeUpdateNewsView: View {
                     Label("A refreshed Deck Studio with larger artwork, clearer tabs and a calm ivory workspace.", systemImage: "square.grid.2x2")
                     Label("See your deck and opponent deck together before starting a game.", systemImage: "person.2")
                     Label("Quick transitions and responsive controls, with Reduce Motion support.", systemImage: "sparkles")
+                    Label("Portrait deck tabs pin at the top while the header scrolls away for more card space.", systemImage: "pin")
+                    Label("Hold a game card to inspect it; release to return to the table.", systemImage: "hand.point.up")
+                    Label("New Downloads menu checks offline artwork, with full-catalogue or deck downloads, tokens, alternate faces and three image-quality choices.", systemImage: "externaldrive")
                 }
                 Section {
                     Link(destination: URL(string: "https://github.com/magefree/mage/releases")!) {

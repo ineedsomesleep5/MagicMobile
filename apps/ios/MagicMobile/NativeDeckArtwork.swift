@@ -8,6 +8,7 @@ actor NativeDeckArtwork {
     static let maximumBytes = 2 * 1024 * 1024
     static let maximumPixels = 4_000_000
     enum Variant: String, Hashable {
+        case compact = "small"
         case board = "normal"
         case inspection = "large"
         var minimumShortEdge: Int { self == .inspection ? 672 : 1 }
@@ -32,9 +33,38 @@ actor NativeDeckArtwork {
         // Injected HTTP fixture sessions default to an isolated budget.
         self.requestBudget = requestBudget ?? (protocolClasses == nil ? .shared : DeckStudioScryfallBudget())
     }
-    func imageData(name: String, variant: Variant = .board, allowNetwork: Bool) async throws -> Data? {
+    func imageData(name: String, variant: Variant = .board, allowNetwork: Bool,
+                   tokenTypeLine: String? = nil, tokenOracleText: String? = nil,
+                   tokenPower: String? = nil, tokenToughness: String? = nil, tokenColors: [String]? = nil) async throws -> Data? {
         try Task.checkCancellation()
+        if let tokenTypeLine {
+            return await NativeAssetStore.shared.tokenImage(name: name, typeLine: tokenTypeLine, oracleText: tokenOracleText ?? "",
+                                                            power: tokenPower, toughness: tokenToughness, colors: tokenColors)
+        }
         let original = try Self.request(name: name, variant: variant)
+        // Explicit offline quality is the user's choice; inspection must not
+        // silently upgrade a compact download using cellular data.
+        if let data = await NativeAssetStore.shared.image(key: NativeAssetStore.cardKey(name)) { return data }
+        return try await imageData(request: original, variant: variant, allowNetwork: allowNetwork)
+    }
+    func downloadImage(name: String, quality: NativeArtworkQuality, imageURL: URL? = nil) async throws -> Data? {
+        let variant = Self.variant(for: quality)
+        let request = try imageURL.map { try Self.request(url: $0) } ?? Self.request(name: name, variant: variant)
+        return try await imageData(request: request, variant: variant, allowNetwork: true)
+    }
+    func imageData(id: UUID, allowNetwork: Bool, quality: NativeArtworkQuality = .high, imageURL: URL? = nil) async throws -> Data? {
+        if let data = await NativeAssetStore.shared.image(key: NativeAssetStore.tokenKey(id), quality: quality) { return data }
+        let url = imageURL ?? URL(string: "https://api.scryfall.com/cards/\(id.uuidString.lowercased())?format=image&version=\(quality.imageSizeString)")!
+        return try await imageData(request: Self.request(url: url), variant: Self.variant(for: quality), allowNetwork: allowNetwork)
+    }
+    private static func variant(for quality: NativeArtworkQuality) -> Variant {
+        switch quality {
+        case .compact: return .compact
+        case .standard: return .board
+        case .high: return .inspection
+        }
+    }
+    private func imageData(request original: URLRequest, variant: Variant, allowNetwork: Bool) async throws -> Data? {
         if let data = cachedData(for: original, variant: variant) { return data }
         guard allowNetwork else { return nil }
         while networkBusy { try await Task.sleep(for: .milliseconds(10)) }

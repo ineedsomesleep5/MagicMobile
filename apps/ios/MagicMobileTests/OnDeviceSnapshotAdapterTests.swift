@@ -3,6 +3,29 @@ import MagicMobileOnDevice
 @testable import MagicMobile
 
 final class OnDeviceSnapshotAdapterTests: XCTestCase {
+    func testTokenIdentityPreservesVisibleFalseTrueAndRedactsHidden() throws {
+        let original = try fixture("2p-priority")
+        for (flag, hidden, complete, faceDown) in [(true as Bool?, false, true, false), (false, false, true, false), (nil, false, true, false), (true, true, true, false), (true, false, false, false), (true, false, true, true)] {
+            var raw = try XCTUnwrap(original.raw.object)
+            var root = try XCTUnwrap(original.snapshot?.object)
+            var view = try XCTUnwrap(root["gameView"]?.object)
+            var hand = try XCTUnwrap(view["myHand"]?.object)
+            let id = try XCTUnwrap(hand.keys.sorted().first)
+            var card = try XCTUnwrap(hand[id]?.object)
+            card["isToken"] = flag.map { .bool($0) }
+            card["hideInfo"] = .bool(hidden)
+            card["faceDown"] = .bool(faceDown)
+            card["color"] = .object(complete
+                ? ["white": .bool(true), "blue": .bool(false), "black": .bool(false), "red": .bool(false), "green": .bool(false)]
+                : ["white": .bool(true)])
+            hand[id] = .object(card); view["myHand"] = .object(hand)
+            root["gameView"] = .object(view); raw["snapshot"] = .object(root)
+            let snapshot = try OnDeviceSnapshotAdapter.snapshot(MatchPoll(.object(raw)), expectedSeatID: original.seatID)
+            XCTAssertEqual(snapshot.human?.zones.hand.first { $0.id == id }?.card.isToken, hidden || faceDown ? nil : flag)
+            XCTAssertEqual(snapshot.human?.zones.hand.first { $0.id == id }?.card.tokenColors,
+                           !hidden && !faceDown && flag == true && complete ? ["W"] : nil)
+        }
+    }
     func testPrintedManaCostUsesNativeSymbolArraysAndNeverPaymentOrHiddenIdentity() throws {
         let original = try fixture("2p-priority")
         for (left, right, hidden, expected) in [

@@ -151,20 +151,35 @@ struct NativeCardArtworkView<Placeholder: View>: View {
     let name: String
     let variant: CardImageCacheVariant
     var contentMode: ContentMode = .fit
+    var tokenTypeLine: String? = nil
+    var tokenOracleText: String? = nil
+    var tokenPower: String? = nil
+    var tokenToughness: String? = nil
+    var tokenColors: [String]? = nil
     @ViewBuilder let placeholder: (_ loading: Bool, _ failed: Bool) -> Placeholder
     @AppStorage(NativeArtworkPreference.key) private var remoteArtwork = false
     @State private var artwork: UIImage?
     @State private var completedRequest: Request?
     @State private var failedRequest: Request?
+    @State private var downloadRevision = 0
 
     private struct Request: Hashable {
         let name: String
         let variant: NativeDeckArtwork.Variant
         let allowNetwork: Bool
+        let tokenTypeLine: String?
+        let tokenOracleText: String?
+        let tokenPower: String?
+        let tokenToughness: String?
+        let tokenColors: [String]?
+        let downloadRevision: Int
     }
 
     var body: some View {
-        let request = Request(name: name, variant: variant == .inspection ? .inspection : .board, allowNetwork: remoteArtwork)
+        let request = Request(name: name, variant: variant == .inspection ? .inspection : .board,
+                              allowNetwork: remoteArtwork, tokenTypeLine: tokenTypeLine, tokenOracleText: tokenOracleText,
+                              tokenPower: tokenPower, tokenToughness: tokenToughness, tokenColors: tokenColors,
+                              downloadRevision: downloadRevision)
         let permitted = NativeCardArtworkPolicy.permitsLookup(name: name)
         Group {
             if permitted, completedRequest == request, let artwork {
@@ -174,18 +189,19 @@ struct NativeCardArtworkView<Placeholder: View>: View {
                             permitted && failedRequest == request)
             }
         }
+            .onReceive(NotificationCenter.default.publisher(for: NativeAssetDownloads.didFinish)) { _ in downloadRevision += 1 }
             .task(id: request) {
                 guard permitted else { artwork = nil; completedRequest = nil; failedRequest = nil; return }
                 artwork = nil; completedRequest = nil; failedRequest = nil
                 // CardImageURL only supplies a generated cache path here; never fetch its remote fallback.
-                if let url = CardImageURL.image(name, variant: variant), url.isFileURL,
+                if tokenTypeLine == nil, let url = CardImageURL.image(name, variant: variant), url.isFileURL,
                    let data = NativeDeckArtwork.localImageData(at: url),
                    let image = NativeDeckArtwork.decodedImage(data, variant: request.variant) {
                     guard !Task.isCancelled else { return }
                     artwork = UIImage(cgImage: image); completedRequest = request
                     if NativeDeckArtwork.isSufficient(data, for: request.variant) { return }
                     // Keep a safe low-resolution image visible offline or if upgrade fails.
-                } else if request.variant == .inspection,
+                } else if tokenTypeLine == nil, request.variant == .inspection,
                           let url = CardImageURL.image(name, variant: .board), url.isFileURL,
                           let data = NativeDeckArtwork.localImageData(at: url),
                           let image = NativeDeckArtwork.decodedImage(data, variant: .inspection) {
@@ -194,13 +210,17 @@ struct NativeCardArtworkView<Placeholder: View>: View {
                 }
                 do {
                     if artwork == nil, request.variant == .inspection,
-                       let cached = try await NativeDeckArtwork.shared.imageData(name: name, variant: .board, allowNetwork: false),
+                       let cached = try await NativeDeckArtwork.shared.imageData(name: name, variant: .board, allowNetwork: false,
+                                                                                tokenTypeLine: tokenTypeLine, tokenOracleText: tokenOracleText,
+                                                                                tokenPower: tokenPower, tokenToughness: tokenToughness, tokenColors: tokenColors),
                        let image = NativeDeckArtwork.decodedImage(cached, variant: .inspection) {
                         try Task.checkCancellation()
                         artwork = UIImage(cgImage: image); completedRequest = request
                     }
                     guard !Task.isCancelled, request.allowNetwork == remoteArtwork else { return }
-                    let data = try await NativeDeckArtwork.shared.imageData(name: name, variant: request.variant, allowNetwork: request.allowNetwork)
+                    let data = try await NativeDeckArtwork.shared.imageData(name: name, variant: request.variant, allowNetwork: request.allowNetwork,
+                                                                           tokenTypeLine: tokenTypeLine, tokenOracleText: tokenOracleText,
+                                                                           tokenPower: tokenPower, tokenToughness: tokenToughness, tokenColors: tokenColors)
                     try Task.checkCancellation()
                     guard request.allowNetwork == remoteArtwork else { return }
                     if let data, let image = NativeDeckArtwork.decodedImage(data, variant: request.variant) {

@@ -52,6 +52,9 @@ struct DeckStudioWorkspaceScreen: View {
         NavigationStack {
             GeometryReader { geometry in
             let split = geometry.size.width >= 700 && !dynamicType.isAccessibilitySize && !model.readOnly
+            if verticalSizeClass != .compact && !split && tab == "Cards" {
+                portraitCardsWorkspace
+            } else {
             VStack(spacing: 0) {
                 if !compactLandscape && geometry.size.height > 500 { header.padding(.horizontal, 20).padding(.vertical, 12) }
                 else if !compactLandscape {
@@ -87,6 +90,7 @@ struct DeckStudioWorkspaceScreen: View {
                         }.padding(20)
                     }
                 }
+            }
             }
             }
             .background(DeckStudioPalette.background.ignoresSafeArea())
@@ -222,7 +226,57 @@ struct DeckStudioWorkspaceScreen: View {
     }
     private func cardsTab(showAddButton: Bool) -> some View {
         VStack(spacing: 0) {
-            VStack(spacing: 10) {
+            cardFilters
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 8, pinnedViews: compactLandscape ? [] : [.sectionHeaders]) {
+                    cardSections
+                }.padding(.horizontal, 20).padding(.bottom, 16)
+            }.scrollDismissesKeyboard(.interactively).accessibilityIdentifier("deckStudio.cards.list")
+            if !model.readOnly && showAddButton { addCardsButton }
+        }
+    }
+
+    /// The collection owns a single vertical scroll in portrait. Only its workspace
+    /// selector pins; card groups and editing tools naturally leave the viewport.
+    private var portraitCardsWorkspace: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                header.padding(.horizontal, 20).padding(.vertical, 12)
+                    .accessibilityIdentifier("deckStudio.deckHeader")
+                if let error = model.error {
+                    DeckStudioNotice(title: "Check this draft", message: error, icon: "exclamationmark.triangle")
+                        .padding(.horizontal, 20).padding(.bottom, 10)
+                }
+                Section {
+                    cardFilters
+                    // This inner lazy stack does not pin its group headers over the tabs.
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        cardSections
+                    }.padding(.horizontal, 20).padding(.bottom, 16)
+                } header: {
+                    workspaceTabs.padding(.horizontal, 20).padding(.vertical, 8)
+                        .background(DeckStudioPalette.background)
+                        .accessibilityIdentifier("deckStudio.workspace.pinned")
+                }
+            }
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .accessibilityIdentifier("deckStudio.cards.list")
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if !model.readOnly {
+                addCardsButton.padding(.top, 8).background(DeckStudioPalette.background)
+            }
+        }
+    }
+
+    private var addCardsButton: some View {
+        Button { showSearch = true } label: { Label("Add cards", systemImage: "plus").frame(maxWidth: .infinity) }
+            .buttonStyle(DeckStudioButtonStyle()).padding(.horizontal, 20).padding(.bottom, 12)
+            .accessibilityIdentifier("deckStudio.addCards")
+    }
+
+    private var cardFilters: some View {
+        VStack(spacing: 10) {
                 HStack {
                     Image(systemName: "magnifyingglass")
                     TextField("Search this deck", text: $query).autocorrectionDisabled().accessibilityIdentifier("deckStudio.cards.search")
@@ -255,9 +309,10 @@ struct DeckStudioWorkspaceScreen: View {
                         }.font(.caption)
                     }
                 }
-            }.padding(.horizontal, 20)
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 8, pinnedViews: compactLandscape ? [] : [.sectionHeaders]) {
+        }.padding(.horizontal, 20)
+    }
+
+    @ViewBuilder private var cardSections: some View {
                     if model.draft.rows.isEmpty { ContentUnavailableView("A deck of possibilities", systemImage: "plus.rectangle.on.rectangle", description: Text("Add your commander and cards. Incomplete drafts are welcome.")) }
                     else if filteredRows.isEmpty {
                         ContentUnavailableView("No matching cards", systemImage: "line.3.horizontal.decrease", description: Text("Clear the search or filters to see the full draft."))
@@ -270,12 +325,6 @@ struct DeckStudioWorkspaceScreen: View {
                                 .padding(.vertical, compactLandscape ? 4 : 10).background(DeckStudioPalette.background)
                         }
                     }
-                }.padding(.horizontal, 20).padding(.bottom, 16)
-            }.scrollDismissesKeyboard(.interactively).accessibilityIdentifier("deckStudio.cards.list")
-            if !model.readOnly && showAddButton {
-                Button { showSearch = true } label: { Label("Add cards", systemImage: "plus").frame(maxWidth: .infinity) }.buttonStyle(DeckStudioButtonStyle()).padding(.horizontal, 20).padding(.bottom, 12).accessibilityIdentifier("deckStudio.addCards")
-            }
-        }
     }
     @ViewBuilder private var deckFilterOptions: some View {
         Picker("Section", selection: $sectionFilter) { Text("All sections").tag(""); ForEach(Set(model.draft.rows.map(DeckStudioDraftPresentation.section)).sorted(), id: \.self) { Text($0.capitalized).tag($0) } }

@@ -227,7 +227,7 @@ struct BoardCardChoiceView: View {
         return cardArtwork(card, width: width)
             .contentShape(Rectangle())
             .onTapGesture { toggleSelection(card.id) }
-            .onLongPressGesture(minimumDuration: 0.35) { inspected = card }
+            .onCardHold(inspect: { inspected = card }, release: { if inspected?.id == card.id { inspected = nil } })
             .accessibilityLabel(Text(verbatim: label))
             .accessibilityValue(Text(verbatim: selectionState(card.id)))
             .accessibilityAddTraits(traits)
@@ -288,5 +288,6 @@ struct BoardCardChoiceView: View {
                     .padding(12).frame(minHeight: 44)
                     .accessibilityIdentifier("board.choice.inspection.close")
             }
+            .inspectionTouchPassthrough()
     }
 }

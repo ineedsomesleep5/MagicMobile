@@ -141,15 +141,8 @@ final class BoardPolishUITests: XCTestCase {
             // Leave margin for simulator scroll-view touch-delivery delay.
             // The app's recognition threshold remains 0.35 seconds.
             cards.firstMatch.press(forDuration: 1)
-            let inspected = app.buttons["Close card"].waitForExistence(timeout: 5)
+            XCTAssertTrue(app.buttons["Close card"].waitForNonExistence(timeout: 2), "Releasing a held ability source must close inspection")
             capture(app, name: currentCapture + "-after-hold")
-            if !inspected {
-                app.buttons["Cancel prompt details"].tap()
-                let captured = app.staticTexts["preview.captured-command"]
-                XCTFail("Hold must inspect without submitting. Captured command: \(captured.exists ? captured.label : "none")")
-                return
-            }
-            app.buttons["Close card"].tap()
             app.buttons["Cancel prompt details"].tap()
             XCTAssertFalse(app.staticTexts["preview.captured-command"].exists, "Inspection must not submit an ability")
             app.buttons["board.action.primary"].tap()
@@ -205,7 +198,7 @@ final class BoardPolishUITests: XCTestCase {
             XCTAssertFalse(app.staticTexts["preview.captured-command"].exists, "Scrubbing must not cast a card")
             scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5)).tap()
             first.press(forDuration: 0.6)
-            visible(card(in: app, identifierPrefix: "card-inspector-sol-ring"), in: app)
+            XCTAssertTrue(card(in: app, identifierPrefix: "card-inspector-sol-ring").waitForNonExistence(timeout: 2), "Hand inspection ends on release")
         case "hand-drag":
             app.buttons["board.hand.expand"].tap()
             let source = card(in: app, identifierPrefix: "card-hand-sol-ring")
@@ -236,6 +229,9 @@ final class BoardPolishUITests: XCTestCase {
                 XCTAssertTrue(confirm.isEnabled)
                 choice.tap()
                 XCTAssertFalse(confirm.isEnabled, "A tentative choice can be cleared")
+                choice.press(forDuration: 0.6)
+                XCTAssertTrue(app.buttons["board.choice.inspection.close"].waitForNonExistence(timeout: 2), "Card-choice inspection ends on release")
+                XCTAssertFalse(confirm.isEnabled, "Holding a card must not select it")
             }
             if fixture != "scry-choice" {
                 let invalid = app.descendants(matching: .any)["board.choice.card.choice-1"].firstMatch
@@ -296,7 +292,7 @@ final class BoardPolishUITests: XCTestCase {
             // Accessibility rounds subpixel card/viewport edges independently.
             XCTAssertTrue(hand.frame.insetBy(dx: -1, dy: -1).contains(last.frame), "Last hand card must scroll fully into hand viewport: hand=\(hand.frame), last=\(last.frame)")
             last.press(forDuration: 0.6)
-            visible(card(in: app, identifierPrefix: "card-inspector-spirited-companion"), in: app)
+            XCTAssertTrue(card(in: app, identifierPrefix: "card-inspector-spirited-companion").waitForNonExistence(timeout: 2), "Hand inspection ends on release")
         case "crowded-battlefield":
             XCTAssertFalse(app.staticTexts["YOUR DECISION"].exists, "Routine priority must not cover the battlefield with a redundant banner")
             let firstRow = card(in: app, identifierPrefix: "card-your-board-isamaru")
@@ -319,9 +315,15 @@ final class BoardPolishUITests: XCTestCase {
             XCTAssertTrue(commander.label.hasSuffix(", selected"), "An ordinary tap must still select")
             capture(app, name: currentCapture + "-board")
             // Inspect rather than activate: no synthetic legal action is sent to a server.
-            commander.press(forDuration: 0.6)
-            visible(card(in: app, identifierPrefix: "card-inspector-isamaru"), in: app)
-            capture(app, name: currentCapture + "-crowded-inspector")
+            commander.press(forDuration: 5)
+            XCTAssertTrue(card(in: app, identifierPrefix: "card-inspector-isamaru").waitForNonExistence(timeout: 2), "Battlefield inspection ends on release")
+            XCTAssertFalse(app.staticTexts["preview.captured-command"].exists, "Holding must not activate the card")
+            XCTAssertTrue(commander.label.hasSuffix(", selected"), "Inspection preserves the existing selection")
+            commander.tap()
+            XCTAssertFalse(commander.label.hasSuffix(", selected"), "A tap still clears selection after inspection")
+            commander.tap()
+            XCTAssertTrue(commander.label.hasSuffix(", selected"), "Selection remains available after inspection")
+            capture(app, name: currentCapture + "-after-inspection-release")
         case "mana-payment-prompt":
             visible(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "Pay")).firstMatch, in: app)
             visible(card(in: app, identifierPrefix: "card-your-board-sol-ring"), in: app)

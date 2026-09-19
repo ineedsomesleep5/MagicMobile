@@ -861,6 +861,10 @@ struct CardIdentity: Decodable, Hashable {
     let oracleText: String?
     /// CardView's visible face cost, not the cost to pay after modifiers or taxes.
     var manaCost: String? = nil
+    /// Visible engine token flag; nil for older or redacted identities.
+    var isToken: Bool? = nil
+    /// Complete visible color set for token-art matching; nil when unavailable or hidden.
+    var tokenColors: [String]? = nil
 }
 
 struct FlexibleInt: Decodable, Equatable {

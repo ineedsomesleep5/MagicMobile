@@ -202,6 +202,7 @@ struct ContentView: View {
             }
             #endif
         }
+        .holdInspectionScope()
         .alert("MagicMobile", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) { errorMessage = nil }
         } message: {
@@ -1259,6 +1260,7 @@ struct TavernMainMenu: View {
     var news: (() -> Void)? = nil
     var commanderName: String? = nil
     var commanderNamespace: Namespace.ID? = nil
+    var downloads: (() -> Void)? = nil
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
@@ -1307,7 +1309,7 @@ struct TavernMainMenu: View {
                         .buttonStyle(CommanderActionStyle(primary: false))
                         .accessibilityIdentifier("menu.decks")
                         ViewThatFits(in: .horizontal) {
-                            HStack(spacing: 24) { utilityActions }
+                            HStack(spacing: 16) { utilityActions }
                             VStack(alignment: .leading, spacing: 0) { utilityActions }
                         }
                         .frame(maxWidth: .infinity)
@@ -1371,7 +1373,7 @@ struct TavernMainMenu: View {
     @ViewBuilder private var utilityActions: some View {
         Button(action: settings) {
             Label("Settings", systemImage: "gearshape")
-                .font(.subheadline).frame(minHeight: 44)
+                .font(.footnote).frame(minHeight: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1380,12 +1382,22 @@ struct TavernMainMenu: View {
         if let news {
             Button(action: news) {
                 Label("Updates", systemImage: "arrow.down.circle")
-                    .font(.subheadline).frame(minHeight: 44)
+                    .font(.footnote).frame(minHeight: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(CommanderPresentation.secondary)
             .accessibilityIdentifier("menu.updates")
+        }
+        if let downloads {
+            Button(action: downloads) {
+                Label("Downloads", systemImage: "externaldrive")
+                    .font(.footnote).frame(minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(CommanderPresentation.secondary)
+            .accessibilityIdentifier("menu.downloads")
         }
     }
 }
@@ -2993,9 +3005,11 @@ struct NativeGameView: View {
                                 Color.black.opacity(0.01)
                                     .ignoresSafeArea()
                                     .onTapGesture { self.inspectedCard = nil }
+                                    .inspectionTouchPassthrough()
                                     .zIndex(99)
                                 
                                 CardInspector(card: inspectedCard)
+                                    .inspectionTouchPassthrough()
                                     .frame(width: metrics.detailSheetRect.width, height: metrics.detailSheetRect.height)
                                     .position(x: metrics.detailSheetRect.midX, y: metrics.detailSheetRect.midY)
                                     .zIndex(100)
@@ -3647,9 +3661,11 @@ struct NativeGameView: View {
                     Color.black.opacity(0.01)
                         .ignoresSafeArea()
                         .onTapGesture { self.inspectedCard = nil }
+                        .inspectionTouchPassthrough()
                         .zIndex(99)
 
                     CardInspector(card: inspectedCard)
+                        .inspectionTouchPassthrough()
                         .frame(width: metrics.detailSheetRect.width, height: metrics.detailSheetRect.height)
                         .position(x: metrics.detailSheetRect.midX, y: metrics.detailSheetRect.midY)
                         .zIndex(100)
@@ -5577,9 +5593,9 @@ struct StackPeek: View {
                                 selectedCard = card
                                 inspectedCard = nil
                             }
-                            .onLongPressGesture(minimumDuration: 0.35) {
+                            .onCardHold(inspect: {
                                 inspectedCard = card
-                            }
+                            }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                     }
                 }
 
@@ -5638,9 +5654,9 @@ struct XmageStackPeek: View {
                             selectedCard = nil
                             inspectedCard = card
                         }
-                        .onLongPressGesture(minimumDuration: 0.35) {
+                        .onCardHold(inspect: {
                             inspectedCard = card
-                        }
+                        }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                 } else {
                     SyntheticStackObjectTile(object: topObject, width: 128, height: 179)
                 }
@@ -6024,17 +6040,24 @@ private struct AbilityChoiceTouchSurface: UIViewRepresentable {
     let enabled: Bool
     let choose: () -> Void
     let inspect: () -> Void
+    let releaseInspection: () -> Void
+    @Environment(\.holdCardInspection) private var inspection
 
     func makeUIView(context: Context) -> TouchView { TouchView() }
     func updateUIView(_ view: TouchView, context: Context) {
         view.isUserInteractionEnabled = enabled
         view.choose = choose
-        view.inspect = inspect
+        view.inspect = { inspection?.begin(dismiss: releaseInspection); inspect() }
+        view.releaseInspection = { if let inspection { inspection.end() } else { releaseInspection() } }
     }
+
+    static func dismantleUIView(_ view: TouchView, coordinator: ()) { view.finishInspection() }
 
     final class TouchView: UIView {
         var choose: (() -> Void)?
         var inspect: (() -> Void)?
+        var releaseInspection: (() -> Void)?
+        private var inspecting = false
 
         override init(frame: CGRect) {
             super.init(frame: frame)
@@ -6051,7 +6074,20 @@ private struct AbilityChoiceTouchSurface: UIViewRepresentable {
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
         @objc private func tapped() { choose?() }
         @objc private func held(_ gesture: UILongPressGestureRecognizer) {
-            if gesture.state == .began { inspect?() }
+            switch gesture.state {
+            case .began: inspecting = true; inspect?()
+            case .ended, .cancelled, .failed: finishInspection()
+            default: break
+            }
+        }
+        func finishInspection() {
+            guard inspecting else { return }
+            inspecting = false
+            releaseInspection?()
+        }
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window == nil { finishInspection() }
         }
     }
 }
@@ -6217,6 +6253,7 @@ struct UniversalPromptActionPanel: View {
                         Button("Close card") { self.inspectedCard = nil }
                             .frame(minHeight: 44).padding(8)
                     }
+                    .inspectionTouchPassthrough()
             }
         }
     }
@@ -6539,10 +6576,10 @@ struct UniversalPromptActionPanel: View {
                                     inspectedCard = nil
                                     GameHaptics.selection()
                                 }
-                                .onLongPressGesture(minimumDuration: 0.35) {
+                                .onCardHold(inspect: {
                                     inspectedCard = card
                                     GameHaptics.impact()
-                                }
+                                }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                             Text(card.card.name)
                                 .font(.system(size: 8, weight: .black))
                                 .foregroundStyle(.white.opacity(0.74))
@@ -6688,7 +6725,8 @@ struct UniversalPromptActionPanel: View {
                             AbilityChoiceTouchSurface(
                                 enabled: pendingActionId == nil && choiceCommand != nil,
                                 choose: selectAbility,
-                                inspect: { inspectedCard = source }
+                                inspect: { inspectedCard = source },
+                                releaseInspection: { if inspectedCard?.id == source.id { inspectedCard = nil } }
                             ).accessibilityHidden(true)
                         }
                         .accessibilityElement(children: .ignore)
@@ -7833,9 +7871,9 @@ struct MiniZoneRow: View {
                                 selectedCard = card
                                 inspectedCard = nil
                             }
-                            .onLongPressGesture(minimumDuration: 0.35) {
+                            .onCardHold(inspect: {
                                 inspectedCard = card
-                            }
+                            }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                     }
                 }
                 .padding(.vertical, 2)
@@ -9689,14 +9727,11 @@ struct PortraitOverlappingBattlefieldRow: View {
                             .background { GeometryReader { geometry in Color.clear.preference(key: PortraitCardBoundsKey.self, value: [card.instanceId: geometry.frame(in: .named("portrait-board"))]) } }
                             .offset(x: plan.xOffset(for: index) + (cardHeight - cardWidth) / 2, y: 4)
                             .zIndex(zIndex(for: index, card: card))
-                            .gesture(LongPressGesture(minimumDuration: 0.35)
-                                .exclusively(before: TapGesture())
-                                .onEnded { gesture in
-                                    switch gesture {
-                                    case .first:
-                                        selectedCard = nil
-                                        inspectedCard = card
-                                    case .second:
+                            .onCardHold(inspect: {
+                                selectedCard = nil
+                                inspectedCard = card
+                            }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
+                            .onTapGesture {
                                         if targetable {
                                             runTargetAction(card)
                                         } else if !targetableIds.isEmpty {
@@ -9709,8 +9744,7 @@ struct PortraitOverlappingBattlefieldRow: View {
                                             selectedCard = card
                                             inspectedCard = nil
                                         }
-                                    }
-                                })
+                            }
                     }
                 }
                 .frame(width: max(plan.contentWidth, rowWidth), height: max(cardHeight + 8, 44), alignment: .topLeading)
@@ -9928,7 +9962,7 @@ struct PortraitHandRow: View {
                                     }, inspect: { selectedCard = nil; inspectedCard = card }, tap: {
                                         if handExpanded { selectedCard = nil; inspectedCard = card }
                                         else { withAnimation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.2)) { handExpanded = true } }
-                                    })
+                                    }, releaseInspection: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                             }
                         }
                     }
@@ -10400,6 +10434,7 @@ private struct BoardStackInspector: View {
                                 Button("Close card") { self.inspectedCard = nil }
                                     .frame(minHeight: 44).padding(8)
                             }
+                            .inspectionTouchPassthrough()
                     }
                 }
         }
@@ -10742,10 +10777,10 @@ struct BattlefieldRow: View {
             inspectedCard = nil
             GameHaptics.selection()
         }
-        .highPriorityGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in
+        .onCardHold(inspect: {
             inspectedCard = card
             GameHaptics.impact()
-        })
+        }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
         .accessibilityLabel("\(group.count) grouped \(card.card.name) cards in \(title)")
         .accessibilityHint("Tap to expand the group. Long press to inspect a card.")
         .accessibilityAction(named: Text("Expand group")) {
@@ -10780,10 +10815,10 @@ struct BattlefieldRow: View {
         .onTapGesture {
             handleCardTap(card, action: action, targetable: targetable, combatHighlighted: combatHighlighted)
         }
-        .highPriorityGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in
+        .onCardHold(inspect: {
             inspectedCard = card
             GameHaptics.impact()
-        })
+        }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
         .accessibilityAction(named: Text(targetable ? "Choose target" : "Select")) {
             handleCardTap(card, action: action, targetable: targetable, combatHighlighted: combatHighlighted)
         }
@@ -10882,7 +10917,7 @@ struct HandFan: View {
                         selectedCard = card
                         inspectedCard = nil
                     }
-                    .onLongPressGesture(minimumDuration: 0.35) { inspectedCard = card }
+                    .onCardHold(inspect: { inspectedCard = card }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
             }
         }
         .frame(width: metrics.playWidth, height: metrics.handFrameHeight)
@@ -11034,7 +11069,12 @@ struct CardTile: View {
                 if !NativeCardArtworkPolicy.permitsLookup(card: card) {
                     CardArtPlaceholder(card: card, width: width, height: height)
                 } else if nativeTurnControl != nil {
-                    NativeCardArtworkView(name: card.card.name, variant: imageVariant) { loading, _ in
+                    NativeCardArtworkView(name: card.card.name, variant: imageVariant,
+                                          tokenTypeLine: card.card.isToken == true ? card.card.typeLine : nil,
+                                          tokenOracleText: card.card.isToken == true ? card.card.oracleText : nil,
+                                          tokenPower: card.card.isToken == true ? card.displayPower : nil,
+                                          tokenToughness: card.card.isToken == true ? card.displayToughness : nil,
+                                          tokenColors: card.card.isToken == true ? card.card.tokenColors : nil) { loading, _ in
                         CardArtPlaceholder(card: card, width: width, height: height, loading: loading)
                     }
                 } else {
@@ -12690,9 +12730,9 @@ struct ZoneInspectorSheet: View {
                                     selectedCard = card
                                     inspectedCard = nil
                                 }
-                                .onLongPressGesture(minimumDuration: 0.35) {
+                                .onCardHold(inspect: {
                                     inspectedCard = card
-                                }
+                                }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                             if let action = playActions.first, playActions.count == 1 {
                                 Button {
                                     runAction?(action)
@@ -12787,9 +12827,9 @@ struct CompactZoneInspectorOverlay: View {
                                         selectedCard = card
                                         inspectedCard = nil
                                     }
-                                    .onLongPressGesture(minimumDuration: 0.35) {
+                                    .onCardHold(inspect: {
                                         inspectedCard = card
-                                    }
+                                    }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                                 if targetable {
                                     Button {
                                         guard pendingActionId == nil,

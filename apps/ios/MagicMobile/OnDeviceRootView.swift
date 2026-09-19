@@ -29,6 +29,7 @@ struct OnDeviceRootView: View {
     @State private var showSetup = false
     @State private var showAppearance = false
     @State private var showUpdates = false
+    @State private var showDownloads = false
     @State private var showImport = false
     @State private var confirmLeave = false
     @State private var showDiagnostics = false
@@ -76,7 +77,8 @@ struct OnDeviceRootView: View {
                                    play: { showSetup = true }, decks: { showImport = true },
                                    settings: { showAppearance = true }, news: { showUpdates = true },
                                    commanderName: selectedDeck?.commander?.cardName,
-                                   commanderNamespace: reduceMotion ? nil : commanderTransition)
+                                   commanderNamespace: reduceMotion ? nil : commanderTransition,
+                                   downloads: { showDownloads = true })
                 }
             }
         }
@@ -85,6 +87,10 @@ struct OnDeviceRootView: View {
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: activeGame)
         .sheet(isPresented: $showAppearance) { AppearanceSettingsView(portraitModeEnabled: $portraitModeEnabled) }
         .sheet(isPresented: $showUpdates) { NativeUpdateNewsView(upstreamCommit: setup.identity?.upstreamCommit) }
+        .sheet(isPresented: $showDownloads) {
+            NativeDownloadsView(decks: downloadDecks, selectedDeckID: selectedDeckID,
+                                engineReady: setup.identity != nil)
+        }
         .overlay(alignment: .top) { recoveryBanner }
         .environment(\.nativeTurnControl, turnControl)
         .fullScreenCover(isPresented: $showImport) {
@@ -115,7 +121,7 @@ struct OnDeviceRootView: View {
     }
 
     private var lifecycleContent: some View {
-        presentedContent.task { await preparePresentation() }
+        presentedContent.holdInspectionScope().task { await preparePresentation() }
         .onChange(of: library.decks.map(\.id)) { _, _ in
             if !activeGame { restoreSetupPreferences() }
         }
@@ -194,12 +200,19 @@ struct OnDeviceRootView: View {
                 .position(x: rect.midX, y: rect.midY)
                 if let inspectedCard {
                     Color.black.opacity(0.01).ignoresSafeArea().onTapGesture { self.inspectedCard = nil }
+                        .inspectionTouchPassthrough()
                     CardInspector(card: inspectedCard)
+                        .inspectionTouchPassthrough()
                         .frame(width: rect.width, height: rect.height)
                         .position(x: rect.midX, y: rect.midY)
                 }
             }
         }
+    }
+
+    private var downloadDecks: [NativeDownloadDeck] {
+        PreconCatalog.all.map { NativeDownloadDeck(id: "precon:\($0.id)", deck: $0.deckList) }
+        + library.decks.map { NativeDownloadDeck(id: "local:\($0.id)", deck: $0.deckList) }
     }
 
     private var setupContent: some View {
