@@ -109,7 +109,7 @@ struct NativeArtworkPreferenceView: View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle("Download card artwork", isOn: $remoteArtwork)
                 .accessibilityIdentifier("nativeArtwork.downloads")
-            Text("Optional: Scryfall receives displayed card names, including your hand, and your IP address. Applies to decks and gameplay. Cached artwork works offline; rules stay on this device.")
+            Text("Scryfall receives card names—including your hand—and your IP address.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }

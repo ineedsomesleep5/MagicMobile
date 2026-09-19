@@ -68,14 +68,6 @@ struct NativeDownloadsView: View {
         NavigationStack {
             Form {
                 Section {
-                    Label(engineReady ? "Local engine ready" : "Local engine not ready", systemImage: engineReady ? "checkmark.circle" : "exclamationmark.circle")
-                    Label(catalogueIncluded ? "Card catalogue included" : "Card catalogue unavailable", systemImage: catalogueIncluded ? "checkmark.circle" : "exclamationmark.circle")
-                    Label("Mana symbols included", systemImage: "checkmark.circle")
-                } header: { Text("Included with the app") } footer: {
-                    Text("Rules and the card catalogue ship with this build. Artwork is optional and does not change gameplay rules.")
-                }
-
-                Section {
                     Picker("Download", selection: $scope) {
                         Text("Full catalogue · recommended").tag("catalogue")
                         Text("All saved & included decks").tag("decks")
@@ -95,41 +87,33 @@ struct NativeDownloadsView: View {
                     }
                     .disabled(downloads.isRunning)
                     .accessibilityIdentifier("downloads.quality")
-                    Text(quality == .compact ? "Small files; text may look soft when inspecting a card." :
-                         quality == .high ? "Sharpest inspection artwork; largest download." : "Balanced clarity and storage for everyday play.")
-                        .font(.caption).foregroundStyle(.secondary)
+                    Toggle("Include tokens", isOn: $includeTokens)
+                        .disabled(downloads.isRunning)
+                } header: { Text("Artwork") } footer: {
+                    Text("Full catalogue includes opponents’ cards too.")
+                }
+
+                Section("On this device") {
                     if loadingCatalogue && scope == "catalogue" { ProgressView("Reading the installed catalogue…") }
                     if let catalogueError, scope == "catalogue" { Text(catalogueError).foregroundStyle(.red) }
-                    LabeledContent("Cards stored", value: "\(downloads.cardStored) / \(downloads.cardTotal)")
+                    LabeledContent("Cards", value: "\(downloads.cardStored.formatted()) / \(downloads.cardTotal.formatted())")
                         .accessibilityIdentifier("downloads.cards")
-                    LabeledContent("Related tokens stored", value: "\(downloads.tokenStored) / \(downloads.tokenTotal)")
-                    if downloads.tokenDiscoveryRemaining > 0 {
-                        Text(scope == "catalogue" ? "The full token index still needs downloading. Keep Include related tokens enabled to include it." : "Related tokens still need checking for \(downloads.tokenDiscoveryRemaining) cards. Enable related tokens when downloading to check them.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    if scope == "catalogue" && downloads.faceDiscoveryPending {
-                        Text("Alternate faces will be checked and added when the full image index downloads.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
+                    LabeledContent("Tokens", value: downloads.tokenDiscoveryRemaining > 0 ? "Not checked" : "\(downloads.tokenStored.formatted()) / \(downloads.tokenTotal.formatted())")
                     if downloads.isScanning { ProgressView("Checking local files…") }
-                    LabeledContent("Offline artwork storage", value: ByteCountFormatter.string(fromByteCount: Int64(downloads.storedBytes), countStyle: .file))
-                    LabeledContent("Estimated complete download", value: "≈ \(estimatedSize)")
-                    Button("Check downloaded assets") {
+                    LabeledContent("Stored", value: ByteCountFormatter.string(fromByteCount: Int64(downloads.storedBytes), countStyle: .file))
+                    LabeledContent("Full download estimate", value: "≈ \(estimatedSize)")
+                    Button("Check for missing artwork") {
                         Task { await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue") }
                     }
                     .disabled(downloads.isRunning || downloads.isScanning)
                     .accessibilityIdentifier("downloads.check")
-                } header: { Text("Offline artwork") } footer: {
-                    Text("Full catalogue is recommended so opponents’ cards can also appear offline. It covers this build’s supported cards, not every printing. Estimates exclude alternate faces, tokens and metadata and vary by image. Higher-quality images already stored count toward lower-quality coverage. New app builds may add cards; check again after updating.")
                 }
 
                 Section {
                     Toggle("Download card artwork", isOn: $remoteArtwork)
                         .accessibilityIdentifier("nativeArtwork.downloads")
-                    Text("Optional: Scryfall receives displayed card names, including your hand, and your IP address. Applies to decks and gameplay. Cached artwork works offline; rules stay on this device.")
+                    Text("Uses Scryfall. Online requests share your IP and card names, including your hand.")
                         .font(.caption).foregroundStyle(.secondary)
-                    Toggle("Include related tokens", isOn: $includeTokens)
-                        .disabled(downloads.isRunning)
                     if downloads.isRunning {
                         ProgressView(value: Double(downloads.completed), total: Double(max(1, downloads.total)))
                         Text(downloads.status).font(.callout)
@@ -137,7 +121,7 @@ struct NativeDownloadsView: View {
                         Button("Cancel download", role: .cancel) { downloads.cancel() }
                             .accessibilityIdentifier("downloads.cancel")
                     } else {
-                        if !downloads.status.isEmpty {
+                        if downloads.total > 0 && !downloads.status.isEmpty {
                             Text(downloads.status).font(.callout)
                                 .accessibilityIdentifier("downloads.status")
                         }
@@ -148,8 +132,23 @@ struct NativeDownloadsView: View {
                         .disabled(!remoteArtwork || names.isEmpty || downloads.isScanning || (scope == "catalogue" && loadingCatalogue))
                         .accessibilityIdentifier("downloads.start")
                     }
-                } header: { Text("Download options") } footer: {
-                    Text("Artwork comes from Scryfall and is the same artwork used in games. Deck downloads share requested card names and your IP address; full-catalogue downloads use Scryfall’s bulk image index. Use Wi-Fi and keep this screen open. The screen stays awake during downloads. Large downloads can take hours; cancel or close the app and resume missing items later. A 20 GB artwork limit and 1 GB free-space reserve protect storage. Some unavailable or ambiguous token variants remain labeled placeholders.")
+                } header: { Text("Download") } footer: {
+                    Text("Use Wi-Fi. Keep this screen open while downloading.")
+                }
+
+                Section {
+                    DisclosureGroup("More info") {
+                        Label(engineReady ? "Local engine ready" : "Local engine not ready", systemImage: engineReady ? "checkmark.circle" : "exclamationmark.circle")
+                        Label(catalogueIncluded ? "Card catalogue included" : "Card catalogue unavailable", systemImage: catalogueIncluded ? "checkmark.circle" : "exclamationmark.circle")
+                        Label("Mana symbols included", systemImage: "checkmark.circle")
+                        Text("These downloads supply artwork for decks and games. Rules and the supported card catalogue are already included; artwork is optional.")
+                        Text("Compact saves space. Standard balances clarity and size. High gives the sharpest inspection images. Higher-quality files already stored count toward lower-quality coverage.")
+                        Text("Full catalogue covers this build’s supported cards, not every printing. Alternate faces are checked during download. Estimates exclude faces, tokens and metadata; actual size varies. Check for missing artwork after app updates.")
+                        Text("Full downloads use Scryfall’s bulk image index. Deck and on-demand requests share card names and your IP address. Stored artwork works offline.")
+                        Text("Completed files stay on your device. Reopen this screen and download missing artwork to resume. Storage is capped at 20 GB, with 1 GB of free space reserved. Unavailable or ambiguous token art remains a labeled placeholder.")
+                    }
+                    .font(.callout)
+                    .accessibilityIdentifier("downloads.info")
                 }
 
                 if !downloads.failures.isEmpty {
@@ -166,16 +165,20 @@ struct NativeDownloadsView: View {
                     }
                 }
                 if !downloads.missingTokenNames.isEmpty {
-                    Section("Missing token artwork · \(downloads.missingTokenNames.count)") {
-                        ForEach(Array(downloads.missingTokenNames.prefix(20).enumerated()), id: \.offset) { _, name in Text(name) }
+                    Section {
+                        DisclosureGroup("Missing tokens · \(downloads.missingTokenNames.count.formatted())") {
+                            ForEach(Array(downloads.missingTokenNames.prefix(20).enumerated()), id: \.offset) { _, name in Text(name) }
+                        }
                     }
                 }
                 if !downloads.missingNames.isEmpty {
-                    Section("Missing artwork · \(downloads.missingNames.count)") {
-                        ForEach(downloads.missingNames.prefix(20), id: \.self) { Text($0) }
-                        if downloads.missingNames.count > 20 {
-                            Text("And \(downloads.missingNames.count - 20) more")
-                                .foregroundStyle(.secondary)
+                    Section {
+                        DisclosureGroup("Missing cards · \(downloads.missingNames.count.formatted())") {
+                            ForEach(downloads.missingNames.prefix(20), id: \.self) { Text($0) }
+                            if downloads.missingNames.count > 20 {
+                                Text("And \(downloads.missingNames.count - 20) more")
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }

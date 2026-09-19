@@ -21,7 +21,7 @@ final class NativeDownloadsUITests: XCTestCase {
         if !menu.isHittable { app.swipeUp() }
         menu.tap()
         XCTAssertTrue(app.navigationBars["Downloads"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Card catalogue included"].exists)
+        XCTAssertFalse(app.staticTexts["Card catalogue included"].isHittable, "Technical details start collapsed")
         XCTAssertTrue(app.buttons["downloads.scope"].exists)
         XCTAssertTrue(app.buttons["downloads.quality"].exists)
         let check = app.buttons["downloads.check"]

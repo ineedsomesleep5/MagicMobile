@@ -1541,7 +1541,6 @@ struct AppearanceSettingsView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    Text("Your game, your table").font(.system(size: 28, weight: .bold, design: .serif))
                     BoardAppearancePicker()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
                     if nativeTurnControl != nil { NativeArtworkPreferenceView() }
@@ -1711,7 +1710,7 @@ struct PortraitModeToggle: View {
                 Text("Auto-Rotate")
                     .font(.callout.weight(.black))
                     .foregroundStyle(.white)
-                Text("Enable automatic portrait and landscape rotation.")
+                Text("Portrait and landscape")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.58))
                     .lineLimit(2)

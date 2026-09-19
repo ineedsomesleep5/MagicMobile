@@ -59,3 +59,11 @@ These additions remain iOS-only. Token disclosure already exists in the engine p
 - The final-source deck search/add/inspect/rotate/discard test passed in `Full-catalogue-ui.xcresult`; pinned tabs passed in `Full-catalogue-ui-final.xcresult`. Earlier input misses remain recorded above, not erased by these successes.
 - The full-catalogue Downloads test needed to scroll to the lazily created asset-check row. Its subsequent run verified consent and the Standard-quality confirmation, but found that the system confirmation popover omitted its Cancel button. Replaced that presentation with an explicit native alert so the large-download decision always offers Download and Cancel.
 - `Downloads-confirmation-final.xcresult`: final Downloads UI test passed, including asset coverage, scope/quality controls, consent gating, no automatic bulk transfer, full-catalogue confirmation and Cancel/Done dismissal. No multi-gigabyte network download was performed during UI testing; transfer/resume behavior is covered by isolated fixtures, with a real bulk-index parsing check reported separately above.
+
+### Readability follow-up
+
+- Before upload, the user requested less explanatory text in Downloads and Settings. Stopped the release during export, before Apple upload; the earlier archive remains preserved in `native-release.8xDnOA`.
+- Downloads now groups choices, compact local coverage and the download action. Technical details and bundled-asset information start collapsed under More info. The essential Scryfall/card-name/IP consent remains visible; the large-transfer warning stays in the explicit confirmation. Removed duplicate idle progress prose.
+- Native Settings drops the redundant headline and shortens orientation/artwork explanations. No consent, storage, download or engine behavior changed.
+- `Downloads-simplified.xcresult` compiled successfully but missed the menu tap before entering Downloads; this attempt does not validate the changed screen.
+- `Downloads-simplified-rerun.xcresult` passed the complete consent/confirmation/cancel flow and verified technical details start collapsed. Reviewed its screenshot: compact counts and short consent replace the previous paragraphs. The missing-card/token lists were then also collapsed by default; that final presentation-only adjustment is compiled in the release archive.
