@@ -21,7 +21,9 @@ android {
     if(withNative) externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/magicmobile-assets"))
     sourceSets["main"].res.srcDir(layout.buildDirectory.dir("generated/magicmobile-res"))
-    packaging { jniLibs { useLegacyPackaging = false; keepDebugSymbols += "**/libmmengine.so" } }
+    // Compress the large AOT engine in the download; Android extracts its aligned
+    // ELF at install time. The actual native ABI is unchanged.
+    packaging { jniLibs { useLegacyPackaging = true; keepDebugSymbols += "**/libmmengine.so" } }
     val releaseStore = providers.environmentVariable("MM_ANDROID_KEYSTORE").orNull
     if(releaseStore != null) signingConfigs.create("distribution") {
         storeFile = file(releaseStore)
