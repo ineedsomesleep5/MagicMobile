@@ -170,9 +170,18 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null)
                 if(decision.submitted)Text("Answer submitted · waiting for XMage")
                 choices.forEach { choice -> OutlinedButton(onClick={model.answer(choice.type,choice.value)},enabled=!state.busy && !state.pendingAnswer && !state.closing && !decision.submitted,modifier=Modifier.fillMaxWidth()) {Text(choice.label)} }
                 if("integer" in decision.responseTypes) {
-                    var amount by remember(decision.id,decision.revision){mutableStateOf((decision.minimum ?: 0).toString())}
-                    OutlinedTextField(value=amount,onValueChange={amount=it.take(12)},label={Text("Amount ${decision.minimum ?: ""} … ${decision.maximum ?: ""}")})
-                    TextButton(onClick={amount.toLongOrNull()?.let{model.answer("integer",it)}},enabled=!state.busy && !decision.submitted && amount.toLongOrNull()!=null){Text("Submit amount")}
+                    // The engine sends the Int sentinels to mean "no limit". Showing them
+                    // literally prefilled the field with -2147483648 and labelled the range
+                    // "-2147483648 … 2147483647", which reads as a broken prompt.
+                    val low=decision.minimum?.takeIf{it>Int.MIN_VALUE.toLong()}
+                    val high=decision.maximum?.takeIf{it<Int.MAX_VALUE.toLong()}
+                    var amount by remember(decision.id,decision.revision){mutableStateOf(maxOf(0L,low ?: 0L).toString())}
+                    val entered=amount.toLongOrNull()
+                    val withinRange=entered!=null && (low==null||entered>=low) && (high==null||entered<=high)
+                    val range=when { low!=null&&high!=null->"$low … $high"; low!=null->"at least $low"; high!=null->"at most $high"; else->"any amount" }
+                    OutlinedTextField(value=amount,onValueChange={amount=it.filter{c->c.isDigit()||c=='-'}.take(12)},
+                        isError=amount.isNotEmpty() && !withinRange,label={Text("Amount · $range")})
+                    TextButton(onClick={entered?.let{model.answer("integer",it)}},enabled=!state.busy && !decision.submitted && withinRange){Text("Submit amount")}
                 }
                 if("integers" in decision.responseTypes){
                     var values by remember(decision.id,decision.revision){mutableStateOf("")}
