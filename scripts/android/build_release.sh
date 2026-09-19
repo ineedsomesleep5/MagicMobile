@@ -15,8 +15,9 @@ MM_ANDROID_STORE_PASSWORD="$(< "$MM_ANDROID_PASSWORD_FILE")"
 export MM_ANDROID_KEY_PASSWORD="$MM_ANDROID_STORE_PASSWORD"
 python3 "$ROOT/scripts/android/verify_native.py" "$ROOT"
 gradle -p "$ROOT/apps/android" --no-daemon -PwithNative=true \
+  -PandroidTestBuildType=release \
   -PandroidVersionCode="$MM_ANDROID_VERSION_CODE" -PandroidVersionName="$MM_ANDROID_VERSION_NAME" \
-  :core:contractChecks :core:deckStudioChecks :core:providerChecks :core:insightChecks :app:assembleRelease :app:lintRelease
+  :core:contractChecks :core:deckStudioChecks :core:providerChecks :core:insightChecks :app:assembleRelease :app:assembleReleaseAndroidTest :app:lintRelease
 APK="$ROOT/apps/android/app/build/outputs/apk/release/app-release.apk"
 "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 "$APK"
 "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"

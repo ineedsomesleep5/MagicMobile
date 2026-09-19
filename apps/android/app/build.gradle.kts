@@ -2,6 +2,7 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id(
 val withNative = providers.gradleProperty("withNative").orNull == "true"
 android {
     namespace = "io.magicmobile.android"
+    testBuildType = providers.gradleProperty("androidTestBuildType").orNull ?: "debug"
     compileSdk = 35
     ndkVersion = "28.2.13676358"
     defaultConfig {

@@ -89,6 +89,11 @@ Set `MM_ANDROID_KEYSTORE`, `MM_ANDROID_PASSWORD_FILE`, `MM_ANDROID_VERSION_CODE`
 output is `app/build/outputs/apk/release/app-release.apk` under this Android directory.
 The script does not publish automatically. Publish the verified APK and its source,
 checksum and acceptance receipt as a GitHub prerelease when release is requested.
+The script also builds a release-signed instrumentation APK under
+`app/build/outputs/apk/androidTest/release/`. Install that test APK alongside the
+release app and use `MM_ANDROID_TEST_PACKAGE=com.calebfeliciano.magicmobile.android.test`
+with the device runner below to test the actual signed build. Do not distribute the
+instrumentation APK as the game download.
 
 For isolated emulator acceptance, use `-PandroidDebugSuffix=.paritytest` so an older
 debug installation and its decks remain intact. Build with `-PwithNative=true` and run

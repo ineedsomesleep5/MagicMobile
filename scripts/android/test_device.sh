@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Test an already installed native debug build without touching player data.
+# Test an already installed native build without touching player data.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 : "${ANDROID_HOME:?Set ANDROID_HOME to the Android SDK}"
 : "${ANDROID_SERIAL:?Choose the existing Android device explicitly}"
 : "${MM_ANDROID_TEST_PACKAGE:?Set the installed instrumentation package}"
-[[ "$MM_ANDROID_TEST_PACKAGE" =~ ^com\.calebfeliciano\.magicmobile\.android\.[a-zA-Z0-9_]+\.test$ ]] || {
-  echo "Expected the dedicated MagicMobile debug instrumentation package." >&2; exit 2;
+[[ "$MM_ANDROID_TEST_PACKAGE" =~ ^com\.calebfeliciano\.magicmobile\.android(\.[a-zA-Z0-9_]+)?\.test$ ]] || {
+  echo "Expected a dedicated MagicMobile instrumentation package." >&2; exit 2;
 }
 mkdir -p "$ROOT/build_output/android-acceptance"
 REPORT=$(mktemp "$ROOT/build_output/android-acceptance/instrumentation-XXXXXX")
