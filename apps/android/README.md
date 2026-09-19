@@ -1,8 +1,8 @@
 # MagicMobile for Android
 
-Android development is isolated in `codex/android-native-xmage`, based on main
-`1f7bd7213875f181d35bac5d88b97b2cb2f76634`. The iOS app and Deck Studio PR #10 are not
-modified or merged by this work.
+Android parity work continues on `codex/android-ios-parity`, which merges the Android
+native XMage work with the iOS Deck Studio source shipped as build 5000000000. Android
+remains a separate native Compose client; it consumes the same pinned engine and data.
 
 ## Architecture and scope
 
@@ -35,18 +35,17 @@ layer (SwiftUI vs Compose) and release: iOS ships through
 `scripts/ios/deploy-testflight.sh` to TestFlight, Android produces an APK from
 `.github/workflows/magicmobile-android.yml`.
 
-Note that colour identity is only populated for Android once the Deck Studio work
-that fills it lands on `main`; this branch is based on a commit where every
-`colorIdentity` is still null.
+Android consumes the merged type, mana value, printed color, color identity, set and
+curated-role metadata. Catalogue facts remain distinct from XMage legality results.
 
 ## Building and testing
 
 ```sh
 # full engine + native-linked APK (Linux x86_64 only; use the CI workflow)
-gh workflow run magicmobile-android.yml --ref codex/android-native-xmage
+gh workflow run magicmobile-android.yml --ref codex/android-ios-parity
 
 # everything that does run on macOS
-gradle -p apps/android :core:contractChecks :app:assembleDebug :app:lintDebug
+gradle -p apps/android :core:contractChecks :core:deckStudioChecks :app:assembleDebug :app:lintDebug
 python3 -m unittest discover -s scripts/android/tests
 ```
 
@@ -61,12 +60,11 @@ are separate evidence categories. Neither the iOS binary nor an empty Android
 screen establishes Android engine execution. No store upload or production
 signing is authorized by this development PR.
 
-Verified on an Android 15 arm64 **emulator**: the engine loads, creates its Graal
-isolate, builds a Commander game, serves real prompts, and the MAD AI takes a
-turn — it draws, plays a land and resolves its enter-the-battlefield trigger.
-Deck building, rules-text search across the full catalogue, mana symbols and
-opt-in Scryfall artwork all work. No physical Android device has run this build,
-and no game has been played to completion.
+The earlier Android branch was manually exercised on an Android 15 ARM64 emulator
+through engine load, isolate creation, a Commander prompt and an AI turn. That
+artifact predates the merged Deck Studio engine and is not release evidence for
+this branch. A fresh Linux ARM64 native build, completed emulator game and separate
+physical-phone pass remain required.
 
 Reference documentation:
 - https://docs.gluonhq.com/#_android

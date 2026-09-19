@@ -1,8 +1,20 @@
 name: Android native development
 on:
   push:
-    branches: [codex/android-native-xmage]
-    paths: ['apps/android/**', 'scripts/android/**', '.github/workflows/magicmobile-android.yml']
+    branches: [codex/android-native-xmage, codex/android-ios-parity]
+    # Android consumes the shared XMage engine and the iOS-owned catalogue,
+    # precon, mana-symbol and role-tag sources. A change to any of them must at
+    # least enter this guarded workflow; the commit marker/manual dispatch still
+    # controls the expensive native-image job below.
+    paths:
+      - 'apps/android/**'
+      - 'scripts/android/**'
+      - 'packages/ondevice-engine/**'
+      - 'apps/ios/MagicMobile/Resources/ondevice-catalogue.json'
+      - 'apps/ios/MagicMobile/PreconCatalog.swift'
+      - 'apps/ios/MagicMobile/Assets.xcassets/mana-*.imageset/**'
+      - 'apps/ios/MagicMobile/Assets.xcassets/AppIcon.appiconset/**'
+      - '.github/workflows/magicmobile-android.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -68,7 +80,7 @@ jobs:
       - name: Build the actual native-linked test APK
         run: |
           set -euo pipefail
-          gradle -p apps/android --no-daemon -PwithNative=true :core:contractChecks :app:assembleDebug :app:lintDebug
+          gradle -p apps/android --no-daemon -PwithNative=true :core:contractChecks :core:deckStudioChecks :app:assembleDebug :app:lintDebug
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 -v 4 apps/android/app/build/outputs/apk/debug/app-debug.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose apps/android/app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4

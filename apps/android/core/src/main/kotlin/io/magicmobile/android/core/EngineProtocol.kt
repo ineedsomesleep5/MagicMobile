@@ -7,7 +7,7 @@ import java.util.UUID
 
 /** Exact protocol values; labels are never reused as commands. No Android dependencies. */
 typealias Obj = Map<String, Any?>
-class EngineFault(val code: String, message: String) : IllegalStateException(message)
+class EngineFault(val code: String, message: String, val details: Obj? = null) : IllegalStateException(message)
 object Wire {
     const val LIMIT = 4 * 1024 * 1024
     fun objectValue(value: Any?): Obj {
@@ -30,7 +30,7 @@ object Wire {
         when (envelope["ok"]) {
             true -> return objectValue(envelope["result"])
             false -> { val error = objectValue(envelope["error"])
-                throw EngineFault(string(error["code"]), string(error["message"]).take(2000)) }
+                throw EngineFault(string(error["code"]), string(error["message"]).take(2000),error.obj("details")) }
             else -> throw EngineFault("bad_response", "Missing success status")
         }
     }
@@ -87,7 +87,7 @@ data class GamePoll(val matchId: String, val viewerId: String, val revision: Lon
             val revision = Wire.integer(value["revision"]); require(revision >= 0)
             val phase = Wire.string(value["phase"]); require(phase in setOf("starting", "running", "ended", "failed", "closed"))
             val snapshot = value.obj("snapshot")
-            snapshot?.let { val id = Wire.string(it["enginePlayerId"]); require(Wire.uuid(id));
+            snapshot?.let { require(it["schema"]=="xmage-gameview-v1");val id = Wire.string(it["enginePlayerId"]); require(Wire.uuid(id));
                 require(it.obj("gameView")?.get("myPlayerId") == id) { "Invalid private-view identity" } }
             val decision = value.obj("prompt")?.let(Decision::parse)
             require(decision == null || decision.revision <= revision)

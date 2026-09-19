@@ -2,9 +2,24 @@ package io.magicmobile.android.core
 
 data class Choice(val label: String, val type: String, val value: Any?)
 object Decisions {
-    fun plain(text: String): String = text.replace(Regex("(?is)<(script|style)[^>]*>.*?</\\1>"),"")
-        .replace(Regex("(?i)<br\\s*/?>"),"\n").replace(Regex("<[^>]*>"),"")
-        .replace("&amp;","&").replace("&lt;","<").replace("&gt;",">").replace("&quot;","\"").replace("&#39;","'")
+    private val entities=mapOf("amp" to "&","lt" to "<","gt" to ">","quot" to "\"","apos" to "'","nbsp" to " ","ndash" to "–","mdash" to "—","hellip" to "…","lsquo" to "‘","rsquo" to "’","times" to "×")
+    fun plain(text: String): String {
+        var current=text
+        while(true) {
+            val decoded=Regex("&(#(?:[xX][0-9a-fA-F]+|[0-9]+)|[A-Za-z]+);").replace(current) {match->
+                val token=match.groupValues[1]
+                entities[token] ?: if(token.startsWith("#"))runCatching {
+                    val hex=token.startsWith("#x",true);val value=token.drop(if(hex)2 else 1).toInt(if(hex)16 else 10)
+                    if(value<32 && value !in setOf(9,10,13) || value in 127..159 || value in 0x202A..0x202E || value in 0x2066..0x2069)"" else String(Character.toChars(value))
+                }.getOrDefault("") else match.value
+            }
+            val next=decoded.replace(Regex("(?is)<(script|style)[^>]*>.*?</\\1>"),"")
+                .replace(Regex("(?i)<br\\s*/?>"),"\n").replace(Regex("<[^>]*>"),"")
+                .lines().map {it.trim().replace(Regex("\\s+")," ")}.filter(String::isNotEmpty).joinToString("\n")
+            if(next==current)return next
+            current=next
+        }
+    }
     fun choices(prompt: Decision, snapshot: Obj?): List<Choice> {
         if(prompt.submitted) return emptyList()
         val p = prompt.payload; val result = mutableListOf<Choice>(); val options = p.obj("options") ?: emptyMap()
@@ -15,7 +30,10 @@ object Decisions {
             // fallbacks read "Yes / keep" and "No / mulligan", which assumed the question was
             // "keep this hand?" — for XMage's actual "Mulligan for free, draw another 7
             // cards?" they told the player the exact opposite of what the button did.
-            "ASK" -> { bool(plain(options.text("buttonYes") ?: "Yes"),true); bool(plain(options.text("buttonNo") ?: "No"),false) }
+            "ASK" -> {
+                bool(plain(options.text("UI.left.btn.text") ?: options.text("buttonYes") ?: "Yes"),true)
+                bool(plain(options.text("UI.right.btn.text") ?: options.text("buttonNo") ?: "No"),false)
+            }
             "CHOOSE_PILE" -> { bool("Pile 1",true); bool("Pile 2",false) }
             "CHOOSE_CHOICE","CHOOSE_MODE" -> {
                 val choices = p.obj("choices") ?: emptyMap()

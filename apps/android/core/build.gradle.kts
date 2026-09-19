@@ -10,3 +10,8 @@ tasks.register<JavaExec>("contractChecks") {
     mainClass.set("io.magicmobile.android.core.ContractChecksKt")
     args(rootProject.file("../..").absolutePath)
 }
+tasks.register<JavaExec>("deckStudioChecks") {
+    dependsOn(tasks.testClasses)
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass.set("io.magicmobile.android.core.DeckStudioChecksKt")
+}

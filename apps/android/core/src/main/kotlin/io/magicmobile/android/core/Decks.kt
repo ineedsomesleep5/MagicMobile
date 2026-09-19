@@ -38,28 +38,66 @@ data class Deck(val name: String, val entries: List<CardEntry>) {
     }
 }
 
-data class CardInfo(val name: String, val set: String, val collector: String, val type: String?, val rules: String?, val cost: String?, val identity: List<String>?)
+data class CardInfo(
+    val name: String,
+    val set: String,
+    val collector: String,
+    val type: String?,
+    val rules: String?,
+    val cost: String?,
+    val identity: List<String>?,
+    val colors: List<String>? = null,
+    val manaValue: Double? = null,
+    val roles: List<String>? = null,
+    val types: List<String>? = null,
+    val setCodes: List<String> = emptyList(),
+)
 class Catalogue(input: InputStream) {
     val cards: List<CardInfo>
     private val byName: Map<String, CardInfo>
     private val aliases: Map<String, String>
     val registryHash: String
+    val upstreamCommit: String
     init {
         val bytes = input.use { readBounded(it, 48 * 1024 * 1024) }; require(bytes.size <= 48 * 1024 * 1024)
         val lines = bytes.toString(Charsets.UTF_8).lineSequence().filter { it.isNotBlank() }.iterator()
         require(lines.hasNext()); val header = Wire.objectValue(io.magicmobile.core.Json.parseObject(lines.next()))
         registryHash = Wire.string(header["catalogueHash"])
+        upstreamCommit = Wire.string(header["upstreamCommit"])
+        require(Regex("^[0-9a-f]{64}$").matches(registryHash) && Regex("^[0-9a-f]{40}$").matches(upstreamCommit))
+        require(header.text("sourceMetadataSHA256")?.let {Regex("^[0-9a-f]{64}$").matches(it)}==true)
+        val validName:(String)->Boolean={name->name.isNotEmpty() && name.toByteArray().size<=1024 && name==name.trim() && name.none(Char::isISOControl)}
+        val knownColors=setOf("W","U","B","R","G")
+        val knownTypes=setOf("ARTIFACT","BATTLE","CONSPIRACY","CREATURE","DUNGEON","ENCHANTMENT","INSTANT","LAND","PHENOMENON","PLANE","PLANESWALKER","SCHEME","SORCERY","KINDRED","VANGUARD")
+        val knownRoles=DeckRole.entries.mapTo(mutableSetOf(),DeckRole::key)
         aliases = header.obj("nameAliases")?.mapValues { Wire.string(it.value) } ?: emptyMap()
         cards = lines.asSequence().map { line ->
             val c = Wire.objectValue(io.magicmobile.core.Json.parseObject(line))
-            CardInfo(Wire.string(c["name"]),Wire.string(c["setCode"]),Wire.string(c["collectorNumber"]),c.text("typeLine"),c.text("oracleText"),c.text("manaCost"),c["colorIdentity"]?.let { Wire.list(it).map(Wire::string) })
-        }.toList()
+            val name=Wire.string(c["name"]);require(validName(name))
+            val manaValue = (c["manaValue"] as? Number)?.toDouble()?.also {
+                require(it.isFinite() && it >= 0.0 && it < 1_000_000.0)
+            }
+            fun colors(key:String)=c[key]?.let {Wire.list(it).map(Wire::string).also {values->require(values.size<=5 && values.distinct().size==values.size && values.all(knownColors::contains))}}
+            val suppliedTypes=c["types"]?.let {Wire.list(it).map(Wire::string).also {values->require(values.isNotEmpty() && values.size<=32 && values.distinct().size==values.size && values.all {type->Regex("^[A-Z][A-Z_]{0,63}$").matches(type)})}}
+            val types=suppliedTypes?.takeIf {it.all(knownTypes::contains)}
+            val roles=c["roles"]?.let {Wire.list(it).map(Wire::string).also {values->require(values.size<=knownRoles.size && values.distinct().size==values.size && values.all(knownRoles::contains))}} ?: emptyList()
+            val sets=c["setCodes"]?.let {Wire.list(it).map(Wire::string)} ?: emptyList();require(sets.distinct().size==sets.size)
+            val typeLine=c.text("typeLine")?.also {require(validName(it))}
+            CardInfo(name,Wire.string(c["setCode"]),Wire.string(c["collectorNumber"]),
+                if(types==null)null else typeLine,c.text("oracleText")?.let(Decisions::plain),c.text("manaCost"),
+                colors("colorIdentity"),colors("colors"),manaValue,roles,types,sets)
+        }.sortedBy {it.name}.toList()
         byName = cards.associateBy { it.name }; require(byName.size == cards.size && cards.isNotEmpty())
-        require(aliases.values.all { it in byName })
+        require(aliases.size<=100_000 && aliases.all { (alias,target)->validName(alias) && target in byName && alias.startsWith("$target // ") && validName(alias.removePrefix("$target // ")) })
     }
     fun find(name: String): CardInfo? = byName[name] ?: aliases[name]?.let(byName::get)
-    fun search(query: String): List<CardInfo> = if(query.isBlank()) emptyList() else cards.asSequence().filter {
-        it.name.contains(query,true) || it.rules?.contains(query,true) == true }.take(80).toList()
+    fun search(query: String,limit:Int=80): List<CardInfo> {
+        val term=query.trim();if(term.isEmpty()||limit<=0)return emptyList()
+        return cards.asSequence().filter {it.name.contains(term,true)||it.rules?.contains(term,true)==true}
+            .sortedWith(compareBy<CardInfo> {card->
+                when {card.name.equals(term,true)->0;card.name.startsWith(term,true)->1;card.name.contains(term,true)->2;else->3}
+            }.thenBy {it.name}).take(limit.coerceAtMost(2000)).toList()
+    }
     fun resolve(deck: Deck, excludeOtherBoards: Boolean): Obj {
         val extra = deck.entries.filter { it.section !in setOf("deck","commanders","companions") }
         require(extra.isEmpty() || excludeOtherBoards) { "Review and acknowledge excluded sideboard/maybeboard sections before playing." }

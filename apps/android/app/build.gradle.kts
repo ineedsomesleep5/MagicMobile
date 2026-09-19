@@ -19,6 +19,7 @@ android {
     kotlinOptions { jvmTarget = "17" }
     if(withNative) externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/magicmobile-assets"))
+    sourceSets["main"].res.srcDir(layout.buildDirectory.dir("generated/magicmobile-res"))
     packaging { jniLibs { useLegacyPackaging = false; keepDebugSymbols += "**/libmmengine.so" } }
     buildTypes { debug { applicationIdSuffix = ".debug" }; release { isMinifyEnabled = false } }
 }
@@ -30,7 +31,12 @@ val prepareAssets by tasks.registering(Exec::class) {
     outputs.dir(layout.buildDirectory.dir("generated/magicmobile-assets"))
     commandLine("python3",script.absolutePath, rootProject.file("../..").absolutePath,layout.buildDirectory.dir("generated/magicmobile-assets").get().asFile.absolutePath)
 }
-tasks.named("preBuild").configure { dependsOn(prepareAssets) }
+val prepareBrandAssets by tasks.registering(Copy::class) {
+    from(rootProject.file("../ios/MagicMobile/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"))
+    into(layout.buildDirectory.dir("generated/magicmobile-res/drawable"))
+    rename { "magicmobile_icon.png" }
+}
+tasks.named("preBuild").configure { dependsOn(prepareAssets,prepareBrandAssets) }
 if(withNative) {
     val verifyNative by tasks.registering(Exec::class) {
         commandLine("python3",rootProject.file("../../scripts/android/verify_native.py").absolutePath,rootProject.file("../..").absolutePath)

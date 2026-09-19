@@ -10,7 +10,8 @@ from pathlib import Path
 
 # Fields Decks.kt CardInfo reads off each row. Absent metadata stays absent; it is never
 # invented, and a missing field must surface in the app as unknown rather than as a guess.
-CARD_FIELDS = ('typeLine', 'oracleText', 'manaCost', 'colorIdentity')
+CARD_FIELDS = ('typeLine', 'oracleText', 'manaCost', 'manaValue', 'colorIdentity',
+               'colors', 'types', 'roles', 'setCodes')
 # Only what Catalogue's header parser needs. cardMetadata is joined onto rows instead.
 HEADER_FIELDS = ('schemaVersion', 'catalogueHash', 'nameAliases', 'upstreamCommit',
                  'sourceMetadataSHA256', 'sourceCatalogueSHA256')
