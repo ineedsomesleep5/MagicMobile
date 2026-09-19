@@ -129,14 +129,18 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
             val deck=play!!;val preferences=remember {context.getSharedPreferences("magicmobile.play",android.content.Context.MODE_PRIVATE)}
             var ai by remember { mutableIntStateOf(1) };var aiSkill by remember { mutableIntStateOf(preferences.getInt("aiSkill",2).coerceIn(1,10)) };var exclude by remember { mutableStateOf(false) }
             var opponent by remember { mutableIntStateOf(0) }
-            val validated=model.validationMatches(deck,exclude)
-            AlertDialog(onDismissRequest={play=null},title={Text("Start local Commander")},text={Column {
+            // Read the collected receipt here, not only the model's unobserved
+            // StateFlow value: this scope must recompose when validation finishes.
+            val validated=state.validation?.let{model.validationMatches(deck,exclude)}==true
+            AlertDialog(onDismissRequest={play=null},title={Text("Start local Commander")},text={Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(deck.name);Text("XMage validates the deck while starting. Parsing alone is not Commander legality.")
                 Row {TextButton(onClick={ai=(ai-1).coerceAtLeast(1)}){Text("−")};Text("$ai AI opponent(s)",modifier=Modifier.padding(12.dp));TextButton(onClick={ai=(ai+1).coerceAtMost(3)}){Text("+")}}
                 Text("AI skill · $aiSkill");Slider(value=aiSkill.toFloat(),onValueChange={aiSkill=it.toInt().coerceIn(1,10);preferences.edit().putInt("aiSkill",aiSkill).apply()},valueRange=1f..10f,steps=8)
                 if(state.precons.isNotEmpty()) { Text("Opponent deck");TextButton(onClick={opponent=(opponent+1)%state.precons.size}){Text(state.precons[opponent].name)} }
                 if(deck.entries.any { it.section !in setOf("deck","commanders","companions") })Row {Checkbox(checked=exclude,onCheckedChange={exclude=it;model.invalidateValidation()});Text("Exclude other boards from this game only. Keep source draft intact.")}
                 Text(if(validated)"Commander validation passed for this exact deck and engine." else "Validate this exact playing deck before starting.",color=if(validated)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                if(state.busy){LinearProgressIndicator(Modifier.fillMaxWidth());Text(state.status,style=MaterialTheme.typography.bodySmall)}
+                state.error?.let{Text(it,color=MaterialTheme.colorScheme.error)}
                 Text("This alpha has no durable game resume after Android kills the process. Begin with one AI.",style=MaterialTheme.typography.bodySmall)
             }},confirmButton={if(validated)Button(enabled=!state.busy && state.precons.isNotEmpty(),onClick={model.start(deck,state.precons[opponent],ai,exclude,aiSkill);play=null}){Text("Start local game")}else Button(enabled=BuildConfig.NATIVE_ENGINE&&!state.busy,onClick={model.validate(deck,exclude)}){Text("Validate deck")}},dismissButton={TextButton(onClick={play=null}){Text("Cancel")}})
         }
