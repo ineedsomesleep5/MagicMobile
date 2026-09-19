@@ -153,7 +153,7 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
             val deck=play!!;val preferences=remember {context.getSharedPreferences("magicmobile.play",android.content.Context.MODE_PRIVATE)}
             var ai by remember { mutableIntStateOf(1) };var aiSkill by remember { mutableIntStateOf(preferences.getInt("aiSkill",2).coerceIn(1,10)) };var exclude by remember { mutableStateOf(false) }
             var playerName by remember {mutableStateOf(preferences.getString("playerName","You")?.take(24) ?: "You")}
-            var opponent by remember { mutableIntStateOf(0) }
+            var opponents by remember(deck,state.precons) {mutableStateOf(defaultAiDecks(state.precons))}
             // Read the collected receipt here, not only the model's unobserved
             // StateFlow value: this scope must recompose when validation finishes.
             val validated=state.validation?.let{model.validationMatches(deck,exclude)}==true
@@ -163,13 +163,18 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
                 OutlinedTextField(value=playerName,onValueChange={playerName=it.filterNot(Char::isISOControl).take(24);preferences.edit().putString("playerName",playerName).apply()},label={Text("Player name")},singleLine=true,modifier=Modifier.fillMaxWidth())
                 Row {TextButton(onClick={ai=(ai-1).coerceAtLeast(1)}){Text("−")};Text("$ai AI opponent(s)",modifier=Modifier.padding(12.dp));TextButton(onClick={ai=(ai+1).coerceAtMost(3)}){Text("+")}}
                 Text("AI skill · $aiSkill");Slider(value=aiSkill.toFloat(),onValueChange={aiSkill=it.toInt().coerceIn(1,10);preferences.edit().putInt("aiSkill",aiSkill).apply()},valueRange=1f..10f,steps=8)
-                if(state.precons.isNotEmpty()) { Text("Opponent deck");TextButton(onClick={opponent=(opponent+1)%state.precons.size}){Text(state.precons[opponent].name)} }
+                if(state.precons.isNotEmpty()) {
+                    Text("Choose an included deck for each AI seat.",style=MaterialTheme.typography.bodySmall)
+                    repeat(ai) {seat->
+                        DeckChoice("AI ${seat+1} deck",opponents[seat].name,state.precons.map(Deck::name)){name->opponents=replaceAiDeck(opponents,seat,state.precons.first {it.name==name})}
+                    }
+                }
                 if(deck.entries.any { it.section !in setOf("deck","commanders","companions") })Row {Checkbox(checked=exclude,onCheckedChange={exclude=it;model.invalidateValidation()});Text("Exclude other boards from this game only. Keep source draft intact.")}
                 state.validation?.takeIf{model.validationApplies(deck,exclude)}?.let{report->Text(if(report.valid)"Commander validation passed for this exact deck and engine." else report.summary,color=if(report.valid)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall);report.issues.take(8).forEach{Text(it.message,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)}}
                 if(state.validation==null)Text("Validate this exact playing deck before starting.",style=MaterialTheme.typography.bodySmall)
                 if(state.busy){LinearProgressIndicator(Modifier.fillMaxWidth());Text(state.status,style=MaterialTheme.typography.bodySmall)}
-                Text("This alpha has no durable game resume after Android kills the process. Begin with one AI.",style=MaterialTheme.typography.bodySmall)
-                if(validated)Button(enabled=!state.busy && state.precons.isNotEmpty()&&playerName.trim().isNotEmpty(),onClick={model.start(deck,state.precons[opponent],ai,exclude,aiSkill,playerName);play=null},modifier=Modifier.fillMaxWidth().heightIn(min=52.dp)){Text("Start local game")}
+                Text("This alpha has no durable game resume after Android kills the process.",style=MaterialTheme.typography.bodySmall)
+                if(validated)Button(enabled=!state.busy && opponents.size>=ai&&playerName.trim().isNotEmpty(),onClick={model.start(deck,activeAiDecks(opponents,ai),exclude,aiSkill,playerName);play=null},modifier=Modifier.fillMaxWidth().heightIn(min=52.dp)){Text("Start local game")}
                 else Button(enabled=BuildConfig.NATIVE_ENGINE&&!state.busy,onClick={model.validate(deck,exclude)},modifier=Modifier.fillMaxWidth().heightIn(min=52.dp)){Text("Validate deck")}
                 TextButton(onClick={play=null},enabled=!state.busy,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Text("Cancel")}
                 Spacer(Modifier.height(12.dp))
