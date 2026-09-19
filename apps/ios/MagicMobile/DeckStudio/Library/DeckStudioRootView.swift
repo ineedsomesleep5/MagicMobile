@@ -287,7 +287,7 @@ struct DeckStudioArtwork: View {
     let name: String
     var hero = false
     var body: some View {
-        NativeCardArtworkView(name: name, variant: .board, contentMode: hero ? .fill : .fit) { _, failed in
+        NativeCardArtworkView(name: name, variant: .board, contentMode: hero ? .fill : .fit, artOnly: hero) { _, failed in
             ZStack {
                 DeckStudioPalette.background
                 VStack(spacing: 8) {

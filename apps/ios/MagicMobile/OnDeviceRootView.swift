@@ -16,7 +16,7 @@ struct OnDeviceRootView: View {
     @StateObject private var session: OnDeviceSession
     @StateObject private var setup: OnDeviceSetupModel
     @StateObject private var library = DeckLibraryStore()
-    @StateObject private var diagnostics = OnDeviceDiagnostics()
+    @StateObject private var diagnostics: OnDeviceDiagnostics
     @State private var selectedCard: ZoneCard?
     @State private var inspectedCard: ZoneCard?
     @State private var zone: InspectedZone?
@@ -34,11 +34,21 @@ struct OnDeviceRootView: View {
     @State private var confirmLeave = false
     @State private var showDiagnostics = false
     @State private var confirmDeleteReport = false
+    @State private var bannerError: String?
 
     init() {
         let session = OnDeviceSession()
         _session = StateObject(wrappedValue: session)
         _setup = StateObject(wrappedValue: OnDeviceSetupModel(session: session))
+        var diagnosticDirectory: URL?
+        #if DEBUG
+        if OnDeviceAppConfiguration.entryPoint == .setupPreview,
+           let value = ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_PREFERENCES"],
+           let id = UUID(uuidString: value) {
+            diagnosticDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("Diagnostics-UITests-\(id.uuidString)")
+        }
+        #endif
+        _diagnostics = StateObject(wrappedValue: OnDeviceDiagnostics(directory: diagnosticDirectory))
     }
 
     private var activeGame: Bool { session.matchID != nil }
@@ -91,7 +101,7 @@ struct OnDeviceRootView: View {
             NativeDownloadsView(decks: downloadDecks, selectedDeckID: selectedDeckID,
                                 engineReady: setup.identity != nil)
         }
-        .overlay(alignment: .top) { recoveryBanner }
+        .overlay(alignment: .bottom) { recoveryBanner }
         .environment(\.nativeTurnControl, turnControl)
         .fullScreenCover(isPresented: $showImport) {
             DeckStudioRootView(library: library, selectedDeckID: $selectedDeckID, preparePlay: {
@@ -118,6 +128,13 @@ struct OnDeviceRootView: View {
         restoreSetupPreferences()
         setup.prepare()
         setup.setSceneActive(scenePhase == .active)
+        #if DEBUG
+        if OnDeviceAppConfiguration.entryPoint == .setupPreview,
+           ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_ENGINE_ERROR"] == "1" {
+            try? diagnostics.save(engineReport: "UI TEST FIXTURE: Sample engine incident", status: "Presentation test")
+            setup.errorMessage = "UI test fixture: engine incident."
+        }
+        #endif
     }
 
     private var lifecycleContent: some View {
@@ -134,6 +151,12 @@ struct OnDeviceRootView: View {
         }
         .onChange(of: setup.errorMessage) { _, message in
             if message != nil { Task { await setup.captureDiagnostics(in: diagnostics) } }
+        }
+        .task(id: setup.errorMessage ?? session.errorMessage) {
+            bannerError = setup.errorMessage ?? session.errorMessage
+            guard bannerError != nil else { return }
+            do { try await Task.sleep(for: .seconds(8)) } catch { return }
+            bannerError = nil
         }
     }
 
@@ -298,8 +321,10 @@ struct OnDeviceRootView: View {
                     Button("Retry loading local catalogue") { setup.prepare() }
                         .buttonStyle(CommanderActionStyle(primary: false))
                 }
-                Button("Engine error report") { showDiagnostics = true }
-                    .accessibilityIdentifier("ondevice.diagnostics")
+                if diagnostics.report != nil {
+                    Button("Engine error report") { showDiagnostics = true }
+                        .accessibilityIdentifier("ondevice.diagnostics")
+                }
             }
             .foregroundStyle(CommanderPresentation.ink)
             .tint(CommanderPresentation.accent)
@@ -344,12 +369,20 @@ struct OnDeviceRootView: View {
 
     @ViewBuilder
     private var recoveryBanner: some View {
-        if setup.isBusy || setup.errorMessage != nil || session.errorMessage != nil ||
+        if setup.isBusy || bannerError != nil ||
             (activeGame && (session.snapshot == nil || !setup.canUseSession)) {
             VStack(alignment: .leading, spacing: 8) {
                 if setup.isBusy { ProgressView(setup.status) }
-                if let message = setup.errorMessage ?? session.errorMessage {
-                    Text(message).font(.caption.weight(.semibold))
+                if let message = bannerError {
+                    HStack(alignment: .top) {
+                        Text(message).font(.caption.weight(.semibold)).lineLimit(3)
+                        Spacer(minLength: 8)
+                        Button { bannerError = nil } label: {
+                            Image(systemName: "xmark").frame(width: 44, height: 44)
+                        }
+                        .accessibilityLabel("Dismiss notification")
+                        .accessibilityIdentifier("ondevice.dismissNotification")
+                    }
                 } else if activeGame && !setup.canUseSession {
                     Text(setup.liveStatus).font(.caption.weight(.semibold))
                 } else if activeGame && session.snapshot == nil {
@@ -368,7 +401,7 @@ struct OnDeviceRootView: View {
                     }
                     .disabled(setup.isBusy || session.isWorking)
                 }
-                if setup.errorMessage != nil || session.errorMessage != nil {
+                if bannerError != nil && diagnostics.report != nil {
                     Button("Review engine error report") { showDiagnostics = true }
                         .accessibilityIdentifier("ondevice.failureReport")
                 }
@@ -376,6 +409,7 @@ struct OnDeviceRootView: View {
             .foregroundStyle(MagicPalette.parchment)
             .magicPanel(.iron, prominence: .elevated, cornerRadius: 12, padding: 12)
             .padding(.horizontal, 12)
+            .padding(.bottom, 8)
         }
     }
 

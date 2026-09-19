@@ -1408,7 +1408,7 @@ struct TavernMainMenu: View {
 enum BoardAppearancePreference {
     static let key = "magicmobile.boardAppearance"
     static let defaultValue = "arena"
-    static let options = ["arena", "midnight", "wood"]
+    static let options = BattlefieldBackdrop.allCases.map(\.rawValue)
     static func normalized(_ value: String) -> String { options.contains(value) ? value : defaultValue }
 }
 
@@ -1424,12 +1424,12 @@ struct BoardAppearancePicker: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Battlefield").font(.headline).foregroundStyle(MagicPalette.parchment)
-            HStack(spacing: 12) {
-                choice("Stone Arena", value: "arena")
-                choice("Midnight", value: "midnight")
-                choice("Classic Wood", value: "wood")
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
+                ForEach(BattlefieldBackdrop.allCases) { theme in
+                    choice(theme.title, value: theme.rawValue)
+                }
             }
-            Text("Saved on this device. Applies in both orientations.")
+            Text("Works in portrait and landscape.")
                 .font(.caption).foregroundStyle(MagicPalette.parchment.opacity(0.65))
         }
     }
@@ -1507,11 +1507,7 @@ private struct AppearanceSwatch<Art: View>: View {
 struct BoardAppearanceArt: View {
     let value: String
     var body: some View {
-        switch value {
-        case "arena": Image(MagicMobileAssetName.stoneArena).resizable().scaledToFill()
-        case "wood": Image(MagicMobileAssetName.boardBackground).resizable().scaledToFill()
-        default: MidnightSurfaceGradient()
-        }
+        BattlefieldBackdropArt(theme: .resolved(value))
     }
 }
 
@@ -4581,24 +4577,9 @@ struct BattlefieldSurface: View {
 
     var body: some View {
         GeometryReader { proxy in
-            // The parameter existed but was never read, so the board decided orientation
-            // from raw geometry and ignored the player's auto-rotate choice, unlike the
-            // menu. Both surfaces now answer the same question the same way.
-            let portrait = GameOrientationMode.isPortraitLayout(size: proxy.size, portraitEnabled: portraitModeEnabled)
             ZStack {
-                if appearance == "arena" {
-                    // A landscape-only arena aspect-filled on a tall screen kept about a
-                    // quarter of its width, cropping the brass frame and crystals away.
-                    Image(portrait ? MagicMobileAssetName.portraitStoneArena : MagicMobileAssetName.stoneArena)
-                        .resizable().scaledToFill()
-                        .frame(width: proxy.size.width, height: proxy.size.height).clipped()
-                } else if appearance == "wood" {
-                    Image(portrait ? MagicMobileAssetName.portraitBoardBackground : MagicMobileAssetName.boardBackground)
-                        .resizable().scaledToFill()
-                        .frame(width: proxy.size.width, height: proxy.size.height).clipped()
-                } else {
-                LinearGradient(colors: [Color(red: 0.055, green: 0.085, blue: 0.10), Color(red: 0.10, green: 0.16, blue: 0.16)], startPoint: .top, endPoint: .bottom)
-                }
+                BattlefieldBackdropArt(theme: .resolved(appearance))
+                    .frame(width: proxy.size.width, height: proxy.size.height).clipped()
                 Rectangle()
                     .fill(
                         LinearGradient(
@@ -4615,8 +4596,8 @@ struct BattlefieldSurface: View {
                 RadialGradient(
                     colors: [
                         .clear,
-                        .black.opacity(0.22),
-                        .black.opacity(0.52)
+                        .black.opacity(0.10),
+                        .black.opacity(0.24)
                     ],
                     center: .center,
                     startRadius: min(proxy.size.width, proxy.size.height) * 0.20,

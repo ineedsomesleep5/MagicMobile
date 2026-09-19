@@ -37,10 +37,10 @@ struct DeckStudioComboPanel: View {
             LazyVStack(alignment: .leading, spacing: 16) {
                 DeckStudioPanel {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Discover the connections.").font(.title2.weight(.semibold))
-                        Text("Commander Spellbook finds documented combos and nearby possibilities. Results are not EDHREC recommendations or proof a combo will execute in a game.")
+                        Text("Find your combos").font(.title2.weight(.semibold))
+                        Text("Documented interactions from Commander Spellbook.")
                             .font(.subheadline).foregroundStyle(DeckStudioPalette.secondaryInk)
-                        Text("A lookup shares resolved main-deck and commander names, quantities, and your network address with Commander Spellbook. Other sections, deck title and private notes stay here.")
+                        Text("Lookup shares your main-deck and commander names, quantities, and IP address with Commander Spellbook.")
                             .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                         Button(snapshot == nil ? "Find combos" : "Refresh this deck’s combos", systemImage: "sparkles") { approval = input }
                             .buttonStyle(DeckStudioButtonStyle()).disabled(input == nil || model.loading)
@@ -49,7 +49,10 @@ struct DeckStudioComboPanel: View {
                             Text("Choose commander(s) and resolve main-deck card names before looking up combos. You can still edit and save your draft.")
                                 .font(.caption).foregroundStyle(DeckStudioPalette.warning)
                         }
-                        Link("About Commander Spellbook", destination: URL(string: "https://commanderspellbook.com/about/")!).font(.caption)
+                        DisclosureGroup("About these results") {
+                            Text("Other sections, deck title and private notes stay on this device. These are documented combos, not EDHREC recommendations or proof they will execute in your game.").font(.caption)
+                            Link("Commander Spellbook", destination: URL(string: "https://commanderspellbook.com/about/")!).font(.caption)
+                        }.font(.caption)
                     }
                 }
                 if model.loading {
@@ -98,6 +101,14 @@ struct DeckStudioComboPanel: View {
             }.padding(20)
         }
         .task(id: input) { feedback = nil; await model.setInput(input) }
+        #if DEBUG
+        .onAppear {
+            if ProcessInfo.processInfo.arguments.contains("--deck-combo-readability-ui-test"),
+               ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_PREFERENCES"] != nil {
+                selected = DeckStudioComboReadabilityFixture.variant
+            }
+        }
+        #endif
         .onDisappear { model.cancel() }
         .confirmationDialog("Send this deck to Commander Spellbook?", isPresented: Binding(get: { approval != nil }, set: { if !$0 { approval = nil } }), titleVisibility: .visible) {
             if let deck = approval {
@@ -111,7 +122,9 @@ struct DeckStudioComboPanel: View {
         } message: {
             Text("This is an optional online lookup of the current main deck and commanders. It never changes your deck automatically.")
         }
-        .sheet(item: $selected) { DeckStudioComboDetail(variant: $0) }
+        .sheet(item: $selected) { variant in
+            DeckStudioComboDetail(variant: variant, canonicalName: { resolver?.canonicalCardName($0) ?? $0 })
+        }
     }
 
     @ViewBuilder private func group(_ value: SpellbookGroup, snapshot: SpellbookSnapshot) -> some View {
@@ -124,32 +137,34 @@ struct DeckStudioComboPanel: View {
                     canonicalName: { resolver?.canonicalCardName($0) })
                 DeckStudioPanel {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text(variant.uses.map(\.card.name).joined(separator: " + "))
-                            .font(.subheadline.weight(.semibold))
-                        ForEach(Array(variant.produces.enumerated()), id: \.offset) { _, effect in
-                            Text(effect.feature.name).font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
-                        }
-                        readiness(assessment)
-                        Text(assessment.explanation).font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
-                        LazyVStack(alignment: .leading, spacing: 8) {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: 12) {
                             ForEach(Array(variant.uses.enumerated()), id: \.offset) { _, ingredient in
                                 let canonical = resolver?.canonicalCardName(ingredient.card.name) ?? ingredient.card.name
                                 Button { inspect(canonical) } label: {
-                                    HStack(spacing: 10) {
+                                    VStack(alignment: .leading, spacing: 6) {
                                         // Artwork uses the engine's name for this card, because a
                                         // provider spelling need not be an exact Scryfall name.
                                         if !dynamicType.isAccessibilitySize {
-                                            DeckStudioArtwork(name: canonical).frame(width: 44, height: 61)
+                                            DeckStudioArtwork(name: canonical).frame(width: 100, height: 140)
                                                 .clipShape(RoundedRectangle(cornerRadius: 5))
                                         }
                                         Text(ingredient.card.name).multilineTextAlignment(.leading)
                                             .fixedSize(horizontal: false, vertical: true)
-                                        Spacer(minLength: 8)
                                         Text("×\(ingredient.quantity)")
                                     }
-                                }.font(.caption).frame(minHeight: 44)
+                                    .frame(width: dynamicType.isAccessibilitySize ? 160 : 100, alignment: .leading)
+                                }.buttonStyle(DeckStudioArtworkButtonStyle()).font(.caption).frame(minHeight: 44)
                             }
                         }
+                        }
+                        ForEach(Array(variant.produces.enumerated()), id: \.offset) { _, effect in
+                            Text(effect.feature.name).font(.subheadline.weight(.semibold))
+                        }
+                        readiness(assessment)
+                        DisclosureGroup("Deck requirements") {
+                            Text(assessment.explanation).font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
+                        }.font(.caption)
                         Button("Prerequisites and steps", systemImage: "list.bullet.rectangle") { selected = variant }.frame(minHeight: 44)
                         if case .oneCardAway(let name) = assessment.readiness, !readOnly {
                             Menu {
@@ -180,6 +195,7 @@ struct DeckStudioComboPanel: View {
 
 private struct DeckStudioComboDetail: View {
     let variant: SpellbookVariant
+    let canonicalName: (String) -> String
     @Environment(\.dismiss) private var dismiss
     private func zones(_ values: [String]) -> String {
         let names = ["B": "Battlefield", "H": "Hand", "G": "Graveyard", "E": "Exile", "L": "Library", "C": "Command zone"]
@@ -190,8 +206,18 @@ private struct DeckStudioComboDetail: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Commander Spellbook").font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
-                    Text(variant.uses.map(\.card.name).joined(separator: " + ")).font(.title2.weight(.semibold))
-                    section("Mana required", variant.manaNeeded)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: 12) {
+                            ForEach(Array(variant.uses.enumerated()), id: \.offset) { _, row in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    DeckStudioArtwork(name: canonicalName(row.card.name)).frame(width: 116, height: 162)
+                                    Text(row.card.name).font(.caption.weight(.semibold))
+                                }.frame(width: 116, alignment: .leading)
+                            }
+                        }
+                    }.accessibilityIdentifier("deckStudio.combo.cards")
+                    Text("Before you begin").font(.title3.weight(.semibold))
+                    section("Mana", variant.manaNeeded)
                     ForEach(Array(variant.uses.enumerated()), id: \.offset) { _, row in
                         section("\(row.quantity) × \(row.card.name)",
                             ([zones(row.zoneLocations), row.mustBeCommander ? "Must be your commander" : "",
@@ -206,9 +232,24 @@ private struct DeckStudioComboDetail: View {
                     }
                     section("Prerequisites", variant.easyPrerequisites)
                     section("Additional prerequisites", variant.notablePrerequisites)
-                    section("Steps", variant.description)
+                    if !variant.description.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Steps").font(.title3.weight(.semibold)).accessibilityIdentifier("deckStudio.combo.steps")
+                            ForEach(Array(variant.description.split(separator: "\n").enumerated()), id: \.offset) { index, step in
+                                HStack(alignment: .top, spacing: 12) {
+                                    Text("\(index + 1)").font(.caption.bold()).frame(width: 26, height: 26)
+                                        .background(DeckStudioPalette.background, in: Circle())
+                                    Text(String(step).replacingOccurrences(of: #"^\s*\d+[.)]\s+"#, with: "", options: .regularExpression))
+                                        .font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                                        .accessibilityIdentifier("deckStudio.combo.step.\(index + 1)")
+                                }
+                            }
+                        }
+                    }
                     section("Results", variant.produces.map(\.feature.name).joined(separator: "\n"))
-                    section("Notes", variant.notes)
+                    if !variant.notes.isEmpty {
+                        DisclosureGroup("Notes") { Text(variant.notes).font(.subheadline) }
+                    }
                     Text("Provider Commander legality: \(variant.legalities.commander.map { $0 ? "legal" : "not legal" } ?? "unknown"). This is not validation of your complete deck or execution in XMage.")
                         .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                     if let url = variant.websiteURL { Link("Read on Commander Spellbook", destination: url).frame(minHeight: 44) }
@@ -221,3 +262,21 @@ private struct DeckStudioComboDetail: View {
         if !value.isEmpty { VStack(alignment: .leading, spacing: 6) { Text(title).font(.headline); Text(value).font(.subheadline) } }
     }
 }
+
+#if DEBUG
+/// Same deliberately non-gameplay Alpha/Beta fixture as spellbook-checks.swift.
+private enum DeckStudioComboReadabilityFixture {
+    static var variant: SpellbookVariant {
+        let ingredients = ["Alpha", "Beta"].enumerated().map { index, name in
+            SpellbookVariant.Ingredient(card: .init(id: index + 1, name: name, oracleId: nil), quantity: 1,
+                mustBeCommander: false, zoneLocations: ["B"], battlefieldCardState: "Untapped",
+                exileCardState: "", libraryCardState: "", graveyardCardState: "")
+        }
+        return SpellbookVariant(id: "1-2", uses: ingredients, requires: [],
+            produces: [.init(feature: .init(name: "Example result"), quantity: 1)], identity: "G", status: "OK",
+            spoiler: false, legalities: .init(commander: true), description: "Example first step\nExample second step",
+            easyPrerequisites: "Example prerequisite", notablePrerequisites: "Needs a game state", manaNeeded: "{1}",
+            notes: "UI fixture only. Not actual card advice.")
+    }
+}
+#endif

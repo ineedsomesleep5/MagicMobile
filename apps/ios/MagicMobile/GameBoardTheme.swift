@@ -1,5 +1,43 @@
 import SwiftUI
 
+/// Persisted identifiers are shared with Android; textures contain no game UI.
+enum BattlefieldBackdrop: String, CaseIterable, Identifiable {
+    case arena, midnight, wood, moss, ember, tide
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .arena: return "Stone Arena"
+        case .midnight: return "Midnight"
+        case .wood: return "Classic Wood"
+        case .moss: return "Moss Sanctuary"
+        case .ember: return "Obsidian Ember"
+        case .tide: return "Tidal Slate"
+        }
+    }
+    var assetName: String? {
+        self == .midnight ? nil : "battlefield-\(rawValue)"
+    }
+    static func resolved(_ value: String) -> Self { Self(rawValue: value) ?? .arena }
+}
+
+/// A square material crop keeps both orientations independent of painted slots,
+/// circles or frames. The actual board owns card placement and readable overlays.
+struct BattlefieldBackdropArt: View {
+    let theme: BattlefieldBackdrop
+
+    var body: some View {
+        if let asset = theme.assetName {
+            Image(asset).resizable().scaledToFill()
+        } else {
+            LinearGradient(
+                colors: [Color(red: 0.055, green: 0.085, blue: 0.10), Color(red: 0.10, green: 0.16, blue: 0.16)],
+                startPoint: .top, endPoint: .bottom
+            )
+        }
+    }
+}
+
 struct GameBoardTheme {
     // Foundations
     let backgroundDeepMoss = Color(red: 0.02, green: 0.10, blue: 0.07)

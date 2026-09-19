@@ -151,6 +151,7 @@ struct NativeCardArtworkView<Placeholder: View>: View {
     let name: String
     let variant: CardImageCacheVariant
     var contentMode: ContentMode = .fit
+    var artOnly = false
     var tokenTypeLine: String? = nil
     var tokenOracleText: String? = nil
     var tokenPower: String? = nil
@@ -173,13 +174,14 @@ struct NativeCardArtworkView<Placeholder: View>: View {
         let tokenToughness: String?
         let tokenColors: [String]?
         let downloadRevision: Int
+        let artOnly: Bool
     }
 
     var body: some View {
         let request = Request(name: name, variant: variant == .inspection ? .inspection : .board,
                               allowNetwork: remoteArtwork, tokenTypeLine: tokenTypeLine, tokenOracleText: tokenOracleText,
                               tokenPower: tokenPower, tokenToughness: tokenToughness, tokenColors: tokenColors,
-                              downloadRevision: downloadRevision)
+                              downloadRevision: downloadRevision, artOnly: artOnly)
         let permitted = NativeCardArtworkPolicy.permitsLookup(name: name)
         Group {
             if permitted, completedRequest == request, let artwork {
@@ -198,7 +200,7 @@ struct NativeCardArtworkView<Placeholder: View>: View {
                    let data = NativeDeckArtwork.localImageData(at: url),
                    let image = NativeDeckArtwork.decodedImage(data, variant: request.variant) {
                     guard !Task.isCancelled else { return }
-                    artwork = UIImage(cgImage: image); completedRequest = request
+                    artwork = presentedImage(image); completedRequest = request
                     if NativeDeckArtwork.isSufficient(data, for: request.variant) { return }
                     // Keep a safe low-resolution image visible offline or if upgrade fails.
                 } else if tokenTypeLine == nil, request.variant == .inspection,
@@ -206,7 +208,7 @@ struct NativeCardArtworkView<Placeholder: View>: View {
                           let data = NativeDeckArtwork.localImageData(at: url),
                           let image = NativeDeckArtwork.decodedImage(data, variant: .inspection) {
                     guard !Task.isCancelled else { return }
-                    artwork = UIImage(cgImage: image); completedRequest = request
+                    artwork = presentedImage(image); completedRequest = request
                 }
                 do {
                     if artwork == nil, request.variant == .inspection,
@@ -215,7 +217,7 @@ struct NativeCardArtworkView<Placeholder: View>: View {
                                                                                 tokenPower: tokenPower, tokenToughness: tokenToughness, tokenColors: tokenColors),
                        let image = NativeDeckArtwork.decodedImage(cached, variant: .inspection) {
                         try Task.checkCancellation()
-                        artwork = UIImage(cgImage: image); completedRequest = request
+                        artwork = presentedImage(image); completedRequest = request
                     }
                     guard !Task.isCancelled, request.allowNetwork == remoteArtwork else { return }
                     let data = try await NativeDeckArtwork.shared.imageData(name: name, variant: request.variant, allowNetwork: request.allowNetwork,
@@ -224,7 +226,7 @@ struct NativeCardArtworkView<Placeholder: View>: View {
                     try Task.checkCancellation()
                     guard request.allowNetwork == remoteArtwork else { return }
                     if let data, let image = NativeDeckArtwork.decodedImage(data, variant: request.variant) {
-                        artwork = UIImage(cgImage: image)
+                        artwork = presentedImage(image)
                     }
                     completedRequest = request
                     failedRequest = request.allowNetwork && artwork == nil ? request : nil
@@ -233,6 +235,10 @@ struct NativeCardArtworkView<Placeholder: View>: View {
                     failedRequest = request
                 }
             }
+    }
+
+    private func presentedImage(_ image: CGImage) -> UIImage {
+        UIImage(cgImage: artOnly ? (NativeDeckArtwork.illustrationImage(image) ?? image) : image)
     }
 }
 

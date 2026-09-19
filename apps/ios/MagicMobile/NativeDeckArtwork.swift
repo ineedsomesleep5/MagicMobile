@@ -150,6 +150,13 @@ actor NativeDeckArtwork {
             kCGImageSourceShouldCacheImmediately: true
         ] as CFDictionary)
     }
+    /// Deck-cover presentation only: crop inside the illustration window of a
+    /// conventional card, leaving the stored/full inspection image untouched.
+    static func illustrationImage(_ image: CGImage) -> CGImage? {
+        let bounds = CGRect(x: Double(image.width) * 0.08, y: Double(image.height) * 0.145,
+                            width: Double(image.width) * 0.84, height: Double(image.height) * 0.385)
+        return image.cropping(to: bounds.integral)
+    }
     static func localImageData(at url: URL) -> Data? {
         guard url.isFileURL, let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
               values.isRegularFile == true, let size = values.fileSize, size > 0, size <= maximumBytes,

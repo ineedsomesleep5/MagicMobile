@@ -16,13 +16,11 @@ struct NativeUpdateNewsView: View {
                     }
                 }
                 Section("What's new") {
-                    Label("A new commander-led menu with charcoal surfaces and clean, borderless controls.", systemImage: "rectangle.stack")
-                    Label("A refreshed Deck Studio with larger artwork, clearer tabs and a calm ivory workspace.", systemImage: "square.grid.2x2")
-                    Label("See your deck and opponent deck together before starting a game.", systemImage: "person.2")
-                    Label("Quick transitions and responsive controls, with Reduce Motion support.", systemImage: "sparkles")
-                    Label("Portrait deck tabs pin at the top while the header scrolls away for more card space.", systemImage: "pin")
-                    Label("Hold a game card to inspect it; release to return to the table.", systemImage: "hand.point.up")
-                    Label("New Downloads menu checks offline artwork, with full-catalogue or deck downloads, tokens, alternate faces and three image-quality choices.", systemImage: "externaldrive")
+                    Label("Edge-to-edge menus and cleaner deck covers.", systemImage: "rectangle.stack")
+                    Label("Compact card rows and clearer combo steps.", systemImage: "list.number")
+                    Label("Six battlefield backgrounds for both orientations.", systemImage: "photo.on.rectangle")
+                    Label("Quieter error notices that dismiss automatically.", systemImage: "bell")
+                    Label("Offline artwork with three quality options.", systemImage: "externaldrive")
                 }
                 Section {
                     Link(destination: URL(string: "https://github.com/magefree/mage/releases")!) {

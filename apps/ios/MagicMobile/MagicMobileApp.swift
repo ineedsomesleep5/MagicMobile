@@ -115,6 +115,9 @@ struct MagicMobileApp: App {
                     )
                 }
             }
+            // The UIKit host owns the real safe-area insets. Let its surface
+            // reach the window edges instead of clipping it to SwiftUI's inset.
+            .ignoresSafeArea(.container)
         }
     }
 }

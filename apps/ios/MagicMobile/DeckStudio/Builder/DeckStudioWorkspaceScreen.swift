@@ -332,14 +332,17 @@ struct DeckStudioWorkspaceScreen: View {
         Button("Clear filters") { sectionFilter = ""; colorFilter = "" }
     }
     private func cardRow(_ row: NativeDeckRow) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
-                cardIdentity(row).frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
-                cardControls(row)
-            }
+        Group {
+            if dynamicType.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 6) {
                 cardIdentity(row)
                 HStack { Spacer(); cardControls(row) }
+            }
+            } else {
+                HStack(spacing: 8) {
+                    cardIdentity(row).frame(maxWidth: .infinity, alignment: .leading)
+                    cardControls(row)
+                }
             }
         }.padding(8).background(DeckStudioPalette.surface, in: RoundedRectangle(cornerRadius: 12))
     }
