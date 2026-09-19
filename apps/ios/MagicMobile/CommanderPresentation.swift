@@ -19,7 +19,8 @@ struct CommanderActionStyle: ButtonStyle {
             .font(.headline)
             .padding(.horizontal, 18)
             .padding(.vertical, 15)
-            .frame(minHeight: 52)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .contentShape(Rectangle())
             .foregroundStyle(primary ? CommanderPresentation.canvas : CommanderPresentation.ink)
             .background(primary ? CommanderPresentation.accent : CommanderPresentation.surface,
                         in: RoundedRectangle(cornerRadius: 16, style: .continuous))

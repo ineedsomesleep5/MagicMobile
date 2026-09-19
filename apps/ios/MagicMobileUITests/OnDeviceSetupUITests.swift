@@ -564,7 +564,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         XCTAssertTrue(play.waitForExistence(timeout: 15))
         reveal(play); tapDiagnosed(play)
         waitFor(app.textFields["ondevice.playerName"], predicate: "exists == true AND hittable == true")
-        XCTAssertTrue(app.staticTexts["Gather your table"].exists)
+        XCTAssertTrue(app.staticTexts["Your next game."].exists)
     }
 
     private func openLibrary() {

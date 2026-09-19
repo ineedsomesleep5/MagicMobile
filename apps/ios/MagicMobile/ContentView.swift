@@ -1266,7 +1266,7 @@ struct TavernMainMenu: View {
     var body: some View {
         GeometryReader { proxy in
             let horizontal = proxy.size.width > proxy.size.height && !dynamicTypeSize.isAccessibilitySize
-            let cardWidth = horizontal ? min(210, proxy.size.height * 0.5) : min(210, proxy.size.width * 0.53)
+            let cardWidth = horizontal ? min(190, proxy.size.height * 0.42) : min(210, proxy.size.width * 0.53)
             let layout = horizontal ? AnyLayout(HStackLayout(alignment: .center, spacing: 48)) : AnyLayout(VStackLayout(spacing: 28))
             ScrollView(.vertical, showsIndicators: false) {
                 layout {
@@ -1290,6 +1290,7 @@ struct TavernMainMenu: View {
                                 Image(systemName: "arrow.up.right")
                             }
                             .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(CommanderActionStyle())
                         .accessibilityIdentifier("menu.play")
@@ -1300,6 +1301,8 @@ struct TavernMainMenu: View {
                                 Spacer()
                                 Image(systemName: "arrow.right")
                             }
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(CommanderActionStyle(primary: false))
                         .accessibilityIdentifier("menu.decks")
