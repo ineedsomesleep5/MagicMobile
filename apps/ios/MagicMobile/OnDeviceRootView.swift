@@ -316,11 +316,14 @@ struct OnDeviceRootView: View {
                             .disabled(setup.isBusy || setup.needsLeave)
                             .accessibilityIdentifier("ondevice.aiCount")
                         ForEach(0..<min(3, max(1, opponentCount)), id: \.self) { index in
-                            Picker("AI \(index + 1) deck", selection: aiDeckSelection(index)) {
-                                ForEach(PreconCatalog.all) { Text($0.name).tag($0.id) }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("AI \(index + 1) deck").font(.caption).foregroundStyle(CommanderPresentation.secondary)
+                                Picker("AI \(index + 1) deck", selection: aiDeckSelection(index)) {
+                                    ForEach(PreconCatalog.all) { Text($0.name).tag($0.id) }
+                                }
+                                .accessibilityIdentifier("ondevice.aiDeck.\(index + 1)")
+                                .disabled(setup.isBusy || setup.needsLeave)
                             }
-                            .accessibilityIdentifier("ondevice.aiDeck.\(index + 1)")
-                            .disabled(setup.isBusy || setup.needsLeave)
                         }
                         Stepper("AI skill: \(aiSkill)", value: $aiSkill, in: 1...10)
                             .disabled(setup.isBusy || setup.needsLeave)

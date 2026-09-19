@@ -75,6 +75,7 @@ final class IndependentAIDecksUITests: XCTestCase {
     private func assertSelection(_ seat: Int, _ name: String) {
         let picker = app.buttons["ondevice.aiDeck.\(seat)"]
         reveal(picker)
+        XCTAssertTrue(app.staticTexts["AI \(seat) deck"].exists)
         let predicate = NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", name, name)
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: picker)], timeout: 5), .completed)
     }
