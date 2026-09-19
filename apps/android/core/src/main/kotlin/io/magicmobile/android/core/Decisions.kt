@@ -10,7 +10,12 @@ object Decisions {
         val p = prompt.payload; val result = mutableListOf<Choice>(); val options = p.obj("options") ?: emptyMap()
         fun bool(label:String,value:Boolean) { if("boolean" in prompt.responseTypes) result += Choice(label,"boolean",value) }
         when(prompt.kind) {
-            "ASK" -> { bool(plain(options.text("buttonYes") ?: "Yes / keep"),true); bool(plain(options.text("buttonNo") ?: "No / mulligan"),false) }
+            // Never invent semantics for a yes/no question. The engine's own button text is
+            // used when it supplies one; otherwise the answer is labelled plainly. The old
+            // fallbacks read "Yes / keep" and "No / mulligan", which assumed the question was
+            // "keep this hand?" — for XMage's actual "Mulligan for free, draw another 7
+            // cards?" they told the player the exact opposite of what the button did.
+            "ASK" -> { bool(plain(options.text("buttonYes") ?: "Yes"),true); bool(plain(options.text("buttonNo") ?: "No"),false) }
             "CHOOSE_PILE" -> { bool("Pile 1",true); bool("Pile 2",false) }
             "CHOOSE_CHOICE","CHOOSE_MODE" -> {
                 val choices = p.obj("choices") ?: emptyMap()
