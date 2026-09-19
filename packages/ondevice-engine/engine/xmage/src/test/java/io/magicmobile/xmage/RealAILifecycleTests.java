@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public final class RealAILifecycleTests {
     public static void main(String[] args) throws Exception {
+        aiSkillConfiguration();
         cancelledOpeningSelection();
         boolean twoHumans=args.length>0;
         Map<String,Object> configuration=config(twoHumans);
@@ -25,6 +26,10 @@ public final class RealAILifecycleTests {
         try(AutoCloseable cleanup=()->teardown("engine cleanup",engine::close)) {
             Map<String,Object> created=engine.create(configuration);
             String id=Json.requiredString(created,"matchId");
+            for(var player:game(engine,id).getPlayers().values()) {
+                if(player instanceof ComputerPlayer6) check(aiField(player,"maxThinkTimeSecs")==6,
+                    "create configuration delivers selected level 2 to real AI");
+            }
             check(!Boolean.TRUE.equals(engine.capabilities().get("aiEnabled")),"native AI capability remains unvalidated");
             engine.poll(id,"human",0);
             try {engine.poll(id,"ai",0);throw new AssertionError("AI must not be a response recipient");}
@@ -35,6 +40,12 @@ public final class RealAILifecycleTests {
             expect("invalid_seat",()->engine.create(Json.map("seats",List.of(seat("same","ai"),seat("same","human")))));
             expect("invalid_controller",()->engine.create(Json.map("seats",List.of(seat("human","human"),seat("ai","hard")))));
             expect("invalid_seats",()->engine.create(Json.map("seats",List.of(seat("human","human")))));
+            for(Object invalid:Arrays.asList(0,11,Long.MAX_VALUE,"2",true,null,new java.math.BigDecimal("2.5"))) {
+                Map<String,Object> ai=seat("ai","ai");ai.put("aiSkill",invalid);
+                expect("invalid_ai_skill",()->engine.create(Json.map("seats",List.of(seat("human","human"),ai))));
+            }
+            Map<String,Object> humanSkill=seat("human","human");humanSkill.put("aiSkill",2);
+            expect("invalid_ai_skill",()->engine.create(Json.map("seats",List.of(humanSkill,seat("ai","ai")))));
             List<Object> maximum=new ArrayList<>(Json.array(configuration.get("seats")));
             for(int n=maximum.size();n<4;n++)maximum.add(seat("extra"+n,"ai"));
             String four=Json.requiredString(engine.create(Json.map("seats",maximum)),"matchId");
@@ -71,6 +82,25 @@ public final class RealAILifecycleTests {
             awaitIdlePool();
             System.out.println("PASS fresh engine reaches real MAD simulation after prior close");
         }
+    }
+    private static void aiSkillConfiguration() throws Exception {
+        check(XmageEngine.aiSkill(Map.of())==1,"omitted skill preserves prior callers");
+        MobileAICancellation cancellation=new MobileAICancellation();
+        for(int skill=1;skill<=10;skill++) {
+            int parsed=XmageEngine.aiSkill(Json.map("aiSkill",skill));
+            var player=cancellation.player("AI",parsed);
+            for(Object current:List.of(player,player.copy())) {
+                check(aiField(current,"maxDepth")==Math.max(4,skill),"upstream depth and copies at skill "+skill);
+                check(aiField(current,"maxThinkTimeSecs")==skill*3,"upstream think budget and copies at skill "+skill);
+                check(aiField(current,"maxNodes")==aiField(player,"maxNodes"),"node budget preserved");
+            }
+        }
+        check(XmageEngine.aiSkill(Json.map("aiSkill",new java.math.BigDecimal("10")))==10,"JSON integer decoding");
+        System.out.println("PASS all ten upstream AI skill budgets and copied-player settings");
+    }
+    private static int aiField(Object player,String name)throws Exception {
+        Field field=ComputerPlayer6.class.getDeclaredField(name);field.setAccessible(true);
+        return field.getInt(player);
     }
     private static void cancelledOpeningSelection() throws Exception {
         MobileAICancellation cancellation=new MobileAICancellation();
@@ -188,7 +218,7 @@ public final class RealAILifecycleTests {
         List<Object> seats=new ArrayList<>();
         seats.add(seat("human","human"));
         if(twoHumans)seats.add(seat("human2","human"));
-        seats.add(seat("ai","ai"));
+        Map<String,Object> ai=seat("ai","ai");ai.put("aiSkill",2);seats.add(ai);
         return Json.map("seats",seats);
     }
     private static Map<String,Object> seat(String id,String controller) {

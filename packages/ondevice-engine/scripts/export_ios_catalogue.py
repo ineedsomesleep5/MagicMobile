@@ -24,7 +24,8 @@ CATALOGUE_SHA256 = '7ac98264dee413be459cdcdd01839de3af51d68060adb28f48881f3a1a5d
 REPORT_SHA256 = '0ded410be118be4bbb5ae0f59c7657bacc97cfcef6493aeade7e3ac509fa0175'
 REGISTRY_HASH = '807f3deda781f1e912c17c6648e4fb81dc4b00d08b33ee2c308e3f161206267a'
 SET_ELIGIBILITY_SHA256 = '27902e939769f396d3d17bdb29cddbabc5da7db909466c816e37e5a8e4ae9ebb'
-METADATA_SHA256 = '7e640da2dc242f904d0c5a16a54c89441b7e83ac7f1a11ecd3e9bc01778a79f7'
+METADATA_SHA256 = 'a279c66dd82246d5c1601d8dbac930cc058f512f22a8e349a3c81db2b92616a8'
+ROLE_TAGS_SHA256 = 'f0b9f48e4e0c43f6f847dcd8f51954ede58bcdaca58effbf6d8710237fcdbf86'
 
 
 def checked_bytes(path: Path, expected: str) -> bytes:
@@ -95,6 +96,20 @@ def name_aliases(cards: list[dict], metadata: list[dict]) -> dict[str, str]:
     return dict(sorted(aliases.items()))
 
 
+COLOR_SYMBOLS = ('W', 'U', 'B', 'R', 'G')
+
+
+def color_identity(value) -> list[str] | None:
+    """Validate XMage's build-time identity, including every face. Never infer
+    legality from display text, which lacks reverse-face color indicators."""
+    if value is None:
+        return None
+    if (not isinstance(value, list) or any(v not in COLOR_SYMBOLS for v in value)
+            or len(set(value)) != len(value)):
+        raise ValueError('Invalid XMage color identity')
+    return [symbol for symbol in COLOR_SYMBOLS if symbol in value]
+
+
 def card_metadata(cards: list[dict], metadata: list[dict], source_rows: list[dict]) -> dict:
     selected = {(c['name'], c['setCode'], c['collectorNumber']): c['name'] for c in cards}
     sets = {}
@@ -124,8 +139,32 @@ def card_metadata(cards: list[dict], metadata: list[dict], source_rows: list[dic
         result[name] = dict(typeLine=type_line, types=types,
                             oracleText=row['rules'].replace('@@@', '\n').rstrip('\n') if isinstance(row.get('rules'), str) else None,
                             manaValue=value, manaCost=row['manaCosts'].replace('@@@', '') if isinstance(row.get('manaCosts'), str) else None,
-                            colors=colors, colorIdentity=None, setCodes=sorted(sets.get(name, set())))
+                            colors=colors,
+                            colorIdentity=color_identity(row.get('colorIdentity')),
+                            setCodes=sorted(sets.get(name, set())))
     return dict(sorted(result.items()))
+
+
+def apply_role_tags(metadata: dict, aliases: dict, tags: dict) -> tuple[dict, int]:
+    """Attach curated Scryfall oracle-tag roles to catalogue entries.
+
+    Scryfall names double-faced cards "Front // Back"; our metadata is keyed by the
+    name the engine uses, so resolve through the same alias table the app uses. A
+    card with no curated tag simply carries no "roles" key; the app falls back to its
+    own explainable text patterns there, and a player's own tags always win."""
+    resolved = {}
+    for role, names in sorted(tags.items()):
+        for name in names:
+            key = name if name in metadata else aliases.get(name)
+            if key is None and ' // ' in name:
+                front = name.split(' // ', 1)[0]
+                key = front if front in metadata else None
+            if key is not None:
+                resolved.setdefault(key, set()).add(role)
+    order = list(tags)
+    for name, roles in resolved.items():
+        metadata[name]['roles'] = sorted(roles, key=order.index)
+    return metadata, len(resolved)
 
 
 def export() -> bytes:
@@ -144,11 +183,19 @@ def export() -> bytes:
     metadata = gzip.decompress(checked_bytes(ROOT / 'build/engine/mage/mobile/card-metadata.jsonl.gz', METADATA_SHA256))
     metadata_rows = [json.loads(line) for line in metadata.splitlines() if line.strip()]
     aliases = name_aliases(cards, metadata_rows)
+    role_tags = json.loads(checked_bytes(ROOT / 'engine/data/role-tags.json', ROLE_TAGS_SHA256))
+    if role_tags['schemaVersion'] != 1:
+        raise ValueError('Role tags use an unexpected schema version')
+    entries, tagged = apply_role_tags(card_metadata(cards, metadata_rows, source_rows), aliases, role_tags['tags'])
+    if any(entry['colorIdentity'] is None for entry in entries.values()):
+        raise ValueError('Selected printing lacks XMage color identity; rebuild card metadata')
+    stats = stats | dict(roleTaggedNames=tagged)
     payload = dict(schemaVersion=1, upstreamCommit=UPSTREAM, catalogueHash=REGISTRY_HASH,
                    sourceCatalogueSHA256=CATALOGUE_SHA256, sourceRegistrySHA256=REPORT_SHA256,
                    sourceSetEligibilitySHA256=SET_ELIGIBILITY_SHA256,
-                   sourceMetadataSHA256=METADATA_SHA256, nameAliases=aliases,
-                   cardMetadata=card_metadata(cards, metadata_rows, source_rows),
+                   sourceMetadataSHA256=METADATA_SHA256, sourceRoleTagsSHA256=ROLE_TAGS_SHA256,
+                   roleTagsFetchedAt=role_tags['fetchedAt'], roleTagProvider=role_tags['provider'],
+                   nameAliases=aliases, cardMetadata=entries,
                    cards=cards, statistics=stats)
     return (json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')) + '\n').encode('utf-8')
 
@@ -157,20 +204,59 @@ class ExportTests(unittest.TestCase):
     def test_metadata_preserves_unknowns_and_selected_printing(self):
         cards = [dict(name='Front', setCode='SET', collectorNumber='1')]
         row = dict(name='Front', setCode='SET', cardNumber='1', types='CREATURE@@@', supertypes='LEGENDARY@@@', subtypes='Elf@@@',
-                   rules='First@@@Second@@@', manaCosts='{2}@@@{G/W}@@@', manaValue=3, white=True, blue=False, black=False, red=False, green=True)
+                   rules='First@@@Second@@@', manaCosts='{2}@@@{G/W}@@@', manaValue=3, white=True, blue=False, black=False, red=False, green=True,
+                   colorIdentity=['W', 'G'])
         out = card_metadata(cards, [row, row | dict(cardNumber='2', manaValue=9)], cards)['Front']
         self.assertEqual(out['typeLine'], 'Legendary Creature — Elf')
         self.assertEqual(out['oracleText'], 'First\nSecond')
         self.assertEqual(out['manaCost'], '{2}{G/W}')
         self.assertEqual(out['manaValue'], 3)
         self.assertEqual(out['colors'], ['W', 'G'])
-        self.assertIsNone(out['colorIdentity'])
+        self.assertEqual(out['colorIdentity'], ['W', 'G'])
         self.assertEqual(out['setCodes'], ['SET'])
         missing = card_metadata(cards, [dict(name='Front', setCode='SET', cardNumber='1')], cards)['Front']
         for key in ['typeLine', 'types', 'oracleText', 'manaValue', 'manaCost', 'colors', 'colorIdentity']:
             self.assertIsNone(missing[key])
         with self.assertRaises(ValueError):
             card_metadata(cards, [row, row], cards)
+
+    def test_color_identity_preserves_engine_faces_and_unknowns(self):
+        self.assertEqual(color_identity(['R', 'W']), ['W', 'R'])
+        self.assertEqual(color_identity([]), [])
+        self.assertIsNone(color_identity(None))
+        for invalid in ['W', ['W', 'W'], ['C'], [True]]:
+            with self.assertRaises(ValueError):
+                color_identity(invalid)
+        cards = [dict(name='Front', setCode='SET', collectorNumber='1')]
+        row = dict(name='Front', setCode='SET', cardNumber='1', doubleFaced=True,
+                   white=True, blue=False, black=False, red=False, green=False,
+                   manaCosts='{W}', rules='Transform this.', colorIdentity=['W', 'R'])
+        result = card_metadata(cards, [row], cards)['Front']
+        self.assertEqual(result['colors'], ['W'])
+        self.assertEqual(result['colorIdentity'], ['W', 'R'])
+
+    def test_role_tags_resolve_through_aliases_and_front_faces(self):
+        metadata = {'Sol Ring': {}, 'Aberrant Researcher': {}, 'Wrath of God': {}}
+        aliases = {'Aberrant Researcher // Perfected Form': 'Aberrant Researcher'}
+        tags = {'ramp': ['Sol Ring', 'Not In Catalogue'],
+                'cardFlow': ['Aberrant Researcher // Perfected Form'],
+                'boardWipe': ['Wrath of God'], 'protection': ['Wrath of God']}
+        out, tagged = apply_role_tags(metadata, aliases, tags)
+        self.assertEqual(tagged, 3)
+        self.assertEqual(out['Sol Ring']['roles'], ['ramp'])
+        self.assertEqual(out['Aberrant Researcher']['roles'], ['cardFlow'])
+        # Multiple roles keep the declared role order, not alphabetical order.
+        self.assertEqual(out['Wrath of God']['roles'], ['boardWipe', 'protection'])
+
+    def test_untagged_cards_carry_no_roles_key(self):
+        out, tagged = apply_role_tags({'Mystery Card': {}}, {}, {'ramp': ['Sol Ring']})
+        self.assertNotIn('roles', out['Mystery Card'])
+        self.assertEqual(tagged, 0)
+
+    def test_front_face_fallback_without_an_alias_entry(self):
+        out, _ = apply_role_tags({'Delver of Secrets': {}}, {},
+                                 {'cardFlow': ['Delver of Secrets // Insectile Aberration']})
+        self.assertEqual(out['Delver of Secrets']['roles'], ['cardFlow'])
 
     def test_uses_commander_eligible_printing_without_changing_card_name(self):
         rows = [dict(name='Hornet Queen', setCode='AKR', collectorNumber='196'),

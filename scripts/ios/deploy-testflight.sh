@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Native TestFlight release. Audience must be selected explicitly for external builds.
+# Native TestFlight release. Every normal release must serve both internal and external testers.
 set -euo pipefail
 umask 077
 
@@ -9,11 +9,12 @@ SCHEME="${SCHEME:-MagicMobile}"
 CONFIGURATION="${CONFIGURATION:-Release}"
 BUNDLE_ID="${BUNDLE_ID:-com.calebfeliciano.magicmobile}"
 TEAM_ID="${TEAM_ID:-82HPAY85M8}"
-EXPORT_OPTIONS="${EXPORT_OPTIONS:-$REPO_ROOT/release/testflight/ExportOptions.plist}"
-TESTFLIGHT_AUDIENCE="${TESTFLIGHT_AUDIENCE:-internal}"
+EXPORT_OPTIONS="${EXPORT_OPTIONS:-$REPO_ROOT/release/testflight/ExportOptionsExternal.plist}"
+TESTFLIGHT_AUDIENCE="${TESTFLIGHT_AUDIENCE:-external}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-$REPO_ROOT/build_output/testflight}"
 BUILD_NUMBER_SCRIPT="$REPO_ROOT/scripts/ios/testflight-build-number.mjs"
 GUARD="$REPO_ROOT/scripts/ios/testflight_native_guard.py"
+DISTRIBUTION_SCRIPT="$REPO_ROOT/scripts/ios/distribute-testflight-groups.sh"
 ASC_KEY_ID="${ASC_KEY_ID:-Z54BVK456U}"
 ASC_ISSUER_ID="${ASC_ISSUER_ID:-0e7ba65b-f006-4c46-bb4d-dddf7303de16}"
 ASC_KEY_PATH="${ASC_KEY_PATH:-/Users/calebfeliciano/.appstoreconnect/private_keys/AuthKey_Z54BVK456U.p8}"
@@ -33,13 +34,13 @@ if [[ "${PREPARE_TESTFLIGHT_BUILD_NUMBER:-0}" != 0 ]]; then
   echo "Run 'node scripts/ios/testflight-build-number.mjs prepare', check App Store Connect availability, and commit before releasing." >&2
   exit 2
 fi
-if [[ "$TESTFLIGHT_AUDIENCE" != internal && "$TESTFLIGHT_AUDIENCE" != external ]]; then
-  echo "TESTFLIGHT_AUDIENCE must be internal or external." >&2; exit 2
+if [[ "$TESTFLIGHT_AUDIENCE" != external ]]; then
+  echo "TestFlight releases must use the external-safe export so both tester groups can receive the build." >&2; exit 2
 fi
 if [[ ! -f "$ASC_KEY_PATH" ]]; then
   echo "The configured App Store Connect API key file is missing." >&2; exit 2
 fi
-for tool in python3 node xcodegen xcodebuild xcrun codesign security; do
+for tool in python3 node xcodegen xcodebuild xcrun codesign security asc; do
   command -v "$tool" >/dev/null || { echo "Required desktop tool missing: $tool" >&2; exit 2; }
 done
 
@@ -95,5 +96,7 @@ python3 "$GUARD" upload-input --repo "$REPO_ROOT" --receipt "$RUN_ROOT/signed-re
 xcrun altool --upload-app -f "$IPA_PATH" --api-key "$ASC_KEY_ID" \
   --api-issuer "$ASC_ISSUER_ID" 2>&1 | tee "$UPLOAD_LOG"
 node "$BUILD_NUMBER_SCRIPT" record --upload-log "$UPLOAD_LOG" --ipa "$IPA_PATH"
-echo "Upload completed for $TESTFLIGHT_AUDIENCE TestFlight eligibility. Confirm Apple processing/group access separately; phone gameplay is not verified by this script."
+BUILD_NUMBER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$REPO_ROOT/apps/ios/MagicMobile/Info.plist")"
+"$DISTRIBUTION_SCRIPT" --build-number "$BUILD_NUMBER" --release-root "$RUN_ROOT"
+echo "Upload, processing, Internal + External distribution, and Beta App Review submission completed. Phone gameplay is not verified by this script."
 echo "Keep the archive, dSYM, paired engine and receipts in $RUN_ROOT."

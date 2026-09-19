@@ -102,6 +102,10 @@ struct ArenaBattlefieldCard: View {
         targetable ? .red : selected ? MagicPalette.antiqueGold : legal ? MagicPalette.legalEmerald : .white.opacity(0.35)
     }
 
+    var showsFooter: Bool {
+        card.showsPowerToughness || card.tapped == true || (card.isCreature && card.summoningSickness == true)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             Text(card.card.name)
@@ -115,20 +119,22 @@ struct ArenaBattlefieldCard: View {
                     .offset(y: -width * 0.19)
                     .allowsHitTesting(false).accessibilityIdentifier("").accessibilityHidden(true)
             }
-            .frame(width: width, height: max(12, height - 35), alignment: .top).clipped()
-            HStack(spacing: 2) {
-                if card.tapped == true {
-                    Image(systemName: "arrow.turn.down.right").accessibilityLabel("Tapped")
-                } else if card.isCreature && card.summoningSickness == true {
-                    Image(systemName: "hourglass").foregroundStyle(MagicPalette.warningAmber)
+            .frame(width: width, height: max(12, height - 15 - (showsFooter ? 20 : 0)), alignment: .top).clipped()
+            if showsFooter {
+                HStack(spacing: 2) {
+                    if card.tapped == true {
+                        Image(systemName: "arrow.turn.down.right").accessibilityLabel("Tapped")
+                    } else if card.isCreature && card.summoningSickness == true {
+                        Image(systemName: "hourglass").foregroundStyle(MagicPalette.warningAmber)
+                    }
+                    Spacer(minLength: 0)
+                    if card.showsPowerToughness, let power = card.displayPower, let toughness = card.displayToughness {
+                        Text("\(power)/\(toughness)").font(.system(size: max(11, width * 0.17), weight: .black, design: .rounded))
+                    }
                 }
-                Spacer(minLength: 0)
-                if card.showsPowerToughness, let power = card.displayPower, let toughness = card.displayToughness {
-                    Text("\(power)/\(toughness)").font(.system(size: max(11, width * 0.17), weight: .black, design: .rounded))
-                }
+                .font(.system(size: 10, weight: .bold))
+                .padding(.horizontal, 4).frame(height: 20)
             }
-            .font(.system(size: 10, weight: .bold))
-            .padding(.horizontal, 4).frame(height: 20)
         }
         .foregroundStyle(.white)
         .frame(width: width, height: height)

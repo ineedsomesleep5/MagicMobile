@@ -214,5 +214,16 @@ class ReleaseGuardTests(unittest.TestCase):
             self.assertEqual(sentinel.read_text(), 'previous evidence')
             self.assertFalse(log.exists(), 'Missing provenance must fail before any Apple build/sign/upload call')
 
+    def test_release_defaults_to_both_testflight_audiences(self):
+        script = (REPO / 'scripts/ios/deploy-testflight.sh').read_text()
+        distribution = (REPO / 'scripts/ios/distribute-testflight-groups.sh').read_text()
+        self.assertIn('ExportOptionsExternal.plist', script)
+        self.assertIn('TESTFLIGHT_AUDIENCE="${TESTFLIGHT_AUDIENCE:-external}"', script)
+        self.assertIn('distribute-testflight-groups.sh', script)
+        self.assertIn('asc builds wait', distribution)
+        self.assertIn('asc builds add-groups', distribution)
+        self.assertIn('--submit --confirm', distribution)
+        self.assertNotIn(' --skip-internal', distribution)
+
 
 if __name__ == '__main__': unittest.main()

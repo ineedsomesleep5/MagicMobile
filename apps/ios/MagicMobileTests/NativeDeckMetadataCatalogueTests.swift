@@ -140,12 +140,26 @@ final class NativeDeckMetadataCatalogueTests: XCTestCase {
         XCTAssertThrowsError(try catalogue.statistics(for: DeckList(name: "Invalid", commander: nil, entries: [DeckEntry(cardName: "Forest", quantity: Int.max, section: "deck")])))
     }
 
-    func testBundledMetadataIsTruthfulAndIdentityUnchanged() throws {
+    func testBundledMetadataIsTruthfulAndCarriesColorIdentity() throws {
         let catalogue = try NativeDeckMetadataCatalogue.bundled()
         let forest = try XCTUnwrap(catalogue.card(named: "Forest"))
         XCTAssertEqual(forest.manaValue, 0)
         XCTAssertEqual(forest.colors, [])
-        XCTAssertNil(forest.colorIdentity)
+        // Color identity is not color. A basic land type carries its intrinsic mana
+        // ability (CR 903.4), so a colorless Forest still has a green identity.
+        XCTAssertEqual(forest.colorIdentity, ["G"])
+        XCTAssertEqual(catalogue.card(named: "Sol Ring")?.colorIdentity, [])
+        // Identity from a rules-text mana symbol on an otherwise colorless land.
+        XCTAssertEqual(catalogue.card(named: "Bojuka Bog")?.colorIdentity, ["B"])
+        XCTAssertEqual(catalogue.card(named: "The Scarab God")?.colorIdentity, ["U", "B"])
+        // The reverse face contributes even when its color is absent from front text/cost.
+        XCTAssertEqual(catalogue.card(named: "Archangel Avacyn")?.colorIdentity, ["W", "R"])
+        XCTAssertEqual(catalogue.card(named: "Westvale Abbey")?.colorIdentity, ["B"])
+        XCTAssertEqual(catalogue.card(named: "Elbrus, the Binding Blade")?.colorIdentity, ["B"])
+        XCTAssertEqual(catalogue.card(named: "Brutal Cathar")?.colorIdentity, ["W", "R"])
+        XCTAssertEqual(catalogue.card(named: "Blex, Vexing Pest")?.colorIdentity, ["B", "G"])
+        XCTAssertEqual(catalogue.card(named: "Transguild Courier")?.colorIdentity, ["W", "U", "B", "R", "G"])
+        XCTAssertEqual(catalogue.card(named: "Sacred Foundry")?.colorIdentity, ["W", "R"])
         XCTAssertTrue(forest.types?.contains("LAND") == true)
         XCTAssertFalse(forest.setCodes.isEmpty)
         let split = try XCTUnwrap(catalogue.card(named: "Fire // Ice"))

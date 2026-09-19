@@ -3,6 +3,32 @@ import SwiftUI
 @testable import MagicMobile
 
 final class OnDeviceBoardIdentityTests: XCTestCase {
+    func testAbilityPickerDoesNotRepeatItsChoicesInCompactTextControls() throws {
+        let fields: [String: Any] = ["responseKind": "ability",
+            "responseCommand": ["type": "choose_ability", "promptId": "prompt", "messageId": 7],
+            "abilities": [["id": "ability", "label": "Draw a card", "sourceCard": cardPayload]]]
+        let action: [String: Any] = ["id": "ability-action", "type": "choose_ability", "label": "Draw a card",
+            "playerId": "viewer", "promptId": "prompt", "messageId": 7, "abilityId": "ability"]
+        let snapshot = try promptSnapshot(fields: fields, actions: [action])
+        XCTAssertTrue(CompactPromptPopup.compactLegalPromptActions(in: snapshot).isEmpty)
+        XCTAssertTrue(CompactPromptPopup.needsDetails(snapshot))
+        XCTAssertTrue(CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: nil))
+        XCTAssertEqual(snapshot.legalActions?.first?.abilityId, "ability", "Presentation must not remove engine choices")
+        let cancel: [String: Any] = ["id": "cancel", "type": "answer_yes_no", "label": "Cancel",
+            "playerId": "viewer", "promptId": "prompt", "messageId": 7, "confirmed": false]
+        XCTAssertEqual(CompactPromptPopup.compactLegalPromptActions(in:
+            try promptSnapshot(fields: fields, actions: [action, cancel])).map(\.id), ["cancel"])
+        var withoutCards = fields
+        withoutCards["abilities"] = [] as [Any]
+        XCTAssertEqual(CompactPromptPopup.compactLegalPromptActions(in:
+            try promptSnapshot(fields: withoutCards, actions: [action])).map(\.id), ["ability-action"])
+
+        let followup = try promptSnapshot(fields: ["responseKind": "confirmation"], actions: [
+            ["id": "optional", "type": "answer_yes_no", "label": "Use the ability?", "playerId": "viewer",
+             "promptId": "prompt", "messageId": 8, "confirmed": true]])
+        XCTAssertEqual(CompactPromptPopup.compactLegalPromptActions(in: followup).map(\.id), ["optional"])
+    }
+
     func testNativeDetailChoicesRemainReachableWithCompactActions() throws {
         let controls: [[String: Any]] = [
             ["targets": [["id": "target", "label": "Target"]]],

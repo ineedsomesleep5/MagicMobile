@@ -1,5 +1,8 @@
 import Foundation
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Display-only interpretation of an already authorized GameLogEntry.message.
 /// Never queries cards, retains messages, emits events, or uses an HTML renderer.
@@ -273,8 +276,128 @@ struct GameRulesText: View {
     let source: String
     var cardName: String? = nil
     var isHidden = false
+    @ScaledMetric(relativeTo: .body) private var symbolSize = 16
 
     var body: some View {
-        Text(verbatim: GameRulesPresentation(source: source, cardName: cardName, isHidden: isHidden).plainText)
+        let rules = GameRulesPresentation(source: source, cardName: cardName, isHidden: isHidden)
+        let symbols = GameRulesSymbols(rules)
+        VStack(alignment: .leading, spacing: 0) {
+            symbols.fragments.reduce(Text(verbatim: "")) { text, fragment in
+                #if canImport(UIKit) && !SWIFT_PACKAGE
+                if let code = fragment.code, let image = symbolImage(code) {
+                    return text + Text(Image(uiImage: image).renderingMode(.original)).baselineOffset(-symbolSize * 0.12)
+                }
+                #endif
+                return text + Text(verbatim: fragment.literal)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: symbols.accessibilityText))
+    }
+
+    #if canImport(UIKit) && !SWIFT_PACKAGE
+    private func symbolImage(_ code: String) -> UIImage? {
+        let image: UIImage?
+        if let url = CardImageURL.symbol("{\(code)}"), url.isFileURL,
+           let cached = UIImage(contentsOfFile: url.path) {
+            image = cached
+        } else if let asset = CardImageURL.bundledSymbolAssetName(for: code), let bundled = UIImage(named: asset) {
+            image = bundled
+        } else { image = nil }
+        let size = min(96, max(8, symbolSize))
+        return UIGraphicsImageRenderer(size: CGSize(width: size, height: size)).image { context in
+            let rect = CGRect(x: 0, y: 0, width: size, height: size)
+            if let image { image.draw(in: rect); return }
+            // All recognized symbols have an offline icon. Split colors and printed
+            // codes retain hybrid meaning without pretending to be downloaded art.
+            let colors: [String: UIColor] = [
+                "W": UIColor(red: 0.96, green: 0.90, blue: 0.72, alpha: 1),
+                "U": UIColor(red: 0.55, green: 0.78, blue: 0.92, alpha: 1),
+                "B": UIColor(white: 0.63, alpha: 1),
+                "R": UIColor(red: 0.94, green: 0.57, blue: 0.44, alpha: 1),
+                "G": UIColor(red: 0.57, green: 0.77, blue: 0.55, alpha: 1)
+            ]
+            let parts = code.split(separator: "/").map(String.init)
+            let circle = UIBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5))
+            context.cgContext.saveGState()
+            circle.addClip()
+            (colors[parts[0]] ?? UIColor(white: 0.85, alpha: 1)).setFill()
+            context.cgContext.fill(rect)
+            if parts.count > 1, let second = colors[parts[1]] {
+                second.setFill()
+                let wedge = UIBezierPath()
+                wedge.move(to: CGPoint(x: size, y: 0)); wedge.addLine(to: CGPoint(x: size, y: size))
+                wedge.addLine(to: CGPoint(x: 0, y: size)); wedge.close(); wedge.fill()
+            }
+            context.cgContext.restoreGState()
+            UIColor.black.withAlphaComponent(0.65).setStroke(); circle.lineWidth = 0.7; circle.stroke()
+            let systemName = ["T": "arrow.turn.down.right", "Q": "arrow.turn.up.left", "S": "snowflake", "C": "diamond"][code]
+            if let systemName, let glyph = UIImage(systemName: systemName) {
+                glyph.withTintColor(.black, renderingMode: .alwaysOriginal).draw(in: rect.insetBy(dx: size * 0.18, dy: size * 0.18))
+            } else {
+                let label = (parts.last == "P" ? "Φ" : code) as NSString
+                let font = UIFont.systemFont(ofSize: size * (label.length > 2 ? 0.40 : 0.62), weight: .semibold)
+                let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: UIColor.black]
+                let measured = label.size(withAttributes: attributes)
+                label.draw(at: CGPoint(x: (size - measured.width) / 2, y: (size - measured.height) / 2), withAttributes: attributes)
+            }
+        }
+    }
+    #endif
+}
+
+/// Only accepts the already normalized, privacy-filtered rules presentation.
+/// Bounds image work separately from the existing 32 KiB text bound.
+struct GameRulesSymbols: Equatable {
+    static let maximumSymbols = 256
+    struct Fragment: Equatable {
+        let literal: String
+        var code: String? = nil
+        var spoken: String? = nil
+    }
+    let fragments: [Fragment]
+    var accessibilityText: String {
+        fragments.map { $0.spoken.map { " \($0) " } ?? $0.literal }.joined()
+            .replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    private static let tokens = try! NSRegularExpression(pattern: #"\{([A-Za-z0-9/]{1,12})\}"#)
+    init(_ rules: GameRulesPresentation) {
+        let text = rules.plainText as NSString
+        var parts: [Fragment] = []
+        var cursor = 0, count = 0
+        Self.tokens.enumerateMatches(in: rules.plainText, range: NSRange(location: 0, length: text.length)) { match, _, stop in
+            guard let match else { return }
+            let code = text.substring(with: match.range(at: 1)).uppercased()
+            guard let spoken = Self.spoken(code) else { return }
+            if match.range.location > cursor { parts.append(Fragment(literal: text.substring(with: NSRange(location: cursor, length: match.range.location - cursor)))) }
+            parts.append(Fragment(literal: text.substring(with: match.range), code: code, spoken: spoken))
+            cursor = NSMaxRange(match.range); count += 1
+            if count == Self.maximumSymbols { stop.pointee = true }
+        }
+        if cursor < text.length { parts.append(Fragment(literal: text.substring(from: cursor))) }
+        fragments = parts
+    }
+    private static func spoken(_ code: String) -> String? {
+        let colors = ["W": "white", "U": "blue", "B": "black", "R": "red", "G": "green", "C": "colorless"]
+        if let color = colors[code] { return "\(color) mana" }
+        switch code {
+        case "T": return "tap"
+        case "Q": return "untap"
+        case "S": return "snow mana"
+        case "X", "Y", "Z": return "\(code) generic mana"
+        default: break
+        }
+        if code.count <= 3, code.allSatisfy({ $0.isASCII && $0.isNumber }), let number = Int(code) { return "\(number) generic mana" }
+        let parts = code.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        if parts.count == 2 {
+            if let first = colors[parts[0]], let second = colors[parts[1]], parts[0] != parts[1] { return "\(first) or \(second) mana" }
+            if parts[0] == "2", let color = colors[parts[1]] { return "two generic or \(color) mana" }
+            if let color = colors[parts[0]], parts[1] == "P" { return "\(color) mana or two life" }
+        }
+        if parts.count == 3, parts[2] == "P", let first = colors[parts[0]], let second = colors[parts[1]], parts[0] != parts[1] {
+            return "\(first) or \(second) mana or two life"
+        }
+        return nil
     }
 }

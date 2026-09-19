@@ -38,8 +38,6 @@ public final class XmageEngine implements EnginePort {
             game.addTableEventListener(this::tableEvent);
         }
         void tableEvent(TableEvent event) {
-            // Pinned GameImpl.informPlayers/fireStatusEvent and GameController broadcast
-            // INFO/STATUS publicly. Other table events can carry private cards or errors.
             if(event.getGame()!=game || (event.getEventType()!=TableEvent.EventType.INFO
                     && event.getEventType()!=TableEvent.EventType.STATUS)) return;
             String message=event.getMessage();
@@ -63,12 +61,10 @@ public final class XmageEngine implements EnginePort {
             if(acting==null) throw new BridgeException("unbound_player","Engine queried a player outside this game");
             mage.players.Player controller=game.getPlayer(acting.getTurnControlledBy());
             if(controller==null) throw new BridgeException("unbound_player","Engine queried a player with an unknown controller");
-            // Some events already name the controller; resolve once, never follow control chains.
             if(!controller.getId().equals(controller.getTurnControlledBy())
                     || (!acting.getId().equals(controller.getId()) && !acting.getPlayersUnderYourControl().isEmpty()))
                 throw new BridgeException("nested_turn_control_not_supported","Chained turn control has no unambiguous mobile recipient");
             if(!(controller instanceof MobileHumanPlayer)) {
-                // MAD publishes priority SELECT notifications, then decides internally.
                 if(e.getQueryType()!=PlayerQueryEvent.QueryType.PERSONAL_MESSAGE) snapshot();
                 return;
             }
@@ -91,10 +87,8 @@ public final class XmageEngine implements EnginePort {
                     if(game.hasEnded()) {match.endGame();snapshot();mailbox.finish();}
                     else mailbox.fail("engine_stopped","XMage returned before ending the match");
                 } catch(CancellationException ignored) {
-                    // Expected on destroy; a stopped match never claims to have completed.
                 } catch(Throwable e) {
                     EngineDiagnostics.capture("game-worker",e);
-                    // Explicit developer opt-in only; exceptions can contain private card data.
                     if(Boolean.getBoolean("magicmobile.debug")) e.printStackTrace(System.err);
                     mailbox.fail(e instanceof BridgeException?((BridgeException)e).code():"engine_failure","The local engine stopped. This match cannot continue.");
                 } finally { worker.shutdown(); }
@@ -108,12 +102,10 @@ public final class XmageEngine implements EnginePort {
             worker.shutdownNow();mailbox.close();
             try {
                 if(!worker.awaitTermination(Math.max(0,deadline-System.nanoTime()),TimeUnit.NANOSECONDS)) return false;
-                // shutdownNow only requests interruption: CALL must also stop before isolate teardown.
                 if(!mailbox.awaitDeliveryTermination(deadline)) return false;
                 return cancellation.awaitQuiescence(deadline);
             }
             catch(InterruptedException e) {Thread.currentThread().interrupt();return false;}
-            // No unsafe game.end()/cleanUp() from a UI thread while XMage may still be executing.
         }
     }
     public XmageEngine(String execution) {
@@ -121,10 +113,17 @@ public final class XmageEngine implements EnginePort {
         MobileCardFactories.install(GeneratedCardFactory::create);
         GeneratedSetRegistry.install();
     }
+    /** Same compiled loader/Commander validator as create, without starting a game or AI. */
+    @Override public synchronized Map<String,Object> validateDeck(Map<String,Object> deck) {
+        if(closed) throw new BridgeException("engine_closed","Engine is closed");
+        if(!matches.isEmpty()) throw new BridgeException("engine_busy","Finish the active game before validating a deck");
+        DeckLoader.load(deck);
+        return Json.map("valid",true,"validator","Commander","issues",List.of(),
+            "upstream",UPSTREAM,"catalogueHash",GeneratedCardFactory.CATALOGUE_HASH);
+    }
     @Override public synchronized Map<String,Object> create(Map<String,Object> configuration) {
         if(closed) throw new BridgeException("engine_closed","Engine is closed");
         Json.onlyKeys(configuration,Set.of("seats"));
-        // One active match limits engine threads, memory, and static upstream interactions on a phone.
         if(!matches.isEmpty()) throw new BridgeException("match_limit","Destroy the active match before starting another");
         List<Object> configSeats=Json.array(configuration.get("seats"));
         if(configSeats.size()<2 || configSeats.size()>4) throw new BridgeException("invalid_seats","Need 2–4 seats");
@@ -133,15 +132,16 @@ public final class XmageEngine implements EnginePort {
         MobileAICancellation cancellation=new MobileAICancellation();
         MobileCommanderMatch match=new MobileCommanderMatch();
         for(Object value:configSeats) {
-            Map<String,Object> s=Json.object(value);Json.onlyKeys(s,Set.of("seatId","name","controller","deck"));String id=Json.requiredString(s,"seatId");
+            Map<String,Object> s=Json.object(value);Json.onlyKeys(s,Set.of("seatId","name","controller","deck","aiSkill"));String id=Json.requiredString(s,"seatId");
             if(id.isEmpty() || id.length()>128 || players.containsKey(id)) throw new BridgeException("invalid_seat","Seat IDs must be unique and nonempty");
             String controller=Json.optionalString(s,"controller","human");
             Player player;
             if(controller.equals("human")) {
+                if(s.containsKey("aiSkill")) throw new BridgeException("invalid_ai_skill","AI skill applies only to AI seats");
                 MobileHumanPlayer human=new MobileHumanPlayer(Json.requiredString(s,"name"));
                 player=human;seats.put(id,human);
             } else if(controller.equals("ai")) {
-                player=cancellation.player(Json.requiredString(s,"name"));
+                player=cancellation.player(Json.requiredString(s,"name"),aiSkill(s));
             } else throw new BridgeException("invalid_controller","Controller must be human or ai");
             match.addPlayer(player,DeckLoader.load(Json.object(s.get("deck"))));players.put(id,player);
         }
@@ -151,6 +151,14 @@ public final class XmageEngine implements EnginePort {
         Running running=new Running(match,players,seats,cancellation);String id=match.getGame().getId().toString();
         matches.put(id,running);running.start();
         return Json.map("matchId",id,"seats",new ArrayList<>(players.keySet()),"engine",capabilities());
+    }
+    static int aiSkill(Map<String,Object> seat) {
+        if(!seat.containsKey("aiSkill")) return 1; // Preserve existing callers' upstream budget.
+        long skill;
+        try { skill=Json.integer(seat.get("aiSkill")); }
+        catch(BridgeException invalid) { throw new BridgeException("invalid_ai_skill","AI skill must be an integer from 1 to 10"); }
+        if(skill<1 || skill>10) throw new BridgeException("invalid_ai_skill","AI skill must be an integer from 1 to 10");
+        return (int)skill;
     }
     private synchronized Running match(String id) {
         Running r=matches.get(id);if(r==null) throw new BridgeException("unknown_match","Match does not exist");return r;
@@ -164,7 +172,7 @@ public final class XmageEngine implements EnginePort {
     }
     @Override public Map<String,Object> capabilities() {
         return Json.map("protocol",1,"engine","xmage","execution",execution,"upstream",UPSTREAM,
-            "catalogueHash",GeneratedCardFactory.CATALOGUE_HASH,"maxPlayers",4,
+            "catalogueHash",GeneratedCardFactory.CATALOGUE_HASH,"maxPlayers",4,"deckValidation",true,
             "nativeDeviceValidated",false,"aiEnabled",false,"hostMigration",false,
             "saveResume",false,"experimental",true);
     }
