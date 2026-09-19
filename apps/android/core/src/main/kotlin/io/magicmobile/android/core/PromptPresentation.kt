@@ -16,6 +16,19 @@ data class IntegerRangePresentation(val minimum: Long?, val maximum: Long?) {
 }
 
 object PromptPresentation {
+    /** Malformed allocation metadata must not escape into Compose or enable an answer. */
+    fun allocationRows(decision:Decision):List<Obj> {
+        require("integers" in decision.responseTypes)
+        val raw=decision.payload["allocations"] ?: error("Missing allocation rows")
+        val rows=Wire.list(raw).map(Wire::objectValue);require(rows.size<=1000)
+        rows.forEach {row->
+            val minimum=Wire.integer(row["min"]);val maximum=Wire.integer(row["max"])
+            require(minimum in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong() && maximum in minimum..Int.MAX_VALUE.toLong())
+            require(row["message"] is String)
+            row["defaultValue"]?.let {require(Wire.integer(it) in minimum..maximum)}
+        }
+        return rows
+    }
     /** XMage uses the 32-bit endpoints as no-limit sentinels. They remain legal
      * protocol answers, but are not useful as visible bounds or prefilled input. */
     fun integerRange(decision: Decision): IntegerRangePresentation {

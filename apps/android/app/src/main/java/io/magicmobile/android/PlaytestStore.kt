@@ -92,6 +92,8 @@ class PlaytestStore(context: Context) {
     }
 
     @Synchronized fun clear(){file.delete()}
+    /** Explicit user export only; exactly the same private summaries retained on device. */
+    @Synchronized fun exportJson():String=io.magicmobile.core.Json.write(mapOf("schema" to 3,"games" to all().map{it.json()}))
 
     private fun replace(value:RecordedPlaytest){
         val rows=(read().filterNot { it.id==value.id }+value.validated()).sortedByDescending { it.startedAt }.take(100)

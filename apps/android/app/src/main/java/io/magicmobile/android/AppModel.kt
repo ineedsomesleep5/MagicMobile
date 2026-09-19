@@ -15,7 +15,8 @@ data class DeckValidation(val valid:Boolean,val summary:String,val issues:List<V
 data class ScreenState(val loaded: Boolean=false,val decks: List<SavedDeck> = emptyList(),val precons: List<Deck> = emptyList(),
     val recovered: Deck?=null,val error: String?=null,val busy: Boolean=false,val game: GamePoll?=null,val playing: Boolean=false,
     val pendingAnswer: Boolean=false,val closing: Boolean=false,val paused: Boolean=false,val validation:DeckValidation?=null,
-    val playtests:List<RecordedPlaytest> = emptyList(),val recordingEnabled:Boolean=false,val status: String="Loading local catalogue…")
+    val playtests:List<RecordedPlaytest> = emptyList(),val recordingEnabled:Boolean=false,
+    val autoPassing:Boolean=false,val autoPassStatus:String="",val status: String="Loading local catalogue…")
 class AppModel(application: Application): AndroidViewModel(application) {
     private val executor=Executors.newSingleThreadScheduledExecutor { runnable -> Thread(runnable,"MagicMobileEngine").apply { isDaemon=true } }
     private val mutable=MutableStateFlow(ScreenState()); val state=mutable.asStateFlow()
@@ -26,6 +27,8 @@ class AppModel(application: Application): AndroidViewModel(application) {
     @Volatile private var session: PollState?=null
     private val visibility=AtomicLong(0)
     private val validationEpoch=AtomicLong(0)
+    private val autoPassEpoch=AtomicLong(0)
+    private val autoPassPolicy=AutoYieldPolicy()
     @Volatile private var foreground=true
     private var shuttingDown=false
     private var recordingId:String?=null
@@ -33,9 +36,13 @@ class AppModel(application: Application): AndroidViewModel(application) {
         executor.execute { attempt {
             catalogue=Catalogue(application.assets.open("catalogue.jsonl"))
             val precons=Wire.decode(application.assets.open("precons.json").use { it.readBytes() }).array("decks").map { Deck.decode(Wire.objectValue(it)) }
-            playtestStore.all().filter { it.end=="in_progress" }.forEach { playtestStore.finish(it.id,"interrupted") }
+            val history=runCatching {
+                playtestStore.all().filter { it.end=="in_progress" }.forEach { playtestStore.finish(it.id,"interrupted") }
+                playtestStore.all()
+            }
+            if(history.isFailure)playtestStore.enabled=false
             val saved=store.all(); val recovery=store.recover()
-            mutable.update { it.copy(loaded=true,decks=saved,precons=precons,recovered=recovery,playtests=playtestStore.all(),recordingEnabled=playtestStore.enabled,status=if(BuildConfig.NATIVE_ENGINE) "Local XMage ready to start" else "Diagnostic build — engine NOT packaged") }
+            mutable.update { it.copy(loaded=true,decks=saved,precons=precons,recovered=recovery,playtests=history.getOrDefault(emptyList()),recordingEnabled=playtestStore.enabled,error=history.exceptionOrNull()?.let {"Private playtest history could not be opened. Recording is off; your decks are available. ${it.message}"},status=if(BuildConfig.NATIVE_ENGINE) "Local XMage ready to start" else "Diagnostic build — engine NOT packaged") }
         } }
         // ScheduledExecutorService cancels a periodic task for good if it ever throws, and
         // the guard below runs outside poll()'s own error handling. A single escaped
@@ -44,7 +51,10 @@ class AppModel(application: Application): AndroidViewModel(application) {
         executor.scheduleWithFixedDelay({
             try {
                 val active = session
-                if(foreground && !shuttingDown && active != null && !active.terminal) poll()
+                if(foreground && !shuttingDown && active != null && !active.terminal) {
+                    poll()
+                    autoPassTick()
+                }
             } catch(e: Throwable) {
                 if(e is VirtualMachineError) throw e
                 android.util.Log.w("MagicMobilePoll", "Poll tick failed; polling continues", e)
@@ -57,12 +67,83 @@ class AppModel(application: Application): AndroidViewModel(application) {
         mutable.update { it.copy(busy=false,error=(e.message ?: e.javaClass.simpleName).take(2000)) }
     } }
     fun error(text:String?) { mutable.update { it.copy(error=text) } }
-    fun save(deck:Deck,record:SavedDeck?,done:(SavedDeck)->Unit) { validationEpoch.incrementAndGet();executor.execute { attempt { val result=store.save(deck,record);store.clearDraft();mutable.update { it.copy(decks=store.all(),recovered=null,validation=null) };done(result) } } }
+    fun canAutoPass(mode:AutoYieldPolicy.Mode):Boolean {
+        val current=state.value
+        if(current.busy || current.pendingAnswer || current.closing || current.error!=null || current.autoPassing)return false
+        val context=current.game?.let {AutoYieldPolicy.Context.fromPoll(it,foreground)} ?: return false
+        return AutoYieldPolicy.canStart(context,mode)
+    }
+    fun startAutoPass(mode:AutoYieldPolicy.Mode) {
+        if(!canAutoPass(mode))return
+        val epoch=autoPassEpoch.incrementAndGet()
+        executor.execute {
+            if(epoch!=autoPassEpoch.get() || !canAutoPass(mode))return@execute
+            val context=state.value.game?.let {AutoYieldPolicy.Context.fromPoll(it,foreground)} ?: return@execute
+            if(autoPassPolicy.start(context,android.os.SystemClock.elapsedRealtime(),mode))
+                mutable.update {it.copy(autoPassing=true,autoPassStatus=mode.status)}
+        }
+    }
+    fun stopAutoPass(reason:String="Auto-pass stopped. A pass already sent may still finish.") {
+        autoPassEpoch.incrementAndGet()
+        mutable.update {it.copy(autoPassing=false,autoPassStatus=reason)}
+        executor.execute {autoPassPolicy.stop()}
+    }
+    private fun autoPassTick() {
+        val epoch=autoPassEpoch.get()
+        val current=state.value
+        if(!current.autoPassing)return
+        if(!foreground || current.error!=null || current.pendingAnswer || current.closing){stopAutoPass("Auto-pass stopped. Review the current game state.");return}
+        if(current.busy)return
+        val context=current.game?.let {AutoYieldPolicy.Context.fromPoll(it,foreground)}
+        if(context==null){stopAutoPass("Auto-pass stopped. Pass priority manually.");return}
+        when(val step=autoPassPolicy.evaluate(context,android.os.SystemClock.elapsedRealtime())) {
+            AutoYieldPolicy.Step.Wait->Unit
+            is AutoYieldPolicy.Step.Stop->stopAutoPass(step.reason.message)
+            is AutoYieldPolicy.Step.Pass->{
+                val active=session ?: return
+                if(epoch!=autoPassEpoch.get() || !state.value.autoPassing || !foreground ||
+                    active.current?.decision?.let {it.id==step.prompt.id && it.revision==step.prompt.revision}!=true)return
+                autoPassPolicy.recordPass(step.prompt)
+                try {
+                    val command=active.prepare("boolean",true)
+                    mutable.update {it.copy(busy=true)}
+                    // send() refreshes the state but never recursively runs this policy.
+                    send(active,command)
+                }catch(e:Exception){stopAutoPass("Auto-pass stopped. Review the current game state.");error(e.message);mutable.update {it.copy(busy=false)}}
+            }
+        }
+    }
+    fun save(deck:Deck,record:SavedDeck?,onFailure:()->Unit={},done:(SavedDeck)->Unit) {
+        if(state.value.busy){onFailure();return}
+        mutable.update {it.copy(busy=true,error=null)}
+        validationEpoch.incrementAndGet()
+        executor.execute { try {
+            val result=store.save(deck,record)
+            val recovery=runCatching {store.clearDraft()}
+            val decks=runCatching {store.all()}.getOrElse {(state.value.decks.filterNot {it.id==result.id}+result)}
+            mutable.update {it.copy(busy=false,decks=decks,recovered=if(recovery.isSuccess)null else it.recovered,validation=null,error=recovery.exceptionOrNull()?.let {"Deck saved, but its recovery copy could not be cleared."})}
+            done(result)
+        } catch(e:Exception) {
+            mutable.update {it.copy(busy=false,error=(e.message ?: "Unable to save deck").take(2000))}
+            onFailure()
+        } }
+    }
     fun organize(record:SavedDeck,favorite:Boolean,tags:List<String>,notes:String){executor.execute {attempt {store.organize(record,favorite,tags,notes);mutable.update {it.copy(decks=store.all())}}}}
-    fun duplicate(record:SavedDeck){executor.execute {attempt {store.duplicate(record);mutable.update {it.copy(decks=store.all())}}}}
+    fun duplicate(record:SavedDeck){executor.execute {attempt {
+        // Read optional provenance before creating a copy, so unreadable evidence
+        // cannot silently disappear or leave the player retrying duplicate copies.
+        val receipts=ReceiptStore(getApplication());val receipt=receipts.read(record.id)
+        val result=store.duplicate(record)
+        val copied=runCatching {if(receipt!=null)receipts.write(result.id,receipt)}
+        mutable.update {it.copy(decks=store.all(),error=copied.exceptionOrNull()?.let {"Deck copied, but its source receipt could not be copied. The original receipt is preserved."})}
+    }}}
     fun recover(deck:Deck) { executor.execute { attempt { store.keepDraft(deck);mutable.update { it.copy(recovered=deck) } } } }
     fun discardRecovery() { executor.execute { attempt { store.clearDraft();mutable.update { it.copy(recovered=null) } } } }
-    fun delete(record:SavedDeck) { executor.execute { attempt { store.delete(record);mutable.update { it.copy(decks=store.all()) } } } }
+    fun delete(record:SavedDeck) { executor.execute { attempt {
+        store.delete(record)
+        val cleanup=runCatching {ReceiptStore(getApplication()).delete(record.id);DeckDraftStore(getApplication()).delete(record.id)}
+        mutable.update { it.copy(decks=store.all(),error=cleanup.exceptionOrNull()?.let {"Deck deleted, but its local draft or receipt could not be removed."}) }
+    } } }
     fun setRecording(enabled:Boolean){executor.execute {attempt {if(!enabled){playtestStore.finish(recordingId,"interrupted");recordingId=null};playtestStore.enabled=enabled;mutable.update {it.copy(recordingEnabled=enabled,playtests=playtestStore.all())}}}}
     fun clearPlaytests(){executor.execute {attempt {playtestStore.clear();mutable.update {it.copy(playtests=emptyList())}}}}
     fun invalidateValidation(){validationEpoch.incrementAndGet();mutable.update {it.copy(validation=null)}}
@@ -144,6 +225,7 @@ class AppModel(application: Application): AndroidViewModel(application) {
         val parsed=GamePoll.parse(raw,s.match,s.viewer)
         if(epoch!=visibility.get() || !foreground) return@attempt
         if(s.publish(parsed)) {
+            if(parsed.phase in setOf("ended","failed","closed") && state.value.autoPassing)stopAutoPass("Auto-pass stopped. The game has ended.")
             val recording=runCatching {playtestStore.observe(recordingId,parsed)}
             if(recording.isFailure){recordingId=null;playtestStore.enabled=false}
             val history=runCatching {playtestStore.all()}.getOrDefault(state.value.playtests)
@@ -153,6 +235,7 @@ class AppModel(application: Application): AndroidViewModel(application) {
     } }
     fun answer(type:String,value:Any?) {
         if(state.value.busy || state.value.pendingAnswer || state.value.closing || !foreground) return
+        if(state.value.autoPassing)stopAutoPass()
         mutable.update { it.copy(busy=true,error=null) }
         executor.execute { attempt { val s=checkNotNull(session);check(!shuttingDown && foreground);val command=s.prepare(type,value);send(s,command) } }
     }
@@ -166,16 +249,22 @@ class AppModel(application: Application): AndroidViewModel(application) {
     fun retry() { executor.execute { attempt { val s=session ?: return@attempt;val command=s.pending ?: return@attempt;check(!shuttingDown && foreground);send(s,command) } } }
     fun refresh() { executor.execute { poll() } }
     fun close() {
+        stopAutoPass()
         visibility.incrementAndGet();mutable.update { it.copy(closing=true,busy=true,status="Closing engine…") }
         executor.execute { shuttingDown=true;attempt {
             val result=if(token!=0L) NativeBridge.close(token) else 0
             if(result!=0) { mutable.update { it.copy(busy=false,error="Engine cleanup is still busy (status $result). Tap Retry cleanup; the runtime remains owned.") };return@attempt }
-            playtestStore.finish(recordingId,"left");recordingId=null
             token=0;session=null;shuttingDown=false
-            mutable.update { it.copy(busy=false,playing=false,closing=false,game=null,pendingAnswer=false,playtests=playtestStore.all(),status="Local engine closed") }
+            val recording=runCatching { playtestStore.finish(recordingId,"left") };recordingId=null
+            val history=runCatching { playtestStore.all() }.getOrDefault(state.value.playtests)
+            mutable.update { it.copy(busy=false,playing=false,closing=false,game=null,pendingAnswer=false,playtests=history,error=recording.exceptionOrNull()?.let {"Game closed, but its private summary could not be saved: ${it.message}"},status="Local engine closed") }
         } }
     }
-    fun foreground(active:Boolean) { foreground=active;visibility.incrementAndGet();mutable.update { it.copy(paused=!active) };if(active)refresh() }
+    fun foreground(active:Boolean) { foreground=active;visibility.incrementAndGet();if(!active&&state.value.autoPassing)stopAutoPass("Auto-pass stopped while the app was in the background.");mutable.update { it.copy(paused=!active) };if(active)refresh() }
     fun diagnostics(done:(String)->Unit) { executor.execute { attempt { check(token!=0L); done(io.magicmobile.core.Json.write(native("diagnostics"))) } } }
-    override fun onCleared() { foreground=false;executor.execute { playtestStore.finish(recordingId,"interrupted");if(token!=0L) runCatching { NativeBridge.close(token) } };executor.shutdown();super.onCleared() }
+    override fun onCleared() { foreground=false;executor.execute {
+        // Optional history must never prevent releasing the native runtime.
+        try { playtestStore.finish(recordingId,"interrupted") }
+        finally { if(token!=0L) runCatching { NativeBridge.close(token) } }
+    };executor.shutdown();super.onCleared() }
 }

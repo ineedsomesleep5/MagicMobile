@@ -55,6 +55,15 @@ object ManaSymbols {
 
 @Composable
 fun ManaCost(cost: String?, size: Int = 16, modifier: Modifier = Modifier) {
+    if(cost?.contains("//") == true) {
+        Row(modifier,horizontalArrangement=Arrangement.spacedBy(4.dp),verticalAlignment=Alignment.CenterVertically) {
+            cost.split("//").forEachIndexed { index,half ->
+                if(index>0)Text("//")
+                ManaCost(half,size)
+            }
+        }
+        return
+    }
     val tokens = ManaSymbols.tokens(cost)
     if (tokens.isEmpty()) return
     Row(

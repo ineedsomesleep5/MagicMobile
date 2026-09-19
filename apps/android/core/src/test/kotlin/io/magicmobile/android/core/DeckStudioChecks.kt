@@ -64,5 +64,29 @@ fun main() {
     }
     verifyDeckStudio(bounded.summaries.size == 100 && bounded.summaries.first().startedAtMillis == started + 100, "history remains bounded and newest first")
     rejectsDeckStudio("win is not inferred for interruption") { first.copy(end = PlaytestEnd.INTERRUPTED, won = false) }
+    val landDeck = Deck("Lands", listOf(CardEntry("Island", 2), CardEntry("Island", 1), CardEntry("Island", 4, "maybeboard"), CardEntry("Leader", 1, "commanders")))
+    val lands = DeckEditing.setBasics(landDeck, DeckEditing.basics.associateWith { if(it == "Island") 8 else 0 })
+    verifyDeckStudio(lands.entries.filter { it.section == "deck" } == listOf(CardEntry("Island", 8)) && lands.entries.contains(CardEntry("Island", 4, "maybeboard")), "basic land operation consolidates main only and preserves other boards")
+    verifyDeckStudio(DeckEditing.replace(landDeck, 0, "Plains").entries[0] == CardEntry("Plains", 2), "replacement preserves count and board")
+    rejectsDeckStudio("basic lands total bound") { DeckEditing.setBasics(landDeck, DeckEditing.basics.associateWith { 2000 }) }
+    val link = DeckLinkImport.source("https://archidekt.com/decks/123/my-deck")
+    verifyDeckStudio(link.endpoint == "https://archidekt.com/api/decks/123/", "provider endpoint built from checked ID")
+    rejectsDeckStudio("arbitrary host") { DeckLinkImport.source("https://example.com/decks/123") }
+    rejectsDeckStudio("credentials") { DeckLinkImport.source("https://secret@archidekt.com/decks/123") }
+    rejectsDeckStudio("encoded path") { DeckLinkImport.source("https://archidekt.com/decks/%31") }
+    val publicDeck: Obj = mapOf("id" to 123, "private" to false, "unlisted" to false, "name" to "Public deck", "categories" to listOf(mapOf("name" to "Maybeboard", "includedInDeck" to false)), "cards" to listOf(mapOf("quantity" to 2, "categories" to listOf("Maybeboard"), "card" to mapOf("oracleCard" to mapOf("name" to "Island")))))
+    verifyDeckStudio(DeckLinkImport.decode(link,publicDeck).entries == listOf(CardEntry("Island",2,"maybeboard")), "provider excluded cards preserved for review")
+    rejectsDeckStudio("private provider response") { DeckLinkImport.decode(link,publicDeck + ("private" to true)) }
+    rejectsDeckStudio("mismatched provider ID") { DeckLinkImport.decode(link,publicDeck + ("id" to 124)) }
+    val moxfield = DeckLinkImport.source("https://moxfield.com/decks/abcdefghijklmnopqrstuv")
+    val moxDeck: Obj = mapOf("name" to "Mox", "publicId" to moxfield.id, "visibility" to "public", "boards" to mapOf("commanders" to mapOf("cards" to mapOf("1" to mapOf("quantity" to 1, "card" to mapOf("name" to "Leader"))))))
+    verifyDeckStudio(DeckLinkImport.decode(moxfield,moxDeck).entries.single() == CardEntry("Leader",1,"commanders"), "Moxfield board mapping retains commander")
+    rejectsDeckStudio("unknown nonempty Moxfield board") { DeckLinkImport.decode(moxfield,moxDeck + ("boards" to mapOf("unknown" to mapOf("cards" to mapOf("1" to mapOf("quantity" to 1, "card" to mapOf("name" to "Leader"))))))) }
+    val decorated=DeckTextImport.preview("Decorated","1 Leader (TST) 123 *F* [Commander{top}]\n// Lands\n8 Island (TST) 2")
+    verifyDeckStudio(decorated.deck.entries==listOf(CardEntry("Leader",1,"commanders"),CardEntry("Island",8))&&decorated.annotations.size==5,"printing foil category and grouping are retained as review annotations")
+    rejectsDeckStudio("conflicting decorated section") {DeckTextImport.preview("Conflict","Sideboard\n1 Leader [Commander]")}
+    rejectsDeckStudio("malformed suffix") {DeckTextImport.preview("Malformed","1 Island [Oops")}
+    val custom=Deck("Custom board",listOf(CardEntry("Island",1,"future board")))
+    verifyDeckStudio(DeckTextImport.preview("Ignored",io.magicmobile.core.Json.write(mapOf("format" to "magicmobile-deck-v1","deck" to custom.json()))).deck==custom,"JSON export preserves arbitrary section names exactly")
     println("PASS: $deckStudioChecks Android Deck Studio core assertions")
 }

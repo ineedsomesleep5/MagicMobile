@@ -8,8 +8,9 @@ android {
         applicationId = "com.calebfeliciano.magicmobile.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-android-alpha"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2
+        versionName = providers.gradleProperty("androidVersionName").orNull ?: "0.2.0-android-alpha"
         ndk { abiFilters += "arm64-v8a" }
         buildConfigField("boolean", "NATIVE_ENGINE", withNative.toString())
         if(withNative) externalNativeBuild { cmake { arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON" } }
@@ -21,7 +22,17 @@ android {
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/magicmobile-assets"))
     sourceSets["main"].res.srcDir(layout.buildDirectory.dir("generated/magicmobile-res"))
     packaging { jniLibs { useLegacyPackaging = false; keepDebugSymbols += "**/libmmengine.so" } }
-    buildTypes { debug { applicationIdSuffix = ".debug" }; release { isMinifyEnabled = false } }
+    val releaseStore = providers.environmentVariable("MM_ANDROID_KEYSTORE").orNull
+    if(releaseStore != null) signingConfigs.create("distribution") {
+        storeFile = file(releaseStore)
+        storePassword = providers.environmentVariable("MM_ANDROID_STORE_PASSWORD").get()
+        keyAlias = providers.environmentVariable("MM_ANDROID_KEY_ALIAS").orNull ?: "magicmobile"
+        keyPassword = providers.environmentVariable("MM_ANDROID_KEY_PASSWORD").get()
+    }
+    buildTypes { debug { applicationIdSuffix = providers.gradleProperty("androidDebugSuffix").orNull ?: ".debug" }; release {
+        isMinifyEnabled = false
+        if(releaseStore != null) signingConfig = signingConfigs.getByName("distribution")
+    } }
 }
 val prepareAssets by tasks.registering(Exec::class) {
     val script = rootProject.file("../../scripts/android/prepare_assets.py")
@@ -44,6 +55,10 @@ if(withNative) {
     tasks.named("preBuild").configure { dependsOn(verifyNative) }
 }
 dependencies {
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("junit:junit:4.13.2")
     implementation(project(":core"))
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.9.3")

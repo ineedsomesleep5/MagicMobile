@@ -22,7 +22,6 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Card artwork on the same terms as the iOS build: opt-in, Scryfall only, bounded, and
@@ -34,14 +33,12 @@ object Artwork {
     private const val CONSENT_KEY = "magicmobile.deckArtworkNetworkEnabled"
     private const val MAX_BYTES = 2 * 1024 * 1024
     private val ALLOWED_HOSTS = setOf("api.scryfall.com", "cards.scryfall.io")
-    private const val REQUEST_SPACING_MS = 120L
     private const val MAX_REDIRECTS = 5
     private val ALLOWED_TYPES = setOf("image/jpeg", "image/png")
 
     private val memory = object : LruCache<String, Bitmap>(24 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
-    private val nextRequestAt = AtomicLong(0)
 
     fun enabled(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(CONSENT_KEY, false)
@@ -78,9 +75,7 @@ object Artwork {
 
     private fun fetch(name: String): ByteArray? {
         // Space requests the way the iOS loader does; Scryfall asks callers not to burst.
-        val now = System.currentTimeMillis()
-        val due = nextRequestAt.getAndSet(maxOf(now, nextRequestAt.get()) + REQUEST_SPACING_MS)
-        if (due > now) runCatching { Thread.sleep(minOf(due - now, 2000)) }
+        ScryfallRequestBudget.awaitTurn()
 
         val encoded = URLEncoder.encode(name, "UTF-8")
         var url = URL("https://api.scryfall.com/cards/named?exact=$encoded&format=image&version=normal")
@@ -99,6 +94,10 @@ object Artwork {
                     setRequestProperty("Accept", "image/jpeg,image/png;q=0.9")
                 }
                 val code = connection.responseCode
+                if(code==429) {
+                    ScryfallRequestBudget.backOff(connection.getHeaderField("Retry-After")?.toIntOrNull() ?: 60)
+                    return null
+                }
                 if (code in 300..399) {
                     if (hop == MAX_REDIRECTS) return null
                     val location = connection.getHeaderField("Location") ?: return null

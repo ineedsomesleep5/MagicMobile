@@ -38,7 +38,7 @@ object Decisions {
             "CHOOSE_CHOICE","CHOOSE_MODE" -> {
                 val choices = p.obj("choices") ?: emptyMap()
                 val order = p.array("choiceOrder").mapNotNull { it as? String }.ifEmpty { choices.keys.toList() }
-                order.forEach { key -> if(key in choices) result += Choice(plain(choices[key].toString()),if(prompt.kind == "CHOOSE_MODE") "uuid" else "string",key) }
+                order.forEach { key -> if(key in choices && (prompt.kind!="CHOOSE_MODE" || Wire.uuid(key))) result += Choice(plain(choices[key].toString()),if(prompt.kind == "CHOOSE_MODE") "uuid" else "string",key) }
                 p.obj("specialChoices")?.forEach { (key,label) -> if(p.flag("specialEnabled")) result += Choice("Special: ${plain(label.toString())}","string",key) }
                 if(p.flag("specialEnabled") && p.flag("specialCanBeEmpty")) result += Choice("Special: none","string",null)
                 if(p["required"] == false && prompt.kind == "CHOOSE_CHOICE") result += Choice("Cancel","string", "")
@@ -49,26 +49,59 @@ object Decisions {
                 if(p["required"] == false || options.flag("canCancel")) bool("Cancel",false)
             }
             "PICK_TARGET" -> {
-                val candidates = p.array("cards").map(Wire::objectValue).associateBy { Wire.string(it["id"]) }
+                val candidates = (options.array("orderedViews")+p.array("cards")).map(Wire::objectValue).associateBy { Wire.string(it["id"]) }
                 val possible = options["possibleTargets"]?.let(Wire::list)?.map(Wire::string)
                 val chosen = options["chosenTargets"]?.let(Wire::list)?.map(Wire::string) ?: emptyList()
                 val allowed = if(possible != null || candidates.isNotEmpty() && "chosenTargets" in options) (possible.orEmpty()+chosen).toSet() else p.array("candidates").map(Wire::string).toSet()
                 allowed.forEach { id -> if(Wire.uuid(id)) result += Choice(
-                    playerName(snapshot, id) ?: cardLabel(candidates[id], id), "uuid", id) }
+                    playerName(snapshot, id) ?: cardLabel(candidates[id], labelForID(snapshot,id)), "uuid", id) }
                 if(options.flag("canCancel") || p["required"] == false) bool("Done / cancel",false)
                 val aliases = p.obj("responseAliases") ?: emptyMap()
-                aliases.forEach { (alias, base) -> if(base in allowed && Wire.uuid(alias)) result += Choice("Choose alternate face: ${cardLabel(candidates[base], alias)}","uuid",alias) }
+                aliases.forEach { (alias, base) -> if(base in allowed && Wire.uuid(alias)) {
+                    val card=candidates[base]
+                    // Face aliases are authorized responses, but a redacted base must
+                    // never reveal its nested face identity.
+                    val face=card?.takeUnless(GameplayPresentation::hidden)?.obj("secondCardFace")?.takeIf { it["id"]==alias }
+                    val label=if(face!=null)cardLabel(face) else "Alternate face"
+                    result += Choice("Choose alternate face: $label","uuid",alias)
+                } }
             }
             "SELECT","PLAY_MANA","PLAY_X_MANA" -> {
                 val specialTargets = (options["possibleAttackers"] ?: options["possibleBlockers"])?.let(Wire::list)?.map(Wire::string)
-                if(specialTargets != null) specialTargets.filter(Wire::uuid).forEach { result += Choice(labelForID(snapshot,it),"uuid",it) }
+                if(specialTargets != null) {
+                    val selectable = specialTargets.toMutableSet()
+                    // XMage removes declared attackers from possibleAttackers. Keep the
+                    // current acting player's declared attackers available for deselection.
+                    if(p.text("selectMode") == "attackers") {
+                        val view = snapshot?.obj("gameView")
+                        val active = view?.text("activePlayerId")
+                        val controlled = active?.let { snapshot?.obj("controlledPlayerViews")?.obj(it) }
+                        if(active != null && (active == snapshot?.text("enginePlayerId") ||
+                            controlled?.text("myPlayerId") == active && controlled?.text("activePlayerId") == active)) {
+                            val battlefield = view?.array("players").orEmpty().map(Wire::objectValue)
+                                .find { it["playerId"] == active }?.obj("battlefield").orEmpty()
+                            view?.array("combat").orEmpty().map(Wire::objectValue).forEach { group ->
+                                GameplayPresentation.cards(group["attackers"]).forEach { card ->
+                                    card.text("id")?.takeIf { it in battlefield }?.let(selectable::add)
+                                }
+                            }
+                        }
+                    }
+                    selectable.filter(Wire::uuid).forEach { result += Choice(labelForID(snapshot,it),"uuid",it) }
+                }
                 else {
                     val view = snapshot?.obj("gameView")
                     val playable = view?.obj("canPlayObjects")?.obj("objects") ?: emptyMap()
                     playable.forEach { (id, families) ->
-                        val values = Wire.objectValue(families).values.flatMap { it as? List<*> ?: emptyList<Any?>() }.mapNotNull { it as? Map<*, *> }
                         val manaOnly = prompt.kind != "SELECT"
-                        if(Wire.uuid(id) && values.any { !manaOnly || it["manaAbility"] == true }) result += Choice(labelForID(snapshot,id),"uuid",id)
+                        val values = Wire.objectValue(families).flatMap { (family,rows) ->
+                            (rows as? List<*>).orEmpty().mapNotNull { it as? Map<*, *> }
+                                .filter { !manaOnly || (it["manaAbility"] as? Boolean ?: (family == "basicManaAbilities")) }
+                        }
+                        if(Wire.uuid(id) && values.isNotEmpty()) {
+                            val action = values.first()["value"]?.toString()?.let(::plain)
+                            result += Choice(action?.takeIf { it.isNotBlank() } ?: labelForID(snapshot,id),"uuid",id)
+                        }
                     }
                 }
                 if(prompt.kind == "SELECT") {
@@ -77,7 +110,7 @@ object Decisions {
                 }
                 else {
                     bool("Cancel payment",false)
-                    if("string" in prompt.responseTypes) result += Choice("Special payment","string","special")
+                    if(prompt.kind == "PLAY_MANA" && "string" in prompt.responseTypes) result += Choice("Special payment","string","special")
                     val manaPlayer = p.text("manaPlayerId")
                     val players = snapshot?.obj("gameView")?.array("players").orEmpty().map(Wire::objectValue)
                     val pool = players.find { it["playerId"] == manaPlayer }?.obj("manaPool")
@@ -88,6 +121,7 @@ object Decisions {
                     }
                 }
             }
+            "MULTI_AMOUNT" -> if(options.flag("canCancel")) bool("Cancel",false)
         }
         return result.filter { it.type in prompt.responseTypes }.distinctBy { it.type to it.value }
     }
@@ -101,7 +135,12 @@ object Decisions {
         playerName(snapshot, id)?.let { return it }
         val zones = mutableListOf<Obj>(); g.obj("myHand")?.let(zones::add); g.obj("stack")?.let(zones::add)
         g.array("players").map(Wire::objectValue).forEach { p -> listOf("battlefield","graveyard","exile").forEach { p.obj(it)?.let(zones::add) } }
-        return zones.firstNotNullOfOrNull { it[id] }?.let { cardLabel(it,id) } ?: id
+        zones.firstNotNullOfOrNull { it[id] }?.let { return cardLabel(it,id) }
+        val extras = g.array("players").map(Wire::objectValue).flatMap { GameplayPresentation.cards(it["commandList"]) } +
+            listOf("revealed","companion").flatMap { key -> g.array(key).map(Wire::objectValue).flatMap { GameplayPresentation.cards(it["cards"]) } } +
+            snapshot.array("namedExiles").map(Wire::objectValue).flatMap { GameplayPresentation.cards(it["cards"]) } +
+            listOf("authorizedLookedAt","authorizedOpponentHands").flatMap { key -> snapshot.obj(key).orEmpty().values.flatMap(GameplayPresentation::cards) }
+        return extras.firstOrNull { it["id"] == id }?.let { cardLabel(it,id) } ?: id
     }
 
     /** Some prompts target players rather than cards; "Select a starting player" is one.

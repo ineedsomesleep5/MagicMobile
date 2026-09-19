@@ -15,3 +15,13 @@ tasks.register<JavaExec>("deckStudioChecks") {
     classpath = sourceSets.test.get().runtimeClasspath
     mainClass.set("io.magicmobile.android.core.DeckStudioChecksKt")
 }
+tasks.register<JavaExec>("providerChecks") {
+    dependsOn(tasks.testClasses)
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass.set("io.magicmobile.android.core.ProviderChecksKt")
+}
+tasks.register<JavaExec>("insightChecks") {
+    dependsOn(tasks.testClasses)
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass.set("io.magicmobile.android.core.DeckInsightChecksKt")
+}

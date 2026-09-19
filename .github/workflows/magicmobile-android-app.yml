@@ -1,5 +1,15 @@
 name: Android app checks
 on:
+  push:
+    branches: [main, codex/android-ios-parity]
+    paths:
+      - 'apps/android/**'
+      - 'scripts/android/**'
+      - 'packages/ondevice-engine/**'
+      - 'apps/ios/MagicMobile/Resources/ondevice-catalogue.json'
+      - 'apps/ios/MagicMobile/PreconCatalog.swift'
+      - 'apps/ios/MagicMobile/Assets.xcassets/**'
+      - '.github/workflows/magicmobile-android-app.yml'
   pull_request:
     # The diagnostic APK regenerates Android assets from these shared sources.
     # This job compiles and checks contracts, but does not execute XMage or an
@@ -35,7 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build_output/android-app
-          gradle -p apps/android --no-daemon :core:contractChecks :core:deckStudioChecks :app:assembleDebug :app:lintDebug 2>&1 | tee build_output/android-app/build.log
+          gradle -p apps/android --no-daemon :core:contractChecks :core:deckStudioChecks :core:providerChecks :core:insightChecks :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug 2>&1 | tee build_output/android-app/build.log
           git rev-parse HEAD > build_output/android-app/source.txt
           echo 'Diagnostic compilation: no native engine, no Android device execution.' > build_output/android-app/SCOPE.txt
       - uses: actions/upload-artifact@v4

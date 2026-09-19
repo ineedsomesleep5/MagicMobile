@@ -80,7 +80,7 @@ jobs:
       - name: Build the actual native-linked test APK
         run: |
           set -euo pipefail
-          gradle -p apps/android --no-daemon -PwithNative=true :core:contractChecks :core:deckStudioChecks :app:assembleDebug :app:lintDebug
+          gradle -p apps/android --no-daemon -PwithNative=true :core:contractChecks :core:deckStudioChecks :core:providerChecks :core:insightChecks :app:assembleDebug :app:lintDebug
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 -v 4 apps/android/app/build/outputs/apk/debug/app-debug.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose apps/android/app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
