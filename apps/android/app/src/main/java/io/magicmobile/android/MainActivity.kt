@@ -238,9 +238,9 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
 }
 @Composable private fun ArtworkCoverPlaceholder() {
     Column(Modifier.fillMaxSize().padding(16.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center) {
-        Box(Modifier.size(38.dp,52.dp).border(2.dp,MaterialTheme.colorScheme.outline,RoundedCornerShape(6.dp)).semantics{contentDescription="Card artwork placeholder"},contentAlignment=Alignment.Center){Text("✦",style=MaterialTheme.typography.titleMedium)}
+        Box(Modifier.size(38.dp,52.dp).border(2.dp,Ink.copy(alpha=.6f),RoundedCornerShape(6.dp)).semantics{contentDescription="Card artwork placeholder"},contentAlignment=Alignment.Center){Text("✦",style=MaterialTheme.typography.titleMedium,color=Ink)}
         Spacer(Modifier.height(8.dp))
-        Text("Artwork not downloaded",style=MaterialTheme.typography.labelMedium,textAlign=androidx.compose.ui.text.style.TextAlign.Center,maxLines=2)
+        Text("Artwork not downloaded",style=MaterialTheme.typography.labelMedium,color=Ink,textAlign=androidx.compose.ui.text.style.TextAlign.Center,maxLines=2)
     }
 }
 @Composable private fun OrganizationDialog(saved:SavedDeck,close:()->Unit,save:(Boolean,List<String>,String)->Unit) {
