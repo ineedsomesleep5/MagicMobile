@@ -15,6 +15,9 @@ struct NativeDeckMetadataCatalogue {
         let colorIdentity: [String]?
         /// Sets present in the pinned registry, not a promise that each printing is selectable.
         let setCodes: [String]
+        /// Curated functional roles baked in at build time from Scryfall's oracle tags.
+        /// Empty means no curated tag, which is not a claim that the card has no such effect.
+        let roles: [String]
     }
 
     struct SearchFilter {
@@ -54,6 +57,7 @@ struct NativeDeckMetadataCatalogue {
         let colors: [String]?
         let colorIdentity: [String]?
         let setCodes: [String]
+        let roles: [String]?
     }
     private struct Payload: Decodable {
         struct Printing: Decodable { let name: String }
@@ -109,6 +113,18 @@ struct NativeDeckMetadataCatalogue {
             }
         }
         let knownTypes: Set<String> = ["ARTIFACT", "BATTLE", "CONSPIRACY", "CREATURE", "DUNGEON", "ENCHANTMENT", "INSTANT", "LAND", "PHENOMENON", "PLANE", "PLANESWALKER", "SCHEME", "SORCERY", "KINDRED", "VANGUARD"]
+        // Roles are a fixed build-time vocabulary; anything else means a stale or tampered
+        // catalogue, and silently dropping it would understate a deck's real contents.
+        let knownRoles: Set<String> = ["ramp", "cardFlow", "interaction", "boardWipe",
+                                       "protection", "graveyardHate", "recursion", "tutor"]
+        func validatedRoles(_ roles: [String]?) throws -> [String] {
+            guard let roles else { return [] }
+            guard roles.count <= knownRoles.count, Set(roles).count == roles.count,
+                  Set(roles).isSubset(of: knownRoles) else {
+                throw CatalogueError("Invalid metadata roles; expected unique known role keys.")
+            }
+            return roles
+        }
         func validateColors(_ colors: [String]?) throws {
             guard let colors else { return }
             guard colors.count <= 5, Set(colors).count == colors.count, Set(colors).isSubset(of: ["W", "U", "B", "R", "G"]) else {
@@ -137,7 +153,7 @@ struct NativeDeckMetadataCatalogue {
                                types: types, oracleText: value?.oracleText.map { EngineDisplayText.text($0) },
                                manaValue: value?.manaValue, manaCost: value?.manaCost,
                                colors: value?.colors, colorIdentity: value?.colorIdentity,
-                               setCodes: value?.setCodes ?? []))
+                               setCodes: value?.setCodes ?? [], roles: try validatedRoles(value?.roles)))
         }
         cards = result.sorted { $0.name < $1.name }
         index = Dictionary(uniqueKeysWithValues: cards.map { ($0.name, $0) })
@@ -148,20 +164,39 @@ struct NativeDeckMetadataCatalogue {
         index[name] ?? aliases[name].flatMap { index[$0] }
     }
 
+    /// The same ordering applies within identity buckets and after their merge.
+    static func ranked(_ cards: [Card], query: String) -> [Card] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return cards.sorted { $0.name < $1.name } }
+        let scored: [(card: Card, rank: Int)] = cards.map { card in
+            guard let match = card.name.range(of: query, options: .caseInsensitive,
+                                             locale: Locale(identifier: "en_US_POSIX")) else { return (card, 3) }
+            let rank = match.lowerBound == card.name.startIndex
+                ? (match.upperBound == card.name.endIndex ? 0 : 1) : 2
+            return (card, rank)
+        }
+        return scored.sorted { lhs, rhs in
+            lhs.rank == rhs.rank ? lhs.card.name < rhs.card.name : lhs.rank < rhs.rank
+        }.map(\.card)
+    }
+
     func search(_ filter: SearchFilter = SearchFilter(), limit: Int = 40) -> [Card] {
         guard limit > 0 else { return [] }
+        let query = filter.query.trimmingCharacters(in: .whitespacesAndNewlines)
         func contains(_ text: String?, _ query: String) -> Bool {
             text?.range(of: query, options: .caseInsensitive, locale: Locale(identifier: "en_US_POSIX")) != nil
         }
-        return Array(cards.lazy.filter { card in
-            (filter.query.isEmpty || contains(card.name, filter.query) || contains(card.oracleText, filter.query)) &&
+        let matches = cards.lazy.filter { card in
+            (query.isEmpty || contains(card.name, query) || contains(card.oracleText, query)) &&
             (filter.type.isEmpty || contains(card.typeLine, filter.type)) &&
             (filter.setCode.isEmpty || card.setCodes.contains { $0.caseInsensitiveCompare(filter.setCode) == .orderedSame }) &&
             (filter.colors == nil || card.colors.map(Set.init) == filter.colors) &&
             (filter.colorIdentity == nil || card.colorIdentity.map(Set.init) == filter.colorIdentity) &&
             (filter.minimumManaValue == nil || card.manaValue.map { $0 >= filter.minimumManaValue! } == true) &&
             (filter.maximumManaValue == nil || card.manaValue.map { $0 <= filter.maximumManaValue! } == true)
-        }.prefix(min(limit, 2000)))
+        }
+        if query.isEmpty { return Array(matches.prefix(min(limit, 2000))) }
+        return Array(Self.ranked(Array(matches), query: query).prefix(min(limit, 2000)))
     }
 
     func statistics(for deck: DeckList, sections: Set<String> = ["main", "deck"]) throws -> Statistics {

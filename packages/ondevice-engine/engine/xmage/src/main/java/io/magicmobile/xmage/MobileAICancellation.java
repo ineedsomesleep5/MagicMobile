@@ -30,12 +30,16 @@ final class MobileAICancellation {
         }
         return true;
     }
-    ComputerPlayerControllableProxy player(String name) { return new CancellablePlayer(name,this); }
+    ComputerPlayerControllableProxy player(String name) { return player(name,1); }
+    ComputerPlayerControllableProxy player(String name,int skill) {
+        if(skill<1 || skill>10) throw new IllegalArgumentException("AI skill must be 1–10");
+        return new CancellablePlayer(name,skill,this);
+    }
 
     private static final class CancellablePlayer extends ComputerPlayerControllableProxy {
         private final transient MobileAICancellation cancellation;
-        CancellablePlayer(String name,MobileAICancellation cancellation) {
-            super(name,RangeOfInfluence.ALL,1);this.cancellation=cancellation;
+        CancellablePlayer(String name,int skill,MobileAICancellation cancellation) {
+            super(name,RangeOfInfluence.ALL,skill);this.cancellation=cancellation;
         }
         private CancellablePlayer(CancellablePlayer source) {
             super(source);cancellation=source.cancellation;

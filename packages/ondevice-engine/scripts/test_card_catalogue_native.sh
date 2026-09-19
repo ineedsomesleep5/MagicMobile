@@ -48,6 +48,14 @@ with gzip.open(assets / 'card-metadata.jsonl.gz', 'rt') as stream:
     rows = [json.loads(line) for line in stream]
 assert header == {'format': 1, 'rows': len(rows)}
 assert len(rows) == report['rowsIncludingSplitHalves']
+# The export also carries app-only Commander identity. CardInfo deliberately
+# remains the exact upstream model, which has no colorIdentity field. Validate
+# that enrichment independently, then compare every original field unchanged.
+for row in rows:
+    if not row['splitCardHalf']:
+        identity = row.pop('colorIdentity')
+        assert isinstance(identity, list)
+        assert identity == [color for color in 'WUBRG' if color in identity], 'Invalid exported color identity'
 lookup = {name: [r for r in rows if r['name'] == name]
           for name in ('Pithing Needle', 'Brain Pry', 'Fire', 'Fire // Ice')}
 assert all(lookup.values())
@@ -95,7 +103,10 @@ assert selected == expected, 'Production CardInfo/enum metadata changed; review 
 print('Exact production CardInfo fields and zero-argument Gson constructor selected; no card factories installed')
 PY
 (cd "$PROBE_BUILD" && "$CATALOGUE_JDK/bin/java" -Xmx256m -cp "$PROBE_BUILD/classes:$CP" \
-  CardCatalogueProbe "$PROBE_BUILD/expected.json") > "$PROBE_BUILD/jvm-run.log" 2>&1
+  CardCatalogueProbe "$PROBE_BUILD/expected.json") > "$PROBE_BUILD/jvm-run.log" 2>&1 || {
+  cat "$PROBE_BUILD/jvm-run.log" >&2
+  exit 1
+}
 grep '^PASS ' "$PROBE_BUILD/jvm-run.log" > "$PROBE_BUILD/expected.txt"
 if [[ ${1:-} == --prepare-only ]]; then
   cat "$PROBE_BUILD/expected.txt"

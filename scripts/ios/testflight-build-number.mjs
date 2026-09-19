@@ -84,7 +84,17 @@ function numericBuilds(ledger, currentBuild) {
     .map((build) => String(build));
 }
 
+function configuredBuildFloor(ledger) {
+  const floor = ledger.nextBuildFloor;
+  if (floor === undefined) return null;
+  if (!/^[1-9]\d{9}$/.test(String(floor))) {
+    throw new Error("nextBuildFloor must be a 10-digit non-zero build number");
+  }
+  return String(floor);
+}
+
 function nextBuildNumber(ledger, currentBuild, datePrefix) {
+  const floor = configuredBuildFloor(ledger);
   if (/^\d{10}$/.test(String(currentBuild))
       && currentBuild === ledger.lastPreparedBuild
       && currentBuild !== ledger.lastUploadedBuild
@@ -92,6 +102,16 @@ function nextBuildNumber(ledger, currentBuild, datePrefix) {
     return currentBuild;
   }
   const builds = numericBuilds(ledger, currentBuild);
+  if (floor) {
+    const highestBuild = builds.sort().at(-1);
+    const nextBuild = !highestBuild || BigInt(highestBuild) < BigInt(floor)
+      ? floor
+      : (BigInt(highestBuild) + 1n).toString();
+    if (!/^\d{10}$/.test(nextBuild)) {
+      throw new Error("Sequential TestFlight build number exceeded the supported 10-digit range");
+    }
+    return nextBuild;
+  }
   const maxBuild = builds.sort().at(-1);
   const prefix = maxBuild && maxBuild.slice(0, 8) > datePrefix ? maxBuild.slice(0, 8) : datePrefix;
   const maxSequenceForPrefix = builds

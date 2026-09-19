@@ -98,8 +98,13 @@ struct NativeDeckLibraryView: View {
     }
 }
 
+enum NativeArtworkPreference {
+    /// One spelling of the consent key, so a new surface cannot drift onto its own store.
+    static let key = "magicmobile.deckArtworkNetworkEnabled"
+}
+
 struct NativeArtworkPreferenceView: View {
-    @AppStorage("magicmobile.deckArtworkNetworkEnabled") private var remoteArtwork = false
+    @AppStorage(NativeArtworkPreference.key) private var remoteArtwork = false
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle("Download card artwork", isOn: $remoteArtwork)
@@ -147,7 +152,7 @@ struct NativeCardArtworkView<Placeholder: View>: View {
     let variant: CardImageCacheVariant
     var contentMode: ContentMode = .fit
     @ViewBuilder let placeholder: (_ loading: Bool, _ failed: Bool) -> Placeholder
-    @AppStorage("magicmobile.deckArtworkNetworkEnabled") private var remoteArtwork = false
+    @AppStorage(NativeArtworkPreference.key) private var remoteArtwork = false
     @State private var artwork: UIImage?
     @State private var completedRequest: Request?
     @State private var failedRequest: Request?
@@ -429,7 +434,7 @@ private struct NativeDeckInspectionSheet: View {
                     if let card {
                         Text(card.typeLine ?? "Type unavailable").font(.headline)
                         NativeDeckManaCost(cost: card.manaCost)
-                        Text(card.oracleText ?? "Rules text unavailable in the local catalogue.")
+                        GameRulesText(source: card.oracleText ?? "Rules text unavailable in the local catalogue.", cardName: card.name)
                             .textSelection(.enabled)
                         Text("Local selected-printing metadata. XMage remains authoritative for play.")
                             .font(.caption).foregroundStyle(.secondary)

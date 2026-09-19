@@ -3,6 +3,40 @@ import UIKit
 @testable import MagicMobile
 
 final class ArenaBoardPresentationTests: XCTestCase {
+    @MainActor
+    func testCompactFooterRequiresVisibleStatsOrStatus() throws {
+        for type in ["Land", "Artifact", "Enchantment", "Creature", "Planeswalker", "Battle"] {
+            XCTAssertFalse(try compactCard(type: type).showsFooter, type)
+        }
+        XCTAssertTrue(try compactCard(type: "Land", fields: ["tapped": true]).showsFooter)
+        XCTAssertTrue(try compactCard(type: "Creature", fields: ["summoningSickness": true]).showsFooter)
+        XCTAssertFalse(try compactCard(type: "Artifact", fields: ["summoningSickness": true]).showsFooter)
+        XCTAssertTrue(try compactCard(type: "Creature", fields: ["power": 0, "toughness": 0]).showsFooter)
+        XCTAssertTrue(try compactCard(type: "Creature", fields: ["reportedPower": "*", "reportedToughness": "1+*"]).showsFooter)
+        XCTAssertFalse(try compactCard(type: "Creature", fields: ["power": 2]).showsFooter)
+        XCTAssertTrue(try compactCard(type: "Artifact", fields: ["isCreaturePermanent": true, "power": 2, "toughness": 2]).showsFooter)
+    }
+
+    @MainActor
+    func testCompactCounterOverlaysRemainAvailableWithoutAnEmptyFooter() throws {
+        for (type, counter) in [("Planeswalker", "loyalty"), ("Battle", "defense"), ("Artifact", "charge")] {
+            let tile = try compactCard(type: type, fields: ["counters": [counter: 3]])
+            XCTAssertFalse(tile.showsFooter)
+            XCTAssertEqual(tile.card.counterBadges.map(\.count), [3])
+            XCTAssertTrue(tile.card.accessibilityLabel(zoneName: "Battlefield", selected: false, legal: false)
+                .contains("\(tile.card.counterBadges[0].label) counter 3"))
+        }
+    }
+
+    @MainActor
+    private func compactCard(type: String, fields: [String: Any] = [:]) throws -> ArenaBattlefieldCard {
+        var payload = fields
+        payload["instanceId"] = "footer-card"
+        payload["card"] = ["name": "Footer fixture", "typeLine": type, "oracleText": ""]
+        let card = try JSONDecoder().decode(ZoneCard.self, from: JSONSerialization.data(withJSONObject: payload))
+        return ArenaBattlefieldCard(card: card, zoneName: "Battlefield", width: 64, height: 70)
+    }
+
     func testHandScrubberPreservesThumbGrabAndClampsTrackTaps() {
         let width: CGFloat = 300
         let thumb = HandScrubberGeometry.thumbWidth(trackWidth: width)

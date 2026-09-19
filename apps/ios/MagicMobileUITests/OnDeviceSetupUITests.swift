@@ -35,6 +35,23 @@ final class OnDeviceSetupUITests: XCTestCase {
         app = nil
     }
 
+    func testAISkillCanChangeAndSurvivesRelaunch() {
+        openSetup()
+        let skill = app.steppers["onDevice.aiSkill"]
+        reveal(skill)
+        waitFor(skill, predicate: "label == 'AI skill: 2'")
+        skill.buttons["onDevice.aiSkill-Increment"].tap()
+        waitFor(skill, predicate: "label == 'AI skill: 3'")
+        capture("AI skill selection")
+        app.terminate()
+        app.launch()
+        openSetup()
+        reveal(app.steppers["onDevice.aiSkill"])
+        waitFor(app.steppers["onDevice.aiSkill"], predicate: "label == 'AI skill: 3'")
+        app.steppers["onDevice.aiSkill"].buttons["onDevice.aiSkill-Decrement"].tap()
+        waitFor(app.steppers["onDevice.aiSkill"], predicate: "label == 'AI skill: 2'")
+    }
+
     func testUpdatesShowsInstalledBuildAndSeparatesUpstreamNews() {
         app.buttons["menu.updates"].tap()
         XCTAssertTrue(app.navigationBars["Updates"].waitForExistence(timeout: 5))
@@ -545,8 +562,8 @@ final class OnDeviceSetupUITests: XCTestCase {
     private func openSetup() {
         let play = app.buttons["menu.play"]
         XCTAssertTrue(play.waitForExistence(timeout: 15))
-        reveal(play); play.tap()
-        XCTAssertTrue(app.textFields["ondevice.playerName"].waitForExistence(timeout: 5))
+        reveal(play); tapDiagnosed(play)
+        waitFor(app.textFields["ondevice.playerName"], predicate: "exists == true AND hittable == true")
         XCTAssertTrue(app.staticTexts["Gather your table"].exists)
     }
 
