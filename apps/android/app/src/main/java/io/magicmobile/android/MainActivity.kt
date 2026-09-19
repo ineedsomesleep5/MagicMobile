@@ -187,8 +187,8 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
     BoxWithConstraints(Modifier.fillMaxSize().background(Night)) {
         val wide=maxWidth>=700.dp
         if(wide)Row(Modifier.fillMaxSize().padding(40.dp),horizontalArrangement=Arrangement.spacedBy(36.dp),verticalAlignment=Alignment.CenterVertically) {
-            Column(Modifier.weight(.9f),verticalArrangement=Arrangement.spacedBy(14.dp)){HomeHeading();HomeNavigation(featured,play,decks,downloads,settings,updates,wide=true)}
-            Column(Modifier.weight(1.1f),verticalArrangement=Arrangement.spacedBy(12.dp)){HomeDeck(featured)}
+            Column(Modifier.weight(.9f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(14.dp)){HomeHeading();HomeNavigation(featured,play,decks,downloads,settings,updates,wide=true)}
+            Column(Modifier.weight(1.1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)){HomeDeck(featured)}
         } else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal=24.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
             Spacer(Modifier.height(22.dp));HomeHeading();HomeDeck(featured);HomeNavigation(featured,play,decks,downloads,settings,updates,wide=false);Spacer(Modifier.height(28.dp))
         }
