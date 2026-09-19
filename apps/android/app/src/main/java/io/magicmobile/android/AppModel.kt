@@ -193,8 +193,10 @@ class AppModel(application: Application): AndroidViewModel(application) {
             mutable.update {if(validationEpoch.get()==epoch)it.copy(busy=false,validation=validation,status=if(validation.valid)"Deck is valid for Commander" else "Deck needs changes") else it.copy(busy=false)}
         }}
     }
-    fun start(deck:Deck,opponent:Deck,ais:Int,excludeOtherBoards:Boolean,aiSkill:Int) {
+    fun start(deck:Deck,opponent:Deck,ais:Int,excludeOtherBoards:Boolean,aiSkill:Int,playerName:String) {
         if(state.value.busy || state.value.playing) return
+        val humanName=playerName.trim()
+        if(humanName.length !in 1..24 || humanName.any(Char::isISOControl)){error("Player name must be 1–24 characters.");return}
         mutable.update { it.copy(busy=true,error=null,status="Validating decks and starting real XMage…") }
         executor.execute { attempt {
             require(BuildConfig.NATIVE_ENGINE) { "This diagnostic APK has no rules engine. Install the native APK; no server fallback is used." }
@@ -204,7 +206,7 @@ class AppModel(application: Application): AndroidViewModel(application) {
             require(validationMatches(deck,excludeOtherBoards)) {"Validate this exact playing deck with the installed XMage build before starting."}
             token=NativeBridge.open(); check(token!=0L)
             try {
-                val seats=(0..ais).map { index -> if(index==0) mapOf("seatId" to "player-1","name" to "You", "controller" to "human","deck" to human) else mapOf("seatId" to "player-${index+1}","name" to "AI $index", "controller" to "ai","deck" to ai,"aiSkill" to aiSkill) }
+                val seats=(0..ais).map { index -> if(index==0) mapOf("seatId" to "player-1","name" to humanName, "controller" to "human","deck" to human) else mapOf("seatId" to "player-${index+1}","name" to "AI $index", "controller" to "ai","deck" to ai,"aiSkill" to aiSkill) }
                 val created=native("create","configuration" to mapOf("seats" to seats))
                 session=PollState(Wire.string(created["matchId"]),"player-1")
                 val recording=runCatching {playtestStore.start(deck,Wire.string(created["matchId"]),ais,aiSkill,created.obj("engine").orEmpty(),catalogue,BuildConfig.VERSION_NAME)}

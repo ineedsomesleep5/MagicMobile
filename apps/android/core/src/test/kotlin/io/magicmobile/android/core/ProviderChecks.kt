@@ -32,11 +32,13 @@ fun main() {
         "exact Spellbook pagination accepted")
 
     val scryfall = ProviderDiscovery.parseScryfallPage(
-        """{"object":"list","has_more":true,"data":[{"object":"card","id":"00000000-0000-0000-0000-000000000001","name":"Sol Ring","mana_cost":"{1}","type_line":"Artifact","oracle_text":"{T}: Add {C}{C}.","related_uris":{"edhrec":"https://edhrec.com/cards/sol-ring"}}]}""".toByteArray(),
+        """{"object":"list","has_more":true,"data":[{"object":"card","id":"00000000-0000-0000-0000-000000000001","name":"Sol Ring","mana_cost":"{1}","type_line":"Artifact","oracle_text":"{T}: Add {C}{C}.","related_uris":{"edhrec":"https://edhrec.com/cards/sol-ring"},"legalities":{"commander":"legal"},"scryfall_uri":"https://scryfall.com/card/cmm/396/sol-ring","card_faces":[{"name":"Sol Ring front","mana_cost":"{1}","type_line":"Artifact","oracle_text":"{T}: Add {C}{C}."}]}]}""".toByteArray(),
         "Sol Ring", 1,
     )
     verifyProvider(scryfall.hasMore && scryfall.cards.single().name == "Sol Ring" &&
-        scryfall.cards.single().edhrecUrl == "https://edhrec.com/cards/sol-ring", "bounded Scryfall result parsed")
+        scryfall.cards.single().edhrecUrl == "https://edhrec.com/cards/sol-ring" &&
+        scryfall.cards.single().faces.single().name=="Sol Ring front" && scryfall.cards.single().commanderLegality=="legal" &&
+        scryfall.cards.single().scryfallUrl=="https://scryfall.com/card/cmm/396/sol-ring", "bounded Scryfall result parsed")
     rejectsProvider("Scryfall arbitrary EDHREC link") {
         ProviderDiscovery.parseScryfallCard(
             """{"object":"card","id":"00000000-0000-0000-0000-000000000001","name":"Sol Ring","related_uris":{"edhrec":"https://attacker.invalid/steal"}}""".toByteArray())
@@ -65,12 +67,15 @@ fun main() {
 
     val page = ProviderDiscovery.parseSpellbookPage(
         """
-        {"count":1,"next":"https://backend.commanderspellbook.com/find-my-combos?limit=100&offset=100","results":{"identity":"U","included":[],"includedByChangingCommanders":[],"almostIncluded":[{"id":"safe_combo","uses":[{"card":{"id":1,"name":"Sol Ring"},"quantity":1,"mustBeCommander":false},{"card":{"id":2,"name":"Missing Piece"},"quantity":1,"mustBeCommander":false}],"requires":[],"produces":[{"feature":{"name":"A documented result"},"quantity":1}],"identity":"U","status":"OK","spoiler":false,"legalities":{"commander":true}}],"almostIncludedByAddingColors":[],"almostIncludedByChangingCommanders":[],"almostIncludedByAddingColorsAndChangingCommanders":[]}}
+        {"count":1,"next":"https://backend.commanderspellbook.com/find-my-combos?limit=100&offset=100","results":{"identity":"U","included":[],"includedByChangingCommanders":[],"almostIncluded":[{"id":"safe_combo","uses":[{"card":{"id":1,"name":"Sol Ring"},"quantity":1,"mustBeCommander":false,"zoneLocations":["B"],"battlefieldCardState":"Untapped","exileCardState":"","libraryCardState":"","graveyardCardState":""},{"card":{"id":2,"name":"Missing Piece"},"quantity":1,"mustBeCommander":false}],"requires":[],"produces":[{"feature":{"name":"A documented result"},"quantity":1}],"identity":"U","status":"OK","spoiler":false,"legalities":{"commander":true},"description":"Tap Sol Ring.\nResolve the effect.","easyPrerequisites":"Priority","notablePrerequisites":"","manaNeeded":"{1}","notes":"Documented line."}],"almostIncludedByAddingColors":[],"almostIncludedByChangingCommanders":[],"almostIncludedByAddingColorsAndChangingCommanders":[]}}
         """.trimIndent().toByteArray(), 0,
     )
     val combo = page.groups.getValue(SpellbookGroup.ALMOST_INCLUDED).single()
     verifyProvider(page.nextOffset == 100 && combo.singleMissingResolvedCard(input, catalogue) == "Missing Piece",
         "one resolved missing card can be offered deliberately")
+    verifyProvider(combo.ingredients.first().zoneLocations==listOf("B")&&combo.ingredients.first().battlefieldCardState=="Untapped"&&
+        combo.description.lines().size==2&&combo.easyPrerequisites=="Priority"&&combo.manaNeeded=="{1}"&&combo.notes=="Documented line.",
+        "combo prerequisites and exact ordered steps are retained")
     verifyProvider(combo.websiteUri.toString() == "https://commanderspellbook.com/combo/safe_combo/", "combo URL is derived from safe id")
 
     rejectsProvider("duplicate combo identity across groups") {

@@ -3,8 +3,8 @@ package io.magicmobile.android
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -16,11 +16,24 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.zIndex
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import io.magicmobile.android.core.*
+import java.util.Locale
 
 @Composable internal fun GameScreen(model:AppModel,state:ScreenState,inspect:(String)->Unit) {
     val poll=state.game;val snapshot=poll?.snapshot;val game=snapshot?.obj("gameView")
@@ -31,6 +44,7 @@ import io.magicmobile.android.core.*
     var selectedCard by remember {mutableStateOf<Obj?>(null)}
     var selectedRevision by remember {mutableStateOf<Long?>(null)}
     var notices by remember(poll?.matchId,poll?.viewerId) {mutableStateOf<List<Pair<Long,String>>>(emptyList())}
+    BackHandler {confirmClose=true}
     LaunchedEffect(poll?.revision) {
         val incoming=poll?.events.orEmpty().filter{it.text("kind")=="message"}.mapNotNull{event->
             val revision=event.number("revision");val message=event.obj("body")?.text("message")
@@ -42,7 +56,8 @@ import io.magicmobile.android.core.*
     val board=rememberLazyListState()
     val scope=rememberCoroutineScope()
     val context=LocalContext.current
-    Column(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize()) {
+    BattlefieldBackground { Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal=12.dp)){Text(state.status,modifier=Modifier.weight(1f),style=MaterialTheme.typography.bodySmall);TextButton(onClick={model.refresh()},enabled=!state.closing){Text("Refresh")};TextButton(onClick={confirmClose=true}){Text(if(state.closing)"Retry cleanup" else "Leave")}}
         if(state.busy)LinearProgressIndicator(Modifier.fillMaxWidth())
         if(state.pendingAnswer)Row(Modifier.padding(12.dp)){Text("Uncertain response",modifier=Modifier.weight(1f));Button(onClick={model.retry()},enabled=!state.closing){Text("Retry same action")}}
@@ -93,18 +108,18 @@ import io.magicmobile.android.core.*
                     Text("Total ${entered.filterNotNull().sum()} · required ${decision.minimum ?: "any"} … ${decision.maximum ?: "any"}")
                     TextButton(onClick={model.answer("integers",entered)},enabled=!state.busy && !state.pendingAnswer && !state.closing && !decision.submitted && valid){Text("Submit allocation")}
                 }
-                if(decision.kind=="CHOOSE_PILE") {CardZone("Pile 1",decision.payload["pile1"]){selectedCard=it;selectedRevision=poll?.revision};CardZone("Pile 2",decision.payload["pile2"]){selectedCard=it;selectedRevision=poll?.revision}}
-                if(decision.kind=="PICK_TARGET")CardZone("Visible candidates",decision.payload["cards"]){selectedCard=it;selectedRevision=poll?.revision}
+                if(decision.kind=="CHOOSE_PILE") {CardZone("Pile 1",decision.payload["pile1"]){selectedCard=it.takeIf(Obj::isNotEmpty);selectedRevision=poll?.revision};CardZone("Pile 2",decision.payload["pile2"]){selectedCard=it.takeIf(Obj::isNotEmpty);selectedRevision=poll?.revision}}
+                if(decision.kind=="PICK_TARGET")CardZone("Visible candidates",decision.payload["cards"]){selectedCard=it.takeIf(Obj::isNotEmpty);selectedRevision=poll?.revision}
                 if(decision.kind in setOf("CHOOSE_ABILITY","PICK_ABILITY")) {
                     val sources=decision.payload.array("abilities").map(Wire::objectValue).mapNotNull{it.obj("sourceCard")}.distinctBy{it["id"]}
-                    if(sources.isNotEmpty())CardZone("Ability sources",sources){selectedCard=it;selectedRevision=poll?.revision}
+                    if(sources.isNotEmpty())CardZone("Ability sources",sources){selectedCard=it.takeIf(Obj::isNotEmpty);selectedRevision=poll?.revision}
                 }
                 if(choices.isEmpty() && decision.responseTypes.none{it=="integer" || it=="integers"} && !decision.submitted)Text("This prompt variant needs additional Android presentation support. No choice will be guessed. Export diagnostics and report the prompt kind.",color=MaterialTheme.colorScheme.error)
             }}}
             item {Text("Turn ${game?.get("turn") ?: "—"} · ${game?.get("step")?.toString()?.replace('_',' ') ?: "Waiting for state"}",style=MaterialTheme.typography.titleLarge,fontFamily=FontFamily.Serif)
                 Text(Decisions.plain(game?.text("activePlayerName").orEmpty()),style=MaterialTheme.typography.bodyMedium)}
-            item {Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){CardZone("Your hand",game?.get("myHand")){selectedCard=it;selectedRevision=poll?.revision}}}}
-            item {Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){CardZone("Stack",game?.get("stack")){selectedCard=it;selectedRevision=poll?.revision}}}}
+            item {Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){CardZone("Your hand",game?.get("myHand")){selectedCard=it.takeIf(Obj::isNotEmpty);selectedRevision=poll?.revision}}}}
+            item {Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){CardZone("Stack",game?.get("stack")){selectedCard=it.takeIf(Obj::isNotEmpty);selectedRevision=poll?.revision}}}}
             val players=runCatching{game?.array("players").orEmpty().map(Wire::objectValue)}.getOrDefault(emptyList())
             items(players,key={it["playerId"].toString()}) { player -> Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){Text("${player["name"]} · ${player["life"]} life",style=MaterialTheme.typography.titleMedium)
                 Text("Hand ${player["handCount"] ?: "?"} · Library ${player["libraryCount"] ?: "?"}",style=MaterialTheme.typography.bodySmall)
@@ -115,18 +130,18 @@ import io.magicmobile.android.core.*
                         items(mana) { (key,symbol) -> Row { ManaSymbol(symbol);Text(" × ${pool.number(key)}") } }
                     }
                 }
-                CardZone("Battlefield",player["battlefield"]){selectedCard=it;selectedRevision=poll?.revision}
+                CardZone("Battlefield",player["battlefield"]){selectedCard=it.takeIf(Obj::isNotEmpty);selectedRevision=poll?.revision}
                 var expanded by remember {mutableStateOf(false)}
                 TextButton(onClick={expanded=!expanded}){Text(if(expanded)"Hide other zones" else "Graveyard / exile / commanders")}
-                if(expanded){CardZone("Graveyard",player["graveyard"]){selectedCard=it;selectedRevision=poll?.revision};CardZone("Exile",player["exile"]){selectedCard=it;selectedRevision=poll?.revision};CardZone("Command zone",player["commandList"]){selectedCard=it;selectedRevision=poll?.revision}}
+                if(expanded){CardZone("Graveyard",player["graveyard"]){selectedCard=it.takeIf(Obj::isNotEmpty);selectedRevision=poll?.revision};CardZone("Exile",player["exile"]){selectedCard=it.takeIf(Obj::isNotEmpty);selectedRevision=poll?.revision};CardZone("Command zone",player["commandList"]){selectedCard=it.takeIf(Obj::isNotEmpty);selectedRevision=poll?.revision}}
             }}}
             game?.array("combat").orEmpty().map(Wire::objectValue).forEach {group->item {Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){
                 Text("Combat → ${group.text("defenderId")?.let{Decisions.labelForID(snapshot,it)} ?: "Defender"}")
-                CardZone("Attackers",group["attackers"]){selectedCard=it;selectedRevision=poll?.revision};CardZone("Blockers",group["blockers"]){selectedCard=it;selectedRevision=poll?.revision}
+                CardZone("Attackers",group["attackers"]){selectedCard=it.takeIf(Obj::isNotEmpty);selectedRevision=poll?.revision};CardZone("Blockers",group["blockers"]){selectedCard=it.takeIf(Obj::isNotEmpty);selectedRevision=poll?.revision}
             }}}}
-            listOf("authorizedLookedAt" to "Looked at", "authorizedOpponentHands" to "Revealed hand").forEach{(key,title)->snapshot?.obj(key)?.forEach{(name,cards)->item{CardZone("$title · ${Decisions.plain(name)}",cards){selectedCard=it;selectedRevision=poll?.revision}}}}
-            listOf("revealed" to "Revealed", "companion" to "Companion").forEach{(key,title)->game?.array(key)?.map(Wire::objectValue)?.forEach{zone->item{CardZone(zone.text("name") ?: title,zone["cards"]){selectedCard=it;selectedRevision=poll?.revision}}}}
-            snapshot?.array("namedExiles")?.map(Wire::objectValue)?.forEach{zone->item{CardZone(zone.text("name") ?: "Exile",zone["cards"]){selectedCard=it;selectedRevision=poll?.revision}}}
+            listOf("authorizedLookedAt" to "Looked at", "authorizedOpponentHands" to "Revealed hand").forEach{(key,title)->snapshot?.obj(key)?.forEach{(name,cards)->item{CardZone("$title · ${Decisions.plain(name)}",cards){selectedCard=it.takeIf(Obj::isNotEmpty);selectedRevision=poll?.revision}}}}
+            listOf("revealed" to "Revealed", "companion" to "Companion").forEach{(key,title)->game?.array(key)?.map(Wire::objectValue)?.forEach{zone->item{CardZone(zone.text("name") ?: title,zone["cards"]){selectedCard=it.takeIf(Obj::isNotEmpty);selectedRevision=poll?.revision}}}}
+            snapshot?.array("namedExiles")?.map(Wire::objectValue)?.forEach{zone->item{CardZone(zone.text("name") ?: "Exile",zone["cards"]){selectedCard=it.takeIf(Obj::isNotEmpty);selectedRevision=poll?.revision}}}
             snapshot?.obj("commanders")?.takeIf{it.isNotEmpty()}?.let{commanders->item{Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){
                 Text("Commanders",style=MaterialTheme.typography.titleMedium)
                 commanders.values.map(Wire::objectValue).forEach{commander->Text("${Decisions.plain(commander.text("name").orEmpty())} · tax ${commander.number("commanderTax") ?: 0}");commander.obj("damageToPlayers")?.forEach{(id,damage)->Text("${Decisions.playerName(snapshot,id) ?: "Player"}: $damage commander damage",style=MaterialTheme.typography.bodySmall)}}
@@ -135,22 +150,61 @@ import io.magicmobile.android.core.*
             if(notices.isNotEmpty())item{var showLog by remember{mutableStateOf(false)};TextButton(onClick={showLog=!showLog}){Text(if(showLog)"Hide game messages" else "Game messages · ${notices.size}")};if(showLog)notices.forEach{Text(it.second,modifier=Modifier.padding(vertical=4.dp),style=MaterialTheme.typography.bodySmall)}}
             item {TextButton(onClick={model.diagnostics {text->Handler(Looper.getMainLooper()).post{context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="text/plain";putExtra(Intent.EXTRA_TEXT,text)},"Share private diagnostics"))}}}){Text("Export diagnostics (may contain private card data)")}}
         }
-    }
-    selectedCard?.takeIf{selectedRevision==poll?.revision && poll?.phase=="running"}?.let{card->AlertDialog(onDismissRequest={selectedCard=null},title={Text(Decisions.cardLabel(card))},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)){
-        if(!GameplayPresentation.hidden(card))CardArtwork(card.text("name") ?: Decisions.cardLabel(card),Modifier.fillMaxWidth().height(240.dp)){}
-        ManaCost(GameplayPresentation.printedCost(card),24)
-        Text(GameplayPresentation.status(card));Text(GameplayPresentation.details(card).ifBlank{"No additional rules text in this game view."})
-    }},confirmButton={TextButton(onClick={selectedCard=null}){Text("Close")}})}
+    }}
+    selectedCard?.takeIf{selectedRevision==poll?.revision && poll?.phase=="running"}?.let{card->TransientCardInspector(card)}
     confirmYield?.let { mode -> AlertDialog(onDismissRequest={confirmYield=null},title={Text("Skip priority responses?")},text={Text("${mode.status} You may miss opportunities to respond to spells and abilities. This does not answer targeting, payment, combat selection or other choices for you.")},confirmButton={TextButton(enabled=model.canAutoPass(mode),onClick={confirmYield=null;model.startAutoPass(mode)}){Text("Start skipping responses")}},dismissButton={TextButton(onClick={confirmYield=null}){Text("Cancel")}}) }
     if(confirmClose)AlertDialog(onDismissRequest={confirmClose=false},title={Text("Leave this game?")},text={Text("There is no saved-game resume in this Android alpha. Engine cleanup will finish before another game can start.")},confirmButton={TextButton(onClick={confirmClose=false;model.close()}){Text("Leave / retry cleanup")}},dismissButton={TextButton(onClick={confirmClose=false}){Text("Keep playing")}})
+    }
 }
-@OptIn(ExperimentalFoundationApi::class)
 @Composable private fun CardZone(title:String,value:Any?,inspect:(Obj)->Unit) {
     val cards=GameplayPresentation.cards(value)
+    var accessibleCard by remember{mutableStateOf<Obj?>(null)}
     Text("$title · ${cards.size}",style=MaterialTheme.typography.labelLarge)
     if(cards.isEmpty())Text("—",style=MaterialTheme.typography.bodySmall)
-    LazyRow(horizontalArrangement=Arrangement.spacedBy(8.dp),contentPadding=PaddingValues(vertical=6.dp)) {items(cards){card->OutlinedCard(Modifier.width(156.dp).combinedClickable(onClick={inspect(card)},onLongClick={inspect(card)},onLongClickLabel="Card details")){
-        if(!GameplayPresentation.hidden(card))CardArtwork(card.text("name") ?: Decisions.cardLabel(card),Modifier.fillMaxWidth().height(96.dp)){}
-        Column(Modifier.padding(10.dp),verticalArrangement=Arrangement.spacedBy(4.dp)){Text(Decisions.cardLabel(card),style=MaterialTheme.typography.titleSmall);ManaCost(GameplayPresentation.printedCost(card));Text(GameplayPresentation.status(card),style=MaterialTheme.typography.bodySmall)}
+    LazyRow(horizontalArrangement=Arrangement.spacedBy(8.dp),contentPadding=PaddingValues(vertical=6.dp)) {items(cards){card->OutlinedCard(Modifier.width(156.dp).pointerInput(card){awaitEachGesture{awaitFirstDown(requireUnconsumed=false);val ended=withTimeoutOrNull(350){waitForUpOrCancellation()!=null};if(ended==null){inspect(card);try{waitForUpOrCancellation()}finally{inspect(emptyMap())}}}}.semantics{onLongClick("Card details"){accessibleCard=card;true}}){
+        if(!GameplayPresentation.hidden(card))GameCardArtwork(card,Modifier.fillMaxWidth().height(96.dp))
+        Column(Modifier.padding(10.dp).heightIn(min=92.dp),verticalArrangement=Arrangement.spacedBy(4.dp)){Text(Decisions.cardLabel(card),style=MaterialTheme.typography.titleSmall,maxLines=2,overflow=TextOverflow.Ellipsis);ManaCost(GameplayPresentation.printedCost(card));Text(GameplayPresentation.status(card),style=MaterialTheme.typography.bodySmall,maxLines=2,overflow=TextOverflow.Ellipsis)}
     }}}
+    accessibleCard?.let{card->AlertDialog(onDismissRequest={accessibleCard=null},title={Text(Decisions.cardLabel(card))},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)){
+        if(!GameplayPresentation.hidden(card))GameCardArtwork(card,Modifier.fillMaxWidth().height(240.dp))
+        ManaCost(GameplayPresentation.printedCost(card),24);Text(GameplayPresentation.status(card));Text(GameplayPresentation.details(card).ifBlank{"No additional rules text in this game view."})
+    }},confirmButton={TextButton(onClick={accessibleCard=null}){Text("Close")}})}
+}
+
+/** Draw-only overlay: the original pointer stream keeps ownership so lift/cancel always closes it. */
+@Composable private fun TransientCardInspector(card:Obj) {
+    Box(Modifier.fillMaxSize().zIndex(20f),contentAlignment=Alignment.Center) {
+        Surface(Modifier.padding(24.dp).widthIn(max=420.dp),shape=RoundedCornerShape(16.dp),tonalElevation=8.dp,shadowElevation=12.dp) {
+            Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                Text(Decisions.cardLabel(card),style=MaterialTheme.typography.titleLarge,maxLines=2,overflow=TextOverflow.Ellipsis)
+                if(!GameplayPresentation.hidden(card))GameCardArtwork(card,Modifier.fillMaxWidth().heightIn(max=360.dp).aspectRatio(.716f).clip(RoundedCornerShape(10.dp)))
+                ManaCost(GameplayPresentation.printedCost(card),24)
+                Text(GameplayPresentation.status(card),maxLines=2,overflow=TextOverflow.Ellipsis)
+                Text(GameplayPresentation.details(card).ifBlank{"No additional rules text in this game view."},maxLines=7,overflow=TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+@Composable private fun GameCardArtwork(card:Obj,modifier:Modifier) {
+    val token=card.flag("isToken")
+    CardArtwork(card.text("displayName") ?: card.text("name") ?: Decisions.cardLabel(card),modifier,
+        token=token,tokenIdentity=if(token)gameArtworkTokenIdentity(card) else null){}
+}
+
+/** Returns an identity only when the per-viewer game projection contains every token discriminator. */
+internal fun gameArtworkTokenIdentity(card:Obj):ArtworkTokenIdentity? {
+    if(GameplayPresentation.hidden(card)||!card.flag("isToken"))return null
+    val colors=card.obj("color") ?: return null
+    val colorNames=listOf("white" to "W","blue" to "U","black" to "B","red" to "R","green" to "G")
+    if(colorNames.any{colors[it.first] !is Boolean})return null
+    fun words(key:String)=card.array(key).filterIsInstance<String>().map { value ->
+        value.lowercase(Locale.ROOT).replaceFirstChar { it.titlecase(Locale.ROOT) }
+    }
+    val mainTypes=words("superTypes")+words("cardTypes")
+    val subTypes=words("subTypes")
+    val typeLine=mainTypes.joinToString(" ")+(if(subTypes.isEmpty())"" else " — ${subTypes.joinToString(" ")}")
+    val name=(card.text("displayName") ?: card.text("name"))?.takeIf(String::isNotBlank) ?: return null
+    return ArtworkTokenIdentity(name,typeLine,card.array("rules").filterIsInstance<String>().joinToString("\n"),
+        card.text("power"),card.text("toughness"),colorNames.filter{colors.flag(it.first)}.mapTo(linkedSetOf()){it.second})
 }

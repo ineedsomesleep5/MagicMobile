@@ -1,8 +1,12 @@
 # MagicMobile for Android
 
 Android parity work continues on `codex/android-ios-parity`, which merges the Android
-native XMage work with the iOS Deck Studio source shipped as build 5000000000. Android
+native XMage work with the current iOS Deck Studio product line. Android
 remains a separate native Compose client; it consumes the same pinned engine and data.
+
+The shared marketing version is **0.1.1** (release build 1). Android package code
+**2026091902** remains a separate monotonic platform build number; the planned artifact
+is `MagicMobile-Android-0.1.1-build1.apk` under tag `android-v0.1.1-build.1` after release verification.
 
 ## Architecture and scope
 

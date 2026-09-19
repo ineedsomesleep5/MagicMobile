@@ -42,13 +42,13 @@ import java.util.Date
     }
     OutlinedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
-            Text("Playtest insights",style=MaterialTheme.typography.titleMedium)
-            Row {Column(Modifier.weight(1f)){Text("Record local AI playtest summaries");Text("Private, on-device. Hands and opponents' decklists are never recorded.",style=MaterialTheme.typography.bodySmall)};Switch(recordingEnabled,setRecording)}
+            Text("Game history",style=MaterialTheme.typography.titleMedium)
+            Row {Column(Modifier.weight(1f)){Text("Save AI game summaries");Text("Stored on this device. Your hand and opponents’ decks are not recorded.",style=MaterialTheme.typography.bodySmall)};Switch(recordingEnabled,setRecording)}
             when {
                 signature==null -> Text("Resolve the playing deck's card names to match its history.")
                 loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
                 error!=null -> Text(error!!,color=MaterialTheme.colorScheme.error)
-                matching.isEmpty() -> Text("No recorded games for these playing cards yet. Enable recording, validate this deck, then start an AI game.")
+                matching.isEmpty() -> Text("No games recorded for this deck yet. Turn on summaries before your next game.")
                 else -> {
                     Text("${matching.size} recorded sessions · ${matching.count{it.end=="completed"}} completed")
                     matching.take(12).forEach {game->
@@ -60,10 +60,10 @@ import java.util.Date
                     }
                 }
             }
-            Text("History matches exact playing cards and quantities, including commanders and companions. Sideboards, maybeboards and deck titles do not affect matching. Time includes pauses; interrupted games are not losses. These are observed summaries, not every draw, mulligan or payment.",style=MaterialTheme.typography.bodySmall)
+            DeckExplanation("What these summaries measure", "History matches exact playing cards and quantities, including commanders and companions. Sideboards, maybeboards and titles do not affect matching. Time includes pauses; interrupted games are not losses. Summaries do not record every draw, mulligan or payment.")
             if(signature!=null && !loading && error==null && matching.isNotEmpty())PlaytestExportButton(signature)
             TextButton(onClick={refresh++},enabled=!loading){Text("Refresh this deck's history")}
-            Text("Up to 100 recent sessions are kept across all decks. Clear all history from the library.",style=MaterialTheme.typography.labelSmall)
+            Text("Keeps the 100 most recent sessions. Clear history from the library.",style=MaterialTheme.typography.labelSmall)
         }
     }
 }

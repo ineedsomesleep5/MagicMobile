@@ -11,6 +11,9 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -379,6 +382,7 @@ fun ProviderDiscoveryPanel(
             DiscoverySource.SCRYFALL -> ScryfallProviderContent(query, { query = it.take(1_024) }, scryfall, loading, readOnly,
                 search = { approval = ProviderApproval.Scryfall(query, 1) },
                 more = { page -> approval = ProviderApproval.Scryfall(page.query, page.page + 1) },
+                open = { approval = ProviderApproval.External(it) },
                 add = { name, section ->
                     val canonical = catalogue.find(name)?.name
                     if (canonical == null) { message = "$name is not in this build’s XMage catalogue, so it was not added."; false }
@@ -419,8 +423,10 @@ private fun ScryfallProviderContent(
     readOnly: Boolean,
     search: () -> Unit,
     more: (ScryfallPage) -> Unit,
+    open: (URI) -> Unit,
     add: (String, String) -> Boolean,
 ) {
+    var selected by remember(page?.query) { mutableStateOf<ProviderCard?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Search Scryfall’s public card reference. Results must also exist in the installed XMage catalogue before they can be added.", style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(value = query, onValueChange = update, label = { Text("Card search") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -430,10 +436,31 @@ private fun ScryfallProviderContent(
                 Text(card.name, style = MaterialTheme.typography.titleMedium)
                 Text(listOfNotNull(card.manaCost, card.typeLine).joinToString(" · "), style = MaterialTheme.typography.bodySmall)
                 card.oracleText?.let { Text(it, maxLines = 5, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall) }
+                TextButton(onClick = { selected = card }) { Text("Read full reference") }
                 if (!readOnly) Row { TextButton(onClick = { add(card.name, "deck") }) { Text("Add to main") }; TextButton(onClick = { add(card.name, "maybeboard") }) { Text("Maybeboard") } }
             } }
         }
         if (page?.hasMore == true && page.page < 10) OutlinedButton(onClick = { more(page) }, enabled = !loading) { Text("Load next page") }
+    }
+    selected?.let { card ->
+        AlertDialog(onDismissRequest = { selected = null }, title = { Text(card.name) }, text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Scryfall reference · from these search results. Current text and legality may differ from the installed XMage version; this never changes the rules engine.", style = MaterialTheme.typography.bodySmall)
+                CardArtwork(card.name,Modifier.fillMaxWidth().height(240.dp)) { Text("Artwork unavailable",style=MaterialTheme.typography.labelSmall) }
+                card.manaCost?.let { ManaCost(it) }
+                card.typeLine?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
+                if (card.faces.isEmpty()) card.oracleText?.let { Text(it) }
+                card.faces.forEach { face ->
+                    HorizontalDivider()
+                    Text(face.name, style = MaterialTheme.typography.titleMedium)
+                    face.manaCost?.let { ManaCost(it) }
+                    face.typeLine?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    face.oracleText?.let { Text(it) }
+                }
+                card.commanderLegality?.let { Text("Scryfall Commander status: $it", style = MaterialTheme.typography.bodySmall) }
+                card.scryfallUrl?.let { url -> TextButton(onClick = { selected = null; open(URI(url)) }) { Text("View on Scryfall") } }
+            }
+        }, confirmButton = { TextButton(onClick = { selected = null }) { Text("Done") } })
     }
 }
 
@@ -449,7 +476,7 @@ private fun SpellbookProviderContent(
     open: (URI) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Commander Spellbook finds documented combos and nearby possibilities. A result is not proof that the line can execute in a game.", style = MaterialTheme.typography.bodySmall)
+        Text("Documented interactions from Commander Spellbook.", style = MaterialTheme.typography.bodySmall)
         Button(onClick = { input?.let { lookup(it, 0) } }, enabled = input != null && !loading) { Text(if (loading) "Looking up…" else "Find combos") }
         if (input == null) Text("Resolve every main-deck card and choose a commander before looking up combos.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         page?.let { result ->
@@ -464,7 +491,7 @@ private fun SpellbookProviderContent(
             result.nextOffset?.let { offset ->
                 if (result.loadedCount < ProviderDiscovery.SPELLBOOK_MAX_RESULTS) OutlinedButton(onClick = { input?.let { lookup(it, offset) } }, enabled = !loading) { Text("Load next page") }
             }
-            Text("XMage remains the legality and rules authority. Provider status, named pieces, and color identity do not establish mana, zones, timing, or a winning line.", style = MaterialTheme.typography.bodySmall)
+            DeckExplanation("About these results", "XMage remains the rules authority. Named pieces, provider legality and color identity do not establish mana, zones, timing or a winning line.")
         }
     }
 }
@@ -479,10 +506,54 @@ private fun SpellbookComboCard(
     open: (URI) -> Unit,
 ) {
     OutlinedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(combo.ingredients.joinToString(" + ") { if (it.quantity == 1) it.name else "${it.quantity}× ${it.name}" }, style = MaterialTheme.typography.titleSmall)
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            combo.ingredients.forEach { ingredient ->
+                Column(Modifier.width(100.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    CardArtwork(catalogue.find(ingredient.name)?.name ?: ingredient.name, Modifier.width(100.dp).height(140.dp)) {
+                        Text("Artwork unavailable", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(6.dp))
+                    }
+                    Text(ingredient.name, style = MaterialTheme.typography.labelLarge)
+                    Text("×${ingredient.quantity}", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
         combo.produces.take(4).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
         val missing = input?.let { combo.singleMissingResolvedCard(it, catalogue) }
         Text(if (missing == null) "Review requirements" else "One resolved card away: $missing", style = MaterialTheme.typography.bodySmall)
+        var expanded by remember(combo.id) { mutableStateOf(false) }
+        TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Hide prerequisites and steps" else "Prerequisites and steps") }
+        if (expanded) {
+            Text("Before you begin", style = MaterialTheme.typography.titleSmall)
+            if (combo.manaNeeded.isNotBlank()) Text("Mana: ${combo.manaNeeded}")
+            combo.ingredients.forEach { ingredient ->
+                val zones = ingredient.zoneLocations.map { zone -> mapOf("B" to "Battlefield", "H" to "Hand", "G" to "Graveyard", "E" to "Exile", "L" to "Library", "C" to "Command zone")[zone] ?: zone }
+                Text("${ingredient.quantity} × ${ingredient.name}", style = MaterialTheme.typography.labelLarge)
+                val requirements = zones + listOfNotNull(if (ingredient.mustBeCommander) "Must be your commander" else null) +
+                    listOf(ingredient.battlefieldCardState, ingredient.exileCardState, ingredient.libraryCardState, ingredient.graveyardCardState).filter { it.isNotBlank() }
+                if (requirements.isNotEmpty()) Text(requirements.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
+            }
+            if (combo.easyPrerequisites.isNotBlank()) { Text("Prerequisites",style=MaterialTheme.typography.labelLarge);Text(combo.easyPrerequisites) }
+            if (combo.notablePrerequisites.isNotBlank()) { Text("Additional prerequisites",style=MaterialTheme.typography.labelLarge);Text(combo.notablePrerequisites) }
+            combo.requirements.forEach { requirement ->
+                Text("Flexible requirement: ${requirement.quantity} × ${requirement.name}", style = MaterialTheme.typography.labelLarge)
+                val zones = requirement.zoneLocations.map { zone -> mapOf("B" to "Battlefield", "H" to "Hand", "G" to "Graveyard", "E" to "Exile", "L" to "Library", "C" to "Command zone")[zone] ?: zone }
+                val details = zones + listOfNotNull(if (requirement.mustBeCommander) "Must be your commander" else null) +
+                    listOf(requirement.battlefieldCardState, requirement.exileCardState, requirement.libraryCardState, requirement.graveyardCardState).filter { it.isNotBlank() }
+                if (details.isNotEmpty()) Text(details.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
+            }
+            if (combo.description.isNotBlank()) {
+                Text("Steps", style = MaterialTheme.typography.titleSmall)
+                combo.description.lines().filter { it.isNotBlank() }.forEachIndexed { index, step ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("${index + 1}.", style = MaterialTheme.typography.labelLarge)
+                        Text(step.replaceFirst(Regex("^\\s*\\d+[.)]\\s+"), ""), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            } else Text("Steps are available on Commander Spellbook.", style = MaterialTheme.typography.bodySmall)
+            Text("Results", style = MaterialTheme.typography.titleSmall)
+            combo.produces.forEach { Text(it) }
+            if (combo.notes.isNotBlank()) DeckExplanation("Notes", combo.notes)
+        }
         Row { TextButton(onClick = { open(combo.websiteUri) }) { Text("Details ↗") }
             if (missing != null && !readOnly) { Spacer(Modifier.width(8.dp)); TextButton(onClick = { add(missing, "deck") }) { Text("Add to main") }; TextButton(onClick = { add(missing, "maybeboard") }) { Text("Maybeboard") } }
         }

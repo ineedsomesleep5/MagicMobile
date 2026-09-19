@@ -116,6 +116,8 @@ class Catalogue(input: InputStream) {
     }
     fun resolve(deck: Deck, excludeOtherBoards: Boolean): Obj {
         val extra = deck.entries.filter { it.section !in setOf("deck","commanders","companions") }
+        val unknown = deck.entries.map { it.section }.filter { it !in DeckEditing.boards }.distinct()
+        require(unknown.isEmpty()) { "Map or remove unsupported deck section(s) before playing: ${unknown.joinToString()}. Nothing was silently excluded." }
         require(extra.isEmpty() || excludeOtherBoards) { "Review and acknowledge excluded sideboard/maybeboard sections before playing." }
         fun section(name: String): List<Obj> = deck.entries.filter { it.section == name }.map { row ->
             val c = find(row.name) ?: throw IllegalArgumentException("Unknown compiled card: ${row.name}. Correct the exact name or export without printing annotations.")

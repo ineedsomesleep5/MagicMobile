@@ -13,13 +13,14 @@ data class SavedDeck(
     val favorite: Boolean = false,
     val tags: List<String> = emptyList(),
     val notes: String = "",
+    val modifiedAtMillis: Long = 0,
 )
 /** Atomic local-only storage. Corrupt data stops writes rather than being overwritten. */
 class DeckStore(context: Context) {
     private val root = File(context.filesDir,"decks-v1").apply { mkdirs() }
     private val recovery = AtomicFile(File(root,"draft.json"))
     @Synchronized fun all(): List<SavedDeck> = root.listFiles().orEmpty().filter { it.name.endsWith(".json") && it.name != "draft.json" }.map {
-        decodeSaved(read(AtomicFile(it)),it.name.removeSuffix(".json"))
+        decodeSaved(read(AtomicFile(it)),it.name.removeSuffix(".json")).copy(modifiedAtMillis=it.lastModified())
     }.sortedWith(compareByDescending<SavedDeck> { it.favorite }.thenBy { it.deck.name.lowercase() })
     @Synchronized fun save(deck: Deck, original: SavedDeck? = null): SavedDeck {
         val id=original?.id ?: UUID.randomUUID().toString(); require(Wire.uuid(id))
@@ -32,7 +33,7 @@ class DeckStore(context: Context) {
         val revision=Math.addExact(original?.revision ?: 0L,1L)
         val result=SavedDeck(id,revision,deck,original?.favorite ?: false,original?.tags.orEmpty(),original?.notes.orEmpty())
         write(file,result.json())
-        return result
+        return result.copy(modifiedAtMillis=file.baseFile.lastModified())
     }
     @Synchronized fun organize(record: SavedDeck, favorite: Boolean, tags: List<String>, notes: String): SavedDeck {
         require(Wire.uuid(record.id))
@@ -41,13 +42,13 @@ class DeckStore(context: Context) {
         require(current.revision==record.revision) { "Deck changed on disk. Reopen it before saving details." }
         require(current.revision<1_000_000_000) { "Deck revision limit reached; copy the deck before editing details again." }
         val result=current.copy(revision=Math.addExact(current.revision,1L),favorite=favorite,tags=organization.tags,notes=organization.notes)
-        write(file,result.json());return result
+        write(file,result.json());return result.copy(modifiedAtMillis=file.baseFile.lastModified())
     }
     @Synchronized fun duplicate(record: SavedDeck): SavedDeck {
         require(Wire.uuid(record.id));val current=decodeSaved(read(AtomicFile(File(root,"${record.id}.json"))),record.id)
         require(current.revision==record.revision) { "Deck changed on disk. Reopen it before copying." }
         val result=SavedDeck(UUID.randomUUID().toString(),1,current.deck.copy(name="${current.deck.name} copy"),false,current.tags,current.notes)
-        write(AtomicFile(File(root,"${result.id}.json")),result.json());return result
+        val file=AtomicFile(File(root,"${result.id}.json"));write(file,result.json());return result.copy(modifiedAtMillis=file.baseFile.lastModified())
     }
     @Synchronized fun delete(record: SavedDeck) {
         require(Wire.uuid(record.id)); val file=AtomicFile(File(root,"${record.id}.json"))

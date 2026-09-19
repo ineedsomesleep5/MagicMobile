@@ -106,13 +106,35 @@ object ProviderDiscovery {
         require(faces.size <= 8)
         val faceRules = faces.mapNotNull { it.text("oracle_text") }.joinToString("\n\n").ifBlank { null }
         val oracle = text("oracle_text", 32_768) ?: faceRules?.also { require(it.toByteArray().size <= 32_768 && '\u0000' !in it) }
+        fun faceText(face:Obj,key:String,maximum:Int):String?=face.text(key)?.also {
+            require(it.toByteArray().size<=maximum&&'\u0000' !in it)
+        }
+        val cardFaces=faces.map { face ->
+            val faceName=faceText(face,"name",1_024) ?: error("Scryfall card face has no name")
+            require(validName(faceName))
+            ProviderCardFace(faceName,faceText(face,"mana_cost",1_024),faceText(face,"type_line",2_048),faceText(face,"oracle_text",32_768))
+        }
         val edhrec = value.obj("related_uris")?.text("edhrec")?.let { raw ->
             URI(raw).also { requireProviderUri(it, ProviderKind.EDHREC) }.toString()
         }
-        return ProviderCard(id, name, text("mana_cost", 1_024), text("type_line", 2_048), oracle, edhrec)
+        val legality=value.obj("legalities")?.text("commander")?.also { require(it.toByteArray().size<=32&&'\u0000' !in it) }
+        val scryfall=value.text("scryfall_uri")?.let { raw ->
+            URI(raw).also { uri ->
+                require(uri.scheme.equals("https",true)&&uri.host?.lowercase(Locale.ROOT) in setOf("scryfall.com","www.scryfall.com"))
+                require(uri.userInfo==null&&(uri.port==-1||uri.port==443)&&uri.fragment==null)
+            }.toString()
+        }
+        return ProviderCard(id, name, text("mana_cost", 1_024), text("type_line", 2_048), oracle, edhrec,cardFaces,legality,scryfall)
     }
 
     private fun parseSpellbookCombo(value: Obj, group: SpellbookGroup): SpellbookCombo {
+        fun text(row:Obj,key:String,maximum:Int=32_768):String=(row.text(key) ?: "").also {
+            require(it.toByteArray().size<=maximum&&'\u0000' !in it)
+        }
+        fun locations(row:Obj):List<String> = row.array("zoneLocations").map { raw ->
+            (raw as? String)?.also { require(it.toByteArray().size<=16&&'\u0000' !in it) }
+                ?: error("Spellbook zone is not text")
+        }.also { require(it.size<=20) }
         val id = value.text("id") ?: error("Spellbook combo has no id")
         require(id.length <= 160 && id.matches(Regex("[A-Za-z0-9_-]+")))
         val uses = value.array("uses").map { raw ->
@@ -122,11 +144,23 @@ object ProviderDiscovery {
             val cardID = Wire.integer(card["id"])
             val quantity = Wire.integer(ingredient["quantity"])
             require(cardID > 0 && validName(name) && quantity in 1..2_000 && ingredient["mustBeCommander"] is Boolean)
-            SpellbookIngredient(name, quantity.toInt(), ingredient.flag("mustBeCommander"))
+            SpellbookIngredient(name, quantity.toInt(), ingredient.flag("mustBeCommander"),locations(ingredient),
+                text(ingredient,"battlefieldCardState"),text(ingredient,"exileCardState"),
+                text(ingredient,"libraryCardState"),text(ingredient,"graveyardCardState"))
         }
-        require(uses.isNotEmpty() && uses.size <= 100)
-        val requires = value.array("requires")
-        require(requires.size <= 100)
+        require(uses.size <= 100)
+        val requires = value.array("requires").map { raw ->
+            val requirement=Wire.objectValue(raw)
+            val template=requirement.obj("template") ?: error("Spellbook requirement has no template")
+            val name=template.text("name") ?: error("Spellbook requirement has no name")
+            val templateID=Wire.integer(template["id"])
+            val quantity=Wire.integer(requirement["quantity"])
+            require(templateID>0&&validName(name)&&quantity in 1..2_000&&requirement["mustBeCommander"] is Boolean)
+            SpellbookRequirement(name,quantity.toInt(),requirement.flag("mustBeCommander"),locations(requirement),
+                text(requirement,"battlefieldCardState"),text(requirement,"exileCardState"),
+                text(requirement,"libraryCardState"),text(requirement,"graveyardCardState"))
+        }
+        require(requires.size <= 100 && (uses.isNotEmpty()||requires.isNotEmpty()))
         val produces = value.array("produces").map { raw ->
             val row = Wire.objectValue(raw)
             val feature = row.obj("feature")?.text("name") ?: error("Spellbook result has no feature")
@@ -140,8 +174,10 @@ object ProviderDiscovery {
         val status = value.text("status") ?: ""
         require(status.toByteArray().size <= 32 && value["spoiler"] is Boolean)
         val commanderLegal = value.obj("legalities")?.get("commander") as? Boolean
-        return SpellbookCombo(id, group, uses, produces, requires.isNotEmpty(), identity,
-            status, value.flag("spoiler"), commanderLegal)
+        return SpellbookCombo(id, group, uses, produces, requires, identity,
+            status, value.flag("spoiler"), commanderLegal,text(value,"description"),
+            text(value,"easyPrerequisites"),text(value,"notablePrerequisites"),
+            text(value,"manaNeeded"),text(value,"notes"))
     }
 
     private fun requireSafeHttps(uri: URI, host: String, path: String?, allowedHosts: Set<String> = setOf(host)) {
@@ -169,7 +205,11 @@ data class ProviderCard(
     val typeLine: String?,
     val oracleText: String?,
     val edhrecUrl: String?,
+    val faces: List<ProviderCardFace> = emptyList(),
+    val commanderLegality: String? = null,
+    val scryfallUrl: String? = null,
 )
+data class ProviderCardFace(val name:String,val manaCost:String?,val typeLine:String?,val oracleText:String?)
 
 data class ScryfallPage(val query: String, val page: Int, val cards: List<ProviderCard>, val hasMore: Boolean)
 
@@ -182,18 +222,43 @@ enum class SpellbookGroup(val wireName: String, val title: String) {
     ALMOST_COLORS_AND_COMMANDERS("almostIncludedByAddingColorsAndChangingCommanders", "Needs colors and commander changes"),
 }
 
-data class SpellbookIngredient(val name: String, val quantity: Int, val mustBeCommander: Boolean)
+data class SpellbookIngredient(
+    val name: String,
+    val quantity: Int,
+    val mustBeCommander: Boolean,
+    val zoneLocations: List<String> = emptyList(),
+    val battlefieldCardState: String = "",
+    val exileCardState: String = "",
+    val libraryCardState: String = "",
+    val graveyardCardState: String = "",
+)
+data class SpellbookRequirement(
+    val name: String,
+    val quantity: Int,
+    val mustBeCommander: Boolean,
+    val zoneLocations: List<String> = emptyList(),
+    val battlefieldCardState: String = "",
+    val exileCardState: String = "",
+    val libraryCardState: String = "",
+    val graveyardCardState: String = "",
+)
 data class SpellbookCombo(
     val id: String,
     val group: SpellbookGroup,
     val ingredients: List<SpellbookIngredient>,
     val produces: List<String>,
-    val hasFlexibleRequirements: Boolean,
+    val requirements: List<SpellbookRequirement>,
     val identity: String,
     val status: String,
     val spoiler: Boolean,
     val commanderLegal: Boolean?,
+    val description: String = "",
+    val easyPrerequisites: String = "",
+    val notablePrerequisites: String = "",
+    val manaNeeded: String = "",
+    val notes: String = "",
 ) {
+    val hasFlexibleRequirements: Boolean get() = requirements.isNotEmpty()
     val websiteUri: URI get() = URI("https://commanderspellbook.com/combo/$id/")
 }
 data class SpellbookPage(

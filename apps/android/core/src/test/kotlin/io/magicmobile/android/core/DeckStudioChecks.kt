@@ -127,7 +127,9 @@ fun main() {
     verifyDeckStudio(DeckTextImport.preview("Ignored",io.magicmobile.core.Json.write(legacyAliases.json())).deck==canonicalAliases,"bare Android JSON normalizes same aliases")
     val iosAliasSource=DeckTextImport.exportJSON(legacyAliases)
     verifyDeckStudio(DeckTextImport.preview("Ignored",iosAliasSource).deck==canonicalAliases,"iOS schema normalizes exactly the same aliases")
-    val resolvedAliases=catalogue.resolve(canonicalAliases,true)
+    rejectsDeckStudio("unknown play section is never silently excluded") { catalogue.resolve(canonicalAliases,true) }
+    val playableAliases=canonicalAliases.copy(entries=canonicalAliases.entries.filter{it.section in DeckEditing.boards})
+    val resolvedAliases=catalogue.resolve(playableAliases,true)
     verifyDeckStudio(resolvedAliases.array("main").map{Wire.objectValue(it).text("name")}==listOf("Island","Answer")&&resolvedAliases.array("commanders").size==1&&resolvedAliases.array("companions").size==1,"persisted aliases reach intended native playing sections")
     verifyDeckStudio(DeckSignature.from(canonicalAliases,catalogue).cards.sumOf{it.quantity}==7,"signature retains canonical main commander and companion quantities")
     val replacedAliases=DeckEditing.replaceCommander(canonicalAliases,"Answer",true)

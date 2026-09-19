@@ -36,6 +36,7 @@ fun DeckInsightsDialog(deck:Deck,catalogue:Catalogue,savedDeckId:String?,close:(
     val result=remember(deck,preferences,catalogue){runCatching {DeckInsights.analyze(deck,catalogue,preferences)}}
     val analysis=remember(deck,catalogue){DeckAnalyzer.analyze(deck,catalogue)}
     var selectedBin by remember {mutableStateOf<Int?>(null)}
+    var inspectedCard by remember {mutableStateOf<String?>(null)}
     var selectedRole by remember {mutableStateOf<DeckRole?>(null)}
     var review by remember {mutableStateOf<InsightCard?>(null)}
     var target by remember {mutableStateOf<DeckRole?>(null)}
@@ -59,14 +60,14 @@ fun DeckInsightsDialog(deck:Deck,catalogue:Catalogue,savedDeckId:String?,close:(
                     item {Text("Mana curve",style=MaterialTheme.typography.titleMedium);Text("Main-deck nonlands. Tap a row to see the cards.",style=MaterialTheme.typography.bodySmall)}
                     items((0..7).toList()) {bin->
                         TextButton(onClick={selectedBin=if(selectedBin==bin)null else bin},modifier=Modifier.fillMaxWidth()) {Text("${if(bin==7)"7+" else bin} mana · ${analysis.manaCurveBins[bin] ?: 0} cards")}
-                        if(selectedBin==bin)deck.entries.filter {row->row.section=="deck" && catalogue.find(row.name)?.let {card->card.types?.contains("LAND")==false && card.manaValue?.let {if(it>=7)7 else it.toInt()}==bin}==true}.forEach {Text("${it.quantity} × ${it.name}")}
+                        if(selectedBin==bin)deck.entries.filter {row->row.section=="deck" && catalogue.find(row.name)?.let {card->card.types?.contains("LAND")==false && card.manaValue?.let {if(it>=7)7 else it.toInt()}==bin}==true}.forEach {card->TextButton(onClick={inspectedCard=card.name},modifier=Modifier.fillMaxWidth()){Text("${card.quantity} × ${card.name}")}}
                     }
                     item {Text("Printed mana symbols",style=MaterialTheme.typography.titleMedium)}
                     result.getOrNull()?.let {insights->
                         items(insights.symbols.entries.toList()) {(symbol,count)->Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){ManaSymbol(symbol,22);Text("$count")}}
-                        item {Text("Hybrid and Phyrexian symbols stay distinct. Printed costs are not usable mana sources. ${insights.missingCostCount} cards have unknown cost metadata.",style=MaterialTheme.typography.bodySmall)}
+                        item {DeckExplanation("How to read these counts", "Hybrid and Phyrexian symbols stay distinct. Printed costs are not available mana sources. ${insights.missingCostCount} cards have unknown cost metadata.")}
                         item {Text("Card types & colors",style=MaterialTheme.typography.titleMedium);Text(insights.types.entries.joinToString(" · "){"${it.key.lowercase().replaceFirstChar(Char::titlecase)} ${it.value}"});Text(analysis.printedColorCounts.entries.joinToString(" · "){"${it.key} ${it.value}"}+" · Colorless ${analysis.knownColorlessCount}");Text("Categories overlap. Unknown metadata is not assumed colorless.",style=MaterialTheme.typography.bodySmall)}
-                        item {HorizontalDivider();Text("What your cards do",style=MaterialTheme.typography.titleMedium);Text("Offline curated tags and conservative text-pattern hints. Draw includes cantrips; this is not a deck score. Your reviewed tags replace automatic hints.",style=MaterialTheme.typography.bodySmall);if(savedDeckId==null)Text("Save this draft to customize roles and target ranges.")}
+                        item {HorizontalDivider();Text("What your cards do",style=MaterialTheme.typography.titleMedium);DeckExplanation("About card roles", "Offline curated tags and conservative text-pattern hints. Draw includes cantrips; this is not a deck score. Your reviewed tags replace automatic hints.");if(savedDeckId==null)Text("Save this draft to customize roles and target ranges.")}
                         items(DeckRole.entries) {role->
                             val count=insights.count(role)
                             TextButton(onClick={selectedRole=if(selectedRole==role)null else role}){Text("${roleTitles[role]} · $count")}
@@ -87,13 +88,15 @@ fun DeckInsightsDialog(deck:Deck,catalogue:Catalogue,savedDeckId:String?,close:(
                             val probability=LandDrawProbability.atLeast(required,analysis.landCount,analysis.mainCardCount,seen)
                             Text(String.format(Locale.getDefault(),"%.1f%%",100*probability),style=MaterialTheme.typography.headlineLarge)
                         } else Text("Requires at least $seen main-deck cards and known types.")
-                        Text("Random cards from the main deck, without replacement. No mulligans, tutors, extra-draw spells, land-side choices or play decisions are modeled. Enough lands does not prove each land drop or the right colors.",style=MaterialTheme.typography.bodySmall)
+                        Text("Chance of at least $required lands in $seen random cards.",style=MaterialTheme.typography.bodySmall)
+                        DeckExplanation("What this estimate includes", "Random main-deck cards without replacement. No mulligans, tutors, extra draws, land-face choices or play decisions are modeled. Enough lands does not guarantee each land drop or the colors you need.")
                     }
                     if(analysis.unknownNames.isNotEmpty())item {Text("Unresolved: ${analysis.unknownNames.joinToString()}")}
                 }
             }
         }
     }
+    inspectedCard?.let {name->CatalogueCardDialog(name,catalogue){inspectedCard=null}}
     review?.let {card->
         var roles by remember(card.name){mutableStateOf(card.evidence.map{it.role}.toSet())}
         AlertDialog(onDismissRequest={review=null},title={Text(card.name)},text={Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -112,6 +115,14 @@ fun DeckInsightsDialog(deck:Deck,catalogue:Catalogue,savedDeckId:String?,close:(
             OutlinedTextField(high,{high=it.filter(Char::isDigit).take(4)},label={Text("Maximum")})
             TextButton(onClick={if(save(preferences.copy(targets=preferences.targets-role)))target=null}){Text("Turn target off")}
         }},confirmButton={TextButton(enabled=valid,onClick={if(valid && save(preferences.copy(targets=preferences.targets+(role to RoleTarget(lower!!,upper!!)))))target=null}){Text("Save")}},dismissButton={TextButton(onClick={target=null}){Text("Cancel")}})
+    }
+}
+
+@Composable internal fun DeckExplanation(title: String, text: String) {
+    var expanded by remember(title) { mutableStateOf(false) }
+    Column {
+        TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "$title ▴" else "$title ▾") }
+        if (expanded) Text(text, style = MaterialTheme.typography.bodySmall)
     }
 }
 
