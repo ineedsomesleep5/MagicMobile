@@ -30,7 +30,8 @@ object Decisions {
                 val possible = options["possibleTargets"]?.let(Wire::list)?.map(Wire::string)
                 val chosen = options["chosenTargets"]?.let(Wire::list)?.map(Wire::string) ?: emptyList()
                 val allowed = if(possible != null || candidates.isNotEmpty() && "chosenTargets" in options) (possible.orEmpty()+chosen).toSet() else p.array("candidates").map(Wire::string).toSet()
-                allowed.forEach { id -> if(Wire.uuid(id)) result += Choice(cardLabel(candidates[id], id),"uuid",id) }
+                allowed.forEach { id -> if(Wire.uuid(id)) result += Choice(
+                    playerName(snapshot, id) ?: cardLabel(candidates[id], id), "uuid", id) }
                 if(options.flag("canCancel") || p["required"] == false) bool("Done / cancel",false)
                 val aliases = p.obj("responseAliases") ?: emptyMap()
                 aliases.forEach { (alias, base) -> if(base in allowed && Wire.uuid(alias)) result += Choice("Choose alternate face: ${cardLabel(candidates[base], alias)}","uuid",alias) }
@@ -74,8 +75,18 @@ object Decisions {
     }
     fun labelForID(snapshot: Obj?, id: String): String {
         val g = snapshot?.obj("gameView") ?: return id
+        playerName(snapshot, id)?.let { return it }
         val zones = mutableListOf<Obj>(); g.obj("myHand")?.let(zones::add); g.obj("stack")?.let(zones::add)
         g.array("players").map(Wire::objectValue).forEach { p -> listOf("battlefield","graveyard","exile").forEach { p.obj(it)?.let(zones::add) } }
         return zones.firstNotNullOfOrNull { it[id] }?.let { cardLabel(it,id) } ?: id
+    }
+
+    /** Some prompts target players rather than cards; "Select a starting player" is one.
+     *  Without this the choice buttons read as raw UUIDs. */
+    fun playerName(snapshot: Obj?, id: String): String? {
+        val players = snapshot?.obj("gameView")?.array("players").orEmpty().map(Wire::objectValue)
+        val match = players.find { it["playerId"] == id } ?: return null
+        val name = (match["name"] ?: match["displayName"])?.toString()?.let(::plain)
+        return name?.takeIf { it.isNotBlank() }
     }
 }
