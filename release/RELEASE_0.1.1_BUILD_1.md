@@ -33,7 +33,14 @@ iOS 0.3.0 (5000000002) uploaded September 19, 2026, 16:45 CDT, but was supersede
 - Native engine: reused verified artifact `10514723423` from source `f2ffad10e26a25885902e963a13810d8786ed9bc`; no engine rebuild.
 - Archive/export, signed product guards and Apple validation/upload passed; this is not physical-phone acceptance.
 
-The intermediate 0.1.0 (5000000003) preparation was never uploaded. Final user-requested baseline: **0.1.1 (1)**, unchanged functional source and engine. Signing/upload and availability pending.
+The intermediate 0.1.0 (5000000003) preparation was never uploaded. Final user-requested baseline: **0.1.1 (1)**, unchanged functional source and engine.
+
+- Source: `09c8c4aeabda4fa06d08da0081ba32eca1d72ca0`.
+- IPA: `build_output/testflight/parity-0.1.1-build1/native-release.b4BUTu/export/MagicMobile.ipa`, 181,749,380 bytes.
+- SHA-256: `8e2e1e59442250a7aaead24e3c4f047206d60490818339f1fddeaea26db2f86b`.
+- Apple validation and upload passed September 19, 2026, 17:10 CDT.
+- Delivery UUID: `f0ebba45-30e3-45a2-a8f5-2c89d546ef80`.
+- Processing and tester availability remain separate pending gates; this is not physical-phone acceptance.
 
 Android artifact, Apple availability, website deployment and main merge will be recorded after verification.
 
