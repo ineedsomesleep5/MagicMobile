@@ -164,6 +164,9 @@ struct NativeDeckMetadataCatalogue {
         index[name] ?? aliases[name].flatMap { index[$0] }
     }
 
+    /// All names supported by this installed engine catalogue, without the UI search limit.
+    var artworkCardNames: [String] { cards.map(\.name) }
+
     /// The same ordering applies within identity buckets and after their merge.
     static func ranked(_ cards: [Card], query: String) -> [Card] {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -11,7 +11,7 @@ const projectPath = resolve(repoRoot, "apps/ios/project.yml");
 const plistBuddy = "/usr/libexec/PlistBuddy";
 
 function usage() {
-  console.error("Usage: testflight-build-number.mjs prepare [--date YYYYMMDD] | record --upload-log PATH --ipa PATH");
+  console.error("Usage: testflight-build-number.mjs prepare [--date YYYYMMDD | --start-at 1] | record --upload-log PATH --ipa PATH");
   process.exit(2);
 }
 
@@ -121,6 +121,64 @@ function nextBuildNumber(ledger, currentBuild, datePrefix) {
   return `${prefix}${String(maxSequenceForPrefix + 1).padStart(2, "0")}`;
 }
 
+const validVersion = value => typeof value === "string" && /^(0|[1-9]\d*)(\.(0|[1-9]\d*)){0,2}$/.test(value);
+const validBuild = value => /^[1-9]\d{0,9}$/.test(String(value));
+function counterVersion(ledger, kind) {
+  const explicit = ledger[`last${kind}MarketingVersion`];
+  if (explicit !== undefined) return explicit;
+  if (kind === "Uploaded") {
+    const matches = [...new Set((ledger.uploads ?? []).filter(row => String(row.build) === String(ledger.lastUploadedBuild)).map(row => row.marketingVersion))];
+    if (matches.length > 1) throw new Error("Ambiguous last uploaded marketing version");
+    if (matches.length === 1) return matches[0];
+  }
+  return ledger.marketingVersion;
+}
+function scopedBuilds(ledger, version) {
+  const rows = [...(ledger.uploads ?? [])];
+  for (const kind of ["Prepared", "Uploaded", "Installed"]) {
+    const build = ledger[`last${kind}Build`];
+    if (build !== undefined) rows.push({ build, marketingVersion: counterVersion(ledger, kind) });
+  }
+  for (const row of rows) {
+    if (!validVersion(row.marketingVersion) || !validBuild(row.build)) throw new Error("Ambiguous ledger version/build history; reconcile before starting a version counter");
+  }
+  return rows.filter(row => row.marketingVersion === version).map(row => String(row.build));
+}
+
+function versionBuildNumber(ledger, version, currentBuild, startAt) {
+  const builds = scopedBuilds(ledger, version);
+  if (startAt !== undefined) {
+    if (startAt !== "1" || ledger.marketingVersion === version || builds.length || ledger.versionSequential?.marketingVersion === version) {
+      throw new Error("--start-at 1 requires a new marketing version with no prepared, installed or uploaded builds");
+    }
+    if (!validVersion(ledger.marketingVersion)) throw new Error("Unrecognized previous marketing version");
+    const parts = value => value.split(".").map(BigInt).concat([0n, 0n]).slice(0, 3);
+    const prior = parts(ledger.marketingVersion), next = parts(version);
+    const changed = next.findIndex((part, index) => part !== prior[index]);
+    if (changed < 0 || next[changed] < prior[changed]) throw new Error("New marketing version must advance the previous version");
+    // Capture legacy counter ownership before moving the ledger to the new train.
+    for (const kind of ["Prepared", "Uploaded", "Installed"]) {
+      if (ledger[`last${kind}Build`] !== undefined) ledger[`last${kind}MarketingVersion`] ??= counterVersion(ledger, kind);
+    }
+    ledger.versionSequential = { marketingVersion: version };
+    return "1";
+  }
+  if (ledger.versionSequential?.marketingVersion !== version || ledger.marketingVersion !== version) {
+    throw new Error("Version counter does not match marketing version; explicitly start a new train with --start-at 1");
+  }
+  const used = (ledger.uploads ?? []).filter(row => row.marketingVersion === version).map(row => String(row.build));
+  for (const kind of ["Uploaded", "Installed"]) {
+    if (counterVersion(ledger, kind) === version && ledger[`last${kind}Build`] !== undefined) used.push(String(ledger[`last${kind}Build`]));
+  }
+  if (validBuild(currentBuild) && currentBuild === ledger.lastPreparedBuild &&
+      (ledger.lastPreparedMarketingVersion ?? ledger.marketingVersion) === version &&
+      used.every(value => BigInt(value) < BigInt(currentBuild))) return currentBuild;
+  const next = (builds.reduce((highest, value) => BigInt(value) > highest ? BigInt(value) : highest, 0n) + 1n).toString();
+  if (!validBuild(next)) throw new Error("Version build counter exceeded 10 digits");
+  if (currentBuild !== ledger.lastPreparedBuild) throw new Error("Current build differs from prepared ledger; reconcile before incrementing");
+  return next;
+}
+
 function prepare() {
   const explicitDate = argValue("--date");
   const datePrefix = explicitDate ?? todayStamp();
@@ -130,7 +188,13 @@ function prepare() {
   const project = projectVersions();
   const { marketingVersion, build: currentBuild } = versions(project);
   const ledger = readLedger();
-  const nextBuild = nextBuildNumber(ledger, currentBuild, datePrefix);
+  const startAt = argValue("--start-at");
+  if (process.argv.includes("--start-at") && startAt === undefined) throw new Error("--start-at requires 1");
+  if (startAt !== undefined && (explicitDate || process.env.TESTFLIGHT_BUILD_DATE)) throw new Error("--start-at cannot be combined with a date");
+  if (!validVersion(marketingVersion)) throw new Error("Unrecognized marketing version");
+  const nextBuild = startAt !== undefined || ledger.versionSequential
+    ? versionBuildNumber(ledger, marketingVersion, currentBuild, startAt)
+    : nextBuildNumber(ledger, currentBuild, datePrefix);
 
   execFileSync(plistBuddy, ["-c", `Set :CFBundleVersion ${nextBuild}`, infoPlist], { stdio: "inherit" });
   writeFileSync(projectPath, project.text.replace(
@@ -139,6 +203,7 @@ function prepare() {
   ledger.bundleId = "com.calebfeliciano.magicmobile";
   ledger.marketingVersion = marketingVersion;
   ledger.lastPreparedBuild = nextBuild;
+  ledger.lastPreparedMarketingVersion = marketingVersion;
   ledger.lastPreparedAt = new Date().toISOString();
   writeLedger(ledger);
   console.log(`Prepared TestFlight build ${marketingVersion} (${nextBuild})`);
@@ -161,11 +226,14 @@ function record() {
   }
 
   const ledger = readLedger();
+  if (ledger.versionSequential && (ledger.marketingVersion !== marketingVersion || ledger.lastPreparedBuild !== build || ledger.versionSequential.marketingVersion !== marketingVersion)) throw new Error("Upload does not match prepared version counter");
   ledger.bundleId = "com.calebfeliciano.magicmobile";
   ledger.marketingVersion = marketingVersion;
   ledger.lastPreparedBuild = build;
   ledger.lastUploadedBuild = build;
-  ledger.uploads = (ledger.uploads ?? []).filter((entry) => entry.build !== build);
+  ledger.lastPreparedMarketingVersion = marketingVersion;
+  ledger.lastUploadedMarketingVersion = marketingVersion;
+  ledger.uploads = (ledger.uploads ?? []).filter((entry) => !(entry.build === build && entry.marketingVersion === marketingVersion));
   ledger.uploads.push({
     build,
     marketingVersion,

@@ -211,9 +211,15 @@ enum OnDeviceSnapshotAdapter {
         var typeLine = (supers + types).map { $0.capitalized }.joined(separator: " ")
         if !subs.isEmpty { typeLine += " — " + subs.map { $0.capitalized }.joined(separator: " ") }
         let rules = hidden ? "" : (value["rules"]?.array ?? []).compactMap(\.string).joined(separator: "\n")
+        let colorNames = [("white", "W"), ("blue", "U"), ("black", "B"), ("red", "R"), ("green", "G")]
+        let tokenIdentityVisible = !hidden && value["faceDown"]?.bool != true
+        let hasTokenColors = tokenIdentityVisible && value["isToken"]?.bool == true && colorNames.allSatisfy { value["color"]?[$0.0]?.bool != nil }
+        let tokenColors: J = hasTokenColors ? .array(colorNames.filter { value["color"]?[$0.0]?.bool == true }.map { .string($0.1) }) : .null
         var result: [String: J] = ["instanceId": .string(id), "card": .object([
             "name": .string(name), "typeLine": .string(typeLine), "oracleText": .string(rules),
-            "manaCost": printedManaCost(value).map(J.string) ?? .null
+            "manaCost": printedManaCost(value).map(J.string) ?? .null,
+            "isToken": tokenIdentityVisible ? (value["isToken"]?.bool.map(J.bool) ?? .null) : .null,
+            "tokenColors": tokenColors
         ])]
         for key in ["tapped", "summoningSickness", "damage"] { result[key] = value[key] }
         result["attachedToInstanceId"] = value["attachedTo"]

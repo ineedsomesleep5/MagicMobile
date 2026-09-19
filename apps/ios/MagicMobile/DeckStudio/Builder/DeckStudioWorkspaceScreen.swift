@@ -12,6 +12,7 @@ struct DeckStudioWorkspaceScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicType
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     private var compactLandscape: Bool { verticalSizeClass == .compact && !dynamicType.isAccessibilitySize }
     @State private var tab = "Cards"
@@ -51,6 +52,9 @@ struct DeckStudioWorkspaceScreen: View {
         NavigationStack {
             GeometryReader { geometry in
             let split = geometry.size.width >= 700 && !dynamicType.isAccessibilitySize && !model.readOnly
+            if verticalSizeClass != .compact && !split && tab == "Cards" {
+                portraitCardsWorkspace
+            } else {
             VStack(spacing: 0) {
                 if !compactLandscape && geometry.size.height > 500 { header.padding(.horizontal, 20).padding(.vertical, 12) }
                 else if !compactLandscape {
@@ -88,8 +92,11 @@ struct DeckStudioWorkspaceScreen: View {
                 }
             }
             }
+            }
             .background(DeckStudioPalette.background.ignoresSafeArea())
             .navigationTitle("Deck Studio").navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(DeckStudioPalette.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 if compactLandscape {
                     ToolbarItem(placement: .principal) {
@@ -167,18 +174,40 @@ struct DeckStudioWorkspaceScreen: View {
         if dynamicType.isAccessibilitySize {
             Picker("Deck workspace", selection: $tab) { ForEach(["Cards", "Ideas", "Analysis", "Playtest"], id: \.self) { Text($0).tag($0) } }.pickerStyle(.menu)
         } else {
-            Picker("Deck workspace", selection: $tab) { ForEach(["Cards", "Ideas", "Analysis", "Playtest"], id: \.self) { Text($0).tag($0) } }.pickerStyle(.segmented)
+            HStack(spacing: 4) {
+                ForEach(["Cards", "Ideas", "Analysis", "Playtest"], id: \.self) { destination in
+                    Button {
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { tab = destination }
+                    } label: {
+                        Text(destination).font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity).frame(minHeight: 44)
+                            .foregroundStyle(tab == destination ? DeckStudioPalette.surface : DeckStudioPalette.secondaryInk)
+                            .background(tab == destination ? DeckStudioPalette.ink : .clear, in: RoundedRectangle(cornerRadius: 10))
+                    }.buttonStyle(.plain).accessibilityAddTraits(tab == destination ? [.isSelected] : [])
+                }
+            }.padding(4).background(DeckStudioPalette.surface, in: RoundedRectangle(cornerRadius: 14))
+                .accessibilityElement(children: .contain).accessibilityLabel("Deck workspace")
         }
     }
     private var header: some View {
         HStack(alignment: .top, spacing: 14) {
-            if !dynamicType.isAccessibilitySize { DeckStudioArtwork(name: DeckStudioDraftPresentation.commanders(model.draft).first ?? "").frame(width: 54, height: 76).clipShape(RoundedRectangle(cornerRadius: 10)) }
+            if !dynamicType.isAccessibilitySize {
+                DeckStudioArtwork(name: DeckStudioDraftPresentation.commanders(model.draft).first ?? "")
+                    .frame(width: 68, height: 96).clipShape(RoundedRectangle(cornerRadius: 6))
+                    .shadow(color: DeckStudioPalette.ink.opacity(0.12), radius: 8, y: 4)
+            }
             VStack(alignment: .leading, spacing: 5) {
-                Text(model.draft.name.isEmpty ? "Untitled draft" : model.draft.name).font(.system(.title2, design: .serif).weight(.bold)).lineLimit(2)
+                Text(model.draft.name.isEmpty ? "Untitled draft" : model.draft.name).font(.system(.title2, design: .default).weight(.bold)).tracking(-0.5).lineLimit(2)
                 Text(DeckStudioDraftPresentation.commanders(model.draft).joined(separator: " • ")).font(.caption).lineLimit(2).foregroundStyle(DeckStudioPalette.secondaryInk)
-                HStack {
-                    DeckStudioColorIdentity(colors: DeckStudioDraftPresentation.colors(model.draft, metadata: metadata))
-                    Text("\(DeckStudioDraftPresentation.gameCount(model.draft)) cards · Commander").font(.caption)
+                ViewThatFits(in: .horizontal) {
+                    HStack {
+                        DeckStudioColorIdentity(colors: DeckStudioDraftPresentation.colors(model.draft, metadata: metadata))
+                        deckCount
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        DeckStudioColorIdentity(colors: DeckStudioDraftPresentation.colors(model.draft, metadata: metadata))
+                        deckCount
+                    }
                 }
                 Text(model.saveLabel).font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk)
                 Button { showValidation = true } label: { Label(currentValidationPassed ? "Validated · playtest" : "Validate & playtest", systemImage: currentValidationPassed ? "checkmark.shield.fill" : "checkmark.shield").font(.caption.weight(.semibold)).frame(minHeight: 44) }
@@ -186,12 +215,68 @@ struct DeckStudioWorkspaceScreen: View {
             Spacer(minLength: 0)
         }
     }
+    private var deckCount: some View {
+        Text("\(DeckStudioDraftPresentation.gameCount(model.draft)) cards · Commander")
+            .font(.caption).monospacedDigit()
+            .contentTransition(.numericText())
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: DeckStudioDraftPresentation.gameCount(model.draft))
+    }
     private func cardSearch(embedded: Bool) -> some View {
         DeckStudioCardSearch(metadata: metadata, colors: DeckStudioDraftPresentation.colors(model.draft, metadata: metadata), add: { model.add($0, section: $1) }, resolver: resolver, model: model, embedded: embedded)
     }
     private func cardsTab(showAddButton: Bool) -> some View {
         VStack(spacing: 0) {
-            VStack(spacing: 10) {
+            cardFilters
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 8, pinnedViews: compactLandscape ? [] : [.sectionHeaders]) {
+                    cardSections
+                }.padding(.horizontal, 20).padding(.bottom, 16)
+            }.scrollDismissesKeyboard(.interactively).accessibilityIdentifier("deckStudio.cards.list")
+            if !model.readOnly && showAddButton { addCardsButton }
+        }
+    }
+
+    /// The collection owns a single vertical scroll in portrait. Only its workspace
+    /// selector pins; card groups and editing tools naturally leave the viewport.
+    private var portraitCardsWorkspace: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                header.padding(.horizontal, 20).padding(.vertical, 12)
+                    .accessibilityIdentifier("deckStudio.deckHeader")
+                if let error = model.error {
+                    DeckStudioNotice(title: "Check this draft", message: error, icon: "exclamationmark.triangle")
+                        .padding(.horizontal, 20).padding(.bottom, 10)
+                }
+                Section {
+                    cardFilters
+                    // This inner lazy stack does not pin its group headers over the tabs.
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        cardSections
+                    }.padding(.horizontal, 20).padding(.bottom, 16)
+                } header: {
+                    workspaceTabs.padding(.horizontal, 20).padding(.vertical, 8)
+                        .background(DeckStudioPalette.background)
+                        .accessibilityIdentifier("deckStudio.workspace.pinned")
+                }
+            }
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .accessibilityIdentifier("deckStudio.cards.list")
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if !model.readOnly {
+                addCardsButton.padding(.top, 8).background(DeckStudioPalette.background)
+            }
+        }
+    }
+
+    private var addCardsButton: some View {
+        Button { showSearch = true } label: { Label("Add cards", systemImage: "plus").frame(maxWidth: .infinity) }
+            .buttonStyle(DeckStudioButtonStyle()).padding(.horizontal, 20).padding(.bottom, 12)
+            .accessibilityIdentifier("deckStudio.addCards")
+    }
+
+    private var cardFilters: some View {
+        VStack(spacing: 10) {
                 HStack {
                     Image(systemName: "magnifyingglass")
                     TextField("Search this deck", text: $query).autocorrectionDisabled().accessibilityIdentifier("deckStudio.cards.search")
@@ -224,9 +309,10 @@ struct DeckStudioWorkspaceScreen: View {
                         }.font(.caption)
                     }
                 }
-            }.padding(.horizontal, 20)
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 8, pinnedViews: compactLandscape ? [] : [.sectionHeaders]) {
+        }.padding(.horizontal, 20)
+    }
+
+    @ViewBuilder private var cardSections: some View {
                     if model.draft.rows.isEmpty { ContentUnavailableView("A deck of possibilities", systemImage: "plus.rectangle.on.rectangle", description: Text("Add your commander and cards. Incomplete drafts are welcome.")) }
                     else if filteredRows.isEmpty {
                         ContentUnavailableView("No matching cards", systemImage: "line.3.horizontal.decrease", description: Text("Clear the search or filters to see the full draft."))
@@ -239,12 +325,6 @@ struct DeckStudioWorkspaceScreen: View {
                                 .padding(.vertical, compactLandscape ? 4 : 10).background(DeckStudioPalette.background)
                         }
                     }
-                }.padding(.horizontal, 20).padding(.bottom, 16)
-            }.scrollDismissesKeyboard(.interactively).accessibilityIdentifier("deckStudio.cards.list")
-            if !model.readOnly && showAddButton {
-                Button { showSearch = true } label: { Label("Add cards", systemImage: "plus").frame(maxWidth: .infinity) }.buttonStyle(DeckStudioButtonStyle()).padding(.horizontal, 20).padding(.bottom, 12).accessibilityIdentifier("deckStudio.addCards")
-            }
-        }
     }
     @ViewBuilder private var deckFilterOptions: some View {
         Picker("Section", selection: $sectionFilter) { Text("All sections").tag(""); ForEach(Set(model.draft.rows.map(DeckStudioDraftPresentation.section)).sorted(), id: \.self) { Text($0.capitalized).tag($0) } }
@@ -252,14 +332,17 @@ struct DeckStudioWorkspaceScreen: View {
         Button("Clear filters") { sectionFilter = ""; colorFilter = "" }
     }
     private func cardRow(_ row: NativeDeckRow) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
-                cardIdentity(row).frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
-                cardControls(row)
-            }
+        Group {
+            if dynamicType.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 6) {
                 cardIdentity(row)
                 HStack { Spacer(); cardControls(row) }
+            }
+            } else {
+                HStack(spacing: 8) {
+                    cardIdentity(row).frame(maxWidth: .infinity, alignment: .leading)
+                    cardControls(row)
+                }
             }
         }.padding(8).background(DeckStudioPalette.surface, in: RoundedRectangle(cornerRadius: 12))
     }

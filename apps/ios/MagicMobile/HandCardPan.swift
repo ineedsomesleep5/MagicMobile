@@ -58,6 +58,8 @@ struct HandCardPan: UIViewRepresentable {
     var ended: (CGSize, CGPoint, Bool) -> Void
     var inspect: () -> Void
     var tap: (() -> Void)? = nil
+    var releaseInspection: () -> Void = {}
+    @Environment(\.holdCardInspection) private var inspection
 
     func makeUIView(context: Context) -> PanView {
         let view = PanView()
@@ -65,6 +67,8 @@ struct HandCardPan: UIViewRepresentable {
         view.ended = ended
         view.inspect = inspect
         view.tap = tap
+        view.beginInspection = { inspection?.begin(dismiss: releaseInspection); inspect() }
+        view.endInspection = { if let inspection { inspection.end() } else { releaseInspection() } }
         return view
     }
 
@@ -73,13 +77,20 @@ struct HandCardPan: UIViewRepresentable {
         view.ended = ended
         view.inspect = inspect
         view.tap = tap
+        view.beginInspection = { inspection?.begin(dismiss: releaseInspection); inspect() }
+        view.endInspection = { if let inspection { inspection.end() } else { releaseInspection() } }
     }
+
+    static func dismantleUIView(_ view: PanView, coordinator: ()) { view.finishInspection() }
 
     final class PanView: UIView, UIGestureRecognizerDelegate {
         var changed: ((CGSize, CGPoint) -> Void)?
         var ended: ((CGSize, CGPoint, Bool) -> Void)?
         var inspect: (() -> Void)?
         var tap: (() -> Void)?
+        var beginInspection: (() -> Void)?
+        var endInspection: (() -> Void)?
+        private var inspecting = false
         private var start = CGPoint.zero
         private weak var handScrollView: UIScrollView?
         private lazy var pan: UIPanGestureRecognizer = {
@@ -107,7 +118,7 @@ struct HandCardPan: UIViewRepresentable {
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
-            guard window != nil else { return }
+            guard window != nil else { finishInspection(); return }
             var ancestor = superview
             while let view = ancestor {
                 if let scroll = view as? UIScrollView {
@@ -132,7 +143,17 @@ struct HandCardPan: UIViewRepresentable {
 
         @objc private func tapped() { if let tap { tap() } else { inspect?() } }
         @objc private func held(_ gesture: UILongPressGestureRecognizer) {
-            if gesture.state == .began { inspect?() }
+            switch gesture.state {
+            case .began: inspecting = true; beginInspection?()
+            case .ended, .cancelled, .failed: finishInspection()
+            default: break
+            }
+        }
+
+        func finishInspection() {
+            guard inspecting else { return }
+            inspecting = false
+            endInspection?()
         }
 
         @objc private func updatePan() {

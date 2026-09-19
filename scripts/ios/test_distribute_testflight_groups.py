@@ -19,13 +19,16 @@ with (root / 'calls.jsonl').open('a') as log:
     log.write(json.dumps(a) + '\n')
 if a[:2] == ['builds', 'wait']:
     assert '--fail-on-invalid' in a
+    assert a[a.index('--version') + 1] == '0.1.0'
     command = 'wait'
 elif a[:2] == ['builds', 'list']:
     assert '--paginate' in a
+    assert a[a.index('--version') + 1] == '0.1.0'
     assert a[a.index('--build-number') + 1] == '5000000000'
     command = 'build'
 elif a[:3] == ['testflight', 'groups', 'list']:
-    assert '--internal' in a
+    assert '--internal' not in a and '--paginate' in a
+    assert a[a.index('--app') + 1] == '6784735182'
     command = 'internal'
 elif a[:3] == ['builds', 'beta-app-review-submission', 'view']:
     marker = root / 'review-read'
@@ -69,7 +72,9 @@ class DistributionTests(unittest.TestCase):
         self.config = {
             'wait': {'processingState': 'VALID'},
             'build': {'data': [{'type': 'builds', 'id': 'build-5000000000',
-                               'attributes': {'version': '5000000000', 'processingState': 'VALID'}}]},
+                               'attributes': {'version': '5000000000', 'processingState': 'VALID'},
+                               'relationships': {'preReleaseVersion': {'data': {'id': 'version-1'}}}}],
+                      'included': [{'type': 'preReleaseVersions', 'id': 'version-1', 'attributes': {'version': '0.1.0'}}]},
             'internal': {'data': [{'id': 'internal-1', 'attributes': {'isInternalGroup': True}}]},
             'review_before': {'_exit': 4, 'stderr': 'Error: builds beta-app-review-submission view: no beta app review submission found for build "build-5000000000"'},
             'add': {},
@@ -82,7 +87,7 @@ class DistributionTests(unittest.TestCase):
     def run_script(self, args=None):
         (self.root / 'config.json').write_text(json.dumps(self.config))
         return subprocess.run(['/bin/bash', str(SCRIPT)] + (args if args is not None else
-                              ['--build-number', '5000000000', '--release-root', str(self.evidence)]),
+                              ['--version', '0.1.0', '--build-number', '5000000000', '--release-root', str(self.evidence)]),
                               env=self.env, text=True, capture_output=True, timeout=10)
 
     def calls(self):
@@ -144,6 +149,12 @@ class DistributionTests(unittest.TestCase):
                 self.config['internal'] = payload
                 self.assert_failure(before_add=True)
 
+    def test_wrong_or_missing_marketing_version_stops(self):
+        self.config['build']['included'][0]['attributes']['version'] = '0.3.0'
+        self.assert_failure(before_add=True)
+        self.config['build'].pop('included')
+        self.assert_failure(before_add=True)
+
     def test_review_preflight_errors_do_not_submit(self):
         for payload in ({'_exit': 1, 'stderr': 'unauthorized'},
                         {'_exit': 4, 'stderr': 'failed to fetch: Not Found: build not found'},
@@ -173,6 +184,22 @@ class DistributionTests(unittest.TestCase):
     def test_all_internal_groups_required(self):
         self.config['internal']['data'].append({'id': 'internal-2', 'attributes': {'isInternalGroup': True}})
         self.assert_failure()
+
+    def test_app_scoped_discovery_filters_external_groups(self):
+        self.config['internal']['data'].append({'id': EXTERNAL, 'attributes': {'isInternalGroup': False}})
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        discovered = json.loads((self.evidence / 'testflight-internal-groups.json').read_text())
+        self.assertEqual([g['id'] for g in discovered['data']], ['internal-1'])
+
+    def test_incomplete_or_untyped_app_groups_stop(self):
+        for payload in (
+            {'data': self.config['internal']['data'], 'links': {'next': 'another-page'}},
+            {'data': [{'id': 'x', 'attributes': {'isInternalGroup': 'true'}}]},
+        ):
+            with self.subTest(payload=payload):
+                self.config['internal'] = payload
+                self.assert_failure(before_add=True)
 
     def test_final_review_failures_never_report_success(self):
         self.config['review_before'] = review('IN_REVIEW')

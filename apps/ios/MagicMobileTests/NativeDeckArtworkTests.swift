@@ -101,6 +101,16 @@ final class NativeDeckArtworkTests: XCTestCase {
         XCTAssertEqual(boardHit, small)
     }
 
+    func testDeckCoverCropPreservesTheOriginalCard() throws {
+        let data = try png(width: 488, height: 680)
+        let full = try XCTUnwrap(NativeDeckArtwork.decodedImage(data, variant: .board))
+        let art = try XCTUnwrap(NativeDeckArtwork.illustrationImage(full))
+        XCTAssertGreaterThan(art.width, art.height)
+        XCTAssertLessThan(art.height, full.height / 2)
+        XCTAssertEqual(full.width, 488)
+        XCTAssertEqual(full.height, 680)
+    }
+
     func testImageDimensionsAndDecodeAreBounded() throws {
         let small = try png(width: 488, height: 680)
         XCTAssertTrue(NativeDeckArtwork.isSufficient(small, for: .board))

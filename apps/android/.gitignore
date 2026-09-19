@@ -1,0 +1,9 @@
+.gradle/
+.kotlin/
+**/build/
+local.properties
+native-artifact/
+*.jks
+*.keystore
+.idea/
+**/.cxx/

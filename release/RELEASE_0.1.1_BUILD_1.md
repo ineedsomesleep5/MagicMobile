@@ -1,0 +1,59 @@
+# MagicMobile 0.1.1 — build 1
+
+The user explicitly selected **0.1.1 (1)** as the new baseline. Future updates retain 0.1.1 and increment the release build (2, 3, ...). iOS uses that build as CFBundleVersion. Android retains a monotonic installation versionCode (2026091902 for this build), independent of the shared visible release build, so existing installs can update safely. Do not claim parity from matching version strings alone.
+
+## Approved scope
+
+- Preserve the commander-led design while extending surfaces to phone safe areas.
+- Keep ordinary deck-row controls alongside wrapping long names; preserve accessibility layouts.
+- Illustration-focused deck covers, full cards for inspection and gameplay.
+- Show engine-report access only when a report exists; temporary, dismissible notification without blocking menu navigation.
+- Cards-first combos with prerequisites, exact numbered provider steps and results. Concise analysis and playtest workflows.
+- Six shared battlefield options: Stone Arena, Midnight, Classic Wood, Moss Sanctuary, Obsidian Ember, Tidal Slate. No painted-in seats or health UI.
+- Android current feature parity (prior multiplayer exclusion awaiting confirmation), signed downloadable APK, iOS TestFlight, updated website links, and safe main-branch integration.
+
+## Verification gates
+
+Separate portable/domain tests, iOS simulator interactions, signed native artifacts, Android runtime/device evidence, store processing/review, website link availability and actual phone acceptance. Preserve prior evidence only for unchanged components.
+
+Screens: portrait and landscape menu/setup, long-name deck row, combo ordering, analysis/playtest, six themes and crowded battlefield. Artwork: existing consent/storage/quality/token/face behavior must remain intact.
+
+## Design references
+
+- EDHREC combo structure: https://edhrec.com/combos/izzet/147-5726 — cards, prerequisites, ordered steps, results. Rules text remains provider data, not generated advice.
+- Background assets and exact built-in generation prompts: `apps/ios/BATTLEFIELD_BACKGROUNDS.md`.
+
+## Release records
+
+iOS 0.3.0 (5000000002) uploaded September 19, 2026, 16:45 CDT, but was superseded by the user's instruction to preserve 0.1.0. The distribution workflow was terminated during build discovery, before adding groups or submitting external review. App Store Connect confirmed no beta review submission for this build. This upload is not the intended release.
+
+- Source: `83c45d32914994727f6885aeb08c5003d5f26617`.
+- IPA: `build_output/testflight/parity-0.3.0-5000000002/native-release.JcxJGv/export/MagicMobile.ipa`, 181,749,383 bytes.
+- Apple delivery UUID: `86d52ad6-a6f8-44f6-89c0-4489d11b1893`.
+- Native engine: reused verified artifact `10514723423` from source `f2ffad10e26a25885902e963a13810d8786ed9bc`; no engine rebuild.
+- Archive/export, signed product guards and Apple validation/upload passed; this is not physical-phone acceptance.
+
+The intermediate 0.1.0 (5000000003) preparation was never uploaded. Final user-requested baseline: **0.1.1 (1)**, unchanged functional source and engine.
+
+- Source: `09c8c4aeabda4fa06d08da0081ba32eca1d72ca0`.
+- IPA: `build_output/testflight/parity-0.1.1-build1/native-release.b4BUTu/export/MagicMobile.ipa`, 181,749,380 bytes.
+- SHA-256: `8e2e1e59442250a7aaead24e3c4f047206d60490818339f1fddeaea26db2f86b`.
+- Apple validation and upload passed September 19, 2026, 17:10 CDT.
+- Delivery UUID: `f0ebba45-30e3-45a2-a8f5-2c89d546ef80`.
+- Apple processing: VALID. Assigned to the existing Internal and External groups; Beta App Review is WAITING_FOR_REVIEW. Public access to this build remains pending Apple's approval; this is not physical-phone acceptance.
+
+Android signed artifact: `MagicMobile-Android-0.1.1-build1.apk`, 191,881,611 bytes, SHA-256 `fbb56f99dcb01a2ffe691e6efad850f3013a7081e16509057b0c2f8da6e13429`. Source `65827660381288d1d5f3b99cca4600357cb9711f` has the same Android tree as build-start commit `246f4be`. Signature matches the previous release; versionCode 2026091902 permits an in-place update. All eight exact signed-APK device tests passed on Android 15 ARM64, including ten native lifecycle cycles and a completed 17-turn / 82-response Commander game. Physical-phone acceptance remains pending. Acceptance report: `build_output/android-acceptance/instrumentation-APvSQc`.
+
+Public release receipts are attached to the GitHub release `android-v0.1.1-build.1`. Website production deployment and main integration must be verified independently; the website labels the new iOS build as awaiting Apple review.
+
+## Current verification
+
+- Portable iOS domain suite: 338 tests, 2 optional skips, 0 failures (`/tmp/magicmobile-v03-portable.log`).
+- Native Swift protocol/privacy/transport suite: 34 tests passed; this is not native XMage gameplay (`/tmp/magicmobile-v03-native-swift.log`).
+- Simulator: long-name deck controls passed in portrait and landscape; report absence, expiry, retained report and return-to-menu passed. Edge-to-edge menu screenshot inspected.
+- Background bundle tests: six stable choices, five square material assets and the native Midnight gradient passed.
+- Additional background/combo simulator coverage passed: all six selections, twelve portrait/landscape battlefield captures, and cards/prerequisites/ordered steps/results. The initial run exposed missed synthesized taps and an incorrect test assumption that a horizontally offscreen card occupied a second row; those checks were corrected without changing app behavior. Result: `build_output/presentation-review/v03-backgrounds-combos-rerun.xcresult`.
+- Website candidate: production build and mobile/desktop rendering passed; candidate links are not deployed until artifacts are available.
+- Apple filtered group discovery returned HTTP 500; app-scoped discovery returned both existing groups. Release discovery now paginates the app-scoped endpoint and validates/filter groups locally, preserving all membership gates.
+- Distribution helper regressions: 17 offline tests passed, including incomplete discovery, all-internal membership and review failure cases.
+- New baseline tracking: 10 build-number fixtures, 2 short-build/version guard tests, and 18 version-scoped distribution tests passed. Preparing again reused unuploaded 0.1.1 (1); it did not skip to build 2.

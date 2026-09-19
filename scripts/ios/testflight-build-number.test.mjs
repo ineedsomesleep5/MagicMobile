@@ -117,3 +117,51 @@ test("unknown references and ambiguous YAML fail before writes", { skip: process
     assert.deepEqual([f.info, f.project, f.ledger].map(p => readFileSync(p, "utf8")), before);
   }
 });
+
+test("new version starts at one, reuses preparation, records by train and increments", { skip: process.platform !== "darwin" }, t => {
+  const f = fixture(t);
+  writeFileSync(f.project, readFileSync(f.project, "utf8").replace('"0.1.0"', '"0.1.1"'));
+  const old = { schemaVersion: 1, marketingVersion: "0.1.0", nextBuildFloor: "5000000000", lastPreparedBuild: "5000000002", lastInstalledBuild: "1", lastUploadedBuild: "5000000002", uploads: [{build:"1", marketingVersion:"0.1.0"}, {build:"5000000002",marketingVersion:"0.1.0"}] };
+  writeFileSync(f.ledger, JSON.stringify(old));
+  let result = f.run("prepare", "--start-at", "1"); assert.equal(result.status, 0, result.stderr);
+  assert.equal(f.prepare().lastPreparedBuild, "1");
+  assert.equal(f.prepare().lastInstalledMarketingVersion, "0.1.0");
+  const log = join(f.root, "upload.log"); writeFileSync(log, "Delivery UUID: 01234567-89ab-cdef-0123-456789abcdef\n");
+  for (let n=0;n<2;n++) { result=f.run("record","--upload-log",log,"--ipa",join(f.root,"app.ipa"));assert.equal(result.status,0,result.stderr); }
+  assert.equal(JSON.parse(readFileSync(f.ledger)).uploads.length,3);
+  assert.equal(f.prepare().lastPreparedBuild,"2");
+  const installed=JSON.parse(readFileSync(f.ledger));installed.lastInstalledBuild="2";installed.lastInstalledMarketingVersion="0.1.1";writeFileSync(f.ledger,JSON.stringify(installed));
+  assert.equal(f.prepare().lastPreparedBuild,"3");
+  const before=[f.info,f.project,f.ledger].map(p=>readFileSync(p,"utf8"));
+  assert.notEqual(f.run("prepare","--start-at","1").status,0);
+  assert.deepEqual([f.info,f.project,f.ledger].map(p=>readFileSync(p,"utf8")),before);
+});
+
+test("new train rejects unknown history, collisions and unsupported reset arguments without writes", { skip: process.platform !== "darwin" }, t => {
+  const f=fixture(t);
+  writeFileSync(f.project,readFileSync(f.project,"utf8").replace('"0.1.0"','"0.1.1"'));
+  for(const ledger of [
+    {marketingVersion:"0.1.0",uploads:[{build:"1"}]},
+    {marketingVersion:"$(MARKETING_VERSION)",uploads:[]},
+    {marketingVersion:"0.1.0",uploads:[{build:"1",marketingVersion:"0.1.1"}]},
+    {marketingVersion:"0.1.0",lastInstalledBuild:"1",lastInstalledMarketingVersion:"0.1.1",uploads:[]}
+  ]) {
+    writeFileSync(f.ledger,JSON.stringify(ledger));
+    const before=[f.info,f.project,f.ledger].map(p=>readFileSync(p,"utf8"));
+    assert.notEqual(f.run("prepare","--start-at","1").status,0);
+    assert.deepEqual([f.info,f.project,f.ledger].map(p=>readFileSync(p,"utf8")),before);
+  }
+  writeFileSync(f.ledger,JSON.stringify({marketingVersion:"0.1.0",uploads:[]}));
+  for(const args of [["--start-at"],["--start-at","2"],["--start-at","1","--date","20260919"]])assert.notEqual(f.run("prepare",...args).status,0);
+});
+
+test("migration derives uploaded ownership from historical rows, not abandoned preparation", { skip: process.platform !== "darwin" }, t => {
+  const f=fixture(t);
+  writeFileSync(f.project,readFileSync(f.project,"utf8").replace('"0.1.0"','"0.1.1"'));
+  writeFileSync(f.ledger,JSON.stringify({marketingVersion:"0.1.0",lastPreparedBuild:"5000000003",lastUploadedBuild:"5000000002",lastInstalledBuild:"2026091501",uploads:[{build:"5000000002",marketingVersion:"0.3.0"}]}));
+  const result=f.run("prepare","--start-at","1");assert.equal(result.status,0,result.stderr);
+  const ledger=JSON.parse(readFileSync(f.ledger));
+  assert.equal(ledger.lastUploadedMarketingVersion,"0.3.0");
+  assert.equal(ledger.lastInstalledMarketingVersion,"0.1.0");
+  assert.equal(ledger.uploads[0].marketingVersion,"0.3.0");
+});

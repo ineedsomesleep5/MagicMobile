@@ -1,0 +1,93 @@
+name: Android native development
+on:
+  push:
+    branches: [codex/android-native-xmage, codex/android-ios-parity]
+    # Android consumes the shared XMage engine and the iOS-owned catalogue,
+    # precon, mana-symbol and role-tag sources. A change to any of them must at
+    # least enter this guarded workflow; the commit marker/manual dispatch still
+    # controls the expensive native-image job below.
+    paths:
+      - 'apps/android/**'
+      - 'scripts/android/**'
+      - 'packages/ondevice-engine/**'
+      - 'apps/ios/MagicMobile/Resources/ondevice-catalogue.json'
+      - 'apps/ios/MagicMobile/PreconCatalog.swift'
+      - 'apps/ios/MagicMobile/Assets.xcassets/mana-*.imageset/**'
+      - 'apps/ios/MagicMobile/Assets.xcassets/AppIcon.appiconset/**'
+      - '.github/workflows/magicmobile-android.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  full-native:
+    if: contains(github.event.head_commit.message, '[android-native]') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build the full real XMage JVM input
+        run: bash packages/ondevice-engine/scripts/build_jvm.sh
+      - name: Real XMage JVM regression tests
+        run: bash packages/ondevice-engine/scripts/test_real_engine.sh
+      - name: Prepare Android build SDK
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'
+      - name: Cross-compile full Android ARM64 engine
+        env:
+          MM_ANDROID_NATIVE_HEAP: 10g
+          # Host JDK17.0.3 MXBean crashes on newer cgroup layouts. Heap/CPU limits
+          # are explicit in the build; this is NOT an Android runtime option.
+          JAVA_TOOL_OPTIONS: -XX:-UseContainerSupport
+        run: |
+          set -euo pipefail
+          export ANDROID_SDK="$ANDROID_HOME"
+          export ANDROID_NDK="$ANDROID_HOME/ndk/28.2.13676358"
+          bash scripts/android/build_native.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-native-evidence-${{ github.sha }}
+          path: |
+            build_output/android/*.log
+            build_output/android/*.json
+            build_output/android/*.txt
+            build_output/android/native-*/gluonfx/**/log/**
+            packages/ondevice-engine/evidence/
+          retention-days: 7
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: android-full-native-${{ github.sha }}
+          path: apps/android/native-artifact/
+          compression-level: 1
+          retention-days: 14
+          if-no-files-found: error
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Build the actual native-linked test APK
+        run: |
+          set -euo pipefail
+          gradle -p apps/android --no-daemon -PwithNative=true :core:contractChecks :core:deckStudioChecks :core:providerChecks :core:insightChecks :app:assembleDebug :app:lintDebug
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 -v 4 apps/android/app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose apps/android/app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MagicMobile-Android-NATIVE-APK-${{ github.sha }}
+          path: |
+            apps/android/app/build/outputs/apk/debug/app-debug.apk
+            apps/android/native-artifact/manifest.json
+          retention-days: 14
+          if-no-files-found: error

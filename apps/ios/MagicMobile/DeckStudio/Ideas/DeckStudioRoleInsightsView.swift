@@ -41,7 +41,7 @@ struct DeckStudioRoleInsightsView: View {
     var body: some View {
         DeckStudioPanel {
             VStack(alignment: .leading, spacing: 14) {
-                Text("What your cards do").font(.system(.title2, design: .serif).weight(.semibold))
+                Text("What your cards do").font(.title2.weight(.semibold))
                 Text("Card roles · reviewable, not a deck score")
                     .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                 Text("Roles come from Scryfall's community-curated oracle tags, bundled with this build and used offline. Cards those tags miss fall back to conservative rules-text patterns, which leave triggered and conditional effects unclassified. Draw includes cantrips, not just net card advantage. Your own tags override everything here.")

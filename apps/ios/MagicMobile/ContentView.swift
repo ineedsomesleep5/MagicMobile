@@ -202,6 +202,7 @@ struct ContentView: View {
             }
             #endif
         }
+        .holdInspectionScope()
         .alert("MagicMobile", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) { errorMessage = nil }
         } message: {
@@ -1258,151 +1259,146 @@ struct TavernMainMenu: View {
     let settings: () -> Void
     var news: (() -> Void)? = nil
     var commanderName: String? = nil
+    var commanderNamespace: Namespace.ID? = nil
+    var downloads: (() -> Void)? = nil
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var appeared = false
 
     var body: some View {
         GeometryReader { proxy in
-            let horizontal = proxy.size.width > proxy.size.height
-            let layout = horizontal ? AnyLayout(HStackLayout(alignment: .center, spacing: 36)) : AnyLayout(VStackLayout(spacing: 24))
+            let horizontal = proxy.size.width > proxy.size.height && !dynamicTypeSize.isAccessibilitySize
+            let cardWidth = horizontal ? min(190, proxy.size.height * 0.42) : min(210, proxy.size.width * 0.53)
+            let layout = horizontal ? AnyLayout(HStackLayout(alignment: .center, spacing: 48)) : AnyLayout(VStackLayout(spacing: 28))
             ScrollView(.vertical, showsIndicators: false) {
                 layout {
-                    identity(compact: horizontal)
-                        .frame(maxWidth: .infinity)
-                    VStack(spacing: 12) {
-                        Text("THE COMMANDER'S TABLE")
-                            .font(.system(size: 10, weight: .bold, design: .serif)).tracking(2.5)
-                            .foregroundStyle(MagicPalette.parchment.opacity(0.7))
-                        Button(action: play) {
-                            HStack {
-                                Image(systemName: "sparkles")
-                                Spacer()
-                                Text("Play Commander").font(.system(size: 24, weight: .black, design: .serif)).lineLimit(1).minimumScaleFactor(0.75)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                            }
-                            .frame(minHeight: 48)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(MagicPrimaryButtonStyle(fillsWidth: true))
-                        .accessibilityIdentifier("menu.play")
-                        menuAction("Decks", subtitle: "Build, import and browse.", icon: "rectangle.stack.fill", action: decks)
-                            .accessibilityIdentifier("menu.decks")
-                        menuAction("Settings", subtitle: "Make this table yours.", icon: "gearshape.fill", action: settings)
-                        if let news {
-                            menuAction("Updates", subtitle: "This build and XMage news.", icon: "newspaper", action: news)
-                                .accessibilityIdentifier("menu.updates")
-                        }
+                    VStack(spacing: 18) {
+                        if !horizontal { identity(compact: false) }
+                        CommanderDeckPortrait(name: commanderName, namespace: commanderNamespace)
+                            .frame(width: cardWidth, height: cardWidth / 0.716)
+                            .rotationEffect(.degrees(reduceMotion ? 0 : -4))
+                            .padding(.vertical, 8)
                         deckTile
                     }
-                    .padding(horizontal ? 18 : 20)
-                    .frame(maxWidth: 400)
-                    .background {
-                        RoundedRectangle(cornerRadius: GameBoardDesignTokens.current.radius.heroPanel)
-                            .fill(LinearGradient(colors: [Color(red: 0.20, green: 0.14, blue: 0.10), Color(red: 0.075, green: 0.06, blue: 0.055)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .overlay(RoundedRectangle(cornerRadius: GameBoardDesignTokens.current.radius.heroPanel).stroke(MagicPalette.antiqueGold.opacity(0.6), lineWidth: 1))
-                            .overlay(RoundedRectangle(cornerRadius: GameBoardDesignTokens.current.radius.heroPanel - 5).stroke(MagicPalette.antiqueGold.opacity(0.16), lineWidth: 1).padding(5))
-                            .shadow(color: .black.opacity(0.65), radius: 20, y: 12)
+                    .frame(maxWidth: .infinity)
+                    VStack(alignment: .leading, spacing: 12) {
+                        if horizontal { identity(compact: true).padding(.bottom, 14) }
+                        Button(action: play) {
+                            HStack(spacing: 16) {
+                                Text("Play Commander")
+                                    .font(.title3.weight(.bold))
+                                    .multilineTextAlignment(.leading)
+                                Spacer()
+                                Image(systemName: "arrow.up.right")
+                            }
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(CommanderActionStyle())
+                        .accessibilityIdentifier("menu.play")
+                        Button(action: decks) {
+                            HStack(spacing: 16) {
+                                Image(systemName: "rectangle.stack")
+                                Text("Decks")
+                                Spacer()
+                                Image(systemName: "arrow.right")
+                            }
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(CommanderActionStyle(primary: false))
+                        .accessibilityIdentifier("menu.decks")
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 16) { utilityActions }
+                            VStack(alignment: .leading, spacing: 0) { utilityActions }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 4)
                     }
+                    .frame(maxWidth: 400)
                 }
-                .padding(.horizontal, horizontal ? 24 : 12)
-                .padding(.vertical, horizontal ? 16 : 24)
+                .padding(.horizontal, horizontal ? 36 : 26)
+                .padding(.vertical, horizontal ? 24 : 28)
                 .frame(maxWidth: 960, minHeight: proxy.size.height)
                 .frame(maxWidth: .infinity)
+                .opacity(appeared ? 1 : 0)
+                .offset(y: appeared || reduceMotion ? 0 : 12)
             }
         }
+        .background(CommanderPresentation.canvas.ignoresSafeArea())
         .preferredColorScheme(.dark)
+        .onAppear {
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.24)) { appeared = true }
+        }
     }
 
     private func identity(compact: Bool) -> some View {
-        VStack(spacing: compact ? 12 : 16) {
-            // The shipped app mark, not a stand-in built from SF Symbols. It is cut out of
-            // its plate so it sits on whatever background the menu is wearing.
-            Image("mage-mobile-logo")
-                .resizable().scaledToFit()
-                .frame(width: compact ? 132 : 168)
-                .shadow(color: .black.opacity(0.55), radius: 16, y: 8)
-                .accessibilityHidden(true)
-            VStack(spacing: 6) {
-                Text("MAGICMOBILE")
-                    .font(.system(size: compact ? 31 : 36, weight: .black, design: .serif))
-                    .tracking(1).minimumScaleFactor(0.7).lineLimit(1)
-                    .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.93, blue: 0.73), MagicPalette.antiqueGold], startPoint: .top, endPoint: .bottom))
-                    .shadow(color: .black, radius: 3, y: 3)
-                Text("A seat at the table. A world in your deck.")
-                    .font(.system(size: 13, weight: .medium, design: .serif))
-                    .foregroundStyle(MagicPalette.parchment.opacity(0.78))
-                    .multilineTextAlignment(.center)
-            }
-            // The real mana symbols ship in the bundle; weather icons stood in for them.
-            HStack(spacing: 10) {
-                ForEach(["mana-w", "mana-u", "mana-b", "mana-r", "mana-g"], id: \.self) { asset in
-                    Image(asset).resizable().scaledToFit().frame(width: 17, height: 17)
-                        .opacity(0.9)
-                }
-            }.accessibilityHidden(true)
+        VStack(alignment: compact ? .leading : .center, spacing: 8) {
+            Text("MAGICMOBILE")
+                .font(.caption.weight(.bold)).tracking(3)
+                .foregroundStyle(CommanderPresentation.secondary)
+            Text("Your next\ngreat game.")
+                .font(.system(.largeTitle, design: .default, weight: .black))
+                .tracking(-1)
+                .foregroundStyle(CommanderPresentation.ink)
+                .multilineTextAlignment(compact ? .leading : .center)
+                .fixedSize(horizontal: false, vertical: true)
             if !playerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text("Welcome back, \(playerName)").font(.caption).foregroundStyle(MagicPalette.parchment.opacity(0.7))
+                Text("Welcome back, \(playerName)")
+                    .font(.subheadline).foregroundStyle(CommanderPresentation.secondary)
+                    .multilineTextAlignment(compact ? .leading : .center)
             }
         }
     }
 
-    /// The selected deck was the second largest element on the menu and showed only a name.
-    /// Showing the commander it is actually built around makes it worth the space, and
-    /// reuses the same consent-aware artwork route as the rest of the app.
     private var deckTile: some View {
-        HStack(spacing: 12) {
-            Group {
-                if let commanderName, !commanderName.isEmpty {
-                    NativeCardArtworkView(name: commanderName, variant: .board, contentMode: .fill) { _, _ in
-                        ZStack {
-                            LinearGradient(colors: [MagicPalette.carvedWood, MagicPalette.iron], startPoint: .top, endPoint: .bottom)
-                            Image(systemName: "crown.fill").font(.system(size: 20)).foregroundStyle(MagicPalette.antiqueGold.opacity(0.8))
-                        }
-                    }
-                } else {
-                    ZStack {
-                        LinearGradient(colors: [MagicPalette.carvedWood, MagicPalette.iron], startPoint: .top, endPoint: .bottom)
-                        Image(systemName: "shield.lefthalf.filled").font(.system(size: 20)).foregroundStyle(MagicPalette.antiqueGold)
-                    }
-                }
+        VStack(spacing: 5) {
+            Text("YOUR DECK")
+                .font(.caption2.weight(.bold)).tracking(2)
+                .foregroundStyle(CommanderPresentation.accent)
+            Text(deckName)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(CommanderPresentation.ink)
+            if let commanderName, !commanderName.isEmpty {
+                Text(commanderName).font(.caption)
+                    .foregroundStyle(CommanderPresentation.secondary)
             }
-            .frame(width: 46, height: 64).clipped()
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(MagicPalette.antiqueGold.opacity(0.45)))
-            VStack(alignment: .leading, spacing: 3) {
-                Text("YOUR DECK").font(.system(size: 9, weight: .black)).tracking(1.5)
-                    .foregroundStyle(MagicPalette.antiqueGold)
-                Text(deckName).font(.subheadline.weight(.semibold))
-                    .foregroundStyle(MagicPalette.parchment).lineLimit(2)
-                if let commanderName, !commanderName.isEmpty {
-                    Text(commanderName).font(.caption2)
-                        .foregroundStyle(MagicPalette.parchment.opacity(0.65)).lineLimit(1)
-                }
-            }
-            Spacer(minLength: 0)
         }
-        .padding(12)
-        .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: GameBoardDesignTokens.current.radius.panel))
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(commanderName.map { "Your deck: \(deckName), commander \($0)" } ?? "Your deck: \(deckName)")
     }
 
-    private func menuAction(_ title: String, subtitle: String, icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: icon).font(.system(size: 21)).frame(width: 28).foregroundStyle(MagicPalette.antiqueGold)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title).font(.system(size: 19, weight: .bold, design: .serif)).foregroundStyle(MagicPalette.parchment)
-                    Text(subtitle).font(.caption2).foregroundStyle(MagicPalette.parchment.opacity(0.65))
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.caption).foregroundStyle(MagicPalette.antiqueGold.opacity(0.7))
-            }
-            .frame(minHeight: 45).padding(12)
-            .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 9))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(MagicPalette.antiqueGold.opacity(0.25)))
-            .contentShape(Rectangle())
+    @ViewBuilder private var utilityActions: some View {
+        Button(action: settings) {
+            Label("Settings", systemImage: "gearshape")
+                .font(.footnote).frame(minHeight: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .foregroundStyle(CommanderPresentation.secondary)
+        .accessibilityIdentifier("menu.settings")
+        if let news {
+            Button(action: news) {
+                Label("Updates", systemImage: "arrow.down.circle")
+                    .font(.footnote).frame(minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(CommanderPresentation.secondary)
+            .accessibilityIdentifier("menu.updates")
+        }
+        if let downloads {
+            Button(action: downloads) {
+                Label("Downloads", systemImage: "externaldrive")
+                    .font(.footnote).frame(minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(CommanderPresentation.secondary)
+            .accessibilityIdentifier("menu.downloads")
+        }
     }
 }
 
@@ -1412,7 +1408,7 @@ struct TavernMainMenu: View {
 enum BoardAppearancePreference {
     static let key = "magicmobile.boardAppearance"
     static let defaultValue = "arena"
-    static let options = ["arena", "midnight", "wood"]
+    static let options = BattlefieldBackdrop.allCases.map(\.rawValue)
     static func normalized(_ value: String) -> String { options.contains(value) ? value : defaultValue }
 }
 
@@ -1428,12 +1424,12 @@ struct BoardAppearancePicker: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Battlefield").font(.headline).foregroundStyle(MagicPalette.parchment)
-            HStack(spacing: 12) {
-                choice("Stone Arena", value: "arena")
-                choice("Midnight", value: "midnight")
-                choice("Classic Wood", value: "wood")
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
+                ForEach(BattlefieldBackdrop.allCases) { theme in
+                    choice(theme.title, value: theme.rawValue)
+                }
             }
-            Text("Saved on this device. Applies in both orientations.")
+            Text("Works in portrait and landscape.")
                 .font(.caption).foregroundStyle(MagicPalette.parchment.opacity(0.65))
         }
     }
@@ -1511,11 +1507,7 @@ private struct AppearanceSwatch<Art: View>: View {
 struct BoardAppearanceArt: View {
     let value: String
     var body: some View {
-        switch value {
-        case "arena": Image(MagicMobileAssetName.stoneArena).resizable().scaledToFill()
-        case "wood": Image(MagicMobileAssetName.boardBackground).resizable().scaledToFill()
-        default: MidnightSurfaceGradient()
-        }
+        BattlefieldBackdropArt(theme: .resolved(value))
     }
 }
 
@@ -1545,8 +1537,6 @@ struct AppearanceSettingsView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    Text("Your game, your table").font(.system(size: 28, weight: .bold, design: .serif))
-                    MenuAppearancePicker()
                     BoardAppearancePicker()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
                     if nativeTurnControl != nil { NativeArtworkPreferenceView() }
@@ -1716,7 +1706,7 @@ struct PortraitModeToggle: View {
                 Text("Auto-Rotate")
                     .font(.callout.weight(.black))
                     .foregroundStyle(.white)
-                Text("Enable automatic portrait and landscape rotation.")
+                Text("Portrait and landscape")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.58))
                     .lineLimit(2)
@@ -3010,9 +3000,11 @@ struct NativeGameView: View {
                                 Color.black.opacity(0.01)
                                     .ignoresSafeArea()
                                     .onTapGesture { self.inspectedCard = nil }
+                                    .inspectionTouchPassthrough()
                                     .zIndex(99)
                                 
                                 CardInspector(card: inspectedCard)
+                                    .inspectionTouchPassthrough()
                                     .frame(width: metrics.detailSheetRect.width, height: metrics.detailSheetRect.height)
                                     .position(x: metrics.detailSheetRect.midX, y: metrics.detailSheetRect.midY)
                                     .zIndex(100)
@@ -3664,9 +3656,11 @@ struct NativeGameView: View {
                     Color.black.opacity(0.01)
                         .ignoresSafeArea()
                         .onTapGesture { self.inspectedCard = nil }
+                        .inspectionTouchPassthrough()
                         .zIndex(99)
 
                     CardInspector(card: inspectedCard)
+                        .inspectionTouchPassthrough()
                         .frame(width: metrics.detailSheetRect.width, height: metrics.detailSheetRect.height)
                         .position(x: metrics.detailSheetRect.midX, y: metrics.detailSheetRect.midY)
                         .zIndex(100)
@@ -4583,24 +4577,9 @@ struct BattlefieldSurface: View {
 
     var body: some View {
         GeometryReader { proxy in
-            // The parameter existed but was never read, so the board decided orientation
-            // from raw geometry and ignored the player's auto-rotate choice, unlike the
-            // menu. Both surfaces now answer the same question the same way.
-            let portrait = GameOrientationMode.isPortraitLayout(size: proxy.size, portraitEnabled: portraitModeEnabled)
             ZStack {
-                if appearance == "arena" {
-                    // A landscape-only arena aspect-filled on a tall screen kept about a
-                    // quarter of its width, cropping the brass frame and crystals away.
-                    Image(portrait ? MagicMobileAssetName.portraitStoneArena : MagicMobileAssetName.stoneArena)
-                        .resizable().scaledToFill()
-                        .frame(width: proxy.size.width, height: proxy.size.height).clipped()
-                } else if appearance == "wood" {
-                    Image(portrait ? MagicMobileAssetName.portraitBoardBackground : MagicMobileAssetName.boardBackground)
-                        .resizable().scaledToFill()
-                        .frame(width: proxy.size.width, height: proxy.size.height).clipped()
-                } else {
-                LinearGradient(colors: [Color(red: 0.055, green: 0.085, blue: 0.10), Color(red: 0.10, green: 0.16, blue: 0.16)], startPoint: .top, endPoint: .bottom)
-                }
+                BattlefieldBackdropArt(theme: .resolved(appearance))
+                    .frame(width: proxy.size.width, height: proxy.size.height).clipped()
                 Rectangle()
                     .fill(
                         LinearGradient(
@@ -4617,8 +4596,8 @@ struct BattlefieldSurface: View {
                 RadialGradient(
                     colors: [
                         .clear,
-                        .black.opacity(0.22),
-                        .black.opacity(0.52)
+                        .black.opacity(0.10),
+                        .black.opacity(0.24)
                     ],
                     center: .center,
                     startRadius: min(proxy.size.width, proxy.size.height) * 0.20,
@@ -5594,9 +5573,9 @@ struct StackPeek: View {
                                 selectedCard = card
                                 inspectedCard = nil
                             }
-                            .onLongPressGesture(minimumDuration: 0.35) {
+                            .onCardHold(inspect: {
                                 inspectedCard = card
-                            }
+                            }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                     }
                 }
 
@@ -5655,9 +5634,9 @@ struct XmageStackPeek: View {
                             selectedCard = nil
                             inspectedCard = card
                         }
-                        .onLongPressGesture(minimumDuration: 0.35) {
+                        .onCardHold(inspect: {
                             inspectedCard = card
-                        }
+                        }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                 } else {
                     SyntheticStackObjectTile(object: topObject, width: 128, height: 179)
                 }
@@ -6041,17 +6020,24 @@ private struct AbilityChoiceTouchSurface: UIViewRepresentable {
     let enabled: Bool
     let choose: () -> Void
     let inspect: () -> Void
+    let releaseInspection: () -> Void
+    @Environment(\.holdCardInspection) private var inspection
 
     func makeUIView(context: Context) -> TouchView { TouchView() }
     func updateUIView(_ view: TouchView, context: Context) {
         view.isUserInteractionEnabled = enabled
         view.choose = choose
-        view.inspect = inspect
+        view.inspect = { inspection?.begin(dismiss: releaseInspection); inspect() }
+        view.releaseInspection = { if let inspection { inspection.end() } else { releaseInspection() } }
     }
+
+    static func dismantleUIView(_ view: TouchView, coordinator: ()) { view.finishInspection() }
 
     final class TouchView: UIView {
         var choose: (() -> Void)?
         var inspect: (() -> Void)?
+        var releaseInspection: (() -> Void)?
+        private var inspecting = false
 
         override init(frame: CGRect) {
             super.init(frame: frame)
@@ -6068,7 +6054,20 @@ private struct AbilityChoiceTouchSurface: UIViewRepresentable {
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
         @objc private func tapped() { choose?() }
         @objc private func held(_ gesture: UILongPressGestureRecognizer) {
-            if gesture.state == .began { inspect?() }
+            switch gesture.state {
+            case .began: inspecting = true; inspect?()
+            case .ended, .cancelled, .failed: finishInspection()
+            default: break
+            }
+        }
+        func finishInspection() {
+            guard inspecting else { return }
+            inspecting = false
+            releaseInspection?()
+        }
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window == nil { finishInspection() }
         }
     }
 }
@@ -6234,6 +6233,7 @@ struct UniversalPromptActionPanel: View {
                         Button("Close card") { self.inspectedCard = nil }
                             .frame(minHeight: 44).padding(8)
                     }
+                    .inspectionTouchPassthrough()
             }
         }
     }
@@ -6556,10 +6556,10 @@ struct UniversalPromptActionPanel: View {
                                     inspectedCard = nil
                                     GameHaptics.selection()
                                 }
-                                .onLongPressGesture(minimumDuration: 0.35) {
+                                .onCardHold(inspect: {
                                     inspectedCard = card
                                     GameHaptics.impact()
-                                }
+                                }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                             Text(card.card.name)
                                 .font(.system(size: 8, weight: .black))
                                 .foregroundStyle(.white.opacity(0.74))
@@ -6705,7 +6705,8 @@ struct UniversalPromptActionPanel: View {
                             AbilityChoiceTouchSurface(
                                 enabled: pendingActionId == nil && choiceCommand != nil,
                                 choose: selectAbility,
-                                inspect: { inspectedCard = source }
+                                inspect: { inspectedCard = source },
+                                releaseInspection: { if inspectedCard?.id == source.id { inspectedCard = nil } }
                             ).accessibilityHidden(true)
                         }
                         .accessibilityElement(children: .ignore)
@@ -7850,9 +7851,9 @@ struct MiniZoneRow: View {
                                 selectedCard = card
                                 inspectedCard = nil
                             }
-                            .onLongPressGesture(minimumDuration: 0.35) {
+                            .onCardHold(inspect: {
                                 inspectedCard = card
-                            }
+                            }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                     }
                 }
                 .padding(.vertical, 2)
@@ -9706,14 +9707,11 @@ struct PortraitOverlappingBattlefieldRow: View {
                             .background { GeometryReader { geometry in Color.clear.preference(key: PortraitCardBoundsKey.self, value: [card.instanceId: geometry.frame(in: .named("portrait-board"))]) } }
                             .offset(x: plan.xOffset(for: index) + (cardHeight - cardWidth) / 2, y: 4)
                             .zIndex(zIndex(for: index, card: card))
-                            .gesture(LongPressGesture(minimumDuration: 0.35)
-                                .exclusively(before: TapGesture())
-                                .onEnded { gesture in
-                                    switch gesture {
-                                    case .first:
-                                        selectedCard = nil
-                                        inspectedCard = card
-                                    case .second:
+                            .onCardHold(inspect: {
+                                selectedCard = nil
+                                inspectedCard = card
+                            }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
+                            .onTapGesture {
                                         if targetable {
                                             runTargetAction(card)
                                         } else if !targetableIds.isEmpty {
@@ -9726,8 +9724,7 @@ struct PortraitOverlappingBattlefieldRow: View {
                                             selectedCard = card
                                             inspectedCard = nil
                                         }
-                                    }
-                                })
+                            }
                     }
                 }
                 .frame(width: max(plan.contentWidth, rowWidth), height: max(cardHeight + 8, 44), alignment: .topLeading)
@@ -9945,7 +9942,7 @@ struct PortraitHandRow: View {
                                     }, inspect: { selectedCard = nil; inspectedCard = card }, tap: {
                                         if handExpanded { selectedCard = nil; inspectedCard = card }
                                         else { withAnimation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.2)) { handExpanded = true } }
-                                    })
+                                    }, releaseInspection: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                             }
                         }
                     }
@@ -10417,6 +10414,7 @@ private struct BoardStackInspector: View {
                                 Button("Close card") { self.inspectedCard = nil }
                                     .frame(minHeight: 44).padding(8)
                             }
+                            .inspectionTouchPassthrough()
                     }
                 }
         }
@@ -10759,10 +10757,10 @@ struct BattlefieldRow: View {
             inspectedCard = nil
             GameHaptics.selection()
         }
-        .highPriorityGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in
+        .onCardHold(inspect: {
             inspectedCard = card
             GameHaptics.impact()
-        })
+        }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
         .accessibilityLabel("\(group.count) grouped \(card.card.name) cards in \(title)")
         .accessibilityHint("Tap to expand the group. Long press to inspect a card.")
         .accessibilityAction(named: Text("Expand group")) {
@@ -10797,10 +10795,10 @@ struct BattlefieldRow: View {
         .onTapGesture {
             handleCardTap(card, action: action, targetable: targetable, combatHighlighted: combatHighlighted)
         }
-        .highPriorityGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in
+        .onCardHold(inspect: {
             inspectedCard = card
             GameHaptics.impact()
-        })
+        }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
         .accessibilityAction(named: Text(targetable ? "Choose target" : "Select")) {
             handleCardTap(card, action: action, targetable: targetable, combatHighlighted: combatHighlighted)
         }
@@ -10899,7 +10897,7 @@ struct HandFan: View {
                         selectedCard = card
                         inspectedCard = nil
                     }
-                    .onLongPressGesture(minimumDuration: 0.35) { inspectedCard = card }
+                    .onCardHold(inspect: { inspectedCard = card }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
             }
         }
         .frame(width: metrics.playWidth, height: metrics.handFrameHeight)
@@ -11051,7 +11049,12 @@ struct CardTile: View {
                 if !NativeCardArtworkPolicy.permitsLookup(card: card) {
                     CardArtPlaceholder(card: card, width: width, height: height)
                 } else if nativeTurnControl != nil {
-                    NativeCardArtworkView(name: card.card.name, variant: imageVariant) { loading, _ in
+                    NativeCardArtworkView(name: card.card.name, variant: imageVariant,
+                                          tokenTypeLine: card.card.isToken == true ? card.card.typeLine : nil,
+                                          tokenOracleText: card.card.isToken == true ? card.card.oracleText : nil,
+                                          tokenPower: card.card.isToken == true ? card.displayPower : nil,
+                                          tokenToughness: card.card.isToken == true ? card.displayToughness : nil,
+                                          tokenColors: card.card.isToken == true ? card.card.tokenColors : nil) { loading, _ in
                         CardArtPlaceholder(card: card, width: width, height: height, loading: loading)
                     }
                 } else {
@@ -12707,9 +12710,9 @@ struct ZoneInspectorSheet: View {
                                     selectedCard = card
                                     inspectedCard = nil
                                 }
-                                .onLongPressGesture(minimumDuration: 0.35) {
+                                .onCardHold(inspect: {
                                     inspectedCard = card
-                                }
+                                }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                             if let action = playActions.first, playActions.count == 1 {
                                 Button {
                                     runAction?(action)
@@ -12804,9 +12807,9 @@ struct CompactZoneInspectorOverlay: View {
                                         selectedCard = card
                                         inspectedCard = nil
                                     }
-                                    .onLongPressGesture(minimumDuration: 0.35) {
+                                    .onCardHold(inspect: {
                                         inspectedCard = card
-                                    }
+                                    }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                                 if targetable {
                                     Button {
                                         guard pendingActionId == nil,

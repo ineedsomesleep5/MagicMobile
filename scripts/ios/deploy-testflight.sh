@@ -97,6 +97,7 @@ xcrun altool --upload-app -f "$IPA_PATH" --api-key "$ASC_KEY_ID" \
   --api-issuer "$ASC_ISSUER_ID" 2>&1 | tee "$UPLOAD_LOG"
 node "$BUILD_NUMBER_SCRIPT" record --upload-log "$UPLOAD_LOG" --ipa "$IPA_PATH"
 BUILD_NUMBER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$REPO_ROOT/apps/ios/MagicMobile/Info.plist")"
-"$DISTRIBUTION_SCRIPT" --build-number "$BUILD_NUMBER" --release-root "$RUN_ROOT"
+APP_VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["appVersion"])' "$RUN_ROOT/signed-receipt.json")"
+"$DISTRIBUTION_SCRIPT" --version "$APP_VERSION" --build-number "$BUILD_NUMBER" --release-root "$RUN_ROOT"
 echo "Upload, processing, Internal + External distribution, and Beta App Review submission completed. Phone gameplay is not verified by this script."
 echo "Keep the archive, dSYM, paired engine and receipts in $RUN_ROOT."

@@ -136,7 +136,7 @@ struct DeckStudioEDHRECPanel: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Explore another perspective.").font(.system(.title2, design: .serif).weight(.semibold))
+                        Text("Explore another perspective.").font(.title2.weight(.semibold))
                         Text("Browse the actual EDHREC website, then return to Cards without losing your draft. MagicMobile does not read recommendations, fill forms, or submit your deck.")
                         Text("Commander buttons use Scryfall's public card link: Scryfall receives that name, then EDHREC and its providers receive browser requests and your IP. Website cookies stay in this temporary session. Anything you choose to paste/submit on the website is handled by that website.")
                             .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)

@@ -33,7 +33,7 @@ struct DeckStudioImportScreen: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Text("Bring your deck.").font(.system(.largeTitle, design: .serif).weight(.bold))
+                    Text("Bring your deck.").font(.largeTitle.weight(.bold)).tracking(-1)
                     Text("Paste, link, or scan a decklist. Review every card before saving.").foregroundStyle(DeckStudioPalette.secondaryInk)
                     Picker("Import method", selection: $method) {
                         Text("Paste").tag("Paste"); Text("Link").tag("Link"); Text("Scan image").tag("Scan")

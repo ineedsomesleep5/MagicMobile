@@ -26,6 +26,70 @@ final class BoardPolishUITests: XCTestCase {
     // Independent cases keep one failed control from hiding the remaining surfaces.
     func testPortraitCrowdedBattlefield() { runMatrix(portrait: true, selectedFixtures: ["crowded-battlefield"]) }
     func testLandscapeCrowdedBattlefield() { runMatrix(portrait: false, selectedFixtures: ["crowded-battlefield"]) }
+    func testSixBattlefieldBackgroundsInPortraitAndLandscape() {
+        for theme in ["arena", "midnight", "wood", "moss", "ember", "tide"] {
+            app?.terminate()
+            let application = XCUIApplication()
+            app = application
+            application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+                "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", theme]
+            application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "crowded-battlefield"
+            application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+            XCUIDevice.shared.orientation = .portrait
+            application.launch()
+            XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
+            for portrait in [true, false] {
+                currentCapture = "background-\(theme)-\(portrait ? "portrait" : "landscape")"
+                XCTContext.runActivity(named: currentCapture) { _ in
+                    XCUIDevice.shared.orientation = portrait ? .portrait : .landscapeLeft
+                    let orientation = NSPredicate { _, _ in
+                        let frame = application.frame
+                        return frame.width > 0 && frame.height > 0 && (portrait ? frame.height > frame.width : frame.width > frame.height)
+                    }
+                    XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: orientation, object: application)], timeout: 10), .completed)
+                    let firstRow = card(in: application, identifierPrefix: "card-your-board-isamaru")
+                    visible(firstRow, in: application)
+                    // Crowded creatures scroll horizontally; later cards need not
+                    // be visible before scrolling. Backgrounds must preserve lanes.
+                    XCTAssertGreaterThanOrEqual(firstRow.frame.width, 44)
+                    visible(application.scrollViews["board.battlefield.Your lands"], in: application)
+                    visible(card(in: application, identifierPrefix: "card-your-lands-plains"), in: application)
+                    visible(application.buttons["board.hand.expand"], in: application)
+                    visible(application.buttons["board.action.primary"], in: application)
+                    XCTAssertFalse(application.staticTexts["YOUR DECISION"].exists)
+                    capture(application, name: currentCapture)
+                }
+            }
+        }
+    }
+
+    func testSettingsOffersAllSixBattlefieldBackgrounds() {
+        let application = XCUIApplication()
+        app = application
+        application.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
+        application.launchArguments = ["--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        XCUIDevice.shared.orientation = .portrait
+        application.launch()
+        XCTAssertTrue(application.buttons["menu.settings"].waitForExistence(timeout: 20))
+        // A deliberate short press avoids the observed dropped synthesized 50ms
+        // taps. Still assert the destination; no retry conceals a failed action.
+        XCTAssertTrue(application.buttons["menu.settings"].isHittable)
+        application.buttons["menu.settings"].press(forDuration: 0.15)
+        XCTAssertTrue(application.navigationBars["Settings"].waitForExistence(timeout: 10))
+        for title in ["Stone Arena", "Midnight", "Classic Wood", "Moss Sanctuary", "Obsidian Ember", "Tidal Slate"] {
+            let choice = application.buttons[title + " battlefield"]
+            for _ in 0..<3 {
+                if choice.isHittable { break }
+                application.swipeUp()
+            }
+            visible(choice, in: application)
+            choice.tap()
+            let selected = NSPredicate(format: "selected == true")
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: selected, object: choice)], timeout: 5), .completed)
+        }
+        currentCapture = "settings-six-battlefield-backgrounds"
+        capture(application, name: currentCapture)
+    }
     func testPortraitOffscreenCombatInspection() { runMatrix(portrait: true, selectedFixtures: ["combat-arrows"]) }
     func testLandscapeOffscreenCombatInspection() { runMatrix(portrait: false, selectedFixtures: ["combat-arrows"]) }
     func testPortraitManaPayment() { runMatrix(portrait: true, selectedFixtures: ["mana-payment-prompt"]) }
@@ -141,15 +205,8 @@ final class BoardPolishUITests: XCTestCase {
             // Leave margin for simulator scroll-view touch-delivery delay.
             // The app's recognition threshold remains 0.35 seconds.
             cards.firstMatch.press(forDuration: 1)
-            let inspected = app.buttons["Close card"].waitForExistence(timeout: 5)
+            XCTAssertTrue(app.buttons["Close card"].waitForNonExistence(timeout: 2), "Releasing a held ability source must close inspection")
             capture(app, name: currentCapture + "-after-hold")
-            if !inspected {
-                app.buttons["Cancel prompt details"].tap()
-                let captured = app.staticTexts["preview.captured-command"]
-                XCTFail("Hold must inspect without submitting. Captured command: \(captured.exists ? captured.label : "none")")
-                return
-            }
-            app.buttons["Close card"].tap()
             app.buttons["Cancel prompt details"].tap()
             XCTAssertFalse(app.staticTexts["preview.captured-command"].exists, "Inspection must not submit an ability")
             app.buttons["board.action.primary"].tap()
@@ -205,7 +262,7 @@ final class BoardPolishUITests: XCTestCase {
             XCTAssertFalse(app.staticTexts["preview.captured-command"].exists, "Scrubbing must not cast a card")
             scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5)).tap()
             first.press(forDuration: 0.6)
-            visible(card(in: app, identifierPrefix: "card-inspector-sol-ring"), in: app)
+            XCTAssertTrue(card(in: app, identifierPrefix: "card-inspector-sol-ring").waitForNonExistence(timeout: 2), "Hand inspection ends on release")
         case "hand-drag":
             app.buttons["board.hand.expand"].tap()
             let source = card(in: app, identifierPrefix: "card-hand-sol-ring")
@@ -236,6 +293,9 @@ final class BoardPolishUITests: XCTestCase {
                 XCTAssertTrue(confirm.isEnabled)
                 choice.tap()
                 XCTAssertFalse(confirm.isEnabled, "A tentative choice can be cleared")
+                choice.press(forDuration: 0.6)
+                XCTAssertTrue(app.buttons["board.choice.inspection.close"].waitForNonExistence(timeout: 2), "Card-choice inspection ends on release")
+                XCTAssertFalse(confirm.isEnabled, "Holding a card must not select it")
             }
             if fixture != "scry-choice" {
                 let invalid = app.descendants(matching: .any)["board.choice.card.choice-1"].firstMatch
@@ -296,7 +356,7 @@ final class BoardPolishUITests: XCTestCase {
             // Accessibility rounds subpixel card/viewport edges independently.
             XCTAssertTrue(hand.frame.insetBy(dx: -1, dy: -1).contains(last.frame), "Last hand card must scroll fully into hand viewport: hand=\(hand.frame), last=\(last.frame)")
             last.press(forDuration: 0.6)
-            visible(card(in: app, identifierPrefix: "card-inspector-spirited-companion"), in: app)
+            XCTAssertTrue(card(in: app, identifierPrefix: "card-inspector-spirited-companion").waitForNonExistence(timeout: 2), "Hand inspection ends on release")
         case "crowded-battlefield":
             XCTAssertFalse(app.staticTexts["YOUR DECISION"].exists, "Routine priority must not cover the battlefield with a redundant banner")
             let firstRow = card(in: app, identifierPrefix: "card-your-board-isamaru")
@@ -319,9 +379,15 @@ final class BoardPolishUITests: XCTestCase {
             XCTAssertTrue(commander.label.hasSuffix(", selected"), "An ordinary tap must still select")
             capture(app, name: currentCapture + "-board")
             // Inspect rather than activate: no synthetic legal action is sent to a server.
-            commander.press(forDuration: 0.6)
-            visible(card(in: app, identifierPrefix: "card-inspector-isamaru"), in: app)
-            capture(app, name: currentCapture + "-crowded-inspector")
+            commander.press(forDuration: 5)
+            XCTAssertTrue(card(in: app, identifierPrefix: "card-inspector-isamaru").waitForNonExistence(timeout: 2), "Battlefield inspection ends on release")
+            XCTAssertFalse(app.staticTexts["preview.captured-command"].exists, "Holding must not activate the card")
+            XCTAssertTrue(commander.label.hasSuffix(", selected"), "Inspection preserves the existing selection")
+            commander.tap()
+            XCTAssertFalse(commander.label.hasSuffix(", selected"), "A tap still clears selection after inspection")
+            commander.tap()
+            XCTAssertTrue(commander.label.hasSuffix(", selected"), "Selection remains available after inspection")
+            capture(app, name: currentCapture + "-after-inspection-release")
         case "mana-payment-prompt":
             visible(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "Pay")).firstMatch, in: app)
             visible(card(in: app, identifierPrefix: "card-your-board-sol-ring"), in: app)

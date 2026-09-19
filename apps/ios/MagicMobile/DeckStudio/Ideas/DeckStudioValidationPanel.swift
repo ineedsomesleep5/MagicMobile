@@ -24,8 +24,8 @@ struct DeckStudioValidationPanel: View {
     var body: some View {
         DeckStudioPanel {
             VStack(alignment: .leading, spacing: 12) {
-                Label("Validate with XMage", systemImage: "checkmark.shield").font(.headline)
-                Text("Uses the installed rules engine without starting a game. A result applies only to these playing cards and this engine build.")
+                Label("Ready to play?", systemImage: "checkmark.shield").font(.title2.weight(.semibold))
+                Text("Check Commander rules, then start a game against AI.")
                     .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                 if let prepared, !prepared.excluded.isEmpty {
                     Toggle("Validate the playing deck only", isOn: $acknowledgeExclusions).font(.subheadline)
@@ -36,8 +36,9 @@ struct DeckStudioValidationPanel: View {
                     Label(value.valid ? "Commander validation passed" : "Commander validation found issues",
                           systemImage: value.valid ? "checkmark.circle" : "exclamationmark.triangle")
                         .font(.subheadline.weight(.semibold))
-                    Text("\(value.checkedAt.formatted(date: .abbreviated, time: .shortened)) · installed XMage · app \(value.appBuild)")
-                        .font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk)
+                    DisclosureGroup("Validation details") {
+                        Text("\(value.checkedAt.formatted(date: .abbreviated, time: .shortened)) · installed XMage · app \(value.appBuild). Applies to these playing cards and this engine build.")
+                    }.font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                     ForEach(value.issues) { issue in
                         VStack(alignment: .leading, spacing: 4) {
                             if let card = issue.cardName, !card.isEmpty { Text(card).font(.subheadline.weight(.semibold)) }
@@ -46,7 +47,7 @@ struct DeckStudioValidationPanel: View {
                                 .font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk)
                         }
                     }
-                } else { Text("Commander validation: not checked for this draft").font(.caption) }
+                } else { Text("Not checked yet").font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk) }
                 if let error = state.error { Text(error).font(.caption).foregroundStyle(DeckStudioPalette.danger).textSelection(.enabled) }
                 if state.checking {
                     ProgressView("Checking Commander rules…")
@@ -62,7 +63,7 @@ struct DeckStudioValidationPanel: View {
                         .buttonStyle(DeckStudioButtonStyle()).disabled(request == nil || service.busy || !exclusionsAccepted)
                         .accessibilityIdentifier("deckStudio.validate")
                     if let play, let prepared {
-                        Button("Playtest this validated deck", systemImage: "play.fill") { play(prepared.playing) }
+                        Button("Play against AI", systemImage: "play.fill") { play(prepared.playing) }
                             .buttonStyle(DeckStudioButtonStyle(primary: false))
                             .disabled(currentReceipt?.valid != true || service.busy || !exclusionsAccepted)
                             .accessibilityIdentifier("deckStudio.playtestValidated")

@@ -43,13 +43,13 @@ struct DeckStudioAnalysisContent: View {
                 if !curveOnly {
                     DeckStudioPanel {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Your deck at a glance").font(.system(.title2, design: .serif).weight(.semibold))
+                            Text("Your deck at a glance").font(.title2.weight(.semibold))
                             metric("Main deck", "\(statistics.cardCount)")
                             metric("Commander(s)", "\(draft.rows.filter { DeckStudioDraftPresentation.section($0) == "commanders" }.reduce(0) { $0 + $1.quantity })")
                             metric("Other sections", "\(draft.rows.filter { !["deck", "commanders"].contains(DeckStudioDraftPresentation.section($0)) }.reduce(0) { $0 + $1.quantity })")
                             metric("Lands in main", "\(statistics.landCount)")
                             metric("Average nonland mana value", statistics.averageManaValue.map { String(format: "%.2f", $0) } ?? "Unavailable")
-                            Text("Structural counts from bundled metadata. Use Validate & playtest for an exact result from the installed XMage Commander validator.")
+                            Text("Deck statistics · check legality in Playtest.")
                                 .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                         }
                     }
@@ -57,7 +57,7 @@ struct DeckStudioAnalysisContent: View {
                 DeckStudioPanel {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Main-deck mana curve").font(.headline)
-                        Text("Tap a mana value to inspect its cards. Lands, commanders and other sections are excluded.").font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
+                        Text("Tap a bar to see its cards. Main-deck nonlands only.").font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                         if dynamicType.isAccessibilitySize {
                             ForEach(0...7, id: \.self) { bin in
                                 Button { selectedBin = selectedBin == bin ? nil : bin } label: { metric(bin == 7 ? "7+ mana" : "\(bin) mana", "\(binCount(bin)) cards") }.frame(minHeight: 44)
@@ -69,7 +69,7 @@ struct DeckStudioAnalysisContent: View {
                                         Button { selectedBin = selectedBin == bin ? nil : bin } label: {
                                             VStack(spacing: 7) {
                                                 Text("\(binCount(bin))").font(.caption.monospacedDigit())
-                                                RoundedRectangle(cornerRadius: 5).fill(selectedBin == bin ? DeckStudioPalette.gold : DeckStudioPalette.ink)
+                                                RoundedRectangle(cornerRadius: 5).fill(selectedBin == bin ? DeckStudioPalette.accent : DeckStudioPalette.ink)
                                                     .frame(height: max(3, 100 * Double(binCount(bin)) / Double(max(1, (0...7).map(binCount).max() ?? 1))))
                                                 Text(bin == 7 ? "7+" : "\(bin)").font(.caption)
                                             }.frame(width: 44, height: 144, alignment: .bottom)
@@ -100,8 +100,9 @@ struct DeckStudioAnalysisContent: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Printed mana symbols").font(.headline)
                         ForEach(statistics.manaSymbolCounts.keys.sorted(), id: \.self) { symbol in metric("{\(symbol)}", "\(statistics.manaSymbolCounts[symbol, default: 0])") }
-                        Text("Hybrid and Phyrexian symbols stay distinct. Printed costs are not usable mana-source counts. Conditional mana production, land-face decisions and cost reductions are not inferred from card text.")
-                            .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
+                        DisclosureGroup("How to read these counts") {
+                            Text("Printed costs, not available mana sources. Hybrid and Phyrexian symbols stay distinct. Conditional mana, land-face choices and cost reductions are not inferred.")
+                        }.font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                     }
                 }
                 if !curveOnly {
@@ -111,8 +112,9 @@ struct DeckStudioAnalysisContent: View {
                             ForEach(["CREATURE", "ARTIFACT", "ENCHANTMENT", "INSTANT", "SORCERY", "LAND", "PLANESWALKER", "BATTLE"], id: \.self) { type in metric(type.capitalized, "\(typeCount(type))") }
                             Divider()
                             ForEach(["W", "U", "B", "R", "G", "C"], id: \.self) { color in metric(color == "C" ? "Colorless" : color, "\(colorCount(color))") }
-                            Text("Main-deck quantities. Multi-type and multicolor cards count in each applicable category, so categories overlap. Unknown metadata is not assumed colorless. These are card colors, not commander color identity or mana sources.")
-                                .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
+                            DisclosureGroup("About types and colors") {
+                                Text("Main-deck quantities; categories overlap for multi-type and multicolor cards. Unknown colors are excluded. Card colors are not commander identity or mana sources.")
+                            }.font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                         }
                     }
                     DeckStudioPanel {
@@ -123,10 +125,11 @@ struct DeckStudioAnalysisContent: View {
                             if statistics.cardCount >= cardsSeen, statistics.unknownTypeCount == 0,
                                let value = try? DeckStudioProbability.atLeast(requiredLands, successes: statistics.landCount, population: statistics.cardCount, draws: cardsSeen) {
                                 Text(value, format: .percent.precision(.fractionLength(1))).font(.system(.largeTitle, design: .rounded).weight(.semibold))
-                                Text("Chance of seeing at least \(requiredLands) printed land cards in \(cardsSeen) random cards from this \(statistics.cardCount)-card main deck. Seven means an opening hand; add the number of ordinary draws to examine later draws. Commanders are outside the library.")
+                                Text("Chance of at least \(requiredLands) lands in \(cardsSeen) random cards.")
                                     .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
-                                Text("No mulligans, tutors, extra-draw spells, land-side choices or play decisions are modeled. Seeing enough lands is not proof of making each land drop or producing the needed colors.")
-                                    .font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk)
+                                DisclosureGroup("What this estimate includes") {
+                                    Text("Uses printed lands in the \(statistics.cardCount)-card main deck. Seven cards represents an opening hand; commanders stay outside the library. No mulligans, tutors, extra draws, land-face choices or play decisions are modeled. Enough lands does not guarantee each land drop or the colors you need.")
+                                }.font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                             } else { Text("Requires at least \(cardsSeen) main-deck cards and known card types.").font(.caption) }
                         }
                     }

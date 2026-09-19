@@ -3,22 +3,27 @@
 set -euo pipefail
 umask 077
 
-APP_ID="com.calebfeliciano.magicmobile"
+# App-scoped beta-group discovery requires Apple's numeric app ID.
+APP_ID="6784735182"
 BUILD_NUMBER=""
+APP_VERSION=""
 RELEASE_ROOT=""
 EXTERNAL_GROUP_ID="${TESTFLIGHT_EXTERNAL_GROUP_ID:-72b71a7a-bf62-43b5-8eda-b12a62e5c3eb}"
 
 usage() {
-  echo "Usage: $0 --build-number NUMBER --release-root DIRECTORY" >&2
+  echo "Usage: $0 --version VERSION --build-number NUMBER --release-root DIRECTORY" >&2
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --build-number|--release-root)
+    --version|--build-number|--release-root)
       if [[ $# -lt 2 || -z "$2" || "$2" == --* ]]; then
         echo "Missing value for $1" >&2; usage; exit 2
       fi
-      if [[ "$1" == --build-number ]]; then
+      if [[ "$1" == --version ]]; then
+        [[ -z "$APP_VERSION" ]] || { echo "Duplicate --version" >&2; exit 2; }
+        APP_VERSION="$2"
+      elif [[ "$1" == --build-number ]]; then
         [[ -z "$BUILD_NUMBER" ]] || { echo "Duplicate --build-number" >&2; exit 2; }
         BUILD_NUMBER="$2"
       else
@@ -31,9 +36,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$BUILD_NUMBER" || -z "$RELEASE_ROOT" ]]; then
+if [[ -z "$APP_VERSION" || -z "$BUILD_NUMBER" || -z "$RELEASE_ROOT" ]]; then
   usage; exit 2
 fi
+[[ "$APP_VERSION" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || { echo "Invalid marketing version" >&2; exit 2; }
 [[ "$BUILD_NUMBER" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || { echo "Invalid build number: $BUILD_NUMBER" >&2; exit 2; }
 [[ "$EXTERNAL_GROUP_ID" =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]] || {
   echo "TESTFLIGHT_EXTERNAL_GROUP_ID must be one group UUID" >&2; exit 2;
@@ -65,12 +71,19 @@ try:
         require(build["attributes"]["version"] == args[0], "Wrong build number")
         require(build["attributes"]["processingState"] == "VALID", "Build is not VALID")
         require(build.get("id") and build["type"] == "builds", "Missing build identity")
+        version_id = build["relationships"]["preReleaseVersion"]["data"]["id"]
+        versions = [v for v in result.get("included", []) if v.get("type") == "preReleaseVersions" and v.get("id") == version_id]
+        require(len(versions) == 1 and versions[0]["attributes"]["version"] == args[1], "Wrong marketing version")
         print(build["id"])
     elif mode == "internal":
         groups = result["data"]
-        require(groups and not result.get("links", {}).get("next"), "Internal groups missing or incomplete")
-        require(all(g.get("id") and g["attributes"]["isInternalGroup"] is True for g in groups),
-                "Invalid Internal group records")
+        require(groups and not result.get("links", {}).get("next"), "App groups missing or incomplete")
+        require(all(g.get("id") and type(g["attributes"]["isInternalGroup"]) is bool for g in groups),
+                "Invalid app group records")
+        internal = [g for g in groups if g["attributes"]["isInternalGroup"]]
+        require(internal, "Internal groups missing")
+        with open(args[0], "w") as output:
+            json.dump({"data": internal}, output)
     elif mode == "review":
         review = result["data"]
         require(review.get("id") and review["type"] == "betaAppReviewSubmissions", "Missing review identity")
@@ -98,14 +111,16 @@ except (ValueError, KeyError, TypeError, AttributeError, OSError) as error:
 PY
 }
 
-asc builds wait --app "$APP_ID" --build-number "$BUILD_NUMBER" --platform IOS \
+asc builds wait --app "$APP_ID" --version "$APP_VERSION" --build-number "$BUILD_NUMBER" --platform IOS \
   --timeout 30m --poll-interval 30s --fail-on-invalid --output json > "$RELEASE_ROOT/apple-processing.json"
-asc builds list --app "$APP_ID" --build-number "$BUILD_NUMBER" --platform IOS --paginate \
+asc builds list --app "$APP_ID" --version "$APP_VERSION" --build-number "$BUILD_NUMBER" --platform IOS --paginate \
   --output json > "$RELEASE_ROOT/apple-build.json"
-BUILD_ID="$(validate build "$RELEASE_ROOT/apple-build.json" "$BUILD_NUMBER")"
+BUILD_ID="$(validate build "$RELEASE_ROOT/apple-build.json" "$BUILD_NUMBER" "$APP_VERSION")"
 # Preserve ASC's default: the configured External group plus all Internal groups.
-asc testflight groups list --app "$APP_ID" --internal --output json > "$RELEASE_ROOT/testflight-internal-groups.json"
-validate internal "$RELEASE_ROOT/testflight-internal-groups.json"
+# Apple's top-level filtered betaGroups endpoint can return 500 while the
+# app-scoped endpoint works. Fetch every page there, then select internal groups.
+asc testflight groups list --app "$APP_ID" --paginate --output json > "$RELEASE_ROOT/testflight-app-groups.json"
+validate internal "$RELEASE_ROOT/testflight-app-groups.json" "$RELEASE_ROOT/testflight-internal-groups.json"
 
 SUBMIT_ARGS=()
 if asc builds beta-app-review-submission view --build-id "$BUILD_ID" --output json \

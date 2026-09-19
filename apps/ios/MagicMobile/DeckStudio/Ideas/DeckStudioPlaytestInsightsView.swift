@@ -11,18 +11,18 @@ struct DeckStudioPlaytestInsightsView: View {
     var body: some View {
         DeckStudioPanel {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Playtest Insights").font(.system(.title2, design: .serif).weight(.semibold))
-                Toggle("Record local AI playtest summaries", isOn: Binding(get: { enabled }, set: { value in
+                Text("Game history").font(.title2.weight(.semibold))
+                Toggle("Save AI game summaries", isOn: Binding(get: { enabled }, set: { value in
                     enabled = value
                     Task { await DeckStudioPlaytestStore.shared.setEnabled(value) }
                 }))
-                Text("Private, on-device summaries of new games against AI. Your hand and opponents' decks are never recorded.")
+                Text("Stored on this device. Your hand and opponents’ decks are not recorded.")
                     .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                 if let error { Text(error).font(.caption).foregroundStyle(DeckStudioPalette.warning) }
                 if signature == nil { Text("Resolve the playing deck's card names to match its history.").font(.caption) }
                 else if matching.isEmpty {
-                    Text("No recorded games for these playing cards yet.").font(.subheadline)
-                    Text("Enable recording, validate your deck, then start a game against AI.").font(.caption)
+                    Text("No games recorded for this deck yet.").font(.subheadline)
+                    Text("Turn on summaries before starting your next game.").font(.caption)
                 } else {
                     let completed = matching.filter { $0.end == .completed }
                     Text("\(matching.count) recorded sessions · \(completed.count) completed").font(.subheadline.weight(.semibold))
@@ -50,7 +50,7 @@ struct DeckStudioPlaytestInsightsView: View {
                     Spacer()
                     Button("Clear all history", role: .destructive) { clearConfirmation = true }.frame(minHeight: 44)
                 }
-                Text("Up to 100 recent sessions are kept. Drafts, decks and native gameplay are never changed by summary recording.")
+                Text("Keeps the 100 most recent sessions.")
                     .font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk)
             }
         }

@@ -69,7 +69,7 @@ def inspect_settings(rows):
     require(settings.get('CODE_SIGNING_ALLOWED') != 'NO', 'Signing is disabled for the release')
     require(shlex.split(settings.get('ARCHS', '')) == ['arm64'], 'Release must target ARM64 iPhone')
     version, build = settings.get('MARKETING_VERSION', ''), settings.get('CURRENT_PROJECT_VERSION', '')
-    require(bool(re.fullmatch(r'\d+(?:\.\d+){0,2}', version)) and bool(re.fullmatch(r'\d{10}', build)),
+    require(bool(re.fullmatch(r'\d+(?:\.\d+){0,2}', version)) and bool(re.fullmatch(r'[1-9]\d{0,9}', build)),
             'Missing or unresolved release version/build')
     return {'appVersion': version, 'appBuild': build, 'bundleID': BUNDLE, 'teamID': TEAM}
 
@@ -77,10 +77,19 @@ def inspect_settings(rows):
 def prepared_build(repo, identity):
     ledger = read_json(repo / 'release/testflight/build-ledger.json')
     build = identity['appBuild']
-    require(ledger.get('bundleId') == BUNDLE and ledger.get('lastPreparedBuild') == build,
+    version = identity['appVersion']
+    # Compatibility only for historical ten-digit ledgers predating version ownership.
+    # Short/sequential trains must explicitly identify both the ledger and preparation.
+    legacy = bool(re.fullmatch(r'[1-9]\d{9}', build)) and 'versionSequential' not in ledger
+    require(ledger.get('bundleId') == BUNDLE and ledger.get('lastPreparedBuild') == build
+            and (ledger.get('marketingVersion') == version or (legacy and 'marketingVersion' not in ledger))
+            and (ledger.get('lastPreparedMarketingVersion') == version or (legacy and 'lastPreparedMarketingVersion' not in ledger))
+            and ('versionSequential' not in ledger or ledger['versionSequential'].get('marketingVersion') == version),
             'Prepare and commit the TestFlight build number before releasing')
-    used = {str(row.get('build')) for row in ledger.get('uploads', [])}
-    require(build != ledger.get('lastUploadedBuild') and build not in used,
+    used = {str(row.get('build')) for row in ledger.get('uploads', [])
+            if row.get('marketingVersion') in (None, version)}
+    last_uploaded = ledger.get('lastUploadedBuild') if ledger.get('lastUploadedMarketingVersion', version) == version else None
+    require(build != last_uploaded and build not in used,
             'This build number is already recorded as uploaded')
     info = plistlib.loads((repo / 'apps/ios/MagicMobile/Info.plist').read_bytes())
     for key, setting, expected in (('CFBundleVersion', 'CURRENT_PROJECT_VERSION', build),

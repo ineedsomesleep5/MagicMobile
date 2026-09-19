@@ -10,15 +10,20 @@ struct OnDeviceRootView: View {
     @AppStorage("magicmobile.playerDisplayName") private var playerDisplayName = ""
     @AppStorage(PortraitModePreference.key) private var portraitModeEnabled = true
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicType
+    @Namespace private var commanderTransition
     @StateObject private var session: OnDeviceSession
     @StateObject private var setup: OnDeviceSetupModel
     @StateObject private var library = DeckLibraryStore()
-    @StateObject private var diagnostics = OnDeviceDiagnostics()
+    @StateObject private var diagnostics: OnDeviceDiagnostics
     @State private var selectedCard: ZoneCard?
     @State private var inspectedCard: ZoneCard?
     @State private var zone: InspectedZone?
     @AppStorage(OnDeviceSetupPreferences.deckKey) private var selectedDeckID = OnDeviceSetupPreferences.defaultDeckID
     @AppStorage(OnDeviceSetupPreferences.aiDeckKey) private var aiPreconID = OnDeviceSetupPreferences.defaultAIDeckID
+    @AppStorage(OnDeviceSetupPreferences.aiDeck2Key) private var aiPrecon2ID = ""
+    @AppStorage(OnDeviceSetupPreferences.aiDeck3Key) private var aiPrecon3ID = ""
     @AppStorage(OnDeviceSetupPreferences.aiCountKey) private var opponentCount = 1
     @AppStorage(OnDeviceSetupPreferences.aiSkillKey) private var aiSkill = 2
     @AppStorage(OnDeviceSetupPreferences.humanCountKey) private var playerCount = 2
@@ -26,19 +31,43 @@ struct OnDeviceRootView: View {
     @State private var showSetup = false
     @State private var showAppearance = false
     @State private var showUpdates = false
+    @State private var showDownloads = false
     @State private var showImport = false
     @State private var confirmLeave = false
     @State private var showDiagnostics = false
     @State private var confirmDeleteReport = false
+    @State private var bannerError: String?
 
     init() {
         let session = OnDeviceSession()
         _session = StateObject(wrappedValue: session)
         _setup = StateObject(wrappedValue: OnDeviceSetupModel(session: session))
+        var diagnosticDirectory: URL?
+        #if DEBUG
+        if OnDeviceAppConfiguration.entryPoint == .setupPreview,
+           let value = ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_PREFERENCES"],
+           let id = UUID(uuidString: value) {
+            diagnosticDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("Diagnostics-UITests-\(id.uuidString)")
+        }
+        #endif
+        _diagnostics = StateObject(wrappedValue: OnDeviceDiagnostics(directory: diagnosticDirectory))
     }
 
     private var activeGame: Bool { session.matchID != nil }
     private var aiPrecon: PreconDeck? { PreconCatalog.all.first { $0.id == aiPreconID } }
+    private var aiPrecons: [PreconDeck] {
+        [aiPreconID, aiPrecon2ID, aiPrecon3ID].prefix(min(3, max(1, opponentCount)))
+            .compactMap { id in PreconCatalog.all.first { $0.id == id } }
+    }
+    private func aiDeckSelection(_ index: Int) -> Binding<String> {
+        Binding(get: { [aiPreconID, aiPrecon2ID, aiPrecon3ID][index] }, set: { id in
+            switch index {
+            case 0: aiPreconID = id
+            case 1: aiPrecon2ID = id
+            default: aiPrecon3ID = id
+            }
+        })
+    }
     private var selectedDeck: DeckList? {
         if let precon = PreconCatalog.all.first(where: { "precon:\($0.id)" == selectedDeckID }) {
             return precon.deckList
@@ -47,7 +76,7 @@ struct OnDeviceRootView: View {
     }
     private var validName: Bool { (try? OnDeviceSetupModel.playerName(playerDisplayName)) != nil }
     private var mayStart: Bool {
-        validName && selectedDeck != nil && (playWithFriends || aiPrecon != nil) && setup.identity != nil && !setup.isBusy && !setup.needsLeave
+        validName && selectedDeck != nil && (playWithFriends || aiPrecons.count == opponentCount) && setup.identity != nil && !setup.isBusy && !setup.needsLeave
     }
 
     private var turnControl: NativeTurnControl {
@@ -65,21 +94,29 @@ struct OnDeviceRootView: View {
             if activeGame {
                 game
             } else {
-                MenuBackgroundSurface(portraitModeEnabled: portraitModeEnabled).ignoresSafeArea()
+                CommanderPresentation.canvas.ignoresSafeArea()
                 if showSetup || setup.needsLeave {
                     setupContent
                 } else {
                     TavernMainMenu(deckName: selectedDeck?.name ?? "Choose a deck", playerName: playerDisplayName,
                                    play: { showSetup = true }, decks: { showImport = true },
                                    settings: { showAppearance = true }, news: { showUpdates = true },
-                                   commanderName: selectedDeck?.commander?.cardName)
+                                   commanderName: selectedDeck?.commander?.cardName,
+                                   commanderNamespace: reduceMotion ? nil : commanderTransition,
+                                   downloads: { showDownloads = true })
                 }
             }
         }
         .preferredColorScheme(.dark)
+        .animation(reduceMotion ? .easeOut(duration: 0.12) : .easeOut(duration: 0.26), value: showSetup)
+        .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: activeGame)
         .sheet(isPresented: $showAppearance) { AppearanceSettingsView(portraitModeEnabled: $portraitModeEnabled) }
         .sheet(isPresented: $showUpdates) { NativeUpdateNewsView(upstreamCommit: setup.identity?.upstreamCommit) }
-        .overlay(alignment: .top) { recoveryBanner }
+        .sheet(isPresented: $showDownloads) {
+            NativeDownloadsView(decks: downloadDecks, selectedDeckID: selectedDeckID,
+                                engineReady: setup.identity != nil)
+        }
+        .overlay(alignment: .bottom) { recoveryBanner }
         .environment(\.nativeTurnControl, turnControl)
         .fullScreenCover(isPresented: $showImport) {
             DeckStudioRootView(library: library, selectedDeckID: $selectedDeckID, preparePlay: {
@@ -106,10 +143,17 @@ struct OnDeviceRootView: View {
         restoreSetupPreferences()
         setup.prepare()
         setup.setSceneActive(scenePhase == .active)
+        #if DEBUG
+        if OnDeviceAppConfiguration.entryPoint == .setupPreview,
+           ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_ENGINE_ERROR"] == "1" {
+            try? diagnostics.save(engineReport: "UI TEST FIXTURE: Sample engine incident", status: "Presentation test")
+            setup.errorMessage = "UI test fixture: engine incident."
+        }
+        #endif
     }
 
     private var lifecycleContent: some View {
-        presentedContent.task { await preparePresentation() }
+        presentedContent.holdInspectionScope().task { await preparePresentation() }
         .onChange(of: library.decks.map(\.id)) { _, _ in
             if !activeGame { restoreSetupPreferences() }
         }
@@ -122,6 +166,12 @@ struct OnDeviceRootView: View {
         }
         .onChange(of: setup.errorMessage) { _, message in
             if message != nil { Task { await setup.captureDiagnostics(in: diagnostics) } }
+        }
+        .task(id: setup.errorMessage ?? session.errorMessage) {
+            bannerError = setup.errorMessage ?? session.errorMessage
+            guard bannerError != nil else { return }
+            do { try await Task.sleep(for: .seconds(8)) } catch { return }
+            bannerError = nil
         }
     }
 
@@ -188,12 +238,19 @@ struct OnDeviceRootView: View {
                 .position(x: rect.midX, y: rect.midY)
                 if let inspectedCard {
                     Color.black.opacity(0.01).ignoresSafeArea().onTapGesture { self.inspectedCard = nil }
+                        .inspectionTouchPassthrough()
                     CardInspector(card: inspectedCard)
+                        .inspectionTouchPassthrough()
                         .frame(width: rect.width, height: rect.height)
                         .position(x: rect.midX, y: rect.midY)
                 }
             }
         }
+    }
+
+    private var downloadDecks: [NativeDownloadDeck] {
+        PreconCatalog.all.map { NativeDownloadDeck(id: "precon:\($0.id)", deck: $0.deckList) }
+        + library.decks.map { NativeDownloadDeck(id: "local:\($0.id)", deck: $0.deckList) }
     }
 
     private var setupContent: some View {
@@ -206,13 +263,20 @@ struct OnDeviceRootView: View {
                     Button { showAppearance = true } label: { Image(systemName: "gearshape.fill") }
                         .accessibilityLabel("Settings")
                 }
-                Text("Gather your table").font(.largeTitle.bold()).foregroundStyle(MagicPalette.parchment)
+                Text("Your next game.").font(.largeTitle.weight(.bold)).foregroundStyle(CommanderPresentation.ink)
+                Text("Choose your deck. Take your seat.")
+                    .font(.subheadline).foregroundStyle(CommanderPresentation.secondary)
+                setupDecks
                 VStack(alignment: .leading, spacing: 12) {
+                    Text("YOUR SEAT").font(.caption.weight(.bold)).tracking(1.4)
+                        .foregroundStyle(CommanderPresentation.secondary)
                     TextField("Player name", text: $playerDisplayName)
                         .textContentType(.nickname).autocorrectionDisabled()
-                        .textFieldStyle(GameTextFieldStyle()).accessibilityIdentifier("ondevice.playerName")
+                        .padding(12).background(CommanderPresentation.canvas, in: RoundedRectangle(cornerRadius: 10))
+                        .accessibilityIdentifier("ondevice.playerName")
                     Text("Choose a name with 1–24 characters.").font(.caption).foregroundStyle(.secondary)
-                    PortraitModeToggle(isOn: $portraitModeEnabled)
+                    Toggle("Auto-Rotate", isOn: $portraitModeEnabled)
+                        .font(.subheadline).tint(CommanderPresentation.accent)
                     Picker("Your deck", selection: $selectedDeckID) {
                         Section("Included precons") {
                             ForEach(PreconCatalog.all) { Text($0.name).tag("precon:\($0.id)") }
@@ -222,9 +286,9 @@ struct OnDeviceRootView: View {
                         }
                     }
                     Button { showImport = true } label: { Label("Browse, import or edit decks", systemImage: "rectangle.stack.badge.plus") }
-                        .buttonStyle(MagicSecondaryButtonStyle(fillsWidth: true, compact: true))
+                        .buttonStyle(CommanderActionStyle(primary: false))
                 }
-                .magicPanel(.leather, prominence: .elevated, cornerRadius: 14, padding: 16)
+                .commanderPanel()
                 .disabled(setup.isBusy || setup.needsLeave)
 
                 VStack(alignment: .leading, spacing: 12) {
@@ -241,54 +305,108 @@ struct OnDeviceRootView: View {
                         Text(setup.multiplayer?.status ?? setup.status).font(.callout)
                         if setup.multiplayer?.isAuthenticated != true {
                             Button("Sign in to Game Center") { setup.multiplayer?.authenticate() }
-                                .buttonStyle(MagicSecondaryButtonStyle(fillsWidth: true, compact: true))
+                                .buttonStyle(CommanderActionStyle(primary: false))
                                 .disabled(setup.multiplayer == nil || setup.isBusy || setup.needsLeave)
                         }
                         Button("Find players") { startMatchmaking() }
-                            .buttonStyle(MagicPrimaryButtonStyle())
+                            .buttonStyle(CommanderActionStyle())
                             .disabled(!mayStart || setup.multiplayer?.isAuthenticated != true)
                     } else {
                         Stepper("AI opponents: \(opponentCount)", value: $opponentCount, in: 1...3)
                             .disabled(setup.isBusy || setup.needsLeave)
-                        Picker("AI deck", selection: $aiPreconID) {
-                            ForEach(PreconCatalog.all) { Text($0.name).tag($0.id) }
-                        }.disabled(setup.isBusy || setup.needsLeave)
+                            .accessibilityIdentifier("ondevice.aiCount")
+                        ForEach(0..<min(3, max(1, opponentCount)), id: \.self) { index in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("AI \(index + 1) deck").font(.caption).foregroundStyle(CommanderPresentation.secondary)
+                                Picker("AI \(index + 1) deck", selection: aiDeckSelection(index)) {
+                                    ForEach(PreconCatalog.all) { Text($0.name).tag($0.id) }
+                                }
+                                .accessibilityIdentifier("ondevice.aiDeck.\(index + 1)")
+                                .disabled(setup.isBusy || setup.needsLeave)
+                            }
+                        }
                         Stepper("AI skill: \(aiSkill)", value: $aiSkill, in: 1...10)
                             .disabled(setup.isBusy || setup.needsLeave)
                             .accessibilityIdentifier("onDevice.aiSkill")
                         Text("Higher skill levels allow more thinking and may slow turns.").font(.caption).foregroundStyle(.secondary)
                         Button("Start game") { startAI() }
-                            .buttonStyle(MagicPrimaryButtonStyle()).disabled(!mayStart)
+                            .buttonStyle(CommanderActionStyle()).disabled(!mayStart)
                     }
                 }
-                .magicPanel(.iron, prominence: .standard, cornerRadius: 14, padding: 16)
+                .commanderPanel()
                 Text(setup.status).font(.caption).foregroundStyle(.secondary)
                 if setup.needsLeave {
                     Button("Leave / retry closing", role: .destructive) { confirmLeave = true }
-                        .buttonStyle(MagicSecondaryButtonStyle(fillsWidth: true, compact: true))
+                        .buttonStyle(CommanderActionStyle(primary: false))
                         .disabled(setup.isBusy || session.isWorking)
                 }
                 if setup.identity == nil {
                     Button("Retry loading local catalogue") { setup.prepare() }
-                        .buttonStyle(MagicSecondaryButtonStyle(fillsWidth: true, compact: true))
+                        .buttonStyle(CommanderActionStyle(primary: false))
                 }
-                Button("Engine error report") { showDiagnostics = true }
-                    .accessibilityIdentifier("ondevice.diagnostics")
+                if diagnostics.report != nil {
+                    Button("Engine error report") { showDiagnostics = true }
+                        .accessibilityIdentifier("ondevice.diagnostics")
+                }
             }
-            .foregroundStyle(MagicPalette.parchment)
+            .foregroundStyle(CommanderPresentation.ink)
+            .tint(CommanderPresentation.accent)
             .frame(maxWidth: 640).padding(16).frame(maxWidth: .infinity)
         }
         .scrollDismissesKeyboard(.interactively)
     }
 
+    private var setupDecks: some View {
+        let layout = dynamicType.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 20))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 24))
+        return layout {
+            VStack(alignment: .leading, spacing: 10) {
+                CommanderDeckPortrait(name: selectedDeck?.commander?.cardName,
+                                       namespace: reduceMotion ? nil : commanderTransition)
+                    .frame(width: 112, height: 156)
+                Text("Your deck").font(.caption).foregroundStyle(CommanderPresentation.secondary)
+                Text(selectedDeck?.name ?? "Choose a deck").font(.headline).fixedSize(horizontal: false, vertical: true)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 10) {
+                if playWithFriends {
+                    Image(systemName: "person.2.fill")
+                        .font(.largeTitle).foregroundStyle(CommanderPresentation.secondary)
+                        .frame(width: 112, height: 156)
+                        .background(CommanderPresentation.surface, in: RoundedRectangle(cornerRadius: 12))
+                    Text("Game Center").font(.caption).foregroundStyle(CommanderPresentation.secondary)
+                    Text("\(playerCount) seats").font(.headline)
+                } else {
+                    CommanderDeckPortrait(name: aiPrecon?.deckList.commander?.cardName)
+                        .frame(width: 112, height: 156)
+                    Text("\(opponentCount) AI \(opponentCount == 1 ? "opponent" : "opponents")")
+                        .font(.caption).foregroundStyle(CommanderPresentation.secondary)
+                    Text(opponentCount == 1 ? (aiPrecon?.name ?? "Choose opponents") : "Choose each deck below")
+                        .font(.headline).fixedSize(horizontal: false, vertical: true)
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 12)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Selected decks")
+    }
+
     @ViewBuilder
     private var recoveryBanner: some View {
-        if setup.isBusy || setup.errorMessage != nil || session.errorMessage != nil ||
+        if setup.isBusy || bannerError != nil ||
             (activeGame && (session.snapshot == nil || !setup.canUseSession)) {
             VStack(alignment: .leading, spacing: 8) {
                 if setup.isBusy { ProgressView(setup.status) }
-                if let message = setup.errorMessage ?? session.errorMessage {
-                    Text(message).font(.caption.weight(.semibold))
+                if let message = bannerError {
+                    HStack(alignment: .top) {
+                        Text(message).font(.caption.weight(.semibold)).lineLimit(3)
+                        Spacer(minLength: 8)
+                        Button { bannerError = nil } label: {
+                            Image(systemName: "xmark").frame(width: 44, height: 44)
+                        }
+                        .accessibilityLabel("Dismiss notification")
+                        .accessibilityIdentifier("ondevice.dismissNotification")
+                    }
                 } else if activeGame && !setup.canUseSession {
                     Text(setup.liveStatus).font(.caption.weight(.semibold))
                 } else if activeGame && session.snapshot == nil {
@@ -307,7 +425,7 @@ struct OnDeviceRootView: View {
                     }
                     .disabled(setup.isBusy || session.isWorking)
                 }
-                if setup.errorMessage != nil || session.errorMessage != nil {
+                if bannerError != nil && diagnostics.report != nil {
                     Button("Review engine error report") { showDiagnostics = true }
                         .accessibilityIdentifier("ondevice.failureReport")
                 }
@@ -315,16 +433,18 @@ struct OnDeviceRootView: View {
             .foregroundStyle(MagicPalette.parchment)
             .magicPanel(.iron, prominence: .elevated, cornerRadius: 12, padding: 12)
             .padding(.horizontal, 12)
+            .padding(.bottom, 8)
         }
     }
 
     private func startAI() {
         diagnostics.beginAttempt()
-        guard let deck = selectedDeck, let aiPrecon else { return }
+        guard let deck = selectedDeck, aiPrecons.count == opponentCount else { return }
+        let opponentDecks = aiPrecons.map(\.deckList)
         Task {
             do { playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName) }
             catch { setup.errorMessage = error.localizedDescription; return }
-            await setup.startAI(name: playerDisplayName, deck: deck, aiDeck: aiPrecon.deckList, opponents: opponentCount, aiSkill: aiSkill)
+            await setup.startAI(name: playerDisplayName, deck: deck, aiDecks: opponentDecks, aiSkill: aiSkill)
         }
     }
 
@@ -382,6 +502,8 @@ struct OnDeviceRootView: View {
             aiDeckIDs: PreconCatalog.all.map(\.id)
         )
         selectedDeckID = selected.deckID; aiPreconID = selected.aiDeckID
+        let aiIDs = OnDeviceSetupPreferences.normalizedAIDeckIDs([aiPreconID, aiPrecon2ID, aiPrecon3ID], available: PreconCatalog.all.map(\.id))
+        aiPrecon2ID = aiIDs[1]; aiPrecon3ID = aiIDs[2]
         opponentCount = selected.aiOpponents; playerCount = selected.humanPlayers
         aiSkill = selected.aiSkill
     }
@@ -462,15 +584,16 @@ private final class OnDeviceSetupModel: ObservableObject {
         } catch { errorMessage = error.localizedDescription; status = "Local setup unavailable" }
     }
 
-    func startAI(name: String, deck: DeckList, aiDeck: DeckList, opponents: Int, aiSkill: Int = 2) async {
+    func startAI(name: String, deck: DeckList, aiDecks: [DeckList], aiSkill: Int = 2) async {
         guard !isBusy, !needsLeave, let resolver, let identity else { return }
         isBusy = true; errorMessage = nil; feedback = nil; status = "Starting XMage"
         defer { isBusy = false }
         do {
             let name = try Self.playerName(name)
-            let humanDeck = try resolver.resolve(deck), opponentDeck = try resolver.resolve(aiDeck)
+            let humanDeck = try resolver.resolve(deck)
+            let opponentDecks = try aiDecks.map { try resolver.resolve($0) }
             let seats = try OnDeviceAppConfiguration.aiGameSeats(name: name, humanDeck: humanDeck,
-                aiDeck: opponentDeck, opponents: opponents, aiSkill: aiSkill)
+                aiDecks: opponentDecks, aiSkill: aiSkill)
             let client = try await runtime.makeClient(identity: identity)
             aiClient = client
             let created = try await runtime.create(client: client, configuration: .object(["seats": .array(seats)]))

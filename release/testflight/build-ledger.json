@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "bundleId": "com.calebfeliciano.magicmobile",
-  "marketingVersion": "0.1.0",
+  "marketingVersion": "0.1.1",
   "nextBuildFloor": "5000000000",
-  "lastPreparedBuild": "5000000000",
+  "lastPreparedBuild": "2",
   "lastInstalledBuild": "2026091501",
-  "lastUploadedBuild": "5000000000",
+  "lastUploadedBuild": "2",
   "uploads": [
     {
       "build": "2026062701",
@@ -161,7 +161,41 @@
       "uploadedAt": "2026-09-17T19:08:30.463Z",
       "deliveryUuid": "9e157783-012d-4a41-8cda-c2ca28c829e9",
       "ipaPath": "build_output/testflight/deck-studio-5000000000/native-release.kDDrF8/export/MagicMobile.ipa"
+    },
+    {
+      "build": "5000000001",
+      "marketingVersion": "0.1.0",
+      "uploadedAt": "2026-09-19T20:57:08.335Z",
+      "deliveryUuid": "ece28b8e-c394-411e-b10f-b13a6b0598a5",
+      "ipaPath": "build_output/testflight/menu-redesign-5000000001/native-release.RvGNvp/export/MagicMobile.ipa"
+    },
+    {
+      "build": "5000000002",
+      "marketingVersion": "0.3.0",
+      "uploadedAt": "2026-09-19T21:45:33.523Z",
+      "deliveryUuid": "86d52ad6-a6f8-44f6-89c0-4489d11b1893",
+      "ipaPath": "build_output/testflight/parity-0.3.0-5000000002/native-release.JcxJGv/export/MagicMobile.ipa"
+    },
+    {
+      "build": "1",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-09-19T22:10:42.605Z",
+      "deliveryUuid": "f0ebba45-30e3-45a2-a8f5-2c89d546ef80",
+      "ipaPath": "build_output/testflight/parity-0.1.1-build1/native-release.b4BUTu/export/MagicMobile.ipa"
+    },
+    {
+      "build": "2",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-09-19T23:13:47.097Z",
+      "deliveryUuid": "da469fda-b337-41ff-91fe-63d08fc8eaae",
+      "ipaPath": "build_output/testflight/parity-0.1.1-build2/native-release.ax6gAz/export/MagicMobile.ipa"
     }
   ],
-  "lastPreparedAt": "2026-09-17T13:59:31.899Z"
+  "lastPreparedAt": "2026-09-19T22:44:14.441Z",
+  "lastPreparedMarketingVersion": "0.1.1",
+  "lastUploadedMarketingVersion": "0.1.1",
+  "lastInstalledMarketingVersion": "0.1.0",
+  "versionSequential": {
+    "marketingVersion": "0.1.1"
+  }
 }
