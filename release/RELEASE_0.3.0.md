@@ -25,7 +25,15 @@ Screens: portrait and landscape menu/setup, long-name deck row, combo ordering, 
 
 ## Release records
 
-Pending verification and publication. iOS prepared: 0.3.0 (5000000002). Android artifact, Apple delivery/availability, website deployment and main merge will be recorded after they are verified.
+iOS 0.3.0 (5000000002) uploaded successfully September 19, 2026, 16:45 CDT.
+
+- Source: `83c45d32914994727f6885aeb08c5003d5f26617`.
+- IPA: `build_output/testflight/parity-0.3.0-5000000002/native-release.JcxJGv/export/MagicMobile.ipa`, 181,749,383 bytes.
+- Apple delivery UUID: `86d52ad6-a6f8-44f6-89c0-4489d11b1893`.
+- Native engine: reused verified artifact `10514723423` from source `f2ffad10e26a25885902e963a13810d8786ed9bc`; no engine rebuild.
+- Archive/export, signed product guards and Apple validation/upload passed. Processing, distribution and external review are still pending; this is not physical-phone acceptance.
+
+Android artifact, Apple availability, website deployment and main merge will be recorded after verification.
 
 ## Current verification
 
