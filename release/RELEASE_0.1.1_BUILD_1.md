@@ -42,7 +42,9 @@ The intermediate 0.1.0 (5000000003) preparation was never uploaded. Final user-r
 - Delivery UUID: `f0ebba45-30e3-45a2-a8f5-2c89d546ef80`.
 - Apple processing: VALID. Assigned to the existing Internal and External groups; Beta App Review is WAITING_FOR_REVIEW. Public access to this build remains pending Apple's approval; this is not physical-phone acceptance.
 
-Android artifact, Apple availability, website deployment and main merge will be recorded after verification.
+Android signed artifact: `MagicMobile-Android-0.1.1-build1.apk`, 191,881,611 bytes, SHA-256 `fbb56f99dcb01a2ffe691e6efad850f3013a7081e16509057b0c2f8da6e13429`. Source `65827660381288d1d5f3b99cca4600357cb9711f` has the same Android tree as build-start commit `246f4be`. Signature matches the previous release; versionCode 2026091902 permits an in-place update. All eight exact signed-APK device tests passed on Android 15 ARM64, including ten native lifecycle cycles and a completed 17-turn / 82-response Commander game. Physical-phone acceptance remains pending. Acceptance report: `build_output/android-acceptance/instrumentation-APvSQc`.
+
+Public release receipts are attached to the GitHub release `android-v0.1.1-build.1`. Website production deployment and main integration must be verified independently; the website labels the new iOS build as awaiting Apple review.
 
 ## Current verification
 
