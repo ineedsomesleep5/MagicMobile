@@ -173,8 +173,9 @@ struct DeckStudioRootView: View {
         return VStack(alignment: .leading, spacing: 0) {
             Button { route = .deck(record, included) } label: {
                 VStack(alignment: .leading, spacing: 10) {
-                    DeckStudioArtwork(name: record.commander?.cardName ?? "", hero: true)
-                        .frame(height: grid ? 164 : 130).clipped()
+                    DeckStudioTileCover(height: grid ? 164 : 130) {
+                        DeckStudioArtwork(name: record.commander?.cardName ?? "", hero: true)
+                    }
                         .overlay(alignment: .topLeading) {
                             if id == selectedDeckID {
                                 Label("Selected", systemImage: "checkmark.circle.fill")
@@ -193,17 +194,20 @@ struct DeckStudioRootView: View {
                         Text("\(DeckStudioDraftPresentation.gameCount(draft)) cards · \(included ? "Included" : "Local draft")")
                             .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                     }.padding(.horizontal, 14).padding(.bottom, 10)
-                }
+                }.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             }.buttonStyle(DeckStudioArtworkButtonStyle()).accessibilityIdentifier("deckStudio.deck.\(id)")
-            HStack {
-                if !included { Text(record.updatedAt, style: .date).font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk) }
-                else { Text("Make it your own").font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk) }
-                Spacer()
+            HStack(spacing: 0) {
+                Group {
+                    if !included { Text(record.updatedAt, style: .date) }
+                    else { Text("Make it your own") }
+                }.font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk)
+                    .lineLimit(2).frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 Button { toggleFavorite(id) } label: { Image(systemName: favorites.contains(id) ? "star.fill" : "star").frame(width: 44, height: 44) }
                     .foregroundStyle(DeckStudioPalette.ink).accessibilityLabel(favorites.contains(id) ? "Unfavorite \(record.name)" : "Favorite \(record.name)")
                 Menu { deckActions(record, included: included) } label: { Image(systemName: "ellipsis.circle").frame(width: 44, height: 44) }.accessibilityLabel("Options for \(record.name)")
             }.padding(.horizontal, 14)
         }
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         .background(DeckStudioPalette.surface, in: RoundedRectangle(cornerRadius: 20))
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .shadow(color: DeckStudioPalette.ink.opacity(0.04), radius: 12, y: 4)
@@ -280,6 +284,17 @@ struct DeckStudioRootView: View {
             try Task.checkCancellation()
             metadata = loaded.0; resolver = loaded.1; loadError = nil
         } catch is CancellationError { } catch { loadError = error.localizedDescription }
+    }
+}
+
+/// The grid owns the width, not the intrinsic aspect ratio of the loaded illustration.
+struct DeckStudioTileCover<Artwork: View>: View {
+    let height: CGFloat
+    @ViewBuilder var artwork: () -> Artwork
+    var body: some View {
+        GeometryReader { geometry in
+            artwork().frame(width: geometry.size.width, height: geometry.size.height).clipped()
+        }.frame(height: height)
     }
 }
 

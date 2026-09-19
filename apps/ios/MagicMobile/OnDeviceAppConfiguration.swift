@@ -8,13 +8,14 @@ enum OnDeviceAppConfiguration {
     enum EntryPoint: Equatable { case embedded, setupPreview, referencePreview, engineMissing }
 
     static func aiGameSeats(name: String, humanDeck: MagicMobileOnDevice.JSONValue,
-                            aiDeck: MagicMobileOnDevice.JSONValue, opponents: Int,
+                            aiDecks: [MagicMobileOnDevice.JSONValue],
                             aiSkill: Int) throws -> [MagicMobileOnDevice.JSONValue] {
-        guard (1...3).contains(opponents) else { throw EngineError.invalidMessage("Choose 1–3 AI opponents.") }
+        guard (1...3).contains(aiDecks.count) else { throw EngineError.invalidMessage("Choose 1–3 AI opponents.") }
         guard (1...10).contains(aiSkill) else { throw EngineError.invalidMessage("Choose AI skill from 1–10.") }
         return [.object(["seatId": .string("player1"), "name": .string(name),
-                         "controller": .string("human"), "deck": humanDeck])] + (1...opponents).map { index in
-            .object(["seatId": .string("player\(index + 1)"), "name": .string("AI \(index)"),
+                         "controller": .string("human"), "deck": humanDeck])] + aiDecks.enumerated().map { offset, aiDeck in
+            let index = offset + 1
+            return .object(["seatId": .string("player\(index + 1)"), "name": .string("AI \(index)"),
                      "controller": .string("ai"), "deck": aiDeck, "aiSkill": .number(Double(aiSkill))])
         }
     }
@@ -45,12 +46,22 @@ enum OnDeviceAppConfiguration {
 enum OnDeviceSetupPreferences {
     static let deckKey = "magicmobile.ondevice.selectedDeckID"
     static let aiDeckKey = "magicmobile.ondevice.aiPreconID"
+    static let aiDeck2Key = "magicmobile.ondevice.aiPreconID2"
+    static let aiDeck3Key = "magicmobile.ondevice.aiPreconID3"
     static let aiCountKey = "magicmobile.ondevice.aiOpponentCount"
     static let aiSkillKey = "magicmobile.ondevice.aiSkill"
     static let humanCountKey = "magicmobile.ondevice.humanPlayerCount"
     static let friendsKey = "magicmobile.ondevice.playWithFriends"
     static let defaultDeckID = "precon:token-triumph"
     static let defaultAIDeckID = "grave-danger"
+
+    static func normalizedAIDeckIDs(_ saved: [String], available: [String]) -> [String] {
+        let fallback = available.contains(defaultAIDeckID) ? defaultAIDeckID : (available.first ?? "")
+        let first = saved.first.flatMap { available.contains($0) ? $0 : nil } ?? fallback
+        return (0..<3).map { index in
+            index < saved.count && available.contains(saved[index]) ? saved[index] : first
+        }
+    }
 
     struct Selection: Equatable {
         var deckID: String

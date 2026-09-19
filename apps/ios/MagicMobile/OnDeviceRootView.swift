@@ -22,6 +22,8 @@ struct OnDeviceRootView: View {
     @State private var zone: InspectedZone?
     @AppStorage(OnDeviceSetupPreferences.deckKey) private var selectedDeckID = OnDeviceSetupPreferences.defaultDeckID
     @AppStorage(OnDeviceSetupPreferences.aiDeckKey) private var aiPreconID = OnDeviceSetupPreferences.defaultAIDeckID
+    @AppStorage(OnDeviceSetupPreferences.aiDeck2Key) private var aiPrecon2ID = ""
+    @AppStorage(OnDeviceSetupPreferences.aiDeck3Key) private var aiPrecon3ID = ""
     @AppStorage(OnDeviceSetupPreferences.aiCountKey) private var opponentCount = 1
     @AppStorage(OnDeviceSetupPreferences.aiSkillKey) private var aiSkill = 2
     @AppStorage(OnDeviceSetupPreferences.humanCountKey) private var playerCount = 2
@@ -53,6 +55,19 @@ struct OnDeviceRootView: View {
 
     private var activeGame: Bool { session.matchID != nil }
     private var aiPrecon: PreconDeck? { PreconCatalog.all.first { $0.id == aiPreconID } }
+    private var aiPrecons: [PreconDeck] {
+        [aiPreconID, aiPrecon2ID, aiPrecon3ID].prefix(min(3, max(1, opponentCount)))
+            .compactMap { id in PreconCatalog.all.first { $0.id == id } }
+    }
+    private func aiDeckSelection(_ index: Int) -> Binding<String> {
+        Binding(get: { [aiPreconID, aiPrecon2ID, aiPrecon3ID][index] }, set: { id in
+            switch index {
+            case 0: aiPreconID = id
+            case 1: aiPrecon2ID = id
+            default: aiPrecon3ID = id
+            }
+        })
+    }
     private var selectedDeck: DeckList? {
         if let precon = PreconCatalog.all.first(where: { "precon:\($0.id)" == selectedDeckID }) {
             return precon.deckList
@@ -61,7 +76,7 @@ struct OnDeviceRootView: View {
     }
     private var validName: Bool { (try? OnDeviceSetupModel.playerName(playerDisplayName)) != nil }
     private var mayStart: Bool {
-        validName && selectedDeck != nil && (playWithFriends || aiPrecon != nil) && setup.identity != nil && !setup.isBusy && !setup.needsLeave
+        validName && selectedDeck != nil && (playWithFriends || aiPrecons.count == opponentCount) && setup.identity != nil && !setup.isBusy && !setup.needsLeave
     }
 
     private var turnControl: NativeTurnControl {
@@ -299,9 +314,14 @@ struct OnDeviceRootView: View {
                     } else {
                         Stepper("AI opponents: \(opponentCount)", value: $opponentCount, in: 1...3)
                             .disabled(setup.isBusy || setup.needsLeave)
-                        Picker("AI deck", selection: $aiPreconID) {
-                            ForEach(PreconCatalog.all) { Text($0.name).tag($0.id) }
-                        }.disabled(setup.isBusy || setup.needsLeave)
+                            .accessibilityIdentifier("ondevice.aiCount")
+                        ForEach(0..<min(3, max(1, opponentCount)), id: \.self) { index in
+                            Picker("AI \(index + 1) deck", selection: aiDeckSelection(index)) {
+                                ForEach(PreconCatalog.all) { Text($0.name).tag($0.id) }
+                            }
+                            .accessibilityIdentifier("ondevice.aiDeck.\(index + 1)")
+                            .disabled(setup.isBusy || setup.needsLeave)
+                        }
                         Stepper("AI skill: \(aiSkill)", value: $aiSkill, in: 1...10)
                             .disabled(setup.isBusy || setup.needsLeave)
                             .accessibilityIdentifier("onDevice.aiSkill")
@@ -358,7 +378,8 @@ struct OnDeviceRootView: View {
                         .frame(width: 112, height: 156)
                     Text("\(opponentCount) AI \(opponentCount == 1 ? "opponent" : "opponents")")
                         .font(.caption).foregroundStyle(CommanderPresentation.secondary)
-                    Text(aiPrecon?.name ?? "Choose opponents").font(.headline).fixedSize(horizontal: false, vertical: true)
+                    Text(opponentCount == 1 ? (aiPrecon?.name ?? "Choose opponents") : "Choose each deck below")
+                        .font(.headline).fixedSize(horizontal: false, vertical: true)
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -415,11 +436,12 @@ struct OnDeviceRootView: View {
 
     private func startAI() {
         diagnostics.beginAttempt()
-        guard let deck = selectedDeck, let aiPrecon else { return }
+        guard let deck = selectedDeck, aiPrecons.count == opponentCount else { return }
+        let opponentDecks = aiPrecons.map(\.deckList)
         Task {
             do { playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName) }
             catch { setup.errorMessage = error.localizedDescription; return }
-            await setup.startAI(name: playerDisplayName, deck: deck, aiDeck: aiPrecon.deckList, opponents: opponentCount, aiSkill: aiSkill)
+            await setup.startAI(name: playerDisplayName, deck: deck, aiDecks: opponentDecks, aiSkill: aiSkill)
         }
     }
 
@@ -477,6 +499,8 @@ struct OnDeviceRootView: View {
             aiDeckIDs: PreconCatalog.all.map(\.id)
         )
         selectedDeckID = selected.deckID; aiPreconID = selected.aiDeckID
+        let aiIDs = OnDeviceSetupPreferences.normalizedAIDeckIDs([aiPreconID, aiPrecon2ID, aiPrecon3ID], available: PreconCatalog.all.map(\.id))
+        aiPrecon2ID = aiIDs[1]; aiPrecon3ID = aiIDs[2]
         opponentCount = selected.aiOpponents; playerCount = selected.humanPlayers
         aiSkill = selected.aiSkill
     }
@@ -557,15 +581,16 @@ private final class OnDeviceSetupModel: ObservableObject {
         } catch { errorMessage = error.localizedDescription; status = "Local setup unavailable" }
     }
 
-    func startAI(name: String, deck: DeckList, aiDeck: DeckList, opponents: Int, aiSkill: Int = 2) async {
+    func startAI(name: String, deck: DeckList, aiDecks: [DeckList], aiSkill: Int = 2) async {
         guard !isBusy, !needsLeave, let resolver, let identity else { return }
         isBusy = true; errorMessage = nil; feedback = nil; status = "Starting XMage"
         defer { isBusy = false }
         do {
             let name = try Self.playerName(name)
-            let humanDeck = try resolver.resolve(deck), opponentDeck = try resolver.resolve(aiDeck)
+            let humanDeck = try resolver.resolve(deck)
+            let opponentDecks = try aiDecks.map { try resolver.resolve($0) }
             let seats = try OnDeviceAppConfiguration.aiGameSeats(name: name, humanDeck: humanDeck,
-                aiDeck: opponentDeck, opponents: opponents, aiSkill: aiSkill)
+                aiDecks: opponentDecks, aiSkill: aiSkill)
             let client = try await runtime.makeClient(identity: identity)
             aiClient = client
             let created = try await runtime.create(client: client, configuration: .object(["seats": .array(seats)]))

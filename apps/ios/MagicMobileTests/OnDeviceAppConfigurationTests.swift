@@ -81,7 +81,7 @@ final class OnDeviceAppConfigurationTests: XCTestCase {
         let aiDeck = MagicMobileOnDevice.JSONValue.object(["ai": .bool(true)])
         for skill in 1...10 {
             for opponents in 1...3 {
-                let seats = try OnDeviceAppConfiguration.aiGameSeats(name: "Player", humanDeck: humanDeck, aiDeck: aiDeck, opponents: opponents, aiSkill: skill)
+                let seats = try OnDeviceAppConfiguration.aiGameSeats(name: "Player", humanDeck: humanDeck, aiDecks: Array(repeating: aiDeck, count: opponents), aiSkill: skill)
                 XCTAssertEqual(seats.count, opponents + 1)
                 XCTAssertEqual(seats[0]["controller"], .string("human"))
                 XCTAssertEqual(seats[0]["deck"], humanDeck)
@@ -100,10 +100,30 @@ final class OnDeviceAppConfigurationTests: XCTestCase {
             }
         }
         for skill in [Int.min, 0, 11, Int.max] {
-            XCTAssertThrowsError(try OnDeviceAppConfiguration.aiGameSeats(name: "Player", humanDeck: humanDeck, aiDeck: aiDeck, opponents: 1, aiSkill: skill))
+            XCTAssertThrowsError(try OnDeviceAppConfiguration.aiGameSeats(name: "Player", humanDeck: humanDeck, aiDecks: [aiDeck], aiSkill: skill))
         }
         for opponents in [0, 4] {
-            XCTAssertThrowsError(try OnDeviceAppConfiguration.aiGameSeats(name: "Player", humanDeck: humanDeck, aiDeck: aiDeck, opponents: opponents, aiSkill: 2))
+            XCTAssertThrowsError(try OnDeviceAppConfiguration.aiGameSeats(name: "Player", humanDeck: humanDeck, aiDecks: Array(repeating: aiDeck, count: opponents), aiSkill: 2))
         }
+    }
+
+    func testEachOpponentGetsItsOwnSelectedDeckInSeatOrder() throws {
+        let human = MagicMobileOnDevice.JSONValue.object(["name": .string("Human")])
+        let decks = ["Grave Danger", "Token Triumph", "Draconic Destruction"].map {
+            MagicMobileOnDevice.JSONValue.object(["name": .string($0)])
+        }
+        for count in 1...3 {
+            let selected = Array(decks.prefix(count))
+            let seats = try OnDeviceAppConfiguration.aiGameSeats(name: "Player", humanDeck: human, aiDecks: selected, aiSkill: 2)
+            XCTAssertEqual(seats.dropFirst().compactMap { $0["deck"] }, selected)
+            XCTAssertEqual(seats[0]["deck"], human)
+        }
+    }
+
+    func testIndependentAISelectionsMigrateAndRecoverWithoutReplacingValidSeats() {
+        let available = ["grave-danger", "token-triumph", "draconic-destruction"]
+        XCTAssertEqual(OnDeviceSetupPreferences.normalizedAIDeckIDs(["token-triumph"], available: available), Array(repeating: "token-triumph", count: 3))
+        XCTAssertEqual(OnDeviceSetupPreferences.normalizedAIDeckIDs(["grave-danger", "removed", "draconic-destruction"], available: available), ["grave-danger", "grave-danger", "draconic-destruction"])
+        XCTAssertEqual(OnDeviceSetupPreferences.normalizedAIDeckIDs(available, available: available), available)
     }
 }
