@@ -36,6 +36,6 @@ iOS: https://testflight.apple.com/join/2mSHE8rZ
 - SHA-256: `de7b37ace592a534a4a235816284256390918ea10ae05c309051eedfe5a7104e`.
 - Delivery UUID: `da469fda-b337-41ff-91fe-63d08fc8eaae`.
 - Archive/export, signed/native guards, Apple validation and upload passed September 19, 2026 at 18:13 CDT.
-- Processing and distribution status are recorded separately in the release evidence directory.
+- Apple processing: VALID. Adding tester groups succeeded, but the review submission failed because build 1 in the same version is already awaiting review. Build 2 has not been submitted for public review. No build was expired or review cancelled. Distribution must be retried after the existing review completes; the website explicitly states this pending gate.
 
 Physical-phone acceptance remains pending. Android multiplayer remains excluded. Existing build 1 limitations on process-death game resume and foreground artwork downloads remain unchanged; matching release labels do not imply pixel-identical native UIs.

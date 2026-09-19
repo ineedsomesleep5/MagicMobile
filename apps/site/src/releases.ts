@@ -14,6 +14,6 @@ export const releases = {
     version: sharedAppVersion,
     build: sharedReleaseBuild,
     url: "https://testflight.apple.com/join/2mSHE8rZ",
-    status: "Build 2 is awaiting Apple review for public TestFlight access.",
+    status: "Build 2 is uploaded. Public access is pending; Apple must finish reviewing build 1 before build 2 can be submitted.",
   },
 };
