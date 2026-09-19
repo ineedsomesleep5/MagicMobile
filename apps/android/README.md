@@ -45,9 +45,16 @@ curve, printed mana symbols, roles with local overrides/targets, and explicitly 
 draw probabilities. Scryfall search, Commander Spellbook and EDHREC are optional,
 user-initiated services; they never replace the compiled card catalogue or rules engine.
 
+Deck JSON interchanges with the current iOS DeckList format, while earlier Android
+JSON remains readable. Plain-text export refuses a lossy conversion and offers JSON
+instead. Commander replacement is one undoable operation; main, commander, companion,
+sideboard and maybeboard destinations are available. Local search filters include
+type, mana range, set and commander color identity before applying the result limit.
+
 Gameplay uses the same protocol and per-viewer projections as iOS, including targeting,
 payments, combat, multiple allocations, revealed zones and bounded auto-pass policies.
 Playtest summaries are opt-in and exclude private hands and opponent decklists.
+The editor shows and exports only history matching its exact playing cards and counts.
 
 ## Building and testing
 
@@ -88,6 +95,19 @@ debug installation and its decks remain intact. Build with `-PwithNative=true` a
 `DeviceFeatureTest` and `NativeGameTest` through the Android instrumentation runner.
 The latter validates, closes/reopens the native runtime, and requires a natural
 completed Commander game against the actual packaged AI.
+
+After installing the native debug app and its matching instrumentation APK, run:
+
+```sh
+ANDROID_SERIAL=emulator-5554 \
+MM_ANDROID_TEST_PACKAGE=com.calebfeliciano.magicmobile.android.paritytest.test \
+bash scripts/android/test_device.sh
+```
+
+Choose an already connected device explicitly and retain `ANDROID_HOME`. The runner
+does not install, clear data, or boot an emulator. It rejects crashes even when adb
+returns exit status zero; an engine-less diagnostic APK cannot pass. Lifecycle
+acceptance includes ten open/close cycles in one process.
 
 ## Keeping iOS and Android together
 

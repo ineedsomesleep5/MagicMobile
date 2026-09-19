@@ -3,19 +3,24 @@ package io.magicmobile.android.core
 data class Choice(val label: String, val type: String, val value: Any?)
 object Decisions {
     private val entities=mapOf("amp" to "&","lt" to "<","gt" to ">","quot" to "\"","apos" to "'","nbsp" to " ","ndash" to "–","mdash" to "—","hellip" to "…","lsquo" to "‘","rsquo" to "’","times" to "×")
+    private val entityPattern=Regex("&(#(?:[xX][0-9a-fA-F]+|[0-9]+)|[A-Za-z]+);")
+    private val scriptPattern=Regex("(?is)<(script|style)[^>]*>.*?</\\1>")
+    private val breakPattern=Regex("(?i)<br\\s*/?>")
+    private val tagPattern=Regex("<[^>]*>")
+    private val whitespacePattern=Regex("\\s+")
     fun plain(text: String): String {
         var current=text
         while(true) {
-            val decoded=Regex("&(#(?:[xX][0-9a-fA-F]+|[0-9]+)|[A-Za-z]+);").replace(current) {match->
+            val decoded=entityPattern.replace(current) {match->
                 val token=match.groupValues[1]
                 entities[token] ?: if(token.startsWith("#"))runCatching {
                     val hex=token.startsWith("#x",true);val value=token.drop(if(hex)2 else 1).toInt(if(hex)16 else 10)
                     if(value<32 && value !in setOf(9,10,13) || value in 127..159 || value in 0x202A..0x202E || value in 0x2066..0x2069)"" else String(Character.toChars(value))
                 }.getOrDefault("") else match.value
             }
-            val next=decoded.replace(Regex("(?is)<(script|style)[^>]*>.*?</\\1>"),"")
-                .replace(Regex("(?i)<br\\s*/?>"),"\n").replace(Regex("<[^>]*>"),"")
-                .lines().map {it.trim().replace(Regex("\\s+")," ")}.filter(String::isNotEmpty).joinToString("\n")
+            val next=decoded.replace(scriptPattern,"")
+                .replace(breakPattern,"\n").replace(tagPattern,"")
+                .lines().map {it.trim().replace(whitespacePattern," ")}.filter(String::isNotEmpty).joinToString("\n")
             if(next==current)return next
             current=next
         }

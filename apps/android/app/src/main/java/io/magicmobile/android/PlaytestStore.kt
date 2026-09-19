@@ -37,6 +37,7 @@ class PlaytestStore(context: Context) {
         @Synchronized set(value){prefs.edit().putBoolean("enabled",value).apply()}
 
     @Synchronized fun all(): List<RecordedPlaytest> = read().sortedByDescending { it.startedAt }
+    @Synchronized fun forDeck(signature:DeckSignature):List<RecordedPlaytest> = all().filter {it.deck==signature}
 
     @Synchronized fun start(deck: Deck,matchId:String,aiOpponents:Int,aiSkill:Int,engine:Obj,catalogue:Catalogue,appBuild:String): RecordedPlaytest? {
         if(!enabled)return null
@@ -94,6 +95,8 @@ class PlaytestStore(context: Context) {
     @Synchronized fun clear(){file.delete()}
     /** Explicit user export only; exactly the same private summaries retained on device. */
     @Synchronized fun exportJson():String=io.magicmobile.core.Json.write(mapOf("schema" to 3,"games" to all().map{it.json()}))
+    /** A deck export never includes unidentifiable legacy rows or another playing list. */
+    @Synchronized fun exportJson(signature:DeckSignature):String=io.magicmobile.core.Json.write(mapOf("schema" to 3,"games" to forDeck(signature).map{it.json()}))
 
     private fun replace(value:RecordedPlaytest){
         val rows=(read().filterNot { it.id==value.id }+value.validated()).sortedByDescending { it.startedAt }.take(100)
@@ -103,7 +106,8 @@ class PlaytestStore(context: Context) {
     private fun read():List<RecordedPlaytest>{
         if(!file.baseFile.exists())return emptyList()
         val root=file.openRead().use { Wire.decode(readBounded(it,Wire.LIMIT)) };val schema=Wire.integer(root["schema"]);require(schema in 1..3)
-        return root.array("games").take(100).map { decode(Wire.objectValue(it),schema) }
+        val rows=root.array("games");require(rows.size<=100)
+        return rows.map { decode(Wire.objectValue(it),schema) }.also {games->require(games.map{it.id}.distinct().size==games.size)}
     }
     private fun RecordedPlaytest.json():Obj=mapOf("id" to id,"matchId" to matchId,"deckName" to deckName,"deck" to deck?.cards?.map {mapOf("name" to it.name,"quantity" to it.quantity,"section" to it.section.name)},"commanderNames" to commanderNames,"aiOpponents" to aiOpponents,"aiSkill" to aiSkill,"upstream" to upstream,"catalogueHash" to catalogueHash,"appBuild" to appBuild,"startedAt" to startedAt,"observedAt" to observedAt,"finishedAt" to finishedAt,"highestTurn" to highestTurn,"commanderCasts" to commanderCasts,"end" to end,"won" to won,"lastRevision" to lastRevision,"viewerPlayerId" to viewerPlayerId)
     private fun decode(o:Obj,schema:Long):RecordedPlaytest {

@@ -2,6 +2,19 @@ package io.magicmobile.android.core
 
 import java.io.InputStream
 
+/** Normalize only recognized playing-board aliases; custom sections are source data. */
+object DeckSections {
+    fun known(value:String):String?=when(value.trim().lowercase()) {
+        "main","mainboard","deck"->"deck"
+        "commander","commanders"->"commanders"
+        "companion","companions"->"companions"
+        "sideboard"->"sideboard"
+        "maybeboard","considering"->"maybeboard"
+        else->null
+    }
+    fun normalize(value:String):String=known(value)?:value
+}
+
 data class CardEntry(val name: String, val quantity: Int, val section: String = "deck")
 data class Deck(val name: String, val entries: List<CardEntry>) {
     init { require(name.isNotBlank() && name.length <= 300 && entries.size <= 2000)
@@ -19,7 +32,7 @@ data class Deck(val name: String, val entries: List<CardEntry>) {
     companion object {
         fun decode(value: Obj): Deck = Deck(Wire.string(value["name"]), value.array("entries").map {
             val row = Wire.objectValue(it); val count = Wire.integer(row["quantity"]); require(count in 1..2000)
-            CardEntry(Wire.string(row["name"]),count.toInt(),Wire.string(row["section"])) })
+            CardEntry(Wire.string(row["name"]),count.toInt(),DeckSections.normalize(Wire.string(row["section"]))) })
         fun parse(name: String, text: String): Deck {
             require(text.toByteArray().size <= 2 * 1024 * 1024)
             var section = "deck"; val entries = mutableListOf<CardEntry>()
@@ -53,6 +66,9 @@ data class CardInfo(
     val setCodes: List<String> = emptyList(),
 )
 class Catalogue(input: InputStream) {
+    companion object {
+        private val typePattern=Regex("^[A-Z][A-Z_]{0,63}$")
+    }
     val cards: List<CardInfo>
     private val byName: Map<String, CardInfo>
     private val aliases: Map<String, String>
@@ -78,7 +94,7 @@ class Catalogue(input: InputStream) {
                 require(it.isFinite() && it >= 0.0 && it < 1_000_000.0)
             }
             fun colors(key:String)=c[key]?.let {Wire.list(it).map(Wire::string).also {values->require(values.size<=5 && values.distinct().size==values.size && values.all(knownColors::contains))}}
-            val suppliedTypes=c["types"]?.let {Wire.list(it).map(Wire::string).also {values->require(values.isNotEmpty() && values.size<=32 && values.distinct().size==values.size && values.all {type->Regex("^[A-Z][A-Z_]{0,63}$").matches(type)})}}
+            val suppliedTypes=c["types"]?.let {Wire.list(it).map(Wire::string).also {values->require(values.isNotEmpty() && values.size<=32 && values.distinct().size==values.size && values.all(typePattern::matches))}}
             val types=suppliedTypes?.takeIf {it.all(knownTypes::contains)}
             val roles=c["roles"]?.let {Wire.list(it).map(Wire::string).also {values->require(values.size<=knownRoles.size && values.distinct().size==values.size && values.all(knownRoles::contains))}} ?: emptyList()
             val sets=c["setCodes"]?.let {Wire.list(it).map(Wire::string)} ?: emptyList();require(sets.distinct().size==sets.size)

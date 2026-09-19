@@ -88,5 +88,54 @@ fun main() {
     rejectsDeckStudio("malformed suffix") {DeckTextImport.preview("Malformed","1 Island [Oops")}
     val custom=Deck("Custom board",listOf(CardEntry("Island",1,"future board")))
     verifyDeckStudio(DeckTextImport.preview("Ignored",io.magicmobile.core.Json.write(mapOf("format" to "magicmobile-deck-v1","deck" to custom.json()))).deck==custom,"JSON export preserves arbitrary section names exactly")
+    val iosJSON="""{"name":"iOS source","commander":{"cardName":"Leader","quantity":1,"section":"commander"},"entries":[{"cardName":"Partner","quantity":1,"section":"commanders"},{"cardName":"Island","quantity":95,"section":"main"},{"cardName":"Friend","quantity":1,"section":"companions"},{"cardName":"Answer","quantity":2,"section":"sideboard"},{"cardName":"Idea","quantity":3,"section":"maybeboard"},{"cardName":"Odd (Name)","quantity":4,"section":"custom board"}]}"""
+    val iosPreview=DeckTextImport.preview("Ignored",iosJSON)
+    verifyDeckStudio(iosPreview.deck.name=="iOS source"&&iosPreview.deck.entries.map{it.quantity}==listOf(1,1,95,1,2,3,4)&&iosPreview.deck.entries.map{it.section}==listOf("commanders","commanders","deck","companions","sideboard","maybeboard","custom board"),"iOS primary partner all boards and quantities preserved")
+    verifyDeckStudio(iosPreview.originalText==iosJSON&&iosPreview.annotations.size==2,"iOS aliases explicitly annotated with original JSON retained")
+    verifyDeckStudio(DeckTextImport.preview("Ignored",DeckTextImport.exportJSON(iosPreview.deck)).deck==iosPreview.deck,"iOS-compatible export reimports all rows without loss")
+    verifyDeckStudio(DeckTextImport.preview("Ignored",io.magicmobile.core.Json.write(custom.json())).deck==custom,"legacy bare Android JSON preserved")
+    verifyDeckStudio(DeckTextImport.preview("Ignored","""{"name":"Empty iOS","entries":[]}""").deck.entries.isEmpty(),"iOS omitted nil commander and empty entries accepted")
+    rejectsDeckStudio("malformed iOS quantity") {DeckTextImport.preview("Ignored",iosJSON.replace("\"quantity\":95","\"quantity\":1.5"))}
+    rejectsDeckStudio("mixed JSON row schemas") {DeckTextImport.preview("Ignored",iosJSON.replace("\"cardName\":\"Island\"","\"name\":\"Island\""))}
+    rejectsDeckStudio("unknown root JSON fields") {DeckTextImport.preview("Ignored","""{"name":"Extra","entries":[],"mystery":true}""")}
+    rejectsDeckStudio("unknown card JSON fields") {DeckTextImport.preview("Ignored","""{"name":"Extra","entries":[{"name":"Island","quantity":1,"section":"deck","foil":true}]}""")}
+    rejectsDeckStudio("unsupported JSON version") {DeckTextImport.preview("Ignored","""{"format":"magicmobile-deck-v2","deck":{"name":"Future","entries":[]}}""")}
+    rejectsDeckStudio("lossy plain text custom board") {DeckTextImport.exportText(custom)}
+    rejectsDeckStudio("lossy plain text decorated name") {DeckTextImport.exportText(Deck("Decorated name",listOf(CardEntry("Card (SET) 1",1))))}
+    verifyDeckStudio(DeckTextImport.preview("Lands",DeckTextImport.exportText(landDeck)).deck==landDeck,"plain text standard boards preserve all rows")
+    val partnered=Deck("Partners",listOf(CardEntry("Old",1,"commanders"),CardEntry("Partner",1,"commanders"),CardEntry("New",3),CardEntry("Idea",1,"maybeboard")))
+    val promoted=DeckEditing.replaceCommander(partnered,"New",true)
+    verifyDeckStudio(promoted.entries==listOf(CardEntry("New",1,"commanders"),CardEntry("Partner",1,"commanders"),CardEntry("New",2),CardEntry("Idea",1,"maybeboard"),CardEntry("Old",1,"maybeboard")),"commander promotion keeps partner and old commander and moves exactly one main copy")
+    verifyDeckStudio(DeckEditing.replaceCommander(promoted,"New",true)==promoted,"same commander selection is a no-op")
+    verifyDeckStudio(DeckEditing.replaceCommander(partnered,"New",false).entries.none{it.name=="Old"},"old commander optional removal")
+    val full=Deck("Full",listOf(CardEntry("Old",1,"commanders"),CardEntry("Island",1999)))
+    rejectsDeckStudio("commander transaction rejects overflow without changing input"){DeckEditing.replaceCommander(full,"New",true)}
+    verifyDeckStudio(full.entries.first().name=="Old"&&full.entries.sumOf{it.quantity}==2000,"failed commander edit preserves original")
+    verifyDeckStudio(DeckEditing.boards.all{board->DeckEditing.move(partnered,2,board).entries[2]==CardEntry("New",3,board)},"all five destination boards preserve names and quantities")
+    val searchCards=(0..100).map{catalogue.find("Answer")!!.copy(name="A off-color $it")}+catalogue.find("Leader")!!.copy(name="Z match",setCodes=listOf("ALT"),manaValue=3.5)+catalogue.find("Island")!!
+    verifyDeckStudio(DeckCatalogueSearch.search(searchCards,type="Creature",setCode="alt",minimum=3.0,maximum=4.0,allowedIdentity=setOf("U"),limit=1).single().name=="Z match","type set mana and identity filters apply before limit")
+    verifyDeckStudio(DeckCatalogueSearch.search(searchCards,allowedIdentity=emptySet()).map{it.name}==listOf("Island"),"colorless commander identity excludes colored cards")
+    verifyDeckStudio(DeckCatalogueSearch.search(listOf(catalogue.find("Island")!!.copy(identity=null)),allowedIdentity=emptySet()).isEmpty(),"unknown identity never assumed colorless")
+    rejectsDeckStudio("reversed mana filter"){DeckCatalogueSearch.search(searchCards,minimum=4.0,maximum=3.0)}
+    verifyDeckStudio(DeckCatalogueSearch.search(listOf(catalogue.find("Leader")!!.copy(rules="Draw a card")),query="draw").size==1,"rules-text local search")
+    val legacyAliases=Deck("Legacy aliases",listOf(CardEntry("Leader",1," CoMmAnDeR "),CardEntry("Island",3," MAINBOARD "),CardEntry("Answer",2,"main"),CardEntry("Answer",1," Companion "),CardEntry("Island",1," Considering "),CardEntry("Island",1," My CUSTOM Board ")))
+    val canonicalAliases=Deck.decode(legacyAliases.json())
+    verifyDeckStudio(canonicalAliases.entries.map{it.section}==listOf("commanders","deck","deck","companions","maybeboard"," My CUSTOM Board "),"persisted legacy known aliases normalize while custom section is verbatim")
+    val androidAliasSource=io.magicmobile.core.Json.write(mapOf("format" to "magicmobile-deck-v1","deck" to legacyAliases.json()))
+    val androidAliasPreview=DeckTextImport.preview("Ignored",androidAliasSource)
+    verifyDeckStudio(androidAliasPreview.deck==canonicalAliases&&androidAliasPreview.annotations.size==5&&androidAliasPreview.originalText==androidAliasSource,"Android envelope aliases are annotated with full original source")
+    verifyDeckStudio(DeckTextImport.preview("Ignored",io.magicmobile.core.Json.write(legacyAliases.json())).deck==canonicalAliases,"bare Android JSON normalizes same aliases")
+    val iosAliasSource=DeckTextImport.exportJSON(legacyAliases)
+    verifyDeckStudio(DeckTextImport.preview("Ignored",iosAliasSource).deck==canonicalAliases,"iOS schema normalizes exactly the same aliases")
+    val resolvedAliases=catalogue.resolve(canonicalAliases,true)
+    verifyDeckStudio(resolvedAliases.array("main").map{Wire.objectValue(it).text("name")}==listOf("Island","Answer")&&resolvedAliases.array("commanders").size==1&&resolvedAliases.array("companions").size==1,"persisted aliases reach intended native playing sections")
+    verifyDeckStudio(DeckSignature.from(canonicalAliases,catalogue).cards.sumOf{it.quantity}==7,"signature retains canonical main commander and companion quantities")
+    val replacedAliases=DeckEditing.replaceCommander(canonicalAliases,"Answer",true)
+    verifyDeckStudio(replacedAliases.entries.first()==CardEntry("Answer",1,"commanders")&&replacedAliases.entries.any{it==CardEntry("Answer",1,"deck")}&&replacedAliases.entries.any{it==CardEntry("Leader",1,"maybeboard")},"commander replacement operates correctly after persisted alias decode")
+    val utf8Text="1 Éowyn, Shieldmaiden"
+    verifyDeckStudio(DeckTextImport.strictUTF8(utf8Text.toByteArray())==utf8Text,"valid multilingual UTF-8 stays exact")
+    rejectsDeckStudio("malformed UTF-8 cannot silently replace card bytes"){DeckTextImport.strictUTF8(byteArrayOf(0x31,0x20,0xC3.toByte(),0x28))}
+    rejectsDeckStudio("truncated UTF-8 cannot silently replace card bytes"){DeckTextImport.strictUTF8(byteArrayOf(0xF0.toByte(),0x9F.toByte()))}
+    verifyDeckStudio(DeckTextImport.preview("Ignored",DeckTextImport.strictUTF8(("\uFEFF"+iosJSON).toByteArray())).deck==iosPreview.deck,"UTF-8 BOM JSON imports without altering receipt source")
     println("PASS: $deckStudioChecks Android Deck Studio core assertions")
 }

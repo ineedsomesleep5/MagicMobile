@@ -28,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -74,10 +76,12 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
     val fileImport=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri->
         if(uri!=null)runCatching {
             val bytes=context.contentResolver.openInputStream(uri)?.use {readBounded(it,2*1024*1024)} ?: error("Unable to open that file")
-            DeckTextImport.preview("Imported Commander deck",bytes.toString(Charsets.UTF_8))
+            DeckTextImport.preview("Imported Commander deck",DeckTextImport.strictUTF8(bytes))
         }.onSuccess {importPreview=it}.onFailure {model.error(it.message ?: "Unable to import that file")}
     }
     val dark=appearance=="Dark"||(appearance=="System"&&isSystemInDarkTheme())
+    val view=LocalView.current
+    SideEffect{(view.context as? android.app.Activity)?.let{activity->WindowCompat.getInsetsController(activity.window,view).apply{isAppearanceLightStatusBars=!dark;isAppearanceLightNavigationBars=!dark}}}
     val colors=if(dark)darkColorScheme(primary=Color(0xFFB7D6C8),background=Night,surface=Color(0xFF1C2823),onBackground=Parchment,onSurface=Parchment) else lightColorScheme(primary=Ink,background=Cream,surface=Color(0xFFFFFCF6),onBackground=Ink,onSurface=Ink)
     MaterialTheme(colorScheme=colors) {
         Scaffold(topBar={TopAppBar(title={Text("MagicMobile",fontFamily=FontFamily.Serif)},actions={Text("Android alpha",style=MaterialTheme.typography.labelSmall,modifier=Modifier.padding(12.dp))})}) { padding ->
@@ -90,7 +94,7 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
                     !state.loaded -> { LinearProgressIndicator(Modifier.fillMaxWidth());Text(state.status,modifier=Modifier.padding(20.dp)) }
                     else -> LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                         item { Text("My Decks",style=MaterialTheme.typography.headlineLarge,fontFamily=FontFamily.Serif);Text("Build. Refine. Play.",style=MaterialTheme.typography.bodyMedium) }
-                        item { Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){Button(onClick={editor=EditorRequest(Deck("New Commander deck",emptyList()))}){Text("Create deck")};OutlinedButton(onClick={importing=true}){Text("Paste")};OutlinedButton(onClick={fileImport.launch(arrayOf("text/plain","text/*","application/octet-stream"))}){Text("Import file")}} }
+                        item { Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){Button(onClick={editor=EditorRequest(Deck("New Commander deck",emptyList()))}){Text("Create deck")};OutlinedButton(onClick={importing=true}){Text("Paste")};OutlinedButton(onClick={fileImport.launch(arrayOf("application/json","text/plain","text/*","application/octet-stream"))}){Text("Import file")}} }
                         item { OutlinedTextField(value=libraryQuery,onValueChange={libraryQuery=it.take(200)},label={Text("Search decks, commanders, or tags")},modifier=Modifier.fillMaxWidth()) }
                         item {TextButton(onClick={importingLink=true}){Text("Import public deck link")}}
                         item {DeckPhotoImportButton{deck,receipt->editor=EditorRequest(deck,receipt=receipt);model.recover(deck)}}
@@ -188,11 +192,24 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
     var exclude by remember {mutableStateOf(false)}
     var title by remember(initial){mutableStateOf(initial.name)}
     var basics by remember {mutableStateOf(false)}
+    var commanderReplacement by remember {mutableStateOf(false)}
+    var searchType by remember {mutableStateOf("")}
+    var searchSet by remember {mutableStateOf("")}
+    var minimumMana by remember {mutableStateOf("")}
+    var maximumMana by remember {mutableStateOf("")}
+    var constrainIdentity by remember {mutableStateOf(true)}
+    var searchError by remember {mutableStateOf<String?>(null)}
+    var browseCatalogue by remember {mutableStateOf(false)}
     var cardDetail by remember {mutableStateOf<String?>(null)}
     var replacing by remember {mutableStateOf<Int?>(null)}
     var rowFilter by remember {mutableStateOf("")}
     var rowSort by remember {mutableStateOf("Name")}
     var grouping by remember {mutableStateOf("Board")}
+    var workspace by remember(draftID){mutableStateOf("Cards")}
+    val workspaceScroll=rememberLazyListState()
+    LaunchedEffect(workspace){workspaceScroll.scrollToItem(0)}
+    var rowColor by remember {mutableStateOf("")}
+    var rowBoard by remember {mutableStateOf("")}
     val context=LocalContext.current
     var exportContent by remember{mutableStateOf("")}
     fun exportResult(uri:Uri?){if(uri!=null)runCatching{context.contentResolver.openOutputStream(uri)?.use{it.write(exportContent.toByteArray())}?:error("Unable to open selected file")}.onSuccess{message="Deck exported."}.onFailure{message="Export failed: ${it.message}"}}
@@ -205,9 +222,19 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
     val draftWritable=restoration.isSuccess&&(original==null||restoration.getOrNull()==null||restoration.getOrNull()?.baseRevision==original.revision)
     var persistedDraft by remember(draftID){mutableStateOf<Deck?>(null)}
     SideEffect{if(persistedDraft!=draft)runCatching{check(draftWritable){"An older or unreadable draft is preserved. Return to the library and open it as a copy before saving this deck."};draftStore.write(draftID,saveTarget?.revision,draft,saveTarget?.id);persistedDraft=draft}.onFailure{message=it.message}}
-    LaunchedEffect(search){results=withContext(Dispatchers.Default){model.catalogue?.search(search).orEmpty()}}
+    val commanderIdentity=remember(draft,model.catalogue){draft.entries.filter{it.section=="commanders"}.takeIf{it.isNotEmpty()}?.map{model.catalogue?.find(it.name)?.identity}?.takeIf{identities->identities.all{it!=null}}?.flatMap{it.orEmpty()}?.toSet()}
+    LaunchedEffect(search,searchType,searchSet,minimumMana,maximumMana,constrainIdentity,commanderIdentity,browseCatalogue){
+        runCatching{
+            if(!browseCatalogue&&listOf(search,searchType,searchSet,minimumMana,maximumMana).all{it.isBlank()})return@runCatching emptyList<CardInfo>()
+            val minimum=minimumMana.trim().takeIf{it.isNotEmpty()}?.let{it.toDoubleOrNull()?:error("Enter a valid minimum mana value.")}
+            val maximum=maximumMana.trim().takeIf{it.isNotEmpty()}?.let{it.toDoubleOrNull()?:error("Enter a valid maximum mana value.")}
+            withContext(Dispatchers.Default){DeckCatalogueSearch.search(model.catalogue?.cards.orEmpty(),search,searchType,searchSet,minimum,maximum,commanderIdentity.takeIf{constrainIdentity})}
+        }.onSuccess{results=it;searchError=null}.onFailure{if(it is kotlinx.coroutines.CancellationException)throw it;results=emptyList();searchError=it.message}
+    }
     val analysis=remember(draft,model.catalogue){model.catalogue?.let {DeckAnalyzer.analyze(draft,it)}}
-    LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxSize()) {
+    DeckChoice("Workspace",workspace,listOf("Cards","Ideas","Analysis","Playtest")){workspace=it}
+    LazyColumn(Modifier.weight(1f),state=workspaceScroll,contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
         item {Text("Deck Studio",style=MaterialTheme.typography.headlineLarge,fontFamily=FontFamily.Serif)
             OutlinedTextField(value=title,onValueChange={title=it.take(300)},label={Text("Deck name")},modifier=Modifier.fillMaxWidth())
             Row {TextButton(enabled=title.isNotBlank(),onClick={change(draft.copy(name=title))}){Text("Rename")};TextButton(enabled=!saveInFlight,onClick={model.recover(draft);close()}){Text("Back · keep draft")}}
@@ -228,19 +255,27 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
                 }}
             }){Text(if(saveInFlight)"Saving…" else "Save deck")};OutlinedButton(enabled=!saveInFlight,onClick={play(draft)}){Text("Playtest")};OutlinedButton(enabled=BuildConfig.NATIVE_ENGINE&&!state.busy&&!saveInFlight,onClick={model.validate(draft,exclude)}){Text("Validate")}}
             if(receiptRead.getOrNull()!=null)TextButton(onClick={showReceipt=true}){Text("Import source & annotations")}
-            TextButton(onClick={exportContent=io.magicmobile.core.Json.write(mapOf("format" to "magicmobile-deck-v1","deck" to draft.json()));exportJSON.launch("magicmobile-deck.json")}){Text("Export deck JSON")}
+            TextButton(onClick={runCatching{DeckTextImport.exportJSON(draft)}.onSuccess{exportContent=it;exportJSON.launch("magicmobile-deck.json")}.onFailure{message=it.message}}){Text("Export deck JSON")}
             if(receiptRead.isFailure)Text("Import receipt could not be read or saved. Source files are preserved.",color=MaterialTheme.colorScheme.error)
-            Row{TextButton(enabled=undo.isNotEmpty(),onClick={redo=redo+draft;draft=undo.last();undo=undo.dropLast(1);model.invalidateValidation();model.recover(draft)}){Text("Undo")};TextButton(enabled=redo.isNotEmpty(),onClick={undo=undo+draft;draft=redo.last();redo=redo.dropLast(1);model.invalidateValidation();model.recover(draft)}){Text("Redo")};TextButton(onClick={exportContent=draft.export();exportText.launch("magicmobile-deck.txt")}){Text("Export text")}}
+            Row{TextButton(enabled=undo.isNotEmpty(),onClick={redo=redo+draft;draft=undo.last();undo=undo.dropLast(1);model.invalidateValidation();model.recover(draft)}){Text("Undo")};TextButton(enabled=redo.isNotEmpty(),onClick={undo=undo+draft;draft=redo.last();redo=redo.dropLast(1);model.invalidateValidation();model.recover(draft)}){Text("Redo")};TextButton(onClick={runCatching{DeckTextImport.exportText(draft)}.onSuccess{exportContent=it;exportText.launch("magicmobile-deck.txt")}.onFailure{message=it.message}}){Text("Export text")}}
             if(draft.entries.any {it.section !in setOf("deck","commanders","companions")})Row(verticalAlignment=Alignment.CenterVertically){Checkbox(checked=exclude,onCheckedChange={exclude=it;model.invalidateValidation()});Text("Validate without other boards")}
             state.validation?.takeIf {model.validationApplies(draft,exclude)}?.let {report->Text(report.summary,color=if(report.valid)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error);report.issues.take(20).forEach{Text("• ${it.cardName?.let {name->"$name: "}.orEmpty()}${it.message}",style=MaterialTheme.typography.bodySmall)}}
             message?.let{Text(it,color=MaterialTheme.colorScheme.error)}
         }
+        if(workspace=="Cards") {
         item {OutlinedTextField(value=search,onValueChange={search=it.take(200)},label={Text("Add cards · name or rules text")},modifier=Modifier.fillMaxWidth())
             if(replacing!=null)Row {Text("Choose a replacement for ${draft.entries.getOrNull(replacing!!)?.name.orEmpty()}",modifier=Modifier.weight(1f));TextButton(onClick={replacing=null}){Text("Cancel")}}
-            Row {listOf("deck","commanders","maybeboard").forEach{target->FilterChip(selected=section==target,onClick={section=target},label={Text(target)})}}}
+            DeckChoice("Add to",section,DeckEditing.boards){section=it}
+            DeckChoice("Type",searchType,listOf("","Creature","Artifact","Enchantment","Instant","Sorcery","Land","Planeswalker","Battle")){searchType=it}
+            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedTextField(value=minimumMana,onValueChange={minimumMana=it.take(12)},label={Text("Min MV")},modifier=Modifier.weight(1f));OutlinedTextField(value=maximumMana,onValueChange={maximumMana=it.take(12)},label={Text("Max MV")},modifier=Modifier.weight(1f));OutlinedTextField(value=searchSet,onValueChange={searchSet=it.take(16)},label={Text("Set code")},modifier=Modifier.weight(1f))}
+            if(commanderIdentity!=null)Row{Checkbox(checked=constrainIdentity,onCheckedChange={constrainIdentity=it});Text("Within commander color identity")}
+            Row{TextButton(onClick={searchType="";searchSet="";minimumMana="";maximumMana="";constrainIdentity=true}){Text("Reset filters")};TextButton(onClick={browseCatalogue=!browseCatalogue}){Text(if(browseCatalogue)"Hide unfiltered cards" else "Browse all cards")}}
+            searchError?.let{Text(it,color=MaterialTheme.colorScheme.error)}
+        }
         items(results,key={"search-${it.name}"}) { card -> OutlinedCard(Modifier.fillMaxWidth()){Row(Modifier.padding(10.dp),verticalAlignment=Alignment.CenterVertically){CardArtwork(card.name,Modifier.size(38.dp,52.dp).clip(RoundedCornerShape(4.dp)).clickable{cardDetail=card.name}){Text(card.name.take(1),style=MaterialTheme.typography.labelSmall)};Spacer(Modifier.width(10.dp));Column(Modifier.weight(1f).clickable{cardDetail=card.name}){Text(card.name);Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)){ManaCost(card.cost);Text(card.type.orEmpty(),style=MaterialTheme.typography.bodySmall)}};TextButton(onClick={try{change(replacing?.let {DeckEditing.replace(draft,it,card.name)} ?: draft.copy(entries=draft.entries+CardEntry(card.name,1,section)));message=null}catch(e:Exception){message=e.message}}){Text(if(replacing!=null)"Replace" else "+ Add")}}} }
         if(search.isNotBlank())item{Text("Local compiled catalogue · up to 80 results",style=MaterialTheme.typography.bodySmall)}
-        analysis?.let { facts->item {OutlinedCard(Modifier.fillMaxWidth()){Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(4.dp)){
+        }
+        if(workspace=="Analysis")analysis?.let { facts->item {OutlinedCard(Modifier.fillMaxWidth()){Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(4.dp)){
             Text("Deck analysis",style=MaterialTheme.typography.titleMedium)
             TextButton(onClick={showInsights=true}){Text("Roles, targets & draw probabilities")}
             Text("${facts.mainCardCount} main cards · ${facts.landCount} lands · average nonland mana ${facts.averageNonlandManaValue?.let {String.format(Locale.US,"%.2f",it)} ?: "unknown"}")
@@ -249,18 +284,26 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
             if(facts.unknownNameCount>0)Text("${facts.unknownNameCount} unresolved card(s): ${facts.unknownNames.take(8).joinToString()}",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
             Text("Catalogue facts only—not a power score, mana-source estimate, simulation, or legality result.",style=MaterialTheme.typography.labelSmall)
         }}}}
-        item {OutlinedTextField(value=rowFilter,onValueChange={rowFilter=it.take(200)},label={Text("Filter cards in this deck")},modifier=Modifier.fillMaxWidth());Row{TextButton(onClick={basics=true}){Text("Basic lands")};TextButton(onClick={rowSort=if(rowSort=="Name")"Mana" else "Name"}){Text("Sort: $rowSort")};TextButton(onClick={grouping=if(grouping=="Board")"Type" else "Board"}){Text("Group: $grouping")}}}
-        draft.entries.withIndex().filter {it.value.name.contains(rowFilter,true)}.sortedWith(compareBy<IndexedValue<CardEntry>>{if(rowSort=="Mana")model.catalogue?.find(it.value.name)?.manaValue ?: Double.MAX_VALUE else 0.0}.thenBy{it.value.name.lowercase()}).groupBy{row->row.value.section+if(grouping=="Type")" · "+(model.catalogue?.find(row.value.name)?.types?.firstOrNull()?.lowercase() ?: "unknown") else ""}.forEach { (section,rows) ->
+        if(workspace=="Cards") {
+        item {OutlinedTextField(value=rowFilter,onValueChange={rowFilter=it.take(200)},label={Text("Filter deck · name or rules")},modifier=Modifier.fillMaxWidth());Row{TextButton(onClick={basics=true}){Text("Basic lands")};TextButton(onClick={commanderReplacement=true}){Text("Change commander")}}
+            DeckChoice("Sort",rowSort,listOf("Name","Mana","Quantity")){rowSort=it};DeckChoice("Group",grouping,listOf("Board","Type")){grouping=it}
+            DeckChoice("Board",rowBoard,listOf("")+draft.entries.map{it.section}.distinct()){rowBoard=it};DeckChoice("Color",rowColor,listOf("","W","U","B","R","G","C")){rowColor=it}
+        }
+        draft.entries.withIndex().filter {row->val card=model.catalogue?.find(row.value.name);(row.value.name.contains(rowFilter,true)||card?.rules?.contains(rowFilter,true)==true)&&(rowBoard.isEmpty()||row.value.section==rowBoard)&&(rowColor.isEmpty()||if(rowColor=="C")card?.colors?.isEmpty()==true else card?.colors?.contains(rowColor)==true)}.sortedWith(compareBy<IndexedValue<CardEntry>>{when(rowSort){"Mana"->model.catalogue?.find(it.value.name)?.manaValue ?: Double.MAX_VALUE;"Quantity"->-it.value.quantity.toDouble();else->0.0}}.thenBy{it.value.name.lowercase()}).groupBy{row->row.value.section+if(grouping=="Type")" · "+(model.catalogue?.find(row.value.name)?.types?.firstOrNull()?.lowercase() ?: "unknown") else ""}.forEach { (section,rows) ->
             item(key="header-$section"){Text("${section.replaceFirstChar{it.uppercase()}} · ${rows.sumOf {it.value.quantity}}",style=MaterialTheme.typography.titleMedium)}
             items(rows,key={"row-${it.index}"}) { (index,row) -> Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){Text(row.name,modifier=Modifier.clickable{cardDetail=row.name});model.catalogue?.find(row.name).let { info -> if(info?.cost != null) ManaCost(info.cost) else Text(if(info==null) "Unresolved in local catalogue" else info.type.orEmpty(),style=MaterialTheme.typography.bodySmall) }
                 Row {TextButton(onClick={try{change(draft.change(index,-1))}catch(e:Exception){message=e.message}}){Text("−")};Text("${row.quantity}",modifier=Modifier.padding(12.dp));TextButton(onClick={try{change(draft.change(index,1))}catch(e:Exception){message=e.message}}){Text("+")}
-                    TextButton(onClick={val destination=if(row.section=="commanders")"deck" else "commanders";change(DeckEditing.move(draft,index,destination))}){Text(if(row.section=="commanders")"To main" else "Commander")}}
+                    DeckChoice("Move",row.section,DeckEditing.boards){destination->change(DeckEditing.move(draft,index,destination))}}
                 Row{TextButton(onClick={replacing=index;search=row.name}){Text("Replace")};TextButton(onClick={change(DeckEditing.move(draft,index,if(row.section=="maybeboard")"deck" else "maybeboard"))}){Text(if(row.section=="maybeboard")"To main" else "Maybeboard")};TextButton(onClick={change(draft.copy(entries=draft.entries.filterIndexed{i,_->i!=index}))}){Text("Remove")}}
             }} }
         }
-        item {model.catalogue?.let {catalogue->ProviderDiscoveryPanel(draft,catalogue,readOnly=!draftWritable){name,target->try{change(draft.copy(entries=draft.entries+CardEntry(name,1,target)));true}catch(error:Exception){message=error.message;false}}}}
+        }
+        if(workspace=="Ideas")item {model.catalogue?.let {catalogue->ProviderDiscoveryPanel(draft,catalogue,readOnly=!draftWritable){name,target->try{change(draft.copy(entries=draft.entries+CardEntry(name,1,target)));true}catch(error:Exception){message=error.message;false}}}}
+        if(workspace=="Playtest")item {model.catalogue?.let {catalogue->DeckPlaytestInsights(draft,catalogue,state.playtests,state.recordingEnabled,model::setRecording)}}
+    }
     }
     if(basics)BasicLandsDialog(draft,{basics=false},::change)
+    if(commanderReplacement)model.catalogue?.let{catalogue->CommanderReplacementDialog(draft,catalogue,{commanderReplacement=false}){expected,name,keepOld->if(draft!=expected)false else runCatching{change(DeckEditing.replaceCommander(draft,name,keepOld));true}.getOrElse{message=it.message;false}}}
     cardDetail?.let {CatalogueCardDialog(it,model.catalogue){cardDetail=null}}
     if(showReceipt)receiptRead.getOrNull()?.let{receipt->ImportReceiptDialog(receipt,{showReceipt=false})}
     if(showInsights)model.catalogue?.let{DeckInsightsDialog(draft,it,saveTarget?.id){showInsights=false}}

@@ -9,16 +9,15 @@ import org.junit.Test
 class NativeGameTest {
     @Test fun nativeRuntimeClosesAndReopens() {
         assertTrue(BuildConfig.NATIVE_ENGINE)
-        android.util.Log.i("MagicMobileAcceptance","Opening native runtime")
-        val token=NativeBridge.open()
-        assertTrue(token!=0L)
-        android.util.Log.i("MagicMobileAcceptance","Native runtime opened")
-        assertEquals(0,NativeBridge.close(token))
-        android.util.Log.i("MagicMobileAcceptance","Native runtime closed")
-        val reopened=NativeBridge.open()
-        assertTrue(reopened!=0L && reopened!=token)
-        android.util.Log.i("MagicMobileAcceptance","Native runtime reopened without requests")
-        assertEquals(0,NativeBridge.close(reopened))
+        var previous=0L
+        repeat(10) { index->
+            val started=android.os.SystemClock.elapsedRealtime()
+            val token=NativeBridge.open()
+            assertTrue(token!=0L && token!=previous)
+            assertEquals(0,NativeBridge.close(token))
+            previous=token
+            android.util.Log.i("MagicMobileAcceptance","Native lifecycle ${index+1}/10 completed in ${android.os.SystemClock.elapsedRealtime()-started}ms")
+        }
     }
     @Test fun packagedEngineCompletesCommanderGame() {
         assertTrue("This test requires -PwithNative=true", BuildConfig.NATIVE_ENGINE)
