@@ -1,6 +1,6 @@
-# MagicMobile 0.3.0
+# MagicMobile September presentation and parity update
 
-Shared user-facing release version for iOS and Android. Platform build numbers remain independent and monotonic. Do not claim parity from matching version strings alone.
+The user requested retaining the existing TestFlight version 0.1.0 to avoid starting a new version's review. Platform build numbers remain independent and monotonic. Shared update labeling is pending their preference; do not claim parity from matching version strings alone.
 
 ## Approved scope
 
@@ -25,13 +25,15 @@ Screens: portrait and landscape menu/setup, long-name deck row, combo ordering, 
 
 ## Release records
 
-iOS 0.3.0 (5000000002) uploaded successfully September 19, 2026, 16:45 CDT.
+iOS 0.3.0 (5000000002) uploaded September 19, 2026, 16:45 CDT, but was superseded by the user's instruction to preserve 0.1.0. The distribution workflow was terminated during build discovery, before adding groups or submitting external review. App Store Connect confirmed no beta review submission for this build. This upload is not the intended release.
 
 - Source: `83c45d32914994727f6885aeb08c5003d5f26617`.
 - IPA: `build_output/testflight/parity-0.3.0-5000000002/native-release.JcxJGv/export/MagicMobile.ipa`, 181,749,383 bytes.
 - Apple delivery UUID: `86d52ad6-a6f8-44f6-89c0-4489d11b1893`.
 - Native engine: reused verified artifact `10514723423` from source `f2ffad10e26a25885902e963a13810d8786ed9bc`; no engine rebuild.
-- Archive/export, signed product guards and Apple validation/upload passed. Processing, distribution and external review are still pending; this is not physical-phone acceptance.
+- Archive/export, signed product guards and Apple validation/upload passed; this is not physical-phone acceptance.
+
+Replacement prepared: **0.1.0 (5000000003)**, unchanged functional source and engine. Signing/upload and availability pending.
 
 Android artifact, Apple availability, website deployment and main merge will be recorded after verification.
 
