@@ -81,20 +81,20 @@ struct DeckStudioNotice: View {
 
 struct DeckStudioColorIdentity: View {
     let colors: [String]?
+    @ScaledMetric(relativeTo: .caption2) private var pipSize = 22.0
     private let order = ["W", "U", "B", "R", "G"]
     var body: some View {
         HStack(spacing: 4) {
             if let colors {
-                if colors.isEmpty { Text("C").font(.caption2.bold()) }
+                if colors.isEmpty { ManaSymbolView(symbol: "C", size: min(pipSize, 26)) }
                 ForEach(order.filter { colors.contains($0) }, id: \.self) { symbol in
-                    Text(symbol).font(.caption2.bold()).frame(width: 22, height: 22)
-                        .background(DeckStudioPalette.surfaceElevated, in: Circle())
-                        .overlay(Circle().stroke(DeckStudioPalette.separator))
+                    ManaSymbolView(symbol: symbol, size: min(pipSize, 26))
                 }
-            } else { Text("Identity unknown").font(.caption2) }
+            } else { Text("Identity unknown").font(.caption2).lineLimit(1).minimumScaleFactor(0.8) }
         }
+        .frame(minHeight: pipSize)
         .foregroundStyle(DeckStudioPalette.ink)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(colors.map { "Color identity: " + ($0.isEmpty ? "colorless" : $0.joined(separator: ", ")) } ?? "Color identity unavailable")
+        .accessibilityLabel(colors.map { "Color identity: " + ($0.isEmpty ? "colorless" : $0.map { ["W": "white", "U": "blue", "B": "black", "R": "red", "G": "green"][$0] ?? $0 }.joined(separator: ", ")) } ?? "Color identity unavailable")
     }
 }

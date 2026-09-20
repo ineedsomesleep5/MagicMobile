@@ -119,6 +119,8 @@ enum GameBoardPreviewFixtures {
             root["phase"] = "combat"; root["step"] = "declare-blockers"
         }
         if state == .zoneInspection {
+            actions.append(["id": "cast-preview-commander", "type": "cast_spell", "playerId": "human", "label": "Cast commander", "cardInstanceId": "human-command-1", "cardName": "Isamaru, Hound of Konda", "sourceZone": "command"])
+            root["legalActions"] = actions
             for key in ["exileZones", "revealed", "lookedAt", "companion"] {
                 xmage[key] = [["id": "preview-\(key)", "name": "Development \(key)", "cards": [card("preview-\(key)-card", "Forest", "Basic Land — Forest", "", "{T}: Add {G}.")]]]
             }

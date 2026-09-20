@@ -390,6 +390,13 @@ final class BoardPolishUITests: XCTestCase {
             capture(app, name: currentCapture + "-after-inspection-release")
         case "mana-payment-prompt":
             visible(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "Pay")).firstMatch, in: app)
+            if portrait {
+                let floatingMana = app.buttons["board.mana.spend.W"]
+                visible(floatingMana, in: app)
+                floatingMana.tap()
+                XCTAssertTrue(app.staticTexts["preview.captured-command"].waitForExistence(timeout: 5))
+                XCTAssertTrue(app.staticTexts["preview.captured-command"].label.contains("Spend floating {W}"))
+            }
             visible(card(in: app, identifierPrefix: "card-your-board-sol-ring"), in: app)
             card(in: app, identifierPrefix: "card-your-board-sol-ring").tap()
             XCTAssertTrue(app.staticTexts["preview.captured-command"].waitForExistence(timeout: 5))
@@ -459,6 +466,17 @@ final class BoardPolishUITests: XCTestCase {
             visible(app.staticTexts["Aurelia · Graveyard · 0"], in: app)
             visible(app.staticTexts["No cards in this zone."], in: app)
             XCTAssertFalse(app.buttons["Inspect Spirited Companion"].exists)
+            app.buttons["Close Aurelia · Graveyard"].tap()
+            let ownZones = app.buttons["board.zones.human"]
+            visible(ownZones, in: app)
+            XCTAssertTrue(ownZones.label.contains("commander cast available"))
+            ownZones.tap()
+            app.buttons["Command · Cast available"].tap()
+            visible(app.buttons["Close You · Command"], in: app)
+            app.buttons["Cast"].tap()
+            XCTAssertTrue(app.buttons["Close You · Command"].waitForNonExistence(timeout: 5))
+            XCTAssertTrue(app.staticTexts["preview.captured-command"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.staticTexts["preview.captured-command"].label.contains("Cast commander"))
         case "full-hand-inspection":
             // ContentView sets the first supplied hand card as inspected on this fixture.
             visible(card(in: app, identifierPrefix: "card-inspector-sol-ring"), in: app)

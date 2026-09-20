@@ -287,6 +287,7 @@ struct OnDeviceRootView: View {
                     }
                     Button { showImport = true } label: { Label("Browse, import or edit decks", systemImage: "rectangle.stack.badge.plus") }
                         .buttonStyle(CommanderActionStyle(primary: false))
+                    NativeArtworkPreferenceView()
                 }
                 .commanderPanel()
                 .disabled(setup.isBusy || setup.needsLeave)

@@ -5,6 +5,28 @@ import XCTest
 
 @MainActor
 final class DeckStudioTileLayoutTests: XCTestCase {
+    func testMetadataReservesEqualHeightForTwoLineNamesAndMissingCommander() throws {
+        for size: DynamicTypeSize in [.large, .xxxLarge, .accessibility3, .accessibility5] {
+            let width: CGFloat = size.isAccessibilitySize ? 340 : 164
+            for showTags in [false, true] {
+                var heights: [Int] = []
+                for (name, commander, colors, tags) in [
+                    ("Scarab God", "The Scarab God", ["U", "B"] as [String]?, [String]()),
+                    ("Draconic Destruction", "Atarka, World Render", ["R", "G"], ["Dragons"]),
+                    ("Imported Commander Deck", "", nil, [])
+                ] {
+                    let view = DeckStudioTileDetails(name: name, commanders: commander, colors: colors,
+                        tags: tags, showTags: showTags, summary: "100 cards · Local draft")
+                        .frame(width: width).environment(\.dynamicTypeSize, size)
+                    let renderer = ImageRenderer(content: view); renderer.scale = 1
+                    let image = try XCTUnwrap(renderer.uiImage?.cgImage)
+                    XCTAssertEqual(image.width, Int(width))
+                    heights.append(image.height)
+                }
+                XCTAssertEqual(Set(heights).count, 1, "Metadata must align at \(size), tags \(showTags): \(heights)")
+            }
+        }
+    }
     func testLoadedBitmapCoversRespectAdaptiveColumnsAndGutters() throws {
         // Content widths after the library's 20pt side padding, including compact
         // portrait, landscape, and the accessibility single-column presentation.

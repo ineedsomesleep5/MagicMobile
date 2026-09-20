@@ -79,7 +79,7 @@ fun ManaSymbol(symbol: String, size: Int = 16) {
     if (resource != null) {
         Image(
             painter = painterResource(resource),
-            contentDescription = symbol,
+            contentDescription = when(symbol.trim().uppercase()){"W"->"White mana";"U"->"Blue mana";"B"->"Black mana";"R"->"Red mana";"G"->"Green mana";"C"->"Colorless mana";else->symbol},
             modifier = Modifier.size(size.dp),
         )
     } else {
@@ -128,10 +128,10 @@ fun ArtworkConsentRow() {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text("Card images", fontWeight = FontWeight.SemiBold)
+            Text("Scryfall live images", fontWeight = FontWeight.SemiBold)
             Text(
-                if (enabled) "Scryfall receives the card names shown, and your IP address. Card rules stay on this device."
-                else "Off. Deck building and rules text work without them.",
+                if (enabled) "Downloaded art first, then high-quality online art. Shares displayed card names and your IP with Scryfall."
+                else "Downloaded art stays available offline. Turn on for high-quality online images.",
                 fontSize = 12.sp,
                 color = Color(0xFF57534E),
             )

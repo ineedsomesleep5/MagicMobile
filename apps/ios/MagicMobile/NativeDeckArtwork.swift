@@ -20,6 +20,7 @@ actor NativeDeckArtwork {
         case httpStatus(Int), rateLimited
     }
     private let cache: URLCache
+    private let assetStore: NativeAssetStore
     private let protocolClasses: [AnyClass]?
     private let requestBudget: DeckStudioScryfallBudget
     private var networkBusy = false
@@ -27,8 +28,10 @@ actor NativeDeckArtwork {
     private var blockedUntil: TimeInterval = 0
     init(cache: URLCache = URLCache(memoryCapacity: 8 * 1024 * 1024,
                                   diskCapacity: 64 * 1024 * 1024, diskPath: "MagicMobileNativeDeckArtwork"),
-         protocolClasses: [AnyClass]? = nil, requestBudget: DeckStudioScryfallBudget? = nil) {
+         protocolClasses: [AnyClass]? = nil, requestBudget: DeckStudioScryfallBudget? = nil,
+         assetStore: NativeAssetStore = .shared) {
         self.cache = cache; self.protocolClasses = protocolClasses
+        self.assetStore = assetStore
         // Production artwork and card-reference lookups share one budget.
         // Injected HTTP fixture sessions default to an isolated budget.
         self.requestBudget = requestBudget ?? (protocolClasses == nil ? .shared : DeckStudioScryfallBudget())
@@ -38,14 +41,20 @@ actor NativeDeckArtwork {
                    tokenPower: String? = nil, tokenToughness: String? = nil, tokenColors: [String]? = nil) async throws -> Data? {
         try Task.checkCancellation()
         if let tokenTypeLine {
-            return await NativeAssetStore.shared.tokenImage(name: name, typeLine: tokenTypeLine, oracleText: tokenOracleText ?? "",
+            return await assetStore.tokenImage(name: name, typeLine: tokenTypeLine, oracleText: tokenOracleText ?? "",
                                                             power: tokenPower, toughness: tokenToughness, colors: tokenColors)
         }
         let original = try Self.request(name: name, variant: variant)
-        // Explicit offline quality is the user's choice; inspection must not
-        // silently upgrade a compact download using cellular data.
-        if let data = await NativeAssetStore.shared.image(key: NativeAssetStore.cardKey(name)) { return data }
-        return try await imageData(request: original, variant: variant, allowNetwork: allowNetwork)
+        let downloaded = await assetStore.image(key: NativeAssetStore.cardKey(name))
+        // Bulk-download quality stays untouched. Live upgrades use only the bounded
+        // URL cache, and happen only with explicit network consent.
+        if let downloaded {
+            let quality: NativeArtworkQuality = variant == .inspection ? .high : (variant == .board ? .standard : .compact)
+            if !allowNetwork || quality.accepts(downloaded) { return downloaded }
+        }
+        do { return try await imageData(request: original, variant: variant, allowNetwork: allowNetwork) ?? downloaded }
+        catch is CancellationError { throw CancellationError() }
+        catch { if let downloaded { return downloaded }; throw error }
     }
     func downloadImage(name: String, quality: NativeArtworkQuality, imageURL: URL? = nil) async throws -> Data? {
         let variant = Self.variant(for: quality)

@@ -1,19 +1,19 @@
 // Release candidate metadata. Deploy only after both distribution artifacts are verified.
 export const sharedAppVersion = "0.1.1";
-export const sharedReleaseBuild = "2";
+export const sharedReleaseBuild = "3";
 
 // Update the version, build and download URL together for each published release.
 export const releases = {
   android: {
     version: sharedAppVersion,
     build: sharedReleaseBuild,
-    url: "https://github.com/ineedsomesleep5/MagicMobile/releases/download/android-v0.1.1-build.2/MagicMobile-Android-0.1.1-build2.apk",
-    notes: "https://github.com/ineedsomesleep5/MagicMobile/releases/tag/android-v0.1.1-build.2",
+    url: "https://github.com/ineedsomesleep5/MagicMobile/releases/download/android-v0.1.1-build.3/MagicMobile-Android-0.1.1-build3.apk",
+    notes: "https://github.com/ineedsomesleep5/MagicMobile/releases/tag/android-v0.1.1-build.3",
   },
   ios: {
     version: sharedAppVersion,
     build: sharedReleaseBuild,
     url: "https://testflight.apple.com/join/2mSHE8rZ",
-    status: "Build 2 is uploaded. Public access is pending; Apple must finish reviewing build 1 before build 2 can be submitted.",
+    status: "Build 3 is available to internal testers. Public access is pending; Apple must finish the earlier build's review first.",
   },
 };

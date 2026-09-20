@@ -1537,9 +1537,9 @@ struct AppearanceSettingsView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
+                    if nativeTurnControl != nil { NativeArtworkPreferenceView() }
                     BoardAppearancePicker()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
-                    if nativeTurnControl != nil { NativeArtworkPreferenceView() }
                 }.padding(20).frame(maxWidth: 600).frame(maxWidth: .infinity)
             }
             .background(Color(red: 0.08, green: 0.07, blue: 0.065))
@@ -2782,9 +2782,15 @@ struct NativeGameView: View {
                             .padding(.vertical, 8)
 
                         VStack(alignment: .leading, spacing: 4) {
-                            ManaPoolHUD(manaPool: human.manaPool, compact: true, grid: true)
+                            ManaPoolHUD(manaPool: human.manaPool, compact: true, grid: true,
+                                payableSymbols: GameplayAffordances.floatingManaSymbols(in: snapshot, pendingActionID: pendingActionId),
+                                payMana: { symbol in
+                                    if pendingActionId == nil, let command = GameplayAffordances.floatingManaCommand(symbol: symbol, in: snapshot) {
+                                        runCommand(command, "Spend floating {\(symbol)}", "floating-\(snapshot.promptEnvelopeV2?.id ?? "")-\(symbol)")
+                                    }
+                                })
                             LandscapePlayerSummary(name: humanName, player: human, active: snapshot.activePlayerId == human.playerId, opponentId: opponent.playerId)
-                            PlayerZoneMenu(player: human, viewZone: localViewZone, snapshot: snapshot)
+                            PlayerZoneMenu(player: human, viewZone: localViewZone, snapshot: snapshot, pendingActionID: pendingActionId)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.bottom, 12)
@@ -3124,13 +3130,14 @@ struct NativeGameView: View {
                             yieldActions: GameplayActionPresentation.yieldActions(in: snapshot.legalActions ?? []),
                             pendingActionId: pendingActionId,
                             compact: true,
+                            landscapeSidebar: true,
                             openPromptDetails: openPromptDetails,
                             openLog: { isLogOpen = true },
                             openSettings: { isGameMenuOpen = true },
                             runAction: runAction
                         )
-                        .padding(.horizontal, 10)
-                        .padding(.bottom, 12)
+                        .padding(.horizontal, LandscapeActionDockLayout.horizontalPadding)
+                        .padding(.bottom, LandscapeActionDockLayout.bottomPadding)
                     }
                     .overlay(alignment: .center) {
                         if snapshot.isWaitingOnAIOrStalled {
@@ -3148,7 +3155,7 @@ struct NativeGameView: View {
                             .padding(.horizontal, 10)
                         }
                     }
-                    .frame(width: snapshot.stackTopFirst.isEmpty ? 128 : 176)
+                    .frame(width: LandscapeActionDockLayout.sidebarWidth(hasStack: !snapshot.stackTopFirst.isEmpty))
                     .background(
                         LinearGradient(
                             colors: [MagicPalette.iron.opacity(0.96), MagicPalette.leather.opacity(0.90)],
@@ -3948,7 +3955,9 @@ struct BattlefieldLayoutMetrics {
     init(proxy: GeometryProxy, centerControlsVisible: Bool = true) {
         self.centerControlsVisible = centerControlsVisible
         size = proxy.size
-        safeArea = proxy.safeAreaInsets
+        // The center column already lives inside SwiftUI's safe-area proposal.
+        // Its local bounds must not lose the window insets a second time.
+        safeArea = EdgeInsets()
     }
 
     init(size: CGSize, safeArea: EdgeInsets = EdgeInsets(), centerControlsVisible: Bool = true) {
@@ -3962,7 +3971,8 @@ struct BattlefieldLayoutMetrics {
         let x = safeArea.leading + margin
         let y = safeArea.top + 8
         let width = max(size.width - safeArea.leading - safeArea.trailing - margin * 2, 320)
-        let height = max(size.height - safeArea.top - safeArea.bottom - 16, 300)
+        // The hand finishes at the safe bottom edge; retain only the top gutter.
+        let height = max(size.height - safeArea.top - safeArea.bottom - 8, 300)
         return CGRect(x: x, y: y, width: width, height: height)
     }
 
@@ -4294,7 +4304,9 @@ struct PortraitBattlefieldLayoutMetrics {
         self.largeText = largeText
         self.paymentActive = paymentActive
         size = proxy.size
-        safeArea = proxy.safeAreaInsets
+        // This reader is inside the safe-area-constrained game root. Only the
+        // battlefield background ignores those insets; controls stay inside it.
+        safeArea = EdgeInsets()
     }
 
     init(size: CGSize, safeArea: EdgeInsets = EdgeInsets(), paymentActive: Bool = false, centerControlsVisible: Bool = true) {
@@ -5452,11 +5464,47 @@ struct ZoneCounter: View {
     }
 }
 
+enum GameplayAffordances {
+    static func dismissesZone(action: LegalAction) -> Bool { action.type == "cast_spell" }
+
+    static func commanderCastAvailable(player: PlayerGameState, snapshot: GameSnapshot, pendingActionID: String?) -> Bool {
+        guard pendingActionID == nil, snapshot.human?.playerId == player.playerId else { return false }
+        return player.zones.command.contains { card in
+            GameBoardInteractionState.cardActions(for: card, actions: snapshot.legalActions ?? []).contains {
+                $0.type == "cast_spell" && $0.playerId == player.playerId
+            }
+        }
+    }
+
+    static func floatingManaSymbols(in snapshot: GameSnapshot, pendingActionID: String?) -> Set<String> {
+        guard pendingActionID == nil else { return [] }
+        return Set(["W", "U", "B", "R", "G", "C"].filter { floatingManaCommand(symbol: $0, in: snapshot) != nil })
+    }
+
+    static func floatingManaCommand(symbol: String, in snapshot: GameSnapshot) -> GameCommand? {
+        guard let human = snapshot.human, let pool = human.manaPool,
+              let prompt = snapshot.promptEnvelopeV2, prompt.playerId == human.playerId,
+              CompactPromptPopup.isManaPaymentPrompt(prompt),
+              let choice = prompt.manaChoices?.first(where: { ($0.manaType ?? $0.id) == symbol }),
+              snapshot.source != "xmage-ondevice" || (choice.amount ?? 0) > 0 else { return nil }
+        let counts = ["W": pool.W, "U": pool.U, "B": pool.B, "R": pool.R, "G": pool.G, "C": pool.C]
+        guard (counts[symbol] ?? 0) > 0 else { return nil }
+        return UniversalPromptResponseCommandBuilder.command(
+            gameId: snapshot.id, bridgeRevision: snapshot.bridgeRevision, promptEnvelope: prompt,
+            type: snapshot.source == "xmage-ondevice" ? "play_mana" : prompt.responseCommand?.type ?? "play_mana",
+            promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId,
+            ids: [symbol], manaType: symbol
+        )
+    }
+}
+
 struct ManaPoolHUD: View {
     let manaPool: ManaPool?
     var vertical = false
     var compact = false
     var grid = false
+    var payableSymbols: Set<String> = []
+    var payMana: ((String) -> Void)? = nil
 
     private var values: [(String, Int)] {
         [
@@ -5487,7 +5535,7 @@ struct ManaPoolHUD: View {
                     manaContent
                 }
                 .padding(.horizontal, compact ? 4 : 9)
-                .padding(.vertical, 6)
+                .padding(.vertical, payableSymbols.isEmpty ? 6 : 4)
             }
         }
         .background(MagicPalette.iron.opacity(0.76), in: RoundedRectangle(cornerRadius: vertical ? 12 : 16))
@@ -5498,15 +5546,34 @@ struct ManaPoolHUD: View {
     @ViewBuilder
     private var manaContent: some View {
         ForEach(values, id: \.0) { symbol, count in
-            HStack(spacing: 2) {
+            if payableSymbols.contains(symbol), !grid, let payMana {
+                Button { payMana(symbol) } label: {
+                    manaValue(symbol: symbol, count: count)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .background(MagicPalette.antiqueGold.opacity(0.2), in: RoundedRectangle(cornerRadius: 9))
+                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(.white.opacity(0.9), lineWidth: 1.5))
+                        .shadow(color: MagicPalette.antiqueGold.opacity(0.65), radius: 5)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Spend floating \(symbol) mana, \(count) available")
+                .accessibilityIdentifier("board.mana.spend.\(symbol)")
+            } else {
+                manaValue(symbol: symbol, count: count)
+                    .opacity(count > 0 ? 1 : 0.45)
+                    .background(payableSymbols.contains(symbol) ? MagicPalette.antiqueGold.opacity(0.3) : .clear, in: RoundedRectangle(cornerRadius: 4))
+                    .shadow(color: payableSymbols.contains(symbol) ? MagicPalette.antiqueGold : .clear, radius: 4)
+            }
+        }
+    }
+
+    private func manaValue(symbol: String, count: Int) -> some View {
+        HStack(spacing: 2) {
                 ManaSymbolView(symbol: symbol, size: compact ? 13 : 18)
                 Text("\(count)")
                     .font(.system(size: 11, weight: .black))
                     .foregroundStyle(.white)
                     .frame(minWidth: 8)
             }
-            .opacity(count > 0 ? 1 : 0.45)
-        }
     }
 }
 
@@ -8550,7 +8617,7 @@ struct ManaPaymentTray: View {
 
             if let choices = prompt.manaChoices, !choices.isEmpty {
                 HStack(spacing: 7) {
-                    Text("Pay")
+                    Text("Use floating mana")
                         .font(.system(size: 8, weight: .black))
                         .foregroundStyle(MagicPalette.parchment.opacity(0.72))
                     ForEach(choices.prefix(6)) { choice in
@@ -8596,7 +8663,7 @@ struct ManaPaymentTray: View {
             paymentPipRow
             if let choices = prompt.manaChoices, !choices.isEmpty {
                 Divider().frame(height: 24)
-                Text("Pay").font(.caption2.bold()).foregroundStyle(MagicPalette.parchment)
+                Text("Use floating mana").font(.caption2.bold()).foregroundStyle(MagicPalette.parchment)
                 // Keep every supplied payment choice reachable while cancel stays fixed.
                 ForEach(choices) { choice in
                     let symbol = choice.manaType ?? choice.id
@@ -10037,6 +10104,14 @@ extension EnvironmentValues {
     }
 }
 
+enum LandscapeActionDockLayout {
+    static let horizontalPadding: CGFloat = 6
+    static let bottomPadding: CGFloat = 4
+    static let controlSpacing: CGFloat = 4
+    static let primaryLineLimit = 1
+    static func sidebarWidth(hasStack: Bool) -> CGFloat { hasStack ? 176 : 160 }
+}
+
 struct GameplayActionDock: View {
     @Environment(\.nativeTurnControl) private var nativeTurnControl
     let snapshot: GameSnapshot
@@ -10044,6 +10119,7 @@ struct GameplayActionDock: View {
     let yieldActions: [LegalAction]
     let pendingActionId: String?
     var compact = false
+    var landscapeSidebar = false
     var horizontal = false
     let openPromptDetails: () -> Void
     let openLog: () -> Void
@@ -10076,7 +10152,7 @@ struct GameplayActionDock: View {
                 primaryButton
             }
         } else {
-            VStack(spacing: 8) {
+            VStack(spacing: landscapeSidebar ? LandscapeActionDockLayout.controlSpacing : 8) {
                 primaryButton
                 HStack(spacing: 6) { secondaryControl; controlsMenu }
             }
@@ -10096,7 +10172,7 @@ struct GameplayActionDock: View {
                             .font(.system(size: compact ? 10 : 11, weight: .black))
                         Text(model.primaryTitle)
                             .font(.system(size: compact ? 13 : 15, weight: .bold, design: .serif))
-                            .lineLimit(2)
+                            .lineLimit(landscapeSidebar ? LandscapeActionDockLayout.primaryLineLimit : 2)
                             .minimumScaleFactor(0.62)
                     }
                     .frame(maxWidth: .infinity)
@@ -10322,9 +10398,15 @@ struct PortraitBottomCommandBar: View {
         GeometryReader { proxy in
             VStack(spacing: 6) {
                 HStack(spacing: 4) {
-                    PlayerZoneMenu(player: human, viewZone: viewZone, snapshot: snapshot)
+                    PlayerZoneMenu(player: human, viewZone: viewZone, snapshot: snapshot, pendingActionID: pendingActionId)
                     ScrollView(.horizontal, showsIndicators: false) {
-                        ManaPoolHUD(manaPool: manaPool, compact: true)
+                        ManaPoolHUD(manaPool: manaPool, compact: true,
+                            payableSymbols: GameplayAffordances.floatingManaSymbols(in: snapshot, pendingActionID: pendingActionId),
+                            payMana: { symbol in
+                                if pendingActionId == nil, let command = GameplayAffordances.floatingManaCommand(symbol: symbol, in: snapshot) {
+                                    runCommand(command, "Spend floating {\(symbol)}", "floating-\(snapshot.promptEnvelopeV2?.id ?? "")-\(symbol)")
+                                }
+                            })
                     }
                     .frame(maxWidth: .infinity)
                     .accessibilityLabel("Floating mana; swipe to view all colors")
@@ -10363,13 +10445,6 @@ struct PortraitBottomCommandBar: View {
                 }
             }
             .padding(.horizontal, 4)
-            .background(
-                LinearGradient(
-                    colors: [.clear, .black.opacity(0.7)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
             .onAppear {
                 #if DEBUG
                 isStackOpen = snapshot.id == "design-preview-stack-response-prompt"
@@ -10432,10 +10507,15 @@ private struct PlayerZoneMenu: View {
     let player: PlayerGameState
     let viewZone: (String, [ZoneCard]) -> Void
     var snapshot: GameSnapshot? = nil
+    var pendingActionID: String? = nil
+
+    private var commanderReady: Bool {
+        snapshot.map { GameplayAffordances.commanderCastAvailable(player: player, snapshot: $0, pendingActionID: pendingActionID) } ?? false
+    }
 
     var body: some View {
         Menu {
-            Button("Command · \(player.zones.command.count)") { open(.command, player.zones.command) }
+            Button(commanderReady ? "Command · Cast available" : "Command · \(player.zones.command.count)") { open(.command, player.zones.command) }
             Button("Graveyard · \(player.zones.graveyard.count)") { open(.graveyard, player.zones.graveyard) }
             Button("Exile · \(player.zones.exile.count)") { open(.exile, player.zones.exile) }
             Button("Hand · \(player.zones.visibleHandCount)") { open(.hand, player.zones.hand) }
@@ -10454,9 +10534,13 @@ private struct PlayerZoneMenu: View {
             Image(systemName: "square.grid.2x2")
                 .font(.system(size: 12, weight: .semibold))
                 .frame(minWidth: 44, minHeight: 44)
-                .foregroundStyle(MagicPalette.parchment)
+                .foregroundStyle(commanderReady ? .white : MagicPalette.parchment)
+                .background(commanderReady ? MagicPalette.antiqueGold.opacity(0.22) : .clear, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(commanderReady ? .white.opacity(0.9) : .clear, lineWidth: 1.5))
+                .shadow(color: commanderReady ? MagicPalette.antiqueGold.opacity(0.75) : .clear, radius: 7)
         }
-        .accessibilityLabel("\(player.displayName ?? player.playerId) zones")
+        .accessibilityLabel("\(player.displayName ?? player.playerId) zones\(commanderReady ? ", commander cast available" : "")")
+        .accessibilityIdentifier("board.zones.\(player.playerId)")
     }
 
     private func open(_ zone: BoardZoneReference.PlayerZone, _ cards: [ZoneCard]) {
@@ -12765,6 +12849,16 @@ struct CompactZoneInspectorOverlay: View {
     var runTargetAction: ((ZoneCard) -> Void)? = nil
     var availableHeight: CGFloat = 410
 
+    private func perform(_ action: LegalAction) {
+        guard pendingActionId == nil, legalActions.contains(where: { $0.id == action.id }) else { return }
+        if GameplayAffordances.dismissesZone(action: action) {
+            selectedCard = nil
+            inspectedCard = nil
+            closeAction()
+        }
+        runAction(action)
+    }
+
     var body: some View {
         VStack(spacing: 8) {
             // Title Bar
@@ -12827,7 +12921,7 @@ struct CompactZoneInspectorOverlay: View {
                                 }
                                 if let action = cardActions.first, cardActions.count == 1 {
                                     Button {
-                                        runAction(action)
+                                        perform(action)
                                     } label: {
                                         Text(action.displayLabel)
                                             .font(.system(size: 12, weight: .semibold))
@@ -12841,7 +12935,7 @@ struct CompactZoneInspectorOverlay: View {
                                 if cardActions.count > 1 {
                                     Menu {
                                         ForEach(cardActions) { action in
-                                            Button(action.displayLabel) { runAction(action) }
+                                            Button(action.displayLabel) { perform(action) }
                                         }
                                     } label: {
                                         Text("Actions")
