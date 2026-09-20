@@ -1,6 +1,6 @@
 # MagicMobile 0.1.1 — build 5
 
-Marketing version remains **0.1.1**; shared visible build is **5**. Android installation versionCode is **2026092001**. **Release is on hold for an approved engine update.** The pre-upgrade candidate reused existing native engines; its test results below do not validate the new engine.
+Marketing version remains **0.1.1**; shared visible build is **5**. Android installation versionCode is **2026092001**. The updated-engine Android release and self-host server prerelease are published; iOS native compilation and subsequent distribution are still pending. See the [current release evidence](../docs/RELEASE_0.1.1_BUILD5.md) for exact artifacts, hashes and availability. The historical pre-upgrade results below do not validate the new engine.
 
 On September 20, upstream XMage was 190 commits ahead of our pin. The owner approved exact candidate `4825513287ba6c42c32fd205d227f4a5fc44c2f3` and detection digest `2e3cd230219d71b550c9874ce4fdcbca433140bcce4e814a33cf6200d4a72b7e`. Isolated regeneration is tracked in [maintenance run 35524573624](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/35524573624). Both native engines, catalogue and server package must be rebuilt and checked before release; starting this run is not update acceptance.
 
@@ -14,7 +14,10 @@ The first regeneration passed and produced 32,430 card factories / 588 set refer
 - Client recovery distinguishes a lost reply from a failed create/join request. Authentication refresh and credential storage are protected; credential-bearing redirects are rejected.
 - A server restart currently interrupts its games. Leaving an active online game ends it for everyone. Durable match recovery, public quick matchmaking, and host migration are not included.
 
-## Verification
+## Historical pre-upgrade verification
+
+Updated-engine validation and release results supersede these candidate observations
+in the [current release evidence](../docs/RELEASE_0.1.1_BUILD5.md).
 
 - Fresh current JVM core checks: 419 assertions; native-boundary checks: 88 assertions. Synthetic server contract checks passed separately.
 - Real-engine HTTP tests reached normal priority after mulligans in two- and four-human Commander matches. They checked seat isolation, private hands, prompt ownership, and response retry semantics. Representative included decks passed with both a 2 GB and a 256 MB JVM heap. These are local opening-game tests, not full-match or cloud-capacity acceptance.
@@ -30,6 +33,6 @@ The first regeneration passed and produced 32,430 card factories / 588 set refer
 
 No live cross-platform availability is claimed. Oracle ARM capacity attempts failed. The isolated Render free-tier trial built but failed its real-engine HTTP admission test with a 60-second request timeout; this does not establish that memory or the bridge alone caused the failure. The owner put further Render deployment attempts on hold. No paid upgrade was made and production Supabase was not connected to the trial.
 
-The [self-host launcher](../apps/multiplayer-server/selfhost/README.md) is published as a diagnostic prerelease, pinned to the pre-upgrade runtime. Its seven isolated launcher regressions passed; Windows execution is not yet verified. Before enabling Online: provision a suitable host, verify TLS and authentication, apply the reviewed database migration, validate concurrent matchmaking, and complete real iOS/Android two- and four-player gameplay/reconnect checks on that host.
+The [self-host launcher](../apps/multiplayer-server/selfhost/README.md) is published as a diagnostic prerelease, now pinned to the verified updated-engine runtime. Its seven isolated launcher regressions passed; Windows execution is not yet verified. Before enabling Online: provision a suitable host, verify TLS and authentication, apply the reviewed database migration, validate concurrent matchmaking, and complete real iOS/Android two- and four-player gameplay/reconnect checks on that host.
 
-Signed artifacts, store availability, public Android download verification, and website delivery will be recorded after they succeed. Physical-device acceptance is not implied by compilation, fixture tests, or an upload.
+Signed artifacts, store availability, public Android download verification, and website delivery are tracked in the current release evidence as each succeeds. Physical-device acceptance is not implied by compilation, fixture tests, or an upload.
