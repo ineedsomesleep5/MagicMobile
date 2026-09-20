@@ -37,6 +37,8 @@ import java.security.MessageDigest
  * building never need the network.
  */
 object Artwork {
+    internal var consentRevision by mutableIntStateOf(0)
+        private set
     private const val PREFS = "magicmobile.artwork"
     private const val CONSENT_KEY = "magicmobile.deckArtworkNetworkEnabled"
     private const val MAX_BYTES = 2 * 1024 * 1024
@@ -75,6 +77,7 @@ object Artwork {
     fun setEnabled(context: Context, value: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(CONSENT_KEY, value).apply()
+        consentRevision++
     }
 
     private fun key(name: String): String =
@@ -130,31 +133,33 @@ object Artwork {
     }.getOrNull()
 
     /** Returns null when artwork is unavailable; it never substitutes a different card. */
-    suspend fun load(context: Context, name: String, token:Boolean=false, tokenIdentity:ArtworkTokenIdentity?=null): Bitmap? = withContext(Dispatchers.IO) {
+    suspend fun load(context: Context, name: String, token:Boolean=false, tokenIdentity:ArtworkTokenIdentity?=null, cachedReady:suspend (Bitmap)->Unit = {}): Bitmap? = withContext(Dispatchers.IO) {
         if (name.isBlank() || name.length > 512) return@withContext null
         val lookup=if(token) {
             val identity=tokenIdentity?.normalized() ?: return@withContext null
             val matches=tokens(context).values.filter{it.token?.normalized()==identity}
             "token:"+(matches.singleOrNull()?.id ?: return@withContext null)
         } else name
-        memory.get(lookup)?.let { return@withContext it }
+        var cached=memory.get(lookup)
+        cached?.takeIf{token || minOf(it.width,it.height)>=ArtworkQuality.HIGH.shortEdge}?.let{return@withContext it}
         ArtworkQuality.entries.asReversed().forEach { quality ->
             val downloaded = downloadFile(context, lookup, quality)
             if (downloaded.isFile && downloaded.length() in 1..MAX_BYTES.toLong()) {
-                decode(downloaded.readBytes())?.let { memory.put(lookup, it); return@withContext it }
+                decode(downloaded.readBytes())?.let { if(cached==null || it.width>cached!!.width)cached=it }
             }
         }
-        if(token)return@withContext null
+        if(token)return@withContext cached
         val file = cacheFile(context, name)
         if (file.isFile && file.length() in 1..MAX_BYTES.toLong()) {
-            decode(file.readBytes())?.let { memory.put(name, it); return@withContext it }
+            decode(file.readBytes())?.let { if(cached==null || it.width>cached!!.width)cached=it }
         }
-        if (!enabled(context)) return@withContext null
-        val bytes = fetch(context,name) ?: return@withContext null
+        cached?.let { memory.put(lookup,it);cachedReady(it) }
+        if (!enabled(context) || (cached?.let{minOf(it.width,it.height)>=ArtworkQuality.HIGH.shortEdge}==true)) return@withContext cached
+        val bytes = try {fetch(context,name)}catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){null} ?: return@withContext cached
         coroutineContext.ensureActive()
-        if(!enabled(context))return@withContext null
+        if(!enabled(context))return@withContext cached
         runCatching { file.writeBytes(bytes) }
-        decode(bytes)?.also { memory.put(name, it) }
+        decode(bytes)?.takeIf{cached==null || it.width>=cached!!.width}?.also { memory.put(name, it) } ?: cached
     }
 
     private suspend fun fetch(context:Context,name: String): ByteArray? {
@@ -162,7 +167,7 @@ object Artwork {
         val metadata=ArtworkTransport.bytes(context,URL("https://api.scryfall.com/cards/named?exact=$encoded"),4*1024*1024,setOf("application/json"))
         val record=ArtworkCatalogue.decode(Wire.objectValue(io.magicmobile.core.Json.parseObject(metadata.toString(Charsets.UTF_8)))) ?: return null
         val selected=record.faces.firstOrNull{it.name.equals(name,true)&&it.images.isNotEmpty()} ?: record
-        val image=selected.images["normal"] ?: return null
+        val image=selected.images["large"] ?: return null
         return ArtworkTransport.bytes(context,URL(image),MAX_BYTES,ALLOWED_TYPES)
     }
 
@@ -195,9 +200,9 @@ internal fun artworkIllustrationCrop(imageWidth:Int,imageHeight:Int,targetWidth:
 @Composable
 fun CardArtwork(name: String, modifier: Modifier = Modifier, token:Boolean=false, tokenIdentity:ArtworkTokenIdentity?=null, artOnly:Boolean=false, placeholder: @Composable () -> Unit = {}) {
     val context = LocalContext.current
-    val consent = Artwork.enabled(context)
-    var bitmap by remember(name, consent, token, tokenIdentity) { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(name, consent, token, tokenIdentity) { bitmap = try { Artwork.load(context, name, token, tokenIdentity) } catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){null} }
+    val consent = remember(Artwork.consentRevision){Artwork.enabled(context)}
+    var bitmap by remember(name, token, tokenIdentity) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(name, consent, token, tokenIdentity) { bitmap = try { Artwork.load(context, name, token, tokenIdentity){cached->withContext(Dispatchers.Main){bitmap=cached}} } catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){bitmap} }
     Box(modifier.background(Color(0xFFEDE7DC)), contentAlignment = Alignment.Center) {
         val image = bitmap
         if (image != null) {

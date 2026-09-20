@@ -183,17 +183,12 @@ struct DeckStudioRootView: View {
                                     .foregroundStyle(.white).background(DeckStudioPalette.ink, in: Capsule()).padding(10)
                             }
                         }
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(record.name).font(.headline).lineLimit(2).multilineTextAlignment(.leading)
-                        Text(DeckStudioDraftPresentation.commanders(draft).joined(separator: " • "))
-                            .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk).lineLimit(2)
-                        DeckStudioColorIdentity(colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata))
-                        if let labels = tags[record.id], !labels.isEmpty {
-                            Text(labels.joined(separator: " · ")).font(.caption2).foregroundStyle(DeckStudioPalette.accent).lineLimit(2)
-                        }
-                        Text("\(DeckStudioDraftPresentation.gameCount(draft)) cards · \(included ? "Included" : "Local draft")")
-                            .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
-                    }.padding(.horizontal, 14).padding(.bottom, 10)
+                    DeckStudioTileDetails(name: record.name,
+                        commanders: DeckStudioDraftPresentation.commanders(draft).joined(separator: " • "),
+                        colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata),
+                        tags: tags[record.id] ?? [], showTags: tags.values.contains(where: { !$0.isEmpty }),
+                        summary: "\(DeckStudioDraftPresentation.gameCount(draft)) cards · \(included ? "Included" : "Local draft")")
+                        .padding(.horizontal, 14).padding(.bottom, 10)
                 }.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             }.buttonStyle(DeckStudioArtworkButtonStyle()).accessibilityIdentifier("deckStudio.deck.\(id)")
             HStack(spacing: 0) {
@@ -201,7 +196,7 @@ struct DeckStudioRootView: View {
                     if !included { Text(record.updatedAt, style: .date) }
                     else { Text("Make it your own") }
                 }.font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk)
-                    .lineLimit(2).frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                    .lineLimit(2, reservesSpace: true).frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 Button { toggleFavorite(id) } label: { Image(systemName: favorites.contains(id) ? "star.fill" : "star").frame(width: 44, height: 44) }
                     .foregroundStyle(DeckStudioPalette.ink).accessibilityLabel(favorites.contains(id) ? "Unfavorite \(record.name)" : "Favorite \(record.name)")
                 Menu { deckActions(record, included: included) } label: { Image(systemName: "ellipsis.circle").frame(width: 44, height: 44) }.accessibilityLabel("Options for \(record.name)")
@@ -284,6 +279,30 @@ struct DeckStudioRootView: View {
             try Task.checkCancellation()
             metadata = loaded.0; resolver = loaded.1; loadError = nil
         } catch is CancellationError { } catch { loadError = error.localizedDescription }
+    }
+}
+
+/// Each metadata slot reserves the same number of lines; Dynamic Type determines
+/// their height instead of a fixed tile height that could clip larger text.
+struct DeckStudioTileDetails: View {
+    let name: String
+    let commanders: String
+    let colors: [String]?
+    let tags: [String]
+    let showTags: Bool
+    let summary: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(name).font(.headline).lineLimit(2, reservesSpace: true).multilineTextAlignment(.leading)
+            Text(commanders.isEmpty ? " " : commanders).font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk).lineLimit(2, reservesSpace: true)
+                .accessibilityHidden(commanders.isEmpty)
+            DeckStudioColorIdentity(colors: colors)
+            if showTags {
+                Text(tags.isEmpty ? " " : tags.joined(separator: " · ")).font(.caption2).foregroundStyle(DeckStudioPalette.accent).lineLimit(2, reservesSpace: true)
+                    .accessibilityHidden(tags.isEmpty)
+            }
+            Text(summary).font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk).lineLimit(2, reservesSpace: true)
+        }.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 }
 

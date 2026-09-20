@@ -5,6 +5,8 @@ import android.os.Handler
 import android.os.Looper
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -39,6 +41,9 @@ import java.util.Locale
     val poll=state.game;val snapshot=poll?.snapshot;val game=snapshot?.obj("gameView")
     val decision=poll?.decision
     val choices=remember(decision,snapshot){runCatching{if(decision==null)emptyList() else Decisions.choices(decision,snapshot)}.getOrElse{emptyList()}}
+    val viewerPlayerId=gameplayViewerId(poll)
+    val commanderCasts=remember(decision,snapshot,viewerPlayerId){runCatching{castableCommanderIds(decision,snapshot,viewerPlayerId)}.getOrDefault(emptySet())}
+    var expandedZones by remember {mutableStateOf<Set<String>>(emptySet())}
     var confirmClose by remember {mutableStateOf(false)}
     var confirmYield by remember {mutableStateOf<AutoYieldPolicy.Mode?>(null)}
     var selectedCard by remember {mutableStateOf<Obj?>(null)}
@@ -85,7 +90,7 @@ import java.util.Locale
                 Text(decision.kind.replace('_',' '),style=MaterialTheme.typography.titleMedium)
                 Text(Decisions.plain(decision.payload.text("message").orEmpty()))
                 if(decision.submitted)Text("Answer submitted · waiting for XMage")
-                choices.forEach { choice -> OutlinedButton(onClick={model.answer(choice.type,choice.value)},enabled=!state.busy && !state.pendingAnswer && !state.closing && !decision.submitted,modifier=Modifier.fillMaxWidth()) {Text(choice.label)} }
+                choices.forEach { choice -> OutlinedButton(onClick={if(choice.type=="uuid" && choice.value in commanderCasts)expandedZones=emptySet();model.answer(choice.type,choice.value)},enabled=!state.busy && !state.pendingAnswer && !state.closing && !decision.submitted,modifier=Modifier.fillMaxWidth()) {Text(choice.label)} }
                 if("integer" in decision.responseTypes) {
                     // The engine sends the Int sentinels to mean "no limit". Showing them
                     // literally prefilled the field with -2147483648 and labelled the range
@@ -127,12 +132,18 @@ import java.util.Locale
                 player.obj("manaPool")?.let { pool ->
                     val mana=listOf("white" to "W","blue" to "U","black" to "B","red" to "R","green" to "G","colorless" to "C").filter{(pool.number(it.first) ?: 0)>0}
                     if(mana.isNotEmpty())LazyRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        items(mana) { (key,symbol) -> Row { ManaSymbol(symbol);Text(" × ${pool.number(key)}") } }
+                        items(mana) { (key,symbol) ->
+                            val action=if(decision?.submitted==false && player.text("playerId")==viewerPlayerId)floatingManaChoice(choices,player.text("playerId"),key) else null
+                            if(action!=null)OutlinedButton(onClick={model.answer(action.type,action.value)},enabled=!state.busy&&!state.pendingAnswer&&!state.closing,modifier=Modifier.border(2.dp,Color(0xFFFFD166),RoundedCornerShape(24.dp))) {ManaSymbol(symbol,22);Text(" × ${pool.number(key)} · Spend",Modifier.padding(start=6.dp))}
+                            else Row { ManaSymbol(symbol);Text(" × ${pool.number(key)}") }
+                        }
                     }
                 }
                 CardZone("Battlefield",player["battlefield"]){selectedCard=it.takeIf(Obj::isNotEmpty);selectedRevision=poll?.revision}
-                var expanded by remember {mutableStateOf(false)}
-                TextButton(onClick={expanded=!expanded}){Text(if(expanded)"Hide other zones" else "Graveyard / exile / commanders")}
+                val playerId=player.text("playerId").orEmpty()
+                val expanded=playerId in expandedZones
+                val canCast=playerId==viewerPlayerId && commanderCasts.isNotEmpty() && !state.busy && !state.pendingAnswer && !state.closing
+                TextButton(onClick={expandedZones=if(expanded)expandedZones-playerId else expandedZones+playerId},modifier=if(canCast)Modifier.border(2.dp,Color(0xFFFFD166),RoundedCornerShape(24.dp)) else Modifier){Text(if(canCast)"Commander ready to cast · Zones" else if(expanded)"Hide other zones" else "Graveyard / exile / commanders")}
                 if(expanded){CardZone("Graveyard",player["graveyard"]){selectedCard=it.takeIf(Obj::isNotEmpty);selectedRevision=poll?.revision};CardZone("Exile",player["exile"]){selectedCard=it.takeIf(Obj::isNotEmpty);selectedRevision=poll?.revision};CardZone("Command zone",player["commandList"]){selectedCard=it.takeIf(Obj::isNotEmpty);selectedRevision=poll?.revision}}
             }}}
             game?.array("combat").orEmpty().map(Wire::objectValue).forEach {group->item {Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){

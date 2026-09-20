@@ -4,6 +4,38 @@ import ImageIO
 @testable import MagicMobile
 
 final class NativeDeckArtworkTests: XCTestCase {
+    func testLiveUpgradeKeepsCompactDownloadAndOfflineConsentBoundary() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = NativeAssetStore(directory: directory, availableBytes: { _ in Int64.max })
+        let compact = try png(width: 146, height: 204)
+        let sharper = try png(width: 488, height: 680)
+        let name = "Local upgrade fixture"
+        try await store.save(compact, key: NativeAssetStore.cardKey(name), quality: .compact)
+        let cache = URLCache(memoryCapacity: 4 * 1024 * 1024, diskCapacity: 0, diskPath: nil)
+        LiveArtworkFixtureProtocol.bytes = sharper
+        LiveArtworkFixtureProtocol.requests = 0
+        defer { LiveArtworkFixtureProtocol.bytes = Data() }
+        let artwork = NativeDeckArtwork(cache: cache, protocolClasses: [LiveArtworkFixtureProtocol.self], assetStore: store)
+        let offline = try await artwork.imageData(name: name, allowNetwork: false)
+        XCTAssertEqual(offline, compact)
+        XCTAssertEqual(LiveArtworkFixtureProtocol.requests, 0)
+        let live = try await artwork.imageData(name: name, allowNetwork: true)
+        XCTAssertEqual(live, sharper)
+        XCTAssertEqual(LiveArtworkFixtureProtocol.requests, 1)
+        let downloaded = await store.image(key: NativeAssetStore.cardKey(name))
+        XCTAssertEqual(downloaded, compact, "Live art must not replace the selected offline quality")
+        let cached = try await artwork.imageData(name: name, allowNetwork: true)
+        XCTAssertEqual(cached, sharper)
+        XCTAssertEqual(LiveArtworkFixtureProtocol.requests, 1)
+        let offAgain = try await artwork.imageData(name: name, allowNetwork: false)
+        XCTAssertEqual(offAgain, compact)
+        XCTAssertEqual(LiveArtworkFixtureProtocol.requests, 1)
+        cache.removeAllCachedResponses()
+        LiveArtworkFixtureProtocol.bytes = Data() // Offline/failure must keep usable saved art.
+        let fallback = try await artwork.imageData(name: name, allowNetwork: true)
+        XCTAssertEqual(fallback, compact)
+    }
     func testExactNameIsEncodedAsOneQueryValueAndUsesExplicitHeaders() throws {
         let name = "Fire // Ice & Éowyn?format=json#secret"
         let request = try NativeDeckArtwork.request(name: name)
@@ -217,6 +249,22 @@ final class NativeDeckArtworkTests: XCTestCase {
         HTTPURLResponse(url: URL(string: "https://api.scryfall.com/cards/named")!, statusCode: status,
                         httpVersion: nil, headerFields: headers)!
     }
+}
+
+private final class LiveArtworkFixtureProtocol: URLProtocol {
+    static var bytes = Data()
+    static var requests = 0
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        Self.requests += 1
+        let response = HTTPURLResponse(url: request.url!, statusCode: Self.bytes.isEmpty ? 503 : 200,
+            httpVersion: nil, headerFields: ["Content-Type": "image/png"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Self.bytes)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
 }
 
 private final class StalledArtworkProtocol: URLProtocol {

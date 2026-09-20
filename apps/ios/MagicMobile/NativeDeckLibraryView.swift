@@ -107,8 +107,10 @@ struct NativeArtworkPreferenceView: View {
     @AppStorage(NativeArtworkPreference.key) private var remoteArtwork = false
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Toggle("Download card artwork", isOn: $remoteArtwork)
+            Toggle("Scryfall live images", isOn: $remoteArtwork)
                 .accessibilityIdentifier("nativeArtwork.downloads")
+            Text("Show saved art first, then sharper images online. Offline download quality stays unchanged.")
+                .font(.caption).foregroundStyle(.secondary)
             Text("Scryfall receives card names—including your hand—and your IP address.")
                 .font(.caption).foregroundStyle(.secondary)
         }
@@ -201,7 +203,8 @@ struct NativeCardArtworkView<Placeholder: View>: View {
                    let image = NativeDeckArtwork.decodedImage(data, variant: request.variant) {
                     guard !Task.isCancelled else { return }
                     artwork = presentedImage(image); completedRequest = request
-                    if NativeDeckArtwork.isSufficient(data, for: request.variant) { return }
+                    let quality: NativeArtworkQuality = request.variant == .inspection ? .high : .standard
+                    if !request.allowNetwork || quality.accepts(data) { return }
                     // Keep a safe low-resolution image visible offline or if upgrade fails.
                 } else if tokenTypeLine == nil, request.variant == .inspection,
                           let url = CardImageURL.image(name, variant: .board), url.isFileURL,
@@ -211,7 +214,7 @@ struct NativeCardArtworkView<Placeholder: View>: View {
                     artwork = presentedImage(image); completedRequest = request
                 }
                 do {
-                    if artwork == nil, request.variant == .inspection,
+                    if artwork == nil,
                        let cached = try await NativeDeckArtwork.shared.imageData(name: name, variant: .board, allowNetwork: false,
                                                                                 tokenTypeLine: tokenTypeLine, tokenOracleText: tokenOracleText,
                                                                                 tokenPower: tokenPower, tokenToughness: tokenToughness, tokenColors: tokenColors),

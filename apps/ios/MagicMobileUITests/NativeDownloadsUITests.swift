@@ -2,6 +2,33 @@ import XCTest
 
 @MainActor
 final class NativeDownloadsUITests: XCTestCase {
+    func testLiveImagePreferenceIsSharedBetweenSettingsAndLobby() {
+        let app = XCUIApplication()
+        continueAfterFailure = false
+        app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
+        app.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+        app.launchArguments = ["--ondevice-setup-ui-test"]
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.buttons["menu.settings"].waitForExistence(timeout: 20))
+        app.buttons["menu.settings"].press(forDuration: 0.15)
+        let consent = app.switches["nativeArtwork.downloads"]
+        XCTAssertTrue(consent.waitForExistence(timeout: 10))
+        XCTAssertEqual(consent.value as? String, "0")
+        consent.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        XCTAssertEqual(consent.value as? String, "1")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 10))
+        app.buttons["menu.play"].press(forDuration: 0.15)
+        XCTAssertTrue(consent.waitForExistence(timeout: 10))
+        for _ in 0..<3 where !consent.isHittable { app.swipeUp() }
+        XCTAssertTrue(consent.isHittable)
+        XCTAssertEqual(consent.value as? String, "1", "Lobby must share the settings preference")
+        consent.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        XCTAssertEqual(consent.value as? String, "0")
+    }
+
     func testDownloadsShowsLocalCoverageAndRequiresConsentWithoutStartingBulkDownload() {
         let app = XCUIApplication()
         continueAfterFailure = false
