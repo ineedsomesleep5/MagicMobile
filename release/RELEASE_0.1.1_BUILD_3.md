@@ -33,7 +33,8 @@ iOS:
 - IPA: `build_output/testflight/parity-0.1.1-build3/native-release.sWHmnL/export/MagicMobile.ipa`.
 - Size: 181,790,287 bytes. SHA-256: `33b2c642532a4bb099b80ad46d70698188673784b7c824a22bcc3a96af6e3411`.
 - Delivery UUID: `6dd55a71-706d-430a-8a5b-cb6275a8be31`.
-- Archive, export, signed/native guards, Apple validation and upload passed September 19, 2026. Apple processing and tester availability are pending confirmation.
+- Archive, export, signed/native guards, Apple validation and upload passed September 19, 2026. Apple processing is VALID; internal state is IN_BETA_TESTING with verified Internal group membership.
+- External group assignment succeeded, but external review submission was rejected because another build in this version is already in review. External state is READY_FOR_BETA_SUBMISSION, not publicly available. No review was cancelled and no build was expired. Internal-only delivery follows the user's explicit fallback authorization.
 - Public TestFlight link remains https://testflight.apple.com/join/2mSHE8rZ. Upload alone does not make build 3 publicly available.
 
 Android: https://github.com/ineedsomesleep5/MagicMobile/releases/tag/android-v0.1.1-build.3
