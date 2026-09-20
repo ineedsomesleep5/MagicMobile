@@ -3,6 +3,36 @@ import MagicMobileOnDevice
 @testable import MagicMobile
 
 final class OnDeviceSnapshotAdapterTests: XCTestCase {
+    func testNativePublicPhasingPlayerCountersAndAttachmentsPreserveExactIdentity() throws {
+        let original = try fixture("2p-battlefield")
+        var raw = try XCTUnwrap(original.raw.object)
+        var root = try XCTUnwrap(original.snapshot?.object)
+        var view = try XCTUnwrap(root["gameView"]?.object)
+        var players = try XCTUnwrap(view["players"]?.array)
+        let index = try XCTUnwrap(players.firstIndex { !($0["battlefield"]?.object?.isEmpty ?? true) })
+        var player = try XCTUnwrap(players[index].object)
+        let playerID = try XCTUnwrap(player["playerId"]?.string)
+        player["counters"] = .array([.object(["name": .string("poison"), "count": .integer(3)]),
+                                      .object(["name": .string("energy"), "count": .integer(5)])])
+        player["monarch"] = .bool(true); player["initiative"] = .bool(true)
+        var battlefield = try XCTUnwrap(player["battlefield"]?.object)
+        let id = try XCTUnwrap(battlefield.keys.first)
+        var card = try XCTUnwrap(battlefield[id]?.object)
+        card["phasedIn"] = .bool(false); card["attachedTo"] = .string(playerID)
+        battlefield[id] = .object(card); player["battlefield"] = .object(battlefield)
+        players[index] = .object(player); view["players"] = .array(players)
+        root["gameView"] = .object(view); raw["snapshot"] = .object(root)
+        let shown = try OnDeviceSnapshotAdapter.snapshot(MatchPoll(.object(raw)), expectedSeatID: original.seatID)
+        let mappedPlayer = try XCTUnwrap(shown.players.first { $0.id == playerID })
+        XCTAssertEqual(mappedPlayer.poison, 3)
+        XCTAssertEqual(mappedPlayer.counters, ["poison": 3, "energy": 5])
+        XCTAssertEqual(mappedPlayer.monarch, true); XCTAssertEqual(mappedPlayer.initiative, true)
+        let mapped = try XCTUnwrap(mappedPlayer.zones.battlefield.first { $0.id == id })
+        XCTAssertTrue(mapped.isPhasedOut)
+        XCTAssertEqual(mapped.attachedToInstanceId, playerID)
+        XCTAssertEqual(BoardZoneReference.playerEnchantments(playerID: playerID).cards(in: shown).map(\.id), [id])
+    }
+
     func testTokenIdentityPreservesVisibleFalseTrueAndRedactsHidden() throws {
         let original = try fixture("2p-priority")
         for (flag, hidden, complete, faceDown) in [(true as Bool?, false, true, false), (false, false, true, false), (nil, false, true, false), (true, true, true, false), (true, false, false, false), (true, false, true, true)] {

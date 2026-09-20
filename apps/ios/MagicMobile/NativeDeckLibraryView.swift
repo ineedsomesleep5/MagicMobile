@@ -194,6 +194,13 @@ struct NativeCardArtworkView<Placeholder: View>: View {
             }
         }
             .onReceive(NotificationCenter.default.publisher(for: NativeAssetDownloads.didFinish)) { _ in downloadRevision += 1 }
+            .onReceive(NotificationCenter.default.publisher(for: NativeArtworkBackgroundQueue.didStoreImage)) { note in
+                guard let key = note.userInfo?["key"] as? String else { return }
+                if tokenTypeLine == nil ? key == NativeAssetStore.cardKey(name) :
+                    (key.hasPrefix("token:") && (note.userInfo?["name"] as? String)?.caseInsensitiveCompare(name) == .orderedSame) {
+                    downloadRevision += 1
+                }
+            }
             .task(id: request) {
                 guard permitted else { artwork = nil; completedRequest = nil; failedRequest = nil; return }
                 artwork = nil; completedRequest = nil; failedRequest = nil

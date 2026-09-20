@@ -10,9 +10,9 @@ android {
         minSdk = 26
         targetSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2026091904
+        versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2026091905
         versionName = providers.gradleProperty("androidVersionName").orNull ?: "0.1.1"
-        buildConfigField("int", "RELEASE_BUILD", "3")
+        buildConfigField("int", "RELEASE_BUILD", "4")
         ndk { abiFilters += "arm64-v8a" }
         buildConfigField("boolean", "NATIVE_ENGINE", withNative.toString())
         if(withNative) externalNativeBuild { cmake { arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON" } }

@@ -99,7 +99,14 @@ struct DeckStudioAnalysisContent: View {
                 DeckStudioPanel {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Printed mana symbols").font(.headline)
-                        ForEach(statistics.manaSymbolCounts.keys.sorted(), id: \.self) { symbol in metric("{\(symbol)}", "\(statistics.manaSymbolCounts[symbol, default: 0])") }
+                        ForEach(statistics.manaSymbolCounts.keys.sorted(), id: \.self) { symbol in
+                            HStack {
+                                ManaSymbolView(symbol: symbol, size: 24)
+                                Spacer()
+                                Text("\(statistics.manaSymbolCounts[symbol, default: 0])").foregroundStyle(DeckStudioPalette.secondaryInk)
+                            }.accessibilityElement(children: .ignore)
+                                .accessibilityLabel("\(symbol) mana symbol: \(statistics.manaSymbolCounts[symbol, default: 0])")
+                        }
                         DisclosureGroup("How to read these counts") {
                             Text("Printed costs, not available mana sources. Hybrid and Phyrexian symbols stay distinct. Conditional mana, land-face choices and cost reductions are not inferred.")
                         }.font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
@@ -111,7 +118,14 @@ struct DeckStudioAnalysisContent: View {
                             Text("Card types & colors").font(.headline)
                             ForEach(["CREATURE", "ARTIFACT", "ENCHANTMENT", "INSTANT", "SORCERY", "LAND", "PLANESWALKER", "BATTLE"], id: \.self) { type in metric(type.capitalized, "\(typeCount(type))") }
                             Divider()
-                            ForEach(["W", "U", "B", "R", "G", "C"], id: \.self) { color in metric(color == "C" ? "Colorless" : color, "\(colorCount(color))") }
+                            ForEach(["W", "U", "B", "R", "G", "C"], id: \.self) { color in
+                                HStack {
+                                    ManaSymbolView(symbol: color, size: 24)
+                                    Spacer()
+                                    Text("\(colorCount(color))").foregroundStyle(DeckStudioPalette.secondaryInk)
+                                }.accessibilityElement(children: .ignore)
+                                    .accessibilityLabel("\(["W": "White", "U": "Blue", "B": "Black", "R": "Red", "G": "Green", "C": "Colorless"][color] ?? color): \(colorCount(color)) cards")
+                            }
                             DisclosureGroup("About types and colors") {
                                 Text("Main-deck quantities; categories overlap for multi-type and multicolor cards. Unknown colors are excluded. Card colors are not commander identity or mana sources.")
                             }.font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)

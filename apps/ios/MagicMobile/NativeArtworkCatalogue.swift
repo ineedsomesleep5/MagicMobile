@@ -86,9 +86,56 @@ struct NativeArtworkCatalogue {
     }
     private static func key(_ name: String) -> String { name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
 
-    /// Fetch the daily oracle bulk once per explicit download run; the caller owns
-    /// retry policy. The compressed file is temporary and removed on completion/error.
+    /// Resolve deck artwork in bounded collections instead of one named request
+    /// and image redirect per card. Exact token IDs retain their identity.
+    static func load(names: [String], includeTokens: Bool,
+                     transport: any DeckStudioScryfallHTTP = DeckStudioScryfallHTTPTransport(),
+                     budget: DeckStudioScryfallBudget = .shared) async throws -> Self {
+        let names = try NativeAssetDownloads.names(names)
+        var result = Self()
+        for start in stride(from: 0, to: names.count, by: 75) {
+            try Task.checkCancellation()
+            let batch = Array(names[start..<min(start + 75, names.count)])
+            try await result.fetchCollection(batch.map { ["name": $0] }, transport: transport, budget: budget)
+        }
+        if includeTokens {
+            let ids = Set(names.flatMap { result.relatedTokens(name: $0).map(\.id) }).sorted { $0.uuidString < $1.uuidString }
+            for start in stride(from: 0, to: ids.count, by: 75) {
+                try Task.checkCancellation()
+                let batch = ids[start..<min(start + 75, ids.count)]
+                try await result.fetchCollection(batch.map { ["id": $0.uuidString.lowercased()] }, transport: transport, budget: budget)
+            }
+        }
+        return result
+    }
+
+    private mutating func fetchCollection(_ identifiers: [[String: String]], transport: any DeckStudioScryfallHTTP,
+                                          budget: DeckStudioScryfallBudget) async throws {
+        guard (1...75).contains(identifiers.count) else { throw CatalogueError.invalidResponse }
+        var request = try Self.request(URL(string: "https://api.scryfall.com/cards/collection")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["identifiers": identifiers])
+        try await budget.reserve()
+        let data = try await transport.send(request)
+        guard data.count <= 4 * 1024 * 1024,
+              let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              object["object"] as? String == "list", object["has_more"] as? Bool != true,
+              let cards = object["data"] as? [[String: Any]], cards.count <= identifiers.count else {
+            throw CatalogueError.invalidResponse
+        }
+        for card in cards { try accept(JSONSerialization.data(withJSONObject: card)) }
+    }
+
+    /// Reuse today's compressed index when checking another download scope.
+    /// The cache is disposable; downloaded artwork remains in Application Support.
     static func load() async throws -> Self {
+        let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("MagicMobile-ArtworkIndex-v1", isDirectory: true)
+        let cachedFile = cache.appendingPathComponent("oracle.json.gz")
+        if let modified = try? cachedFile.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+           Date().timeIntervalSince(modified) >= 0, Date().timeIntervalSince(modified) < 24 * 60 * 60,
+           let existing = try? parse(file: cachedFile) { return existing }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil
         configuration.httpShouldSetCookies = false
@@ -117,7 +164,16 @@ struct NativeArtworkCatalogue {
             try Task.checkCancellation()
             try validate(bulkResponse, host: "data.scryfall.io", limit: maximumBytes)
             // Parsing happens away from the main actor, in fixed-size decompressed chunks.
-            return try parse(file: file)
+            let catalogue = try parse(file: file)
+            // Validate before replacing the cache; leave the previous copy on failure.
+            try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+            let staging = cache.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: staging) }
+            try FileManager.default.copyItem(at: file, to: staging)
+            if FileManager.default.fileExists(atPath: cachedFile.path) {
+                _ = try FileManager.default.replaceItemAt(cachedFile, withItemAt: staging)
+            } else { try FileManager.default.moveItem(at: staging, to: cachedFile) }
+            return catalogue
         } onCancel: { session.invalidateAndCancel() }
     }
 

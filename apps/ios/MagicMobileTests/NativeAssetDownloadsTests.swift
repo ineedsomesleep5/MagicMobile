@@ -4,6 +4,79 @@ import ImageIO
 @testable import MagicMobile
 
 final class NativeAssetDownloadsTests: XCTestCase {
+    @MainActor func testProductionFullCataloguePlanUsesBackgroundQueueAndSkipsStoredImages() async throws {
+        try await verifyBackgroundPlan(fullCatalogue: true)
+    }
+
+    @MainActor func testProductionDeckPlanKeepsExactRelatedTokenIdentityAndDownloadsBackFace() async throws {
+        try await verifyBackgroundPlan(fullCatalogue: false)
+    }
+
+    @MainActor private func verifyBackgroundPlan(fullCatalogue: Bool) async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let tokenID = UUID(), unrelatedTokenID = UUID(), cardID = UUID()
+        let front = "Background Front \(UUID())", back = "Background Back \(UUID())"
+        func images(_ path: String) -> [String: String] {
+            ["small": "https://cards.scryfall.io/small/\(path).jpg", "normal": "https://cards.scryfall.io/normal/\(path).jpg", "large": "https://cards.scryfall.io/large/\(path).jpg"]
+        }
+        var objects: [[String: Any]] = [
+            ["id": cardID.uuidString, "name": "\(front) // \(back)", "layout": "transform", "type_line": "Creature",
+             "all_parts": [["id": tokenID.uuidString, "name": "Soldier", "component": "token"]],
+             "card_faces": [["name": front, "image_uris": images("front")], ["name": back, "image_uris": images("back")]]],
+            ["id": tokenID.uuidString, "name": "Soldier", "layout": "token", "type_line": "Token Creature — Soldier",
+             "oracle_text": "Vigilance", "power": "1", "toughness": "1", "colors": ["W"], "image_uris": images("exact-soldier")]
+        ]
+        if !fullCatalogue {
+            objects.append(["id": unrelatedTokenID.uuidString, "name": "Soldier", "layout": "token", "type_line": "Token Creature — Soldier",
+                            "oracle_text": "", "power": "2", "toughness": "2", "colors": ["B"], "image_uris": images("wrong-soldier")])
+        }
+        let fixture = directory.appendingPathComponent("bulk.json")
+        try JSONSerialization.data(withJSONObject: objects).write(to: fixture)
+        let bytes = try image(width: 488, height: 680)
+        DownloadImageFixtureProtocol.configure(data: bytes)
+        defer { DownloadImageFixtureProtocol.configure(data: Data()) }
+        let store = NativeAssetStore(directory: directory.appendingPathComponent("images"), availableBytes: { _ in Int64.max })
+        // Compact artwork must not make a Standard-quality job incorrectly skip the front.
+        try await store.save(image(width: 146, height: 204), key: NativeAssetStore.cardKey(front), quality: .compact)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DownloadImageFixtureProtocol.self]
+        let queue = NativeArtworkBackgroundQueue(directory: directory.appendingPathComponent("queue"), store: store,
+                                                configuration: configuration, allowNetwork: { true })
+        let model = NativeAssetDownloads(store: store, catalogueLoader: { try NativeArtworkCatalogue.parse(file: fixture) },
+            backgroundQueue: queue, deckCatalogueLoader: { names, includeTokens in
+                XCTAssertEqual(names, [front]); XCTAssertTrue(includeTokens)
+                return try NativeArtworkCatalogue.parse(file: fixture)
+            })
+        let stored = expectation(description: "Each stored image refreshes artwork consumers")
+        stored.expectedFulfillmentCount = 3
+        let observer = NotificationCenter.default.addObserver(forName: NativeArtworkBackgroundQueue.didStoreImage, object: nil, queue: .main) { _ in stored.fulfill() }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        model.download(names: [front], includeTokens: true, allowNetwork: true, quality: .standard, fullCatalogue: fullCatalogue)
+        for _ in 0..<500 where model.isRunning { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertFalse(model.isRunning); XCTAssertFalse(queue.isRunning)
+        XCTAssertEqual(model.failures, []); XCTAssertEqual(model.completed, 3); XCTAssertEqual(model.total, 3)
+        await fulfillment(of: [stored], timeout: 2)
+        XCTAssertEqual(DownloadImageFixtureProtocol.urls.count, 3)
+        XCTAssertEqual(Set(DownloadImageFixtureProtocol.urls.map(\.lastPathComponent)), ["front.jpg", "back.jpg", "exact-soldier.jpg"])
+        XCTAssertTrue(DownloadImageFixtureProtocol.urls.allSatisfy { $0.host == "cards.scryfall.io" && $0.path.hasPrefix("/normal/") })
+        let frontData = await store.image(key: NativeAssetStore.cardKey(front), quality: .standard)
+        let backData = await store.image(key: NativeAssetStore.cardKey(back), quality: .standard)
+        let tokenData = await store.image(key: NativeAssetStore.tokenKey(tokenID), quality: .standard)
+        let token = await store.tokenDetails(id: tokenID)
+        let unrelated = await store.tokenDetails(id: unrelatedTokenID)
+        XCTAssertEqual(frontData, bytes); XCTAssertEqual(backData, bytes); XCTAssertEqual(tokenData, bytes)
+        XCTAssertEqual(token?.id, tokenID); XCTAssertEqual(token?.oracleText, "Vigilance"); XCTAssertNil(unrelated)
+        await model.scan(names: [front, back], quality: .standard, fullCatalogue: fullCatalogue)
+        XCTAssertEqual(model.cardStored, 2); XCTAssertEqual(model.tokenStored, 1)
+        model.download(names: [front], includeTokens: true, allowNetwork: true, quality: .standard, fullCatalogue: fullCatalogue)
+        for _ in 0..<500 where model.isRunning { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertFalse(model.isRunning); XCTAssertEqual(model.failures, [])
+        XCTAssertEqual(queue.total, 0); XCTAssertEqual(model.total, 0)
+        XCTAssertEqual(DownloadImageFixtureProtocol.urls.count, 3, "Repeat should not transfer any already stored image")
+    }
+
     @MainActor func testFullCatalogueDownloadStoresFrontBackAndTokenWithoutNamedRequestsAndResumesOffline() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

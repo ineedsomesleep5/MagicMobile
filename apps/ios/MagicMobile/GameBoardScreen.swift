@@ -13,6 +13,7 @@ enum GameBoardDesignPreviewState: String, CaseIterable, Identifiable {
     case bridgeUnavailable = "bridge-unavailable"
     case missingCardArt = "missing-card-art"
     case crowdedBattlefield = "crowded-battlefield"
+    case attachedPermanents = "attached-permanents"
     case fourPlayerFocus = "four-player-focus"
     case playerTargetPrompt = "player-target-prompt"
     case cardTargetPrompt = "card-target-prompt"

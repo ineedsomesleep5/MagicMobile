@@ -18,6 +18,7 @@
 		1197E403C9CDCBA1F5C6F9E5 /* DeckStudioReleaseUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 325A347B3CF808C7166B7925 /* DeckStudioReleaseUITests.swift */; };
 		12BB366945F510DE3EFB6F71 /* DeckStudioTileLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49D79412BAEE1AAFF99487D7 /* DeckStudioTileLayoutTests.swift */; };
 		12E98F92911BC8644751C1B9 /* NativeArtworkCatalogueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5A810408B7BAD86EF851937 /* NativeArtworkCatalogueTests.swift */; };
+		13FD766578F52B9FF9A9C717 /* NativeArtworkBackgroundQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55C2FD47E72B397DD3AE5C2F /* NativeArtworkBackgroundQueue.swift */; };
 		14011F2FA8FBAA4DDD745BC8 /* ondevice-catalogue.json in Resources */ = {isa = PBXBuildFile; fileRef = 6B0D8FE0F5FC4C7001C4233F /* ondevice-catalogue.json */; };
 		14452F264A2B210B0A7F8B5F /* NativeDeckEDHRECTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A327243294AE676E55AD08 /* NativeDeckEDHRECTests.swift */; };
 		150DED07D491019D3269DA2F /* NativePresentationRefinementUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C12E7391A9F7D253D9DC0B6C /* NativePresentationRefinementUITests.swift */; };
@@ -63,6 +64,7 @@
 		5D698217377DD63E6EA31CB9 /* ArenaBoardPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A736FE63448EAD623FE412FA /* ArenaBoardPresentationTests.swift */; };
 		5E56D36ECA96BCF27A83C003 /* MagicMobileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8847ABC91603BF5DA5F4CE5 /* MagicMobileTests.swift */; };
 		5F53AD094381EFC1E8596D42 /* DeckStudioCatalogueSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63F4F02C617422F9012E10C2 /* DeckStudioCatalogueSearch.swift */; };
+		60AD4579591957F0F18F0A4D /* NativeArtworkBackgroundQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6278BC94062AF0C483006986 /* NativeArtworkBackgroundQueueTests.swift */; };
 		66AE98EC0204B1730439A3C1 /* DeckStudioEditorOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A84CB0529992320EDB94E78 /* DeckStudioEditorOperations.swift */; };
 		670FBC31C74AD8F10C241696 /* NativeDeckComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51E32ED65987159F48457A3 /* NativeDeckComponents.swift */; };
 		6F13B3F588B63422BA35C264 /* DeckStudioDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58D050F76646C26B69A4656F /* DeckStudioDesignTokens.swift */; };
@@ -200,12 +202,14 @@
 		4CD073C390A414C9A10BA045 /* DeckStudioReadabilityUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioReadabilityUITests.swift; sourceTree = "<group>"; };
 		506D866D794460DAD58344BA /* OnDeviceMessageLogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceMessageLogTests.swift; sourceTree = "<group>"; };
 		511505348524C12C4E7EC72C /* DeckStudioImportScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioImportScreen.swift; sourceTree = "<group>"; };
+		55C2FD47E72B397DD3AE5C2F /* NativeArtworkBackgroundQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeArtworkBackgroundQueue.swift; sourceTree = "<group>"; };
 		58D050F76646C26B69A4656F /* DeckStudioDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioDesignTokens.swift; sourceTree = "<group>"; };
 		592630ACFEBA2C259D86A03A /* OnDeviceYieldPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceYieldPolicyTests.swift; sourceTree = "<group>"; };
 		5A3AD25E36EAC5A475AF5E31 /* GameBoardZones.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardZones.swift; sourceTree = "<group>"; };
 		5A5880A440F12FAFCB5E9DB6 /* MagicMobileAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MagicMobileAPI.swift; sourceTree = "<group>"; };
 		608026E3694B102F64D58954 /* OnDeviceAppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceAppConfiguration.swift; sourceTree = "<group>"; };
 		6110FD6C7D0281A6D0C9E48A /* OnDeviceSetupUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceSetupUITests.swift; sourceTree = "<group>"; };
+		6278BC94062AF0C483006986 /* NativeArtworkBackgroundQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeArtworkBackgroundQueueTests.swift; sourceTree = "<group>"; };
 		63F4F02C617422F9012E10C2 /* DeckStudioCatalogueSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioCatalogueSearch.swift; sourceTree = "<group>"; };
 		65450701680391D2656331EA /* NativeDeckEDHREC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeDeckEDHREC.swift; sourceTree = "<group>"; };
 		6872434C0866DDE9DEF3FB8C /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
@@ -410,6 +414,7 @@
 				5A5880A440F12FAFCB5E9DB6 /* MagicMobileAPI.swift */,
 				69B2CFE17C03F7A7CC6CFEC3 /* MagicMobileApp.swift */,
 				6872434C0866DDE9DEF3FB8C /* Models.swift */,
+				55C2FD47E72B397DD3AE5C2F /* NativeArtworkBackgroundQueue.swift */,
 				B64E4990A09A1C8707EEEEAB /* NativeArtworkCatalogue.swift */,
 				B3056E1741BC6FF33C4C9EDC /* NativeAssetDownloads.swift */,
 				BAA1D9997DDF12AB94C88104 /* NativeDeckArtwork.swift */,
@@ -471,6 +476,7 @@
 				9E2DD509CAF97A2E8633B388 /* GameplayAffordancesTests.swift */,
 				8D79F5F594B8E0006ACA341E /* HoldCardInspectionTests.swift */,
 				A8847ABC91603BF5DA5F4CE5 /* MagicMobileTests.swift */,
+				6278BC94062AF0C483006986 /* NativeArtworkBackgroundQueueTests.swift */,
 				D5A810408B7BAD86EF851937 /* NativeArtworkCatalogueTests.swift */,
 				A4D2F7DAE858AB8A4CF15791 /* NativeAssetDownloadsTests.swift */,
 				1722A4752D3856C3BE4097AE /* NativeDeckArtworkTests.swift */,
@@ -782,6 +788,7 @@
 				551A8C60BC9EF53BC42CE492 /* MagicMobileAPI.swift in Sources */,
 				752C5EFA30A506F19E13681B /* MagicMobileApp.swift in Sources */,
 				037F8C88A7F2DD19D445DEE4 /* Models.swift in Sources */,
+				13FD766578F52B9FF9A9C717 /* NativeArtworkBackgroundQueue.swift in Sources */,
 				4FD4CAA9B9A87F614A91BE25 /* NativeArtworkCatalogue.swift in Sources */,
 				D79838C720F7931D9CFD8A2F /* NativeAssetDownloads.swift in Sources */,
 				4405E537D53270E82676ACE6 /* NativeDeckArtwork.swift in Sources */,
@@ -831,6 +838,7 @@
 				9484CB0BF677D9F32882EA90 /* GameplayAffordancesTests.swift in Sources */,
 				9857CC2789D36CFBC1F7C8E7 /* HoldCardInspectionTests.swift in Sources */,
 				5E56D36ECA96BCF27A83C003 /* MagicMobileTests.swift in Sources */,
+				60AD4579591957F0F18F0A4D /* NativeArtworkBackgroundQueueTests.swift in Sources */,
 				12E98F92911BC8644751C1B9 /* NativeArtworkCatalogueTests.swift in Sources */,
 				B688FD17BCC4EF2D9C07E0A0 /* NativeAssetDownloadsTests.swift in Sources */,
 				D6F34A2AC883611AC41BD711 /* NativeDeckArtworkTests.swift in Sources */,
@@ -1031,7 +1039,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 82HPAY85M8;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1116,7 +1124,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 82HPAY85M8;
 				ENABLE_NS_ASSERTIONS = NO;

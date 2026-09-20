@@ -2,6 +2,40 @@ import XCTest
 
 @MainActor
 final class NativeDownloadsUITests: XCTestCase {
+    func testDownloadSelectionSurvivesLeavingAndReopening() {
+        let app = XCUIApplication()
+        continueAfterFailure = false
+        app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
+        app.launchArguments = ["--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        defer { app.terminate() }
+        let menu = app.buttons["menu.downloads"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 20))
+        menu.tap()
+        let scope = app.buttons["downloads.scope"], quality = app.buttons["downloads.quality"]
+        XCTAssertTrue(scope.waitForExistence(timeout: 10))
+        scope.tap()
+        XCTAssertTrue(app.buttons["One deck"].waitForExistence(timeout: 5))
+        app.buttons["One deck"].press(forDuration: 0.15)
+        XCTAssertTrue(app.buttons["downloads.deck"].waitForExistence(timeout: 5))
+        quality.tap()
+        XCTAssertTrue(app.buttons["Compact"].waitForExistence(timeout: 5))
+        app.buttons["Compact"].press(forDuration: 0.15)
+        let tokens = app.switches["Include tokens"]
+        XCTAssertTrue(tokens.exists)
+        if tokens.value as? String == "1" { tokens.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap() }
+        XCTAssertEqual(tokens.value as? String, "0")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(menu.waitForExistence(timeout: 5))
+        menu.tap()
+        XCTAssertTrue(scope.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["downloads.deck"].exists, "One-deck scope must survive leaving Downloads")
+        XCTAssertTrue(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Compact", "Compact").evaluate(with: quality))
+        XCTAssertEqual(app.switches["Include tokens"].value as? String, "0")
+        XCTAssertFalse(app.buttons["downloads.cancel"].exists, "Navigation and selection changes must not start transfers")
+    }
+
     func testLiveImagePreferenceIsSharedBetweenSettingsAndLobby() {
         let app = XCUIApplication()
         continueAfterFailure = false

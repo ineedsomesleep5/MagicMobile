@@ -31,6 +31,7 @@
 
 ## Releases and permissions
 
+- Keep iOS and Android feature parity for each authorized release, except Android multiplayer. Keep marketing version 0.1.1 until the user requests otherwise, increment the shared visible build number, and retain Android's monotonically increasing installation versionCode. Verify each platform separately and update the website only with verified artifact links and accurate TestFlight availability; matching numbers alone are not parity evidence.
 - Checking a build number or release status is read-only. Preparing a build number is a local mutation. Uploading, distributing and changing store/provider configuration require authorization for that action.
 - Before release, verify the selected source and artifact, existing com.calebfeliciano.magicmobile identity, build-number availability, and applicable native, signing, privacy and runtime gates. Keep real-engine evidence separate from toy probes and fixtures.
 - Preserve the user's chosen route: direct phone installation and TestFlight are different workflows. Lack of USB is not a blocker for a TestFlight request; it remains a blocker for an actual requested direct install.

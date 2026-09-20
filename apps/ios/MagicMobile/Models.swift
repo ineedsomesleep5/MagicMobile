@@ -757,6 +757,9 @@ struct PlayerGameState: Decodable, Identifiable {
     let commanderDamage: [String: Int]?
     var commanderTaxKnown: Bool? = nil
     var commanders: [CommanderPublicState]? = nil
+    var counters: [String: Int]? = nil
+    var monarch: Bool? = nil
+    var initiative: Bool? = nil
 
     var hasKnownCommanderTax: Bool { commanderTaxKnown ?? true }
 
@@ -814,6 +817,25 @@ struct ZoneCard: Decodable, Identifiable, Hashable {
     let disabledReason: String?
     var reportedPower: String? = nil
     var reportedToughness: String? = nil
+    var phasedIn: Bool? = nil
+
+    var isPhasedOut: Bool { phasedIn == false }
+
+    /// Public attachment chains can end at a player (a Curse) or another permanent.
+    /// Missing/cyclic links are never assigned to an unrelated player.
+    static func enchanting(playerID: String, cards: [ZoneCard]) -> [ZoneCard] {
+        let byID = Dictionary(cards.map { ($0.instanceId, $0) }, uniquingKeysWith: { first, _ in first })
+        return cards.filter { card in
+            var parent = card.attachedToInstanceId
+            var visited = Set([card.instanceId])
+            while let id = parent {
+                if id == playerID { return true }
+                guard visited.insert(id).inserted else { return false }
+                parent = byID[id]?.attachedToInstanceId
+            }
+            return false
+        }
+    }
 
     var displayPower: String? { reportedPower ?? power.map(String.init) }
     var displayToughness: String? { reportedToughness ?? toughness.map(String.init) }

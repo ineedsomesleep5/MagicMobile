@@ -51,6 +51,11 @@ enum OnDeviceSnapshotAdapter {
             players.append(.object([
                 "playerId": .string(id), "displayName": player["name"]!, "life": player["life"]!,
                 "poison": poison, "commanderTax": singleCommander?["commanderTax"] ?? .integer(0),
+                "counters": .object(Dictionary((player["counters"]?.array ?? []).compactMap { counter -> (String, J)? in
+                    guard let name = counter["name"]?.string, let count = counter["count"]?.integer else { return nil }
+                    return (name, .integer(count))
+                }, uniquingKeysWith: { _, latest in latest })),
+                "monarch": player["monarch"] ?? .null, "initiative": player["initiative"] ?? .null,
                 "commanderTaxKnown": .bool(singleCommander?["commanderTax"]?.integer != nil),
                 "commanderDamage": singleCommander?["damageToPlayers"] ?? .null, "commanders": .array(commanders),
                 "manaPool": manaPool(player["manaPool"]), "zones": .object(zones)
@@ -221,7 +226,7 @@ enum OnDeviceSnapshotAdapter {
             "isToken": tokenIdentityVisible ? (value["isToken"]?.bool.map(J.bool) ?? .null) : .null,
             "tokenColors": tokenColors
         ])]
-        for key in ["tapped", "summoningSickness", "damage"] { result[key] = value[key] }
+        for key in ["tapped", "summoningSickness", "damage", "phasedIn"] { result[key] = value[key] }
         result["attachedToInstanceId"] = value["attachedTo"]
         result["cardIcons"] = .array((value["cardIcons"]?.array ?? []).map { icon in
             .object(["iconType": icon["cardIconType"] ?? .string(""),

@@ -28,6 +28,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.unit.em
 
 /**
  * Mana rendering that matches the iOS build: the same shipped artwork for the six basic
@@ -50,7 +56,8 @@ object ManaSymbols {
         return Regex("\\{([^{}]{1,12})\\}").findAll(cost).map { it.groupValues[1] }.toList()
     }
 
-    fun drawable(symbol: String): Int? = drawables[symbol.trim().uppercase()]
+    fun normalized(symbol:String)=symbol.trim().removePrefix("{").removeSuffix("}").uppercase()
+    fun drawable(symbol: String): Int? = drawables[normalized(symbol)]
 }
 
 @Composable
@@ -79,7 +86,7 @@ fun ManaSymbol(symbol: String, size: Int = 16) {
     if (resource != null) {
         Image(
             painter = painterResource(resource),
-            contentDescription = when(symbol.trim().uppercase()){"W"->"White mana";"U"->"Blue mana";"B"->"Black mana";"R"->"Red mana";"G"->"Green mana";"C"->"Colorless mana";else->symbol},
+            contentDescription = when(ManaSymbols.normalized(symbol)){"W"->"White mana";"U"->"Blue mana";"B"->"Black mana";"R"->"Red mana";"G"->"Green mana";"C"->"Colorless mana";else->symbol},
             modifier = Modifier.size(size.dp),
         )
     } else {
@@ -92,7 +99,7 @@ fun ManaSymbol(symbol: String, size: Int = 16) {
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                symbol,
+                ManaSymbols.normalized(symbol),
                 fontSize = (size * 0.52).sp,
                 fontWeight = FontWeight.Black,
                 color = Color(0xFF0D0F0F),
@@ -101,6 +108,19 @@ fun ManaSymbol(symbol: String, size: Int = 16) {
             )
         }
     }
+}
+
+/** Replaces embedded costs in rules and combo prose with the same pips used by card rows. */
+@Composable
+fun ManaText(value:String,modifier:Modifier=Modifier,style:androidx.compose.ui.text.TextStyle=androidx.compose.material3.LocalTextStyle.current,maxLines:Int=Int.MAX_VALUE,overflow:androidx.compose.ui.text.style.TextOverflow=androidx.compose.ui.text.style.TextOverflow.Clip) {
+    val matches=remember(value){Regex("\\{([^{}]{1,12})\\}").findAll(value).toList()}
+    val annotated=remember(value){buildAnnotatedString{
+        var offset=0
+        matches.forEachIndexed{index,match->append(value.substring(offset,match.range.first));appendInlineContent("mana$index",match.groupValues[1]);offset=match.range.last+1}
+        append(value.substring(offset))
+    }}
+    val inline=matches.mapIndexed{index,match->"mana$index" to InlineTextContent(Placeholder(1.em,1.em,PlaceholderVerticalAlign.Center)){ManaSymbol(match.groupValues[1],16)}}.toMap()
+    Text(annotated,modifier=modifier,inlineContent=inline,style=style,maxLines=maxLines,overflow=overflow)
 }
 
 /** Shown in place of artwork until the player opts in, matching the iOS wording. */

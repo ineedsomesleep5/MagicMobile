@@ -62,6 +62,26 @@ final class MagicMobileOrientationController {
 }
 
 final class MagicMobileAppDelegate: NSObject, UIApplicationDelegate {
+    private var artworkConsentObserver: NSObjectProtocol?
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        MainActor.assumeIsolated {
+            _ = NativeAssetDownloads.shared
+            artworkConsentObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated {
+                    if !MagicMobilePreferences.current.bool(forKey: NativeArtworkPreference.key) {
+                        NativeAssetDownloads.shared.cancel()
+                    }
+                }
+            }
+        }
+        return true
+    }
+    func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
+        MainActor.assumeIsolated {
+            guard identifier == NativeArtworkBackgroundQueue.sessionIdentifier else { completionHandler(); return }
+            NativeArtworkBackgroundQueue.shared.reconnectBackgroundSession(completion: completionHandler)
+        }
+    }
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
         MainActor.assumeIsolated {
             MagicMobileOrientationController.shared.supportedOrientations

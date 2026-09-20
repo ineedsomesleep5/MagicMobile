@@ -122,7 +122,7 @@ fun DeckInsightsDialog(deck:Deck,catalogue:Catalogue,savedDeckId:String?,close:(
     var expanded by remember(title) { mutableStateOf(false) }
     Column {
         TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "$title ▴" else "$title ▾") }
-        if (expanded) Text(text, style = MaterialTheme.typography.bodySmall)
+        if (expanded) ManaText(text, style = MaterialTheme.typography.bodySmall)
     }
 }
 

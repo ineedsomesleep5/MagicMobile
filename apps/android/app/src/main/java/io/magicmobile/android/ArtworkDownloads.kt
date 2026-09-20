@@ -1,9 +1,7 @@
 package io.magicmobile.android
 
 import android.content.Context
-import android.app.Activity
 import android.text.format.Formatter
-import android.view.WindowManager
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -12,20 +10,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.magicmobile.android.core.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
-import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLEncoder
 import kotlin.coroutines.coroutineContext
 
 private enum class DownloadScope(val label: String) {
@@ -34,11 +25,20 @@ private enum class DownloadScope(val label: String) {
     ONE_DECK("One deck"),
 }
 
-private data class DownloadProgress(val completed: Int, val total: Int, val status: String)
-private data class DownloadScan(val cards:Int,val bytes:Long,val extraStored:Int,val extraTotal:Int,val coverageKnown:Boolean)
+internal data class DownloadProgress(val completed: Int, val total: Int, val status: String)
+internal data class DownloadScan(val cards:Int,val bytes:Long,val extraStored:Int,val extraTotal:Int,val coverageKnown:Boolean)
 
-/** Explicit foreground downloads; completed images and safe token identities survive retries. */
-private class ArtworkDownloadClient(private val context: Context) {
+/** Collection responses are a bounded list; Scryfall normally omits pagination metadata. */
+internal fun validatedArtworkCollection(response:Obj,requested:Int):List<Obj> {
+    val data=response["data"] as? List<*>
+    check(requested in 1..75 && response.text("object")=="list" &&
+        ("has_more" !in response || response["has_more"]==false) &&
+        data!=null && data.size<=requested){"Unexpected artwork collection response."}
+    return data.map(Wire::objectValue)
+}
+
+/** Bounded transfers; completed images and safe token identities survive retries. */
+internal class ArtworkDownloadClient(private val context: Context) {
     private fun coverageFile(names:List<String>):java.io.File {
         val key=java.security.MessageDigest.getInstance("SHA-256").digest(names.joinToString("\n").toByteArray()).joinToString(""){"%02x".format(it)}
         return java.io.File(java.io.File(context.filesDir,"artwork-coverage").apply{mkdirs()},"$key.json")
@@ -56,10 +56,10 @@ private class ArtworkDownloadClient(private val context: Context) {
         val output=file.startWrite();try{output.write(bytes);file.finishWrite(output)}catch(failure:Throwable){file.failWrite(output);throw failure}
     }
     suspend fun download(names: List<String>, quality: ArtworkQuality, includeTokens: Boolean,
-        fullCatalogue:Boolean, progress: (DownloadProgress) -> Unit): List<String> = withContext(Dispatchers.IO) {
+        fullCatalogue:Boolean, progress: suspend (DownloadProgress) -> Unit): List<String> = withContext(Dispatchers.IO) {
         val failures=mutableListOf<String>()
         var omittedFailures=0
-        fun fail(name:String,failure:Throwable) {
+        fun fail(name:String,failure:Throwable) = synchronized(failures) {
             if(failure is CancellationException)throw failure
             if(failure.message.orEmpty().let{it.contains("requests are paused")||it.contains("free device space")||it.contains("storage reached")})throw failure
             if(failures.size<100)failures+="$name: ${failure.message ?: "unavailable"}" else omittedFailures++
@@ -73,47 +73,78 @@ private class ArtworkDownloadClient(private val context: Context) {
             checkActive()
             check(Artwork.saveDownload(context,key,quality,data)){"Artwork did not meet ${quality.label.lowercase()} quality."}
         }
-        val catalogue=if(fullCatalogue){progress(DownloadProgress(0,names.size,"Preparing bulk artwork catalogue…"));bulk()}else null
+        val catalogue=if(fullCatalogue){progress(DownloadProgress(0,names.size,"Preparing bulk artwork catalogue…"));bulk()}else {
+            progress(DownloadProgress(0,names.size,"Checking deck artwork…"))
+            collection(names.map{mapOf("name" to it)},includeTokens)
+        }
         val wantedTokens=linkedMapOf<String,ArtworkRecord?>()
         val nameSet=names.toSet()
         val faces=linkedSetOf<String>()
         var known=0
-        var unavailableTokens=catalogue?.unavailableTokens?.size ?: 0
-        if(includeTokens&&catalogue!=null) {
+        val unavailableTokens=catalogue.unavailableTokens.size
+        if(includeTokens) {
             catalogue.tokens.forEach{(id,record)->wantedTokens[id]=record}
             catalogue.unavailableTokens.forEach{fail("Token $it",IllegalStateException("Safe artwork metadata is unavailable."))}
         }
-        if(catalogue!=null)names.forEach{name->catalogue.card(name)?.let{card->known++;card.faces.filter{it.images.isNotEmpty()&&it.name !in nameSet}.forEach{faces+=it.name}}}
+        names.forEach{name->catalogue.card(name)?.let{card->known++;card.faces.filter{it.images.isNotEmpty()&&it.name !in nameSet}.forEach{faces+=it.name}}}
         fun persistCoverage()=saveCoverage(names,faces,wantedTokens.keys.map{"token:$it"}.toSet(),known,includeTokens,unavailableTokens)
         persistCoverage()
+        val images=kotlinx.coroutines.channels.Channel<Pair<ArtworkRecord,String>>(8)
+        val queued=java.util.concurrent.atomic.AtomicInteger()
+        val completed=java.util.concurrent.atomic.AtomicInteger()
+        val imageKeys=hashSetOf<String>()
+        suspend fun enqueue(record:ArtworkRecord,key:String) {
+            if(imageKeys.add(key)&&!Artwork.hasDownload(context,key,quality)){queued.incrementAndGet();images.send(record to key)}
+        }
+        val workers=List(4){launch {
+            for((record,key) in images){
+                try{image(record,key)}catch(failure:Exception){fail(key,failure)}
+                progress(DownloadProgress(completed.incrementAndGet(),queued.get(),"Saving card artwork…"))
+            }
+        }}
         try {
         names.forEachIndexed{index,name->
             checkActive();progress(DownloadProgress(index,names.size,"Checking $name"))
             try {
                 // Metadata is still needed on deck retries to discover faces and tokens.
-                val card=if(catalogue!=null)catalogue.card(name) ?: error("No unambiguous catalogue artwork.") else metadata(URL("https://api.scryfall.com/cards/named?exact=${URLEncoder.encode(name,"UTF-8")}"))
-                if(catalogue==null)known++
+                val card=catalogue.card(name) ?: error("No unambiguous catalogue artwork.")
                 card.faces.filter{it.images.isNotEmpty()&&it.name !in nameSet}.forEach{faces+=it.name}
-                if(includeTokens&&catalogue==null)card.related.forEach{wantedTokens.putIfAbsent(it,null)}
-                image(card.faces.firstOrNull{it.name.equals(name,true)&&it.images.isNotEmpty()} ?: card,name)
-                card.faces.filter{it.images.isNotEmpty()}.forEach{face->image(face,face.name)}
+                if(includeTokens)card.related.forEach{wantedTokens.putIfAbsent(it,catalogue.tokens[it])}
+                enqueue(card.faces.firstOrNull{it.name.equals(name,true)&&it.images.isNotEmpty()} ?: card,name)
+                card.faces.filter{it.images.isNotEmpty()}.forEach{face->enqueue(face,face.name)}
             } catch(failure:Exception){fail(name,failure)}
         }
         if(includeTokens)wantedTokens.entries.forEachIndexed{index,(id,known)->
             checkActive();progress(DownloadProgress(names.size+index,names.size+wantedTokens.size,"Checking token artwork"))
             try {
                 val record=known ?: metadata(URL("https://api.scryfall.com/cards/$id"))
-                if(catalogue==null)record.faces.drop(1).filter{it.images.isNotEmpty()}.forEach{unavailableTokens++;fail(it.name,IllegalStateException("Alternate token face identity is unavailable."))}
                 check(record.id==id&&record.token!=null){"Token metadata is unavailable."}
                 checkActive();Artwork.saveToken(context,record)
-                image(record,"token:$id")
+                enqueue(record,"token:$id")
             } catch(failure:Exception){fail("Token $id",failure)}
         }
+        images.close();workers.forEach{it.join()}
         checkActive()
         progress(DownloadProgress(names.size+wantedTokens.size,names.size+wantedTokens.size,"Download check complete"))
         if(omittedFailures>0)failures+="$omittedFailures additional items are unavailable. Completed files were retained."
         failures
-        } finally {persistCoverage()}
+        } finally {images.close();persistCoverage()}
+    }
+    private suspend fun collection(identifiers:List<Map<String,String>>,includeTokens:Boolean):ArtworkCatalogue {
+        val result=ArtworkCatalogue()
+        suspend fun fetch(values:List<Map<String,String>>) {
+            values.chunked(75).forEach{batch->
+                val bytes=ArtworkTransport.bytes(context,URL("https://api.scryfall.com/cards/collection"),8*1024*1024,setOf("application/json"),Wire.encode(mapOf("identifiers" to batch)))
+                val response=Wire.objectValue(io.magicmobile.core.Json.parseObject(bytes.toString(Charsets.UTF_8)))
+                validatedArtworkCollection(response,batch.size).forEach(result::add)
+            }
+        }
+        fetch(identifiers)
+        if(includeTokens){
+            val ids=identifiers.mapNotNull{it["name"]}.flatMap{result.card(it)?.related.orEmpty()}.distinct()
+            fetch(ids.map{mapOf("id" to it)})
+        }
+        return result
     }
     private suspend fun metadata(url:URL):ArtworkRecord {
         val data=ArtworkTransport.bytes(context,url,4*1024*1024,setOf("application/json"))
@@ -156,8 +187,8 @@ internal fun ArtworkDownloadsScreen(
     notify: (String) -> Unit,
 ) {
     val context = LocalContext.current
-    val lifecycleOwner=LocalLifecycleOwner.current
     val preferences = remember { context.getSharedPreferences("magicmobile.artwork", Context.MODE_PRIVATE) }
+    val notificationPermission=androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()){}
     val decks = remember(saved, included) {
         saved.map { it.id to it.deck } + included.mapIndexed { index, deck -> "included:$index" to deck }
     }
@@ -167,17 +198,17 @@ internal fun ArtworkDownloadsScreen(
     var quality by remember { mutableStateOf(ArtworkQuality.entries.firstOrNull { it.id == preferences.getString("downloadQuality", "standard") } ?: ArtworkQuality.STANDARD) }
     var includeTokens by remember { mutableStateOf(true) }
     var remoteArtwork by remember {mutableStateOf(Artwork.enabled(context))}
-    var running by remember { mutableStateOf(false) }
+    val downloadState by ArtworkDownloadService.state.collectAsState()
+    val running=downloadState.running
     var scanning by remember { mutableStateOf(false) }
-    var progress by remember { mutableStateOf(DownloadProgress(0, 0, "Choose what to keep offline.")) }
-    var failures by remember {mutableStateOf<List<String>>(emptyList())}
+    val progress=downloadState.progress
+    val failures=downloadState.failures
     var showFailures by remember {mutableStateOf(false)}
     var extraCoverage by remember(scope,selectedDeck,quality,includeTokens) {mutableStateOf("Tokens and alternate faces · not checked")}
     var storedCount by remember { mutableIntStateOf(0) }
     var storedBytes by remember { mutableLongStateOf(Artwork.storedDownloadBytes(context)) }
     var confirmFull by remember { mutableStateOf(false) }
     val coroutine = rememberCoroutineScope()
-    var job by remember { mutableStateOf<Job?>(null) }
     val names = remember(scope, selectedDeck, catalogue, decks) {
         when (scope) {
             DownloadScope.CATALOGUE -> catalogue?.cards?.map { it.name }.orEmpty()
@@ -191,40 +222,24 @@ internal fun ArtworkDownloadsScreen(
             runCatching { ArtworkDownloadClient(context).scan(names, quality,includeTokens) }
                 .onSuccess { result -> storedCount = result.cards; storedBytes = result.bytes
                     extraCoverage=(if(includeTokens)"Tokens and alternate faces" else "Alternate faces")+" · ${result.extraStored} / ${result.extraTotal}"+(if(result.coverageKnown)"" else " known; discovery incomplete")
-                    progress = DownloadProgress(0, names.size, "Local artwork checked") }
+                }
                 .onFailure { notify("Artwork check failed: ${it.message}") }
             scanning = false
         }
     }
     fun start() {
         if (running || names.isEmpty()) return
-        failures=emptyList()
+        if(android.os.Build.VERSION.SDK_INT>=33&&!preferences.getBoolean("askedDownloadNotifications",false)){
+            preferences.edit().putBoolean("askedDownloadNotifications",true).apply()
+            notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
         showFailures=false
-        running = true
-        job = coroutine.launch {
-            val result = runCatching {
-                ArtworkDownloadClient(context).download(names, quality, includeTokens, scope==DownloadScope.CATALOGUE) { update -> progress = update }
-            }
-            running = false
-            storedBytes = Artwork.storedDownloadBytes(context)
-            result.onSuccess { downloadFailures ->
-                failures=downloadFailures
-                scan()
-                notify(if (downloadFailures.isEmpty()) "Artwork download complete." else "Some artwork is unavailable. See Needs attention; existing files were kept.")
-            }.onFailure { if (it !is CancellationException) notify("Artwork download stopped: ${it.message}") }
+        coroutine.launch {
+            runCatching{ArtworkDownloadService.start(context.applicationContext,names,quality,includeTokens,scope==DownloadScope.CATALOGUE)}
+                .onFailure{notify("Download could not start: ${it.message}")}
         }
     }
-    DisposableEffect(Unit) { onDispose { job?.cancel() } }
-    DisposableEffect(lifecycleOwner) {
-        val observer=LifecycleEventObserver{_,event->if(event==Lifecycle.Event.ON_STOP){job?.cancel()}}
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose{lifecycleOwner.lifecycle.removeObserver(observer)}
-    }
-    DisposableEffect(running) {
-        val window=(context as? Activity)?.window
-        if(running)window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        onDispose {window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)}
-    }
+    LaunchedEffect(running){if(!running)storedBytes=Artwork.storedDownloadBytes(context)}
     Scaffold(
         topBar = { TopAppBar(title = { Text("Downloads") }, navigationIcon = { TextButton(onClick = close) { Text("Back") } }) },
     ) { padding ->
@@ -248,21 +263,22 @@ internal fun ArtworkDownloadsScreen(
             Text("Full download estimate · ≈ ${Formatter.formatFileSize(context, names.size.toLong() * quality.estimatedBytes)} plus tokens and alternate faces", style = MaterialTheme.typography.bodySmall)
             if (scanning) LinearProgressIndicator(Modifier.fillMaxWidth())
             OutlinedButton(onClick = ::scan, enabled = !running && !scanning && names.isNotEmpty(), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Check for missing artwork") }
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {Column(Modifier.weight(1f)){Text("Download card artwork");Text("Uses Scryfall. Online requests share your IP and card names, including your hand.",style=MaterialTheme.typography.bodySmall)};Switch(remoteArtwork,{enabled->remoteArtwork=enabled;Artwork.setEnabled(context,enabled);if(!enabled){job?.cancel()}})}
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {Column(Modifier.weight(1f)){Text("Download card artwork");Text("Uses Scryfall. Online requests share your IP and card names, including your hand.",style=MaterialTheme.typography.bodySmall)};Switch(remoteArtwork,{enabled->remoteArtwork=enabled;Artwork.setEnabled(context,enabled);if(!enabled&&running){ArtworkDownloadService.pause(context)}})}
             if (running) {
                 LinearProgressIndicator(progress = { if (progress.total == 0) 0f else progress.completed.toFloat() / progress.total }, modifier = Modifier.fillMaxWidth())
                 Text(progress.status)
-                OutlinedButton(onClick = { job?.cancel(); notify("Download paused. Completed files are kept.") }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Cancel download") }
+                OutlinedButton(onClick = { ArtworkDownloadService.pause(context) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Pause download") }
             } else Button(onClick = { if (scope == DownloadScope.CATALOGUE) confirmFull = true else start() }, enabled = remoteArtwork && names.isNotEmpty() && !scanning, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Download missing artwork") }
+            if(!running&&ArtworkDownloadService.hasPending(context))TextButton(onClick={runCatching{ArtworkDownloadService.resume(context)}.onFailure{notify("Download could not resume: ${it.message}")}},enabled=remoteArtwork){Text("Resume previous download")}
             if(failures.isNotEmpty()) {HorizontalDivider();TextButton(onClick={showFailures=!showFailures}){Text(if(showFailures)"Hide download details" else "Needs attention · show download details")};if(showFailures){failures.take(20).forEach{Text(it,style=MaterialTheme.typography.bodySmall)};if(failures.size>20)Text("Additional details omitted. Retry missing artwork to check remaining items.",style=MaterialTheme.typography.bodySmall)}}
-            Text("Completed files stay on this device. Keep this screen open while downloading; reopen it to resume missing items. Unavailable or ambiguous art remains a labeled placeholder.", style = MaterialTheme.typography.bodySmall)
+            Text(if(running)"You can play or leave the app while artwork downloads." else progress.status, style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(24.dp))
         }
     }
     if (confirmFull) AlertDialog(
         onDismissRequest = { confirmFull = false },
         title = { Text("Download the full catalogue?") },
-        text = { Text("Approximately ${Formatter.formatFileSize(context, names.size.toLong() * quality.estimatedBytes)}, plus tokens and alternate faces. This can take hours. Use Wi-Fi and keep this screen open.") },
+        text = { Text("Approximately ${Formatter.formatFileSize(context, names.size.toLong() * quality.estimatedBytes)}, plus tokens and alternate faces. Use Wi-Fi. Android may pause long downloads; completed artwork is kept.") },
         confirmButton = { TextButton(onClick = { confirmFull = false; start() }) { Text("Download · ${quality.label}") } },
         dismissButton = { TextButton(onClick = { confirmFull = false }) { Text("Cancel") } },
     )

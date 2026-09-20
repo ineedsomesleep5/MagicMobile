@@ -28,6 +28,7 @@ object GameplayPresentation {
     }
 
     fun status(card: Obj): String = buildList {
+        if(card["phasedIn"]==false)add("Phased out")
         if(!hidden(card) && card["power"] != null) add("${card["power"]}/${card["toughness"] ?: "?"}")
         if(card.flag("tapped")) add("Tapped")
         if(card.flag("summoningSickness")) add("Summoning sickness")
