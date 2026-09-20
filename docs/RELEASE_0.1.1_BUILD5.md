@@ -62,9 +62,12 @@ configuration verified. It now runs the [weekly gated release policy](AUTOMATIC_
 on Mondays at 09:23 using the selected repository. Its existing thread attachment
 was preserved; no duplicate automation or workaround cron was created. Automatic
 publication is conditional on reviewed changes and passing release gates.
-The superseded build-4-only submission heartbeat was paused and verified paused
-to avoid submitting an older build during this release. No Apple review was
-cancelled or altered by that scheduler change.
+The superseded build-4-only submission heartbeat was first paused, then repurposed
+and verified active as **Finish MagicMobile build 5 release**, every ten minutes.
+It follows the exact existing native/product runs, resumes the guarded release
+without duplicate uploads, and must never submit build 4. It deletes itself after
+the release/merge and any pending Apple availability follow-up are resolved.
+No Apple review was cancelled or altered by this scheduler change.
 
 ## iOS, website and merge: pending
 
