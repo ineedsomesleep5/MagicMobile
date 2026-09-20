@@ -3,10 +3,13 @@ package io.magicmobile.server;
 import io.magicmobile.core.*;
 import java.net.*;
 import java.net.http.*;
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.*;
 
 /** Uses only the public key and the caller's JWT. No service-role privilege is needed. */
 public final class SupabaseBackend implements MultiplayerServer.Backend {
@@ -42,13 +45,40 @@ public final class SupabaseBackend implements MultiplayerServer.Backend {
         try{
             HttpRequest.Builder request=HttpRequest.newBuilder(base.resolve(path)).timeout(Duration.ofSeconds(10)).header("apikey",key).header("Authorization","Bearer "+token).header("Content-Type","application/json");
             request.method(method,body==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofString(Json.write(body)));
-            HttpResponse<java.io.InputStream> response=client.send(request.build(),HttpResponse.BodyHandlers.ofInputStream());
-            byte[] bytes;try(var stream=response.body()){bytes=stream.readNBytes(256*1024+1);}
-            if(bytes.length>256*1024)throw MultiplayerServer.fail("service_unavailable","Lobby response exceeded its limit.");
+            HttpResponse<byte[]> response=boundedResponse(client,request.build(),Duration.ofSeconds(10));
+            byte[] bytes=response.body();
             if(response.statusCode()==401)throw MultiplayerServer.fail("unauthorized","Please sign in again.");
             if(response.statusCode()==429)throw MultiplayerServer.fail("rate_limit","Please wait before trying again.");
             if(response.statusCode()<200 || response.statusCode()>=300)throw MultiplayerServer.fail("lobby_unavailable","The lobby request could not complete. Check your code and lobby status.");
             return bytes.length==0?null:Json.parse(new String(bytes,StandardCharsets.UTF_8));
         }catch(BridgeException e){throw e;}catch(InterruptedException e){Thread.currentThread().interrupt();throw MultiplayerServer.fail("service_unavailable","Lobby request interrupted.");}catch(Exception e){throw MultiplayerServer.fail("service_unavailable","Cannot reach the lobby service.");}
+    }
+    // HttpClient's InputStream response completes at headers, before readNBytes finishes.
+    // Keep the entire bounded body in the deadline, and cancel both subscriber and exchange.
+    static HttpResponse<byte[]> boundedResponse(HttpClient client,HttpRequest request,Duration deadline)throws Exception{
+        LimitedBody body=new LimitedBody();
+        CompletableFuture<HttpResponse<byte[]>> response=client.sendAsync(request,info->body);
+        try{return response.get(deadline.toNanos(),TimeUnit.NANOSECONDS);}
+        finally{body.cancel();if(!response.isDone())response.cancel(true);}
+    }
+    static final class LimitedBody implements HttpResponse.BodySubscriber<byte[]> {
+        private final CompletableFuture<byte[]> result=new CompletableFuture<>();
+        private final ByteArrayOutputStream bytes=new ByteArrayOutputStream();
+        private Flow.Subscription subscription;private boolean cancelled;
+        public CompletionStage<byte[]> getBody(){return result;}
+        public synchronized void onSubscribe(Flow.Subscription value){
+            if(subscription!=null||cancelled){value.cancel();return;}
+            subscription=value;value.request(1);
+        }
+        public synchronized void onNext(List<ByteBuffer> chunks){
+            if(cancelled||result.isDone())return;
+            long size=bytes.size();for(ByteBuffer chunk:chunks)size+=chunk.remaining();
+            if(size>256*1024){result.completeExceptionally(new IllegalStateException("Lobby response exceeded its limit"));cancel();return;}
+            for(ByteBuffer chunk:chunks){byte[] part=new byte[chunk.remaining()];chunk.get(part);bytes.writeBytes(part);}
+            subscription.request(1);
+        }
+        public synchronized void onError(Throwable error){result.completeExceptionally(error);}
+        public synchronized void onComplete(){if(!cancelled)result.complete(bytes.toByteArray());}
+        synchronized void cancel(){cancelled=true;if(subscription!=null)subscription.cancel();if(!result.isDone())result.cancel(false);}
     }
 }

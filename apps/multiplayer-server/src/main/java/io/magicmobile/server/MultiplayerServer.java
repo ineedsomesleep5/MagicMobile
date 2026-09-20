@@ -10,6 +10,7 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Supplier;
+import java.util.function.LongSupplier;
 
 /** HTTPS terminates at the local reverse proxy. Every game operation binds a verified UID to a seat. */
 public final class MultiplayerServer implements AutoCloseable {
@@ -30,6 +31,7 @@ public final class MultiplayerServer implements AutoCloseable {
     private final Supplier<EnginePort> engines;
     private final Map<String,Object> identity,configuration;
     private final int capacity;
+    private final LongSupplier admissionClock;
     private final Map<String,Map<String,Deck>> decks=new HashMap<>();
     private final Map<String,Session> sessions=new HashMap<>();
     private final Map<String,String> lobbyGames=new HashMap<>();
@@ -41,7 +43,11 @@ public final class MultiplayerServer implements AutoCloseable {
     private final ExecutorService executor=new ThreadPoolExecutor(4,8,30,TimeUnit.SECONDS,new ArrayBlockingQueue<>(32),new ThreadPoolExecutor.AbortPolicy());
     private final ScheduledExecutorService cleanup=Executors.newSingleThreadScheduledExecutor();
     public MultiplayerServer(InetSocketAddress address,Backend backend,Supplier<EnginePort> engines,Map<String,Object> identity,String url,String key,int capacity)throws IOException {
+        this(address,backend,engines,identity,url,key,capacity,System::nanoTime);
+    }
+    MultiplayerServer(InetSocketAddress address,Backend backend,Supplier<EnginePort> engines,Map<String,Object> identity,String url,String key,int capacity,LongSupplier admissionClock)throws IOException {
         this.backend=backend;this.engines=engines;this.identity=Map.copyOf(identity);this.capacity=capacity;
+        this.admissionClock=admissionClock;
         if(capacity<1 || capacity>4) throw new IllegalArgumentException("Capacity must be 1–4");
         configuration=Json.map("supabaseUrl",url,"publishableKey",key,"identity",identity,"capabilities",Json.map("privateLobbies",true,"quickMatch",false,"maxPlayers",4,"reconnect",true,"persistentResume",false));
         http=HttpServer.create(address,32);http.setExecutor(executor);http.createContext("/",this::handle);
@@ -80,7 +86,7 @@ public final class MultiplayerServer implements AutoCloseable {
         }catch(Exception error){send(exchange,503,Json.map("error",Json.map("code","service_unavailable","message","Online play is temporarily unavailable. Please try again.")));}
         finally{exchange.close();}
     }
-    private synchronized Map<String,Object> enter(String token,String user,Map<String,Object> body,boolean join){
+    private Map<String,Object> enter(String token,String user,Map<String,Object> body,boolean join){
         Json.onlyKeys(body,Set.of("name","platform","identity","deck","playerCount","code"));
         Map<String,Object> supplied=Json.object(body.get("identity"));
         if(!identity.equals(supplied))throw fail("update_required","Everyone must use the same compatible app update.");
@@ -89,17 +95,33 @@ public final class MultiplayerServer implements AutoCloseable {
         Map<String,Object> deck=Json.object(Json.freeze(body.get("deck")));
         // The rules engine validates actual Commander decks before admission, never trusting client validity flags.
         String code=join?Json.requiredString(body,"code").strip().toUpperCase(Locale.ROOT):null;
-        boolean existing=join&&lobbyCodes.entrySet().stream().anyMatch(e->e.getValue().equals(code)&&decks.containsKey(e.getKey()));
-        if(decks.size()>=16&&!existing)throw fail("capacity","The lobby service is full. Try again shortly.");
+        long count=join?0:Json.integer(body.get("playerCount"));
+        if(!join&&(count<2||count>4))throw fail("invalid_players","Choose 2–4 players.");
+        if(join&&!code.matches("[A-Z0-9]{1,32}"))throw fail("invalid_code","Enter a valid lobby code.");
         if(!validations.tryAcquire())throw fail("capacity","Another deck is being checked. Please try again shortly.");
-        try(EnginePort validator=engines.get()){validator.validateDeck(deck);}finally{validations.release();}
-        Map<String,Object> args=Json.map("p_display_name",name,"p_platform",platform,"p_app_version",identity.get("adapterVersion"),"p_engine_build",identity.get("adapterVersion"),"p_upstream",identity.get("upstreamCommit"),"p_catalogue_hash",identity.get("catalogueHash"),"p_protocol_version",identity.get("protocolVersion"),"p_host_score",0);
-        if(join)args.put("p_code",code);
-        else{long count=Json.integer(body.get("playerCount"));if(count<2||count>4)throw fail("invalid_players","Choose 2–4 players.");args.put("p_player_count",count);}
-        Map<String,Object> row=backend.rpc(token,join?"join_lobby":"create_lobby",args);
-        String id=Json.requiredString(row,"match_id");
-        synchronized(this){decks.computeIfAbsent(id,k->new HashMap<>()).put(user,new Deck(deck,supplied));lobbyTouched.put(id,System.currentTimeMillis());}
-        return lobby(token,user,id);
+        try {
+            long began=admissionClock.getAsLong();
+            synchronized(this){
+                boolean existing=join&&lobbyCodes.entrySet().stream().anyMatch(e->e.getValue().equals(code)&&decks.containsKey(e.getKey()));
+                if(decks.size()>=16&&!existing)throw fail("capacity","The lobby service is full. Try again shortly.");
+            }
+            // Cold deck loading must not hold the global lobby/game monitor or queue more validators.
+            // Java interruption cannot safely cancel XMage initialization. Retain admission ownership
+            // until it returns, then reject late work before any database mutation can create a lobby.
+            try(EnginePort validator=engines.get()){
+                if(!Boolean.TRUE.equals(validator.validateDeck(deck).get("valid")))throw fail("invalid_deck","Choose a valid Commander deck.");
+            }
+            synchronized(this){
+                if(admissionClock.getAsLong()-began>=TimeUnit.SECONDS.toNanos(10))throw fail("service_unavailable","Deck admission exceeded the server budget. Please try again shortly.");
+                Map<String,Object> args=Json.map("p_display_name",name,"p_platform",platform,"p_app_version",identity.get("adapterVersion"),"p_engine_build",identity.get("adapterVersion"),"p_upstream",identity.get("upstreamCommit"),"p_catalogue_hash",identity.get("catalogueHash"),"p_protocol_version",identity.get("protocolVersion"),"p_host_score",0);
+                if(join)args.put("p_code",code);
+                else args.put("p_player_count",count);
+                Map<String,Object> row=backend.rpc(token,join?"join_lobby":"create_lobby",args);
+                String id=Json.requiredString(row,"match_id");
+                decks.computeIfAbsent(id,k->new HashMap<>()).put(user,new Deck(deck,supplied));lobbyTouched.put(id,System.currentTimeMillis());
+                return lobby(token,user,id);
+            }
+        }finally{validations.release();}
     }
     private List<Map<String,Object>> members(String token,String user,String id){
         List<Map<String,Object>> players=backend.players(token,id);

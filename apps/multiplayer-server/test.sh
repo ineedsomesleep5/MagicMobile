@@ -8,4 +8,6 @@ find "$SERVER_ROOT/src/test/java" -name '*.java' -print > "$SERVER_ROOT/build/te
 "$JAVAC" --release 17 -cp "$SERVER_ROOT/build/classes" -d "$SERVER_ROOT/build/classes" @"$SERVER_ROOT/build/tests.txt"
 "$JAVA" -cp "$SERVER_ROOT/build/classes" io.magicmobile.server.ServerTests
 "$JAVA" -cp "$SERVER_ROOT/build/classes" io.magicmobile.server.FailureRegressions
+"$JAVA" -cp "$SERVER_ROOT/build/classes" io.magicmobile.server.AdmissionRegressions
+"$JAVA" -cp "$SERVER_ROOT/build/classes" io.magicmobile.server.BackendResponseRegressions
 "$JAVA" -cp "$SERVER_ROOT/build/classes" io.magicmobile.server.ConfigurationTests
