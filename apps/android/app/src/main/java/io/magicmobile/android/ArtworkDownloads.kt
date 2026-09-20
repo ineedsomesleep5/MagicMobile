@@ -28,6 +28,15 @@ private enum class DownloadScope(val label: String) {
 internal data class DownloadProgress(val completed: Int, val total: Int, val status: String)
 internal data class DownloadScan(val cards:Int,val bytes:Long,val extraStored:Int,val extraTotal:Int,val coverageKnown:Boolean)
 
+/** Collection responses are a bounded list; Scryfall normally omits pagination metadata. */
+internal fun validatedArtworkCollection(response:Obj,requested:Int):List<Obj> {
+    val data=response["data"] as? List<*>
+    check(requested in 1..75 && response.text("object")=="list" &&
+        ("has_more" !in response || response["has_more"]==false) &&
+        data!=null && data.size<=requested){"Unexpected artwork collection response."}
+    return data.map(Wire::objectValue)
+}
+
 /** Bounded transfers; completed images and safe token identities survive retries. */
 internal class ArtworkDownloadClient(private val context: Context) {
     private fun coverageFile(names:List<String>):java.io.File {
@@ -127,8 +136,7 @@ internal class ArtworkDownloadClient(private val context: Context) {
             values.chunked(75).forEach{batch->
                 val bytes=ArtworkTransport.bytes(context,URL("https://api.scryfall.com/cards/collection"),8*1024*1024,setOf("application/json"),Wire.encode(mapOf("identifiers" to batch)))
                 val response=Wire.objectValue(io.magicmobile.core.Json.parseObject(bytes.toString(Charsets.UTF_8)))
-                check(response.text("object")=="list"&&response["has_more"]==false&&response["data"] is List<*> && response.array("data").size<=batch.size){"Unexpected artwork collection response."}
-                response.array("data").map(Wire::objectValue).forEach(result::add)
+                validatedArtworkCollection(response,batch.size).forEach(result::add)
             }
         }
         fetch(identifiers)

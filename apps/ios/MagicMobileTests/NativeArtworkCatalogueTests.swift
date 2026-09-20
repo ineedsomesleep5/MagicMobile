@@ -252,6 +252,7 @@ private actor ArtworkCollectionFixture: DeckStudioScryfallHTTP {
             }
             return card
         }
-        return try JSONSerialization.data(withJSONObject: ["object": "list", "has_more": false, "data": cards])
+        // The live collection endpoint omits has_more (unlike paginated search).
+        return try JSONSerialization.data(withJSONObject: ["object": "list", "not_found": [], "data": cards])
     }
 }
