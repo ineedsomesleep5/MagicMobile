@@ -359,7 +359,7 @@ enum GameBoardPreviewFixtures {
             """#
         case .stackResponsePrompt:
             return #"""
-            {"id":"preview-stack","method":"GAME_PRIORITY","messageId":3,"playerId":"human","responseKind":"pass_priority","message":"Respond to the spell on the stack.","required":false,"minChoices":0,"maxChoices":0,"choices":[{"id":"pass","label":"Pass priority"}],"responseCommand":{"type":"pass_priority","promptId":"preview-stack","messageId":3}}
+            {"id":"preview-stack","method":"GAME_SELECT","messageId":3,"playerId":"human","responseKind":"priority","message":"Respond to the spell on the stack.","required":false,"minChoices":0,"maxChoices":0,"responseCommand":{"type":"pass_priority","promptId":"preview-stack","messageId":3}}
             """#
         case .commanderReplacementPrompt:
             return #"""

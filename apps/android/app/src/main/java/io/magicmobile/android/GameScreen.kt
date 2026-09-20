@@ -32,6 +32,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.style.TextOverflow
@@ -98,7 +100,13 @@ import java.util.Locale
                 Text(decision.kind.replace('_',' '),style=MaterialTheme.typography.titleMedium)
                 Text(Decisions.plain(decision.payload.text("message").orEmpty()))
                 if(decision.submitted)Text("Answer submitted · waiting for XMage")
-                choices.forEach { choice -> OutlinedButton(onClick={if(choice.type=="uuid" && choice.value in commanderCasts)expandedZones=emptySet();model.answer(choice.type,choice.value)},enabled=!state.busy && !state.pendingAnswer && !state.closing && !decision.submitted,modifier=Modifier.fillMaxWidth()) {Text(choice.label)} }
+                choices.forEach { choice ->
+                    val passHelp=priorityPassHelp(decision,choice,game,viewerPlayerId)
+                    Column(Modifier.fillMaxWidth(),horizontalAlignment=Alignment.CenterHorizontally){
+                        OutlinedButton(onClick={if(choice.type=="uuid" && choice.value in commanderCasts)expandedZones=emptySet();model.answer(choice.type,choice.value)},enabled=!state.busy && !state.pendingAnswer && !state.closing && !decision.submitted,modifier=Modifier.fillMaxWidth().semantics{passHelp?.let{stateDescription=it.accessibility}}) {Text(choice.label)}
+                        passHelp?.let{Text(it.text,style=MaterialTheme.typography.labelSmall,modifier=Modifier.clearAndSetSemantics{})}
+                    }
+                }
                 if("integer" in decision.responseTypes) {
                     // The engine sends the Int sentinels to mean "no limit". Showing them
                     // literally prefilled the field with -2147483648 and labelled the range

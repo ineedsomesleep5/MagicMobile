@@ -17,6 +17,16 @@ enum GameBoardInteractionMode: Equatable {
 }
 
 enum GameplayActionPresentation {
+    static func priorityDetail(hasStack: Bool) -> String {
+        hasStack ? "Let others respond" : "Let this step continue"
+    }
+
+    static func priorityHint(hasStack: Bool) -> String {
+        hasStack
+            ? "Pass without responding. If everyone passes, the top spell or ability resolves."
+            : "Pass without taking an action. If everyone passes, the game moves to the next step or phase."
+    }
+
     private static let yieldActionGroups = [
         ["resolve_stack", "pass_until_stack_resolved"],
         ["pass_until_response"],

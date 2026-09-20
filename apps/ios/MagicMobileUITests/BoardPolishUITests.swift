@@ -452,7 +452,7 @@ final class BoardPolishUITests: XCTestCase {
             if !portrait && !app.buttons["board.stack.done"].exists {
                 let inspectStack = app.buttons["Inspect stack"]
                 visible(inspectStack, in: app)
-                inspectStack.tap()
+                inspectStack.press(forDuration: 0.15)
             }
             // Portrait auto-opens this fixture; both orientations use BoardStackInspector.
             visible(app.buttons["board.stack.done"], in: app)
@@ -478,6 +478,7 @@ final class BoardPolishUITests: XCTestCase {
             capture(app, name: currentCapture + "-stack-ability")
             app.buttons["board.stack.done"].tap()
             XCTAssertTrue(app.buttons["board.stack.done"].waitForNonExistence(timeout: 5))
+            XCTAssertTrue(app.buttons["board.action.primary"].label.contains("Pass Priority"))
         case "four-player-focus":
             let focus = app.buttons["board.opponentFocus"]
             visible(focus, in: app)

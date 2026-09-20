@@ -64,3 +64,18 @@ internal fun priorityResponseCue(decision:Decision?,game:Obj?,viewer:String?):St
     val step=(game?.text("step") ?: game?.text("phase"))?.replace('_',' ')?.lowercase(Locale.ROOT)?.replaceFirstChar{it.titlecase(Locale.ROOT)} ?: "Priority"
     return (if(hasStack)"Respond to the stack" else "Your response window")+" · $step"
 }
+
+internal data class PriorityPassHelp(val text:String,val accessibility:String)
+
+internal fun priorityPassHelp(decision:Decision?,choice:Choice,game:Obj?,viewer:String?):PriorityPassHelp? {
+    if(viewer==null || decision==null || decision.submitted || decision.kind!="SELECT" ||
+        decision.payload.text("selectMode")!="priority" || decision.payload.text("manaPlayerId")!=viewer ||
+        "boolean" !in decision.responseTypes || choice.type!="boolean" || choice.value!=true)return null
+    val options=decision.payload.obj("options")
+    if(options?.get("possibleAttackers")!=null || options?.get("possibleBlockers")!=null)return null
+    val stack=game?.get("stack")
+    if(stack !is List<*> && stack !is Map<*,*>)return null
+    return if(GameplayPresentation.cards(stack).isNotEmpty())
+        PriorityPassHelp("Let others respond","Other players may respond. The top spell or ability resolves only if everyone passes.")
+    else PriorityPassHelp("Let this step continue","Other players may respond. The step advances only if everyone passes.")
+}

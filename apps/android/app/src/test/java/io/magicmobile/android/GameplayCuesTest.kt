@@ -61,6 +61,32 @@ class GameplayCuesTest {
         assertNotNull(priorityResponseCue(prompt,mapOf("step" to "PRECOMBAT_MAIN"),viewer))
     }
 
+    @Test fun passHelperExplainsStackWithoutClaimingImmediateResolution() {
+        val pass=Choice("Pass priority","boolean",true)
+        val empty=priorityPassHelp(prompt,pass,mapOf("stack" to emptyList<Obj>()),viewer)!!
+        assertEquals("Let this step continue",empty.text)
+        assertEquals("Other players may respond. The step advances only if everyone passes.",empty.accessibility)
+        val stacked=priorityPassHelp(prompt,pass,mapOf("stack" to mapOf(card to mapOf("id" to card))),viewer)!!
+        assertEquals("Let others respond",stacked.text)
+        assertEquals("Other players may respond. The top spell or ability resolves only if everyone passes.",stacked.accessibility)
+    }
+
+    @Test fun passHelperRequiresCurrentAuthorizedPriorityPass() {
+        val pass=Choice("Pass priority","boolean",true)
+        val game:Obj=mapOf("stack" to emptyList<Obj>())
+        assertNull(priorityPassHelp(prompt.copy(submitted=true),pass,game,viewer))
+        assertNull(priorityPassHelp(prompt,pass,game,null))
+        assertNull(priorityPassHelp(prompt,pass,game,"opponent"))
+        assertNull(priorityPassHelp(prompt,pass,null,viewer))
+        assertNull(priorityPassHelp(prompt,pass,emptyMap(),viewer))
+        listOf("ASK","PLAY_MANA","PLAY_X_MANA","PICK_TARGET").forEach{kind->assertNull(priorityPassHelp(prompt.copy(kind=kind),pass,game,viewer))}
+        listOf("attackers","blockers").forEach{mode->assertNull(priorityPassHelp(prompt.copy(payload=prompt.payload+("selectMode" to mode)),pass,game,viewer))}
+        assertNull(priorityPassHelp(prompt.copy(payload=prompt.payload+("options" to mapOf("possibleAttackers" to emptyList<String>()))),pass,game,viewer))
+        assertNull(priorityPassHelp(prompt.copy(responseTypes=setOf("uuid")),pass,game,viewer))
+        assertNull(priorityPassHelp(prompt,pass.copy(value=false),game,viewer))
+        assertNull(priorityPassHelp(prompt,pass.copy(type="string",value="true"),game,viewer))
+    }
+
     @Test fun analysisSymbolsResolveBothBracedAndBareMana() {
         assertEquals(ManaSymbols.drawable("B"),ManaSymbols.drawable("{B}"))
         assertNotNull(ManaSymbols.drawable("{U}"))

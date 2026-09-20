@@ -10179,6 +10179,7 @@ struct GameplayActionDock: View {
     }
 
     private var primaryButton: some View {
+        VStack(spacing: 2) {
         Button {
                     if let primaryAction = model.primaryAction {
                         runAction(primaryAction)
@@ -10199,6 +10200,24 @@ struct GameplayActionDock: View {
                 .buttonStyle(GameplayDockButtonStyle(isPrimary: true))
                 .disabled(!model.isPrimaryEnabled)
                 .accessibilityIdentifier("board.action.primary")
+                .accessibilityHint(showsPriorityHelp ? GameplayActionPresentation.priorityHint(hasStack: hasStackForPriority) : "")
+            if showsPriorityHelp {
+                Text(GameplayActionPresentation.priorityDetail(hasStack: hasStackForPriority))
+                    .font(.caption2)
+                    .foregroundStyle(MagicPalette.parchment.opacity(0.8))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+
+    private var showsPriorityHelp: Bool {
+        model.mode == .priority && model.isPrimaryEnabled && model.primaryAction?.type == "pass_priority"
+    }
+
+    private var hasStackForPriority: Bool {
+        !snapshot.stackTopFirst.isEmpty || snapshot.players.contains { !$0.zones.stack.isEmpty }
     }
 
     private var controlsMenu: some View {

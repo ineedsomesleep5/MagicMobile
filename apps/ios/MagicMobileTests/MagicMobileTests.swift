@@ -520,6 +520,13 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(GameplayActionPresentation.title(for: try decodeAction(type: "advance_phase"), snapshot: snapshot), "Yield Until Next Main")
     }
 
+    func testPriorityHelpExplainsPassingWithoutClaimingToCastOrResolveImmediately() {
+        XCTAssertEqual(GameplayActionPresentation.priorityDetail(hasStack: true), "Let others respond")
+        XCTAssertEqual(GameplayActionPresentation.priorityDetail(hasStack: false), "Let this step continue")
+        XCTAssertEqual(GameplayActionPresentation.priorityHint(hasStack: true), "Pass without responding. If everyone passes, the top spell or ability resolves.")
+        XCTAssertEqual(GameplayActionPresentation.priorityHint(hasStack: false), "Pass without taking an action. If everyone passes, the game moves to the next step or phase.")
+    }
+
     func testGameActionDockKeepsPromptPriorityAndWaitingStatesExclusive() throws {
         let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: minimalSnapshotJSON(id: "action-dock"))
         let pass = try decodeAction(type: "pass_priority")
