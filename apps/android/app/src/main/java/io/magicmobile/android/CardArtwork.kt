@@ -23,6 +23,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.channels.BufferOverflow
 import io.magicmobile.android.core.*
 import kotlin.coroutines.coroutineContext
 import java.io.File
@@ -37,6 +43,8 @@ import java.security.MessageDigest
  * building never need the network.
  */
 object Artwork {
+    private val downloaded=MutableSharedFlow<String>(extraBufferCapacity=64,onBufferOverflow=BufferOverflow.DROP_OLDEST)
+    internal val downloadChanges=downloaded.asSharedFlow()
     internal var consentRevision by mutableIntStateOf(0)
         private set
     private const val PREFS = "magicmobile.artwork"
@@ -78,6 +86,7 @@ object Artwork {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(CONSENT_KEY, value).apply()
         consentRevision++
+        if(!value)ArtworkDownloadService.pause(context.applicationContext)
     }
 
     private fun key(name: String): String =
@@ -123,8 +132,12 @@ object Artwork {
             accountedDownloadBytes=stored-previous+bytes.size
             memory.put(name, bitmap)
         }
+        downloaded.tryEmit(name)
         return true
     }
+
+    internal fun matchesDownload(context:Context,key:String,name:String,token:Boolean,identity:ArtworkTokenIdentity?):Boolean =
+        artworkDownloadMatches(key,name,token,identity,if(token&&key.startsWith("token:"))tokens(context)[key.removePrefix("token:")]?.token else null)
 
     private fun decode(bytes: ByteArray): Bitmap? = runCatching {
         val bounds=BitmapFactory.Options().apply{inJustDecodeBounds=true}
@@ -202,7 +215,11 @@ fun CardArtwork(name: String, modifier: Modifier = Modifier, token:Boolean=false
     val context = LocalContext.current
     val consent = remember(Artwork.consentRevision){Artwork.enabled(context)}
     var bitmap by remember(name, token, tokenIdentity) { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(name, consent, token, tokenIdentity) { bitmap = try { Artwork.load(context, name, token, tokenIdentity){cached->withContext(Dispatchers.Main){bitmap=cached}} } catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){bitmap} }
+    LaunchedEffect(name, consent, token, tokenIdentity) {
+        Artwork.downloadChanges.onStart{emit("")}.filter{it.isEmpty()||Artwork.matchesDownload(context,it,name,token,tokenIdentity)}.collectLatest{
+            bitmap = try { Artwork.load(context, name, token, tokenIdentity){cached->withContext(Dispatchers.Main){bitmap=cached}} } catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){bitmap}
+        }
+    }
     Box(modifier.background(Color(0xFFEDE7DC)), contentAlignment = Alignment.Center) {
         val image = bitmap
         if (image != null) {
@@ -217,3 +234,6 @@ fun CardArtwork(name: String, modifier: Modifier = Modifier, token:Boolean=false
         }
     }
 }
+
+internal fun artworkDownloadMatches(key:String,name:String,token:Boolean,expected:ArtworkTokenIdentity?,actual:ArtworkTokenIdentity?):Boolean =
+    if(token)key.startsWith("token:")&&expected!=null&&actual!=null&&expected.normalized()==actual.normalized() else key==name

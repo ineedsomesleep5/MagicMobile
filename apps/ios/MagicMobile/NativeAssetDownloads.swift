@@ -2,8 +2,11 @@ import Foundation
 import Combine
 import CryptoKit
 import ImageIO
+#if canImport(UIKit)
+import UIKit
+#endif
 
-enum NativeArtworkQuality: String, CaseIterable, Identifiable {
+enum NativeArtworkQuality: String, CaseIterable, Identifiable, Codable {
     case compact, standard, high
     var id: String { rawValue }
     var label: String { switch self { case .compact: return "Compact"; case .standard: return "Standard"; case .high: return "High" } }
@@ -272,7 +275,8 @@ actor NativeTokenDiscovery {
 }
 
 @MainActor final class NativeAssetDownloads: ObservableObject {
-    static let maximumNames = 100_000
+    static let shared = NativeAssetDownloads(backgroundQueue: .shared)
+    nonisolated static let maximumNames = 100_000
     static let didFinish = Notification.Name("MagicMobileArtworkDownloadsDidFinish")
     @Published private(set) var cardTotal = 0
     @Published private(set) var cardStored = 0
@@ -294,15 +298,33 @@ actor NativeTokenDiscovery {
     private let artwork: NativeDeckArtwork
     private let discovery: NativeTokenDiscovery
     private let catalogueLoader: @Sendable () async throws -> NativeArtworkCatalogue
+    private let deckCatalogueLoader: @Sendable ([String], Bool) async throws -> NativeArtworkCatalogue
     private var task: Task<Void, Never>?
     private var scanGeneration = UUID()
     private var missingTokenIDs = Set<UUID>()
     private var unavailableTokenNames: [String] = []
+    private let backgroundQueue: NativeArtworkBackgroundQueue?
+    private var queueObservation: AnyCancellable?
+    private var preparingBackgroundJob = false
+    private var preparationFailures: [String] = []
+#if canImport(UIKit)
+    private var preparationBackgroundTask: UIBackgroundTaskIdentifier = .invalid
+#endif
     init(store: NativeAssetStore = .shared, artwork: NativeDeckArtwork = .shared, discovery: NativeTokenDiscovery = NativeTokenDiscovery(),
-         catalogueLoader: @escaping @Sendable () async throws -> NativeArtworkCatalogue = { try await NativeArtworkCatalogue.load() }) {
+         catalogueLoader: @escaping @Sendable () async throws -> NativeArtworkCatalogue = { try await NativeArtworkCatalogue.load() },
+         backgroundQueue: NativeArtworkBackgroundQueue? = nil,
+         deckCatalogueLoader: @escaping @Sendable ([String], Bool) async throws -> NativeArtworkCatalogue = { try await NativeArtworkCatalogue.load(names: $0, includeTokens: $1) }) {
         self.store = store; self.artwork = artwork; self.discovery = discovery; self.catalogueLoader = catalogueLoader
+        self.backgroundQueue = backgroundQueue
+        self.deckCatalogueLoader = deckCatalogueLoader
+        if let backgroundQueue {
+            queueObservation = backgroundQueue.objectWillChange.sink { [weak self] in
+                Task { @MainActor [weak self] in self?.syncBackgroundProgress() }
+            }
+            syncBackgroundProgress()
+        }
     }
-    static func names(_ names: [String]) throws -> [String] {
+    nonisolated static func names(_ names: [String]) throws -> [String] {
         guard names.count <= maximumNames * 2 else { throw DeckStudioScryfallError.invalidInput }
         var seen = Set<String>()
         let result = try names.map { name -> String in
@@ -365,6 +387,11 @@ actor NativeTokenDiscovery {
         guard allowNetwork else { status = "Enable online artwork before downloading from Scryfall."; return }
         let inputNames: [String]
         do { inputNames = try Self.names(rawNames) } catch { status = error.localizedDescription; return }
+        if let backgroundQueue {
+            prepareBackgroundDownload(names: inputNames, includeTokens: includeTokens, quality: quality,
+                                      fullCatalogue: fullCatalogue, queue: backgroundQueue)
+            return
+        }
         isRunning = true; failures = []; completed = 0; total = inputNames.count
         task = Task { [weak self] in
             guard let self else { return }
@@ -473,7 +500,102 @@ actor NativeTokenDiscovery {
             NotificationCenter.default.post(name: Self.didFinish, object: nil)
         }
     }
-    func cancel() { task?.cancel() }
+    private func syncBackgroundProgress() {
+        guard !preparingBackgroundJob, let queue = backgroundQueue else { return }
+        let wasRunning = isRunning
+        isRunning = queue.isRunning
+        completed = queue.completed; total = queue.total
+        status = queue.status
+        failures = preparationFailures + queue.failureMessages
+        if wasRunning && !isRunning { NotificationCenter.default.post(name: Self.didFinish, object: nil) }
+    }
+
+    private func prepareBackgroundDownload(names inputNames: [String], includeTokens: Bool,
+                                           quality: NativeArtworkQuality, fullCatalogue: Bool,
+                                           queue: NativeArtworkBackgroundQueue) {
+        preparingBackgroundJob = true; isRunning = true; failures = []; preparationFailures = []
+        completed = 0; total = inputNames.count
+        status = "Preparing image list… You can play while this finishes."
+#if canImport(UIKit)
+        preparationBackgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Prepare artwork downloads") { [weak self] in
+            // The image queue uses its own system background session. Preparation
+            // may suspend here and continue when the app next becomes active.
+            self?.finishPreparationBackgroundTime()
+        }
+#endif
+        task = Task { [weak self] in
+            guard let self else { return }
+            defer {
+#if canImport(UIKit)
+                finishPreparationBackgroundTime()
+#endif
+            }
+            do {
+                let catalogue = fullCatalogue ? try await catalogueLoader() :
+                    try await deckCatalogueLoader(inputNames, includeTokens)
+                try Task.checkCancellation()
+                let faces = catalogue.additionalFaceNames(for: inputNames)
+                let names = try Self.names(inputNames + faces)
+                if fullCatalogue { try await store.saveCatalogueFaces(faces) }
+                var entries: [NativeArtworkBackgroundQueue.Entry] = []
+                var tokenIDs = Set<UUID>()
+                var relatedTokens: [NativeTokenArtwork] = []
+                for name in names {
+                    try Task.checkCancellation()
+                    if includeTokens && !fullCatalogue {
+                        let related = catalogue.relatedTokens(name: name)
+                        try await store.saveRelations(related, name: name)
+                        relatedTokens += related.filter { tokenIDs.insert($0.id).inserted }
+                    }
+                    let key = NativeAssetStore.cardKey(name)
+                    if await store.image(key: key, quality: quality) == nil {
+                        if let url = catalogue.imageURL(name: name, size: quality.imageSizeString) {
+                            entries.append(.init(key: key, name: name, url: url, quality: quality))
+                        } else { preparationFailures.append("\(name): artwork is unavailable.") }
+                    }
+                }
+                if includeTokens {
+                    if fullCatalogue {
+                        relatedTokens = catalogue.allTokens
+                        try await store.saveCatalogueTokens(relatedTokens, unavailableNames: catalogue.unavailableTokenNames)
+                        preparationFailures += catalogue.unavailableTokenNames.map { "Token \($0): artwork is unavailable." }
+                    }
+                    for related in relatedTokens {
+                        try Task.checkCancellation()
+                        guard let token = catalogue.token(id: related.id), token.hasMatchingMetadata,
+                              let url = catalogue.imageURL(id: related.id, size: quality.imageSizeString) else {
+                            preparationFailures.append("Token \(related.name): safe artwork metadata is unavailable.")
+                            continue
+                        }
+                        try await store.saveToken(token)
+                        let key = NativeAssetStore.tokenKey(token.id)
+                        if await store.image(key: key, quality: quality) == nil {
+                            entries.append(.init(key: key, name: token.name, url: url, quality: quality))
+                        }
+                    }
+                }
+                try Task.checkCancellation()
+                try queue.start(entries: entries)
+                preparingBackgroundJob = false; task = nil
+                syncBackgroundProgress()
+                await scan(names: inputNames, quality: quality, fullCatalogue: fullCatalogue)
+            } catch {
+                preparingBackgroundJob = false; isRunning = false; task = nil
+                status = error is CancellationError ? "Download cancelled. Completed images remain available offline." :
+                    "Could not prepare downloads. Try again when connected."
+                if !(error is CancellationError) { failures = [error.localizedDescription] }
+            }
+        }
+    }
+
+    func cancel() { task?.cancel(); backgroundQueue?.cancel() }
+#if canImport(UIKit)
+    private func finishPreparationBackgroundTime() {
+        guard preparationBackgroundTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(preparationBackgroundTask)
+        preparationBackgroundTask = .invalid
+    }
+#endif
     private static func mustStop(_ error: Error) -> Bool {
         if let value = error as? NativeDeckArtwork.ArtworkError, [.rateLimited, .httpStatus(403), .httpStatus(401)].contains(value) { return true }
         if let value = error as? DeckStudioScryfallError, [.rateLimited, .unavailable, .http(403), .http(401)].contains(value) { return true }

@@ -3,6 +3,29 @@ import zlib
 @testable import MagicMobile
 
 final class NativeArtworkCatalogueTests: XCTestCase {
+    func testDeckCollectionsBatchNamesAndResolveExactTokenIDs() async throws {
+        let transport = ArtworkCollectionFixture()
+        let names = (0..<76).map { "Fixture \($0)" }
+        let catalogue = try await NativeArtworkCatalogue.load(names: names, includeTokens: true, transport: transport, budget: DeckStudioScryfallBudget())
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 3, "76 names use two collection requests and one exact token batch")
+        XCTAssertTrue(requests.allSatisfy { $0.httpMethod == "POST" && $0.url?.path == "/cards/collection" })
+        XCTAssertEqual(catalogue.imageURL(name: "Fixture 75", size: "normal")?.host, "cards.scryfall.io")
+        XCTAssertEqual(catalogue.relatedTokens(name: "Fixture 0").map(\.id), [ArtworkCollectionFixture.tokenID])
+        XCTAssertEqual(catalogue.token(id: ArtworkCollectionFixture.tokenID)?.power, "1")
+        XCTAssertEqual(catalogue.imageURL(id: ArtworkCollectionFixture.tokenID, size: "small")?.host, "cards.scryfall.io")
+        let tokenRequest = try XCTUnwrap(requests.last?.httpBody)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: tokenRequest) as? [String: [[String: String]]])
+        XCTAssertEqual(object["identifiers"], [["id": ArtworkCollectionFixture.tokenID.uuidString.lowercased()]])
+    }
+
+    func testDeckCollectionWithoutTokensDoesNotFetchRelatedCards() async throws {
+        let transport = ArtworkCollectionFixture()
+        let catalogue = try await NativeArtworkCatalogue.load(names: ["Fixture 0"], includeTokens: false, transport: transport, budget: DeckStudioScryfallBudget())
+        let count = await transport.requests.count
+        XCTAssertEqual(count, 1)
+        XCTAssertNil(catalogue.token(id: ArtworkCollectionFixture.tokenID))
+    }
     private let cardID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
     private let tokenID = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
     private let missingID = UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
@@ -205,5 +228,30 @@ final class NativeArtworkCatalogueTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: file) }
         try JSONSerialization.data(withJSONObject: objects).write(to: file)
         return try NativeArtworkCatalogue.parse(file: file)
+    }
+}
+
+private actor ArtworkCollectionFixture: DeckStudioScryfallHTTP {
+    static let tokenID = UUID(uuidString: "00000000-0000-0000-0000-000000000123")!
+    private(set) var requests: [URLRequest] = []
+    func send(_ request: URLRequest) async throws -> Data {
+        requests.append(request)
+        let body = try XCTUnwrap(request.httpBody)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: [[String: String]]])
+        let identifiers = try XCTUnwrap(object["identifiers"])
+        XCTAssertLessThanOrEqual(identifiers.count, 75)
+        let cards: [[String: Any]] = identifiers.map { identifier in
+            let token = identifier["id"] != nil
+            var card: [String: Any] = ["id": token ? Self.tokenID.uuidString : UUID().uuidString,
+                "name": token ? "Soldier" : identifier["name"]!, "object": "card",
+                "type_line": token ? "Token Creature — Soldier" : "Creature", "layout": token ? "token" : "normal",
+                "oracle_text": "", "power": "1", "toughness": "1", "colors": ["W"],
+                "image_uris": Dictionary(uniqueKeysWithValues: ["small", "normal", "large"].map { ($0, "https://cards.scryfall.io/\($0)/front/fixture.jpg") })]
+            if identifier["name"] == "Fixture 0" {
+                card["all_parts"] = [["id": Self.tokenID.uuidString, "component": "token", "name": "Soldier"]]
+            }
+            return card
+        }
+        return try JSONSerialization.data(withJSONObject: ["object": "list", "has_more": false, "data": cards])
     }
 }

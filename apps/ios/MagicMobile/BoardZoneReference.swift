@@ -27,9 +27,12 @@ enum BoardZoneReference: Hashable {
     case player(playerID: String, zone: PlayerZone)
     case named(kind: NamedKind, id: String)
     case collection(NamedKind)
+    case playerEnchantments(playerID: String)
 
     func cards(in snapshot: GameSnapshot) -> [ZoneCard] {
         switch self {
+        case let .playerEnchantments(playerID):
+            return ZoneCard.enchanting(playerID: playerID, cards: snapshot.players.flatMap { $0.zones.battlefield })
         case let .player(playerID, zone):
             guard let zones = snapshot.players.first(where: { $0.playerId == playerID })?.zones else { return [] }
             switch zone {
@@ -50,6 +53,8 @@ enum BoardZoneReference: Hashable {
 
     func title(in snapshot: GameSnapshot) -> String {
         switch self {
+        case let .playerEnchantments(playerID):
+            return "Enchanting \(snapshot.playerLabel(playerID))"
         case let .player(playerID, zone):
             let name = snapshot.players.first { $0.playerId == playerID }?.displayName
             let label = name.map { EngineDisplayText.label($0) } ?? ""

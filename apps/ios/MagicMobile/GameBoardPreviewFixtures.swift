@@ -1,9 +1,23 @@
 import Foundation
 
 enum GameBoardPreviewFixtures {
-    static func snapshot(_ state: GameBoardDesignPreviewState, step: String? = nil, life: Int? = nil) -> GameSnapshot {
+    static func snapshot(_ state: GameBoardDesignPreviewState, step: String? = nil, life: Int? = nil, specialStateAdvanced: Bool = false) -> GameSnapshot {
         var root = try! JSONSerialization.jsonObject(with: Data(json(for: state).utf8)) as! [String: Any]
         enrich(&root, for: state)
+        if state == .attachedPermanents, specialStateAdvanced, var players = root["players"] as? [[String: Any]] {
+            for index in players.indices {
+                players[index]["poison"] = 5
+                players[index]["counters"] = ["Poison": 5, "Energy": 4]
+                var zones = players[index]["zones"] as! [String: Any]
+                var cards = zones["battlefield"] as! [[String: Any]]
+                for card in cards.indices {
+                    if cards[card]["instanceId"] as? String == "human-sol-ring" { cards[card]["phasedIn"] = true }
+                    if cards[card]["instanceId"] as? String == "player-curse" { cards[card]["attachedToInstanceId"] = "human" }
+                }
+                zones["battlefield"] = cards; players[index]["zones"] = zones
+            }
+            root["players"] = players
+        }
         if let step {
             root["step"] = step
             root["activePlayerId"] = "ai-1"
@@ -67,8 +81,28 @@ enum GameBoardPreviewFixtures {
             if state == .stackResponsePrompt && index == 1 {
                 battlefield.append(card("ai-1-ability-source", "Prodigal Pyromancer", "Creature — Human Wizard", "{2}{R}", "{T}: This creature deals 1 damage to any target.", power: 1))
             }
+            if state == .attachedPermanents {
+                players[index]["poison"] = index == 0 ? 2 : 3
+                players[index]["counters"] = ["Poison": index == 0 ? 2 : 3, "Energy": 4]
+                players[index]["monarch"] = index == 1
+                var aura = card("\(seat)-attached-aura", "Karametra's Favor", "Enchantment — Aura", "{1}{G}", "Enchant creature. Enchanted creature has {T}: Add one mana of any color.")
+                aura["attachedToInstanceId"] = "ai-1-preview-creature-0"
+                battlefield.append(aura)
+                if index == 1 {
+                    var equipment = card("attached-equipment", "Short Sword", "Artifact — Equipment", "{1}", "Equipped creature gets +1/+1.")
+                    equipment["attachedToInstanceId"] = "ai-1-preview-creature-0"
+                    battlefield.append(equipment)
+                } else {
+                    var curse = card("player-curse", "Curse of Opulence", "Enchantment — Aura Curse", "{R}", "Enchant player.")
+                    curse["attachedToInstanceId"] = "ai-1"
+                    battlefield.append(curse)
+                }
+            }
             if index == 0 {
                 battlefield.append(card("human-sol-ring", "Sol Ring", "Artifact", "{1}", "{T}: Add {C}{C}."))
+                if state == .attachedPermanents, let ring = battlefield.firstIndex(where: { $0["instanceId"] as? String == "human-sol-ring" }) {
+                    battlefield[ring]["phasedIn"] = false
+                }
                 var hand = zones["hand"] as! [[String: Any]]
                 let handCreatures = state == .handScrubber
                     ? Array(repeating: Array(creatures.prefix(5)), count: 4).flatMap { $0 }

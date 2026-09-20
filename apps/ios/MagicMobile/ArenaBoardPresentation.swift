@@ -1,5 +1,181 @@
 import SwiftUI
 
+/// Attachment relationships come only from the current public engine snapshot.
+/// Invalid/missing links remain visible in their original lane instead of losing cards.
+enum BattlefieldAttachments {
+    static func roots(_ cards: [ZoneCard]) -> [String: String] {
+        let byID = Dictionary(cards.map { ($0.instanceId, $0) }, uniquingKeysWith: { first, _ in first })
+        return Dictionary(cards.map { card in
+            var current = card.instanceId
+            var seen = Set<String>()
+            while let parent = byID[current]?.attachedToInstanceId, byID[parent] != nil {
+                guard seen.insert(current).inserted, !seen.contains(parent) else {
+                    return (card.instanceId, card.instanceId)
+                }
+                current = parent
+            }
+            return (card.instanceId, current)
+        }, uniquingKeysWith: { first, _ in first })
+    }
+
+    static func lane(ownedCards: [ZoneCard], allCards: [ZoneCard], lands: Bool, playerIDs: Set<String> = []) -> [ZoneCard] {
+        let roots = roots(allCards)
+        let laneRoots = Set(ownedCards.filter {
+            $0.card.isLand == lands && roots[$0.instanceId] == $0.instanceId && !playerIDs.contains($0.attachedToInstanceId ?? "")
+        }.map(\.instanceId))
+        return allCards.filter { laneRoots.contains(roots[$0.instanceId] ?? $0.instanceId) }
+    }
+
+    static func groups(_ cards: [ZoneCard]) -> [BattlefieldCardGroup] {
+        let roots = roots(cards)
+        let hostIDs = Set(cards.compactMap { card -> String? in
+            guard let root = roots[card.instanceId], root != card.instanceId else { return nil }
+            return root
+        })
+        let unattached = cards.filter { !hostIDs.contains(roots[$0.instanceId] ?? $0.instanceId) }
+        var densityGroups = BattlefieldDensityPlanner.groups(cards: unattached)
+        var result: [BattlefieldCardGroup] = []
+        for card in cards {
+            if hostIDs.contains(card.instanceId) {
+                let children = cards.filter { $0.instanceId != card.instanceId && roots[$0.instanceId] == card.instanceId }
+                result.append(BattlefieldCardGroup(id: "attachment:" + card.instanceId, cards: [card] + children))
+            } else if let index = densityGroups.firstIndex(where: { $0.cards.contains(card) }) {
+                result.append(densityGroups.remove(at: index))
+            }
+        }
+        return result
+    }
+
+    static func enchanting(playerID: String, allCards: [ZoneCard]) -> [ZoneCard] {
+        ZoneCard.enchanting(playerID: playerID, cards: allCards)
+    }
+}
+
+enum BoardPlayerStatus {
+    static func counters(_ player: PlayerGameState) -> [(name: String, count: Int)] {
+        var values = player.counters ?? [:]
+        if player.poison > 0, !values.keys.contains(where: { $0.lowercased() == "poison" }) { values["Poison"] = player.poison }
+        return values.filter { $0.value > 0 }.sorted { left, right in
+            if left.key.lowercased() == "poison" { return right.key.lowercased() != "poison" }
+            if right.key.lowercased() == "poison" { return false }
+            return left.key < right.key
+        }.map { ($0.key, $0.value) }
+    }
+}
+
+/// Public player effects remain next to that player's HUD and use the same zone
+/// inspector as battlefield permanents, including legal target/ability actions.
+struct BoardPlayerEffects: View {
+    let player: PlayerGameState
+    var attachments: [ZoneCard] = []
+    var viewZone: ((String, [ZoneCard]) -> Void)? = nil
+    var opponents: [PlayerGameState] = []
+    var selectOpponent: ((String) -> Void)? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var counters: [(name: String, count: Int)] { BoardPlayerStatus.counters(player) }
+    private var compactIcon: String {
+        if opponents.count > 1 { return "person.2.fill" }
+        if counters.first?.name.lowercased() == "poison" { return "exclamationmark.shield.fill" }
+        return attachments.isEmpty ? "circle.grid.2x2.fill" : "link"
+    }
+    private var effectsDescription: String {
+        var parts = ["\(player.displayName ?? "Player") effects"]
+        parts.append(contentsOf: counters.map { "\($0.name) \($0.count)" })
+        if player.monarch == true { parts.append("Monarch") }
+        if player.initiative == true { parts.append("Initiative") }
+        parts.append(contentsOf: attachments.map { "\($0.card.name) attached" })
+        return parts.joined(separator: ", ")
+    }
+
+    var body: some View {
+        if !counters.isEmpty || !attachments.isEmpty || player.monarch == true || player.initiative == true || opponents.count > 1 {
+            Menu {
+                ForEach(counters, id: \.name) { counter in Text("\(counter.name.capitalized): \(counter.count)") }
+                if player.monarch == true { Text("Monarch") }
+                if player.initiative == true { Text("Has the initiative") }
+                if let viewZone {
+                    ForEach(attachments) { card in
+                        Button("\(card.card.name) · attached") { viewZone("Enchanting \(player.displayName ?? "player")", attachments) }
+                    }
+                }
+                if opponents.count > 1, let selectOpponent {
+                    Section("View opponent") {
+                        ForEach(opponents) { opponent in
+                            Button(opponent.displayName ?? "Opponent") { selectOpponent(opponent.playerId) }
+                        }
+                    }
+                }
+            } label: {
+                effectsLabel
+            }
+            .accessibilityLabel(effectsDescription)
+            .accessibilityHint(opponents.count > 1 ? "Choose an opponent or inspect player effects" : "Inspect player effects")
+            .accessibilityValue(opponents.count > 1 ? player.displayName ?? "Opponent" : "")
+            .accessibilityIdentifier(opponents.count > 1 ? "board.opponentFocus" : "board.player.effects.\(player.playerId)")
+        }
+    }
+
+    private var effectsLabel: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 3) {
+                if opponents.count > 1 { Image(systemName: "person.2.fill") }
+                if let first = counters.first {
+                    Text("\(first.name.capitalized) \(first.count)")
+                        .contentTransition(.numericText(value: Double(first.count)))
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: first.count)
+                } else if !attachments.isEmpty { Image(systemName: "link"); Text("\(attachments.count)") }
+                else if player.monarch == true { Image(systemName: "crown.fill") }
+                else if player.initiative == true { Image(systemName: "flag.fill") }
+            }.fixedSize(horizontal: true, vertical: false)
+            HStack(spacing: 2) {
+                Image(systemName: compactIcon)
+                if let first = counters.first { Text("\(first.count)").contentTransition(.numericText(value: Double(first.count))) }
+                else if !attachments.isEmpty { Text("\(attachments.count)") }
+            }.fixedSize(horizontal: true, vertical: false)
+        }
+        .font(.system(size: 10, weight: .bold)).foregroundStyle(MagicPalette.antiqueGold)
+        .lineLimit(1)
+        .padding(.horizontal, 3).frame(minHeight: 44)
+        .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 7))
+    }
+}
+
+/// Priority is a response opportunity inside a real phase/step, not a new phase.
+struct BoardResponseCue: Equatable {
+    let title: String
+    let detail: String
+
+    static func make(_ snapshot: GameSnapshot) -> Self? {
+        guard !snapshot.isCompleted, snapshot.isViewer(snapshot.priorityPlayerId),
+              let prompt = snapshot.promptEnvelopeV2, snapshot.isViewer(prompt.playerId),
+              prompt.responseKind == "priority" || prompt.responseCommand?.type == "pass_priority" else { return nil }
+        let rawStep = snapshot.step ?? snapshot.phase
+        let step = EngineDisplayText.phaseLabel(rawStep)
+        let waiting = !snapshot.stackTopFirst.isEmpty || snapshot.players.contains { !$0.zones.stack.isEmpty }
+        let normalized = rawStep.uppercased().filter { $0.isLetter || $0.isNumber }
+        let mainPhase = ["PRECOMBATMAIN", "POSTCOMBATMAIN", "MAIN1", "MAIN2"].contains(normalized)
+        if !waiting, snapshot.isViewer(snapshot.activePlayerId), mainPhase { return nil }
+        return Self(title: waiting ? "Respond to the stack" : "Your response window",
+                    detail: step)
+    }
+}
+
+struct BoardResponseBanner: View {
+    let cue: BoardResponseCue
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Label(cue.title, systemImage: "bolt.circle.fill").font(.caption.bold())
+            Text(cue.detail).font(.caption2).fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(MagicPalette.parchment)
+        .padding(8)
+        .background(MagicPalette.iron.opacity(0.94), in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(MagicPalette.antiqueGold.opacity(0.8), lineWidth: 1))
+        .allowsHitTesting(false)
+        .accessibilityIdentifier("board.response.window")
+    }
+}
+
 /// Changes are visual feedback only; life always comes from the current snapshot.
 struct BoardLifeTotal: View {
     let life: Int
@@ -99,7 +275,7 @@ struct ArenaBattlefieldCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var accent: Color {
-        targetable ? .red : selected ? MagicPalette.antiqueGold : legal ? MagicPalette.legalEmerald : .white.opacity(0.35)
+        card.isPhasedOut ? .gray : targetable ? .red : selected ? MagicPalette.antiqueGold : legal ? MagicPalette.legalEmerald : .white.opacity(0.35)
     }
 
     var showsFooter: Bool {
@@ -155,11 +331,19 @@ struct ArenaBattlefieldCard: View {
         .brightness(card.tapped == true ? -0.16 : 0)
         .rotationEffect(.degrees(card.tapped == true ? -7 : 0))
         .shadow(color: accent.opacity(legal || targetable ? 0.45 : 0.1), radius: 5)
+        .opacity(card.isPhasedOut ? 0.42 : 1)
+        .overlay(alignment: .center) {
+            if card.isPhasedOut {
+                Text("Phased out").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+                    .padding(3).background(.black.opacity(0.88), in: Capsule()).allowsHitTesting(false)
+            }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: card.isPhasedOut)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: card.tapped)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(card.accessibilityLabel(zoneName: zoneName, selected: selected, legal: legal))
-        .accessibilityValue(card.visibleXmageIcons.compactMap(\.displayText).joined(separator: ", "))
+        .accessibilityValue(((card.isPhasedOut ? ["Phased out; inspect only"] : []) + card.visibleXmageIcons.compactMap(\.displayText)).joined(separator: ", "))
         .accessibilityIdentifier(card.accessibilityIdentifier(zoneName: zoneName))
         .accessibilityAddTraits(.isButton)
     }
@@ -195,8 +379,11 @@ enum CombatViewportAnchors {
     // Shared lane order: opponent permanents, opponent lands, your permanents, your lands.
     static func laneIndices(human: [ZoneCard], opponent: [ZoneCard]) -> [String: Int] {
         var result: [String: Int] = [:]
-        for card in opponent { result[card.instanceId] = card.card.isLand ? 1 : 0 }
-        for card in human { result[card.instanceId] = card.card.isLand ? 3 : 2 }
+        let cards = human + opponent
+        for card in BattlefieldAttachments.lane(ownedCards: opponent, allCards: cards, lands: false) { result[card.instanceId] = 0 }
+        for card in BattlefieldAttachments.lane(ownedCards: opponent, allCards: cards, lands: true) { result[card.instanceId] = 1 }
+        for card in BattlefieldAttachments.lane(ownedCards: human, allCards: cards, lands: false) { result[card.instanceId] = 2 }
+        for card in BattlefieldAttachments.lane(ownedCards: human, allCards: cards, lands: true) { result[card.instanceId] = 3 }
         return result
     }
 

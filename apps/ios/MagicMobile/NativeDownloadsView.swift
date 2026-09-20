@@ -18,23 +18,23 @@ struct NativeDownloadsView: View {
     let decks: [NativeDownloadDeck]
     let engineReady: Bool
     @State private var selectedDeckID: String
-    @State private var includeTokens = true
-    @State private var scope = "catalogue"
+    @AppStorage("magicmobile.artworkDownloadTokens") private var includeTokens = true
+    @AppStorage("magicmobile.artworkDownloadScope") private var scope = "catalogue"
     @State private var catalogueNames: [String] = []
     @State private var loadingCatalogue = true
     @State private var catalogueError: String?
     @State private var confirmFullDownload = false
     @AppStorage("magicmobile.artworkDownloadQuality") private var quality: NativeArtworkQuality = .standard
-    @StateObject private var downloads = NativeAssetDownloads()
+    @ObservedObject private var downloads = NativeAssetDownloads.shared
     @AppStorage(NativeArtworkPreference.key) private var remoteArtwork = false
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.scenePhase) private var scenePhase
 
     init(decks: [NativeDownloadDeck], selectedDeckID: String, engineReady: Bool) {
         self.decks = decks
         self.engineReady = engineReady
-        _selectedDeckID = State(initialValue: decks.contains { $0.id == selectedDeckID }
-                               ? selectedDeckID : decks.first?.id ?? "")
+        let previousDeck = MagicMobilePreferences.current.string(forKey: "magicmobile.artworkDownloadDeck") ?? selectedDeckID
+        _selectedDeckID = State(initialValue: decks.contains { $0.id == previousDeck }
+                               ? previousDeck : decks.first?.id ?? "")
     }
 
     private var names: [String] {
@@ -49,9 +49,10 @@ struct NativeDownloadsView: View {
         let deck: String
         let quality: NativeArtworkQuality
         let catalogueCount: Int
+        let running: Bool
     }
     private var scanSelection: ScanSelection {
-        ScanSelection(scope: scope, deck: selectedDeckID, quality: quality, catalogueCount: catalogueNames.count)
+        ScanSelection(scope: scope, deck: selectedDeckID, quality: quality, catalogueCount: catalogueNames.count, running: downloads.isRunning)
     }
     private var estimatedSize: String {
         ByteCountFormatter.string(fromByteCount: Int64(names.count) * Int64(quality.estimatedBytes), countStyle: .file)
@@ -133,7 +134,7 @@ struct NativeDownloadsView: View {
                         .accessibilityIdentifier("downloads.start")
                     }
                 } header: { Text("Download") } footer: {
-                    Text("Use Wi-Fi. Keep this screen open while downloading.")
+                    Text("You can play or leave the app while images download. Wi-Fi is recommended.")
                 }
 
                 Section {
@@ -145,7 +146,8 @@ struct NativeDownloadsView: View {
                         Text("Compact saves space. Standard balances clarity and size. High gives the sharpest inspection images. Higher-quality files already stored count toward lower-quality coverage.")
                         Text("Full catalogue covers this build’s supported cards, not every printing. Alternate faces are checked during download. Estimates exclude faces, tokens and metadata; actual size varies. Check for missing artwork after app updates.")
                         Text("Full downloads use Scryfall’s bulk image index. Deck and on-demand requests share card names and your IP address. Stored artwork works offline.")
-                        Text("Completed files stay on your device. Reopen this screen and download missing artwork to resume. Storage is capped at 20 GB, with 1 GB of free space reserved. Unavailable or ambiguous token art remains a labeled placeholder.")
+                        Text("Compact is fastest. Downloads use several direct image transfers at once and remember completed files. iOS controls background timing; force-quitting pauses transfers until you reopen the app. The initial image-list preparation may need the app open on a slow connection.")
+                        Text("Storage is capped at 20 GB, with 1 GB of free space reserved. Unavailable or ambiguous token art remains a labeled placeholder. Use Download missing artwork to retry interruptions.")
                     }
                     .font(.callout)
                     .accessibilityIdentifier("downloads.info")
@@ -197,19 +199,19 @@ struct NativeDownloadsView: View {
                 } catch { catalogueError = "The installed card catalogue could not be read. Deck downloads are still available." }
                 loadingCatalogue = false
             }
-            .task(id: scanSelection) { await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue") }
+            .task(id: scanSelection) {
+                if !downloads.isRunning { await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue") }
+            }
             .alert("Download the full catalogue?", isPresented: $confirmFullDownload) {
                 Button("Download \(names.count) cards · \(quality.label)") { startDownload() }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Approximately \(estimatedSize), plus token artwork and the image index. Actual size varies. This can take hours. Use Wi-Fi, keep this screen open, and resume missing items later if interrupted.")
+                Text("Approximately \(estimatedSize), plus tokens and the image list. Actual size varies. Images continue downloading while you play or leave the app. Wi-Fi is recommended.")
             }
-            .onChange(of: downloads.isRunning) { _, running in UIApplication.shared.isIdleTimerDisabled = running && scenePhase == .active }
             .onChange(of: remoteArtwork) { _, enabled in if !enabled { downloads.cancel() } }
-            .onChange(of: scenePhase) { _, phase in
-                if phase != .active { downloads.cancel(); UIApplication.shared.isIdleTimerDisabled = false }
+            .onChange(of: selectedDeckID) { _, deck in
+                MagicMobilePreferences.current.set(deck, forKey: "magicmobile.artworkDownloadDeck")
             }
-            .onDisappear { downloads.cancel(); UIApplication.shared.isIdleTimerDisabled = false }
         }
         .preferredColorScheme(.dark)
     }

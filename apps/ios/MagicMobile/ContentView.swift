@@ -188,10 +188,12 @@ struct ContentView: View {
             }
             if snapshot?.source == "design-preview" {
                 let fixture = ProcessInfo.processInfo.environment["MAGICMOBILE_DESIGN_PREVIEW"]
-                if fixture == "phase-announcement" || fixture == "life-change" {
+                if fixture == "phase-announcement" || fixture == "life-change" || fixture == "attached-permanents" {
                     Button(fixture == "phase-announcement" ? "Advance preview phase" : "Preview life change") {
                         if fixture == "phase-announcement" {
                             snapshot = GameBoardPreviewFixtures.snapshot(.phaseAnnouncement, step: "DECLARE_BLOCKERS")
+                        } else if fixture == "attached-permanents" {
+                            snapshot = GameBoardPreviewFixtures.snapshot(.attachedPermanents, specialStateAdvanced: true)
                         } else {
                             snapshot = GameBoardPreviewFixtures.snapshot(.lifeChange, life: snapshot?.human?.life == 37 ? 35 : 43)
                         }
@@ -2678,6 +2680,13 @@ struct NativeGameView: View {
     }
 
     private func localViewZone(title: String, cards: [ZoneCard]) {
+        if title.hasPrefix("Enchanting "), let snapshot,
+           let playerID = snapshot.players.first(where: { player in
+               Set(ZoneCard.enchanting(playerID: player.playerId, cards: snapshot.players.flatMap { $0.zones.battlefield }).map(\.id)) == Set(cards.map(\.id))
+           })?.playerId, !cards.isEmpty {
+            inspectBoardZone(.playerEnchantments(playerID: playerID))
+            return
+        }
         inspectingZoneReference = nil
         inspectingZoneTitle = title
         inspectingZoneCards = cards
@@ -2772,7 +2781,8 @@ struct NativeGameView: View {
 
                         HStack(spacing: 4) {
                             PlayerZoneMenu(player: opponent, viewZone: localViewZone)
-                            OpponentFocusMenu(snapshot: snapshot) { focusedOpponentId = $0 }
+                            BoardPlayerEffects(player: opponent, attachments: BattlefieldAttachments.enchanting(playerID: opponent.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: localViewZone,
+                                opponents: BoardOpponentFocus.opponents(in: snapshot), selectOpponent: { focusedOpponentId = $0 })
                         }
 
                         Spacer()
@@ -2790,7 +2800,10 @@ struct NativeGameView: View {
                                     }
                                 })
                             LandscapePlayerSummary(name: humanName, player: human, active: snapshot.activePlayerId == human.playerId, opponentId: opponent.playerId)
-                            PlayerZoneMenu(player: human, viewZone: localViewZone, snapshot: snapshot, pendingActionID: pendingActionId)
+                            HStack(spacing: 4) {
+                                PlayerZoneMenu(player: human, viewZone: localViewZone, snapshot: snapshot, pendingActionID: pendingActionId)
+                                BoardPlayerEffects(player: human, attachments: BattlefieldAttachments.enchanting(playerID: human.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: localViewZone)
+                            }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.bottom, 12)
@@ -3085,6 +3098,10 @@ struct NativeGameView: View {
                             onlyPhases: true
                         )
                         .padding(.top, 12)
+
+                        if pendingActionId == nil, let cue = BoardResponseCue.make(snapshot) {
+                            BoardResponseBanner(cue: cue)
+                        }
 
                         Divider()
                             .background(MagicPalette.antiqueGold.opacity(0.18))
@@ -3937,11 +3954,11 @@ struct NativeGameView: View {
     }
 
     private func landPermanents(_ cards: [ZoneCard]) -> [ZoneCard] {
-        cards.filter { $0.card.isLand }
+        BattlefieldAttachments.lane(ownedCards: cards, allCards: snapshot?.players.flatMap { $0.zones.battlefield } ?? cards, lands: true, playerIDs: Set(snapshot?.players.map(\.playerId) ?? []))
     }
 
     private func nonLandPermanents(_ cards: [ZoneCard]) -> [ZoneCard] {
-        cards.filter { !$0.card.isLand }
+        BattlefieldAttachments.lane(ownedCards: cards, allCards: snapshot?.players.flatMap { $0.zones.battlefield } ?? cards, lands: false, playerIDs: Set(snapshot?.players.map(\.playerId) ?? []))
     }
 }
 
@@ -9474,10 +9491,12 @@ struct PortraitOpponentStatusBar: View {
             .accessibilityLabel("\(opponentName), \(opponent.life) life")
             VStack(alignment: .leading, spacing: 3) {
                 Text((snapshot.step ?? snapshot.phase).arenaPhaseTitle).font(.caption.bold())
-                Text(snapshot.isViewer(snapshot.priorityPlayerId) ? "Your priority" : "\(snapshot.playerLabel(snapshot.priorityPlayerId)) priority")
-                    .font(.caption2).foregroundStyle(MagicPalette.parchment).lineLimit(2).minimumScaleFactor(0.75)
+                Text(BoardResponseCue.make(snapshot)?.title ?? (snapshot.isViewer(snapshot.priorityPlayerId) ? "Your priority" : "\(snapshot.playerLabel(snapshot.priorityPlayerId)) priority"))
+                    .font(.caption2.bold()).foregroundStyle(BoardResponseCue.make(snapshot) == nil ? MagicPalette.parchment : MagicPalette.antiqueGold).lineLimit(2).minimumScaleFactor(0.75)
+                    .accessibilityIdentifier("board.response.status")
             }.frame(maxWidth: .infinity, alignment: .leading)
             if let selectOpponent { OpponentFocusMenu(snapshot: snapshot, selectOpponent: selectOpponent) }
+            BoardPlayerEffects(player: opponent, attachments: BattlefieldAttachments.enchanting(playerID: opponent.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: viewZone)
             if let viewZone { PlayerZoneMenu(player: opponent, viewZone: viewZone) }
             Button(action: openLog) { Image(systemName: "text.book.closed").frame(width: 44, height: 44) }
                 .accessibilityLabel("Game log")
@@ -10399,6 +10418,7 @@ struct PortraitBottomCommandBar: View {
             VStack(spacing: 6) {
                 HStack(spacing: 4) {
                     PlayerZoneMenu(player: human, viewZone: viewZone, snapshot: snapshot, pendingActionID: pendingActionId)
+                    BoardPlayerEffects(player: human, attachments: BattlefieldAttachments.enchanting(playerID: human.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: viewZone)
                     ScrollView(.horizontal, showsIndicators: false) {
                         ManaPoolHUD(manaPool: manaPool, compact: true,
                             payableSymbols: GameplayAffordances.floatingManaSymbols(in: snapshot, pendingActionID: pendingActionId),
@@ -10729,9 +10749,9 @@ struct BattlefieldRow: View {
     }
 
     private func isExpanded(_ group: BattlefieldCardGroup) -> Bool {
-        expandedGroupIds.contains(group.id) ||
+        !group.id.hasPrefix("attachment:") && (expandedGroupIds.contains(group.id) ||
         group.cards.contains { targetableIds.contains($0.instanceId) || targetableIds.contains($0.id) } ||
-        Self.requiresIndividualCombatCards(group, highlightedIDs: combatHighlightIds)
+        Self.requiresIndividualCombatCards(group, highlightedIDs: combatHighlightIds))
     }
 
     static func requiresIndividualCombatCards(_ group: BattlefieldCardGroup, highlightedIDs: Set<String>) -> Bool {
@@ -10775,7 +10795,8 @@ struct BattlefieldRow: View {
                     ForEach(0..<rows, id: \.self) { row in
                         HStack(alignment: .center, spacing: 4) {
                             ForEach(Array(groups.dropFirst(row * columns).prefix(columns))) { group in
-                                if group.count > 1 { collapsedGroupTile(group) }
+                                if group.id.hasPrefix("attachment:") { attachmentGroupTile(group) }
+                                else if group.count > 1 { collapsedGroupTile(group) }
                                 else { battlefieldCardTile(group.representative) }
                             }
                         }
@@ -10792,13 +10813,33 @@ struct BattlefieldRow: View {
     }
 
     private var cardGroups: [BattlefieldCardGroup] {
-        BattlefieldDensityPlanner.groups(cards: cards)
+        BattlefieldAttachments.groups(cards)
     }
 
     private var visibleCardCount: Int {
         cardGroups.reduce(0) { count, group in
             count + (isExpanded(group) ? group.count : 1)
         }
+    }
+
+    @ViewBuilder
+    private func attachmentGroupTile(_ group: BattlefieldCardGroup) -> some View {
+        HStack(spacing: -max(0, renderedCardWidth - 44)) {
+            ForEach(Array(group.cards.dropFirst())) { card in
+                battlefieldCardTile(card)
+                    .overlay(alignment: .bottomLeading) {
+                        Image(systemName: "link").font(.caption.bold())
+                            .foregroundStyle(.white).padding(4).background(.black.opacity(0.9), in: Capsule())
+                            .allowsHitTesting(false)
+                    }
+                    .accessibilityHint("Attached to \(group.representative.card.name). Tap to select; hold to inspect.")
+            }
+            battlefieldCardTile(group.representative)
+        }
+        .padding(.horizontal, 3)
+        .background(MagicPalette.antiqueGold.opacity(0.18), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(MagicPalette.antiqueGold.opacity(0.5), lineWidth: 1).allowsHitTesting(false))
+        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
@@ -10858,7 +10899,7 @@ struct BattlefieldRow: View {
     @ViewBuilder
     private func battlefieldCardTile(_ card: ZoneCard) -> some View {
         let action = legalAction(for: card)
-        let targetable = targetableIds.contains(card.instanceId) || targetableIds.contains(card.id)
+        let targetable = !card.isPhasedOut && (targetableIds.contains(card.instanceId) || targetableIds.contains(card.id))
         let combatHighlighted = combatHighlightIds.contains(card.instanceId) || combatHighlightIds.contains(card.id)
 
         ArenaBattlefieldCard(
@@ -10892,6 +10933,7 @@ struct BattlefieldRow: View {
     }
 
     private func handleCardTap(_ card: ZoneCard, action: LegalAction?, targetable: Bool, combatHighlighted: Bool) {
+        guard !card.isPhasedOut else { return }
         if targetable {
             runTargetAction(card)
         } else if !targetableIds.isEmpty {
@@ -10908,12 +10950,14 @@ struct BattlefieldRow: View {
     }
 
     private var showsOverflowIndicator: Bool {
+        if cardGroups.contains(where: { $0.id.hasPrefix("attachment:") }) { return true }
         if let permanentLayout { return permanentLayout.contentWidth > rowWidth }
         let contentWidth = 16 + CGFloat(visibleCards.count) * renderedCardWidth + CGFloat(max(visibleCardCount - 1, 0)) * 4
         return contentWidth > rowWidth
     }
 
     private func legalAction(for card: ZoneCard) -> LegalAction? {
+        guard !card.isPhasedOut else { return nil }
         if allowsManaUndo, manaPaymentActive, card.tapped == true, let undo = manaUndoAction,
            undo.sourceInstanceId == card.instanceId || undo.cardInstanceId == card.instanceId {
             return undo
@@ -11927,11 +11971,12 @@ struct CardInspector: View {
             details.append("Current power/toughness: \(power)/\(toughness)")
         }
         if let tapped = card.tapped { details.append(tapped ? "Tapped" : "Untapped") }
-        if card.summoningSickness == true { details.append("Summoning sickness") }
+        if card.isCreature && card.summoningSickness == true { details.append("Summoning sickness") }
         if card.isAttacking == true { details.append("Attacking") }
         if let blocking = card.blocking, !blocking.isEmpty { details.append("Blocking \(blocking.count)") }
         if let damage = card.damage, damage > 0 { details.append("Damage marked: \(damage)") }
         if card.attachedToInstanceId != nil { details.append("Attached") }
+        if card.isPhasedOut { details.append("Phased out") }
         details += card.counterBadges.map { "\($0.label) counters: \($0.count)" }
         details += card.visibleXmageIcons.compactMap(\.displayText)
         return details

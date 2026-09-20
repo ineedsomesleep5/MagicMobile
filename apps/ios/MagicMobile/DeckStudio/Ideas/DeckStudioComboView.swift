@@ -159,7 +159,7 @@ struct DeckStudioComboPanel: View {
                         }
                         }
                         ForEach(Array(variant.produces.enumerated()), id: \.offset) { _, effect in
-                            Text(effect.feature.name).font(.subheadline.weight(.semibold))
+                            GameRulesText(source: effect.feature.name).font(.subheadline.weight(.semibold))
                         }
                         readiness(assessment)
                         DisclosureGroup("Deck requirements") {
@@ -239,7 +239,7 @@ private struct DeckStudioComboDetail: View {
                                 HStack(alignment: .top, spacing: 12) {
                                     Text("\(index + 1)").font(.caption.bold()).frame(width: 26, height: 26)
                                         .background(DeckStudioPalette.background, in: Circle())
-                                    Text(String(step).replacingOccurrences(of: #"^\s*\d+[.)]\s+"#, with: "", options: .regularExpression))
+                                    GameRulesText(source: String(step).replacingOccurrences(of: #"^\s*\d+[.)]\s+"#, with: "", options: .regularExpression))
                                         .font(.subheadline).fixedSize(horizontal: false, vertical: true)
                                         .accessibilityIdentifier("deckStudio.combo.step.\(index + 1)")
                                 }
@@ -248,7 +248,7 @@ private struct DeckStudioComboDetail: View {
                     }
                     section("Results", variant.produces.map(\.feature.name).joined(separator: "\n"))
                     if !variant.notes.isEmpty {
-                        DisclosureGroup("Notes") { Text(variant.notes).font(.subheadline) }
+                        DisclosureGroup("Notes") { GameRulesText(source: variant.notes).font(.subheadline) }
                     }
                     Text("Provider Commander legality: \(variant.legalities.commander.map { $0 ? "legal" : "not legal" } ?? "unknown"). This is not validation of your complete deck or execution in XMage.")
                         .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
@@ -259,7 +259,7 @@ private struct DeckStudioComboDetail: View {
         }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light)
     }
     @ViewBuilder private func section(_ title: String, _ value: String) -> some View {
-        if !value.isEmpty { VStack(alignment: .leading, spacing: 6) { Text(title).font(.headline); Text(value).font(.subheadline) } }
+        if !value.isEmpty { VStack(alignment: .leading, spacing: 6) { Text(title).font(.headline); GameRulesText(source: value).font(.subheadline) } }
     }
 }
 

@@ -185,7 +185,7 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
         delete?.let {saved->AlertDialog(onDismissRequest={delete=null},title={Text("Delete ${saved.deck.name}?")},text={Text("This removes the local deck. Playtest summaries are retained until you clear their separate history.")},confirmButton={TextButton(onClick={model.delete(saved);delete=null}){Text("Delete")}},dismissButton={TextButton(onClick={delete=null}){Text("Cancel")}})}
         if(inspect!=null) {
             val card=model.catalogue?.find(inspect!!)
-            AlertDialog(onDismissRequest={inspect=null},title={Text(inspect!!)},text={Column(Modifier.verticalScroll(rememberScrollState())) {CardArtwork(inspect!!,Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(10.dp))){ArtworkHint()};Spacer(Modifier.height(10.dp));ManaCost(card?.cost,size=20);Text(card?.type.orEmpty());Text(Decisions.plain(card?.rules ?: "No local metadata for this object."))}},confirmButton={TextButton(onClick={inspect=null}){Text("Done")}})
+            AlertDialog(onDismissRequest={inspect=null},title={Text(inspect!!)},text={Column(Modifier.verticalScroll(rememberScrollState())) {CardArtwork(inspect!!,Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(10.dp))){ArtworkHint()};Spacer(Modifier.height(10.dp));ManaCost(card?.cost,size=20);Text(card?.type.orEmpty());ManaText(Decisions.plain(card?.rules ?: "No local metadata for this object."))}},confirmButton={TextButton(onClick={inspect=null}){Text("Done")}})
         }
     }
 }

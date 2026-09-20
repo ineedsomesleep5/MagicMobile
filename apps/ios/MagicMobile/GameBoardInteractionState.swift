@@ -173,6 +173,7 @@ enum BattlefieldDensityPlanner {
             card.card.typeLine,
             card.card.oracleText ?? "",
             String(card.tapped ?? false),
+            String(card.isPhasedOut),
             String(card.summoningSickness ?? false),
             counters,
             card.displayPower ?? "",

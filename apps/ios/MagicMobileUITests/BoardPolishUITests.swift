@@ -26,6 +26,8 @@ final class BoardPolishUITests: XCTestCase {
     // Independent cases keep one failed control from hiding the remaining surfaces.
     func testPortraitCrowdedBattlefield() { runMatrix(portrait: true, selectedFixtures: ["crowded-battlefield"]) }
     func testLandscapeCrowdedBattlefield() { runMatrix(portrait: false, selectedFixtures: ["crowded-battlefield"]) }
+    func testPortraitAttachments() { runMatrix(portrait: true, selectedFixtures: ["attached-permanents"]) }
+    func testLandscapeAttachments() { runMatrix(portrait: false, selectedFixtures: ["attached-permanents"]) }
     func testSixBattlefieldBackgroundsInPortraitAndLandscape() {
         for theme in ["arena", "midnight", "wood", "moss", "ember", "tide"] {
             app?.terminate()
@@ -167,6 +169,46 @@ final class BoardPolishUITests: XCTestCase {
 
     private func verify(_ fixture: String, in app: XCUIApplication, portrait: Bool) {
         switch fixture {
+        case "attached-permanents":
+            visible(app.buttons["board.action.primary"], in: app)
+            visible(app.buttons["board.hand.expand"], in: app)
+            let lane = app.scrollViews["board.battlefield.Opponent board"]
+            let host = card(in: app, identifierPrefix: "card-opponent-board-silvercoat-lion-ai-1-pre")
+            for _ in 0..<3 {
+                if host.exists && host.isHittable && lane.frame.contains(host.frame) { break }
+                lane.swipeLeft()
+            }
+            visible(host, in: app)
+            let aura = card(in: app, identifierPrefix: "card-opponent-board-karametra-s-favor-human-at")
+            let equipment = card(in: app, identifierPrefix: "card-opponent-board-short-sword")
+            visible(aura, in: app)
+            visible(equipment, in: app)
+            XCTAssertEqual(aura.frame.midY, host.frame.midY, accuracy: 8)
+            XCTAssertLessThan(equipment.frame.minX, host.frame.minX)
+            XCTAssertLessThanOrEqual(host.frame.minX - equipment.frame.minX, max(44, equipment.frame.width))
+            XCTAssertFalse(card(in: app, identifierPrefix: "card-your-board-karametra-s-favor").exists,
+                           "Cross-controller Aura follows its public host, without a duplicate in the controller lane")
+            aura.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 20, dy: 25)).tap()
+            XCTAssertTrue(aura.label.hasSuffix(", selected"))
+            aura.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 20, dy: 25)).press(forDuration: 0.7)
+            XCTAssertTrue(card(in: app, identifierPrefix: "card-inspector-karametra-s-favor").waitForNonExistence(timeout: 3))
+            XCTAssertFalse(app.staticTexts["preview.captured-command"].exists)
+            let phased = card(in: app, identifierPrefix: "card-your-board-sol-ring")
+            visible(phased, in: app)
+            XCTAssertTrue((phased.value as? String)?.contains("Phased out") == true)
+            phased.tap()
+            XCTAssertFalse(app.staticTexts["preview.captured-command"].exists, "Phased-out card never activates")
+            let effects = app.buttons["board.player.effects.ai-1"]
+            visible(effects, in: app)
+            XCTAssertTrue(effects.label.contains("poison") || effects.label.contains("Poison"))
+            effects.tap()
+            app.buttons["Curse of Opulence · attached"].tap()
+            visible(app.buttons["Inspect Curse of Opulence"], in: app)
+            app.buttons["Close Enchanting Aurelia"].tap()
+            app.buttons["preview.advance"].tap()
+            XCTAssertFalse((phased.value as? String)?.contains("Phased out") == true)
+            XCTAssertTrue(app.buttons["board.player.effects.human"].label.contains("Poison 5"))
+            XCTAssertTrue(app.buttons["board.player.effects.human"].label.contains("Curse of Opulence attached"))
         case "phase-announcement":
             app.buttons["preview.advance"].tap()
             captureImage(name: currentCapture + "-visible")
@@ -402,6 +444,11 @@ final class BoardPolishUITests: XCTestCase {
             XCTAssertTrue(app.staticTexts["preview.captured-command"].waitForExistence(timeout: 5))
             XCTAssertTrue(app.staticTexts["preview.captured-command"].label.contains("Tap Sol Ring"))
         case "stack-response-prompt":
+            if portrait {
+                XCTAssertEqual(app.staticTexts["board.response.status"].label, "Respond to the stack")
+            } else {
+                XCTAssertTrue(app.descendants(matching: .any)["board.response.window"].firstMatch.waitForExistence(timeout: 5))
+            }
             if !portrait && !app.buttons["board.stack.done"].exists {
                 let inspectStack = app.buttons["Inspect stack"]
                 visible(inspectStack, in: app)

@@ -3,6 +3,113 @@ import UIKit
 @testable import MagicMobile
 
 final class ArenaBoardPresentationTests: XCTestCase {
+    func testPlayerEnchantmentsRemainLiveAndNeverDuplicateInPermanentLanes() throws {
+        let chain = try [attachmentCard("curse", parent: "player"), attachmentCard("nested-curse", parent: "curse"), attachmentCard("orphan", parent: "missing")]
+        XCTAssertEqual(ZoneCard.enchanting(playerID: "player", cards: chain).map(\.id), ["curse", "nested-curse"])
+        XCTAssertTrue(ZoneCard.enchanting(playerID: "other", cards: chain).isEmpty)
+        XCTAssertTrue(ZoneCard.enchanting(playerID: "player", cards: Array(chain.dropFirst())).isEmpty)
+        let snapshot = GameBoardPreviewFixtures.snapshot(.attachedPermanents)
+        let all = snapshot.players.flatMap { $0.zones.battlefield }
+        let reference = BoardZoneReference.playerEnchantments(playerID: "ai-1")
+        XCTAssertEqual(reference.cards(in: snapshot).map(\.instanceId), ["player-curse"])
+        XCTAssertTrue(reference.cards(in: GameBoardPreviewFixtures.snapshot(.normalBattlefield)).isEmpty)
+        XCTAssertTrue(BoardZoneReference.playerEnchantments(playerID: "absent").cards(in: snapshot).isEmpty)
+        for player in snapshot.players {
+            let lane = BattlefieldAttachments.lane(ownedCards: player.zones.battlefield, allCards: all, lands: false, playerIDs: Set(snapshot.players.map(\.playerId)))
+            XCTAssertFalse(lane.contains { $0.instanceId == "player-curse" })
+        }
+        XCTAssertEqual(BoardPlayerStatus.counters(try XCTUnwrap(snapshot.human)).map(\.name), ["Poison", "Energy"])
+        let phased = try XCTUnwrap(all.first { $0.instanceId == "human-sol-ring" })
+        XCTAssertTrue(phased.isPhasedOut)
+        let updated = GameBoardPreviewFixtures.snapshot(.attachedPermanents, specialStateAdvanced: true)
+        XCTAssertFalse(try XCTUnwrap(updated.human?.zones.battlefield.first { $0.instanceId == "human-sol-ring" }).isPhasedOut)
+        XCTAssertEqual(BoardPlayerStatus.counters(try XCTUnwrap(updated.human)).first?.count, 5)
+        XCTAssertTrue(reference.cards(in: updated).isEmpty, "Open player-enchantment inspector drops moved cards")
+        XCTAssertEqual(BoardZoneReference.playerEnchantments(playerID: "human").cards(in: updated).map(\.id), ["player-curse"])
+        XCTAssertFalse(try attachmentCard("regular").isPhasedOut, "Unknown phasing must not disable a normal card")
+    }
+
+    func testAttachmentsFollowExactHostIncludingCrossControllerAndLands() throws {
+        let host = try attachmentCard("host", type: "Creature")
+        let land = try attachmentCard("land", type: "Land")
+        let aura = try attachmentCard("aura", parent: "host")
+        let equipment = try attachmentCard("equipment", parent: "host")
+        let landAura = try attachmentCard("land-aura", parent: "land")
+        let all = [aura, landAura, host, equipment, land]
+        let lane = BattlefieldAttachments.lane(ownedCards: [host, equipment, land], allCards: all, lands: false)
+        XCTAssertEqual(Set(lane.map(\.instanceId)), ["host", "aura", "equipment"])
+        let group = try XCTUnwrap(BattlefieldAttachments.groups(lane).first)
+        XCTAssertEqual(group.representative.instanceId, "host")
+        XCTAssertEqual(Set(group.cards.map(\.instanceId)), ["host", "aura", "equipment"])
+        XCTAssertTrue(BattlefieldAttachments.lane(ownedCards: [aura, landAura], allCards: all, lands: false).isEmpty)
+        XCTAssertEqual(Set(BattlefieldAttachments.lane(ownedCards: [land], allCards: all, lands: true).map(\.instanceId)), ["land", "land-aura"])
+        XCTAssertEqual(CombatViewportAnchors.laneIndices(human: [aura, landAura], opponent: [host, equipment, land])["aura"], 0)
+        XCTAssertEqual(CombatViewportAnchors.laneIndices(human: [aura, landAura], opponent: [host, equipment, land])["land-aura"], 1)
+    }
+
+    func testOrphansCyclesAndSameNameHostsNeverDisappearOrMerge() throws {
+        let cards = try [attachmentCard("host", type: "Creature"), attachmentCard("twin", type: "Creature"),
+                         attachmentCard("aura", parent: "host"), attachmentCard("nested", parent: "aura"),
+                         attachmentCard("orphan", parent: "gone"), attachmentCard("cycle1", parent: "cycle2"),
+                         attachmentCard("cycle2", parent: "cycle1"), attachmentCard("self", parent: "self")]
+        let groups = BattlefieldAttachments.groups(cards)
+        XCTAssertEqual(groups.flatMap(\.cards).count, cards.count)
+        XCTAssertEqual(Set(groups.flatMap(\.cards).map(\.instanceId)), Set(cards.map(\.instanceId)))
+        XCTAssertEqual(groups.first(where: { $0.representative.instanceId == "host" })?.cards.count, 3)
+        XCTAssertEqual(groups.first(where: { $0.cards.contains(where: { $0.instanceId == "twin" }) })?.cards.count, 1)
+        for id in ["orphan", "cycle1", "cycle2", "self"] {
+            XCTAssertEqual(BattlefieldAttachments.roots(cards)[id], id)
+        }
+    }
+
+    func testResponseCueRequiresCurrentLocalPriorityPrompt() throws {
+        let response = GameBoardPreviewFixtures.snapshot(.stackResponsePrompt, step: "UPKEEP")
+        let cue = try XCTUnwrap(BoardResponseCue.make(response))
+        XCTAssertEqual(cue.title, "Respond to the stack")
+        XCTAssertEqual(cue.detail, "Upkeep")
+        XCTAssertNil(BoardResponseCue.make(GameBoardPreviewFixtures.snapshot(.manaPaymentPrompt)))
+        XCTAssertNil(BoardResponseCue.make(GameBoardPreviewFixtures.snapshot(.cardTargetPrompt)))
+        XCTAssertNil(BoardResponseCue.make(GameBoardPreviewFixtures.snapshot(.aiThinking)))
+    }
+
+    func testResponseCueDistinguishesOrdinaryOwnMainFromActualResponseWindows() throws {
+        for step in ["PRECOMBAT_MAIN", "POSTCOMBAT_MAIN", "precombat-main", "postcombat-main", "Main1", "MAIN2", "Main 1", "Main 2"] {
+            XCTAssertNil(BoardResponseCue.make(try responseSnapshot(step: step)), step)
+            XCTAssertEqual(BoardResponseCue.make(try responseSnapshot(step: step, active: "opponent"))?.title, "Your response window", step)
+        }
+        XCTAssertNil(BoardResponseCue.make(try responseSnapshot(step: nil, phase: "PRECOMBAT_MAIN")))
+        for step in ["UPKEEP", "END_TURN", "BEGIN_COMBAT", "DECLARE_ATTACKERS", "DECLARE_BLOCKERS", "COMBAT_DAMAGE"] {
+            let cue = try XCTUnwrap(BoardResponseCue.make(try responseSnapshot(step: step)))
+            XCTAssertEqual(cue.title, "Your response window")
+            XCTAssertEqual(cue.detail, EngineDisplayText.phaseLabel(step))
+        }
+        XCTAssertEqual(BoardResponseCue.make(GameBoardPreviewFixtures.snapshot(.stackResponsePrompt))?.title, "Respond to the stack")
+        XCTAssertNil(BoardResponseCue.make(try responseSnapshot(step: "UPKEEP", priority: "opponent")))
+        XCTAssertNil(BoardResponseCue.make(try responseSnapshot(step: "UPKEEP", promptOwner: "opponent")))
+        XCTAssertNil(BoardResponseCue.make(try responseSnapshot(step: "UPKEEP", completed: true)))
+        XCTAssertNil(BoardResponseCue.make(try responseSnapshot(step: "UPKEEP", hasPrompt: false)), "Submitted native prompts are removed by the adapter")
+    }
+
+    private func responseSnapshot(step: String?, phase: String = "BEGINNING", active: String = "human", priority: String = "human", promptOwner: String = "human", completed: Bool = false, hasPrompt: Bool = true) throws -> GameSnapshot {
+        var payload: [String: Any] = ["id": "response-test", "phase": phase, "turn": 2, "players": [], "log": [],
+                                      "activePlayerId": active, "priorityPlayerId": priority,
+                                      "gameStatus": completed ? "completed" : "in_progress"]
+        if let step { payload["step"] = step }
+        if hasPrompt {
+            payload["promptEnvelopeV2"] = ["id": "priority", "method": "GAME_PRIORITY", "messageId": 1,
+                "playerId": promptOwner, "responseKind": "priority", "message": "Your priority",
+                "required": false, "minChoices": 0, "maxChoices": 0,
+                "responseCommand": ["type": "pass_priority", "promptId": "priority", "messageId": 1]]
+        }
+        return try JSONDecoder().decode(GameSnapshot.self, from: JSONSerialization.data(withJSONObject: payload))
+    }
+
+    private func attachmentCard(_ id: String, type: String = "Enchantment", parent: String? = nil) throws -> ZoneCard {
+        var payload: [String: Any] = ["instanceId": id, "card": ["name": "Same printed name", "typeLine": type]]
+        if let parent { payload["attachedToInstanceId"] = parent }
+        return try JSONDecoder().decode(ZoneCard.self, from: JSONSerialization.data(withJSONObject: payload))
+    }
+
     @MainActor
     func testCompactFooterRequiresVisibleStatsOrStatus() throws {
         for type in ["Land", "Artifact", "Enchantment", "Creature", "Planeswalker", "Battle"] {

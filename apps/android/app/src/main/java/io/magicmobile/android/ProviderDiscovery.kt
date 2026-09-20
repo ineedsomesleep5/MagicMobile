@@ -434,8 +434,9 @@ private fun ScryfallProviderContent(
         page?.cards.orEmpty().forEach { card ->
             OutlinedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(card.name, style = MaterialTheme.typography.titleMedium)
-                Text(listOfNotNull(card.manaCost, card.typeLine).joinToString(" · "), style = MaterialTheme.typography.bodySmall)
-                card.oracleText?.let { Text(it, maxLines = 5, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall) }
+                ManaCost(card.manaCost)
+                card.typeLine?.let{Text(it,style=MaterialTheme.typography.bodySmall)}
+                card.oracleText?.let { ManaText(it, maxLines = 5, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall) }
                 TextButton(onClick = { selected = card }) { Text("Read full reference") }
                 if (!readOnly) Row { TextButton(onClick = { add(card.name, "deck") }) { Text("Add to main") }; TextButton(onClick = { add(card.name, "maybeboard") }) { Text("Maybeboard") } }
             } }
@@ -449,13 +450,13 @@ private fun ScryfallProviderContent(
                 CardArtwork(card.name,Modifier.fillMaxWidth().height(240.dp)) { Text("Artwork unavailable",style=MaterialTheme.typography.labelSmall) }
                 card.manaCost?.let { ManaCost(it) }
                 card.typeLine?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
-                if (card.faces.isEmpty()) card.oracleText?.let { Text(it) }
+                if (card.faces.isEmpty()) card.oracleText?.let { ManaText(it) }
                 card.faces.forEach { face ->
                     HorizontalDivider()
                     Text(face.name, style = MaterialTheme.typography.titleMedium)
                     face.manaCost?.let { ManaCost(it) }
                     face.typeLine?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                    face.oracleText?.let { Text(it) }
+                    face.oracleText?.let { ManaText(it) }
                 }
                 card.commanderLegality?.let { Text("Scryfall Commander status: $it", style = MaterialTheme.typography.bodySmall) }
                 card.scryfallUrl?.let { url -> TextButton(onClick = { selected = null; open(URI(url)) }) { Text("View on Scryfall") } }
@@ -517,41 +518,41 @@ private fun SpellbookComboCard(
                 }
             }
         }
-        combo.produces.take(4).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+        combo.produces.take(4).forEach { ManaText(it, style = MaterialTheme.typography.bodySmall) }
         val missing = input?.let { combo.singleMissingResolvedCard(it, catalogue) }
         Text(if (missing == null) "Review requirements" else "One resolved card away: $missing", style = MaterialTheme.typography.bodySmall)
         var expanded by remember(combo.id) { mutableStateOf(false) }
         TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Hide prerequisites and steps" else "Prerequisites and steps") }
         if (expanded) {
             Text("Before you begin", style = MaterialTheme.typography.titleSmall)
-            if (combo.manaNeeded.isNotBlank()) Text("Mana: ${combo.manaNeeded}")
+            if (combo.manaNeeded.isNotBlank()) ManaText("Mana: ${combo.manaNeeded}")
             combo.ingredients.forEach { ingredient ->
                 val zones = ingredient.zoneLocations.map { zone -> mapOf("B" to "Battlefield", "H" to "Hand", "G" to "Graveyard", "E" to "Exile", "L" to "Library", "C" to "Command zone")[zone] ?: zone }
                 Text("${ingredient.quantity} × ${ingredient.name}", style = MaterialTheme.typography.labelLarge)
                 val requirements = zones + listOfNotNull(if (ingredient.mustBeCommander) "Must be your commander" else null) +
                     listOf(ingredient.battlefieldCardState, ingredient.exileCardState, ingredient.libraryCardState, ingredient.graveyardCardState).filter { it.isNotBlank() }
-                if (requirements.isNotEmpty()) Text(requirements.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
+                if (requirements.isNotEmpty()) ManaText(requirements.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
             }
-            if (combo.easyPrerequisites.isNotBlank()) { Text("Prerequisites",style=MaterialTheme.typography.labelLarge);Text(combo.easyPrerequisites) }
-            if (combo.notablePrerequisites.isNotBlank()) { Text("Additional prerequisites",style=MaterialTheme.typography.labelLarge);Text(combo.notablePrerequisites) }
+            if (combo.easyPrerequisites.isNotBlank()) { Text("Prerequisites",style=MaterialTheme.typography.labelLarge);ManaText(combo.easyPrerequisites) }
+            if (combo.notablePrerequisites.isNotBlank()) { Text("Additional prerequisites",style=MaterialTheme.typography.labelLarge);ManaText(combo.notablePrerequisites) }
             combo.requirements.forEach { requirement ->
                 Text("Flexible requirement: ${requirement.quantity} × ${requirement.name}", style = MaterialTheme.typography.labelLarge)
                 val zones = requirement.zoneLocations.map { zone -> mapOf("B" to "Battlefield", "H" to "Hand", "G" to "Graveyard", "E" to "Exile", "L" to "Library", "C" to "Command zone")[zone] ?: zone }
                 val details = zones + listOfNotNull(if (requirement.mustBeCommander) "Must be your commander" else null) +
                     listOf(requirement.battlefieldCardState, requirement.exileCardState, requirement.libraryCardState, requirement.graveyardCardState).filter { it.isNotBlank() }
-                if (details.isNotEmpty()) Text(details.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
+                if (details.isNotEmpty()) ManaText(details.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
             }
             if (combo.description.isNotBlank()) {
                 Text("Steps", style = MaterialTheme.typography.titleSmall)
                 combo.description.lines().filter { it.isNotBlank() }.forEachIndexed { index, step ->
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("${index + 1}.", style = MaterialTheme.typography.labelLarge)
-                        Text(step.replaceFirst(Regex("^\\s*\\d+[.)]\\s+"), ""), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                        ManaText(step.replaceFirst(Regex("^\\s*\\d+[.)]\\s+"), ""), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             } else Text("Steps are available on Commander Spellbook.", style = MaterialTheme.typography.bodySmall)
             Text("Results", style = MaterialTheme.typography.titleSmall)
-            combo.produces.forEach { Text(it) }
+            combo.produces.forEach { ManaText(it) }
             if (combo.notes.isNotBlank()) DeckExplanation("Notes", combo.notes)
         }
         Row { TextButton(onClick = { open(combo.websiteUri) }) { Text("Details ↗") }

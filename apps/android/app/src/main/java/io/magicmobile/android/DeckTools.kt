@@ -73,7 +73,7 @@ import io.magicmobile.android.core.*
             CardArtwork(name, Modifier.fillMaxWidth().height(260.dp)) { ArtworkHint() }
             ManaCost(card?.cost, size = 20)
             Text(card?.type ?: "Unresolved in the local catalogue")
-            Text(card?.rules.orEmpty())
+            ManaText(card?.rules.orEmpty())
             card?.identity?.let { Text("Color identity: ${it.joinToString().ifEmpty { "Colorless" }}") }
         }
     }, confirmButton = { TextButton(onClick = close) { Text("Done") } })

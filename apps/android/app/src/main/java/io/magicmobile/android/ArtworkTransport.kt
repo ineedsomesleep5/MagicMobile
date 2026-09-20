@@ -10,15 +10,22 @@ import kotlin.coroutines.coroutineContext
 
 /** No redirects, credentials, cookies, or non-Scryfall hosts. Cancellation closes the socket. */
 internal object ArtworkTransport {
-    suspend fun bytes(context:Context,url:URL,maximum:Int,types:Set<String>):ByteArray {
-        val output=ByteArrayOutputStream()
-        transfer(context,url,maximum.toLong(),types,output)
-        return output.toByteArray()
+    suspend fun bytes(context:Context,url:URL,maximum:Int,types:Set<String>,body:ByteArray?=null):ByteArray {
+        repeat(3){attempt->
+            val output=ByteArrayOutputStream()
+            try{transfer(context,url,maximum.toLong(),types,output,body);return output.toByteArray()}
+            catch(failure:Exception){
+                if(failure is CancellationException)throw failure
+                if(!shouldRetryArtworkTransfer(failure,attempt))throw failure
+                delay(500L*(1 shl attempt))
+            }
+        }
+        error("Artwork transfer did not complete.")
     }
-    suspend fun transfer(context:Context,url:URL,maximum:Long,types:Set<String>,output:OutputStream)=coroutineScope {
+    suspend fun transfer(context:Context,url:URL,maximum:Long,types:Set<String>,output:OutputStream,body:ByteArray?=null)=coroutineScope {
         require(url.protocol=="https" && url.host in setOf("api.scryfall.com","cards.scryfall.io","data.scryfall.io") && url.userInfo==null && (url.port==-1||url.port==443)&&url.ref==null){"Unsupported artwork address."}
         coroutineContext.ensureActive();check(Artwork.enabled(context)){"Online artwork is disabled."}
-        ScryfallRequestBudget.awaitTurn()
+        if(url.host=="api.scryfall.com")ScryfallRequestBudget.awaitTurn()
         coroutineContext.ensureActive();check(Artwork.enabled(context)){"Online artwork is disabled."}
         val connection=(url.openConnection() as HttpURLConnection).apply {
             instanceFollowRedirects=false;connectTimeout=15000;readTimeout=30000;useCaches=false
@@ -27,6 +34,7 @@ internal object ArtworkTransport {
         }
         val cancellation=launch(Dispatchers.IO,start=CoroutineStart.UNDISPATCHED){try{awaitCancellation()}finally{connection.disconnect()}}
         try {
+            if(body!=null){require(url.host=="api.scryfall.com"&&url.path=="/cards/collection");connection.requestMethod="POST";connection.doOutput=true;connection.setRequestProperty("Content-Type","application/json");connection.outputStream.use{it.write(body)}}
             if(connection.responseCode==429){ScryfallRequestBudget.backOff(connection.getHeaderField("Retry-After")?.toIntOrNull()?:60);error("Scryfall requests are paused. Retry later.")}
             check(connection.responseCode==200){"Scryfall returned ${connection.responseCode}."}
             check(connection.contentType?.substringBefore(';')?.trim()?.lowercase() in types){"Unsupported artwork file."}
@@ -37,3 +45,6 @@ internal object ArtworkTransport {
         } finally {cancellation.cancel();connection.disconnect()}
     }
 }
+
+internal fun shouldRetryArtworkTransfer(failure:Exception,attempt:Int):Boolean = attempt in 0..1 &&
+    failure !is CancellationException && (failure is java.io.IOException || failure.message?.matches(Regex("Scryfall returned 5[0-9]{2}\\."))==true)
