@@ -18,6 +18,10 @@ The database must provide `matchmaking_leave_match(p_match_id uuid)`, checking t
 
 Deployment is not complete until real engine two-player and four-player tests, cross-platform device play, hidden-information isolation, reconnect, and public TLS checks pass. Free VM capacity/availability is not guaranteed.
 
+## Manual GitHub runtime package
+
+After the pinned engine and matching app catalogue are reviewed and committed, choose **Actions → Package verified multiplayer runtime (manual) → Run workflow** on that exact ref. The public-repository standard `macos-26-intel` job builds fresh, exports all five precons through the Swift resolver, checks bridge regressions, and runs real two-/four-seat opening HTTP checks on the exact portable payload with a 256 MB heap. Download its candidate archive, checksum, provenance, and logs from Actions artifacts; publication and updating the self-host launcher's pinned URL/checksum remain separate reviewed steps. It never deploys or accesses Supabase. A passing macOS probe does not establish Windows/Linux execution, sustained games, mobile parity, or fit within a 512 MB host. Java 17 and matching committed catalogue are hard gates; an upstream change requiring a different toolchain must be reviewed rather than bypassed. Local receipt helper: `node apps/multiplayer-server/resolved-deck-proof.mjs /path/to/fresh-swift-export`.
+
 ## Portable Render trial
 
 `Main` defaults to `BIND_ADDRESS=127.0.0.1` and port 8088 for the VM proxy route. Render must explicitly set `BIND_ADDRESS=0.0.0.0` and use its `PORT` (normally 10000). The launch script accepts `JAVA_HEAP_INITIAL`, `JAVA_HEAP_MAX`, and `JAVA_PROCESSORS`; existing VM defaults remain 256m/3g/1. The Docker template uses a **trial** 64m/256m/1 budget and one match. A 256 MB Java heap is not a 256 MB process limit: metaspace, native memory, threads and the OS still consume memory. This does not establish acceptance within Render Free's 512 MB instance.
