@@ -2,6 +2,7 @@ name: Package verified multiplayer runtime (manual)
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -108,5 +109,5 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-# No workflow call/push trigger, cache upload, secrets, signing, release write,
+# No push trigger, cache upload, secrets, signing, release write,
 # deployment, Supabase access, or claim of native/mobile/cloud gameplay acceptance.

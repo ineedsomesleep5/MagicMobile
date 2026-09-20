@@ -2,9 +2,22 @@ name: XMage Smoke
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Existing gateway smoke or verified portable multiplayer package'
+        type: choice
+        options: [gateway, multiplayer-package]
+        default: gateway
+
+permissions:
+  contents: read
 
 jobs:
+  multiplayer-package:
+    if: inputs.mode == 'multiplayer-package'
+    uses: ./.github/workflows/magicmobile-multiplayer-package.yml
   real-xmage-smoke:
+    if: inputs.mode != 'multiplayer-package'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
