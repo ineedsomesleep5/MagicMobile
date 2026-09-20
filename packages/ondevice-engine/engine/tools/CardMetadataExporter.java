@@ -96,7 +96,7 @@ public final class CardMetadataExporter {
         try (BufferedWriter stream = compressed(nameFile)) {
             GSON.toJson(Map.of("format", 1, "names", names), stream);
         }
-        Map<String, Object> report = Json.map("format", 1, "upstream", "8aea65ae9ae3c89970fe865e1316105539e097ca",
+        Map<String, Object> report = Json.map("format", 1, "upstream", "4825513287ba6c42c32fd205d227f4a5fc44c2f3",
                 "registryHash", GeneratedCardFactory.CATALOGUE_HASH, "printings", printings,
                 "rowsIncludingSplitHalves", rows.size(), "nameCounts", counts,
                 "resources", Json.map("card-metadata.jsonl.gz", hash(metadata), "card-names.json.gz", hash(nameFile)),
