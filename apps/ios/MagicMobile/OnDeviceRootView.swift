@@ -28,6 +28,7 @@ struct OnDeviceRootView: View {
     @AppStorage(OnDeviceSetupPreferences.aiSkillKey) private var aiSkill = 2
     @AppStorage(OnDeviceSetupPreferences.humanCountKey) private var playerCount = 2
     @AppStorage(OnDeviceSetupPreferences.friendsKey) private var playWithFriends = false
+    @AppStorage("magicmobile.onlineMode") private var playOnline = false
     @State private var showSetup = false
     @State private var showAppearance = false
     @State private var showUpdates = false
@@ -76,7 +77,15 @@ struct OnDeviceRootView: View {
     }
     private var validName: Bool { (try? OnDeviceSetupModel.playerName(playerDisplayName)) != nil }
     private var mayStart: Bool {
-        validName && selectedDeck != nil && (playWithFriends || aiPrecons.count == opponentCount) && setup.identity != nil && !setup.isBusy && !setup.needsLeave
+        validName && selectedDeck != nil && (playWithFriends || aiPrecons.count == opponentCount)
+            && (!playWithFriends || !playOnline || setup.online.available)
+            && setup.identity != nil && !setup.isBusy && !setup.needsLeave
+    }
+    private var playerMode: Binding<String> {
+        Binding(get: { playWithFriends ? (playOnline ? "online" : "gamecenter") : "ai" }, set: { mode in
+            playWithFriends = mode != "ai"
+            playOnline = mode == "online"
+        })
     }
 
     private var turnControl: NativeTurnControl {
@@ -132,7 +141,8 @@ struct OnDeviceRootView: View {
         .confirmationDialog("Leave this game?", isPresented: $confirmLeave, titleVisibility: .visible) {
             Button("Leave game", role: .destructive) { closeGame() }
         } message: {
-            Text(setup.multiplayer?.endpoint?.isHost == true
+            Text(setup.usingOnline ? "Leaving ends this online match for every player."
+                 : setup.multiplayer?.endpoint?.isHost == true
                  ? "You are hosting. Leaving ends this match for everyone; it cannot be resumed."
                  : "This closes the current match. It cannot be resumed after leaving.")
         }
@@ -181,6 +191,9 @@ struct OnDeviceRootView: View {
         .onChange(of: setup.multiplayer?.isSuspended) { _, _ in setup.updateSessionForeground() }
         .onChange(of: setup.multiplayer?.endpoint?.matchID) { _, matchID in
             if matchID != nil { Task { await setup.attachMultiplayer() } }
+        }
+        .onChange(of: setup.online.lobby?.matchId) { _, matchID in
+            if matchID != nil { Task { await setup.attachOnline() } }
         }
         .onChange(of: session.snapshot?.bridgeRevision) { _, _ in refreshInspections() }
     }
@@ -293,25 +306,35 @@ struct OnDeviceRootView: View {
                 .disabled(setup.isBusy || setup.needsLeave)
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Picker("Players", selection: $playWithFriends) {
-                        Text("Against AI").tag(false)
-                        Text("Game Center").tag(true)
+                    Picker("Players", selection: playerMode) {
+                        Text("AI").tag("ai")
+                        Text("Game Center").tag("gamecenter")
+                        Text("Online").tag("online")
                     }.pickerStyle(.segmented).disabled(setup.isBusy || setup.needsLeave)
                     if playWithFriends {
-                        Picker("Human players", selection: $playerCount) {
-                            ForEach(2...4, id: \.self) { Text("\($0) players").tag($0) }
-                        }.disabled(setup.isBusy || setup.needsLeave)
-                        Text("Every player needs the same app version and must keep the app open during the match.")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Text(setup.multiplayer?.status ?? setup.status).font(.callout)
-                        if setup.multiplayer?.isAuthenticated != true {
-                            Button("Sign in to Game Center") { setup.multiplayer?.authenticate() }
-                                .buttonStyle(CommanderActionStyle(primary: false))
-                                .disabled(setup.multiplayer == nil || setup.isBusy || setup.needsLeave)
+                        if !playOnline || setup.online.available {
+                            Picker("Human players", selection: $playerCount) {
+                                ForEach(2...4, id: \.self) { Text("\($0) players").tag($0) }
+                            }.disabled(setup.isBusy || setup.needsLeave)
                         }
-                        Button("Find players") { startMatchmaking() }
-                            .buttonStyle(CommanderActionStyle())
-                            .disabled(!mayStart || setup.multiplayer?.isAuthenticated != true)
+                        if playOnline {
+                            OnlineLobbyView(online: setup.online, mayEnter: mayStart) { code in
+                                guard let deck = selectedDeck else { return }
+                                Task { await setup.enterOnline(code: code, name: playerDisplayName, deck: deck, playerCount: playerCount) }
+                            }
+                        } else {
+                            Text("Every player needs the same app version and must keep the app open during the match.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Text(setup.multiplayer?.status ?? setup.status).font(.callout)
+                            if setup.multiplayer?.isAuthenticated != true {
+                                Button("Sign in to Game Center") { setup.multiplayer?.authenticate() }
+                                    .buttonStyle(CommanderActionStyle(primary: false))
+                                    .disabled(setup.multiplayer == nil || setup.isBusy || setup.needsLeave)
+                            }
+                            Button("Find players") { startMatchmaking() }
+                                .buttonStyle(CommanderActionStyle())
+                                .disabled(!mayStart || setup.multiplayer?.isAuthenticated != true)
+                        }
                     } else {
                         Stepper("AI opponents: \(opponentCount)", value: $opponentCount, in: 1...3)
                             .disabled(setup.isBusy || setup.needsLeave)
@@ -375,8 +398,9 @@ struct OnDeviceRootView: View {
                         .font(.largeTitle).foregroundStyle(CommanderPresentation.secondary)
                         .frame(width: 112, height: 156)
                         .background(CommanderPresentation.surface, in: RoundedRectangle(cornerRadius: 12))
-                    Text("Game Center").font(.caption).foregroundStyle(CommanderPresentation.secondary)
-                    Text("\(playerCount) seats").font(.headline)
+                    Text(playOnline ? (setup.online.available ? "iPhone + Android" : "Online") : "Game Center")
+                        .font(.caption).foregroundStyle(CommanderPresentation.secondary)
+                    Text(playOnline && !setup.online.available ? "Coming soon" : "\(playerCount) seats").font(.headline)
                 } else {
                     CommanderDeckPortrait(name: aiPrecon?.deckList.commander?.cardName)
                         .frame(width: 112, height: 156)
@@ -534,6 +558,8 @@ private final class OnDeviceSetupModel: ObservableObject {
     @Published private(set) var multiplayer: OnDeviceMultiplayer?
     @Published private(set) var isBusy = false
     @Published private(set) var usingMultiplayer = false
+    @Published private(set) var usingOnline = false
+    let online = OnlineSession()
     @Published private(set) var closeFailed = false
     @Published private(set) var status = "Preparing local decks"
     @Published var errorMessage: String?
@@ -542,17 +568,22 @@ private final class OnDeviceSetupModel: ObservableObject {
     private let runtime = OnDeviceRuntimeManager()
     private var resolver: OnDeviceDeckResolver?
     private var multiplayerObservation: AnyCancellable?
+    private var onlineObservation: AnyCancellable?
     private var aiClient: EngineClient?
     private var aiMatchID: String?
     private var sceneActive = true
 
-    init(session: OnDeviceSession) { self.session = session }
+    init(session: OnDeviceSession) {
+        self.session = session
+        onlineObservation = online.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+    }
 
-    var needsLeave: Bool { usingMultiplayer || runtime.isOpen || session.matchID != nil || multiplayer?.needsCleanup == true }
+    var needsLeave: Bool { usingOnline || online.lobby != nil || usingMultiplayer || runtime.isOpen || session.matchID != nil || multiplayer?.needsCleanup == true }
     var canUseSession: Bool {
         sceneActive && (!usingMultiplayer || (multiplayer?.isConnected == true && multiplayer?.isSuspended == false))
     }
     var liveStatus: String {
+        if usingOnline, online.status == "Reconnecting…" { return online.status }
         if usingMultiplayer, let multiplayer, !multiplayer.isConnected || multiplayer.isSuspended { return multiplayer.status }
         return feedback ?? session.status
     }
@@ -623,6 +654,33 @@ private final class OnDeviceSetupModel: ObservableObject {
         updateSessionForeground()
     }
 
+    func enterOnline(code: String?, name: String, deck: DeckList, playerCount: Int) async {
+        guard !isBusy, !needsLeave, let resolver, let identity else { return }
+        isBusy = true; errorMessage = nil
+        do {
+            let name = try Self.playerName(name)
+            let resolved = try resolver.resolve(deck)
+            await online.enter(code: code, name: name, playerCount: playerCount, identity: identity, deck: resolved)
+        } catch { errorMessage = error.localizedDescription }
+        isBusy = false
+        if online.lobby?.matchId != nil { await attachOnline() }
+    }
+
+    func attachOnline() async {
+        guard !isBusy, !runtime.isOpen, session.matchID == nil, let api = online.api,
+              let lobby = online.lobby, lobby.status == "active", let matchID = lobby.matchId,
+              let seatID = lobby.seatId, seatID == online.userID else { return }
+        isBusy = true; usingOnline = true; errorMessage = nil; feedback = nil
+        defer { isBusy = false }
+        do {
+            updateSessionForeground()
+            let client = EngineClient(transport: OnlineEngineTransport(api: api, matchID: matchID))
+            try await session.attach(client: client, matchID: matchID, seatID: seatID, reconnectsAutomatically: true,
+                                     close: { [online] in try await online.leave() })
+            status = "Online match connected"
+        } catch { errorMessage = error.localizedDescription }
+    }
+
     func attachMultiplayer() async {
         guard usingMultiplayer, !isBusy, session.matchID == nil,
               let multiplayer, let endpoint = multiplayer.endpoint else { return }
@@ -639,6 +697,7 @@ private final class OnDeviceSetupModel: ObservableObject {
     func setSceneActive(_ active: Bool) {
         sceneActive = active
         if active { multiplayer?.onResumed() } else { multiplayer?.onSuspended() }
+        online.setForeground(active)
         updateSessionForeground()
     }
 
@@ -656,12 +715,13 @@ private final class OnDeviceSetupModel: ObservableObject {
         defer { isBusy = false }
         do {
             if session.matchID != nil { try await session.close() }
+            else if usingOnline || online.lobby != nil { try await online.leave() }
             else if usingMultiplayer { try await multiplayer?.leave() }
             else { try await closeAI() }
             // A failed host factory can retain its handle before Game Center owns
             // an EngineClient. Leave succeeds in that case; the root still owns cleanup.
             if runtime.isOpen { try await runtime.close() }
-            usingMultiplayer = false; closeFailed = false; feedback = nil
+            usingMultiplayer = false; usingOnline = false; closeFailed = false; feedback = nil
             status = "Game closed"; updateSessionForeground()
             return true
         } catch {
@@ -682,6 +742,10 @@ private final class OnDeviceSetupModel: ObservableObject {
     }
 
     func localHealth() -> EngineHealth {
+        if usingOnline {
+            return EngineHealth(status: online.status == "Reconnecting…" ? "unavailable" : "ok",
+                reason: "Online connection: \(online.status)", checkedAt: ISO8601DateFormatter().string(from: Date()), recoveryAction: nil)
+        }
         let connected = usingMultiplayer
             ? multiplayer?.isConnected == true && multiplayer?.isSuspended == false
             : runtime.isOpen

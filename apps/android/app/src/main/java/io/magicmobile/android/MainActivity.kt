@@ -55,11 +55,12 @@ class MainActivity: ComponentActivity() {
     override fun onResume(){super.onResume();model.foreground(true)}
     override fun onStop(){model.foreground(false);super.onStop()}
 }
-private enum class AppPage(val title:String){HOME("MagicMobile"),DECKS("Deck Studio"),DOWNLOADS("Downloads"),SETTINGS("Settings"),UPDATES("Updates")}
+private enum class AppPage(val title:String){HOME("MagicMobile"),DECKS("Deck Studio"),DOWNLOADS("Downloads"),SETTINGS("Settings"),UPDATES("Updates"),ONLINE("Online play")}
 private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val draftID:String=original?.id ?: java.util.UUID.randomUUID().toString(),val receipt:ImportReceipt?=null)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun MagicApp(model:AppModel) {
     val state by model.state.collectAsStateWithLifecycle()
+    val onlineState by model.online.collectAsStateWithLifecycle()
     var editor by remember { mutableStateOf<EditorRequest?>(null) }
     var importing by remember { mutableStateOf(false) }
     var importingLink by remember { mutableStateOf(false) }
@@ -118,11 +119,12 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
                     !state.loaded -> { LinearProgressIndicator(Modifier.fillMaxWidth());Text(state.status,modifier=Modifier.padding(20.dp)) }
                     page==AppPage.HOME -> HomeScreen(
                         featured=state.decks.firstOrNull{it.id==selectedDeckKey}?.deck ?: state.precons.firstOrNull{"included:${it.name}"==selectedDeckKey} ?: state.decks.firstOrNull()?.deck ?: state.precons.firstOrNull(),
-                        play={play=it},decks={page=AppPage.DECKS},downloads={page=AppPage.DOWNLOADS},settings={page=AppPage.SETTINGS},updates={page=AppPage.UPDATES},
+                        play={play=it},decks={page=AppPage.DECKS},downloads={page=AppPage.DOWNLOADS},settings={page=AppPage.SETTINGS},updates={page=AppPage.UPDATES},online={page=AppPage.ONLINE},
                     )
                     page==AppPage.DOWNLOADS -> ArtworkDownloadsScreen(model.catalogue,state.decks,state.precons,{page=AppPage.HOME}){message->model.error(message)}
                     page==AppPage.SETTINGS -> SettingsScreen(appearance,{mode->appearance=mode;libraryPreferences.edit().putString("appearance",mode).apply()},state,model)
                     page==AppPage.UPDATES -> UpdatesScreen()
+                    page==AppPage.ONLINE -> OnlineScreen(model,state)
                     else -> LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                         item { Text("My Decks",style=MaterialTheme.typography.headlineLarge,fontFamily=FontFamily.Serif);Text("Build. Refine. Play.",style=MaterialTheme.typography.bodyMedium) }
                         item { Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){Button(onClick={editor=EditorRequest(Deck("New Commander deck",emptyList()))}){Text("Create deck")};OutlinedButton(onClick={importing=true}){Text("Paste")};OutlinedButton(onClick={fileImport.launch(arrayOf("application/json","text/plain","text/*","application/octet-stream"))}){Text("Import file")}} }
@@ -146,6 +148,7 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
                 }
             }
         }
+        if(state.onlineGame&&onlineState.userId==null)OnlineSignInRecovery(model,onlineState)
         if(importing) ImportDialog({importing=false}) { preview -> importing=false;importPreview=preview }
         importPreview?.let {preview->DeckImportPreviewDialog(preview,{importPreview=null}){editor=EditorRequest(preview.deck,receipt=ImportReceipt("Text import",preview.originalText,preview.annotations,preview.deck));model.recover(preview.deck);importPreview=null}}
         if(importingLink)DeckLinkDialog({importingLink=false}){deck,source->importingLink=false;editor=EditorRequest(deck,receipt=ImportReceipt(source,"",emptyList(),deck));model.recover(deck)}
@@ -189,26 +192,27 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
         }
     }
 }
-@Composable private fun HomeScreen(featured:Deck?,play:(Deck)->Unit,decks:()->Unit,downloads:()->Unit,settings:()->Unit,updates:()->Unit) {
+@Composable private fun HomeScreen(featured:Deck?,play:(Deck)->Unit,decks:()->Unit,downloads:()->Unit,settings:()->Unit,updates:()->Unit,online:()->Unit) {
     BoxWithConstraints(Modifier.fillMaxSize().background(Night)) {
         val wide=maxWidth>=700.dp
         if(wide)Row(Modifier.fillMaxSize().padding(40.dp),horizontalArrangement=Arrangement.spacedBy(36.dp),verticalAlignment=Alignment.CenterVertically) {
-            Column(Modifier.weight(.9f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(14.dp)){HomeHeading();HomeNavigation(featured,play,decks,downloads,settings,updates,wide=true)}
+            Column(Modifier.weight(.9f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(14.dp)){HomeHeading();HomeNavigation(featured,play,decks,downloads,settings,updates,online,wide=true)}
             Column(Modifier.weight(1.1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)){HomeDeck(featured)}
         } else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal=24.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
-            Spacer(Modifier.height(22.dp));HomeHeading();HomeDeck(featured);HomeNavigation(featured,play,decks,downloads,settings,updates,wide=false);Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(22.dp));HomeHeading();HomeDeck(featured);HomeNavigation(featured,play,decks,downloads,settings,updates,online,wide=false);Spacer(Modifier.height(28.dp))
         }
     }
 }
 @Composable private fun HomeHeading(){Text("MAGICMOBILE",style=MaterialTheme.typography.headlineLarge,fontFamily=FontFamily.Serif,color=Parchment);Text("Your next great game.",style=MaterialTheme.typography.titleMedium,color=Parchment.copy(alpha=.78f))}
 @Composable private fun HomeDeck(featured:Deck?){featured?.let{deck->CardArtwork(deck.entries.firstOrNull{it.section=="commanders"}?.name.orEmpty(),Modifier.fillMaxWidth().heightIn(min=220.dp,max=360.dp).clip(RoundedCornerShape(16.dp))){ArtworkCoverPlaceholder()};Text(deck.name,style=MaterialTheme.typography.headlineSmall,fontFamily=FontFamily.Serif,color=Parchment,maxLines=2,overflow=TextOverflow.Ellipsis);Text(deck.entries.filter{it.section=="commanders"}.joinToString(" + "){it.name},style=MaterialTheme.typography.bodyMedium,color=Parchment.copy(alpha=.75f),maxLines=2,overflow=TextOverflow.Ellipsis)}?:Text("Create or import a Commander deck to begin.",color=Parchment)}
-@Composable private fun HomeNavigation(featured:Deck?,play:(Deck)->Unit,decks:()->Unit,downloads:()->Unit,settings:()->Unit,updates:()->Unit,wide:Boolean){
+@Composable private fun HomeNavigation(featured:Deck?,play:(Deck)->Unit,decks:()->Unit,downloads:()->Unit,settings:()->Unit,updates:()->Unit,online:()->Unit,wide:Boolean){
     featured?.let{Button(onClick={play(it)},modifier=Modifier.fillMaxWidth().heightIn(min=56.dp),colors=ButtonDefaults.buttonColors(containerColor=Color(0xFFB95435),contentColor=Color.White)){Text("Play Commander")}}
     OutlinedButton(onClick=decks,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp),colors=ButtonDefaults.outlinedButtonColors(contentColor=Parchment)){Text("Decks")}
+    OutlinedButton(onClick=online,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp),colors=ButtonDefaults.outlinedButtonColors(contentColor=Parchment)){Text("Online play")}
     val button:@Composable (String,()->Unit,Modifier)->Unit={label,action,modifier->OutlinedButton(onClick=action,modifier=modifier.heightIn(min=48.dp),colors=ButtonDefaults.outlinedButtonColors(contentColor=Parchment)){Text(label)}}
     if(wide){button("Settings",settings,Modifier.fillMaxWidth());button("Updates",updates,Modifier.fillMaxWidth());button("Downloads",downloads,Modifier.fillMaxWidth())}
     else Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(8.dp)){button("Settings",settings,Modifier.fillMaxWidth());button("Updates",updates,Modifier.fillMaxWidth());button("Downloads",downloads,Modifier.fillMaxWidth())}
-    Text("Local XMage Commander · Multiplayer is not included",style=MaterialTheme.typography.labelSmall,color=Parchment.copy(alpha=.62f))
+    Text(if(BuildConfig.ONLINE_SERVER_URL.isBlank())"Commander · Offline AI · Online play coming soon" else "Commander · Offline AI and online tables",style=MaterialTheme.typography.labelSmall,color=Parchment.copy(alpha=.62f))
 }
 @Composable private fun SettingsScreen(appearance:String,setAppearance:(String)->Unit,state:ScreenState,model:AppModel) {
     LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
@@ -218,7 +222,7 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
         item {HorizontalDivider();Text("Private playtest history",style=MaterialTheme.typography.titleLarge);Row(verticalAlignment=Alignment.CenterVertically){Switch(state.recordingEnabled,model::setRecording);Spacer(Modifier.width(10.dp));Column{Text(if(state.recordingEnabled)"Recording summaries" else "Recording off");Text("Device-only, bounded to 100 games; no hands or opponent decklists.",style=MaterialTheme.typography.bodySmall)}}}
         items(state.playtests.take(12),key={it.id}){row->OutlinedCard(Modifier.fillMaxWidth()){Column(Modifier.padding(14.dp)){Text(row.deckName,style=MaterialTheme.typography.titleMedium,maxLines=2,overflow=TextOverflow.Ellipsis);Text("${row.end.replace('_',' ')} · highest observed turn ${row.highestTurn} · AI skill ${row.aiSkill}",style=MaterialTheme.typography.bodySmall)}}}
         if(state.playtests.isNotEmpty())item{PlaytestHistoryActions(model::clearPlaytests)}
-        item {HorizontalDivider();Text(state.status,style=MaterialTheme.typography.bodySmall);Text("Games run locally with the packaged XMage engine. No external computer or account.",style=MaterialTheme.typography.bodySmall)}
+        item {HorizontalDivider();Text(state.status,style=MaterialTheme.typography.bodySmall);Text(if(BuildConfig.ONLINE_SERVER_URL.isBlank())"AI games run locally without an account. Cross-platform online play is coming soon." else "AI games run locally without an account. Online tables use your MagicMobile account and the match server.",style=MaterialTheme.typography.bodySmall)}
     }
 }
 @Composable private fun UpdatesScreen() {

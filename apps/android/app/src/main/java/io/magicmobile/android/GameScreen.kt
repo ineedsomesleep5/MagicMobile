@@ -178,12 +178,12 @@ import java.util.Locale
             }}}}
             if(poll?.phase in setOf("ended","failed"))item{Text(if(poll?.phase=="ended")"Game finished" else "Game stopped — not recorded as a loss",style=MaterialTheme.typography.titleLarge)}
             if(notices.isNotEmpty())item{var showLog by remember{mutableStateOf(false)};TextButton(onClick={showLog=!showLog}){Text(if(showLog)"Hide game messages" else "Game messages · ${notices.size}")};if(showLog)notices.forEach{Text(it.second,modifier=Modifier.padding(vertical=4.dp),style=MaterialTheme.typography.bodySmall)}}
-            item {TextButton(onClick={model.diagnostics {text->Handler(Looper.getMainLooper()).post{context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="text/plain";putExtra(Intent.EXTRA_TEXT,text)},"Share private diagnostics"))}}}){Text("Export diagnostics (may contain private card data)")}}
+            if(!state.onlineGame)item {TextButton(onClick={model.diagnostics {text->Handler(Looper.getMainLooper()).post{context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="text/plain";putExtra(Intent.EXTRA_TEXT,text)},"Share private diagnostics"))}}}){Text("Export diagnostics (may contain private card data)")}}
         }
     }}
     selectedCard?.takeIf{selectedRevision==poll?.revision && poll?.phase=="running"}?.let{card->TransientCardInspector(card)}
     confirmYield?.let { mode -> AlertDialog(onDismissRequest={confirmYield=null},title={Text("Skip priority responses?")},text={Text("${mode.status} You may miss opportunities to respond to spells and abilities. This does not answer targeting, payment, combat selection or other choices for you.")},confirmButton={TextButton(enabled=model.canAutoPass(mode),onClick={confirmYield=null;model.startAutoPass(mode)}){Text("Start skipping responses")}},dismissButton={TextButton(onClick={confirmYield=null}){Text("Cancel")}}) }
-    if(confirmClose)AlertDialog(onDismissRequest={confirmClose=false},title={Text("Leave this game?")},text={Text("There is no saved-game resume in this Android alpha. Engine cleanup will finish before another game can start.")},confirmButton={TextButton(onClick={confirmClose=false;model.close()}){Text("Leave / retry cleanup")}},dismissButton={TextButton(onClick={confirmClose=false}){Text("Keep playing")}})
+    if(confirmClose)AlertDialog(onDismissRequest={confirmClose=false},title={Text("Leave this game?")},text={Text(if(state.onlineGame)"Leaving ends this match for everyone. You can switch apps and return to reconnect without leaving." else "There is no saved-game resume in this Android alpha. Engine cleanup will finish before another game can start.")},confirmButton={TextButton(onClick={confirmClose=false;model.close()}){Text(if(state.onlineGame)"End match and leave" else "Leave / retry cleanup")}},dismissButton={TextButton(onClick={confirmClose=false}){Text("Keep playing")}})
     }
 }
 @Composable private fun PlayerStateBadges(player:Obj) {

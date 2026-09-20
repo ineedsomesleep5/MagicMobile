@@ -1,0 +1,926 @@
+{
+  "tables": [
+    {
+      "acl": null,
+      "rls": false,
+      "name": "quick_queue",
+      "schema": "matchmaking_private",
+      "columns": [
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "display_name",
+          "type": "text",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "platform",
+          "type": "text",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "app_version",
+          "type": "text",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "engine_build",
+          "type": "text",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "protocol_version",
+          "type": "integer",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "format",
+          "type": "text",
+          "default": "'commander'::text",
+          "required": true
+        },
+        {
+          "name": "player_count",
+          "type": "smallint",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "host_score",
+          "type": "integer",
+          "default": "0",
+          "required": true
+        },
+        {
+          "name": "joined_at",
+          "type": "timestamp with time zone",
+          "default": "now()",
+          "required": true
+        },
+        {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "upstream",
+          "type": "text",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "catalogue_hash",
+          "type": "text",
+          "default": null,
+          "required": true
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX quick_queue_pkey ON matchmaking_private.quick_queue USING btree (user_id)",
+        "CREATE INDEX quick_queue_expires_idx ON matchmaking_private.quick_queue USING btree (expires_at)",
+        "CREATE INDEX quick_queue_compat_idx ON matchmaking_private.quick_queue USING btree (format, player_count, protocol_version, upstream, catalogue_hash, joined_at, expires_at)"
+      ],
+      "constraints": [
+        {
+          "name": "quick_queue_app_version_check",
+          "definition": "CHECK (((char_length(app_version) >= 1) AND (char_length(app_version) <= 80)))"
+        },
+        {
+          "name": "quick_queue_catalogue_hash_check",
+          "definition": "CHECK (((char_length(catalogue_hash) >= 16) AND (char_length(catalogue_hash) <= 160)))"
+        },
+        {
+          "name": "quick_queue_display_name_check",
+          "definition": "CHECK (((char_length(display_name) >= 1) AND (char_length(display_name) <= 32)))"
+        },
+        {
+          "name": "quick_queue_engine_build_check",
+          "definition": "CHECK (((char_length(engine_build) >= 1) AND (char_length(engine_build) <= 160)))"
+        },
+        {
+          "name": "quick_queue_format_check",
+          "definition": "CHECK ((format = 'commander'::text))"
+        },
+        {
+          "name": "quick_queue_host_score_check",
+          "definition": "CHECK (((host_score >= 0) AND (host_score <= 1000)))"
+        },
+        {
+          "name": "quick_queue_pkey",
+          "definition": "PRIMARY KEY (user_id)"
+        },
+        {
+          "name": "quick_queue_platform_check",
+          "definition": "CHECK ((platform = ANY (ARRAY['ios'::text, 'android'::text])))"
+        },
+        {
+          "name": "quick_queue_player_count_check",
+          "definition": "CHECK (((player_count >= 2) AND (player_count <= 4)))"
+        },
+        {
+          "name": "quick_queue_protocol_version_check",
+          "definition": "CHECK ((protocol_version > 0))"
+        },
+        {
+          "name": "quick_queue_upstream_check",
+          "definition": "CHECK (((char_length(upstream) >= 7) AND (char_length(upstream) <= 80)))"
+        },
+        {
+          "name": "quick_queue_user_id_fkey",
+          "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+        }
+      ]
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres"
+      ],
+      "rls": false,
+      "name": "match_transport",
+      "schema": "matchmaking_private",
+      "columns": [
+        {
+          "name": "match_id",
+          "type": "uuid",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "transport_key",
+          "type": "text",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "now()",
+          "required": true
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX match_transport_pkey ON matchmaking_private.match_transport USING btree (match_id)",
+        "CREATE UNIQUE INDEX match_transport_transport_key_key ON matchmaking_private.match_transport USING btree (transport_key)"
+      ],
+      "constraints": [
+        {
+          "name": "match_transport_match_id_fkey",
+          "definition": "FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE"
+        },
+        {
+          "name": "match_transport_pkey",
+          "definition": "PRIMARY KEY (match_id)"
+        },
+        {
+          "name": "match_transport_transport_key_check",
+          "definition": "CHECK ((transport_key ~ '^[0-9a-f]{32}$'::text))"
+        },
+        {
+          "name": "match_transport_transport_key_key",
+          "definition": "UNIQUE (transport_key)"
+        }
+      ]
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "service_role=arwdDxtm/postgres",
+        "authenticated=r/postgres"
+      ],
+      "rls": true,
+      "name": "match_players",
+      "schema": "public",
+      "columns": [
+        {
+          "name": "match_id",
+          "type": "uuid",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "seat",
+          "type": "smallint",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "display_name",
+          "type": "text",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "platform",
+          "type": "text",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "app_version",
+          "type": "text",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "engine_build",
+          "type": "text",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "protocol_version",
+          "type": "integer",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "host_score",
+          "type": "integer",
+          "default": "0",
+          "required": true
+        },
+        {
+          "name": "ready",
+          "type": "boolean",
+          "default": "false",
+          "required": true
+        },
+        {
+          "name": "joined_at",
+          "type": "timestamp with time zone",
+          "default": "now()",
+          "required": true
+        },
+        {
+          "name": "left_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "required": false
+        },
+        {
+          "name": "upstream",
+          "type": "text",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "catalogue_hash",
+          "type": "text",
+          "default": null,
+          "required": true
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX match_players_pkey ON public.match_players USING btree (match_id, user_id)",
+        "CREATE UNIQUE INDEX match_players_match_id_seat_key ON public.match_players USING btree (match_id, seat)",
+        "CREATE INDEX match_players_active_user_idx ON public.match_players USING btree (user_id, match_id) WHERE (left_at IS NULL)",
+        "CREATE INDEX match_players_active_match_idx ON public.match_players USING btree (match_id, ready, host_score DESC, joined_at) WHERE (left_at IS NULL)"
+      ],
+      "constraints": [
+        {
+          "name": "match_players_app_version_check",
+          "definition": "CHECK (((char_length(app_version) >= 1) AND (char_length(app_version) <= 80)))"
+        },
+        {
+          "name": "match_players_catalogue_hash_check",
+          "definition": "CHECK (((char_length(catalogue_hash) >= 16) AND (char_length(catalogue_hash) <= 160)))"
+        },
+        {
+          "name": "match_players_display_name_check",
+          "definition": "CHECK (((char_length(display_name) >= 1) AND (char_length(display_name) <= 32)))"
+        },
+        {
+          "name": "match_players_engine_build_check",
+          "definition": "CHECK (((char_length(engine_build) >= 1) AND (char_length(engine_build) <= 160)))"
+        },
+        {
+          "name": "match_players_host_score_check",
+          "definition": "CHECK (((host_score >= 0) AND (host_score <= 1000)))"
+        },
+        {
+          "name": "match_players_match_id_fkey",
+          "definition": "FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE"
+        },
+        {
+          "name": "match_players_match_id_seat_key",
+          "definition": "UNIQUE (match_id, seat)"
+        },
+        {
+          "name": "match_players_pkey",
+          "definition": "PRIMARY KEY (match_id, user_id)"
+        },
+        {
+          "name": "match_players_platform_check",
+          "definition": "CHECK ((platform = ANY (ARRAY['ios'::text, 'android'::text])))"
+        },
+        {
+          "name": "match_players_protocol_version_check",
+          "definition": "CHECK ((protocol_version > 0))"
+        },
+        {
+          "name": "match_players_seat_check",
+          "definition": "CHECK (((seat >= 0) AND (seat <= 3)))"
+        },
+        {
+          "name": "match_players_upstream_check",
+          "definition": "CHECK (((char_length(upstream) >= 7) AND (char_length(upstream) <= 80)))"
+        },
+        {
+          "name": "match_players_user_id_fkey",
+          "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+        }
+      ]
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres"
+      ],
+      "rls": false,
+      "name": "rate_limits",
+      "schema": "matchmaking_private",
+      "columns": [
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "window_start",
+          "type": "timestamp with time zone",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "request_count",
+          "type": "integer",
+          "default": null,
+          "required": true
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX rate_limits_pkey ON matchmaking_private.rate_limits USING btree (user_id, action)",
+        "CREATE INDEX mm_rate_limits_window_idx ON matchmaking_private.rate_limits USING btree (window_start)"
+      ],
+      "constraints": [
+        {
+          "name": "rate_limits_action_check",
+          "definition": "CHECK (((char_length(action) >= 1) AND (char_length(action) <= 40)))"
+        },
+        {
+          "name": "rate_limits_pkey",
+          "definition": "PRIMARY KEY (user_id, action)"
+        },
+        {
+          "name": "rate_limits_request_count_check",
+          "definition": "CHECK ((request_count > 0))"
+        },
+        {
+          "name": "rate_limits_user_id_fkey",
+          "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+        }
+      ]
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "service_role=arwdDxtm/postgres",
+        "authenticated=r/postgres"
+      ],
+      "rls": true,
+      "name": "matches",
+      "schema": "public",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "default": "gen_random_uuid()",
+          "required": true
+        },
+        {
+          "name": "topic",
+          "type": "text",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "format",
+          "type": "text",
+          "default": "'commander'::text",
+          "required": true
+        },
+        {
+          "name": "player_count",
+          "type": "smallint",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "default": "'waiting'::text",
+          "required": true
+        },
+        {
+          "name": "join_code",
+          "type": "text",
+          "default": null,
+          "required": false
+        },
+        {
+          "name": "created_by",
+          "type": "uuid",
+          "default": null,
+          "required": false
+        },
+        {
+          "name": "host_user_id",
+          "type": "uuid",
+          "default": null,
+          "required": false
+        },
+        {
+          "name": "protocol_version",
+          "type": "integer",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "engine_build",
+          "type": "text",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "revision",
+          "type": "bigint",
+          "default": "1",
+          "required": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "now()",
+          "required": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "default": "now()",
+          "required": true
+        },
+        {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "required": false
+        },
+        {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "required": false
+        },
+        {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "upstream",
+          "type": "text",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "catalogue_hash",
+          "type": "text",
+          "default": null,
+          "required": true
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX matches_pkey ON public.matches USING btree (id)",
+        "CREATE UNIQUE INDEX matches_topic_key ON public.matches USING btree (topic)",
+        "CREATE UNIQUE INDEX matches_join_code_key ON public.matches USING btree (join_code)",
+        "CREATE INDEX matches_status_expiry_idx ON public.matches USING btree (status, expires_at)",
+        "CREATE INDEX matches_created_by_idx ON public.matches USING btree (created_by)",
+        "CREATE INDEX matches_host_user_id_idx ON public.matches USING btree (host_user_id)"
+      ],
+      "constraints": [
+        {
+          "name": "matches_catalogue_hash_check",
+          "definition": "CHECK (((char_length(catalogue_hash) >= 16) AND (char_length(catalogue_hash) <= 160)))"
+        },
+        {
+          "name": "matches_created_by_fkey",
+          "definition": "FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "matches_engine_build_check",
+          "definition": "CHECK (((char_length(engine_build) >= 1) AND (char_length(engine_build) <= 160)))"
+        },
+        {
+          "name": "matches_format_check",
+          "definition": "CHECK ((format = 'commander'::text))"
+        },
+        {
+          "name": "matches_host_user_id_fkey",
+          "definition": "FOREIGN KEY (host_user_id) REFERENCES auth.users(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "matches_join_code_key",
+          "definition": "UNIQUE (join_code)"
+        },
+        {
+          "name": "matches_join_code_shape",
+          "definition": "CHECK (((join_code IS NULL) OR (join_code ~ '^[A-HJ-NP-Z2-9]{6}$'::text)))"
+        },
+        {
+          "name": "matches_kind_check",
+          "definition": "CHECK ((kind = ANY (ARRAY['quick'::text, 'private'::text])))"
+        },
+        {
+          "name": "matches_pkey",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "matches_player_count_check",
+          "definition": "CHECK (((player_count >= 2) AND (player_count <= 4)))"
+        },
+        {
+          "name": "matches_private_has_code",
+          "definition": "CHECK ((((kind = 'private'::text) AND (join_code IS NOT NULL)) OR ((kind = 'quick'::text) AND (join_code IS NULL))))"
+        },
+        {
+          "name": "matches_protocol_version_check",
+          "definition": "CHECK ((protocol_version > 0))"
+        },
+        {
+          "name": "matches_revision_check",
+          "definition": "CHECK ((revision > 0))"
+        },
+        {
+          "name": "matches_status_check",
+          "definition": "CHECK ((status = ANY (ARRAY['waiting'::text, 'ready'::text, 'active'::text, 'finished'::text, 'abandoned'::text, 'cancelled'::text])))"
+        },
+        {
+          "name": "matches_topic_key",
+          "definition": "UNIQUE (topic)"
+        },
+        {
+          "name": "matches_topic_matches_id",
+          "definition": "CHECK ((topic = (('match:'::text || (id)::text) || ':lobby'::text)))"
+        },
+        {
+          "name": "matches_upstream_check",
+          "definition": "CHECK (((char_length(upstream) >= 7) AND (char_length(upstream) <= 80)))"
+        }
+      ]
+    }
+  ],
+  "policies": [
+    {
+      "cmd": "SELECT",
+      "qual": "matchmaking_private.current_user_is_member(match_id)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "match_players",
+      "permissive": "PERMISSIVE",
+      "policyname": "mm_match_players_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "matchmaking_private.current_user_is_member(id)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "matches",
+      "permissive": "PERMISSIVE",
+      "policyname": "mm_matches_read",
+      "schemaname": "public",
+      "with_check": null
+    }
+  ],
+  "functions": [
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres"
+      ],
+      "name": "current_user_is_member",
+      "schema": "matchmaking_private",
+      "arguments": "p_match_id uuid",
+      "definition": "CREATE OR REPLACE FUNCTION matchmaking_private.current_user_is_member(p_match_id uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\n  select exists (\n    select 1\n    from public.match_players mp\n    where mp.match_id = p_match_id\n      and mp.user_id = auth.uid()\n      and mp.left_at is null\n  );\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "matchmaking_status",
+      "schema": "public",
+      "arguments": "",
+      "definition": "CREATE OR REPLACE FUNCTION public.matchmaking_status()\n RETURNS TABLE(state text, queue_topic text, match_id uuid, match_topic text, join_code text, seat smallint, is_host boolean, player_count smallint, match_status text, protocol_version integer, engine_build text)\n LANGUAGE sql\n SET search_path TO 'pg_catalog'\nAS $function$ select * from matchmaking_private.state_impl(); $function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "matchmaking_cancel",
+      "schema": "public",
+      "arguments": "",
+      "definition": "CREATE OR REPLACE FUNCTION public.matchmaking_cancel()\n RETURNS TABLE(state text, queue_topic text, match_id uuid, match_topic text, join_code text, seat smallint, is_host boolean, player_count smallint, match_status text, protocol_version integer, engine_build text)\n LANGUAGE sql\n SET search_path TO 'pg_catalog'\nAS $function$ select * from matchmaking_private.cancel_impl(); $function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres"
+      ],
+      "name": "random_join_code",
+      "schema": "matchmaking_private",
+      "arguments": "",
+      "definition": "CREATE OR REPLACE FUNCTION matchmaking_private.random_join_code()\n RETURNS text\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\ndeclare\n  alphabet constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';\n  result text := '';\n  i integer;\nbegin\n  for i in 1..6 loop\n    result := result || substr(alphabet, 1 + floor(random() * length(alphabet))::integer, 1);\n  end loop;\n  return result;\nend;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres"
+      ],
+      "name": "broadcast_match_changes",
+      "schema": "matchmaking_private",
+      "arguments": "",
+      "definition": "CREATE OR REPLACE FUNCTION matchmaking_private.broadcast_match_changes()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\ndeclare\n  v_match_id uuid;\n  v_topic text;\nbegin\n  if TG_TABLE_NAME = 'matches' then\n    v_match_id := coalesce(NEW.id, OLD.id);\n    v_topic := coalesce(NEW.topic, OLD.topic);\n  else\n    v_match_id := coalesce(NEW.match_id, OLD.match_id);\n    select m.topic into v_topic from public.matches m where m.id = v_match_id;\n  end if;\n\n  if v_topic is not null then\n    perform realtime.broadcast_changes(\n      v_topic,\n      TG_OP,\n      TG_OP,\n      TG_TABLE_NAME,\n      TG_TABLE_SCHEMA,\n      NEW,\n      OLD\n    );\n  end if;\n\n  return coalesce(NEW, OLD);\nend;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres"
+      ],
+      "name": "state_impl",
+      "schema": "matchmaking_private",
+      "arguments": "",
+      "definition": "CREATE OR REPLACE FUNCTION matchmaking_private.state_impl()\n RETURNS TABLE(state text, queue_topic text, match_id uuid, match_topic text, join_code text, seat smallint, is_host boolean, player_count smallint, match_status text, protocol_version integer, engine_build text)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\ndeclare\n  v_uid uuid := auth.uid();\nbegin\n  if v_uid is null then\n    raise exception 'Authentication required';\n  end if;\n\n  perform matchmaking_private.cleanup();\n\n  return query\n  select\n    case when m.status = 'active' then 'active' else 'matched' end::text,\n    ('queue:' || v_uid::text)::text,\n    m.id,\n    m.topic,\n    m.join_code,\n    mp.seat,\n    (m.host_user_id = v_uid),\n    m.player_count,\n    m.status,\n    m.protocol_version,\n    m.engine_build\n  from public.match_players mp\n  join public.matches m on m.id = mp.match_id\n  where mp.user_id = v_uid\n    and mp.left_at is null\n    and m.status in ('waiting','ready','active')\n  order by m.created_at desc\n  limit 1;\n\n  if found then\n    return;\n  end if;\n\n  if exists (\n    select 1 from matchmaking_private.quick_queue q\n    where q.user_id = v_uid and q.expires_at > now()\n  ) then\n    return query\n    select\n      'queued'::text,\n      ('queue:' || v_uid::text)::text,\n      null::uuid,\n      null::text,\n      null::text,\n      null::smallint,\n      false,\n      q.player_count,\n      null::text,\n      q.protocol_version,\n      q.engine_build\n    from matchmaking_private.quick_queue q\n    where q.user_id = v_uid;\n    return;\n  end if;\n\n  return query\n  select\n    'idle'::text,\n    ('queue:' || v_uid::text)::text,\n    null::uuid,\n    null::text,\n    null::text,\n    null::smallint,\n    false,\n    null::smallint,\n    null::text,\n    null::integer,\n    null::text;\nend;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres"
+      ],
+      "name": "cancel_impl",
+      "schema": "matchmaking_private",
+      "arguments": "",
+      "definition": "CREATE OR REPLACE FUNCTION matchmaking_private.cancel_impl()\n RETURNS TABLE(state text, queue_topic text, match_id uuid, match_topic text, join_code text, seat smallint, is_host boolean, player_count smallint, match_status text, protocol_version integer, engine_build text)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\nbegin\n  if auth.uid() is null then raise exception 'Authentication required'; end if;\n  delete from matchmaking_private.quick_queue where user_id = auth.uid();\n  return query select * from matchmaking_private.state_impl();\nend;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres"
+      ],
+      "name": "leave_impl",
+      "schema": "matchmaking_private",
+      "arguments": "",
+      "definition": "CREATE OR REPLACE FUNCTION matchmaking_private.leave_impl()\n RETURNS TABLE(state text, queue_topic text, match_id uuid, match_topic text, join_code text, seat smallint, is_host boolean, player_count smallint, match_status text, protocol_version integer, engine_build text)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\ndeclare\n  v_uid uuid := auth.uid();\n  v_match public.matches%rowtype;\n  v_remaining integer;\n  v_new_host uuid;\nbegin\n  if v_uid is null then raise exception 'Authentication required'; end if;\n\n  delete from matchmaking_private.quick_queue q where q.user_id = v_uid;\n\n  select m.*\n  into v_match\n  from public.matches m\n  join public.match_players mp on mp.match_id = m.id\n  where mp.user_id = v_uid\n    and mp.left_at is null\n    and m.status in ('waiting','ready','active')\n  order by m.created_at desc\n  limit 1\n  for update of m;\n\n  if not found then\n    return query select * from matchmaking_private.state_impl();\n    return;\n  end if;\n\n  update public.match_players as mp\n  set left_at = now(), ready = false\n  where mp.match_id = v_match.id and mp.user_id = v_uid and mp.left_at is null;\n\n  select count(*) into v_remaining\n  from public.match_players mp\n  where mp.match_id = v_match.id and mp.left_at is null;\n\n  if v_match.status in ('waiting','ready') then\n    if v_remaining = 0 then\n      update public.matches as m\n      set status = 'cancelled', ended_at = now(), updated_at = now(), revision = m.revision + 1\n      where m.id = v_match.id;\n    else\n      if v_match.host_user_id = v_uid then\n        select mp.user_id\n        into v_new_host\n        from public.match_players mp\n        where mp.match_id = v_match.id and mp.left_at is null\n        order by mp.host_score desc, mp.joined_at, mp.user_id\n        limit 1;\n      else\n        v_new_host := v_match.host_user_id;\n      end if;\n\n      update public.matches as m\n      set host_user_id = v_new_host,\n          status = 'waiting',\n          updated_at = now(),\n          revision = m.revision + 1\n      where m.id = v_match.id;\n    end if;\n  elsif v_match.status = 'active' and v_match.host_user_id = v_uid then\n    update public.matches as m\n    set status = 'abandoned', ended_at = now(), updated_at = now(), revision = m.revision + 1\n    where m.id = v_match.id;\n  else\n    update public.matches as m\n    set updated_at = now(), revision = m.revision + 1\n    where m.id = v_match.id;\n  end if;\n\n  return query select * from matchmaking_private.state_impl();\nend;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres"
+      ],
+      "name": "finish_impl",
+      "schema": "matchmaking_private",
+      "arguments": "p_match_id uuid",
+      "definition": "CREATE OR REPLACE FUNCTION matchmaking_private.finish_impl(p_match_id uuid)\n RETURNS TABLE(state text, queue_topic text, match_id uuid, match_topic text, join_code text, seat smallint, is_host boolean, player_count smallint, match_status text, protocol_version integer, engine_build text)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\ndeclare\n  v_uid uuid := auth.uid();\nbegin\n  if v_uid is null then raise exception 'Authentication required'; end if;\n\n  update public.matches as m\n  set status = 'finished', ended_at = now(), updated_at = now(), revision = m.revision + 1\n  where m.id = p_match_id\n    and m.host_user_id = v_uid\n    and m.status = 'active';\n\n  if not found then raise exception 'Only the active host can finish this match'; end if;\n\n  return query select * from matchmaking_private.state_impl();\nend;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "matchmaking_set_ready",
+      "schema": "public",
+      "arguments": "p_match_id uuid, p_ready boolean",
+      "definition": "CREATE OR REPLACE FUNCTION public.matchmaking_set_ready(p_match_id uuid, p_ready boolean)\n RETURNS TABLE(state text, queue_topic text, match_id uuid, match_topic text, join_code text, seat smallint, is_host boolean, player_count smallint, match_status text, protocol_version integer, engine_build text)\n LANGUAGE sql\n SET search_path TO 'pg_catalog'\nAS $function$ select * from matchmaking_private.set_ready_impl(p_match_id, p_ready); $function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "matchmaking_start",
+      "schema": "public",
+      "arguments": "p_match_id uuid",
+      "definition": "CREATE OR REPLACE FUNCTION public.matchmaking_start(p_match_id uuid)\n RETURNS TABLE(state text, queue_topic text, match_id uuid, match_topic text, join_code text, seat smallint, is_host boolean, player_count smallint, match_status text, protocol_version integer, engine_build text)\n LANGUAGE sql\n SET search_path TO 'pg_catalog'\nAS $function$ select * from matchmaking_private.start_impl(p_match_id); $function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "matchmaking_leave",
+      "schema": "public",
+      "arguments": "",
+      "definition": "CREATE OR REPLACE FUNCTION public.matchmaking_leave()\n RETURNS TABLE(state text, queue_topic text, match_id uuid, match_topic text, join_code text, seat smallint, is_host boolean, player_count smallint, match_status text, protocol_version integer, engine_build text)\n LANGUAGE sql\n SET search_path TO 'pg_catalog'\nAS $function$ select * from matchmaking_private.leave_impl(); $function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "matchmaking_finish",
+      "schema": "public",
+      "arguments": "p_match_id uuid",
+      "definition": "CREATE OR REPLACE FUNCTION public.matchmaking_finish(p_match_id uuid)\n RETURNS TABLE(state text, queue_topic text, match_id uuid, match_topic text, join_code text, seat smallint, is_host boolean, player_count smallint, match_status text, protocol_version integer, engine_build text)\n LANGUAGE sql\n SET search_path TO 'pg_catalog'\nAS $function$ select * from matchmaking_private.finish_impl(p_match_id); $function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres"
+      ],
+      "name": "set_ready_impl",
+      "schema": "matchmaking_private",
+      "arguments": "p_match_id uuid, p_ready boolean",
+      "definition": "CREATE OR REPLACE FUNCTION matchmaking_private.set_ready_impl(p_match_id uuid, p_ready boolean)\n RETURNS TABLE(state text, queue_topic text, match_id uuid, match_topic text, join_code text, seat smallint, is_host boolean, player_count smallint, match_status text, protocol_version integer, engine_build text)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\ndeclare\n  v_uid uuid := auth.uid();\n  v_match public.matches%rowtype;\n  v_players integer;\n  v_ready integer;\nbegin\n  if v_uid is null then raise exception 'Authentication required'; end if;\n\n  select m.* into v_match\n  from public.matches m\n  where m.id = p_match_id\n  for update;\n\n  if not found or v_match.status not in ('waiting','ready') then\n    raise exception 'Match is not in a readyable state';\n  end if;\n\n  update public.match_players as mp\n  set ready = p_ready\n  where mp.match_id = p_match_id and mp.user_id = v_uid and mp.left_at is null;\n\n  if not found then raise exception 'You are not an active member of this match'; end if;\n\n  select count(*), count(*) filter (where mp.ready)\n  into v_players, v_ready\n  from public.match_players mp\n  where mp.match_id = p_match_id and mp.left_at is null;\n\n  update public.matches as m\n  set status = case when v_players = m.player_count and v_ready = v_players then 'ready' else 'waiting' end,\n      updated_at = now(),\n      expires_at = greatest(m.expires_at, now() + interval '10 minutes'),\n      revision = m.revision + 1\n  where m.id = p_match_id;\n\n  return query select * from matchmaking_private.state_impl();\nend;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres"
+      ],
+      "name": "join_lobby_impl",
+      "schema": "matchmaking_private",
+      "arguments": "p_code text, p_display_name text, p_platform text, p_app_version text, p_engine_build text, p_upstream text, p_catalogue_hash text, p_protocol_version integer, p_host_score integer",
+      "definition": "CREATE OR REPLACE FUNCTION matchmaking_private.join_lobby_impl(p_code text, p_display_name text, p_platform text, p_app_version text, p_engine_build text, p_upstream text, p_catalogue_hash text, p_protocol_version integer, p_host_score integer DEFAULT 0)\n RETURNS TABLE(state text, queue_topic text, match_id uuid, match_topic text, join_code text, seat smallint, is_host boolean, player_count smallint, match_status text, protocol_version integer, engine_build text)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\ndeclare\n  v_uid uuid := auth.uid();\n  v_match public.matches%rowtype;\n  v_seat smallint;\n  v_count integer;\nbegin\n  if v_uid is null then raise exception 'Authentication required'; end if;\n  if upper(trim(p_code)) !~ '^[A-HJ-NP-Z2-9]{6}$' then raise exception 'Invalid join code'; end if;\n  if char_length(trim(p_display_name)) not between 1 and 32 then raise exception 'Display name must be 1-32 characters'; end if;\n  if p_platform not in ('ios','android') then raise exception 'Unsupported platform'; end if;\n  if char_length(p_app_version) not between 1 and 80 then raise exception 'Invalid app version'; end if;\n  if char_length(p_engine_build) not between 1 and 160 then raise exception 'Invalid engine build'; end if;\n  if char_length(p_upstream) not between 7 and 80 then raise exception 'Invalid XMage upstream identity'; end if;\n  if char_length(p_catalogue_hash) not between 16 and 160 then raise exception 'Invalid catalogue hash'; end if;\n  if p_protocol_version <= 0 then raise exception 'Invalid protocol version'; end if;\n  if p_host_score not between 0 and 1000 then raise exception 'Invalid host score'; end if;\n\n  perform matchmaking_private.cleanup();\n\n  select m.*\n  into v_match\n  from public.matches m\n  where m.join_code = upper(trim(p_code))\n    and m.kind = 'private'\n    and m.status in ('waiting','ready')\n    and m.expires_at > now()\n  for update;\n\n  if not found then raise exception 'Lobby not found or expired'; end if;\n\n  if v_match.protocol_version <> p_protocol_version\n     or v_match.upstream <> p_upstream\n     or v_match.catalogue_hash <> p_catalogue_hash then\n    raise exception 'XMage rules/catalogue/protocol do not match this lobby';\n  end if;\n\n  if exists (\n    select 1\n    from public.match_players mp\n    join public.matches m on m.id = mp.match_id\n    where mp.user_id = v_uid and mp.left_at is null\n      and m.status in ('waiting','ready','active')\n      and m.id <> v_match.id\n  ) then\n    raise exception 'Leave your current match before joining another lobby';\n  end if;\n\n  delete from matchmaking_private.quick_queue where user_id = v_uid;\n\n  if exists (\n    select 1 from public.match_players mp\n    where mp.match_id = v_match.id and mp.user_id = v_uid and mp.left_at is null\n  ) then\n    return query select * from matchmaking_private.state_impl();\n    return;\n  end if;\n\n  select count(*) into v_count\n  from public.match_players mp\n  where mp.match_id = v_match.id and mp.left_at is null;\n\n  if v_count >= v_match.player_count then raise exception 'Lobby is full'; end if;\n\n  select s::smallint\n  into v_seat\n  from generate_series(0, v_match.player_count - 1) s\n  where not exists (\n    select 1 from public.match_players mp\n    where mp.match_id = v_match.id and mp.seat = s and mp.left_at is null\n  )\n  order by s\n  limit 1;\n\n  if v_seat is null then raise exception 'Lobby has no free seat'; end if;\n\n  insert into public.match_players(\n    match_id, user_id, seat, display_name, platform, app_version,\n    engine_build, upstream, catalogue_hash, protocol_version, host_score, ready, joined_at, left_at\n  ) values (\n    v_match.id, v_uid, v_seat, trim(p_display_name), p_platform, p_app_version,\n    p_engine_build, p_upstream, p_catalogue_hash, p_protocol_version, p_host_score, false, now(), null\n  )\n  on conflict (match_id, user_id) do update set\n    seat = excluded.seat,\n    display_name = excluded.display_name,\n    platform = excluded.platform,\n    app_version = excluded.app_version,\n    engine_build = excluded.engine_build,\n    upstream = excluded.upstream,\n    catalogue_hash = excluded.catalogue_hash,\n    protocol_version = excluded.protocol_version,\n    host_score = excluded.host_score,\n    ready = false,\n    joined_at = now(),\n    left_at = null;\n\n  update public.matches as m\n  set status = 'waiting',\n      updated_at = now(),\n      expires_at = greatest(m.expires_at, now() + interval '15 minutes'),\n      revision = m.revision + 1\n  where m.id = v_match.id;\n\n  return query select * from matchmaking_private.state_impl();\nend;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "matchmaking_enqueue",
+      "schema": "public",
+      "arguments": "p_display_name text, p_platform text, p_app_version text, p_engine_build text, p_upstream text, p_catalogue_hash text, p_protocol_version integer, p_player_count smallint, p_host_score integer",
+      "definition": "CREATE OR REPLACE FUNCTION public.matchmaking_enqueue(p_display_name text, p_platform text, p_app_version text, p_engine_build text, p_upstream text, p_catalogue_hash text, p_protocol_version integer, p_player_count smallint, p_host_score integer DEFAULT 0)\n RETURNS TABLE(state text, queue_topic text, match_id uuid, match_topic text, join_code text, seat smallint, is_host boolean, player_count smallint, match_status text, protocol_version integer, engine_build text)\n LANGUAGE sql\n SET search_path TO 'pg_catalog'\nAS $function$\n  select matchmaking_private.consume_rate_limit('enqueue', 30, interval '1 minute');\n  select * from matchmaking_private.enqueue_impl(\n    p_display_name, p_platform, p_app_version, p_engine_build, p_upstream, p_catalogue_hash,\n    p_protocol_version, p_player_count, p_host_score\n  );\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres"
+      ],
+      "name": "cleanup",
+      "schema": "matchmaking_private",
+      "arguments": "",
+      "definition": "CREATE OR REPLACE FUNCTION matchmaking_private.cleanup()\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\nbegin\n  delete from matchmaking_private.quick_queue\n  where expires_at <= now();\n\n  delete from matchmaking_private.rate_limits\n  where window_start < now() - interval '1 day';\n\n  update public.matches as m\n  set status = 'cancelled',\n      ended_at = coalesce(m.ended_at, now()),\n      updated_at = now(),\n      revision = m.revision + 1\n  where m.status in ('waiting','ready')\n    and m.expires_at <= now();\nend;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres"
+      ],
+      "name": "consume_rate_limit",
+      "schema": "matchmaking_private",
+      "arguments": "p_action text, p_limit integer, p_window interval",
+      "definition": "CREATE OR REPLACE FUNCTION matchmaking_private.consume_rate_limit(p_action text, p_limit integer, p_window interval)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\ndeclare\n  v_uid uuid := auth.uid();\n  v_row matchmaking_private.rate_limits%rowtype;\nbegin\n  if v_uid is null then raise exception 'Authentication required'; end if;\n  if p_limit < 1 or p_window <= interval '0 seconds' then raise exception 'Invalid rate limit configuration'; end if;\n\n  insert into matchmaking_private.rate_limits(user_id, action, window_start, request_count)\n  values (v_uid, p_action, now(), 1)\n  on conflict (user_id, action) do nothing;\n\n  select rl.* into v_row\n  from matchmaking_private.rate_limits rl\n  where rl.user_id = v_uid and rl.action = p_action\n  for update;\n\n  if v_row.window_start <= now() - p_window then\n    update matchmaking_private.rate_limits rl\n    set window_start = now(), request_count = 1\n    where rl.user_id = v_uid and rl.action = p_action;\n  elsif v_row.request_count >= p_limit then\n    raise exception 'Too many requests. Please wait and try again.';\n  else\n    update matchmaking_private.rate_limits rl\n    set request_count = rl.request_count + 1\n    where rl.user_id = v_uid and rl.action = p_action;\n  end if;\nend;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "matchmaking_create_lobby",
+      "schema": "public",
+      "arguments": "p_display_name text, p_platform text, p_app_version text, p_engine_build text, p_upstream text, p_catalogue_hash text, p_protocol_version integer, p_player_count smallint, p_host_score integer",
+      "definition": "CREATE OR REPLACE FUNCTION public.matchmaking_create_lobby(p_display_name text, p_platform text, p_app_version text, p_engine_build text, p_upstream text, p_catalogue_hash text, p_protocol_version integer, p_player_count smallint, p_host_score integer DEFAULT 0)\n RETURNS TABLE(state text, queue_topic text, match_id uuid, match_topic text, join_code text, seat smallint, is_host boolean, player_count smallint, match_status text, protocol_version integer, engine_build text)\n LANGUAGE sql\n SET search_path TO 'pg_catalog'\nAS $function$\n  select matchmaking_private.consume_rate_limit('create_lobby', 6, interval '5 minutes');\n  select * from matchmaking_private.create_lobby_impl(\n    p_display_name, p_platform, p_app_version, p_engine_build, p_upstream, p_catalogue_hash,\n    p_protocol_version, p_player_count, p_host_score\n  );\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "matchmaking_join_lobby",
+      "schema": "public",
+      "arguments": "p_code text, p_display_name text, p_platform text, p_app_version text, p_engine_build text, p_upstream text, p_catalogue_hash text, p_protocol_version integer, p_host_score integer",
+      "definition": "CREATE OR REPLACE FUNCTION public.matchmaking_join_lobby(p_code text, p_display_name text, p_platform text, p_app_version text, p_engine_build text, p_upstream text, p_catalogue_hash text, p_protocol_version integer, p_host_score integer DEFAULT 0)\n RETURNS TABLE(state text, queue_topic text, match_id uuid, match_topic text, join_code text, seat smallint, is_host boolean, player_count smallint, match_status text, protocol_version integer, engine_build text)\n LANGUAGE sql\n SET search_path TO 'pg_catalog'\nAS $function$\n  select matchmaking_private.consume_rate_limit('join_lobby', 12, interval '1 minute');\n  select * from matchmaking_private.join_lobby_impl(\n    p_code, p_display_name, p_platform, p_app_version, p_engine_build, p_upstream, p_catalogue_hash,\n    p_protocol_version, p_host_score\n  );\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "matchmaking_transport",
+      "schema": "public",
+      "arguments": "p_match_id uuid",
+      "definition": "CREATE OR REPLACE FUNCTION public.matchmaking_transport(p_match_id uuid)\n RETURNS TABLE(transport_key text, own_topic text, is_host boolean)\n LANGUAGE sql\n SET search_path TO 'pg_catalog'\nAS $function$\n  select * from matchmaking_private.transport_impl(p_match_id);\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres"
+      ],
+      "name": "can_read_topic",
+      "schema": "matchmaking_private",
+      "arguments": "p_topic text",
+      "definition": "CREATE OR REPLACE FUNCTION matchmaking_private.can_read_topic(p_topic text)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\n  select\n    auth.uid() is not null\n    and (\n      p_topic = 'queue:' || auth.uid()::text\n      or exists (\n        select 1\n        from public.match_players me\n        join public.matches m on m.id = me.match_id\n        where me.user_id = auth.uid()\n          and me.left_at is null\n          and m.topic = p_topic\n          and m.status <> 'cancelled'\n      )\n      or exists (\n        select 1\n        from public.matches m\n        join matchmaking_private.match_transport mt on mt.match_id = m.id\n        join public.match_players me on me.match_id = m.id\n        join public.match_players target on target.match_id = m.id\n        where me.user_id = auth.uid()\n          and me.left_at is null\n          and target.left_at is null\n          and m.status = 'active'\n          and p_topic =\n            'game:' || m.id::text || ':' || mt.transport_key || ':player:' || target.user_id::text\n          and (\n            target.user_id = auth.uid()\n            or m.host_user_id = auth.uid()\n          )\n      )\n    );\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres"
+      ],
+      "name": "can_send_presence",
+      "schema": "matchmaking_private",
+      "arguments": "p_topic text",
+      "definition": "CREATE OR REPLACE FUNCTION matchmaking_private.can_send_presence(p_topic text)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\n  select exists (\n    select 1\n    from public.match_players mp\n    join public.matches m on m.id = mp.match_id\n    where mp.user_id = auth.uid()\n      and mp.left_at is null\n      and m.topic = p_topic\n      and m.status in ('waiting','ready','active')\n  );\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres"
+      ],
+      "name": "can_send_broadcast",
+      "schema": "matchmaking_private",
+      "arguments": "p_topic text, p_event text, p_payload jsonb",
+      "definition": "CREATE OR REPLACE FUNCTION matchmaking_private.can_send_broadcast(p_topic text, p_event text, p_payload jsonb)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\n  select\n    auth.uid() is not null\n    and octet_length(coalesce(p_payload, '{}'::jsonb)::text) <= 240000\n    and coalesce(p_payload->>'sender_id','') = auth.uid()::text\n    and (\n      exists (\n        select 1\n        from public.match_players mp\n        join public.matches m on m.id = mp.match_id\n        where mp.user_id = auth.uid()\n          and mp.left_at is null\n          and m.topic = p_topic\n          and m.status in ('waiting','ready','active')\n          and p_event like 'lobby.%'\n      )\n      or exists (\n        select 1\n        from public.matches m\n        join matchmaking_private.match_transport mt on mt.match_id = m.id\n        join public.match_players me on me.match_id = m.id\n        join public.match_players target on target.match_id = m.id\n        where me.user_id = auth.uid()\n          and me.left_at is null\n          and target.left_at is null\n          and m.status = 'active'\n          and p_topic =\n            'game:' || m.id::text || ':' || mt.transport_key || ':player:' || target.user_id::text\n          and (\n            (p_event like 'player.%' and target.user_id = auth.uid())\n            or\n            (p_event like 'host.%' and m.host_user_id = auth.uid())\n          )\n      )\n    );\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres"
+      ],
+      "name": "enqueue_impl",
+      "schema": "matchmaking_private",
+      "arguments": "p_display_name text, p_platform text, p_app_version text, p_engine_build text, p_upstream text, p_catalogue_hash text, p_protocol_version integer, p_player_count smallint, p_host_score integer",
+      "definition": "CREATE OR REPLACE FUNCTION matchmaking_private.enqueue_impl(p_display_name text, p_platform text, p_app_version text, p_engine_build text, p_upstream text, p_catalogue_hash text, p_protocol_version integer, p_player_count smallint, p_host_score integer DEFAULT 0)\n RETURNS TABLE(state text, queue_topic text, match_id uuid, match_topic text, join_code text, seat smallint, is_host boolean, player_count smallint, match_status text, protocol_version integer, engine_build text)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\ndeclare\n  v_uid uuid := auth.uid();\n  v_other_ids uuid[];\n  v_all_ids uuid[];\n  v_match_id uuid;\n  v_host uuid;\n  v_host_build text;\n  r record;\nbegin\n  if v_uid is null then raise exception 'Authentication required'; end if;\n  if char_length(trim(p_display_name)) not between 1 and 32 then raise exception 'Display name must be 1-32 characters'; end if;\n  if p_platform not in ('ios','android') then raise exception 'Unsupported platform'; end if;\n  if char_length(p_app_version) not between 1 and 80 then raise exception 'Invalid app version'; end if;\n  if char_length(p_engine_build) not between 1 and 160 then raise exception 'Invalid engine build'; end if;\n  if char_length(p_upstream) not between 7 and 80 then raise exception 'Invalid XMage upstream identity'; end if;\n  if char_length(p_catalogue_hash) not between 16 and 160 then raise exception 'Invalid catalogue hash'; end if;\n  if p_protocol_version <= 0 then raise exception 'Invalid protocol version'; end if;\n  if p_player_count not between 2 and 4 then raise exception 'Player count must be 2-4'; end if;\n  if p_host_score not between 0 and 1000 then raise exception 'Invalid host score'; end if;\n\n  perform matchmaking_private.cleanup();\n\n  if exists (\n    select 1\n    from public.match_players mp\n    join public.matches m on m.id = mp.match_id\n    where mp.user_id = v_uid and mp.left_at is null\n      and m.status in ('waiting','ready','active')\n  ) then\n    return query select * from matchmaking_private.state_impl();\n    return;\n  end if;\n\n  insert into matchmaking_private.quick_queue(\n    user_id, display_name, platform, app_version, engine_build, upstream, catalogue_hash,\n    protocol_version, format, player_count, host_score, joined_at, expires_at\n  ) values (\n    v_uid, trim(p_display_name), p_platform, p_app_version, p_engine_build, p_upstream, p_catalogue_hash,\n    p_protocol_version, 'commander', p_player_count, p_host_score, now(), now() + interval '3 minutes'\n  )\n  on conflict (user_id) do update set\n    display_name = excluded.display_name,\n    platform = excluded.platform,\n    app_version = excluded.app_version,\n    engine_build = excluded.engine_build,\n    upstream = excluded.upstream,\n    catalogue_hash = excluded.catalogue_hash,\n    protocol_version = excluded.protocol_version,\n    format = excluded.format,\n    player_count = excluded.player_count,\n    host_score = excluded.host_score,\n    joined_at = case\n      when matchmaking_private.quick_queue.upstream = excluded.upstream\n       and matchmaking_private.quick_queue.catalogue_hash = excluded.catalogue_hash\n       and matchmaking_private.quick_queue.protocol_version = excluded.protocol_version\n       and matchmaking_private.quick_queue.player_count = excluded.player_count\n       and matchmaking_private.quick_queue.format = excluded.format\n      then matchmaking_private.quick_queue.joined_at\n      else now()\n    end,\n    expires_at = now() + interval '3 minutes';\n\n  select array_agg(x.user_id order by x.joined_at)\n  into v_other_ids\n  from (\n    select q.user_id, q.joined_at\n    from matchmaking_private.quick_queue q\n    where q.user_id <> v_uid\n      and q.expires_at > now()\n      and q.format = 'commander'\n      and q.player_count = p_player_count\n      and q.protocol_version = p_protocol_version\n      and q.upstream = p_upstream\n      and q.catalogue_hash = p_catalogue_hash\n    order by q.joined_at\n    for update skip locked\n    limit (p_player_count - 1)\n  ) x;\n\n  if coalesce(array_length(v_other_ids, 1), 0) = p_player_count - 1 then\n    v_all_ids := array_prepend(v_uid, v_other_ids);\n\n    select q.user_id, q.engine_build\n    into v_host, v_host_build\n    from matchmaking_private.quick_queue q\n    where q.user_id = any(v_all_ids)\n    order by q.host_score desc, q.joined_at asc, q.user_id\n    limit 1;\n\n    v_match_id := gen_random_uuid();\n\n    insert into public.matches(\n      id, topic, kind, format, player_count, status, join_code,\n      created_by, host_user_id, protocol_version, engine_build, upstream, catalogue_hash,\n      revision, created_at, updated_at, expires_at\n    ) values (\n      v_match_id, 'match:' || v_match_id::text || ':lobby', 'quick', 'commander',\n      p_player_count, 'waiting', null, v_uid, v_host,\n      p_protocol_version, v_host_build, p_upstream, p_catalogue_hash,\n      1, now(), now(), now() + interval '10 minutes'\n    );\n\n    insert into public.match_players(\n      match_id, user_id, seat, display_name, platform, app_version,\n      engine_build, upstream, catalogue_hash, protocol_version, host_score, ready, joined_at\n    )\n    select\n      v_match_id,\n      q.user_id,\n      (row_number() over (\n        order by case when q.user_id = v_host then 0 else 1 end, q.joined_at, q.user_id\n      ) - 1)::smallint,\n      q.display_name,\n      q.platform,\n      q.app_version,\n      q.engine_build,\n      q.upstream,\n      q.catalogue_hash,\n      q.protocol_version,\n      q.host_score,\n      false,\n      now()\n    from matchmaking_private.quick_queue q\n    where q.user_id = any(v_all_ids);\n\n    delete from matchmaking_private.quick_queue\n    where user_id = any(v_all_ids);\n\n    for r in\n      select mp.user_id\n      from public.match_players mp\n      where mp.match_id = v_match_id\n    loop\n      perform realtime.send(\n        jsonb_build_object('match_id', v_match_id, 'topic', 'match:' || v_match_id::text || ':lobby'),\n        'match_found',\n        'queue:' || r.user_id::text,\n        true\n      );\n    end loop;\n  end if;\n\n  return query select * from matchmaking_private.state_impl();\nend;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres"
+      ],
+      "name": "create_lobby_impl",
+      "schema": "matchmaking_private",
+      "arguments": "p_display_name text, p_platform text, p_app_version text, p_engine_build text, p_upstream text, p_catalogue_hash text, p_protocol_version integer, p_player_count smallint, p_host_score integer",
+      "definition": "CREATE OR REPLACE FUNCTION matchmaking_private.create_lobby_impl(p_display_name text, p_platform text, p_app_version text, p_engine_build text, p_upstream text, p_catalogue_hash text, p_protocol_version integer, p_player_count smallint, p_host_score integer DEFAULT 0)\n RETURNS TABLE(state text, queue_topic text, match_id uuid, match_topic text, join_code text, seat smallint, is_host boolean, player_count smallint, match_status text, protocol_version integer, engine_build text)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\ndeclare\n  v_uid uuid := auth.uid();\n  v_id uuid;\n  v_code text;\n  tries integer := 0;\nbegin\n  if v_uid is null then raise exception 'Authentication required'; end if;\n  if char_length(trim(p_display_name)) not between 1 and 32 then raise exception 'Display name must be 1-32 characters'; end if;\n  if p_platform not in ('ios','android') then raise exception 'Unsupported platform'; end if;\n  if char_length(p_app_version) not between 1 and 80 then raise exception 'Invalid app version'; end if;\n  if char_length(p_engine_build) not between 1 and 160 then raise exception 'Invalid engine build'; end if;\n  if char_length(p_upstream) not between 7 and 80 then raise exception 'Invalid XMage upstream identity'; end if;\n  if char_length(p_catalogue_hash) not between 16 and 160 then raise exception 'Invalid catalogue hash'; end if;\n  if p_protocol_version <= 0 then raise exception 'Invalid protocol version'; end if;\n  if p_player_count not between 2 and 4 then raise exception 'Player count must be 2-4'; end if;\n  if p_host_score not between 0 and 1000 then raise exception 'Invalid host score'; end if;\n\n  perform matchmaking_private.cleanup();\n\n  if exists (\n    select 1\n    from public.match_players mp\n    join public.matches m on m.id = mp.match_id\n    where mp.user_id = v_uid and mp.left_at is null\n      and m.status in ('waiting','ready','active')\n  ) then\n    raise exception 'Leave your current match before creating another lobby';\n  end if;\n\n  delete from matchmaking_private.quick_queue where user_id = v_uid;\n\n  loop\n    tries := tries + 1;\n    if tries > 20 then raise exception 'Could not allocate join code'; end if;\n    v_id := gen_random_uuid();\n    v_code := matchmaking_private.random_join_code();\n    begin\n      insert into public.matches(\n        id, topic, kind, format, player_count, status, join_code,\n        created_by, host_user_id, protocol_version, engine_build, upstream, catalogue_hash,\n        revision, created_at, updated_at, expires_at\n      ) values (\n        v_id, 'match:' || v_id::text || ':lobby', 'private', 'commander',\n        p_player_count, 'waiting', v_code, v_uid, v_uid,\n        p_protocol_version, p_engine_build, p_upstream, p_catalogue_hash,\n        1, now(), now(), now() + interval '30 minutes'\n      );\n      exit;\n    exception when unique_violation then\n      null;\n    end;\n  end loop;\n\n  insert into public.match_players(\n    match_id, user_id, seat, display_name, platform, app_version,\n    engine_build, upstream, catalogue_hash, protocol_version, host_score, ready, joined_at\n  ) values (\n    v_id, v_uid, 0, trim(p_display_name), p_platform, p_app_version,\n    p_engine_build, p_upstream, p_catalogue_hash, p_protocol_version, p_host_score, false, now()\n  );\n\n  return query select * from matchmaking_private.state_impl();\nend;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres"
+      ],
+      "name": "start_impl",
+      "schema": "matchmaking_private",
+      "arguments": "p_match_id uuid",
+      "definition": "CREATE OR REPLACE FUNCTION matchmaking_private.start_impl(p_match_id uuid)\n RETURNS TABLE(state text, queue_topic text, match_id uuid, match_topic text, join_code text, seat smallint, is_host boolean, player_count smallint, match_status text, protocol_version integer, engine_build text)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\ndeclare\n  v_uid uuid := auth.uid();\n  v_match public.matches%rowtype;\n  v_players integer;\n  v_ready integer;\nbegin\n  if v_uid is null then raise exception 'Authentication required'; end if;\n\n  select m.* into v_match\n  from public.matches m\n  where m.id = p_match_id\n  for update;\n\n  if not found then raise exception 'Match not found'; end if;\n  if v_match.host_user_id <> v_uid then raise exception 'Only the host can start the match'; end if;\n  if v_match.status = 'active' then\n    return query select * from matchmaking_private.state_impl();\n    return;\n  end if;\n  if v_match.status <> 'ready' then raise exception 'All seats must be filled and ready first'; end if;\n\n  select count(*), count(*) filter (where mp.ready)\n  into v_players, v_ready\n  from public.match_players mp\n  where mp.match_id = p_match_id and mp.left_at is null;\n\n  if v_players <> v_match.player_count or v_ready <> v_players then\n    raise exception 'All seats must be filled and ready first';\n  end if;\n\n  insert into matchmaking_private.match_transport(match_id, transport_key)\n  values (p_match_id, replace(gen_random_uuid()::text, '-', ''))\n  on conflict on constraint match_transport_pkey do nothing;\n\n  update public.matches as m\n  set status = 'active',\n      started_at = coalesce(m.started_at, now()),\n      updated_at = now(),\n      expires_at = now() + interval '6 hours',\n      revision = m.revision + 1\n  where m.id = p_match_id;\n\n  return query select * from matchmaking_private.state_impl();\nend;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres"
+      ],
+      "name": "transport_impl",
+      "schema": "matchmaking_private",
+      "arguments": "p_match_id uuid",
+      "definition": "CREATE OR REPLACE FUNCTION matchmaking_private.transport_impl(p_match_id uuid)\n RETURNS TABLE(transport_key text, own_topic text, is_host boolean)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\ndeclare\n  v_uid uuid := auth.uid();\nbegin\n  if v_uid is null then raise exception 'Authentication required'; end if;\n\n  return query\n  select\n    mt.transport_key,\n    ('game:' || m.id::text || ':' || mt.transport_key || ':player:' || v_uid::text)::text,\n    (m.host_user_id = v_uid)\n  from public.matches m\n  join matchmaking_private.match_transport mt on mt.match_id = m.id\n  join public.match_players me on me.match_id = m.id\n  where m.id = p_match_id\n    and m.status = 'active'\n    and me.user_id = v_uid\n    and me.left_at is null;\n\n  if not found then\n    raise exception 'Active match transport is not available to this user';\n  end if;\nend;\n$function$\n"
+    }
+  ]
+}
