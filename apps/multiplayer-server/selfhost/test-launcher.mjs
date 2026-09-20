@@ -26,7 +26,9 @@ const gate = fixture(); assert.match(run(gate).stderr, /Setup pending/); assert(
 const secret = fixture(); change(secret, 'sb_publishable_V_i-mPM26P8fNLlKAYu2xg_4p-lPHYu', 'service_role_not_allowed'); assert.match(run(secret).stderr, /publishable key only/);
 const injection = fixture(); change(injection, 'PORT=8088', 'PORT=$(touch SHOULD_NOT_EXIST)'); assert.match(run(injection).stderr, /Invalid port/); assert(!existsSync(join(injection, 'SHOULD_NOT_EXIST')));
 const java = fixture(); ready(java); writeFileSync(join(java, 'bin/java'), '#!/bin/bash\necho \'openjdk version "21.0.1"\' >&2\n', { mode: 0o755 }); assert.match(run(java).stderr, /Java 17 is required/);
-const checksum = fixture(); ready(checksum); mkdirSync(join(checksum, '.runtime')); writeFileSync(join(checksum, '.runtime/runtime-build5-7d39dbf.tar.gz'), 'corrupt'); assert.match(run(checksum).stderr, /checksum failed/); assert(!existsSync(join(checksum, 'captured')));
+const checksum = fixture(); ready(checksum); mkdirSync(join(checksum, '.runtime'));
+const cacheName = readFileSync(join(checksum, 'runtime.properties'), 'utf8').match(/^DIRECTORY=(runtime-[\w.-]+)$/m)[1];
+writeFileSync(join(checksum, `.runtime/${cacheName}.tar.gz`), 'corrupt'); assert.match(run(checksum).stderr, /checksum failed/); assert(!existsSync(join(checksum, 'captured')));
 
 const download = fixture(); ready(download);
 const payload = join(download, 'payload'); mkdirSync(payload);
