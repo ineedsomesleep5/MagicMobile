@@ -54,16 +54,21 @@ or capacity on a free host. Database readiness stays false, binding stays loopba
 and Render stays on hold. Game Center is preserved on iOS. Dedicated Online must
 remain disabled until its independent deployment/security/device gates pass.
 
-## iOS, website, schedule and merge: pending
+## Weekly schedule: active
+
+After restarting Codex restored its connection, the existing
+`watch-xmage-updates-for-magicmobile` heartbeat was updated and its saved active
+configuration verified. It now runs the [weekly gated release policy](AUTOMATIC_UPDATE_PIPELINE.md)
+on Mondays at 09:23 using the selected repository. Its existing thread attachment
+was preserved; no duplicate automation or workaround cron was created. Automatic
+publication is conditional on reviewed changes and passing release gates.
+
+## iOS, website and merge: pending
 
 The full iOS native rebuild is [35528082243](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/35528082243).
 Product linkage, signing/upload, internal/external distribution and website
 release-label updates are not completed by the Android or server results above.
 No physical iPhone is currently connected for fresh acceptance.
-
-The [weekly gated release policy](AUTOMATIC_UPDATE_PIPELINE.md) is committed,
-but Codex automation reads/updates fail. The existing weekly heartbeat remains
-read-only; automatic release scheduling must not be reported as configured.
 
 [PR 15](https://github.com/ineedsomesleep5/MagicMobile/pull/15) remains a draft
 until applicable release gates are complete. This document is not merge approval
