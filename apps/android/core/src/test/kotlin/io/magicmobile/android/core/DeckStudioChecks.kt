@@ -44,6 +44,30 @@ fun main() {
 
     rejectsDeckStudio("playing identity requires resolved names") { DeckSignature.from(deck, catalogue) }
     val resolvedDeck = deck.copy(entries = deck.entries.filterNot { it.name == "Missing" })
+    // Saved decks retain names, quantities and boards, not an obsolete canonical printing.
+    val persisted = io.magicmobile.core.Json.write(resolvedDeck.json())
+    val reopened = Deck.decode(Wire.decode(persisted.toByteArray()))
+    val updatedCatalogue = Catalogue(ByteArrayInputStream((listOf(
+        io.magicmobile.core.Json.write(mapOf("catalogueHash" to "1".repeat(64),
+            "upstreamCommit" to "1".repeat(40), "sourceMetadataSHA256" to "1".repeat(64),
+            "nameAliases" to mapOf("Leader // Back" to "Leader"))),
+    ) + catalogue.cards.map { card ->
+        io.magicmobile.core.Json.write(mapOf("name" to card.name, "setCode" to "NEW",
+            "collectorNumber" to "new-${card.collector}"))
+    }).joinToString("\n").toByteArray()))
+    val beforePrintingChange = catalogue.resolve(reopened, true)
+    val afterPrintingChange = updatedCatalogue.resolve(reopened, true)
+    verifyDeckStudio(reopened == resolvedDeck && io.magicmobile.core.Json.write(reopened.json()) == persisted,
+        "persisted card names counts and sections survive catalogue printing replacement unchanged")
+    listOf("main", "commanders", "companions").forEach { section ->
+        val before = beforePrintingChange.array(section).map(Wire::objectValue)
+        val after = afterPrintingChange.array(section).map(Wire::objectValue)
+        verifyDeckStudio(after == before.map { it + mapOf("setCode" to "NEW", "collectorNumber" to "new-${it.text("collectorNumber")}") },
+            "$section resolves current canonical printings without changing card names or quantities")
+    }
+    verifyDeckStudio(updatedCatalogue.find("Leader // Back") == updatedCatalogue.find("Leader") &&
+        afterPrintingChange.array("commanders").map(Wire::objectValue).single().text("name") == "Leader",
+        "persisted double-faced alias still resolves to the current canonical commander printing")
     val signature = DeckSignature.from(resolvedDeck, catalogue)
     verifyDeckStudio(signature.cards.map { it.section } == listOf(
         PlayingSection.MAIN, PlayingSection.MAIN, PlayingSection.COMMANDERS,

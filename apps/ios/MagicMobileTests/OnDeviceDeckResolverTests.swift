@@ -71,6 +71,47 @@ final class OnDeviceDeckResolverTests: XCTestCase {
         XCTAssertEqual(resolver.catalogueHash, "registry")
     }
 
+    func testSavedDeckSurvivesCanonicalPrintingReplacementWithoutChangingCountsOrSections() throws {
+        func resolver(set: String) throws -> OnDeviceDeckResolver {
+            let names = ["Emmara, Soul of the Accord", "Forest", "Diregraf Colossus"]
+            return try OnDeviceDeckResolver(catalogueData: JSONSerialization.data(withJSONObject: [
+                "schemaVersion": 1, "upstreamCommit": "upstream-\(set)", "catalogueHash": "registry-\(set)",
+                "sourceCatalogueSHA256": "source", "sourceRegistrySHA256": "report",
+                "cards": names.enumerated().map {
+                    ["name": $0.element, "setCode": set, "collectorNumber": "\(set)-\($0.offset)"]
+                }
+            ]))
+        }
+        // Persist the same name-based format as the deck library, before the upgrade.
+        // These printings are deterministic fixtures, not engine legality evidence.
+        let original = DeckList(name: "Saved before upgrade",
+            commander: DeckEntry(cardName: "Emmara, Soul of the Accord", quantity: 1, section: "commander"),
+            entries: [DeckEntry(cardName: "Forest", quantity: 37, section: "deck"),
+                      DeckEntry(cardName: "Diregraf Colossus", quantity: 1, section: "main")])
+        let persisted = try JSONEncoder().encode(original)
+        let previous = try resolver(set: "OLD").resolve(original)
+        let restored = try JSONDecoder().decode(DeckList.self, from: persisted)
+        let current = try resolver(set: "NEW").resolve(restored)
+
+        XCTAssertEqual(restored, original)
+        XCTAssertEqual(restored.totalCards, 39)
+        XCTAssertEqual(current["name"], previous["name"])
+        for section in ["commanders", "main", "companions"] {
+            let oldRows = try XCTUnwrap(previous[section]?.array)
+            let newRows = try XCTUnwrap(current[section]?.array)
+            XCTAssertEqual(newRows.count, oldRows.count, section)
+            for (old, new) in zip(oldRows, newRows) {
+                XCTAssertEqual(new["name"], old["name"])
+                XCTAssertEqual(new["count"], old["count"])
+                XCTAssertEqual(old["setCode"]?.string, "OLD")
+                XCTAssertEqual(new["setCode"]?.string, "NEW")
+                XCTAssertEqual(new["collectorNumber"]?.string,
+                               old["collectorNumber"]?.string?.replacingOccurrences(of: "OLD-", with: "NEW-"))
+            }
+        }
+        XCTAssertEqual(try JSONDecoder().decode(DeckList.self, from: persisted), original)
+    }
+
     func testInvalidCountsFailBeforeConversionWithoutOverflow() throws {
         let resolver = try fixtureResolver()
         for count in [-1, 0, 2001, Int.max] {
