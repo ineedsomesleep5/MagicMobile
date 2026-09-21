@@ -9791,12 +9791,12 @@ struct PortraitOverlappingBattlefieldRow: View {
                         let combatHighlighted = combatHighlightIds.contains(card.instanceId) || combatHighlightIds.contains(card.id)
                         CardTile(card: card, selected: selectedCard?.id == card.id, legal: action != nil, targetable: targetable || combatHighlighted, zoneName: title, width: cardWidth, height: cardHeight)
                             .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [card.instanceId: $0] }
-                            .offset(x: plan.xOffset(for: index) + (cardHeight - cardWidth) / 2, y: 4)
-                            .zIndex(zIndex(for: index, card: card))
                             .onCardHold(inspect: {
                                 selectedCard = nil
                                 inspectedCard = card
                             }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
+                            .offset(x: plan.xOffset(for: index) + (cardHeight - cardWidth) / 2, y: 4)
+                            .zIndex(zIndex(for: index, card: card))
                             .onTapGesture {
                                         if targetable {
                                             runTargetAction(card)
@@ -10881,7 +10881,6 @@ struct BattlefieldRow: View {
         .frame(width: renderedCardWidth, height: renderedCardHeight)
         .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [card.instanceId: $0] }
         .opacity(!targetableIds.isEmpty && !targetable ? 0.54 : 1)
-        .offset(y: card.tapped == true && (permanentLayout?.rows ?? 1) == 1 ? 5 : 0)
         .overlay(alignment: .bottomLeading) {
             Text("×\(group.count)")
                 .font(.system(size: 10, weight: .black))
@@ -10903,6 +10902,7 @@ struct BattlefieldRow: View {
             inspectedCard = card
             GameHaptics.impact()
         }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
+        .offset(y: card.tapped == true && (permanentLayout?.rows ?? 1) == 1 ? 5 : 0)
         .accessibilityLabel("\(group.count) grouped \(card.card.name) cards in \(title)")
         .accessibilityHint("Tap to expand the group. Long press to inspect a card.")
         .accessibilityAction(named: Text("Expand group")) {
@@ -10931,7 +10931,6 @@ struct BattlefieldRow: View {
         .frame(width: renderedCardWidth, height: renderedCardHeight)
         .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [card.instanceId: $0] }
         .opacity(!targetableIds.isEmpty && !targetable ? 0.54 : 1)
-        .offset(y: card.tapped == true && (permanentLayout?.rows ?? 1) == 1 ? 5 : 0)
         .onTapGesture {
             handleCardTap(card, action: action, targetable: targetable, combatHighlighted: combatHighlighted)
         }
@@ -10939,6 +10938,7 @@ struct BattlefieldRow: View {
             inspectedCard = card
             GameHaptics.impact()
         }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
+        .offset(y: card.tapped == true && (permanentLayout?.rows ?? 1) == 1 ? 5 : 0)
         .accessibilityAction(named: Text(targetable ? "Choose target" : "Select")) {
             handleCardTap(card, action: action, targetable: targetable, combatHighlighted: combatHighlighted)
         }
@@ -11030,6 +11030,7 @@ struct HandFan: View {
                     width: metrics.handCardWidth,
                     height: metrics.handCardHeight
                 )
+                    .onCardHold(inspect: { inspectedCard = card }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                     .scaleEffect(selected ? 1.16 : 1.0)
                     .offset(
                         x: frame.midX - metrics.playWidth / 2,
@@ -11040,7 +11041,6 @@ struct HandFan: View {
                         selectedCard = card
                         inspectedCard = nil
                     }
-                    .onCardHold(inspect: { inspectedCard = card }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
             }
         }
         .frame(width: metrics.playWidth, height: metrics.handFrameHeight)
