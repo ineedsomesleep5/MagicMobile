@@ -2,7 +2,8 @@
 
 Android is published and iOS is available to Internal and External TestFlight
 testers. All six iOS interaction cases passed against the release app sources.
-Production website verification and merge remain pending.
+Website publication and merge evidence are tracked in
+[PR 16](https://github.com/ineedsomesleep5/MagicMobile/pull/16).
 
 ## Changes
 
@@ -107,5 +108,6 @@ and Render remain on hold.
   `build_output/testflight/scroll-rotation-0.1.1-build6/native-release.rAtp7K`.
   The archive, dSYM, signed IPA, native provenance, Apple responses and receipts
   remain preserved there. No physical-phone gameplay acceptance is claimed.
-- Website now references the verified Android build-6 asset and approved
-  TestFlight build 6. Production deployment verification remains pending.
+- Website metadata references the verified Android build-6 asset and approved
+  TestFlight build 6; its production build passed. See PR 16 for the final
+  main-branch deployment and public-link verification.
