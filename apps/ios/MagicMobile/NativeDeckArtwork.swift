@@ -87,7 +87,7 @@ actor NativeDeckArtwork {
                 guard let data else { return stored }
                 try Task.checkCancellation()
                 try await assetStore.saveToken(token)
-                try await assetStore.save(data, key: NativeAssetStore.tokenKey(token.id), quality: quality)
+                try await assetStore.save(data, key: token.artworkKey, quality: quality)
                 return data
             } catch is CancellationError { throw CancellationError() }
             catch {
@@ -113,9 +113,9 @@ actor NativeDeckArtwork {
         let request = try imageURL.map { try Self.request(url: $0) } ?? Self.request(name: name, variant: variant)
         return try await imageData(request: request, variant: variant, allowNetwork: true)
     }
-    func imageData(id: UUID, allowNetwork: Bool, quality: NativeArtworkQuality = .high, imageURL: URL? = nil) async throws -> Data? {
-        if let data = await NativeAssetStore.shared.image(key: NativeAssetStore.tokenKey(id), quality: quality) { return data }
-        let url = imageURL ?? URL(string: "https://api.scryfall.com/cards/\(id.uuidString.lowercased())?format=image&version=\(quality.imageSizeString)")!
+    func imageData(id: UUID, allowNetwork: Bool, quality: NativeArtworkQuality = .high, imageURL: URL? = nil, face: String? = nil) async throws -> Data? {
+        if let data = await assetStore.image(key: NativeAssetStore.tokenKey(id, face: face), quality: quality) { return data }
+        let url = imageURL ?? URL(string: "https://api.scryfall.com/cards/\(id.uuidString.lowercased())?format=image&version=\(quality.imageSizeString)\(face == "back" ? "&face=back" : "")")!
         return try await imageData(request: Self.request(url: url), variant: Self.variant(for: quality), allowNetwork: allowNetwork)
     }
     private static func variant(for quality: NativeArtworkQuality) -> Variant {

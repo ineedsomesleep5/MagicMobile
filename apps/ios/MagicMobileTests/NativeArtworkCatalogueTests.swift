@@ -3,6 +3,42 @@ import zlib
 @testable import MagicMobile
 
 final class NativeArtworkCatalogueTests: XCTestCase {
+    func testCommanderArtworkWinsOnlyAgainstExplicitSupplementalNameCollisions() throws {
+        let regular: [String: Any] = ["id": UUID().uuidString, "name": "Red Herring", "layout": "normal", "set_type": "expansion", "image_uris": images("real")]
+        let playtest: [String: Any] = ["id": UUID().uuidString, "name": "Red Herring", "layout": "normal", "set_type": "funny", "image_uris": images("playtest")]
+        for cards in [[regular, playtest], [playtest, regular]] {
+            XCTAssertEqual(try parse(cards).imageURL(name: "Red Herring", size: "normal")?.lastPathComponent, "real.jpg")
+        }
+        let spelling = try parse([
+            ["id": UUID().uuidString, "name": "Set Phasers to . . .", "image_uris": images("phasers")],
+            ["id": UUID().uuidString, "name": "Ratonhnhaké꞉ton", "image_uris": images("assassin")]])
+        XCTAssertNotNil(spelling.imageURL(name: "Set Phasers to...", size: "normal"))
+        XCTAssertNotNil(spelling.imageURL(name: "Ratonhnhaketon", size: "normal"))
+    }
+    func testEngineASCIINameResolvesAccentsWithoutGuessingCollisions() throws {
+        let catalogue = try parse([
+            ["id": UUID().uuidString, "name": "Éowyn, Shieldmaiden", "image_uris": images("eowyn")],
+            ["id": UUID().uuidString, "name": "With Great Power…", "image_uris": images("power")],
+            ["id": UUID().uuidString, "name": "Résumé", "image_uris": images("one")],
+            ["id": UUID().uuidString, "name": "Resume", "image_uris": images("two")]])
+        XCTAssertEqual(catalogue.imageURL(name: "Eowyn, Shieldmaiden", size: "normal")?.lastPathComponent, "eowyn.jpg")
+        XCTAssertEqual(catalogue.imageURL(name: "With Great Power...", size: "normal")?.lastPathComponent, "power.jpg")
+        XCTAssertNil(catalogue.imageURL(name: "Resume", size: "normal"))
+        XCTAssertNil(catalogue.imageURL(name: "Eowin, Shieldmaiden", size: "normal"))
+    }
+    func testBothTokenFacesHaveIndependentMetadataImagesAndPersistentKeys() throws {
+        let id = UUID()
+        let catalogue = try parse([["id": id.uuidString, "name": "Snake // Zombie", "layout": "double_faced_token",
+            "card_faces": [
+                ["name": "Snake", "type_line": "Token Creature — Snake", "oracle_text": "Deathtouch", "power": "1", "toughness": "1", "colors": ["G"], "image_uris": images("snake-front")],
+                ["name": "Zombie", "type_line": "Token Creature — Zombie", "oracle_text": "", "power": "2", "toughness": "2", "colors": ["B"], "image_uris": images("zombie-back")]]]])
+        XCTAssertEqual(catalogue.allTokens.count, 2)
+        XCTAssertEqual(Set(catalogue.allTokens.map(\.artworkKey)).count, 2)
+        let back = try XCTUnwrap(catalogue.token(id: id, face: "back"))
+        XCTAssertEqual(back.name, "Zombie")
+        XCTAssertEqual(catalogue.imageURL(id: id, size: "normal", face: back.face)?.lastPathComponent, "zombie-back.jpg")
+        XCTAssertEqual(catalogue.imageURL(id: id, size: "normal")?.lastPathComponent, "snake-front.jpg")
+    }
     func testOnDemandZombieSkipsRealisticMultiFaceSearchRowsBeforePlainToken() async throws {
         let fixture = ZombieSearchFixture()
         let match = try await NativeArtworkCatalogue.searchToken(name: "Zombie Token", typeLine: "Creature — Zombie",
@@ -150,9 +186,9 @@ final class NativeArtworkCatalogueTests: XCTestCase {
 
     func testAllTokensSortByNameThenIDRegardlessOfInputOrder() throws {
         let objects: [[String: Any]] = [
-            ["id": missingID.uuidString, "name": "Soldier", "type_line": "Token Creature — Soldier", "power": "1", "toughness": "1", "colors": ["W"]],
-            ["id": tokenID.uuidString, "name": "Soldier", "type_line": "Token Creature — Soldier", "power": "1", "toughness": "1", "colors": ["W"]],
-            ["id": cardID.uuidString, "name": "Angel", "type_line": "Token Creature — Angel", "power": "4", "toughness": "4", "colors": ["W"]]
+            ["id": missingID.uuidString, "name": "Soldier", "type_line": "Token Creature — Soldier", "oracle_text": "", "power": "1", "toughness": "1", "colors": ["W"]],
+            ["id": tokenID.uuidString, "name": "Soldier", "type_line": "Token Creature — Soldier", "oracle_text": "", "power": "1", "toughness": "1", "colors": ["W"]],
+            ["id": cardID.uuidString, "name": "Angel", "type_line": "Token Creature — Angel", "oracle_text": "Flying", "power": "4", "toughness": "4", "colors": ["W"]]
         ]
         XCTAssertEqual(try parse(objects).allTokens.map(\.id), [cardID, tokenID, missingID])
         XCTAssertEqual(try parse(Array(objects.reversed())).allTokens.map(\.id), [cardID, tokenID, missingID])
@@ -169,7 +205,7 @@ final class NativeArtworkCatalogueTests: XCTestCase {
 
     func testEmblemDoesNotReplaceOrdinaryCardWithSameName() throws {
         let card: [String: Any] = ["id": cardID.uuidString, "name": "Planeswalker", "type_line": "Legendary Planeswalker", "image_uris": images("card")]
-        let emblem: [String: Any] = ["id": tokenID.uuidString, "name": "Planeswalker", "layout": "emblem", "type_line": "Emblem", "colors": [], "image_uris": images("emblem")]
+        let emblem: [String: Any] = ["id": tokenID.uuidString, "name": "Planeswalker", "layout": "emblem", "type_line": "Emblem", "oracle_text": "Creatures you control get +1/+1.", "colors": [], "image_uris": images("emblem")]
         for objects in [[card, emblem], [emblem, card]] {
             let catalogue = try parse(objects)
             XCTAssertEqual(catalogue.imageURL(name: "Planeswalker", size: "large")?.lastPathComponent, "card.jpg")
@@ -223,6 +259,25 @@ final class NativeArtworkCatalogueTests: XCTestCase {
         let catalogue = try NativeArtworkCatalogue.parse(file: URL(fileURLWithPath: path))
         XCTAssertGreaterThan(catalogue.cardCount, 30_000)
         XCTAssertGreaterThan(catalogue.allTokens.count, 500)
+        for (name, type, color) in [("Soldier", "Soldier", "W"), ("Human", "Human", "W"), ("Elf Warrior", "Elf Warrior", "G")] {
+            let token = try XCTUnwrap(NativeAssetStore.matchTokenArtwork(catalogue.allTokens,
+                name: name + " Token", typeLine: "Creature — " + type,
+                oracleText: "", power: "1", toughness: "1", colors: [color]), name)
+            XCTAssertNotNil(catalogue.imageURL(id: token.id, size: "normal", face: token.face))
+        }
+        let zombie = try XCTUnwrap(NativeAssetStore.matchTokenArtwork(catalogue.allTokens,
+            name: "Zombie Token", typeLine: "Creature — Zombie", oracleText: "", power: "2", toughness: "2", colors: ["B"]))
+        XCTAssertNotNil(catalogue.imageURL(id: zombie.id, size: "normal", face: zombie.face))
+        let treasure = try XCTUnwrap(NativeAssetStore.matchTokenArtwork(catalogue.allTokens,
+            name: "Treasure Token", typeLine: "Artifact — Treasure",
+            oracleText: "{T}, Sacrifice this artifact: Add one mana of any color.", power: "0", toughness: "0", colors: []))
+        XCTAssertNotNil(catalogue.imageURL(id: treasure.id, size: "normal", face: treasure.face))
+        XCTAssertNotNil(catalogue.imageURL(name: "Betor, Kin to All", size: "normal"))
+        let names = try NativeDeckMetadataCatalogue.bundled().artworkCardNames
+        let unresolved = names.filter { catalogue.imageURL(name: $0, size: "normal") == nil }
+        print("ARTWORK_CATALOGUE_AUDIT cards=\(names.count) unresolved=\(unresolved.count) names=\(unresolved)")
+        XCTAssertTrue(catalogue.allTokens.contains { $0.face == "back" })
+        XCTAssertTrue(catalogue.allTokens.allSatisfy { catalogue.imageURL(id: $0.id, size: "normal", face: $0.face) != nil })
         XCTAssertTrue(catalogue.allTokens.allSatisfy(\.hasMatchingMetadata))
         XCTAssertTrue(catalogue.additionalFaceNames(for: ["Delver of Secrets"]).contains("Insectile Aberration"))
         let front = try XCTUnwrap(catalogue.imageURL(name: "Delver of Secrets", size: "large"))

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Attachment relationships come only from the current public engine snapshot.
 /// Invalid/missing links remain visible in their original lane instead of losing cards.
@@ -315,6 +316,63 @@ struct HandManaCost: View {
     }
 }
 
+/// Keep current public engine icons inside the compact art area, even on narrow cards.
+struct BattlefieldAbilityBadgePlan {
+    let visible: [XmageCardIcon]
+    let hiddenCount: Int
+
+    init(icons: [XmageCardIcon], cardWidth: CGFloat) {
+        let slots = min(4, max(1, Int((cardWidth - 4) / (Self.iconSize(for: cardWidth) + 5))))
+        let visibleCount = min(icons.count, icons.count > slots ? max(0, slots - 1) : slots)
+        visible = Array(icons.prefix(visibleCount))
+        hiddenCount = icons.count - visibleCount
+    }
+
+    static func iconSize(for cardWidth: CGFloat) -> CGFloat { min(15, max(10, cardWidth * 0.17)) }
+
+    static func accessibleName(for icon: XmageCardIcon) -> String {
+        if let name = icon.displayText { return name }
+        return icon.iconType.replacingOccurrences(of: "ABILITY_", with: "")
+            .replacingOccurrences(of: "_", with: " ").localizedCapitalized
+    }
+}
+
+private struct BattlefieldAbilityBadges: View {
+    let icons: [XmageCardIcon]
+    let cardWidth: CGFloat
+
+    private var plan: BattlefieldAbilityBadgePlan { .init(icons: icons, cardWidth: cardWidth) }
+    private var size: CGFloat { BattlefieldAbilityBadgePlan.iconSize(for: cardWidth) }
+
+    var body: some View {
+        HStack(spacing: 1) {
+            ForEach(Array(plan.visible.enumerated()), id: \.offset) { _, icon in
+                Group {
+                    if icon.textBadge == "Menace" {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: size * 0.72, weight: .bold))
+                    } else if let asset = XmageCardIcon.assetName(for: icon.iconType),
+                              let image = UIImage(named: asset) {
+                        Image(uiImage: image).renderingMode(.template).resizable().scaledToFit()
+                            .padding(2)
+                    }
+                }
+                .foregroundStyle(MagicPalette.parchment)
+                .frame(width: size + 4, height: size + 4)
+                .background(MagicPalette.iron.opacity(0.88), in: Circle())
+            }
+            if plan.hiddenCount > 0 {
+                Text("+\(plan.hiddenCount)")
+                    .font(.system(size: max(7, size * 0.55), weight: .black))
+                    .foregroundStyle(MagicPalette.iron)
+                    .frame(width: size + 4, height: size + 4)
+                    .background(MagicPalette.antiqueGold, in: Circle())
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 /// Compact public permanent face; the complete printed card remains in inspection.
 /// Keeping a nearly square footprint also prevents a tap from displacing its neighbors.
 struct ArenaBattlefieldCard: View {
@@ -333,6 +391,12 @@ struct ArenaBattlefieldCard: View {
 
     var showsFooter: Bool {
         card.showsPowerToughness || card.tapped == true || (card.isCreature && card.summoningSickness == true)
+    }
+
+    var accessibilityDescription: String {
+        card.accessibilityLabel(zoneName: zoneName, selected: selected, legal: legal) +
+            card.visibleXmageIcons.filter { $0.displayText == nil }
+                .map { ", \(BattlefieldAbilityBadgePlan.accessibleName(for: $0))" }.joined()
     }
 
     var body: some View {
@@ -369,9 +433,10 @@ struct ArenaBattlefieldCard: View {
         .frame(width: width, height: height)
         .background(Color(red: 0.07, green: 0.08, blue: 0.10))
         .clipShape(RoundedRectangle(cornerRadius: 7))
-        .overlay(alignment: .leading) {
-            XmageCardIconStrip(icons: card.visibleXmageIcons, cardWidth: width)
-                .padding(.leading, 2).allowsHitTesting(false)
+        .overlay(alignment: .bottomLeading) {
+            BattlefieldAbilityBadges(icons: card.visibleXmageIcons, cardWidth: width)
+                .padding(.leading, 2).padding(.bottom, showsFooter ? 22 : 2)
+                .allowsHitTesting(false)
         }
         .overlay(alignment: .topTrailing) {
             if !card.counterBadges.isEmpty {
@@ -395,8 +460,9 @@ struct ArenaBattlefieldCard: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: card.tapped)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(card.accessibilityLabel(zoneName: zoneName, selected: selected, legal: legal))
-        .accessibilityValue(((card.isPhasedOut ? ["Phased out; inspect only"] : []) + card.visibleXmageIcons.compactMap(\.displayText)).joined(separator: ", "))
+        .accessibilityLabel(accessibilityDescription)
+        .accessibilityValue(((card.isPhasedOut ? ["Phased out; inspect only"] : []) +
+                             card.visibleXmageIcons.map(BattlefieldAbilityBadgePlan.accessibleName(for:))).joined(separator: ", "))
         .accessibilityIdentifier(card.accessibilityIdentifier(zoneName: zoneName))
         .accessibilityAddTraits(.isButton)
     }

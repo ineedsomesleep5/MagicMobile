@@ -137,7 +137,7 @@ final class NativeDownloadsUITests: XCTestCase {
         // Enabling consent alone must never start a bulk download.
         XCTAssertFalse(app.buttons["downloads.cancel"].exists)
         download.tap()
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Download ")).matching(NSPredicate(format: "label CONTAINS %@", "cards · Standard")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Download missing images · Standard"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["downloads.cancel"].exists, "Full-catalogue confirmation must precede network work")
         app.buttons["Cancel"].tap()
         XCTAssertFalse(app.buttons["downloads.cancel"].exists)

@@ -90,6 +90,7 @@ struct DeckStudioWorkspaceScreen: View {
                             }
                         }.padding(20)
                     }
+                    .accessibilityIdentifier(tab == "Playtest" ? "deckStudio.playtest.list" : "deckStudio.analysis.list")
                 }
             }
             }

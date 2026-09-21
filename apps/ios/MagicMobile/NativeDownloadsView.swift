@@ -52,15 +52,36 @@ struct NativeDownloadsView: View {
         let catalogueCount: Int
         let running: Bool
     }
+    @State private var scannedSelection: ScanSelection?
     private var scanSelection: ScanSelection {
         ScanSelection(scope: scope, deck: selectedDeckID, quality: quality, catalogueCount: catalogueNames.count, running: downloads.isRunning)
     }
-    private var estimatedSize: String {
-        if scope == "tokens" && (downloads.tokenTotal == 0 || downloads.tokenDiscoveryRemaining > 0) { return "Not checked" }
-        return ByteCountFormatter.string(fromByteCount: Int64(scope == "tokens" ? downloads.tokenTotal : names.count) * Int64(quality.estimatedBytes), countStyle: .file)
+    private var downloadsTokens: Bool { includeTokens || scope == "tokens" }
+    private var missingCardCount: Int { scope == "tokens" ? 0 : downloads.missingNames.count }
+    private var missingTokenCount: Int { downloadsTokens ? downloads.missingTokenNames.count : 0 }
+    private var scanPending: Bool { downloads.isScanning || !downloads.scanSucceeded || scannedSelection != scanSelection }
+    private var discoveryIncomplete: Bool {
+        scanPending || (scope == "catalogue" && (loadingCatalogue || downloads.faceDiscoveryPending)) ||
+            (downloadsTokens && downloads.tokenDiscoveryRemaining > 0)
+    }
+    private var missingSummary: String {
+        if scanPending { return "Checking needed to count missing artwork." }
+        let cards = "\(missingCardCount.formatted()) card/face \(missingCardCount == 1 ? "image" : "images")"
+        let tokens = "\(missingTokenCount.formatted()) token \(missingTokenCount == 1 ? "image" : "images")"
+        let count = scope == "tokens" ? tokens : (downloadsTokens ? "\(cards) · \(tokens)" : cards)
+        return discoveryIncomplete ? "Found so far: \(count). Checking needed for the remaining artwork." : "Missing: \(count)"
+    }
+    private var estimatedAdditionalSize: String {
+        guard !discoveryIncomplete else { return "Checking needed" }
+        let tokensToDownload = downloadsTokens ? downloads.downloadableMissingTokenCount : 0
+        let bytes = Int64(missingCardCount + tokensToDownload) * Int64(quality.estimatedBytes)
+        return "≈ \(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))"
+    }
+    private var preparingDownload: Bool {
+        downloads.isScanning || downloads.status.hasPrefix("Preparing") || downloads.status.hasPrefix("Checking")
     }
     private func startDownload() {
-        downloads.download(names: names, includeTokens: includeTokens || scope == "tokens", allowNetwork: remoteArtwork,
+        downloads.download(names: names, includeTokens: downloadsTokens, allowNetwork: remoteArtwork,
                            quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens")
     }
     private var catalogueIncluded: Bool {
@@ -102,14 +123,18 @@ struct NativeDownloadsView: View {
                     if loadingCatalogue && scope == "catalogue" { ProgressView("Reading the installed catalogue…") }
                     if let catalogueError, scope == "catalogue" { Text(catalogueError).foregroundStyle(.red) }
                     if scope != "tokens" {
-                        LabeledContent("Cards", value: "\(downloads.cardStored.formatted()) / \(downloads.cardTotal.formatted())")
+                        LabeledContent("Cards", value: scanPending || (scope == "catalogue" && loadingCatalogue)
+                                       ? "Checking needed" : "\(downloads.cardStored.formatted()) / \(downloads.cardTotal.formatted())")
                             .accessibilityIdentifier("downloads.cards")
                     }
-                    LabeledContent("Tokens", value: downloads.tokenDiscoveryRemaining > 0 ? "Not checked" : "\(downloads.tokenStored.formatted()) / \(downloads.tokenTotal.formatted())")
+                    LabeledContent("Tokens", value: scanPending || downloads.tokenDiscoveryRemaining > 0
+                                   ? "Checking needed" : "\(downloads.tokenStored.formatted()) / \(downloads.tokenTotal.formatted())")
                     if downloads.isScanning { ProgressView("Checking local files…") }
                     LabeledContent("Stored", value: ByteCountFormatter.string(fromByteCount: Int64(downloads.storedBytes), countStyle: .file))
-                    LabeledContent(scope == "tokens" ? "Token image estimate" : "Full download estimate",
-                                   value: estimatedSize == "Not checked" ? estimatedSize : "≈ \(estimatedSize)")
+                    LabeledContent("Missing artwork", value: missingSummary)
+                    LabeledContent("Estimated additional download", value: estimatedAdditionalSize)
+                    Text("Approximate at \(quality.label.lowercased()) quality. Actual download and device storage vary with image sizes, metadata and images already stored.")
+                        .font(.caption).foregroundStyle(.secondary)
                     Button("Check for missing artwork") {
                         Task { await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens") }
                     }
@@ -123,7 +148,11 @@ struct NativeDownloadsView: View {
                     Text("Uses Scryfall. Online requests share your IP and card names, including your hand.")
                         .font(.caption).foregroundStyle(.secondary)
                     if downloads.isRunning {
-                        ProgressView(value: Double(downloads.completed), total: Double(max(1, downloads.total)))
+                        if preparingDownload {
+                            ProgressView("Preparing image list…")
+                        } else {
+                            ProgressView(value: Double(downloads.completed), total: Double(max(1, downloads.total)))
+                        }
                         Text(downloads.status).font(.callout)
                             .accessibilityIdentifier("downloads.status")
                         Button("Cancel download", role: .cancel) { downloads.cancel() }
@@ -151,7 +180,7 @@ struct NativeDownloadsView: View {
                         Label("Mana symbols included", systemImage: "checkmark.circle")
                         Text("These downloads supply artwork for decks and games. Rules and the supported card catalogue are already included; artwork is optional.")
                         Text("Compact saves space. Standard balances clarity and size. High gives the sharpest inspection images. Higher-quality files already stored count toward lower-quality coverage.")
-                        Text("Full catalogue covers this build’s supported cards, not every printing. Alternate faces are checked during download. Estimates exclude faces, tokens and metadata; actual size varies. Check for missing artwork after app updates.")
+                        Text("Full catalogue covers this build’s supported cards, not every printing. Alternate faces are checked during download. Estimates use currently discovered missing images; more faces or tokens may be found while preparing. Actual download and storage vary. Check for missing artwork after app updates.")
                         Text("Full and token-only downloads use Scryfall’s bulk image index. Deck and on-demand requests share card names and your IP address. Stored artwork works offline.")
                         Text("Compact is fastest. Downloads use several direct image transfers at once and remember completed files. iOS controls background timing; force-quitting pauses transfers until you reopen the app. The initial image-list preparation may need the app open on a slow connection.")
                         Text("Storage is capped at 20 GB, with 1 GB of free space reserved. Unavailable or ambiguous token art remains a labeled placeholder. Use Download missing artwork to retry interruptions.")
@@ -207,15 +236,17 @@ struct NativeDownloadsView: View {
                 loadingCatalogue = false
             }
             .task(id: scanSelection) {
-                if !downloads.isRunning { await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens") }
+                let selection = scanSelection
+                if !downloads.isRunning {
+                    await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens")
+                    if selection == scanSelection && !downloads.isScanning && downloads.scanSucceeded { scannedSelection = selection }
+                }
             }
-            .alert(scope == "tokens" ? "Download supported tokens?" : "Download the full catalogue?", isPresented: $confirmFullDownload) {
-                Button(scope == "tokens" ? "Download token images · \(quality.label)" : "Download \(names.count) cards · \(quality.label)") { startDownload() }
+            .alert("Download missing artwork?", isPresented: $confirmFullDownload) {
+                Button("Download missing images · \(quality.label)") { startDownload() }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text(estimatedSize == "Not checked"
-                     ? "The token image count is not checked yet. The image list can be large; Wi-Fi is recommended. Images continue downloading while you play or leave the app."
-                     : "Approximately \(estimatedSize), plus the image list. Actual size varies. Images continue downloading while you play or leave the app. Wi-Fi is recommended.")
+                Text("\(missingSummary) \(discoveryIncomplete ? "The additional download estimate needs checking." : "Estimated additional download: \(estimatedAdditionalSize).") This is approximate; actual download and device storage vary. Images continue downloading while you play or leave the app. Wi-Fi is recommended.")
             }
             .onChange(of: remoteArtwork) { _, enabled in if !enabled { downloads.cancel() } }
             .onChange(of: selectedDeckID) { _, deck in

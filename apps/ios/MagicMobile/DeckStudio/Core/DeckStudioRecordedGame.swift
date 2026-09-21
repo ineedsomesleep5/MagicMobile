@@ -86,6 +86,8 @@ struct DeckStudioRecordedGame: Codable, Equatable, Identifiable, Sendable {
     var viewerPlayerID: String?
     /// Public, seat-scoped player names and public commander card names only.
     var opponents: [Opponent]?
+    /// Present only for matches started with the separate detailed-history choice.
+    var timeline: DeckStudioPublicTimeline?
     var elapsedSeconds: TimeInterval { max(0, (finishedAt ?? observedAt).timeIntervalSince(startedAt)) }
 
     func validate() throws {
@@ -112,6 +114,7 @@ struct DeckStudioRecordedGame: Codable, Equatable, Identifiable, Sendable {
               deck == (try DeckStudioDeckSignature(rows: deck.rows)),
               (end == .completed || won == nil), (end == .inProgress) == (finishedAt == nil)
         else { throw DeckStudioDeckSignature.Failure.invalidDeck }
+        try timeline?.validate(game: self)
     }
 }
 
@@ -119,8 +122,11 @@ struct DeckStudioRecordedGame: Codable, Equatable, Identifiable, Sendable {
 /// draws, mulligans, missed land drops, or a game outcome from a disconnect.
 struct DeckStudioPlaytestAccumulator {
     private(set) var game: DeckStudioRecordedGame?
+    private var timelineRecorder = DeckStudioPublicTimelineRecorder()
+    private var detailRevoked = false
 
-    mutating func observe(request: Data, response: Data, enabled: Bool, appBuild: String, now: Date) -> Bool {
+    mutating func observe(request: Data, response: Data, enabled: Bool, appBuild: String, now: Date,
+                          detailedEnabled: Bool = false, sanitizeLog: ((String) -> String)? = nil) -> Bool {
         guard enabled, now.timeIntervalSince1970.isFinite,
               let input = DeckStudioJSON.object(request), let reply = DeckStudioJSON.object(response),
               DeckStudioJSON.integer(input["protocol"]) == 1, DeckStudioJSON.integer(reply["protocol"]) == 1,
@@ -139,15 +145,17 @@ struct DeckStudioPlaytestAccumulator {
                   let engine = result["engine"] as? [String: Any], engine["engine"] as? String == "xmage",
                   engine["execution"] as? String == "native-aot",
                   let upstream = engine["upstream"] as? String, let catalogue = engine["catalogueHash"] as? String else { return false }
-            let created = DeckStudioRecordedGame(id: UUID(), matchID: match, seatID: seat, deck: signature,
+            var created = DeckStudioRecordedGame(id: UUID(), matchID: match, seatID: seat, deck: signature,
                 title: String((deck["name"] as? String ?? "Commander deck").prefix(128)),
                 upstream: upstream, catalogue: catalogue, appBuild: appBuild,
                 aiOpponents: seats.count - 1, startedAt: now, observedAt: now)
+            if detailedEnabled { created.timeline = DeckStudioPublicTimeline() }
             guard (try? created.validate()) != nil else { return false }
             game = created
             return true
         }
         guard var current = game, current.end == .inProgress, input["matchId"] as? String == current.matchID else { return false }
+        if !detailedEnabled { detailRevoked = true; current.timeline = nil }
         if op == "destroy" {
             guard DeckStudioJSON.boolean(result["destroyed"]) == true else { return false }
             current.end = .left; current.finishedAt = max(now, current.observedAt); current.observedAt = current.finishedAt!
@@ -220,6 +228,11 @@ struct DeckStudioPlaytestAccumulator {
             default: break
             }
             if current.end != .inProgress { current.finishedAt = current.observedAt }
+        }
+        if !detailRevoked, detailedEnabled, current.timeline != nil {
+            timelineRecorder.observe(result: result, game: &current, now: current.observedAt,
+                                     sanitizeLog: sanitizeLog)
+            timelineRecorder.finish(game: &current)
         }
         guard (try? current.validate()) != nil else { return false }
         game = current; return true

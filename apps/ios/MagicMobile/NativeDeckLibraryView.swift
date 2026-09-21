@@ -196,10 +196,10 @@ struct NativeCardArtworkView<Placeholder: View>: View {
             }
         }
             .onReceive(NotificationCenter.default.publisher(for: NativeAssetDownloads.didFinish)) { _ in downloadRevision += 1 }
-            .onReceive(NotificationCenter.default.publisher(for: NativeArtworkBackgroundQueue.didStoreImage)) { note in
+            .onReceive(NotificationCenter.default.publisher(for: NativeAssetStore.didStoreArtwork).receive(on: RunLoop.main)) { note in
                 guard let key = note.userInfo?["key"] as? String else { return }
-                if tokenTypeLine == nil ? key == NativeAssetStore.cardKey(name) :
-                    (key.hasPrefix("token:") && (note.userInfo?["name"] as? String)?.caseInsensitiveCompare(name) == .orderedSame) {
+                if NativeAssetStore.artworkChangeAffects(key: key, storedName: note.userInfo?["name"] as? String,
+                                                       name: name, isToken: tokenTypeLine != nil, sourceName: tokenSourceName) {
                     downloadRevision += 1
                 }
             }

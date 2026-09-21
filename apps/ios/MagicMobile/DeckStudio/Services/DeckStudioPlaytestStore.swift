@@ -1,13 +1,14 @@
 import Foundation
 
-/// Device-local, bounded summaries. No event stream, hand, opponent deck, or
-/// network credential is persisted. Storage failure must never fail gameplay.
+/// Device-local summaries with separately opted-in, bounded public timelines.
+/// Storage failure must never fail gameplay.
 actor DeckStudioPlaytestStore {
     static let shared = DeckStudioPlaytestStore()
     static let enabledKey = "magicmobile.playtestSummaries.enabled"
-    static let maximumBytes = 2 * 1024 * 1024
+    static let detailedEnabledKey = "magicmobile.playtestPublicTimeline.enabled"
+    static let maximumBytes = 8 * 1024 * 1024
     static let maximumGames = 100
-    struct Admission: Sendable { let enabled: Bool; let generation: UUID }
+    struct Admission: Sendable { let enabled: Bool; let detailedEnabled: Bool; let generation: UUID }
     private struct Payload: Codable { let schema: Int; let games: [DeckStudioRecordedGame] }
     private let url: URL?
     private let defaults: UserDefaults
@@ -20,21 +21,41 @@ actor DeckStudioPlaytestStore {
         self.url = directory?.appendingPathComponent("summaries-v1.json")
         self.defaults = defaults
     }
-    func admission() -> Admission { Admission(enabled: defaults.bool(forKey: Self.enabledKey), generation: generation) }
+    func admission() -> Admission {
+        Admission(enabled: defaults.bool(forKey: Self.enabledKey),
+                  detailedEnabled: defaults.bool(forKey: Self.detailedEnabledKey), generation: generation)
+    }
+    func detailedEnabled() -> Bool {
+        defaults.bool(forKey: Self.enabledKey) && defaults.bool(forKey: Self.detailedEnabledKey)
+    }
+    func setDetailedEnabled(_ enabled: Bool) { defaults.set(enabled, forKey: Self.detailedEnabledKey) }
     func setEnabled(_ enabled: Bool) {
         defaults.set(enabled, forKey: Self.enabledKey)
-        if !enabled { generation = UUID() }
+        if !enabled {
+            defaults.set(false, forKey: Self.detailedEnabledKey)
+            generation = UUID()
+        }
     }
     func status() -> String? { failure }
     func summaries() throws -> [DeckStudioRecordedGame] { try load(); return games }
     @discardableResult func record(_ value: DeckStudioRecordedGame, admission: Admission) -> Bool {
         guard admission.enabled, admission.generation == generation, defaults.bool(forKey: Self.enabledKey) else { return false }
         do {
-            try load(); try value.validate()
-            var next = games.filter { $0.id != value.id }
-            next.append(value)
+            try load()
+            var allowed = value
+            if allowed.timeline == nil || !admission.detailedEnabled || !defaults.bool(forKey: Self.detailedEnabledKey) {
+                // Opting out stops collection now; it does not erase detail that
+                // was already saved for this same match before the choice changed.
+                allowed.timeline = games.first(where: { $0.id == value.id })?.timeline
+            }
+            try allowed.validate()
+            var next = games.filter { $0.id != allowed.id }
+            next.append(allowed)
             next.sort { $0.startedAt > $1.startedAt }
             next = Array(next.prefix(Self.maximumGames))
+            // Timelines have a separate per-game bound; the file also has a
+            // hard cap. Evict oldest sessions only after a successful atomic write.
+            while try encoded(next).count > Self.maximumBytes, next.count > 1 { next.removeLast() }
             try write(next); games = next; failure = nil
             return true
         } catch {
@@ -68,7 +89,7 @@ actor DeckStudioPlaytestStore {
     }
     private func write(_ values: [DeckStudioRecordedGame]) throws {
         guard let url else { throw StorageFailure.unavailable }
-        let data = try JSONEncoder().encode(Payload(schema: 1, games: values))
+        let data = try encoded(values)
         guard data.count <= Self.maximumBytes else { throw StorageFailure.invalid }
         var directory = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -81,6 +102,9 @@ actor DeckStudioPlaytestStore {
         #else
         try data.write(to: url, options: .atomic)
         #endif
+    }
+    private func encoded(_ values: [DeckStudioRecordedGame]) throws -> Data {
+        try JSONEncoder().encode(Payload(schema: 1, games: values))
     }
     private enum StorageFailure: Error { case unavailable, invalid }
 }

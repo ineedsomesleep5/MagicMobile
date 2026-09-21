@@ -20,7 +20,10 @@ actor DeckStudioRecordingTransport: EngineTransport {
         let reply = try await base.request(data)
         if let admission, admission.enabled {
             let now = Date()
-            if accumulator.observe(request: data, response: reply, enabled: true, appBuild: appBuild, now: now),
+            let currentlyDetailed = await store.detailedEnabled()
+            let detailed = admission.detailedEnabled && currentlyDetailed
+            if accumulator.observe(request: data, response: reply, enabled: true, appBuild: appBuild, now: now,
+                                   detailedEnabled: detailed, sanitizeLog: { EngineDisplayText.label($0) }),
                let game = accumulator.game,
                op == "create" || game.end != .inProgress || now.timeIntervalSince(lastSaved) >= 15 {
                 _ = await store.record(game, admission: admission)
