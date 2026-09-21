@@ -63,7 +63,9 @@ final class BoardScrollRotationUITests: XCTestCase {
     func testMenuThemeChangeReopenCanReachQuit() {
         launch("crowded-battlefield", portrait: false)
         for _ in 0..<2 {
-            app.buttons["Open game settings"].tap()
+            app.buttons["Game controls"].press(forDuration: 0.15)
+            XCTAssertTrue(app.buttons["Game Settings"].waitForExistence(timeout: 5))
+            app.buttons["Game Settings"].press(forDuration: 0.15)
             XCTAssertTrue(app.staticTexts["Game Menu"].waitForExistence(timeout: 5))
             let theme = app.buttons["Classic Wood battlefield"]
             for _ in 0..<4 {
@@ -86,7 +88,7 @@ final class BoardScrollRotationUITests: XCTestCase {
             }
             XCTAssertTrue(done.isHittable)
             done.tap()
-            XCTAssertTrue(app.buttons["Open game settings"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.buttons["Game controls"].waitForExistence(timeout: 5))
         }
     }
 
