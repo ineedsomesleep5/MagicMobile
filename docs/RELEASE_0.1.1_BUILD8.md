@@ -64,5 +64,25 @@ retains its engine characteristics rather than substituting a different token.
 
 ## Distribution
 
-Pending: upload and actual Internal/External Apple state must be recorded after
-the signed release succeeds. Build number 8 was verified absent before preparation.
+Released 2026-09-21 from `codex/ios-offline-artwork`, source commit
+`7f12cb02d5e8579ed358898fa4e0a0d6d2c15dab`, in the
+`/Users/calebfeliciano/Documents/MagicMobile-board-polish` checkout.
+Build number 8 was verified absent before preparation and again before upload.
+
+- Signed archive/export, signed-native/Game Center guard, Apple validation and
+  upload passed. The unchanged native engine was reused, not rebuilt.
+- App identity: `com.calebfeliciano.magicmobile`; Apple app `6784735182`.
+- Delivery UUID and Apple build ID: `92848363-bd13-43bb-b324-6c684e354ccb`.
+- IPA: `build_output/testflight/native-release.ldGiX0/export/MagicMobile.ipa`.
+- IPA SHA-256: `6638c563a4413ad9386f0f8bc1e76f2be2f6de868e7effa442a715df6522816b`.
+- Apple processing: `VALID`; Beta App Review: `APPROVED`.
+- Independently verified Internal and External group membership; both build
+  states are `IN_BETA_TESTING`, with automatic tester notifications enabled.
+- English What to Test notes explain missing-only downloads, offline token checks,
+  current ability badges and enabling detailed history before a new AI match.
+- Fingerprint-bound release controller `ios-0.1.1-8` completed; original receipts,
+  Apple responses and checksummed logs remain under the release root above and
+  `build_output/release-controller/ios-0.1.1-8/`.
+
+No physical-iPhone gameplay acceptance is claimed for this build. Android remains
+paused; no Android build, engine update, website or server deployment was performed.
