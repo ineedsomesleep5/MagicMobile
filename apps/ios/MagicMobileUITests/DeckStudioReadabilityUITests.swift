@@ -7,8 +7,7 @@ final class DeckStudioReadabilityUITests: XCTestCase {
         let app = XCUIApplication()
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
-        app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        app.launchArguments = ["--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"] + extra
+        UITestHarness.configure(app, extraArguments: extra)
         app.launch()
         XCTAssertTrue(app.buttons["menu.decks"].waitForExistence(timeout: 20))
         // Match the foreground-verified press duration; destination assertions
