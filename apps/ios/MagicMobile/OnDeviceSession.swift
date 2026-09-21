@@ -34,6 +34,7 @@ final class OnDeviceSession: ObservableObject {
     private var appliedRefreshSequence: UInt64 = 0
     private var isForeground = true
     private var automaticPolling = true
+    private var reconnectsAutomatically = false
     private struct Submission {
         let prompt: EnginePrompt
         let answer: MagicMobileOnDevice.JSONValue
@@ -43,18 +44,24 @@ final class OnDeviceSession: ObservableObject {
     private var pending: Submission?
 
     func attach(client: EngineClient, matchID: String, seatID: String, autoPoll: Bool = true,
-                allowsLocalAutoYield: Bool = false,
+                allowsLocalAutoYield: Bool = false, reconnectsAutomatically: Bool = false,
                 close: @escaping @MainActor () async throws -> Void) async throws {
         guard self.client == nil, !isWorking else { throw EngineError.invalidMessage("Close the active game first") }
         self.client = client; self.matchID = matchID; self.seatID = seatID
         // Root opts in only for the local human/native route, never a peer session.
         self.allowsLocalAutoYield = allowsLocalAutoYield
+        self.reconnectsAutomatically = reconnectsAutomatically
         autoPassStatus = ""
         closeEndpoint = close; automaticPolling = autoPoll; epoch = UUID()
         refreshSequence = 0; appliedRefreshSequence = 0; isClosing = false
         messageLog = OnDeviceMessageLog()
-        status = "Starting local game"
-        try await refresh()
+        status = "Starting game"
+        do { try await refresh() }
+        catch {
+            guard reconnectsAutomatically, error is URLError else { throw error }
+            status = "Reconnecting…"
+            errorMessage = "Connection interrupted. Reconnecting to your game."
+        }
         beginPolling()
     }
 
@@ -107,7 +114,7 @@ final class OnDeviceSession: ObservableObject {
         case "ended": status = "Game complete"
         case "failed": status = "Game stopped"
         case "closed": status = "Game closed"
-        case "starting": status = "Starting local game"
+        case "starting": status = "Starting game"
         default: status = "Live"
         }
         errorMessage = next.raw["failure"]?["message"]?.string
@@ -376,12 +383,14 @@ final class OnDeviceSession: ObservableObject {
         guard pollingTask == nil, automaticPolling, client != nil, isForeground, !isClosing,
               !["ended", "failed", "closed"].contains(poll?.phase ?? "") else { return }
         pollingTask = Task { [weak self] in
+            var failures = 0
             while !Task.isCancelled {
                 do {
-                    try await Task.sleep(for: .milliseconds(300))
+                    try await Task.sleep(for: .milliseconds(self?.reconnectsAutomatically == true ? 1000 : 300))
                     guard let self, !Task.isCancelled else { return }
                     if self.isAutoPassing { continue }
                     try await self.refresh()
+                    failures = 0
                     guard !Task.isCancelled else { return }
                     if ["ended", "failed", "closed"].contains(self.poll?.phase ?? "") {
                         self.pollingTask = nil
@@ -389,6 +398,13 @@ final class OnDeviceSession: ObservableObject {
                     }
                 } catch {
                     guard let self, !Task.isCancelled else { return }
+                    if self.reconnectsAutomatically, error is URLError {
+                        failures += 1
+                        self.status = "Reconnecting…"
+                        self.errorMessage = "Connection interrupted. Reconnecting to your game."
+                        do { try await Task.sleep(for: .seconds(min(10, failures * 2))) } catch { return }
+                        continue
+                    }
                     self.pollingTask = nil
                     self.errorMessage = error.localizedDescription; self.status = "Updates interrupted. Refresh to retry."
                     return

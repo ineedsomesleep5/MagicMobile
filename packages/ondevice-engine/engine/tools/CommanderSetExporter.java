@@ -12,7 +12,7 @@ public final class CommanderSetExporter {
         var codes = Sets.getInstance().values().stream().filter(set -> set.getSetType().isEternalLegal())
             .map(set -> set.getCode()).sorted().toList();
         Files.writeString(Path.of(args[0]), Json.write(Json.map("upstreamCommit",
-            "8aea65ae9ae3c89970fe865e1316105539e097ca", "eternalLegalSetCodes", codes)) + "\n");
+            "4825513287ba6c42c32fd205d227f4a5fc44c2f3", "eternalLegalSetCodes", codes)) + "\n");
         System.out.println("Exported " + codes.size() + " upstream eternal-legal set codes");
     }
 }

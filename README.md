@@ -18,6 +18,8 @@ XMage owns rules, legal choices, priority, the stack and authoritative game stat
   Apple review status in release records is a dated observation.
 - [Release records](release/testflight) and
   [native continuation](packages/ondevice-engine/docs/LOCAL_CONTINUATION_STATUS.md).
+- [Run a multiplayer server on your own PC](apps/multiplayer-server/selfhost/README.md):
+  checksum-pinned Windows/macOS/Linux launcher and the remaining online setup requirements.
 
 The signed product uses `apps/ios/native-engine.yml` and the existing
 `com.calebfeliciano.magicmobile` identity. `apps/ios-ondevice` is an engineering

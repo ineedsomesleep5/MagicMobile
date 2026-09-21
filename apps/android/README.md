@@ -13,13 +13,34 @@ is `MagicMobile-Android-0.1.1-build1.apk` under tag `android-v0.1.1-build.1` aft
 - Native Kotlin / Jetpack Compose UI, with the approved cream-and-charcoal deck workspace.
 - The same pinned full XMage rules/cards and MagicMobile Java adapter, compiled for
   Android ARM64 and called in-process through JNI and the existing C lifetime boundary.
-- No desktop computer, localhost server, Java installation, cloud rules service,
-  downloaded executable engine, or substitute rules implementation in the consumer path.
+- Offline AI games require no desktop computer, localhost server, Java installation,
+  cloud rules service, or downloaded executable engine.
 - Reuse exact prompt IDs, revisions, response kinds, seat ownership and private
   viewer snapshots. Preserve Commander legality checks in the actual engine.
 - First Android milestone: local Commander against actual MAD AI, local deck
-  management and user-controlled external card reference. Cross-platform multiplayer
-  is a separate transport project; Game Center is not available on Android.
+  management and user-controlled external card reference. Online tables use the shared
+  authenticated match service; Game Center is not used on Android.
+
+### Online transport
+
+`-PonlineServerUrl=https://…` sets the approved deployed match service at build time.
+The default is empty, which presents an unavailable screen rather than claiming a live
+service. `/v1/config` supplies the public Supabase authentication configuration and exact
+engine identity. The client checks protocol, upstream, catalogue and app/build identity.
+Email/password sessions use Android Keystore encrypted storage and are excluded from
+backup. Lobby creation/join sends the selected resolved deck for server validation.
+
+Online games reuse `PollState`, `GamePoll` and `GameScreen`; only poll/respond transport
+changes to authenticated HTTPS. The server binds the signed-in user to their seat.
+Backgrounding stops polling; foregrounding resumes with retry/backoff and a full snapshot
+after interruption. The last lobby survives process restart. Explicitly leaving ends the
+match for all players in this initial version, with confirmation in the UI.
+The client also discovers `/v1/lobbies/current` after sign-in and an uncertain create/join
+reply, so a lost response cannot cause repeated creation. Successful game/lobby polls
+are at least one second apart; failures back off to a bounded 30-second interval.
+
+Client compilation and contract tests do not establish cross-platform gameplay acceptance.
+A configured deployment, matching engine build, and an iOS/Android live match are release gates.
 
 ## What one change has to touch for both platforms
 

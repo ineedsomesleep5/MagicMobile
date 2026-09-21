@@ -1,6 +1,6 @@
 name: XMage upstream maintenance
 
-# Scheduled detection only. Candidate preparation needs manual digest approval.
+# Scheduled detection only. Candidate preparation needs authorized digest review.
 on:
   schedule:
     - cron: '23 9 * * 1' # Weekly Monday 09:23 UTC; detection only.
@@ -20,7 +20,7 @@ on:
         required: false
         type: string
       reviewed_generated_digest:
-        description: 'Optional separate human approval of regenerated hashes AND inventory; enables post-review gates'
+        description: 'Optional separate authorized review of regenerated hashes AND inventory; enables post-review gates'
         required: false
         type: string
       regenerate:
@@ -130,7 +130,7 @@ jobs:
           target="$RUNNER_TEMP/maintenance-candidate"
           python3 scripts/magicmobile-maintenance/upstream.py accept-generated "$target" --approve-digest "$GENERATED_REVIEW"
           python3 scripts/magicmobile-maintenance/upstream.py validate "$target" --execute
-      - name: Preserve reports for separate human hash review
+      - name: Preserve reports for separate authorized hash review
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

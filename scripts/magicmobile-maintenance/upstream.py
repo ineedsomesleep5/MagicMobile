@@ -320,7 +320,7 @@ def regenerate(candidate, execute=False):
     write_new(candidate / 'maintenance-review.json', encoded(review))
     (candidate / 'maintenance-regeneration.json').write_bytes(encoded({
         'candidate': state['candidate'], 'commands': commands,
-        'generatedDigest': digest(encoded(review)), 'status': 'generated; human hash review and validation pending'}))
+        'generatedDigest': digest(encoded(review)), 'status': 'generated; authorized hash review and validation pending'}))
     return review
 
 
@@ -344,7 +344,7 @@ def validate(candidate, execute=False):
     """Post-review gates; never validate new outputs against old expected pins."""
     review = generated_review(candidate)
     if json.loads((candidate / 'maintenance-generated-review.json').read_bytes()) != review:
-        raise ValueError('Current generated outputs must have an accepted human review receipt')
+        raise ValueError('Current generated outputs must have an accepted review receipt')
     if json.loads((candidate / 'maintenance-regeneration.json').read_bytes())['generatedDigest'] != digest(encoded(review)):
         raise ValueError('Regeneration receipt does not match reviewed outputs')
     decks = candidate.resolve() / 'maintenance-precons'
@@ -428,7 +428,7 @@ def draft_packet(project, candidate, output):
             '- Review the exact upstream diff, dependency changes and port transformations.\n'
             '- Explicitly regenerate, review generated inventory/hashes, then run the existing validation gates.\n'
             '- Require the final exact MagicMobile commit for native and device acceptance.\n'
-            '- A human must approve merge and separately authorize release; no automatic release.\n\n'
+            '- Merge and release require owner authority, including any applicable standing policy in docs/AUTOMATIC_UPDATE_PIPELINE.md; no automatic release is performed by this helper.\n\n'
             'No branch, commit, PR, workflow dispatch or release was created by packet preparation.\n')
     output.mkdir()
     write_new(output / 'candidate.patch', patch)

@@ -1,0 +1,12 @@
+# Replace with the DNS name pointing at the Always Free VM.
+multiplayer.example.com {
+    request_body {
+        max_size 128KB
+    }
+    reverse_proxy 127.0.0.1:8088 {
+        transport http {
+            dial_timeout 3s
+            response_header_timeout 20s
+        }
+    }
+}

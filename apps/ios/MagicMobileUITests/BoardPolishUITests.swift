@@ -24,6 +24,44 @@ final class BoardPolishUITests: XCTestCase {
     }
 
     // Independent cases keep one failed control from hiding the remaining surfaces.
+    func testPendingOnlinePreservesAIAndGameCenterSetup() {
+        let application = XCUIApplication()
+        app = application
+        application.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
+        application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+        application.launchArguments = ["--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+            "-magicmobile.playerDisplayName", "Test Player"]
+        XCUIDevice.shared.orientation = .portrait
+        application.launch()
+        XCTAssertTrue(application.buttons["menu.play"].waitForExistence(timeout: 20))
+        application.buttons["menu.play"].press(forDuration: 0.15)
+        let ai = application.segmentedControls.buttons["AI"]
+        for _ in 0..<5 {
+            if ai.isHittable { break }
+            application.swipeUp()
+        }
+        visible(ai, in: application)
+        ai.press(forDuration: 0.15)
+        XCTAssertTrue(application.buttons["Start game"].exists)
+        let gameCenter = application.segmentedControls.buttons["Game Center"]
+        gameCenter.press(forDuration: 0.15)
+        XCTAssertTrue(application.buttons["Sign in to Game Center"].waitForExistence(timeout: 10))
+        XCTAssertTrue(application.buttons["Find players"].exists)
+        application.segmentedControls.buttons["Online"].press(forDuration: 0.15)
+        XCTAssertTrue(application.staticTexts["Online play is coming soon"].waitForExistence(timeout: 10))
+        XCTAssertFalse(application.textFields["Email"].exists)
+        XCTAssertFalse(application.secureTextFields["Password"].exists)
+        XCTAssertFalse(application.buttons["Create lobby"].exists)
+        XCTAssertFalse(application.buttons["Join"].exists)
+        currentCapture = "pending-online-portrait-setup-fixture"
+        capture(application, name: currentCapture)
+        gameCenter.press(forDuration: 0.15)
+        XCTAssertTrue(application.buttons["Find players"].waitForExistence(timeout: 5))
+        ai.press(forDuration: 0.15)
+        XCTAssertTrue(application.buttons["Start game"].waitForExistence(timeout: 5))
+        XCTAssertTrue(application.buttons["Start game"].isEnabled)
+    }
+
     func testPortraitCrowdedBattlefield() { runMatrix(portrait: true, selectedFixtures: ["crowded-battlefield"]) }
     func testLandscapeCrowdedBattlefield() { runMatrix(portrait: false, selectedFixtures: ["crowded-battlefield"]) }
     func testPortraitAttachments() { runMatrix(portrait: true, selectedFixtures: ["attached-permanents"]) }

@@ -17,7 +17,7 @@ import java.util.concurrent.*;
  * This adapter must pass the real-engine and native build gates before being released.
  */
 public final class XmageEngine implements EnginePort {
-    public static final String UPSTREAM="8aea65ae9ae3c89970fe865e1316105539e097ca";
+    public static final String UPSTREAM="4825513287ba6c42c32fd205d227f4a5fc44c2f3";
     private final Map<String,Running> matches=new HashMap<>();
     private final String execution;
     private boolean closed;

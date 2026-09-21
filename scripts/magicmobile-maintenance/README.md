@@ -37,8 +37,10 @@ active only after default-branch integration and when Actions schedules are enab
 The schedule cannot activate candidate mode or publication. See
 [the weekly handoff](WEEKLY_HANDOFF.md) for the draft packet and review gates.
 
-Detection prints a canonical JSON SHA-256 digest. Approval means a human reviewed
-that exact report; it is not a signature or automated source-safety proof. Inspect
+Detection prints a canonical JSON SHA-256 digest. Approval means an authorized reviewer reviewed
+that exact report; it is not a signature or automated source-safety proof. Routine
+automated reviews require the owner's standing authority and stopping conditions in
+[the update policy](../../docs/AUTOMATIC_UPDATE_PIPELINE.md); never label them human reviews. Inspect
 exact sources with `git show SHA:path` and the full `git diff OLD CANDIDATE`.
 
 ## Deduplication
@@ -156,7 +158,7 @@ Workflow mode=candidate requires an exact upstream SHA and reviewed detection di
 It prepares and generates review artifacts. On a subsequent manual candidate run,
 supply reviewed_generated_digest to regenerate fresh outputs, check the same
 reviewed inventory/hash digest, accept pins and run post-review validation.
-Changes to baseline or outputs require new review. There is no automatic approval.
+Changes to baseline or outputs require new review. The helper does not approve its own outputs.
 The exported tree is not the final MagicMobile commit and cannot satisfy the
 downstream exact-commit native gate until integrated and committed by the owner.
 

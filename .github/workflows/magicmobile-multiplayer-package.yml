@@ -1,0 +1,113 @@
+name: Package verified multiplayer runtime (manual)
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: multiplayer-package-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    # Standard public-repository runner only; no larger/paid/private runner route.
+    if: github.event.repository.private == false
+    runs-on: macos-26-intel
+    timeout-minutes: 180
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare isolated evidence and check toolchain
+        run: |
+          set -euo pipefail
+          evidence=$(mktemp -d "$RUNNER_TEMP/multiplayer-evidence-XXXXXX")
+          decks=$(mktemp -d "$RUNNER_TEMP/multiplayer-decks-XXXXXX")
+          echo "MM_EVIDENCE=$evidence" >> "$GITHUB_ENV"
+          echo "MAGICMOBILE_PRECON_EXPORT_DIR=$decks" >> "$GITHUB_ENV"
+          echo "MM_PACKAGE=multiplayer-${GITHUB_SHA:0:12}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+          [[ "$(uname -m)" == x86_64 ]]
+          java -version 2>&1 | tee "$evidence/java.txt"
+          mvn -version | tee "$evidence/maven.txt"
+          swift --version | tee "$evidence/swift.txt"
+          git rev-parse HEAD > "$evidence/source-commit.txt"
+      - name: Build pinned real XMage JVM runtime from fresh checkout
+        run: |
+          set -euo pipefail
+          bash packages/ondevice-engine/scripts/build_jvm.sh 2>&1 | tee "$MM_EVIDENCE/jvm-build.log"
+      - name: Export five precons using freshly compiled Swift resolver
+        run: |
+          set -euo pipefail
+          swift test --package-path apps/ios --scratch-path "$RUNNER_TEMP/multiplayer-swift-${GITHUB_RUN_ID}" --jobs 2 \
+            --filter OnDeviceDeckResolverTests.testEveryExistingPreconResolvesWithoutChangingSourceCounts \
+            2>&1 | tee "$MM_EVIDENCE/deck-resolver.log"
+          node apps/multiplayer-server/resolved-deck-proof.mjs "$MAGICMOBILE_PRECON_EXPORT_DIR" \
+            2>&1 | tee "$MM_EVIDENCE/deck-proof.log"
+          cp "$MAGICMOBILE_PRECON_EXPORT_DIR/provenance.json" "$MM_EVIDENCE/resolved-deck-provenance.json"
+      - name: Run bounded bridge regressions
+        run: |
+          set -euo pipefail
+          bash apps/multiplayer-server/test.sh 2>&1 | tee "$MM_EVIDENCE/bridge-tests.log"
+      - name: Package production runtime and separate diagnostic probe
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          node apps/multiplayer-server/package-runtime.mjs --name "$MM_PACKAGE" --decks "$MAGICMOBILE_PRECON_EXPORT_DIR" \
+            2>&1 | tee "$MM_EVIDENCE/package.log"
+          runtime="apps/multiplayer-server/build/$MM_PACKAGE"
+          node apps/multiplayer-server/verify-runtime.mjs "$runtime" 2>&1 | tee "$MM_EVIDENCE/verify.log"
+          cp "$runtime/provenance.json" "$MM_EVIDENCE/runtime-provenance.json"
+          node - "$PWD/$runtime/provenance.json" <<'JS'
+          const p=require(process.argv[2]);
+          const forbidden=n=>n.startsWith('cp/')&&/\/io\/magicmobile\/server\/[^/]*(Tests|Regressions|Smoke)(\$|\.class)/.test(n);
+          if(forbidden('cp/002-classes/mage/cards/s/Smoke.class')||!forbidden('cp/000-server/io/magicmobile/server/RealEngineSmoke.class')||!forbidden('cp/000-server/io/magicmobile/server/AdmissionRegressions$Port.class'))throw Error('Production fixture guard regression');
+          if(p.sourceChanges.length)throw Error('Dirty runtime source');
+          if(Object.keys(p.files).some(forbidden))throw Error('Server test class in production payload');
+          JS
+      - name: Real two- and four-human-seat HTTP acceptance on exact portable payload
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          cd "apps/multiplayer-server/build/$MM_PACKAGE"
+          /usr/bin/time -l "$JAVA_HOME/bin/java" -Xms64m -Xmx256m -XX:ActiveProcessorCount=1 -Djava.awt.headless=true \
+            -cp "diagnostics/classes:$(<runtime-classpath.txt)" io.magicmobile.server.RealEngineSmoke \
+            diagnostics/decks/0.json diagnostics/decks/1.json diagnostics/decks/2.json diagnostics/decks/3.json diagnostics/decks/4.json \
+            2>&1 | tee "$MM_EVIDENCE/portable-real-http-smoke.log"
+          (cd .. && shasum -a 256 "$MM_PACKAGE.tar.gz") > "$MM_EVIDENCE/archive-sha256.txt"
+      - name: Upload verified candidate archive only after successful smoke
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ env.MM_PACKAGE }}
+          path: |
+            apps/multiplayer-server/build/${{ env.MM_PACKAGE }}.tar.gz
+            ${{ env.MM_EVIDENCE }}/archive-sha256.txt
+            ${{ env.MM_EVIDENCE }}/runtime-provenance.json
+            ${{ env.MM_EVIDENCE }}/resolved-deck-provenance.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload bounded evidence even on failure
+        if: always() && env.MM_EVIDENCE != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: multiplayer-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.MM_EVIDENCE }}/
+          if-no-files-found: warn
+          retention-days: 14
+
+# No push trigger, cache upload, secrets, signing, release write,
+# deployment, Supabase access, or claim of native/mobile/cloud gameplay acceptance.

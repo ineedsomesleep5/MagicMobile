@@ -335,6 +335,42 @@ final class OnDeviceSessionTests: XCTestCase {
     }
 
     @MainActor
+    func testOnlinePollingReconnectsWithoutResendingAnAction() async throws {
+        let poll = try fixture()
+        let transport = SessionFixtureTransport(poll: poll.raw)
+        let session = OnDeviceSession()
+        try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID,
+            seatID: poll.seatID, reconnectsAutomatically: true, close: {})
+        await transport.failNextPoll()
+        for _ in 0..<300 where session.errorMessage == nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(session.status, "Reconnecting…")
+        await transport.consumePrompt()
+        for _ in 0..<600 where session.snapshot?.bridgeRevision == Int(poll.revision) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(session.snapshot?.bridgeRevision, Int(poll.revision + 1))
+        XCTAssertNil(session.errorMessage)
+        let responses = await transport.responses()
+        XCTAssertTrue(responses.isEmpty, "Reconnecting must only poll, never replay an action")
+        try await session.close()
+    }
+
+    @MainActor
+    func testOnlineInitialPollTimeoutStillStartsRecovery() async throws {
+        let poll = try fixture()
+        let transport = SessionFixtureTransport(poll: poll.raw)
+        await transport.failNextPoll()
+        let session = OnDeviceSession()
+        try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID,
+            seatID: poll.seatID, reconnectsAutomatically: true, close: {})
+        XCTAssertEqual(session.status, "Reconnecting…")
+        for _ in 0..<300 where session.snapshot == nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNotNil(session.snapshot)
+        XCTAssertNil(session.errorMessage)
+        try await session.close()
+    }
+
+    @MainActor
     func testCloseDiscardsOutstandingRefreshWhileShutdownIsPending() async throws {
         let poll = try fixture()
         let transport = SessionFixtureTransport(poll: poll.raw)

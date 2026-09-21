@@ -1,0 +1,26 @@
+[Unit]
+Description=MagicMobile XMage multiplayer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=magicmobile
+Group=magicmobile
+WorkingDirectory=/opt/magicmobile
+EnvironmentFile=/etc/magicmobile/multiplayer.env
+ExecStart=/bin/bash /opt/magicmobile/apps/multiplayer-server/run.sh
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/magicmobile
+Environment=HOME=/var/lib/magicmobile
+MemoryMax=4G
+TasksMax=256
+LimitNOFILE=2048
+
+[Install]
+WantedBy=multi-user.target

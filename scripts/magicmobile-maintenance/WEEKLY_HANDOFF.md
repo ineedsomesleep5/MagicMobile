@@ -1,5 +1,9 @@
 # Weekly upstream detection and draft candidate handoff
 
+The September 20 owner authorization in [the automatic-update policy](../../docs/AUTOMATIC_UPDATE_PIPELINE.md)
+now permits reviewed routine updates and gated releases by Codex. The GitHub job
+described here remains detection-only; it does not itself publish or release.
+
 This handoff supersedes the README's **inactive schedule** description. The
 existing `magicmobile-upstream-maintenance.yml` now declares Monday 09:23 UTC
 detection. It becomes eligible to run only after the workflow reaches the default
@@ -65,8 +69,8 @@ environment and isolated build home; those controls are not an OS/network sandbo
 After separately integrating and validating a final exact MagicMobile commit,
 the existing `publish` command previews its draft-PR plan by default. Its
 `--execute` option still requires explicit authorization for remote writes. It is
-not invoked by this workflow. Human review before merge, exact-commit native
-gates, device acceptance and separate release authorization remain required.
+not invoked by this workflow. Authorized review before merge, exact-commit native
+gates, applicable device acceptance and owner release authorization remain required.
 
 ## Local verification
 
