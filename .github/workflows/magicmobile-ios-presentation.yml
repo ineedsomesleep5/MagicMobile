@@ -2,6 +2,11 @@ name: iOS setup presentation and geometry tests
 
 on:
   workflow_dispatch:
+    inputs:
+      test_filter:
+        description: 'Optional XCTest target/class/method to run'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -86,8 +91,12 @@ jobs:
 
       - name: Test full MagicMobile scheme including setup UI and existing geometry tests
         timeout-minutes: 15
+        env:
+          TEST_FILTER: ${{ inputs.test_filter }}
         run: |
           set -euo pipefail
+          filters=()
+          if [[ -n "$TEST_FILTER" ]]; then filters+=("-only-testing:$TEST_FILTER"); fi
           xcodebuild \
             -project apps/ios/MagicMobileiOS.xcodeproj \
             -scheme MagicMobile -configuration Debug \
@@ -100,6 +109,7 @@ jobs:
             -test-timeouts-enabled YES -default-test-execution-time-allowance 90 \
             -maximum-test-execution-time-allowance 120 \
             ARCHS=x86_64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO \
+            "${filters[@]}" \
             test 2>&1 | tee "$MM_PRESENTATION_DIR/xcodebuild.log"
 
       - name: Collect screenshots and XCTest attachments even on failure
