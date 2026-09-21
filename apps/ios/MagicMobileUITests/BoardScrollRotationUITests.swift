@@ -79,9 +79,13 @@ final class BoardScrollRotationUITests: XCTestCase {
             }
             XCTAssertTrue(quit.isHittable)
             XCTAssertTrue(app.frame.contains(quit.frame), "Quit must be fully visible after changing theme")
-            // Dismiss via the sheet gesture so this also works against the pre-fix menu.
-            app.swipeDown()
-            app.swipeDown()
+            let done = app.buttons["board.menu.done"]
+            for _ in 0..<5 {
+                if done.isHittable { break }
+                app.swipeDown()
+            }
+            XCTAssertTrue(done.isHittable)
+            done.tap()
             XCTAssertTrue(app.buttons["Open game settings"].waitForExistence(timeout: 5))
         }
     }
@@ -93,13 +97,26 @@ final class BoardScrollRotationUITests: XCTestCase {
             XCTAssertTrue(lane.waitForExistence(timeout: 5))
             let prefix = title == "Your lands" ? "card-your-lands-" : "card-your-board-"
             let cards = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", prefix)).allElementsBoundByIndex
-            let source = cards.filter { $0.isHittable && lane.frame.intersection($0.frame).width > 20 }
-                .max { $0.frame.midX < $1.frame.midX }!
+            guard let source = cards.filter({ $0.isHittable && lane.frame.intersection($0.frame).width > 20 })
+                .max(by: { $0.frame.midX < $1.frame.midX }) else {
+                XCTFail("No visible artwork in \(title)"); return
+            }
             let before = source.frame.minX
             dragArtwork(source, in: lane, horizontally: true)
             XCTAssertLessThan(source.frame.minX, before - 20, "Dragging card artwork must scroll \(title)")
             XCTAssertFalse(app.staticTexts["preview.captured-command"].exists)
         }
+    }
+
+    func testCardTapAndHoldStillWorkAfterScrollingFix() {
+        launch("crowded-battlefield", portrait: true)
+        let creature = card("card-your-board-isamaru")
+        XCTAssertTrue(creature.waitForExistence(timeout: 5))
+        creature.tap()
+        XCTAssertTrue(creature.label.hasSuffix(", selected"))
+        creature.press(forDuration: 0.7)
+        XCTAssertTrue(card("card-inspector-isamaru").waitForNonExistence(timeout: 3),
+                      "Inspection must end when the finger lifts")
     }
 
     func testLibraryChoicesScrollFromArtwork() {
@@ -110,8 +127,10 @@ final class BoardScrollRotationUITests: XCTestCase {
         for _ in 0..<6 {
             if last.isHittable { break }
             let candidates = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "board.choice.card.")).allElementsBoundByIndex
-            let source = candidates.filter { $0.isHittable }.max { $0.frame.midY < $1.frame.midY }!
-            dragArtwork(source, in: app, horizontally: false)
+            guard let source = candidates.filter({ $0.isHittable }).max(by: { $0.frame.midY < $1.frame.midY }) else {
+                XCTFail("No visible search result artwork"); return
+            }
+            dragArtwork(source, in: app.scrollViews["board.choice.cards"], horizontally: false)
         }
         XCTAssertTrue(last.isHittable, "Search results must scroll to later cards")
         XCTAssertFalse(app.buttons["board.choice.confirm"].isEnabled, "Scrolling must not select a card")
@@ -133,5 +152,26 @@ final class BoardScrollRotationUITests: XCTestCase {
         }
         XCTAssertTrue(last.isHittable)
         XCTAssertFalse(app.staticTexts["preview.captured-command"].exists)
+    }
+
+    func testCombatEdgeIndicatorsSurviveRepeatedRotation() {
+        launch("combat-arrows", portrait: true)
+        for (index, portrait) in [true, false, true, false, true].enumerated() {
+            rotate(portrait)
+            let lane = app.scrollViews["board.battlefield.Your board"]
+            let edge = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "board.combat.offscreen.")).firstMatch
+            for _ in 0..<5 {
+                if edge.exists && edge.isHittable { break }
+                lane.swipeLeft()
+            }
+            XCTAssertTrue(edge.isHittable, "Combat edge control missing after rotation \(index)")
+            XCTAssertTrue(app.frame.contains(edge.frame), "Combat edge control retained offscreen geometry")
+            let image = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            image.name = "combat-rotation-\(index)-\(portrait ? "portrait" : "landscape")"
+            image.lifetime = .keepAlways
+            add(image)
+        }
+        // This verifies indicator survival and supplies captures for arrow review;
+        // it does not equate accessibility geometry with Canvas path endpoints.
     }
 }

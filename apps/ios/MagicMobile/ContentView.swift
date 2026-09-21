@@ -2621,7 +2621,6 @@ private struct OpponentFocusMenu: View {
 
 struct NativeGameView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var portraitCardBounds: [String: CGRect] = [:]
     let snapshot: GameSnapshot?
     let startupStatus: CommanderStartupResponse?
     @Binding var selectedCard: ZoneCard?
@@ -2862,17 +2861,6 @@ struct NativeGameView: View {
                                 .frame(width: metrics.playerLandsRect.width, height: metrics.playerLandsRect.height)
                                 .position(x: metrics.playerLandsRect.midX, y: metrics.playerLandsRect.midY)
 
-                            CombatArrowOverlay(
-                                snapshot: snapshot,
-                                groups: snapshot.xmage?.combat ?? [],
-                                previewArrows: combatPreviewArrows,
-                                metrics: metrics,
-                                humanBattlefield: human.zones.battlefield,
-                                opponentBattlefield: opponent.zones.battlefield,
-                                renderedBounds: portraitCardBounds
-                            )
-                            .allowsHitTesting(false)
-
                             VStack(spacing: 4) {
                                 HStack(spacing: 8) {
                                     if InlinePaymentPromptState.isActive(in: snapshot) {
@@ -2910,13 +2898,6 @@ struct NativeGameView: View {
                             }
                             .frame(width: metrics.centerStripRect.width, height: max(InlinePaymentPromptState.isActive(in: snapshot) ? 52 : metrics.centerStripRect.height, lastActionRejection == nil ? metrics.centerStripRect.height : 66))
                             .position(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.midY)
-
-                            CombatEdgeIndicators(cards: human.zones.battlefield + opponent.zones.battlefield,
-                                combatIDs: Set(CombatArrowModel.arrows(from: snapshot.xmage?.combat ?? [], previewArrows: combatPreviewArrows).flatMap { [$0.fromId, $0.toId] }),
-                                bounds: portraitCardBounds,
-                    viewports: [metrics.opponentBattlefieldRect, metrics.opponentLandsRect, metrics.playerBattlefieldRect, metrics.playerLandsRect],
-                    laneIndices: CombatViewportAnchors.laneIndices(human: human.zones.battlefield, opponent: opponent.zones.battlefield),
-                                inspect: { inspectedCard = $0 })
 
                             if isOverPlayerDropZone {
                                 RoundedRectangle(cornerRadius: 14)
@@ -3069,7 +3050,24 @@ struct NativeGameView: View {
                             }
                         }
                         .coordinateSpace(name: "portrait-board")
-                        .onPreferenceChange(PortraitCardBoundsKey.self) { portraitCardBounds = $0 }
+                        .overlayPreferenceValue(PortraitCardBoundsKey.self) { anchors in
+                            GeometryReader { geometry in
+                                let bounds = anchors.mapValues { geometry[$0] }
+                                if inspectingZoneTitle == nil && inspectedCard == nil {
+                                    CombatArrowOverlay(snapshot: snapshot, groups: snapshot.xmage?.combat ?? [],
+                                        previewArrows: combatPreviewArrows, metrics: metrics,
+                                        humanBattlefield: human.zones.battlefield,
+                                        opponentBattlefield: opponent.zones.battlefield, renderedBounds: bounds)
+                                        .allowsHitTesting(false)
+                                    CombatEdgeIndicators(cards: human.zones.battlefield + opponent.zones.battlefield,
+                                        combatIDs: Set(CombatArrowModel.arrows(from: snapshot.xmage?.combat ?? [], previewArrows: combatPreviewArrows).flatMap { [$0.fromId, $0.toId] }),
+                                        bounds: bounds,
+                                        viewports: [metrics.opponentBattlefieldRect, metrics.opponentLandsRect, metrics.playerBattlefieldRect, metrics.playerLandsRect],
+                                        laneIndices: CombatViewportAnchors.laneIndices(human: human.zones.battlefield, opponent: opponent.zones.battlefield),
+                                        inspect: { inspectedCard = $0 })
+                                }
+                            }
+                        }
                         .onAppear {
                             interactionState.mode = derivedInteractionMode
                         }
@@ -3259,7 +3257,7 @@ struct NativeGameView: View {
                             gameMenuConfirmation = .quit
                         }
                     )
-                    .presentationDetents([.height(380)])
+                    .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
                 }
                 .sheet(isPresented: $isPromptInspectorOpen) {
@@ -3547,17 +3545,6 @@ struct NativeGameView: View {
                     .frame(width: metrics.playerLandsRect.width, height: metrics.playerLandsRect.height)
                     .position(x: metrics.playerLandsRect.midX, y: metrics.playerLandsRect.midY)
 
-                PortraitCombatArrowOverlay(
-                    snapshot: snapshot,
-                    groups: snapshot.xmage?.combat ?? [],
-                    previewArrows: combatPreviewArrows,
-                    metrics: metrics,
-                    humanBattlefield: human.zones.battlefield,
-                    opponentBattlefield: opponent.zones.battlefield,
-                    renderedBounds: portraitCardBounds, focusedOpponentID: opponent.playerId
-                )
-                .allowsHitTesting(false)
-
                 PortraitHandRow(
                     cards: human.zones.hand,
                     legalActions: actions,
@@ -3581,13 +3568,6 @@ struct NativeGameView: View {
                 .onChange(of: derivedInteractionMode) { _, mode in
                     interactionState.mode = mode
                 }
-
-                CombatEdgeIndicators(cards: human.zones.battlefield + opponent.zones.battlefield,
-                    combatIDs: Set(CombatArrowModel.arrows(from: snapshot.xmage?.combat ?? [], previewArrows: combatPreviewArrows).flatMap { [$0.fromId, $0.toId] }),
-                    bounds: portraitCardBounds,
-                    viewports: [metrics.opponentBattlefieldRect, metrics.opponentLandsRect, metrics.playerBattlefieldRect, metrics.playerLandsRect],
-                    laneIndices: CombatViewportAnchors.laneIndices(human: human.zones.battlefield, opponent: opponent.zones.battlefield),
-                    inspect: { inspectedCard = $0 })
 
                 if isOverPlayerDropZone {
                     RoundedRectangle(cornerRadius: 14)
@@ -3748,7 +3728,25 @@ struct NativeGameView: View {
             #endif
             .preferredColorScheme(.dark)
             .coordinateSpace(name: "portrait-board")
-            .onPreferenceChange(PortraitCardBoundsKey.self) { portraitCardBounds = $0 }
+            .overlayPreferenceValue(PortraitCardBoundsKey.self) { anchors in
+                GeometryReader { geometry in
+                    let bounds = anchors.mapValues { geometry[$0] }
+                    if inspectingZoneTitle == nil && inspectedCard == nil {
+                        PortraitCombatArrowOverlay(snapshot: snapshot, groups: snapshot.xmage?.combat ?? [],
+                            previewArrows: combatPreviewArrows, metrics: metrics,
+                            humanBattlefield: human.zones.battlefield,
+                            opponentBattlefield: opponent.zones.battlefield, renderedBounds: bounds,
+                            focusedOpponentID: opponent.playerId)
+                            .allowsHitTesting(false)
+                        CombatEdgeIndicators(cards: human.zones.battlefield + opponent.zones.battlefield,
+                            combatIDs: Set(CombatArrowModel.arrows(from: snapshot.xmage?.combat ?? [], previewArrows: combatPreviewArrows).flatMap { [$0.fromId, $0.toId] }),
+                            bounds: bounds,
+                            viewports: [metrics.opponentBattlefieldRect, metrics.opponentLandsRect, metrics.playerBattlefieldRect, metrics.playerLandsRect],
+                            laneIndices: CombatViewportAnchors.laneIndices(human: human.zones.battlefield, opponent: opponent.zones.battlefield),
+                            inspect: { inspectedCard = $0 })
+                    }
+                }
+            }
             .onAppear {
                 interactionState.mode = derivedInteractionMode
                 #if DEBUG
@@ -9310,8 +9308,10 @@ private enum GameBoardMotion {
 }
 
 private struct PortraitCardBoundsKey: PreferenceKey {
-    static var defaultValue: [String: CGRect] = [:]
-    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+    // Resolve anchors in the current board layout, never a stored rectangle from
+    // the previous orientation or a delayed preference callback.
+    static var defaultValue: [String: Anchor<CGRect>] = [:]
+    static func reduce(value: inout [String: Anchor<CGRect>], nextValue: () -> [String: Anchor<CGRect>]) {
         value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
@@ -9790,7 +9790,7 @@ struct PortraitOverlappingBattlefieldRow: View {
                         let targetable = targetableIds.contains(card.instanceId) || targetableIds.contains(card.id)
                         let combatHighlighted = combatHighlightIds.contains(card.instanceId) || combatHighlightIds.contains(card.id)
                         CardTile(card: card, selected: selectedCard?.id == card.id, legal: action != nil, targetable: targetable || combatHighlighted, zoneName: title, width: cardWidth, height: cardHeight)
-                            .background { GeometryReader { geometry in Color.clear.preference(key: PortraitCardBoundsKey.self, value: [card.instanceId: geometry.frame(in: .named("portrait-board"))]) } }
+                            .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [card.instanceId: $0] }
                             .offset(x: plan.xOffset(for: index) + (cardHeight - cardWidth) / 2, y: 4)
                             .zIndex(zIndex(for: index, card: card))
                             .onCardHold(inspect: {
@@ -10879,9 +10879,7 @@ struct BattlefieldRow: View {
             height: renderedCardHeight
         )
         .frame(width: renderedCardWidth, height: renderedCardHeight)
-        .background { GeometryReader { geometry in
-            Color.clear.preference(key: PortraitCardBoundsKey.self, value: [card.instanceId: geometry.frame(in: .named("portrait-board"))])
-        } }
+        .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [card.instanceId: $0] }
         .opacity(!targetableIds.isEmpty && !targetable ? 0.54 : 1)
         .offset(y: card.tapped == true && (permanentLayout?.rows ?? 1) == 1 ? 5 : 0)
         .overlay(alignment: .bottomLeading) {
@@ -10931,9 +10929,7 @@ struct BattlefieldRow: View {
             height: renderedCardHeight
         )
         .frame(width: renderedCardWidth, height: renderedCardHeight)
-        .background { GeometryReader { geometry in
-            Color.clear.preference(key: PortraitCardBoundsKey.self, value: [card.instanceId: geometry.frame(in: .named("portrait-board"))])
-        } }
+        .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [card.instanceId: $0] }
         .opacity(!targetableIds.isEmpty && !targetable ? 0.54 : 1)
         .offset(y: card.tapped == true && (permanentLayout?.rows ?? 1) == 1 ? 5 : 0)
         .onTapGesture {
@@ -11822,6 +11818,7 @@ struct PromptDebugInspector: View {
 }
 
 struct GameManagementMenu: View {
+    @Environment(\.dismiss) private var dismiss
     let concedeAction: LegalAction?
     let runAction: (LegalAction) -> Void
     @Binding var portraitModeEnabled: Bool
@@ -11830,14 +11827,17 @@ struct GameManagementMenu: View {
     let confirmQuit: () -> Void
 
     var body: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: 12) {
+            HStack {
             Text("Game Menu")
                 .font(.system(size: 22, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
-            Text("XMage remains the source of truth. Leaving a game asks the bridge to clean up the table.")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.62))
-                .lineLimit(2)
+            Spacer()
+            Button("Done") { dismiss() }
+                .frame(minWidth: 44, minHeight: 44)
+                .accessibilityIdentifier("board.menu.done")
+            }
 
             BoardAppearancePicker()
             PortraitModeToggle(isOn: $portraitModeEnabled)
@@ -11865,6 +11865,7 @@ struct GameManagementMenu: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(CompactActionButtonStyle(isPrimary: false))
+                .accessibilityIdentifier("board.menu.quit")
             }
 
             Button(action: openPromptInspector) {
@@ -11874,7 +11875,9 @@ struct GameManagementMenu: View {
             .buttonStyle(CompactActionButtonStyle(isPrimary: false))
         }
         .padding(18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .accessibilityIdentifier("board.menu.scroll")
         .background(BattlefieldSurface().ignoresSafeArea())
     }
 }
