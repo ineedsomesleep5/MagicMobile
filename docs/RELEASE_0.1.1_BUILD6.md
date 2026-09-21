@@ -1,7 +1,7 @@
 # 0.1.1 build 6: scrolling and rotation
 
-Release in progress; publication and runtime results below must be verified before
-this document is used as availability evidence.
+Release in progress. Android is published; iOS interaction validation and
+TestFlight publication remain pending.
 
 ## Changes
 
@@ -36,13 +36,60 @@ See [build 5 evidence](RELEASE_0.1.1_BUILD5.md) for native runtime provenance.
 No engine rebuild was dispatched. Game Center remains available; dedicated Online
 and Render remain on hold.
 
-## Validation and publication
+## Android publication
 
-- Pre-fix interaction run: 35551869274, source `ebb41f6` (pending).
-- Fixed interaction run: 35552009395, source `5c16c16` (pending).
-- iOS syntax parsing passed locally; actual SDK compilation and UI execution are
-  distinct pending gates.
+[Download build 6](https://github.com/ineedsomesleep5/MagicMobile/releases/download/android-v0.1.1-build.6/MagicMobile-Android-0.1.1-build6.apk)
+([release notes](https://github.com/ineedsomesleep5/MagicMobile/releases/tag/android-v0.1.1-build.6)).
+
+- App source: `74bc56801a2ee352b01dd4d144c10400a61c3cc6`.
+- APK SHA-256: `9574fa289f9a6cf26477d776ade8ba624628c7329cb67f635449ffdc0456757c`.
+- Packaged engine SHA-256: `29c2cdee7da7201d00cb5b7707442b1e5f8a92cef29539a5a27352b53bc123af`.
+- Existing signer SHA-256: `b10ca2cdf5d184c2b264b56dae888d950f3ab52a40551b7f8eb634de0316d4bb`.
+- 228 core assertions, release build, lint, signing and 16 KB alignment passed.
+  Published asset digest matched; public download returned HTTP 200.
+- No fresh emulator run: only version metadata changed on Android; guarded engine
+  inputs and Android gameplay source remain unchanged from the recorded build-5
+  native runtime acceptance.
+
+## iOS validation and publication
+
+- Intel run 35551869274 timed out during app compilation, before any interaction
+  test. Superseded runs 35552009395 and 35552357796 were cancelled.
+- Standard Apple Silicon baseline run 35553010089 (`ebb41f6`) reproduced lands
+  not moving after a drag on artwork, inaccessible later library choices, and
+  the graveyard browse timeout. Its menu test used an obsolete button label;
+  that selector was corrected to Game controls → Game Settings in `d335729`.
+- Intermediate run 35553011416 (`3c45056`) passed artwork-driven lands and
+  permanents scrolling and five-orientation combat indicator checks. Captures
+  showed arrows resolving to the current visible cards/header or clipped edge.
+  Card/choice selection failed with the UIKit overlay, and the zone test timed
+  out after initially advancing (its swipe used the app rather than inspector
+  viewport). This intermediate implementation was not uploaded to TestFlight.
+- `6ba2c2c` tested a sequenced SwiftUI long press / drag. Run 35554629049 passed
+  tap selection but still blocked lands/library/zone scrolling. It was not
+  uploaded. The zone test now clips drags to its actual scroll viewport and
+  requires the final inspection action fully visible.
+- Focused menu run 35553854994 (`d335729`) reached Quit after selecting Classic
+  Wood, then failed returning to Done: its whole-screen downward swipe opened
+  Notification Center (captured screenshot). The updated test swipes the menu's
+  scroll view; `a0a0d85` also pins Done outside scrolling content so no return-to-
+  top gesture is needed. Focused run 35554908621 passed theme selection, reaching
+  Quit, pinned Done, and reopening the menu.
+- `4dc9530` uses native tap and long-press recognizers together. Tap waits for hold
+  failure; a swipe can cancel both through the containing scroll view. Explicit
+  tap callbacks preserve each former card action and accessibility activation.
+  Run 35555719280 passed card tap/hold release, five-orientation combat checks,
+  lands/permanents swipes, library scrolling/selection/hold-without-selection,
+  and menu theme/reopening checks. Zone scrolling progressed through the fixture
+  and reached the final card, but repeated per-card accessibility queries caused
+  the test to exceed its 120-second limit before completing its assertions.
+- `7603c52` changes only the zone test to read one accessibility snapshot per
+  swipe, retaining final-card reachability, full visibility and no-command
+  assertions. Standalone XCTest type-check passed. Focused run 35557119693 is
+  pending; the other five passing UI results apply to identical app sources.
+- Source `acd619d` passed SDK compilation, portable tests, native boundary tests,
+  real JVM regressions, and Android CI. UI execution remains a separate gate.
 - iOS 0.1.1 build 6 was absent in App Store Connect before preparation; recheck
   immediately before upload.
-- Android signed package, TestFlight distribution, website verification, and
-  final release receipts are pending.
+- TestFlight distribution, website verification, and final release receipts are
+  pending.
