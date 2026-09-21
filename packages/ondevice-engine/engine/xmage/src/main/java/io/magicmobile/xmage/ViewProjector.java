@@ -10,6 +10,8 @@ import mage.cards.Sets;
 import mage.constants.CommanderCardType;
 import mage.constants.Zone;
 import mage.game.Game;
+import mage.game.permanent.PermanentToken;
+import mage.game.permanent.token.Token;
 import mage.players.Player;
 import mage.players.PlayerImpl;
 import mage.abilities.mana.ActivatedManaAbilityImpl;
@@ -83,6 +85,20 @@ public final class ViewProjector {
                     Map<String,Object> fields=Json.object(cardView);
                     var permanent=source.getPermanent(UUID.fromString(Json.requiredString(fields,"id")));
                     if(permanent==null || permanent.isFaceDown(source) || Boolean.TRUE.equals(fields.get("hideInfo"))) continue;
+                    // This is an artwork hint, not an original-card DTO. A copy
+                    // token carries its source card even after the source leaves
+                    // the battlefield. Disclose only the name already present on
+                    // this seat's face-up CardView; never an ID or hidden origin.
+                    String sourceArt=copySourceArtworkName(fields,permanent,source);
+                    if(sourceArt!=null) fields.put("copySourceArtworkName",sourceArt);
+                    if(permanent instanceof PermanentToken && Boolean.TRUE.equals(fields.get("isToken"))) {
+                        Map<String,Object> artwork=tokenArtwork((PermanentToken)permanent,source);
+                        // A template name must already be disclosed by this seat's
+                        // current view. Never recover a concealed original name.
+                        if(artwork.get("name") instanceof String artworkName && !artworkName.isBlank()
+                                && artworkName.equals(fields.get("name")) && artworkName.equals(fields.get("displayName")))
+                            fields.put("tokenArtwork",artwork);
+                    }
                     if(permanent.getAbilities(source).stream().anyMatch(MenaceAbility.class::isInstance)) {
                         List<Object> icons=new ArrayList<>(Json.array(fields.get("cardIcons")));
                         icons.add(Json.map("cardIconType","ABILITY_MENACE","category","ABILITY","text","Menace",
@@ -112,6 +128,32 @@ public final class ViewProjector {
                 "enginePlayerId",seat.getValue().getId().toString()));
         }
         return out;
+    }
+
+    static String copySourceArtworkName(Map<String,Object> fields,mage.game.permanent.Permanent permanent,Game game) {
+        if(!(permanent instanceof PermanentToken) || !permanent.isCopy()
+                || permanent.isFaceDown(game) || Boolean.TRUE.equals(fields.get("hideInfo"))
+                || !Boolean.TRUE.equals(fields.get("isToken"))) return null;
+        Card copySource=((PermanentToken)permanent).getToken().getCopySourceCard();
+        Object visibleName=fields.get("displayName");
+        return copySource!=null && visibleName instanceof String
+                && visibleName.equals(fields.get("name")) && visibleName.equals(copySource.getName())
+                && !((String)visibleName).isBlank() ? (String)visibleName : null;
+    }
+    private static Map<String,Object> tokenArtwork(PermanentToken permanent,Game game) {
+        Token template=permanent.isTransformed() && permanent.getToken().getBackFace()!=null
+            ? permanent.getToken().getBackFace() : permanent.getToken();
+        // Template characteristics, not continuous effects, counters or a hidden
+        // original. The public CardView above is the disclosure gate.
+        List<String> subs=new ArrayList<>();
+        for(var subtype:template.getSubtype(null)) subs.add(subtype.name());
+        var color=template.getColor(null);
+        return Json.map("name",template.getName(),"cardTypes",template.getCardType(null).stream().map(Enum::name).toList(),
+            "superTypes",template.getSuperType(null).stream().map(Enum::name).toList(),"subTypes",subs,
+            "rules",template.getAbilities().getRules(game,template),
+            "power",template.getPower().toString(),"toughness",template.getToughness().toString(),
+            "color",Json.map("white",color.isWhite(),"blue",color.isBlue(),"black",color.isBlack(),
+                "red",color.isRed(),"green",color.isGreen()));
     }
 
     private static Map<String,Object> printedCards(SimpleCardsView disclosed) {

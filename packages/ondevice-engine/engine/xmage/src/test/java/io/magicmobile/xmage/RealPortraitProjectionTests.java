@@ -5,6 +5,7 @@ import com.google.gson.Gson;
 import io.magicmobile.generated.GeneratedCardFactory;
 import io.magicmobile.generated.GeneratedSetRegistry;
 import mage.Mana;
+import mage.ObjectColor;
 import mage.abilities.SpellAbility;
 import mage.cards.Card;
 import mage.cards.CardSetInfo;
@@ -16,14 +17,18 @@ import mage.cards.decks.Deck;
 import mage.cards.i.IsamaruHoundOfKonda;
 import mage.cards.r.RaiseTheAlarm;
 import mage.constants.Rarity;
+import mage.constants.SubType;
 import mage.constants.Zone;
 import mage.game.Game;
+import mage.game.permanent.PermanentToken;
+import mage.game.permanent.token.Token;
 import mage.game.events.PlayerQueryEvent;
 import mage.game.turn.PreCombatMainPhase;
 import mage.game.turn.PreCombatMainStep;
 import mage.view.GameView;
 import mage.view.SimpleCardView;
 import mage.view.SimpleCardsView;
+import mage.util.functions.CopyTokenFunction;
 import mage.watchers.common.CommanderInfoWatcher;
 import mage.watchers.common.CommanderPlaysCountWatcher;
 
@@ -44,6 +49,7 @@ public final class RealPortraitProjectionTests {
         tests.put("static-faces", RealPortraitProjectionTests::staticFaces);
         tests.put("control-presentation", RealPortraitProjectionTests::controlPresentation);
         tests.put("revealed-companion", RealPortraitProjectionTests::revealedCompanion);
+        tests.put("copy-token-art", RealPortraitProjectionTests::copyTokenArtworkIdentity);
         int passed = 0;
         for (Map.Entry<String,Runnable> test : tests.entrySet()) {
             if (args.length > 0 && !args[0].equals(test.getKey())) continue;
@@ -84,6 +90,51 @@ public final class RealPortraitProjectionTests {
             eq(f.snapshot("owner").get("stackOrder"), List.of(bottom.toString()));
             f.game.getStack().resolve(f.game);
             eq(f.snapshot("owner").get("stackOrder"), List.of());
+        }
+    }
+    private static void copyTokenArtworkIdentity() {
+        try (Fixture f = new Fixture()) {
+            Card source = f.commander();
+            Token token = CopyTokenFunction.createTokenCopy(source, f.game);
+            PermanentToken permanent = new PermanentToken(token, f.owner.getId(), f.game);
+            Map<String,Object> visible = Json.map("name", "Isamaru, Hound of Konda",
+                "displayName", "Isamaru, Hound of Konda", "isToken", true);
+            eq(ViewProjector.copySourceArtworkName(visible, permanent, f.game), "Isamaru, Hound of Konda");
+            visible.put("hideInfo", true);
+            eq(ViewProjector.copySourceArtworkName(visible, permanent, f.game), null);
+            visible.remove("hideInfo"); visible.put("displayName", "Face-down card");
+            eq(ViewProjector.copySourceArtworkName(visible, permanent, f.game), null);
+            visible.put("displayName", "Isamaru, Hound of Konda"); visible.put("isToken", false);
+            eq(ViewProjector.copySourceArtworkName(visible, permanent, f.game), null);
+            visible.put("isToken", true); token.setCopySourceCard(null);
+            PermanentToken plain = new PermanentToken(token, f.owner.getId(), f.game);
+            eq(ViewProjector.copySourceArtworkName(visible, plain, f.game), null);
+
+            // Real seat-scoped GameView -> projector path, with Scarab-style
+            // copiable exceptions. The copied card's art remains Isamaru while
+            // live type/color/P/T belong to the 4/4 black Zombie token.
+            Token zombie = CopyTokenFunction.createTokenCopy(source, f.game);
+            zombie.removeAllCreatureTypes(); zombie.addSubType(SubType.ZOMBIE);
+            zombie.setPower(4); zombie.setToughness(4); zombie.setColor(ObjectColor.BLACK);
+            check(zombie.putOntoBattlefield(1, f.game, source.getSpellAbility(), f.owner.getId()), "copy token enters");
+            UUID tokenId = zombie.getLastAddedTokenIds().get(0);
+            for (String seat : f.seats.keySet()) {
+                Map<String,Object> projected = Json.object(f.snapshot(seat).get("gameView"));
+                Map<String,Object> player = Json.array(projected.get("players")).stream().map(Json::object)
+                    .filter(p -> f.owner.getId().toString().equals(p.get("playerId"))).findFirst().orElseThrow();
+                Map<String,Object> shown = Json.object(Json.object(player.get("battlefield")).get(tokenId.toString()));
+                eq(shown.get("copy"), true);
+                eq(shown.get("isToken"), true);
+                eq(shown.get("copySourceArtworkName"), "Isamaru, Hound of Konda");
+                eq(shown.get("power"), "4"); eq(shown.get("toughness"), "4");
+                check(Json.array(shown.get("subTypes")).contains("ZOMBIE"), "live Zombie type retained");
+                Map<String,Object> art=Json.object(shown.get("tokenArtwork"));
+                eq(art.get("name"), "Isamaru, Hound of Konda");
+                eq(art.get("power"), "4"); eq(art.get("toughness"), "4");
+                check(Json.array(art.get("subTypes")).contains("ZOMBIE"), "base token type retained");
+                Map<String,Object> baseColor=Json.object(art.get("color"));
+                eq(baseColor.get("black"), true); eq(baseColor.get("white"), false);
+            }
         }
     }
 
