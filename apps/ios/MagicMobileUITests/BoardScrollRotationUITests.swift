@@ -148,23 +148,31 @@ final class BoardScrollRotationUITests: XCTestCase {
         let last = app.buttons["Inspect Fixture Graveyard 23"]
         let viewport = app.scrollViews.containing(NSPredicate(format: "identifier BEGINSWITH %@", "card-you-graveyard-")).firstMatch
         XCTAssertTrue(viewport.waitForExistence(timeout: 5))
+        let viewportFrame = viewport.frame.intersection(app.frame)
+        // One snapshot per swipe avoids dozens of separate accessibility IPCs.
+        // The inspector viewport itself does not move when its content scrolls.
+        func artworkFrames(_ snapshot: XCUIElementSnapshot) -> [CGRect] {
+            let own = snapshot.identifier.hasPrefix("card-you-graveyard-") ? [snapshot.frame] : []
+            return own + snapshot.children.flatMap { artworkFrames($0) }
+        }
         for _ in 0..<12 {
-            let viewportFrame = viewport.frame.intersection(app.frame)
             if last.exists && last.isHittable && viewportFrame.insetBy(dx: -1, dy: -1).contains(last.frame) { break }
-            let candidates = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "card-you-graveyard-")).allElementsBoundByIndex
-            // AX may consider a partially clipped card hittable even though its
-            // midpoint lies outside the inspector. Start on visible artwork only.
-            let visibleCards = candidates.compactMap { element -> (XCUIElement, CGRect)? in
-                let visible = element.frame.intersection(viewportFrame)
-                return visible.width > 20 && visible.height > 30 ? (element, visible) : nil
+            guard let snapshot = try? viewport.snapshot() else {
+                XCTFail("Could not read graveyard artwork geometry"); return
             }
-            guard let source = visibleCards.max(by: { $0.1.midY < $1.1.midY })?.0 else {
+            let visibleCards = artworkFrames(snapshot).map { $0.intersection(viewportFrame) }
+                .filter { $0.width > 20 && $0.height > 30 }
+            guard let source = visibleCards.max(by: { $0.midY < $1.midY }) else {
                 XCTFail("No visible graveyard artwork to begin a scroll"); return
             }
-            dragArtwork(source, in: viewport, horizontally: false)
+            let distance = min(viewportFrame.height * 0.65, source.midY - viewportFrame.minY - 8)
+            XCTAssertGreaterThan(distance, 10)
+            let start = app.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: source.midX, dy: source.midY))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -distance)))
         }
         XCTAssertTrue(last.isHittable)
-        XCTAssertTrue(viewport.frame.insetBy(dx: -1, dy: -1).contains(last.frame), "Last graveyard inspection action must scroll fully into view")
+        XCTAssertTrue(viewportFrame.insetBy(dx: -1, dy: -1).contains(last.frame), "Last graveyard inspection action must scroll fully into view")
         XCTAssertFalse(app.staticTexts["preview.captured-command"].exists)
     }
 
