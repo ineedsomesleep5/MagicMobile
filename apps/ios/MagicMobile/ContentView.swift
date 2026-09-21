@@ -5651,11 +5651,10 @@ struct StackPeek: View {
                     ForEach(Array(cards.suffix(4).enumerated()), id: \.element.id) { index, card in
                         CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, zoneName: "Stack", width: 38, height: 54)
                             .zIndex(Double(index))
-                            .onTapGesture {
+                            .onCardInteraction(tap: {
                                 selectedCard = card
                                 inspectedCard = nil
-                            }
-                            .onCardHold(inspect: {
+                            }, inspect: {
                                 inspectedCard = card
                             }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                     }
@@ -5712,11 +5711,10 @@ struct XmageStackPeek: View {
             HStack(spacing: 9) {
                 if let card = topDisplayCard {
                     CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, zoneName: "Stack", width: 128, height: 179, ignoreTappedRotation: true, imageVariant: .inspection)
-                        .onTapGesture {
+                        .onCardInteraction(tap: {
                             selectedCard = nil
                             inspectedCard = card
-                        }
-                        .onCardHold(inspect: {
+                        }, inspect: {
                             inspectedCard = card
                         }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                 } else {
@@ -6629,7 +6627,7 @@ struct UniversalPromptActionPanel: View {
                     ForEach(cards) { card in
                         VStack(spacing: 4) {
                             CardTile(card: card, selected: selectedCard?.id == card.id || selectedCard?.instanceId == card.instanceId, legal: true, zoneName: "Prompt", width: 42, height: 59)
-                                .onTapGesture {
+                                .onCardInteraction(tap: {
                                     if selectedCard?.instanceId == card.instanceId {
                                         selectedCard = nil
                                     } else {
@@ -6637,8 +6635,7 @@ struct UniversalPromptActionPanel: View {
                                     }
                                     inspectedCard = nil
                                     GameHaptics.selection()
-                                }
-                                .onCardHold(inspect: {
+                                }, inspect: {
                                     inspectedCard = card
                                     GameHaptics.impact()
                                 }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
@@ -7929,11 +7926,10 @@ struct MiniZoneRow: View {
                 HStack(spacing: -7) {
                     ForEach(cards) { card in
                         CardTile(card: card, selected: selectedCard?.id == card.id, legal: false, zoneName: title, width: 28, height: 39)
-                            .onTapGesture {
+                            .onCardInteraction(tap: {
                                 selectedCard = card
                                 inspectedCard = nil
-                            }
-                            .onCardHold(inspect: {
+                            }, inspect: {
                                 inspectedCard = card
                             }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                     }
@@ -9791,13 +9787,7 @@ struct PortraitOverlappingBattlefieldRow: View {
                         let combatHighlighted = combatHighlightIds.contains(card.instanceId) || combatHighlightIds.contains(card.id)
                         CardTile(card: card, selected: selectedCard?.id == card.id, legal: action != nil, targetable: targetable || combatHighlighted, zoneName: title, width: cardWidth, height: cardHeight)
                             .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [card.instanceId: $0] }
-                            .onCardHold(inspect: {
-                                selectedCard = nil
-                                inspectedCard = card
-                            }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
-                            .offset(x: plan.xOffset(for: index) + (cardHeight - cardWidth) / 2, y: 4)
-                            .zIndex(zIndex(for: index, card: card))
-                            .onTapGesture {
+                            .onCardInteraction(tap: {
                                         if targetable {
                                             runTargetAction(card)
                                         } else if !targetableIds.isEmpty {
@@ -9810,7 +9800,12 @@ struct PortraitOverlappingBattlefieldRow: View {
                                             selectedCard = card
                                             inspectedCard = nil
                                         }
-                            }
+                            }, inspect: {
+                                selectedCard = nil
+                                inspectedCard = card
+                            }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
+                            .offset(x: plan.xOffset(for: index) + (cardHeight - cardWidth) / 2, y: 4)
+                            .zIndex(zIndex(for: index, card: card))
                     }
                 }
                 .frame(width: max(plan.contentWidth, rowWidth), height: max(cardHeight + 8, 44), alignment: .topLeading)
@@ -10892,13 +10887,12 @@ struct BattlefieldRow: View {
                 .padding(3)
                 .allowsHitTesting(false)
         }
-        .onTapGesture {
+        .onCardInteraction(tap: {
             expandedGroupIds.insert(group.id)
             selectedCard = nil
             inspectedCard = nil
             GameHaptics.selection()
-        }
-        .onCardHold(inspect: {
+        }, inspect: {
             inspectedCard = card
             GameHaptics.impact()
         }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
@@ -10931,10 +10925,9 @@ struct BattlefieldRow: View {
         .frame(width: renderedCardWidth, height: renderedCardHeight)
         .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [card.instanceId: $0] }
         .opacity(!targetableIds.isEmpty && !targetable ? 0.54 : 1)
-        .onTapGesture {
+        .onCardInteraction(tap: {
             handleCardTap(card, action: action, targetable: targetable, combatHighlighted: combatHighlighted)
-        }
-        .onCardHold(inspect: {
+        }, inspect: {
             inspectedCard = card
             GameHaptics.impact()
         }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
@@ -11030,17 +11023,16 @@ struct HandFan: View {
                     width: metrics.handCardWidth,
                     height: metrics.handCardHeight
                 )
-                    .onCardHold(inspect: { inspectedCard = card }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
+                    .onCardInteraction(tap: {
+                        selectedCard = card
+                        inspectedCard = nil
+                    }, inspect: { inspectedCard = card }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                     .scaleEffect(selected ? 1.16 : 1.0)
                     .offset(
                         x: frame.midX - metrics.playWidth / 2,
                         y: frame.midY - metrics.handFrameHeight / 2
                     )
                     .zIndex(isDragging || selectedCard?.id == card.id ? 10 : Double(index))
-                    .onTapGesture {
-                        selectedCard = card
-                        inspectedCard = nil
-                    }
             }
         }
         .frame(width: metrics.playWidth, height: metrics.handFrameHeight)
@@ -12860,11 +12852,10 @@ struct ZoneInspectorSheet: View {
                         let playActions = GameBoardInteractionState.legalPlayActions(for: card, actions: legalActions)
                         VStack(spacing: 5) {
                             CardTile(card: card, selected: selectedCard?.id == card.id, legal: !playActions.isEmpty, zoneName: title, width: 70, height: 98)
-                                .onTapGesture {
+                                .onCardInteraction(tap: {
                                     selectedCard = card
                                     inspectedCard = nil
-                                }
-                                .onCardHold(inspect: {
+                                }, inspect: {
                                     inspectedCard = card
                                 }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                             if let action = playActions.first, playActions.count == 1 {
@@ -12967,11 +12958,10 @@ struct CompactZoneInspectorOverlay: View {
                             let targetable = runTargetAction != nil && (targetableIDs.contains(card.instanceId) || targetableIDs.contains(card.id))
                             VStack(spacing: 8) {
                                 CardTile(card: card, selected: selectedCard?.id == card.id, legal: !cardActions.isEmpty || targetable, zoneName: title, width: 76, height: 106)
-                                    .onTapGesture {
+                                    .onCardInteraction(tap: {
                                         selectedCard = card
                                         inspectedCard = nil
-                                    }
-                                    .onCardHold(inspect: {
+                                    }, inspect: {
                                         inspectedCard = card
                                     }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                                 if targetable {

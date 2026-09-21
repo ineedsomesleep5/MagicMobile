@@ -134,6 +134,10 @@ final class BoardScrollRotationUITests: XCTestCase {
         }
         XCTAssertTrue(last.isHittable, "Search results must scroll to later cards")
         XCTAssertFalse(app.buttons["board.choice.confirm"].isEnabled, "Scrolling must not select a card")
+        last.press(forDuration: 0.7)
+        XCTAssertTrue(app.buttons["board.choice.inspection.close"].waitForNonExistence(timeout: 3),
+                      "Choice inspection must end on release")
+        XCTAssertFalse(app.buttons["board.choice.confirm"].isEnabled, "Holding must not select a card on release")
         last.press(forDuration: 0.15)
         XCTAssertTrue(app.buttons["board.choice.confirm"].isEnabled)
     }
