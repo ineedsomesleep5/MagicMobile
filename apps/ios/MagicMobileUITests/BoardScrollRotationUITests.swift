@@ -114,7 +114,7 @@ final class BoardScrollRotationUITests: XCTestCase {
         launch("crowded-battlefield", portrait: true)
         let creature = card("card-your-board-isamaru")
         XCTAssertTrue(creature.waitForExistence(timeout: 5))
-        creature.tap()
+        creature.press(forDuration: 0.15)
         XCTAssertTrue(creature.label.hasSuffix(", selected"))
         creature.press(forDuration: 0.7)
         XCTAssertTrue(card("card-inspector-isamaru").waitForNonExistence(timeout: 3),
@@ -136,7 +136,7 @@ final class BoardScrollRotationUITests: XCTestCase {
         }
         XCTAssertTrue(last.isHittable, "Search results must scroll to later cards")
         XCTAssertFalse(app.buttons["board.choice.confirm"].isEnabled, "Scrolling must not select a card")
-        last.tap()
+        last.press(forDuration: 0.15)
         XCTAssertTrue(app.buttons["board.choice.confirm"].isEnabled)
     }
 
@@ -144,15 +144,25 @@ final class BoardScrollRotationUITests: XCTestCase {
         launch("zone-inspection", portrait: true)
         XCTAssertTrue(app.buttons["Close You · Graveyard"].waitForExistence(timeout: 5))
         let last = app.buttons["Inspect Fixture Graveyard 23"]
+        let viewport = app.scrollViews.containing(NSPredicate(format: "identifier BEGINSWITH %@", "card-you-graveyard-")).firstMatch
+        XCTAssertTrue(viewport.waitForExistence(timeout: 5))
         for _ in 0..<12 {
-            if last.isHittable { break }
+            let viewportFrame = viewport.frame.intersection(app.frame)
+            if last.exists && last.isHittable && viewportFrame.insetBy(dx: -1, dy: -1).contains(last.frame) { break }
             let candidates = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "card-you-graveyard-")).allElementsBoundByIndex
-            guard let source = candidates.filter({ $0.isHittable }).max(by: { $0.frame.midY < $1.frame.midY }) else {
+            // AX may consider a partially clipped card hittable even though its
+            // midpoint lies outside the inspector. Start on visible artwork only.
+            let visibleCards = candidates.compactMap { element -> (XCUIElement, CGRect)? in
+                let visible = element.frame.intersection(viewportFrame)
+                return visible.width > 20 && visible.height > 30 ? (element, visible) : nil
+            }
+            guard let source = visibleCards.max(by: { $0.1.midY < $1.1.midY })?.0 else {
                 XCTFail("No visible graveyard artwork to begin a scroll"); return
             }
-            dragArtwork(source, in: app, horizontally: false)
+            dragArtwork(source, in: viewport, horizontally: false)
         }
         XCTAssertTrue(last.isHittable)
+        XCTAssertTrue(viewport.frame.insetBy(dx: -1, dy: -1).contains(last.frame), "Last graveyard inspection action must scroll fully into view")
         XCTAssertFalse(app.staticTexts["preview.captured-command"].exists)
     }
 

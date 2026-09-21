@@ -1,7 +1,4 @@
 import SwiftUI
-#if canImport(UIKit)
-import UIKit
-#endif
 
 /// A touch-owned inspection is transient. Explicit Inspect actions remain persistent.
 final class HoldCardInspection: ObservableObject {
@@ -51,73 +48,33 @@ private struct CardHoldModifier: ViewModifier {
     let inspect: () -> Void
     let release: () -> Void
     @Environment(\.holdCardInspection) private var inspection
+    @GestureState private var holding = false
+
     func body(content: Content) -> some View {
-        #if canImport(UIKit)
-        content.overlay {
-            CardHoldTouchView(begin: {
+        // Do not start a drag at touch-down: the scroll view must own swipes.
+        // The second phase tracks release only after a stationary hold succeeds.
+        content.simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.35, maximumDistance: 8)
+                .sequenced(before: DragGesture(minimumDistance: 0))
+                .updating($holding) { value, holding, _ in
+                    if case .second(true, _) = value { holding = true }
+                }
+        )
+        .onChange(of: holding) { active in
+            if active {
                 inspection?.begin(dismiss: release)
                 inspect()
-            }, end: {
-                if let inspection { inspection.end() } else { release() }
-            })
-            .accessibilityHidden(true)
-        }
-        #else
-        content.onLongPressGesture(minimumDuration: 0.35, maximumDistance: 8, pressing: {
-            if !$0 { release() }
-        }, perform: inspect)
-        #endif
-    }
-}
-
-#if canImport(UIKit)
-/// A long press remains possible only while the finger is still. Unlike a
-/// zero-distance SwiftUI drag, it never claims a swipe from the parent scroll view.
-private struct CardHoldTouchView: UIViewRepresentable {
-    let begin: () -> Void
-    let end: () -> Void
-
-    func makeUIView(context: Context) -> TouchView { TouchView() }
-    func updateUIView(_ view: TouchView, context: Context) {
-        view.begin = begin
-        view.end = end
-    }
-    static func dismantleUIView(_ view: TouchView, coordinator: ()) { view.finish() }
-
-    final class TouchView: UIView {
-        var begin: (() -> Void)?
-        var end: (() -> Void)?
-        private var inspecting = false
-
-        override init(frame: CGRect) {
-            super.init(frame: frame)
-            backgroundColor = .clear
-            isAccessibilityElement = false
-            let hold = UILongPressGestureRecognizer(target: self, action: #selector(held(_:)))
-            hold.minimumPressDuration = 0.35
-            hold.allowableMovement = 8
-            addGestureRecognizer(hold)
-        }
-        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            if window == nil { finish() }
-        }
-        @objc private func held(_ gesture: UILongPressGestureRecognizer) {
-            switch gesture.state {
-            case .began: inspecting = true; begin?()
-            case .ended, .cancelled, .failed: finish()
-            default: break
+            } else {
+                endInspection()
             }
         }
-        func finish() {
-            guard inspecting else { return }
-            inspecting = false
-            end?()
-        }
+        .onDisappear { if holding { endInspection() } }
+    }
+
+    private func endInspection() {
+        if let inspection { inspection.end() } else { release() }
     }
 }
-#endif
 
 private struct HoldInspectionInteraction: ViewModifier {
     @Environment(\.holdCardInspection) private var inspection
