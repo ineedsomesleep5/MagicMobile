@@ -96,9 +96,16 @@ availability.
 
 ## Website and merge
 
-The website release metadata now points to Android build 5 and the approved iOS
-build 5. Production deployment, live responsive verification and the final merge
-are recorded after they succeed.
+[The production download site](https://magicmobile-downloads.vercel.app) now shows
+version **0.1.1**, build **5** for both platforms. The promoted Vercel deployment
+`magicmobile-downloads-nor50zpci-caleb-felicianos-projects.vercel.app` reached
+`READY`. The live production page was checked after promotion: its Android button
+uses the verified build-5 APK URL, its release-notes link uses the build-5 GitHub
+release, and its iPhone panel reports build 5 available to Internal and External
+TestFlight testers with the existing public invitation URL.
 
-[PR 15](https://github.com/ineedsomesleep5/MagicMobile/pull/15) remains the release
-PR until its final checks and merge complete.
+The site layout code did not change in this release-label update, so the prior
+mobile/desktop visual acceptance remains applicable; the current live accessibility
+tree and both platform panels were rechecked. [PR 15](https://github.com/ineedsomesleep5/MagicMobile/pull/15)
+carries this release into `main`; GitHub remains authoritative for its final merge
+state and checks.
