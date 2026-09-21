@@ -24,7 +24,7 @@ XMage remains pinned to `4825513287ba6c42c32fd205d227f4a5fc44c2f3`. A bridge art
 - [x] Portable Swift tests; Android core and app unit tests.
 - [x] Exact-source JVM/privacy tests if bridge changes.
 - [x] iOS simulator interactions and screenshots in both orientations (fixtures clearly labeled).
-- [ ] Android compilation, lint and relevant native runtime/UI checks.
+- [x] Android compilation, lint and packaged native runtime checks (emulator; physical phone acceptance not claimed).
 - [ ] Exact-source native artifacts, matching headers and provenance if rebuilt.
 - [ ] Live build-number check, signed artifacts, preserved Game Center and unchanged app identities.
 - [ ] Android APK checksum/signer/update compatibility; published download verified.
@@ -68,3 +68,5 @@ No upload or Android publication has happened for this change set yet.
 - Third simulator batch: six of seven tests passed, including error recovery, both search states, landscape caption/order visibility, Cards tabs and Playtest history (all 18 fixture sessions reachable). Independent screenshots confirm readable landscape choices and pinned Playtest tabs. The remaining portrait test read a lazy card after tapping an offscreen ordering control scrolled it away; the capture shows correct order. The test must navigate back within its scroll view and rerun the original order/deselect/confirmation assertions.
 - Artwork-focused checks after isolating the two remaining test caches: 76 tests, two opt-in skips, zero failures. No production cache behavior changed or generated cache files committed.
 - Final portrait scry rerun passed all original order, deselection and single-confirmation assertions after scrolling the actual choice viewport back to its cards (`PortraitFinal.xcresult`, 16.530 seconds). All seven affected choice/history tests now have passing current-source evidence, alongside the earlier three resource-row/rotation and token-scope consent tests. These remain labeled simulator fixtures, not native engine gameplay.
+- Final signed Android APK (`3ad31f4…`) installed over the prior version without data erasure. The installed APK checksum matched. All ten packaged native instrumentation tests passed, including a 13-turn Commander game with 68 responses and ten engine reopen cycles. Token-only scope navigation and the empty history dashboard were also inspected in the real app; no mass artwork download or consent change was performed.
+- App implementation source: `ef5ebf68337233b9c4c8bfaa6d8c638db784e9c2`. PR #17 source checks passed: Android app, portable Swift/iOS SDK compilation, real JVM, native boundary, general CI, and both existing Vercel previews. These do not replace the separate iOS native artifact/product-link or distribution gates.
