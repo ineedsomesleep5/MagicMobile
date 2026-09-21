@@ -78,6 +78,19 @@ enum GameBoardPreviewFixtures {
             for number in 2...(crowded ? 5 : 2) {
                 battlefield.append(card("\(seat)-preview-land-\(number)", "Forest", "Basic Land — Forest", "", "{T}: Add {G}."))
             }
+            if state == .combatArrows {
+                // Distinct development names prevent land grouping from hiding overflow.
+                for number in 0..<12 {
+                    battlefield.append(card("\(seat)-overflow-land-\(number)", "Fixture Land \(number)", "Land", "", "Development scrolling fixture."))
+                }
+            }
+            if state == .zoneInspection && index == 0 {
+                var graveyard = zones["graveyard"] as! [[String: Any]]
+                for number in 0..<24 {
+                    graveyard.append(card("graveyard-overflow-\(number)", "Fixture Graveyard \(number)", "Creature", "", "Development scrolling fixture.", power: 1))
+                }
+                zones["graveyard"] = graveyard
+            }
             if state == .stackResponsePrompt && index == 1 {
                 battlefield.append(card("ai-1-ability-source", "Prodigal Pyromancer", "Creature — Human Wizard", "{2}{R}", "{T}: This creature deals 1 damage to any target.", power: 1))
             }

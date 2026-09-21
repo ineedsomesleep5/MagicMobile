@@ -226,8 +226,8 @@ struct BoardCardChoiceView: View {
         let selectAction = isSelected ? "Clear selection" : "Select card"
         return cardArtwork(card, width: width)
             .contentShape(Rectangle())
-            .onTapGesture { toggleSelection(card.id) }
-            .onCardHold(inspect: { inspected = card }, release: { if inspected?.id == card.id { inspected = nil } })
+            .onCardInteraction(tap: { toggleSelection(card.id) }, inspect: { inspected = card },
+                               release: { if inspected?.id == card.id { inspected = nil } })
             .accessibilityLabel(Text(verbatim: label))
             .accessibilityValue(Text(verbatim: selectionState(card.id)))
             .accessibilityAddTraits(traits)

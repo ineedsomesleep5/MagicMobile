@@ -1,0 +1,199 @@
+import XCTest
+
+/// Presentation fixtures only: these exercise delivered touches and layout, not engine legality.
+@MainActor
+final class BoardScrollRotationUITests: XCTestCase {
+    private var app: XCUIApplication!
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+        executionTimeAllowance = 240
+    }
+
+    override func tearDownWithError() throws {
+        if let app {
+            let image = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            image.lifetime = .keepAlways
+            add(image)
+            let tree = XCTAttachment(string: app.debugDescription)
+            tree.lifetime = .keepAlways
+            add(tree)
+            app.terminate()
+        }
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    private func launch(_ fixture: String, portrait: Bool) {
+        app = XCUIApplication()
+        app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
+        app.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
+        app.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+            "-magicmobile.portraitModeEnabled", "YES"]
+        XCUIDevice.shared.orientation = portrait ? .portrait : .landscapeLeft
+        app.launch()
+        XCTAssertTrue(app.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 20))
+        rotate(portrait)
+    }
+
+    private func rotate(_ portrait: Bool) {
+        XCUIDevice.shared.orientation = portrait ? .portrait : .landscapeLeft
+        let predicate = NSPredicate { [self] _, _ in
+            let frame = app.frame
+            return portrait ? frame.height > frame.width : frame.width > frame.height
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: app)], timeout: 10), .completed)
+    }
+
+    private func card(_ prefix: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", prefix)).firstMatch
+    }
+
+    private func dragArtwork(_ element: XCUIElement, in viewport: XCUIElement, horizontally: Bool) {
+        let visible = element.frame.intersection(viewport.frame).intersection(app.frame)
+        XCTAssertGreaterThan(visible.width, 10)
+        XCTAssertGreaterThan(visible.height, 10)
+        let start = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: visible.midX, dy: visible.midY))
+        let distance = horizontally ? min(viewport.frame.width * 0.65, visible.midX - viewport.frame.minX - 8)
+            : min(viewport.frame.height * 0.65, visible.midY - viewport.frame.minY - 8)
+        XCTAssertGreaterThan(distance, 10)
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: horizontally ? -distance : 0, dy: horizontally ? 0 : -distance)))
+    }
+
+    func testMenuThemeChangeReopenCanReachQuit() {
+        launch("crowded-battlefield", portrait: false)
+        for _ in 0..<2 {
+            app.buttons["Game controls"].press(forDuration: 0.15)
+            XCTAssertTrue(app.buttons["Game Settings"].waitForExistence(timeout: 5))
+            app.buttons["Game Settings"].press(forDuration: 0.15)
+            XCTAssertTrue(app.staticTexts["Game Menu"].waitForExistence(timeout: 5))
+            let menu = app.scrollViews["board.menu.scroll"]
+            let theme = app.buttons["Classic Wood battlefield"]
+            for _ in 0..<4 {
+                if theme.isHittable { break }
+                menu.swipeUp()
+            }
+            XCTAssertTrue(theme.isHittable)
+            theme.press(forDuration: 0.15)
+            XCTAssertTrue(theme.isSelected)
+            let quit = app.buttons["Quit"]
+            for _ in 0..<5 {
+                if quit.isHittable && app.frame.contains(quit.frame) { break }
+                menu.swipeUp()
+            }
+            XCTAssertTrue(quit.isHittable)
+            XCTAssertTrue(app.frame.contains(quit.frame), "Quit must be fully visible after changing theme")
+            let done = app.buttons["board.menu.done"]
+            XCTAssertTrue(done.isHittable, "Done must remain pinned while settings scroll")
+            done.press(forDuration: 0.15)
+            XCTAssertTrue(app.buttons["Game controls"].waitForExistence(timeout: 5))
+        }
+    }
+
+    func testLandscapeLandsAndPermanentsScrollFromArtwork() {
+        launch("combat-arrows", portrait: false)
+        for title in ["Your lands", "Your board"] {
+            let lane = app.scrollViews["board.battlefield.\(title)"]
+            XCTAssertTrue(lane.waitForExistence(timeout: 5))
+            let prefix = title == "Your lands" ? "card-your-lands-" : "card-your-board-"
+            let cards = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", prefix)).allElementsBoundByIndex
+            guard let source = cards.filter({ $0.isHittable && lane.frame.intersection($0.frame).width > 20 })
+                .max(by: { $0.frame.midX < $1.frame.midX }) else {
+                XCTFail("No visible artwork in \(title)"); return
+            }
+            let before = source.frame.minX
+            dragArtwork(source, in: lane, horizontally: true)
+            XCTAssertLessThan(source.frame.minX, before - 20, "Dragging card artwork must scroll \(title)")
+            XCTAssertFalse(app.staticTexts["preview.captured-command"].exists)
+        }
+    }
+
+    func testCardTapAndHoldStillWorkAfterScrollingFix() {
+        launch("crowded-battlefield", portrait: true)
+        let creature = card("card-your-board-isamaru")
+        XCTAssertTrue(creature.waitForExistence(timeout: 5))
+        creature.press(forDuration: 0.15)
+        XCTAssertTrue(creature.label.hasSuffix(", selected"))
+        creature.press(forDuration: 0.7)
+        XCTAssertTrue(card("card-inspector-isamaru").waitForNonExistence(timeout: 3),
+                      "Inspection must end when the finger lifts")
+    }
+
+    func testLibraryChoicesScrollFromArtwork() {
+        launch("library-choice", portrait: true)
+        let first = app.descendants(matching: .any)["board.choice.card.choice-0"].firstMatch
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        let last = app.descendants(matching: .any)["board.choice.card.choice-10"].firstMatch
+        for _ in 0..<6 {
+            if last.isHittable { break }
+            let candidates = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "board.choice.card.")).allElementsBoundByIndex
+            guard let source = candidates.filter({ $0.isHittable }).max(by: { $0.frame.midY < $1.frame.midY }) else {
+                XCTFail("No visible search result artwork"); return
+            }
+            dragArtwork(source, in: app.scrollViews["board.choice.cards"], horizontally: false)
+        }
+        XCTAssertTrue(last.isHittable, "Search results must scroll to later cards")
+        XCTAssertFalse(app.buttons["board.choice.confirm"].isEnabled, "Scrolling must not select a card")
+        last.press(forDuration: 0.7)
+        XCTAssertTrue(app.buttons["board.choice.inspection.close"].waitForNonExistence(timeout: 3),
+                      "Choice inspection must end on release")
+        XCTAssertFalse(app.buttons["board.choice.confirm"].isEnabled, "Holding must not select a card on release")
+        last.press(forDuration: 0.15)
+        XCTAssertTrue(app.buttons["board.choice.confirm"].isEnabled)
+    }
+
+    func testZoneInspectorScrollsFromArtwork() {
+        launch("zone-inspection", portrait: true)
+        XCTAssertTrue(app.buttons["Close You · Graveyard"].waitForExistence(timeout: 5))
+        let last = app.buttons["Inspect Fixture Graveyard 23"]
+        let viewport = app.scrollViews.containing(NSPredicate(format: "identifier BEGINSWITH %@", "card-you-graveyard-")).firstMatch
+        XCTAssertTrue(viewport.waitForExistence(timeout: 5))
+        let viewportFrame = viewport.frame.intersection(app.frame)
+        // One snapshot per swipe avoids dozens of separate accessibility IPCs.
+        // The inspector viewport itself does not move when its content scrolls.
+        func artworkFrames(_ snapshot: XCUIElementSnapshot) -> [CGRect] {
+            let own = snapshot.identifier.hasPrefix("card-you-graveyard-") ? [snapshot.frame] : []
+            return own + snapshot.children.flatMap { artworkFrames($0) }
+        }
+        for _ in 0..<12 {
+            if last.exists && last.isHittable && viewportFrame.insetBy(dx: -1, dy: -1).contains(last.frame) { break }
+            guard let snapshot = try? viewport.snapshot() else {
+                XCTFail("Could not read graveyard artwork geometry"); return
+            }
+            let visibleCards = artworkFrames(snapshot).map { $0.intersection(viewportFrame) }
+                .filter { $0.width > 20 && $0.height > 30 }
+            guard let source = visibleCards.max(by: { $0.midY < $1.midY }) else {
+                XCTFail("No visible graveyard artwork to begin a scroll"); return
+            }
+            let distance = min(viewportFrame.height * 0.65, source.midY - viewportFrame.minY - 8)
+            XCTAssertGreaterThan(distance, 10)
+            let start = app.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: source.midX, dy: source.midY))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -distance)))
+        }
+        XCTAssertTrue(last.isHittable)
+        XCTAssertTrue(viewportFrame.insetBy(dx: -1, dy: -1).contains(last.frame), "Last graveyard inspection action must scroll fully into view")
+        XCTAssertFalse(app.staticTexts["preview.captured-command"].exists)
+    }
+
+    func testCombatEdgeIndicatorsSurviveRepeatedRotation() {
+        launch("combat-arrows", portrait: true)
+        for (index, portrait) in [true, false, true, false, true].enumerated() {
+            rotate(portrait)
+            let lane = app.scrollViews["board.battlefield.Your board"]
+            let edge = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "board.combat.offscreen.")).firstMatch
+            for _ in 0..<5 {
+                if edge.exists && edge.isHittable { break }
+                lane.swipeLeft()
+            }
+            XCTAssertTrue(edge.isHittable, "Combat edge control missing after rotation \(index)")
+            XCTAssertTrue(app.frame.contains(edge.frame), "Combat edge control retained offscreen geometry")
+            let image = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            image.name = "combat-rotation-\(index)-\(portrait ? "portrait" : "landscape")"
+            image.lifetime = .keepAlways
+            add(image)
+        }
+        // This verifies indicator survival and supplies captures for arrow review;
+        // it does not equate accessibility geometry with Canvas path endpoints.
+    }
+}
