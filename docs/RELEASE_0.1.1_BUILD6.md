@@ -1,7 +1,7 @@
 # 0.1.1 build 6: scrolling and rotation
 
-Release in progress. Android is published; iOS interaction validation and
-TestFlight publication remain pending.
+Release in progress. Android is published and all six iOS interaction cases
+passed against the release app sources. TestFlight publication remains pending.
 
 ## Changes
 
@@ -85,11 +85,14 @@ and Render remain on hold.
   the test to exceed its 120-second limit before completing its assertions.
 - `7603c52` changes only the zone test to read one accessibility snapshot per
   swipe, retaining final-card reachability, full visibility and no-command
-  assertions. Standalone XCTest type-check passed. Focused run 35557119693 is
-  pending; the other five passing UI results apply to identical app sources.
+  assertions. Standalone XCTest type-check passed. Focused run 35557119693 passed
+  in 60.397 seconds; the other five passing UI results apply to identical app
+  sources (`git diff 4dc9530..0866a5e -- apps/ios/MagicMobile packages/ondevice-engine`
+  is empty). Six cases are accepted across these two runs, not a claimed green
+  result for the earlier full run that exceeded its zone-test timeout.
 - Source `acd619d` passed SDK compilation, portable tests, native boundary tests,
   real JVM regressions, and Android CI. UI execution remains a separate gate.
-- iOS 0.1.1 build 6 was absent in App Store Connect before preparation; recheck
-  immediately before upload.
+- The source/artifact guard passed at `0866a5e`; iOS 0.1.1 build 6 was rechecked
+  absent in App Store Connect immediately before starting release packaging.
 - TestFlight distribution, website verification, and final release receipts are
   pending.
