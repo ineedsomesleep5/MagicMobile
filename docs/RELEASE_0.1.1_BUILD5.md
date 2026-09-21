@@ -69,13 +69,36 @@ without duplicate uploads, and must never submit build 4. It deletes itself afte
 the release/merge and any pending Apple availability follow-up are resolved.
 No Apple review was cancelled or altered by this scheduler change.
 
-## iOS, website and merge: pending
+## iOS: Internal and External TestFlight testing
 
-The full iOS native rebuild is [35528082243](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/35528082243).
-Product linkage, signing/upload, internal/external distribution and website
-release-label updates are not completed by the Android or server results above.
-No physical iPhone is currently connected for fresh acceptance.
+- Full ARM64 native run [35528082243](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/35528082243)
+  and exact-artifact product-link run [35529469186](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/35529469186)
+  passed.
+- Native artifact `10611477138`, ZIP SHA-256
+  `148b488970162bae27d6028ef1b8d66adca3d81fdc381cbed050179be36182b8`;
+  engine archive SHA-256
+  `1b39d68b97acf21a463945314b933e7f023d2439a613a6bf84abafd14ea67147`.
+- Signed source: `15be96db45b6887f1bd417a041fb52f1558b7040` with engine source
+  `9453fe648cb0890c2bc072a80aead81305b22512`.
+- The archive, export, UUID-matched dSYM/native layout, privacy, Game Center
+  entitlement and Apple validation gates passed. IPA SHA-256:
+  `d6ff58896b67cf80d28ba1d5778bba4010826613c02378834bfed6f8a823e7bc`.
+- Delivery UUID and App Store Connect build ID:
+  `0b51bd9f-edb4-4950-84fa-bd5a87e0ba53`.
+- Apple reports the build `VALID`, Beta App Review `APPROVED`, and both Internal
+  and External states `IN_BETA_TESTING`. Membership in both existing tester groups
+  and the public TestFlight link were verified. Accurate What to Test notes were
+  added for build 5.
 
-[PR 15](https://github.com/ineedsomesleep5/MagicMobile/pull/15) remains a draft
-until applicable release gates are complete. This document is not merge approval
-or proof of the pending iOS release.
+[Join the iOS TestFlight](https://testflight.apple.com/join/2mSHE8rZ).
+No physical iPhone acceptance is inferred from signing, upload or TestFlight
+availability.
+
+## Website and merge
+
+The website release metadata now points to Android build 5 and the approved iOS
+build 5. Production deployment, live responsive verification and the final merge
+are recorded after they succeed.
+
+[PR 15](https://github.com/ineedsomesleep5/MagicMobile/pull/15) remains the release
+PR until its final checks and merge complete.

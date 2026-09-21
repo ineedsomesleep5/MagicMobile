@@ -1,6 +1,6 @@
 # MagicMobile 0.1.1 — build 5
 
-Marketing version remains **0.1.1**; shared visible build is **5**. Android installation versionCode is **2026092001**. The updated-engine Android release and self-host server prerelease are published; iOS native compilation and subsequent distribution are still pending. See the [current release evidence](../docs/RELEASE_0.1.1_BUILD5.md) for exact artifacts, hashes and availability. The historical pre-upgrade results below do not validate the new engine.
+Marketing version remains **0.1.1**; shared visible build is **5**. Android installation versionCode is **2026092001**. The updated-engine Android release and self-host server prerelease are published, and iOS build 5 is approved and in Internal and External TestFlight testing. See the [current release evidence](../docs/RELEASE_0.1.1_BUILD5.md) for exact artifacts, hashes and availability. The historical pre-upgrade results below do not validate the new engine.
 
 On September 20, upstream XMage was 190 commits ahead of our pin. The owner approved exact candidate `4825513287ba6c42c32fd205d227f4a5fc44c2f3` and detection digest `2e3cd230219d71b550c9874ce4fdcbca433140bcce4e814a33cf6200d4a72b7e`. Isolated regeneration is tracked in [maintenance run 35524573624](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/35524573624). Both native engines, catalogue and server package must be rebuilt and checked before release; starting this run is not update acceptance.
 
