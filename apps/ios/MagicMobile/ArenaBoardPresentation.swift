@@ -3,6 +3,28 @@ import SwiftUI
 /// Attachment relationships come only from the current public engine snapshot.
 /// Invalid/missing links remain visible in their original lane instead of losing cards.
 enum BattlefieldAttachments {
+    static func isManaRock(_ card: ZoneCard) -> Bool {
+        guard card.card.isArtifact, !card.isCreature, !card.card.isLand else { return false }
+        guard let rules = card.card.oracleText else { return false }
+        // The public snapshot has printed rules but no permanent mana-ability metadata.
+        // Match an activated cost and an explicit mana effect, not incidental "add" text.
+        return rules.split(separator: "\n").contains { line in
+            let parts = line.split(separator: ":", maxSplits: 1)
+            guard parts.count == 2 else { return false }
+            let cost = parts[0].trimmingCharacters(in: .whitespaces).lowercased()
+            guard !cost.hasPrefix("when "), !cost.hasPrefix("whenever "), !cost.hasPrefix("at "),
+                  cost.contains("{t}") || cost.contains("sacrifice") || cost.hasPrefix("tap ") else { return false }
+            return parts[1].range(of: #"^\s*add\s+(?:\{[cwubrg]\}|(?:one|two|three|\d+) mana)"#,
+                                  options: [.regularExpression, .caseInsensitive]) != nil
+        }
+    }
+
+    static func isSupport(_ card: ZoneCard) -> Bool {
+        !card.isCreature && !card.card.isPlaneswalker &&
+        !card.card.typeLine.localizedCaseInsensitiveContains("battle") &&
+        !card.card.typeLine.localizedCaseInsensitiveContains("equipment")
+    }
+
     static func roots(_ cards: [ZoneCard]) -> [String: String] {
         let byID = Dictionary(cards.map { ($0.instanceId, $0) }, uniquingKeysWith: { first, _ in first })
         return Dictionary(cards.map { card in
@@ -18,10 +40,10 @@ enum BattlefieldAttachments {
         }, uniquingKeysWith: { first, _ in first })
     }
 
-    static func lane(ownedCards: [ZoneCard], allCards: [ZoneCard], lands: Bool, playerIDs: Set<String> = []) -> [ZoneCard] {
+    static func lane(ownedCards: [ZoneCard], allCards: [ZoneCard], lands: Bool, playerIDs: Set<String> = [], includesManaRocks: Bool = false) -> [ZoneCard] {
         let roots = roots(allCards)
         let laneRoots = Set(ownedCards.filter {
-            $0.card.isLand == lands && roots[$0.instanceId] == $0.instanceId && !playerIDs.contains($0.attachedToInstanceId ?? "")
+            ($0.card.isLand || (includesManaRocks && isManaRock($0))) == lands && roots[$0.instanceId] == $0.instanceId && !playerIDs.contains($0.attachedToInstanceId ?? "")
         }.map(\.instanceId))
         return allCards.filter { laneRoots.contains(roots[$0.instanceId] ?? $0.instanceId) }
     }
@@ -48,6 +70,33 @@ enum BattlefieldAttachments {
 
     static func enchanting(playerID: String, allCards: [ZoneCard]) -> [ZoneCard] {
         ZoneCard.enchanting(playerID: playerID, cards: allCards)
+    }
+}
+
+enum BattlefieldRowArrangement: Equatable {
+    case automatic, landscapeResources, portraitPermanents
+
+    func rows(_ groups: [BattlefieldCardGroup], flipped: Bool, twoRows: Bool) -> [[BattlefieldCardGroup]] {
+        guard twoRows else { return [groups] }
+        switch self {
+        case .automatic:
+            let midpoint = (groups.count + 1) / 2
+            return [Array(groups.prefix(midpoint)), Array(groups.dropFirst(midpoint))]
+        case .landscapeResources:
+            let lands = groups.filter { $0.representative.card.isLand }
+            let rocks = groups.filter { !$0.representative.card.isLand }
+            if !rocks.isEmpty { return [lands, rocks] }
+            let midpoint = (lands.count + 1) / 2
+            return [Array(lands.prefix(midpoint)), Array(lands.dropFirst(midpoint))]
+        case .portraitPermanents:
+            let foreground = groups.filter { !BattlefieldAttachments.isSupport($0.representative) }
+            let background = groups.filter { BattlefieldAttachments.isSupport($0.representative) }
+            if foreground.isEmpty || background.isEmpty {
+                let midpoint = (groups.count + 1) / 2
+                return [Array(groups.prefix(midpoint)), Array(groups.dropFirst(midpoint))]
+            }
+            return flipped ? [background, foreground] : [foreground, background]
+        }
     }
 }
 
@@ -224,9 +273,13 @@ struct ArenaPermanentLayout {
     let contentWidth: CGFloat
 
     init(count: Int, width: CGFloat, height: CGFloat, maxCardWidth: CGFloat, ratio: CGFloat) {
+        self.init(rowCounts: count > 5 ? [(count + 1) / 2, count / 2] : [count], width: width, height: height, maxCardWidth: maxCardWidth, ratio: ratio)
+    }
+
+    init(rowCounts: [Int], width: CGFloat, height: CGFloat, maxCardWidth: CGFloat, ratio: CGFloat) {
         let ratio = max(ratio, 1)
-        rows = count > 5 && height >= 2 * 44 * ratio + 20 ? 2 : 1
-        columns = max(1, (count + rows - 1) / rows)
+        rows = rowCounts.count > 1 && height >= 2 * 44 * ratio + 20 ? 2 : 1
+        columns = max(1, rows == 2 ? (rowCounts.max() ?? 0) : rowCounts.reduce(0, +))
         let heightFit = (height - 16 - CGFloat(rows - 1) * 4) / CGFloat(rows) / ratio
         let visibleColumns = CGFloat(min(5, columns))
         let widthFit = (width - 16 - (visibleColumns - 1) * 4) / visibleColumns
@@ -377,6 +430,8 @@ struct CombatViewportAnchor: Equatable {
 
 enum CombatViewportAnchors {
     // Shared lane order: opponent permanents, opponent lands, your permanents, your lands.
+    private static let landscapeResourcePrefix = "landscape-resource:"
+
     static func laneIndices(human: [ZoneCard], opponent: [ZoneCard]) -> [String: Int] {
         var result: [String: Int] = [:]
         let cards = human + opponent
@@ -384,6 +439,13 @@ enum CombatViewportAnchors {
         for card in BattlefieldAttachments.lane(ownedCards: opponent, allCards: cards, lands: true) { result[card.instanceId] = 1 }
         for card in BattlefieldAttachments.lane(ownedCards: human, allCards: cards, lands: false) { result[card.instanceId] = 2 }
         for card in BattlefieldAttachments.lane(ownedCards: human, allCards: cards, lands: true) { result[card.instanceId] = 3 }
+        // A mana rock stays in the portrait permanent lane, but uses the right resource
+        // lane in landscape. Carry that alternate ownership through the shared overlays.
+        let roots = BattlefieldAttachments.roots(cards)
+        let byID = Dictionary(cards.map { ($0.instanceId, $0) }, uniquingKeysWith: { first, _ in first })
+        for card in cards where byID[roots[card.instanceId] ?? card.instanceId].map(BattlefieldAttachments.isManaRock) == true {
+            result[landscapeResourcePrefix + card.instanceId] = 1
+        }
         return result
     }
 
@@ -392,7 +454,10 @@ enum CombatViewportAnchors {
         for (id, rect) in bounds where authorizedIDs.contains(id) && !rect.isEmpty && !rect.isInfinite && !rect.isNull {
             // Ownership must survive horizontal scrolling and side-by-side lanes.
             // Geometry alone cannot distinguish an offscreen creature from an animated land.
-            guard let index = laneIndices[id] ?? (viewports.count == 1 ? 0 : nil), viewports.indices.contains(index) else { continue }
+            let sideBySideResources = viewports.count == 4 && abs(viewports[0].midY - viewports[1].midY) < 1
+            let landscapeResource = sideBySideResources && laneIndices[landscapeResourcePrefix + id] != nil
+            let index = landscapeResource ? (laneIndices[id].map { $0 + 1 }) : laneIndices[id]
+            guard let index = index ?? (viewports.count == 1 ? 0 : nil), viewports.indices.contains(index) else { continue }
             let lane = viewports[index]
             guard rect.midY >= lane.minY && rect.midY <= lane.maxY else { continue }
             let clipped = !lane.contains(rect)

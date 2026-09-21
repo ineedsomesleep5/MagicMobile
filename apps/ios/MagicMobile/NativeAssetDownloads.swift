@@ -55,6 +55,11 @@ actor NativeAssetStore {
     }
     static func cardKey(_ name: String) -> String { "card:" + name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
     static func tokenKey(_ id: UUID) -> String { "token:" + id.uuidString.lowercased() }
+    static func tokenArtworkName(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > 6, trimmed.lowercased().hasSuffix(" token") else { return trimmed }
+        return String(trimmed.dropLast(6)).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
     func file(key: String, extension suffix: String = "image") -> URL {
         let hash = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
         return directory.appendingPathComponent(hash).appendingPathExtension(suffix)
@@ -190,25 +195,65 @@ actor NativeAssetStore {
         guard data.count <= 6 * 1024 * 1024 else { throw DeckStudioScryfallError.tooLarge }
         try write(data, to: catalogueFacesFile)
     }
-    func tokenImage(name: String, typeLine: String?, oracleText: String?, power: String?, toughness: String?, colors: [String]?) -> Data? {
+    func tokenImage(name: String, typeLine: String?, oracleText: String?, power: String?, toughness: String?, colors: [String]?,
+                    quality: NativeArtworkQuality = .compact) -> Data? {
         guard let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey]) else { return nil }
         let candidates: [NativeTokenArtwork] = files.filter { $0.pathExtension == "token" }.compactMap { url in
             guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 64 * 1024,
                   let data = try? Data(contentsOf: url) else { return nil }
             return try? JSONDecoder().decode(NativeTokenArtwork.self, from: data)
         }
-        guard let token = Self.matchToken(candidates, name: name, typeLine: typeLine, oracleText: oracleText,
-                                         power: power, toughness: toughness, colors: colors) else { return nil }
-        return image(key: Self.tokenKey(token.id))
+        guard let token = Self.matchTokenArtwork(candidates, name: name, typeLine: typeLine, oracleText: oracleText,
+                                                power: power, toughness: toughness, colors: colors) else { return nil }
+        if let data = image(key: Self.tokenKey(token.id), quality: quality) { return data }
+        // Equivalent printings may have different image IDs. Prefer another stored
+        // printing only when every identity-bearing field matches the chosen one.
+        for alternate in candidates.sorted(by: { $0.id.uuidString < $1.id.uuidString }) where
+            alternate.name == token.name && alternate.typeLine == token.typeLine &&
+            alternate.oracleText == token.oracleText && alternate.power == token.power &&
+            alternate.toughness == token.toughness && alternate.colors == token.colors {
+            if let data = image(key: Self.tokenKey(alternate.id), quality: quality) { return data }
+        }
+        return nil
+    }
+    /// Art identity does not change when counters, buffs, or copy effects alter P/T.
+    /// Require all other visible metadata and only select among equivalent printings;
+    /// an ambiguous same-name token with different rules/type/color remains unresolved.
+    static func matchTokenArtwork(_ candidates: [NativeTokenArtwork], name: String, typeLine: String?, oracleText: String?,
+                                  power: String?, toughness: String?, colors: [String]?) -> NativeTokenArtwork? {
+        if let exact = matchToken(candidates, name: name, typeLine: typeLine, oracleText: oracleText,
+                                  power: power, toughness: toughness, colors: colors) { return exact }
+        func normalized(_ value: String) -> String {
+            EngineDisplayText.text(value).lowercased().split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        }
+        func type(_ value: String) -> String {
+            let line = normalized(value).replacingOccurrences(of: "—", with: "-")
+            return line.hasPrefix("token ") ? String(line.dropFirst(6)) : line
+        }
+        guard let colors, let typeLine, let oracleText, !typeLine.isEmpty,
+              Set(colors).isSubset(of: ["W", "U", "B", "R", "G"]), Set(colors).count == colors.count else { return nil }
+        let matches = candidates.filter {
+            $0.hasMatchingMetadata && normalized(Self.tokenArtworkName($0.name)) == normalized(Self.tokenArtworkName(name)) &&
+            type($0.typeLine ?? "") == type(typeLine) &&
+            normalized($0.oracleText ?? "") == normalized(oracleText) && Set($0.colors ?? []) == Set(colors)
+        }
+        // A different printed P/T may be an entirely different token. Only relax
+        // runtime P/T if every eligible printing describes the same base token.
+        guard let first = matches.first,
+              matches.allSatisfy({ $0.power == first.power && $0.toughness == first.toughness }) else { return nil }
+        return matches.sorted { $0.id.uuidString < $1.id.uuidString }.first
     }
     static func matchToken(_ candidates: [NativeTokenArtwork], name: String, typeLine: String?, oracleText: String?,
                            power: String?, toughness: String?, colors: [String]?) -> NativeTokenArtwork? {
         func normalized(_ value: String) -> String { EngineDisplayText.text(value).lowercased().split(whereSeparator: { $0.isWhitespace }).joined(separator: " ") }
-        func type(_ value: String) -> String { normalized(value).replacingOccurrences(of: "token ", with: "").replacingOccurrences(of: "—", with: "-") }
+        func type(_ value: String) -> String {
+            let line = normalized(value).replacingOccurrences(of: "—", with: "-")
+            return line.hasPrefix("token ") ? String(line.dropFirst(6)) : line
+        }
         guard let colors, Set(colors).isSubset(of: ["W", "U", "B", "R", "G"]), Set(colors).count == colors.count,
               let typeLine, !typeLine.isEmpty, let oracleText else { return nil }
         let matches = candidates.filter {
-            $0.hasMatchingMetadata && normalized($0.name) == normalized(name) &&
+            $0.hasMatchingMetadata && normalized(Self.tokenArtworkName($0.name)) == normalized(Self.tokenArtworkName(name)) &&
             type($0.typeLine ?? "") == type(typeLine) &&
             normalized($0.oracleText ?? "") == normalized(oracleText) &&
             $0.power == power && $0.toughness == toughness && Set($0.colors ?? []) == Set(colors)
@@ -334,14 +379,15 @@ actor NativeTokenDiscovery {
         guard result.count <= maximumNames else { throw DeckStudioScryfallError.invalidInput }
         return result
     }
-    func scan(names: [String], quality: NativeArtworkQuality = .high, fullCatalogue: Bool = false) async {
+    func scan(names: [String], quality: NativeArtworkQuality = .high, fullCatalogue: Bool = false,
+              tokenOnly: Bool = false) async {
         let generation = UUID(); scanGeneration = generation
         isScanning = true
         defer { if generation == scanGeneration { isScanning = false } }
         do {
-            var names = try Self.names(names)
+            var names = tokenOnly ? [] : try Self.names(names)
             var pendingFaces = false
-            if fullCatalogue {
+            if fullCatalogue && !tokenOnly {
                 if let faces = await store.catalogueFaces() { names = try Self.names(names + faces) }
                 else { pendingFaces = true }
             }
@@ -382,14 +428,16 @@ actor NativeTokenDiscovery {
         } catch { if generation == scanGeneration { status = error.localizedDescription } }
     }
     func download(names rawNames: [String], includeTokens: Bool, allowNetwork: Bool,
-                  quality: NativeArtworkQuality = .high, fullCatalogue: Bool = false) {
+                  quality: NativeArtworkQuality = .high, fullCatalogue: Bool = false,
+                  tokenOnly: Bool = false) {
         guard !isRunning else { return }
         guard allowNetwork else { status = "Enable online artwork before downloading from Scryfall."; return }
+        guard !tokenOnly || (fullCatalogue && includeTokens) else { status = "Token-only downloads require the supported token catalogue."; return }
         let inputNames: [String]
-        do { inputNames = try Self.names(rawNames) } catch { status = error.localizedDescription; return }
+        do { inputNames = tokenOnly ? [] : try Self.names(rawNames) } catch { status = error.localizedDescription; return }
         if let backgroundQueue {
             prepareBackgroundDownload(names: inputNames, includeTokens: includeTokens, quality: quality,
-                                      fullCatalogue: fullCatalogue, queue: backgroundQueue)
+                                      fullCatalogue: fullCatalogue, tokenOnly: tokenOnly, queue: backgroundQueue)
             return
         }
         isRunning = true; failures = []; completed = 0; total = inputNames.count
@@ -400,12 +448,12 @@ actor NativeTokenDiscovery {
             var savedCards = Set<String>()
             var savedTokens = Set<UUID>()
             do {
-                await scan(names: names, quality: quality, fullCatalogue: fullCatalogue)
+                await scan(names: names, quality: quality, fullCatalogue: fullCatalogue, tokenOnly: tokenOnly)
                 try Task.checkCancellation()
                 status = fullCatalogue ? "Preparing Scryfall artwork catalogue…" : "Preparing artwork downloads…"
                 let catalogue = fullCatalogue ? try await catalogueLoader() : nil
                 try Task.checkCancellation()
-                if let catalogue {
+                if let catalogue, !tokenOnly {
                     let faces = catalogue.additionalFaceNames(for: inputNames)
                     try await store.saveCatalogueFaces(faces)
                     names = try Self.names(inputNames + faces)
@@ -418,7 +466,7 @@ actor NativeTokenDiscovery {
                     try await store.saveCatalogueTokens(catalogue.allTokens, unavailableNames: catalogue.unavailableTokenNames)
                     failures += catalogue.unavailableTokenNames.prefix(10_000).map { "Token \($0): safe artwork metadata is unavailable." }
                 }
-                for name in names {
+                for name in tokenOnly ? [] : names {
                     try Task.checkCancellation()
                     status = "Downloading \(name)…"
                     do {
@@ -442,7 +490,7 @@ actor NativeTokenDiscovery {
                     }
                     completed += 1
                 }
-                await scan(names: names, quality: quality, fullCatalogue: fullCatalogue)
+                await scan(names: names, quality: quality, fullCatalogue: fullCatalogue, tokenOnly: tokenOnly)
                 try Task.checkCancellation()
                 savedCards = []
                 if includeTokens && !stopped {
@@ -477,7 +525,7 @@ actor NativeTokenDiscovery {
                     }
                 }
                 try Task.checkCancellation()
-                await scan(names: names, quality: quality, fullCatalogue: fullCatalogue)
+                await scan(names: names, quality: quality, fullCatalogue: fullCatalogue, tokenOnly: tokenOnly)
                 status = stopped ? "Download paused after an error. Completed images are preserved; retry when ready." :
                     (failures.isEmpty ? "Download complete." : "Download finished with \(failures.count) issues. Retry missing items when ready.")
             } catch {
@@ -486,7 +534,7 @@ actor NativeTokenDiscovery {
                 missingNames.removeAll { savedCards.contains($0) }
                 cardStored = cardTotal - missingNames.count
                 missingTokenIDs.subtract(savedTokens)
-                missingTokenNames = tokens.filter { missingTokenIDs.contains($0.id) }.map(\.name) + unavailableTokenNames
+                missingTokenNames = tokens.filter { self.missingTokenIDs.contains($0.id) }.map(\.name) + unavailableTokenNames
                 tokenStored = tokenTotal - missingTokenIDs.count - unavailableTokenNames.count
                 storedBytes = await store.storedBytes()
                 if Task.isCancelled || error is CancellationError {
@@ -512,7 +560,7 @@ actor NativeTokenDiscovery {
 
     private func prepareBackgroundDownload(names inputNames: [String], includeTokens: Bool,
                                            quality: NativeArtworkQuality, fullCatalogue: Bool,
-                                           queue: NativeArtworkBackgroundQueue) {
+                                           tokenOnly: Bool, queue: NativeArtworkBackgroundQueue) {
         preparingBackgroundJob = true; isRunning = true; failures = []; preparationFailures = []
         completed = 0; total = inputNames.count
         status = "Preparing image list… You can play while this finishes."
@@ -534,9 +582,9 @@ actor NativeTokenDiscovery {
                 let catalogue = fullCatalogue ? try await catalogueLoader() :
                     try await deckCatalogueLoader(inputNames, includeTokens)
                 try Task.checkCancellation()
-                let faces = catalogue.additionalFaceNames(for: inputNames)
-                let names = try Self.names(inputNames + faces)
-                if fullCatalogue { try await store.saveCatalogueFaces(faces) }
+                let faces = tokenOnly ? [] : catalogue.additionalFaceNames(for: inputNames)
+                let names = tokenOnly ? [] : try Self.names(inputNames + faces)
+                if fullCatalogue && !tokenOnly { try await store.saveCatalogueFaces(faces) }
                 var entries: [NativeArtworkBackgroundQueue.Entry] = []
                 var tokenIDs = Set<UUID>()
                 var relatedTokens: [NativeTokenArtwork] = []
@@ -578,7 +626,7 @@ actor NativeTokenDiscovery {
                 try queue.start(entries: entries)
                 preparingBackgroundJob = false; task = nil
                 syncBackgroundProgress()
-                await scan(names: inputNames, quality: quality, fullCatalogue: fullCatalogue)
+                await scan(names: inputNames, quality: quality, fullCatalogue: fullCatalogue, tokenOnly: tokenOnly)
             } catch {
                 preparingBackgroundJob = false; isRunning = false; task = nil
                 status = error is CancellationError ? "Download cancelled. Completed images remain available offline." :

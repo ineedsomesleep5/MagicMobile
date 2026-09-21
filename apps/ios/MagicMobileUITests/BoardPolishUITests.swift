@@ -364,7 +364,7 @@ final class BoardPolishUITests: XCTestCase {
             let choice = app.descendants(matching: .any)["board.choice.card.choice-0"].firstMatch
             visible(choice, in: app)
             let confirm = app.buttons["board.choice.confirm"]
-            XCTAssertFalse(confirm.isEnabled)
+            XCTAssertEqual(confirm.isEnabled, fixture == "scry-choice", "Keep-all is a valid scry draft")
             if fixture == "empty-library-choice" {
                 choice.tap()
                 XCTAssertFalse(confirm.isEnabled, "No-match searches must not enable an invalid response")
@@ -372,10 +372,10 @@ final class BoardPolishUITests: XCTestCase {
                 choice.tap()
                 XCTAssertTrue(confirm.isEnabled)
                 choice.tap()
-                XCTAssertFalse(confirm.isEnabled, "A tentative choice can be cleared")
+                XCTAssertEqual(confirm.isEnabled, fixture == "scry-choice", "Tap again removes the draft choice")
                 choice.press(forDuration: 0.6)
                 XCTAssertTrue(app.buttons["board.choice.inspection.close"].waitForNonExistence(timeout: 2), "Card-choice inspection ends on release")
-                XCTAssertFalse(confirm.isEnabled, "Holding a card must not select it")
+                XCTAssertEqual(confirm.isEnabled, fixture == "scry-choice", "Holding a card must not change the draft")
             }
             if fixture != "scry-choice" {
                 let invalid = app.descendants(matching: .any)["board.choice.card.choice-1"].firstMatch
@@ -383,7 +383,7 @@ final class BoardPolishUITests: XCTestCase {
                 XCTAssertFalse(confirm.isEnabled)
                 visible(app.textFields["board.choice.search"], in: app)
             }
-            visible(app.buttons["board.choice.done"], in: app)
+            if fixture != "scry-choice" { visible(app.buttons["board.choice.done"], in: app) }
             capture(app, name: currentCapture + "-chooser")
             app.buttons["Close card choices"].tap()
             XCTAssertFalse(app.buttons["board.choice.confirm"].exists)

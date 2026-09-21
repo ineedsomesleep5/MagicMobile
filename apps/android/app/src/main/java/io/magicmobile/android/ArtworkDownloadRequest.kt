@@ -10,12 +10,13 @@ internal data class ArtworkDownloadRequest(val names:List<String>,val quality:Ar
             val value=Wire.decode(bytes)
             require(value.number("schema")==1L){"Download request version is unsupported."}
             val raw=value["names"] as? List<*> ?: error("Download card list is unavailable.")
-            require(raw.size in 1..100000&&raw.all{it is String&&it.isNotBlank()&&it.length<=512&&it.none(Char::isISOControl)}){"Download card list is invalid."}
+            require(raw.size<=100000&&raw.all{it is String&&it.isNotBlank()&&it.length<=512&&it.none(Char::isISOControl)}){"Download card list is invalid."}
             val names=raw.filterIsInstance<String>()
             require(names.distinct().size==names.size){"Download card list contains duplicate entries."}
             val quality=ArtworkQuality.entries.firstOrNull{it.id==value.text("quality")} ?: error("Download quality is unavailable.")
             val tokens=value["tokens"] as? Boolean ?: error("Token download preference is unavailable.")
             val catalogue=value["catalogue"] as? Boolean ?: error("Download scope is unavailable.")
+            require(names.isNotEmpty() || tokens && catalogue){"Empty card list requires token-only catalogue download."}
             return ArtworkDownloadRequest(names,quality,tokens,catalogue)
         }
     }

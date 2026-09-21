@@ -531,7 +531,9 @@ final class OnDevicePromptAdapterTests: XCTestCase {
         XCTAssertEqual(view.envelope.cards?.first?.card.typeLine, "SORCERY")
         XCTAssertNil(view.envelope.cards?.first?.tapped)
         let c = GameCommand(type: "choose_target", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, targetIds: [second])
-        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: c, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("uuid", .string(second)))
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: c, prompt: p, viewerPlayerID: viewer))
+        let canonical = GameCommand(type: "choose_target", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, targetIds: [first])
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: canonical, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("uuid", .string(first)))
     }
 
     func testTargetOrderingUsesExplicitOrderedViewsWithoutAddingZoneCards() throws {
@@ -598,12 +600,14 @@ final class OnDevicePromptAdapterTests: XCTestCase {
                 "options": .object(["chosenTargets": .array([]), "possibleTargets": .array(legal ? [.string(first)] : [])])
             ])
             let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
-            XCTAssertEqual(view.envelope.cards?.map(\.isPromptSelectable), [legal, legal])
+            XCTAssertEqual(view.envelope.cards?.map(\.isPromptSelectable), [legal])
             let command = GameCommand(type: "choose_target", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, targetIds: [second])
+            XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: command, prompt: p, viewerPlayerID: viewer))
+            let canonical = GameCommand(type: "choose_target", gameId: "match", playerId: viewer, promptId: p.id, messageId: 37, targetIds: [first])
             if legal {
-                XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("uuid", .string(second)))
+                XCTAssertEqual(try OnDevicePromptAdapter.answer(for: canonical, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("uuid", .string(first)))
             } else {
-                XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: command, prompt: p, viewerPlayerID: viewer))
+                XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: canonical, prompt: p, viewerPlayerID: viewer))
             }
         }
     }
@@ -654,9 +658,35 @@ final class OnDevicePromptAdapterTests: XCTestCase {
         let front: MagicMobileOnDevice.JSONValue = .object(["id": .string(first), "name": .string("Bala Ged Recovery"), "cardTypes": .array([.string("SORCERY")]), "secondCardFace": face])
         let p = try prompt("PICK_TARGET", types: ["uuid"], payload: ["candidates": .array([.string(first)]), "responseAliases": .object([second: .string(first)]), "cards": .array([front])])
         let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])
-        XCTAssertEqual(view.envelope.cards?.map(\.id), [first, second])
-        XCTAssertEqual(view.envelope.cards?.last?.card.name, "Bala Ged Sanctuary")
+        XCTAssertEqual(view.envelope.cards?.map(\.id), [first])
+        XCTAssertEqual(view.envelope.cards?.first?.card.name, "Bala Ged Recovery")
         XCTAssertEqual(view.envelope.targets?.count, 0)
+    }
+
+    func testFaceAliasesDeduplicateAndDoNotExposePrivateCards() throws {
+        let hidden = "33333333-0000-0000-0000-000000000000"
+        let front: MagicMobileOnDevice.JSONValue = .object([
+            "id": .string(first), "name": .string("Visible front"), "cardTypes": .array([.string("SORCERY")])
+        ])
+        let privateCard = ZoneCard(instanceId: hidden,
+            card: CardIdentity(name: "Private card", typeLine: "CREATURE", oracleText: nil),
+            tapped: nil, summoningSickness: nil, cardIcons: nil, counters: nil, power: nil,
+            toughness: nil, isCreaturePermanent: nil, damage: nil, isAttacking: nil,
+            blocking: nil, attachedToInstanceId: nil)
+        let p = try prompt("PICK_TARGET", types: ["uuid"], payload: [
+            "candidates": .array([.string(first), .string(second)]),
+            "responseAliases": .object([second: .string(first)]),
+            "cards": .array([front]),
+            "options": .object(["chosenTargets": .array([.string(second), .string(first)])])
+        ])
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [privateCard])
+        XCTAssertEqual(view.envelope.targetIds, [first])
+        XCTAssertEqual(view.envelope.cards?.filter(\.isPromptSelectable).map(\.id), [first])
+        XCTAssertEqual(view.envelope.options?["chosenTargets"]?.stringArrayValue, [first])
+        XCTAssertFalse(view.envelope.cards?.contains(where: { $0.card.name == "Private card" }) ?? true)
+        let alias = GameCommand(type: "choose_target", gameId: "match", playerId: viewer,
+                                promptId: p.id, messageId: 37, targetIds: [second])
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: alias, prompt: p, viewerPlayerID: viewer))
     }
 
     func testSelectIntegerResponsesRetainEngineBoundsAndResponseType() throws {

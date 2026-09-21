@@ -73,6 +73,55 @@ struct NativeArtworkCatalogue {
     }
     func imageURL(id: UUID, size: String) -> URL? { imagesByID[id]?.url(size) }
     func token(id: UUID) -> NativeTokenArtwork? { tokens[id] }
+    /// Bounded on-demand lookup for a visible token name. Search is only invoked
+    /// by the consent-aware artwork actor; never for hidden or incomplete views.
+    static func searchToken(name: String, typeLine: String, oracleText: String, power: String?, toughness: String?,
+                            colors: [String], quality: NativeArtworkQuality,
+                            transport: any DeckStudioScryfallHTTP = DeckStudioScryfallHTTPTransport(),
+                            budget: DeckStudioScryfallBudget = .shared) async throws -> (NativeTokenArtwork, URL)? {
+        let name = NativeAssetStore.tokenArtworkName(name)
+        guard !name.isEmpty, name.utf8.count <= 120,
+              !name.contains("\"") && !name.contains("\\"),
+              !name.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else { return nil }
+        var catalogue = Self()
+        for page in 1...3 {
+            try Task.checkCancellation()
+            var parts = URLComponents(string: "https://api.scryfall.com/cards/search")!
+            parts.queryItems = [.init(name: "q", value: "!\"\(name)\" t:token"),
+                                .init(name: "unique", value: "cards"), .init(name: "page", value: String(page))]
+            let data: Data
+            do {
+                try await budget.reserve()
+                data = try await transport.send(request(parts.url!))
+            } catch DeckStudioScryfallError.http(404) { return nil }
+            guard data.count <= 4 * 1024 * 1024,
+                  let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  object["object"] as? String == "list", let rows = object["data"] as? [[String: Any]],
+                  rows.count <= 200, let more = object["has_more"] as? Bool else { throw CatalogueError.invalidResponse }
+            for row in rows {
+                try Task.checkCancellation()
+                // The exact-name search also returns split/double-faced token
+                // printings (e.g. "Snake // Zombie"). A visible plain token does
+                // not disclose which face or printing produced it, so only flat
+                // token rows are eligible for this on-demand route.
+                guard row["layout"] as? String == "token" else { continue }
+                try catalogue.accept(JSONSerialization.data(withJSONObject: row))
+            }
+            if !more { break }
+            if page == 3 { return nil } // incomplete candidates cannot establish unique identity
+        }
+        guard let match = NativeAssetStore.matchTokenArtwork(catalogue.allTokens, name: name, typeLine: typeLine,
+                                                               oracleText: oracleText, power: power, toughness: toughness,
+                                                               colors: colors) else { return nil }
+        if let url = catalogue.imageURL(id: match.id, size: quality.imageSizeString) { return (match, url) }
+        let equivalent = catalogue.allTokens.first {
+            $0.name == match.name && $0.typeLine == match.typeLine && $0.oracleText == match.oracleText &&
+            $0.power == match.power && $0.toughness == match.toughness && $0.colors == match.colors &&
+            catalogue.imageURL(id: $0.id, size: quality.imageSizeString) != nil
+        }
+        guard let equivalent, let url = catalogue.imageURL(id: equivalent.id, size: quality.imageSizeString) else { return nil }
+        return (equivalent, url)
+    }
     func relatedTokens(name: String) -> [NativeTokenArtwork] {
         guard let id = id(for: name) else { return [] }
         // Oracle bulk chooses one printing per Oracle ID. A related printing may be

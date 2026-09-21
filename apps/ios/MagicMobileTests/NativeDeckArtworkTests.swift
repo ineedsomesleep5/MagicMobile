@@ -4,6 +4,166 @@ import ImageIO
 @testable import MagicMobile
 
 final class NativeDeckArtworkTests: XCTestCase {
+    func testOptInLiveTokenArtworkAndVisibleCopySource() async throws {
+        guard ProcessInfo.processInfo.environment["MM_LIVE_TOKEN_ARTWORK_TEST"] == "1" else {
+            throw XCTSkip("Set MM_LIVE_TOKEN_ARTWORK_TEST=1 to verify two public Scryfall artwork identities.")
+        }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("MagicMobile-LiveToken-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = NativeAssetStore(directory: directory, availableBytes: { _ in Int64.max })
+        let transport = LiveTokenSearchTransport()
+        let artwork = NativeDeckArtwork(cache: URLCache(memoryCapacity: 4_000_000, diskCapacity: 0, diskPath: nil),
+                                        assetStore: store, tokenLookup: { name, type, rules, power, toughness, colors, quality in
+            let match = try await NativeArtworkCatalogue.searchToken(name: name, typeLine: type, oracleText: rules,
+                power: power, toughness: toughness, colors: colors, quality: quality,
+                transport: transport, budget: .shared)
+            if let match { await transport.recordMatch(match.0.id, imageURL: match.1) }
+            return match
+        })
+        @Sendable func visibleZombie(online: Bool) async throws -> Data? {
+            try await artwork.imageData(name: "Zombie Token", variant: .board, allowNetwork: online,
+                                        tokenTypeLine: "Creature — Zombie", tokenOracleText: "",
+                                        tokenPower: "2", tokenToughness: "2", tokenColors: ["B"])
+        }
+        let tokenImage = try await liveArtworkTimeout { try await visibleZombie(online: true) }
+        XCTAssertNotNil(NativeDeckArtwork.decodedImage(try XCTUnwrap(tokenImage), variant: .board))
+        let matchedID = await transport.matchedTokenID
+        let tokenID = try XCTUnwrap(matchedID)
+        let persisted = await store.image(key: NativeAssetStore.tokenKey(tokenID), quality: .standard)
+        XCTAssertEqual(persisted, tokenImage)
+        let requestsBeforeOffline = await transport.requests
+        let offline = try await visibleZombie(online: false)
+        XCTAssertEqual(offline, tokenImage)
+        let requestsAfterOffline = await transport.requests
+        XCTAssertEqual(requestsAfterOffline, requestsBeforeOffline)
+
+        let sourceImage = try await liveArtworkTimeout {
+            try await artwork.imageData(name: "Loyal Guardian", variant: .board, allowNetwork: true,
+                                        tokenTypeLine: "Creature — Zombie", tokenOracleText: "",
+                                        tokenPower: "4", tokenToughness: "4", tokenColors: ["B"],
+                                        tokenSourceName: "Loyal Guardian")
+        }
+        XCTAssertNotNil(NativeDeckArtwork.decodedImage(try XCTUnwrap(sourceImage), variant: .board))
+        XCTAssertNotEqual(sourceImage, tokenImage)
+        let searchPaths = await transport.requestPaths
+        let tokenImagePath = await transport.matchedImagePath
+        XCTAssertTrue(searchPaths.allSatisfy { $0 == "/cards/search" })
+        XCTAssertNotNil(tokenImagePath)
+        print("LIVE_TOKEN_ARTWORK search=\(searchPaths) tokenImage=\(tokenImagePath ?? "missing") source=api.scryfall.com/cards/named tokenID=\(tokenID)")
+    }
+    func testTokenInspectionUpgradesWithConsentAndKeepsStandardArtOfflineOrOnFailure() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = NativeAssetStore(directory: directory, availableBytes: { _ in Int64.max })
+        let token = NativeTokenArtwork(id: UUID(), name: "Zombie", typeLine: "Token Creature — Zombie",
+                                       oracleText: "", power: "2", toughness: "2", colors: ["B"])
+        let standard = try png(width: 488, height: 680)
+        let high = try png(width: 672, height: 936)
+        try await store.saveToken(token)
+        try await store.save(standard, key: NativeAssetStore.tokenKey(token.id), quality: .standard)
+        let counter = TokenLookupCounter()
+        let artwork = NativeDeckArtwork(cache: URLCache(memoryCapacity: 4_000_000, diskCapacity: 0, diskPath: nil),
+                                        protocolClasses: [LiveArtworkFixtureProtocol.self], assetStore: store,
+                                        tokenLookup: { _, _, _, _, _, _, quality in
+                                            XCTAssertEqual(quality, .high)
+                                            await counter.record()
+                                            return (token, URL(string: "https://cards.scryfall.io/large/zombie.jpg")!)
+                                        })
+        @Sendable func inspect(_ online: Bool) async throws -> Data? {
+            try await artwork.imageData(name: "Zombie Token", variant: .inspection, allowNetwork: online,
+                                        tokenTypeLine: "Creature — Zombie", tokenOracleText: "",
+                                        tokenPower: "2", tokenToughness: "2", tokenColors: ["B"])
+        }
+        LiveArtworkFixtureProtocol.bytes = high
+        LiveArtworkFixtureProtocol.requests = 0
+        defer { LiveArtworkFixtureProtocol.bytes = Data() }
+        let offline = try await inspect(false)
+        XCTAssertEqual(offline, standard)
+        let before = await counter.count
+        XCTAssertEqual(before, 0)
+        let upgraded = try await inspect(true)
+        XCTAssertEqual(upgraded, high)
+        XCTAssertEqual(LiveArtworkFixtureProtocol.requests, 1)
+        let cached = try await inspect(true)
+        XCTAssertEqual(cached, high)
+        let after = await counter.count
+        XCTAssertEqual(after, 1)
+        let offlineHigh = try await inspect(false)
+        XCTAssertEqual(offlineHigh, high)
+
+        let failureStore = NativeAssetStore(directory: directory.appendingPathComponent("failure"), availableBytes: { _ in Int64.max })
+        try await failureStore.saveToken(token)
+        try await failureStore.save(standard, key: NativeAssetStore.tokenKey(token.id), quality: .standard)
+        let failing = NativeDeckArtwork(cache: URLCache(memoryCapacity: 4_000_000, diskCapacity: 0, diskPath: nil),
+                                        assetStore: failureStore, tokenLookup: { _, _, _, _, _, _, _ in
+            throw NativeArtworkCatalogue.CatalogueError.invalidResponse
+        })
+        let fallback = try await failing.imageData(name: "Zombie Token", variant: .inspection, allowNetwork: true,
+                                                    tokenTypeLine: "Creature — Zombie", tokenOracleText: "",
+                                                    tokenPower: "2", tokenToughness: "2", tokenColors: ["B"])
+        XCTAssertEqual(fallback, standard)
+    }
+    func testOnDemandTokenLookupNeedsConsentCoalescesAndPersistsByExactID() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = NativeAssetStore(directory: directory, availableBytes: { _ in Int64.max })
+        let id = UUID()
+        let token = NativeTokenArtwork(id: id, name: "Zombie", typeLine: "Token Creature — Zombie",
+                                       oracleText: "", power: "2", toughness: "2", colors: ["B"])
+        let counter = TokenLookupCounter()
+        let bytes = try png(width: 488, height: 680)
+        LiveArtworkFixtureProtocol.bytes = bytes
+        LiveArtworkFixtureProtocol.requests = 0
+        defer { LiveArtworkFixtureProtocol.bytes = Data() }
+        let artwork = NativeDeckArtwork(cache: URLCache(memoryCapacity: 4_000_000, diskCapacity: 0, diskPath: nil),
+                                        protocolClasses: [LiveArtworkFixtureProtocol.self], assetStore: store,
+                                        tokenLookup: { _, _, _, _, _, _, _ in
+                                            await counter.record()
+                                            return (token, URL(string: "https://cards.scryfall.io/normal/zombie.jpg")!)
+                                        })
+        @Sendable func fetch(_ online: Bool) async throws -> Data? {
+            try await artwork.imageData(name: "Zombie Token", allowNetwork: online, tokenTypeLine: "Creature — Zombie",
+                                        tokenOracleText: "", tokenPower: "4", tokenToughness: "4", tokenColors: ["B"])
+        }
+        let offline = try await fetch(false)
+        XCTAssertNil(offline)
+        let before = await counter.count
+        XCTAssertEqual(before, 0)
+        async let first = fetch(true), second = fetch(true)
+        let results = try await (first, second)
+        XCTAssertEqual(results.0, bytes); XCTAssertEqual(results.1, bytes)
+        let calls = await counter.count
+        XCTAssertEqual(calls, 1)
+        XCTAssertEqual(LiveArtworkFixtureProtocol.requests, 1)
+        let reopened = NativeAssetStore(directory: directory)
+        let saved = await reopened.tokenImage(name: "Zombie Token", typeLine: "Creature — Zombie", oracleText: "",
+                                               power: "4", toughness: "4", colors: ["B"])
+        XCTAssertEqual(saved, bytes)
+        let offlineAgain = try await fetch(false)
+        XCTAssertEqual(offlineAgain, bytes)
+    }
+    func testExplicitVisibleCopySourceUsesSavedCardArtWithoutTokenNameLookup() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = NativeAssetStore(directory: directory, availableBytes: { _ in Int64.max })
+        let bytes = try png(width: 488, height: 680)
+        try await store.save(bytes, key: NativeAssetStore.cardKey("Loyal Guardian"), quality: .standard)
+        let artwork = NativeDeckArtwork(cache: URLCache(memoryCapacity: 4_000_000, diskCapacity: 0, diskPath: nil),
+                                        assetStore: store)
+        let copied = try await artwork.imageData(name: "Loyal Guardian", allowNetwork: false,
+                                                 tokenTypeLine: "Creature — Zombie", tokenOracleText: "",
+                                                 tokenPower: "4", tokenToughness: "4", tokenColors: ["B"],
+                                                 tokenSourceName: "Loyal Guardian")
+        XCTAssertEqual(copied, bytes)
+        let unknown = try await artwork.imageData(name: "Custom token", allowNetwork: false,
+                                                  tokenTypeLine: "Creature — Zombie", tokenOracleText: "",
+                                                  tokenPower: "4", tokenToughness: "4", tokenColors: ["B"])
+        XCTAssertNil(unknown)
+        let hidden = try await artwork.imageData(name: "Custom token", allowNetwork: false,
+                                                 tokenTypeLine: "Creature — Zombie", tokenOracleText: "",
+                                                 tokenSourceName: "Face-down card")
+        XCTAssertNil(hidden)
+    }
     func testLiveUpgradeKeepsCompactDownloadAndOfflineConsentBoundary() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -249,6 +409,43 @@ final class NativeDeckArtworkTests: XCTestCase {
         HTTPURLResponse(url: URL(string: "https://api.scryfall.com/cards/named")!, statusCode: status,
                         httpVersion: nil, headerFields: headers)!
     }
+}
+
+private enum LiveArtworkTestError: Error { case timeout, tooManySearchRequests }
+
+private func liveArtworkTimeout<T: Sendable>(_ operation: @escaping @Sendable () async throws -> T) async throws -> T {
+    try await withThrowingTaskGroup(of: T.self) { group in
+        group.addTask { try await operation() }
+        group.addTask {
+            try await Task.sleep(for: .seconds(25))
+            throw LiveArtworkTestError.timeout
+        }
+        defer { group.cancelAll() }
+        return try await group.next()!
+    }
+}
+
+private actor LiveTokenSearchTransport: DeckStudioScryfallHTTP {
+    private let production = DeckStudioScryfallHTTPTransport()
+    private(set) var requestPaths: [String] = []
+    private(set) var matchedTokenID: UUID?
+    private(set) var matchedImagePath: String?
+    var requests: Int { requestPaths.count }
+    func recordMatch(_ id: UUID, imageURL: URL) {
+        matchedTokenID = id
+        matchedImagePath = "\(imageURL.host ?? "missing")\(imageURL.path)"
+    }
+    func send(_ request: URLRequest) async throws -> Data {
+        guard requestPaths.count < 3, let url = request.url, url.host == "api.scryfall.com",
+              url.path == "/cards/search" else { throw LiveArtworkTestError.tooManySearchRequests }
+        requestPaths.append(url.path)
+        return try await production.send(request)
+    }
+}
+
+private actor TokenLookupCounter {
+    private(set) var count = 0
+    func record() { count += 1 }
 }
 
 private final class LiveArtworkFixtureProtocol: URLProtocol {

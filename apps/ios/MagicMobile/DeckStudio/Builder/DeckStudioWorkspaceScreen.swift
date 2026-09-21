@@ -16,6 +16,7 @@ struct DeckStudioWorkspaceScreen: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     private var compactLandscape: Bool { verticalSizeClass == .compact && !dynamicType.isAccessibilitySize }
     @State private var tab = "Cards"
+    @State private var headerExpanded = true
     @State private var ideas = "Combos"
     @State private var query = ""
     @State private var grouping = "Type"
@@ -52,8 +53,8 @@ struct DeckStudioWorkspaceScreen: View {
         NavigationStack {
             GeometryReader { geometry in
             let split = geometry.size.width >= 700 && !dynamicType.isAccessibilitySize && !model.readOnly
-            if verticalSizeClass != .compact && !split && tab == "Cards" {
-                portraitCardsWorkspace
+            if verticalSizeClass != .compact && !split && (tab == "Cards" || tab == "Playtest") {
+                portraitScrollingWorkspace
             } else {
             VStack(spacing: 0) {
                 if !compactLandscape && geometry.size.height > 500 { header.padding(.horizontal, 20).padding(.vertical, 12) }
@@ -190,6 +191,26 @@ struct DeckStudioWorkspaceScreen: View {
         }
     }
     private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) { headerExpanded.toggle() }
+            } label: {
+                HStack(spacing: 8) {
+                    Text(model.draft.name.isEmpty ? "Untitled draft" : model.draft.name)
+                        .font(.headline).lineLimit(1)
+                    Spacer(minLength: 0)
+                    Text("\(DeckStudioDraftPresentation.gameCount(model.draft)) cards")
+                        .font(.caption).monospacedDigit()
+                    Image(systemName: "chevron.down").rotationEffect(.degrees(headerExpanded ? 180 : 0))
+                }.frame(minHeight: 44).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityLabel("Deck details")
+                .accessibilityValue(headerExpanded ? "Expanded" : "Collapsed")
+            if headerExpanded {
+                expandedHeader.transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+    private var expandedHeader: some View {
         HStack(alignment: .top, spacing: 14) {
             if !dynamicType.isAccessibilitySize {
                 DeckStudioArtwork(name: DeckStudioDraftPresentation.commanders(model.draft).first ?? "")
@@ -236,9 +257,9 @@ struct DeckStudioWorkspaceScreen: View {
         }
     }
 
-    /// The collection owns a single vertical scroll in portrait. Only its workspace
-    /// selector pins; card groups and editing tools naturally leave the viewport.
-    private var portraitCardsWorkspace: some View {
+    /// Cards and Playtest share one portrait scroll: the artwork/header leaves the
+    /// viewport while the workspace selector remains pinned above either content.
+    private var portraitScrollingWorkspace: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                 header.padding(.horizontal, 20).padding(.vertical, 12)
@@ -248,11 +269,18 @@ struct DeckStudioWorkspaceScreen: View {
                         .padding(.horizontal, 20).padding(.bottom, 10)
                 }
                 Section {
-                    cardFilters
-                    // This inner lazy stack does not pin its group headers over the tabs.
-                    LazyVStack(alignment: .leading, spacing: 8) {
-                        cardSections
-                    }.padding(.horizontal, 20).padding(.bottom, 16)
+                    if tab == "Cards" {
+                        cardFilters
+                        // This inner lazy stack does not pin its group headers over the tabs.
+                        LazyVStack(alignment: .leading, spacing: 8) {
+                            cardSections
+                        }.padding(.horizontal, 20).padding(.bottom, 16)
+                    } else {
+                        LazyVStack(spacing: 16) {
+                            DeckStudioValidationPanel(state: validation, deck: deck, resolver: resolver, play: preparePlay)
+                            DeckStudioPlaytestInsightsView(signature: signature)
+                        }.padding(20)
+                    }
                 } header: {
                     workspaceTabs.padding(.horizontal, 20).padding(.vertical, 8)
                         .background(DeckStudioPalette.background)
@@ -260,10 +288,13 @@ struct DeckStudioWorkspaceScreen: View {
                 }
             }
         }
+        // The pinned lazy section must be rebuilt when its tab changes. Keeping
+        // one identity can leave the previous tab's header and rows on screen.
+        .id(tab)
         .scrollDismissesKeyboard(.interactively)
-        .accessibilityIdentifier("deckStudio.cards.list")
+        .accessibilityIdentifier(tab == "Cards" ? "deckStudio.cards.list" : "deckStudio.playtest.list")
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if !model.readOnly {
+            if tab == "Cards" && !model.readOnly {
                 addCardsButton.padding(.top, 8).background(DeckStudioPalette.background)
             }
         }

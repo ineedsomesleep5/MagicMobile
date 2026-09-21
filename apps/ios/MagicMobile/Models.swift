@@ -887,6 +887,19 @@ struct CardIdentity: Decodable, Hashable {
     var isToken: Bool? = nil
     /// Complete visible color set for token-art matching; nil when unavailable or hidden.
     var tokenColors: [String]? = nil
+    /// Explicit, face-up copy-token artwork identity; never a hidden source card ID.
+    var copySourceArtworkName: String? = nil
+    /// Public token template for image lookup; never replaces live CardView state.
+    var tokenArtwork: TokenArtworkIdentity? = nil
+}
+
+struct TokenArtworkIdentity: Decodable, Hashable {
+    let name: String
+    let typeLine: String
+    let oracleText: String
+    let power: String?
+    let toughness: String?
+    let colors: [String]
 }
 
 struct FlexibleInt: Decodable, Equatable {

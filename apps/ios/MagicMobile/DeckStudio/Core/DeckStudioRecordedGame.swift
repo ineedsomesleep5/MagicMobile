@@ -60,6 +60,11 @@ import CoreFoundation
 
 struct DeckStudioRecordedGame: Codable, Equatable, Identifiable, Sendable {
     enum End: String, Codable, Sendable { case inProgress, completed, left, interrupted, engineFailed }
+    struct Opponent: Codable, Equatable, Sendable {
+        let playerID: String
+        let name: String
+        let commanders: [String]
+    }
     let id: UUID
     let matchID: String
     let seatID: String
@@ -79,6 +84,8 @@ struct DeckStudioRecordedGame: Codable, Equatable, Identifiable, Sendable {
     var won: Bool?
     var lastRevision = -1
     var viewerPlayerID: String?
+    /// Public, seat-scoped player names and public commander card names only.
+    var opponents: [Opponent]?
     var elapsedSeconds: TimeInterval { max(0, (finishedAt ?? observedAt).timeIntervalSince(startedAt)) }
 
     func validate() throws {
@@ -89,6 +96,13 @@ struct DeckStudioRecordedGame: Codable, Equatable, Identifiable, Sendable {
               observedAt >= startedAt, observedAt.timeIntervalSince(startedAt) <= 31_536_000,
               finishedAt.map({ $0.timeIntervalSince1970.isFinite && $0 >= startedAt && $0 <= observedAt }) ?? true,
               lastRevision >= -1, viewerPlayerID.map({ UUID(uuidString: $0) != nil }) ?? true,
+              opponents.map({ $0.count <= aiOpponents && Set($0.map(\.playerID)).count == $0.count && $0.allSatisfy {
+                  UUID(uuidString: $0.playerID) != nil && $0.playerID != viewerPlayerID &&
+                  !$0.name.isEmpty && $0.name.utf8.count <= 128 &&
+                  !$0.name.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) &&
+                  $0.commanders.count <= 12 && $0.commanders.allSatisfy { !$0.isEmpty && $0.utf8.count <= 200 &&
+                      !$0.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) }
+              } }) ?? true,
               !upstream.isEmpty, !catalogue.isEmpty, !appBuild.isEmpty,
               commandZoneCasts.count <= 12,
               commandZoneCasts.allSatisfy({ item in
@@ -160,6 +174,26 @@ struct DeckStudioPlaytestAccumulator {
            current.viewerPlayerID == nil || current.viewerPlayerID == viewer,
            let view = root["gameView"] as? [String: Any], view["myPlayerId"] as? String == viewer {
             current.viewerPlayerID = viewer
+            if let players = view["players"] as? [[String: Any]], (2...4).contains(players.count),
+               players.contains(where: { $0["playerId"] as? String == viewer }),
+               players.allSatisfy({ UUID(uuidString: $0["playerId"] as? String ?? "") != nil }) {
+                let publicCommanders = root["commanders"] as? [String: [String: Any]] ?? [:]
+                let opponents = players.compactMap { player -> DeckStudioRecordedGame.Opponent? in
+                    guard let id = player["playerId"] as? String, id != viewer,
+                          let name = player["name"] as? String, !name.isEmpty, name.utf8.count <= 128,
+                          !name.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else { return nil }
+                    let names = publicCommanders.sorted(by: { $0.key < $1.key }).compactMap { _, info -> String? in
+                        guard info["ownerPlayerId"] as? String == id else { return nil }
+                        guard let name = info["name"] as? String, !name.isEmpty, name.utf8.count <= 200,
+                              !name.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else { return nil }
+                        return name
+                    }
+                    return .init(playerID: id, name: name, commanders: names)
+                }
+                if opponents.count == current.aiOpponents, opponents.allSatisfy({ $0.commanders.count <= 12 }) {
+                    current.opponents = opponents
+                }
+            }
             if let turn = DeckStudioJSON.integer(view["turn"]), (0...1_000_000).contains(turn) {
                 current.observedTurn = max(current.observedTurn, turn)
             }

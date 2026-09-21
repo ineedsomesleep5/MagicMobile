@@ -220,11 +220,32 @@ enum OnDeviceSnapshotAdapter {
         let tokenIdentityVisible = !hidden && value["faceDown"]?.bool != true
         let hasTokenColors = tokenIdentityVisible && value["isToken"]?.bool == true && colorNames.allSatisfy { value["color"]?[$0.0]?.bool != nil }
         let tokenColors: J = hasTokenColors ? .array(colorNames.filter { value["color"]?[$0.0]?.bool == true }.map { .string($0.1) }) : .null
+        let sourceArt: J = tokenIdentityVisible && value["isToken"]?.bool == true && value["copy"]?.bool == true &&
+            value["copySourceArtworkName"]?.string == name &&
+            value["name"]?.string == name && NativeDeckArtwork.permitsSourceName(name)
+            ? .string(name) : .null
+        let template = value["tokenArtwork"]
+        let baseName = template?["name"]?.string
+        let baseTypes = (template?["cardTypes"]?.array ?? []).compactMap(\.string)
+        let baseSupers = (template?["superTypes"]?.array ?? []).compactMap(\.string)
+        let baseSubs = (template?["subTypes"]?.array ?? []).compactMap(\.string)
+        let hasBaseColors = colorNames.allSatisfy { template?["color"]?[$0.0]?.bool != nil }
+        let baseColors = colorNames.filter { template?["color"]?[$0.0]?.bool == true }.map { $0.1 }
+        var baseTypeLine = (baseSupers + baseTypes).map { $0.capitalized }.joined(separator: " ")
+        if !baseSubs.isEmpty { baseTypeLine += " — " + baseSubs.map { $0.capitalized }.joined(separator: " ") }
+        let baseArt: J = tokenIdentityVisible && value["isToken"]?.bool == true &&
+            baseName == name && hasBaseColors && !baseTypeLine.isEmpty &&
+            template?["rules"]?.array != nil && template?["power"]?.string != nil &&
+            template?["toughness"]?.string != nil
+            ? .object(["name": .string(name), "typeLine": .string(baseTypeLine),
+                       "oracleText": .string((template?["rules"]?.array ?? []).compactMap(\.string).joined(separator: "\n")),
+                       "power": template?["power"] ?? .null, "toughness": template?["toughness"] ?? .null,
+                       "colors": .array(baseColors.map(J.string))]) : .null
         var result: [String: J] = ["instanceId": .string(id), "card": .object([
             "name": .string(name), "typeLine": .string(typeLine), "oracleText": .string(rules),
             "manaCost": printedManaCost(value).map(J.string) ?? .null,
             "isToken": tokenIdentityVisible ? (value["isToken"]?.bool.map(J.bool) ?? .null) : .null,
-            "tokenColors": tokenColors
+            "tokenColors": tokenColors, "copySourceArtworkName": sourceArt, "tokenArtwork": baseArt
         ])]
         for key in ["tapped", "summoningSickness", "damage", "phasedIn"] { result[key] = value[key] }
         result["attachedToInstanceId"] = value["attachedTo"]

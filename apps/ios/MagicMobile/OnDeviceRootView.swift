@@ -213,7 +213,10 @@ struct OnDeviceRootView: View {
             selectedCard: $selectedCard, inspectedCard: $inspectedCard,
             playerDisplayName: playerDisplayName, avatarData: nil,
             pendingActionId: session.pendingActionID, pendingCardInstanceId: session.pendingCardID,
-            lastActionRejection: nil, liveUpdateStatus: setup.liveStatus,
+            lastActionRejection: nil,
+            commandFailure: CardChoiceCommandFailure(setup.errorMessage ?? session.errorMessage,
+                source: setup.errorMessage != nil ? .setup : .session),
+            liveUpdateStatus: setup.liveStatus,
             onInteractionFeedback: { setup.feedback = $0 },
             runAction: { action in Task { await setup.perform { try await session.send(action: action) } } },
             runCommand: { command, label, id in

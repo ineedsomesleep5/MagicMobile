@@ -23,6 +23,12 @@ class GameplayCuesTest {
         assertEquals(viewer,battlefieldAttachmentRoot(playerAura,listOf(playerAura,nested),setOf(viewer)))
         assertEquals(viewer,battlefieldAttachmentRoot(nested,listOf(playerAura,nested),setOf(viewer)))
         assertNull(battlefieldAttachmentRoot(playerAura,listOf(playerAura),emptySet()))
+        val orphan=aura+mapOf("id" to "orphan","attachedTo" to "missing")
+        val mixed=listOf(host,aura,nested,orphan)
+        val roots=mixed.associate{it["id"] to battlefieldAttachmentRoot(it,mixed)}
+        val visible=mixed.filter{roots[it["id"]]==null}+mixed.filter{roots[it["id"]]=="host"}
+        assertEquals(mixed.size,visible.size)
+        assertEquals(mixed.map{it["id"]}.toSet(),visible.map{it["id"]}.toSet())
     }
 
     @Test fun phasedStateMustBeExplicitAndPublicPlayerCountersStayExact() {

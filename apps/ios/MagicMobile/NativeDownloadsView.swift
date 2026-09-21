@@ -40,6 +40,7 @@ struct NativeDownloadsView: View {
     private var names: [String] {
         switch scope {
         case "catalogue": return catalogueNames
+        case "tokens": return []
         case "decks": return Array(Set(decks.flatMap(\.cardNames))).sorted()
         default: return decks.first { $0.id == selectedDeckID }?.cardNames ?? []
         }
@@ -55,11 +56,12 @@ struct NativeDownloadsView: View {
         ScanSelection(scope: scope, deck: selectedDeckID, quality: quality, catalogueCount: catalogueNames.count, running: downloads.isRunning)
     }
     private var estimatedSize: String {
-        ByteCountFormatter.string(fromByteCount: Int64(names.count) * Int64(quality.estimatedBytes), countStyle: .file)
+        if scope == "tokens" && (downloads.tokenTotal == 0 || downloads.tokenDiscoveryRemaining > 0) { return "Not checked" }
+        return ByteCountFormatter.string(fromByteCount: Int64(scope == "tokens" ? downloads.tokenTotal : names.count) * Int64(quality.estimatedBytes), countStyle: .file)
     }
     private func startDownload() {
-        downloads.download(names: names, includeTokens: includeTokens, allowNetwork: remoteArtwork,
-                           quality: quality, fullCatalogue: scope == "catalogue")
+        downloads.download(names: names, includeTokens: includeTokens || scope == "tokens", allowNetwork: remoteArtwork,
+                           quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens")
     }
     private var catalogueIncluded: Bool {
         Bundle.main.url(forResource: "ondevice-catalogue", withExtension: "json") != nil
@@ -71,6 +73,7 @@ struct NativeDownloadsView: View {
                 Section {
                     Picker("Download", selection: $scope) {
                         Text("Full catalogue · recommended").tag("catalogue")
+                        Text("All supported tokens").tag("tokens")
                         Text("All saved & included decks").tag("decks")
                         Text("One deck").tag("deck")
                     }
@@ -88,23 +91,27 @@ struct NativeDownloadsView: View {
                     }
                     .disabled(downloads.isRunning)
                     .accessibilityIdentifier("downloads.quality")
-                    Toggle("Include tokens", isOn: $includeTokens)
+                    if scope != "tokens" { Toggle("Include tokens", isOn: $includeTokens)
                         .disabled(downloads.isRunning)
+                    }
                 } header: { Text("Artwork") } footer: {
-                    Text("Full catalogue includes opponents’ cards too.")
+                    Text(scope == "tokens" ? "Token-only downloads contain no ordinary card images." : "Full catalogue includes opponents’ cards too.")
                 }
 
                 Section("On this device") {
                     if loadingCatalogue && scope == "catalogue" { ProgressView("Reading the installed catalogue…") }
                     if let catalogueError, scope == "catalogue" { Text(catalogueError).foregroundStyle(.red) }
-                    LabeledContent("Cards", value: "\(downloads.cardStored.formatted()) / \(downloads.cardTotal.formatted())")
-                        .accessibilityIdentifier("downloads.cards")
+                    if scope != "tokens" {
+                        LabeledContent("Cards", value: "\(downloads.cardStored.formatted()) / \(downloads.cardTotal.formatted())")
+                            .accessibilityIdentifier("downloads.cards")
+                    }
                     LabeledContent("Tokens", value: downloads.tokenDiscoveryRemaining > 0 ? "Not checked" : "\(downloads.tokenStored.formatted()) / \(downloads.tokenTotal.formatted())")
                     if downloads.isScanning { ProgressView("Checking local files…") }
                     LabeledContent("Stored", value: ByteCountFormatter.string(fromByteCount: Int64(downloads.storedBytes), countStyle: .file))
-                    LabeledContent("Full download estimate", value: "≈ \(estimatedSize)")
+                    LabeledContent(scope == "tokens" ? "Token image estimate" : "Full download estimate",
+                                   value: estimatedSize == "Not checked" ? estimatedSize : "≈ \(estimatedSize)")
                     Button("Check for missing artwork") {
-                        Task { await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue") }
+                        Task { await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens") }
                     }
                     .disabled(downloads.isRunning || downloads.isScanning)
                     .accessibilityIdentifier("downloads.check")
@@ -127,10 +134,10 @@ struct NativeDownloadsView: View {
                                 .accessibilityIdentifier("downloads.status")
                         }
                         Button("Download missing artwork") {
-                            if scope == "catalogue" { confirmFullDownload = true }
+                            if scope == "catalogue" || scope == "tokens" { confirmFullDownload = true }
                             else { startDownload() }
                         }
-                        .disabled(!remoteArtwork || names.isEmpty || downloads.isScanning || (scope == "catalogue" && loadingCatalogue))
+                        .disabled(!remoteArtwork || (names.isEmpty && scope != "tokens") || downloads.isScanning || (scope == "catalogue" && loadingCatalogue))
                         .accessibilityIdentifier("downloads.start")
                     }
                 } header: { Text("Download") } footer: {
@@ -145,7 +152,7 @@ struct NativeDownloadsView: View {
                         Text("These downloads supply artwork for decks and games. Rules and the supported card catalogue are already included; artwork is optional.")
                         Text("Compact saves space. Standard balances clarity and size. High gives the sharpest inspection images. Higher-quality files already stored count toward lower-quality coverage.")
                         Text("Full catalogue covers this build’s supported cards, not every printing. Alternate faces are checked during download. Estimates exclude faces, tokens and metadata; actual size varies. Check for missing artwork after app updates.")
-                        Text("Full downloads use Scryfall’s bulk image index. Deck and on-demand requests share card names and your IP address. Stored artwork works offline.")
+                        Text("Full and token-only downloads use Scryfall’s bulk image index. Deck and on-demand requests share card names and your IP address. Stored artwork works offline.")
                         Text("Compact is fastest. Downloads use several direct image transfers at once and remember completed files. iOS controls background timing; force-quitting pauses transfers until you reopen the app. The initial image-list preparation may need the app open on a slow connection.")
                         Text("Storage is capped at 20 GB, with 1 GB of free space reserved. Unavailable or ambiguous token art remains a labeled placeholder. Use Download missing artwork to retry interruptions.")
                     }
@@ -200,13 +207,15 @@ struct NativeDownloadsView: View {
                 loadingCatalogue = false
             }
             .task(id: scanSelection) {
-                if !downloads.isRunning { await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue") }
+                if !downloads.isRunning { await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens") }
             }
-            .alert("Download the full catalogue?", isPresented: $confirmFullDownload) {
-                Button("Download \(names.count) cards · \(quality.label)") { startDownload() }
+            .alert(scope == "tokens" ? "Download supported tokens?" : "Download the full catalogue?", isPresented: $confirmFullDownload) {
+                Button(scope == "tokens" ? "Download token images · \(quality.label)" : "Download \(names.count) cards · \(quality.label)") { startDownload() }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Approximately \(estimatedSize), plus tokens and the image list. Actual size varies. Images continue downloading while you play or leave the app. Wi-Fi is recommended.")
+                Text(estimatedSize == "Not checked"
+                     ? "The token image count is not checked yet. The image list can be large; Wi-Fi is recommended. Images continue downloading while you play or leave the app."
+                     : "Approximately \(estimatedSize), plus the image list. Actual size varies. Images continue downloading while you play or leave the app. Wi-Fi is recommended.")
             }
             .onChange(of: remoteArtwork) { _, enabled in if !enabled { downloads.cancel() } }
             .onChange(of: selectedDeckID) { _, deck in
