@@ -1,7 +1,8 @@
 # 0.1.1 build 6: scrolling and rotation
 
-Release in progress. Android is published and all six iOS interaction cases
-passed against the release app sources. TestFlight publication remains pending.
+Android is published and iOS is available to Internal and External TestFlight
+testers. All six iOS interaction cases passed against the release app sources.
+Production website verification and merge remain pending.
 
 ## Changes
 
@@ -94,5 +95,17 @@ and Render remain on hold.
   real JVM regressions, and Android CI. UI execution remains a separate gate.
 - The source/artifact guard passed at `0866a5e`; iOS 0.1.1 build 6 was rechecked
   absent in App Store Connect immediately before starting release packaging.
-- TestFlight distribution, website verification, and final release receipts are
-  pending.
+- Signed source: `43378ce6bddaf02524a386a0d4e1d5e8f2fa09d2`.
+- IPA SHA-256: `e91b06cea0e6c04a8eac8f610f55a2b08038ef7483a337738f168c88a7435d44`.
+- Archive/export, staged native integrity, code-layout, signed Game Center,
+  and Apple validation guards passed. Apple upload completed without errors.
+- Build/delivery ID: `855596ba-cd01-4df9-a0d4-86f6a83d23e9`, version 0.1.1 (6).
+- Apple processing: VALID. Beta App Review: APPROVED. Both Internal and External
+  build states are IN_BETA_TESTING; expected group memberships were verified.
+  What to Test notes were updated in en-US.
+- Release receipt root:
+  `build_output/testflight/scroll-rotation-0.1.1-build6/native-release.rAtp7K`.
+  The archive, dSYM, signed IPA, native provenance, Apple responses and receipts
+  remain preserved there. No physical-phone gameplay acceptance is claimed.
+- Website now references the verified Android build-6 asset and approved
+  TestFlight build 6. Production deployment verification remains pending.
