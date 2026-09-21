@@ -144,6 +144,7 @@ struct ContentView: View {
                     pendingActionId: pendingActionId,
                     pendingCardInstanceId: pendingCardInstanceId,
                     lastActionRejection: lastActionRejection,
+                    commandFailure: CardChoiceCommandFailure(errorMessage, source: .legacy),
                     liveUpdateStatus: liveUpdateStatus,
                     onInteractionFeedback: { message in
                         status = message
@@ -769,6 +770,9 @@ struct ContentView: View {
             let identity = command.abilityId.map { " [\($0)]" } ?? ""
             status = "Development fixture: captured \(label)\(identity). No engine command sent."
             print(status)
+            if ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_CARD_CHOICE_FAILURE"] == "1" {
+                errorMessage = "Development fixture: simulated command failure."
+            }
             return
         }
         #endif
@@ -2531,6 +2535,7 @@ struct ImmersivePlayShell: View {
     let pendingActionId: String?
     let pendingCardInstanceId: String?
     let lastActionRejection: ActionRejectionNotice?
+    let commandFailure: CardChoiceCommandFailure?
     let liveUpdateStatus: String
     let onInteractionFeedback: (String) -> Void
     let runAction: (LegalAction) -> Void
@@ -2555,6 +2560,7 @@ struct ImmersivePlayShell: View {
             pendingActionId: pendingActionId,
             pendingCardInstanceId: pendingCardInstanceId,
             lastActionRejection: lastActionRejection,
+            commandFailure: commandFailure,
             liveUpdateStatus: liveUpdateStatus,
             onInteractionFeedback: onInteractionFeedback,
             runAction: runAction,
@@ -2630,6 +2636,7 @@ struct NativeGameView: View {
     let pendingActionId: String?
     let pendingCardInstanceId: String?
     let lastActionRejection: ActionRejectionNotice?
+    let commandFailure: CardChoiceCommandFailure?
     let liveUpdateStatus: String
     let onInteractionFeedback: (String) -> Void
     let runAction: (LegalAction) -> Void
@@ -2655,6 +2662,9 @@ struct NativeGameView: View {
     @State private var inspectingZoneCards: [ZoneCard] = []
     @State private var isPromptDetailOpen = false
     @State private var isCardChoiceOpen = false
+    @State private var committedCardChoice: CardChoicePlan?
+    @State private var cardChoiceCompletionTask: Task<Void, Never>?
+    @State private var reviewCardChoiceAfterPending = false
     @State private var isLandscapeStackOpen = false
     @State private var inspectingZoneReference: BoardZoneReference?
     @State private var dragActionChoice: DragActionChoice?
@@ -2676,6 +2686,82 @@ struct NativeGameView: View {
         } else {
             isPromptDetailOpen = true
         }
+    }
+
+    private func advanceCommittedCardChoice() {
+        guard var plan = committedCardChoice, let snapshot else { return }
+        if snapshot.promptEnvelopeV2 == nil && pendingActionId == nil && plan.lastPrompt != nil {
+            if cardChoiceCompletionTask == nil {
+                let lastPrompt = plan.lastPrompt
+                cardChoiceCompletionTask = Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(5))
+                    guard !Task.isCancelled else { return }
+                    if committedCardChoice?.lastPrompt == lastPrompt,
+                       self.snapshot?.promptEnvelopeV2 == nil, pendingActionId == nil {
+                        committedCardChoice = nil
+                    }
+                    cardChoiceCompletionTask = nil
+                }
+            }
+            return
+        }
+        cardChoiceCompletionTask?.cancel()
+        cardChoiceCompletionTask = nil
+        let command = plan.next(in: snapshot, pending: pendingActionId != nil)
+        committedCardChoice = plan.stopped ? nil : plan
+        if plan.stopped {
+            isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil
+            isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snapshot) != nil
+        }
+        if let command {
+            runCommand(command, "Apply card choice", "card-plan-\(command.promptId ?? "")-\(command.messageId ?? 0)")
+        }
+    }
+
+    private func cancelCommittedCardChoice() {
+        cardChoiceCompletionTask?.cancel()
+        cardChoiceCompletionTask = nil
+        committedCardChoice = nil
+        if let snapshot {
+            if pendingActionId != nil {
+                reviewCardChoiceAfterPending = true
+                isCardChoiceOpen = false
+                isPromptDetailOpen = false
+            } else {
+                isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil
+                isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snapshot) != nil
+            }
+        }
+    }
+
+    private func handleCardChoicePendingChange(from oldValue: String?, to newValue: String?, snapshot: GameSnapshot) {
+        guard newValue == nil else { return }
+        if reviewCardChoiceAfterPending {
+            reviewCardChoiceAfterPending = false
+            isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil
+            isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snapshot) != nil
+        } else if oldValue != nil, committedCardChoice?.submittedPromptIsUnchanged(in: snapshot) == true {
+            cancelCommittedCardChoice()
+        } else {
+            advanceCommittedCardChoice()
+        }
+    }
+
+    private func handleCardChoiceFailureChange(from oldValue: CardChoiceCommandFailure?,
+                                               to newValue: CardChoiceCommandFailure?) {
+        if committedCardChoice != nil,
+           CardChoiceCommandFailure.isNewFailure(from: oldValue, to: newValue) {
+            cancelCommittedCardChoice()
+        }
+    }
+
+    private func commitCardChoicePlan(_ plan: CardChoicePlan) {
+        cardChoiceCompletionTask?.cancel()
+        cardChoiceCompletionTask = nil
+        reviewCardChoiceAfterPending = false
+        committedCardChoice = plan
+        isCardChoiceOpen = false
+        advanceCommittedCardChoice()
     }
 
     private func localViewZone(title: String, cards: [ZoneCard]) {
@@ -2743,7 +2829,7 @@ struct NativeGameView: View {
                 actions: snapshot.legalActions ?? [],
                 combatGroups: snapshot.xmage?.combat ?? []
             )
-            GeometryReader { rootProxy in
+            let boardSurface = GeometryReader { rootProxy in
                 ZStack {
                     BattlefieldSurface(portraitModeEnabled: portraitModeEnabled)
                         .ignoresSafeArea()
@@ -2840,11 +2926,11 @@ struct NativeGameView: View {
                         )
 
                         ZStack {
-                            BattlefieldRow(title: "Opponent board", cards: nonLandPermanents(opponent.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.opponentBattlefieldRect.width, adaptsToDensity: true, availableHeight: metrics.opponentBattlefieldRect.height, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                            BattlefieldRow(title: "Opponent board", cards: landscapePermanents(opponent.zones.battlefield, resources: false), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.opponentBattlefieldRect.width, adaptsToDensity: true, availableHeight: metrics.opponentBattlefieldRect.height, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                                 .frame(width: metrics.opponentBattlefieldRect.width, height: metrics.opponentBattlefieldRect.height)
                                 .position(x: metrics.opponentBattlefieldRect.midX, y: metrics.opponentBattlefieldRect.midY)
 
-                            BattlefieldRow(title: "Opponent lands", cards: landPermanents(opponent.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.opponentLandsRect.width, adaptsToDensity: true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                            BattlefieldRow(title: "Opponent lands", cards: landscapePermanents(opponent.zones.battlefield, resources: true), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.opponentLandsRect.width, adaptsToDensity: true, availableHeight: metrics.opponentLandsRect.height, arrangement: .landscapeResources, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                                 .frame(width: metrics.opponentLandsRect.width, height: metrics.opponentLandsRect.height)
                                 .position(x: metrics.opponentLandsRect.midX, y: metrics.opponentLandsRect.midY)
 
@@ -2853,11 +2939,11 @@ struct NativeGameView: View {
                                 .frame(width: max(metrics.centerStripRect.width - 28, 80), height: 1.5)
                                 .position(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.midY)
 
-                            BattlefieldRow(title: "Your board", cards: nonLandPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.playerBattlefieldRect.width, adaptsToDensity: true, availableHeight: metrics.playerBattlefieldRect.height, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                            BattlefieldRow(title: "Your board", cards: landscapePermanents(human.zones.battlefield, resources: false), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.playerBattlefieldRect.width, adaptsToDensity: true, availableHeight: metrics.playerBattlefieldRect.height, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                                 .frame(width: metrics.playerBattlefieldRect.width, height: metrics.playerBattlefieldRect.height)
                                 .position(x: metrics.playerBattlefieldRect.midX, y: metrics.playerBattlefieldRect.midY)
 
-                            BattlefieldRow(title: "Your lands", cards: landPermanents(human.zones.battlefield), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.playerLandsRect.width, adaptsToDensity: true, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                            BattlefieldRow(title: "Your lands", cards: landscapePermanents(human.zones.battlefield, resources: true), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.playerLandsRect.width, adaptsToDensity: true, availableHeight: metrics.playerLandsRect.height, arrangement: .landscapeResources, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                                 .frame(width: metrics.playerLandsRect.width, height: metrics.playerLandsRect.height)
                                 .position(x: metrics.playerLandsRect.midX, y: metrics.playerLandsRect.midY)
 
@@ -3303,6 +3389,20 @@ struct NativeGameView: View {
                 } message: {
                     Text(gameMenuConfirmation?.message ?? "")
                 }
+            boardPresentation(boardSurface, snapshot: snapshot)
+        } else {
+            LoadingGameView(startupStatus: startupStatus)
+        }
+    }
+
+    private func boardPresentation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
+        let observed = boardObservation(content, snapshot: snapshot)
+        let choices = boardChoicePresentation(observed, snapshot: snapshot)
+        return boardPhasePresentation(choices, snapshot: snapshot)
+    }
+
+    private func boardObservation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
+        content
             .environment(\.boardZoneInspectionAction, inspectBoardZone)
             .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? .easeOut(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.88), value: inspectingZoneTitle)
             .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? .easeOut(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.88), value: inspectedCard?.id)
@@ -3312,6 +3412,10 @@ struct NativeGameView: View {
                 isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snapshot) != nil
             }
             .onChange(of: snapshot.id) { _, _ in
+                cardChoiceCompletionTask?.cancel()
+                cardChoiceCompletionTask = nil
+                committedCardChoice = nil
+                reviewCardChoiceAfterPending = false
                 focusedOpponentId = nil
                 lastTurnCueKey = nil
                 inspectingZoneTitle = nil
@@ -3321,6 +3425,7 @@ struct NativeGameView: View {
                 inspectedCard = nil
             }
             .onChange(of: snapshot.bridgeRevision) { _, _ in
+                advanceCommittedCardChoice()
                 let cards = PortraitInteractionPolicy.authorizedCards(snapshot)
                 if let card = inspectedCard { inspectedCard = cards.first { $0.id == card.id } }
                 if let card = selectedCard { selectedCard = cards.first { $0.id == card.id } }
@@ -3337,23 +3442,65 @@ struct NativeGameView: View {
                 }) { dragActionChoice = nil }
             }
             .onChange(of: snapshot.promptEnvelopeV2?.id) { _, _ in
+                advanceCommittedCardChoice()
                 isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snapshot) != nil
+            }
+            .onChange(of: snapshot.promptEnvelopeV2?.messageId) { _, _ in
+                advanceCommittedCardChoice()
+            }
+            .onChange(of: pendingActionId) { oldValue, newValue in
+                handleCardChoicePendingChange(from: oldValue, to: newValue, snapshot: snapshot)
+            }
+            .onChange(of: lastActionRejection?.message) { _, newValue in
+                if newValue != nil && committedCardChoice != nil { cancelCommittedCardChoice() }
+            }
+            .onChange(of: commandFailure) { oldValue, newValue in
+                handleCardChoiceFailureChange(from: oldValue, to: newValue)
             }
             .onChange(of: PortraitInteractionPolicy.detailChoiceKey(snapshot)) { _, key in
                 isPromptDetailOpen = key != nil
             }
             .onChange(of: PortraitInteractionPolicy.cardChoiceKey(snapshot)) { _, key in
-                isCardChoiceOpen = key != nil
+                isCardChoiceOpen = key != nil && committedCardChoice == nil && !reviewCardChoiceAfterPending
                 inspectedCard = nil
                 selectedCard = nil
                 if key != nil { isPromptDetailOpen = false; isLandscapeStackOpen = false }
             }
-            .accessibilityHidden(isCardChoiceOpen)
+    }
+
+    private func boardChoicePresentation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
+        content
+            .accessibilityHidden(isCardChoiceOpen || committedCardChoice != nil)
             .overlay {
                 if isCardChoiceOpen, let key = PortraitInteractionPolicy.cardChoiceKey(snapshot), let prompt = snapshot.promptEnvelopeV2 {
                     BoardCardChoiceView(snapshot: snapshot, prompt: prompt, pendingActionId: pendingActionId,
-                                        runCommand: runCommand, runAction: runAction, close: { isCardChoiceOpen = false })
+                                        runCommand: runCommand, runAction: runAction,
+                                        commitPlan: commitCardChoicePlan, close: { isCardChoiceOpen = false })
                         .id(key)
+                }
+            }
+            .overlay {
+                if committedCardChoice != nil {
+                    // Block manual board/answer taps until Stop returns control to the current prompt.
+                    Color.black.opacity(0.001)
+                        .ignoresSafeArea()
+                        .contentShape(Rectangle())
+                        .accessibilityHidden(true)
+                }
+            }
+            .overlay(alignment: .top) {
+                if committedCardChoice != nil {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Applying card choices…").font(.caption)
+                        Button("Stop") { cancelCommittedCardChoice() }
+                            .font(.caption.weight(.semibold))
+                            .frame(minWidth: 44, minHeight: 44)
+                            .accessibilityHint("Stops remaining automatic replies. Choices already sent to XMage stay applied.")
+                    }
+                    .padding(8)
+                    .background(MagicPalette.iron, in: Capsule())
+                    .accessibilityIdentifier("board.choice.progress")
                 }
             }
             .onChange(of: selectedCard?.id) { _, _ in
@@ -3364,6 +3511,10 @@ struct NativeGameView: View {
                     dragActionChoice = DragActionChoice(message: card.card.name, actions: actions)
                 }
             }
+    }
+
+    private func boardPhasePresentation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
+        content
             .overlay {
                 if showsTurnCue, let cue = BoardPhaseAnnouncement.make(snapshot), !isCardChoiceOpen, !isPromptDetailOpen {
                     VStack(spacing: 8) {
@@ -3399,9 +3550,6 @@ struct NativeGameView: View {
             .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { now in
                 handleAIWaitRecovery(for: snapshot, now: now)
             }
-        } else {
-            LoadingGameView(startupStatus: startupStatus)
-        }
     }
 
     private func updateAIWaitStart(for snapshot: GameSnapshot) {
@@ -3953,6 +4101,10 @@ struct NativeGameView: View {
 
     private func landPermanents(_ cards: [ZoneCard]) -> [ZoneCard] {
         BattlefieldAttachments.lane(ownedCards: cards, allCards: snapshot?.players.flatMap { $0.zones.battlefield } ?? cards, lands: true, playerIDs: Set(snapshot?.players.map(\.playerId) ?? []))
+    }
+
+    private func landscapePermanents(_ cards: [ZoneCard], resources: Bool) -> [ZoneCard] {
+        BattlefieldAttachments.lane(ownedCards: cards, allCards: snapshot?.players.flatMap { $0.zones.battlefield } ?? cards, lands: resources, playerIDs: Set(snapshot?.players.map(\.playerId) ?? []), includesManaRocks: true)
     }
 
     private func nonLandPermanents(_ cards: [ZoneCard]) -> [ZoneCard] {
@@ -6165,6 +6317,7 @@ struct UniversalPromptActionPanel: View {
     @State private var manualAmountValues: [String: Int] = [:]
     @State private var selectedSearchPromptId: String?
     @State private var selectedSearchCardIds: [String] = []
+    @State private var choiceSearch = ""
     @Environment(\.dismiss) private var dismiss
     let pendingActionId: String?
     let runAction: (LegalAction) -> Void
@@ -6328,7 +6481,7 @@ struct UniversalPromptActionPanel: View {
     @ViewBuilder
     private func promptEnvelopeV2Section(_ prompt: PromptEnvelopeV2) -> some View {
         PromptPanelSection(title: promptPresentation?.title ?? "Choose", detail: "", isHighlighted: true,
-                           isEmbedded: prompt.abilities?.isEmpty == false) {
+                           isEmbedded: true) {
             Text(prompt.message)
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(.white.opacity(0.86))
@@ -6358,7 +6511,26 @@ struct UniversalPromptActionPanel: View {
             }
 
             if let choices = prompt.choices, !choices.isEmpty {
-                optionGrid(choices.map { ($0.id, $0.label) }, prompt: prompt, fallbackType: "resolve_choice", icon: "checkmark.circle")
+                let matchingChoices = choices.filter {
+                    choices.count <= 20 || choiceSearch.isEmpty ||
+                        $0.label.localizedCaseInsensitiveContains(choiceSearch)
+                }
+                if choices.count > 20 {
+                    TextField("Search choices", text: $choiceSearch)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("prompt.choices.search")
+                        .onAppear { choiceSearch = "" }
+                        .onChange(of: "\(prompt.id):\(prompt.messageId)") { _, _ in choiceSearch = "" }
+                }
+                if matchingChoices.isEmpty {
+                    Text("No matching choices")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("prompt.choices.noMatches")
+                } else {
+                    optionGrid(matchingChoices.map { ($0.id, $0.label) }, prompt: prompt,
+                               fallbackType: "resolve_choice", icon: "checkmark.circle")
+                }
             }
 
             if let targets = prompt.targets, !targets.isEmpty {
@@ -6620,7 +6792,6 @@ struct UniversalPromptActionPanel: View {
         let type = idCommandType(preferred: prompt.responseCommand?.type, fallback: isSearchPrompt(prompt) ? "search_select" : "choose_card")
         let selectedPromptCardId = PromptSelectionRules.selectedPromptCardId(selectedCard: selectedCard, validCards: cards)
         let hasValidSelection = selectedPromptCardId != nil && PromptSelectionRules.isValidSelectedCount(1, minChoices: prompt.minChoices ?? 1, maxChoices: prompt.maxChoices ?? 1)
-        PromptMiniLabel("Cards")
         VStack(alignment: .leading, spacing: 7) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 7) {
@@ -9744,7 +9915,7 @@ struct PortraitBattlefieldPermanentGroup: View {
             targetableIds: targetableIds, combatHighlightIds: combatHighlightIds,
             selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: flipped,
             cardWidth: cardWidth, cardHeight: cardHeight, rowWidth: rowWidth, adaptsToDensity: true,
-            availableHeight: availableHeight,
+            availableHeight: availableHeight, arrangement: .portraitPermanents,
             allowsManaUndo: allowsManaUndo, manaPaymentActive: manaPaymentActive,
             runAction: runAction, runTargetAction: runTargetAction, runCombatCardAction: runCombatCardAction
         )
@@ -10748,6 +10919,7 @@ struct BattlefieldRow: View {
     let rowWidth: CGFloat
     var adaptsToDensity = false
     var availableHeight: CGFloat? = nil
+    var arrangement: BattlefieldRowArrangement = .automatic
     var allowsManaUndo = false
     var manaPaymentActive = false
     let runAction: (LegalAction) -> Void
@@ -10789,8 +10961,12 @@ struct BattlefieldRow: View {
     }
 
     private var permanentLayout: ArenaPermanentLayout? {
-        availableHeight.map { ArenaPermanentLayout(count: visibleCardCount, width: rowWidth,
-            height: $0, maxCardWidth: cardWidth, ratio: cardHeight / max(cardWidth, 1)) }
+        availableHeight.map { height in
+            let proposed = arrangement.rows(renderedGroups, flipped: flipped,
+                twoRows: arrangement == .landscapeResources || visibleCardCount > 5)
+            return ArenaPermanentLayout(rowCounts: proposed.map(\.count), width: rowWidth,
+                height: height, maxCardWidth: cardWidth, ratio: cardHeight / max(cardWidth, 1))
+        }
     }
 
     private var renderedGroups: [BattlefieldCardGroup] {
@@ -10801,29 +10977,48 @@ struct BattlefieldRow: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            ScrollView(.horizontal, showsIndicators: showsOverflowIndicator) {
-                let groups = renderedGroups
-                let rows = permanentLayout?.rows ?? 1
-                let columns = max(1, (groups.count + rows - 1) / rows)
+            let rows = permanentLayout?.rows ?? 1
+            let arranged = arrangement.rows(renderedGroups, flipped: flipped, twoRows: rows == 2)
+            if arrangement == .landscapeResources && rows == 2 {
                 VStack(alignment: .leading, spacing: 4) {
-                    ForEach(0..<rows, id: \.self) { row in
-                        HStack(alignment: .center, spacing: 4) {
-                            ForEach(Array(groups.dropFirst(row * columns).prefix(columns))) { group in
-                                if group.id.hasPrefix("attachment:") { attachmentGroupTile(group) }
-                                else if group.count > 1 { collapsedGroupTile(group) }
-                                else { battlefieldCardTile(group.representative) }
-                            }
+                    ForEach(0..<2, id: \.self) { row in
+                        ScrollView(.horizontal, showsIndicators: rowContentWidth(arranged[row]) > rowWidth) {
+                            rowTiles(arranged[row])
+                                .padding(.horizontal, 8)
+                                .frame(minWidth: rowWidth, minHeight: ((availableHeight ?? 0) - 4) / 2)
                         }
                     }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, availableHeight == nil ? 0 : 8)
-                .frame(minWidth: rowWidth, minHeight: availableHeight ?? max(cardHeight + 6, 44), alignment: .center)
+            } else {
+                ScrollView(.horizontal, showsIndicators: showsOverflowIndicator) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(0..<rows, id: \.self) { row in rowTiles(arranged[row]) }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, availableHeight == nil ? 0 : 8)
+                    .frame(minWidth: rowWidth, minHeight: availableHeight ?? max(cardHeight + 6, 44), alignment: .center)
+                }
             }
-            .accessibilityIdentifier("board.battlefield.\(title)")
-
         }
+        .accessibilityIdentifier("board.battlefield.\(title)")
         .animation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.2), value: renderedCardWidth)
+    }
+
+    private func rowContentWidth(_ groups: [BattlefieldCardGroup]) -> CGFloat {
+        16 + groups.reduce(CGFloat.zero) { width, group in
+            width + renderedCardWidth + (group.id.hasPrefix("attachment:") ? CGFloat(max(group.count - 1, 0)) * 44 + 6 : 0)
+        } + CGFloat(max(groups.count - 1, 0)) * 4
+    }
+
+    @ViewBuilder
+    private func rowTiles(_ groups: [BattlefieldCardGroup]) -> some View {
+        HStack(alignment: .center, spacing: 4) {
+            ForEach(groups) { group in
+                if group.id.hasPrefix("attachment:") { attachmentGroupTile(group) }
+                else if group.count > 1 { collapsedGroupTile(group) }
+                else { battlefieldCardTile(group.representative) }
+            }
+        }
     }
 
     private var cardGroups: [BattlefieldCardGroup] {
@@ -11185,11 +11380,12 @@ struct CardTile: View {
                     CardArtPlaceholder(card: card, width: width, height: height)
                 } else if nativeTurnControl != nil {
                     NativeCardArtworkView(name: card.card.name, variant: imageVariant,
-                                          tokenTypeLine: card.card.isToken == true ? card.card.typeLine : nil,
-                                          tokenOracleText: card.card.isToken == true ? card.card.oracleText : nil,
-                                          tokenPower: card.card.isToken == true ? card.displayPower : nil,
-                                          tokenToughness: card.card.isToken == true ? card.displayToughness : nil,
-                                          tokenColors: card.card.isToken == true ? card.card.tokenColors : nil) { loading, _ in
+                                          tokenTypeLine: card.card.isToken == true ? (card.card.tokenArtwork?.typeLine ?? card.card.typeLine) : nil,
+                                          tokenOracleText: card.card.isToken == true ? (card.card.tokenArtwork?.oracleText ?? card.card.oracleText) : nil,
+                                          tokenPower: card.card.isToken == true ? (card.card.tokenArtwork?.power ?? card.displayPower) : nil,
+                                          tokenToughness: card.card.isToken == true ? (card.card.tokenArtwork?.toughness ?? card.displayToughness) : nil,
+                                          tokenColors: card.card.isToken == true ? (card.card.tokenArtwork?.colors ?? card.card.tokenColors) : nil,
+                                          tokenSourceName: card.card.isToken == true ? card.card.copySourceArtworkName : nil) { loading, _ in
                         CardArtPlaceholder(card: card, width: width, height: height, loading: loading)
                     }
                 } else {
@@ -11984,6 +12180,10 @@ struct CardInspector: View {
 
     private var currentDetails: [String] {
         var details: [String] = []
+        if card.card.isToken == true {
+            details.append(card.card.copySourceArtworkName == nil ? "Token" : "Token copy · source-card artwork")
+            details.append(card.card.typeLine)
+        }
         if card.showsPowerToughness, let power = card.displayPower, let toughness = card.displayToughness {
             details.append("Current power/toughness: \(power)/\(toughness)")
         }

@@ -177,23 +177,28 @@ enum OnDevicePromptAdapter {
         case "PICK_TARGET":
             guard prompt.responseTypes.contains("uuid") else { throw invalid("Target requires UUID responses") }
             let candidates = try selectableTargetIDs(prompt)
+            let aliases = prompt.payload["responseAliases"]?.object ?? [:]
+            func canonical(_ id: String) -> String { aliases[id]?.string ?? id }
+            var canonicalCandidates: [String] = []
+            for id in candidates.map(canonical) where !canonicalCandidates.contains(id) {
+                canonicalCandidates.append(id)
+            }
             fields["responseKind"] = "target"; fields["responseCommand"] = response("choose_target")
             fields["minChoices"] = 1; fields["maxChoices"] = 1
-            fields["targetIds"] = candidates
-            fields["targets"] = candidates.map { id in ["id": id, "label": targetLabel(id)] }
+            fields["targetIds"] = canonicalCandidates
+            fields["targets"] = canonicalCandidates.map { id in ["id": id, "label": targetLabel(id)] }
             // QueryEncoder explicitly serializes CardViews in payload.cards and in
             // options.orderedViews. Do not turn the viewer's other zone cards into choices.
-            let suppliedCards = ((prompt.payload["options"]?["orderedViews"]?.array ?? []) + (prompt.payload["cards"]?.array ?? [])).flatMap { card in
-                // The candidate/responseAliases filter below still governs face IDs.
-                card["hideInfo"]?.bool != true && card["secondCardFace"]?.object != nil ? [card, card["secondCardFace"]!] : [card]
-            }
+            let suppliedCards = (prompt.payload["options"]?["orderedViews"]?.array ?? []) + (prompt.payload["cards"]?.array ?? [])
             var seen: Set<String> = []
             var mapped = try suppliedCards.filter {
                 guard let id = $0["id"]?.string else { return false }
-                return seen.insert(id).inserted
+                return seen.insert(canonical(id)).inserted
             }.map { value -> [String: Any] in
                 var card = try promptCard(value)
-                let legal = candidates.contains(value["id"]!.string!)
+                let id = canonical(value["id"]!.string!)
+                card["instanceId"] = id
+                let legal = canonicalCandidates.contains(id)
                 card["selectable"] = legal
                 if !legal { card["disabledReason"] = "Not a legal choice" }
                 return card
@@ -202,17 +207,25 @@ enum OnDevicePromptAdapter {
             // only matching cards from the current authenticated view, never a deck
             // list or a cached lookup. Battlefield targets remain direct board taps.
             let boardIDs = Set(players.flatMap { $0.zones.battlefield }.map(\.id))
-            for card in cards where candidates.contains(card.id) && !boardIDs.contains(card.id) && seen.insert(card.id).inserted {
+            for card in cards where canonicalCandidates.contains(canonical(card.id)) && !boardIDs.contains(card.id) && seen.insert(canonical(card.id)).inserted {
                 var identity: [String: Any] = ["name": card.card.name, "typeLine": card.card.typeLine]
                 identity["oracleText"] = card.card.oracleText
                 identity["manaCost"] = card.card.manaCost
-                mapped.append(["instanceId": card.id, "card": identity, "selectable": true])
+                mapped.append(["instanceId": canonical(card.id), "card": identity, "selectable": true])
             }
             fields["cards"] = mapped
             let shownIDs = Set(mapped.compactMap { $0["instanceId"] as? String })
-            fields["targets"] = candidates.filter { !shownIDs.contains($0) }.map { id in
-                ["id": id, "label": targetLabel(id)]
+            fields["targets"] = canonicalCandidates.filter { !shownIDs.contains($0) }.map { id in
+                let label = targetLabel(id)
+                return ["id": id, "label": label == id ? "Card details unavailable" : label]
             }
+            var options = fields["options"] as? [String: Any] ?? [:]
+            if let chosen = prompt.payload["options"]?["chosenTargets"]?.array {
+                var unique: [String] = []
+                for id in chosen.compactMap({ $0.string }).map(canonical) where !unique.contains(id) { unique.append(id) }
+                options["chosenTargets"] = unique
+            }
+            fields["options"] = options
             if prompt.responseTypes.contains("boolean"), prompt.payload["required"]?.bool == false {
                 actions.append(try action("answer_yes_no", prompt.payload["options"]?["UI.right.btn.text"]?.string ?? "Cancel", ["confirmed": false]))
             }
@@ -307,7 +320,9 @@ enum OnDevicePromptAdapter {
             default: selections = command.orderedIds
             }
             let id = try single(selections)
-            guard try selectableTargetIDs(prompt).contains(id) else { throw invalid("Target is not a legal choice") }
+            let aliases = prompt.payload["responseAliases"]?.object ?? [:]
+            let candidates = try selectableTargetIDs(prompt)
+            guard candidates.contains(id), aliases[id] == nil else { throw invalid("Target is not a canonical legal choice") }
             return try answer("uuid", .string(id), prompt: prompt)
         case ("PICK_TARGET", "answer_yes_no"), ("CHOOSE_ABILITY", "answer_yes_no"), ("PICK_ABILITY", "answer_yes_no"):
             guard prompt.payload["required"]?.bool == false, command.confirmed == false else { throw invalid("Target choice cannot be cancelled") }

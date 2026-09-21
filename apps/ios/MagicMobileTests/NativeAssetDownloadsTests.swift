@@ -4,6 +4,83 @@ import ImageIO
 @testable import MagicMobile
 
 final class NativeAssetDownloadsTests: XCTestCase {
+    @MainActor func testTokenOnlyDownloadsNoCardsAndResumesFromStoredImage() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let tokenID = UUID()
+        let fixture = directory.appendingPathComponent("tokens.json")
+        try JSONSerialization.data(withJSONObject: [
+            ["id": tokenID.uuidString, "name": "Zombie", "layout": "token",
+             "type_line": "Token Creature — Zombie", "oracle_text": "", "power": "2", "toughness": "2", "colors": ["B"],
+             "image_uris": ["normal": "https://cards.scryfall.io/normal/zombie.jpg"]]
+        ]).write(to: fixture)
+        let bytes = try image(width: 488, height: 680)
+        DownloadImageFixtureProtocol.configure(data: bytes)
+        defer { DownloadImageFixtureProtocol.configure(data: Data()) }
+        let store = NativeAssetStore(directory: directory.appendingPathComponent("images"), availableBytes: { _ in Int64.max })
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DownloadImageFixtureProtocol.self]
+        let queue = NativeArtworkBackgroundQueue(directory: directory.appendingPathComponent("queue"), store: store,
+                                                configuration: configuration, allowNetwork: { true })
+        let model = NativeAssetDownloads(store: store, catalogueLoader: { try NativeArtworkCatalogue.parse(file: fixture) }, backgroundQueue: queue)
+        model.download(names: [], includeTokens: true, allowNetwork: false, quality: .standard, fullCatalogue: true, tokenOnly: true)
+        XCTAssertEqual(DownloadImageFixtureProtocol.urls.count, 0)
+        for run in 0..<2 {
+            model.download(names: [], includeTokens: true, allowNetwork: true, quality: .standard, fullCatalogue: true, tokenOnly: true)
+            for _ in 0..<500 where model.isRunning { try await Task.sleep(for: .milliseconds(10)) }
+            await model.scan(names: [], quality: .standard, fullCatalogue: true, tokenOnly: true)
+            XCTAssertFalse(model.isRunning)
+            XCTAssertEqual(model.failures, [])
+            XCTAssertEqual(model.cardTotal, 0)
+            XCTAssertEqual(model.tokenTotal, 1)
+            XCTAssertEqual(model.tokenStored, 1)
+            XCTAssertEqual(DownloadImageFixtureProtocol.urls.count, 1, "Run \(run) must not redownload")
+        }
+        let stored = await store.image(key: NativeAssetStore.tokenKey(tokenID), quality: .standard)
+        XCTAssertEqual(stored, bytes)
+    }
+
+    func testTokenArtMatchesModifiedStatsOnlyWhenBaseIdentityUnambiguous() {
+        let zombie = NativeTokenArtwork(id: UUID(), name: "Zombie", typeLine: "Token Creature — Zombie",
+                                        oracleText: "", power: "2", toughness: "2", colors: ["B"])
+        let alternate = NativeTokenArtwork(id: UUID(), name: "Zombie", typeLine: "Token Creature — Zombie",
+                                           oracleText: "", power: "3", toughness: "3", colors: ["B"])
+        func match(_ candidates: [NativeTokenArtwork], _ name: String = "Zombie", _ text: String = "") -> NativeTokenArtwork? {
+            NativeAssetStore.matchTokenArtwork(candidates, name: name, typeLine: "Creature — Zombie",
+                                               oracleText: text, power: "4", toughness: "4", colors: ["B"])
+        }
+        XCTAssertEqual(match([zombie]), zombie)
+        XCTAssertEqual(match([zombie], "Zombie Token"), zombie)
+        XCTAssertNil(match([zombie, alternate]))
+        XCTAssertNil(match([zombie], "Human"))
+        XCTAssertNil(match([zombie], "Flying"))
+        XCTAssertNil(NativeAssetStore.matchTokenArtwork([zombie], name: "Zombie", typeLine: "Creature — Zombie",
+                                                       oracleText: "", power: "2", toughness: "2", colors: nil))
+        let catBeast = NativeTokenArtwork(id: UUID(), name: "Cat Beast", typeLine: "Token Creature — Cat Beast",
+                                         oracleText: "", power: "3", toughness: "2", colors: ["G"])
+        XCTAssertEqual(NativeAssetStore.matchTokenArtwork([catBeast], name: "Cat Beast Token",
+                                                           typeLine: "Creature — Cat Beast", oracleText: "",
+                                                           power: "5", toughness: "4", colors: ["G"]), catBeast)
+        XCTAssertEqual(NativeAssetStore.tokenArtworkName("Token"), "Token")
+        XCTAssertEqual(NativeAssetStore.tokenArtworkName("Token Collector"), "Token Collector")
+    }
+    func testEquivalentTokenPrintingUsesTheStoredImageWhenFirstIsMissing() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = NativeAssetStore(directory: directory, availableBytes: { _ in Int64.max })
+        let first = NativeTokenArtwork(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, name: "Zombie",
+                                       typeLine: "Token Creature — Zombie", oracleText: "", power: "2", toughness: "2", colors: ["B"])
+        let second = NativeTokenArtwork(id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!, name: "Zombie",
+                                        typeLine: "Token Creature — Zombie", oracleText: "", power: "2", toughness: "2", colors: ["B"])
+        try await store.saveToken(first)
+        try await store.saveToken(second)
+        let bytes = try image(width: 488, height: 680)
+        try await store.save(bytes, key: NativeAssetStore.tokenKey(second.id), quality: .standard)
+        let result = await store.tokenImage(name: "Zombie", typeLine: "Creature — Zombie", oracleText: "",
+                                            power: "4", toughness: "4", colors: ["B"])
+        XCTAssertEqual(result, bytes)
+    }
     @MainActor func testProductionFullCataloguePlanUsesBackgroundQueueAndSkipsStoredImages() async throws {
         try await verifyBackgroundPlan(fullCatalogue: true)
     }

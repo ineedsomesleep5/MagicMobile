@@ -29,6 +29,8 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import io.magicmobile.android.core.*
 import kotlin.coroutines.coroutineContext
 import java.io.File
@@ -62,6 +64,9 @@ object Artwork {
     private val downloadLock=Any()
     private var accountedDownloadBytes=-1L
     private var tokenMetadata: Map<String,ArtworkRecord>? = null
+    private val tokenLookupLock=Mutex()
+    private val checkedTokens=mutableMapOf<ArtworkTokenIdentity,Long>()
+    private const val TOKEN_RETRY_MS=5*60*1000L
 
     private fun tokens(context:Context):Map<String,ArtworkRecord> = synchronized(downloadLock) {
         tokenMetadata ?: downloadDirectory(context).listFiles().orEmpty().filter{it.extension=="token"&&it.length() in 1..32768}.mapNotNull{file->
@@ -148,10 +153,11 @@ object Artwork {
     /** Returns null when artwork is unavailable; it never substitutes a different card. */
     suspend fun load(context: Context, name: String, token:Boolean=false, tokenIdentity:ArtworkTokenIdentity?=null, cachedReady:suspend (Bitmap)->Unit = {}): Bitmap? = withContext(Dispatchers.IO) {
         if (name.isBlank() || name.length > 512) return@withContext null
-        val lookup=if(token) {
+        var lookup=if(token) {
             val identity=tokenIdentity?.normalized() ?: return@withContext null
-            val matches=tokens(context).values.filter{it.token?.normalized()==identity}
-            "token:"+(matches.singleOrNull()?.id ?: return@withContext null)
+            val matched=selectEquivalentToken(tokens(context).values,identity){hasDownload(context,"token:${it.id}",ArtworkQuality.STANDARD)}
+                ?: if(enabled(context))fetchToken(context,identity) else null
+            "token:"+(matched?.id ?: return@withContext null)
         } else name
         var cached=memory.get(lookup)
         cached?.takeIf{token || minOf(it.width,it.height)>=ArtworkQuality.HIGH.shortEdge}?.let{return@withContext it}
@@ -182,6 +188,40 @@ object Artwork {
         val selected=record.faces.firstOrNull{it.name.equals(name,true)&&it.images.isNotEmpty()} ?: record
         val image=selected.images["large"] ?: return null
         return ArtworkTransport.bytes(context,URL(image),MAX_BYTES,ALLOWED_TYPES)
+    }
+
+    /** Opt-in, bounded exact token lookup; never falls back to a card-name image. */
+    private suspend fun fetchToken(context:Context,identity:ArtworkTokenIdentity):ArtworkRecord? = tokenLookupLock.withLock {
+        selectEquivalentToken(tokens(context).values,identity){hasDownload(context,"token:${it.id}",ArtworkQuality.STANDARD)}?.let{return@withLock it}
+        val name=identity.name.removeSuffix(" token")
+        if(!safeTokenSearchName(name) || !enabled(context))return@withLock null
+        val now=System.currentTimeMillis()
+        if(!tokenLookupAllowed(checkedTokens[identity],now,TOKEN_RETRY_MS))return@withLock null
+        if(checkedTokens.size>=1024)checkedTokens.clear()
+        try {
+            val query=URLEncoder.encode("!\"$name\" t:token","UTF-8")
+            val candidates=ArrayList<ArtworkRecord>()
+            var more=false
+            for(page in 1..3){
+                coroutineContext.ensureActive()
+                val metadata=ArtworkTransport.bytes(context,URL("https://api.scryfall.com/cards/search?q=$query&unique=cards&page=$page"),4*1024*1024,setOf("application/json"))
+                val result=tokenSearchPage(Wire.objectValue(io.magicmobile.core.Json.parseObject(metadata.toString(Charsets.UTF_8))))
+                candidates+=result.first
+                more=result.second
+                if(!more)break
+            }
+            if(more){checkedTokens[identity]=now;return@withLock null} // Truncated search cannot prove a safe match.
+            val record=selectEquivalentToken(candidates,identity){it.images["normal"]!=null}
+                ?: run{checkedTokens[identity]=now;return@withLock null}
+            coroutineContext.ensureActive();check(enabled(context)){"Online artwork is disabled."}
+            val image=ArtworkTransport.bytes(context,URL(record.images.getValue("normal")),MAX_BYTES,ALLOWED_TYPES)
+            coroutineContext.ensureActive();check(enabled(context)){"Online artwork is disabled."}
+            if(!saveDownload(context,"token:${record.id}",ArtworkQuality.STANDARD,image)){checkedTokens[identity]=now;return@withLock null}
+            saveToken(context,record)
+            checkedTokens.remove(identity)
+            record
+        }catch(cancelled:CancellationException){throw cancelled}
+        catch(_:Exception){if(enabled(context))checkedTokens[identity]=now;null}
     }
 
     /** HTTPS only, Scryfall hosts only, no embedded credentials, default port only. */
@@ -237,3 +277,21 @@ fun CardArtwork(name: String, modifier: Modifier = Modifier, token:Boolean=false
 
 internal fun artworkDownloadMatches(key:String,name:String,token:Boolean,expected:ArtworkTokenIdentity?,actual:ArtworkTokenIdentity?):Boolean =
     if(token)key.startsWith("token:")&&expected!=null&&actual!=null&&expected.normalized()==actual.normalized() else key==name
+
+/** Duplicate printings are equivalent only when their complete public token metadata matches. */
+internal fun selectEquivalentToken(records:Collection<ArtworkRecord>,identity:ArtworkTokenIdentity,usable:(ArtworkRecord)->Boolean):ArtworkRecord? =
+    records.asSequence().filter{it.token?.normalized()==identity.normalized() && usable(it)}.minByOrNull{it.id}
+
+internal fun safeTokenSearchName(name:String):Boolean = name.isNotBlank() && name.length<=120 &&
+    '"' !in name && '\\' !in name && name.none{it.isISOControl()}
+
+internal fun tokenLookupAllowed(lastFailure:Long?,now:Long,retryAfter:Long):Boolean =
+    lastFailure==null || now<lastFailure || now-lastFailure>=retryAfter
+
+/** One Scryfall search page; caller may request no more than three numbered pages. */
+internal fun tokenSearchPage(root:Obj):Pair<List<ArtworkRecord>,Boolean> {
+    val rows=root["data"] as? List<*> ?: error("Invalid token search data.")
+    val more=root["has_more"] as? Boolean ?: error("Invalid token search pagination.")
+    require(root.text("object")=="list" && rows.size<=200){"Invalid token search response."}
+    return rows.map(Wire::objectValue).filter{it.text("layout")=="token"}.mapNotNull(ArtworkCatalogue::decode) to more
+}

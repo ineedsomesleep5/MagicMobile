@@ -46,6 +46,8 @@ enum GameBoardPreviewFixtures {
         }
         let creatures = [("Silvercoat Lion", "{1}{W}", 2), ("Serra Angel", "{3}{W}{W}", 4), ("Grizzly Bears", "{1}{G}", 2), ("Llanowar Elves", "{G}", 1), ("Spirited Companion", "{1}{W}", 1), ("Sun Titan", "{4}{W}{W}", 6)]
         let crowded = [GameBoardDesignPreviewState.crowdedBattlefield, .fourPlayerFocus, .manaPaymentPrompt, .combatArrows, .largeText].contains(state)
+        let resourceLayoutMode = state == .crowdedBattlefield
+            ? ProcessInfo.processInfo.environment["MAGICMOBILE_BOARD_RESOURCE_LAYOUT_UI_TEST"] : nil
         var players = root["players"] as! [[String: Any]]
         if state == .fourPlayerFocus || state == .playerTargetPrompt {
             for number in 2...3 {
@@ -127,6 +129,35 @@ enum GameBoardPreviewFixtures {
                 zones["hand"] = hand
                 zones["exile"] = [card("human-exile-1", "Swords to Plowshares", "Instant", "{W}", "Exile target creature. Its controller gains life equal to its power.")]
             }
+            if let resourceLayoutMode, ["rocks", "lands-only"].contains(resourceLayoutMode) {
+                // Opt-in layout fixtures only. Distinct names keep density grouping from
+                // hiding either row's independent horizontal overflow.
+                if resourceLayoutMode == "lands-only" {
+                    battlefield.removeAll { $0["instanceId"] as? String == "human-sol-ring" }
+                }
+                for number in 0..<12 {
+                    battlefield.append(card("\(seat)-resource-land-\(number)", "Fixture Land \(number)",
+                                            "Basic Land", "", "{T}: Add {G}."))
+                }
+                if resourceLayoutMode == "rocks" {
+                    for number in 0..<10 {
+                        var rock = card("\(seat)-resource-rock-\(number)", "Fixture Rock \(number)",
+                                        "Artifact", "{2}", "{T}: Add {C}.")
+                        rock["tapped"] = number == 1
+                        battlefield.append(rock)
+                    }
+                    battlefield.append(contentsOf: [
+                        card("\(seat)-resource-signet", "Dimir Signet", "Artifact", "{2}", "{1}, {T}: Add {U}{B}."),
+                        card("\(seat)-resource-talisman", "Talisman of Dominance", "Artifact", "{2}", "{T}: Add {C}.\n{T}: Add {U} or {B}."),
+                        card("\(seat)-resource-treasure", "Treasure token", "Token Artifact — Treasure", "", "{T}, Sacrifice this token: Add one mana of any color."),
+                        card("\(seat)-resource-altar", "Ashnod's Altar", "Artifact", "{3}", "Sacrifice a creature: Add {C}{C}.")
+                    ])
+                }
+                battlefield.insert(contentsOf: [
+                    card("\(seat)-resource-sword", "Fixture Sword", "Artifact — Equipment", "{1}", "Equip {1}."),
+                    card("\(seat)-resource-oath", "Fixture Oath", "Enchantment", "{2}", "Creatures you control get +1/+1.")
+                ], at: 0)
+            }
             if state == .combatArrows {
                 let id = index == 0 ? "human-preview-creature-0" : "ai-1-preview-creature-0"
                 if let offset = battlefield.firstIndex(where: { $0["instanceId"] as? String == id }) {
@@ -184,8 +215,20 @@ enum GameBoardPreviewFixtures {
                     ["id": "22222222-2222-4222-8222-222222222222", "label": "Add {C}{C}.", "sourceName": "Sol Ring", "sourceCard": source]],
                 "responseCommand": ["type": "choose_ability", "promptId": "preview-ability", "messageId": 12]]
         }
+        if state == .searchSelectPrompt, var prompt = root["promptEnvelopeV2"] as? [String: Any] {
+            let types = ["Angel", "Artifact Creature", "Bear", "Beast", "Bird", "Cat", "Cleric", "Dragon",
+                         "Druid", "Elemental", "Elf", "Faerie", "Giant", "Goblin", "Human", "Knight",
+                         "Merfolk", "Pirate", "Rogue", "Soldier", "Spirit", "Vampire", "Warrior", "Wizard", "Zombie"]
+            prompt["id"] = "preview-creature-types"
+            prompt["message"] = "Development choice fixture: choose a creature type"
+            prompt["responseKind"] = "choice"
+            prompt["cards"] = []
+            prompt["choices"] = types.map { ["id": $0.lowercased().replacingOccurrences(of: " ", with: "-"), "label": $0] }
+            prompt["responseCommand"] = ["type": "resolve_choice", "promptId": "preview-creature-types", "messageId": 2]
+            root["promptEnvelopeV2"] = prompt
+        }
         if [.scryChoice, .libraryChoice, .emptyLibraryChoice, .mixedCardChoice].contains(state) {
-            let count = [.scryChoice, .mixedCardChoice].contains(state) ? 2 : 12
+            let count = state == .scryChoice ? 3 : (state == .mixedCardChoice ? 2 : 12)
             let options = (0..<count).map { index -> [String: Any] in
                 var value = card("choice-\(index)", index.isMultiple(of: 2) ? "Forest" : "Serra Angel",
                                  index.isMultiple(of: 2) ? "Basic Land" : "Creature", "", "Development choice fixture.")
@@ -195,6 +238,7 @@ enum GameBoardPreviewFixtures {
             root["promptEnvelopeV2"] = ["id": "preview-card-choice", "method": "GAME_PICK_TARGET", "messageId": 10,
                 "playerId": "human", "responseKind": "target", "message": state == .scryChoice ? "Select up to two cards to put on the bottom of your library (Scry)" : "Search your library for a land card",
                 "required": false, "minChoices": 1, "maxChoices": 1, "cards": options, "targets": [],
+                "options": state == .scryChoice ? ["chosenTargets": []] : [:],
                 "targetIds": options.filter { $0["selectable"] as? Bool == true }.map { $0["instanceId"]! },
                 "responseCommand": ["type": "choose_target", "promptId": "preview-card-choice", "messageId": 10]]
             root["legalActions"] = [["id": "choice-done", "type": "answer_yes_no", "playerId": "human", "label": "Done",

@@ -3,6 +3,93 @@ import MagicMobileOnDevice
 @testable import MagicMobile
 
 final class OnDeviceSnapshotAdapterTests: XCTestCase {
+    func testVisibleTokenArtworkUsesTemplateWhileLiveGrantedTraitsStayAuthoritative() throws {
+        let original = try fixture("2p-battlefield")
+        for hidden in [false, true] {
+            var raw = try XCTUnwrap(original.raw.object)
+            var root = try XCTUnwrap(original.snapshot?.object)
+            var view = try XCTUnwrap(root["gameView"]?.object)
+            var players = try XCTUnwrap(view["players"]?.array)
+            let index = try XCTUnwrap(players.firstIndex { !($0["battlefield"]?.object?.isEmpty ?? true) })
+            var player = try XCTUnwrap(players[index].object)
+            var battlefield = try XCTUnwrap(player["battlefield"]?.object)
+            let id = try XCTUnwrap(battlefield.keys.first)
+            var card = try XCTUnwrap(battlefield[id]?.object)
+            card["name"] = .string("Zombie Token"); card["displayName"] = .string("Zombie Token")
+            card["isToken"] = .bool(true); card["hideInfo"] = .bool(hidden)
+            card["power"] = .string("4"); card["toughness"] = .string("4")
+            card["cardTypes"] = .array([.string("CREATURE")]); card["subTypes"] = .array([.string("ZOMBIE"), .string("WIZARD")])
+            card["rules"] = .array([.string("Flying"), .string("Menace")])
+            card["color"] = .object(["white": .bool(false), "blue": .bool(true), "black": .bool(true),
+                                      "red": .bool(false), "green": .bool(false)])
+            card["tokenArtwork"] = .object([
+                "name": .string("Zombie Token"), "cardTypes": .array([.string("CREATURE")]),
+                "superTypes": .array([]), "subTypes": .array([.string("ZOMBIE")]),
+                "rules": .array([]), "power": .string("2"), "toughness": .string("2"),
+                "color": .object(["white": .bool(false), "blue": .bool(false), "black": .bool(true),
+                                  "red": .bool(false), "green": .bool(false)])
+            ])
+            battlefield[id] = .object(card); player["battlefield"] = .object(battlefield)
+            players[index] = .object(player); view["players"] = .array(players)
+            root["gameView"] = .object(view); raw["snapshot"] = .object(root)
+            let snapshot = try OnDeviceSnapshotAdapter.snapshot(MatchPoll(.object(raw)), expectedSeatID: original.seatID)
+            let mapped = try XCTUnwrap(snapshot.players[index].zones.battlefield.first { $0.id == id })
+            if hidden {
+                XCTAssertNil(mapped.card.tokenArtwork)
+            } else {
+                XCTAssertEqual(mapped.card.tokenArtwork?.name, "Zombie Token")
+                XCTAssertEqual(mapped.card.tokenArtwork?.typeLine, "Creature — Zombie")
+                XCTAssertEqual(mapped.card.tokenArtwork?.oracleText, "")
+                XCTAssertEqual(mapped.card.tokenArtwork?.power, "2")
+                XCTAssertEqual(mapped.card.tokenArtwork?.colors, ["B"])
+                XCTAssertEqual(mapped.displayPower, "4")
+                XCTAssertTrue(mapped.card.typeLine.contains("Wizard"))
+                XCTAssertEqual(mapped.card.tokenColors, ["U", "B"])
+            }
+        }
+    }
+    func testVisibleCopiedTokenSourceArtKeepsLiveZombieIdentityAndHidesRedactedSources() throws {
+        let original = try fixture("2p-battlefield")
+        for (isToken, copied, hidden, faceDown, source, expected) in [
+            (true, true, false, false, "Loyal Guardian", "Loyal Guardian" as String?),
+            (true, true, true, false, "Loyal Guardian", nil),
+            (true, true, false, true, "Loyal Guardian", nil),
+            (false, true, false, false, "Loyal Guardian", nil),
+            (true, false, false, false, "Loyal Guardian", nil),
+            (true, true, false, false, "Different hidden source", nil)
+        ] {
+            var raw = try XCTUnwrap(original.raw.object)
+            var root = try XCTUnwrap(original.snapshot?.object)
+            var view = try XCTUnwrap(root["gameView"]?.object)
+            var players = try XCTUnwrap(view["players"]?.array)
+            let index = try XCTUnwrap(players.firstIndex { !($0["battlefield"]?.object?.isEmpty ?? true) })
+            var player = try XCTUnwrap(players[index].object)
+            var battlefield = try XCTUnwrap(player["battlefield"]?.object)
+            let id = try XCTUnwrap(battlefield.keys.first)
+            var card = try XCTUnwrap(battlefield[id]?.object)
+            card["name"] = .string("Loyal Guardian")
+            card["displayName"] = .string("Loyal Guardian")
+            card["isToken"] = .bool(isToken)
+            card["copy"] = .bool(copied)
+            card["hideInfo"] = .bool(hidden)
+            card["faceDown"] = .bool(faceDown)
+            card["copySourceArtworkName"] = .string(source)
+            card["power"] = .string("4"); card["toughness"] = .string("4")
+            card["cardTypes"] = .array([.string("CREATURE")])
+            card["subTypes"] = .array([.string("ZOMBIE")])
+            battlefield[id] = .object(card); player["battlefield"] = .object(battlefield)
+            players[index] = .object(player); view["players"] = .array(players)
+            root["gameView"] = .object(view); raw["snapshot"] = .object(root)
+            let snapshot = try OnDeviceSnapshotAdapter.snapshot(MatchPoll(.object(raw)), expectedSeatID: original.seatID)
+            let mapped = try XCTUnwrap(snapshot.players[index].zones.battlefield.first { $0.id == id })
+            XCTAssertEqual(mapped.card.copySourceArtworkName, expected)
+            if !hidden && !faceDown {
+                XCTAssertEqual(mapped.displayPower, "4")
+                XCTAssertEqual(mapped.displayToughness, "4")
+                XCTAssertTrue(mapped.card.typeLine.contains("Zombie"))
+            }
+        }
+    }
     func testNativePublicPhasingPlayerCountersAndAttachmentsPreserveExactIdentity() throws {
         let original = try fixture("2p-battlefield")
         var raw = try XCTUnwrap(original.raw.object)

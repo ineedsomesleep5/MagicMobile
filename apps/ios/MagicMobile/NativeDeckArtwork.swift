@@ -23,26 +23,78 @@ actor NativeDeckArtwork {
     private let assetStore: NativeAssetStore
     private let protocolClasses: [AnyClass]?
     private let requestBudget: DeckStudioScryfallBudget
+    private let tokenLookup: @Sendable (String, String, String, String?, String?, [String], NativeArtworkQuality) async throws -> (NativeTokenArtwork, URL)?
+    private var tokenBusy = Set<String>()
+    private var tokenRetryAfter: [String: TimeInterval] = [:]
     private var networkBusy = false
     private var nextRequestAt: TimeInterval = 0
     private var blockedUntil: TimeInterval = 0
     init(cache: URLCache = URLCache(memoryCapacity: 8 * 1024 * 1024,
                                   diskCapacity: 64 * 1024 * 1024, diskPath: "MagicMobileNativeDeckArtwork"),
          protocolClasses: [AnyClass]? = nil, requestBudget: DeckStudioScryfallBudget? = nil,
-         assetStore: NativeAssetStore = .shared) {
+         assetStore: NativeAssetStore = .shared,
+         tokenLookup: @escaping @Sendable (String, String, String, String?, String?, [String], NativeArtworkQuality) async throws -> (NativeTokenArtwork, URL)? = {
+             try await NativeArtworkCatalogue.searchToken(name: $0, typeLine: $1, oracleText: $2,
+                                                          power: $3, toughness: $4, colors: $5, quality: $6)
+         }) {
         self.cache = cache; self.protocolClasses = protocolClasses
         self.assetStore = assetStore
+        self.tokenLookup = tokenLookup
         // Production artwork and card-reference lookups share one budget.
         // Injected HTTP fixture sessions default to an isolated budget.
         self.requestBudget = requestBudget ?? (protocolClasses == nil ? .shared : DeckStudioScryfallBudget())
     }
     func imageData(name: String, variant: Variant = .board, allowNetwork: Bool,
                    tokenTypeLine: String? = nil, tokenOracleText: String? = nil,
-                   tokenPower: String? = nil, tokenToughness: String? = nil, tokenColors: [String]? = nil) async throws -> Data? {
+                   tokenPower: String? = nil, tokenToughness: String? = nil, tokenColors: [String]? = nil,
+                   tokenSourceName: String? = nil) async throws -> Data? {
         try Task.checkCancellation()
         if let tokenTypeLine {
-            return await assetStore.tokenImage(name: name, typeLine: tokenTypeLine, oracleText: tokenOracleText ?? "",
-                                                            power: tokenPower, toughness: tokenToughness, colors: tokenColors)
+            // Only a caller with an explicitly disclosed copy-source identity may
+            // use ordinary card artwork; never infer one from a generic token name.
+            if let tokenSourceName, Self.permitsSourceName(tokenSourceName) {
+                return try await imageData(name: tokenSourceName, variant: variant, allowNetwork: allowNetwork)
+            }
+            let quality: NativeArtworkQuality = variant == .inspection ? .high : (variant == .board ? .standard : .compact)
+            let stored = await assetStore.tokenImage(name: name, typeLine: tokenTypeLine, oracleText: tokenOracleText,
+                                                      power: tokenPower, toughness: tokenToughness, colors: tokenColors)
+            if let stored, (!allowNetwork || quality.accepts(stored)) { return stored }
+            guard allowNetwork, let tokenOracleText, let tokenColors, !tokenTypeLine.isEmpty,
+                  !name.isEmpty, Set(tokenColors).isSubset(of: ["W", "U", "B", "R", "G"]),
+                  Set(tokenColors).count == tokenColors.count else { return stored }
+            let key = [name, tokenTypeLine, tokenOracleText, tokenPower ?? "", tokenToughness ?? "",
+                       tokenColors.sorted().joined(), quality.rawValue].joined(separator: "\u{1f}")
+            while tokenBusy.contains(key) { try await Task.sleep(for: .milliseconds(20)) }
+            tokenBusy.insert(key)
+            defer { tokenBusy.remove(key) }
+            // Reserve before crossing another actor boundary. Otherwise two callers
+            // can both observe a cache miss and issue duplicate catalogue searches.
+            if let upgraded = await assetStore.tokenImage(name: name, typeLine: tokenTypeLine, oracleText: tokenOracleText,
+                                                          power: tokenPower, toughness: tokenToughness, colors: tokenColors,
+                                                          quality: quality) { return upgraded }
+            guard ProcessInfo.processInfo.systemUptime >= tokenRetryAfter[key, default: 0] else { return stored }
+            do {
+                guard let (token, url) = try await tokenLookup(name, tokenTypeLine, tokenOracleText,
+                                                               tokenPower, tokenToughness, tokenColors, quality) else {
+                    tokenRetryAfter[key] = ProcessInfo.processInfo.systemUptime + 600
+                    return stored
+                }
+                // Recheck the exact visible identity even for an injected provider.
+                guard NativeAssetStore.matchTokenArtwork([token], name: name, typeLine: tokenTypeLine,
+                                                         oracleText: tokenOracleText, power: tokenPower,
+                                                         toughness: tokenToughness, colors: tokenColors) != nil else { return stored }
+                let data = try await downloadImage(name: token.name, quality: quality, imageURL: url)
+                guard let data else { return stored }
+                try Task.checkCancellation()
+                try await assetStore.saveToken(token)
+                try await assetStore.save(data, key: NativeAssetStore.tokenKey(token.id), quality: quality)
+                return data
+            } catch is CancellationError { throw CancellationError() }
+            catch {
+                tokenRetryAfter[key] = ProcessInfo.processInfo.systemUptime + 120
+                if let stored { return stored }
+                throw error
+            }
         }
         let original = try Self.request(name: name, variant: variant)
         let downloaded = await assetStore.image(key: NativeAssetStore.cardKey(name))
@@ -190,6 +242,11 @@ actor NativeDeckArtwork {
         url.queryItems = [URLQueryItem(name: "exact", value: name), URLQueryItem(name: "format", value: "image"), URLQueryItem(name: "version", value: variant.rawValue)]
         guard let endpoint = url.url else { throw ArtworkError.invalidInput }
         return try request(url: endpoint)
+    }
+    static func permitsSourceName(_ name: String) -> Bool {
+        let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return !["", "hidden card", "face-down card", "face down card", "face-down", "face down",
+                 "card details unavailable"].contains(normalized)
     }
     private static func request(url: URL) throws -> URLRequest {
         guard isAllowed(url) else { throw ArtworkError.unsafeURL }

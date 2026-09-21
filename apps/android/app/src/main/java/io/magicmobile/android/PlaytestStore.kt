@@ -6,6 +6,9 @@ import io.magicmobile.android.core.*
 import java.io.File
 import java.util.UUID
 
+/** Only public, seat-scoped player identity and public commander card names. */
+data class RecordedOpponent(val playerId:String,val name:String,val commanders:List<String>)
+
 data class RecordedPlaytest(
     val id: String,
     val matchId: String,
@@ -26,7 +29,40 @@ data class RecordedPlaytest(
     val won: Boolean?,
     val lastRevision: Long,
     val viewerPlayerId: String?,
+    val opponents: List<RecordedOpponent>? = null,
 )
+
+/** Never reads decklists, hand zones, or private controlled-player views. */
+internal fun publicOpponents(snapshot:Obj,viewer:String,expected:Int):List<RecordedOpponent>? {
+    val players=runCatching { snapshot.obj("gameView")?.array("players")?.map(Wire::objectValue) }.getOrNull()
+        ?.takeIf { it.size in 2..4 } ?: return null
+    if(players.count { it.text("playerId")==viewer }!=1 || players.size!=expected+1)return null
+    val metadata=runCatching { snapshot.obj("commanders") }.getOrNull().orEmpty()
+    if(metadata.size>48)return null
+    val result=players.mapNotNull player@{ player ->
+        val id=player.text("playerId") ?: return@player null
+        val name=player.text("name") ?: return@player null
+        if(!Wire.uuid(id)||name.isBlank()||name.toByteArray().size>128||name.any(Char::isISOControl))return@player null
+        if(id==viewer)return@player RecordedOpponent(id,name,emptyList())
+        val names=metadata.toSortedMap().values.mapNotNull commander@{ raw ->
+            val info=raw as? Map<*,*> ?: return@commander null
+            if(info["ownerPlayerId"]!=id)return@commander null
+            (info["name"] as? String)?.takeIf { it.isNotBlank()&&it.toByteArray().size<=200&&!it.any(Char::isISOControl) }
+        }
+        if(names.size>12)return@player null
+        RecordedOpponent(id,name,names)
+    }
+    if(result.size!=players.size||result.map {it.playerId}.distinct().size!=result.size)return null
+    return result.filterNot {it.playerId==viewer}.takeIf {it.size==expected}
+}
+
+/** An absent field is the pre-opponent-history on-disk format, not corrupt data. */
+internal fun decodeRecordedOpponents(row:Obj):List<RecordedOpponent>? = row["opponents"]?.let {
+    row.array("opponents").map { raw ->
+        val item=Wire.objectValue(raw)
+        RecordedOpponent(Wire.string(item["playerId"]),Wire.string(item["name"]),item.array("commanders").map(Wire::string))
+    }
+}
 
 /** Bounded, device-only summaries. No hands, opponent decks, actions or snapshots are stored. */
 class PlaytestStore(context: Context) {
@@ -60,6 +96,8 @@ class PlaytestStore(context: Context) {
         val view=root?.obj("gameView");val turn=view?.number("turn")?.takeIf { it in 0..1_000_000 }?.toInt() ?: current.highestTurn
         val viewer=root?.text("enginePlayerId")
         if(viewer!=null && (!Wire.uuid(viewer) || current.viewerPlayerId!=null && current.viewerPlayerId!=viewer))return
+        val observedOpponents=if(viewer!=null && view?.text("myPlayerId")==viewer)
+            publicOpponents(root,viewer,current.aiOpponents) else null
         val casts=current.commanderCasts.toMutableMap()
         val commanders=runCatching {root?.obj("commanders")}.getOrNull()
         if(viewer!=null)commanders?.values?.mapNotNull { it as? Map<*,*> }?.forEach { raw ->
@@ -79,7 +117,7 @@ class PlaytestStore(context: Context) {
             "closed"->{end="interrupted";finished=now}
         }
         val observed=maxOf(now,current.observedAt);if(finished!=null)finished=observed
-        replace(current.copy(observedAt=observed,finishedAt=finished,highestTurn=maxOf(current.highestTurn,turn),commanderCasts=casts,end=end,won=won,lastRevision=poll.revision,viewerPlayerId=viewer ?: current.viewerPlayerId).validated())
+        replace(current.copy(observedAt=observed,finishedAt=finished,highestTurn=maxOf(current.highestTurn,turn),commanderCasts=casts,end=end,won=won,lastRevision=poll.revision,viewerPlayerId=viewer ?: current.viewerPlayerId,opponents=observedOpponents ?: current.opponents).validated())
     }
 
     @Synchronized fun finish(id:String?,end:String) {
@@ -109,7 +147,7 @@ class PlaytestStore(context: Context) {
         val rows=root.array("games");require(rows.size<=100)
         return rows.map { decode(Wire.objectValue(it),schema) }.also {games->require(games.map{it.id}.distinct().size==games.size)}
     }
-    private fun RecordedPlaytest.json():Obj=mapOf("id" to id,"matchId" to matchId,"deckName" to deckName,"deck" to deck?.cards?.map {mapOf("name" to it.name,"quantity" to it.quantity,"section" to it.section.name)},"commanderNames" to commanderNames,"aiOpponents" to aiOpponents,"aiSkill" to aiSkill,"upstream" to upstream,"catalogueHash" to catalogueHash,"appBuild" to appBuild,"startedAt" to startedAt,"observedAt" to observedAt,"finishedAt" to finishedAt,"highestTurn" to highestTurn,"commanderCasts" to commanderCasts,"end" to end,"won" to won,"lastRevision" to lastRevision,"viewerPlayerId" to viewerPlayerId)
+    private fun RecordedPlaytest.json():Obj=mapOf("id" to id,"matchId" to matchId,"deckName" to deckName,"deck" to deck?.cards?.map {mapOf("name" to it.name,"quantity" to it.quantity,"section" to it.section.name)},"commanderNames" to commanderNames,"aiOpponents" to aiOpponents,"aiSkill" to aiSkill,"upstream" to upstream,"catalogueHash" to catalogueHash,"appBuild" to appBuild,"startedAt" to startedAt,"observedAt" to observedAt,"finishedAt" to finishedAt,"highestTurn" to highestTurn,"commanderCasts" to commanderCasts,"end" to end,"won" to won,"lastRevision" to lastRevision,"viewerPlayerId" to viewerPlayerId,"opponents" to opponents?.map {mapOf("playerId" to it.playerId,"name" to it.name,"commanders" to it.commanders)})
     private fun decode(o:Obj,schema:Long):RecordedPlaytest {
         val end=Wire.string(o["end"]);require(end in setOf("in_progress","completed","left","interrupted","engine_failed"))
         val casts=o.obj("commanderCasts").orEmpty().mapValues {
@@ -125,7 +163,8 @@ class PlaytestStore(context: Context) {
             val expected=o.array("deck").map {raw->val card=Wire.objectValue(raw);val quantity=Wire.integer(card["quantity"]);require(quantity in 1..2000);PlayingCard(Wire.string(card["name"]),quantity.toInt(),PlayingSection.valueOf(Wire.string(card["section"]))) }
             DeckSignature.canonical(expected)
         } else null
-        return RecordedPlaytest(id,matchId,title,signature,o.array("commanderNames").map(Wire::string),opponents.toInt(),skill.toInt(),o.text("upstream").orEmpty(),o.text("catalogueHash").orEmpty(),if(schema>=2L)Wire.string(o["appBuild"]) else "development",Wire.integer(o["startedAt"]),Wire.integer(o["observedAt"]),o["finishedAt"]?.let(Wire::integer),turn.toInt(),casts,end,o["won"] as? Boolean,revision,viewer).validated()
+        val publicOpponents=decodeRecordedOpponents(o)
+        return RecordedPlaytest(id,matchId,title,signature,o.array("commanderNames").map(Wire::string),opponents.toInt(),skill.toInt(),o.text("upstream").orEmpty(),o.text("catalogueHash").orEmpty(),if(schema>=2L)Wire.string(o["appBuild"]) else "development",Wire.integer(o["startedAt"]),Wire.integer(o["observedAt"]),o["finishedAt"]?.let(Wire::integer),turn.toInt(),casts,end,o["won"] as? Boolean,revision,viewer,publicOpponents).validated()
     }
 
     private fun RecordedPlaytest.validated():RecordedPlaytest {
@@ -133,6 +172,9 @@ class PlaytestStore(context: Context) {
         require(aiOpponents in 1..3&&aiSkill in 1..10&&upstream.isNotBlank()&&upstream.toByteArray().size<=128&&catalogueHash.isNotBlank()&&catalogueHash.toByteArray().size<=256&&appBuild.isNotBlank()&&appBuild.toByteArray().size<=128)
         require(startedAt>=0&&observedAt>=startedAt&&observedAt-startedAt<=365L*24*60*60*1000&&finishedAt?.let {it in startedAt..observedAt}!=false)
         require(highestTurn in 0..1_000_000&&lastRevision>=-1&&viewerPlayerId?.let(Wire::uuid)!=false&&commanderCasts.size<=12&&commanderCasts.all {(name,count)->name in commanderNames&&count in 0..1_000_000})
+        require(opponents==null || (viewerPlayerId!=null && opponents.size<=aiOpponents && opponents.map {it.playerId}.distinct().size==opponents.size && opponents.all { rival ->
+            Wire.uuid(rival.playerId)&&rival.playerId!=viewerPlayerId&&rival.name.isNotBlank()&&rival.name.toByteArray().size<=128&&!rival.name.any(Char::isISOControl)&&rival.commanders.size<=12&&rival.commanders.all {it.isNotBlank()&&it.toByteArray().size<=200&&!it.any(Char::isISOControl)}
+        }))
         require((end=="in_progress")== (finishedAt==null) && (end=="completed"||won==null))
         deck?.let {signature->
             PlaytestSummary(id,matchId,"player-1",signature,deckName,upstream,catalogueHash,appBuild,aiOpponents,startedAt,observedAt,finishedAt,

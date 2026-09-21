@@ -73,6 +73,82 @@ fun main(args:Array<String>){
     verify(Decisions.choices(playerTarget,playerSnapshot)==listOf(Choice("Opponent Two","uuid",opponent)),"player target uses projected player name instead of UUID")
     val chosen=target.copy(payload=target.payload+mapOf("options" to mapOf("possibleTargets" to emptyList<String>(),"chosenTargets" to listOf(id))))
     verify(Decisions.choices(chosen,null).any{it.type=="uuid" && it.value==id},"chosen target can be deselected")
+    val a=UUID.randomUUID().toString();val b=UUID.randomUUID().toString();val c=UUID.randomUUID().toString()
+    fun pick(message:String,revision:Long,available:List<String>,chosen:List<String>?=null):Decision=Decision("prompt-$revision",revision,"PICK_TARGET",
+        mapOf("message" to message,"required" to false,"candidates" to available,
+            "options" to (mapOf("UI.right.btn.text" to "Done")+(if(chosen==null)emptyMap() else mapOf("chosenTargets" to chosen,"possibleTargets" to available)))),
+        setOf("uuid","boolean"),false,null,null)
+    fun at(prompt:Decision)=GamePoll("match","viewer",prompt.revision,"running",null,prompt,false,emptyList(),null)
+    val selectMessage="Choose cards (selected 0 of 3)"
+    verify(!CardChoicePlan.supportsDraft(pick("Choose target",1,listOf(a,b),emptyList()).copy(minimum=0,maximum=1)),"single required target cannot open multi-card draft")
+    verify(!CardChoicePlan.supportsDraft(pick("Choose a target",1,listOf(a,b),emptyList())),"unbounded UUID list alone cannot open draft")
+    verify(CardChoicePlan.supportsDraft(pick(selectMessage,1,listOf(a,b,c),emptyList())),"counted multi-card selection supports draft")
+    verify(CardChoicePlan.supportsDraft(pick(selectMessage,1,listOf(a,b,c),emptyList()).copy(minimum=0,maximum=1)),"one-UUID transport maximum does not hide aggregate multi-card draft")
+    verify(CardChoicePlan.selectionBounds(pick("Sacrifice (selected 2 of 6, min 3)",1,listOf(a,b),emptyList()))==3 to 6,"aggregate selection bounds parse from prompt text")
+    verify(!CardChoicePlan.supportsDraft(pick(selectMessage,1,listOf(a,b,c))),"selection without chosenTargets cannot open draft")
+    verify(CardChoicePlan.create(at(pick("Choose target",1,listOf(a,b),emptyList()).copy(minimum=0,maximum=1)),listOf(a,b))==null,"core also rejects unsupported single-target draft")
+    val draft=CardChoicePlan.create(at(pick(selectMessage,1,listOf(a,b,c),emptyList())),listOf(b,c))!!
+    verify(draft.next(at(pick(selectMessage,1,listOf(a,b,c),emptyList())),false,false)?.value==b,"draft sends first UUID")
+    verify(draft.next(at(pick(selectMessage,1,listOf(a,b,c),emptyList())),false,false)==null,"same prompt cannot send twice")
+    verify(draft.next(at(pick("Choose cards (selected 1 of 3)",2,listOf(a,c),listOf(b))),false,false)?.value==c,"draft verifies chosen state before next UUID")
+    verify(draft.next(at(pick("Choose cards (selected 2 of 3)",3,listOf(a),listOf(b,c))),false,false)?.type=="boolean" && !draft.finished,"explicit Done waits for delivery outcome")
+    verify(draft.next(at(pick(selectMessage,4,listOf(a,b,c),emptyList())).copy(decision=null),false,false)==null && !draft.finished,"no-prompt poll does not prematurely finish draft")
+    verify(draft.next(at(pick(selectMessage,5,listOf(a,b,c),emptyList()).copy(kind="SELECT")),false,false)==null && draft.finished,"new prompt acknowledges final Done")
+    val stale=CardChoicePlan.create(at(pick(selectMessage,1,listOf(a,b),emptyList())),listOf(b))!!
+    stale.next(at(pick(selectMessage,1,listOf(a,b),emptyList())),false,false)
+    verify(stale.next(at(pick("Different choice",2,listOf(a),listOf(b))),false,false)==null && stale.stopped,"changed prompt context pauses draft")
+    val mismatch=CardChoicePlan.create(at(pick(selectMessage,1,listOf(a,b),emptyList())),listOf(b))!!
+    mismatch.next(at(pick(selectMessage,1,listOf(a,b),emptyList())),false,false)
+    verify(mismatch.next(at(pick(selectMessage,2,listOf(a,b),emptyList())),false,false)==null && mismatch.stopped,"unchanged chosenTargets pauses draft")
+    val lostCandidate=CardChoicePlan.create(at(pick(selectMessage,1,listOf(a,b,c),emptyList())),listOf(b,c))!!
+    lostCandidate.next(at(pick(selectMessage,1,listOf(a,b,c),emptyList())),false,false)
+    verify(lostCandidate.next(at(pick("Choose cards (selected 1 of 3)",2,listOf(c),listOf(b))),false,false)==null && lostCandidate.stopped,"changed candidate universe pauses draft")
+    val bounded=CardChoicePlan.create(at(pick("Choose cards (selected 0 of 2, min 1)",1,listOf(a,b),emptyList()).copy(minimum=0,maximum=1)),listOf(a,b))!!
+    bounded.next(at(pick("Choose cards (selected 0 of 2, min 1)",1,listOf(a,b),emptyList()).copy(minimum=0,maximum=1)),false,false)
+    verify(bounded.next(at(pick("Choose cards (selected 1 of 2, min 2)",2,listOf(b),listOf(a)).copy(minimum=0,maximum=1)),false,false)==null && bounded.stopped,"changed aggregate count bounds pause selection despite stable transport bounds")
+    verify(CardChoicePlan.create(at(pick("Sacrifice (selected 0 of 6, min 6)",1,listOf(a,b,c),emptyList()).copy(minimum=0,maximum=1)),listOf(a,b))==null,"draft cannot start below aggregate minimum")
+    val six=(1..6).map{java.util.UUID.randomUUID().toString()}
+    fun sacrifice(count:Int)=pick("Sacrifice (selected $count of 6, min 6)",count.toLong()+1,six.drop(count),six.take(count)).copy(minimum=0,maximum=1)
+    val sixPlan=CardChoicePlan.create(at(sacrifice(0)),six)!!
+    for(count in 0 until 6)verify(sixPlan.next(at(sacrifice(count)),false,false)?.value==six[count],"six-sacrifice stage ${count+1} sends one UUID with transport maximum one")
+    verify(sixPlan.next(at(sacrifice(6)),false,false)?.type=="boolean" && !sixPlan.finished,"six-sacrifice Done follows acknowledged sixth UUID")
+    val scryMessage="Choose cards (scry) to put on the bottom of your library (selected 0 of 3)"
+    verify(CardChoicePlan.supportsDraft(pick(scryMessage,1,listOf(a,b,c),emptyList())),"scry supports draft")
+    val scry=CardChoicePlan.create(at(pick(scryMessage,1,listOf(a,b,c),emptyList()).copy(minimum=0,maximum=1)),listOf(b,c),listOf(a))!!
+    verify(CardChoicePlan.supportsDraft(pick(scryMessage,1,listOf(a,b,c),emptyList()).copy(minimum=0,maximum=1)),"scry remains draftable with one-UUID transport maximum")
+    verify(scry.next(at(pick(scryMessage,1,listOf(a,b,c),emptyList()).copy(minimum=0,maximum=1)),false,false)?.value==b,"scry chooses bottom subset first with one-UUID transport bounds")
+    verify(scry.next(at(pick(scryMessage.replace("0 of 3","1 of 3"),2,listOf(a,c),listOf(b)).copy(minimum=0,maximum=1)),false,false)?.value==c,"scry chooses second bottom card with one-UUID transport bounds")
+    val premature=CardChoicePlan.create(at(pick(scryMessage,1,listOf(a,b,c),emptyList())),listOf(b,c),listOf(a))!!
+    premature.next(at(pick(scryMessage,1,listOf(a,b,c),emptyList())),false,false)
+    val bottomMessage="Choose card order to put on bottom; last one chosen will be bottommost"
+    verify(premature.next(at(pick(bottomMessage,2,listOf(b,c))),false,false)==null && premature.stopped,"same-candidate ordering cannot precede acknowledged selection and Done")
+    verify(scry.next(at(pick(scryMessage.replace("0 of 3","2 of 3"),3,listOf(a),listOf(b,c)).copy(minimum=0,maximum=1)),false,false)?.type=="boolean","scry confirms bottom subset with one-UUID transport bounds")
+    verify(scry.next(at(pick(bottomMessage,4,listOf(b,c))),false,false)?.value==b,"bottom order sends first card and leaves last to XMage")
+    val topMessage="Choose card order to put on top; last one chosen will be topmost"
+    verify(CardChoicePlan.supportsDraft(pick(topMessage,10,listOf(a,b,c))),"ordering supports draft")
+    verify(scry.next(at(pick(topMessage,5,listOf(a))),false,false)==null && scry.finished,"one top card is auto-placed without a response")
+    val skippedBottom=CardChoicePlan.create(at(pick(scryMessage,1,listOf(a,b,c),emptyList())),listOf(b,c),listOf(a))!!
+    skippedBottom.next(at(pick(scryMessage,1,listOf(a,b,c),emptyList())),false,false)
+    skippedBottom.next(at(pick(scryMessage.replace("0 of 3","1 of 3"),2,listOf(a,c),listOf(b))),false,false)
+    skippedBottom.next(at(pick(scryMessage.replace("0 of 3","2 of 3"),3,listOf(a),listOf(b,c))),false,false)
+    verify(skippedBottom.next(at(pick(topMessage,4,listOf(a))),false,false)==null && skippedBottom.stopped,"top order cannot skip multi-card bottom order")
+    val topOnly=CardChoicePlan.create(at(pick(topMessage,10,listOf(a,b,c))),listOf(a,b,c))!!
+    verify(topOnly.next(at(pick(topMessage,10,listOf(a,b,c))),false,false)?.value==c,"top order reverses desired top-first")
+    verify(topOnly.next(at(pick(topMessage,11,listOf(a,b))),false,false)?.value==b && !topOnly.finished,"top order sends N minus one but waits for final outcome")
+    verify(topOnly.next(at(pick(topMessage,12,listOf(a))),false,true)==null && topOnly.stopped && !topOnly.finished,"rejected final ordering answer stops draft")
+    val replayed=CardChoicePlan.create(at(pick(topMessage,10,listOf(a,b,c))),listOf(a,b,c))!!
+    replayed.next(at(pick(topMessage,10,listOf(a,b,c))),false,false)
+    replayed.next(at(pick(topMessage,11,listOf(a,b))),false,false)
+    verify(replayed.next(at(pick(topMessage,12,listOf(a)).copy(id="prompt-11")),false,false)==null && replayed.stopped && !replayed.finished,"reopened final prompt is not mistaken for acceptance")
+    val orderContext=CardChoicePlan.create(at(pick(topMessage,10,listOf(a,b,c))),listOf(a,b,c))!!
+    orderContext.next(at(pick(topMessage,10,listOf(a,b,c))),false,false)
+    verify(orderContext.next(at(pick("Choose card order to put on top for another effect; last one chosen will be topmost",11,listOf(a,b))),false,false)==null && orderContext.stopped,"changed ordering context pauses draft")
+    val uncertain=CardChoicePlan.create(at(pick(selectMessage,1,listOf(a,b),emptyList())),listOf(a))!!
+    verify(uncertain.next(at(pick(selectMessage,1,listOf(a,b),emptyList())),true,false)==null && !uncertain.stopped,"own pending command waits")
+    verify(uncertain.next(at(pick(selectMessage,1,listOf(a,b),emptyList())),false,true)==null && uncertain.stopped,"failed delivery stops without retry")
+    fun atTurn(prompt:Decision,turn:Long)=at(prompt).copy(snapshot=mapOf("enginePlayerId" to a,"gameView" to mapOf("turn" to turn,"activePlayerId" to b)))
+    val turnBound=CardChoicePlan.create(atTurn(pick(selectMessage,1,listOf(a,b),emptyList()),4),listOf(a))!!
+    verify(turnBound.next(atTurn(pick(selectMessage,2,listOf(a,b),emptyList()),5),false,false)==null && turnBound.stopped,"next-turn matching prompt cannot continue old draft")
     val attacker=UUID.randomUUID().toString()
     val attackerCard=mapOf("id" to attacker,"name" to "Declared attacker")
     val attackView=mapOf("activePlayerId" to id,"players" to listOf(mapOf("playerId" to id,"battlefield" to mapOf(attacker to attackerCard))),"combat" to listOf(mapOf("attackers" to mapOf(attacker to attackerCard))))
@@ -86,6 +162,33 @@ fun main(args:Array<String>){
     val secret=mapOf("name" to "Secret name","faceDown" to true,"rules" to listOf("Secret rules"),"power" to "8","toughness" to "8")
     verify(!GameplayPresentation.details(secret).contains("Secret") && !GameplayPresentation.status(secret).contains("8"),"face-down card details do not reconstruct secret text or stats")
     verify(GameplayPresentation.cards(mapOf(attacker to attackerCard))==GameplayPresentation.cards(listOf(attackerCard)),"card collections accept engine map and array shapes")
+    fun permanent(name:String,vararg types:String,rules:List<String> = emptyList()):Obj=mapOf("id" to name,"cardTypes" to types.toList(),"rules" to rules)
+    val landA=permanent("land-a","LAND");val landB=permanent("land-b","LAND");val landC=permanent("land-c","LAND")
+    val fighter=permanent("mana-creature","CREATURE",rules=listOf("{T}: Add {G}."))
+    val artifactFighter=permanent("artifact-creature","ARTIFACT","CREATURE",rules=listOf("Add {C}."))
+    val rock=permanent("rock","ARTIFACT",rules=listOf("{T}: Add {C}."))
+    val enchantment=permanent("support","ENCHANTMENT")
+    val battlefield=listOf(landA,fighter,rock,landB,artifactFighter,enchantment,landC)
+    val rows=BattlefieldLayout.rows(battlefield,true)
+    verify(rows.front==listOf(fighter,artifactFighter) && rows.rocks==listOf(rock),"mana and artifact creatures remain in combat; only noncreature mana rocks separate")
+    verify(rows.landsTop==listOf(landA,landB,landC)&&rows.landsBottom.isEmpty()&&rows.support==listOf(enchantment),"rocks keep a single stable land row")
+    val signet=permanent("signet","ARTIFACT",rules=listOf("{1}, {T}: Add {U}{B}."))
+    val treasure=permanent("treasure","ARTIFACT",rules=listOf("{T}, Sacrifice this artifact: Add one mana of any color."))
+    val altar=permanent("altar","ARTIFACT",rules=listOf("Sacrifice a creature: Add {C}{C}."))
+    val triggered=permanent("triggered","ARTIFACT",rules=listOf("Whenever a creature dies: Add {C}."))
+    val equipment:Obj=mapOf("id" to "equipment","cardTypes" to listOf("ARTIFACT"),"subTypes" to listOf("EQUIPMENT"))
+    val resources=BattlefieldLayout.rows(listOf(signet,treasure,altar,triggered,fighter,equipment),true)
+    verify(resources.rocks==listOf(signet,treasure,altar)&&resources.support==listOf(triggered),"activated tap and sacrifice mana rocks group without triggered add text")
+    verify(resources.front==listOf(fighter,equipment),"mana creatures and equipment retain foreground priority")
+    val noRocks=BattlefieldLayout.rows(battlefield-rock,true)
+    verify(noRocks.landsTop==listOf(landA,landC)&&noRocks.landsBottom==listOf(landB),"landscape land rows retain relative order without rocks")
+    val portrait=BattlefieldLayout.rows(battlefield,false)
+    verify(portrait.landsTop==listOf(landA,landB,landC)&&portrait.landsBottom.isEmpty(),"portrait keeps lands together")
+    val walker=permanent("walker","PLANESWALKER");val battle=permanent("battle","BATTLE")
+    val foreground=BattlefieldLayout.rows(listOf(enchantment,walker,battle,equipment),false)
+    verify(foreground.front==listOf(walker,battle,equipment)&&foreground.support==listOf(enchantment),"combat types, planeswalkers, battles and equipment stay foreground")
+    val tapped=BattlefieldLayout.rows(listOf(landA,landB+("tapped" to true),landC),true)
+    verify(tapped.landsTop.map{it["id"]}==noRocks.landsTop.map{it["id"]}&&tapped.landsBottom.map{it["id"]}==noRocks.landsBottom.map{it["id"]},"tapping does not reshuffle alternating land rows")
     verify(GameplayPresentation.printedCost(secret+mapOf("manaCostLeftStr" to listOf("W")))==null,"face-down printed costs stay hidden")
     verify(GameplayPresentation.status(secret+("phasedIn" to false))=="Phased out","phasing status does not reveal face-down identity or stats")
     val phasedTarget=target.copy(payload=mapOf("cards" to listOf(mapOf("id" to id,"phasedIn" to false)),"candidates" to listOf(id)))

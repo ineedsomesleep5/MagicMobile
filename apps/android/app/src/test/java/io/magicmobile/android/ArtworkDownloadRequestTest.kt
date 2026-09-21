@@ -13,6 +13,8 @@ class ArtworkDownloadRequestTest {
             assertEquals(request,ArtworkDownloadRequest.decode(request.encode()))
             assertEquals(request.copy(catalogue=true),ArtworkDownloadRequest.decode(request.copy(catalogue=true).encode()))
         }}
+        val tokenOnly=ArtworkDownloadRequest(emptyList(),ArtworkQuality.STANDARD,true,true)
+        assertEquals(tokenOnly,ArtworkDownloadRequest.decode(tokenOnly.encode()))
     }
     @Test fun malformedRequestsCannotSilentlyChangeScopeOrQuality() {
         val valid=Wire.decode(ArtworkDownloadRequest(listOf("Island"),ArtworkQuality.STANDARD,true,false).encode())

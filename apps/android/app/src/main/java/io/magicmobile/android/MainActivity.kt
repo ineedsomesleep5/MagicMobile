@@ -219,9 +219,8 @@ private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val 
         item {Text("Appearance",style=MaterialTheme.typography.titleLarge);Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("System","Light","Dark").forEach{mode->FilterChip(selected=appearance==mode,onClick={setAppearance(mode)},label={Text(mode)})}}}
         item {ArtworkConsentRow()}
         item {BattlefieldThemeSelector()}
-        item {HorizontalDivider();Text("Private playtest history",style=MaterialTheme.typography.titleLarge);Row(verticalAlignment=Alignment.CenterVertically){Switch(state.recordingEnabled,model::setRecording);Spacer(Modifier.width(10.dp));Column{Text(if(state.recordingEnabled)"Recording summaries" else "Recording off");Text("Device-only, bounded to 100 games; no hands or opponent decklists.",style=MaterialTheme.typography.bodySmall)}}}
-        items(state.playtests.take(12),key={it.id}){row->OutlinedCard(Modifier.fillMaxWidth()){Column(Modifier.padding(14.dp)){Text(row.deckName,style=MaterialTheme.typography.titleMedium,maxLines=2,overflow=TextOverflow.Ellipsis);Text("${row.end.replace('_',' ')} · highest observed turn ${row.highestTurn} · AI skill ${row.aiSkill}",style=MaterialTheme.typography.bodySmall)}}}
-        if(state.playtests.isNotEmpty())item{PlaytestHistoryActions(model::clearPlaytests)}
+        item {HorizontalDivider();Text("Private playtest history",style=MaterialTheme.typography.titleLarge);Row(verticalAlignment=Alignment.CenterVertically){Switch(state.recordingEnabled,model::setRecording);Spacer(Modifier.width(10.dp));Column{Text(if(state.recordingEnabled)"Recording summaries" else "Recording off");Text("Device-only, up to 100 games. Retains public opponent names and commanders; never hands or opponent decklists.",style=MaterialTheme.typography.bodySmall)}}}
+        item {MatchHistoryDashboard(state.playtests,model::clearPlaytests)}
         item {HorizontalDivider();Text(state.status,style=MaterialTheme.typography.bodySmall);Text(if(BuildConfig.ONLINE_SERVER_URL.isBlank())"AI games run locally without an account. Cross-platform online play is coming soon." else "AI games run locally without an account. Online tables use your MagicMobile account and the match server.",style=MaterialTheme.typography.bodySmall)}
     }
 }

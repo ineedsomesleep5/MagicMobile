@@ -47,6 +47,68 @@ final class ArenaBoardPresentationTests: XCTestCase {
         XCTAssertEqual(CombatViewportAnchors.laneIndices(human: [aura, landAura], opponent: [host, equipment, land])["land-aura"], 1)
     }
 
+    func testLandscapeResourcesKeepRocksAndTheirAttachmentsOutOfCombat() throws {
+        let creature = try attachmentCard("creature", type: "Artifact Creature")
+        let rock = try attachmentCard("rock", type: "Artifact", rules: "{T}: Add {C}{C}.")
+        let tappedRock = try attachmentCard("tapped-rock", type: "Artifact", rules: "{T}: Add one mana of any color.", tapped: true)
+        let equipment = try attachmentCard("equipment", type: "Artifact — Equipment", parent: "creature")
+        let aura = try attachmentCard("aura", parent: "rock")
+        let land = try attachmentCard("land", type: "Land")
+        let artifactLand = try attachmentCard("artifact-land", type: "Artifact Land", rules: "{T}: Add {C}.")
+        let triggeredArtifact = try attachmentCard("triggered", type: "Artifact", rules: "Whenever a creature enters, add {C}.")
+        let signet = try attachmentCard("signet", type: "Artifact", rules: "{1}, {T}: Add {U}{B}.")
+        let talisman = try attachmentCard("talisman", type: "Artifact", rules: "{T}: Add {C}.\n{T}: Add {U} or {B}.")
+        let treasure = try attachmentCard("treasure", type: "Token Artifact — Treasure", rules: "{T}, Sacrifice this token: Add one mana of any color.")
+        let altar = try attachmentCard("altar", type: "Artifact", rules: "Sacrifice a creature: Add {C}{C}.")
+        let all = [equipment, rock, land, creature, aura, tappedRock, artifactLand, triggeredArtifact, signet, talisman, treasure, altar]
+        let combat = BattlefieldAttachments.lane(ownedCards: all, allCards: all, lands: false, includesManaRocks: true)
+        let resources = BattlefieldAttachments.lane(ownedCards: all, allCards: all, lands: true, includesManaRocks: true)
+        XCTAssertEqual(Set(combat.map(\.instanceId)), ["creature", "equipment", "triggered"])
+        XCTAssertEqual(Set(resources.map(\.instanceId)), ["rock", "aura", "tapped-rock", "land", "artifact-land", "signet", "talisman", "treasure", "altar"])
+        XCTAssertEqual(Set(BattlefieldAttachments.groups(resources).first { $0.representative.instanceId == "rock" }?.cards.map(\.instanceId) ?? []), ["rock", "aura"])
+    }
+
+    func testResourceRowsUseLandsTwiceOrSeparateRocksAndKeepOverflowScrollable() throws {
+        let lands = try (0..<11).map { try attachmentCard("land-\($0)", type: "Land", name: "Land \($0)") }
+        let rock = try attachmentCard("rock", type: "Artifact", rules: "{T}: Add {C}.")
+        let landGroups = BattlefieldAttachments.groups(lands)
+        let split = BattlefieldRowArrangement.landscapeResources.rows(landGroups, flipped: false, twoRows: true)
+        XCTAssertEqual(split.map(\.count), [6, 5])
+        let withRock = BattlefieldRowArrangement.landscapeResources.rows(BattlefieldAttachments.groups(lands + [rock]), flipped: true, twoRows: true)
+        XCTAssertEqual(withRock.map { $0.map(\.representative.instanceId) }, [lands.map(\.instanceId), ["rock"]])
+        let layout = ArenaPermanentLayout(rowCounts: withRock.map(\.count), width: 200, height: 130, maxCardWidth: 48, ratio: 1.08)
+        XCTAssertEqual(layout.rows, 2)
+        XCTAssertGreaterThanOrEqual(layout.cardWidth, 44)
+        XCTAssertGreaterThan(layout.contentWidth, 200)
+    }
+
+    func testManaRockAnchorUsesRightLaneOnlyInLandscape() throws {
+        let rock = try attachmentCard("rock", type: "Artifact", rules: "{T}: Add {C}.")
+        let lanes = CombatViewportAnchors.laneIndices(human: [rock], opponent: [])
+        let bounds = ["rock": CGRect(x: 290, y: 120, width: 44, height: 48)]
+        let landscape = [CGRect(x: 0, y: 0, width: 240, height: 100), CGRect(x: 248, y: 0, width: 100, height: 100),
+                         CGRect(x: 0, y: 100, width: 240, height: 100), CGRect(x: 248, y: 100, width: 100, height: 100)]
+        let landscapeAnchor = CombatViewportAnchors.resolve(bounds: bounds, authorizedIDs: ["rock"], viewports: landscape, laneIndices: lanes)
+        XCTAssertEqual(landscapeAnchor["rock"]?.isClipped, false)
+        XCTAssertEqual(landscapeAnchor["rock"]?.point.x, 312)
+        let portrait = [CGRect(x: 0, y: 0, width: 360, height: 50), CGRect(x: 0, y: 50, width: 360, height: 50),
+                        CGRect(x: 0, y: 100, width: 360, height: 80), CGRect(x: 0, y: 180, width: 360, height: 50)]
+        let portraitAnchor = CombatViewportAnchors.resolve(bounds: bounds, authorizedIDs: ["rock"], viewports: portrait, laneIndices: lanes)
+        XCTAssertEqual(portraitAnchor["rock"]?.isClipped, false)
+    }
+
+    func testPortraitSparseMixAndTwoRowSupportDepth() throws {
+        let creature = try attachmentCard("creature", type: "Creature")
+        let equipment = try attachmentCard("equipment", type: "Artifact — Equipment", parent: "creature")
+        let spareEquipment = try attachmentCard("spare-equipment", type: "Artifact — Equipment")
+        let support = try attachmentCard("support", type: "Enchantment")
+        let groups = BattlefieldAttachments.groups([support, equipment, creature, spareEquipment])
+        XCTAssertEqual(BattlefieldRowArrangement.portraitPermanents.rows(groups, flipped: false, twoRows: false).flatMap { $0.map(\.representative.instanceId) }, ["support", "creature", "spare-equipment"])
+        XCTAssertEqual(BattlefieldRowArrangement.portraitPermanents.rows(groups, flipped: false, twoRows: true).map { $0.map(\.representative.instanceId) }, [["creature", "spare-equipment"], ["support"]])
+        XCTAssertEqual(BattlefieldRowArrangement.portraitPermanents.rows(groups, flipped: true, twoRows: true).map { $0.map(\.representative.instanceId) }, [["support"], ["creature", "spare-equipment"]])
+        XCTAssertEqual(Set(groups.first { $0.representative.instanceId == "creature" }?.cards.map(\.instanceId) ?? []), ["creature", "equipment"])
+    }
+
     func testOrphansCyclesAndSameNameHostsNeverDisappearOrMerge() throws {
         let cards = try [attachmentCard("host", type: "Creature"), attachmentCard("twin", type: "Creature"),
                          attachmentCard("aura", parent: "host"), attachmentCard("nested", parent: "aura"),
@@ -104,9 +166,12 @@ final class ArenaBoardPresentationTests: XCTestCase {
         return try JSONDecoder().decode(GameSnapshot.self, from: JSONSerialization.data(withJSONObject: payload))
     }
 
-    private func attachmentCard(_ id: String, type: String = "Enchantment", parent: String? = nil) throws -> ZoneCard {
-        var payload: [String: Any] = ["instanceId": id, "card": ["name": "Same printed name", "typeLine": type]]
+    private func attachmentCard(_ id: String, type: String = "Enchantment", parent: String? = nil, rules: String? = nil, tapped: Bool? = nil, name: String = "Same printed name") throws -> ZoneCard {
+        var identity: [String: Any] = ["name": name, "typeLine": type]
+        if let rules { identity["oracleText"] = rules }
+        var payload: [String: Any] = ["instanceId": id, "card": identity]
         if let parent { payload["attachedToInstanceId"] = parent }
+        if let tapped { payload["tapped"] = tapped }
         return try JSONDecoder().decode(ZoneCard.self, from: JSONSerialization.data(withJSONObject: payload))
     }
 

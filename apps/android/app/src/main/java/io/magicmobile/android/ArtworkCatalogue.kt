@@ -9,7 +9,7 @@ import java.util.Locale
 /** A printing is never selected from a generic token name alone. */
 data class ArtworkTokenIdentity(val name: String, val typeLine: String, val oracleText: String,
     val power: String?, val toughness: String?, val colors: Set<String>) {
-    internal fun normalized() = copy(name=normalize(name), typeLine=normalize(typeLine).replace("token ", "").replace("—", "-"), oracleText=normalize(oracleText))
+    internal fun normalized() = copy(name=normalize(name).removeSuffix(" token"), typeLine=normalize(typeLine).replace("token ", "").replace("—", "-"), oracleText=normalize(oracleText))
     companion object { private fun normalize(value:String)=Decisions.plain(value).lowercase(Locale.ROOT).trim().split(Regex("\\s+")).joinToString(" ") }
 }
 internal data class ArtworkRecord(val id:String, val name:String, val images:Map<String,String>,
@@ -59,8 +59,8 @@ internal class ArtworkCatalogue {
             val rules=primary.text("oracle_text") ?: root.text("oracle_text") ?: face.text("oracle_text")
             val colors=(primary["colors"] ?: root["colors"] ?: face["colors"]) as? List<*>
             val tokenLike=root.text("layout") in setOf("token","double_faced_token","emblem") || type.orEmpty().contains(Regex("Token|Emblem",RegexOption.IGNORE_CASE))
-            val identity=if(tokenLike&&type!=null&&rules!=null&&colors!=null&&colors.all{it is String&&it in setOf("W","U","B","R","G")})
-                ArtworkTokenIdentity(if(root.obj("image_uris")==null)face.text("name") ?: name else name,type,rules,primary.text("power") ?: root.text("power") ?: face.text("power"),primary.text("toughness") ?: root.text("toughness") ?: face.text("toughness"),colors.filterIsInstance<String>().toSet()) else null
+            val identity=if(tokenLike&&type!=null&&colors!=null&&colors.all{it is String&&it in setOf("W","U","B","R","G")})
+                ArtworkTokenIdentity(if(root.obj("image_uris")==null)face.text("name") ?: name else name,type,rules.orEmpty(),primary.text("power") ?: root.text("power") ?: face.text("power"),primary.text("toughness") ?: root.text("toughness") ?: face.text("toughness"),colors.filterIsInstance<String>().toSet()) else null
             val related=root.array("all_parts").take(100).map(Wire::objectValue).filter{it.text("component")=="token"}.mapNotNull{it.text("id")?.takeIf(Wire::uuid)}
             return ArtworkRecord(id,name,images(root.obj("image_uris")).ifEmpty{faces.firstOrNull()?.images.orEmpty()},faces,related,identity)
         }

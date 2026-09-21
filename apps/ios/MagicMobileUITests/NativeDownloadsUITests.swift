@@ -2,6 +2,41 @@ import XCTest
 
 @MainActor
 final class NativeDownloadsUITests: XCTestCase {
+    func testTokenOnlyScopeRequiresConsentAndPersistsWithoutDownloading() {
+        let app = XCUIApplication()
+        continueAfterFailure = false
+        app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
+        app.launchArguments = ["--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        defer { app.terminate() }
+        let menu = app.buttons["menu.downloads"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 20))
+        menu.tap()
+        let scope = app.buttons["downloads.scope"]
+        XCTAssertTrue(scope.waitForExistence(timeout: 10))
+        scope.tap()
+        let tokens = app.buttons["All supported tokens"]
+        XCTAssertTrue(tokens.waitForExistence(timeout: 5))
+        tokens.tap()
+        XCTAssertFalse(app.switches["Include tokens"].exists)
+        XCTAssertFalse(app.buttons["downloads.deck"].exists)
+        let start = app.buttons["downloads.start"]
+        for _ in 0..<4 where !start.isHittable { app.swipeUp() }
+        XCTAssertTrue(start.exists)
+        XCTAssertFalse(start.isEnabled, "Selecting tokens must not opt into online artwork")
+        XCTAssertFalse(app.buttons["downloads.cancel"].exists)
+        app.buttons["Done"].tap()
+        menu.tap()
+        XCTAssertTrue(scope.waitForExistence(timeout: 5))
+        XCTAssertTrue(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "All supported tokens", "All supported tokens").evaluate(with: scope))
+        XCTAssertFalse(app.buttons["downloads.cancel"].exists)
+        let capture = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        capture.name = "Token-only artwork scope with offline consent preserved"
+        capture.lifetime = .keepAlways
+        add(capture)
+    }
+
     func testDownloadSelectionSurvivesLeavingAndReopening() {
         let app = XCUIApplication()
         continueAfterFailure = false

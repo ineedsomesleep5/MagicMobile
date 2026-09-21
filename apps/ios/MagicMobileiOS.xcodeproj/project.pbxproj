@@ -68,6 +68,7 @@
 		60AD4579591957F0F18F0A4D /* NativeArtworkBackgroundQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6278BC94062AF0C483006986 /* NativeArtworkBackgroundQueueTests.swift */; };
 		66AE98EC0204B1730439A3C1 /* DeckStudioEditorOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A84CB0529992320EDB94E78 /* DeckStudioEditorOperations.swift */; };
 		670FBC31C74AD8F10C241696 /* NativeDeckComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51E32ED65987159F48457A3 /* NativeDeckComponents.swift */; };
+		68A71CB9B415C3564DC0EE00 /* CardChoicePlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE88055F0F7F4FCBCB3562B5 /* CardChoicePlan.swift */; };
 		6F13B3F588B63422BA35C264 /* DeckStudioDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58D050F76646C26B69A4656F /* DeckStudioDesignTokens.swift */; };
 		707F9022D3F7045C138C3B27 /* BoardCardChoiceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BA70C9674983BCF14FFA981 /* BoardCardChoiceView.swift */; };
 		7162F66856487125319D953F /* OnDeviceMessageSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A375B93EAF5ACD850AD2D2B5 /* OnDeviceMessageSessionTests.swift */; };
@@ -104,9 +105,11 @@
 		AF35E236FEE71179A81F56AD /* DeckStudioCardSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21FA91A26BEAAE41F9CC7036 /* DeckStudioCardSearch.swift */; };
 		B0C5D4EBA3173AAFED846BA4 /* OnDevice in Resources */ = {isa = PBXBuildFile; fileRef = E25161EF0DCBD6D130249073 /* OnDevice */; };
 		B2AF4D98FFB71A24F5225343 /* OnDeviceSessionLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C3713BAC2F8354AD17630E1 /* OnDeviceSessionLifecycleTests.swift */; };
+		B3DF8E169C1389EEEC5F1491 /* BoardResourceLayoutUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36D89291D3A05F7D50E814D8 /* BoardResourceLayoutUITests.swift */; };
 		B3F01C77FF8F4BB3A63AC275 /* DeckStudioRecordedGame.swift in Sources */ = {isa = PBXBuildFile; fileRef = F185ACCBE88DF75640B75CE8 /* DeckStudioRecordedGame.swift */; };
 		B4C7C72B6A3519D6484C4825 /* GameBoardTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 434AEA4E564EE069F504B192 /* GameBoardTheme.swift */; };
 		B4CB54F1361C26AE9F651B37 /* DeckStudioTextExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0504549592F49CFC2D7E0 /* DeckStudioTextExport.swift */; };
+		B4CE2A5C9E5A26961D2A82A0 /* CardChoicePlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE7B7AECD659F55C150D0846 /* CardChoicePlanTests.swift */; };
 		B688FD17BCC4EF2D9C07E0A0 /* NativeAssetDownloadsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4D2F7DAE858AB8A4CF15791 /* NativeAssetDownloadsTests.swift */; };
 		B9C204367A644D4365AAA00C /* DeckLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = E13EC4CC09BB14F446DB7424 /* DeckLibrary.swift */; };
 		BB21E928F9D1965F81890B38 /* OnlineSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DE2ACB064B31FF3AC510A6B /* OnlineSession.swift */; };
@@ -147,6 +150,7 @@
 		F7F09CF11D0ACCA5A4E5E57E /* CommanderSpellbookModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49A07E72198624C12E6A1CEB /* CommanderSpellbookModels.swift */; };
 		F80316B61D6D3F67389C8DAB /* OnDeviceAppConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 436CBF6B62656080C4BC10E9 /* OnDeviceAppConfigurationTests.swift */; };
 		F85438C40C05270AA997FC8A /* PromptCommandBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7BA23D5B9BCF29F6619B8FB /* PromptCommandBuilder.swift */; };
+		F9C08C31D42244250C6937B4 /* CardChoiceDraftUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE53EA38E5B78068DE3A1837 /* CardChoiceDraftUITests.swift */; };
 		FF517A0FAF7FB28B3EEF2858 /* NativeDeckMetadataCatalogueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC7718030935A849945717E2 /* NativeDeckMetadataCatalogueTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -193,6 +197,7 @@
 		325A347B3CF808C7166B7925 /* DeckStudioReleaseUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioReleaseUITests.swift; sourceTree = "<group>"; };
 		327B6E116B54238C1BF459E0 /* DeckStudioScryfall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioScryfall.swift; sourceTree = "<group>"; };
 		34AB998C3D5AA8E4DFD8EAF1 /* GameBoardDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardDesignTokens.swift; sourceTree = "<group>"; };
+		36D89291D3A05F7D50E814D8 /* BoardResourceLayoutUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardResourceLayoutUITests.swift; sourceTree = "<group>"; };
 		39CD7AD491EA8ECBCEC2998A /* DeckStudioRecordingTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioRecordingTransport.swift; sourceTree = "<group>"; };
 		3AB877C4C9153F0C8D61914D /* DeckStudioComboModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioComboModel.swift; sourceTree = "<group>"; };
 		3F8228132EF1ECF344A0504C /* DeckStudioOrganizationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioOrganizationView.swift; sourceTree = "<group>"; };
@@ -291,6 +296,7 @@
 		DA39AA71364294A3C5E86CB8 /* DeckStudioComboView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioComboView.swift; sourceTree = "<group>"; };
 		DBA64811675FC3884DD08546 /* DeckStudioRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioRootView.swift; sourceTree = "<group>"; };
 		DD616D9917FF26F6512FA5EF /* DeckStudioEditorModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioEditorModelTests.swift; sourceTree = "<group>"; };
+		DE53EA38E5B78068DE3A1837 /* CardChoiceDraftUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardChoiceDraftUITests.swift; sourceTree = "<group>"; };
 		DF9DCCA6FD608F763C72ABDA /* BoardZoneReference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardZoneReference.swift; sourceTree = "<group>"; };
 		E13EC4CC09BB14F446DB7424 /* DeckLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckLibrary.swift; sourceTree = "<group>"; };
 		E170200DA8F0A65EBA233D74 /* CommanderPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommanderPresentation.swift; sourceTree = "<group>"; };
@@ -312,6 +318,8 @@
 		F675833239E93937C36ABD7C /* BattlefieldAdaptiveSizingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BattlefieldAdaptiveSizingTests.swift; sourceTree = "<group>"; };
 		F9C7F1985BCD3636167CFE7F /* OnDeviceDeckResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceDeckResolver.swift; sourceTree = "<group>"; };
 		FE7A1008F2215F9CB7E25B2F /* BattlefieldViewportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BattlefieldViewportTests.swift; sourceTree = "<group>"; };
+		FE7B7AECD659F55C150D0846 /* CardChoicePlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardChoicePlanTests.swift; sourceTree = "<group>"; };
+		FE88055F0F7F4FCBCB3562B5 /* CardChoicePlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardChoicePlan.swift; sourceTree = "<group>"; };
 		FE8FD459FBA02F1B2CA08692 /* CommanderSpellbookClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommanderSpellbookClient.swift; sourceTree = "<group>"; };
 		FF4EE202904EFC97FF10F5D0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		FF5D01538DEB4023EFFA69C5 /* OnDeviceBackendRegistrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceBackendRegistrationTests.swift; sourceTree = "<group>"; };
@@ -406,6 +414,7 @@
 				039B77208AFBED6A6EA40C3D /* BattlefieldAdaptiveSizing.swift */,
 				4BA70C9674983BCF14FFA981 /* BoardCardChoiceView.swift */,
 				DF9DCCA6FD608F763C72ABDA /* BoardZoneReference.swift */,
+				FE88055F0F7F4FCBCB3562B5 /* CardChoicePlan.swift */,
 				E170200DA8F0A65EBA233D74 /* CommanderPresentation.swift */,
 				29DCFFDEC2E73604A42C81C3 /* ContentView.swift */,
 				E13EC4CC09BB14F446DB7424 /* DeckLibrary.swift */,
@@ -481,6 +490,7 @@
 				77E01CDDFBE4A2CB47963D37 /* BattlefieldBackdropTests.swift */,
 				FE7A1008F2215F9CB7E25B2F /* BattlefieldViewportTests.swift */,
 				2F4E6F7237174E453B09E62B /* BoardZoneReferenceTests.swift */,
+				FE7B7AECD659F55C150D0846 /* CardChoicePlanTests.swift */,
 				EAD8E45FEB2F53AE9F7E397A /* DeckStudioCompletionTests.swift */,
 				71FA1327EADF12DC5FCC75CE /* DeckStudioCoreTests.swift */,
 				DD616D9917FF26F6512FA5EF /* DeckStudioEditorModelTests.swift */,
@@ -538,7 +548,9 @@
 			isa = PBXGroup;
 			children = (
 				92D223C6A8D6C0570CDA2369 /* BoardPolishUITests.swift */,
+				36D89291D3A05F7D50E814D8 /* BoardResourceLayoutUITests.swift */,
 				E71A5066F22CE114CFB0807C /* BoardScrollRotationUITests.swift */,
+				DE53EA38E5B78068DE3A1837 /* CardChoiceDraftUITests.swift */,
 				EB38F40A6C6EA976434A4305 /* DeckStudioPinnedTabsUITests.swift */,
 				4CD073C390A414C9A10BA045 /* DeckStudioReadabilityUITests.swift */,
 				325A347B3CF808C7166B7925 /* DeckStudioReleaseUITests.swift */,
@@ -756,6 +768,7 @@
 				CA5EFC25898ACFEDEA8D650C /* BattlefieldAdaptiveSizing.swift in Sources */,
 				707F9022D3F7045C138C3B27 /* BoardCardChoiceView.swift in Sources */,
 				EBED9598B43CE2C232029321 /* BoardZoneReference.swift in Sources */,
+				68A71CB9B415C3564DC0EE00 /* CardChoicePlan.swift in Sources */,
 				D88DC08849D680807DE5E64B /* CommanderPresentation.swift in Sources */,
 				55A331D598FB652583F948C2 /* CommanderSpellbookClient.swift in Sources */,
 				F7F09CF11D0ACCA5A4E5E57E /* CommanderSpellbookModels.swift in Sources */,
@@ -848,6 +861,7 @@
 				A2ED80A1AAEC165CA264AE59 /* BattlefieldBackdropTests.swift in Sources */,
 				D9356C6D34D8829E5AA844DE /* BattlefieldViewportTests.swift in Sources */,
 				D786849AAF75733AD7291FD6 /* BoardZoneReferenceTests.swift in Sources */,
+				B4CE2A5C9E5A26961D2A82A0 /* CardChoicePlanTests.swift in Sources */,
 				54EF23C4A3A23B37A0EAF05C /* DeckStudioCompletionTests.swift in Sources */,
 				361E17FFCB5AD3DCFBE3127A /* DeckStudioCoreTests.swift in Sources */,
 				394A4AD5A0595EF5086920FF /* DeckStudioEditorModelTests.swift in Sources */,
@@ -893,7 +907,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				E156FE50612F3319F345B3CE /* BoardPolishUITests.swift in Sources */,
+				B3DF8E169C1389EEEC5F1491 /* BoardResourceLayoutUITests.swift in Sources */,
 				81BAD7099B005235220C354A /* BoardScrollRotationUITests.swift in Sources */,
+				F9C08C31D42244250C6937B4 /* CardChoiceDraftUITests.swift in Sources */,
 				465AC4E203BDFDD5542D5CAB /* DeckStudioPinnedTabsUITests.swift in Sources */,
 				0C2AC1730E6E0D231D0EA166 /* DeckStudioReadabilityUITests.swift in Sources */,
 				1197E403C9CDCBA1F5C6F9E5 /* DeckStudioReleaseUITests.swift in Sources */,
@@ -1059,7 +1075,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 82HPAY85M8;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1144,7 +1160,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 82HPAY85M8;
 				ENABLE_NS_ASSERTIONS = NO;

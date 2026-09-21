@@ -3,6 +3,44 @@ import zlib
 @testable import MagicMobile
 
 final class NativeArtworkCatalogueTests: XCTestCase {
+    func testOnDemandZombieSkipsRealisticMultiFaceSearchRowsBeforePlainToken() async throws {
+        let fixture = ZombieSearchFixture()
+        let match = try await NativeArtworkCatalogue.searchToken(name: "Zombie Token", typeLine: "Creature — Zombie",
+            oracleText: "", power: "2", toughness: "2", colors: ["B"], quality: .standard,
+            transport: fixture, budget: DeckStudioScryfallBudget())
+        XCTAssertEqual(match?.0.id, ZombieSearchFixture.plainID)
+        XCTAssertEqual(match?.1.lastPathComponent, "plain-zombie.jpg")
+        let count = await fixture.requests
+        XCTAssertEqual(count, 1)
+    }
+    func testOnDemandSearchNormalizesOnlyTokenSuffixAndRejectsAmbiguousMetadata() async throws {
+        let fixture = TokenSearchFixture()
+        let match = try await NativeArtworkCatalogue.searchToken(name: "Cat Beast Token", typeLine: "Creature — Cat Beast",
+            oracleText: "", power: "3", toughness: "2", colors: ["G"], quality: .standard,
+            transport: fixture, budget: DeckStudioScryfallBudget())
+        XCTAssertEqual(match?.0.id, TokenSearchFixture.tokenID)
+        XCTAssertEqual(match?.1.host, "cards.scryfall.io")
+        let requests = await fixture.requests
+        XCTAssertEqual(requests.count, 1)
+        let query = try XCTUnwrap(URLComponents(url: XCTUnwrap(requests.first?.url), resolvingAgainstBaseURL: false)?.queryItems)
+        XCTAssertEqual(query.first { $0.name == "q" }?.value, "!\"Cat Beast\" t:token")
+        XCTAssertEqual(query.first { $0.name == "page" }?.value, "1")
+        let wrong = try await NativeArtworkCatalogue.searchToken(name: "Cat Beast Token", typeLine: "Creature — Cat Beast",
+            oracleText: "Flying", power: "3", toughness: "2", colors: ["G"], quality: .standard,
+            transport: fixture, budget: DeckStudioScryfallBudget())
+        XCTAssertNil(wrong)
+        let ambiguous = TokenSearchFixture(ambiguous: true)
+        let unknown = try await NativeArtworkCatalogue.searchToken(name: "Cat Beast Token", typeLine: "Creature — Cat Beast",
+            oracleText: "", power: "4", toughness: "4", colors: ["G"], quality: .standard,
+            transport: ambiguous, budget: DeckStudioScryfallBudget())
+        XCTAssertNil(unknown)
+        let rejected = try await NativeArtworkCatalogue.searchToken(name: "Bad\" Name Token", typeLine: "Creature",
+            oracleText: "", power: nil, toughness: nil, colors: [], quality: .standard,
+            transport: fixture, budget: DeckStudioScryfallBudget())
+        XCTAssertNil(rejected)
+        let after = await fixture.requests.count
+        XCTAssertEqual(after, 2, "Unsafe names must not send a request")
+    }
     func testDeckCollectionsBatchNamesAndResolveExactTokenIDs() async throws {
         let transport = ArtworkCollectionFixture()
         let names = (0..<76).map { "Fixture \($0)" }
@@ -228,6 +266,48 @@ final class NativeArtworkCatalogueTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: file) }
         try JSONSerialization.data(withJSONObject: objects).write(to: file)
         return try NativeArtworkCatalogue.parse(file: file)
+    }
+}
+
+private actor ZombieSearchFixture: DeckStudioScryfallHTTP {
+    static let plainID = UUID(uuidString: "00000000-0000-0000-0000-000000000125")!
+    private(set) var requests = 0
+    func send(_ request: URLRequest) async throws -> Data {
+        requests += 1
+        let face: [String: Any] = ["name": "Zombie", "type_line": "Token Creature — Zombie",
+                                   "oracle_text": "", "power": "2", "toughness": "2", "colors": ["B"],
+                                   "image_uris": ["normal": "https://cards.scryfall.io/normal/dualfaced-zombie.jpg"]]
+        let rows: [[String: Any]] = [
+            ["id": UUID().uuidString, "name": "Snake // Zombie", "object": "card", "layout": "double_faced_token",
+             "type_line": NSNull(), "oracle_text": NSNull(), "power": NSNull(), "toughness": NSNull(),
+             "colors": NSNull(), "card_faces": [["name": "Snake", "type_line": "Token Creature — Snake",
+                  "oracle_text": "", "power": "1", "toughness": "1", "colors": ["G"]], face]],
+            ["id": UUID().uuidString, "name": "Zombie // Zombie", "object": "card", "layout": "double_faced_token",
+             "type_line": NSNull(), "oracle_text": NSNull(), "power": NSNull(), "toughness": NSNull(),
+             "colors": NSNull(), "card_faces": [face, face]],
+            ["id": Self.plainID.uuidString, "name": "Zombie", "object": "card", "layout": "token",
+             "type_line": "Token Creature — Zombie", "oracle_text": "", "power": "2", "toughness": "2",
+             "colors": ["B"], "image_uris": ["normal": "https://cards.scryfall.io/normal/plain-zombie.jpg"]]
+        ]
+        return try JSONSerialization.data(withJSONObject: ["object": "list", "has_more": false, "data": rows])
+    }
+}
+
+private actor TokenSearchFixture: DeckStudioScryfallHTTP {
+    static let tokenID = UUID(uuidString: "00000000-0000-0000-0000-000000000124")!
+    private(set) var requests: [URLRequest] = []
+    private let ambiguous: Bool
+    init(ambiguous: Bool = false) { self.ambiguous = ambiguous }
+    func send(_ request: URLRequest) async throws -> Data {
+        requests.append(request)
+        func row(_ id: UUID, _ power: String) -> [String: Any] {
+            ["id": id.uuidString, "name": "Cat Beast", "object": "card", "layout": "token",
+             "type_line": "Token Creature — Cat Beast", "oracle_text": "", "power": power, "toughness": power == "3" ? "2" : power,
+             "colors": ["G"], "image_uris": ["normal": "https://cards.scryfall.io/normal/cat-beast.jpg"]]
+        }
+        var cards = [row(Self.tokenID, "3")]
+        if ambiguous { cards.append(row(UUID(), "2")) }
+        return try JSONSerialization.data(withJSONObject: ["object": "list", "has_more": false, "data": cards])
     }
 }
 

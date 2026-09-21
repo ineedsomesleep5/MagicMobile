@@ -1,8 +1,8 @@
 # Run the MagicMobile server on your own computer
 
-This launcher uses the checksum-verified **0.1.1 build 5 server candidate** (`5c44fae`, XMage `4825513`). It passed 1,094 real-engine HTTP assertions for two- and four-player opening flows on macOS. It is a **self-hosting foundation**, not an already-live cross-platform service. The shipped apps still need an approved HTTPS server endpoint and matching release configuration before phones can use this computer.
+This launcher uses the checksum-verified **0.1.1 build 7 server candidate** (`d9d745f`, XMage `4825513`). It passed 959 real-engine HTTP assertions for two- and four-player opening flows on macOS. It is a **self-hosting foundation**, not an already-live cross-platform service. The shipped apps still need an approved HTTPS server endpoint and matching release configuration before phones can use this computer.
 
-[Download the launcher ZIP](https://github.com/ineedsomesleep5/MagicMobile/releases/download/server-build5-4825513/magicmobile-selfhost-0.1.1-build5.zip), then follow the first-time setup below. After setup, the launch file starts your server with one double-click.
+[Download the launcher ZIP](https://github.com/ineedsomesleep5/MagicMobile/releases/download/server-build7-4825513/magicmobile-selfhost-0.1.1-build7.zip), then follow the first-time setup below. After setup, the launch file starts your server with one double-click.
 
 ## First-time setup
 

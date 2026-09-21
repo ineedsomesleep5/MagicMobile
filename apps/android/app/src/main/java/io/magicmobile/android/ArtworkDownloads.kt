@@ -21,6 +21,7 @@ import kotlin.coroutines.coroutineContext
 
 private enum class DownloadScope(val label: String) {
     CATALOGUE("Full catalogue · recommended"),
+    TOKENS("Tokens only"),
     ALL_DECKS("All saved & included decks"),
     ONE_DECK("One deck"),
 }
@@ -212,6 +213,7 @@ internal fun ArtworkDownloadsScreen(
     val names = remember(scope, selectedDeck, catalogue, decks) {
         when (scope) {
             DownloadScope.CATALOGUE -> catalogue?.cards?.map { it.name }.orEmpty()
+            DownloadScope.TOKENS -> emptyList()
             DownloadScope.ALL_DECKS -> decks.flatMap { (_, deck) -> deck.entries.map { it.name } }
             DownloadScope.ONE_DECK -> decks.firstOrNull { it.first == selectedDeck }?.second?.entries?.map { it.name }.orEmpty()
         }.map(String::trim).filter(String::isNotEmpty).distinct().sorted()
@@ -219,23 +221,23 @@ internal fun ArtworkDownloadsScreen(
     fun scan() {
         scanning = true
         coroutine.launch {
-            runCatching { ArtworkDownloadClient(context).scan(names, quality,includeTokens) }
+            runCatching { ArtworkDownloadClient(context).scan(names, quality,includeTokens||scope==DownloadScope.TOKENS) }
                 .onSuccess { result -> storedCount = result.cards; storedBytes = result.bytes
-                    extraCoverage=(if(includeTokens)"Tokens and alternate faces" else "Alternate faces")+" · ${result.extraStored} / ${result.extraTotal}"+(if(result.coverageKnown)"" else " known; discovery incomplete")
+                    extraCoverage=(if(includeTokens||scope==DownloadScope.TOKENS)"Tokens and alternate faces" else "Alternate faces")+" · ${result.extraStored} / ${result.extraTotal}"+(if(result.coverageKnown)"" else " known; discovery incomplete")
                 }
                 .onFailure { notify("Artwork check failed: ${it.message}") }
             scanning = false
         }
     }
     fun start() {
-        if (running || names.isEmpty()) return
+        if (running || names.isEmpty() && scope!=DownloadScope.TOKENS) return
         if(android.os.Build.VERSION.SDK_INT>=33&&!preferences.getBoolean("askedDownloadNotifications",false)){
             preferences.edit().putBoolean("askedDownloadNotifications",true).apply()
             notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
         showFailures=false
         coroutine.launch {
-            runCatching{ArtworkDownloadService.start(context.applicationContext,names,quality,includeTokens,scope==DownloadScope.CATALOGUE)}
+            runCatching{ArtworkDownloadService.start(context.applicationContext,names,quality,includeTokens || scope==DownloadScope.TOKENS,scope in setOf(DownloadScope.CATALOGUE,DownloadScope.TOKENS))}
                 .onFailure{notify("Download could not start: ${it.message}")}
         }
     }
@@ -254,21 +256,22 @@ internal fun ArtworkDownloadsScreen(
                 storedCount=0
                 preferences.edit().putString("downloadQuality", quality.id).apply()
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Column(Modifier.weight(1f)) { Text("Include tokens"); Text("Full catalogue includes canonical tokens; decks include linked tokens.", style = MaterialTheme.typography.bodySmall) }; Switch(includeTokens, { includeTokens = it }, enabled = !running && !scanning) }
+            if(scope!=DownloadScope.TOKENS)Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Column(Modifier.weight(1f)) { Text("Include tokens"); Text("Full catalogue includes canonical tokens; decks include linked tokens. Explicitly identified copies use source-card art even when their current stats change; ordinary tokens require a matching visible identity.", style = MaterialTheme.typography.bodySmall) }; Switch(includeTokens, { includeTokens = it }, enabled = !running && !scanning) }
+            else Text("Downloads canonical token artwork only. Explicitly identified copies use source-card art; ordinary tokens match visible identity.",style=MaterialTheme.typography.bodySmall)
             HorizontalDivider()
             Text("On this device", style = MaterialTheme.typography.titleMedium)
             Text("Cards · $storedCount / ${names.size}")
             Text(extraCoverage,style=MaterialTheme.typography.bodySmall)
             Text("Stored · ${Formatter.formatFileSize(context, storedBytes)}")
-            Text("Full download estimate · ≈ ${Formatter.formatFileSize(context, names.size.toLong() * quality.estimatedBytes)} plus tokens and alternate faces", style = MaterialTheme.typography.bodySmall)
+            Text(if(scope==DownloadScope.TOKENS)"Token download size is not known until catalogue discovery." else "Full download estimate · ≈ ${Formatter.formatFileSize(context, names.size.toLong() * quality.estimatedBytes)} plus tokens and alternate faces", style = MaterialTheme.typography.bodySmall)
             if (scanning) LinearProgressIndicator(Modifier.fillMaxWidth())
-            OutlinedButton(onClick = ::scan, enabled = !running && !scanning && names.isNotEmpty(), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Check for missing artwork") }
+            OutlinedButton(onClick = ::scan, enabled = !running && !scanning && (names.isNotEmpty()||scope==DownloadScope.TOKENS), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Check for missing artwork") }
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {Column(Modifier.weight(1f)){Text("Download card artwork");Text("Uses Scryfall. Online requests share your IP and card names, including your hand.",style=MaterialTheme.typography.bodySmall)};Switch(remoteArtwork,{enabled->remoteArtwork=enabled;Artwork.setEnabled(context,enabled);if(!enabled&&running){ArtworkDownloadService.pause(context)}})}
             if (running) {
                 LinearProgressIndicator(progress = { if (progress.total == 0) 0f else progress.completed.toFloat() / progress.total }, modifier = Modifier.fillMaxWidth())
                 Text(progress.status)
                 OutlinedButton(onClick = { ArtworkDownloadService.pause(context) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Pause download") }
-            } else Button(onClick = { if (scope == DownloadScope.CATALOGUE) confirmFull = true else start() }, enabled = remoteArtwork && names.isNotEmpty() && !scanning, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Download missing artwork") }
+            } else Button(onClick = { if (scope in setOf(DownloadScope.CATALOGUE,DownloadScope.TOKENS)) confirmFull = true else start() }, enabled = remoteArtwork && (names.isNotEmpty()||scope==DownloadScope.TOKENS) && !scanning, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Download missing artwork") }
             if(!running&&ArtworkDownloadService.hasPending(context))TextButton(onClick={runCatching{ArtworkDownloadService.resume(context)}.onFailure{notify("Download could not resume: ${it.message}")}},enabled=remoteArtwork){Text("Resume previous download")}
             if(failures.isNotEmpty()) {HorizontalDivider();TextButton(onClick={showFailures=!showFailures}){Text(if(showFailures)"Hide download details" else "Needs attention · show download details")};if(showFailures){failures.take(20).forEach{Text(it,style=MaterialTheme.typography.bodySmall)};if(failures.size>20)Text("Additional details omitted. Retry missing artwork to check remaining items.",style=MaterialTheme.typography.bodySmall)}}
             Text(if(running)"You can play or leave the app while artwork downloads." else progress.status, style = MaterialTheme.typography.bodySmall)
@@ -278,7 +281,7 @@ internal fun ArtworkDownloadsScreen(
     if (confirmFull) AlertDialog(
         onDismissRequest = { confirmFull = false },
         title = { Text("Download the full catalogue?") },
-        text = { Text("Approximately ${Formatter.formatFileSize(context, names.size.toLong() * quality.estimatedBytes)}, plus tokens and alternate faces. Use Wi-Fi. Android may pause long downloads; completed artwork is kept.") },
+        text = { Text(if(scope==DownloadScope.TOKENS)"Token artwork size is unknown until catalogue discovery. Use Wi-Fi. Android may pause long downloads; completed artwork is kept." else "Approximately ${Formatter.formatFileSize(context, names.size.toLong() * quality.estimatedBytes)}, plus tokens and alternate faces. Use Wi-Fi. Android may pause long downloads; completed artwork is kept.") },
         confirmButton = { TextButton(onClick = { confirmFull = false; start() }) { Text("Download · ${quality.label}") } },
         dismissButton = { TextButton(onClick = { confirmFull = false }) { Text("Cancel") } },
     )
