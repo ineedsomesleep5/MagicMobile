@@ -11827,8 +11827,7 @@ struct GameManagementMenu: View {
     let confirmQuit: () -> Void
 
     var body: some View {
-        ScrollView {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(spacing: 0) {
             HStack {
             Text("Game Menu")
                 .font(.system(size: 22, weight: .black, design: .rounded))
@@ -11838,7 +11837,10 @@ struct GameManagementMenu: View {
                 .frame(minWidth: 44, minHeight: 44)
                 .accessibilityIdentifier("board.menu.done")
             }
-
+            .padding(.horizontal, 18)
+            .padding(.top, 12)
+            ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
             BoardAppearancePicker()
             PortraitModeToggle(isOn: $portraitModeEnabled)
 
@@ -11878,6 +11880,7 @@ struct GameManagementMenu: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .accessibilityIdentifier("board.menu.scroll")
+        }
         .background(BattlefieldSurface().ignoresSafeArea())
     }
 }

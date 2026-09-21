@@ -67,27 +67,25 @@ final class BoardScrollRotationUITests: XCTestCase {
             XCTAssertTrue(app.buttons["Game Settings"].waitForExistence(timeout: 5))
             app.buttons["Game Settings"].press(forDuration: 0.15)
             XCTAssertTrue(app.staticTexts["Game Menu"].waitForExistence(timeout: 5))
+            let menu = app.scrollViews["board.menu.scroll"]
             let theme = app.buttons["Classic Wood battlefield"]
             for _ in 0..<4 {
                 if theme.isHittable { break }
-                app.swipeUp()
+                menu.swipeUp()
             }
             XCTAssertTrue(theme.isHittable)
-            theme.tap()
+            theme.press(forDuration: 0.15)
+            XCTAssertTrue(theme.isSelected)
             let quit = app.buttons["Quit"]
             for _ in 0..<5 {
                 if quit.isHittable && app.frame.contains(quit.frame) { break }
-                app.swipeUp()
+                menu.swipeUp()
             }
             XCTAssertTrue(quit.isHittable)
             XCTAssertTrue(app.frame.contains(quit.frame), "Quit must be fully visible after changing theme")
             let done = app.buttons["board.menu.done"]
-            for _ in 0..<5 {
-                if done.isHittable { break }
-                app.swipeDown()
-            }
-            XCTAssertTrue(done.isHittable)
-            done.tap()
+            XCTAssertTrue(done.isHittable, "Done must remain pinned while settings scroll")
+            done.press(forDuration: 0.15)
             XCTAssertTrue(app.buttons["Game controls"].waitForExistence(timeout: 5))
         }
     }
