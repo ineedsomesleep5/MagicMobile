@@ -1,7 +1,8 @@
 # Battlefield, card choices, tokens and match history
 
 Implementation branch: `codex/board-choices-token-history`, based on main `9097d31`.
-This is a work-in-progress acceptance record, not a release announcement.
+This records implementation and acceptance; current distribution evidence is in
+[the build 7 release record](RELEASE_0.1.1_BUILD7.md).
 
 ## Approved behavior
 
@@ -25,11 +26,11 @@ XMage remains pinned to `4825513287ba6c42c32fd205d227f4a5fc44c2f3`. A bridge art
 - [x] Exact-source JVM/privacy tests if bridge changes.
 - [x] iOS simulator interactions and screenshots in both orientations (fixtures clearly labeled).
 - [x] Android compilation, lint and packaged native runtime checks (emulator; physical phone acceptance not claimed).
-- [ ] Exact-source native artifacts, matching headers and provenance if rebuilt.
-- [ ] Live build-number check, signed artifacts, preserved Game Center and unchanged app identities.
-- [ ] Android APK checksum/signer/update compatibility; published download verified.
-- [ ] Apple upload, processing, internal group, external group and actual beta-review state recorded.
-- [ ] Final evidence and remaining physical-device limitations recorded.
+- [x] Exact-source native artifacts, matching headers and provenance if rebuilt.
+- [x] Live build-number check, signed artifacts, preserved Game Center and unchanged app identities.
+- [x] Android APK checksum/signer/update compatibility; published download verified.
+- [x] Apple upload, processing, internal group, external group and actual beta-review state recorded.
+- [x] Final evidence and remaining physical-device limitations recorded.
 
 ## Initial review evidence
 
@@ -37,7 +38,9 @@ XMage remains pinned to `4825513287ba6c42c32fd205d227f4a5fc44c2f3`. A bridge art
 - Existing local Android SDK discovered at `/opt/homebrew/share/android-commandlinetools`; no new SDK installation is needed.
 - One existing iPhone 17 Pro simulator (iOS 26.5) selected for presentation verification; no simulator data erased.
 
-No upload or Android publication has happened for this change set yet.
+Android build 7 and its matching self-host package are published and their public bytes
+have been checksum-verified. iOS build 7 is approved and in beta testing for both groups; see the current
+[release record](RELEASE_0.1.1_BUILD7.md) for Apple processing and group status.
 
 ## Frozen engine candidate
 
@@ -46,7 +49,7 @@ No upload or Android publication has happened for this change set yet.
 - Independent local compilation and 10 real JVM projection regressions passed using the verified pinned baseline dependency cache. This is not native execution.
 - Fresh exact-source non-simulator gate: https://github.com/ineedsomesleep5/MagicMobile/actions/runs/35628109901 (passed, including real JVM checks).
 - Android native build: https://github.com/ineedsomesleep5/MagicMobile/actions/runs/35628113147 (passed). Full native ZIP verified against GitHub's SHA-256 and staged with exact-source verification; signing/runtime acceptance remains separate.
-- Gated iOS far-call native build: https://github.com/ineedsomesleep5/MagicMobile/actions/runs/35630421619 (pending, dispatched only after the same-SHA gate passed).
+- Gated iOS far-call native build: https://github.com/ineedsomesleep5/MagicMobile/actions/runs/35630421619 (passed, dispatched only after the same-SHA gate passed).
 - Shared version prepared: 0.1.1 (7); Android installation code 2026092101. Apple build 7 was absent at preparation; check again before upload.
 - Local build-number tests: 10 passed. Android tooling tests: 7 passed. Native C boundary fixtures passed (not real native engine gameplay).
 
@@ -71,3 +74,4 @@ No upload or Android publication has happened for this change set yet.
 - Final signed Android APK (`3ad31f4…`) installed over the prior version without data erasure. The installed APK checksum matched. All ten packaged native instrumentation tests passed, including a 13-turn Commander game with 68 responses and ten engine reopen cycles. Token-only scope navigation and the empty history dashboard were also inspected in the real app; no mass artwork download or consent change was performed.
 - App implementation source: `ef5ebf68337233b9c4c8bfaa6d8c638db784e9c2`. PR #17 source checks passed: Android app, portable Swift/iOS SDK compilation, real JVM, native boundary, general CI, and both existing Vercel previews. These do not replace the separate iOS native artifact/product-link or distribution gates.
 - Final Android visual review caught projected 0/0 on noncreature lands. Commit `fbd46ad` gates stats on live creature types while preserving genuine 0/0, loyalty and privacy; red-before/green-after regressions passed (136 core assertions). Rebuilt signed APK `3b255f9…` supersedes `3ad31f4…`; all ten packaged native tests passed again in 55.759 seconds. Parent independently verified its signature/checksum and inspected actual Plains artwork/labels without false stats (`land-stats-fixed.png`). No engine input changed.
+- Full iOS native artifact `10658094630` passed verified download, exact-source/input pairing and staging. Product-link run `35633712677` passed; the signed local archive/export, paired code-layout/dSYM and Game Center checks, Apple validation and single upload also passed. These still do not establish physical-iPhone gameplay. Public Android, runtime TAR and launcher ZIP downloads were independently streamed and hashed against the tested bytes.
