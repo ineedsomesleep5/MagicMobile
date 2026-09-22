@@ -78,14 +78,17 @@ def name_aliases(cards: list[dict], metadata: list[dict]) -> dict[str, str]:
         if key in seen:
             raise ValueError('Ambiguous selected printing metadata')
         seen.add(key)
-        if row.get('doubleFaced') is not True or row.get('nightCard') is not False:
+        # CardInfo.doubleFaced means transformable. Modal spell/land and
+        # creature/sorcery cards have a real reverse face but are not
+        # transformable; doubleFacedCard records the actual DoubleFacedCard.
+        if row.get('doubleFacedCard') is not True or row.get('nightCard') is not False:
             continue
         if row.get('splitCard') is True or row.get('splitCardHalf') is True:
             continue
         back = row.get('secondSideName')
         if not isinstance(back, str) or not back.strip() or back != back.strip():
             raise ValueError('Double-faced front has no exact second-side name')
-        if row.get('doubleFacedSecondSideName') not in (None, '', back):
+        if row.get('doubleFacedSecondSideName') != back:
             raise ValueError('Conflicting double-faced second-side metadata')
         alias = row['name'] + ' // ' + back
         if alias in canonical:
@@ -297,19 +300,30 @@ class ExportTests(unittest.TestCase):
 
     def test_alias_requires_selected_front_printing_and_exact_back(self):
         cards = [dict(name='Front', setCode='SET', collectorNumber='1')]
-        front = dict(name='Front', setCode='SET', cardNumber='1', doubleFaced=True,
+        front = dict(name='Front', setCode='SET', cardNumber='1', doubleFaced=True, doubleFacedCard=True,
                      nightCard=False, secondSideName='Back', doubleFacedSecondSideName='Back')
         self.assertEqual(name_aliases(cards, [front]), {'Front // Back': 'Front'})
-        for changed in [dict(cardNumber='2'), dict(setCode='OTHER'), dict(nightCard=True), dict(doubleFaced=False), dict(splitCard=True)]:
+        for changed in [dict(cardNumber='2'), dict(setCode='OTHER'), dict(nightCard=True),
+                        dict(doubleFacedCard=False), dict(splitCard=True), dict(splitCardHalf=True)]:
             self.assertEqual(name_aliases(cards, [front | changed]), {})
         for rows in [[front, front], [front | dict(secondSideName='Wrong')], [front | dict(secondSideName='')]]:
             with self.assertRaises(ValueError):
                 name_aliases(cards, rows)
 
+    def test_modal_spell_face_alias_uses_double_faced_card_metadata(self):
+        cards = [dict(name='Revitalizing Repast', setCode='MH3', collectorNumber='256')]
+        row = dict(name='Revitalizing Repast', setCode='MH3', cardNumber='256',
+                   doubleFaced=False, doubleFacedCard=True, nightCard=False,
+                   splitCard=False, splitCardHalf=False,
+                   secondSideName='Old-Growth Grove', doubleFacedSecondSideName='Old-Growth Grove')
+        self.assertEqual(name_aliases(cards, [row]),
+                         {'Revitalizing Repast // Old-Growth Grove': 'Revitalizing Repast'})
+
     def test_exact_split_name_wins_and_conflicting_aliases_reject(self):
         cards = [dict(name='Front', setCode='SET', collectorNumber='1'),
                  dict(name='Front // Back', setCode='SET', collectorNumber='2')]
-        row = dict(name='Front', setCode='SET', cardNumber='1', doubleFaced=True, nightCard=False, secondSideName='Back')
+        row = dict(name='Front', setCode='SET', cardNumber='1', doubleFaced=True, doubleFacedCard=True,
+                   nightCard=False, secondSideName='Back', doubleFacedSecondSideName='Back')
         self.assertEqual(name_aliases(cards, [row]), {})
         cards[1]['name'] = 'Front // Middle'
         second = row | dict(name='Front // Middle', cardNumber='2', secondSideName='Back')
