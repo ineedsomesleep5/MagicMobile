@@ -5,6 +5,7 @@ build="$(mktemp -d "${TMPDIR:-/tmp}/deck-studio-finishing.XXXXXX")"
 trap 'rm -rf "$build"' EXIT
 swiftc -swift-version 5 -warnings-as-errors \
   "$root/apps/ios/MagicMobile/DeckStudio/Core/DeckStudioRecordedGame.swift" \
+  "$root/apps/ios/MagicMobile/DeckStudio/Core/DeckStudioPublicTimeline.swift" \
   "$root/scripts/deck-studio/recording-completion-checks.swift" -o "$build/recording"
 "$build/recording"
 swiftc -swift-version 5 -warnings-as-errors \

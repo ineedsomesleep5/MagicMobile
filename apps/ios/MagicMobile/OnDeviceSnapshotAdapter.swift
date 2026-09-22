@@ -322,8 +322,12 @@ enum OnDeviceSnapshotAdapter {
                 // New native payloads distinguish mana abilities inside `other`.
                 // Older payloads identify only BasicManaAbility; never guess from a label.
                 let manaRows = rows.filter { $0["manaAbility"]?.bool ?? (category == "basicManaAbilities") }
-                let otherRows = rows.filter { !($0["manaAbility"]?.bool ?? (category == "basicManaAbilities")) }
-                for (actionType, actionRows) in [("make_mana", manaRows), (commandType, otherRows)] {
+                let nonmanaRows = rows.filter { !($0["manaAbility"]?.bool ?? (category == "basicManaAbilities")) }
+                // Modal/split spell abilities live in upstream's `other` bucket.
+                // Use native type metadata, never the label, card type or phase.
+                let spellRows = nonmanaRows.filter { $0["spellAbility"]?.bool ?? (category == "basicCastAbilities") }
+                let otherRows = nonmanaRows.filter { !($0["spellAbility"]?.bool ?? (category == "basicCastAbilities")) }
+                for (actionType, actionRows) in [("make_mana", manaRows), ("cast_spell", spellRows), (commandType, otherRows)] {
                     guard !actionRows.isEmpty, priority || (paying && actionType == "make_mana") else { continue }
                     // Selecting an object lets XMage ask for the exact ability when needed.
                     // Never turn an ability label or card type into an invented response UUID.

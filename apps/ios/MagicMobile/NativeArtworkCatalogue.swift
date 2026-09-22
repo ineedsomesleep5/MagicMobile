@@ -28,23 +28,27 @@ struct NativeArtworkCatalogue {
     }
     private var imagesByID: [UUID: Images] = [:]
     private var names: [String: UUID] = [:]
+    private var namePriorities: [String: Int] = [:]
     private var ambiguousNames: Set<String> = []
     private var aliases: [String: UUID] = [:]
     private var ambiguousAliases: Set<String> = []
     private var faceImages: [String: Images] = [:]
     private var faceNamesByID: [UUID: [String]] = [:]
     private var tokens: [UUID: NativeTokenArtwork] = [:]
+    private var backTokens: [UUID: NativeTokenArtwork] = [:]
+    private var backTokenImages: [UUID: Images] = [:]
     private var relations: [UUID: [NativeTokenArtwork]] = [:]
     var cardCount: Int { imagesByID.count }
-    var tokenCount: Int { tokens.count }
-    var unavailableTokenCount: Int { tokens.values.filter { !$0.hasMatchingMetadata }.count }
+    private var tokenFaces: [NativeTokenArtwork] { Array(tokens.values) + Array(backTokens.values) }
+    var tokenCount: Int { tokens.count + backTokens.count }
+    var unavailableTokenCount: Int { tokenFaces.filter { !$0.hasMatchingMetadata }.count }
     var unavailableTokenNames: [String] {
-        tokens.values.filter { !$0.hasMatchingMetadata }.map(\.name).sorted()
+        tokenFaces.filter { !$0.hasMatchingMetadata }.map(\.name).sorted()
     }
     var allTokens: [NativeTokenArtwork] {
-        tokens.values.filter(\.hasMatchingMetadata).sorted {
+        tokenFaces.filter(\.hasMatchingMetadata).sorted {
             if $0.name != $1.name { return $0.name < $1.name }
-            return $0.id.uuidString < $1.id.uuidString
+            return $0.artworkKey < $1.artworkKey
         }
     }
 
@@ -71,8 +75,10 @@ struct NativeArtworkCatalogue {
         }
         return result.sorted()
     }
-    func imageURL(id: UUID, size: String) -> URL? { imagesByID[id]?.url(size) }
-    func token(id: UUID) -> NativeTokenArtwork? { tokens[id] }
+    func imageURL(id: UUID, size: String, face: String? = nil) -> URL? {
+        face == "back" ? backTokenImages[id]?.url(size) : imagesByID[id]?.url(size)
+    }
+    func token(id: UUID, face: String? = nil) -> NativeTokenArtwork? { face == "back" ? backTokens[id] : tokens[id] }
     /// Bounded on-demand lookup for a visible token name. Search is only invoked
     /// by the consent-aware artwork actor; never for hidden or incomplete views.
     static func searchToken(name: String, typeLine: String, oracleText: String, power: String?, toughness: String?,
@@ -100,11 +106,7 @@ struct NativeArtworkCatalogue {
                   rows.count <= 200, let more = object["has_more"] as? Bool else { throw CatalogueError.invalidResponse }
             for row in rows {
                 try Task.checkCancellation()
-                // The exact-name search also returns split/double-faced token
-                // printings (e.g. "Snake // Zombie"). A visible plain token does
-                // not disclose which face or printing produced it, so only flat
-                // token rows are eligible for this on-demand route.
-                guard row["layout"] as? String == "token" else { continue }
+                guard ["token", "double_faced_token"].contains(row["layout"] as? String ?? "") else { continue }
                 try catalogue.accept(JSONSerialization.data(withJSONObject: row))
             }
             if !more { break }
@@ -113,27 +115,37 @@ struct NativeArtworkCatalogue {
         guard let match = NativeAssetStore.matchTokenArtwork(catalogue.allTokens, name: name, typeLine: typeLine,
                                                                oracleText: oracleText, power: power, toughness: toughness,
                                                                colors: colors) else { return nil }
-        if let url = catalogue.imageURL(id: match.id, size: quality.imageSizeString) { return (match, url) }
+        if let url = catalogue.imageURL(id: match.id, size: quality.imageSizeString, face: match.face) { return (match, url) }
         let equivalent = catalogue.allTokens.first {
-            $0.name == match.name && $0.typeLine == match.typeLine && $0.oracleText == match.oracleText &&
-            $0.power == match.power && $0.toughness == match.toughness && $0.colors == match.colors &&
-            catalogue.imageURL(id: $0.id, size: quality.imageSizeString) != nil
+            NativeAssetStore.sameTokenIdentity($0, match) &&
+            catalogue.imageURL(id: $0.id, size: quality.imageSizeString, face: $0.face) != nil
         }
-        guard let equivalent, let url = catalogue.imageURL(id: equivalent.id, size: quality.imageSizeString) else { return nil }
+        guard let equivalent, let url = catalogue.imageURL(id: equivalent.id, size: quality.imageSizeString, face: equivalent.face) else { return nil }
         return (equivalent, url)
     }
     func relatedTokens(name: String) -> [NativeTokenArtwork] {
         guard let id = id(for: name) else { return [] }
         // Oracle bulk chooses one printing per Oracle ID. A related printing may be
         // absent: retain its explicit ID/name, never substitute a similarly named token.
-        return (relations[id] ?? []).map { tokens[$0.id] ?? $0 }
+        return (relations[id] ?? []).flatMap { part -> [NativeTokenArtwork] in
+            [tokens[part.id] ?? part] + (backTokens[part.id].map { [$0] } ?? [])
+        }
     }
     private func id(for name: String) -> UUID? {
         let key = Self.key(name)
         guard !ambiguousNames.contains(key) else { return nil }
         return names[key] ?? (ambiguousAliases.contains(key) ? nil : aliases[key])
     }
-    private static func key(_ name: String) -> String { name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+    private static func key(_ name: String) -> String {
+        // XMage stores many printed accented names as ASCII. This is exact
+        // orthographic normalization, not fuzzy matching; collisions remain ambiguous.
+        let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+            .replacingOccurrences(of: "…", with: "...")
+            .replacingOccurrences(of: #"\s*\.\s*\.\s*\."#, with: "...", options: .regularExpression)
+        // The pinned engine omits this printed name's modifier-letter colon.
+        return normalized == "ratonhnhake꞉ton" ? "ratonhnhaketon" : normalized
+    }
 
     /// Resolve deck artwork in bounded collections instead of one named request
     /// and image redirect per card. Exact token IDs retain their identity.
@@ -356,6 +368,7 @@ struct NativeArtworkCatalogue {
         let id: UUID
         let name: String
         let layout: String?
+        let set_type: String?
         let type_line: String?
         let oracle_text: String?
         let power: String?
@@ -371,7 +384,7 @@ struct NativeArtworkCatalogue {
         let card = try JSONDecoder().decode(Card.self, from: object)
         // Art Series inserts are not playable cards. Their repeated face names can
         // collide with the transform card's real front/back artwork aliases.
-        guard card.layout != "art_series" else { return }
+        guard card.layout != "art_series", card.layout != "front_card", card.type_line != "Card" else { return }
         func images(_ uris: [String: String]) -> Images {
             func safe(_ size: String) -> URL? {
                 guard let raw = uris[size], let url = URL(string: raw), Self.isAllowed(url, host: "cards.scryfall.io") else { return nil }
@@ -393,10 +406,25 @@ struct NativeArtworkCatalogue {
                 power: (doubleFaced ? face?.power : nil) ?? card.power ?? face?.power,
                 toughness: (doubleFaced ? face?.toughness : nil) ?? card.toughness ?? face?.toughness,
                 colors: (doubleFaced ? face?.colors : nil) ?? card.colors ?? face?.colors)
+            if doubleFaced, let back = card.card_faces?.dropFirst().first {
+                backTokens[card.id] = NativeTokenArtwork(id: card.id, name: back.name,
+                    typeLine: back.type_line, oracleText: back.oracle_text, power: back.power,
+                    toughness: back.toughness, colors: back.colors, face: "back")
+                backTokenImages[card.id] = images(back.image_uris ?? [:])
+            }
         } else {
             let nameKey = Self.key(card.name)
-            if let previous = names[nameKey], previous != card.id { ambiguousNames.insert(nameKey) }
-            else { names[nameKey] = card.id }
+            // Public bulk also includes playtest cards, challenge decks and planes
+            // sharing real Commander card names. Prefer the normal playable card
+            // only in those explicit categories; equal-priority identities stay ambiguous.
+            let priority = ["funny", "memorabilia"].contains(card.set_type ?? "") || card.layout == "planar" ? -1 : 0
+            if let previous = names[nameKey], previous != card.id {
+                let previousPriority = namePriorities[nameKey] ?? 0
+                if priority > previousPriority {
+                    names[nameKey] = card.id; namePriorities[nameKey] = priority
+                    ambiguousNames.remove(nameKey)
+                } else if priority == previousPriority { ambiguousNames.insert(nameKey) }
+            } else { names[nameKey] = card.id; namePriorities[nameKey] = priority }
             if let face = card.card_faces?.first {
                 let key = Self.key(face.name)
                 if let previous = aliases[key], previous != card.id { ambiguousAliases.insert(key) }

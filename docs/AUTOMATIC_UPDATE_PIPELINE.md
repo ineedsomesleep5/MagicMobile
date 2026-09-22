@@ -5,6 +5,11 @@ releases eligible XMage updates to Android and TestFlight, updates verified webs
 links, and safely merges to main. This is standing authority for the routine
 path below, not permission to bypass a gate or incur charges.
 
+On September 21, Caleb paused Android implementation, builds, version changes and
+releases until he explicitly resumes them. The active weekly Codex automation was
+updated successfully to iOS-only releases. Preserve the existing Android version
+and public download; Android parity is not a gate for an authorized iOS release.
+
 ## Scope and stopping conditions
 
 - Verify the selected repository/origin, main, release ledger, active work and CI.
@@ -34,17 +39,16 @@ path below, not permission to bypass a gate or incur charges.
 3. Execute maintenance validation. Integrate accepted source, exporter pins and
    the newly exported app catalogue. Check saved decks, aliases and artwork
    compatibility. Commit the final exact source.
-4. Run exact-source non-simulator gates, then gated iOS and Android native builds
+4. Run exact-source non-simulator gates, then gated iOS native builds
    when guarded engine inputs changed. Reuse artifacts only when provenance proves
    unchanged inputs. Never weaken the trusted native policy or substitute fixture
    success for real engines.
 5. Verify native artifacts, app compilation/linkage, privacy, signing and relevant
-   runtime acceptance separately on each platform. Preserve Game Center. Keep
+   runtime acceptance for iOS. Preserve Game Center. Keep
    dedicated Online disabled until its separate hosting, database concurrency,
    authentication and real cross-platform gameplay gates pass.
-6. Keep marketing version **0.1.1**. Check Apple and the ledger for an unused shared
-   visible build and monotonically increasing Android versionCode. Publish only
-   the tested signed Android APK; verify its URL and checksum. Upload iOS once,
+6. Keep marketing version **0.1.1**. Check Apple and the ledger for an unused iOS
+   visible build. Leave Android's versionCode, artifact and links unchanged. Upload iOS once,
    verify processing/internal access, then submit to the existing external group
    when Apple permits. Never cancel existing review or claim pending approval is
    external availability. Reconcile interrupted uploads before retrying.

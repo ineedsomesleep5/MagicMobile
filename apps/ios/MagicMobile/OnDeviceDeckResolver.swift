@@ -32,9 +32,10 @@ struct OnDeviceDeckResolver {
     let sourceRegistrySHA256: String
     private let cards: [String: Printing]
     private let nameAliases: [String: String]
+    private let reverseFaces: [String: String]
 
     func canonicalCardName(_ name: String) -> String? {
-        cards[name] != nil ? name : nameAliases[name]
+        cards[name] != nil ? name : nameAliases[name] ?? reverseFaces[name]
     }
 
     func containsCard(name: String) -> Bool { canonicalCardName(name) != nil }
@@ -103,7 +104,8 @@ struct OnDeviceDeckResolver {
         sourceCatalogueSHA256 = catalogue.sourceCatalogueSHA256
         sourceRegistrySHA256 = catalogue.sourceRegistrySHA256
         cards = index
-        nameAliases = aliases
+        nameAliases = aliases.filter { index[$0.key] == nil }
+        reverseFaces = NativeDeckCanonicalNames.reverseFaces(nameAliases, exactNames: Set(index.keys))
     }
 
     func resolve(_ deck: DeckList) throws -> MagicMobileOnDevice.JSONValue {

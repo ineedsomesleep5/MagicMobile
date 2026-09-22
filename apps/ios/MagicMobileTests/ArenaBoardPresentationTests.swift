@@ -201,6 +201,58 @@ final class ArenaBoardPresentationTests: XCTestCase {
     }
 
     @MainActor
+    func testCompactAbilityBadgesUseCurrentIconsAndFitBesideExistingOverlays() throws {
+        let types = ["ABILITY_FLYING", "ABILITY_REACH", "ABILITY_HEXPROOF", "ABILITY_VIGILANCE"]
+        let tile = try compactCard(type: "Creature", fields: [
+            "tapped": true, "reportedPower": "4", "reportedToughness": "5",
+            "counters": ["+1/+1": 2],
+            "cardIcons": types.map { ["iconType": $0, "category": "ABILITY"] }
+        ])
+        XCTAssertEqual(tile.card.visibleXmageIcons.map(\.iconType), types)
+        XCTAssertTrue(tile.showsFooter, "Tap and current P/T retain their footer")
+        XCTAssertEqual(tile.card.counterBadges.map(\.count), [2])
+        XCTAssertTrue(tile.card.accessibilityLabel(zoneName: "Battlefield").contains("tapped"))
+        XCTAssertTrue(tile.card.accessibilityLabel(zoneName: "Battlefield").contains("4/5"))
+        XCTAssertTrue(tile.accessibilityDescription.contains("Flying"))
+        XCTAssertTrue(tile.accessibilityDescription.contains("Hexproof"))
+        XCTAssertTrue(tile.accessibilityDescription.contains("+1/+1 counter 2"))
+
+        let narrow = BattlefieldAbilityBadgePlan(icons: tile.card.visibleXmageIcons, cardWidth: 44)
+        XCTAssertEqual(narrow.visible.map(\.iconType), ["ABILITY_FLYING"])
+        XCTAssertEqual(narrow.hiddenCount, 3)
+        let compact = BattlefieldAbilityBadgePlan(icons: tile.card.visibleXmageIcons, cardWidth: 64)
+        XCTAssertEqual(compact.visible.map(\.iconType), ["ABILITY_FLYING", "ABILITY_REACH"])
+        XCTAssertEqual(compact.hiddenCount, 2)
+        let wide = BattlefieldAbilityBadgePlan(icons: tile.card.visibleXmageIcons, cardWidth: 100)
+        XCTAssertEqual(wide.visible.count, 4)
+        XCTAssertEqual(wide.hiddenCount, 0)
+        XCTAssertEqual(BattlefieldAbilityBadgePlan.accessibleName(for: tile.card.visibleXmageIcons[2]), "Hexproof")
+    }
+
+    @MainActor
+    func testFlyingReachAndHexproofAllFitOneCompactCardAndAssetsLoad() throws {
+        let types = ["ABILITY_FLYING", "ABILITY_REACH", "ABILITY_HEXPROOF"]
+        let tile = try compactCard(type: "Creature", fields: [
+            "cardIcons": types.map { ["iconType": $0, "category": "ABILITY"] }
+        ])
+        let badges = BattlefieldAbilityBadgePlan(icons: tile.card.visibleXmageIcons, cardWidth: tile.width)
+        XCTAssertEqual(badges.visible.map(\.iconType), types)
+        XCTAssertEqual(badges.hiddenCount, 0)
+        for icon in badges.visible {
+            let asset = try XCTUnwrap(XmageCardIcon.assetName(for: icon.iconType))
+            XCTAssertNotNil(UIImage(named: asset), "A missing image would leave an empty badge circle: \(asset)")
+            XCTAssertTrue(tile.accessibilityDescription.contains(BattlefieldAbilityBadgePlan.accessibleName(for: icon)))
+        }
+    }
+
+    @MainActor
+    func testPrintedAbilitiesAloneDoNotCreateCompactBadges() throws {
+        let printedOnly = try attachmentCard("printed", type: "Creature", rules: "Flying, reach, hexproof")
+        XCTAssertTrue(printedOnly.visibleXmageIcons.isEmpty)
+        XCTAssertTrue(BattlefieldAbilityBadgePlan(icons: printedOnly.visibleXmageIcons, cardWidth: 64).visible.isEmpty)
+    }
+
+    @MainActor
     private func compactCard(type: String, fields: [String: Any] = [:]) throws -> ArenaBattlefieldCard {
         var payload = fields
         payload["instanceId"] = "footer-card"

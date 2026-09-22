@@ -119,7 +119,7 @@ struct GameActionDockModel {
         }
 
         if decisionRequired {
-            let primaryAction = promptActions.first
+            let primaryAction = PortraitInteractionPolicy.primaryDockAction(promptActions, prompt: snapshot.promptEnvelopeV2)
             return GameActionDockModel(
                 mode: .prompt,
                 primaryAction: primaryAction,

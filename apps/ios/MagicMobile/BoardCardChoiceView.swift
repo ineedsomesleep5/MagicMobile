@@ -15,7 +15,16 @@ struct BoardCardChoiceView: View {
     @State private var draftIDs: [String] = []
     @State private var topIDs: [String] = []
     @State private var search = ""
+    @FocusState private var searchFocused: Bool
     @State private var inspected: ZoneCard?
+    @State private var promptTextHeight: CGFloat = 0
+
+    private struct PromptTextHeightKey: PreferenceKey {
+        static let defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+            value = nextValue()
+        }
+    }
 
     private var cards: [ZoneCard] { prompt.cards ?? [] }
     private var targets: [ChoicePromptOption] {
@@ -74,13 +83,12 @@ struct BoardCardChoiceView: View {
         GeometryReader { geometry in
             let layout = metrics(for: geometry.size)
             ZStack {
-                Color.black.opacity(0.58).ignoresSafeArea()
+                Color.black.opacity(0.58).ignoresSafeArea().accessibilityHidden(true)
                 chooserPanel(layout)
                 if let inspected { inspectionOverlay(inspected) }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
-        .accessibilityAddTraits(.isModal)
         .onAppear {
             guard draftActive else { return }
             draftIDs = chosenIDs.filter { selectableIDs.contains($0) }
@@ -96,33 +104,36 @@ struct BoardCardChoiceView: View {
         let columns: [GridItem]
         let sideBySideDraft: Bool
         let orderColumnWidth: CGFloat
+        let keyboardCompact: Bool
     }
 
     private func metrics(for size: CGSize) -> ChoiceLayout {
         let compact = (1...2).contains(cards.count)
+        let landscape = size.width > size.height
+        let keyboardCompact = searchFocused && cards.count > 6 && size.height < 400
         let sideBySideDraft = draftActive && size.width >= 600 && size.width > size.height &&
-            !dynamicTypeSize.isAccessibilitySize
-        let height: CGFloat = max(0, min(size.height - 32, 680))
-        let headerLimit: CGFloat = min(96, max(44, height * 0.25))
+            !dynamicTypeSize.isAccessibilitySize && !keyboardCompact
+        let height: CGFloat = max(0, min(size.height - (keyboardCompact ? 12 : 24), 680))
+        let headerLimit: CGFloat = keyboardCompact ? 44 : min(72, max(44, height * 0.2))
         // Draft contents scroll under a pinned footer; landscape shares the
         // remaining height between two independently scrolling columns.
-        let searchHeight: CGFloat = cards.count > 6 ? 44 : 0
+        let searchHeight: CGFloat = cards.count > 6 && !keyboardCompact ? 44 : 0
         let pendingHeight: CGFloat = pendingActionId != nil ? 32 : 0
-        let controlsHeight: CGFloat = headerLimit + (draftActive ? (sideBySideDraft ? 118 : 200) : 156)
-            + searchHeight + pendingHeight
+        let controlsHeight: CGFloat = headerLimit + searchHeight +
+            (keyboardCompact ? 32 : 112) + pendingHeight
         let maximumCardWidth: CGFloat = compact ? 180 : 130
-        let heightLimitedCard: CGFloat = max(draftActive ? 100 : 90,
+        let heightLimitedCard: CGFloat = max(keyboardCompact ? 70 : 90,
             min(maximumCardWidth, (height - controlsHeight) / 1.4))
         let preferredWidth: CGFloat
         if sideBySideDraft {
-            preferredWidth = 740
+            preferredWidth = 600
         } else if compact {
             preferredWidth = cards.count == 1 ? 280 : min(420, max(350, heightLimitedCard * 2 + 60))
         } else {
-            preferredWidth = 700
+            preferredWidth = landscape ? 600 : 420
         }
         let width: CGFloat = max(0, min(size.width - 24, preferredWidth))
-        let orderColumnWidth: CGFloat = sideBySideDraft ? min(280, max(210, width * 0.36)) : 0
+        let orderColumnWidth: CGFloat = sideBySideDraft ? min(220, max(180, width * 0.33)) : 0
         let gridWidth = width - (sideBySideDraft ? orderColumnWidth + 12 : 0)
         let columnCount = compact && cards.count == 2 && gridWidth >= 240 ? 2 : 1
         let gridSpacing: CGFloat = CGFloat(columnCount - 1) * 12
@@ -135,32 +146,89 @@ struct BoardCardChoiceView: View {
             ? min(height, cardWidth * 1.4 + controlsHeight) : height
         return ChoiceLayout(width: width, height: panelHeight, headerLimit: headerLimit,
                             cardWidth: cardWidth, columns: columns,
-                            sideBySideDraft: sideBySideDraft, orderColumnWidth: orderColumnWidth)
+                            sideBySideDraft: sideBySideDraft, orderColumnWidth: orderColumnWidth,
+                            keyboardCompact: keyboardCompact)
     }
 
     private func chooserPanel(_ layout: ChoiceLayout) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            chooserHeader(maxHeight: layout.headerLimit, compactLandscape: layout.sideBySideDraft)
+        VStack(alignment: .leading, spacing: 8) {
+            if !layout.keyboardCompact { chooserHeader(maxHeight: layout.headerLimit) }
             if cards.count > 6 {
-                TextField("Find a card", text: $search)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("board.choice.search")
+                HStack(spacing: 8) {
+                    searchField
+                    if layout.keyboardCompact {
+                        Button("Prompt") { searchFocused = false }
+                            .frame(minHeight: 44)
+                            .accessibilityLabel(Text(verbatim: "Read instruction: \(prompt.message)"))
+                            .accessibilityHint("Dismiss the keyboard to read the full instruction")
+                            .accessibilityIdentifier("board.choice.header")
+                        Button("Done") { searchFocused = false }
+                            .frame(minWidth: 44, minHeight: 44)
+                        closeButton
+                    }
+                }
             }
             chooserBody(layout)
-            chooserFooter
-            if pendingActionId != nil {
-                ProgressView("Waiting for XMage…").font(.caption)
+                .frame(maxHeight: .infinity)
+            if !layout.keyboardCompact {
+                chooserFooter
+                if pendingActionId != nil {
+                    ProgressView("Waiting for XMage…").font(.caption)
+                }
             }
         }
-        .padding(16)
+        .padding(layout.keyboardCompact ? 8 : 12)
         .frame(width: layout.width, height: layout.height)
         .background(MagicPalette.iron, in: RoundedRectangle(cornerRadius: 18))
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(MagicPalette.antiqueGold.opacity(0.6)))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Card choice dialog")
+        .accessibilityIdentifier("board.choice.dialog")
+        .accessibilityAddTraits(.isModal)
+    }
+
+    private var searchField: some View {
+        TextField("Name, type or rules text", text: $search)
+            .textFieldStyle(.roundedBorder)
+            .frame(minHeight: 44)
+            .focused($searchFocused)
+            .submitLabel(.done)
+            .onSubmit { searchFocused = false }
+            .accessibilityIdentifier("board.choice.search")
+    }
+
+    private var closeButton: some View {
+        Button(action: close) {
+            Image(systemName: "xmark").frame(width: 44, height: 44)
+        }
+        .accessibilityLabel("Close card choices")
     }
 
     @ViewBuilder
     private func chooserBody(_ layout: ChoiceLayout) -> some View {
-        if layout.sideBySideDraft {
+        if layout.keyboardCompact {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    if pendingActionId != nil {
+                        ProgressView("Waiting for XMage…").font(.caption)
+                    }
+                    if !targets.isEmpty {
+                        Text("Other targets").font(.subheadline.weight(.semibold))
+                        ForEach(targets) { target in targetRow(target) }
+                    }
+                    ForEach(filteredCards) { card in compactCardRow(card) }
+                    if draftActive { draftOrderControls }
+                    if filteredCards.isEmpty && !search.isEmpty {
+                        emptySearch
+                    } else if cards.allSatisfy({ !$0.isPromptSelectable }) && targets.isEmpty {
+                        Text("No legal cards to select. You can still hold a card to inspect it.")
+                            .font(.subheadline)
+                    }
+                }
+                .padding(6)
+            }
+            .accessibilityIdentifier("board.choice.cards")
+        } else if layout.sideBySideDraft {
             HStack(alignment: .top, spacing: 12) {
                 choiceContent(layout)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -189,31 +257,29 @@ struct BoardCardChoiceView: View {
         }
     }
 
-    private func chooserHeader(maxHeight: CGFloat, compactLandscape: Bool) -> some View {
+    private func chooserHeader(maxHeight: CGFloat) -> some View {
         HStack(alignment: .top) {
-            if compactLandscape {
+            ScrollView {
                 Text(prompt.message)
                     .font(.headline)
-                    .lineLimit(2)
-                    .accessibilityLabel(Text(verbatim: prompt.message))
-                    .accessibilityIdentifier("board.choice.header")
-            } else {
-                ViewThatFits(in: .vertical) {
-                    Text(prompt.message).font(.headline).fixedSize(horizontal: false, vertical: true)
-                    ScrollView {
-                        Text(prompt.message).font(.headline)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: PromptTextHeightKey.self, value: proxy.size.height)
+                        }
                     }
-                    .accessibilityIdentifier("board.choice.message.scroll")
+                    .accessibilityIdentifier("board.choice.header")
+            }
+            .frame(height: min(maxHeight, max(24, promptTextHeight)))
+            .accessibilityIdentifier("board.choice.message.scroll")
+            .onPreferenceChange(PromptTextHeightKey.self) { measured in
+                if measured.isFinite, measured > 0, abs(measured - promptTextHeight) > 0.5 {
+                    promptTextHeight = measured
                 }
-                .frame(maxHeight: maxHeight, alignment: .topLeading)
             }
             Spacer(minLength: 8)
-            Button(action: close) {
-                Image(systemName: "xmark").frame(width: 44, height: 44)
-            }
-            .accessibilityLabel("Close card choices")
+            closeButton
         }
     }
 
@@ -235,7 +301,9 @@ struct BoardCardChoiceView: View {
                     cardRow(card, width: layout.cardWidth)
                 }
             }
-            if cards.allSatisfy({ !$0.isPromptSelectable }) && targets.isEmpty {
+            if filteredCards.isEmpty && !search.isEmpty {
+                emptySearch
+            } else if cards.allSatisfy({ !$0.isPromptSelectable }) && targets.isEmpty {
                 Text("No legal cards to select. You can still hold a card to inspect it.")
                     .font(.subheadline)
             }
@@ -243,7 +311,18 @@ struct BoardCardChoiceView: View {
     }
 
     private var filteredCards: [ZoneCard] {
-        cards.filter { search.isEmpty || $0.card.name.localizedCaseInsensitiveContains(search) }
+        cards.filter { PortraitInteractionPolicy.matchesCardSearch($0, query: search) }
+    }
+
+    private var emptySearch: some View {
+        HStack {
+            Text("No cards match your search.").font(.subheadline)
+                .accessibilityIdentifier("board.choice.search.empty")
+            Spacer(minLength: 8)
+            Button("Clear search") { search = "" }
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("board.choice.search.clear")
+        }
     }
 
     private var draftOrderControls: some View {
@@ -337,6 +416,38 @@ struct BoardCardChoiceView: View {
             }
         }
         .frame(width: width)
+    }
+
+    private func compactCardRow(_ card: ZoneCard) -> some View {
+        let isSelected = draftIDs.contains(card.id) || selectedID == card.id
+        let traits: AccessibilityTraits = isSelected ? .isSelected : []
+        let eligibility = card.isPromptSelectable ? "legal choice" : "not a legal choice"
+        let selectAction = isSelected ? "Clear selection" : "Select card"
+        let hint = card.isPromptSelectable
+            ? (draftActive ? "Tap to add or remove from the draft. Inspect card is also available." : "Select, then confirm after dismissing the keyboard. Inspect card is also available.")
+            : "This card cannot be selected. Inspect card is available."
+        return HStack(spacing: 10) {
+            cardArtwork(card, width: 44)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(card.card.name).font(.subheadline.weight(.semibold))
+                    .accessibilityIdentifier("board.choice.caption.\(card.id)")
+                Text("\(eligibility) · \(selectionState(card.id))")
+                    .font(.caption)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, minHeight: 62, alignment: .leading)
+        .contentShape(Rectangle())
+        .onCardInteraction(tap: { toggleSelection(card.id) }, inspect: { inspected = card },
+                           release: { if inspected?.id == card.id { inspected = nil } })
+        .accessibilityLabel(Text(verbatim: "\(card.card.name), \(eligibility)"))
+        .accessibilityValue(Text(verbatim: selectionState(card.id)))
+        .accessibilityAddTraits(traits)
+        .accessibilityHint(Text(verbatim: hint))
+        .accessibilityAction { toggleSelection(card.id) }
+        .accessibilityAction(named: Text(selectAction)) { toggleSelection(card.id) }
+        .accessibilityAction(named: Text("Inspect card")) { inspected = card }
+        .accessibilityIdentifier("board.choice.card.\(card.id)")
     }
 
     private func cardArtwork(_ card: ZoneCard, width: CGFloat) -> some View {

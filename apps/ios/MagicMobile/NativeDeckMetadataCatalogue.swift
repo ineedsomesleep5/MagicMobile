@@ -1,5 +1,20 @@
 import Foundation
 
+/// Resolves only reverse faces attested by the bundled, selected-printing aliases.
+enum NativeDeckCanonicalNames {
+
+    static func reverseFaces(_ aliases: [String: String], exactNames: Set<String>) -> [String: String] {
+        var candidates: [String: Set<String>] = [:]
+        for (combined, front) in aliases {
+            guard combined.hasPrefix(front + " // ") else { continue }
+            let back = String(combined.dropFirst(front.count + 4))
+            guard !back.isEmpty, !exactNames.contains(back) else { continue }
+            candidates[back, default: []].insert(front)
+        }
+        return candidates.compactMapValues { $0.count == 1 ? $0.first : nil }
+    }
+}
+
 /// Selected-printing metadata, not live Oracle updates, Commander legality or mana production.
 struct NativeDeckMetadataCatalogue {
     struct Card: Identifiable, Equatable {
@@ -70,6 +85,7 @@ struct NativeDeckMetadataCatalogue {
     private let cards: [Card]
     private let index: [String: Card]
     private let aliases: [String: String]
+    private let reverseFaces: [String: String]
 
     static func bundled(bundle explicitBundle: Bundle? = nil) throws -> Self {
         #if SWIFT_PACKAGE
@@ -158,10 +174,11 @@ struct NativeDeckMetadataCatalogue {
         cards = result.sorted { $0.name < $1.name }
         index = Dictionary(uniqueKeysWithValues: cards.map { ($0.name, $0) })
         aliases = suppliedAliases.filter { !names.contains($0.key) }
+        reverseFaces = NativeDeckCanonicalNames.reverseFaces(aliases, exactNames: names)
     }
 
     func card(named name: String) -> Card? {
-        index[name] ?? aliases[name].flatMap { index[$0] }
+        index[name] ?? aliases[name].flatMap { index[$0] } ?? reverseFaces[name].flatMap { index[$0] }
     }
 
     /// All names supported by this installed engine catalogue, without the UI search limit.

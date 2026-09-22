@@ -4,6 +4,147 @@ import ImageIO
 @testable import MagicMobile
 
 final class NativeAssetDownloadsTests: XCTestCase {
+    @MainActor func testFailedScanCannotLeaveSuccessfulCoverageState() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = NativeAssetDownloads(store: NativeAssetStore(directory: directory))
+        await model.scan(names: ["Sol Ring"])
+        XCTAssertTrue(model.scanSucceeded)
+        await model.scan(names: [String(repeating: "x", count: 10_000)])
+        XCTAssertFalse(model.scanSucceeded)
+        XCTAssertFalse(model.isScanning)
+    }
+    @MainActor func testOptInFullPublicTokenDownloadThenOfflineReopenAndMissingOnlyRetry() async throws {
+        guard ProcessInfo.processInfo.environment["MM_LIVE_FULL_TOKEN_DOWNLOAD"] == "1",
+              let fixture = ProcessInfo.processInfo.environment["MAGICMOBILE_BULK_FIXTURE"],
+              let destination = ProcessInfo.processInfo.environment["MAGICMOBILE_ARTWORK_AUDIT_DIR"] else {
+            throw XCTSkip("Explicit live token-download opt-in and local catalogue/audit paths required.")
+        }
+        let catalogue = try NativeArtworkCatalogue.parse(file: URL(fileURLWithPath: fixture))
+        for family in ["Soldier", "Human", "Elf Warrior", "Zombie", "Treasure"] {
+            XCTAssertTrue(catalogue.allTokens.contains { $0.name == family }, "Full catalogue must cover \(family)")
+        }
+        let directory = URL(fileURLWithPath: destination, isDirectory: true)
+        let store = NativeAssetStore(directory: directory.appendingPathComponent("images"))
+        let queue = NativeArtworkBackgroundQueue(directory: directory.appendingPathComponent("queue"), store: store,
+            configuration: .ephemeral, allowNetwork: { true })
+        let model = NativeAssetDownloads(store: store, catalogueLoader: { catalogue }, backgroundQueue: queue)
+        model.download(names: ["Betor, Kin to All"], includeTokens: true, allowNetwork: true, quality: .standard, fullCatalogue: true)
+        let deadline = Date().addingTimeInterval(300)
+        while (model.isRunning || model.isScanning) && Date() < deadline { try await Task.sleep(for: .milliseconds(200)) }
+        if model.isRunning { model.cancel(); XCTFail("Public artwork download exceeded five minutes"); return }
+        XCTAssertEqual(model.failures, [])
+        XCTAssertEqual(model.tokenStored, catalogue.allTokens.count)
+        XCTAssertEqual(model.cardStored, 1)
+        let reopened = NativeAssetStore(directory: directory.appendingPathComponent("images"))
+        let offline = NativeDeckArtwork(assetStore: reopened, tokenLookup: { _, _, _, _, _, _, _ in
+            XCTFail("Offline verification must not use token search"); throw URLError(.notConnectedToInternet)
+        })
+        for token in catalogue.allTokens {
+            let runtimeName = token.name.hasSuffix(" Token") ? token.name : token.name + " Token"
+            let bytes = try await offline.imageData(name: runtimeName, variant: .board, allowNetwork: false,
+                tokenTypeLine: token.typeLine, tokenOracleText: token.oracleText, tokenPower: token.power,
+                tokenToughness: token.toughness, tokenColors: token.colors)
+            XCTAssertNotNil(bytes, "Offline token missing: \(token.name) \(token.artworkKey)")
+            if let bytes { XCTAssertNotNil(NativeDeckArtwork.decodedImage(bytes, variant: .board)) }
+        }
+        let commander = try await offline.imageData(name: "Betor, Kin to All", variant: .board, allowNetwork: false)
+        XCTAssertNotNil(commander)
+        model.download(names: ["Betor, Kin to All"], includeTokens: true, allowNetwork: true, quality: .standard, fullCatalogue: true)
+        while (model.isRunning || model.isScanning) && Date() < deadline { try await Task.sleep(for: .milliseconds(200)) }
+        XCTAssertFalse(model.isRunning)
+        XCTAssertEqual(queue.total, 0, "Second download must transfer no already stored images")
+        print("OFFLINE_TOKEN_AUDIT tokens=\(catalogue.allTokens.count) backFaces=\(catalogue.allTokens.filter { $0.face == "back" }.count) commander=Betor repeatedTransfers=\(queue.total) bytes=\(model.storedBytes)")
+    }
+    func testExactTokenPrintingsRemainResolvableBesideVariableTokenOffline() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = NativeAssetStore(directory: directory, availableBytes: { _ in Int64.max })
+        let first = NativeTokenArtwork(id: UUID(), name: "Zombie", typeLine: "Token Creature — Zombie", oracleText: "", power: "2", toughness: "2", colors: ["B"])
+        var other = first; other.face = "back"
+        let variable = NativeTokenArtwork(id: UUID(), name: "Zombie", typeLine: "Token Creature — Zombie", oracleText: "", power: "*", toughness: "*", colors: ["B"])
+        let bytes = try image(width: 488, height: 680)
+        for token in [first, other, variable] { try await store.saveToken(token) }
+        try await store.save(bytes, key: other.artworkKey, quality: .standard)
+        let reopened = NativeAssetStore(directory: directory, availableBytes: { _ in Int64.max })
+        let offline = await reopened.tokenImage(name: "Zombie Token", typeLine: "Creature — Zombie", oracleText: "", power: "2", toughness: "2", colors: ["B"])
+        XCTAssertEqual(offline, bytes, "Equivalent exact printings must resolve even beside a different variable-size token")
+        let wrong = await reopened.tokenImage(name: "Zombie Token", typeLine: "Creature — Zombie", oracleText: "Decayed", power: "2", toughness: "2", colors: ["B"])
+        XCTAssertNil(wrong)
+    }
+
+    func testTreasureSelfReferenceWordingAndRefreshUseTokenIdentity() async throws {
+        let treasure = NativeTokenArtwork(id: UUID(), name: "Treasure", typeLine: "Token Artifact — Treasure",
+            oracleText: "{T}, Sacrifice this token: Add one mana of any color.", colors: [])
+        XCTAssertEqual(NativeAssetStore.matchTokenArtwork([treasure], name: "Treasure Token", typeLine: "Artifact — Treasure",
+            oracleText: "{T}, Sacrifice this artifact: Add one mana of any color.", power: "0", toughness: "0", colors: []), treasure)
+        XCTAssertNil(NativeAssetStore.matchTokenArtwork([treasure], name: "Treasure Token", typeLine: "Artifact — Treasure",
+            oracleText: "{T}, Sacrifice this artifact: Add {C}.", power: "0", toughness: "0", colors: []))
+        XCTAssertTrue(NativeAssetStore.artworkChangeAffects(key: treasure.artworkKey, storedName: "Treasure", name: "Treasure Token", isToken: true))
+        XCTAssertFalse(NativeAssetStore.artworkChangeAffects(key: treasure.artworkKey, storedName: "Treasure", name: "Zombie Token", isToken: true))
+    }
+    func testEngineStyleFoodSelfReferenceFindsDownloadedArtworkOffline() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = NativeAssetStore(directory: directory, availableBytes: { _ in Int64.max })
+        let food = NativeTokenArtwork(id: UUID(), name: "Food", typeLine: "Token Artifact — Food",
+            oracleText: "{2}, {T}, Sacrifice this token: You gain 3 life.", colors: [])
+        let imageBytes = try image(width: 488, height: 680)
+        try await store.saveToken(food)
+        try await store.save(imageBytes, key: food.artworkKey, quality: .standard)
+
+        let reopened = NativeAssetStore(directory: directory, availableBytes: { _ in Int64.max })
+        let offline = NativeDeckArtwork(assetStore: reopened, tokenLookup: { _, _, _, _, _, _, _ in
+            XCTFail("Downloaded Food must resolve without a network lookup")
+            return nil
+        })
+        let artwork = try await offline.imageData(name: "Food Token", variant: .board, allowNetwork: false,
+            tokenTypeLine: "Artifact — Food",
+            tokenOracleText: "{2}, {T}, Sacrifice Food Token: You gain 3 life.",
+            tokenPower: "0", tokenToughness: "0", tokenColors: [])
+        XCTAssertEqual(artwork, imageBytes)
+    }
+    func testNamedTokenSelfReferenceDoesNotCollapseOtherRulesOrVariants() {
+        let food = NativeTokenArtwork(id: UUID(), name: "Food", typeLine: "Token Artifact — Food",
+            oracleText: "{2}, {T}, Sacrifice this token: You gain 3 life.", colors: [])
+        let differentFood = NativeTokenArtwork(id: UUID(), name: "Food", typeLine: "Token Artifact — Food",
+            oracleText: "{2}, {T}, Sacrifice this token: Add {C}.", colors: [])
+        func match(_ rules: String) -> NativeTokenArtwork? {
+            NativeAssetStore.matchTokenArtwork([food, differentFood], name: "Food Token",
+                typeLine: "Artifact — Food", oracleText: rules, power: "0", toughness: "0", colors: [])
+        }
+        XCTAssertEqual(match("{2}, {T}, Sacrifice Food Token: You gain 3 life."), food)
+        XCTAssertNil(match("{2}, {T}, Sacrifice a Food Token: You gain 3 life."))
+        XCTAssertNil(match("{2}, {T}, Sacrifice Food Token: Draw a card."))
+        XCTAssertFalse(NativeAssetStore.sameTokenIdentity(food, differentFood))
+
+        let treasure = NativeTokenArtwork(id: UUID(), name: "Treasure", typeLine: "Token Artifact — Treasure",
+            oracleText: "{T}, Sacrifice this artifact: Add one mana of any color.", colors: [])
+        XCTAssertEqual(NativeAssetStore.matchTokenArtwork([treasure], name: "Treasure Token",
+            typeLine: "Artifact — Treasure", oracleText: "{T}, Sacrifice Treasure Token: Add one mana of any color.",
+            power: "0", toughness: "0", colors: []), treasure)
+    }
+    func testLiveDownloadedFoodResolvesEngineStyleRequestWhenAuditStoreProvided() async throws {
+        guard let audit = ProcessInfo.processInfo.environment["MAGICMOBILE_ARTWORK_AUDIT_DIR"] else {
+            throw XCTSkip("Set MAGICMOBILE_ARTWORK_AUDIT_DIR to the existing read-only token audit store")
+        }
+        let store = NativeAssetStore(directory: URL(fileURLWithPath: audit).appendingPathComponent("images"))
+        let offline = NativeDeckArtwork(assetStore: store, tokenLookup: { _, _, _, _, _, _, _ in
+            XCTFail("The existing Food download must work offline")
+            return nil
+        })
+        for (name, type, rules) in [
+            ("Food", "Food", "{2}, {T}, Sacrifice Food Token: You gain 3 life."),
+            ("Treasure", "Treasure", "{T}, Sacrifice Treasure Token: Add one mana of any color."),
+            ("Clue", "Clue", "{2}, Sacrifice Clue Token: Draw a card."),
+            ("Blood", "Blood", "{1}, {T}, Discard a card, Sacrifice Blood Token: Draw a card.")
+        ] {
+            let artwork = try await offline.imageData(name: name + " Token", variant: .board, allowNetwork: false,
+                tokenTypeLine: "Artifact — " + type, tokenOracleText: rules,
+                tokenPower: "0", tokenToughness: "0", tokenColors: [])
+            XCTAssertNotNil(artwork, "Previously downloaded \(name) must resolve its engine-style self name offline")
+        }
+    }
     @MainActor func testTokenOnlyDownloadsNoCardsAndResumesFromStoredImage() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -135,6 +276,7 @@ final class NativeAssetDownloadsTests: XCTestCase {
         XCTAssertFalse(model.isRunning); XCTAssertFalse(queue.isRunning)
         XCTAssertEqual(model.failures, []); XCTAssertEqual(model.completed, 3); XCTAssertEqual(model.total, 3)
         await fulfillment(of: [stored], timeout: 2)
+        NotificationCenter.default.removeObserver(observer)
         XCTAssertEqual(DownloadImageFixtureProtocol.urls.count, 3)
         XCTAssertEqual(Set(DownloadImageFixtureProtocol.urls.map(\.lastPathComponent)), ["front.jpg", "back.jpg", "exact-soldier.jpg"])
         XCTAssertTrue(DownloadImageFixtureProtocol.urls.allSatisfy { $0.host == "cards.scryfall.io" && $0.path.hasPrefix("/normal/") })
@@ -152,6 +294,18 @@ final class NativeAssetDownloadsTests: XCTestCase {
         XCTAssertFalse(model.isRunning); XCTAssertEqual(model.failures, [])
         XCTAssertEqual(queue.total, 0); XCTAssertEqual(model.total, 0)
         XCTAssertEqual(DownloadImageFixtureProtocol.urls.count, 3, "Repeat should not transfer any already stored image")
+        // A single corrupt file must produce one repair, preserving other art.
+        let frontFile = await store.file(key: NativeAssetStore.cardKey(front) + "|standard")
+        try Data("interrupted image".utf8).write(to: frontFile)
+        await model.scan(names: [front], quality: .standard, fullCatalogue: fullCatalogue)
+        XCTAssertEqual(model.missingNames, [front])
+        model.download(names: [front], includeTokens: true, allowNetwork: true, quality: .standard, fullCatalogue: fullCatalogue)
+        for _ in 0..<500 where model.isRunning { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertFalse(model.isRunning)
+        XCTAssertEqual(queue.total, 1)
+        XCTAssertEqual(DownloadImageFixtureProtocol.urls.count, 4)
+        let retainedBack = await store.image(key: NativeAssetStore.cardKey(back), quality: .standard)
+        XCTAssertEqual(retainedBack, bytes)
     }
 
     @MainActor func testFullCatalogueDownloadStoresFrontBackAndTokenWithoutNamedRequestsAndResumesOffline() async throws {
@@ -308,6 +462,7 @@ final class NativeAssetDownloadsTests: XCTestCase {
         XCTAssertEqual(model.tokenTotal, 2)
         XCTAssertEqual(model.tokenStored, 1)
         XCTAssertEqual(model.missingTokenNames, ["Unsupported token"])
+        XCTAssertEqual(model.downloadableMissingTokenCount, 0, "Unavailable artwork must not inflate transfer estimate")
         XCTAssertEqual(model.tokenDiscoveryRemaining, 0)
         do { try await store.saveCatalogueTokens([], unavailableNames: [String(repeating: "x", count: 513)]); XCTFail("Reject oversized unavailable name") } catch {}
         let unavailable = await store.unavailableCatalogueTokenNames()

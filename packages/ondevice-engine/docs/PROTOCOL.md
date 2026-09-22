@@ -57,9 +57,11 @@ Poll results contain match/viewer IDs, global revision, phase, viewer snapshot, 
 
 `gameView.canPlayObjects.objects[objectUUID][category]` rows preserve upstream
 `id` (ability UUID) and `value` (label), and add `manaAbility: boolean` from current
-`ActivatedManaAbilityImpl` objects. Upstream puts non-basic mana abilities in
-`other`; that category alone is not a mana classification. Source actions still
-answer with the object UUID, not the ability UUID. XMage may then ask for an exact
+`ActivatedManaAbilityImpl` objects and `spellAbility: boolean` from current
+`SpellAbility` objects in the same playable list. Upstream puts non-basic mana
+abilities and modal spell faces in `other`; that category alone classifies neither.
+These booleans describe only currently offered abilities and do not parse labels.
+Source actions still answer with the object UUID, not the ability UUID. XMage may then ask for an exact
 ability, additional cost, or color. Old payloads safely identify only
 `basicManaAbilities` as mana during payment. Playability is upstream's offered
 action estimate, not proof that a complete payment sequence exists.

@@ -9805,6 +9805,9 @@ struct GameplayActionDock: View {
                 .disabled(!model.isPrimaryEnabled)
                 .accessibilityIdentifier("board.action.primary")
                 .accessibilityHint(showsPriorityHelp ? GameplayActionPresentation.priorityHint(hasStack: hasStackForPriority) : "")
+                // A finger-down on Pass must not become a new prompt's action
+                // if an engine update replaces this control before finger-up.
+                .id("\(model.primaryAction?.id ?? "none"):\(snapshot.promptEnvelopeV2?.id ?? "none"):\(model.primaryAction?.messageId ?? snapshot.promptEnvelopeV2?.messageId ?? -1)")
             if showsPriorityHelp {
                 Text(GameplayActionPresentation.priorityDetail(hasStack: hasStackForPriority))
                     .font(.caption2)
@@ -9827,7 +9830,7 @@ struct GameplayActionDock: View {
     private var controlsMenu: some View {
         Menu {
                     if model.mode == .prompt {
-                        ForEach(Array(model.promptActions.dropFirst())) { action in
+                        ForEach(model.promptActions.filter { $0.id != model.primaryAction?.id }) { action in
                             Button(action.label) {
                                 runAction(action)
                             }
@@ -10651,7 +10654,8 @@ struct HandFan: View {
                     card: card,
                     selected: selected,
                     pending: pendingCardInstanceId == card.instanceId,
-                    legal: !playableActions.isEmpty,
+                    legal: playableActions.contains { $0.type == "play_land" },
+                    castOffered: playableActions.contains { $0.type == "cast_spell" },
                     zoneName: "Hand",
                     width: metrics.handCardWidth,
                     height: metrics.handCardHeight
@@ -10901,7 +10905,18 @@ struct CardTile: View {
             }
         }
         .overlay {
-            if castOffered && !selected && !pending && !targetable {
+            if castOffered && legal && !selected && !pending && !targetable {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(LinearGradient(stops: [
+                        .init(color: MagicPalette.legalEmerald, location: 0),
+                        .init(color: MagicPalette.legalEmerald, location: 0.49),
+                        .init(color: .white, location: 0.51),
+                        .init(color: .white, location: 1)
+                    ], startPoint: .leading, endPoint: .trailing), lineWidth: 3)
+                    .shadow(color: .white.opacity(0.5), radius: 8)
+                    .padding(-3)
+                    .allowsHitTesting(false)
+            } else if castOffered && !selected && !pending && !targetable {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(.white.opacity(0.98), lineWidth: 2.8)
                     .shadow(color: .white.opacity(0.85), radius: 7)
@@ -10909,7 +10924,7 @@ struct CardTile: View {
                     .padding(-2)
                     .allowsHitTesting(false)
             }
-            if legal && !selected && !pending && !targetable {
+            if legal && !castOffered && !selected && !pending && !targetable {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(MagicPalette.legalEmerald.opacity(0.92), lineWidth: max(width * 0.030, 2.1))
                     .shadow(
@@ -10933,7 +10948,17 @@ struct CardTile: View {
         .accessibilityLabel(card.accessibilityLabel(zoneName: zoneName, selected: selected, legal: legal, pending: pending))
         .accessibilityIdentifier(card.accessibilityIdentifier(zoneName: zoneName))
         .accessibilityAddTraits(.isButton)
-        .accessibilityHint(castOffered ? "Drag upward to start casting. The engine will ask for payment and choices. Hold to inspect." : "Tap to select. Long press to inspect.")
+        .accessibilityValue(zoneName == "Hand" ? CardPlayAffordance(land: legal, spell: castOffered).accessibilityValue : "")
+        .accessibilityHint(playHint)
+    }
+
+    private var playHint: String {
+        switch CardPlayAffordance(land: legal, spell: castOffered) {
+        case .landAndSpell: return "Land play and spell cast available. Select to choose a face. Hold to inspect."
+        case .spell: return "Spell cast available. Drag upward to start casting. The engine will ask for payment and choices. Hold to inspect."
+        case .land: return "Tap to select. Long press to inspect."
+        case .none: return "Tap to select. Long press to inspect."
+        }
     }
 
     private var strokeColor: Color {

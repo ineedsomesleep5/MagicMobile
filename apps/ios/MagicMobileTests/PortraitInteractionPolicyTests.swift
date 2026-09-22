@@ -2,6 +2,29 @@ import XCTest
 @testable import MagicMobile
 
 final class PortraitInteractionPolicyTests: XCTestCase {
+    func testDualFaceAffordanceUsesOnlyCurrentOffers() {
+        XCTAssertEqual(CardPlayAffordance(land: true, spell: true), .landAndSpell)
+        XCTAssertEqual(CardPlayAffordance(land: false, spell: true), .spell)
+        XCTAssertEqual(CardPlayAffordance(land: true, spell: false), .land)
+        XCTAssertEqual(CardPlayAffordance(land: false, spell: false), .none)
+    }
+    func testCombatSpecialNeverBecomesPrimaryEvenWhenOrderedFirst() throws {
+        let actions = try JSONDecoder().decode([LegalAction].self, from: Data(#"[{"id":"all","type":"resolve_choice","playerId":"a","label":"Attack all","promptId":"combat","messageId":3,"choiceIds":["special"]},{"id":"done","type":"answer_yes_no","playerId":"a","label":"Done","promptId":"combat","messageId":3,"confirmed":true}]"#.utf8))
+        let prompt = try JSONDecoder().decode(PromptEnvelopeV2.self, from: Data(#"{"id":"combat","method":"GAME_SELECT","messageId":3,"playerId":"a","responseKind":"target","message":"Select attackers","responseCommand":{"type":"choose_target"}}"#.utf8))
+        XCTAssertEqual(PortraitInteractionPolicy.primaryDockAction(actions, prompt: prompt)?.id, "done")
+        XCTAssertNil(PortraitInteractionPolicy.primaryDockAction([actions[0]], prompt: prompt))
+        XCTAssertEqual(PortraitInteractionPolicy.primaryDockAction(actions.reversed(), prompt: prompt)?.id, "done")
+    }
+
+    func testTutorSearchFindsVisibleRulesAndTypesWithoutChangingSelection() throws {
+        let card = try JSONDecoder().decode(ZoneCard.self, from: Data(#"{"instanceId":"visible","card":{"name":"Eternal Witness","typeLine":"Creature — Human Shaman","oracleText":"Return target card from your graveyard to your hand."},"selectable":false}"#.utf8))
+        for query in ["graveyard", "HUMAN", " witness ", "graveyard hand", ""] {
+            XCTAssertTrue(PortraitInteractionPolicy.matchesCardSearch(card, query: query), query)
+        }
+        XCTAssertFalse(PortraitInteractionPolicy.matchesCardSearch(card, query: "flying"))
+        XCTAssertFalse(card.isPromptSelectable)
+    }
+
     func testCardChoiceRoutingUsesViewerAndPromptRevision() throws {
         func snapshot(viewer: String = "a", revision: Int = 1, type: String = "choose_target", hasCards: Bool = true) throws -> GameSnapshot {
             let prompt: [String: Any] = ["id": "same-id", "method": "GAME_PICK_TARGET", "messageId": revision, "playerId": viewer,
