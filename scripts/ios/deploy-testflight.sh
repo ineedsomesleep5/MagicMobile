@@ -3,6 +3,16 @@
 set -euo pipefail
 umask 077
 
+# Controller checkpoint. The default remains the full guarded release.
+STOP_AFTER_UPLOAD=0
+if [[ $# -gt 0 ]]; then
+  if [[ $# -eq 1 && "$1" == --stop-after-upload ]]; then
+    STOP_AFTER_UPLOAD=1
+  else
+    echo "Usage: $0 [--stop-after-upload]" >&2; exit 2
+  fi
+fi
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROJECT_PATH="${PROJECT_PATH:-$REPO_ROOT/apps/ios/MagicMobileiOS.xcodeproj}"
 SCHEME="${SCHEME:-MagicMobile}"
@@ -96,6 +106,10 @@ python3 "$GUARD" upload-input --repo "$REPO_ROOT" --receipt "$RUN_ROOT/signed-re
 xcrun altool --upload-app -f "$IPA_PATH" --api-key "$ASC_KEY_ID" \
   --api-issuer "$ASC_ISSUER_ID" 2>&1 | tee "$UPLOAD_LOG"
 node "$BUILD_NUMBER_SCRIPT" record --upload-log "$UPLOAD_LOG" --ipa "$IPA_PATH"
+if [[ "$STOP_AFTER_UPLOAD" == 1 ]]; then
+  echo "Upload recorded; distribution remains pending for this exact release root."
+  exit 0
+fi
 BUILD_NUMBER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$REPO_ROOT/apps/ios/MagicMobile/Info.plist")"
 APP_VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["appVersion"])' "$RUN_ROOT/signed-receipt.json")"
 "$DISTRIBUTION_SCRIPT" --version "$APP_VERSION" --build-number "$BUILD_NUMBER" --release-root "$RUN_ROOT"

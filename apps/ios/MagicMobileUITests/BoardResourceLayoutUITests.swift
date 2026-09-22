@@ -17,12 +17,9 @@ final class BoardResourceLayoutUITests: XCTestCase {
 
     private func launch(mode: String, portrait: Bool) {
         app = XCUIApplication()
-        app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        app.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "crowded-battlefield"
+        UITestHarness.configure(app, preview: "crowded-battlefield",
+                                extraArguments: ["-magicmobile.portraitModeEnabled", "YES"])
         app.launchEnvironment["MAGICMOBILE_BOARD_RESOURCE_LAYOUT_UI_TEST"] = mode
-        app.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
-        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-                               "-magicmobile.portraitModeEnabled", "YES"]
         XCUIDevice.shared.orientation = portrait ? .portrait : .landscapeLeft
         app.launch()
         XCTAssertTrue(app.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 20))

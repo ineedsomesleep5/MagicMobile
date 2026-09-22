@@ -1,13 +1,14 @@
 name: On-device engine gates
 on:
   pull_request:
-    paths: ['packages/ondevice-engine/**', 'apps/ios/**', 'apps/ios-ondevice/**', 'scripts/deck-studio/**', '.github/workflows/magicmobile-ondevice.yml']
+    paths: ['packages/ondevice-engine/**', 'apps/ios/**', 'apps/ios-ondevice/**', 'scripts/deck-studio/**', 'scripts/ci/**', '.github/workflows/magicmobile-ondevice.yml']
   push:
     branches: [main]
-    paths: ['packages/ondevice-engine/**', 'apps/ios/**', 'apps/ios-ondevice/**', 'scripts/deck-studio/**', '.github/workflows/magicmobile-ondevice.yml']
+    paths: ['packages/ondevice-engine/**', 'apps/ios/**', 'apps/ios-ondevice/**', 'scripts/deck-studio/**', 'scripts/ci/**', '.github/workflows/magicmobile-ondevice.yml']
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
   boundary-tests:
     runs-on: ubuntu-latest
@@ -16,12 +17,34 @@ jobs:
         working-directory: packages/ondevice-engine
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
+      - name: Check trusted job evidence
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 ../../scripts/ci/reuse_evidence.py check --job boundary-tests
       - run: bash scripts/test_tooling.sh
+        if: steps.reuse.outputs.reused != 'true'
       - run: bash scripts/test_native_boundary.sh
+        if: steps.reuse.outputs.reused != 'true'
+      - name: Write trusted job receipt
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.reuse.outputs.reused != 'true'
+        env:
+          RECEIPT_DIR: ${{ runner.temp }}/ci-evidence
+        run: python3 ../../scripts/ci/reuse_evidence.py write --job boundary-tests --output "$RECEIPT_DIR/receipt.json"
+      - uses: actions/upload-artifact@v4
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.reuse.outputs.reused != 'true'
+        with:
+          name: ci-evidence-boundary-tests-${{ github.run_id }}
+          path: ${{ runner.temp }}/ci-evidence/receipt.json
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -30,17 +53,34 @@ jobs:
   swift:
     runs-on: macos-latest
     timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - run: command -v xcodegen || brew install xcodegen
+      - name: Check trusted job evidence
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/reuse_evidence.py check --job swift
       - run: swift test --package-path packages/ondevice-engine/swift
+        if: steps.reuse.outputs.reused != 'true'
       - name: Test native iOS presentation and deck contracts
+        if: steps.reuse.outputs.reused != 'true'
         run: swift test --package-path apps/ios --jobs 2
       - name: Check Deck Studio deterministic core
+        if: steps.reuse.outputs.reused != 'true'
         run: bash scripts/deck-studio/test-core.sh
       - run: bash packages/ondevice-engine/scripts/test_swift_close.sh
-      - run: command -v xcodegen || brew install xcodegen
+        if: steps.reuse.outputs.reused != 'true'
       - run: bash packages/ondevice-engine/scripts/test_ios_harness.sh
+        if: steps.reuse.outputs.reused != 'true'
       - name: Compile actual iOS app and tests without simulator or signing
+        if: steps.reuse.outputs.reused != 'true'
         env:
           DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
         run: |
@@ -54,6 +94,15 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
             build-for-testing 2>&1 | tee build_output/deck-studio/unsigned-sdk-build.log
           echo 'App and test compilation only; no simulator, native XMage product link, signing, or phone execution.' > build_output/deck-studio/SCOPE.txt
+      - name: Write trusted job receipt
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.reuse.outputs.reused != 'true'
+        run: python3 scripts/ci/reuse_evidence.py write --job swift --output "$RUNNER_TEMP/ci-evidence/receipt.json"
+      - uses: actions/upload-artifact@v4
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.reuse.outputs.reused != 'true'
+        with:
+          name: ci-evidence-swift-${{ github.run_id }}
+          path: ${{ runner.temp }}/ci-evidence/receipt.json
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -69,12 +118,36 @@ jobs:
         working-directory: packages/ondevice-engine
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
+          cache: maven
+          cache-dependency-path: |
+            packages/ondevice-engine/upstream.lock.json
+            packages/ondevice-engine/native/gluon/pom.xml
+      - name: Check trusted job evidence
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 ../../scripts/ci/reuse_evidence.py check --job real-jvm
       - run: bash scripts/build_jvm.sh
+        if: steps.reuse.outputs.reused != 'true'
       - run: bash scripts/test_real_engine.sh
+        if: steps.reuse.outputs.reused != 'true'
+      - name: Write trusted job receipt
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.reuse.outputs.reused != 'true'
+        run: python3 ../../scripts/ci/reuse_evidence.py write --job real-jvm --output "$RUNNER_TEMP/ci-evidence/receipt.json"
+      - uses: actions/upload-artifact@v4
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.reuse.outputs.reused != 'true'
+        with:
+          name: ci-evidence-real-jvm-${{ github.run_id }}
+          path: ${{ runner.temp }}/ci-evidence/receipt.json
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:

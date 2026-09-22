@@ -16,6 +16,7 @@
 - Prefer an available graph indexed for this checkout for semantic discovery. If unavailable, stale or insufficient, use rg immediately. Index repair is not a prerequisite for ordinary work.
 - Use systematic debugging for non-obvious failures. For straightforward errors, use a focused diagnosis/fix/regression loop. When reproduction is expensive or unavailable, investigate existing logs and source, label hypotheses, and keep runtime confirmation explicitly pending.
 - Delegate isolated work when useful, with a scoped objective and file ownership. Review outputs. Intervene when repeated attempts make no progress, not merely because the first build fails.
+- For release/build efficiency work, follow `docs/WORKFLOW_EFFICIENCY.md`. Keep one integration owner, disjoint delegate file ownership, and one heavy local build/simulator workload at a time. Freeze reviewed engine inputs before overlapping native CI with independent UI work.
 - Continue in the current task unless a separate task is requested. Do not depend on unavailable slash commands or mandatory session changes.
 
 ## Verification and resource use
@@ -23,6 +24,7 @@
 - Choose checks for the changed components and actual release path. Documentation/instruction edits need content, link and configuration validation, not an app build.
 - Safe local fixture tests may be rerun for task-caused failures without repeated approval after checking they do not access production. A test command is not automatically safe just because it is called a test.
 - Reuse passing evidence only when its relevant source, configuration and dependencies are unchanged; record what ran and what did not.
+- Prefer the repo's fingerprint/evidence and resumable-release helpers when applicable. Missing, corrupt, stale, untrusted, or expired evidence is a cache miss, never a passing gate. An ambiguous upload requires exact-build reconciliation, not an automatic retry.
 - Do not automatically boot simulators after every code edit. For explicitly requested simulator validation, discover an available device and boot at most one if needed, unless the user says otherwise. Do not erase devices or boot simulators during non-simulator tasks.
 - For iOS compilation use the current project's path and /Applications/Xcode.app/Contents/Developer. Generic device builds can check compilation without a simulator; compiling tests is not executing them.
 - Keep local Docker/Colima off by default. Run gateway/Docker checks when the changed or shipped path depends on them, not for an unrelated native-only change. Do not silently use a remote machine or paid runner instead.

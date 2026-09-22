@@ -13,7 +13,7 @@ let package = Package(
             path: "MagicMobile",
             exclude: ["Assets.xcassets", "Info.plist", "PrivacyInfo.xcprivacy", "MagicMobile.entitlements", "ContentView.swift", "DeckLibrary.swift",
                       "GameBoardDesignTokens.swift", "GameBoardInteractionState.swift",
-                      "GameBoardLayoutMetrics.swift", "GameBoardPreviewFixtures.swift", "HandCardPan.swift", "BoardCardChoiceView.swift",
+                      "GameBoardLayoutMetrics.swift", "BattlefieldViewportMetrics.swift", "GameBoardPreviewFixtures.swift", "HandCardPan.swift", "BoardCardChoiceView.swift",
                       "GameBoardScreen.swift", "GameBoardTheme.swift", "GameBoardZones.swift",
                       "MagicMobileApp.swift", "OnDeviceRootView.swift", "NativeDeckLibraryView.swift", "NativeDeckComponents.swift", "NativeEngine-Bridging-Header.h",
                       "DeckStudio/Builder", "DeckStudio/Ideas", "DeckStudio/Import", "DeckStudio/Library", "DeckStudio/DeckStudioDesignTokens.swift"],

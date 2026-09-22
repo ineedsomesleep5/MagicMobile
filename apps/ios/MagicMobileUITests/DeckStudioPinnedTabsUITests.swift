@@ -5,9 +5,7 @@ final class DeckStudioPinnedTabsUITests: XCTestCase {
     func testPortraitPlaytestHistoryScrollsHeaderAwayAndPinsWorkspaceTabs() throws {
         let app = XCUIApplication()
         continueAfterFailure = false
-        app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        app.launchArguments = ["--ondevice-setup-ui-test", "--deck-history-layout-ui-test",
-                               "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        UITestHarness.configure(app, extraArguments: ["--deck-history-layout-ui-test"])
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         defer { app.terminate(); XCUIDevice.shared.orientation = .portrait }
@@ -37,14 +35,13 @@ final class DeckStudioPinnedTabsUITests: XCTestCase {
         let history = app.scrollViews["deckStudio.playtest.list"]
         XCTAssertTrue(history.waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Development fixture · not saved"].waitForExistence(timeout: 10))
-        let last = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture match 18")).firstMatch
+        let last = history.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture match 18")).firstMatch
         XCTAssertFalse(last.isHittable)
         history.swipeUp()
         history.swipeUp()
         XCTAssertFalse(header.isHittable)
         let pinnedTabY = app.buttons["Playtest"].frame.midY
-        for _ in 0..<10 where !last.isHittable { history.swipeUp() }
-        XCTAssertTrue(last.isHittable, "All retained fixture sessions should be reachable")
+        UITestHarness.reveal(last, in: history, swipes: 10)
         XCTAssertFalse(header.isHittable, "The expanded header must scroll away with history")
         for title in ["Cards", "Ideas", "Analysis", "Playtest"] {
             XCTAssertTrue(app.buttons[title].isHittable, "Workspace tab must remain pinned: \(title)")
@@ -60,8 +57,7 @@ final class DeckStudioPinnedTabsUITests: XCTestCase {
     func testPortraitCardsScrollHeaderAwayAndKeepWorkspaceTabsReachable() throws {
         let app = XCUIApplication()
         continueAfterFailure = false
-        app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        app.launchArguments = ["--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        UITestHarness.configure(app)
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         defer { app.terminate(); XCUIDevice.shared.orientation = .portrait }
