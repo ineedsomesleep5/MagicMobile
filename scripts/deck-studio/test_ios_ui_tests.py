@@ -1,8 +1,10 @@
 """Read-only harness checks; run with python3 -m unittest discover scripts/deck-studio -p test_ios_ui_tests.py."""
 
 import importlib.util
+import io
 import json
 from pathlib import Path
+from unittest import mock
 import tempfile
 import unittest
 
@@ -66,6 +68,38 @@ class IosUITestHarnessTests(unittest.TestCase):
                              ["MagicMobileUITests/ExampleUITests/testMissing"]):
                 with self.subTest(selected=selected), self.assertRaises(ValueError):
                     harness.check_selection(selected, ios)
+
+    def test_presentation_preset_resolves_existing_methods_and_deduplicates_manual_selection(self):
+        expected = list(harness.PRESETS["presentation-smoke"])
+        self.assertEqual(len(expected), 5)
+        self.assertEqual(harness.resolve_selection("presentation-smoke", []), expected)
+        extra = "MagicMobileUITests/BoardPolishUITests/testPortraitStackPresentation"
+        self.assertEqual(harness.resolve_selection("presentation-smoke", [expected[0], extra, extra]),
+                         expected + [extra])
+        self.assertEqual(harness.resolve_selection(None, [extra]), [extra])
+
+    def test_presentation_preset_fails_if_a_method_disappears(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(ValueError, "Unknown UI test class"):
+                harness.resolve_selection("presentation-smoke", [], Path(temporary))
+        with mock.patch.dict(harness.PRESETS, {"presentation-smoke": ("MagicMobileUITests/BoardPolishUITests/testMissing",)}):
+            with self.assertRaisesRegex(ValueError, "Unknown UI test method"):
+                harness.resolve_selection("presentation-smoke", [])
+
+    def test_plan_preset_only_prints_selection_and_compile_command(self):
+        output = io.StringIO()
+        with mock.patch("sys.argv", [str(SCRIPT), "plan", "--preset", "presentation-smoke"]), \
+             mock.patch.object(harness, "project_is_native") as project, \
+             mock.patch.object(harness, "select_run") as select_run, \
+             mock.patch.object(harness.subprocess, "run") as run, \
+             mock.patch("sys.stdout", output):
+            harness.main()
+        project.assert_called_once_with()
+        select_run.assert_called_once()
+        run.assert_not_called()
+        for method in harness.PRESETS["presentation-smoke"]:
+            self.assertIn(method, output.getvalue())
+        self.assertIn("generic/platform=iOS Simulator", output.getvalue())
 
     def test_shutdown_simulator_is_rejected_without_booting(self):
         udid = "12345678-1234-1234-1234-123456789ABC"

@@ -5,6 +5,22 @@ iOS or Android release. It wraps the existing guarded scripts; it does not repla
 their native, signing, Apple, or Android checks. This is a local release aid, not
 release approval or phone acceptance.
 
+Before expensive work, use `python3 scripts/release/preflight.py plan --profile ios-fast`
+to inspect the local checks, then `run --profile ios-fast` to execute them sequentially.
+`tooling` runs Python tooling tests, diff checks and shell syntax only. `ios-fast`
+adds temporary generated-project comparison, standalone Deck Studio compilation,
+and the two portable Swift suites. Neither profile boots a simulator, builds the
+native engine, signs or uploads. Live artwork and precon-export test opt-ins are removed from the
+child environment. Results are fresh development feedback, never CI reuse receipts.
+Logs and timing survive failures under a unique `build_output/preflight/` directory;
+do not edit source during the run. A per-checkout lock prevents duplicate preflights.
+
+The native decision is conservative **source equivalence only**, using the existing
+native verifier and local provenance receipt (or `--engine-commit FULL_SHA`). Dirty,
+untracked, missing or invalid evidence reports unknown. Different inputs mean to
+look for another exact artifact, not automatically rebuild. Equivalent inputs still
+require artifact byte/provenance verification, product linkage and release gates.
+
 Use a committed, reviewed candidate in the selected checkout. Finish the separate
 native resolver and validation work first when it applies; the controller verifies
 the actual staged native binaries against their manifests and the existing scripts
@@ -28,7 +44,13 @@ explicit and bound to that fingerprint:
 python3 scripts/release/controller.py resume --platform ios --run-id ios-0.1.1-8 \
   --authorize-fingerprint SHA256_FROM_PLAN
 python3 scripts/release/controller.py status --run-id ios-0.1.1-8
+python3 scripts/release/controller.py status --run-id ios-0.1.1-8 --summary
 ```
+
+`status --summary` retains the validated state, source/fingerprint, recorded upload
+identity and next action without dumping the full event history. A stale historical
+completion stays stale; this command makes no live Apple request and does not prove
+current tester availability. Use full `status` for the underlying event trail.
 
 The first iOS `resume` runs `deploy-testflight.sh --stop-after-upload`, including
 its existing guards, signed export, Apple validation, upload, and ledger record.

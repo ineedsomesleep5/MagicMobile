@@ -17,6 +17,7 @@
 - Use systematic debugging for non-obvious failures. For straightforward errors, use a focused diagnosis/fix/regression loop. When reproduction is expensive or unavailable, investigate existing logs and source, label hypotheses, and keep runtime confirmation explicitly pending.
 - Delegate isolated work when useful, with a scoped objective and file ownership. Review outputs. Intervene when repeated attempts make no progress, not merely because the first build fails.
 - For release/build efficiency work, follow `docs/WORKFLOW_EFFICIENCY.md`. Keep one integration owner, disjoint delegate file ownership, and one heavy local build/simulator workload at a time. Freeze reviewed engine inputs before overlapping native CI with independent UI work.
+- Before an iOS release or expensive native dispatch, run `python3 scripts/release/preflight.py run --profile ios-fast` on the integrated source. For tooling-only edits use `--profile tooling`. Stop on failure or source drift. This is early feedback, not a substitute for required CI, native, signing or runtime gates. For UI changes run the `presentation-smoke` preset early, then the affected broader tests after integration. Before rebuilding an unchanged engine, inspect the existing native resolver; unknown or dirty evidence is not a reuse approval or a rebuild requirement.
 - Continue in the current task unless a separate task is requested. Do not depend on unavailable slash commands or mandatory session changes.
 
 ## Verification and resource use

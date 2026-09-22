@@ -495,6 +495,31 @@ def watch(repo: Path, run_id: str, service: str, run_number: str, timeout: int,
         time.sleep(interval)
 
 
+def status_summary(status: dict) -> dict:
+    """Compact view of already-validated local history; never queries Apple."""
+    history = status.get("events", [])
+    original = history[0].get("identity", {}) if history else {}
+    last = history[-1] if history else {}
+    upload = next((record for record in reversed(history) if record["kind"] == "uploaded"), {})
+    state = status["state"]
+    next_action = {
+        "new": "Plan exact source and complete prerequisite gates before authorizing a release.",
+        "uploaded": "Resume the same fingerprint for distribution; do not upload again.",
+        "started": "Inspect the running command or reconcile an interrupted upload; do not retry blindly.",
+        "distribution-started": "Inspect the running distribution or exact Apple state; do not re-upload.",
+        "uncertain": "Inspect exact external state and reconcile; never retry blindly.",
+        "completed": "No further release mutation. Apple/device availability requires its own evidence.",
+        "stale": "Historical evidence only; current source or evidence differs. Reassess before any mutation.",
+    }.get(state, "Inspect full status before proceeding.")
+    return {"runId": status["runId"], "state": state,
+            "recordedStage": last.get("kind", "new"), "lastEventAt": last.get("timeUTC"),
+            "sourceCommit": original.get("sourceCommit"), "fingerprint": original.get("fingerprint"),
+            "platform": original.get("platform"), "eventCount": len(history),
+            "uploadedBuild": {key: upload[key] for key in
+                              ("version", "build", "deliveryUuid", "ipaSHA256", "releaseRoot") if key in upload},
+            "next": next_action, "scope": "Verified local event history, not a fresh Apple or device check."}
+
+
 def main() -> int:
     os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
@@ -504,6 +529,7 @@ def main() -> int:
     plan.add_argument("--run-id")
     status = sub.add_parser("status", help="Read-only immutable evidence status")
     status.add_argument("--run-id", required=True)
+    status.add_argument("--summary", action="store_true", help="Compact local stage and next action; no external lookup")
     resume = sub.add_parser("resume", help="Invoke one guarded script, with explicit authorization")
     resume.add_argument("--platform", choices=SCRIPT, required=True)
     resume.add_argument("--run-id", required=True)
@@ -523,6 +549,8 @@ def main() -> int:
             output = controller.plan(args.platform, args.run_id)
         elif args.action == "status":
             output = controller.status(args.run_id)
+            if args.summary:
+                output = status_summary(output)
         elif args.action == "resume":
             output = controller.resume(args.platform, args.run_id, args.authorize_fingerprint)
         elif args.action == "reconcile":

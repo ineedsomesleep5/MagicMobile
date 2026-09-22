@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Guard a generic-simulator UI compile, then run selected tests on an already booted device.
 
-Plan/build use no simulator ID. Test requires --destination-id and --only-testing.
+Plan/build use no simulator ID. Test requires --destination-id and a preset or --only-testing.
 Use a dedicated --derived-data directory for each acceptance build.
 The release controller owns Xcode project generation from native-engine.yml.
 """
@@ -22,6 +22,15 @@ DERIVED = ROOT / "build_output/ios-ui-harness"
 STAMP = "magicmobile-ui-build.json"
 DEVELOPER_DIR = "/Applications/Xcode.app/Contents/Developer"
 SOURCE_EXCLUDES = {".build", ".swiftpm", ".git", ".DS_Store", "DerivedData", "build_output", "__pycache__"}
+PRESETS = {
+    "presentation-smoke": (
+        "MagicMobileUITests/BoardPolishUITests/testPortraitLibraryChoices",
+        "MagicMobileUITests/BoardPolishUITests/testLandscapeLibraryChoices",
+        "MagicMobileUITests/DeckStudioPinnedTabsUITests/testPublicHistoryDashboardScrubsAndInspectsCards",
+        "MagicMobileUITests/BoardPolishUITests/testPortraitModalOfferGlows",
+        "MagicMobileUITests/BoardPolishUITests/testLandscapeModalOfferGlows",
+    ),
+}
 
 
 def digest_file(path):
@@ -126,7 +135,7 @@ def project_is_native(ios=IOS, verify_generated=False):
 
 def check_selection(selected, ios=IOS):
     if not selected:
-        raise ValueError("Select at least one UI test class or method with --only-testing")
+        raise ValueError("Select at least one UI test with --preset or --only-testing")
     for item in selected:
         parts = item.split("/")
         if len(parts) not in (2, 3) or parts[0] != "MagicMobileUITests" or not re.fullmatch(r"[A-Za-z0-9_]+UITests", parts[1]):
@@ -137,6 +146,12 @@ def check_selection(selected, ios=IOS):
         if len(parts) == 3 and (not re.fullmatch(r"test[A-Za-z0-9_]+", parts[2])
                                 or not re.search(r"\bfunc\s+" + re.escape(parts[2]) + r"\s*\(", source.read_text())):
             raise ValueError(f"Unknown UI test method: {item}")
+
+
+def resolve_selection(preset, manual, ios=IOS):
+    selected = list(dict.fromkeys((*PRESETS.get(preset, ()), *manual)))
+    check_selection(selected, ios)
+    return selected
 
 
 def identity(derived):
@@ -181,14 +196,16 @@ def main():
     parser.add_argument("mode", choices=("plan", "build", "test"))
     parser.add_argument("--destination-id")
     parser.add_argument("--derived-data", type=Path, default=DERIVED)
+    parser.add_argument("--preset", choices=PRESETS)
     parser.add_argument("--only-testing", action="append", default=[])
     args = parser.parse_args()
     derived = args.derived_data.resolve()
     if args.mode != "build":
-        check_selection(args.only_testing)
+        selected = resolve_selection(args.preset, args.only_testing)
     if args.mode == "plan":
         project_is_native()
         select_run(derived / "Build/Products")
+        print("Selected UI tests:", *selected, sep="\n  ")
         print("Compile:", " ".join(command("build-for-testing", derived)))
         print("Use a dedicated derived-data directory; then run test after explicitly booting one simulator.")
         return
@@ -210,7 +227,7 @@ def main():
     recorded = json.loads(stamp.read_text())
     before = identity(derived)
     verify_identity(recorded, before)
-    subprocess.run(command("test-without-building", derived, args.destination_id, args.only_testing),
+    subprocess.run(command("test-without-building", derived, args.destination_id, selected),
                    cwd=IOS, check=True, env=xcode_env())
     after = identity(derived)
     if after != before:
