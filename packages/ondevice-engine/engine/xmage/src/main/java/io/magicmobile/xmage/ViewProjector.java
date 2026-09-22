@@ -15,6 +15,7 @@ import mage.game.permanent.token.Token;
 import mage.players.Player;
 import mage.players.PlayerImpl;
 import mage.abilities.mana.ActivatedManaAbilityImpl;
+import mage.abilities.SpellAbility;
 import mage.abilities.keyword.MenaceAbility;
 import mage.view.GameView;
 import mage.view.CardView;
@@ -62,20 +63,23 @@ public final class ViewProjector {
                 }
             }
             Map<String,Object> data=Json.parseObject(view.toJson());
-            // PlayableObjectStats places non-basic mana abilities in `other` alongside
-            // non-mana abilities. Preserve its authoritative choices and add only type
+            // PlayableObjectStats places non-basic mana and modal spell abilities in `other`.
+            // Preserve its authoritative choices and add only type
             // information, from the current ability objects (never rule-text parsing).
             if(priority!=null && viewer.equals(priority.getTurnControlledBy())) {
                 Set<String> manaIds=new HashSet<>();
-                ((PlayerImpl)priority).getPlayable(source,true,Zone.ALL,false).stream()
-                    .filter(ActivatedManaAbilityImpl.class::isInstance)
-                    .forEach(ability->manaIds.add(ability.getId().toString()));
+                Set<String> spellIds=new HashSet<>();
+                for(var ability:((PlayerImpl)priority).getPlayable(source,true,Zone.ALL,false)) {
+                    if(ability instanceof ActivatedManaAbilityImpl) manaIds.add(ability.getId().toString());
+                    if(ability instanceof SpellAbility) spellIds.add(ability.getId().toString());
+                }
                 Map<String,Object> playable=Json.object(data.get("canPlayObjects"));
                 for(Object stats:Json.object(playable.get("objects")).values())
                     for(Object rows:Json.object(stats).values())
                         for(Object row:Json.array(rows)) {
                             Map<String,Object> fields=Json.object(row);
                             fields.put("manaAbility",manaIds.contains(fields.get("id")));
+                            fields.put("spellAbility",spellIds.contains(fields.get("id")));
                         }
             }
             // Pinned XMage has no menace CardIconType. Emit a text-badge extension

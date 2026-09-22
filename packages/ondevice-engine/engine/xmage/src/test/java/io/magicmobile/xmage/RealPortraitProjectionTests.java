@@ -16,7 +16,9 @@ import mage.cards.d.DelverOfSecrets;
 import mage.cards.decks.Deck;
 import mage.cards.i.IsamaruHoundOfKonda;
 import mage.cards.r.RaiseTheAlarm;
+import mage.cards.r.RevitalizingRepast;
 import mage.constants.Rarity;
+import mage.constants.CardType;
 import mage.constants.SubType;
 import mage.constants.Zone;
 import mage.game.Game;
@@ -50,6 +52,8 @@ public final class RealPortraitProjectionTests {
         tests.put("control-presentation", RealPortraitProjectionTests::controlPresentation);
         tests.put("revealed-companion", RealPortraitProjectionTests::revealedCompanion);
         tests.put("copy-token-art", RealPortraitProjectionTests::copyTokenArtworkIdentity);
+        tests.put("modal-spell-actions", RealPortraitProjectionTests::modalSpellActions);
+        tests.put("modal-land-only", RealPortraitProjectionTests::modalLandOnly);
         int passed = 0;
         for (Map.Entry<String,Runnable> test : tests.entrySet()) {
             if (args.length > 0 && !args[0].equals(test.getKey())) continue;
@@ -91,6 +95,73 @@ public final class RealPortraitProjectionTests {
             f.game.getStack().resolve(f.game);
             eq(f.snapshot("owner").get("stackOrder"), List.of());
         }
+    }
+    private static void modalSpellActions() {
+        try (Fixture f = new Fixture()) {
+            // A real creature supplies the instant's target; the land face is legal in main phase.
+            Card target = new IsamaruHoundOfKonda(f.owner.getId(),
+                new CardSetInfo("Isamaru, Hound of Konda", "CHK", "19", Rarity.RARE));
+            f.hand(target);
+            f.cast(target, Zone.HAND, 1);
+            f.game.getStack().resolve(f.game);
+            check(f.game.getPermanent(target.getId()) != null, "instant has a real creature target");
+            Card modal = new RevitalizingRepast(f.owner.getId(),
+                new CardSetInfo("Revitalizing Repast", "MH3", "256", Rarity.UNCOMMON));
+            f.hand(modal);
+            f.owner.getManaPool().addMana(new Mana(0, 0, 1, 0, 0, 0, 0, 0), f.game, modal.getSpellAbility());
+            Map<String,Object> main = playableStats(f.snapshot("owner"), modal.getId());
+            check(!Json.array(main.get("basicPlayAbilities")).isEmpty(), "land face offered in main phase");
+            List<Object> spells = Json.array(main.get("other"));
+            check(spells.stream().map(Json::object).anyMatch(row -> Boolean.TRUE.equals(row.get("spellAbility"))
+                    && Boolean.FALSE.equals(row.get("manaAbility"))
+                    && row.get("id") instanceof String && row.get("value") instanceof String),
+                "modal instant in other must be identified as a spell");
+            for (Object row : Json.array(main.get("basicPlayAbilities"))) {
+                eq(Json.object(row).get("spellAbility"), false);
+                eq(Json.object(row).get("manaAbility"), false);
+            }
+            f.game.getState().setActivePlayerId(f.opponent.getId());
+            Map<String,Object> response = playableStats(f.snapshot("owner"), modal.getId());
+            eq(Json.array(response.get("basicPlayAbilities")), List.of());
+            check(Json.array(response.get("other")).stream().map(Json::object)
+                    .anyMatch(row -> Boolean.TRUE.equals(row.get("spellAbility"))),
+                "instant remains offered on the opponent's turn");
+            // An unprivileged viewer gets no action metadata for the owner's hand.
+            Object opponentActions = Json.object(f.snapshot("opponent").get("gameView")).get("canPlayObjects");
+            check(opponentActions == null || !Json.object(Json.object(opponentActions).get("objects"))
+                    .containsKey(modal.getId().toString()),
+                "other seat cannot see modal action IDs");
+        }
+    }
+    private static void modalLandOnly() {
+        try (Fixture f = new Fixture()) {
+            // No creature target, colored mana, or mana source: only the land face is offered.
+            RevitalizingRepast modal = new RevitalizingRepast(f.owner.getId(),
+                new CardSetInfo("Revitalizing Repast", "MH3", "256", Rarity.UNCOMMON));
+            f.hand(modal);
+            eq(f.owner.getManaPool().getMana().count(), 0);
+            Map<String,Object> stats = playableStats(f.snapshot("owner"), modal.getId());
+            check(!Json.array(stats.get("basicPlayAbilities")).isEmpty(), "land face offered without mana or target");
+            eq(Json.array(stats.get("other")), List.of());
+            for (Object row : Json.array(stats.get("basicPlayAbilities"))) {
+                eq(Json.object(row).get("spellAbility"), false);
+                eq(Json.object(row).get("manaAbility"), false);
+            }
+            int landsBefore = f.owner.getLandsPlayed();
+            check(f.owner.playLand(modal.getRightHalfCard(), f.game, false), "real modal land play");
+            eq(f.owner.getLandsPlayed(), landsBefore + 1);
+            var permanent = f.game.getPermanent(modal.getRightHalfCard().getId());
+            check(permanent != null && permanent.getCardType(f.game).contains(CardType.LAND),
+                "land face, not the instant, entered the battlefield");
+        }
+    }
+    private static Map<String,Object> playableObjects(Map<String,Object> snapshot) {
+        return Json.object(Json.object(Json.object(snapshot.get("gameView")).get("canPlayObjects")).get("objects"));
+    }
+    private static Map<String,Object> playableStats(Map<String,Object> snapshot, UUID cardId) {
+        Map<String,Object> objects = playableObjects(snapshot);
+        check(objects.containsKey(cardId.toString()), "modal source offered by upstream");
+        return Json.object(objects.get(cardId.toString()));
     }
     private static void copyTokenArtworkIdentity() {
         try (Fixture f = new Fixture()) {
