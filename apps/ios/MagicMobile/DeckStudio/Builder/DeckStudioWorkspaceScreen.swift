@@ -29,6 +29,7 @@ struct DeckStudioWorkspaceScreen: View {
     @State private var showBasics = false
     @State private var replacement: NativeDeckRow?
     @State private var inspection: InspectedCard?
+    @State private var historyReview: HistoryReview?
     @State private var confirmClose = false
     @State private var showRename = false
     @State private var showArtworkPreferences = false
@@ -39,6 +40,15 @@ struct DeckStudioWorkspaceScreen: View {
         self.metadata = metadata; self.resolver = resolver; self.selectForPlay = selectForPlay
     }
     private struct InspectedCard: Identifiable { let name: String; var id: String { name } }
+    private struct HistoryReview: Identifiable {
+        let game: DeckStudioRecordedGame
+        let exactDeck: Bool
+        let layoutFixture: Bool
+        var id: UUID { game.id }
+    }
+    private func openHistory(_ game: DeckStudioRecordedGame, fixture: Bool) {
+        historyReview = HistoryReview(game: game, exactDeck: signature == game.deck, layoutFixture: fixture)
+    }
     private var deck: DeckList? { try? model.draft.deck() }
     private var signature: DeckStudioDeckSignature? {
         guard let deck, let resolver else { return nil }
@@ -86,7 +96,7 @@ struct DeckStudioWorkspaceScreen: View {
                                 DeckStudioRoleInsightsView(draft: model.draft, metadata: metadata, contextID: model.record?.id, inspect: inspect)
                             } else {
                                 DeckStudioValidationPanel(state: validation, deck: deck, resolver: resolver, play: preparePlay)
-                                DeckStudioPlaytestInsightsView(signature: signature)
+                                DeckStudioPlaytestInsightsView(signature: signature, metadata: metadata, openMatch: openHistory)
                             }
                         }.padding(20)
                     }
@@ -137,6 +147,12 @@ struct DeckStudioWorkspaceScreen: View {
                 cardSearch(embedded: false)
             }
             .sheet(item: $inspection) { item in DeckStudioCardInspector(name: item.name, metadata: metadata?.card(named: item.name)) }
+            // Presentation belongs to the workspace, not a lazy history row or
+            // an orientation-specific branch which can disappear while covered.
+            .fullScreenCover(item: $historyReview) { review in
+                MatchHistoryDashboard(game: review.game, exactDeck: review.exactDeck,
+                                      layoutFixture: review.layoutFixture, metadata: metadata)
+            }
             .sheet(isPresented: $showCommander) { DeckStudioReplacementPicker(metadata: metadata, commander: true) { model.commander($0, keepOld: $1) } }
             .sheet(item: $replacement) { row in DeckStudioReplacementPicker(metadata: metadata, commander: false) { name, _ in model.replace(rowID: row.id, name: name) } }
             .sheet(isPresented: $showBasics) { DeckStudioBasicLandsSheet(draft: model.draft) { model.basics($0, expected: $1) } }
@@ -279,7 +295,7 @@ struct DeckStudioWorkspaceScreen: View {
                     } else {
                         LazyVStack(spacing: 16) {
                             DeckStudioValidationPanel(state: validation, deck: deck, resolver: resolver, play: preparePlay)
-                            DeckStudioPlaytestInsightsView(signature: signature)
+                            DeckStudioPlaytestInsightsView(signature: signature, metadata: metadata, openMatch: openHistory)
                         }.padding(20)
                     }
                 } header: {

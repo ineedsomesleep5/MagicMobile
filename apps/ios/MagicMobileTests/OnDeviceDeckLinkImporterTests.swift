@@ -75,6 +75,23 @@ final class OnDeviceDeckLinkImporterTests: XCTestCase {
         XCTAssertThrowsError(try importer.decode(data: data(mox(["mainboard": board("Front // Wrong")])), source: moxSource))
     }
 
+    func testBundledRepastResolvesInBothProviderExportsAndTextPreview() throws {
+        let importer = OnDeviceDeckLinkImporter(resolver: try .bundled())
+        let combined = "Revitalizing Repast // Old-Growth Grove"
+        let preview = try importer.preview(text: "1 \(combined)", name: "Paste")
+        XCTAssertTrue(preview.unresolvedNames.isEmpty)
+        XCTAssertEqual(preview.deck.entries.first?.cardName, "Revitalizing Repast")
+        let archSource = try OnDeviceDeckLinkImporter.source(for: "https://archidekt.com/decks/123")
+        let archDeck = try importer.decode(data: data(arch([archRow(combined)])), source: archSource)
+        XCTAssertEqual(archDeck.entries.first?.cardName, "Revitalizing Repast")
+        let moxSource = try OnDeviceDeckLinkImporter.source(for: "https://moxfield.com/decks/abcdefghijklmnopqrstuv")
+        let moxDeck = try importer.decode(data: data(mox(["mainboard": board("Old-Growth Grove")])), source: moxSource)
+        XCTAssertEqual(moxDeck.entries.first?.cardName, "Revitalizing Repast")
+        XCTAssertEqual(try importer.preview(DeckList(name: "Unknown", commander: nil,
+            entries: [DeckEntry(cardName: "Revitalizing Repast // Wrong Grove", quantity: 1, section: "deck")])).unresolvedNames,
+            ["Revitalizing Repast // Wrong Grove"])
+    }
+
     private func mox(_ boards: [String: Any]) -> [String: Any] {
         ["name": "Public list", "publicId": "abcdefghijklmnopqrstuv", "visibility": "public", "boards": boards]
     }

@@ -83,6 +83,68 @@ final class NativeAssetDownloadsTests: XCTestCase {
         XCTAssertTrue(NativeAssetStore.artworkChangeAffects(key: treasure.artworkKey, storedName: "Treasure", name: "Treasure Token", isToken: true))
         XCTAssertFalse(NativeAssetStore.artworkChangeAffects(key: treasure.artworkKey, storedName: "Treasure", name: "Zombie Token", isToken: true))
     }
+    func testEngineStyleFoodSelfReferenceFindsDownloadedArtworkOffline() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = NativeAssetStore(directory: directory, availableBytes: { _ in Int64.max })
+        let food = NativeTokenArtwork(id: UUID(), name: "Food", typeLine: "Token Artifact — Food",
+            oracleText: "{2}, {T}, Sacrifice this token: You gain 3 life.", colors: [])
+        let imageBytes = try image(width: 488, height: 680)
+        try await store.saveToken(food)
+        try await store.save(imageBytes, key: food.artworkKey, quality: .standard)
+
+        let reopened = NativeAssetStore(directory: directory, availableBytes: { _ in Int64.max })
+        let offline = NativeDeckArtwork(assetStore: reopened, tokenLookup: { _, _, _, _, _, _, _ in
+            XCTFail("Downloaded Food must resolve without a network lookup")
+            return nil
+        })
+        let artwork = try await offline.imageData(name: "Food Token", variant: .board, allowNetwork: false,
+            tokenTypeLine: "Artifact — Food",
+            tokenOracleText: "{2}, {T}, Sacrifice Food Token: You gain 3 life.",
+            tokenPower: "0", tokenToughness: "0", tokenColors: [])
+        XCTAssertEqual(artwork, imageBytes)
+    }
+    func testNamedTokenSelfReferenceDoesNotCollapseOtherRulesOrVariants() {
+        let food = NativeTokenArtwork(id: UUID(), name: "Food", typeLine: "Token Artifact — Food",
+            oracleText: "{2}, {T}, Sacrifice this token: You gain 3 life.", colors: [])
+        let differentFood = NativeTokenArtwork(id: UUID(), name: "Food", typeLine: "Token Artifact — Food",
+            oracleText: "{2}, {T}, Sacrifice this token: Add {C}.", colors: [])
+        func match(_ rules: String) -> NativeTokenArtwork? {
+            NativeAssetStore.matchTokenArtwork([food, differentFood], name: "Food Token",
+                typeLine: "Artifact — Food", oracleText: rules, power: "0", toughness: "0", colors: [])
+        }
+        XCTAssertEqual(match("{2}, {T}, Sacrifice Food Token: You gain 3 life."), food)
+        XCTAssertNil(match("{2}, {T}, Sacrifice a Food Token: You gain 3 life."))
+        XCTAssertNil(match("{2}, {T}, Sacrifice Food Token: Draw a card."))
+        XCTAssertFalse(NativeAssetStore.sameTokenIdentity(food, differentFood))
+
+        let treasure = NativeTokenArtwork(id: UUID(), name: "Treasure", typeLine: "Token Artifact — Treasure",
+            oracleText: "{T}, Sacrifice this artifact: Add one mana of any color.", colors: [])
+        XCTAssertEqual(NativeAssetStore.matchTokenArtwork([treasure], name: "Treasure Token",
+            typeLine: "Artifact — Treasure", oracleText: "{T}, Sacrifice Treasure Token: Add one mana of any color.",
+            power: "0", toughness: "0", colors: []), treasure)
+    }
+    func testLiveDownloadedFoodResolvesEngineStyleRequestWhenAuditStoreProvided() async throws {
+        guard let audit = ProcessInfo.processInfo.environment["MAGICMOBILE_ARTWORK_AUDIT_DIR"] else {
+            throw XCTSkip("Set MAGICMOBILE_ARTWORK_AUDIT_DIR to the existing read-only token audit store")
+        }
+        let store = NativeAssetStore(directory: URL(fileURLWithPath: audit).appendingPathComponent("images"))
+        let offline = NativeDeckArtwork(assetStore: store, tokenLookup: { _, _, _, _, _, _, _ in
+            XCTFail("The existing Food download must work offline")
+            return nil
+        })
+        for (name, type, rules) in [
+            ("Food", "Food", "{2}, {T}, Sacrifice Food Token: You gain 3 life."),
+            ("Treasure", "Treasure", "{T}, Sacrifice Treasure Token: Add one mana of any color."),
+            ("Clue", "Clue", "{2}, Sacrifice Clue Token: Draw a card."),
+            ("Blood", "Blood", "{1}, {T}, Discard a card, Sacrifice Blood Token: Draw a card.")
+        ] {
+            let artwork = try await offline.imageData(name: name + " Token", variant: .board, allowNetwork: false,
+                tokenTypeLine: "Artifact — " + type, tokenOracleText: rules,
+                tokenPower: "0", tokenToughness: "0", tokenColors: [])
+            XCTAssertNotNil(artwork, "Previously downloaded \(name) must resolve its engine-style self name offline")
+        }
+    }
     @MainActor func testTokenOnlyDownloadsNoCardsAndResumesFromStoredImage() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

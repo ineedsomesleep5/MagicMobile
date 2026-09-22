@@ -1,5 +1,23 @@
 import Foundation
 
+/// Both means two current engine offers, never merely a double-faced card.
+enum CardPlayAffordance: Equatable {
+    case none, land, spell, landAndSpell
+
+    init(land: Bool, spell: Bool) {
+        self = land ? (spell ? .landAndSpell : .land) : (spell ? .spell : .none)
+    }
+
+    var accessibilityValue: String {
+        switch self {
+        case .none: return "No play offered"
+        case .land: return "Play land available"
+        case .spell: return "Cast spell available"
+        case .landAndSpell: return "Play land or cast spell available"
+        }
+    }
+}
+
 /// A cue follows engine steps, never priority changes or repeated polls.
 struct BoardPhaseAnnouncement: Equatable {
     let key: String
@@ -23,6 +41,26 @@ struct BoardPhaseAnnouncement: Equatable {
 
 /// Presentation decisions never rewrite an engine action or a seat identity.
 enum PortraitInteractionPolicy {
+    static func primaryDockAction(_ actions: [LegalAction], prompt: PromptEnvelopeV2?) -> LegalAction? {
+        if let prompt, prompt.method == "GAME_SELECT", prompt.responseKind == "target" {
+            // Combat's special string means Attack all. It is never a safe
+            // substitute for the primary Done / Pass control, in any order.
+            return actions.first {
+                $0.type == "answer_yes_no" && $0.confirmed == true &&
+                $0.promptId == (prompt.responseCommand?.promptId ?? prompt.id) &&
+                $0.messageId == (prompt.responseCommand?.messageId ?? prompt.messageId) &&
+                $0.playerId == prompt.playerId
+            }
+        }
+        return actions.first
+    }
+
+    static func matchesCardSearch(_ card: ZoneCard, query: String) -> Bool {
+        let words = query.split(whereSeparator: \.isWhitespace)
+        let visibleText = [card.card.name, card.card.typeLine, card.card.oracleText ?? ""].joined(separator: " ")
+        return words.allSatisfy { visibleText.localizedStandardContains(String($0)) }
+    }
+
     static func cardChoiceKey(_ snapshot: GameSnapshot) -> String? {
         guard !snapshot.isCompleted, let prompt = snapshot.promptEnvelopeV2,
               snapshot.isViewer(prompt.playerId), prompt.cards?.isEmpty == false,

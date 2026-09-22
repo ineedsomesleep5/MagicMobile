@@ -3,6 +3,31 @@ import MagicMobileOnDevice
 @testable import MagicMobile
 
 final class OnDeviceSnapshotAdapterTests: XCTestCase {
+    func testModalSpellOffersAreIndependentOfLandOffersAndNeverGuessedFromLabels() throws {
+        let original = try fixture("2p-priority")
+        for (land, spell) in [(true, true), (false, true), (true, false), (false, false)] {
+            var raw = try XCTUnwrap(original.raw.object)
+            var root = try XCTUnwrap(original.snapshot?.object)
+            var view = try XCTUnwrap(root["gameView"]?.object)
+            let source = try XCTUnwrap(view["canPlayObjects"]?["objects"]?.object?.keys.first)
+            let spellRow: MagicMobileOnDevice.JSONValue = .object(["id": .string(UUID().uuidString), "value": .string("Cast Revitalizing Repast"),
+                "manaAbility": .bool(false), "spellAbility": .bool(spell)])
+            let landRows: [MagicMobileOnDevice.JSONValue] = land ? [.object(["id": .string(UUID().uuidString), "value": .string("Play Old-Growth Grove"), "manaAbility": .bool(false)])] : []
+            view["canPlayObjects"] = .object(["objects": .object([source: .object([
+                "basicPlayAbilities": .array(landRows), "other": .array([spellRow])])])])
+            root["gameView"] = .object(view); raw["snapshot"] = .object(root)
+            let snapshot = try OnDeviceSnapshotAdapter.snapshot(MatchPoll(.object(raw)), expectedSeatID: original.seatID)
+            let actions = snapshot.legalActions?.filter { $0.sourceInstanceId == source } ?? []
+            XCTAssertEqual(actions.contains { $0.type == "play_land" }, land)
+            XCTAssertEqual(actions.contains { $0.type == "cast_spell" }, spell)
+            XCTAssertEqual(actions.contains { $0.type == "activate_ability" }, !spell)
+            for action in actions {
+                let command = GameCommand(type: action.type, gameId: snapshot.id, playerId: action.playerId,
+                    sourceInstanceId: source, promptId: action.promptId, messageId: action.messageId)
+                XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: XCTUnwrap(original.prompt), viewerPlayerID: snapshot.viewerID), EnginePrompt.answer("uuid", .string(source)))
+            }
+        }
+    }
     func testVisibleTokenArtworkUsesTemplateWhileLiveGrantedTraitsStayAuthoritative() throws {
         let original = try fixture("2p-battlefield")
         for hidden in [false, true] {

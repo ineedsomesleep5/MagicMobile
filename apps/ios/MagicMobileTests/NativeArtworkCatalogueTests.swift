@@ -272,6 +272,17 @@ final class NativeArtworkCatalogueTests: XCTestCase {
             name: "Treasure Token", typeLine: "Artifact — Treasure",
             oracleText: "{T}, Sacrifice this artifact: Add one mana of any color.", power: "0", toughness: "0", colors: []))
         XCTAssertNotNil(catalogue.imageURL(id: treasure.id, size: "normal", face: treasure.face))
+        for (name, type, rules) in [
+            ("Food", "Food", "{2}, {T}, Sacrifice Food Token: You gain 3 life."),
+            ("Treasure", "Treasure", "{T}, Sacrifice Treasure Token: Add one mana of any color."),
+            ("Clue", "Clue", "{2}, Sacrifice Clue Token: Draw a card."),
+            ("Blood", "Blood", "{1}, {T}, Discard a card, Sacrifice Blood Token: Draw a card.")
+        ] {
+            let token = try XCTUnwrap(NativeAssetStore.matchTokenArtwork(catalogue.allTokens,
+                name: name + " Token", typeLine: "Artifact — " + type,
+                oracleText: rules, power: "0", toughness: "0", colors: []), name)
+            XCTAssertNotNil(catalogue.imageURL(id: token.id, size: "normal", face: token.face))
+        }
         XCTAssertNotNil(catalogue.imageURL(name: "Betor, Kin to All", size: "normal"))
         let names = try NativeDeckMetadataCatalogue.bundled().artworkCardNames
         let unresolved = names.filter { catalogue.imageURL(name: $0, size: "normal") == nil }

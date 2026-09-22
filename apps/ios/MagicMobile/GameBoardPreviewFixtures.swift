@@ -176,6 +176,20 @@ enum GameBoardPreviewFixtures {
             actions.append(["id": "make-mana-sol-ring", "type": "make_mana", "playerId": "human", "label": "Tap Sol Ring", "sourceInstanceId": "human-sol-ring", "cardName": "Sol Ring", "sourceZone": "battlefield", "producedMana": ["C", "C"]])
         }
         root["legalActions"] = actions
+        if state == .normalBattlefield, ProcessInfo.processInfo.environment["MAGICMOBILE_MDFC_UI_TEST"] == "1" {
+            var zones = players[0]["zones"] as! [String: Any]
+            zones["hand"] = (0..<3).map { index in
+                card("modal-\(index)", "Revitalizing Repast", "Instant", "{B/G}", "Development fixture: Put a +1/+1 counter on target creature.")
+            }
+            players[0]["zones"] = zones
+            root["players"] = players
+            for (index, types) in [["play_land", "cast_spell"], ["cast_spell"], ["play_land"]].enumerated() {
+                for type in types {
+                    actions.append(["id": "modal-\(index)-\(type)", "type": type, "playerId": "human", "label": type == "play_land" ? "Play Old-Growth Grove" : "Cast Revitalizing Repast", "cardInstanceId": "modal-\(index)", "sourceZone": "hand"])
+                }
+            }
+            root["legalActions"] = actions
+        }
         let skip = Dictionary(uniqueKeysWithValues: ["passedTurn", "passedUntilEndOfTurn", "passedUntilNextMain", "passedUntilStackResolved", "passedAllTurns", "passedUntilEndStepBeforeMyTurn"].map { ($0, false) })
         let enginePlayers: [[String: Any]] = players.map { player in
             let zones = player["zones"] as! [String: Any]
@@ -231,7 +245,8 @@ enum GameBoardPreviewFixtures {
             let count = state == .scryChoice ? 3 : (state == .mixedCardChoice ? 2 : 12)
             let options = (0..<count).map { index -> [String: Any] in
                 var value = card("choice-\(index)", index.isMultiple(of: 2) ? "Forest" : "Serra Angel",
-                                 index.isMultiple(of: 2) ? "Basic Land" : "Creature", "", "Development choice fixture.")
+                                 index.isMultiple(of: 2) ? "Basic Land" : "Creature", "",
+                                 index == 0 ? "Development choice fixture: graveyard keyword." : "Development choice fixture.")
                 value["selectable"] = state != .emptyLibraryChoice && (state == .scryChoice || index.isMultiple(of: 2))
                 return value
             }

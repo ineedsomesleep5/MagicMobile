@@ -244,19 +244,30 @@ actor NativeAssetStore {
         let line = normalizedTokenText(value).replacingOccurrences(of: "—", with: "-")
         return line.hasPrefix("token ") ? String(line.dropFirst(6)) : line
     }
-    private static func normalizedTokenRules(_ value: String, typeLine: String) -> String {
+    private static func normalizedTokenRules(_ value: String, typeLine: String, name: String) -> String {
         var rules = normalizedTokenText(value).replacingOccurrences(of: "this token", with: "this permanent")
         // XMage and current Oracle use different self-reference wording. Do not
         // remove abilities or reminder text, or collapse unrelated token variants.
         for kind in ["artifact", "creature", "enchantment", "land"] where normalizedTokenType(typeLine).components(separatedBy: " - ")[0].split(separator: " ").contains(Substring(kind)) {
             rules = rules.replacingOccurrences(of: "this " + kind, with: "this permanent")
         }
+        // XMage can spell an activated sacrifice cost with the token's visible
+        // name ("Sacrifice Food Token:") where Oracle says "this token". Limit
+        // this equivalence to a self-named cost; "a Food Token" and references
+        // elsewhere in the effect must keep their distinct meaning.
+        let selfName = normalizedTokenText(tokenArtworkName(name)) + " token"
+        let pattern = "(?<![a-z0-9])sacrifice " + NSRegularExpression.escapedPattern(for: selfName) + "(?=\\s*:)"
+        if let regex = try? NSRegularExpression(pattern: pattern) {
+            rules = regex.stringByReplacingMatches(in: rules, range: NSRange(rules.startIndex..., in: rules),
+                                                  withTemplate: "sacrifice this permanent")
+        }
         return rules
     }
     static func sameTokenIdentity(_ lhs: NativeTokenArtwork, _ rhs: NativeTokenArtwork) -> Bool {
         normalizedTokenText(tokenArtworkName(lhs.name)) == normalizedTokenText(tokenArtworkName(rhs.name)) &&
         normalizedTokenType(lhs.typeLine ?? "") == normalizedTokenType(rhs.typeLine ?? "") &&
-        normalizedTokenRules(lhs.oracleText ?? "", typeLine: lhs.typeLine ?? "") == normalizedTokenRules(rhs.oracleText ?? "", typeLine: rhs.typeLine ?? "") &&
+        normalizedTokenRules(lhs.oracleText ?? "", typeLine: lhs.typeLine ?? "", name: lhs.name) ==
+            normalizedTokenRules(rhs.oracleText ?? "", typeLine: rhs.typeLine ?? "", name: rhs.name) &&
         lhs.power == rhs.power && lhs.toughness == rhs.toughness && Set(lhs.colors ?? []) == Set(rhs.colors ?? [])
     }
     /// Art identity does not change when counters, buffs, or copy effects alter P/T.
@@ -269,7 +280,8 @@ actor NativeAssetStore {
         let matches = candidates.filter {
             $0.hasMatchingMetadata && normalizedTokenText(Self.tokenArtworkName($0.name)) == normalizedTokenText(Self.tokenArtworkName(name)) &&
             normalizedTokenType($0.typeLine ?? "") == normalizedTokenType(typeLine) &&
-            normalizedTokenRules($0.oracleText ?? "", typeLine: $0.typeLine ?? "") == normalizedTokenRules(oracleText, typeLine: typeLine) && Set($0.colors ?? []) == Set(colors)
+            normalizedTokenRules($0.oracleText ?? "", typeLine: $0.typeLine ?? "", name: $0.name) ==
+                normalizedTokenRules(oracleText, typeLine: typeLine, name: name) && Set($0.colors ?? []) == Set(colors)
         }
         // Several equivalent 2/2 printings must not become ambiguous merely
         // because a different */* token also exists in the full catalogue.

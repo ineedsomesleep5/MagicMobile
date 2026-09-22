@@ -166,6 +166,21 @@ final class NativeDeckMetadataCatalogueTests: XCTestCase {
         XCTAssertEqual(split.manaValue, 4)
         XCTAssertEqual(split.manaCost, "{1}{R}{*}{1}{U}")
         XCTAssertEqual(catalogue.card(named: "Westvale Abbey // Ormendahl, Profane Prince")?.name, "Westvale Abbey")
+        XCTAssertEqual(catalogue.card(named: "Revitalizing Repast // Old-Growth Grove")?.name, "Revitalizing Repast")
+        XCTAssertEqual(catalogue.card(named: "Old-Growth Grove")?.name, "Revitalizing Repast")
+        XCTAssertNil(catalogue.card(named: "Revitalizing Repast // Wrong Grove"))
+    }
+
+    func testReverseFaceOnlyResolvesWhenUniqueAndExactNamesWin() throws {
+        let payload: [String: Any] = [
+            "schemaVersion": 1, "sourceMetadataSHA256": String(repeating: "a", count: 64),
+            "cards": ["Front", "Other", "Back", "Fire // Ice"].map { ["name": $0] },
+            "nameAliases": ["Front // Back": "Front", "Other // Shared": "Other", "Front // Shared": "Front"],
+        ]
+        let catalogue = try NativeDeckMetadataCatalogue(catalogueData: JSONSerialization.data(withJSONObject: payload))
+        XCTAssertEqual(catalogue.card(named: "Back")?.name, "Back")
+        XCTAssertNil(catalogue.card(named: "Shared"))
+        XCTAssertEqual(catalogue.card(named: "Fire // Ice")?.name, "Fire // Ice")
     }
 
     func testEveryPrintedCostSymbolIncludesTheFirstSymbol() throws {

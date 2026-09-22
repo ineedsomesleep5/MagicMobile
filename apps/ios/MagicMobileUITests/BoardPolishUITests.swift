@@ -8,6 +8,17 @@ final class BoardPolishUITests: XCTestCase {
     private var app: XCUIApplication?
     private var currentCapture = "board-polish"
     private var stackDragX: CGFloat = 0.9
+    private var modalOffers = false
+
+    func testPortraitModalOfferGlows() {
+        modalOffers = true
+        runMatrix(portrait: true, selectedFixtures: ["normal-battlefield"])
+    }
+
+    func testLandscapeModalOfferGlows() {
+        modalOffers = true
+        runMatrix(portrait: false, selectedFixtures: ["normal-battlefield"])
+    }
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -189,6 +200,7 @@ final class BoardPolishUITests: XCTestCase {
                                                "-magicmobile.portraitModeEnabled", portrait || rotateDuringTest ? "YES" : "NO"]
                 application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
                 application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+                if modalOffers { application.launchEnvironment["MAGICMOBILE_MDFC_UI_TEST"] = "1" }
                 XCUIDevice.shared.orientation = portrait || rotateDuringTest ? .portrait : .landscapeLeft
                 application.launch()
                 XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
@@ -206,6 +218,14 @@ final class BoardPolishUITests: XCTestCase {
     }
 
     private func verify(_ fixture: String, in app: XCUIApplication, portrait: Bool) {
+        if modalOffers {
+            let values = ["Play land or cast spell available", "Cast spell available", "Play land available"]
+            for value in values {
+                XCTAssertTrue(app.buttons.matching(NSPredicate(format: "value == %@", value)).firstMatch.waitForExistence(timeout: 5))
+            }
+            capture(app, name: "\(portrait ? "portrait" : "landscape")-modal-offers")
+            return
+        }
         switch fixture {
         case "attached-permanents":
             visible(app.buttons["board.action.primary"], in: app)
@@ -361,9 +381,20 @@ final class BoardPolishUITests: XCTestCase {
             app.buttons["board.choice.confirm"].tap()
             XCTAssertTrue(app.staticTexts["preview.captured-command"].waitForExistence(timeout: 5))
         case "scry-choice", "library-choice", "empty-library-choice":
+            let header = app.staticTexts["board.choice.header"].firstMatch
+            let close = app.buttons["Close card choices"]
+            let confirm = app.buttons["board.choice.confirm"]
+            XCTAssertTrue(header.waitForExistence(timeout: 5))
+            // SwiftUI exposes a modal ancestor with a full-screen AX frame.
+            // Measure the visible content instead of that inherited container.
+            func contentBounds() -> CGRect {
+                header.frame.union(close.frame).union(confirm.frame)
+            }
+            XCTAssertLessThan(abs(contentBounds().midX - app.frame.midX), 35, "Card dialog stays horizontally centered")
+            XCTAssertLessThan(abs(contentBounds().midY - app.frame.midY), 60, "Card dialog stays vertically centered")
+            XCTAssertLessThanOrEqual(contentBounds().width, portrait ? 430 : 660, "Dialog must not stretch edge-to-edge")
             let choice = app.descendants(matching: .any)["board.choice.card.choice-0"].firstMatch
             visible(choice, in: app)
-            let confirm = app.buttons["board.choice.confirm"]
             XCTAssertEqual(confirm.isEnabled, fixture == "scry-choice", "Keep-all is a valid scry draft")
             if fixture == "empty-library-choice" {
                 choice.tap()
@@ -382,6 +413,20 @@ final class BoardPolishUITests: XCTestCase {
                 invalid.tap()
                 XCTAssertFalse(confirm.isEnabled)
                 visible(app.textFields["board.choice.search"], in: app)
+                let search = app.textFields["board.choice.search"]
+                search.press(forDuration: 0.15)
+                search.typeText("graveyard")
+                XCTAssertTrue(choice.waitForExistence(timeout: 5))
+                XCTAssertTrue(choice.isHittable, "Search results remain usable with the keyboard open")
+                capture(app, name: currentCapture + "-search-keyboard")
+                search.typeText("\n")
+                XCTAssertTrue(choice.waitForExistence(timeout: 5), "Rules-only matches remain visible after keyboard dismissal")
+                XCTAssertFalse(invalid.exists, "Cards without the rules keyword are filtered out")
+                XCTAssertTrue(choice.isHittable, "A matching card stays reachable after search")
+                XCTAssertLessThan(abs(contentBounds().midY - app.frame.midY), 60, "Search dismissal restores centered presentation")
+                choice.press(forDuration: 0.15)
+                XCTAssertEqual(confirm.isEnabled, fixture == "library-choice",
+                               "Searching must preserve the engine's eligibility constraints")
             }
             if fixture != "scry-choice" { visible(app.buttons["board.choice.done"], in: app) }
             capture(app, name: currentCapture + "-chooser")

@@ -42,6 +42,16 @@ final class OnDeviceDeckResolverTests: XCTestCase {
         XCTAssertThrowsError(try OnDeviceDeckResolver(catalogueData: JSONSerialization.data(withJSONObject: json)))
     }
 
+    func testReverseFaceAmbiguityAndExactCompiledNamesStaySafe() throws {
+        var payload = try XCTUnwrap(JSONSerialization.jsonObject(with: aliasCatalogue()) as? [String: Any])
+        payload["nameAliases"] = ["Front // Shared": "Front", "Fire // Shared": "Fire", "Front // Ice": "Front"]
+        let resolver = try OnDeviceDeckResolver(catalogueData: JSONSerialization.data(withJSONObject: payload))
+        XCTAssertNil(resolver.canonicalCardName("Shared"))
+        XCTAssertEqual(resolver.canonicalCardName("Fire // Ice"), "Fire // Ice")
+        XCTAssertEqual(resolver.canonicalCardName("Ice"), "Front")
+        XCTAssertNil(resolver.canonicalCardName("Front // Unknown"))
+    }
+
     func testBundledWestvaleAliasUsesExistingSelectedPrinting() throws {
         let resolver = try OnDeviceDeckResolver.bundled()
         XCTAssertEqual(resolver.canonicalCardName("Westvale Abbey // Ormendahl, Profane Prince"), "Westvale Abbey")
@@ -51,6 +61,92 @@ final class OnDeviceDeckResolverTests: XCTestCase {
         XCTAssertEqual(row["name"]?.string, "Westvale Abbey")
         XCTAssertEqual(row["setCode"]?.string, "INR")
         XCTAssertEqual(row["collectorNumber"]?.string, "287")
+    }
+
+    func testBundledRepastCombinedAndReverseNamesResolveForImportAndSavedDecks() throws {
+        let resolver = try OnDeviceDeckResolver.bundled()
+        let combined = "Revitalizing Repast // Old-Growth Grove"
+        XCTAssertEqual(resolver.canonicalCardName("Revitalizing Repast"), "Revitalizing Repast")
+        XCTAssertEqual(resolver.canonicalCardName(combined), "Revitalizing Repast")
+        XCTAssertEqual(resolver.canonicalCardName("Old-Growth Grove"), "Revitalizing Repast")
+        XCTAssertEqual(resolver.canonicalCardName("Fire // Ice"), "Fire // Ice")
+        XCTAssertEqual(resolver.canonicalCardName("Brazen Borrower"), "Brazen Borrower")
+        XCTAssertNil(resolver.canonicalCardName("Petty Theft"))
+        let imported = try resolver.importDeck(text: "1 \(combined)", name: "Paste")
+        XCTAssertEqual(imported.entries.first?.cardName, "Revitalizing Repast")
+        let saved = DeckList(name: "Saved", commander: nil, entries: [
+            DeckEntry(cardName: combined, quantity: 2, section: "deck")
+        ])
+        let restored = try JSONDecoder().decode(DeckList.self, from: JSONEncoder().encode(saved))
+        let row = try XCTUnwrap(resolver.resolve(restored)["main"]?.array?.first)
+        XCTAssertEqual(row["name"]?.string, "Revitalizing Repast")
+        XCTAssertEqual(row["setCode"]?.string, "MH3")
+        XCTAssertEqual(row["collectorNumber"]?.string, "256")
+        XCTAssertEqual(row["count"]?.integer, 2)
+        XCTAssertNil(resolver.canonicalCardName("Revitalizing Repast // Wrong Grove"))
+    }
+
+    func testEveryRegeneratedMDFCAliasResolvesFromBundledCatalogue() throws {
+        // These are the 44 aliases absent before the exporter used XMage's
+        // doubleFacedCard metadata. Keep this list independent of production lookup code.
+        let names = [
+            "Agadeem's Awakening // Agadeem, the Undercrypt",
+            "Augmenter Pugilist // Echoing Equation",
+            "Bala Ged Recovery // Bala Ged Sanctuary",
+            "Beyeen Veil // Beyeen Coast",
+            "Blex, Vexing Pest // Search for Blex",
+            "Bloodsoaked Insight // Sanguine Morass",
+            "Bridgeworks Battle // Tanglespan Bridgeworks",
+            "Emeria's Call // Emeria, Shattered Skyclave",
+            "Extus, Oriq Overlord // Awaken the Blood Avatar",
+            "Fell the Profane // Fell Mire",
+            "Flamescroll Celebrant // Revel in Silence",
+            "Hagra Mauling // Hagra Broodpit",
+            "Jadzi, Oracle of Arcavios // Journey to the Oracle",
+            "Jwari Disruption // Jwari Ruins",
+            "Kabira Takedown // Kabira Plateau",
+            "Kazuul's Fury // Kazuul's Cliffs",
+            "Khalni Ambush // Khalni Territory",
+            "Legion Leadership // Legion Stronghold",
+            "Makindi Stampede // Makindi Mesas",
+            "Malakir Rebirth // Malakir Mire",
+            "Ondu Inversion // Ondu Skyruins",
+            "Pelakka Predation // Pelakka Caverns",
+            "Pestilent Cauldron // Restorative Burst",
+            "Razorgrass Ambush // Razorgrass Field",
+            "Revitalizing Repast // Old-Growth Grove",
+            "Rush of Inspiration // Crackling Falls",
+            "Sea Gate Restoration // Sea Gate, Reborn",
+            "Sejiri Shelter // Sejiri Glacier",
+            "Selfless Glyphweaver // Deadly Vanity",
+            "Shatterskull Smashing // Shatterskull, the Hammer Pass",
+            "Silundi Vision // Silundi Isle",
+            "Sink into Stupor // Soporific Springs",
+            "Song-Mad Treachery // Song-Mad Ruins",
+            "Spikefield Hazard // Spikefield Cave",
+            "Stump Stomp // Burnwillow Clearing",
+            "Sundering Eruption // Volcanic Fissure",
+            "Suppression Ray // Orderly Plaza",
+            "Torrent Sculptor // Flamethrower Sonata",
+            "Turntimber Symbiosis // Turntimber, Serpentine Wood",
+            "Valakut Awakening // Valakut Stoneforge",
+            "Vastwood Fortification // Vastwood Thicket",
+            "Wandering Archaic // Explore the Vastlands",
+            "Waterlogged Teachings // Inundated Archive",
+            "Zof Consumption // Zof Bloodbog",
+        ]
+        XCTAssertEqual(names.count, 44)
+        let resolver = try OnDeviceDeckResolver.bundled()
+        let metadata = try NativeDeckMetadataCatalogue.bundled()
+        for combined in names {
+            let front = combined.components(separatedBy: " // ")[0]
+            XCTAssertEqual(resolver.canonicalCardName(combined), front, combined)
+            XCTAssertEqual(metadata.card(named: combined)?.name, front, combined)
+            let deck = DeckList(name: "MDFC", commander: nil, entries: [
+                DeckEntry(cardName: combined, quantity: 1, section: "deck")
+            ])
+            XCTAssertEqual(try resolver.resolve(deck)["main"]?.array?.first?["name"]?.string, front, combined)
+        }
     }
 
     private func fixtureResolver() throws -> OnDeviceDeckResolver {
