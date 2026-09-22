@@ -50,6 +50,9 @@
   coverage/consent/preference checks. Log:
   `/tmp/magicmobile-build9-ui-regressions.log`. Copies of the accepted logs and
   UI source/binary fingerprint are retained in `build_output/build9-evidence.LP48ic/`.
+- Final build-9 rerun: both library-choice orientations and the full-screen
+  dashboard pass again, including the no-results message and Clear search action.
+  Log: `/tmp/magicmobile-build9-ui-final.log`. App source is frozen after this pass.
 
 ## Native and release gates
 

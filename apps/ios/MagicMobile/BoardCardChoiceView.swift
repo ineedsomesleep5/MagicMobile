@@ -218,7 +218,9 @@ struct BoardCardChoiceView: View {
                     }
                     ForEach(filteredCards) { card in compactCardRow(card) }
                     if draftActive { draftOrderControls }
-                    if cards.allSatisfy({ !$0.isPromptSelectable }) && targets.isEmpty {
+                    if filteredCards.isEmpty && !search.isEmpty {
+                        emptySearch
+                    } else if cards.allSatisfy({ !$0.isPromptSelectable }) && targets.isEmpty {
                         Text("No legal cards to select. You can still hold a card to inspect it.")
                             .font(.subheadline)
                     }
@@ -299,7 +301,9 @@ struct BoardCardChoiceView: View {
                     cardRow(card, width: layout.cardWidth)
                 }
             }
-            if cards.allSatisfy({ !$0.isPromptSelectable }) && targets.isEmpty {
+            if filteredCards.isEmpty && !search.isEmpty {
+                emptySearch
+            } else if cards.allSatisfy({ !$0.isPromptSelectable }) && targets.isEmpty {
                 Text("No legal cards to select. You can still hold a card to inspect it.")
                     .font(.subheadline)
             }
@@ -308,6 +312,17 @@ struct BoardCardChoiceView: View {
 
     private var filteredCards: [ZoneCard] {
         cards.filter { PortraitInteractionPolicy.matchesCardSearch($0, query: search) }
+    }
+
+    private var emptySearch: some View {
+        HStack {
+            Text("No cards match your search.").font(.subheadline)
+                .accessibilityIdentifier("board.choice.search.empty")
+            Spacer(minLength: 8)
+            Button("Clear search") { search = "" }
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("board.choice.search.clear")
+        }
     }
 
     private var draftOrderControls: some View {

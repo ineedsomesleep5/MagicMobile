@@ -415,6 +415,12 @@ final class BoardPolishUITests: XCTestCase {
                 visible(app.textFields["board.choice.search"], in: app)
                 let search = app.textFields["board.choice.search"]
                 search.press(forDuration: 0.15)
+                search.typeText("zzzznotacard")
+                XCTAssertTrue(app.staticTexts["board.choice.search.empty"].waitForExistence(timeout: 5))
+                let clearSearch = app.buttons["board.choice.search.clear"]
+                XCTAssertTrue(clearSearch.isHittable)
+                clearSearch.press(forDuration: 0.15)
+                XCTAssertTrue(choice.waitForExistence(timeout: 5), "Clearing a search restores the supplied cards")
                 search.typeText("graveyard")
                 XCTAssertTrue(choice.waitForExistence(timeout: 5))
                 XCTAssertTrue(choice.isHittable, "Search results remain usable with the keyboard open")
