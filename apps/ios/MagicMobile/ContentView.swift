@@ -3162,10 +3162,8 @@ struct NativeGameView: View {
                                         laneIndices: CombatViewportAnchors.laneIndices(human: human.zones.battlefield, opponent: opponent.zones.battlefield),
                                         inspect: { inspectedCard = $0 })
                                 }
-                                boardFXOverlay(bounds: bounds, snapshot: snapshot,
-                                    viewerPoint: CGPoint(x: metrics.playerBattlefieldRect.midX, y: metrics.playerBattlefieldRect.maxY - 30),
-                                    opponentPoint: CGPoint(x: metrics.opponentBattlefieldRect.midX, y: metrics.opponentBattlefieldRect.minY + 30),
-                                    stackPoint: CGPoint(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.midY))
+                                boardFXOverlay(bounds: bounds, snapshot: snapshot, opponentRect: metrics.opponentBattlefieldRect,
+                                    playerRect: metrics.playerBattlefieldRect, stackRect: metrics.centerStripRect, handRect: metrics.handRect)
                             }
                         }
                         .onAppear {
@@ -3426,17 +3424,23 @@ struct NativeGameView: View {
         }
     }
 
-    private func boardFXOverlay(bounds: [String: CGRect], snapshot: GameSnapshot, viewerPoint: CGPoint,
-                                opponentPoint: CGPoint, stackPoint: CGPoint) -> some View {
-        let points = Dictionary(snapshot.players.map { ($0.playerId, snapshot.isViewer($0.playerId) ? viewerPoint : opponentPoint) },
-                                uniquingKeysWith: { first, _ in first })
-        return BoardFXOverlay(effects: boardFX.active, cardBounds: bounds, playerPoints: points, stackPoint: stackPoint,
+    private func boardFXOverlay(bounds: [String: CGRect], snapshot: GameSnapshot, opponentRect: CGRect,
+                                playerRect: CGRect, stackRect: CGRect, handRect: CGRect) -> some View {
+        let anchors = BoardFXAnchors(
+            viewerID: snapshot.viewerID,
+            viewerPoint: CGPoint(x: playerRect.midX, y: playerRect.maxY - 30),
+            opponentPoint: CGPoint(x: opponentRect.midX, y: opponentRect.minY + 30),
+            stackPoint: CGPoint(x: stackRect.midX, y: stackRect.midY),
+            viewerHandPoint: CGPoint(x: handRect.midX, y: handRect.midY),
+            opponentHandPoint: CGPoint(x: opponentRect.midX, y: opponentRect.minY - 40))
+        return BoardFXOverlay(effects: boardFX.active, subjects: boardFX.subjects, cardBounds: bounds, anchors: anchors,
                               prune: { boardFX.prune(now: Date()) })
     }
 
     private func boardObservation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
         content
             .modifier(BoardImpactShake(animatableData: boardShake))
+            .environment(\.boardFXCardMotion, boardFX.cardMotion(viewerID: snapshot.viewerID))
             .environment(\.boardZoneInspectionAction, inspectBoardZone)
             .onChange(of: BoardFXRevisionKey(snapshot: snapshot), initial: true) { _, _ in
                 ingestBoardFX(snapshot)
@@ -3930,10 +3934,8 @@ struct NativeGameView: View {
                             laneIndices: CombatViewportAnchors.laneIndices(human: human.zones.battlefield, opponent: opponent.zones.battlefield),
                             inspect: { inspectedCard = $0 })
                     }
-                    boardFXOverlay(bounds: bounds, snapshot: snapshot,
-                        viewerPoint: CGPoint(x: metrics.playerBattlefieldRect.midX, y: metrics.playerBattlefieldRect.maxY - 30),
-                        opponentPoint: CGPoint(x: metrics.opponentBattlefieldRect.midX, y: metrics.opponentBattlefieldRect.minY + 30),
-                        stackPoint: CGPoint(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.midY))
+                    boardFXOverlay(bounds: bounds, snapshot: snapshot, opponentRect: metrics.opponentBattlefieldRect,
+                        playerRect: metrics.playerBattlefieldRect, stackRect: metrics.centerStripRect, handRect: metrics.handRect)
                 }
             }
             .onAppear {
@@ -9437,6 +9439,7 @@ struct PortraitOverlappingBattlefieldRow: View {
                         let combatHighlighted = combatHighlightIds.contains(card.instanceId) || combatHighlightIds.contains(card.id)
                         CardTile(card: card, selected: selectedCard?.id == card.id, legal: action != nil, targetable: targetable || combatHighlighted, zoneName: title, width: cardWidth, height: cardHeight)
                             .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [card.instanceId: $0] }
+                            .boardFXCardMotion(card.instanceId)
                             .onCardInteraction(tap: {
                                         if targetable {
                                             runTargetAction(card)
@@ -10552,6 +10555,7 @@ struct BattlefieldRow: View {
         )
         .frame(width: renderedCardWidth, height: renderedCardHeight)
         .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [card.instanceId: $0] }
+        .boardFXCardMotion(card.instanceId)
         .opacity(!targetableIds.isEmpty && !targetable ? 0.54 : 1)
         .overlay(alignment: .bottomLeading) {
             Text("×\(group.count)")
@@ -10601,6 +10605,7 @@ struct BattlefieldRow: View {
         )
         .frame(width: renderedCardWidth, height: renderedCardHeight)
         .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [card.instanceId: $0] }
+        .boardFXCardMotion(card.instanceId)
         .opacity(!targetableIds.isEmpty && !targetable ? 0.54 : 1)
         .onCardInteraction(tap: {
             handleCardTap(card, action: action, targetable: targetable, combatHighlighted: combatHighlighted)

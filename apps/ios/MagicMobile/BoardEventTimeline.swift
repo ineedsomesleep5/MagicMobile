@@ -138,6 +138,16 @@ enum BoardFXEvent: Equatable {
         }
     }
 
+    /// Card, stack object or player the effect is about.
+    var subjectID: String {
+        switch self {
+        case let .spellCast(id, _, _, _), let .leftBattlefield(id, _, _, _), let .damageMarked(id, _),
+             let .enteredBattlefield(id, _, _, _), let .countersAdded(id, _), let .attackDeclared(id, _),
+             let .lifeChanged(id, _):
+            return id
+        }
+    }
+
     /// Life totals are always shown; they carry game information, not decoration.
     var isEssential: Bool {
         if case .lifeChanged = self { return true }
@@ -276,13 +286,16 @@ enum BoardFXScheduler {
         return result
     }
 
+    /// Share of an arrival spent flying before the card lands (Full level only).
+    static let arrivalFlightFraction = 0.42
+
     static func duration(of event: BoardFXEvent, motion: Bool) -> TimeInterval {
         let base: TimeInterval
         switch event {
-        case .spellCast: base = 0.95
+        case .spellCast: base = 1.1
         case .leftBattlefield: base = 0.85
         case .damageMarked: base = 0.8
-        case .enteredBattlefield: base = 0.75
+        case .enteredBattlefield: base = 1.0
         case .countersAdded: base = 0.7
         case .attackDeclared: base = 0.55
         case .lifeChanged: base = 1.2
@@ -304,27 +317,75 @@ struct ActiveBoardFX: Equatable, Identifiable {
 struct BoardFXDirector: Equatable {
     private(set) var previous: BoardFXState?
     private(set) var active: [ActiveBoardFX] = []
+    /// Card faces for flights, keyed by event subject. Departed cards come from the
+    /// previous snapshot, so a flight can show a card that is no longer on the board.
+    private(set) var subjects: [String: ZoneCard] = [:]
+    private var previousBattlefield: [String: ZoneCard] = [:]
     private var nextID = 0
 
     /// Returns only the newly scheduled effects, for haptics and accessibility.
     @discardableResult
     mutating func ingest(_ snapshot: GameSnapshot, level: BoardFXLevel, now: Date) -> [ScheduledBoardFX] {
         let state = BoardFXState(snapshot: snapshot)
-        defer { previous = state }
+        let battlefield = Dictionary(snapshot.players.flatMap(\.zones.battlefield).map { ($0.instanceId, $0) },
+                                     uniquingKeysWith: { first, _ in first })
+        let departedFaces = previousBattlefield
+        defer { previous = state; previousBattlefield = battlefield }
         prune(now: now)
         guard let previous, previous.gameID == state.gameID else {
             active = []
+            subjects = [:]
             return []
         }
         let scheduled = BoardFXScheduler.schedule(BoardEventDiffer.events(from: previous, to: state), level: level, firstID: nextID)
         nextID += scheduled.count
         active += scheduled.map { ActiveBoardFX(scheduled: $0, start: now) }
+        for fx in scheduled {
+            switch fx.event {
+            case let .enteredBattlefield(id, _, _, _): subjects[id] = battlefield[id]
+            case let .leftBattlefield(id, _, _, _): subjects[id] = departedFaces[id]
+            case let .spellCast(id, _, _, _):
+                subjects[id] = snapshot.stackTopFirst.first { $0.id == id }?.displaySourceCard
+            default: break
+            }
+        }
         return scheduled
     }
 
     mutating func prune(now: Date) {
         active.removeAll { $0.endDate <= now }
+        let live = Set(active.map(\.scheduled.event.subjectID))
+        subjects = subjects.filter { live.contains($0.key) }
+    }
+
+    /// Per-card motion for the real board tiles: hide arriving cards until their
+    /// flight lands, and lunge attackers toward the opponent.
+    func cardMotion(viewerID: String) -> BoardFXCardMotion {
+        var motion = BoardFXCardMotion()
+        for effect in active where effect.scheduled.usesMotion {
+            switch effect.scheduled.event {
+            case let .enteredBattlefield(id, _, _, _) where subjects[id] != nil:
+                let flight = effect.scheduled.duration * BoardFXScheduler.arrivalFlightFraction
+                motion.arrivals[id] = effect.start.addingTimeInterval(effect.scheduled.delay + flight)
+            case let .attackDeclared(id, _):
+                let owner = previous?.cards[id]?.playerID
+                motion.lunges[id] = BoardFXCardMotion.Lunge(token: effect.id, direction: owner == viewerID ? -1 : 1)
+            default: break
+            }
+        }
+        return motion
     }
 
     var latestEnd: Date? { active.map(\.endDate).max() }
+}
+
+struct BoardFXCardMotion: Equatable {
+    struct Lunge: Equatable {
+        let token: Int
+        /// -1 moves up the screen (the viewer's creatures), +1 moves down.
+        let direction: Double
+    }
+
+    var arrivals: [String: Date] = [:]
+    var lunges: [String: Lunge] = [:]
 }

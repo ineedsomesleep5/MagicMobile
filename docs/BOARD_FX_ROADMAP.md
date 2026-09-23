@@ -34,7 +34,16 @@ snapshot applied ──► BoardFXRevisionKey changes (NativeGameView.boardObser
                     └► BoardFXOverlay (Canvas in TimelineView, only while active)
                          uses PortraitCardBoundsKey anchors + metrics rects
                     └► BoardFXHaptics, BoardImpactShake (viewer hit, Full only)
+                    └► environment boardFXCardMotion → BoardFXCardMotionModifier on
+                         every battlefield tile (hide while a flight is airborne, lunge)
 ```
+
+Card flights (Full level only) draw a real `CardTile` above the Canvas:
+arrivals arc in from the owner's hand point (or the stack) and land at the tile's
+anchor, then the landing glow plays; departures shrink toward the owner's side (or
+hand); spell casts rise to the stack point and hold as a showcase. Faces for departed
+cards come from the previous snapshot (`BoardFXDirector.subjects`). Attackers lunge
+toward the opponent with a keyframe spring. Reduced/Off levels have no flights or lunges.
 
 | File | Role |
 |---|---|
@@ -106,7 +115,7 @@ single MIT file with its license header when that is enough.
 | Phase | State |
 |---|---|
 | 1 Event timeline + first effects | Implemented on `codex/board-fx-timeline`. Unit tests, ios-fast preflight and generic iPhone compile pass. On-device visual acceptance pending. |
-| 2 Card motion | Not started |
+| 2 Card motion | Flights (arrive/depart/cast) and attack lunge implemented on `codex/board-fx-motion` (stacked on phase 1). Tests and generic iPhone compile pass. Visual acceptance pending. Blocker lunge/defender targeting and hand-card exact source rect not done. |
 | 3 Card shaders | Not started |
 | 4 Particles and sound upgrade | Not started |
 | 5 RealityKit moments | Not started |
@@ -118,3 +127,7 @@ single MIT file with its license header when that is enough.
   viewer-hit shake, Board Effects picker in the menu Display panel, in-game menu and
   Settings sheet. Not yet seen on a device. Next: phone check, tune timings/colors,
   then phase 2 (card flights) starting with extracting the battlefield card view.
+- 2026-09-23 (Claude): Phase 2 card motion: `BoardFXDirector.subjects` + `cardMotion`,
+  `BoardFXAnchors`, `BoardFXFlight` placements (arc, scale, rotation), tile modifier
+  applied at all three `PortraitCardBoundsKey` sites. 12 portable tests. Next: phase 3
+  shaders (foil sheen, playable glow, dissolve) in a `.metal` file.
