@@ -1,16 +1,32 @@
+import AVFoundation
 import SwiftUI
 import UIKit
 
-// Board FX phase 1 renderer. One Canvas draws every active effect as a pure
-// function of elapsed time: no per-particle state, no work while idle, and no
-// hit testing. Event derivation lives in BoardEventTimeline.swift.
+// Board FX renderer. One Canvas draws every active effect as a pure function of
+// elapsed time, with card flights layered above it: no per-particle state, no
+// work while idle, and no hit testing. Event derivation lives in BoardEventTimeline.swift.
+
+/// Board positions in the overlay's coordinate space.
+struct BoardFXAnchors {
+    var viewerID: String
+    var viewerPoint: CGPoint
+    var opponentPoint: CGPoint
+    var stackPoint: CGPoint
+    /// Where the viewer's hand sits and where an opponent's hidden hand is implied.
+    var viewerHandPoint: CGPoint
+    var opponentHandPoint: CGPoint
+
+    func playerPoint(_ playerID: String) -> CGPoint { playerID == viewerID ? viewerPoint : opponentPoint }
+    func handPoint(_ playerID: String?) -> CGPoint { playerID == viewerID ? viewerHandPoint : opponentHandPoint }
+}
 
 struct BoardFXOverlay: View {
     let effects: [ActiveBoardFX]
+    let subjects: [String: ZoneCard]
     /// Rendered card rectangles in this overlay's coordinate space.
     let cardBounds: [String: CGRect]
-    let playerPoints: [String: CGPoint]
-    let stackPoint: CGPoint
+    let anchors: BoardFXAnchors
+    let clock: BoardFXClock
     let prune: () -> Void
 
     /// Cards that just left the battlefield no longer report bounds; keep their last rectangle.
@@ -22,19 +38,49 @@ struct BoardFXOverlay: View {
                 Color.clear
             } else {
                 TimelineView(.animation) { timeline in
-                    Canvas { context, _ in
-                        let now = timeline.date
-                        for effect in effects {
-                            let elapsed = now.timeIntervalSince(effect.start) - effect.scheduled.delay
-                            guard elapsed >= 0, elapsed <= effect.scheduled.duration else { continue }
-                            draw(effect.scheduled, progress: elapsed / effect.scheduled.duration, in: &context)
+                    let now = timeline.date
+                    let _ = clock.observe(effects, at: now)
+                    ZStack {
+                        Canvas { context, _ in
+                            for effect in effects {
+                                guard let p = progress(effect, now: now) else { continue }
+                                draw(effect.scheduled, progress: p, in: &context)
+                            }
+                        }
+                        ForEach(flights) { flight in
+                            if let p = progress(flight.effect, now: now), let placement = flight.placement(progress: p) {
+                                Group {
+                                    if flight.showsFullCard {
+                                        CardTile(card: flight.card, selected: false, zoneName: "Effect",
+                                                 width: placement.size.width, height: placement.size.height, ignoreTappedRotation: true)
+                                    } else {
+                                        // Same frame as the battlefield tile, so take-off and landing are seamless.
+                                        ArenaBattlefieldCard(card: flight.card, zoneName: "Effect",
+                                                             width: placement.size.width, height: placement.size.height)
+                                    }
+                                }
+                                    .modifier(BoardFXShading(shading: flight.shading(progress: p), size: placement.size))
+                                    .shadow(color: .black.opacity(0.55), radius: 10, y: 6)
+                                    .scaleEffect(placement.scale)
+                                    .rotationEffect(.degrees(placement.rotation))
+                                    .opacity(placement.opacity)
+                                    .position(placement.center)
+                            }
                         }
                     }
                 }
                 .task(id: effects.last?.id) {
-                    guard let end = effects.map(\.endDate).max() else { return }
-                    let wait = end.timeIntervalSinceNow + 0.05
-                    if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+                    // Wait for the last effect's end on the frame clock; batches not yet
+                    // drawn count from now.
+                    while !Task.isCancelled {
+                        let now = Date()
+                        let end = effects.map { effect in
+                            (clock.origin(for: effect.start) ?? now).addingTimeInterval(effect.scheduled.end)
+                        }.max() ?? now
+                        let wait = end.timeIntervalSince(now) + 0.05
+                        if wait <= 0.05 && effects.allSatisfy({ clock.origin(for: $0.start) != nil }) { break }
+                        try? await Task.sleep(for: .seconds(max(wait, 0.05)))
+                    }
                     guard !Task.isCancelled else { return }
                     prune()
                 }
@@ -53,19 +99,55 @@ struct BoardFXOverlay: View {
         cardBounds[cardID] ?? lastKnownBounds[cardID]
     }
 
+    private func progress(_ effect: ActiveBoardFX, now: Date) -> Double? {
+        guard let origin = clock.origin(for: effect.start) else { return nil }
+        let elapsed = now.timeIntervalSince(origin) - effect.scheduled.delay
+        guard elapsed >= 0, elapsed <= effect.scheduled.duration else { return nil }
+        return elapsed / effect.scheduled.duration
+    }
+
+    private var flights: [BoardFXFlight] {
+        effects.compactMap { effect in
+            guard effect.scheduled.usesMotion, let card = subjects[effect.scheduled.event.subjectID] else { return nil }
+            switch effect.scheduled.event {
+            case let .enteredBattlefield(id, playerID, source, _):
+                guard let target = rect(id) else { return nil }
+                let origin = source == .stack ? anchors.stackPoint : anchors.handPoint(playerID)
+                return BoardFXFlight(effect: effect, card: card, kind: .arrive(from: origin, to: target))
+            case let .leftBattlefield(id, playerID, destination, _):
+                guard let origin = rect(id) else { return nil }
+                let target = destination == .hand ? anchors.handPoint(playerID) : anchors.playerPoint(playerID)
+                return BoardFXFlight(effect: effect, card: card, kind: .depart(from: origin, to: target, destination: destination))
+            case let .spellCast(_, _, controllerID, _):
+                return BoardFXFlight(effect: effect, card: card,
+                                     kind: .cast(from: anchors.handPoint(controllerID), to: anchors.stackPoint))
+            default:
+                return nil
+            }
+        }
+    }
+
     private func draw(_ fx: ScheduledBoardFX, progress p: Double, in context: inout GraphicsContext) {
         let motion = fx.usesMotion
         switch fx.event {
         case let .spellCast(_, name, _, tint):
+            let stackPoint = anchors.stackPoint
             BoardFXPainter.runeBurst(at: stackPoint, color: tint.color, progress: p, seed: fx.id, motion: motion, in: &context)
             BoardFXPainter.banner(name, at: CGPoint(x: stackPoint.x, y: stackPoint.y - 54), color: tint.color, progress: p, in: &context)
         case let .enteredBattlefield(cardID, _, _, tint):
             guard let rect = rect(cardID) else { return }
-            BoardFXPainter.arrivalGlow(rect, color: tint.color, progress: p, motion: motion, in: &context)
-            if motion { BoardFXPainter.sparks(from: rect, color: tint.color, count: 16, progress: p, seed: fx.id, style: .rise, in: &context) }
+            // With a flight, the glow is the landing; without one it plays immediately.
+            let flying = motion && subjects[cardID] != nil
+            let landing = BoardFXScheduler.arrivalFlightFraction
+            guard !flying || p >= landing else { return }
+            let glow = flying ? (p - landing) / (1 - landing) : p
+            BoardFXPainter.arrivalGlow(rect, color: tint.color, progress: glow, motion: motion, in: &context)
+            if motion { BoardFXPainter.sparks(from: rect, color: tint.color, count: 16, progress: glow, seed: fx.id, style: .rise, in: &context) }
         case let .leftBattlefield(cardID, _, destination, tint):
             guard let rect = rect(cardID) else { return }
-            BoardFXPainter.departure(rect, color: tint.color, destination: destination, progress: p, motion: motion, in: &context)
+            if !(motion && subjects[cardID] != nil) {
+                BoardFXPainter.departure(rect, color: tint.color, destination: destination, progress: p, motion: motion, in: &context)
+            }
             if motion {
                 let style: BoardFXPainter.SparkStyle = destination == .exile ? .rise : .fall
                 let color = destination == .exile ? Color(red: 0.72, green: 0.9, blue: 1) : Color(red: 1, green: 0.45, blue: 0.16)
@@ -85,7 +167,7 @@ struct BoardFXOverlay: View {
             BoardFXPainter.arrivalGlow(rect, color: Color(red: 1, green: 0.36, blue: 0.2), progress: p, motion: motion, in: &context)
             if motion { BoardFXPainter.sparks(from: rect, color: tint.color, count: 8, progress: p, seed: fx.id, style: .burst, in: &context) }
         case let .lifeChanged(playerID, delta):
-            guard let point = playerPoints[playerID] else { return }
+            let point = anchors.playerPoint(playerID)
             let color = delta < 0 ? Color(red: 1, green: 0.3, blue: 0.26) : Color(red: 0.45, green: 1, blue: 0.55)
             BoardFXPainter.number(delta < 0 ? "\(delta)" : "+\(delta)", at: point, color: color, size: 40, progress: p, motion: motion, in: &context)
         }
@@ -226,6 +308,72 @@ struct BoardImpactShake: GeometryEffect {
     }
 }
 
+/// Short CC0 impact sounds (Kenney Impact Sounds, see Resources/BoardFX/KENNEY_LICENSE.txt).
+/// Ambient session: respects the silent switch and mixes with the player's music.
+@MainActor
+enum BoardFXSound {
+    enum Cue: String, CaseIterable {
+        case cast = "fx-cast", land = "fx-land", damage = "fx-damage", death = "fx-death", playerHit = "fx-player-hit"
+
+        var volume: Float {
+            switch self {
+            case .cast: return 0.35
+            case .land: return 0.6
+            case .damage: return 0.55
+            case .death: return 0.45
+            case .playerHit: return 0.7
+            }
+        }
+    }
+
+    static let key = "magicmobile.boardSoundsEnabled"
+    private static var players: [Cue: AVAudioPlayer] = [:]
+    private static var sessionReady = false
+
+    private static func player(_ cue: Cue) -> AVAudioPlayer? {
+        if let player = players[cue] { return player }
+        guard let url = Bundle.main.url(forResource: cue.rawValue, withExtension: "m4a"),
+              let player = try? AVAudioPlayer(contentsOf: url) else { return nil }
+        player.volume = cue.volume
+        player.prepareToPlay()
+        players[cue] = player
+        return player
+    }
+
+    static func play(_ cue: Cue, after delay: TimeInterval) {
+        if !sessionReady {
+            try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
+            sessionReady = true
+        }
+        guard let player = player(cue) else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, delay)) {
+            player.currentTime = 0
+            player.play()
+        }
+    }
+
+    /// One sound per cue per transition, timed to the first matching effect.
+    static func play(_ scheduled: [ScheduledBoardFX], viewerID: String) {
+        var cues: [Cue: TimeInterval] = [:]
+        for fx in scheduled {
+            let cue: Cue?
+            var at = fx.delay
+            switch fx.event {
+            case .spellCast: cue = .cast
+            case .enteredBattlefield:
+                cue = .land
+                if fx.usesMotion { at += fx.duration * BoardFXScheduler.arrivalFlightFraction }
+            case .damageMarked, .attackDeclared: cue = .damage
+            case .leftBattlefield: cue = .death
+            case let .lifeChanged(id, delta): cue = id == viewerID && delta < 0 ? .playerHit : nil
+            case .countersAdded: cue = nil
+            }
+            if let cue, cues[cue].map({ at < $0 }) ?? true { cues[cue] = at }
+        }
+        for (cue, at) in cues { play(cue, after: at) }
+    }
+}
+
 enum BoardFXHaptics {
     @MainActor
     static func play(_ scheduled: [ScheduledBoardFX], viewerID: String) {
@@ -239,6 +387,7 @@ enum BoardFXHaptics {
 
 struct BoardEffectsPicker: View {
     @AppStorage(BoardFXLevel.key) private var level = BoardFXLevel.defaultValue
+    @AppStorage(BoardFXSound.key) private var sounds = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -256,7 +405,203 @@ struct BoardEffectsPicker: View {
             }
             .pickerStyle(.segmented)
             .accessibilityIdentifier("settings.boardEffects")
+            Toggle("Effect Sounds", isOn: $sounds)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white.opacity(0.85))
+                .tint(GameBoardTheme.current.emeraldPriority)
+                .accessibilityIdentifier("settings.boardSounds")
         }
         .magicPanel(.iron, prominence: .quiet, cornerRadius: 9, padding: 10)
+    }
+}
+
+/// One card face moving across the board for an effect.
+struct BoardFXFlight: Identifiable {
+    enum Kind {
+        case arrive(from: CGPoint, to: CGRect)
+        case depart(from: CGRect, to: CGPoint, destination: BoardFXZone?)
+        case cast(from: CGPoint, to: CGPoint)
+    }
+
+    struct Placement {
+        var center: CGPoint
+        var size: CGSize
+        var scale: CGFloat
+        var rotation: Double
+        var opacity: Double
+    }
+
+    let effect: ActiveBoardFX
+    let card: ZoneCard
+    let kind: Kind
+
+    var id: Int { effect.id }
+
+    /// Spell showcases present the whole card; permanents keep their board frame.
+    var showsFullCard: Bool {
+        if case .cast = kind { return true }
+        return false
+    }
+
+    /// Quadratic arc between two points, lifted toward the top of the screen.
+    static func arc(_ a: CGPoint, _ b: CGPoint, lift: CGFloat, t: Double) -> CGPoint {
+        let control = CGPoint(x: (a.x + b.x) / 2, y: min(a.y, b.y) - lift)
+        let u = 1 - t
+        return CGPoint(x: u * u * a.x + 2 * u * t * control.x + t * t * b.x,
+                       y: u * u * a.y + 2 * u * t * control.y + t * t * b.y)
+    }
+
+    enum Shading: Equatable {
+        case none
+        case dissolve(progress: Double, edge: Color)
+        case foil(phase: Double)
+    }
+
+    /// Graveyard (or unknown) and exile departures burn away; bounces fly.
+    static func dissolves(_ destination: BoardFXZone?) -> Bool {
+        destination == nil || destination == .graveyard || destination == .exile
+    }
+
+    func shading(progress p: Double) -> Shading {
+        switch kind {
+        case let .depart(_, _, destination) where Self.dissolves(destination):
+            let edge = destination == .exile ? Color(red: 0.75, green: 0.92, blue: 1) : Color(red: 1, green: 0.52, blue: 0.12)
+            return .dissolve(progress: p, edge: edge)
+        case .cast:
+            return .foil(phase: p * 1.4)
+        default:
+            return .none
+        }
+    }
+
+    func placement(progress p: Double) -> Placement? {
+        switch kind {
+        case let .arrive(from, to):
+            let landing = BoardFXScheduler.arrivalFlightFraction
+            guard p < landing else { return nil }
+            let t = BoardFXPainter.easeOut(p / landing)
+            return Placement(center: Self.arc(from, CGPoint(x: to.midX, y: to.midY), lift: 60, t: t),
+                             size: to.size, scale: 1.35 - 0.35 * t, rotation: -8 * (1 - t), opacity: min(1, p / landing * 4))
+        case let .depart(from, _, destination) where Self.dissolves(destination):
+            // Burn away in place with a slight lift; the shader does the rest.
+            let t = BoardFXPainter.easeOut(p)
+            return Placement(center: CGPoint(x: from.midX, y: from.midY - 10 * t), size: from.size,
+                             scale: 1 + 0.06 * t, rotation: 0, opacity: 1)
+        case let .depart(from, to, _):
+            let t = p * p
+            return Placement(center: Self.arc(CGPoint(x: from.midX, y: from.midY), to, lift: 30, t: t),
+                             size: from.size, scale: 1 - 0.6 * t, rotation: 14 * t, opacity: 1 - t)
+        case let .cast(from, to):
+            let size = CGSize(width: 86, height: 120)
+            if p < 0.3 {
+                let t = BoardFXPainter.easeOut(p / 0.3)
+                return Placement(center: Self.arc(from, to, lift: 40, t: t), size: size, scale: 0.6 + 0.5 * t,
+                                 rotation: -6 * (1 - t), opacity: min(1, p / 0.3 * 3))
+            }
+            let hold = (p - 0.3) / 0.7
+            return Placement(center: to, size: size, scale: 1.1 - 0.15 * hold, rotation: 0,
+                             opacity: hold < 0.6 ? 1 : 1 - (hold - 0.6) / 0.4)
+        }
+    }
+}
+
+/// Frame clock for effect batches. A snapshot can stall the main thread while the
+/// board relays out; each batch starts on its first drawn frame instead of at
+/// ingest, so no opening plays off-screen. Reference type on purpose: it is written
+/// while rendering and must not invalidate views.
+final class BoardFXClock {
+    private var firstFrames: [Date: Date] = [:]
+
+    func observe(_ effects: [ActiveBoardFX], at now: Date) {
+        for effect in effects where firstFrames[effect.start] == nil {
+            firstFrames[effect.start] = now
+        }
+        if firstFrames.count > 32 {
+            let live = Set(effects.map(\.start))
+            firstFrames = firstFrames.filter { live.contains($0.key) }
+        }
+    }
+
+    func origin(for batch: Date) -> Date? { firstFrames[batch] }
+}
+
+private struct BoardFXClockKey: EnvironmentKey {
+    static let defaultValue = BoardFXClock()
+}
+
+private struct BoardFXCardMotionKey: EnvironmentKey {
+    static let defaultValue = BoardFXCardMotion()
+}
+
+extension EnvironmentValues {
+    var boardFXCardMotion: BoardFXCardMotion {
+        get { self[BoardFXCardMotionKey.self] }
+        set { self[BoardFXCardMotionKey.self] = newValue }
+    }
+
+    var boardFXClock: BoardFXClock {
+        get { self[BoardFXClockKey.self] }
+        set { self[BoardFXClockKey.self] = newValue }
+    }
+}
+
+/// Applied to real board tiles: hides a card while its flight is in the air and
+/// lunges attackers. Layout and anchors are unaffected.
+struct BoardFXCardMotionModifier: ViewModifier {
+    let cardID: String
+    @Environment(\.boardFXCardMotion) private var motion
+    @Environment(\.boardFXClock) private var clock
+    @State private var landed: BoardFXCardMotion.Arrival?
+
+    func body(content: Content) -> some View {
+        let landing = motion.arrivals[cardID]
+        let hidden = landing.map { landed != $0 } ?? false
+        let lunge = motion.lunges[cardID]
+        // Direction 0 (no lunge) keeps the offset at zero when the trigger resets.
+        let direction = CGFloat(lunge?.direction ?? 0)
+        content
+            .opacity(hidden ? 0 : 1)
+            .keyframeAnimator(initialValue: CGFloat.zero, trigger: lunge?.token ?? -1) { view, value in
+                view.offset(y: value * direction)
+            } keyframes: { _ in
+                SpringKeyframe(CGFloat(22), duration: 0.18, spring: .snappy)
+                SpringKeyframe(CGFloat.zero, duration: 0.34, spring: .bouncy)
+            }
+            .task(id: landing) {
+                guard let landing else { return }
+                // Land on the overlay's frame clock (see BoardFXClock).
+                var polls = 0
+                while clock.origin(for: landing.batch) == nil && polls < 60 && !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(33)); polls += 1
+                }
+                let origin = clock.origin(for: landing.batch) ?? Date()
+                let wait = origin.addingTimeInterval(landing.landsAfter).timeIntervalSinceNow
+                if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+                guard !Task.isCancelled else { return }
+                landed = landing
+            }
+    }
+}
+
+extension View {
+    func boardFXCardMotion(_ cardID: String) -> some View {
+        modifier(BoardFXCardMotionModifier(cardID: cardID))
+    }
+}
+
+/// Applies the Metal card shaders from BoardFXShaders.metal.
+struct BoardFXShading: ViewModifier {
+    let shading: BoardFXFlight.Shading
+    let size: CGSize
+
+    func body(content: Content) -> some View {
+        switch shading {
+        case .none:
+            content
+        case let .dissolve(progress, edge):
+            content.colorEffect(ShaderLibrary.mmDissolve(.float2(size), .float(progress), .color(edge)))
+        case let .foil(phase):
+            content.colorEffect(ShaderLibrary.mmFoil(.float2(size), .float(phase), .float(1)))
+        }
     }
 }

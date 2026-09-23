@@ -115,3 +115,38 @@ extension BoardEventTimelineTests {
         XCTAssertEqual(director.active, [], "a different game never animates from the old board")
     }
 }
+
+extension BoardEventTimelineTests {
+    func testArrivalHidesTileUntilFlightLandsAndDepartureKeepsItsFace() {
+        let start = Date(timeIntervalSince1970: 2_000)
+        let bear = card("bear")
+        var director = BoardFXDirector()
+        director.ingest(snapshot([player("a", hand: [bear]), player("b", battlefield: [card("wolf", "Wolf")])]), level: .full, now: start)
+        director.ingest(snapshot([player("a", battlefield: [bear]), player("b")], revision: 2), level: .full, now: start)
+        XCTAssertEqual(director.subjects["bear"]?.card.name, "Grizzly Bears")
+        XCTAssertEqual(director.subjects["wolf"]?.card.name, "Wolf", "departed card face comes from the previous board")
+        let landing = try? XCTUnwrap(director.cardMotion(viewerID: "a").arrivals["bear"])
+        let arrival = director.active.first { $0.scheduled.event.subjectID == "bear" }!.scheduled
+        XCTAssertEqual(landing, BoardFXCardMotion.Arrival(batch: start, landsAfter: arrival.delay + arrival.duration * BoardFXScheduler.arrivalFlightFraction))
+        director.prune(now: start.addingTimeInterval(10))
+        XCTAssertEqual(director.subjects, [:])
+        XCTAssertEqual(director.cardMotion(viewerID: "a"), BoardFXCardMotion())
+    }
+
+    func testAttackersLungeTowardTheOpponentOnlyWithMotion() {
+        let start = Date(timeIntervalSince1970: 3_000)
+        let old = snapshot([player("a", battlefield: [card("mine")]), player("b", battlefield: [card("theirs")])])
+        let new = snapshot([player("a", battlefield: [card("mine", attacking: true)]),
+                            player("b", battlefield: [card("theirs", attacking: true)])], revision: 2)
+        var full = BoardFXDirector()
+        full.ingest(old, level: .full, now: start)
+        full.ingest(new, level: .full, now: start)
+        let lunges = full.cardMotion(viewerID: "a").lunges
+        XCTAssertEqual(lunges["mine"]?.direction, -1)
+        XCTAssertEqual(lunges["theirs"]?.direction, 1)
+        var reduced = BoardFXDirector()
+        reduced.ingest(old, level: .reduced, now: start)
+        reduced.ingest(new, level: .reduced, now: start)
+        XCTAssertEqual(reduced.cardMotion(viewerID: "a"), BoardFXCardMotion())
+    }
+}
