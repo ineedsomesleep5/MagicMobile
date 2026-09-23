@@ -2,7 +2,7 @@
 
 ## App screenshots and icon
 
-The icon is the existing MagicMobile iOS app icon. Deck Studio images are actual simulator captures from the build-5000000000 release UI checks, September 17, 2026, in `MagicMobile-runtime-hardening/build_output/deck-studio-5000000000-populated`. The landscape capture is stored rotated; CSS restores its viewing orientation without changing the app UI.
+The icon is derived from Caleb's September 23, 2026 artwork (`design/brand/icon-reference-2026-09-23.jpg`). The reference shows a rounded app-tile mockup with a shadow; `design/brand/icon-master-2026-09-23.png` is the opaque, full-bleed square adaptation used to generate the iOS app-icon set and `public/app-icon.png`. The master was edited with the built-in image-generation tool to retain the ivory M, coral card outline and sparkle while removing the mockup treatment. Deck Studio images are actual simulator captures from the build-5000000000 release UI checks, September 17, 2026, in `MagicMobile-runtime-hardening/build_output/deck-studio-5000000000-populated`. The landscape capture is stored rotated; CSS restores its viewing orientation without changing the app UI.
 
 The battlefield image is `build_output/arena-review/portrait-arena-expanded-hand.png`, September 15, 2026. It is an actual app UI development fixture, not a live-match screenshot. Its fixture banner and the website caption remain visible.
 
