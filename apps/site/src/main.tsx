@@ -315,10 +315,10 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 10 adds Game Center games with friends and AI opponents
-                together, a shared animated 3D D20 roll to decide who starts,
-                and cancellable turn-skipping. Solo AI games can also use the
-                D20 roll or let you choose the starting player. Apple has
+                Build 11 fixes the solo AI starting-player flow: choosing Roll D20
+                now opens the animated roll instead of asking you to pick a player.
+                It also includes Game Center games with friends and AI opponents,
+                a shared D20 roll, and cancellable turn-skipping. Apple has
                 approved this build for Internal and External TestFlight.
               </p>
             </details>

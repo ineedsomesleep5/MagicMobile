@@ -647,10 +647,38 @@ final class OnDevicePromptAdapterTests: XCTestCase {
         }
         let p = try prompt("PICK_TARGET", types: ["uuid"], payload: ["candidates": .array([viewer, first, second, third].map { .string($0) }), "cards": .array([])])
         let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [], players: players)
+        XCTAssertEqual(view.envelope.method, "GAME_PICK_TARGET")
         XCTAssertEqual(view.envelope.targets?.map(\.label), ["You", "Alice", "Bri", "Cam"])
         XCTAssertEqual(view.envelope.responseCommand?.type, "choose_target")
         let command = try XCTUnwrap(PromptCommandBuilder.command(gameId: "match", promptEnvelope: view.envelope, type: "choose_target", promptId: p.id, playerId: viewer, ids: [third]))
         XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("uuid", .string(third)))
+    }
+
+    func testNativeStartingPromptFeedsRollAndAcceptsWinner() throws {
+        let players = [try player(viewer), try player(first)]
+        let p = try prompt("PICK_TARGET", types: ["uuid"], payload: [
+            "message": .string("Select a starting player"),
+            "candidates": .array([.string(viewer), .string(first)])
+        ])
+        let presented = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer,
+                                                               cards: [], players: players)
+        let snapshot = GameSnapshot(
+            id: "match", source: "xmage-ondevice", activePlayerId: nil,
+            phase: "beginning", step: nil, turn: 0, priorityPlayerId: nil,
+            waitingOnPlayerId: viewer, promptText: presented.envelope.message,
+            players: players, log: [], legalActions: presented.legalActions,
+            choicePrompt: nil, promptEnvelope: nil, promptEnvelopeV2: presented.envelope,
+            startupOpeningPrompts: nil, xmage: nil, engineHealth: nil,
+            bridgeRevision: 37, xmageCycle: nil, pendingStatus: nil,
+            manaPayment: nil, gameStatus: nil, winnerPlayerIds: nil, endReason: nil,
+            viewerPlayerId: viewer
+        )
+        XCTAssertEqual(OnDeviceStartingPlayerChoice.candidateIDs(snapshot: snapshot), [viewer, first])
+        let command = try XCTUnwrap(OnDeviceStartingPlayerChoice.command(snapshot: snapshot,
+                                                                         winnerPlayerID: first))
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: p,
+                                                        viewerPlayerID: viewer),
+                       EnginePrompt.answer("uuid", .string(first)))
     }
 
     func testExplicitSecondCardFaceSuppliesItsAliasLabelAndCard() throws {

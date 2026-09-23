@@ -311,13 +311,7 @@ struct OnDeviceRootView: View {
               aiStartingPlayerMode == "roll", session.matchID != nil,
               aiStartingRoll == nil, !didDismissStartingRoll,
               let snapshot = session.snapshot,
-              let prompt = snapshot.promptEnvelopeV2,
-              prompt.playerId == snapshot.viewerID,
-              prompt.method == "PICK_TARGET",
-              prompt.message.localizedLowercase.contains("starting player"),
-              let targetIDs = prompt.targetIds,
-              (2...4).contains(targetIDs.count),
-              targetIDs.allSatisfy({ id in snapshot.players.contains { $0.playerId == id } }) else { return }
+              let targetIDs = OnDeviceStartingPlayerChoice.candidateIDs(snapshot: snapshot) else { return }
         do {
             aiStartingRoll = try OnDeviceStartingRoll.generate(seatIDs: targetIDs)
             aiRollSeatNames = Dictionary(uniqueKeysWithValues: snapshot.players.map {
