@@ -1551,6 +1551,7 @@ struct AppearanceSettingsView: View {
                     if nativeTurnControl != nil { NativeArtworkPreferenceView() }
                     BoardAppearancePicker()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
+                    BoardEffectsPicker()
                 }.padding(20).frame(maxWidth: 600).frame(maxWidth: .infinity)
             }
             .background(Color(red: 0.08, green: 0.07, blue: 0.065))
@@ -1852,6 +1853,7 @@ struct SettingsView: View {
                     MenuAppearancePicker()
                     BoardAppearancePicker()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
+                    BoardEffectsPicker()
                     Text("When enabled, gameplay and menus automatically adapt between portrait and landscape on iPhone.")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.white.opacity(0.58))
@@ -2683,6 +2685,9 @@ struct NativeGameView: View {
     @State private var didAutoRefreshAIWaitKey: String?
     @State private var didAutoReconnectAIWaitKey: String?
     @State private var didAutoDiagnoseAIWaitKey: String?
+    @State private var boardFX = BoardFXDirector()
+    @State private var boardShake: CGFloat = 0
+    @AppStorage(BoardFXLevel.key) private var boardFXLevel = BoardFXLevel.defaultValue
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     private func openPromptDetails() {
@@ -3157,6 +3162,10 @@ struct NativeGameView: View {
                                         laneIndices: CombatViewportAnchors.laneIndices(human: human.zones.battlefield, opponent: opponent.zones.battlefield),
                                         inspect: { inspectedCard = $0 })
                                 }
+                                boardFXOverlay(bounds: bounds, snapshot: snapshot,
+                                    viewerPoint: CGPoint(x: metrics.playerBattlefieldRect.midX, y: metrics.playerBattlefieldRect.maxY - 30),
+                                    opponentPoint: CGPoint(x: metrics.opponentBattlefieldRect.midX, y: metrics.opponentBattlefieldRect.minY + 30),
+                                    stackPoint: CGPoint(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.midY))
                             }
                         }
                         .onAppear {
@@ -3406,9 +3415,32 @@ struct NativeGameView: View {
         return boardPhasePresentation(choices, snapshot: snapshot)
     }
 
+    private func ingestBoardFX(_ snapshot: GameSnapshot) {
+        let level = BoardFXLevel.resolved(stored: boardFXLevel, reduceMotion: GameBoardMotion.reduced(accessibilityReduceMotion))
+        let scheduled = boardFX.ingest(snapshot, level: level, now: Date())
+        guard !scheduled.isEmpty else { return }
+        BoardFXHaptics.play(scheduled, viewerID: snapshot.viewerID)
+        let viewerHit = scheduled.contains { if case let .lifeChanged(id, delta) = $0.event { return id == snapshot.viewerID && delta < 0 }; return false }
+        if viewerHit && level == .full {
+            withAnimation(.linear(duration: 0.36)) { boardShake += 1 }
+        }
+    }
+
+    private func boardFXOverlay(bounds: [String: CGRect], snapshot: GameSnapshot, viewerPoint: CGPoint,
+                                opponentPoint: CGPoint, stackPoint: CGPoint) -> some View {
+        let points = Dictionary(snapshot.players.map { ($0.playerId, snapshot.isViewer($0.playerId) ? viewerPoint : opponentPoint) },
+                                uniquingKeysWith: { first, _ in first })
+        return BoardFXOverlay(effects: boardFX.active, cardBounds: bounds, playerPoints: points, stackPoint: stackPoint,
+                              prune: { boardFX.prune(now: Date()) })
+    }
+
     private func boardObservation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
         content
+            .modifier(BoardImpactShake(animatableData: boardShake))
             .environment(\.boardZoneInspectionAction, inspectBoardZone)
+            .onChange(of: BoardFXRevisionKey(snapshot: snapshot), initial: true) { _, _ in
+                ingestBoardFX(snapshot)
+            }
             .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? .easeOut(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.88), value: inspectingZoneTitle)
             .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? .easeOut(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.88), value: inspectedCard?.id)
             .onAppear {
@@ -3898,6 +3930,10 @@ struct NativeGameView: View {
                             laneIndices: CombatViewportAnchors.laneIndices(human: human.zones.battlefield, opponent: opponent.zones.battlefield),
                             inspect: { inspectedCard = $0 })
                     }
+                    boardFXOverlay(bounds: bounds, snapshot: snapshot,
+                        viewerPoint: CGPoint(x: metrics.playerBattlefieldRect.midX, y: metrics.playerBattlefieldRect.maxY - 30),
+                        opponentPoint: CGPoint(x: metrics.opponentBattlefieldRect.midX, y: metrics.opponentBattlefieldRect.minY + 30),
+                        stackPoint: CGPoint(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.midY))
                 }
             }
             .onAppear {
@@ -11499,6 +11535,7 @@ struct GameManagementMenu: View {
             VStack(alignment: .leading, spacing: 12) {
             BoardAppearancePicker()
             PortraitModeToggle(isOn: $portraitModeEnabled)
+            BoardEffectsPicker()
 
             HStack(spacing: 10) {
                 Button {
