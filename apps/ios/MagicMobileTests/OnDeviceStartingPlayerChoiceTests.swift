@@ -24,7 +24,24 @@ final class OnDeviceStartingPlayerChoiceTests: XCTestCase {
         XCTAssertNil(OnDeviceStartingPlayerChoice.command(snapshot: snapshot, winnerPlayerID: "unknown"))
     }
 
-    private func makeSnapshot(secondName: String = "Ada") throws -> GameSnapshot {
+    func testNativeGamePickTargetCanAnswerRolledWinner() throws {
+        // OnDevicePromptAdapter prefixes native engine methods with GAME_.
+        let snapshot = try makeSnapshot(method: "GAME_PICK_TARGET")
+        XCTAssertEqual(OnDeviceStartingPlayerChoice.candidateIDs(snapshot: snapshot), [player1, player2])
+        let command = try XCTUnwrap(OnDeviceStartingPlayerChoice.command(snapshot: snapshot,
+                                                                         winnerPlayerID: player2))
+        XCTAssertEqual(command.type, "choose_target")
+        XCTAssertEqual(command.targetIds, [player2])
+    }
+
+    func testUnrelatedTargetPromptCannotTriggerStartingRoll() throws {
+        let snapshot = try makeSnapshot(method: "GAME_PICK_TARGET", message: "Select a creature")
+        XCTAssertNil(OnDeviceStartingPlayerChoice.candidateIDs(snapshot: snapshot))
+        XCTAssertNil(OnDeviceStartingPlayerChoice.command(snapshot: snapshot, winnerPlayerID: player2))
+    }
+
+    private func makeSnapshot(secondName: String = "Ada", method: String = "PICK_TARGET",
+                              message: String = "Select a starting player") throws -> GameSnapshot {
         let json = #"""
         {
           "id":"match","source":"xmage-ondevice","phase":"beginning","turn":0,
@@ -34,9 +51,9 @@ final class OnDeviceStartingPlayerChoiceTests: XCTestCase {
           ],
           "log":[],"viewerPlayerId":"\#(player1)","bridgeRevision":27,
           "promptEnvelopeV2":{
-            "id":"start-prompt","method":"PICK_TARGET","messageId":8,
+            "id":"start-prompt","method":"\#(method)","messageId":8,
             "playerId":"\#(player1)","responseKind":"target",
-            "message":"Select a starting player",
+            "message":"\#(message)",
             "targetIds":["\#(player1)","\#(player2)"],
             "responseCommand":{"type":"choose_target","promptId":"start-prompt","messageId":8}
           }
