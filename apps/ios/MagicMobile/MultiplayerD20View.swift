@@ -25,12 +25,13 @@ struct MultiplayerD20View: View {
     @State private var activeSeatID: String?
     @State private var activeValue: Int?
     @State private var settledRolls: [String: Int] = [:]
-    @State private var traveled = false
+    @State private var flightPhase = 0
     @State private var landed = false
     @State private var playbackFinished = false
     @State private var spinTurns = 0
     @State private var skipAnimation = false
     @State private var playedRounds: [[String: Int]] = []
+    @State private var didAutoDismiss = false
 
     private var rounds: [[String: Int]] { roll.rounds.map(\.rolls) }
     private var playerIDs: [String] {
@@ -47,46 +48,27 @@ struct MultiplayerD20View: View {
             let wide = geometry.size.width > geometry.size.height && geometry.size.width >= 560
             let columnCount = dynamicTypeSize.isAccessibilitySize ? 1 : (wide ? playerIDs.count : 2)
             let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: max(1, columnCount))
-
-            VStack(spacing: 0) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        if wide {
-                            HStack(alignment: .center, spacing: 20) {
-                                header.frame(maxWidth: 230)
-                                if !playbackFinished { rollStage(wide: true) }
-                            }
-                        } else {
-                            header
-                            if !playbackFinished { rollStage(wide: false) }
-                        }
-
-                        LazyVGrid(columns: columns, spacing: 12) {
-                            ForEach(playerIDs, id: \.self) { playerID in
-                                playerCard(playerID, compact: wide)
-                            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: wide ? 12 : 22) {
+                    header
+                    if !playbackFinished {
+                        rollStage()
+                            .frame(height: wide ? max(150, geometry.size.height * 0.38)
+                                                : min(360, max(250, geometry.size.height * 0.40)))
+                    }
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(playerIDs, id: \.self) { playerID in
+                            playerCard(playerID, compact: wide)
                         }
                     }
-                    .padding(18)
                 }
-                if playbackFinished, winnerName != nil {
-                    Button(action: onDismiss) {
-                        Text("Continue to game")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity, minHeight: 50)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Palette.accent)
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 18)
-                    .accessibilityIdentifier("multiplayerD20.continue")
-                }
+                .frame(maxWidth: wide ? 900 : 620)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: geometry.size.height, alignment: .center)
+                .padding(.horizontal, wide ? 24 : 20)
             }
-            .frame(maxWidth: 760)
-            .frame(maxWidth: .infinity)
-            .background(Palette.canvas)
+            .scrollIndicators(.hidden)
         }
-        .frame(minHeight: 310)
         .task(id: playbackKey) { await playSuppliedRounds() }
     }
 
@@ -116,7 +98,7 @@ struct MultiplayerD20View: View {
 
     private var headline: String {
         if playbackFinished, let winnerName {
-            return isLocalWinner ? "You won the roll" : "\(winnerName) wins the roll"
+            return isLocalWinner ? "You go first" : "\(winnerName) goes first"
         }
         if let activeSeatID { return "\(seatNames[activeSeatID] ?? "Player") rolls" }
         if let shownRoundIndex, shownRoundIndex > 0 { return "Tie. Roll again." }
@@ -134,44 +116,45 @@ struct MultiplayerD20View: View {
         return seatNames[roll.winnerSeatID] ?? "Player"
     }
 
-    private func rollStage(wide: Bool) -> some View {
+    private func rollStage() -> some View {
         GeometryReader { stage in
             ZStack {
-                RoundedRectangle(cornerRadius: 18)
-                    .fill(Palette.surface)
-                    .overlay(RoundedRectangle(cornerRadius: 18)
-                        .strokeBorder(Palette.accent.opacity(0.25), lineWidth: 1))
                 if let seat = activeSeatID {
                     D20Face(value: landed ? activeValue : nil, spinning: !landed,
                             turns: spinTurns, emphasized: landed, compact: false)
-                        .frame(width: wide ? 112 : 132, height: wide ? 112 : 132)
+                        .frame(width: 170, height: 170)
                         .matchedGeometryEffect(id: "die-\(seat)", in: dieFlight)
-                        .offset(x: traveled ? 0 : -min(stage.size.width * 0.38, 160),
-                                y: traveled ? 0 : -12)
-                        .rotationEffect(.degrees(traveled ? 0 : -18))
-                        .overlay(alignment: .topTrailing) {
+                        .offset(flightOffset(in: stage.size))
+                        .rotationEffect(.degrees([0: -24, 1: 17, 2: -12][flightPhase] ?? 0))
+                        .scaleEffect(landed ? 1.07 : 1)
+                        .overlay(alignment: .bottom) {
                             if landed, let activeValue {
-                                Text("\(activeValue)")
-                                    .font(.title2.bold().monospacedDigit())
+                                Text("Rolled \(activeValue)")
+                                    .font(.title.bold().monospacedDigit())
                                     .foregroundStyle(Palette.ink)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
-                                    .background(Palette.accent, in: Capsule())
+                                    .padding(.horizontal, 18)
+                                    .padding(.vertical, 8)
+                                    .background(Palette.surface, in: Capsule())
                                     .transition(.scale(scale: 0.2).combined(with: .opacity))
-                                    .offset(x: 18, y: -10)
+                                    .offset(y: 30)
                             }
                         }
-                } else {
-                    Text(playbackFinished ? "Roll complete" : "D20 · Starting player")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Palette.secondary)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(height: wide ? 124 : 150)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(activeSeatID.map { "\(seatNames[$0] ?? "Player") rolling a D20" } ??
                             (playbackFinished ? "Starting roll complete" : "Preparing the D20"))
+    }
+
+    private func flightOffset(in size: CGSize) -> CGSize {
+        switch flightPhase {
+        case 0: CGSize(width: -size.width * 0.32, height: -size.height * 0.24)
+        case 1: CGSize(width: size.width * 0.29, height: -size.height * 0.07)
+        case 2: CGSize(width: -size.width * 0.22, height: size.height * 0.17)
+        default: .zero
+        }
     }
 
     private func playerCard(_ playerID: String, compact: Bool) -> some View {
@@ -223,7 +206,7 @@ struct MultiplayerD20View: View {
 
     private func status(for playerID: String, value: Int?, isRolling: Bool,
                         isOut: Bool, isWinner: Bool) -> String {
-        if isWinner { return "Goes first" }
+        if isWinner, let value { return "Rolled \(value) · Goes first" }
         if isOut { return "Out of the reroll" }
         if isRolling { return "Rolling…" }
         guard let value else { return "Ready" }
@@ -271,6 +254,7 @@ struct MultiplayerD20View: View {
             }
             playbackFinished = true
             playedRounds = rounds
+            await dismissAfterResult()
             return
         }
 
@@ -279,6 +263,7 @@ struct MultiplayerD20View: View {
         let firstNewRound = continuesPrevious ? playedRounds.count : 0
         if firstNewRound == rounds.count {
             playbackFinished = true
+            await dismissAfterResult()
             return
         }
 
@@ -291,28 +276,44 @@ struct MultiplayerD20View: View {
                 settledRolls.removeValue(forKey: seat)
                 activeSeatID = seat
                 activeValue = value
-                traveled = false
+                flightPhase = 0
                 landed = false
                 spinTurns += 1
-                // Let the die appear at the launch edge before animating to center.
-                try? await Task.sleep(for: .milliseconds(90))
+                // One shared authoritative result; the visual path never chooses a face.
+                try? await Task.sleep(for: .milliseconds(180))
                 guard !Task.isCancelled else { return }
-                withAnimation(.spring(response: 0.7, dampingFraction: 0.75)) { traveled = true }
-                try? await Task.sleep(for: .milliseconds(720))
+                withAnimation(.spring(response: 0.8, dampingFraction: 0.72)) { flightPhase = 1 }
+                try? await Task.sleep(for: .milliseconds(800))
                 guard !Task.isCancelled else { return }
-                withAnimation(.spring(response: 0.34, dampingFraction: 0.5)) { landed = true }
+                withAnimation(.spring(response: 0.65, dampingFraction: 0.66)) { flightPhase = 2 }
+                try? await Task.sleep(for: .milliseconds(650))
+                guard !Task.isCancelled else { return }
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.68)) { flightPhase = 3 }
+                try? await Task.sleep(for: .milliseconds(600))
+                guard !Task.isCancelled else { return }
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.58)) { landed = true }
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                try? await Task.sleep(for: .milliseconds(420))
+                try? await Task.sleep(for: .milliseconds(950))
                 guard !Task.isCancelled else { return }
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) {
                     settledRolls[seat] = value
                     activeSeatID = nil
                 }
-                try? await Task.sleep(for: .milliseconds(360))
+                try? await Task.sleep(for: .milliseconds(450))
             }
             playedRounds = Array(rounds.prefix(index + 1))
         }
         withAnimation(.easeOut(duration: 0.28)) { playbackFinished = true }
+        await dismissAfterResult()
+    }
+
+    @MainActor
+    private func dismissAfterResult() async {
+        guard winnerName != nil else { return }
+        try? await Task.sleep(for: .milliseconds(reduceMotion || skipAnimation ? 1200 : 1900))
+        guard !Task.isCancelled, !didAutoDismiss else { return }
+        didAutoDismiss = true
+        onDismiss()
     }
 
     private struct PlaybackKey: Equatable {
@@ -324,7 +325,6 @@ struct MultiplayerD20View: View {
     }
 
     private enum Palette {
-        static let canvas = Color(red: 20 / 255, green: 21 / 255, blue: 24 / 255)
         static let surface = Color(red: 31 / 255, green: 33 / 255, blue: 37 / 255)
         static let ink = Color(red: 243 / 255, green: 241 / 255, blue: 236 / 255)
         static let secondary = Color(red: 177 / 255, green: 178 / 255, blue: 182 / 255)
@@ -445,7 +445,7 @@ struct MultiplayerD20View: View {
                 }
                 guard newTurn && spinning else { return }
                 // Integral full turns end at the same orientation as the supplied face.
-                let tumble = SCNAction.rotateBy(x: .pi * 2, y: .pi * 4, z: .pi * 2, duration: 0.72)
+                let tumble = SCNAction.rotateBy(x: .pi * 2, y: .pi * 4, z: .pi * 2, duration: 2.05)
                 tumble.timingMode = .easeInEaseOut
                 die.runAction(tumble, forKey: "tumble")
             }

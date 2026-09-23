@@ -250,7 +250,7 @@ struct OnDeviceRootView: View {
            !didDismissStartingRoll {
             GeometryReader { proxy in
                 ZStack {
-                    Color.black.opacity(0.82).ignoresSafeArea()
+                    Color.black.opacity(multiplayer.startingRoll == nil ? 0.82 : 0.58).ignoresSafeArea()
                     Group {
                         if let roll = multiplayer.startingRoll {
                             MultiplayerD20View(roll: roll, seatNames: multiplayer.seatNames,
@@ -282,8 +282,7 @@ struct OnDeviceRootView: View {
                             .background(CommanderPresentation.surface, in: RoundedRectangle(cornerRadius: 22))
                         }
                     }
-                    .frame(width: min(proxy.size.width - 24, 760),
-                           height: min(proxy.size.height - 24, 620))
+                    .frame(width: proxy.size.width, height: proxy.size.height)
                     .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
                 }
             }
@@ -292,14 +291,13 @@ struct OnDeviceRootView: View {
                   let roll = aiStartingRoll, !didDismissStartingRoll {
             GeometryReader { proxy in
                 ZStack {
-                    Color.black.opacity(0.82).ignoresSafeArea()
+                    Color.black.opacity(0.58).ignoresSafeArea()
                     MultiplayerD20View(roll: roll, seatNames: aiRollSeatNames,
                                        isLocalWinner: roll.winnerSeatID == session.snapshot?.viewerID) {
                         didDismissStartingRoll = true
                         submitStartingChoiceIfNeeded()
                     }
-                    .frame(width: min(proxy.size.width - 24, 760),
-                           height: min(proxy.size.height - 24, 620))
+                    .frame(width: proxy.size.width, height: proxy.size.height)
                     .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
                 }
             }

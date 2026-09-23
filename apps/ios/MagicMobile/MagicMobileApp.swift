@@ -176,6 +176,7 @@ private struct MultiplayerD20FixtureScreen: View {
             if dismissed {
                 Text("Starting roll preview complete")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .foregroundStyle(.white)
             } else if let roll = Self.roll {
                 MultiplayerD20View(roll: roll,
                                    seatNames: ["player1": "Caleb", "player2": "Ruthie", "player3": "AI 1"],
@@ -185,6 +186,21 @@ private struct MultiplayerD20FixtureScreen: View {
             } else {
                 Text("Starting roll fixture unavailable")
             }
+        }
+        .background {
+            GeometryReader { geometry in
+                Image("battlefield-wood")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+                    .overlay(Color.black.opacity(0.58))
+            }
+            .ignoresSafeArea()
+        }
+        .onAppear {
+            MagicMobileOrientationController.shared.setPortraitModeEnabled(
+                ProcessInfo.processInfo.environment["MAGICMOBILE_D20_LANDSCAPE_FIXTURE"] != "1")
         }
     }
 }

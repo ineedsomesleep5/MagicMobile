@@ -31,25 +31,27 @@ final class BoardPolishUITests: XCTestCase {
         application.launch()
         XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
         capture(application, name: "shared-d20-rolling-fixture")
-        XCTAssertTrue(application.buttons["multiplayerD20.continue"].waitForExistence(timeout: 15))
-        XCTAssertTrue(application.staticTexts["You won the roll"].exists)
-        for portrait in [true, false] {
-            XCUIDevice.shared.orientation = portrait ? .portrait : .landscapeLeft
-            let orientation = NSPredicate { _, _ in
-                let frame = application.frame
-                return frame.width > 0 && frame.height > 0 &&
-                    (portrait ? frame.height > frame.width : frame.width > frame.height)
-            }
-            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: orientation, object: application)],
-                                        timeout: 10), .completed)
-            let continueButton = application.buttons["multiplayerD20.continue"]
-            XCTAssertTrue(continueButton.isHittable)
-            currentCapture = "shared-d20-\(portrait ? "portrait" : "landscape")-fixture"
-            capture(application, name: currentCapture)
+        XCTAssertFalse(application.buttons["multiplayerD20.continue"].exists)
+        currentCapture = "shared-d20-portrait-fixture"
+        capture(application, name: currentCapture)
+        XCTAssertTrue(application.staticTexts["Starting roll preview complete"].waitForExistence(timeout: 35))
+        application.terminate()
+
+        application.launchEnvironment["MAGICMOBILE_D20_LANDSCAPE_FIXTURE"] = "1"
+        XCUIDevice.shared.orientation = .landscapeLeft
+        application.launch()
+        XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
+        let landscape = NSPredicate { _, _ in
+            let frame = application.frame
+            return frame.width > frame.height
         }
-        XCUIDevice.shared.orientation = .portrait
-        application.buttons["multiplayerD20.continue"].press(forDuration: 0.15)
-        XCTAssertTrue(application.staticTexts["Starting roll preview complete"].waitForExistence(timeout: 5))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: landscape, object: application)],
+                                    timeout: 10), .completed)
+        currentCapture = "shared-d20-landscape-fixture"
+        capture(application, name: currentCapture)
+        XCTAssertTrue(application.buttons["multiplayerD20.skipAnimation"].exists)
+        application.buttons["multiplayerD20.skipAnimation"].tap()
+        XCTAssertTrue(application.staticTexts["Starting roll preview complete"].waitForExistence(timeout: 8))
     }
 
     override func setUpWithError() throws {
