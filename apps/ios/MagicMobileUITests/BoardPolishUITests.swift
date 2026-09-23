@@ -20,6 +20,38 @@ final class BoardPolishUITests: XCTestCase {
         runMatrix(portrait: false, selectedFixtures: ["normal-battlefield"])
     }
 
+    func testSharedD20FitsPortraitAndLandscape() {
+        let application = XCUIApplication()
+        app = application
+        application.launchEnvironment["MAGICMOBILE_MULTIPLAYER_D20_FIXTURE"] = "1"
+        application.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
+        application.launchArguments = ["--ondevice-setup-ui-test", "-AppleLanguages", "(en)",
+            "-AppleLocale", "en_US", "-magicmobile.portraitModeEnabled", "YES"]
+        XCUIDevice.shared.orientation = .portrait
+        application.launch()
+        XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
+        capture(application, name: "shared-d20-rolling-fixture")
+        XCTAssertTrue(application.buttons["multiplayerD20.continue"].waitForExistence(timeout: 15))
+        XCTAssertTrue(application.staticTexts["You won the roll"].exists)
+        for portrait in [true, false] {
+            XCUIDevice.shared.orientation = portrait ? .portrait : .landscapeLeft
+            let orientation = NSPredicate { _, _ in
+                let frame = application.frame
+                return frame.width > 0 && frame.height > 0 &&
+                    (portrait ? frame.height > frame.width : frame.width > frame.height)
+            }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: orientation, object: application)],
+                                        timeout: 10), .completed)
+            let continueButton = application.buttons["multiplayerD20.continue"]
+            XCTAssertTrue(continueButton.isHittable)
+            currentCapture = "shared-d20-\(portrait ? "portrait" : "landscape")-fixture"
+            capture(application, name: currentCapture)
+        }
+        XCUIDevice.shared.orientation = .portrait
+        application.buttons["multiplayerD20.continue"].press(forDuration: 0.15)
+        XCTAssertTrue(application.staticTexts["Starting roll preview complete"].waitForExistence(timeout: 5))
+    }
+
     override func setUpWithError() throws {
         continueAfterFailure = false
         executionTimeAllowance = 420
@@ -71,6 +103,12 @@ final class BoardPolishUITests: XCTestCase {
         ai.press(forDuration: 0.15)
         XCTAssertTrue(application.buttons["Start game"].waitForExistence(timeout: 5))
         XCTAssertTrue(application.buttons["Start game"].isEnabled)
+        let rollMode = application.segmentedControls.buttons["Roll D20"]
+        for _ in 0..<5 where !rollMode.isHittable { application.swipeUp() }
+        XCTAssertTrue(rollMode.isHittable)
+        rollMode.tap()
+        XCTAssertTrue(rollMode.isSelected)
+        XCTAssertTrue(application.staticTexts["Everyone rolls a D20. The highest roll starts; ties reroll."].exists)
     }
 
     func testPortraitCrowdedBattlefield() { runMatrix(portrait: true, selectedFixtures: ["crowded-battlefield"]) }

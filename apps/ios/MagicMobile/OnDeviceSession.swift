@@ -17,7 +17,7 @@ final class OnDeviceSession: ObservableObject {
     @Published private(set) var isAutoPassing = false
     @Published private(set) var autoPassStatus = ""
     @Published private var activeRefreshes = 0
-    private var allowsLocalAutoYield = false
+    private var allowsSeatScopedAutoYield = false
     private var responding = false
     private var waitingForPolls = false
     private var yieldPolicy = OnDeviceYieldPolicy()
@@ -44,12 +44,12 @@ final class OnDeviceSession: ObservableObject {
     private var pending: Submission?
 
     func attach(client: EngineClient, matchID: String, seatID: String, autoPoll: Bool = true,
-                allowsLocalAutoYield: Bool = false, reconnectsAutomatically: Bool = false,
+                allowsSeatScopedAutoYield: Bool = false, reconnectsAutomatically: Bool = false,
                 close: @escaping @MainActor () async throws -> Void) async throws {
         guard self.client == nil, !isWorking else { throw EngineError.invalidMessage("Close the active game first") }
         self.client = client; self.matchID = matchID; self.seatID = seatID
-        // Root opts in only for the local human/native route, never a peer session.
-        self.allowsLocalAutoYield = allowsLocalAutoYield
+        // Only trusted routes opt in. Every pass still uses this seat's authenticated prompt.
+        self.allowsSeatScopedAutoYield = allowsSeatScopedAutoYield
         self.reconnectsAutomatically = reconnectsAutomatically
         autoPassStatus = ""
         closeEndpoint = close; automaticPolling = autoPoll; epoch = UUID()
@@ -224,7 +224,7 @@ final class OnDeviceSession: ObservableObject {
         // A routed self-priority prompt and active timer are required to send.
         let selfAuthority = controls.isEmpty && (!priority || timer) && (prompt == nil || priority)
         return .init(matchID: poll.matchID, seatID: poll.seatID, viewerID: viewer, activePlayerID: active,
-                     turn: turn, phase: poll.phase, localHumanEnabled: allowsLocalAutoYield,
+                     turn: turn, phase: poll.phase, localHumanEnabled: allowsSeatScopedAutoYield,
                      foreground: isForeground && !isClosing, emptyStack: stack.isEmpty,
                      selfAuthority: selfAuthority, resyncRequired: poll.resyncRequired, prompt: prompt)
     }

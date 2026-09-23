@@ -10,6 +10,7 @@ on:
       - 'scripts/deck-studio/ios-ui-tests.py'
       - 'scripts/deck-studio/test_ios_ui_tests.py'
       - 'scripts/ios/deploy-testflight.sh'
+      - 'scripts/ios/distribute-testflight-groups.sh'
       - 'packages/ondevice-engine/scripts/verify_native_candidate.py'
       - '.github/workflows/magicmobile-workflow-tools.yml'
   push:
@@ -22,6 +23,7 @@ on:
       - 'scripts/deck-studio/ios-ui-tests.py'
       - 'scripts/deck-studio/test_ios_ui_tests.py'
       - 'scripts/ios/deploy-testflight.sh'
+      - 'scripts/ios/distribute-testflight-groups.sh'
       - 'packages/ondevice-engine/scripts/verify_native_candidate.py'
       - '.github/workflows/magicmobile-workflow-tools.yml'
   workflow_dispatch:
@@ -41,10 +43,12 @@ jobs:
         with:
           python-version: '3.12'
       - name: Test evidence reuse and release recovery without external mutations
-        run: |
-          python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
-          python3 -m unittest discover -s scripts/release -p 'test_*.py' -v
-          python3 -m unittest discover -s scripts -p 'test_workflow_metrics.py' -v
-          python3 -m unittest discover -s scripts/deck-studio -p 'test_ios_ui_tests.py' -v
-      - name: Check release shell syntax
-        run: bash -n scripts/ios/deploy-testflight.sh scripts/ios/distribute-testflight-groups.sh
+        run: python3 scripts/release/preflight.py run --profile tooling
+      - name: Preserve preflight results and original logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workflow-preflight-${{ github.run_id }}
+          path: build_output/preflight/
+          retention-days: 7
+          if-no-files-found: warn

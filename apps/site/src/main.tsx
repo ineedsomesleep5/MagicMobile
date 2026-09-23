@@ -195,7 +195,10 @@ function App() {
               </div>
               <div>
                 <span>Play</span>
-                <p>Commander against AI. No multiplayer in this release.</p>
+                <p>
+                  Commander against AI. On iPhone, play with 2–4 people through
+                  Game Center in the current TestFlight beta.
+                </p>
               </div>
             </div>
           </div>
@@ -264,7 +267,7 @@ function App() {
               <p>
                 {platform === "android"
                   ? "Your next game is one download away."
-                  : "Join the beta. Bring your next idea."}
+                  : "Play against AI or meet other players through Game Center."}
               </p>
               <a
                 className="download-action"
@@ -304,6 +307,19 @@ function App() {
                 Android is an early alpha; physical-phone acceptance is still
                 pending. Live games do not yet resume after Android terminates
                 the app process. Multiplayer is not included.
+              </p>
+            </details>
+            <details>
+              <summary>
+                What’s new on iPhone?
+                <Plus size={20} />
+              </summary>
+              <p>
+                Build 10 adds Game Center games with friends and AI opponents
+                together, a shared animated 3D D20 roll to decide who starts,
+                and cancellable turn-skipping. Solo AI games can also use the
+                D20 roll or let you choose the starting player. Apple has
+                approved this build for Internal and External TestFlight.
               </p>
             </details>
             <details>

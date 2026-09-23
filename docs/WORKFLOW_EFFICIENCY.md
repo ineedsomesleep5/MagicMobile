@@ -48,6 +48,12 @@ Run from the selected checkout. These examples do not prepare a new version,
 dispatch native CI, publish an artifact, or change tester groups.
 
 ```sh
+# Before an expensive iOS update: inspect, then run fresh sequential early checks.
+python3 scripts/release/preflight.py plan --profile ios-fast
+python3 scripts/release/preflight.py run --profile ios-fast
+# Tooling-only changes do not need app compilation or simulator work.
+python3 scripts/release/preflight.py run --profile tooling
+
 # Offline tool safety tests (temporary fixture repositories only).
 python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
 python3 -m unittest discover -s scripts/release -p 'test_*.py' -v
@@ -56,6 +62,7 @@ python3 -m unittest discover -s scripts/deck-studio -p 'test_ios_ui_tests.py' -v
 # Read-only release plan. Requires committed reviewed source and staged inputs.
 python3 scripts/release/controller.py plan --platform ios
 python3 scripts/release/controller.py status --run-id YOUR_RUN_ID
+python3 scripts/release/controller.py status --run-id YOUR_RUN_ID --summary
 
 # Find an existing exact-input iOS engine candidate (read-only GitHub lookup).
 # GH_TOKEN must already be configured; do not print it. Use a new manifest path.
@@ -64,12 +71,70 @@ python3 scripts/ci/verify_reusable_native.py \
 
 # Preview a targeted test workflow; does not boot a simulator.
 python3 scripts/deck-studio/ios-ui-tests.py plan \
-  --only-testing MagicMobileUITests/DeckStudioPinnedTabsUITests
+  --preset presentation-smoke
 
 # Saved GitHub timing evidence, analyzed without further network requests.
 gh run view RUN_ID --json createdAt,updatedAt,jobs > /tmp/run-timing.json
 python3 scripts/workflow-metrics.py /tmp/run-timing.json
 ```
+
+### Build-9 follow-up: catch failures earlier
+
+1. Integrate delegate changes before preflight. Run the `ios-fast` profile before
+   expensive native dispatch or release work. It checks tooling, the generated
+   project, standalone Deck Studio compile contracts and portable Swift tests.
+   The standalone checks would have caught build 9's missing timeline dependency
+   before its late PR failure. Full CI still runs; no gate is weakened.
+2. Inspect `nativeDecision` in preflight. It calls the existing conservative
+   source verifier, not a new list of loosely matched filenames. Unknown means
+   resolve the missing/dirty evidence; it means neither "reuse" nor "rebuild".
+   For equivalent source, verify retained native inputs or use the existing
+   exact-input GitHub resolver before considering a new build. No network lookup
+   or native build is automatically started by preflight.
+3. For UI changes, run `presentation-smoke` early through the existing UI harness.
+   It selects five existing tests: portrait/landscape searchable library chooser
+   (including keyboard), full-screen dashboard inspection/scrubbing/rotation, and
+   portrait/landscape MDFC affordances. Use explicit `--only-testing` for additional
+   affected cases. This is a regression preset, not all UI acceptance.
+4. Freeze app source before final accepted UI tests. Retain one dedicated derived
+   data directory and reuse `test-without-building` only while its source, Xcode,
+   runner and app fingerprints match. Do not keep polishing during verification.
+5. Use controller `status --summary` for release handoffs and retain full receipts.
+   Upload and distribution remain separate. Historical completion never proves
+   current Apple availability or current-source acceptance.
+6. Analyze saved GitHub timing with `workflow-metrics.py`. The report ranks slow
+   completed steps and separates skipped work from failed work. Missing timings
+   are unknown, not zero-duration successes. It cannot measure model usage or
+   infer time savings from one run.
+
+Preflight logs and per-step timing are saved under a fresh `build_output/preflight/`
+directory, including when a check fails or is interrupted. A changed source
+fingerprint invalidates the overall result. Outputs are development evidence,
+not trusted CI receipts. The tooling workflow uses the same entry point and
+uploads its logs, reducing drift between local and CI checks. No signing,
+simulator boot, engine build, paid runner, dependency or Android work is introduced.
+
+The slow native compilation itself is unchanged: build 9's full ARM64 step took
+73 minutes 5 seconds. These improvements target unnecessary builds and late
+failures, not a promised reduction in genuine compiler time. Measure comparable
+future updates before claiming an end-to-end speedup.
+
+Local follow-up verification (September 22, 2026 UTC): the integrated `ios-fast`
+preflight passed in 66.666 seconds on the existing checkout/caches. All 72 Python
+tooling tests, standalone Deck Studio assertions, 34 Swift protocol tests and
+413 presentation tests passed (five optional presentation checks skipped).
+The generated project comparison and shell syntax checks passed. Original logs
+and step timings: `build_output/preflight/ios-fast-f9itjtdm/`. Timing analysis was
+also exercised against build 9's actual saved GitHub response. The UI preset's
+five methods resolve and plan mode is read-only; no UI execution, app build,
+native compilation, signing, upload, Android change or hosted-CI acceptance is
+claimed for this tooling change. This is a measured preflight cost, not measured
+end-to-end time saved; cold caches and different machines will vary.
+
+The final safety review added a duplicate-run lock regression (73 tooling tests
+total), disabled inherited precon-export test output, and ensured distribution
+script changes trigger the tooling workflow. A tooling-only run took 2.658 seconds
+before the final safety adjustments; this is not an end-to-end release benchmark.
 
 The UI helper's `build` command compiles and fingerprints the app, actual test
 bundle, resources, sources and Xcode. Its `test` command requires an explicitly
