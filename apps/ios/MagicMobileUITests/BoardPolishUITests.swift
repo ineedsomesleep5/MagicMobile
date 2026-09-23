@@ -36,24 +36,30 @@ final class BoardPolishUITests: XCTestCase {
         XCTAssertTrue(tapToRoll.waitForExistence(timeout: 5))
         XCTAssertFalse(application.staticTexts["Rolled 12"].exists, "No die may roll before the first tap")
         tapToRoll.tap()
+        XCTAssertTrue(waitForRollButtonToDisappear(tapToRoll))
         currentCapture = "shared-d20-portrait-fixture"
         capture(application, name: currentCapture)
         let result = application.staticTexts["Rolled 12"]
         XCTAssertTrue(result.waitForExistence(timeout: 8))
+        // The reveal is intentionally brief. Read its frame before slower
+        // accessibility queries can outlive the result animation.
+        let resultFrame = result.frame
+        let playerSquare = application.otherElements["multiplayerD20.seat.player1"]
+        XCTAssertTrue(playerSquare.exists)
+        let playerSquareFrame = playerSquare.frame
+        XCTAssertLessThan(abs(resultFrame.midX - application.frame.midX), 20)
+        XCTAssertLessThanOrEqual(resultFrame.maxY + 12, playerSquareFrame.minY,
+                                 "Rolled result must have a visible gap above player squares")
         let rollArea = application.otherElements["multiplayerD20.rollArea"]
         XCTAssertTrue(rollArea.exists)
         XCTAssertEqual(rollArea.value as? String, "Rebounded from screen edge")
-        let playerSquare = application.otherElements["multiplayerD20.seat.player1"]
-        XCTAssertTrue(playerSquare.exists)
-        XCTAssertLessThan(abs(result.frame.midX - application.frame.midX), 20)
-        XCTAssertLessThanOrEqual(result.frame.maxY + 12, playerSquare.frame.minY,
-                                 "Rolled result must have a visible gap above player squares")
         capture(application, name: "shared-d20-result-above-player-squares")
         for _ in 0..<4 {
             XCTAssertTrue(tapToRoll.waitForExistence(timeout: 12))
             tapToRoll.tap()
+            XCTAssertTrue(waitForRollButtonToDisappear(tapToRoll), "Each tap must start a distinct roll")
         }
-        XCTAssertTrue(application.staticTexts["Starting roll preview complete"].waitForExistence(timeout: 35))
+        XCTAssertTrue(application.staticTexts["Starting roll preview complete"].waitForExistence(timeout: 45))
         application.terminate()
 
         application.launchEnvironment["MAGICMOBILE_D20_LANDSCAPE_FIXTURE"] = "1"
@@ -76,12 +82,18 @@ final class BoardPolishUITests: XCTestCase {
         }
         XCTAssertTrue(application.buttons["multiplayerD20.skipAnimation"].exists)
         tapToRoll.tap()
+        XCTAssertTrue(waitForRollButtonToDisappear(tapToRoll))
         application.buttons["multiplayerD20.skipAnimation"].tap()
         for _ in 0..<4 {
             XCTAssertTrue(tapToRoll.waitForExistence(timeout: 8))
             tapToRoll.tap()
         }
         XCTAssertTrue(application.staticTexts["Starting roll preview complete"].waitForExistence(timeout: 8))
+    }
+
+    private func waitForRollButtonToDisappear(_ button: XCUIElement) -> Bool {
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: button)
+        return XCTWaiter.wait(for: [gone], timeout: 4) == .completed
     }
 
     override func setUpWithError() throws {
