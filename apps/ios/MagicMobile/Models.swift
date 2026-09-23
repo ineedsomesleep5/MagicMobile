@@ -267,6 +267,9 @@ struct MobilePromptPresentation: Equatable {
     }
 
     private static func title(for kind: MobilePromptKind, prompt: PromptEnvelopeV2) -> String {
+        if prompt.message.localizedLowercase.contains("starting player") {
+            return "Starting player"
+        }
         switch kind {
         case .payment: return "Pay cost"
         case .target: return "Select target"

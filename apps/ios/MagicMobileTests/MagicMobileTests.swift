@@ -2123,6 +2123,25 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertFalse(TargetingHelperVisibility.shouldShow(snapshot: snapshot, pendingActionId: nil, mode: mode, targetableIds: ["human", "ai-1"]))
     }
 
+    func testStartingPlayerTargetPromptDoesNotShowBattlefieldTargetBanner() throws {
+        let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
+        {
+          "id":"opening","source":"xmage-ondevice","phase":"beginning","turn":0,
+          "players":[],"log":[],
+          "promptEnvelopeV2":{
+            "id":"starting","method":"PICK_TARGET","messageId":1,"playerId":"human",
+            "responseKind":"target","message":"Select a starting player",
+            "targetIds":["human","opponent"],
+            "responseCommand":{"type":"choose_target","promptId":"starting","messageId":1}
+          }
+        }
+        """#.data(using: .utf8)!)
+        let mode = GameBoardInteractionMode.targeting(promptId: "starting", sourceCardId: nil,
+                                                       validTargetIds: ["human", "opponent"])
+        XCTAssertFalse(TargetingHelperVisibility.shouldShow(snapshot: snapshot, pendingActionId: nil,
+                                                             mode: mode, targetableIds: ["human", "opponent"]))
+    }
+
     func testTargetingHelperStillShowsForBoardTargetPrompt() throws {
         let snapshot = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: #"""
         {

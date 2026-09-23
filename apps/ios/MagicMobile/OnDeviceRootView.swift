@@ -26,7 +26,9 @@ struct OnDeviceRootView: View {
     @AppStorage(OnDeviceSetupPreferences.aiDeck3Key) private var aiPrecon3ID = ""
     @AppStorage(OnDeviceSetupPreferences.aiCountKey) private var opponentCount = 1
     @AppStorage(OnDeviceSetupPreferences.aiSkillKey) private var aiSkill = 2
+    @AppStorage("magicmobile.ai.startingPlayerMode") private var aiStartingPlayerMode = "choose"
     @AppStorage(OnDeviceSetupPreferences.humanCountKey) private var playerCount = 2
+    @AppStorage("magicmobile.gamecenter.aiOpponentCount") private var gameCenterAIStoredCount = 0
     @AppStorage(OnDeviceSetupPreferences.friendsKey) private var playWithFriends = false
     @AppStorage("magicmobile.onlineMode") private var playOnline = false
     @State private var showSetup = false
@@ -38,6 +40,10 @@ struct OnDeviceRootView: View {
     @State private var showDiagnostics = false
     @State private var confirmDeleteReport = false
     @State private var bannerError: String?
+    @State private var didDismissStartingRoll = false
+    @State private var attemptedStartingPromptID: String?
+    @State private var aiStartingRoll: OnDeviceStartingRoll?
+    @State private var aiRollSeatNames: [String: String] = [:]
 
     init() {
         let session = OnDeviceSession()
@@ -76,8 +82,17 @@ struct OnDeviceRootView: View {
         return library.decks.first(where: { "local:\($0.id)" == selectedDeckID })?.deckList
     }
     private var validName: Bool { (try? OnDeviceSetupModel.playerName(playerDisplayName)) != nil }
+    private var gameCenterAICount: Int { min(max(0, gameCenterAIStoredCount), max(0, 4 - playerCount)) }
+    private var gameCenterAICountBinding: Binding<Int> {
+        Binding(get: { gameCenterAICount }, set: { gameCenterAIStoredCount = min(max(0, $0), max(0, 4 - playerCount)) })
+    }
+    private var gameCenterAIDecks: [DeckList] {
+        [aiPreconID, aiPrecon2ID, aiPrecon3ID].prefix(gameCenterAICount)
+            .compactMap { id in PreconCatalog.all.first { $0.id == id }?.deckList }
+    }
     private var mayStart: Bool {
         validName && selectedDeck != nil && (playWithFriends || aiPrecons.count == opponentCount)
+            && (!playWithFriends || playOnline || gameCenterAIDecks.count == gameCenterAICount)
             && (!playWithFriends || !playOnline || setup.online.available)
             && setup.identity != nil && !setup.isBusy && !setup.needsLeave
     }
@@ -126,6 +141,7 @@ struct OnDeviceRootView: View {
                                 engineReady: setup.identity != nil)
         }
         .overlay(alignment: .bottom) { recoveryBanner }
+        .overlay { startingRollOverlay }
         .environment(\.nativeTurnControl, turnControl)
         .fullScreenCover(isPresented: $showImport) {
             DeckStudioRootView(library: library, selectedDeckID: $selectedDeckID, preparePlay: {
@@ -195,7 +211,27 @@ struct OnDeviceRootView: View {
         .onChange(of: setup.online.lobby?.matchId) { _, matchID in
             if matchID != nil { Task { await setup.attachOnline() } }
         }
-        .onChange(of: session.snapshot?.bridgeRevision) { _, _ in refreshInspections() }
+        .onChange(of: session.snapshot?.bridgeRevision) { _, _ in
+            refreshInspections()
+            prepareAIRollIfNeeded()
+        }
+        .onChange(of: session.snapshot?.promptEnvelopeV2?.id) { _, _ in
+            prepareAIRollIfNeeded()
+            submitStartingChoiceIfNeeded()
+        }
+        .onChange(of: session.isWorking) { _, working in
+            if !working { submitStartingChoiceIfNeeded() }
+        }
+        .onChange(of: setup.isBusy) { _, busy in
+            if !busy { submitStartingChoiceIfNeeded() }
+        }
+        .onChange(of: session.matchID) { _, _ in
+            didDismissStartingRoll = false
+            attemptedStartingPromptID = nil
+            aiStartingRoll = nil
+            aiRollSeatNames = [:]
+            prepareAIRollIfNeeded()
+        }
     }
 
     private func refreshInspections() {
@@ -205,6 +241,117 @@ struct OnDeviceRootView: View {
         // keep a moved card under a stale zone heading. The board uses exact refs.
         zone = nil
         if let current = inspectedCard { inspectedCard = cards.first { $0.id == current.id } }
+    }
+
+    @ViewBuilder
+    private var startingRollOverlay: some View {
+        if setup.usingMultiplayer, let multiplayer = setup.multiplayer,
+           multiplayer.endpoint != nil, multiplayer.isConnected,
+           !didDismissStartingRoll {
+            GeometryReader { proxy in
+                ZStack {
+                    Color.black.opacity(0.82).ignoresSafeArea()
+                    Group {
+                        if let roll = multiplayer.startingRoll {
+                            MultiplayerD20View(roll: roll, seatNames: multiplayer.seatNames,
+                                               isLocalWinner: roll.winnerSeatID == multiplayer.endpoint?.seatID) {
+                                didDismissStartingRoll = true
+                                submitStartingChoiceIfNeeded()
+                            }
+                        } else {
+                            VStack(spacing: 16) {
+                                Text("Who goes first?")
+                                    .font(.title2.bold())
+                                Text(multiplayer.rollStatus)
+                                    .font(.subheadline).multilineTextAlignment(.center)
+                                    .foregroundStyle(.secondary)
+                                Text(multiplayer.hostAISeatSummary ?? "Each player rolls a D20. Highest starts; ties reroll.")
+                                    .font(.caption).multilineTextAlignment(.center)
+                                    .foregroundStyle(.secondary)
+                                Button(multiplayer.hasRolled ? "Waiting for other players…" : "Roll D20") {
+                                    do { try multiplayer.rollStartingPlayer() }
+                                    catch { bannerError = error.localizedDescription }
+                                }
+                                .buttonStyle(CommanderActionStyle())
+                                .disabled(multiplayer.hasRolled)
+                                .accessibilityIdentifier("ondevice.multiplayer.roll")
+                            }
+                            .foregroundStyle(CommanderPresentation.ink)
+                            .padding(24)
+                            .frame(maxWidth: 440)
+                            .background(CommanderPresentation.surface, in: RoundedRectangle(cornerRadius: 22))
+                        }
+                    }
+                    .frame(width: min(proxy.size.width - 24, 760),
+                           height: min(proxy.size.height - 24, 620))
+                    .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+                }
+            }
+        } else if !setup.usingMultiplayer, !setup.usingOnline,
+                  session.matchID != nil, aiStartingPlayerMode == "roll",
+                  let roll = aiStartingRoll, !didDismissStartingRoll {
+            GeometryReader { proxy in
+                ZStack {
+                    Color.black.opacity(0.82).ignoresSafeArea()
+                    MultiplayerD20View(roll: roll, seatNames: aiRollSeatNames,
+                                       isLocalWinner: roll.winnerSeatID == session.snapshot?.viewerID) {
+                        didDismissStartingRoll = true
+                        submitStartingChoiceIfNeeded()
+                    }
+                    .frame(width: min(proxy.size.width - 24, 760),
+                           height: min(proxy.size.height - 24, 620))
+                    .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+                }
+            }
+        }
+    }
+
+    private func prepareAIRollIfNeeded() {
+        guard !setup.usingMultiplayer, !setup.usingOnline,
+              aiStartingPlayerMode == "roll", session.matchID != nil,
+              aiStartingRoll == nil, !didDismissStartingRoll,
+              let snapshot = session.snapshot,
+              let prompt = snapshot.promptEnvelopeV2,
+              prompt.playerId == snapshot.viewerID,
+              prompt.method == "PICK_TARGET",
+              prompt.message.localizedLowercase.contains("starting player"),
+              let targetIDs = prompt.targetIds,
+              (2...4).contains(targetIDs.count),
+              targetIDs.allSatisfy({ id in snapshot.players.contains { $0.playerId == id } }) else { return }
+        do {
+            aiStartingRoll = try OnDeviceStartingRoll.generate(seatIDs: targetIDs)
+            aiRollSeatNames = Dictionary(uniqueKeysWithValues: snapshot.players.map {
+                ($0.playerId, $0.playerId == snapshot.viewerID ? "You" : ($0.displayName ?? "AI opponent"))
+            })
+        } catch {
+            bannerError = "Could not roll for the starting player: \(error.localizedDescription)"
+        }
+    }
+
+    private func submitStartingChoiceIfNeeded() {
+        guard didDismissStartingRoll,
+              !setup.isBusy, !session.isWorking, setup.canUseSession,
+              let snapshot = session.snapshot,
+              let promptID = snapshot.promptEnvelopeV2?.id,
+              attemptedStartingPromptID != promptID else { return }
+        let command: GameCommand?
+        let winnerName: String
+        if setup.usingMultiplayer, let multiplayer = setup.multiplayer,
+           let roll = multiplayer.startingRoll,
+           let name = multiplayer.seatNames[roll.winnerSeatID] {
+            winnerName = name
+            command = OnDeviceStartingPlayerChoice.command(snapshot: snapshot, winnerName: name)
+        } else if !setup.usingOnline, aiStartingPlayerMode == "roll", let roll = aiStartingRoll {
+            winnerName = aiRollSeatNames[roll.winnerSeatID] ?? "winner"
+            command = OnDeviceStartingPlayerChoice.command(snapshot: snapshot, winnerPlayerID: roll.winnerSeatID)
+        } else {
+            return
+        }
+        guard let command else { return }
+        attemptedStartingPromptID = promptID
+        Task { await setup.perform {
+            try await session.send(command, label: "Start with \(winnerName)", actionID: "starting-roll-\(promptID)")
+        } }
     }
 
     private var game: some View {
@@ -326,6 +473,23 @@ struct OnDeviceRootView: View {
                                 Task { await setup.enterOnline(code: code, name: playerDisplayName, deck: deck, playerCount: playerCount) }
                             }
                         } else {
+                            Stepper("AI opponents: \(gameCenterAICount)", value: gameCenterAICountBinding,
+                                    in: 0...max(0, 4 - playerCount))
+                                .disabled(setup.isBusy || setup.needsLeave)
+                                .accessibilityIdentifier("ondevice.gameCenterAI.count")
+                            ForEach(0..<gameCenterAICount, id: \.self) { index in
+                                Picker("AI \(index + 1) deck", selection: aiDeckSelection(index)) {
+                                    ForEach(PreconCatalog.all) { Text($0.name).tag($0.id) }
+                                }
+                                .disabled(setup.isBusy || setup.needsLeave)
+                                .accessibilityIdentifier("ondevice.gameCenterAI.deck.\(index + 1)")
+                            }
+                            if gameCenterAICount > 0 {
+                                Stepper("AI skill: \(aiSkill)", value: $aiSkill, in: 1...10)
+                                    .disabled(setup.isBusy || setup.needsLeave)
+                                Text("The Game Center host's AI choices apply to everyone. Higher skill may slow turns.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
                             Text("Every player needs the same app version and must keep the app open during the match.")
                                 .font(.caption).foregroundStyle(.secondary)
                             Text(setup.multiplayer?.status ?? setup.status).font(.callout)
@@ -356,6 +520,17 @@ struct OnDeviceRootView: View {
                             .disabled(setup.isBusy || setup.needsLeave)
                             .accessibilityIdentifier("onDevice.aiSkill")
                         Text("Higher skill levels allow more thinking and may slow turns.").font(.caption).foregroundStyle(.secondary)
+                        Picker("Who goes first?", selection: $aiStartingPlayerMode) {
+                            Text("Choose").tag("choose")
+                            Text("Roll D20").tag("roll")
+                        }
+                        .pickerStyle(.segmented)
+                        .disabled(setup.isBusy || setup.needsLeave)
+                        .accessibilityIdentifier("ondevice.ai.startingPlayerMode")
+                        Text(aiStartingPlayerMode == "roll"
+                             ? "Everyone rolls a D20. The highest roll starts; ties reroll."
+                             : "Choose the starting player when the match begins.")
+                            .font(.caption).foregroundStyle(.secondary)
                         Button("Start game") { startAI() }
                             .buttonStyle(CommanderActionStyle()).disabled(!mayStart)
                     }
@@ -514,7 +689,8 @@ struct OnDeviceRootView: View {
         do {
             playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName)
             diagnostics.beginAttempt()
-            try setup.startMatchmaking(name: playerDisplayName, deck: deck, playerCount: playerCount)
+            try setup.startMatchmaking(name: playerDisplayName, deck: deck, playerCount: playerCount,
+                                      aiDecks: gameCenterAIDecks, aiSkill: aiSkill)
         } catch { setup.errorMessage = error.localizedDescription }
     }
 
@@ -637,7 +813,7 @@ private final class OnDeviceSetupModel: ObservableObject {
             }
             aiMatchID = matchID
             updateSessionForeground()
-            try await session.attach(client: client, matchID: matchID, seatID: "player1", allowsLocalAutoYield: true, close: { [self] in try await closeAI() })
+            try await session.attach(client: client, matchID: matchID, seatID: "player1", allowsSeatScopedAutoYield: true, close: { [self] in try await closeAI() })
             status = "Game started"
         } catch {
             errorMessage = error.localizedDescription
@@ -646,12 +822,15 @@ private final class OnDeviceSetupModel: ObservableObject {
         }
     }
 
-    func startMatchmaking(name: String, deck: DeckList, playerCount: Int) throws {
+    func startMatchmaking(name: String, deck: DeckList, playerCount: Int,
+                          aiDecks: [DeckList], aiSkill: Int) throws {
         guard !isBusy, !needsLeave, let resolver, let multiplayer else {
             throw EngineError.invalidMessage("Close the current match before finding players.")
         }
         let name = try Self.playerName(name)
-        _ = try multiplayer.makeMatchmaker(playerCount: playerCount, name: name, deck: resolver.resolve(deck))
+        let bots = try aiDecks.map { try OnDeviceMultiplayer.AISeatDescriptor(deck: resolver.resolve($0), skill: aiSkill) }
+        _ = try multiplayer.makeMatchmaker(playerCount: playerCount, name: name,
+                                          deck: resolver.resolve(deck), aiSeats: bots)
         usingMultiplayer = true; errorMessage = nil; feedback = nil
         status = "Connecting Game Center players"
         updateSessionForeground()
@@ -692,6 +871,7 @@ private final class OnDeviceSetupModel: ObservableObject {
         do {
             updateSessionForeground()
             try await session.attach(client: endpoint.client, matchID: endpoint.matchID, seatID: endpoint.seatID,
+                                     allowsSeatScopedAutoYield: true,
                                      close: { try await multiplayer.leave() })
             status = "Game Center match connected"
         } catch { errorMessage = error.localizedDescription }

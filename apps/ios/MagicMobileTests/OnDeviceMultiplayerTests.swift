@@ -19,7 +19,7 @@ final class OnDeviceMultiplayerTests: XCTestCase {
         for build in [identity, other] {
             var packet: [String: MagicMobileOnDevice.JSONValue] = [
                 "type": .string("submission"), "epoch": .string(epoch.uuidString), "build": build.json,
-                "roster": .array([.string("alice"), .string("bob")]), "player": valid
+                "roster": .array([.string("alice"), .string("bob")]), "aiSettings": lobby.aiSettings, "player": valid
             ]
             if build.json == identity.json {
                 XCTAssertEqual(try lobby.verifyHandshake(.object(packet), from: "bob", identity: identity, epoch: epoch), epoch)
@@ -38,14 +38,22 @@ final class OnDeviceMultiplayerTests: XCTestCase {
     }
 
     func testStartSchemaIsValidatedBeforeBuildMismatch() throws {
-        let lobby = try OnDeviceMultiplayerLobby(peerIDs: ["alice", "bob"], localPeerID: "bob")
+        var lobby = try OnDeviceMultiplayerLobby(peerIDs: ["alice", "bob"], localPeerID: "bob")
         let identity = BuildIdentity(upstreamCommit: "commit", catalogueHash: "catalogue")
         let other = BuildIdentity(upstreamCommit: "commit", catalogueHash: "catalogue", adapterVersion: "other-build")
         let epoch = UUID()
+        let offer: MagicMobileOnDevice.JSONValue = .object([
+            "type": .string("offer"), "epoch": .string(epoch.uuidString), "build": identity.json,
+            "roster": .array([.string("alice"), .string("bob")]), "aiSettings": lobby.aiSettings
+        ])
+        _ = try lobby.verifyHandshake(offer, from: "alice", identity: identity, epoch: nil)
+        try lobby.acceptHostOffer(offer)
         for build in [identity, other] {
             var packet: [String: MagicMobileOnDevice.JSONValue] = [
                 "type": .string("start"), "epoch": .string(epoch.uuidString), "build": build.json,
-                "roster": .array([.string("alice"), .string("bob")]), "matchId": .string(UUID().uuidString)
+                "roster": .array([.string("alice"), .string("bob")]), "aiSettings": lobby.aiSettings,
+                "matchId": .string(UUID().uuidString),
+                "seatNames": .object(["player1": .string("Alice"), "player2": .string("Bob")])
             ]
             if build.json == identity.json {
                 XCTAssertEqual(try lobby.verifyHandshake(.object(packet), from: "alice", identity: identity, epoch: epoch), epoch)
@@ -61,6 +69,18 @@ final class OnDeviceMultiplayerTests: XCTestCase {
                     XCTAssertFalse($0 is OnDeviceMultiplayerLobby.HandshakeFailure)
                 }
             }
+            packet["matchId"] = .string(UUID().uuidString)
+            let badNames: [MagicMobileOnDevice.JSONValue] = [
+                .object(["player1": .string("Alice")]),
+                .object(["player1": .string("Alice"), "player2": .string("alice")]),
+                .object(["player1": .string("Alice"), "player2": .string("Bob\n")])
+            ]
+            for names in badNames {
+                packet["seatNames"] = names
+                XCTAssertThrowsError(try lobby.verifyHandshake(.object(packet), from: "alice", identity: identity, epoch: epoch)) {
+                    XCTAssertFalse($0 is OnDeviceMultiplayerLobby.HandshakeFailure)
+                }
+            }
         }
     }
 
@@ -71,6 +91,7 @@ final class OnDeviceMultiplayerTests: XCTestCase {
         let offer: MagicMobileOnDevice.JSONValue = .object([
             "type": .string("offer"), "epoch": .string(epoch.uuidString),
             "roster": .array(lobby.peerIDs.map(MagicMobileOnDevice.JSONValue.string)),
+            "aiSettings": lobby.aiSettings,
             "build": BuildIdentity(upstreamCommit: "commit", catalogueHash: "catalogue", adapterVersion: "other-build").json
         ])
         XCTAssertThrowsError(try lobby.verifyHandshake(offer, from: "alice", identity: identity, epoch: epoch)) {
@@ -100,6 +121,130 @@ final class OnDeviceMultiplayerTests: XCTestCase {
         XCTAssertThrowsError(try OnDeviceMultiplayerLobby(peerIDs: ["alice", "alice"], localPeerID: "alice"))
     }
 
+    func testMixedSeatsPreserveAuthenticatedHumansAndEngineSchema() throws {
+        let deck: MagicMobileOnDevice.JSONValue = .object(["main": .array([]), "commanders": .array([])])
+        for (humans, ais) in [(2, 1), (2, 2), (3, 1), (4, 0)] {
+            let peers = Array(["dana", "alice", "charlie", "bob"].prefix(humans))
+            let descriptors = (0..<ais).map { OnDeviceMultiplayerAISeatDescriptor(deck: deck, skill: $0 + 3) }
+            var lobby = try OnDeviceMultiplayerLobby(peerIDs: peers, localPeerID: "alice", aiSeats: descriptors)
+            XCTAssertFalse(lobby.isReady)
+            XCTAssertThrowsError(try lobby.configuration())
+            for peer in peers {
+                try lobby.submit(.object(["name": .string(peer), "deck": deck]), from: peer)
+            }
+            XCTAssertTrue(lobby.isReady)
+            let seats = try XCTUnwrap(lobby.configuration()["seats"]?.array)
+            XCTAssertEqual(seats.count, humans + ais)
+            XCTAssertEqual(lobby.seatNames.count, seats.count)
+            for seat in seats {
+                let seatID = try XCTUnwrap(seat["seatId"]?.string)
+                XCTAssertEqual(seat["name"]?.string, lobby.seatNames[seatID])
+            }
+            for (index, peer) in lobby.peerIDs.enumerated() {
+                XCTAssertEqual(seats[index]["seatId"]?.string, try lobby.seatID(for: peer))
+                XCTAssertEqual(seats[index]["controller"]?.string, "human")
+                XCTAssertNil(seats[index]["aiSkill"])
+            }
+            for index in 0..<ais {
+                let seat = seats[humans + index]
+                XCTAssertEqual(seat["seatId"]?.string, "player\(humans + index + 1)")
+                XCTAssertEqual(seat["controller"]?.string, "ai")
+                XCTAssertEqual(seat["deck"], deck)
+                XCTAssertEqual(seat["aiSkill"]?.integer, Int64(index + 3))
+            }
+        }
+        XCTAssertThrowsError(try OnDeviceMultiplayerLobby(peerIDs: ["alice", "bob"], localPeerID: "alice",
+            aiSeats: (0..<3).map { _ in OnDeviceMultiplayerAISeatDescriptor(deck: deck, skill: 2) }))
+        XCTAssertThrowsError(try OnDeviceMultiplayerLobby(peerIDs: ["alice", "bob", "charlie", "dana"], localPeerID: "alice",
+            aiSeats: [OnDeviceMultiplayerAISeatDescriptor(deck: deck, skill: 2)]))
+        XCTAssertThrowsError(try OnDeviceMultiplayerLobby(peerIDs: ["alice", "bob"], localPeerID: "alice",
+            aiSeats: [OnDeviceMultiplayerAISeatDescriptor(deck: deck, skill: 11)]))
+    }
+
+    func testDuplicateHumanAndBotNamesAreUniqueAndMatchEngineConfiguration() throws {
+        let deck: MagicMobileOnDevice.JSONValue = .object(["main": .array([]), "commanders": .array([])])
+        var lobby = try OnDeviceMultiplayerLobby(peerIDs: ["bob", "alice"], localPeerID: "alice",
+            aiSeats: [OnDeviceMultiplayerAISeatDescriptor(deck: deck, skill: 2)])
+        try lobby.submit(.object(["name": .string("AI 1"), "deck": deck]), from: "alice")
+        try lobby.submit(.object(["name": .string("AI 1 (player1)"), "deck": deck]), from: "bob")
+        let names = lobby.seatNames
+        XCTAssertEqual(names["player1"], "AI 1 (player1)")
+        XCTAssertEqual(names["player2"], "AI 1 (player1) (player2)")
+        XCTAssertEqual(names["player3"], "AI 1 (player3)")
+        XCTAssertEqual(Set(names.values).count, 3)
+        let seats = try XCTUnwrap(lobby.configuration()["seats"]?.array)
+        for seat in seats {
+            let seatID = try XCTUnwrap(seat["seatId"]?.string)
+            XCTAssertEqual(seat["name"]?.string, names[seatID])
+        }
+
+        var longNames = try OnDeviceMultiplayerLobby(peerIDs: ["alice", "bob"], localPeerID: "alice")
+        let name = String(repeating: "A", count: 40)
+        try longNames.submit(.object(["name": .string(name), "deck": deck]), from: "alice")
+        try longNames.submit(.object(["name": .string(name), "deck": deck]), from: "bob")
+        XCTAssertEqual(Set(longNames.seatNames.values).count, 2)
+        XCTAssertTrue(longNames.seatNames.values.allSatisfy { $0.count <= 40 })
+    }
+
+    func testHandshakeRequiresEveryPeerToConfirmHostAIProposal() throws {
+        let deck: MagicMobileOnDevice.JSONValue = .object(["main": .array([]), "commanders": .array([])])
+        let expected = [OnDeviceMultiplayerAISeatDescriptor(deck: deck, skill: 4)]
+        let host = try OnDeviceMultiplayerLobby(peerIDs: ["alice", "bob"], localPeerID: "alice", aiSeats: expected)
+        var guest = try OnDeviceMultiplayerLobby(peerIDs: ["alice", "bob"], localPeerID: "bob",
+            aiSeats: [OnDeviceMultiplayerAISeatDescriptor(deck: deck, skill: 5)])
+        let identity = BuildIdentity(upstreamCommit: "commit", catalogueHash: "catalogue")
+        let epoch = UUID()
+        let shared: [String: MagicMobileOnDevice.JSONValue] = [
+            "epoch": .string(epoch.uuidString), "build": identity.json,
+            "roster": .array([.string("alice"), .string("bob")]), "aiSettings": host.aiSettings
+        ]
+        var offer = shared; offer["type"] = .string("offer")
+        XCTAssertThrowsError(try guest.verifyHandshake(.object([
+            "type": .string("start"), "epoch": .string(epoch.uuidString), "build": identity.json,
+            "roster": shared["roster"]!, "aiSettings": host.aiSettings, "matchId": .string(UUID().uuidString),
+            "seatNames": .object(["player1": .string("Alice"), "player2": .string("Bob"), "player3": .string("AI 1")])
+        ]), from: "alice", identity: identity, epoch: epoch))
+        XCTAssertEqual(try guest.verifyHandshake(.object(offer), from: "alice", identity: identity, epoch: nil), epoch)
+        try guest.acceptHostOffer(.object(offer))
+        XCTAssertEqual(guest.aiSettings, host.aiSettings)
+        XCTAssertEqual(guest.hostAISeatSummary, "Host chose 1 AI seat: AI 1: selected deck, skill 4.")
+        var submission = shared; submission["type"] = .string("submission")
+        submission["player"] = .object(["name": .string("Bob"), "deck": deck])
+        XCTAssertEqual(try host.verifyHandshake(.object(submission), from: "bob", identity: identity, epoch: epoch), epoch)
+        var start = shared; start["type"] = .string("start"); start["matchId"] = .string(UUID().uuidString)
+        start["seatNames"] = .object(["player1": .string("Alice"), "player2": .string("Bob"), "player3": .string("AI 1")])
+        XCTAssertEqual(try guest.verifyHandshake(.object(start), from: "alice", identity: identity, epoch: epoch), epoch)
+
+        let wrong = try OnDeviceMultiplayerLobby.makeAISettings(
+            seats: [OnDeviceMultiplayerAISeatDescriptor(deck: deck, skill: 5)], humanCount: 2)
+        offer["aiSettings"] = wrong
+        submission["aiSettings"] = wrong
+        start["aiSettings"] = wrong
+        for (packet, receiver, sender) in [(offer, guest, "alice"), (submission, host, "bob"), (start, guest, "alice")] {
+            XCTAssertThrowsError(try receiver.verifyHandshake(.object(packet), from: sender, identity: identity, epoch: epoch)) {
+                XCTAssertTrue($0 is OnDeviceMultiplayerLobby.HandshakeFailure)
+                XCTAssertTrue($0.localizedDescription.contains("AI settings"))
+            }
+        }
+        var malformed = offer
+        malformed["aiSettings"] = .object(["count": .integer(1), "seats": .array([])])
+        XCTAssertThrowsError(try guest.verifyHandshake(.object(malformed), from: "alice", identity: identity, epoch: epoch)) {
+            XCTAssertFalse($0 is OnDeviceMultiplayerLobby.HandshakeFailure)
+        }
+        malformed = offer; malformed["aiSettings"] = .object(["count": .integer(1), "seats": .array([
+            .object(["deck": deck, "skill": .string("4")])
+        ])])
+        XCTAssertThrowsError(try guest.verifyHandshake(.object(malformed), from: "alice", identity: identity, epoch: epoch)) {
+            XCTAssertFalse($0 is OnDeviceMultiplayerLobby.HandshakeFailure)
+        }
+        malformed = offer; malformed["aiSettings"] = .object(["count": .integer(1), "seats": .array([
+            .object(["deck": .object(["main": .string("bad"), "commanders": .array([])]), "skill": .integer(4)])
+        ])])
+        XCTAssertThrowsError(try guest.verifyHandshake(.object(malformed), from: "alice", identity: identity, epoch: epoch)) {
+            XCTAssertFalse($0 is OnDeviceMultiplayerLobby.HandshakeFailure)
+        }
+    }
+
     func testSubmissionCannotChooseAnotherSeatOrController() throws {
         var lobby = try OnDeviceMultiplayerLobby(peerIDs: ["alice", "bob"], localPeerID: "alice")
         let deck: MagicMobileOnDevice.JSONValue = .object([
@@ -123,7 +268,8 @@ final class OnDeviceMultiplayerTests: XCTestCase {
         let epoch = UUID()
         let lobby = try OnDeviceMultiplayerLobby(peerIDs: ["alice", "bob", "charlie"], localPeerID: "bob")
         let offer: MagicMobileOnDevice.JSONValue = .object(["type": .string("offer"), "epoch": .string(epoch.uuidString),
-            "build": identity.json, "roster": .array([.string("alice"), .string("bob"), .string("charlie")])])
+            "build": identity.json, "roster": .array([.string("alice"), .string("bob"), .string("charlie")]),
+            "aiSettings": lobby.aiSettings])
         XCTAssertEqual(try lobby.verifyHandshake(offer, from: "alice", identity: identity, epoch: nil), epoch)
         XCTAssertThrowsError(try lobby.verifyHandshake(offer, from: "charlie", identity: identity, epoch: nil))
         XCTAssertThrowsError(try lobby.verifyHandshake(offer, from: "alice", identity: identity, epoch: UUID()))

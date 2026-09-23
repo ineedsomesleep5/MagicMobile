@@ -10,7 +10,7 @@ final class OnDeviceSessionTests: XCTestCase {
             let transport = SessionFixtureTransport(poll: poll.raw)
             let session = OnDeviceSession()
             try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID,
-                                     seatID: poll.seatID, autoPoll: false, allowsLocalAutoYield: true, close: {})
+                                     seatID: poll.seatID, autoPoll: false, allowsSeatScopedAutoYield: true, close: {})
             let action = try XCTUnwrap(session.snapshot?.legalActions?.first(where: { $0.type == "pass_priority" }))
             if changed {
                 var next = poll.raw.object!; var prompt = next["prompt"]!.object!
@@ -137,7 +137,7 @@ final class OnDeviceSessionTests: XCTestCase {
         XCTAssertFalse(session.isAutoPassing)
         try await session.close()
         try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID,
-                                 seatID: poll.seatID, autoPoll: false, allowsLocalAutoYield: true, close: {})
+                                 seatID: poll.seatID, autoPoll: false, allowsSeatScopedAutoYield: true, close: {})
         XCTAssertTrue(session.canEndTurn)
         session.endTurn(); XCTAssertTrue(session.isAutoPassing)
         session.stopAutoPass()
@@ -156,7 +156,7 @@ final class OnDeviceSessionTests: XCTestCase {
             let transport = SessionFixtureTransport(poll: poll.raw)
             let session = OnDeviceSession()
             try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID,
-                                     seatID: poll.seatID, autoPoll: false, allowsLocalAutoYield: true, close: {})
+                                     seatID: poll.seatID, autoPoll: false, allowsSeatScopedAutoYield: true, close: {})
             XCTAssertTrue(session.canEndTurnSkippingResponses)
             XCTAssertTrue(session.canSkipToMyTurn)
             if untilMyTurn { session.skipToMyTurn() } else { session.endTurnSkippingResponses() }
@@ -187,7 +187,7 @@ final class OnDeviceSessionTests: XCTestCase {
         let transport = SessionFixtureTransport(poll: poll.raw)
         let session = OnDeviceSession()
         try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID,
-                                 seatID: poll.seatID, autoPoll: false, allowsLocalAutoYield: true, close: {})
+                                 seatID: poll.seatID, autoPoll: false, allowsSeatScopedAutoYield: true, close: {})
         session.endTurn()
         try await waitForResponses(1, transport: transport)
         try await Task.sleep(for: .milliseconds(350))
@@ -221,7 +221,7 @@ final class OnDeviceSessionTests: XCTestCase {
             let transport = SessionFixtureTransport(poll: poll.raw)
             let session = OnDeviceSession()
             try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID,
-                                     seatID: poll.seatID, autoPoll: false, allowsLocalAutoYield: true, close: {})
+                                     seatID: poll.seatID, autoPoll: false, allowsSeatScopedAutoYield: true, close: {})
             session.endTurn()
             var next = poll.raw.object!
             next["revision"] = .integer(poll.revision + 1)
@@ -255,7 +255,7 @@ final class OnDeviceSessionTests: XCTestCase {
         let transport = SessionFixtureTransport(poll: poll.raw)
         let session = OnDeviceSession()
         try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID,
-                                 seatID: poll.seatID, autoPoll: false, allowsLocalAutoYield: true, close: {})
+                                 seatID: poll.seatID, autoPoll: false, allowsSeatScopedAutoYield: true, close: {})
         let gate = await transport.suspendNextResponse()
         session.endTurn()
         await gate.waitUntilEntered()
@@ -281,7 +281,7 @@ final class OnDeviceSessionTests: XCTestCase {
         let transport = SessionFixtureTransport(poll: poll.raw, responseFailures: [URLError(.timedOut)])
         let session = OnDeviceSession()
         try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID,
-                                 seatID: poll.seatID, autoPoll: false, allowsLocalAutoYield: true, close: {})
+                                 seatID: poll.seatID, autoPoll: false, allowsSeatScopedAutoYield: true, close: {})
         session.endTurn()
         try await waitForResponses(1, transport: transport)
         try await waitUntilIdle(session)

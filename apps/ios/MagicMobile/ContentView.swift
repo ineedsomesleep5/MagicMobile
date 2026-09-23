@@ -70,6 +70,11 @@ enum TargetingHelperVisibility {
         guard !InlinePaymentPromptState.isActive(in: snapshot) else {
             return false
         }
+        // XMage routes the opening player choice through PICK_TARGET, but it is
+        // not a battlefield target. The centered choice owns that decision.
+        if snapshot.promptEnvelopeV2?.message.localizedLowercase.contains("starting player") == true {
+            return false
+        }
         guard !CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: pendingActionId) else {
             let promptKind = snapshot.promptEnvelopeV2?.responseKind.lowercased()
             let hasButtonActions = !CompactPromptPopup.compactLegalPromptActions(in: snapshot).isEmpty

@@ -1,27 +1,69 @@
 import Foundation
 import MagicMobileOnDevice
 
+struct OnDeviceMultiplayerAISeatDescriptor {
+    let deck: MagicMobileOnDevice.JSONValue
+    let skill: Int
+
+    init(deck: MagicMobileOnDevice.JSONValue, skill: Int) {
+        self.deck = deck
+        self.skill = skill
+    }
+}
+
 /// IDs come exclusively from GKMatch.players and GKLocalPlayer, never packet fields.
 struct OnDeviceMultiplayerLobby {
     enum HandshakeFailure: Error, LocalizedError {
         case differentBuild
+        case differentSettings
         var errorDescription: String? {
-            "Players have different MagicMobile builds. Update every device to the same build and try again."
+            switch self {
+            case .differentBuild: return "Players have different MagicMobile builds. Update every device to the same build and try again."
+            case .differentSettings: return "The host’s AI settings changed or a peer did not confirm them. Start a new match."
+            }
         }
     }
     let peerIDs: [String]
     let localPeerID: String
+    /// A guest replaces its candidate settings only after a valid offer from the authenticated host.
+    private(set) var aiSettings: MagicMobileOnDevice.JSONValue
+    private(set) var acceptedHostSettings: Bool
     var hostID: String { peerIDs[0] }
     private(set) var submissions: [String: MagicMobileOnDevice.JSONValue] = [:]
     var isReady: Bool { submissions.count == peerIDs.count }
 
-    init(peerIDs: [String], localPeerID: String) throws {
+    init(peerIDs: [String], localPeerID: String, aiSeats: [OnDeviceMultiplayerAISeatDescriptor] = []) throws {
         guard (2...4).contains(peerIDs.count), Set(peerIDs).count == peerIDs.count,
               peerIDs.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 256 }), peerIDs.contains(localPeerID) else {
             throw EngineError.invalidMessage("Game Center must connect 2–4 distinct authenticated players.")
         }
         self.peerIDs = peerIDs.sorted()
         self.localPeerID = localPeerID
+        self.aiSettings = try Self.makeAISettings(seats: aiSeats, humanCount: peerIDs.count)
+        self.acceptedHostSettings = localPeerID == peerIDs.sorted()[0]
+    }
+
+    static func makeAISettings(seats: [OnDeviceMultiplayerAISeatDescriptor], humanCount: Int) throws -> MagicMobileOnDevice.JSONValue {
+        let value: MagicMobileOnDevice.JSONValue = .object([
+            "count": .integer(Int64(seats.count)),
+            "seats": .array(seats.map { .object(["deck": $0.deck, "skill": .integer(Int64($0.skill))]) })
+        ])
+        try validateAISettings(value, humanCount: humanCount)
+        return value
+    }
+
+    static func validateAISettings(_ value: MagicMobileOnDevice.JSONValue, humanCount: Int) throws {
+        guard let fields = value.object, Set(fields.keys) == ["count", "seats"],
+              let count = fields["count"]?.integer, let seats = fields["seats"]?.array,
+              count == Int64(seats.count), (2...4).contains(humanCount), humanCount + seats.count <= 4 else {
+            throw EngineError.invalidMessage("A Game Center match needs 2–4 total human and AI seats, with AI skill from 1–10.")
+        }
+        for seat in seats {
+            guard let fields = seat.object, Set(fields.keys) == ["deck", "skill"],
+                  let deck = fields["deck"], let skill = fields["skill"]?.integer,
+                  (1...10).contains(skill) else { throw EngineError.invalidMessage("Invalid AI seat deck or skill.") }
+            try validateSubmission(.object(["name": .string("AI"), "deck": deck]))
+        }
     }
 
     func seatID(for authenticatedPeerID: String) throws -> String {
@@ -34,8 +76,8 @@ struct OnDeviceMultiplayerLobby {
         _ = try seatID(for: authenticatedPeerID)
         guard let fields = value.object, let type = fields["type"]?.string,
               ["offer", "submission", "start"].contains(type) else { throw EngineError.incompatibleBuild }
-        let keys: Set<String> = type == "submission" ? ["type", "epoch", "build", "roster", "player"] :
-            type == "start" ? ["type", "epoch", "build", "roster", "matchId"] : ["type", "epoch", "build", "roster"]
+        let keys: Set<String> = type == "submission" ? ["type", "epoch", "build", "roster", "aiSettings", "player"] :
+            type == "start" ? ["type", "epoch", "build", "roster", "aiSettings", "matchId", "seatNames"] : ["type", "epoch", "build", "roster", "aiSettings"]
         guard Set(fields.keys) == keys,
               value["roster"] == .array(peerIDs.map(MagicMobileOnDevice.JSONValue.string)),
               let epochString = value["epoch"]?.string, let incomingEpoch = UUID(uuidString: epochString),
@@ -50,6 +92,8 @@ struct OnDeviceMultiplayerLobby {
               build["protocolVersion"]?.integer != nil,
               build["upstreamCommit"]?.string != nil, build["catalogueHash"]?.string != nil,
               build["adapterVersion"]?.string != nil else { throw EngineError.incompatibleBuild }
+        guard let proposedSettings = value["aiSettings"] else { throw EngineError.incompatibleBuild }
+        try Self.validateAISettings(proposedSettings, humanCount: peerIDs.count)
         if type == "submission" {
             guard let player = value["player"] else { throw EngineError.incompatibleBuild }
             try Self.validateSubmission(player)
@@ -57,11 +101,81 @@ struct OnDeviceMultiplayerLobby {
             guard let matchID = value["matchId"]?.string, UUID(uuidString: matchID) != nil else {
                 throw EngineError.incompatibleBuild
             }
+            _ = try Self.validatedSeatNames(value["seatNames"], totalSeats: peerIDs.count + (proposedSettings["seats"]?.array?.count ?? 0))
         }
         // Only a well-formed handshake from the expected authenticated peer and
-        // current epoch may end the lobby with an actionable build explanation.
+        // current epoch may end the lobby with an actionable mismatch explanation.
         guard value["build"] == identity.json else { throw HandshakeFailure.differentBuild }
+        if type != "offer" || acceptedHostSettings {
+            guard acceptedHostSettings, proposedSettings == aiSettings else { throw HandshakeFailure.differentSettings }
+        }
         return incomingEpoch
+    }
+
+    mutating func acceptHostOffer(_ value: MagicMobileOnDevice.JSONValue) throws {
+        guard localPeerID != hostID, let settings = value["aiSettings"] else { throw EngineError.unboundPeer }
+        if acceptedHostSettings && settings != aiSettings { throw HandshakeFailure.differentSettings }
+        aiSettings = settings
+        acceptedHostSettings = true
+    }
+
+    var hostAISeatSummary: String {
+        guard let seats = aiSettings["seats"]?.array, !seats.isEmpty else { return "Host chose no AI seats." }
+        let details = seats.enumerated().map { index, seat in
+            let title = seat["deck"]?["name"]?.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let safeTitle = !title.isEmpty && !title.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+                ? title : "selected deck"
+            return "AI \(index + 1): \(safeTitle), skill \(seat["skill"]?.integer ?? 0)"
+        }
+        return "Host chose \(seats.count) AI seat\(seats.count == 1 ? "" : "s"): \(details.joined(separator: "; "))."
+    }
+
+    /// Complete once every authenticated human has submitted a deck.
+    var seatNames: [String: String] {
+        guard isReady else { return [:] }
+        let humans: [(String, String)] = peerIDs.enumerated().compactMap { index, peer in
+            guard let name = submissions[peer]?["name"]?.string else { return nil }
+            return ("player\(index + 1)", name)
+        }
+        guard humans.count == peerIDs.count else { return [:] }
+        let bots: [(String, String)] = (aiSettings["seats"]?.array ?? []).enumerated().map { index, _ in
+            ("player\(peerIDs.count + index + 1)", "AI \(index + 1)")
+        }
+        return Self.uniqueSeatNames(humans + bots)
+    }
+
+    private static func uniqueSeatNames(_ seats: [(String, String)]) -> [String: String] {
+        let trimmed = seats.map { $0.1.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let key: (String) -> String = { $0.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX")) }
+        let counts = Dictionary(trimmed.map { (key($0), 1) }, uniquingKeysWith: +)
+        let suffixed: (String, String) -> String = { name, seatID in
+            let suffix = " (\(seatID))"
+            return String(name.prefix(40 - suffix.count)).trimmingCharacters(in: .whitespacesAndNewlines) + suffix
+        }
+        var names = seats.enumerated().map { index, seat in
+            counts[key(trimmed[index]), default: 0] > 1 ? suffixed(trimmed[index], seat.0) : trimmed[index]
+        }
+        if Set(names.map(key)).count != names.count {
+            names = seats.enumerated().map { index, seat in suffixed(trimmed[index], seat.0) }
+        }
+        return Dictionary(uniqueKeysWithValues: zip(seats.map { $0.0 }, names))
+    }
+
+    static func validatedSeatNames(_ value: MagicMobileOnDevice.JSONValue?, totalSeats: Int) throws -> [String: String] {
+        guard let fields = value?.object, fields.count == totalSeats,
+              Set(fields.keys) == Set((1...totalSeats).map { "player\($0)" }) else { throw EngineError.incompatibleBuild }
+        var names: Set<String> = []
+        var result: [String: String] = [:]
+        for (seatID, nameValue) in fields {
+            guard let name = nameValue.string, !name.isEmpty, name == name.trimmingCharacters(in: .whitespacesAndNewlines),
+                  name.count <= 40, !name.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else {
+                throw EngineError.incompatibleBuild
+            }
+            let key = name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+            guard names.insert(key).inserted else { throw EngineError.incompatibleBuild }
+            result[seatID] = name
+        }
+        return result
     }
 
     static func validateSubmission(_ value: MagicMobileOnDevice.JSONValue) throws {
@@ -111,12 +225,25 @@ struct OnDeviceMultiplayerLobby {
 
     func configuration() throws -> MagicMobileOnDevice.JSONValue {
         guard localPeerID == hostID, isReady else { throw EngineError.invalidMessage("The host is waiting for every player’s deck.") }
-        return .object(["seats": .array(try peerIDs.map { peer in
-            guard let submitted = submissions[peer], let name = submitted["name"], let deck = submitted["deck"] else {
+        let names = seatNames
+        guard names.count == peerIDs.count + (aiSettings["seats"]?.array?.count ?? 0) else { throw EngineError.unboundPeer }
+        let humans = try peerIDs.map { peer -> MagicMobileOnDevice.JSONValue in
+            guard let submitted = submissions[peer], let deck = submitted["deck"] else {
                 throw EngineError.unboundPeer
             }
-            return .object(["seatId": .string(try seatID(for: peer)), "controller": .string("human"), "name": name, "deck": deck])
-        })])
+            let seatID = try seatID(for: peer)
+            guard let resolvedName = names[seatID] else { throw EngineError.unboundPeer }
+            return .object(["seatId": .string(seatID), "controller": .string("human"), "name": .string(resolvedName), "deck": deck])
+        }
+        guard let aiSeats = aiSettings["seats"]?.array else { throw EngineError.incompatibleBuild }
+        let ais: [MagicMobileOnDevice.JSONValue] = try aiSeats.enumerated().map { index, seat in
+            guard let deck = seat["deck"], let skill = seat["skill"] else { throw EngineError.incompatibleBuild }
+            let seatID = "player\(peerIDs.count + index + 1)"
+            guard let resolvedName = names[seatID] else { throw EngineError.unboundPeer }
+            return .object(["seatId": .string(seatID), "controller": .string("ai"),
+                            "name": .string(resolvedName), "deck": deck, "aiSkill": skill])
+        }
+        return .object(["seats": .array(humans + ais)])
     }
 }
 
@@ -333,6 +460,7 @@ import Combine
 /// UIViewControllerRepresentable and forward scene phase changes here.
 @MainActor
 final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewControllerDelegate {
+    typealias AISeatDescriptor = OnDeviceMultiplayerAISeatDescriptor
     @Published private(set) var authenticationController: UIViewController?
     @Published private(set) var matchmakerController: GKMatchmakerViewController?
     @Published private(set) var endpoint: OnDeviceMultiplayerEndpoint?
@@ -341,6 +469,11 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     @Published private(set) var isConnected = false
     @Published private(set) var isSuspended = false
     @Published private(set) var needsCleanup = false
+    @Published private(set) var hostAISeatSummary: String?
+    @Published private(set) var seatNames: [String: String] = [:]
+    @Published private(set) var startingRoll: OnDeviceStartingRoll?
+    @Published private(set) var hasRolled = false
+    @Published private(set) var rollStatus = ""
 
     private let identity: BuildIdentity
     private let makeHostEngine: @MainActor () async throws -> EngineClient
@@ -361,6 +494,9 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     private var suspensionRevision: UInt64 = 0
     private var peerPresenceSequences: [String: Int64] = [:]
     private var requestedPlayerCount = 2
+    private var requestedAISeats: [AISeatDescriptor] = []
+    private var rollReadyPeers: Set<String> = []
+    private var rollTimer: Task<Void, Never>?
     private var closing = false
     private var failed = false
     private var generation = UUID()
@@ -370,6 +506,56 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
          closeHostEngine: @escaping @MainActor (EngineClient) async throws -> Void) {
         self.identity = identity; self.makeHostEngine = makeHostEngine; self.closeHostEngine = closeHostEngine
         super.init()
+    }
+
+    /// A tap records this human's readiness. The host rolls once for all human
+    /// and AI seats and publishes one result; no client chooses a starter locally.
+    func rollStartingPlayer() throws {
+        guard let lobby, let epoch, endpoint != nil, isConnected, !isSuspended,
+              startingRoll == nil else { throw EngineError.invalidMessage("Starting roll is unavailable.") }
+        guard !hasRolled else { return }
+        if lobby.localPeerID == lobby.hostID {
+            hasRolled = true
+            try recordRollReady(from: lobby.localPeerID)
+        } else {
+            try send(.object(["type": .string("rollReady"), "epoch": .string(epoch.uuidString)]), to: lobby.hostID)
+            hasRolled = true
+            rollStatus = "Waiting for everyone to roll…"
+        }
+    }
+
+    private func recordRollReady(from peer: String) throws {
+        guard let lobby, lobby.localPeerID == lobby.hostID,
+              lobby.peerIDs.contains(peer), startingRoll == nil else { throw EngineError.unboundPeer }
+        rollReadyPeers.insert(peer)
+        rollStatus = "\(rollReadyPeers.count) of \(lobby.peerIDs.count) players ready to roll"
+        guard rollReadyPeers.count == lobby.peerIDs.count else { return }
+        let seats = (1...seatNames.count).map { "player\($0)" }
+        guard seats.count == lobby.peerIDs.count + (lobby.aiSettings["seats"]?.array?.count ?? 0),
+              Set(seats) == Set(seatNames.keys) else { throw EngineError.incompatibleBuild }
+        do {
+            let result = try OnDeviceStartingRoll.generate(seatIDs: seats)
+            guard let epoch else { throw EngineError.unboundPeer }
+            try broadcast(.object(["type": .string("rollResult"), "epoch": .string(epoch.uuidString),
+                                   "roll": try result.encoded(seatIDs: seats)]))
+            startingRoll = result
+            rollStatus = "Starting player decided by D20."
+            rollTimer?.cancel(); rollTimer = nil
+        } catch {
+            fail("Could not share the starting roll. Leave and start a new match.")
+            throw error
+        }
+    }
+
+    private func beginRollTimer() {
+        rollTimer?.cancel()
+        let token = generation
+        rollTimer = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(120))
+            guard let self, !Task.isCancelled, self.generation == token,
+                  self.isConnected, self.startingRoll == nil else { return }
+            self.fail("Starting roll timed out. Leave and start a new match.")
+        }
     }
 
     func authenticate() {
@@ -392,17 +578,19 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     }
 
     @discardableResult
-    func makeMatchmaker(playerCount: Int, name: String, deck: MagicMobileOnDevice.JSONValue) throws -> GKMatchmakerViewController {
+    func makeMatchmaker(playerCount: Int, name: String, deck: MagicMobileOnDevice.JSONValue,
+                        aiSeats: [AISeatDescriptor] = []) throws -> GKMatchmakerViewController {
         guard GKLocalPlayer.local.isAuthenticated else { throw EngineError.invalidMessage("Sign in to Game Center first.") }
         guard (2...4).contains(playerCount), transport == nil, hostEngine == nil, startup == nil,
               endpoint == nil, matchmakerController == nil, !closing else { throw EngineError.invalidMessage("Leave the current match before matchmaking again.") }
         let value: MagicMobileOnDevice.JSONValue = .object(["name": .string(name.trimmingCharacters(in: .whitespacesAndNewlines)), "deck": deck])
         try OnDeviceMultiplayerLobby.validateSubmission(value)
+        _ = try OnDeviceMultiplayerLobby.makeAISettings(seats: aiSeats, humanCount: playerCount)
         let request = GKMatchRequest()
         request.minPlayers = playerCount; request.maxPlayers = playerCount; request.defaultNumberOfPlayers = playerCount
         guard let controller = GKMatchmakerViewController(matchRequest: request) else { throw EngineError.invalidMessage("Game Center matchmaking is unavailable.") }
         controller.matchmakerDelegate = self
-        requestedPlayerCount = playerCount; submission = value
+        requestedPlayerCount = playerCount; requestedAISeats = aiSeats; submission = value
         failed = false; generation = UUID()
         matchmakerController = controller
         status = "Finding \(playerCount) players in Game Center…"
@@ -413,7 +601,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         Task { @MainActor [weak self] in
             guard let self, viewController === self.matchmakerController else { return }
             viewController.dismiss(animated: true)
-            self.matchmakerController = nil; self.submission = nil; self.status = "Matchmaking cancelled."
+            self.matchmakerController = nil; self.submission = nil; self.requestedAISeats = []; self.status = "Matchmaking cancelled."
         }
     }
 
@@ -421,7 +609,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         Task { @MainActor [weak self] in
             guard let self, viewController === self.matchmakerController else { return }
             viewController.dismiss(animated: true)
-            self.matchmakerController = nil; self.submission = nil; self.status = error.localizedDescription
+            self.matchmakerController = nil; self.submission = nil; self.requestedAISeats = []; self.status = error.localizedDescription
         }
     }
 
@@ -439,9 +627,11 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
             guard match.expectedPlayerCount == 0, match.players.count + 1 == requestedPlayerCount,
                   let submission else { throw EngineError.invalidMessage("Game Center has not connected the complete roster.") }
             let localID = GKLocalPlayer.local.gamePlayerID
-            var roster = try OnDeviceMultiplayerLobby(peerIDs: match.players.map(\.gamePlayerID) + [localID], localPeerID: localID)
+            var roster = try OnDeviceMultiplayerLobby(peerIDs: match.players.map(\.gamePlayerID) + [localID],
+                                                       localPeerID: localID, aiSeats: requestedAISeats)
             if roster.hostID == localID { try roster.submit(submission, from: localID); epoch = UUID() }
             lobby = roster
+            hostAISeatSummary = roster.hostID == localID ? roster.hostAISeatSummary : nil
             let transport = GameKitTransport(match: match)
             self.transport = transport
             let token = generation
@@ -449,6 +639,14 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
                 guard let self, self.generation == token, !self.failed, !self.closing else { return }
                 do { try self.receive(packet, from: peer) }
                 catch let error as OnDeviceMultiplayerLobby.HandshakeFailure {
+                    if case .differentSettings = error {
+                        if self.lobby?.localPeerID == self.lobby?.hostID, let epoch = self.epoch {
+                            try? self.broadcast(Self.settingsRejection(epoch: epoch.uuidString))
+                        } else if let value = try? MagicMobileOnDevice.JSONValue.decode(packet),
+                                  let incomingEpoch = value["epoch"]?.string {
+                            try? self.send(Self.settingsRejection(epoch: incomingEpoch), to: peer)
+                        }
+                    }
                     self.fail(error.localizedDescription)
                 }
                 catch { /* Reject malformed, stale or unauthorized packets without ending the match. */ }
@@ -461,7 +659,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
                 guard let self, self.generation == token, !self.closing else { return }
                 self.fail(message)
             }
-            status = "Connected. Checking builds and waiting for every deck…"
+            status = "Connected. Checking builds and host AI settings, then waiting for every deck…"
             lobbyTimer = Task { @MainActor [weak self] in
                 // Repeat the host offer while peers install their GameKit delegate.
                 for _ in 0..<120 {
@@ -481,7 +679,8 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     private func lobbyPacket(type: String) throws -> MagicMobileOnDevice.JSONValue {
         guard let lobby, let epoch else { throw EngineError.incompatibleBuild }
         return .object(["type": .string(type), "epoch": .string(epoch.uuidString), "build": identity.json,
-                        "roster": .array(lobby.peerIDs.map(MagicMobileOnDevice.JSONValue.string))])
+                        "roster": .array(lobby.peerIDs.map(MagicMobileOnDevice.JSONValue.string)),
+                        "aiSettings": lobby.aiSettings])
     }
 
     private func receive(_ data: Data, from peer: String) throws {
@@ -493,6 +692,10 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
             let incomingEpoch = try lobby.verifyHandshake(value, from: peer, identity: identity, epoch: epoch)
             if type == "offer" {
                 guard let submission else { throw EngineError.unboundPeer }
+                guard var acceptedLobby = self.lobby else { throw EngineError.unboundPeer }
+                try acceptedLobby.acceptHostOffer(value)
+                self.lobby = acceptedLobby
+                hostAISeatSummary = acceptedLobby.hostAISeatSummary
                 epoch = incomingEpoch
                 if remote == nil {
                     var reply = try lobbyPacket(type: "submission").object!
@@ -507,6 +710,8 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
                 } else {
                     guard let matchID = value["matchId"]?.string, UUID(uuidString: matchID) != nil else { throw EngineError.unboundPeer }
                     guard remote == nil else { return }
+                    seatNames = try OnDeviceMultiplayerLobby.validatedSeatNames(value["seatNames"],
+                        totalSeats: lobby.peerIDs.count + (lobby.aiSettings["seats"]?.array?.count ?? 0))
                     try startClient(matchID: matchID, epoch: incomingEpoch)
                 }
             }
@@ -520,6 +725,18 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         case "reply":
             guard let remote else { throw EngineError.unboundPeer }
             try remote.receive(value, from: peer)
+        case "rollReady":
+            guard Set(fields.keys) == ["type", "epoch"], lobby.localPeerID == lobby.hostID,
+                  nativeMatchID != nil else { throw EngineError.unboundPeer }
+            if startingRoll == nil { try recordRollReady(from: peer) }
+        case "rollResult":
+            guard Set(fields.keys) == ["type", "epoch", "roll"],
+                  peer == lobby.hostID, lobby.localPeerID != lobby.hostID,
+                  startingRoll == nil, let rawRoll = fields["roll"] else { throw EngineError.unboundPeer }
+            let seats = (1...seatNames.count).map { "player\($0)" }
+            startingRoll = try OnDeviceStartingRoll(rawRoll, seatIDs: seats)
+            rollStatus = "Starting player decided by D20."
+            rollTimer?.cancel(); rollTimer = nil
         case "presence":
             guard Set(fields.keys) == ["type", "epoch", "sequence", "suspended"],
                   let sequence = fields["sequence"]?.integer, sequence > (peerPresenceSequences[peer] ?? 0),
@@ -531,6 +748,11 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         case "end":
             guard Set(fields.keys) == ["type", "epoch"] else { throw EngineError.invalidMessage("Invalid match ending.") }
             fail(peer == lobby.hostID ? "The host ended this match." : "A player left. Start a new match to play again.")
+        case "reject":
+            guard Set(fields.keys) == ["type", "epoch", "reason"], fields["reason"]?.string == "aiSettings",
+                  peer == lobby.hostID || lobby.localPeerID == lobby.hostID else { throw EngineError.unboundPeer }
+            if lobby.localPeerID == lobby.hostID { try? broadcast(Self.settingsRejection(epoch: epoch.uuidString)) }
+            fail(OnDeviceMultiplayerLobby.HandshakeFailure.differentSettings.localizedDescription)
         default: throw EngineError.invalidMessage("Unknown multiplayer packet.")
         }
     }
@@ -566,9 +788,17 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
                 guard self.generation == token, !self.failed, !self.closing, !Task.isCancelled else { return }
                 var start = try self.lobbyPacket(type: "start").object!
                 start["matchId"] = .string(matchID)
+                let names = lobby.seatNames
+                let packetNames: MagicMobileOnDevice.JSONValue = .object(names.mapValues(MagicMobileOnDevice.JSONValue.string))
+                _ = try OnDeviceMultiplayerLobby.validatedSeatNames(packetNames,
+                    totalSeats: lobby.peerIDs.count + (lobby.aiSettings["seats"]?.array?.count ?? 0))
+                start["seatNames"] = packetNames
                 try self.broadcast(.object(start))
+                self.seatNames = names
                 self.endpoint = OnDeviceMultiplayerEndpoint(client: engine, matchID: matchID, seatID: try lobby.seatID(for: lobby.localPeerID), isHost: true)
                 self.isConnected = true
+                self.rollStatus = "Tap Roll D20 to choose who goes first."
+                self.beginRollTimer()
                 self.lobbyTimer?.cancel(); self.status = "Connected as host. Every player must keep the app in the foreground."
             } catch is CancellationError { }
             catch { self.fail(error.localizedDescription) }
@@ -591,6 +821,8 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
                 guard self.generation == token, !self.failed, !self.closing, !Task.isCancelled else { return }
                 self.endpoint = OnDeviceMultiplayerEndpoint(client: EngineClient(transport: remote), matchID: matchID, seatID: seatID, isHost: false)
                 self.isConnected = true
+                self.rollStatus = "Tap Roll D20 to choose who goes first."
+                self.beginRollTimer()
                 self.lobbyTimer?.cancel(); self.status = "Connected. Every player must keep the app in the foreground."
             } catch is CancellationError { }
             catch { self.fail(error.localizedDescription) }
@@ -654,8 +886,10 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
             status = "Native match shutdown failed. Try Leave again: \(error.localizedDescription)"
             throw error
         }
-        generation = UUID(); hostEngine = nil; needsCleanup = false; endpoint = nil
-        remote = nil; router = nil; hostDispatcher = nil; transport = nil; lobby = nil; epoch = nil; submission = nil
+        generation = UUID(); hostEngine = nil; needsCleanup = false; endpoint = nil; hostAISeatSummary = nil; seatNames = [:]
+        rollTimer?.cancel(); rollTimer = nil; rollReadyPeers.removeAll()
+        startingRoll = nil; hasRolled = false; rollStatus = ""
+        remote = nil; router = nil; hostDispatcher = nil; transport = nil; lobby = nil; epoch = nil; submission = nil; requestedAISeats = []
         suspendedPeers.removeAll(); peerPresenceSequences.removeAll(); presenceSequence = 0
         suspensionRevision = 0
         matchmakerController?.dismiss(animated: true); matchmakerController = nil
@@ -664,7 +898,9 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
 
     private func fail(_ message: String) {
         guard !failed else { return }
-        failed = true; isConnected = false; status = message
+        failed = true; isConnected = false; status = message; seatNames = [:]
+        rollTimer?.cancel(); rollTimer = nil; rollReadyPeers.removeAll()
+        startingRoll = nil; hasRolled = false; rollStatus = ""
         lobbyTimer?.cancel(); startup?.cancel(); remote?.close()
         hostDispatcher?.cancel()
         if let epoch { try? broadcast(.object(["type": .string("end"), "epoch": .string(epoch.uuidString)])) }
@@ -685,6 +921,10 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     private func broadcast(_ value: MagicMobileOnDevice.JSONValue) throws {
         guard let lobby else { return }
         for peer in lobby.peerIDs where peer != lobby.localPeerID { try send(value, to: peer) }
+    }
+
+    private static func settingsRejection(epoch: String) -> MagicMobileOnDevice.JSONValue {
+        .object(["type": .string("reject"), "epoch": .string(epoch), "reason": .string("aiSettings")])
     }
 }
 #endif

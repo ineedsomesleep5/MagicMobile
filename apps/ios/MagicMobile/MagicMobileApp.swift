@@ -121,23 +121,71 @@ struct MagicMobileApp: App {
     var body: some Scene {
         WindowGroup {
             OrientationHostingRoot {
-                switch OnDeviceAppConfiguration.entryPoint {
-                case .embedded, .setupPreview:
-                    OnDeviceRootView()
-                        .defaultAppStorage(MagicMobilePreferences.current)
-                case .referencePreview:
-                    ContentView()
-                case .engineMissing:
-                    ContentUnavailableView(
-                        "Native engine missing",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text("This build does not include the on-device XMage engine. Install a complete native build; no remote engine or simulator will be substituted.")
-                    )
+                #if DEBUG
+                if ProcessInfo.processInfo.environment["MAGICMOBILE_MULTIPLAYER_D20_FIXTURE"] == "1" {
+                    MultiplayerD20FixtureScreen()
+                } else {
+                    productionRoot
                 }
+                #else
+                productionRoot
+                #endif
             }
             // The UIKit host owns the real safe-area insets. Let its surface
             // reach the window edges instead of clipping it to SwiftUI's inset.
             .ignoresSafeArea(.container)
         }
     }
+
+    @ViewBuilder
+    private var productionRoot: some View {
+        switch OnDeviceAppConfiguration.entryPoint {
+        case .embedded, .setupPreview:
+            OnDeviceRootView()
+                .defaultAppStorage(MagicMobilePreferences.current)
+        case .referencePreview:
+            ContentView()
+        case .engineMissing:
+            ContentUnavailableView(
+                "Native engine missing",
+                systemImage: "exclamationmark.triangle",
+                description: Text("This build does not include the on-device XMage engine. Install a complete native build; no remote engine or simulator will be substituted.")
+            )
+        }
+    }
 }
+
+#if DEBUG
+/// Opt-in visual fixture only. It never creates a Game Center or XMage match.
+private struct MultiplayerD20FixtureScreen: View {
+    @State private var dismissed = false
+
+    private static let roll: OnDeviceStartingRoll? = {
+        var values = [12, 12, 7, 20, 14].makeIterator()
+        return try? OnDeviceStartingRoll.generate(seatIDs: ["player1", "player2", "player3"],
+                                                  draw: { values.next() ?? 1 })
+    }()
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text("DEVELOPMENT FIXTURE · NO ENGINE")
+                .font(.caption.bold())
+                .frame(maxWidth: .infinity)
+                .padding(8)
+                .background(.yellow)
+            if dismissed {
+                Text("Starting roll preview complete")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let roll = Self.roll {
+                MultiplayerD20View(roll: roll,
+                                   seatNames: ["player1": "Caleb", "player2": "Ruthie", "player3": "AI 1"],
+                                   isLocalWinner: true) {
+                    dismissed = true
+                }
+            } else {
+                Text("Starting roll fixture unavailable")
+            }
+        }
+    }
+}
+#endif
