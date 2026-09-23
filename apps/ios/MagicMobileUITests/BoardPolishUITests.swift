@@ -31,25 +31,57 @@ final class BoardPolishUITests: XCTestCase {
         application.launch()
         XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
         capture(application, name: "shared-d20-rolling-fixture")
-        XCTAssertTrue(application.buttons["multiplayerD20.continue"].waitForExistence(timeout: 15))
-        XCTAssertTrue(application.staticTexts["You won the roll"].exists)
-        for portrait in [true, false] {
-            XCUIDevice.shared.orientation = portrait ? .portrait : .landscapeLeft
-            let orientation = NSPredicate { _, _ in
-                let frame = application.frame
-                return frame.width > 0 && frame.height > 0 &&
-                    (portrait ? frame.height > frame.width : frame.width > frame.height)
-            }
-            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: orientation, object: application)],
-                                        timeout: 10), .completed)
-            let continueButton = application.buttons["multiplayerD20.continue"]
-            XCTAssertTrue(continueButton.isHittable)
-            currentCapture = "shared-d20-\(portrait ? "portrait" : "landscape")-fixture"
-            capture(application, name: currentCapture)
+        XCTAssertFalse(application.buttons["multiplayerD20.continue"].exists)
+        let tapToRoll = application.buttons["multiplayerD20.tapToRoll"]
+        XCTAssertTrue(tapToRoll.waitForExistence(timeout: 5))
+        XCTAssertFalse(application.staticTexts["Rolled 12"].exists, "No die may roll before the first tap")
+        tapToRoll.tap()
+        currentCapture = "shared-d20-portrait-fixture"
+        capture(application, name: currentCapture)
+        let result = application.staticTexts["Rolled 12"]
+        XCTAssertTrue(result.waitForExistence(timeout: 8))
+        let rollArea = application.otherElements["multiplayerD20.rollArea"]
+        XCTAssertTrue(rollArea.exists)
+        XCTAssertEqual(rollArea.value as? String, "Rebounded from screen edge")
+        let playerSquare = application.otherElements["multiplayerD20.seat.player1"]
+        XCTAssertTrue(playerSquare.exists)
+        XCTAssertLessThan(abs(result.frame.midX - application.frame.midX), 20)
+        XCTAssertLessThanOrEqual(result.frame.maxY + 12, playerSquare.frame.minY,
+                                 "Rolled result must have a visible gap above player squares")
+        capture(application, name: "shared-d20-result-above-player-squares")
+        for _ in 0..<4 {
+            XCTAssertTrue(tapToRoll.waitForExistence(timeout: 12))
+            tapToRoll.tap()
         }
-        XCUIDevice.shared.orientation = .portrait
-        application.buttons["multiplayerD20.continue"].press(forDuration: 0.15)
-        XCTAssertTrue(application.staticTexts["Starting roll preview complete"].waitForExistence(timeout: 5))
+        XCTAssertTrue(application.staticTexts["Starting roll preview complete"].waitForExistence(timeout: 35))
+        application.terminate()
+
+        application.launchEnvironment["MAGICMOBILE_D20_LANDSCAPE_FIXTURE"] = "1"
+        XCUIDevice.shared.orientation = .landscapeLeft
+        application.launch()
+        XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
+        let landscape = NSPredicate { _, _ in
+            let frame = application.frame
+            return frame.width > frame.height
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: landscape, object: application)],
+                                    timeout: 10), .completed)
+        currentCapture = "shared-d20-landscape-fixture"
+        capture(application, name: currentCapture)
+        let landscapeSeats = (1...3).map { application.otherElements["multiplayerD20.seat.player\($0)"] }
+        for seat in landscapeSeats {
+            XCTAssertTrue(seat.exists)
+            XCTAssertLessThan(seat.frame.maxY, application.frame.maxY - 12,
+                              "The full player square should be visible without scrolling in landscape")
+        }
+        XCTAssertTrue(application.buttons["multiplayerD20.skipAnimation"].exists)
+        tapToRoll.tap()
+        application.buttons["multiplayerD20.skipAnimation"].tap()
+        for _ in 0..<4 {
+            XCTAssertTrue(tapToRoll.waitForExistence(timeout: 8))
+            tapToRoll.tap()
+        }
+        XCTAssertTrue(application.staticTexts["Starting roll preview complete"].waitForExistence(timeout: 8))
     }
 
     override func setUpWithError() throws {

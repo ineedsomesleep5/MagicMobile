@@ -8,12 +8,28 @@ struct OnDeviceStartingRoll: Equatable {
         let rolls: [String: Int]
     }
 
+    struct Step: Equatable {
+        let roundIndex: Int
+        let seatID: String
+        let value: Int
+    }
+
     let rounds: [Round]
     let winnerSeatID: String
+    let seatOrder: [String]
 
-    private init(rounds: [Round], winnerSeatID: String) {
+    var steps: [Step] {
+        rounds.enumerated().flatMap { roundIndex, round in
+            seatOrder.compactMap { seatID in
+                round.rolls[seatID].map { Step(roundIndex: roundIndex, seatID: seatID, value: $0) }
+            }
+        }
+    }
+
+    private init(rounds: [Round], winnerSeatID: String, seatOrder: [String]) {
         self.rounds = rounds
         self.winnerSeatID = winnerSeatID
+        self.seatOrder = seatOrder
     }
 
     static func generate(seatIDs: [String], draw: () -> Int = { Int.random(in: 1...20) }) throws -> Self {
@@ -34,7 +50,7 @@ struct OnDeviceStartingRoll: Equatable {
             rounds.append(Round(rolls: rolls))
             let high = rolls.values.max()!
             contenders = contenders.filter { rolls[$0] == high }
-            if contenders.count == 1 { return Self(rounds: rounds, winnerSeatID: contenders[0]) }
+            if contenders.count == 1 { return Self(rounds: rounds, winnerSeatID: contenders[0], seatOrder: seatIDs) }
         }
         throw EngineError.invalidMessage("The starting roll tied too many times. Try the match again.")
     }
@@ -77,11 +93,12 @@ struct OnDeviceStartingRoll: Equatable {
         }
         self.rounds = rounds
         winnerSeatID = winner
+        seatOrder = seatIDs
         try validate(seatIDs: seatIDs)
     }
 
     private func validate(seatIDs: [String]) throws {
-        guard (2...4).contains(seatIDs.count), Set(seatIDs).count == seatIDs.count,
+        guard seatIDs == seatOrder, (2...4).contains(seatIDs.count), Set(seatIDs).count == seatIDs.count,
               !rounds.isEmpty, rounds.count <= 32 else {
             throw EngineError.invalidMessage("Invalid starting-roll roster.")
         }
@@ -100,5 +117,35 @@ struct OnDeviceStartingRoll: Equatable {
         guard contenders == [winnerSeatID] else {
             throw EngineError.invalidMessage("Starting-roll winner does not match the dice.")
         }
+    }
+}
+
+/// One shared cursor through the host's result. Humans can advance only their own
+/// turn; AI turns are advanced by the host, never by a guest or an animation.
+struct OnDeviceStartingRollProgress: Equatable {
+    let roll: OnDeviceStartingRoll
+    let humanSeatIDs: Set<String>
+    private(set) var revealedCount = 0
+
+    var nextSeatID: String? {
+        roll.steps.indices.contains(revealedCount) ? roll.steps[revealedCount].seatID : nil
+    }
+
+    var isComplete: Bool { revealedCount == roll.steps.count }
+
+    mutating func advance(seatID: String, automated: Bool) throws -> Int {
+        guard nextSeatID == seatID, humanSeatIDs.contains(seatID) != automated else {
+            throw EngineError.invalidMessage("It is not this player's turn to roll.")
+        }
+        let index = revealedCount
+        revealedCount += 1
+        return index
+    }
+
+    mutating func acceptHostAdvance(index: Int) throws {
+        guard index == revealedCount, nextSeatID != nil else {
+            throw EngineError.replayedMessage
+        }
+        revealedCount += 1
     }
 }

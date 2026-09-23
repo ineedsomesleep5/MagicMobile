@@ -159,6 +159,7 @@ struct MagicMobileApp: App {
 /// Opt-in visual fixture only. It never creates a Game Center or XMage match.
 private struct MultiplayerD20FixtureScreen: View {
     @State private var dismissed = false
+    @State private var revealedStepCount = 0
 
     private static let roll: OnDeviceStartingRoll? = {
         var values = [12, 12, 7, 20, 14].makeIterator()
@@ -176,15 +177,37 @@ private struct MultiplayerD20FixtureScreen: View {
             if dismissed {
                 Text("Starting roll preview complete")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .foregroundStyle(.white)
             } else if let roll = Self.roll {
                 MultiplayerD20View(roll: roll,
                                    seatNames: ["player1": "Caleb", "player2": "Ruthie", "player3": "AI 1"],
-                                   isLocalWinner: true) {
+                                   isLocalWinner: true,
+                                   revealedStepCount: revealedStepCount,
+                                   // The fixture drives one local tap at a time; it is
+                                   // not a substitute for Game Center transport.
+                                   localSeatID: roll.steps.indices.contains(revealedStepCount)
+                                       ? roll.steps[revealedStepCount].seatID : nil,
+                                   onRollTap: { revealedStepCount += 1 }) {
                     dismissed = true
                 }
             } else {
                 Text("Starting roll fixture unavailable")
             }
+        }
+        .background {
+            GeometryReader { geometry in
+                Image("battlefield-wood")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+                    .overlay(Color.black.opacity(0.58))
+            }
+            .ignoresSafeArea()
+        }
+        .onAppear {
+            MagicMobileOrientationController.shared.setPortraitModeEnabled(
+                ProcessInfo.processInfo.environment["MAGICMOBILE_D20_LANDSCAPE_FIXTURE"] != "1")
         }
     }
 }

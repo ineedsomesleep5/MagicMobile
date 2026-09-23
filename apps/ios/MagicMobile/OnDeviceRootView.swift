@@ -43,6 +43,7 @@ struct OnDeviceRootView: View {
     @State private var didDismissStartingRoll = false
     @State private var attemptedStartingPromptID: String?
     @State private var aiStartingRoll: OnDeviceStartingRoll?
+    @State private var aiRevealedRollCount = 0
     @State private var aiRollSeatNames: [String: String] = [:]
 
     init() {
@@ -229,6 +230,7 @@ struct OnDeviceRootView: View {
             didDismissStartingRoll = false
             attemptedStartingPromptID = nil
             aiStartingRoll = nil
+            aiRevealedRollCount = 0
             aiRollSeatNames = [:]
             prepareAIRollIfNeeded()
         }
@@ -250,11 +252,21 @@ struct OnDeviceRootView: View {
            !didDismissStartingRoll {
             GeometryReader { proxy in
                 ZStack {
-                    Color.black.opacity(0.82).ignoresSafeArea()
+                    Color.black.opacity(multiplayer.startingRoll == nil ? 0.82 : 0.58).ignoresSafeArea()
                     Group {
                         if let roll = multiplayer.startingRoll {
                             MultiplayerD20View(roll: roll, seatNames: multiplayer.seatNames,
-                                               isLocalWinner: roll.winnerSeatID == multiplayer.endpoint?.seatID) {
+                                               isLocalWinner: roll.winnerSeatID == multiplayer.endpoint?.seatID,
+                                               revealedStepCount: multiplayer.rollProgress?.revealedCount ?? 0,
+                                               localSeatID: multiplayer.endpoint?.seatID,
+                                               rollPending: multiplayer.hasRolled,
+                                               onRollTap: {
+                                                   do { try multiplayer.rollStartingPlayer() }
+                                                   catch { bannerError = error.localizedDescription }
+                                               }, onStepPlayed: {
+                                                   do { try multiplayer.advanceAISeatIfNeeded() }
+                                                   catch { bannerError = error.localizedDescription }
+                                               }) {
                                 didDismissStartingRoll = true
                                 submitStartingChoiceIfNeeded()
                             }
@@ -282,8 +294,7 @@ struct OnDeviceRootView: View {
                             .background(CommanderPresentation.surface, in: RoundedRectangle(cornerRadius: 22))
                         }
                     }
-                    .frame(width: min(proxy.size.width - 24, 760),
-                           height: min(proxy.size.height - 24, 620))
+                    .frame(width: proxy.size.width, height: proxy.size.height)
                     .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
                 }
             }
@@ -292,14 +303,17 @@ struct OnDeviceRootView: View {
                   let roll = aiStartingRoll, !didDismissStartingRoll {
             GeometryReader { proxy in
                 ZStack {
-                    Color.black.opacity(0.82).ignoresSafeArea()
+                    Color.black.opacity(0.58).ignoresSafeArea()
                     MultiplayerD20View(roll: roll, seatNames: aiRollSeatNames,
-                                       isLocalWinner: roll.winnerSeatID == session.snapshot?.viewerID) {
+                                       isLocalWinner: roll.winnerSeatID == session.snapshot?.viewerID,
+                                       revealedStepCount: aiRevealedRollCount,
+                                       localSeatID: session.snapshot?.viewerID,
+                                       onRollTap: advanceLocalAIRoll,
+                                       onStepPlayed: advanceAIRollIfNeeded) {
                         didDismissStartingRoll = true
                         submitStartingChoiceIfNeeded()
                     }
-                    .frame(width: min(proxy.size.width - 24, 760),
-                           height: min(proxy.size.height - 24, 620))
+                    .frame(width: proxy.size.width, height: proxy.size.height)
                     .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
                 }
             }
@@ -313,12 +327,35 @@ struct OnDeviceRootView: View {
               let snapshot = session.snapshot,
               let targetIDs = OnDeviceStartingPlayerChoice.candidateIDs(snapshot: snapshot) else { return }
         do {
-            aiStartingRoll = try OnDeviceStartingRoll.generate(seatIDs: targetIDs)
+            let viewerFirst = [snapshot.viewerID] + targetIDs.filter { $0 != snapshot.viewerID }
+            aiStartingRoll = try OnDeviceStartingRoll.generate(seatIDs: viewerFirst)
+            aiRevealedRollCount = 0
             aiRollSeatNames = Dictionary(uniqueKeysWithValues: snapshot.players.map {
                 ($0.playerId, $0.playerId == snapshot.viewerID ? "You" : ($0.displayName ?? "AI opponent"))
             })
+            advanceAIRollIfNeeded()
         } catch {
             bannerError = "Could not roll for the starting player: \(error.localizedDescription)"
+        }
+    }
+
+    private func advanceLocalAIRoll() {
+        guard let roll = aiStartingRoll, let viewerID = session.snapshot?.viewerID,
+              roll.steps.indices.contains(aiRevealedRollCount),
+              roll.steps[aiRevealedRollCount].seatID == viewerID else { return }
+        aiRevealedRollCount += 1
+    }
+
+    private func advanceAIRollIfNeeded() {
+        guard let roll = aiStartingRoll, let viewerID = session.snapshot?.viewerID,
+              roll.steps.indices.contains(aiRevealedRollCount),
+              roll.steps[aiRevealedRollCount].seatID != viewerID else { return }
+        let expectedCount = aiRevealedRollCount
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(650))
+            guard !Task.isCancelled, session.matchID != nil, aiStartingRoll == roll,
+                  aiRevealedRollCount == expectedCount, !didDismissStartingRoll else { return }
+            aiRevealedRollCount += 1
         }
     }
 
@@ -779,7 +816,7 @@ private final class OnDeviceSetupModel: ObservableObject {
                 throw EngineError.invalidMessage("This app is missing its build identity. Install a complete app build.")
             }
             let identity = BuildIdentity(upstreamCommit: resolver.upstreamCommit, catalogueHash: resolver.catalogueHash,
-                                         adapterVersion: "ondevice-0.1/app-\(version)/build-\(build)")
+                                         adapterVersion: "ondevice-0.1/app-\(version)/build-\(build)/rollstep-2")
             let multiplayer = OnDeviceMultiplayer(identity: identity,
                 makeHostEngine: { [runtime] in try await runtime.makeClient(identity: identity) },
                 closeHostEngine: { [runtime] _ in try await runtime.close() })
