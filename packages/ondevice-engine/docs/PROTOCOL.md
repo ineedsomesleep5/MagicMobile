@@ -87,3 +87,16 @@ Build identity includes protocol version, upstream commit, catalogue fingerprint
 `PacketChunk` splits messages into 8 KiB parts. `PacketAssembler` scopes buffers by authenticated peer+message ID, enforces 4 MiB/message, per-peer/global concurrency and aggregate byte quotas, validates indexes and duplicate content, and expires stale assemblies. A bounded chunk layer is not transport authentication or matchmaking.
 
 The production app implements lobby/host election, deck exchange, request/reply correlation, suspension/cleanup and guest UI orchestration in `OnDeviceMultiplayer` and `GameKitTransport`. Portable tests do not establish actual Game Center or multi-phone execution. Guaranteed reconnect, host migration and durable match restoration remain outside the MVP. The host is trusted with the full game, including hidden information; guest filtering is not host anti-cheat.
+
+### Game Center starting D20 presentation
+
+The iOS lobby's `start` handshake includes one host-generated, validated D20 plan
+(`roll`) for all seats and tie rounds. The plan is presentation data, not an XMage
+rule change. It is not displayed ahead of each turn. A human's tap sends `rollStep`
+with the zero-based next index to the host; the host verifies the authenticated
+peer owns that turn and broadcasts `rollAdvance` with that index over reliable
+GameKit transport. AI seats advance from the host after the prior presentation
+step. Clients advance only in order, and their animation never chooses a face or
+the winner. The native starting-player prompt is answered only after the final
+shared step has been shown. The app's adapter identity includes `rollstep-2`, so
+older clients cannot join this presentation protocol despite sharing XMage inputs.

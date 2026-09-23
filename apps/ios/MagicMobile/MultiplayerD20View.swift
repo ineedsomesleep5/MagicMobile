@@ -8,13 +8,25 @@ struct MultiplayerD20View: View {
     let roll: OnDeviceStartingRoll
     let seatNames: [String: String]
     let isLocalWinner: Bool
+    let revealedStepCount: Int
+    let localSeatID: String?
+    let rollPending: Bool
+    let onRollTap: () -> Void
+    let onStepPlayed: () -> Void
     let onDismiss: () -> Void
 
     init(roll: OnDeviceStartingRoll, seatNames: [String: String], isLocalWinner: Bool,
+         revealedStepCount: Int, localSeatID: String?, rollPending: Bool = false,
+         onRollTap: @escaping () -> Void, onStepPlayed: @escaping () -> Void = {},
          onDismiss: @escaping () -> Void) {
         self.roll = roll
         self.seatNames = seatNames
         self.isLocalWinner = isLocalWinner
+        self.revealedStepCount = revealedStepCount
+        self.localSeatID = localSeatID
+        self.rollPending = rollPending
+        self.onRollTap = onRollTap
+        self.onStepPlayed = onStepPlayed
         self.onDismiss = onDismiss
     }
 
@@ -25,15 +37,21 @@ struct MultiplayerD20View: View {
     @State private var activeSeatID: String?
     @State private var activeValue: Int?
     @State private var settledRolls: [String: Int] = [:]
-    @State private var flightPhase = 0
     @State private var landed = false
+    @State private var revealFace = false
+    @State private var diePosition: CGPoint?
+    @State private var stageSize: CGSize = .zero
+    @State private var edgeHitTurn: Int?
+    @State private var reboundTurn: Int?
     @State private var playbackFinished = false
     @State private var spinTurns = 0
     @State private var skipAnimation = false
-    @State private var playedRounds: [[String: Int]] = []
+    @State private var playedStepCount = 0
+    @State private var unlockedStepCount = 0
     @State private var didAutoDismiss = false
 
     private var rounds: [[String: Int]] { roll.rounds.map(\.rolls) }
+    private var steps: [OnDeviceStartingRoll.Step] { roll.steps }
     private var playerIDs: [String] {
         (rounds.first.map { Array($0.keys) } ?? Array(seatNames.keys)).sorted()
     }
@@ -48,28 +66,107 @@ struct MultiplayerD20View: View {
             let wide = geometry.size.width > geometry.size.height && geometry.size.width >= 560
             let columnCount = dynamicTypeSize.isAccessibilitySize ? 1 : (wide ? playerIDs.count : 2)
             let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: max(1, columnCount))
-            ScrollView {
-                VStack(alignment: .leading, spacing: wide ? 12 : 22) {
-                    header
-                    if !playbackFinished {
-                        rollStage()
-                            .frame(height: wide ? max(150, geometry.size.height * 0.38)
-                                                : min(360, max(250, geometry.size.height * 0.40)))
-                    }
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(playerIDs, id: \.self) { playerID in
-                            playerCard(playerID, compact: wide)
+            ZStack {
+                if activeSeatID != nil && !landed && !reduceMotion {
+                    D20SceneView(value: revealFace ? activeValue : nil, turns: spinTurns,
+                                 spinning: !revealFace,
+                                 arenaSize: geometry.size,
+                                 onEdgeHit: { turn in
+                                     guard turn == spinTurns, edgeHitTurn != turn else { return }
+                                     edgeHitTurn = turn
+                                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                 },
+                                 onRebound: { turn in
+                                     guard turn == spinTurns else { return }
+                                     reboundTurn = turn
+                                 },
+                                 onRest: { turn, point in
+                                     guard turn == spinTurns else { return }
+                                     diePosition = point
+                                 })
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .allowsHitTesting(false)
+                        .accessibilityIdentifier("multiplayerD20.physicsArena")
+                }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: wide ? 12 : 22) {
+                        header
+                        if !playbackFinished {
+                            Color.clear
+                                .frame(height: wide ? min(52, max(32, geometry.size.height * 0.12))
+                                                    : min(360, max(250, geometry.size.height * 0.40)))
+                                .accessibilityElement()
+                                .accessibilityLabel("D20 roll area")
+                                .accessibilityValue(reboundTurn == spinTurns
+                                                    ? "Rebounded from screen edge"
+                                                    : edgeHitTurn == spinTurns ? "Touched screen edge" : "Rolling")
+                                .accessibilityIdentifier("multiplayerD20.rollArea")
+                        }
+                        resultAndRollControl(wide: wide)
+                        LazyVGrid(columns: columns, spacing: 12) {
+                            ForEach(playerIDs, id: \.self) { playerID in
+                                playerCard(playerID, compact: wide)
+                            }
                         }
                     }
+                    .frame(maxWidth: wide ? 900 : 620)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: geometry.size.height, alignment: .center)
+                    .padding(.horizontal, wide ? 24 : 20)
                 }
-                .frame(maxWidth: wide ? 900 : 620)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: geometry.size.height, alignment: .center)
-                .padding(.horizontal, wide ? 24 : 20)
+                .scrollIndicators(.hidden)
+                if landed, let seat = activeSeatID, let diePosition {
+                    D20Face(value: activeValue, spinning: false, turns: 0,
+                            emphasized: true, compact: false)
+                        .frame(width: 138, height: 138)
+                        .matchedGeometryEffect(id: "die-\(seat)", in: dieFlight)
+                        .position(diePosition)
+                        .allowsHitTesting(false)
+                }
             }
-            .scrollIndicators(.hidden)
+            .onAppear { stageSize = geometry.size }
+            .onChange(of: geometry.size) { _, size in stageSize = size }
         }
+        .onAppear { unlockedStepCount = min(revealedStepCount, steps.count) }
+        .onChange(of: revealedStepCount) { _, count in unlockedStepCount = min(count, steps.count) }
         .task(id: playbackKey) { await playSuppliedRounds() }
+    }
+
+    private func resultAndRollControl(wide: Bool) -> some View {
+        ZStack {
+            if landed, let activeValue {
+                Text("Rolled \(activeValue)")
+                    .font(.title.bold().monospacedDigit())
+                    .foregroundStyle(Palette.ink)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 8)
+                    .background(Palette.surface, in: Capsule())
+                    .accessibilityIdentifier("multiplayerD20.result")
+                    .transition(.scale(scale: 0.72).combined(with: .opacity))
+            } else if let nextSeat = nextWaitingSeatID {
+                if nextSeat == localSeatID {
+                    Button(rollPending ? "Sharing your roll…" : "Tap to roll D20", action: onRollTap)
+                        .buttonStyle(CommanderActionStyle())
+                        .disabled(rollPending)
+                        .accessibilityIdentifier("multiplayerD20.tapToRoll")
+                } else {
+                    Text("Waiting for \(seatNames[nextSeat] ?? "the next player") to roll…")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Palette.ink)
+                        .multilineTextAlignment(.center)
+                        .accessibilityIdentifier("multiplayerD20.waiting")
+                }
+            }
+        }
+        .frame(maxWidth: wide ? 340 : 440)
+        .frame(maxWidth: .infinity)
+        .frame(height: wide ? 62 : 72)
+    }
+
+    private var nextWaitingSeatID: String? {
+        guard activeSeatID == nil, !playbackFinished, playedStepCount == unlockedStepCount,
+              steps.indices.contains(playedStepCount) else { return nil }
+        return steps[playedStepCount].seatID
     }
 
     private var header: some View {
@@ -101,12 +198,19 @@ struct MultiplayerD20View: View {
             return isLocalWinner ? "You go first" : "\(winnerName) goes first"
         }
         if let activeSeatID { return "\(seatNames[activeSeatID] ?? "Player") rolls" }
+        if let nextWaitingSeatID {
+            return nextWaitingSeatID == localSeatID ? "Your roll" : "\(seatNames[nextWaitingSeatID] ?? "Player")'s roll"
+        }
         if let shownRoundIndex, shownRoundIndex > 0 { return "Tie. Roll again." }
         return "Who goes first?"
     }
 
     private var detail: String {
-        guard let shownRoundIndex else { return "Waiting for the shared D20 results." }
+        guard let shownRoundIndex else {
+            return nextWaitingSeatID == localSeatID
+                ? "Tap to roll D20. Highest starts; ties reroll."
+                : "Waiting for the next player to roll."
+        }
         if playbackFinished, winnerName != nil { return "Round \(shownRoundIndex + 1) of \(rounds.count) · D20" }
         return "Round \(shownRoundIndex + 1) of \(rounds.count) · Highest roll starts. Ties reroll."
     }
@@ -114,47 +218,6 @@ struct MultiplayerD20View: View {
     private var winnerName: String? {
         guard playerIDs.contains(roll.winnerSeatID) else { return nil }
         return seatNames[roll.winnerSeatID] ?? "Player"
-    }
-
-    private func rollStage() -> some View {
-        GeometryReader { stage in
-            ZStack {
-                if let seat = activeSeatID {
-                    D20Face(value: landed ? activeValue : nil, spinning: !landed,
-                            turns: spinTurns, emphasized: landed, compact: false)
-                        .frame(width: 170, height: 170)
-                        .matchedGeometryEffect(id: "die-\(seat)", in: dieFlight)
-                        .offset(flightOffset(in: stage.size))
-                        .rotationEffect(.degrees([0: -24, 1: 17, 2: -12][flightPhase] ?? 0))
-                        .scaleEffect(landed ? 1.07 : 1)
-                        .overlay(alignment: .bottom) {
-                            if landed, let activeValue {
-                                Text("Rolled \(activeValue)")
-                                    .font(.title.bold().monospacedDigit())
-                                    .foregroundStyle(Palette.ink)
-                                    .padding(.horizontal, 18)
-                                    .padding(.vertical, 8)
-                                    .background(Palette.surface, in: Capsule())
-                                    .transition(.scale(scale: 0.2).combined(with: .opacity))
-                                    .offset(y: 30)
-                            }
-                        }
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(activeSeatID.map { "\(seatNames[$0] ?? "Player") rolling a D20" } ??
-                            (playbackFinished ? "Starting roll complete" : "Preparing the D20"))
-    }
-
-    private func flightOffset(in size: CGSize) -> CGSize {
-        switch flightPhase {
-        case 0: CGSize(width: -size.width * 0.32, height: -size.height * 0.24)
-        case 1: CGSize(width: size.width * 0.29, height: -size.height * 0.07)
-        case 2: CGSize(width: -size.width * 0.22, height: size.height * 0.17)
-        default: .zero
-        }
     }
 
     private func playerCard(_ playerID: String, compact: Bool) -> some View {
@@ -176,7 +239,7 @@ struct MultiplayerD20View: View {
                         .foregroundStyle(Palette.secondary.opacity(0.7))
                 }
             }
-            .frame(width: compact ? 68 : 76, height: compact ? 68 : 76)
+            .frame(width: compact ? 56 : 76, height: compact ? 56 : 76)
             .accessibilityHidden(true)
 
             Text(name)
@@ -192,7 +255,7 @@ struct MultiplayerD20View: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, compact ? 12 : 18)
+        .padding(.vertical, compact ? 8 : 18)
         .padding(.horizontal, 8)
         .background(Palette.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -202,6 +265,7 @@ struct MultiplayerD20View: View {
         .accessibilityLabel(accessibilityDescription(for: playerID, name: name,
                                                      displayedValue: value, isRolling: isRolling,
                                                      isOut: isOut, isWinner: isWinner))
+        .accessibilityIdentifier("multiplayerD20.seat.\(playerID)")
     }
 
     private func status(for playerID: String, value: Int?, isRolling: Bool,
@@ -237,71 +301,74 @@ struct MultiplayerD20View: View {
 
     @MainActor
     private func playSuppliedRounds() async {
-        guard !rounds.isEmpty else {
+        guard !steps.isEmpty else {
             shownRoundIndex = nil
             activeSeatID = nil
             settledRolls = [:]
             playbackFinished = false
-            playedRounds = []
+            playedStepCount = 0
             return
         }
-
-        if reduceMotion || skipAnimation {
-            shownRoundIndex = rounds.count - 1
-            activeSeatID = nil
-            settledRolls = rounds.reduce(into: [:]) { values, round in
-                values.merge(round, uniquingKeysWith: { _, latest in latest })
-            }
-            playbackFinished = true
-            playedRounds = rounds
-            await dismissAfterResult()
-            return
-        }
-
-        // Appended authoritative rounds continue from the last displayed tie.
-        let continuesPrevious = !playedRounds.isEmpty && rounds.starts(with: playedRounds)
-        let firstNewRound = continuesPrevious ? playedRounds.count : 0
-        if firstNewRound == rounds.count {
-            playbackFinished = true
-            await dismissAfterResult()
-            return
-        }
-
         playbackFinished = false
-        for index in firstNewRound..<rounds.count {
+        while playedStepCount < steps.count {
             guard !Task.isCancelled else { return }
-            shownRoundIndex = index
-            for seat in playerIDs where rounds[index][seat] != nil {
-                guard !Task.isCancelled, let value = rounds[index][seat] else { return }
-                settledRolls.removeValue(forKey: seat)
-                activeSeatID = seat
-                activeValue = value
-                flightPhase = 0
-                landed = false
-                spinTurns += 1
-                // One shared authoritative result; the visual path never chooses a face.
-                try? await Task.sleep(for: .milliseconds(180))
-                guard !Task.isCancelled else { return }
-                withAnimation(.spring(response: 0.8, dampingFraction: 0.72)) { flightPhase = 1 }
-                try? await Task.sleep(for: .milliseconds(800))
-                guard !Task.isCancelled else { return }
-                withAnimation(.spring(response: 0.65, dampingFraction: 0.66)) { flightPhase = 2 }
-                try? await Task.sleep(for: .milliseconds(650))
-                guard !Task.isCancelled else { return }
-                withAnimation(.spring(response: 0.6, dampingFraction: 0.68)) { flightPhase = 3 }
-                try? await Task.sleep(for: .milliseconds(600))
-                guard !Task.isCancelled else { return }
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.58)) { landed = true }
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                try? await Task.sleep(for: .milliseconds(950))
-                guard !Task.isCancelled else { return }
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) {
-                    settledRolls[seat] = value
-                    activeSeatID = nil
-                }
-                try? await Task.sleep(for: .milliseconds(450))
+            guard playedStepCount < unlockedStepCount else {
+                try? await Task.sleep(for: .milliseconds(80))
+                continue
             }
-            playedRounds = Array(rounds.prefix(index + 1))
+            let step = steps[playedStepCount]
+            let seat = step.seatID
+            let value = step.value
+            shownRoundIndex = step.roundIndex
+            if reduceMotion || skipAnimation {
+                settledRolls[seat] = value
+                activeSeatID = nil
+                activeValue = nil
+                landed = false
+                revealFace = false
+                diePosition = nil
+                playedStepCount += 1
+                onStepPlayed()
+                continue
+            }
+            settledRolls.removeValue(forKey: seat)
+            activeSeatID = seat
+            activeValue = value
+            landed = false
+            revealFace = false
+            diePosition = nil
+            edgeHitTurn = nil
+            reboundTurn = nil
+            spinTurns += 1
+            // Physics decides the path, never the result. Wait for a measurable
+            // reverse trip from the wall, with a bounded recovery if rendering pauses.
+            for _ in 0..<48 where reboundTurn != spinTurns {
+                try? await Task.sleep(for: .milliseconds(100))
+                guard !Task.isCancelled else { return }
+            }
+            try? await Task.sleep(for: .milliseconds(450))
+            guard !Task.isCancelled else { return }
+            revealFace = true
+            try? await Task.sleep(for: .milliseconds(280))
+            guard !Task.isCancelled else { return }
+            if diePosition == nil {
+                diePosition = CGPoint(x: stageSize.width / 2, y: stageSize.height * 0.40)
+            }
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.58)) { landed = true }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            // Give each player long enough to read the result before the die
+            // flies into their square, including when VoiceOver is not active.
+            try? await Task.sleep(for: .milliseconds(1900))
+            guard !Task.isCancelled else { return }
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) {
+                settledRolls[seat] = value
+                activeSeatID = nil
+                landed = false
+            }
+            try? await Task.sleep(for: .milliseconds(450))
+            guard !Task.isCancelled else { return }
+            playedStepCount += 1
+            onStepPlayed()
         }
         withAnimation(.easeOut(duration: 0.28)) { playbackFinished = true }
         await dismissAfterResult()
@@ -372,6 +439,10 @@ struct MultiplayerD20View: View {
         let value: Int?
         let turns: Int
         let spinning: Bool
+        var arenaSize: CGSize? = nil
+        var onEdgeHit: ((Int) -> Void)? = nil
+        var onRebound: ((Int) -> Void)? = nil
+        var onRest: ((Int, CGPoint) -> Void)? = nil
 
         func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -384,35 +455,60 @@ struct MultiplayerD20View: View {
             view.isUserInteractionEnabled = false
             view.autoenablesDefaultLighting = false
             view.antialiasingMode = .multisampling4X
-            view.preferredFramesPerSecond = 30
-            view.rendersContinuously = false
+            view.preferredFramesPerSecond = 60
+            // The traveling die needs a live physics renderer; settled dice in
+            // player squares should not keep extra 60 fps scenes running.
+            view.rendersContinuously = arenaSize != nil
             view.isPlaying = true
+            view.delegate = context.coordinator
             view.accessibilityElementsHidden = true
             return view
         }
 
         func updateUIView(_ view: SCNView, context: Context) {
-            context.coordinator.present(value: value, turns: turns, spinning: spinning)
+            context.coordinator.onEdgeHit = onEdgeHit
+            context.coordinator.onRebound = onRebound
+            context.coordinator.onRest = onRest
+            if let arenaSize { context.coordinator.configureArena(size: arenaSize) }
+            context.coordinator.present(value: value, turns: turns, spinning: spinning,
+                                        arena: arenaSize != nil)
         }
 
-        final class Coordinator {
+        final class Coordinator: NSObject, SCNPhysicsContactDelegate, SCNSceneRendererDelegate {
             let scene = SCNScene()
             private let die = SCNNode()
             private let labels = SCNNode()
+            private let camera = SCNNode()
             private var faceOrientations: [simd_quatf] = []
             private var lastValue: Int?
             private var lastTurns = 0
+            private var arenaSize: CGSize = .zero
+            private var arenaScale: CGFloat = 1
+            private var arenaBounds: CGSize = .zero
+            private var travelDirection: CGFloat = 1
+            private var wallImpactX: Float?
+            private var didCorrectBounce = false
+            private var didReportRebound = false
+            var onEdgeHit: ((Int) -> Void)?
+            var onRebound: ((Int) -> Void)?
+            var onRest: ((Int, CGPoint) -> Void)?
 
-            init() {
+            private enum Collision {
+                static let die = 1
+                static let wall = 2
+                static let table = 4
+            }
+
+            override init() {
+                super.init()
                 buildDie()
                 scene.rootNode.addChildNode(die)
 
-                let camera = SCNNode()
                 let optics = SCNCamera()
                 optics.usesOrthographicProjection = true
                 optics.orthographicScale = 2.15
                 camera.camera = optics
-                camera.position = SCNVector3(0, 0, 4)
+                camera.position = SCNVector3(0, 0, 30)
                 scene.rootNode.addChildNode(camera)
 
                 let key = SCNNode()
@@ -430,7 +526,57 @@ struct MultiplayerD20View: View {
                 scene.background.contents = UIColor.clear
             }
 
-            func present(value: Int?, turns: Int, spinning: Bool) {
+            func configureArena(size: CGSize) {
+                guard size.width > 0, size.height > 0, size != arenaSize else { return }
+                arenaSize = size
+                // Orthographic projection keeps the die the same physical screen
+                // size in portrait and landscape, while the walls follow the view.
+                let diePoints = min(138.0, max(108.0, size.width * 0.29))
+                arenaScale = diePoints / 2
+                let halfWidth = size.width / (2 * arenaScale)
+                let halfHeight = size.height / (2 * arenaScale)
+                arenaBounds = CGSize(width: halfWidth, height: halfHeight)
+                camera.camera?.orthographicScale = Double(halfHeight)
+                scene.physicsWorld.gravity = SCNVector3(0, 0, -17)
+                scene.physicsWorld.timeStep = 1.0 / 60.0
+                scene.physicsWorld.contactDelegate = self
+                scene.rootNode.childNodes.filter { $0.name == "arenaBoundary" || $0.name == "sideWall" }
+                    .forEach { $0.removeFromParentNode() }
+
+                func boundary(name: String, width: CGFloat, height: CGFloat, depth: CGFloat,
+                              at position: SCNVector3, category: Int,
+                              restitution: CGFloat, friction: CGFloat) {
+                    let box = SCNBox(width: width, height: height, length: depth, chamferRadius: 0)
+                    let node = SCNNode()
+                    node.name = name
+                    node.position = position
+                    let body = SCNPhysicsBody(type: .static,
+                                              shape: SCNPhysicsShape(geometry: box, options: nil))
+                    body.categoryBitMask = category
+                    body.collisionBitMask = Collision.die
+                    body.contactTestBitMask = name == "sideWall" ? Collision.die : 0
+                    body.restitution = restitution
+                    body.friction = friction
+                    node.physicsBody = body
+                    scene.rootNode.addChildNode(node)
+                }
+                let w = halfWidth, h = halfHeight
+                boundary(name: "arenaBoundary", width: w * 2 + 4, height: h * 2 + 4, depth: 0.2,
+                         at: SCNVector3(0, 0, -1.12), category: Collision.table,
+                         restitution: 0.27, friction: 0.15)
+                for x in [-w - 0.12, w + 0.12] {
+                    boundary(name: "sideWall", width: 0.24, height: h * 2 + 4, depth: 8,
+                             at: SCNVector3(x, 0, 1.6), category: Collision.wall,
+                             restitution: 0.88, friction: 0.08)
+                }
+                for y in [-h - 0.12, h + 0.12] {
+                    boundary(name: "arenaBoundary", width: w * 2 + 4, height: 0.24, depth: 8,
+                             at: SCNVector3(0, y, 1.6), category: Collision.wall,
+                             restitution: 0.78, friction: 0.08)
+                }
+            }
+
+            func present(value: Int?, turns: Int, spinning: Bool, arena: Bool) {
                 labels.isHidden = value == nil
                 let resultChanged = value != lastValue
                 let newTurn = turns != lastTurns
@@ -438,6 +584,11 @@ struct MultiplayerD20View: View {
                 lastValue = value
                 lastTurns = turns
                 die.removeAction(forKey: "tumble")
+                if arena {
+                    if newTurn && spinning { launch(turn: turns) }
+                    else if let value, (1...20).contains(value) { reveal(value: value, turn: turns) }
+                    return
+                }
                 if let value, (1...20).contains(value) {
                     die.simdOrientation = simd_inverse(faceOrientations[value - 1])
                 } else {
@@ -448,6 +599,79 @@ struct MultiplayerD20View: View {
                 let tumble = SCNAction.rotateBy(x: .pi * 2, y: .pi * 4, z: .pi * 2, duration: 2.05)
                 tumble.timingMode = .easeInEaseOut
                 die.runAction(tumble, forKey: "tumble")
+            }
+
+            private func launch(turn: Int) {
+                guard let geometry = die.geometry else { return }
+                let direction: CGFloat = turn.isMultiple(of: 2) ? 1 : -1
+                travelDirection = direction
+                wallImpactX = nil
+                didCorrectBounce = false
+                didReportRebound = false
+                die.simdOrientation = simd_quatf(angle: 0.48, axis: SIMD3<Float>(1, 1, 0.2))
+                die.position = SCNVector3(-direction * (arenaBounds.width - 1.2),
+                                          min(arenaBounds.height - 1.3, 0.7), 1.35)
+                let body = SCNPhysicsBody(type: .dynamic,
+                    shape: SCNPhysicsShape(geometry: geometry,
+                                           options: [.type: SCNPhysicsShape.ShapeType.convexHull]))
+                body.mass = 1
+                body.categoryBitMask = Collision.die
+                body.collisionBitMask = Collision.wall | Collision.table
+                body.contactTestBitMask = Collision.wall
+                body.restitution = 0.68
+                body.friction = 0.16
+                body.damping = 0.05
+                body.angularDamping = 0.26
+                die.physicsBody = body
+                // Cross the available width in about a second; SceneKit handles
+                // the table impact, edge contact, bounce, and subsequent spin.
+                let travel = max(2.4, arenaBounds.width * 2 - 2.4)
+                body.velocity = SCNVector3(direction * travel / 1.05, -0.32, -0.3)
+                body.angularVelocity = SCNVector4(0.5, 0.9, 0.65, direction * 13)
+            }
+
+            private func reveal(value: Int, turn: Int) {
+                die.physicsBody?.type = .kinematic
+                let location = die.presentation.position
+                let point = CGPoint(x: arenaSize.width / 2 + CGFloat(location.x) * arenaScale,
+                                    y: arenaSize.height / 2 - CGFloat(location.y) * arenaScale)
+                SCNTransaction.begin()
+                SCNTransaction.animationDuration = 0.24
+                die.simdOrientation = simd_inverse(faceOrientations[value - 1])
+                SCNTransaction.commit()
+                let settledPoint = CGPoint(x: min(max(74, point.x), arenaSize.width - 74),
+                                           y: min(max(74, point.y), arenaSize.height - 110))
+                DispatchQueue.main.async { [weak self] in self?.onRest?(turn, settledPoint) }
+            }
+
+            func physicsWorld(_ world: SCNPhysicsWorld, didBegin contact: SCNPhysicsContact) {
+                guard contact.nodeA.name == "sideWall" || contact.nodeB.name == "sideWall",
+                      wallImpactX == nil else { return }
+                wallImpactX = die.presentation.position.x
+                let turn = lastTurns
+                DispatchQueue.main.async { [weak self] in self?.onEdgeHit?(turn) }
+            }
+
+            func renderer(_ renderer: SCNSceneRenderer, didSimulatePhysicsAtTime time: TimeInterval) {
+                guard let impact = wallImpactX, let body = die.physicsBody,
+                      body.type == .dynamic else { return }
+                // A faceted die can lose almost all normal velocity when it hits
+                // wall and table at once. Preserve a modest reflected component
+                // only in that case; the rest of the path remains physics-driven.
+                if !didCorrectBounce {
+                    let velocity = body.velocity
+                    if CGFloat(velocity.x) * travelDirection > -1.8 {
+                        let reverseSpeed = max(Float(1.8), abs(velocity.x) * Float(0.65))
+                        let reverseX = Float(-travelDirection) * reverseSpeed
+                        body.velocity = SCNVector3(reverseX, velocity.y, velocity.z)
+                    }
+                    didCorrectBounce = true
+                }
+                guard !didReportRebound,
+                      CGFloat(die.presentation.position.x - impact) * travelDirection < -0.65 else { return }
+                didReportRebound = true
+                let turn = lastTurns
+                DispatchQueue.main.async { [weak self] in self?.onRebound?(turn) }
             }
 
             private func buildDie() {

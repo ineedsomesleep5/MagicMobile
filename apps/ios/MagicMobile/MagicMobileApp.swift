@@ -159,6 +159,7 @@ struct MagicMobileApp: App {
 /// Opt-in visual fixture only. It never creates a Game Center or XMage match.
 private struct MultiplayerD20FixtureScreen: View {
     @State private var dismissed = false
+    @State private var revealedStepCount = 0
 
     private static let roll: OnDeviceStartingRoll? = {
         var values = [12, 12, 7, 20, 14].makeIterator()
@@ -180,7 +181,13 @@ private struct MultiplayerD20FixtureScreen: View {
             } else if let roll = Self.roll {
                 MultiplayerD20View(roll: roll,
                                    seatNames: ["player1": "Caleb", "player2": "Ruthie", "player3": "AI 1"],
-                                   isLocalWinner: true) {
+                                   isLocalWinner: true,
+                                   revealedStepCount: revealedStepCount,
+                                   // The fixture drives one local tap at a time; it is
+                                   // not a substitute for Game Center transport.
+                                   localSeatID: roll.steps.indices.contains(revealedStepCount)
+                                       ? roll.steps[revealedStepCount].seatID : nil,
+                                   onRollTap: { revealedStepCount += 1 }) {
                     dismissed = true
                 }
             } else {

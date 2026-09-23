@@ -48,12 +48,15 @@ final class OnDeviceMultiplayerTests: XCTestCase {
         ])
         _ = try lobby.verifyHandshake(offer, from: "alice", identity: identity, epoch: nil)
         try lobby.acceptHostOffer(offer)
+        var values = [8, 15]
+        let roll = try OnDeviceStartingRoll.generate(seatIDs: ["player1", "player2"]) { values.removeFirst() }
         for build in [identity, other] {
             var packet: [String: MagicMobileOnDevice.JSONValue] = [
                 "type": .string("start"), "epoch": .string(epoch.uuidString), "build": build.json,
                 "roster": .array([.string("alice"), .string("bob")]), "aiSettings": lobby.aiSettings,
                 "matchId": .string(UUID().uuidString),
-                "seatNames": .object(["player1": .string("Alice"), "player2": .string("Bob")])
+                "seatNames": .object(["player1": .string("Alice"), "player2": .string("Bob")]),
+                "roll": try roll.encoded(seatIDs: ["player1", "player2"])
             ]
             if build.json == identity.json {
                 XCTAssertEqual(try lobby.verifyHandshake(.object(packet), from: "alice", identity: identity, epoch: epoch), epoch)
@@ -213,6 +216,9 @@ final class OnDeviceMultiplayerTests: XCTestCase {
         XCTAssertEqual(try host.verifyHandshake(.object(submission), from: "bob", identity: identity, epoch: epoch), epoch)
         var start = shared; start["type"] = .string("start"); start["matchId"] = .string(UUID().uuidString)
         start["seatNames"] = .object(["player1": .string("Alice"), "player2": .string("Bob"), "player3": .string("AI 1")])
+        var values = [8, 15, 4]
+        let roll = try OnDeviceStartingRoll.generate(seatIDs: ["player1", "player2", "player3"]) { values.removeFirst() }
+        start["roll"] = try roll.encoded(seatIDs: ["player1", "player2", "player3"])
         XCTAssertEqual(try guest.verifyHandshake(.object(start), from: "alice", identity: identity, epoch: epoch), epoch)
 
         let wrong = try OnDeviceMultiplayerLobby.makeAISettings(

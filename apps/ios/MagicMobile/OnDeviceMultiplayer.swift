@@ -77,7 +77,7 @@ struct OnDeviceMultiplayerLobby {
         guard let fields = value.object, let type = fields["type"]?.string,
               ["offer", "submission", "start"].contains(type) else { throw EngineError.incompatibleBuild }
         let keys: Set<String> = type == "submission" ? ["type", "epoch", "build", "roster", "aiSettings", "player"] :
-            type == "start" ? ["type", "epoch", "build", "roster", "aiSettings", "matchId", "seatNames"] : ["type", "epoch", "build", "roster", "aiSettings"]
+            type == "start" ? ["type", "epoch", "build", "roster", "aiSettings", "matchId", "seatNames", "roll"] : ["type", "epoch", "build", "roster", "aiSettings"]
         guard Set(fields.keys) == keys,
               value["roster"] == .array(peerIDs.map(MagicMobileOnDevice.JSONValue.string)),
               let epochString = value["epoch"]?.string, let incomingEpoch = UUID(uuidString: epochString),
@@ -101,7 +101,9 @@ struct OnDeviceMultiplayerLobby {
             guard let matchID = value["matchId"]?.string, UUID(uuidString: matchID) != nil else {
                 throw EngineError.incompatibleBuild
             }
-            _ = try Self.validatedSeatNames(value["seatNames"], totalSeats: peerIDs.count + (proposedSettings["seats"]?.array?.count ?? 0))
+            let names = try Self.validatedSeatNames(value["seatNames"], totalSeats: peerIDs.count + (proposedSettings["seats"]?.array?.count ?? 0))
+            guard let roll = value["roll"] else { throw EngineError.incompatibleBuild }
+            _ = try OnDeviceStartingRoll(roll, seatIDs: (1...names.count).map { "player\($0)" })
         }
         // Only a well-formed handshake from the expected authenticated peer and
         // current epoch may end the lobby with an actionable mismatch explanation.
@@ -472,6 +474,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     @Published private(set) var hostAISeatSummary: String?
     @Published private(set) var seatNames: [String: String] = [:]
     @Published private(set) var startingRoll: OnDeviceStartingRoll?
+    @Published private(set) var rollProgress: OnDeviceStartingRollProgress?
     @Published private(set) var hasRolled = false
     @Published private(set) var rollStatus = ""
 
@@ -495,7 +498,6 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     private var peerPresenceSequences: [String: Int64] = [:]
     private var requestedPlayerCount = 2
     private var requestedAISeats: [AISeatDescriptor] = []
-    private var rollReadyPeers: Set<String> = []
     private var rollTimer: Task<Void, Never>?
     private var closing = false
     private var failed = false
@@ -508,42 +510,62 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         super.init()
     }
 
-    /// A tap records this human's readiness. The host rolls once for all human
-    /// and AI seats and publishes one result; no client chooses a starter locally.
+    /// A human tap advances only that authenticated seat. The host owns the
+    /// already-shared result and broadcasts the next visible step to everyone.
     func rollStartingPlayer() throws {
-        guard let lobby, let epoch, endpoint != nil, isConnected, !isSuspended,
-              startingRoll == nil else { throw EngineError.invalidMessage("Starting roll is unavailable.") }
+        guard let lobby, let epoch, let endpoint, let progress = rollProgress,
+              isConnected, !isSuspended, progress.nextSeatID == endpoint.seatID else {
+            throw EngineError.invalidMessage("Wait for your turn to roll.")
+        }
         guard !hasRolled else { return }
         if lobby.localPeerID == lobby.hostID {
-            hasRolled = true
-            try recordRollReady(from: lobby.localPeerID)
+            try advanceHumanRoll(from: lobby.localPeerID, index: progress.revealedCount)
         } else {
-            try send(.object(["type": .string("rollReady"), "epoch": .string(epoch.uuidString)]), to: lobby.hostID)
+            try send(.object(["type": .string("rollStep"), "epoch": .string(epoch.uuidString),
+                              "index": .integer(Int64(progress.revealedCount))]), to: lobby.hostID)
             hasRolled = true
-            rollStatus = "Waiting for everyone to roll…"
+            rollStatus = "Sharing your roll with everyone…"
         }
     }
 
-    private func recordRollReady(from peer: String) throws {
+    private func advanceHumanRoll(from peer: String, index: Int) throws {
         guard let lobby, lobby.localPeerID == lobby.hostID,
-              lobby.peerIDs.contains(peer), startingRoll == nil else { throw EngineError.unboundPeer }
-        rollReadyPeers.insert(peer)
-        rollStatus = "\(rollReadyPeers.count) of \(lobby.peerIDs.count) players ready to roll"
-        guard rollReadyPeers.count == lobby.peerIDs.count else { return }
-        let seats = (1...seatNames.count).map { "player\($0)" }
-        guard seats.count == lobby.peerIDs.count + (lobby.aiSettings["seats"]?.array?.count ?? 0),
-              Set(seats) == Set(seatNames.keys) else { throw EngineError.incompatibleBuild }
-        do {
-            let result = try OnDeviceStartingRoll.generate(seatIDs: seats)
-            guard let epoch else { throw EngineError.unboundPeer }
-            try broadcast(.object(["type": .string("rollResult"), "epoch": .string(epoch.uuidString),
-                                   "roll": try result.encoded(seatIDs: seats)]))
-            startingRoll = result
+              let progress = rollProgress, index == progress.revealedCount else {
+            throw EngineError.replayedMessage
+        }
+        let seatID = try lobby.seatID(for: peer)
+        var next = progress
+        _ = try next.advance(seatID: seatID, automated: false)
+        try shareRollAdvance(index: index)
+        rollProgress = next
+        updateRollStatus()
+    }
+
+    /// Called by the host's roll presentation after the preceding die settles.
+    func advanceAISeatIfNeeded() throws {
+        guard let lobby, lobby.localPeerID == lobby.hostID, isConnected, !isSuspended,
+              let progress = rollProgress, let seatID = progress.nextSeatID,
+              !progress.humanSeatIDs.contains(seatID) else { return }
+        var next = progress
+        let index = try next.advance(seatID: seatID, automated: true)
+        try shareRollAdvance(index: index)
+        rollProgress = next
+        updateRollStatus()
+    }
+
+    private func shareRollAdvance(index: Int) throws {
+        guard let epoch else { throw EngineError.unboundPeer }
+        try broadcast(.object(["type": .string("rollAdvance"), "epoch": .string(epoch.uuidString),
+                               "index": .integer(Int64(index))]))
+    }
+
+    private func updateRollStatus() {
+        if let next = rollProgress?.nextSeatID {
+            rollStatus = "Waiting for \(seatNames[next] ?? "the next player") to roll."
+            if isConnected { beginRollTimer() }
+        } else {
             rollStatus = "Starting player decided by D20."
             rollTimer?.cancel(); rollTimer = nil
-        } catch {
-            fail("Could not share the starting roll. Leave and start a new match.")
-            throw error
         }
     }
 
@@ -551,9 +573,9 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         rollTimer?.cancel()
         let token = generation
         rollTimer = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(120))
+            try? await Task.sleep(for: .seconds(300))
             guard let self, !Task.isCancelled, self.generation == token,
-                  self.isConnected, self.startingRoll == nil else { return }
+                  self.isConnected, self.rollProgress?.isComplete == false else { return }
             self.fail("Starting roll timed out. Leave and start a new match.")
         }
     }
@@ -710,8 +732,15 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
                 } else {
                     guard let matchID = value["matchId"]?.string, UUID(uuidString: matchID) != nil else { throw EngineError.unboundPeer }
                     guard remote == nil else { return }
-                    seatNames = try OnDeviceMultiplayerLobby.validatedSeatNames(value["seatNames"],
+                    let names = try OnDeviceMultiplayerLobby.validatedSeatNames(value["seatNames"],
                         totalSeats: lobby.peerIDs.count + (lobby.aiSettings["seats"]?.array?.count ?? 0))
+                    let seats = (1...names.count).map { "player\($0)" }
+                    guard let rawRoll = value["roll"] else { throw EngineError.incompatibleBuild }
+                    let result = try OnDeviceStartingRoll(rawRoll, seatIDs: seats)
+                    seatNames = names
+                    startingRoll = result
+                    rollProgress = OnDeviceStartingRollProgress(
+                        roll: result, humanSeatIDs: Set((1...lobby.peerIDs.count).map { "player\($0)" }))
                     try startClient(matchID: matchID, epoch: incomingEpoch)
                 }
             }
@@ -725,18 +754,22 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         case "reply":
             guard let remote else { throw EngineError.unboundPeer }
             try remote.receive(value, from: peer)
-        case "rollReady":
-            guard Set(fields.keys) == ["type", "epoch"], lobby.localPeerID == lobby.hostID,
-                  nativeMatchID != nil else { throw EngineError.unboundPeer }
-            if startingRoll == nil { try recordRollReady(from: peer) }
-        case "rollResult":
-            guard Set(fields.keys) == ["type", "epoch", "roll"],
+        case "rollStep":
+            guard Set(fields.keys) == ["type", "epoch", "index"],
+                  lobby.localPeerID == lobby.hostID, nativeMatchID != nil,
+                  let index = fields["index"]?.integer, index >= 0, index <= Int.max else {
+                throw EngineError.unboundPeer
+            }
+            try advanceHumanRoll(from: peer, index: Int(index))
+        case "rollAdvance":
+            guard Set(fields.keys) == ["type", "epoch", "index"],
                   peer == lobby.hostID, lobby.localPeerID != lobby.hostID,
-                  startingRoll == nil, let rawRoll = fields["roll"] else { throw EngineError.unboundPeer }
-            let seats = (1...seatNames.count).map { "player\($0)" }
-            startingRoll = try OnDeviceStartingRoll(rawRoll, seatIDs: seats)
-            rollStatus = "Starting player decided by D20."
-            rollTimer?.cancel(); rollTimer = nil
+                  let index = fields["index"]?.integer, index >= 0, index <= Int.max,
+                  var progress = rollProgress else { throw EngineError.unboundPeer }
+            try progress.acceptHostAdvance(index: Int(index))
+            rollProgress = progress
+            hasRolled = false
+            updateRollStatus()
         case "presence":
             guard Set(fields.keys) == ["type", "epoch", "sequence", "suspended"],
                   let sequence = fields["sequence"]?.integer, sequence > (peerPresenceSequences[peer] ?? 0),
@@ -792,13 +825,18 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
                 let packetNames: MagicMobileOnDevice.JSONValue = .object(names.mapValues(MagicMobileOnDevice.JSONValue.string))
                 _ = try OnDeviceMultiplayerLobby.validatedSeatNames(packetNames,
                     totalSeats: lobby.peerIDs.count + (lobby.aiSettings["seats"]?.array?.count ?? 0))
+                let seats = (1...names.count).map { "player\($0)" }
+                let result = try OnDeviceStartingRoll.generate(seatIDs: seats)
                 start["seatNames"] = packetNames
+                start["roll"] = try result.encoded(seatIDs: seats)
                 try self.broadcast(.object(start))
                 self.seatNames = names
+                self.startingRoll = result
+                self.rollProgress = OnDeviceStartingRollProgress(
+                    roll: result, humanSeatIDs: Set((1...lobby.peerIDs.count).map { "player\($0)" }))
                 self.endpoint = OnDeviceMultiplayerEndpoint(client: engine, matchID: matchID, seatID: try lobby.seatID(for: lobby.localPeerID), isHost: true)
                 self.isConnected = true
-                self.rollStatus = "Tap Roll D20 to choose who goes first."
-                self.beginRollTimer()
+                self.updateRollStatus()
                 self.lobbyTimer?.cancel(); self.status = "Connected as host. Every player must keep the app in the foreground."
             } catch is CancellationError { }
             catch { self.fail(error.localizedDescription) }
@@ -821,8 +859,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
                 guard self.generation == token, !self.failed, !self.closing, !Task.isCancelled else { return }
                 self.endpoint = OnDeviceMultiplayerEndpoint(client: EngineClient(transport: remote), matchID: matchID, seatID: seatID, isHost: false)
                 self.isConnected = true
-                self.rollStatus = "Tap Roll D20 to choose who goes first."
-                self.beginRollTimer()
+                self.updateRollStatus()
                 self.lobbyTimer?.cancel(); self.status = "Connected. Every player must keep the app in the foreground."
             } catch is CancellationError { }
             catch { self.fail(error.localizedDescription) }
@@ -887,8 +924,8 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
             throw error
         }
         generation = UUID(); hostEngine = nil; needsCleanup = false; endpoint = nil; hostAISeatSummary = nil; seatNames = [:]
-        rollTimer?.cancel(); rollTimer = nil; rollReadyPeers.removeAll()
-        startingRoll = nil; hasRolled = false; rollStatus = ""
+        rollTimer?.cancel(); rollTimer = nil
+        startingRoll = nil; rollProgress = nil; hasRolled = false; rollStatus = ""
         remote = nil; router = nil; hostDispatcher = nil; transport = nil; lobby = nil; epoch = nil; submission = nil; requestedAISeats = []
         suspendedPeers.removeAll(); peerPresenceSequences.removeAll(); presenceSequence = 0
         suspensionRevision = 0
@@ -899,8 +936,8 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     private func fail(_ message: String) {
         guard !failed else { return }
         failed = true; isConnected = false; status = message; seatNames = [:]
-        rollTimer?.cancel(); rollTimer = nil; rollReadyPeers.removeAll()
-        startingRoll = nil; hasRolled = false; rollStatus = ""
+        rollTimer?.cancel(); rollTimer = nil
+        startingRoll = nil; rollProgress = nil; hasRolled = false; rollStatus = ""
         lobbyTimer?.cancel(); startup?.cancel(); remote?.close()
         hostDispatcher?.cancel()
         if let epoch { try? broadcast(.object(["type": .string("end"), "epoch": .string(epoch.uuidString)])) }
