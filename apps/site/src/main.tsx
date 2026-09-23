@@ -315,11 +315,12 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 11 fixes the solo AI starting-player flow: choosing Roll D20
-                now opens the animated roll instead of asking you to pick a player.
-                It also includes Game Center games with friends and AI opponents,
-                a shared D20 roll, and cancellable turn-skipping. Apple has
-                approved this build for Internal and External TestFlight.
+                Build 12 adds the new MagicMobile icon and a turn-by-turn shared
+                D20 roll: each player taps to roll, watches the die rebound, and
+                sees the result above their seat. Solo AI offers Choose or Roll D20.
+                Game Center games with friends and AI opponents and cancellable
+                turn-skipping are included. Apple has approved this build for
+                Internal and External TestFlight.
               </p>
             </details>
             <details>
