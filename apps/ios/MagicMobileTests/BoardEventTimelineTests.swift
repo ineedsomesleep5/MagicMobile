@@ -127,7 +127,7 @@ extension BoardEventTimelineTests {
         XCTAssertEqual(director.subjects["wolf"]?.card.name, "Wolf", "departed card face comes from the previous board")
         let landing = try? XCTUnwrap(director.cardMotion(viewerID: "a").arrivals["bear"])
         let arrival = director.active.first { $0.scheduled.event.subjectID == "bear" }!.scheduled
-        XCTAssertEqual(landing, start.addingTimeInterval(arrival.delay + arrival.duration * BoardFXScheduler.arrivalFlightFraction))
+        XCTAssertEqual(landing, BoardFXCardMotion.Arrival(batch: start, landsAfter: arrival.delay + arrival.duration * BoardFXScheduler.arrivalFlightFraction))
         director.prune(now: start.addingTimeInterval(10))
         XCTAssertEqual(director.subjects, [:])
         XCTAssertEqual(director.cardMotion(viewerID: "a"), BoardFXCardMotion())

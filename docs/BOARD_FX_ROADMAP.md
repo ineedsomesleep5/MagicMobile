@@ -58,6 +58,16 @@ damage → entered battlefield → counters → life. At most
 `BoardFXScheduler.decorativeLimit` decorative effects per transition; life changes
 are always kept.
 
+Timing: a snapshot can stall the main thread while the board relays out (0.4–1.3 s
+seen in the Debug simulator). `BoardFXClock` starts each batch on its first drawn
+frame, and tiles reveal on the same clock, so no effect opening plays off-screen.
+The director only prunes effects older than `renderGrace` on ingest; the overlay
+prunes precisely.
+
+Sound: `BoardFXSound` plays five CC0 Kenney Impact Sounds (converted to 64 kbps AAC
+in `Resources/BoardFX`, license alongside) with an ambient audio session (respects
+the silent switch, mixes with music). "Effect Sounds" toggle next to Board Effects.
+
 Known limitation: XMage may give a card a new object ID when it changes zones. The
 differ matches a departing permanent to a same-name card newly visible in the same
 player's graveyard/exile/command zone; otherwise the destination is `nil` (generic ash).
@@ -107,9 +117,18 @@ single MIT file with its license header when that is enough.
 - A worktree without its own `apps/ios/NativeEngine` needs an APFS clone
   (`cp -cR <other checkout>/apps/ios/NativeEngine apps/ios/NativeEngine`). The native
   verifier refuses symlinks by design.
-- Visual acceptance still needs a device or simulator game: play a creature, kill a
-  creature, cast an instant, attack, take damage, and switch Board Effects between
-  Full, Reduced and Off (plus iOS Reduce Motion).
+- Simulator walkthrough (Debug build, no engine): launch with
+  `SIMCTL_CHILD_MAGICMOBILE_DESIGN_PREVIEW=board-fx SIMCTL_CHILD_MAGICMOBILE_BOARD_FX_AUTOPLAY=1 xcrun simctl launch --terminate-running-process booted com.calebfeliciano.magicmobile`.
+  It steps every 2.5 s through cast Swords → exile Serra Angel (+4) → Sol Ring enters
+  (+1 counter) → Isamaru attacks → combat damage (-2 / -3, shake) → Isamaru dies.
+  Record with `xcrun simctl io booted recordVideo` and inspect frames with ffmpeg
+  (the Claude simulator tool's screenshot/inspect were unavailable on 2026-09-23).
+  Without autoplay, the "Next board FX step" button advances manually.
+- The preview has no native engine, so card art loads over the network via
+  `AsyncImage`; flights can show the beige placeholder in the simulator. On device,
+  art comes from `NativeCardArtworkView` local files.
+- Still needed on device: a real engine game, Board Effects Full/Reduced/Off, iOS
+  Reduce Motion, landscape layout, and sound levels.
 
 ## Status
 
@@ -118,7 +137,7 @@ single MIT file with its license header when that is enough.
 | 1 Event timeline + first effects | Implemented on `codex/board-fx-timeline`. Unit tests, ios-fast preflight and generic iPhone compile pass. On-device visual acceptance pending. |
 | 2 Card motion | Flights (arrive/depart/cast) and attack lunge implemented on `codex/board-fx-motion` (stacked on phase 1). Tests and generic iPhone compile pass. Visual acceptance pending. Blocker lunge/defender targeting and hand-card exact source rect not done. |
 | 3 Card shaders | Dissolve (graveyard: ember edge, exile: cold edge) on departing flights and foil on the cast showcase, on `codex/board-fx-shaders` (stacked on phase 2). Compile + preflight pass. Not yet: foil on the held inspection card image (needs the image isolated inside `CardInspector`, not its rules text), playable-card glow, heat haze. |
-| 4 Particles and sound upgrade | Not started |
+| 4 Particles and sound upgrade | Sounds (cast, land, damage, death, player hit) and Effect Sounds toggle on `codex/board-fx-polish`. Vortex particles not adopted. |
 | 5 RealityKit moments | Not started |
 
 ## Log
@@ -137,3 +156,9 @@ single MIT file with its license header when that is enough.
   flying off; bounces still fly to the hand. ios-fast preflight 11/11, generic compile
   clean. Next candidates: inspection-card foil, sound (needs Kenney download OK),
   simulator/device visual pass to tune timings and colors.
+- 2026-09-23 (Claude): Simulator visual pass with the new `board-fx` preview. Fixed:
+  effects lost to post-snapshot main-thread stalls (`BoardFXClock`), viewer/opponent
+  life numbers overlapping creature damage (now at the life HUDs in portrait), flights
+  now use `ArenaBattlefieldCard` for arrivals/departures. Added Kenney sounds and
+  toggle. All six walkthrough steps verified on iPhone 17 Pro simulator (portrait).
+  Next: device run with the real engine, landscape check, inspection-card foil.

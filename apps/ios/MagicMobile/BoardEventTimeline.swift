@@ -331,7 +331,9 @@ struct BoardFXDirector: Equatable {
                                      uniquingKeysWith: { first, _ in first })
         let departedFaces = previousBattlefield
         defer { previous = state; previousBattlefield = battlefield }
-        prune(now: now)
+        // Lenient: the overlay may start a batch late (first-frame clock) and prunes
+        // precisely itself; this only drops effects that are surely finished.
+        prune(now: now.addingTimeInterval(-BoardFXDirector.renderGrace))
         guard let previous, previous.gameID == state.gameID else {
             active = []
             subjects = [:]
@@ -352,6 +354,8 @@ struct BoardFXDirector: Equatable {
         return scheduled
     }
 
+    static let renderGrace: TimeInterval = 2
+
     mutating func prune(now: Date) {
         active.removeAll { $0.endDate <= now }
         let live = Set(active.map(\.scheduled.event.subjectID))
@@ -366,7 +370,7 @@ struct BoardFXDirector: Equatable {
             switch effect.scheduled.event {
             case let .enteredBattlefield(id, _, _, _) where subjects[id] != nil:
                 let flight = effect.scheduled.duration * BoardFXScheduler.arrivalFlightFraction
-                motion.arrivals[id] = effect.start.addingTimeInterval(effect.scheduled.delay + flight)
+                motion.arrivals[id] = BoardFXCardMotion.Arrival(batch: effect.start, landsAfter: effect.scheduled.delay + flight)
             case let .attackDeclared(id, _):
                 let owner = previous?.cards[id]?.playerID
                 motion.lunges[id] = BoardFXCardMotion.Lunge(token: effect.id, direction: owner == viewerID ? -1 : 1)
@@ -386,6 +390,13 @@ struct BoardFXCardMotion: Equatable {
         let direction: Double
     }
 
-    var arrivals: [String: Date] = [:]
+    /// Timed from the tile's first frame after the batch, like the overlay, so a
+    /// main-thread stall cannot reveal the tile before its flight lands.
+    struct Arrival: Equatable {
+        let batch: Date
+        let landsAfter: TimeInterval
+    }
+
+    var arrivals: [String: Arrival] = [:]
     var lunges: [String: Lunge] = [:]
 }

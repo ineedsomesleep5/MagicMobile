@@ -13,6 +13,7 @@
 		097B1D249F7F814F87C5A7DB /* DeckStudioCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 054A5EFAB42630A1B2F600A8 /* DeckStudioCore.swift */; };
 		0C2AC1730E6E0D231D0EA166 /* DeckStudioReadabilityUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CD073C390A414C9A10BA045 /* DeckStudioReadabilityUITests.swift */; };
 		0C3D3FB20C2428C51C43991D /* GameBoardInteractionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1747ED595E46B6112F92E2D2 /* GameBoardInteractionState.swift */; };
+		0D9EAFAAA218671A869546A7 /* fx-death.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 2A3A4066B5EB2351F511ACC0 /* fx-death.m4a */; };
 		0FD7B90F22B27A4C103C3E9C /* OnDeviceDeckLinkImporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBA9BCE84178425A31CDAB15 /* OnDeviceDeckLinkImporterTests.swift */; };
 		10950A48F21DD8F1D1A46CB6 /* NativeDeckBuilderLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43757BDA8C9BB55A8A1C9FFB /* NativeDeckBuilderLayoutTests.swift */; };
 		1197E403C9CDCBA1F5C6F9E5 /* DeckStudioReleaseUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 325A347B3CF808C7166B7925 /* DeckStudioReleaseUITests.swift */; };
@@ -25,11 +26,13 @@
 		17AF48820DE92A70CCEE17E2 /* PortraitInteractionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6975249AF3F911A584D24C03 /* PortraitInteractionPolicy.swift */; };
 		17D75322AC32988D39F6FAC0 /* OnDeviceSnapshotAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CB96C4C95B38B6E59222035 /* OnDeviceSnapshotAdapter.swift */; };
 		1A1C13307BD020E5919ABD1A /* PortraitInteractionPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5ADEEA6719E8EF6079D8800 /* PortraitInteractionPolicyTests.swift */; };
+		1C55E020D785F4158CA6219F /* fx-land.m4a in Resources */ = {isa = PBXBuildFile; fileRef = D911287E04D23B192D972EE2 /* fx-land.m4a */; };
 		1CC47A197455A972FEDAED12 /* OnDeviceAppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608026E3694B102F64D58954 /* OnDeviceAppConfiguration.swift */; };
 		21269569794F06AAB3815571 /* DeckStudioPlaytestStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49FED4AF9E62808A6FB79605 /* DeckStudioPlaytestStore.swift */; };
 		2569C98BD1FBA5565C1A6372 /* OnDeviceBoardIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1280DE929C3D03FB11B33A1C /* OnDeviceBoardIdentityTests.swift */; };
 		279961B648C10EF650644D7A /* OnDeviceSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F134EEE83531B994E0FDA7CB /* OnDeviceSessionTests.swift */; };
 		2B326E8D717AFDB4121B357A /* ArenaBoardPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786781880D40A88BA056AE67 /* ArenaBoardPresentation.swift */; };
+		2B904E8BC33C3DBE1E655CB8 /* KENNEY_LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 5304C6FF35CD4A2E84C2D722 /* KENNEY_LICENSE.txt */; };
 		2F86F85382645DF11D4BC04D /* MagicMobileOnDevice in Frameworks */ = {isa = PBXBuildFile; productRef = 519DF0DD7A3C3C4E7D805181 /* MagicMobileOnDevice */; };
 		30BB54FC4DC7016938218675 /* NativeDownloadsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E8D65C0C83C0BDFBAC6E988 /* NativeDownloadsUITests.swift */; };
 		32DF840B2C47CB527A80B803 /* MultiplayerD20View.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC59DF6DAF645D3903444F08 /* MultiplayerD20View.swift */; };
@@ -69,6 +72,7 @@
 		57053E4175927237754893C1 /* DeckStudioEditorTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BC0EAEA663F3051BA202B5A /* DeckStudioEditorTools.swift */; };
 		59AD6567ADC50F26BB8A3056 /* DeckStudioValidationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFCEDA5E3A0CD434FD28F655 /* DeckStudioValidationState.swift */; };
 		5AE3BD3884CF94302484064F /* OnDeviceMessageLogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 506D866D794460DAD58344BA /* OnDeviceMessageLogTests.swift */; };
+		5AE4A260F8F49E7B865B3800 /* fx-cast.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 57B94CA74BB415059DD6ED98 /* fx-cast.m4a */; };
 		5D698217377DD63E6EA31CB9 /* ArenaBoardPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A736FE63448EAD623FE412FA /* ArenaBoardPresentationTests.swift */; };
 		5E56D36ECA96BCF27A83C003 /* MagicMobileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8847ABC91603BF5DA5F4CE5 /* MagicMobileTests.swift */; };
 		5F53AD094381EFC1E8596D42 /* DeckStudioCatalogueSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63F4F02C617422F9012E10C2 /* DeckStudioCatalogueSearch.swift */; };
@@ -88,6 +92,7 @@
 		80DA852EFC43322C3AFEFECB /* DeckStudioWorkspaceScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4368F9EC7E12BB7A89BB3673 /* DeckStudioWorkspaceScreen.swift */; };
 		81BAD7099B005235220C354A /* BoardScrollRotationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E71A5066F22CE114CFB0807C /* BoardScrollRotationUITests.swift */; };
 		8243CBF59D10FFF29450B881 /* DeckStudioScryfallViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 414BA1EAB2335B7591A6228A /* DeckStudioScryfallViews.swift */; };
+		846288117C89F4DD7DDE3D58 /* fx-damage.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 1AFC64CBCF0C0F9B6CA4058F /* fx-damage.m4a */; };
 		854D2E623A6B06AA1CDB0F09 /* graal_far_calls.S in Sources */ = {isa = PBXBuildFile; fileRef = 7A446528551A274633A4DD7B /* graal_far_calls.S */; };
 		86B8A7C74336B1F0191650C2 /* OnDeviceSnapshotAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82174CD2213C389DEF7B246E /* OnDeviceSnapshotAdapterTests.swift */; };
 		8935A1C9BD309D3D029590BB /* OnDeviceModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B50E196EBB64CC33F92B990B /* OnDeviceModelTests.swift */; };
@@ -118,6 +123,7 @@
 		B4C7C72B6A3519D6484C4825 /* GameBoardTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 434AEA4E564EE069F504B192 /* GameBoardTheme.swift */; };
 		B4CB54F1361C26AE9F651B37 /* DeckStudioTextExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D0504549592F49CFC2D7E0 /* DeckStudioTextExport.swift */; };
 		B4CE2A5C9E5A26961D2A82A0 /* CardChoicePlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE7B7AECD659F55C150D0846 /* CardChoicePlanTests.swift */; };
+		B599BD1B038095DF10E2AD81 /* fx-player-hit.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 7C46102EBBE7600D052B4CE8 /* fx-player-hit.m4a */; };
 		B688FD17BCC4EF2D9C07E0A0 /* NativeAssetDownloadsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4D2F7DAE858AB8A4CF15791 /* NativeAssetDownloadsTests.swift */; };
 		B9C204367A644D4365AAA00C /* DeckLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = E13EC4CC09BB14F446DB7424 /* DeckLibrary.swift */; };
 		BB21E928F9D1965F81890B38 /* OnlineSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DE2ACB064B31FF3AC510A6B /* OnlineSession.swift */; };
@@ -199,6 +205,7 @@
 		1747ED595E46B6112F92E2D2 /* GameBoardInteractionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardInteractionState.swift; sourceTree = "<group>"; };
 		1767B12B3ED4F770199B3F44 /* OnDeviceStartingPlayerChoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceStartingPlayerChoice.swift; sourceTree = "<group>"; };
 		19CE7B38A9C6ACE5544B7206 /* OnlineLobbyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineLobbyView.swift; sourceTree = "<group>"; };
+		1AFC64CBCF0C0F9B6CA4058F /* fx-damage.m4a */ = {isa = PBXFileReference; path = "fx-damage.m4a"; sourceTree = "<group>"; };
 		1B415F9E1EBF8AD5A9B474EC /* DeckStudioPublicTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioPublicTimeline.swift; sourceTree = "<group>"; };
 		1CB96C4C95B38B6E59222035 /* OnDeviceSnapshotAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceSnapshotAdapter.swift; sourceTree = "<group>"; };
 		1D46DC26B21BA71ACE6F42A6 /* DeckStudioEDHRECView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioEDHRECView.swift; sourceTree = "<group>"; };
@@ -207,6 +214,7 @@
 		21FA91A26BEAAE41F9CC7036 /* DeckStudioCardSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioCardSearch.swift; sourceTree = "<group>"; };
 		268E12F4889571947D93BF23 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		29DCFFDEC2E73604A42C81C3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		2A3A4066B5EB2351F511ACC0 /* fx-death.m4a */ = {isa = PBXFileReference; path = "fx-death.m4a"; sourceTree = "<group>"; };
 		2D6E81D58ACA7C6A40D0C88C /* OnDeviceDeckLinkImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceDeckLinkImporter.swift; sourceTree = "<group>"; };
 		2F4E6F7237174E453B09E62B /* BoardZoneReferenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardZoneReferenceTests.swift; sourceTree = "<group>"; };
 		325A347B3CF808C7166B7925 /* DeckStudioReleaseUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioReleaseUITests.swift; sourceTree = "<group>"; };
@@ -232,8 +240,10 @@
 		4CD073C390A414C9A10BA045 /* DeckStudioReadabilityUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioReadabilityUITests.swift; sourceTree = "<group>"; };
 		506D866D794460DAD58344BA /* OnDeviceMessageLogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceMessageLogTests.swift; sourceTree = "<group>"; };
 		511505348524C12C4E7EC72C /* DeckStudioImportScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioImportScreen.swift; sourceTree = "<group>"; };
+		5304C6FF35CD4A2E84C2D722 /* KENNEY_LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = KENNEY_LICENSE.txt; sourceTree = "<group>"; };
 		55C2FD47E72B397DD3AE5C2F /* NativeArtworkBackgroundQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeArtworkBackgroundQueue.swift; sourceTree = "<group>"; };
 		577C38C4B63CF833FB474D20 /* OnDeviceStartingRollTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceStartingRollTests.swift; sourceTree = "<group>"; };
+		57B94CA74BB415059DD6ED98 /* fx-cast.m4a */ = {isa = PBXFileReference; path = "fx-cast.m4a"; sourceTree = "<group>"; };
 		58D050F76646C26B69A4656F /* DeckStudioDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioDesignTokens.swift; sourceTree = "<group>"; };
 		592630ACFEBA2C259D86A03A /* OnDeviceYieldPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceYieldPolicyTests.swift; sourceTree = "<group>"; };
 		5A3AD25E36EAC5A475AF5E31 /* GameBoardZones.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardZones.swift; sourceTree = "<group>"; };
@@ -260,6 +270,7 @@
 		77E01CDDFBE4A2CB47963D37 /* BattlefieldBackdropTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BattlefieldBackdropTests.swift; sourceTree = "<group>"; };
 		786781880D40A88BA056AE67 /* ArenaBoardPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArenaBoardPresentation.swift; sourceTree = "<group>"; };
 		7A446528551A274633A4DD7B /* graal_far_calls.S */ = {isa = PBXFileReference; path = graal_far_calls.S; sourceTree = "<group>"; };
+		7C46102EBBE7600D052B4CE8 /* fx-player-hit.m4a */ = {isa = PBXFileReference; path = "fx-player-hit.m4a"; sourceTree = "<group>"; };
 		7C9CE37525D6289CCBF098B8 /* GameBoardPreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardPreviewFixtures.swift; sourceTree = "<group>"; };
 		81C3500BADA0CAAC23387CDB /* OnDeviceMultiplayerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceMultiplayerTests.swift; sourceTree = "<group>"; };
 		82174CD2213C389DEF7B246E /* OnDeviceSnapshotAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceSnapshotAdapterTests.swift; sourceTree = "<group>"; };
@@ -316,6 +327,7 @@
 		D5E4AACDE96163B504BEBF74 /* OnDeviceStartingRoll.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceStartingRoll.swift; sourceTree = "<group>"; };
 		D72088319B0DF9344D2E19DA /* NativeDownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeDownloadsView.swift; sourceTree = "<group>"; };
 		D80AFA945CC8219462272282 /* OnlineConfiguration.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = OnlineConfiguration.json; sourceTree = "<group>"; };
+		D911287E04D23B192D972EE2 /* fx-land.m4a */ = {isa = PBXFileReference; path = "fx-land.m4a"; sourceTree = "<group>"; };
 		D9FAFE026DBDEE8AABAE0553 /* OnDeviceMultiplayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceMultiplayer.swift; sourceTree = "<group>"; };
 		DA39AA71364294A3C5E86CB8 /* DeckStudioComboView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioComboView.swift; sourceTree = "<group>"; };
 		DBA64811675FC3884DD08546 /* DeckStudioRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioRootView.swift; sourceTree = "<group>"; };
@@ -416,6 +428,19 @@
 				DBA64811675FC3884DD08546 /* DeckStudioRootView.swift */,
 			);
 			path = Library;
+			sourceTree = "<group>";
+		};
+		2F4A1AC39677E870106A0BE3 /* BoardFX */ = {
+			isa = PBXGroup;
+			children = (
+				57B94CA74BB415059DD6ED98 /* fx-cast.m4a */,
+				1AFC64CBCF0C0F9B6CA4058F /* fx-damage.m4a */,
+				2A3A4066B5EB2351F511ACC0 /* fx-death.m4a */,
+				D911287E04D23B192D972EE2 /* fx-land.m4a */,
+				7C46102EBBE7600D052B4CE8 /* fx-player-hit.m4a */,
+				5304C6FF35CD4A2E84C2D722 /* KENNEY_LICENSE.txt */,
+			);
+			path = BoardFX;
 			sourceTree = "<group>";
 		};
 		3B3E07DF8FB800888420E3B4 /* Ideas */ = {
@@ -613,6 +638,7 @@
 			isa = PBXGroup;
 			children = (
 				6B0D8FE0F5FC4C7001C4233F /* ondevice-catalogue.json */,
+				2F4A1AC39677E870106A0BE3 /* BoardFX */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -760,8 +786,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				C1511A400C8C25B7D7B72191 /* Assets.xcassets in Resources */,
+				2B904E8BC33C3DBE1E655CB8 /* KENNEY_LICENSE.txt in Resources */,
 				3FF979A6D4BDF89CB09279E7 /* OnlineConfiguration.json in Resources */,
 				073A3C37624E019DB68DAA84 /* PrivacyInfo.xcprivacy in Resources */,
+				5AE4A260F8F49E7B865B3800 /* fx-cast.m4a in Resources */,
+				846288117C89F4DD7DDE3D58 /* fx-damage.m4a in Resources */,
+				0D9EAFAAA218671A869546A7 /* fx-death.m4a in Resources */,
+				1C55E020D785F4158CA6219F /* fx-land.m4a in Resources */,
+				B599BD1B038095DF10E2AD81 /* fx-player-hit.m4a in Resources */,
 				14011F2FA8FBAA4DDD745BC8 /* ondevice-catalogue.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

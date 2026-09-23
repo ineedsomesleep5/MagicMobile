@@ -127,6 +127,9 @@ struct ContentView: View {
     @State private var phoneImageDownloadProgress: String?
     #if DEBUG
     @State private var didAutoStartFixtureForVisualQA = false
+    #if DEBUG
+    @State private var boardFXPreviewStep = 0
+    #endif
     #endif
 
     var body: some View {
@@ -194,6 +197,23 @@ struct ContentView: View {
             }
             if snapshot?.source == "design-preview" {
                 let fixture = ProcessInfo.processInfo.environment["MAGICMOBILE_DESIGN_PREVIEW"]
+                if fixture == "board-fx" {
+                    Button("Next board FX step (\(boardFXPreviewStep))") {
+                        boardFXPreviewStep = (boardFXPreviewStep + 1) % GameBoardPreviewFixtures.boardFXStepCount
+                        snapshot = GameBoardPreviewFixtures.boardFXStep(boardFXPreviewStep)
+                    }
+                    .font(.caption).padding(8).background(.black)
+                    .padding(.top, 24).accessibilityIdentifier("preview.boardFX.next")
+                    .task {
+                        // Visual QA: MAGICMOBILE_BOARD_FX_AUTOPLAY=1 steps through the walkthrough.
+                        guard ProcessInfo.processInfo.environment["MAGICMOBILE_BOARD_FX_AUTOPLAY"] == "1" else { return }
+                        while !Task.isCancelled {
+                            try? await Task.sleep(for: .seconds(2.5))
+                            boardFXPreviewStep = (boardFXPreviewStep + 1) % GameBoardPreviewFixtures.boardFXStepCount
+                            snapshot = GameBoardPreviewFixtures.boardFXStep(boardFXPreviewStep)
+                        }
+                    }
+                }
                 if fixture == "phase-announcement" || fixture == "life-change" || fixture == "attached-permanents" {
                     Button(fixture == "phase-announcement" ? "Advance preview phase" : "Preview life change") {
                         if fixture == "phase-announcement" {
@@ -603,7 +623,7 @@ struct ContentView: View {
             return true
         }
         let state = GameBoardDesignPreviewState(rawValue: previewText) ?? .normalBattlefield
-        let previewSnapshot = GameBoardPreviewFixtures.snapshot(state)
+        let previewSnapshot = previewText == "board-fx" ? GameBoardPreviewFixtures.boardFXStep(0) : GameBoardPreviewFixtures.snapshot(state)
         snapshot = previewSnapshot
         selectedCard = GameBoardPreviewFixtures.selectedCard(for: state, snapshot: previewSnapshot)
         inspectedCard = state == .fullHandInspection ? previewSnapshot.human?.zones.hand.first : nil
@@ -2686,8 +2706,10 @@ struct NativeGameView: View {
     @State private var didAutoReconnectAIWaitKey: String?
     @State private var didAutoDiagnoseAIWaitKey: String?
     @State private var boardFX = BoardFXDirector()
+    @State private var boardFXClock = BoardFXClock()
     @State private var boardShake: CGFloat = 0
     @AppStorage(BoardFXLevel.key) private var boardFXLevel = BoardFXLevel.defaultValue
+    @AppStorage(BoardFXSound.key) private var boardSoundsEnabled = true
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     private func openPromptDetails() {
@@ -3418,29 +3440,33 @@ struct NativeGameView: View {
         let scheduled = boardFX.ingest(snapshot, level: level, now: Date())
         guard !scheduled.isEmpty else { return }
         BoardFXHaptics.play(scheduled, viewerID: snapshot.viewerID)
+        if boardSoundsEnabled { BoardFXSound.play(scheduled, viewerID: snapshot.viewerID) }
         let viewerHit = scheduled.contains { if case let .lifeChanged(id, delta) = $0.event { return id == snapshot.viewerID && delta < 0 }; return false }
         if viewerHit && level == .full {
             withAnimation(.linear(duration: 0.36)) { boardShake += 1 }
         }
     }
 
+    /// Life points default to the battlefield edges; the portrait board passes its life HUD positions.
     private func boardFXOverlay(bounds: [String: CGRect], snapshot: GameSnapshot, opponentRect: CGRect,
-                                playerRect: CGRect, stackRect: CGRect, handRect: CGRect) -> some View {
+                                playerRect: CGRect, stackRect: CGRect, handRect: CGRect,
+                                viewerLife: CGPoint? = nil, opponentLife: CGPoint? = nil) -> some View {
         let anchors = BoardFXAnchors(
             viewerID: snapshot.viewerID,
-            viewerPoint: CGPoint(x: playerRect.midX, y: playerRect.maxY - 30),
-            opponentPoint: CGPoint(x: opponentRect.midX, y: opponentRect.minY + 30),
+            viewerPoint: viewerLife ?? CGPoint(x: playerRect.minX + 50, y: playerRect.maxY - 20),
+            opponentPoint: opponentLife ?? CGPoint(x: opponentRect.minX + 50, y: opponentRect.minY + 20),
             stackPoint: CGPoint(x: stackRect.midX, y: stackRect.midY),
             viewerHandPoint: CGPoint(x: handRect.midX, y: handRect.midY),
             opponentHandPoint: CGPoint(x: opponentRect.midX, y: opponentRect.minY - 40))
         return BoardFXOverlay(effects: boardFX.active, subjects: boardFX.subjects, cardBounds: bounds, anchors: anchors,
-                              prune: { boardFX.prune(now: Date()) })
+                              clock: boardFXClock, prune: { boardFX.prune(now: Date()) })
     }
 
     private func boardObservation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
         content
             .modifier(BoardImpactShake(animatableData: boardShake))
             .environment(\.boardFXCardMotion, boardFX.cardMotion(viewerID: snapshot.viewerID))
+            .environment(\.boardFXClock, boardFXClock)
             .environment(\.boardZoneInspectionAction, inspectBoardZone)
             .onChange(of: BoardFXRevisionKey(snapshot: snapshot), initial: true) { _, _ in
                 ingestBoardFX(snapshot)
@@ -3935,7 +3961,9 @@ struct NativeGameView: View {
                             inspect: { inspectedCard = $0 })
                     }
                     boardFXOverlay(bounds: bounds, snapshot: snapshot, opponentRect: metrics.opponentBattlefieldRect,
-                        playerRect: metrics.playerBattlefieldRect, stackRect: metrics.centerStripRect, handRect: metrics.handRect)
+                        playerRect: metrics.playerBattlefieldRect, stackRect: metrics.centerStripRect, handRect: metrics.handRect,
+                        viewerLife: CGPoint(x: metrics.bottomHUDRect.minX + 34, y: metrics.bottomHUDRect.maxY - 78),
+                        opponentLife: CGPoint(x: metrics.topHUDRect.minX + 44, y: metrics.topHUDRect.maxY + 26))
                 }
             }
             .onAppear {

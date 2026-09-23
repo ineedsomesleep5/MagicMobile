@@ -32,6 +32,84 @@ enum GameBoardPreviewFixtures {
         return try! JSONDecoder.magicMobile.decode(GameSnapshot.self, from: data)
     }
 
+    #if DEBUG
+    static let boardFXStepCount = 7
+
+    /// Scripted board FX walkthrough for `MAGICMOBILE_DESIGN_PREVIEW=board-fx`.
+    /// 0 base, 1 cast Swords, 2 Swords resolves (exile Angel, AI gains 4),
+    /// 3 Sol Ring enters with a counter on Isamaru, 4 Isamaru attacks,
+    /// 5 combat damage (AI -2, you -3, Isamaru marked), 6 Isamaru dies.
+    static func boardFXStep(_ step: Int) -> GameSnapshot {
+        var root = try! JSONSerialization.jsonObject(with: Data(json(for: .normalBattlefield).utf8)) as! [String: Any]
+        root["id"] = "design-preview-board-fx"
+        root["bridgeRevision"] = 1_000 + step
+        root["legalActions"] = []
+        var players = root["players"] as! [[String: Any]]
+        let costs = ["Swords to Plowshares": "{W}", "Sol Ring": "{1}", "Isamaru, Hound of Konda": "{W}", "Serra Angel": "{3}{W}{W}"]
+        func zone(_ player: Int, _ name: String) -> [[String: Any]] { (players[player]["zones"] as! [String: Any])[name] as! [[String: Any]] }
+        func setZone(_ player: Int, _ name: String, _ cards: [[String: Any]]) {
+            var zones = players[player]["zones"] as! [String: Any]
+            zones[name] = cards.map { card in
+                var card = card
+                if var identity = card["card"] as? [String: Any], let name = identity["name"] as? String, let cost = costs[name] {
+                    identity["manaCost"] = cost; card["card"] = identity
+                }
+                return card
+            }
+            players[player]["zones"] = zones
+        }
+        func move(_ id: String, from: (Int, String), to: (Int, String), edit: (inout [String: Any]) -> Void = { _ in }) {
+            var source = zone(from.0, from.1)
+            guard let index = source.firstIndex(where: { $0["instanceId"] as? String == id }) else { return }
+            var card = source.remove(at: index)
+            edit(&card)
+            setZone(from.0, from.1, source)
+            setZone(to.0, to.1, zone(to.0, to.1) + [card])
+        }
+        func editCard(_ id: String, player: Int, _ edit: (inout [String: Any]) -> Void) {
+            setZone(player, "battlefield", zone(player, "battlefield").map { var card = $0; if card["instanceId"] as? String == id { edit(&card) }; return card })
+        }
+        let human = 0, ai = 1
+        for zoneName in ["hand", "battlefield", "graveyard", "exile", "command"] {
+            setZone(human, zoneName, zone(human, zoneName)); setZone(ai, zoneName, zone(ai, zoneName))
+        }
+        var stack: [[String: Any]] = []
+        if step >= 1 {
+            move("hand-spell", from: (human, "hand"), to: (human, "stack"))
+            if step == 1 {
+                let source = zone(human, "stack").first!
+                stack = [["id": "stack-swords", "name": "Swords to Plowshares", "sourceCard": source,
+                          "controllerId": "human", "sourceZone": "hand", "rulesText": "Exile target creature."]]
+            }
+        }
+        if step >= 2 {
+            move("hand-spell", from: (human, "stack"), to: (human, "graveyard"))
+            move("ai-creature-1", from: (ai, "battlefield"), to: (ai, "exile"))
+            players[ai]["life"] = 35
+        }
+        if step >= 3 {
+            move("hand-sol-ring", from: (human, "hand"), to: (human, "battlefield"))
+            editCard("human-commander", player: human) { $0["counters"] = ["+1/+1": 1]; $0["summoningSickness"] = false }
+        }
+        if step >= 4 { editCard("human-commander", player: human) { $0["isAttacking"] = true; $0["tapped"] = true } }
+        if step >= 5 {
+            players[ai]["life"] = 33
+            players[human]["life"] = 34
+            editCard("human-commander", player: human) { $0["damage"] = 2 }
+        }
+        if step >= 6 { move("human-commander", from: (human, "battlefield"), to: (human, "graveyard")) }
+        root["players"] = players
+        root["xmage"] = [
+            "schemaVersion": 1, "gameId": "design-preview-board-fx", "bridgeRevision": 1_000 + step, "xmageCycle": 1_000 + step,
+            "callbackCoverage": [], "stack": stack, "combat": [], "players": [], "exileZones": [], "revealed": [],
+            "lookedAt": [], "companion": [], "playableObjects": [],
+            "panels": ["stack": true, "command": true, "graveyard": true, "exile": true, "revealed": false, "lookedAt": false, "search": false],
+        ] as [String: Any]
+        let data = try! JSONSerialization.data(withJSONObject: root)
+        return try! JSONDecoder.magicMobile.decode(GameSnapshot.self, from: data)
+    }
+    #endif
+
     static func selectedCard(for state: GameBoardDesignPreviewState, snapshot: GameSnapshot) -> ZoneCard? {
         guard state == .selectedCardActionTray || state == .missingCardArt || state == .fullHandInspection else { return nil }
         return snapshot.human?.zones.hand.first
