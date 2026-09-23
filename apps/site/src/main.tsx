@@ -311,15 +311,15 @@ function App() {
             </details>
             <details>
               <summary>
-                What’s next for iPhone?
+                What’s new on iPhone?
                 <Plus size={20} />
               </summary>
               <p>
-                Planned for a future TestFlight build: games with human players
-                and bots together, a shared D20 roll to decide who starts, and
-                a skip action you can cancel. These features are not in the
-                current TestFlight build. We’ll update this page after a build
-                with them is verified live.
+                Build 10 adds Game Center games with friends and AI opponents
+                together, a shared animated 3D D20 roll to decide who starts,
+                and cancellable turn-skipping. Solo AI games can also use the
+                D20 roll or let you choose the starting player. Apple has
+                approved this build for Internal and External TestFlight.
               </p>
             </details>
             <details>
