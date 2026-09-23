@@ -48,6 +48,7 @@ struct BoardFXOverlay: View {
                             if let p = progress(flight.effect, now: now), let placement = flight.placement(progress: p) {
                                 CardTile(card: flight.card, selected: false, zoneName: "Effect",
                                          width: placement.size.width, height: placement.size.height, ignoreTappedRotation: true)
+                                    .modifier(BoardFXShading(shading: flight.shading(progress: p), size: placement.size))
                                     .shadow(color: .black.opacity(0.55), radius: 10, y: 6)
                                     .scaleEffect(placement.scale)
                                     .rotationEffect(.degrees(placement.rotation))
@@ -96,7 +97,7 @@ struct BoardFXOverlay: View {
             case let .leftBattlefield(id, playerID, destination, _):
                 guard let origin = rect(id) else { return nil }
                 let target = destination == .hand ? anchors.handPoint(playerID) : anchors.playerPoint(playerID)
-                return BoardFXFlight(effect: effect, card: card, kind: .depart(from: origin, to: target))
+                return BoardFXFlight(effect: effect, card: card, kind: .depart(from: origin, to: target, destination: destination))
             case let .spellCast(_, _, controllerID, _):
                 return BoardFXFlight(effect: effect, card: card,
                                      kind: .cast(from: anchors.handPoint(controllerID), to: anchors.stackPoint))
@@ -326,7 +327,7 @@ struct BoardEffectsPicker: View {
 struct BoardFXFlight: Identifiable {
     enum Kind {
         case arrive(from: CGPoint, to: CGRect)
-        case depart(from: CGRect, to: CGPoint)
+        case depart(from: CGRect, to: CGPoint, destination: BoardFXZone?)
         case cast(from: CGPoint, to: CGPoint)
     }
 
@@ -352,6 +353,29 @@ struct BoardFXFlight: Identifiable {
                        y: u * u * a.y + 2 * u * t * control.y + t * t * b.y)
     }
 
+    enum Shading: Equatable {
+        case none
+        case dissolve(progress: Double, edge: Color)
+        case foil(phase: Double)
+    }
+
+    /// Graveyard (or unknown) and exile departures burn away; bounces fly.
+    static func dissolves(_ destination: BoardFXZone?) -> Bool {
+        destination == nil || destination == .graveyard || destination == .exile
+    }
+
+    func shading(progress p: Double) -> Shading {
+        switch kind {
+        case let .depart(_, _, destination) where Self.dissolves(destination):
+            let edge = destination == .exile ? Color(red: 0.75, green: 0.92, blue: 1) : Color(red: 1, green: 0.52, blue: 0.12)
+            return .dissolve(progress: p, edge: edge)
+        case .cast:
+            return .foil(phase: p * 1.4)
+        default:
+            return .none
+        }
+    }
+
     func placement(progress p: Double) -> Placement? {
         switch kind {
         case let .arrive(from, to):
@@ -360,7 +384,12 @@ struct BoardFXFlight: Identifiable {
             let t = BoardFXPainter.easeOut(p / landing)
             return Placement(center: Self.arc(from, CGPoint(x: to.midX, y: to.midY), lift: 60, t: t),
                              size: to.size, scale: 1.35 - 0.35 * t, rotation: -8 * (1 - t), opacity: min(1, p / landing * 4))
-        case let .depart(from, to):
+        case let .depart(from, _, destination) where Self.dissolves(destination):
+            // Burn away in place with a slight lift; the shader does the rest.
+            let t = BoardFXPainter.easeOut(p)
+            return Placement(center: CGPoint(x: from.midX, y: from.midY - 10 * t), size: from.size,
+                             scale: 1 + 0.06 * t, rotation: 0, opacity: 1)
+        case let .depart(from, to, _):
             let t = p * p
             return Placement(center: Self.arc(CGPoint(x: from.midX, y: from.midY), to, lift: 30, t: t),
                              size: from.size, scale: 1 - 0.6 * t, rotation: 14 * t, opacity: 1 - t)
@@ -423,5 +452,22 @@ struct BoardFXCardMotionModifier: ViewModifier {
 extension View {
     func boardFXCardMotion(_ cardID: String) -> some View {
         modifier(BoardFXCardMotionModifier(cardID: cardID))
+    }
+}
+
+/// Applies the Metal card shaders from BoardFXShaders.metal.
+struct BoardFXShading: ViewModifier {
+    let shading: BoardFXFlight.Shading
+    let size: CGSize
+
+    func body(content: Content) -> some View {
+        switch shading {
+        case .none:
+            content
+        case let .dissolve(progress, edge):
+            content.colorEffect(ShaderLibrary.mmDissolve(.float2(size), .float(progress), .color(edge)))
+        case let .foil(phase):
+            content.colorEffect(ShaderLibrary.mmFoil(.float2(size), .float(phase), .float(1)))
+        }
     }
 }

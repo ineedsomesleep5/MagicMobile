@@ -49,7 +49,8 @@ toward the opponent with a keyframe spring. Reduced/Off levels have no flights o
 |---|---|
 | `apps/ios/MagicMobile/BoardEventTimeline.swift` | Pure logic: state, diff, schedule, director, levels. In the portable package. |
 | `apps/ios/MagicMobileTests/BoardEventTimelineTests.swift` | Portable unit tests (`swift test --package-path apps/ios --filter BoardEventTimelineTests`). |
-| `apps/ios/MagicMobile/BoardFXOverlay.swift` | SwiftUI renderer, painter helpers, shake, haptics, settings picker. App target only. |
+| `apps/ios/MagicMobile/BoardFXOverlay.swift` | SwiftUI renderer, painter helpers, flights, tile motion modifier, shader modifier, shake, haptics, settings picker. App target only. |
+| `apps/ios/MagicMobile/BoardFXShaders.metal` | `mmDissolve` (noise burn with glowing edge) and `mmFoil` (rainbow wash + glint) SwiftUI `colorEffect` shaders. App target only. |
 | `apps/ios/MagicMobile/ContentView.swift` | Integration only: state on `NativeGameView`, `ingestBoardFX`, `boardFXOverlay`, both board overlays, three settings panels. |
 
 Event order within one transition: spell cast → attack declared → left battlefield →
@@ -116,7 +117,7 @@ single MIT file with its license header when that is enough.
 |---|---|
 | 1 Event timeline + first effects | Implemented on `codex/board-fx-timeline`. Unit tests, ios-fast preflight and generic iPhone compile pass. On-device visual acceptance pending. |
 | 2 Card motion | Flights (arrive/depart/cast) and attack lunge implemented on `codex/board-fx-motion` (stacked on phase 1). Tests and generic iPhone compile pass. Visual acceptance pending. Blocker lunge/defender targeting and hand-card exact source rect not done. |
-| 3 Card shaders | Not started |
+| 3 Card shaders | Dissolve (graveyard: ember edge, exile: cold edge) on departing flights and foil on the cast showcase, on `codex/board-fx-shaders` (stacked on phase 2). Compile + preflight pass. Not yet: foil on the held inspection card image (needs the image isolated inside `CardInspector`, not its rules text), playable-card glow, heat haze. |
 | 4 Particles and sound upgrade | Not started |
 | 5 RealityKit moments | Not started |
 
@@ -131,3 +132,8 @@ single MIT file with its license header when that is enough.
   `BoardFXAnchors`, `BoardFXFlight` placements (arc, scale, rotation), tile modifier
   applied at all three `PortraitCardBoundsKey` sites. 12 portable tests. Next: phase 3
   shaders (foil sheen, playable glow, dissolve) in a `.metal` file.
+- 2026-09-23 (Claude): Phase 3 first shaders: `BoardFXShaders.metal`, `BoardFXShading`
+  modifier; graveyard/exile/unknown departures now burn away in place instead of
+  flying off; bounces still fly to the hand. ios-fast preflight 11/11, generic compile
+  clean. Next candidates: inspection-card foil, sound (needs Kenney download OK),
+  simulator/device visual pass to tune timings and colors.
