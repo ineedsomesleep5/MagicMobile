@@ -315,11 +315,12 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 12 adds the new MagicMobile icon and a turn-by-turn shared
-                D20 roll: each player taps to roll, watches the die rebound, and
-                sees the result above their seat. Solo AI offers Choose or Roll D20.
-                Game Center games with friends and AI opponents and cancellable
-                turn-skipping are included. Apple has approved this build for
+                Build 13 brings the battlefield to life: spells rise to the
+                center with a foil shimmer, creatures fly in and burn away when
+                they die, attackers lunge, and damage and life changes pop with
+                sound and haptics. Choose Full, Reduced or Off in Settings. It
+                keeps the new MagicMobile icon, the shared D20 roll and Game
+                Center play from build 12. Apple has approved this build for
                 Internal and External TestFlight.
               </p>
             </details>

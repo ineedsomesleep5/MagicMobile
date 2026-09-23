@@ -162,3 +162,4 @@ single MIT file with its license header when that is enough.
   now use `ArenaBattlefieldCard` for arrivals/departures. Added Kenney sounds and
   toggle. All six walkthrough steps verified on iPhone 17 Pro simulator (portrait).
   Next: device run with the real engine, landscape check, inspection-card foil.
+- 2026-09-23 (Claude): Phases 1–4 merged (#24, #27) and shipped in TestFlight build 13. Next: real-engine game on device, landscape check, inspection-card foil, RealityKit D20 (phase 5).
