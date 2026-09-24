@@ -1,10 +1,55 @@
 MagicMobile sound effects and music
 
-Recorded foley (card handling, dice, interface clicks, glass, metal, sword, page, impacts)
-comes from these Kenney.nl packs, released under Creative Commons Zero (CC0 1.0,
-public domain, http://creativecommons.org/publicdomain/zero/1.0/). Credit is not
-required; thank you, Kenney (www.kenney.nl):
-  Casino Audio, Interface Sounds, RPG Audio, Impact Sounds.
+MUSIC
+Music by Kevin MacLeod (incompetech.com)
+Licensed under Creative Commons: By Attribution 4.0 License
+http://creativecommons.org/licenses/by/4.0/
 
-All spell, bell, fanfare, stinger and music material is original synthesis made for
-MagicMobile (scripts/audio/build_game_audio.py), layered with the foley above.
+  "Midnight Tale"
+  "Industrious Ferret"
+  "Village Consort"
+  "Thatched Villagers"
+  "Teller of the Tales"
+  "Lord of the Land"
+  "Suonatore di Liuto"
+  "Pippin the Hunchback"
+  "Discovery Hit" (excerpt)
+  "Greta Sting" (excerpt)
+  "Danse Macabre - Big Hit 1" (excerpt)
+
+SOUND EFFECTS
+Recordings from the Sonniss.com GDC Game Audio Bundles 2015-2020 (royalty-free),
+trimmed and mixed for MagicMobile. Thank you to the contributing sound designers:
+  3maze - Books & Magazines
+  3maze - UI FX
+  Airborne Sound - Crisis Accents
+  Airborne Sound - Eclectic Whooshes
+  Articulated Sounds - Dice
+  Articulated Sounds - Magic Elements vol.1
+  Bluezone - Switch And Button Sound Effects
+  Bluezone Corporation - MOVIE TRAILER
+  David Dumais Audio - Air Magic 1
+  David Dumais Audio - Magic Sound FX Pack 1
+  David Dumais Audio - Spells Magic 1
+  David Dumais Audio - Water Magic 1
+  Double Trouble Audio - Medieval Armor and Impacts
+  Double Trouble Audio - Wood Impacts and Debris
+  Gamemaster Audio - Fun Casual Sounds
+  Gamemaster Audio - Punch Sound Pack
+  George Karagioules - SFX for Board Games
+  Glitchedtones - User Interface
+  Impact Soundworks - Super FX 8 and 16-bit Video Game SFX
+  InspectorJ - UI - Mechanical
+  Kpow Sounds - UI SOUNDPACKS
+  L.A. Sounds - Game & UI Interface 001
+  Mechanical Wave - Hits Whoosh
+  Scoba Sounds – Scoba Ui Essentials
+  Sound Ex Machina - PAPER & CARDBOARD
+  Sound Spark LLC – Magic Spells, Buffs and Attacks
+  Timothy McHugh - Playing Cards & Betting Chips
+  Touchdown Audio -The White Stuff
+
+Card handling recordings from Kenney.nl Casino Audio, released under
+Creative Commons Zero (CC0 1.0). Thank you, Kenney (www.kenney.nl).
+
+Full source list: scripts/audio/SOURCES.md in the MagicMobile repository.

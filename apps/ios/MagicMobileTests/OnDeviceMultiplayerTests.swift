@@ -375,6 +375,32 @@ final class OnDeviceMultiplayerTests: XCTestCase {
         XCTAssertEqual(secondPoll.revision, 22)
     }
 
+    /// A peer concedes only its own bound seat: the frame carries no actor or extra fields.
+    @MainActor
+    func testRemoteConcedeSendsOnlyTheOperation() async throws {
+        let identity = BuildIdentity(upstreamCommit: "commit", catalogueHash: "catalogue")
+        let link = MultiplayerTestLink()
+        let remote = OnDeviceRemoteEngineTransport(hostID: "host", matchID: "match", seatID: "player2", epoch: UUID()) { data, _ in
+            let value = try MagicMobileOnDevice.JSONValue.decode(data)
+            if value["operation"]?.string == "hello" {
+                try link.remote?.receive(Self.reply(to: value, result: .object(["seatId": .string("player2"), "build": identity.json])), from: "host")
+            } else { link.requests.append(value) }
+        }
+        link.remote = remote
+        defer { remote.close() }
+        try await remote.hello(identity: identity)
+        let conceding = Task { try await EngineClient(transport: remote).concede(matchID: "match", seatID: "player2") }
+        for _ in 0..<10_000 { if !link.requests.isEmpty { break }; await Task.yield() }
+        let request = try XCTUnwrap(link.requests.first)
+        XCTAssertEqual(request["operation"]?.string, "concede")
+        XCTAssertEqual(request["payload"], .object([:]))
+        try remote.receive(Self.reply(to: request, result: .object(["conceded": .bool(true)])), from: "host")
+        try await conceding.value
+        let spoofed = try MagicMobileOnDevice.JSONValue.object(["protocol": .integer(1), "op": .string("concede"), "matchId": .string("match"),
+                                                                "viewerId": .string("player2"), "actor": .string("player1")]).encoded()
+        do { _ = try await remote.request(spoofed); XCTFail("extra fields are rejected") } catch {}
+    }
+
     @MainActor
     func testHostDispatcherDrainsRequestsInArrivalOrder() async throws {
         let identity = BuildIdentity(upstreamCommit: "commit", catalogueHash: "catalogue"), epoch = UUID()

@@ -92,9 +92,10 @@ frame, and tiles reveal on the same clock, so no effect opening plays off-screen
 The director only prunes effects older than `renderGrace` on ingest; the overlay
 prunes precisely.
 
-Sound: `BoardFXSound` plays five CC0 Kenney Impact Sounds (converted to 64 kbps AAC
-in `Resources/BoardFX`, license alongside) with an ambient audio session (respects
-the silent switch, mixes with music). "Effect Sounds" toggle next to Board Effects.
+Sound: `BoardFXSound` maps board events to `GameAudio` cues (recorded sources in
+`Resources/Audio`, listed in `scripts/audio/SOURCES.md`) with an ambient audio session
+(respects the silent switch, mixes with music). Effect Sounds, Music and the Sound Lab
+sit next to Board Effects.
 
 Known limitation: XMage may give a card a new object ID when it changes zones. The
 differ matches a departing permanent to a same-name card newly visible in the same
@@ -175,6 +176,7 @@ single MIT file with its license header when that is enough.
 | 6 Game feel (build 14) | Readable spell showcases, arrival-after-cast, showcase for unseen casts, commander cast/entrance, attack stance + block tether + strike with impact-timed damage, turn-start ribbon, compact phase pill, victory/defeat screen, hand fan + lift under finger + breathing playable glow, legendary gold edge, inspection foil, color-identity particles, life badge de-duplication. Verified in the board-fx simulator walkthrough (optimized Debug build). Not yet: device feel, landscape combat pass. |
 | 7 Device feedback (builds 15–17) | Ability-ID auto-answers (mana, abilities, MDFC/split/adventure play and cast), turn bar, inspector details, rematch and Game Center room, one-Confirm multi-select plans, full-screen result, unclipped glows, portrait stack tray, faster AI turns on big stacks (engine change). Simulator previews and unit tests pass; phone feel pending Caleb. |
 | 8 AAA pass (build 18) | Game audio (54 cues + menu/table music, GameAudio.swift, scripts/audio), brand-styled menus/setup/loading/versus from the app icon and download site (BrandUI.swift, traced BrandMarkPaths.swift), dock stack tray, even result wash, tapped-land art, branded launch screen. Simulator previews, unit and UI tests; phone feel and audio mix pending Caleb. |
+| 9 Next level (build 19) | Recorded audio (Sonniss GDC + Kenney CC0 effects, Kevin MacLeod CC BY playlists and stingers, SoundLabView.swift), fewer and quieter cues, concede with pod spectating (engine op), Arena-style attachment stacks and inspector attachment text, opponent portraits with AI-thinking ring, opening-hand screen, result summary (GameStats.swift), quick chat (GameEmotes.swift), weighted big hits, deck covers. Unit, real-XMage JVM and UI tests pass; phone feel and audio choices pending Caleb. |
 
 ## Log
 
@@ -288,3 +290,23 @@ single MIT file with its license header when that is enough.
   shrink before truncating, the hand pill is themed. Deck Studio keeps its deliberate
   ivory workspace (press sounds only). Wrapped button styles now apply real styles so
   disabled state survives. Pre-existing: landscape dock height unit test.
+- 2026-09-24 (Claude): Build 19 from Caleb's build-16 play-test. Audio: the synthesized
+  music and magic layers are gone; every cue is a professional recording rendered by
+  scripts/audio/build_game_audio.py (sources in scripts/audio/SOURCES.md, credits in the
+  Sound Lab and Resources/Audio/CREDITS.txt). Removed the chatty cues (button clicks on
+  most presses, mana taps, stack resolves, opponent turn bell, hand fan); triggers chime
+  only for your own abilities; opponents' casts sit lower. Music is whole Kevin MacLeod
+  tracks as a playlist per scene, pickable in the Sound Lab (Settings → Sound Lab), which
+  also auditions every cue and switches off groups; a music level of zero reads as off.
+  Board: attachments tuck behind their creature with named tabs (two, then +N); the
+  hold inspector lists each attachment's rules text; opponent bar portraits (commander
+  art, gold ring on their turn, spinning ring and "is thinking" while an AI decides, skull
+  when out); concede from the game menu (confirmation) with a spectator bar when others
+  play on; Arena-style opening hand for XMage's mulligan question; result summary (turns,
+  combat damage credited to unblocked attackers, creatures destroyed, top attacker);
+  quick chat from your life orb (AI replies sometimes, Game Center relays fixed emote
+  IDs); big hits (5+) shake harder with a red edge and larger life numbers. Deck Studio
+  covers show commander name and colors when art is not downloaded. Fixed the pre-existing
+  landscape dock height test (priority help line is portrait-only). Landscape summaries
+  carry the same portraits, thinking ring and quick chat (tap your summary).
+

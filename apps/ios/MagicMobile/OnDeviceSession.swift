@@ -427,6 +427,24 @@ final class OnDeviceSession: ObservableObject {
         if pendingActionID?.hasPrefix("auto-ability-") == true { pendingActionID = nil; pendingCardID = nil }
     }
 
+    /// This seat concedes. XMage records the loss; in a pod the others play on and this seat
+    /// keeps polling as a spectator. An engine without the operation rejects it as unknown.
+    func concede() async throws {
+        stopAutoPass()
+        guard let client, let matchID, let seatID, !isClosing,
+              !["ended", "failed", "closed"].contains(poll?.phase ?? "") else {
+            throw EngineError.invalidMessage("This game is already over.")
+        }
+        abilityAutoAnswer?.cancel(); abilityAutoAnswer = nil
+        chosenAbility = nil; heldAbilitySnapshot = nil
+        try await client.concede(matchID: matchID, seatID: seatID)
+        // The engine retracted this seat's open question; nothing sent earlier can still apply.
+        pending = nil; pendingActionID = nil; pendingCardID = nil
+        errorMessage = nil; status = "Conceded"
+        try? await refresh()
+        beginPolling()
+    }
+
     func close() async throws {
         stopAutoPass()
         abilityAutoAnswer?.cancel(); abilityAutoAnswer = nil

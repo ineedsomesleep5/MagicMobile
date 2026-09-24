@@ -627,6 +627,9 @@ struct ContentView: View {
         snapshot = previewSnapshot
         selectedCard = GameBoardPreviewFixtures.selectedCard(for: state, snapshot: previewSnapshot)
         inspectedCard = state == .fullHandInspection ? previewSnapshot.human?.zones.hand.first : nil
+        if let id = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_INSPECT"] {
+            inspectedCard = previewSnapshot.visibleBattlefield.first { $0.instanceId == id }
+        }
         pendingActionId = nil
         pendingCardInstanceId = nil
         startupStatus = nil
@@ -2711,6 +2714,9 @@ struct NativeGameView: View {
     @State private var boardFX = BoardFXDirector()
     @State private var boardFXClock = BoardFXClock()
     @State private var boardShake: CGFloat = 0
+    @State private var boardShakeAmplitude: CGFloat = 6
+    @State private var hitVignette = 0.0
+    @State private var gameStats = GameStats()
     @AppStorage(BoardFXLevel.key) private var boardFXLevel = BoardFXLevel.defaultValue
     @AppStorage(BoardFXSound.key) private var boardSoundsEnabled = true
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
@@ -2895,7 +2901,8 @@ struct NativeGameView: View {
                                 if let defenderId = CombatPlayerIdentity.targetID(for: opponent.playerId, in: snapshot, candidates: sideCombatHighlights.defenderIds) {
                                     submitAttackers(defenderId: defenderId, snapshot: snapshot)
                                 }
-                            }
+                            },
+                            thinking: snapshot.thinkingPlayerID == opponent.playerId
                         )
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, 12)
@@ -2920,7 +2927,8 @@ struct NativeGameView: View {
                                         runCommand(command, "Spend floating {\(symbol)}", "floating-\(snapshot.promptEnvelopeV2?.id ?? "")-\(symbol)")
                                     }
                                 })
-                            LandscapePlayerSummary(name: humanName, player: human, active: snapshot.activePlayerId == human.playerId, opponentId: opponent.playerId)
+                            LandscapePlayerSummary(name: humanName, player: human, active: snapshot.activePlayerId == human.playerId,
+                                                   opponentId: opponent.playerId, chatSnapshot: snapshot)
                             HStack(spacing: 4) {
                                 PlayerZoneMenu(player: human, viewZone: localViewZone, snapshot: snapshot, pendingActionID: pendingActionId)
                                 BoardPlayerEffects(player: human, attachments: BattlefieldAttachments.enchanting(playerID: human.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: localViewZone)
@@ -3357,6 +3365,7 @@ struct NativeGameView: View {
                 }
                 .sheet(isPresented: $isGameMenuOpen) {
                     GameManagementMenu(
+                        snapshot: snapshot,
                         concedeAction: concedeAction(in: snapshot.legalActions ?? []),
                         runAction: runAction,
                         portraitModeEnabled: $portraitModeEnabled,
@@ -3419,9 +3428,27 @@ struct NativeGameView: View {
                 }
             // Above the HUD, dock, choice and phase layers, edge to edge.
             boardPresentation(boardSurface, snapshot: snapshot)
+                .environment(\.inspectorBattlefield, snapshot.visibleBattlefield)
+                .overlay {
+                    if let choice = OpeningHandChoice(snapshot), let hand = snapshot.human?.zones.hand, !hand.isEmpty {
+                        OpeningHandOverlay(choice: choice, cards: hand, pending: pendingActionId != nil, answer: runCommand)
+                            .transition(.opacity)
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    if snapshot.isSpectating {
+                        SpectatorBar(snapshot: snapshot, leave: quitGame)
+                            .frame(maxWidth: 460)
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 8)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
+                .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? nil : .easeOut(duration: 0.3),
+                           value: snapshot.isSpectating)
                 .overlay {
                     if snapshot.isCompleted {
-                        GameCompletionOverlay(snapshot: snapshot, newGame: newGame, quitGame: quitGame)
+                        GameCompletionOverlay(snapshot: snapshot, stats: gameStats, newGame: newGame, quitGame: quitGame)
                             .transition(boardOverlayTransition)
                     }
                 }
@@ -3470,12 +3497,31 @@ struct NativeGameView: View {
             BoardFXSound.play(scheduled, viewerID: snapshot.viewerID, arrivals: arrivals)
         }
         guard level == .full else { return }
-        // Shake when the hit lands: the viewer losing life, or a commander touching down.
-        let viewerHit = scheduled.first { if case let .lifeChanged(id, delta) = $0.event { return id == snapshot.viewerID && delta < 0 }; return false }
-        let commander = scheduled.first { if case .enteredBattlefield(_, _, _, _, .commander) = $0.event { return true }; return false }
-        for at in [viewerHit?.delay, commander?.landing].compactMap({ $0 }) {
-            DispatchQueue.main.asyncAfter(deadline: .now() + at) {
-                withAnimation(.linear(duration: 0.36)) { boardShake += 1 }
+        // Shake when the hit lands, scaled to it: the viewer losing life, a big hit on an
+        // opponent, or a commander touching down. Five or more to you also flares red.
+        var shakes: [(at: TimeInterval, amplitude: CGFloat, flare: Bool)] = []
+        for fx in scheduled {
+            switch fx.event {
+            case let .lifeChanged(id, delta) where delta < 0:
+                if id == snapshot.viewerID {
+                    shakes.append((fx.delay, delta <= -5 ? 12 : 6, delta <= -5))
+                } else if delta <= -5 {
+                    shakes.append((fx.delay, 5, false))
+                }
+            case .enteredBattlefield(_, _, _, _, .commander):
+                shakes.append((fx.landing, 6, false))
+            default: break
+            }
+        }
+        for shake in shakes.prefix(3) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + shake.at) {
+                boardShakeAmplitude = shake.amplitude
+                withAnimation(.linear(duration: shake.amplitude > 8 ? 0.5 : 0.36)) { boardShake += 1 }
+                if shake.flare {
+                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 1)
+                    withAnimation(.easeOut(duration: 0.12)) { hitVignette = 1 }
+                    withAnimation(.easeIn(duration: 0.7).delay(0.15)) { hitVignette = 0 }
+                }
             }
         }
     }
@@ -3497,13 +3543,15 @@ struct NativeGameView: View {
 
     private func boardObservation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
         content
-            .modifier(BoardImpactShake(animatableData: boardShake))
+            .modifier(BoardImpactShake(animatableData: boardShake, amplitude: boardShakeAmplitude))
+            .overlay { if hitVignette > 0 { BoardHitVignette(strength: hitVignette) } }
             .environment(\.boardFXCardMotion, boardFX.cardMotion(viewerID: snapshot.viewerID))
             .environment(\.boardFXClock, boardFXClock)
             .environment(\.boardHUDPulse, hudPulse)
             .environment(\.boardZoneInspectionAction, inspectBoardZone)
             .onChange(of: BoardFXRevisionKey(snapshot: snapshot), initial: true) { _, _ in
                 ingestBoardFX(snapshot)
+                gameStats.record(snapshot)
             }
             .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? .easeOut(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.88), value: inspectingZoneTitle)
             .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? .easeOut(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.88), value: inspectedCard?.id)
@@ -3667,11 +3715,11 @@ struct NativeGameView: View {
                 // The first phase of a new turn gets the turn-start banner instead of a phase card.
                 let turnKey = "\(snapshot.id):\(snapshot.turn):\(snapshot.activePlayerId ?? "")"
                 if turnKey != lastTurnSoundKey {
-                    // A bell for each new turn (the game-start fanfare covers the first one).
+                    // A chime when your turn begins (the versus reveal covers the first one).
                     let firstTurn = lastTurnSoundKey == nil
                     lastTurnSoundKey = turnKey
                     if !firstTurn || snapshot.turn > 1 {
-                        GameAudio.shared.play(snapshot.isViewer(snapshot.activePlayerId) ? .turnYou : .turnOpponent)
+                        if snapshot.isViewer(snapshot.activePlayerId) { GameAudio.shared.play(.turnYou) }
                     }
                 }
                 if turnKey != lastTurnBannerKey && BoardFXLevel(rawValue: boardFXLevel) != .off {
@@ -3883,6 +3931,7 @@ struct NativeGameView: View {
                         .allowsHitTesting(false)
                 }
 
+                if !snapshot.isSpectating {
                 PortraitBottomCommandBar(
                     humanName: humanName,
                     human: human,
@@ -3903,6 +3952,7 @@ struct NativeGameView: View {
                 )
                 .frame(width: metrics.bottomControlsRect.width, height: metrics.bottomControlsRect.height)
                 .position(x: metrics.bottomControlsRect.midX, y: metrics.bottomControlsRect.midY)
+                }
 
                 if CombatSelectionState.isDeclareAttackers(snapshot) {
                     let declaredAttackCount = snapshot.xmage?.combat.flatMap(\.attackers).count ?? 0
@@ -4507,6 +4557,20 @@ struct AIWaitFallbackControls: View {
 
 private struct GameRematchTitleKey: EnvironmentKey { static let defaultValue: String? = nil }
 
+/// On-device games concede through the engine. Hosted games keep XMage's own "concede" action.
+struct GameConcedeHandler {
+    let concede: @MainActor () -> Void
+}
+
+private struct GameConcedeKey: EnvironmentKey { static let defaultValue: GameConcedeHandler? = nil }
+
+extension EnvironmentValues {
+    var gameConcede: GameConcedeHandler? {
+        get { self[GameConcedeKey.self] }
+        set { self[GameConcedeKey.self] = newValue }
+    }
+}
+
 extension EnvironmentValues {
     /// When set (solo games), the result screen's first button restarts the same match.
     var gameRematchTitle: String? {
@@ -4517,6 +4581,7 @@ extension EnvironmentValues {
 
 struct GameCompletionOverlay: View {
     let snapshot: GameSnapshot
+    var stats: GameStats? = nil
     let newGame: () -> Void
     let quitGame: () -> Void
     @Environment(\.gameRematchTitle) private var rematchTitle
@@ -4581,6 +4646,13 @@ struct GameCompletionOverlay: View {
                         .multilineTextAlignment(.center)
                 }
 
+                if let stats, stats.turns > 0 {
+                    GameSummaryPanel(stats: stats, victory: isVictory)
+                        .opacity(revealed || reduceMotion ? 1 : 0)
+                        .offset(y: revealed || reduceMotion ? 0 : 12)
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.45).delay(0.35), value: revealed)
+                }
+
                 HStack(spacing: 10) {
                     Button(rematchTitle ?? "New Game", action: newGame)
                         .accessibilityIdentifier("board.result.rematch")
@@ -4602,6 +4674,152 @@ struct GameCompletionOverlay: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Game completed. \(title). \(winnerText)")
+    }
+}
+
+/// The visible strip of an attachment tucked behind its creature: its name on a small tab.
+struct AttachmentNameTab: View {
+    let card: ZoneCard
+    let height: CGFloat
+    /// Further attachments not shown as tabs of their own.
+    var more = 0
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: card.card.typeLine.localizedCaseInsensitiveContains("equipment") ? "shield.lefthalf.filled" : "sparkles")
+                .font(.system(size: max(7, height * 0.5), weight: .bold))
+                .foregroundStyle(MagicPalette.antiqueGold)
+            Text(card.card.name)
+                .font(.system(size: max(7, height * 0.58), weight: .heavy))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Spacer(minLength: 0)
+            if more > 0 {
+                Text("+\(more)")
+                    .font(.system(size: max(7, height * 0.55), weight: .black))
+                    .foregroundStyle(MagicPalette.antiqueGold)
+            }
+        }
+        .padding(.horizontal, 4)
+        .frame(height: height)
+        .frame(maxWidth: .infinity)
+        .background(
+            UnevenRoundedRectangle(topLeadingRadius: 6, topTrailingRadius: 6)
+                .fill(LinearGradient(colors: [MagicPalette.iron, Color.black.opacity(0.92)], startPoint: .top, endPoint: .bottom))
+        )
+        .overlay(
+            UnevenRoundedRectangle(topLeadingRadius: 6, topTrailingRadius: 6)
+                .stroke(MagicPalette.antiqueGold.opacity(0.6), lineWidth: 1)
+        )
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Shown instead of your controls once you're out of a pod: the game plays on without you.
+struct SpectatorBar: View {
+    let snapshot: GameSnapshot
+    let leave: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "eye.fill")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(MagicPalette.antiqueGold)
+                .frame(width: 40, height: 40)
+                .background(Circle().fill(Color.black.opacity(0.35)))
+                .overlay(Circle().stroke(MagicPalette.antiqueGold.opacity(0.45), lineWidth: 1))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Watching")
+                    .font(.system(size: 16, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                Text(detail)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(MagicPalette.parchment.opacity(0.78))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .accessibilityElement(children: .combine)
+            Spacer(minLength: 8)
+            Button("Leave", action: leave)
+                .buttonStyle(CompactActionButtonStyle(isPrimary: false))
+                .accessibilityIdentifier("board.spectator.leave")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(MagicPalette.iron.opacity(0.94)))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(MagicPalette.antiqueGold.opacity(0.42), lineWidth: 1))
+        .shadow(color: .black.opacity(0.45), radius: 12, y: 5)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("board.spectator")
+    }
+
+    private var detail: String {
+        let count = snapshot.remainingOpponents.count
+        let players = count == 1 ? String(localized: "1 player still in") : String(localized: "\(count) players still in")
+        return String(localized: "You’re out · \(players) · Turn \(snapshot.turn)")
+    }
+}
+
+/// The game in numbers under the result title, with the card that hit hardest.
+struct GameSummaryPanel: View {
+    let stats: GameStats
+    let victory: Bool
+
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                tile(value: "\(stats.turns)", label: "Turns")
+                tile(value: "\(stats.combatDamage)", label: "Combat damage")
+                tile(value: "\(stats.creaturesDestroyed)", label: "Creatures destroyed")
+            }
+            if let top = stats.topCard {
+                HStack(spacing: 10) {
+                    NativeCardArtworkView(name: top.name, variant: .board, contentMode: .fill, artOnly: true) { _, _ in
+                        MagicPalette.iron
+                    }
+                    .frame(width: 40, height: 40)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.antiqueGold.opacity(0.7), lineWidth: 1))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("TOP ATTACKER")
+                            .font(.system(size: 10, weight: .black)).tracking(1.2)
+                            .foregroundStyle(MagicPalette.antiqueGold)
+                        Text(top.name)
+                            .font(.subheadline.weight(.heavy)).foregroundStyle(.white)
+                            .lineLimit(1).minimumScaleFactor(0.7)
+                    }
+                    Spacer(minLength: 6)
+                    Text("\(top.damage) dmg")
+                        .font(.system(size: 15, weight: .black, design: .rounded))
+                        .foregroundStyle(MagicPalette.parchment)
+                }
+                .padding(8)
+                .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("board.result.summary")
+    }
+
+    private func tile(value: String, label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.system(size: 22, weight: .black, design: .rounded))
+                .foregroundStyle(victory ? MagicPalette.antiqueGold : MagicPalette.parchment)
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .heavy)).tracking(0.8)
+                .foregroundStyle(.white.opacity(0.62))
+                .lineLimit(2).multilineTextAlignment(.center)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, minHeight: 58)
+        .padding(.vertical, 4)
+        .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -4917,21 +5135,27 @@ private struct LandscapePlayerSummary: View {
     var opponentId: String?
     var combatTargetable = false
     var combatTargetAction: (() -> Void)?
+    var thinking = false
+    /// Your own summary opens quick chat when on-device games provide it.
+    var chatSnapshot: GameSnapshot? = nil
+    @Environment(\.emoteCenter) private var emoteCenter
+    @State private var chatOpen = false
 
     var body: some View {
         let summary = CommanderHudSummary(player: player, opponentId: opponentId)
         VStack(alignment: .leading, spacing: 3) {
             Text(name).font(.system(size: 11, weight: .bold)).lineLimit(1)
-            HStack(spacing: 4) {
-                Image(systemName: "heart.fill").font(.system(size: 16))
+            // The portrait stands in for the heart; the column is narrow.
+            HStack(spacing: 5) {
+                PlayerPortrait(player: player, size: 24, active: active, thinking: thinking)
                 BoardLifeTotal(life: summary.life).id(player.playerId)
-                    .font(.system(size: 23, weight: .bold, design: .rounded))
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.6)
+                    .foregroundStyle(MagicPalette.antiqueGold)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(summary.life) life")
             }
-                .foregroundStyle(MagicPalette.antiqueGold)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(summary.life) life")
             Text("Hand \(summary.handCount) · Lib \(summary.libraryCount)")
                 .font(.system(size: 9, weight: .semibold)).lineLimit(1)
             Text("Tax \(summary.commanderTaxLabel) · Dmg \(summary.commanderDamageLabel)")
@@ -4945,7 +5169,27 @@ private struct LandscapePlayerSummary: View {
             combatTargetable ? MagicPalette.oxblood : MagicPalette.antiqueGold.opacity(active ? 0.8 : 0.3),
             lineWidth: combatTargetable ? 2 : 1))
         .contentShape(Rectangle())
-        .onTapGesture { if combatTargetable { combatTargetAction?() } }
+        .onTapGesture {
+            if combatTargetable { combatTargetAction?() } else if chatSnapshot != nil, emoteCenter != nil { chatOpen = true }
+        }
+        .overlay(alignment: .topTrailing) {
+            if let emoteCenter {
+                EmoteBubbleSlot(center: emoteCenter, playerID: player.playerId)
+                    .fixedSize()
+                    .offset(x: 12, y: -18)
+            }
+        }
+        .popover(isPresented: $chatOpen) {
+            if let emoteCenter, let chatSnapshot {
+                EmotePicker(center: emoteCenter, snapshot: chatSnapshot) { chatOpen = false }
+                    .presentationCompactAdaptation(.popover)
+            }
+        }
+        .accessibilityActions {
+            if chatSnapshot != nil, emoteCenter != nil {
+                Button("Quick chat") { chatOpen = true }
+            }
+        }
     }
 }
 
@@ -7808,7 +8052,6 @@ struct PanelActionButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .pressSound(isPressed: configuration.isPressed)
             .foregroundStyle(.white)
             .padding(.horizontal, compact ? 6 : 7)
             .padding(.vertical, compact ? 4 : 5)
@@ -9446,37 +9689,64 @@ struct PortraitOpponentStatusBar: View {
     var viewZone: ((String, [ZoneCard]) -> Void)? = nil
     var selectOpponent: ((String) -> Void)? = nil
     @Environment(\.boardHUDPulse) private var hudPulse
+    @Environment(\.emoteCenter) private var emoteCenter
     @State private var pulse = false
 
     var body: some View {
         HStack(spacing: 6) {
             Button { if combatTargetable { combatTargetAction() } } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(opponentName).font(.caption2.bold()).lineLimit(1).minimumScaleFactor(0.7)
-                    BoardLifeTotal(life: opponent.life, suffix: " life").id(opponent.playerId)
-                        .font(.title3.bold()).lineLimit(1).minimumScaleFactor(0.65).foregroundStyle(MagicPalette.antiqueGold)
+                HStack(spacing: 6) {
+                    PlayerPortrait(player: opponent, size: 40, active: snapshot.activePlayerId == opponent.playerId,
+                                   thinking: snapshot.thinkingPlayerID == opponent.playerId)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(opponentName).font(.caption2.bold()).lineLimit(1).minimumScaleFactor(0.7)
+                        if opponent.isOut {
+                            Text("Out").font(.title3.bold()).foregroundStyle(.gray)
+                        } else {
+                            BoardLifeTotal(life: opponent.life, suffix: " life").id(opponent.playerId)
+                                .font(.title3.bold()).lineLimit(1).minimumScaleFactor(0.65).foregroundStyle(MagicPalette.antiqueGold)
+                        }
+                    }
+                    .frame(width: dynamicTypeSize.isAccessibilitySize ? 96 : 70, alignment: .leading)
                 }
             }
             .buttonStyle(.plain)
-            .frame(width: dynamicTypeSize.isAccessibilitySize ? 100 : 80)
+            .padding(.vertical, 3)
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(combatTargetable ? Color.red : .clear, lineWidth: 2))
-            .accessibilityLabel("\(opponentName), \(opponent.life) life")
+            .accessibilityLabel(opponent.isOut ? "\(opponentName), out of the game" : "\(opponentName), \(opponent.life) life")
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 5) {
                     Circle().fill(turn.color).frame(width: 7, height: 7).shadow(color: turn.color, radius: 3)
-                    Text(turn.owner).font(.caption.weight(.black)).foregroundStyle(turn.color)
-                        .lineLimit(1).minimumScaleFactor(0.7)
-                    Text("· \((snapshot.step ?? snapshot.phase).arenaPhaseTitle)").font(.caption.bold())
-                        .lineLimit(1).minimumScaleFactor(0.7)
+                    // The phase drops first when a pod's extra controls leave less room.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 5) {
+                            Text(turn.owner).font(.caption.weight(.black)).foregroundStyle(turn.color)
+                            Text("· \((snapshot.step ?? snapshot.phase).arenaPhaseTitle)").font(.caption.bold())
+                        }
+                        Text(turn.owner).font(.caption.weight(.black)).foregroundStyle(turn.color)
+                        Text(turn.owner).font(.caption2.weight(.black)).foregroundStyle(turn.color)
+                            .lineLimit(1).minimumScaleFactor(0.6)
+                    }
+                    .lineLimit(1)
                 }
                 .padding(.horizontal, 4).padding(.vertical, 1)
                 .background(turn.color.opacity(pulse ? 0.35 : 0), in: Capsule())
                 .scaleEffect(pulse ? 1.06 : 1, anchor: .leading)
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("board.turn.owner")
-                Text(BoardResponseCue.make(snapshot)?.title ?? (snapshot.isViewer(snapshot.priorityPlayerId) ? "Your priority" : "Waiting on \(snapshot.playerLabel(snapshot.priorityPlayerId))"))
-                    .font(.caption2.bold()).foregroundStyle(BoardResponseCue.make(snapshot) == nil ? MagicPalette.parchment : MagicPalette.antiqueGold).lineLimit(2).minimumScaleFactor(0.75)
-                    .accessibilityIdentifier("board.response.status")
+                Group {
+                    if BoardResponseCue.make(snapshot) == nil, let thinker = snapshot.thinkingPlayerID {
+                        ThinkingLabel(name: snapshot.playerLabel(thinker))
+                            .foregroundStyle(BoardTurnColors.opponent)
+                    } else if BoardResponseCue.make(snapshot) == nil, snapshot.isSpectating {
+                        Text("You’re watching")
+                    } else {
+                        Text(BoardResponseCue.make(snapshot)?.title ?? (snapshot.isViewer(snapshot.priorityPlayerId) ? "Your priority" : "Waiting on \(snapshot.playerLabel(snapshot.priorityPlayerId))"))
+                            .foregroundStyle(BoardResponseCue.make(snapshot) == nil ? MagicPalette.parchment : MagicPalette.antiqueGold)
+                    }
+                }
+                .font(.caption2.bold()).lineLimit(2).minimumScaleFactor(0.75)
+                .accessibilityIdentifier("board.response.status")
             }.frame(maxWidth: .infinity, alignment: .leading)
             if let selectOpponent { OpponentFocusMenu(snapshot: snapshot, selectOpponent: selectOpponent) }
             BoardPlayerEffects(player: opponent, attachments: BattlefieldAttachments.enchanting(playerID: opponent.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: viewZone)
@@ -9497,6 +9767,13 @@ struct PortraitOpponentStatusBar: View {
         .overlay(RoundedRectangle(cornerRadius: 11).stroke(turn.color.opacity(0.75), lineWidth: 1.5))
         .shadow(color: turn.color.opacity(0.35), radius: 8)
         .shadow(color: .black.opacity(0.34), radius: 10, y: 5)
+        .overlay(alignment: .bottomLeading) {
+            if let emoteCenter {
+                OpponentEmoteSlot(center: emoteCenter, snapshot: snapshot, focusedID: opponent.playerId)
+                    .fixedSize()
+                    .offset(x: 8, y: 44)
+            }
+        }
         .animation(.easeInOut(duration: 0.35), value: turn.owner)
         .onChange(of: hudPulse) { _, _ in
             withAnimation(.spring(response: 0.25, dampingFraction: 0.55)) { pulse = true }
@@ -10079,7 +10356,6 @@ struct PortraitHandRow: View {
 
                 HStack(spacing: 12) {
                     Button {
-                        GameAudio.shared.play(.handFan)
                         withAnimation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.2)) { handExpanded.toggle() }
                     } label: {
                         Label("Hand · \(cards.count)", systemImage: handExpanded ? "chevron.down" : "chevron.up")
@@ -10240,7 +10516,8 @@ struct GameplayActionDock: View {
                 // A finger-down on Pass must not become a new prompt's action
                 // if an engine update replaces this control before finger-up.
                 .id("\(model.primaryAction?.id ?? "none"):\(snapshot.promptEnvelopeV2?.id ?? "none"):\(model.primaryAction?.messageId ?? snapshot.promptEnvelopeV2?.messageId ?? -1)")
-            if showsPriorityHelp {
+            // The landscape sidebar keeps its height for the stack; the hint stays in VoiceOver.
+            if showsPriorityHelp && !landscapeSidebar {
                 Text(GameplayActionPresentation.priorityDetail(hasStack: hasStackForPriority))
                     .font(.caption2)
                     .foregroundStyle(MagicPalette.parchment.opacity(0.8))
@@ -10347,7 +10624,7 @@ private struct GameplayDockButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .pressSound(isPressed: configuration.isPressed)
+            .pressSound(.uiTap, isPressed: configuration.isPressed)
             .foregroundStyle(isPrimary ? Color.white : MagicPalette.parchment)
             .padding(.horizontal, 8)
             .frame(maxWidth: .infinity, minHeight: 44)
@@ -10398,7 +10675,6 @@ private struct CompactOrCircleButtonStyle: ViewModifier {
 private struct GameplayDockMenuButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .pressSound(isPressed: configuration.isPressed)
             .foregroundStyle(MagicPalette.parchment)
             .frame(width: 44, height: 44)
             .background(configuration.isPressed ? MagicPalette.brass.opacity(0.62) : MagicPalette.iron.opacity(0.84), in: Circle())
@@ -10491,6 +10767,8 @@ struct PortraitBottomCommandBar: View {
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
     @State private var isStackOpen = false
+    @State private var isEmotePickerOpen = false
+    @Environment(\.emoteCenter) private var emoteCenter
 
     var body: some View {
         GeometryReader { proxy in
@@ -10513,21 +10791,42 @@ struct PortraitBottomCommandBar: View {
                                    count: snapshot.xmage?.stack.count ?? human.zones.stack.count) { isStackOpen = true }
                 }
                 HStack(spacing: 8) {
-                    VStack(spacing: 0) {
-                        Image(systemName: "heart.fill").font(.system(size: 9))
-                            .foregroundStyle(MagicPalette.antiqueGold)
-                        BoardLifeTotal(life: human.life).id(human.playerId)
-                            .font(.system(size: 23, weight: .bold, design: .serif))
-                            .foregroundStyle(.white).monospacedDigit()
+                    Button {
+                        if emoteCenter != nil { isEmotePickerOpen = true }
+                    } label: {
+                        VStack(spacing: 0) {
+                            Image(systemName: "heart.fill").font(.system(size: 9))
+                                .foregroundStyle(MagicPalette.antiqueGold)
+                            BoardLifeTotal(life: human.life).id(human.playerId)
+                                .font(.system(size: 23, weight: .bold, design: .serif))
+                                .foregroundStyle(.white).monospacedDigit()
+                        }
+                        .frame(width: 52, height: 52)
+                        .background(.black.opacity(0.85), in: Circle())
+                        .overlay(Circle().strokeBorder(MagicPalette.antiqueGold.opacity(snapshot.isViewer(snapshot.activePlayerId) ? 1 : 0.65),
+                                                       lineWidth: snapshot.isViewer(snapshot.activePlayerId) ? 3 : 2))
+                        .shadow(color: MagicPalette.antiqueGold.opacity(snapshot.isViewer(snapshot.activePlayerId) ? 0.7 : 0), radius: 10)
+                        .animation(.easeInOut(duration: 0.35), value: snapshot.activePlayerId)
                     }
-                    .frame(width: 52, height: 52)
-                    .background(.black.opacity(0.85), in: Circle())
-                    .overlay(Circle().strokeBorder(MagicPalette.antiqueGold.opacity(snapshot.isViewer(snapshot.activePlayerId) ? 1 : 0.65),
-                                                   lineWidth: snapshot.isViewer(snapshot.activePlayerId) ? 3 : 2))
-                    .shadow(color: MagicPalette.antiqueGold.opacity(snapshot.isViewer(snapshot.activePlayerId) ? 0.7 : 0), radius: 10)
-                    .animation(.easeInOut(duration: 0.35), value: snapshot.activePlayerId)
+                    .buttonStyle(.plain)
+                    .overlay(alignment: .bottomLeading) {
+                        if let emoteCenter {
+                            EmoteBubbleSlot(center: emoteCenter, playerID: human.playerId)
+                                .fixedSize()
+                                .offset(y: -62)
+                        }
+                    }
+                    .popover(isPresented: $isEmotePickerOpen) {
+                        if let emoteCenter {
+                            EmotePicker(center: emoteCenter, snapshot: snapshot) { isEmotePickerOpen = false }
+                                .presentationCompactAdaptation(.popover)
+                        }
+                    }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Your life: \(human.life)")
+                    .accessibilityHint(emoteCenter == nil ? "" : "Opens quick chat")
+                    .accessibilityAddTraits(emoteCenter == nil ? [] : .isButton)
+                    .accessibilityIdentifier("board.lifeOrb")
                     GameplayActionDock(
                         snapshot: snapshot,
                         passAction: passAction,
@@ -10910,7 +11209,7 @@ struct BattlefieldRow: View {
 
     private func rowContentWidth(_ groups: [BattlefieldCardGroup]) -> CGFloat {
         16 + groups.reduce(CGFloat.zero) { width, group in
-            width + renderedCardWidth + (group.id.hasPrefix("attachment:") ? CGFloat(max(group.count - 1, 0)) * 44 + 6 : 0)
+            width + renderedCardWidth
         } + CGFloat(max(groups.count - 1, 0)) * 4
     }
 
@@ -10935,23 +11234,31 @@ struct BattlefieldRow: View {
         }
     }
 
+    /// Arena-style: Auras and Equipment tuck behind their creature, each showing a named tab
+    /// above it. The stack shrinks a little to stay within the row.
     @ViewBuilder
     private func attachmentGroupTile(_ group: BattlefieldCardGroup) -> some View {
-        HStack(spacing: -max(0, renderedCardWidth - 44)) {
-            ForEach(Array(group.cards.dropFirst())) { card in
+        let attachments = Array(group.cards.dropFirst())
+        // Two tabs keep the creature near full size; the rest count on the top tab.
+        let shown = Array(attachments.prefix(2))
+        let peek = max(11, min(14, renderedCardHeight * 0.13))
+        let lift = peek * CGFloat(shown.count)
+        let scale = renderedCardHeight / (renderedCardHeight + lift)
+        ZStack(alignment: .bottom) {
+            ForEach(Array(shown.enumerated().reversed()), id: \.element.id) { index, card in
                 battlefieldCardTile(card)
-                    .overlay(alignment: .bottomLeading) {
-                        Image(systemName: "link").font(.caption.bold())
-                            .foregroundStyle(.white).padding(4).background(.black.opacity(0.9), in: Capsule())
-                            .allowsHitTesting(false)
+                    .overlay(alignment: .top) {
+                        AttachmentNameTab(card: card, height: peek,
+                                          more: index == shown.count - 1 ? attachments.count - shown.count : 0)
                     }
+                    .offset(y: -peek * CGFloat(index + 1))
                     .accessibilityHint("Attached to \(group.representative.card.name). Tap to select; hold to inspect.")
             }
             battlefieldCardTile(group.representative)
         }
-        .padding(.horizontal, 3)
-        .background(MagicPalette.antiqueGold.opacity(0.18), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(MagicPalette.antiqueGold.opacity(0.5), lineWidth: 1).allowsHitTesting(false))
+        .frame(width: renderedCardWidth, height: renderedCardHeight + lift, alignment: .bottom)
+        .scaleEffect(scale, anchor: .bottom)
+        .frame(width: renderedCardWidth, height: renderedCardHeight, alignment: .bottom)
         .accessibilityElement(children: .contain)
     }
 
@@ -11958,6 +12265,9 @@ struct PromptDebugInspector: View {
 
 struct GameManagementMenu: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.gameConcede) private var gameConcede
+    @State private var confirmingConcede = false
+    let snapshot: GameSnapshot
     let concedeAction: LegalAction?
     let runAction: (LegalAction) -> Void
     @Binding var portraitModeEnabled: Bool
@@ -11973,6 +12283,8 @@ struct GameManagementMenu: View {
                 .foregroundStyle(.white)
             Spacer()
             Button("Done") { dismiss() }
+                .font(.system(size: 17, weight: .heavy, design: .rounded))
+                .foregroundStyle(MagicPalette.antiqueGold)
                 .frame(minWidth: 44, minHeight: 44)
                 .accessibilityIdentifier("board.menu.done")
             }
@@ -11984,17 +12296,22 @@ struct GameManagementMenu: View {
             PortraitModeToggle(isOn: $portraitModeEnabled)
             BoardEffectsPicker()
 
+            if snapshot.isSpectating {
+                Label("You’re out of this game and watching the others play. Quit when you’re done.", systemImage: "eye.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(MagicPalette.parchment.opacity(0.8))
+                    .accessibilityIdentifier("board.menu.spectating")
+            }
             HStack(spacing: 10) {
                 Button {
-                    if let concedeAction {
-                        runAction(concedeAction)
-                    }
+                    confirmingConcede = true
                 } label: {
                     Label("Concede", systemImage: "flag.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(CompactActionButtonStyle(isDanger: true, isPrimary: false))
-                .disabled(concedeAction == nil)
+                .disabled(!canConcede)
+                .accessibilityIdentifier("board.menu.concede")
 
                 Button(action: confirmStartNew) {
                     Label("Start New", systemImage: "arrow.clockwise")
@@ -12022,6 +12339,22 @@ struct GameManagementMenu: View {
         .accessibilityIdentifier("board.menu.scroll")
         }
         .background(BattlefieldSurface().ignoresSafeArea())
+        .confirmationDialog("Concede this game?", isPresented: $confirmingConcede, titleVisibility: .visible) {
+            Button("Concede", role: .destructive) {
+                dismiss()
+                if let gameConcede { gameConcede.concede() } else if let concedeAction { runAction(concedeAction) }
+            }
+            Button("Keep Playing", role: .cancel) {}
+        } message: {
+            Text(snapshot.remainingOpponents.count > 1
+                 ? "You leave the game and can keep watching the others play it out."
+                 : "Your opponent wins this game.")
+        }
+    }
+
+    /// Engine concede on device; XMage's own action on hosted games. Never after you're out.
+    private var canConcede: Bool {
+        !snapshot.isCompleted && snapshot.human?.isOut != true && (gameConcede != nil || concedeAction != nil)
     }
 }
 
@@ -12160,12 +12493,41 @@ struct CardArtPlaceholderShownKey: PreferenceKey {
 /// here can scroll: the printed card carries its own rules, and the panel adds only
 /// live state. The rules text appears only when the real image is not showing
 /// (placeholder, hidden or token art), and it shrinks to fit instead of clipping.
+/// Every permanent visible on the battlefield, so an inspector can show what is attached.
+private struct InspectorBattlefieldKey: EnvironmentKey { static let defaultValue: [ZoneCard] = [] }
+
+extension EnvironmentValues {
+    var inspectorBattlefield: [ZoneCard] {
+        get { self[InspectorBattlefieldKey.self] }
+        set { self[InspectorBattlefieldKey.self] = newValue }
+    }
+}
+
+extension GameSnapshot {
+    var visibleBattlefield: [ZoneCard] { players.flatMap(\.zones.battlefield) }
+}
+
 struct CardInspector: View {
     let card: ZoneCard
+    @Environment(\.inspectorBattlefield) private var battlefield
     @State private var artMissing = false
+
+    /// Inspection is held with a finger, so the attachment list reads, never scrolls or taps.
+    private var shown: ZoneCard { card }
+
+    /// Auras, Equipment and anything else attached to the shown card, in table order.
+    private var attachments: [ZoneCard] {
+        battlefield.filter { $0.attachedToInstanceId == shown.instanceId && $0.instanceId != shown.instanceId }
+    }
+
+    private var attachedTo: ZoneCard? {
+        guard let parent = shown.attachedToInstanceId else { return nil }
+        return battlefield.first { $0.instanceId == parent }
+    }
 
     /// Always at least the card's type; then live state on the table.
     private var liveState: [String] {
+        let card = shown
         var details: [String] = []
         if card.card.isToken == true {
             details.append(card.card.copySourceArtworkName == nil ? "Token" : "Token copy")
@@ -12180,7 +12542,7 @@ struct CardInspector: View {
         if card.isAttacking == true { details.append("Attacking") }
         if let blocking = card.blocking, !blocking.isEmpty { details.append(blocking.count == 1 ? "Blocking" : "Blocking \(blocking.count)") }
         if let damage = card.damage, damage > 0 { details.append("\(damage) damage") }
-        if card.attachedToInstanceId != nil { details.append("Attached") }
+        if card.attachedToInstanceId != nil { details.append(attachedTo.map { "Attached to \($0.card.name)" } ?? "Attached") }
         if card.isPhasedOut { details.append("Phased out") }
         details += card.counterBadges.map { "\($0.label) ×\($0.count)" }
         details += card.visibleXmageIcons.compactMap { icon in
@@ -12191,18 +12553,23 @@ struct CardInspector: View {
     }
 
     private var showsRules: Bool {
-        artMissing || card.card.isToken == true || !NativeCardArtworkPolicy.permitsLookup(card: card)
+        artMissing || shown.card.isToken == true || !NativeCardArtworkPolicy.permitsLookup(card: shown)
     }
 
     var body: some View {
         GeometryReader { proxy in
+            let card = shown
             let availableHeight = max(proxy.size.height - 18, 1)
             let availableWidth = max(proxy.size.width - 18, 1)
             let rules = card.card.oracleText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let rulesVisible = showsRules && !rules.isEmpty
             let state = liveState
+            let attached = attachments
+            let reminder = CardRulesReminder.text(for: card)
             let horizontal = availableWidth > availableHeight
-            let footerHeight: CGFloat = rulesVisible ? min(200, availableHeight * 0.38) : (state.isEmpty ? 0 : 64)
+            let footerHeight: CGFloat = !attached.isEmpty || reminder != nil
+                ? min(320, availableHeight * 0.48)
+                : rulesVisible ? min(200, availableHeight * 0.38) : (state.isEmpty ? 0 : 64)
             let spacing: CGFloat = footerHeight > 0 ? 8 : 0
             let cardHeight = horizontal ? min(availableHeight, availableWidth * 0.55 * BattlefieldLayoutMetrics.magicCardHeightToWidth) : max(1, min(availableHeight - footerHeight - spacing, availableWidth * BattlefieldLayoutMetrics.magicCardHeightToWidth))
             let cardWidth = cardHeight / BattlefieldLayoutMetrics.magicCardHeightToWidth
@@ -12213,24 +12580,39 @@ struct CardInspector: View {
                          width: cardWidth, height: cardHeight,
                          ignoreTappedRotation: true, imageVariant: .inspection)
                     .modifier(InspectionFoil(size: CGSize(width: cardWidth, height: cardHeight)))
+                    .id(card.instanceId)
                     .frame(width: horizontal ? cardWidth : availableWidth)
-                if footerHeight > 0 || (horizontal && (rulesVisible || !state.isEmpty)) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        if !state.isEmpty {
-                            InspectorStateChips(items: state)
+                if footerHeight > 0 || (horizontal && (rulesVisible || !state.isEmpty || !attached.isEmpty)) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 8) {
+                            if !state.isEmpty {
+                                InspectorStateChips(items: state)
+                            }
+                            if rulesVisible {
+                                GameRulesText(source: rules, cardName: card.card.name,
+                                              isHidden: !NativeCardArtworkPolicy.permitsLookup(card: card))
+                                    .font(.body).lineSpacing(3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            if let reminder {
+                                Label(reminder, systemImage: "info.circle")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(MagicPalette.parchment.opacity(0.82))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("inspector.rulesReminder")
+                            }
+                            if !attached.isEmpty {
+                                InspectorAttachmentList(cards: attached)
+                                    // A thumbnail's missing art must not read as the main card's.
+                                    .transformPreference(CardArtPlaceholderShownKey.self) { $0 = false }
+                            }
                         }
-                        if rulesVisible {
-                            GameRulesText(source: rules, cardName: card.card.name,
-                                          isHidden: !NativeCardArtworkPolicy.permitsLookup(card: card))
-                                .font(.body).lineSpacing(3)
-                                .minimumScaleFactor(0.5)
-                                .frame(maxHeight: .infinity, alignment: .topLeading)
-                        }
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
+                    .scrollBounceBehavior(.basedOnSize)
                     .frame(maxWidth: .infinity, maxHeight: horizontal ? availableHeight : footerHeight, alignment: .topLeading)
                     .padding(.horizontal, 4)
                     .foregroundStyle(MagicPalette.parchment)
-                    .clipped()
                 }
             }
             .frame(width: availableWidth, height: availableHeight, alignment: .top)
@@ -12239,6 +12621,68 @@ struct CardInspector: View {
         .onPreferenceChange(CardArtPlaceholderShownKey.self) { artMissing = $0 }
         .background(.black.opacity(0.88), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(.cyan.opacity(0.35)))
+    }
+}
+
+/// What is attached to the inspected card: each Aura or Equipment with its rules text.
+private struct InspectorAttachmentList: View {
+    let cards: [ZoneCard]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(cards.count == 1 ? "ATTACHED" : "ATTACHED · \(cards.count)")
+                .font(.caption.weight(.black)).tracking(1.2)
+                .foregroundStyle(MagicPalette.antiqueGold)
+            ForEach(cards.prefix(4)) { attachment in
+                HStack(alignment: .top, spacing: 10) {
+                    CardTile(card: attachment, selected: false, zoneName: "Inspector attachment",
+                             width: 40, height: 40 * BattlefieldLayoutMetrics.magicCardHeightToWidth,
+                             ignoreTappedRotation: true)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(attachment.card.name)
+                            .font(.subheadline.weight(.heavy))
+                            .foregroundStyle(.white)
+                        if !attachment.card.typeLine.isEmpty {
+                            Text(attachment.card.typeLine)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(MagicPalette.parchment.opacity(0.7))
+                        }
+                        if let text = attachment.card.oracleText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+                            GameRulesText(source: text, cardName: attachment.card.name,
+                                          isHidden: !NativeCardArtworkPolicy.permitsLookup(card: attachment))
+                                .font(.footnote).lineSpacing(1)
+                                .foregroundStyle(MagicPalette.parchment)
+                                .lineLimit(4)
+                                .minimumScaleFactor(0.8)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(7)
+                .background(MagicPalette.iron.opacity(0.85), in: RoundedRectangle(cornerRadius: 9))
+                .overlay(RoundedRectangle(cornerRadius: 9).stroke(MagicPalette.antiqueGold.opacity(0.35), lineWidth: 1))
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("inspector.attachment.\(attachment.instanceId)")
+            }
+            if cards.count > 4 {
+                Text("+\(cards.count - 4) more attached")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(MagicPalette.parchment.opacity(0.75))
+            }
+        }
+    }
+}
+
+/// Short notes for rules players often read differently than the engine applies them.
+enum CardRulesReminder {
+    static func text(for card: ZoneCard) -> String? {
+        let rules = (card.card.oracleText ?? "").lowercased()
+        if rules.contains("triggers an additional time") {
+            return String(localized: "Only triggered abilities (“when”, “whenever”, “at”) happen again. Effects that say “instead”, like Chatterfang’s extra Squirrels, are not triggers and are not doubled.")
+        }
+        return nil
     }
 }
 
@@ -12440,7 +12884,7 @@ struct Panel<Content: View>: View {
 struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .pressSound(isPressed: configuration.isPressed)
+            .pressSound(.uiConfirm, isPressed: configuration.isPressed)
             .font(.callout.weight(.black))
             .foregroundStyle(.white)
             .padding(.horizontal, 15)
@@ -12454,7 +12898,6 @@ struct PrimaryButtonStyle: ButtonStyle {
 struct SecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .pressSound(isPressed: configuration.isPressed)
             .font(.callout.weight(.black))
             .foregroundStyle(.white)
             .padding(.horizontal, 15)
@@ -12470,20 +12913,10 @@ struct CompactActionButtonStyle: ButtonStyle {
     var isPrimary = false
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .pressSound(isPressed: configuration.isPressed)
-            .font(.system(size: isPrimary ? 15 : 13, weight: .black, design: .rounded))
-            .foregroundStyle(.white)
-            .lineLimit(1)
-            .minimumScaleFactor(0.7)
-            .padding(.horizontal, isPrimary ? 15 : 12)
-            .padding(.vertical, isPrimary ? 10 : 8)
-            .frame(minWidth: isPrimary ? 112 : 94, minHeight: 44, alignment: .center)
-            .background(backgroundColor(isPressed: configuration.isPressed), in: Capsule())
-            .opacity(configuration.isPressed ? 0.82 : 1)
+        CompactActionFace(label: configuration.label, pressed: configuration.isPressed, style: self)
     }
 
-    private func backgroundColor(isPressed: Bool) -> Color {
+    fileprivate func backgroundColor(isPressed: Bool) -> Color {
         if isDanger {
             return isPressed ? MagicPalette.oxblood.opacity(0.66) : MagicPalette.oxblood.opacity(0.84)
         }
@@ -12494,12 +12927,33 @@ struct CompactActionButtonStyle: ButtonStyle {
     }
 }
 
+/// A view, so a disabled button reads as disabled (dimmed, desaturated) wherever it is used.
+private struct CompactActionFace<Label: View>: View {
+    let label: Label
+    let pressed: Bool
+    let style: CompactActionButtonStyle
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        label
+            .font(.system(size: style.isPrimary ? 15 : 13, weight: .black, design: .rounded))
+            .foregroundStyle(.white.opacity(isEnabled ? 1 : 0.55))
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .padding(.horizontal, style.isPrimary ? 15 : 12)
+            .padding(.vertical, style.isPrimary ? 10 : 8)
+            .frame(minWidth: style.isPrimary ? 112 : 94, minHeight: 44, alignment: .center)
+            .background(style.backgroundColor(isPressed: pressed), in: Capsule())
+            .saturation(isEnabled ? 1 : 0.1)
+            .opacity(pressed ? 0.82 : isEnabled ? 1 : 0.5)
+    }
+}
+
 struct IconButtonStyle: ButtonStyle {
     var small = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .pressSound(isPressed: configuration.isPressed)
             .font(.system(size: small ? 12 : 16, weight: .black))
             .foregroundStyle(.white)
             .frame(width: small ? 28 : 42, height: small ? 28 : 42)

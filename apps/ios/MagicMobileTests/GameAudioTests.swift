@@ -8,22 +8,31 @@ final class GameAudioTests: XCTestCase {
         Bundle.main.url(forResource: name, withExtension: "caf") ?? Bundle.main.url(forResource: name, withExtension: "m4a")
     }
 
-    /// Every cue (and each numbered variant) ships in the app and decodes.
+    /// Every cue (and each numbered variant) and every playlist track ships in the app and decodes.
     func testEverySoundAndTrackIsBundledAndPlayable() throws {
-        var names = GameSound.allCases.flatMap { sound in
+        let names = GameSound.allCases.flatMap { sound in
             sound.variants > 1 ? (1...sound.variants).map { "\(sound.rawValue)-\($0)" } : [sound.rawValue]
         }
-        names += [GameMusic.menu.rawValue, GameMusic.game.rawValue]
         for name in names {
             let file = try XCTUnwrap(url(name), "missing bundled audio \(name)")
             let player = try AVAudioPlayer(contentsOf: file)
-            XCTAssertGreaterThan(player.duration, 0.02, name)
-            XCTAssertLessThan(player.duration, name.hasPrefix("music-") ? 70 : 7, name)
+            XCTAssertGreaterThan(player.duration, 0.05, name)
+            XCTAssertLessThan(player.duration, ["victory", "defeat"].contains(name) ? 10 : 3, name)
         }
-        for track in [GameMusic.menu, .game] {
-            let player = try AVAudioPlayer(contentsOf: try XCTUnwrap(url(track.rawValue)))
-            XCTAssertEqual(player.duration, 64, accuracy: 0.5, "music loops are 64 seconds")
+        for scene in GameMusic.allCases {
+            XCTAssertEqual(scene.tracks.count, 4, "\(scene) playlist")
+            for track in scene.tracks {
+                let player = try AVAudioPlayer(contentsOf: try XCTUnwrap(url(track.file), "missing \(track.file)"))
+                XCTAssertGreaterThan(player.duration, 120, "\(track.title) plays whole")
+            }
         }
+    }
+
+    func testEverySoundHasAGroupAndAName() {
+        for category in GameSoundCategory.allCases {
+            XCTAssertFalse(GameSound.sounds(in: category).isEmpty, "\(category) is empty")
+        }
+        XCTAssertEqual(Set(GameSound.allCases.map(\.title)).count, GameSound.allCases.count, "Sound Lab names are distinct")
     }
 
     private func fx(_ event: BoardFXEvent, delay: TimeInterval = 0.1) -> ScheduledBoardFX {
@@ -36,6 +45,7 @@ final class GameAudioTests: XCTestCase {
             fx(.spellCast(stackID: "s1", name: "Bolt", controllerID: viewer, tint: .red, weight: .spell)),
             fx(.spellCast(stackID: "s2", name: "Ultimatum", controllerID: viewer, tint: .blue, weight: .big)),
             fx(.spellCast(stackID: "s3", name: "Trigger", controllerID: viewer, tint: .green, weight: .ability)),
+            fx(.spellCast(stackID: "s4", name: "Their trigger", controllerID: "them", tint: .green, weight: .ability)),
             fx(.enteredBattlefield(cardID: "land", playerID: viewer, from: .hand, tint: .green, entrance: .plain)),
             fx(.enteredBattlefield(cardID: "token", playerID: viewer, from: nil, tint: .green, entrance: .plain)),
             fx(.enteredBattlefield(cardID: "bear", playerID: viewer, from: .stack, tint: .green, entrance: .plain)),
@@ -73,7 +83,7 @@ final class GameAudioTests: XCTestCase {
         XCTAssertLessThan(other[0].volume, 1)
     }
 
-    func testDrawsTapsAndResolutionsComeFromSnapshotChanges() throws {
+    func testOnlyYourDrawsComeFromSnapshotChanges() throws {
         func sig(game: String = "g", hand: Int, tapped: Int, stack: Int) throws -> GameSoundSignature {
             let lands = (0..<3).map { i -> [String: Any] in
                 ["instanceId": "land\(i)", "tapped": i < tapped, "card": ["name": "Forest", "typeLine": "Basic Land — Forest"]]
@@ -92,8 +102,9 @@ final class GameAudioTests: XCTestCase {
         let start = try sig(hand: 7, tapped: 0, stack: 1)
         XCTAssertEqual(GameSoundSignature.cues(from: start, to: try sig(hand: 8, tapped: 0, stack: 1)), [.cardDraw])
         XCTAssertEqual(GameSoundSignature.cues(from: try sig(hand: 0, tapped: 0, stack: 1), to: start),
-                       [.cardDraw, .cardDraw, .cardDraw], "an opening hand is at most three draws")
-        XCTAssertEqual(GameSoundSignature.cues(from: start, to: try sig(hand: 7, tapped: 2, stack: 0)), [.manaTap, .stackResolve])
+                       [.cardDraw, .cardDraw], "an opening hand is at most two draws")
+        XCTAssertEqual(GameSoundSignature.cues(from: start, to: try sig(hand: 7, tapped: 2, stack: 0)), [],
+                       "tapping lands and resolving the stack stay quiet")
         XCTAssertEqual(GameSoundSignature.cues(from: start, to: try sig(game: "other", hand: 9, tapped: 3, stack: 0)), [],
                        "a different game is a cut, not a transition")
     }

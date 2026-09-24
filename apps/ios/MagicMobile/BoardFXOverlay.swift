@@ -253,7 +253,9 @@ struct BoardFXOverlay: View {
         case let .lifeChanged(playerID, delta):
             let point = anchors.playerPoint(playerID)
             let color = delta < 0 ? Color(red: 1, green: 0.3, blue: 0.26) : Color(red: 0.45, green: 1, blue: 0.55)
-            BoardFXPainter.number(delta < 0 ? "\(delta)" : "+\(delta)", at: point, color: color, size: 40, progress: p, motion: motion, in: &context)
+            // Bigger swings read bigger.
+            let size = min(64, 34 + CGFloat(abs(delta)) * 2.5)
+            BoardFXPainter.number(delta < 0 ? "\(delta)" : "+\(delta)", at: point, color: color, size: size, progress: p, motion: motion, in: &context)
         }
     }
 }
@@ -595,14 +597,32 @@ enum BoardFXPainter {
 /// Brief horizontal shake for hits on the local player. Integer values rest at zero.
 struct BoardImpactShake: GeometryEffect {
     var animatableData: CGFloat
+    /// Points of sideways travel; big hits also jolt the board down a little.
+    var amplitude: CGFloat = 6
 
     func effectValue(size: CGSize) -> ProjectionTransform {
-        let offset = sin(animatableData * .pi * 6) * 6 * (1 - animatableData.truncatingRemainder(dividingBy: 1))
-        return ProjectionTransform(CGAffineTransform(translationX: offset, y: 0))
+        let decay = 1 - animatableData.truncatingRemainder(dividingBy: 1)
+        let offset = sin(animatableData * .pi * 6) * amplitude * decay
+        let jolt = amplitude > 8 ? abs(sin(animatableData * .pi * 4)) * amplitude * 0.35 * decay : 0
+        return ProjectionTransform(CGAffineTransform(translationX: offset, y: jolt))
     }
 }
 
-/// Short CC0 impact sounds (Kenney Impact Sounds, see Resources/BoardFX/KENNEY_LICENSE.txt).
+/// A red edge that flares when you take a big hit.
+struct BoardHitVignette: View {
+    let strength: Double
+
+    var body: some View {
+        RadialGradient(colors: [.clear, .clear, Color(red: 0.85, green: 0.05, blue: 0.02).opacity(0.55)],
+                       center: .center, startRadius: 0, endRadius: 520)
+            .opacity(strength)
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Board events to recorded cues (Resources/Audio, credited in CREDITS.txt and the Sound Lab).
 /// Ambient session: respects the silent switch and mixes with the player's music.
 @MainActor
 enum BoardFXSound {
@@ -635,14 +655,18 @@ enum BoardFXSound {
         var cues: [Cue] = []
         for fx in scheduled {
             switch fx.event {
-            case let .spellCast(_, _, _, tint, weight):
+            case let .spellCast(_, _, controllerID, tint, weight):
+                // Opponents' spells sit a little further back in the mix.
+                let level: Float = controllerID == viewerID ? 1 : 0.75
                 switch weight {
-                case .ability: cues.append(Cue(sound: .ability, at: fx.delay))
-                case .commander: cues.append(Cue(sound: .commanderCast, at: fx.delay))
+                case .ability:
+                    // Only your own abilities chime; a pod's triggers would otherwise chatter.
+                    if controllerID == viewerID { cues.append(Cue(sound: .ability, at: fx.delay)) }
+                case .commander: cues.append(Cue(sound: .commanderCast, at: fx.delay, volume: level))
                 case .big:
-                    cues.append(Cue(sound: GameSound.cast(for: tint), at: fx.delay))
-                    cues.append(Cue(sound: .spellBig, at: fx.delay + 0.05))
-                case .spell: cues.append(Cue(sound: GameSound.cast(for: tint), at: fx.delay))
+                    cues.append(Cue(sound: GameSound.cast(for: tint), at: fx.delay, volume: level))
+                    cues.append(Cue(sound: .spellBig, at: fx.delay + 0.05, volume: level))
+                case .spell: cues.append(Cue(sound: GameSound.cast(for: tint), at: fx.delay, volume: level))
                 }
             case .attackDeclared: cues.append(Cue(sound: .attack, at: fx.delay))
             case .blockDeclared: cues.append(Cue(sound: .block, at: fx.delay))
@@ -726,10 +750,19 @@ struct BoardEffectsPicker: View {
 
 /// Sound effects and music, each with a level. Changes apply immediately.
 struct GameAudioSettings: View {
-    @AppStorage(GameAudio.effectsKey) private var effects = true
-    @AppStorage(GameAudio.musicKey) private var music = true
-    @AppStorage(GameAudio.effectsVolumeKey) private var effectsVolume = 0.9
-    @AppStorage(GameAudio.musicVolumeKey) private var musicVolume = 0.6
+    @AppStorage(GameAudio.effectsKey, store: MagicMobilePreferences.current) private var effects = true
+    @AppStorage(GameAudio.musicKey, store: MagicMobilePreferences.current) private var music = true
+    @AppStorage(GameAudio.effectsVolumeKey, store: MagicMobilePreferences.current) private var effectsVolume = 0.9
+    @AppStorage(GameAudio.musicVolumeKey, store: MagicMobilePreferences.current) private var musicVolume = GameAudio.defaultMusicVolume
+    @State private var soundLabOpen = false
+
+    /// A level of zero reads as off, and switching music back on brings back a level you can hear.
+    private var musicOn: Binding<Bool> {
+        Binding(get: { music && musicVolume > 0 }, set: { on in
+            music = on
+            if on && musicVolume <= 0.02 { musicVolume = GameAudio.defaultMusicVolume }
+        })
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -739,15 +772,29 @@ struct GameAudioSettings: View {
                 Slider(value: $effectsVolume, in: 0...1) { Text("Effects volume") }
                     .accessibilityIdentifier("settings.effectsVolume")
             }
-            Toggle("Music", isOn: $music)
+            Toggle("Music", isOn: musicOn)
                 .accessibilityIdentifier("settings.music")
-            if music {
+            if musicOn.wrappedValue {
                 Slider(value: $musicVolume, in: 0...1) { Text("Music volume") }
                     .accessibilityIdentifier("settings.musicVolume")
             }
-            Text("Sounds follow your iPhone's Silent switch.")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.5))
+            HStack(spacing: 8) {
+                Text("Sounds follow your iPhone's Silent switch.")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.5))
+                Spacer(minLength: 4)
+                Button {
+                    soundLabOpen = true
+                } label: {
+                    Label("Sound Lab", systemImage: "waveform")
+                        .font(.caption.weight(.heavy))
+                        .padding(.horizontal, 10).frame(minHeight: 34)
+                        .background(Capsule().fill(.white.opacity(0.1)))
+                        .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("settings.soundLab")
+            }
         }
         .font(.caption.weight(.bold))
         .foregroundStyle(.white.opacity(0.85))
@@ -756,6 +803,7 @@ struct GameAudioSettings: View {
         .onChange(of: music) { _, _ in GameAudio.shared.settingsChanged() }
         .onChange(of: musicVolume) { _, _ in GameAudio.shared.settingsChanged() }
         .onChange(of: effectsVolume) { _, _ in GameAudio.shared.play(.uiTick) }
+        .sheet(isPresented: $soundLabOpen) { SoundLabView() }
     }
 }
 

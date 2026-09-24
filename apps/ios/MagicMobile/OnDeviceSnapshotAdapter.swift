@@ -48,18 +48,23 @@ enum OnDeviceSnapshotAdapter {
             }
             // Partners have independent tax and damage. Never combine them into one HUD value.
             let singleCommander = commanders.count == 1 ? commanders.first : nil
-            players.append(.object([
+            let counters: [String: J] = Dictionary((player["counters"]?.array ?? []).compactMap { counter -> (String, J)? in
+                guard let name = counter["name"]?.string, let count = counter["count"]?.integer else { return nil }
+                return (name, .integer(count))
+            }, uniquingKeysWith: { _, latest in latest })
+            var fields: [String: J] = [
                 "playerId": .string(id), "displayName": player["name"]!, "life": player["life"]!,
                 "poison": poison, "commanderTax": singleCommander?["commanderTax"] ?? .integer(0),
-                "counters": .object(Dictionary((player["counters"]?.array ?? []).compactMap { counter -> (String, J)? in
-                    guard let name = counter["name"]?.string, let count = counter["count"]?.integer else { return nil }
-                    return (name, .integer(count))
-                }, uniquingKeysWith: { _, latest in latest })),
+                "counters": .object(counters),
                 "monarch": player["monarch"] ?? .null, "initiative": player["initiative"] ?? .null,
                 "commanderTaxKnown": .bool(singleCommander?["commanderTax"]?.integer != nil),
                 "commanderDamage": singleCommander?["damageToPlayers"] ?? .null, "commanders": .array(commanders),
                 "manaPool": manaPool(player["manaPool"]), "zones": .object(zones)
-            ]))
+            ]
+            // Players XMage removed (conceded or lost in a pod), and which seats are AI.
+            fields["hasLeft"] = player["hasLeft"] ?? .bool(false)
+            fields["isHuman"] = player["isHuman"] ?? .null
+            players.append(.object(fields))
             var skips: [String: J] = [:]
             for key in ["passedTurn", "passedUntilEndOfTurn", "passedUntilNextMain", "passedUntilStackResolved", "passedAllTurns", "passedUntilEndStepBeforeMyTurn"] {
                 skips[key] = player[key] ?? .bool(false)

@@ -166,6 +166,21 @@ struct GameSnapshot: Decodable {
         return source == "xmage-ondevice" ? objects : Array(objects.reversed())
     }
 
+    /// The viewer conceded or was eliminated and the others play on: watch, never act.
+    var isSpectating: Bool { human?.isOut == true && !isCompleted }
+
+    /// An AI opponent holds priority and the game waits on its decision.
+    var thinkingPlayerID: String? {
+        guard !isCompleted, let id = priorityPlayerId, !isViewer(id), promptEnvelopeV2 == nil,
+              let player = players.first(where: { $0.playerId == id }), player.isHuman == false, !player.isOut else { return nil }
+        return id
+    }
+
+    /// Opponents still in the game.
+    var remainingOpponents: [PlayerGameState] {
+        players.filter { !isViewer($0.playerId) && !$0.isOut }
+    }
+
     var winnerDisplayNames: [String] {
         let winners = Set(winnerPlayerIds ?? [])
         return players.compactMap { player in
@@ -765,8 +780,13 @@ struct PlayerGameState: Decodable, Identifiable {
     var counters: [String: Int]? = nil
     var monarch: Bool? = nil
     var initiative: Bool? = nil
+    /// XMage removed this player from the game: they conceded or lost while others play on.
+    var hasLeft: Bool? = nil
+    /// False for the engine's AI seats.
+    var isHuman: Bool? = nil
 
     var hasKnownCommanderTax: Bool { commanderTaxKnown ?? true }
+    var isOut: Bool { hasLeft == true }
 
     var id: String { playerId }
 }
