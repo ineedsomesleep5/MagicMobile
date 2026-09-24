@@ -1,0 +1,380 @@
+{
+ "ability": {
+  "bytes": 13785,
+  "file": "ability.m4a",
+  "loudness_db": -23.0,
+  "peak_db": -10.7,
+  "seconds": 0.915
+ },
+ "attack": {
+  "bytes": 9062,
+  "file": "attack.m4a",
+  "loudness_db": -19.6,
+  "peak_db": -1.7,
+  "seconds": 0.5
+ },
+ "block": {
+  "bytes": 17446,
+  "file": "block.m4a",
+  "loudness_db": -19.0,
+  "peak_db": -5.7,
+  "seconds": 1.167
+ },
+ "card-draw-1": {
+  "bytes": 10847,
+  "file": "card-draw-1.m4a",
+  "loudness_db": -24.3,
+  "peak_db": -1.5,
+  "seconds": 0.597
+ },
+ "card-draw-2": {
+  "bytes": 10754,
+  "file": "card-draw-2.m4a",
+  "loudness_db": -24.1,
+  "peak_db": -1.4,
+  "seconds": 0.598
+ },
+ "card-draw-3": {
+  "bytes": 11544,
+  "file": "card-draw-3.m4a",
+  "loudness_db": -24.2,
+  "peak_db": -1.2,
+  "seconds": 0.671
+ },
+ "card-pickup": {
+  "bytes": 18172,
+  "file": "card-pickup.caf",
+  "loudness_db": -26.0,
+  "peak_db": -2.3,
+  "seconds": 0.16
+ },
+ "card-place": {
+  "bytes": 11561,
+  "file": "card-place.m4a",
+  "loudness_db": -21.3,
+  "peak_db": -2.4,
+  "seconds": 0.687
+ },
+ "card-play": {
+  "bytes": 12970,
+  "file": "card-play.m4a",
+  "loudness_db": -22.2,
+  "peak_db": -1.2,
+  "seconds": 0.809
+ },
+ "cast-black": {
+  "bytes": 33766,
+  "file": "cast-black.m4a",
+  "loudness_db": -19.0,
+  "peak_db": -1.0,
+  "seconds": 2.418
+ },
+ "cast-blue": {
+  "bytes": 33670,
+  "file": "cast-blue.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -9.0,
+  "seconds": 2.409
+ },
+ "cast-colorless": {
+  "bytes": 18761,
+  "file": "cast-colorless.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -7.1,
+  "seconds": 1.281
+ },
+ "cast-green": {
+  "bytes": 29610,
+  "file": "cast-green.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -3.5,
+  "seconds": 2.041
+ },
+ "cast-multi": {
+  "bytes": 34919,
+  "file": "cast-multi.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -8.6,
+  "seconds": 2.453
+ },
+ "cast-red": {
+  "bytes": 38614,
+  "file": "cast-red.m4a",
+  "loudness_db": -20.6,
+  "peak_db": -2.3,
+  "seconds": 2.252
+ },
+ "cast-white": {
+  "bytes": 31601,
+  "file": "cast-white.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -8.9,
+  "seconds": 2.399
+ },
+ "commander-cast": {
+  "bytes": 43611,
+  "file": "commander-cast.m4a",
+  "loudness_db": -18.2,
+  "peak_db": -1.3,
+  "seconds": 3.218
+ },
+ "counter": {
+  "bytes": 16446,
+  "file": "counter.caf",
+  "loudness_db": -25.2,
+  "peak_db": -9.5,
+  "seconds": 0.14
+ },
+ "creature-enter": {
+  "bytes": 11573,
+  "file": "creature-enter.m4a",
+  "loudness_db": -20.9,
+  "peak_db": -2.5,
+  "seconds": 0.687
+ },
+ "death": {
+  "bytes": 17398,
+  "file": "death.m4a",
+  "loudness_db": -19.0,
+  "peak_db": -4.8,
+  "seconds": 1.045
+ },
+ "defeat": {
+  "bytes": 79374,
+  "file": "defeat.m4a",
+  "loudness_db": -18.0,
+  "peak_db": -2.1,
+  "seconds": 6.469
+ },
+ "dice-land": {
+  "bytes": 12312,
+  "file": "dice-land.m4a",
+  "loudness_db": -19.3,
+  "peak_db": -2.7,
+  "seconds": 0.77
+ },
+ "dice-roll": {
+  "bytes": 24571,
+  "file": "dice-roll.m4a",
+  "loudness_db": -21.8,
+  "peak_db": -1.3,
+  "seconds": 1.682
+ },
+ "exile": {
+  "bytes": 33041,
+  "file": "exile.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -12.5,
+  "seconds": 2.149
+ },
+ "game-start": {
+  "bytes": 52662,
+  "file": "game-start.m4a",
+  "loudness_db": -16.0,
+  "peak_db": -2.5,
+  "seconds": 3.588
+ },
+ "hand-fan": {
+  "bytes": 12995,
+  "file": "hand-fan.m4a",
+  "loudness_db": -25.0,
+  "peak_db": -3.6,
+  "seconds": 0.72
+ },
+ "land-drop": {
+  "bytes": 14312,
+  "file": "land-drop.m4a",
+  "loudness_db": -23.3,
+  "peak_db": -1.2,
+  "seconds": 0.883
+ },
+ "life-gain": {
+  "bytes": 18886,
+  "file": "life-gain.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -11.7,
+  "seconds": 2.213
+ },
+ "life-loss": {
+  "bytes": 10629,
+  "file": "life-loss.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -8.0,
+  "seconds": 1.252
+ },
+ "mana-tap-1": {
+  "bytes": 7259,
+  "file": "mana-tap-1.m4a",
+  "loudness_db": -25.0,
+  "peak_db": -11.3,
+  "seconds": 0.694
+ },
+ "mana-tap-2": {
+  "bytes": 7601,
+  "file": "mana-tap-2.m4a",
+  "loudness_db": -25.0,
+  "peak_db": -10.3,
+  "seconds": 0.687
+ },
+ "menu-play": {
+  "bytes": 35754,
+  "file": "menu-play.m4a",
+  "loudness_db": -18.0,
+  "peak_db": -5.6,
+  "seconds": 3.013
+ },
+ "music-game": {
+  "bytes": 989862,
+  "file": "music-game.m4a",
+  "loudness_db": -27.0,
+  "peak_db": -10.5,
+  "seconds": 64.0
+ },
+ "music-menu": {
+  "bytes": 1016084,
+  "file": "music-menu.m4a",
+  "loudness_db": -24.0,
+  "peak_db": -6.2,
+  "seconds": 64.0
+ },
+ "page-flip": {
+  "bytes": 13030,
+  "file": "page-flip.m4a",
+  "loudness_db": -26.9,
+  "peak_db": -1.9,
+  "seconds": 0.674
+ },
+ "player-hit": {
+  "bytes": 9988,
+  "file": "player-hit.m4a",
+  "loudness_db": -19.5,
+  "peak_db": -1.0,
+  "seconds": 0.7
+ },
+ "response-alert": {
+  "bytes": 10561,
+  "file": "response-alert.m4a",
+  "loudness_db": -24.0,
+  "peak_db": -16.3,
+  "seconds": 1.264
+ },
+ "shuffle": {
+  "bytes": 23449,
+  "file": "shuffle.m4a",
+  "loudness_db": -22.8,
+  "peak_db": -1.2,
+  "seconds": 1.7
+ },
+ "spell-big": {
+  "bytes": 50337,
+  "file": "spell-big.m4a",
+  "loudness_db": -17.5,
+  "peak_db": -2.7,
+  "seconds": 3.479
+ },
+ "stack-resolve": {
+  "bytes": 10049,
+  "file": "stack-resolve.m4a",
+  "loudness_db": -26.0,
+  "peak_db": -12.2,
+  "seconds": 0.676
+ },
+ "strike": {
+  "bytes": 9734,
+  "file": "strike.m4a",
+  "loudness_db": -18.3,
+  "peak_db": -2.2,
+  "seconds": 0.483
+ },
+ "token-create": {
+  "bytes": 11701,
+  "file": "token-create.m4a",
+  "loudness_db": -22.0,
+  "peak_db": -9.5,
+  "seconds": 0.8
+ },
+ "turn-opponent": {
+  "bytes": 17923,
+  "file": "turn-opponent.m4a",
+  "loudness_db": -22.0,
+  "peak_db": -10.1,
+  "seconds": 3.158
+ },
+ "turn-you": {
+  "bytes": 34983,
+  "file": "turn-you.m4a",
+  "loudness_db": -18.0,
+  "peak_db": -6.0,
+  "seconds": 3.755
+ },
+ "ui-back": {
+  "bytes": 12034,
+  "file": "ui-back.caf",
+  "loudness_db": -26.3,
+  "peak_db": -9.7,
+  "seconds": 0.09
+ },
+ "ui-close": {
+  "bytes": 49956,
+  "file": "ui-close.caf",
+  "loudness_db": -27.1,
+  "peak_db": -16.9,
+  "seconds": 0.26
+ },
+ "ui-confirm": {
+  "bytes": 9040,
+  "file": "ui-confirm.m4a",
+  "loudness_db": -22.0,
+  "peak_db": -9.4,
+  "seconds": 0.566
+ },
+ "ui-error": {
+  "bytes": 26762,
+  "file": "ui-error.caf",
+  "loudness_db": -24.0,
+  "peak_db": -6.5,
+  "seconds": 0.257
+ },
+ "ui-open": {
+  "bytes": 53412,
+  "file": "ui-open.caf",
+  "loudness_db": -26.8,
+  "peak_db": -16.7,
+  "seconds": 0.28
+ },
+ "ui-tap": {
+  "bytes": 7656,
+  "file": "ui-tap.caf",
+  "loudness_db": -26.3,
+  "peak_db": -11.3,
+  "seconds": 0.04
+ },
+ "ui-tick": {
+  "bytes": 8950,
+  "file": "ui-tick.caf",
+  "loudness_db": -29.5,
+  "peak_db": -14.7,
+  "seconds": 0.055
+ },
+ "ui-toggle": {
+  "bytes": 14868,
+  "file": "ui-toggle.caf",
+  "loudness_db": -26.1,
+  "peak_db": -13.2,
+  "seconds": 0.122
+ },
+ "versus": {
+  "bytes": 48484,
+  "file": "versus.m4a",
+  "loudness_db": -16.9,
+  "peak_db": -1.6,
+  "seconds": 3.546
+ },
+ "victory": {
+  "bytes": 94216,
+  "file": "victory.m4a",
+  "loudness_db": -14.7,
+  "peak_db": -2.1,
+  "seconds": 6.096
+ }
+}

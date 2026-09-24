@@ -394,8 +394,10 @@ struct ArenaBattlefieldCard: View {
 
     private var isLegendary: Bool { card.card.typeLine.localizedCaseInsensitiveContains("legendary") }
 
+    /// Stats and summoning sickness need the footer. Tapped state is a badge over the art,
+    /// so a tapped land keeps its art instead of trading it for an empty black strip.
     var showsFooter: Bool {
-        card.showsPowerToughness || card.tapped == true || (card.isCreature && card.summoningSickness == true)
+        card.showsPowerToughness || (card.isCreature && card.summoningSickness == true)
     }
 
     var accessibilityDescription: String {
@@ -408,7 +410,7 @@ struct ArenaBattlefieldCard: View {
         VStack(spacing: 0) {
             Text(card.card.name)
                 .font(.system(size: max(8, width * 0.115), weight: .semibold, design: .serif))
-                .lineLimit(1).minimumScaleFactor(0.8)
+                .lineLimit(1).minimumScaleFactor(0.62)
                 .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 3)
                 .frame(height: 15)
             ZStack(alignment: .top) {
@@ -420,9 +422,7 @@ struct ArenaBattlefieldCard: View {
             .frame(width: width, height: max(12, height - 15 - (showsFooter ? 20 : 0)), alignment: .top).clipped()
             if showsFooter {
                 HStack(spacing: 2) {
-                    if card.tapped == true {
-                        Image(systemName: "arrow.turn.down.right").accessibilityLabel("Tapped")
-                    } else if card.isCreature && card.summoningSickness == true {
+                    if card.isCreature && card.summoningSickness == true {
                         Image(systemName: "hourglass").foregroundStyle(MagicPalette.warningAmber)
                     }
                     Spacer(minLength: 0)
@@ -447,6 +447,19 @@ struct ArenaBattlefieldCard: View {
             if !card.counterBadges.isEmpty {
                 CardCounterBadgeStrip(badges: Array(card.counterBadges.prefix(2)), cardWidth: width)
                     .padding(.top, 16).allowsHitTesting(false)
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if card.tapped == true {
+                Image(systemName: "arrow.turn.down.right")
+                    .font(.system(size: max(8, width * 0.12), weight: .black))
+                    .foregroundStyle(MagicPalette.parchment)
+                    .frame(width: max(15, width * 0.24), height: max(15, width * 0.24))
+                    .background(.black.opacity(0.78), in: Circle())
+                    .overlay(Circle().stroke(MagicPalette.antiqueGold.opacity(0.7), lineWidth: 1))
+                    .padding(.trailing, 3).padding(.bottom, showsFooter ? 23 : 3)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
         }
         .overlay(RoundedRectangle(cornerRadius: 7).stroke(accent, lineWidth: legal || targetable || selected ? 2 : 1))

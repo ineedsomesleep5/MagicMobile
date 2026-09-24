@@ -33,6 +33,7 @@ struct DeckStudioButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.body.weight(.semibold))
+            .pressSound(isPressed: configuration.isPressed)
             .padding(.horizontal, 16).padding(.vertical, 12).frame(minHeight: DeckStudioMetrics.controlHeight)
             .foregroundStyle(primary ? .white : DeckStudioPalette.ink)
             .background(primary ? DeckStudioPalette.ink : DeckStudioPalette.surfaceElevated,

@@ -195,7 +195,8 @@ final class ArenaBoardPresentationTests: XCTestCase {
         for type in ["Land", "Artifact", "Enchantment", "Creature", "Planeswalker", "Battle"] {
             XCTAssertFalse(try compactCard(type: type).showsFooter, type)
         }
-        XCTAssertTrue(try compactCard(type: "Land", fields: ["tapped": true]).showsFooter)
+        // Tapped is a badge over the art; the land keeps its art instead of a black footer.
+        XCTAssertFalse(try compactCard(type: "Land", fields: ["tapped": true]).showsFooter)
         XCTAssertTrue(try compactCard(type: "Creature", fields: ["summoningSickness": true]).showsFooter)
         XCTAssertFalse(try compactCard(type: "Artifact", fields: ["summoningSickness": true]).showsFooter)
         XCTAssertTrue(try compactCard(type: "Creature", fields: ["power": 0, "toughness": 0]).showsFooter)

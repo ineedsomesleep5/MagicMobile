@@ -1,0 +1,10 @@
+MagicMobile sound effects and music
+
+Recorded foley (card handling, dice, interface clicks, glass, metal, sword, page, impacts)
+comes from these Kenney.nl packs, released under Creative Commons Zero (CC0 1.0,
+public domain, http://creativecommons.org/publicdomain/zero/1.0/). Credit is not
+required; thank you, Kenney (www.kenney.nl):
+  Casino Audio, Interface Sounds, RPG Audio, Impact Sounds.
+
+All spell, bell, fanfare, stinger and music material is original synthesis made for
+MagicMobile (scripts/audio/build_game_audio.py), layered with the foley above.

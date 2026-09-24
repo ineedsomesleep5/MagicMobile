@@ -124,6 +124,8 @@ struct MagicMobileApp: App {
                 #if DEBUG
                 if ProcessInfo.processInfo.environment["MAGICMOBILE_MULTIPLAYER_D20_FIXTURE"] == "1" {
                     MultiplayerD20FixtureScreen()
+                } else if ProcessInfo.processInfo.environment["MAGICMOBILE_VERSUS_FIXTURE"] == "1" {
+                    VersusFixtureScreen()
                 } else {
                     productionRoot
                 }
@@ -208,6 +210,24 @@ private struct MultiplayerD20FixtureScreen: View {
         .onAppear {
             MagicMobileOrientationController.shared.setPortraitModeEnabled(
                 ProcessInfo.processInfo.environment["MAGICMOBILE_D20_LANDSCAPE_FIXTURE"] != "1")
+        }
+    }
+}
+#endif
+
+#if DEBUG
+/// Replays the versus intro with included precons for visual checks.
+private struct VersusFixtureScreen: View {
+    @State private var run = 0
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VersusIntroOverlay(you: .init(id: "you", name: "Caleb", commander: "Emmara, Soul of the Accord"),
+                               opponents: [.init(id: "ai", name: "Grave Danger", commander: "Gisa and Geralf")]) {
+                run += 1
+            }
+            .id(run)
         }
     }
 }

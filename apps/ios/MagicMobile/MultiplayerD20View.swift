@@ -340,6 +340,7 @@ struct MultiplayerD20View: View {
             edgeHitTurn = nil
             reboundTurn = nil
             spinTurns += 1
+            GameAudio.shared.play(.diceRoll)
             // Physics decides the path, never the result. Wait for a measurable
             // reverse trip from the wall, with a bounded recovery if rendering pauses.
             for _ in 0..<48 where reboundTurn != spinTurns {
@@ -356,6 +357,7 @@ struct MultiplayerD20View: View {
             }
             withAnimation(.spring(response: 0.4, dampingFraction: 0.58)) { landed = true }
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            GameAudio.shared.play(.diceLand)
             // Give each player long enough to read the result before the die
             // flies into their square, including when VoiceOver is not active.
             try? await Task.sleep(for: .milliseconds(1900))
