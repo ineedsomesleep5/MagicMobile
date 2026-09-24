@@ -354,8 +354,8 @@ final class BoardPolishUITests: XCTestCase {
             captureImage(name: currentCapture + "-visible")
             let cue = app.staticTexts["Declare blockers"].firstMatch
             XCTAssertTrue(cue.exists || cue.waitForExistence(timeout: 6))
-            XCTAssertGreaterThan(cue.frame.midY, app.frame.height * 0.25)
-            XCTAssertLessThan(cue.frame.midY, app.frame.height * 0.75)
+            // A compact pill under the top HUD keeps the middle of the board clear for combat effects.
+            XCTAssertLessThan(cue.frame.midY, app.frame.height * 0.35)
             XCTAssertTrue(cue.waitForNonExistence(timeout: 5))
             XCTAssertTrue(app.buttons["board.hand.expand"].isHittable)
         case "life-change":

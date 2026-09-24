@@ -33,19 +33,24 @@ enum GameBoardPreviewFixtures {
     }
 
     #if DEBUG
-    static let boardFXStepCount = 7
+    static let boardFXStepCount = 10
 
     /// Scripted board FX walkthrough for `MAGICMOBILE_DESIGN_PREVIEW=board-fx`.
-    /// 0 base, 1 cast Swords, 2 Swords resolves (exile Angel, AI gains 4),
-    /// 3 Sol Ring enters with a counter on Isamaru, 4 Isamaru attacks,
-    /// 5 combat damage (AI -2, you -3, Isamaru marked), 6 Isamaru dies.
+    /// 0 base, 1 cast Swords, 2 Swords resolves (exile Angel, AI life -5),
+    /// 3 Sol Ring enters straight from hand (showcase) with a counter on Isamaru,
+    /// 4 AI casts its commander Kozilek, 5 Kozilek enters (commander entrance),
+    /// 6 Isamaru attacks, 7 Kozilek blocks, 8 combat damage (strike), 9 Isamaru dies.
     static func boardFXStep(_ step: Int) -> GameSnapshot {
         var root = try! JSONSerialization.jsonObject(with: Data(json(for: .normalBattlefield).utf8)) as! [String: Any]
         root["id"] = "design-preview-board-fx"
         root["bridgeRevision"] = 1_000 + step
         root["legalActions"] = []
+        let steps = [6: "declare-attackers", 7: "declare-blockers", 8: "combat-damage", 9: "end-combat"]
+        root["phase"] = step >= 6 ? "combat" : "precombat-main"
+        root["step"] = steps[step] ?? "precombat-main"
         var players = root["players"] as! [[String: Any]]
-        let costs = ["Swords to Plowshares": "{W}", "Sol Ring": "{1}", "Isamaru, Hound of Konda": "{W}", "Serra Angel": "{3}{W}{W}"]
+        let costs = ["Swords to Plowshares": "{W}", "Sol Ring": "{1}", "Isamaru, Hound of Konda": "{W}", "Serra Angel": "{3}{W}{W}",
+                     "Kozilek, Butcher of Truth": "{10}"]
         func zone(_ player: Int, _ name: String) -> [[String: Any]] { (players[player]["zones"] as! [String: Any])[name] as! [[String: Any]] }
         func setZone(_ player: Int, _ name: String, _ cards: [[String: Any]]) {
             var zones = players[player]["zones"] as! [String: Any]
@@ -70,6 +75,7 @@ enum GameBoardPreviewFixtures {
             setZone(player, "battlefield", zone(player, "battlefield").map { var card = $0; if card["instanceId"] as? String == id { edit(&card) }; return card })
         }
         let human = 0, ai = 1
+        let aiID = players[ai]["playerId"] as! String
         for zoneName in ["hand", "battlefield", "graveyard", "exile", "command"] {
             setZone(human, zoneName, zone(human, zoneName)); setZone(ai, zoneName, zone(ai, zoneName))
         }
@@ -91,17 +97,39 @@ enum GameBoardPreviewFixtures {
             move("hand-sol-ring", from: (human, "hand"), to: (human, "battlefield"))
             editCard("human-commander", player: human) { $0["counters"] = ["+1/+1": 1]; $0["summoningSickness"] = false }
         }
-        if step >= 4 { editCard("human-commander", player: human) { $0["isAttacking"] = true; $0["tapped"] = true } }
-        if step >= 5 {
-            players[ai]["life"] = 33
-            players[human]["life"] = 34
-            editCard("human-commander", player: human) { $0["damage"] = 2 }
+        let kozilek: [String: Any] = [
+            "instanceId": "ai-kozilek", "tapped": false, "power": 12, "toughness": 12, "isCreaturePermanent": true,
+            "card": ["name": "Kozilek, Butcher of Truth", "typeLine": "Legendary Creature - Eldrazi", "manaCost": "{10}",
+                     "oracleText": "When you cast this spell, draw four cards. Annihilator 4"],
+        ]
+        if step >= 4 {
+            setZone(ai, "command", [])
+            if step == 4 {
+                stack = [["id": "stack-kozilek", "name": "Kozilek, Butcher of Truth", "sourceCard": kozilek,
+                          "controllerId": aiID, "sourceZone": "command", "objectType": "SPELL"]]
+            } else {
+                setZone(ai, "battlefield", zone(ai, "battlefield") + [kozilek])
+            }
         }
-        if step >= 6 { move("human-commander", from: (human, "battlefield"), to: (human, "graveyard")) }
+        if step >= 6 { editCard("human-commander", player: human) { $0["isAttacking"] = true; $0["tapped"] = true } }
+        if step >= 7 { editCard("ai-kozilek", player: ai) { $0["blocking"] = ["human-commander"] } }
+        if step >= 8 {
+            editCard("human-commander", player: human) { $0["damage"] = 12 }
+            editCard("ai-kozilek", player: ai) { $0["damage"] = 3 }
+            players[human]["life"] = 37
+        }
+        if step >= 9 { move("human-commander", from: (human, "battlefield"), to: (human, "graveyard")) }
+        var combat: [[String: Any]] = []
+        if (6...8).contains(step) {
+            let attacker = zone(human, "battlefield").first { $0["instanceId"] as? String == "human-commander" }!
+            let blockers = step >= 7 ? zone(ai, "battlefield").filter { $0["instanceId"] as? String == "ai-kozilek" } : []
+            combat = [["defenderId": aiID, "defenderName": "AI", "defenderKind": "player", "blocked": step >= 7,
+                       "attackers": [attacker], "blockers": blockers]]
+        }
         root["players"] = players
         root["xmage"] = [
             "schemaVersion": 1, "gameId": "design-preview-board-fx", "bridgeRevision": 1_000 + step, "xmageCycle": 1_000 + step,
-            "callbackCoverage": [], "stack": stack, "combat": [], "players": [], "exileZones": [], "revealed": [],
+            "callbackCoverage": [], "stack": stack, "combat": combat, "players": [], "exileZones": [], "revealed": [],
             "lookedAt": [], "companion": [], "playableObjects": [],
             "panels": ["stack": true, "command": true, "graveyard": true, "exile": true, "revealed": false, "lookedAt": false, "search": false],
         ] as [String: Any]
@@ -518,6 +546,10 @@ enum GameBoardPreviewFixtures {
         case .damageAssignmentPrompt:
             return #"""
             {"id":"preview-damage","method":"GAME_GET_MULTI_AMOUNT","messageId":5,"playerId":"human","responseKind":"multi_amount","message":"Assign 6 combat damage among blockers.","required":true,"minChoices":2,"maxChoices":2,"totalMin":6,"totalMax":6,"multiAmounts":[{"id":"blocker-a","label":"Silvercoat Lion","min":1,"max":5,"defaultValue":1},{"id":"blocker-b","label":"Memnite","min":1,"max":5,"defaultValue":1}],"responseCommand":{"type":"choose_multi_amount","promptId":"preview-damage","messageId":5}}
+            """#
+        case .modeChoice:
+            return #"""
+            {"id":"preview-modes","method":"GAME_CHOOSE_CHOICE","messageId":7,"playerId":"human","responseKind":"mode","message":"Choose mode (selected 0 of 3, min 1)\nBlack Market Connections [4cb]","required":true,"minChoices":1,"maxChoices":3,"modes":[{"id":"mode-1","label":"1. Create a Treasure token. You lose 1 life."},{"id":"mode-2","label":"2. Draw a card. You lose 2 life."},{"id":"mode-3","label":"3. Create a 3/2 colorless Shapeshifter creature token with changeling. You lose 3 life."}],"responseCommand":{"type":"choose_mode","promptId":"preview-modes","messageId":7}}
             """#
         case .unsupportedPromptFallback:
             return #"""

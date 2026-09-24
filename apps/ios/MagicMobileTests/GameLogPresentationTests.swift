@@ -281,4 +281,11 @@ final class GameLogPresentationTests: XCTestCase {
         XCTAssertEqual(GameRulesPresentation(source: "{this} attacks", cardName: "&lt;b&gt;Army&lt;/b&gt;").plainText,
                        "Army attacks")
     }
+
+    func testPromptTextDropsEngineObjectIDsOnly() {
+        XCTAssertEqual(PromptDisplayText.clean("Choose mode\nBlack Market Connections [4cb]"), "Choose mode\nBlack Market Connections")
+        XCTAssertEqual(PromptDisplayText.clean("Target Serra Angel [a1f] or Llanowar Elves [9e0]."), "Target Serra Angel or Llanowar Elves.")
+        XCTAssertEqual(PromptDisplayText.clean("Choose [add] or [Copy]"), "Choose [add] or [Copy]")
+        XCTAssertEqual(PromptDisplayText.clean("{T}, Pay 1 life"), "{T}, Pay 1 life")
+    }
 }
