@@ -31,6 +31,8 @@ enum GameBoardDesignPreviewState: String, CaseIterable, Identifiable {
     case phaseAnnouncement = "phase-announcement"
     case lifeChange = "life-change"
     case largeText = "large-text"
+    case stackTray = "stack-tray"
+    case victory = "victory"
 
     var id: String { rawValue }
 

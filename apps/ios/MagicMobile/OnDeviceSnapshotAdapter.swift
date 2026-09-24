@@ -331,14 +331,24 @@ enum OnDeviceSnapshotAdapter {
                     guard !actionRows.isEmpty, priority || (paying && actionType == "make_mana") else { continue }
                     // Selecting an object lets XMage ask for the exact ability when needed.
                     // Never turn an ability label or card type into an invented response UUID.
-                    let actionID = "\(prompt.id):\(category):\(id)" + (actionType == commandType ? "" : ":\(actionType)")
-                    actions.append(.object([
-                        "id": .string(actionID), "type": .string(actionType),
-                        "playerId": .string(viewer), "label": .string(EngineDisplayText.label(actionRows[0]["value"]!.string!)),
-                        "cardInstanceId": .string(id), "sourceInstanceId": .string(id), "sourceZone": .string(zone),
-                        "cardName": card["card"]?["name"] ?? .string("Card"),
-                        "promptId": .string(prompt.id), "messageId": .integer(prompt.revision)
-                    ]))
+                    let baseID = "\(prompt.id):\(category):\(id)" + (actionType == commandType ? "" : ":\(actionType)")
+                    // Every play, cast, mana and activated ability is offered one per ability,
+                    // carrying the engine's ability ID so the session can answer XMage's
+                    // follow-up "which ability" prompt (MDFC land/spell, split halves,
+                    // adventures) with the one already chosen (exact ID match only).
+                    for row in actionRows {
+                        let abilityID = row["id"]!.string!
+                        var fields: [String: J] = [
+                            "id": .string(actionRows.count > 1 ? baseID + ":\(abilityID)" : baseID),
+                            "type": .string(actionType), "playerId": .string(viewer),
+                            "label": .string(fullAbilityLabel(row["value"]!.string!, rules: card["card"]?["oracleText"]?.string)),
+                            "cardInstanceId": .string(id), "sourceInstanceId": .string(id), "sourceZone": .string(zone),
+                            "cardName": card["card"]?["name"] ?? .string("Card"),
+                            "promptId": .string(prompt.id), "messageId": .integer(prompt.revision)
+                        ]
+                        fields["abilityId"] = .string(abilityID)
+                        actions.append(.object(fields))
+                    }
                 }
             }
             if !abilities.isEmpty {
@@ -352,5 +362,19 @@ enum OnDeviceSnapshotAdapter {
 
     private static func decode<T: Decodable>(_ value: J) throws -> T {
         try JSONDecoder().decode(T.self, from: value.encoded())
+    }
+
+    /// XMage shortens playable-ability labels ("… only to cast a crea..."). When the
+    /// shortened text is the start of exactly one line of the card's visible rules,
+    /// show that whole line. Display text only; the ability ID is unchanged.
+    static func fullAbilityLabel(_ raw: String, rules: String?) -> String {
+        let label = EngineDisplayText.label(raw)
+        var stem = label
+        if stem.hasSuffix("...") { stem.removeLast(3) } else if stem.hasSuffix("…") { stem.removeLast() } else { return label }
+        stem = stem.trimmingCharacters(in: .whitespaces)
+        guard stem.count >= 4, let rules else { return label }
+        let lines = rules.split(whereSeparator: \.isNewline).map { EngineDisplayText.label(String($0)) }
+        let matches = lines.filter { $0.count > stem.count && $0.hasPrefix(stem) }
+        return matches.count == 1 ? matches[0] : label
     }
 }

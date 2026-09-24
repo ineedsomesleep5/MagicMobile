@@ -59,8 +59,6 @@ struct HandCardPan: UIViewRepresentable {
     var inspect: () -> Void
     var tap: (() -> Void)? = nil
     var releaseInspection: () -> Void = {}
-    /// Finger down on or up from the card (presentation only: lift under the finger).
-    var pressed: (Bool) -> Void = { _ in }
     @Environment(\.holdCardInspection) private var inspection
 
     func makeUIView(context: Context) -> PanView {
@@ -69,7 +67,6 @@ struct HandCardPan: UIViewRepresentable {
         view.ended = ended
         view.inspect = inspect
         view.tap = tap
-        view.pressed = pressed
         view.beginInspection = { inspection?.begin(dismiss: releaseInspection); inspect() }
         view.endInspection = { if let inspection { inspection.end() } else { releaseInspection() } }
         return view
@@ -80,7 +77,6 @@ struct HandCardPan: UIViewRepresentable {
         view.ended = ended
         view.inspect = inspect
         view.tap = tap
-        view.pressed = pressed
         view.beginInspection = { inspection?.begin(dismiss: releaseInspection); inspect() }
         view.endInspection = { if let inspection { inspection.end() } else { releaseInspection() } }
     }
@@ -92,7 +88,6 @@ struct HandCardPan: UIViewRepresentable {
         var ended: ((CGSize, CGPoint, Bool) -> Void)?
         var inspect: (() -> Void)?
         var tap: (() -> Void)?
-        var pressed: ((Bool) -> Void)?
         var beginInspection: (() -> Void)?
         var endInspection: (() -> Void)?
         private var inspecting = false
@@ -145,19 +140,6 @@ struct HandCardPan: UIViewRepresentable {
             return delta.y < 0 && abs(delta.y) > abs(delta.x) * 1.35
         }
 
-
-        override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-            super.touchesBegan(touches, with: event)
-            pressed?(true)
-        }
-        override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-            super.touchesEnded(touches, with: event)
-            pressed?(false)
-        }
-        override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-            super.touchesCancelled(touches, with: event)
-            pressed?(false)
-        }
 
         @objc private func tapped() { if let tap { tap() } else { inspect?() } }
         @objc private func held(_ gesture: UILongPressGestureRecognizer) {

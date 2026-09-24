@@ -20,6 +20,8 @@ final class OnDeviceSession: ObservableObject {
     private var allowsSeatScopedAutoYield = false
     private var responding = false
     private var waitingForPolls = false
+    /// Consecutive polls that returned exactly the previous poll.
+    private var idlePolls = 0
     private var yieldPolicy = OnDeviceYieldPolicy()
     private var yieldTask: Task<Void, Never>?
     private var yieldGeneration = UUID()
@@ -42,6 +44,18 @@ final class OnDeviceSession: ObservableObject {
         let label: String
     }
     private var pending: Submission?
+    /// The exact ability the player picked when activating a source with several.
+    /// XMage then asks "which ability"; that follow-up is answered with this ID.
+    private struct ChosenAbility: Equatable {
+        let sourceID: String
+        let abilityID: String
+        let activationPromptID: String
+    }
+    private var chosenAbility: ChosenAbility?
+    /// A follow-up ability prompt being answered automatically: its snapshot stays
+    /// unpublished so the question never flashes on screen. Published if answering fails.
+    private var heldAbilitySnapshot: (promptID: String, snapshot: GameSnapshot)?
+    private var abilityAutoAnswer: Task<Void, Never>?
 
     func attach(client: EngineClient, matchID: String, seatID: String, autoPoll: Bool = true,
                 allowsSeatScopedAutoYield: Bool = false, reconnectsAutomatically: Bool = false,
@@ -95,20 +109,38 @@ final class OnDeviceSession: ObservableObject {
         // in-flight poll restore a choice after a newer response hid it.
         if let poll, next.revision < poll.revision ||
             (next.revision == poll.revision && sequence <= appliedRefreshSequence) { return }
+        // While the AI thinks, polls repeat the same board. Re-adapting and republishing
+        // it every 300 ms only competes with the engine's search for the CPU.
+        let unchanged = poll?.raw == next.raw && heldAbilitySnapshot == nil && snapshot != nil
+        idlePolls = unchanged ? idlePolls + 1 : 0
         var nextLog = messageLog
-        try nextLog.ingest(next)
-        if next.phase == "closed" {
+        if !unchanged { try nextLog.ingest(next) }
+        let autoAbility = chosenAbilityAnswer(for: next.prompt)
+        if unchanged && autoAbility == nil {
+            // Same board and prompt: keep the published snapshot.
+        } else if next.phase == "closed" {
             snapshot = nil
             nextLog = OnDeviceMessageLog()
             pending = nil; pendingActionID = nil; pendingCardID = nil
         } else if next.snapshot != nil {
-            snapshot = try OnDeviceSnapshotAdapter.snapshot(next, expectedSeatID: seatID, log: nextLog.entries)
+            let adapted = try OnDeviceSnapshotAdapter.snapshot(next, expectedSeatID: seatID, log: nextLog.entries)
+            if let autoAbility, let prompt = next.prompt {
+                heldAbilitySnapshot = (prompt.id, adapted)
+                pendingActionID = "auto-ability-\(autoAbility.abilityID)"; pendingCardID = autoAbility.sourceID
+            } else {
+                heldAbilitySnapshot = nil
+                snapshot = adapted
+            }
         }
         messageLog = nextLog
         poll = next
         appliedRefreshSequence = max(appliedRefreshSequence, sequence)
         if let pending, next.prompt?.id != pending.prompt.id || next.prompt?.revision != pending.prompt.revision {
-            self.pending = nil; pendingActionID = nil; pendingCardID = nil
+            self.pending = nil
+            if autoAbility == nil { pendingActionID = nil; pendingCardID = nil }
+        }
+        if let autoAbility, let prompt = next.prompt, abilityAutoAnswer == nil {
+            abilityAutoAnswer = Task { [weak self] in await self?.answerChosenAbility(autoAbility, promptID: prompt.id) }
         }
         switch next.phase {
         case "ended": status = "Game complete"
@@ -136,9 +168,12 @@ final class OnDeviceSession: ObservableObject {
     var canEndTurnSkippingResponses: Bool { canStartYield(.endTurnSkippingResponses) }
     var canSkipToMyTurn: Bool { canStartYield(.untilMyTurn) }
 
+    /// Availability follows the game, not the poll loop: an in-flight refresh or send
+    /// must not flicker the Skip control or swallow a tap. The yield task itself waits
+    /// for the session to be idle before every pass.
     private func canStartYield(_ mode: OnDeviceYieldPolicy.Mode) -> Bool {
-        guard !isAutoPassing, !isWorking, !isClosing, activeRefreshes == 0,
-              pending == nil, pendingActionID == nil, errorMessage == nil, let context = yieldContext else { return false }
+        guard !isAutoPassing, !isClosing, pending == nil, errorMessage == nil,
+              let context = yieldContext else { return false }
         return OnDeviceYieldPolicy.canStart(context, mode: mode)
     }
 
@@ -266,6 +301,12 @@ final class OnDeviceSession: ObservableObject {
             throw EngineError.invalidMessage("The game or decision changed. Refresh before choosing again.")
         }
         let answer = try OnDevicePromptAdapter.answer(for: command, prompt: prompt, viewerPlayerID: snapshot.viewerID)
+        if ["make_mana", "activate_ability", "play_land", "cast_spell"].contains(command.type), let ability = command.abilityId,
+           let source = command.sourceInstanceId ?? command.cardInstanceId {
+            chosenAbility = ChosenAbility(sourceID: source, abilityID: ability, activationPromptID: prompt.id)
+        } else if command.type != "choose_ability" {
+            chosenAbility = nil
+        }
         pending = Submission(prompt: prompt, answer: answer, requestID: UUID(), label: label)
         pendingActionID = actionID; pendingCardID = command.cardInstanceId ?? command.sourceInstanceId
         try await performPendingResponse()
@@ -345,8 +386,51 @@ final class OnDeviceSession: ObservableObject {
         }
     }
 
+    /// Only a fresh ability prompt that offers the exact chosen ability qualifies. Anything
+    /// else forgets the choice. Ability IDs are unique within a game; the row's `sourceId`
+    /// can name a half of an MDFC, split or adventure card rather than the whole card, so
+    /// it is not compared.
+    private func chosenAbilityAnswer(for prompt: EnginePrompt?) -> ChosenAbility? {
+        guard let chosen = chosenAbility, let prompt else { return nil }
+        if prompt.id == chosen.activationPromptID { return nil }
+        guard ["CHOOSE_ABILITY", "PICK_ABILITY"].contains(prompt.kind), !prompt.submitted,
+              let rows = prompt.payload["abilities"]?.array,
+              rows.contains(where: { $0["id"]?.string == chosen.abilityID }) else {
+            chosenAbility = nil
+            return nil
+        }
+        return chosen
+    }
+
+    private func answerChosenAbility(_ chosen: ChosenAbility, promptID: String) async {
+        defer { abilityAutoAnswer = nil }
+        // The activation's own response slot releases right after its refresh.
+        for _ in 0..<150 where isWorking { try? await Task.sleep(for: .milliseconds(20)) }
+        chosenAbility = nil
+        guard let matchID, let snapshot, poll?.prompt?.id == promptID else { return publishHeldAbilityPrompt() }
+        let command = GameCommand(type: "choose_ability", gameId: matchID, playerId: snapshot.viewerID,
+                                  abilityId: chosen.abilityID, promptId: promptID,
+                                  messageId: poll?.prompt.map { Int($0.revision) })
+        pendingActionID = nil
+        do {
+            try await submit(command, label: String(localized: "Choose ability"), actionID: "auto-ability-\(chosen.abilityID)")
+            heldAbilitySnapshot = nil
+        } catch {
+            publishHeldAbilityPrompt()
+        }
+    }
+
+    /// Show the held ability prompt so the player can answer it by hand.
+    private func publishHeldAbilityPrompt() {
+        if let held = heldAbilitySnapshot, poll?.prompt?.id == held.promptID { snapshot = held.snapshot }
+        heldAbilitySnapshot = nil
+        if pendingActionID?.hasPrefix("auto-ability-") == true { pendingActionID = nil; pendingCardID = nil }
+    }
+
     func close() async throws {
         stopAutoPass()
+        abilityAutoAnswer?.cancel(); abilityAutoAnswer = nil
+        chosenAbility = nil; heldAbilitySnapshot = nil
         guard !isWorking else { throw EngineError.invalidMessage("Wait for the current operation before closing") }
         guard let closeEndpoint else { return }
         isWorking = true; isClosing = true; pollingTask?.cancel(); pollingTask = nil
@@ -386,7 +470,8 @@ final class OnDeviceSession: ObservableObject {
             var failures = 0
             while !Task.isCancelled {
                 do {
-                    try await Task.sleep(for: .milliseconds(self?.reconnectsAutomatically == true ? 1000 : 300))
+                    let idle = (self?.idlePolls ?? 0) >= 3
+                    try await Task.sleep(for: .milliseconds(self?.reconnectsAutomatically == true ? 1000 : idle ? 600 : 300))
                     guard let self, !Task.isCancelled else { return }
                     if self.isAutoPassing { continue }
                     try await self.refresh()

@@ -112,6 +112,21 @@ final class CardChoicePlanTests: XCTestCase {
         XCTAssertNil(plan.next(in: complete, pending: false))
     }
 
+    /// XMage's discard of 14: one card per prompt, and no Done step because min == max.
+    func testFourteenDiscardsAnswerEachPromptInOrderWithoutDone() throws {
+        let hand = (1...16).map { String(format: "20000000-0000-0000-0000-%012d", $0) }
+        let order = Array(hand.shuffled().prefix(14))
+        let first = try snapshot(message: "Select a card to discard (selected 0 of 14, min 14)", revision: 1, candidates: hand, chosen: [])
+        var plan = CardChoicePlan(snapshot: first, prompt: try XCTUnwrap(first.promptEnvelopeV2), selected: order)
+        for count in 0..<14 {
+            let current = try snapshot(message: "Select a card to discard (selected \(count) of 14, min 14)",
+                                       revision: count + 1, candidates: hand, chosen: Array(order.prefix(count)))
+            XCTAssertEqual(plan.next(in: current, pending: false)?.targetIds, [order[count]], "card \(count + 1) in the chosen order")
+            XCTAssertNil(plan.next(in: current, pending: false), "never answers the same prompt twice")
+            XCTAssertFalse(plan.stopped)
+        }
+    }
+
     func testPendingClearWithUnchangedPromptRequiresManualReview() throws {
         let first = try snapshot(message: "Choose (selected 0 of 6, min 2)", revision: 1,
                                  candidates: ids, chosen: [])

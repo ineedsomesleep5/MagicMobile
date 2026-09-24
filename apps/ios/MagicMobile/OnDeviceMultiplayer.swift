@@ -216,6 +216,44 @@ struct OnDeviceMultiplayerLobby {
         }
     }
 
+    /// Public commander names from a validated submission, for the match room.
+    static func commanderNames(_ submission: MagicMobileOnDevice.JSONValue?) -> [String] {
+        (submission?["deck"]?["commanders"]?.array ?? []).compactMap { $0["name"]?.string }
+            .filter { !$0.isEmpty && $0.count <= 200 && !$0.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) }
+    }
+
+    /// Host → guests: who has readied up (submitted a deck) and their commanders.
+    func readyPacket(epoch: UUID) throws -> MagicMobileOnDevice.JSONValue {
+        guard localPeerID == hostID else { throw EngineError.unboundPeer }
+        let players: [MagicMobileOnDevice.JSONValue] = peerIDs.compactMap { peer in
+            guard let submission = submissions[peer] else { return nil }
+            return .object(["id": .string(peer),
+                            "commanders": .array(Self.commanderNames(submission).map(MagicMobileOnDevice.JSONValue.string))])
+        }
+        return .object(["type": .string("ready"), "epoch": .string(epoch.uuidString), "players": .array(players)])
+    }
+
+    /// Guest side: only the authenticated host's well-formed roster for this lobby.
+    func acceptReadyPacket(_ value: MagicMobileOnDevice.JSONValue, from authenticatedPeerID: String) throws -> [String: [String]] {
+        guard localPeerID != hostID, authenticatedPeerID == hostID,
+              let fields = value.object, Set(fields.keys) == ["type", "epoch", "players"],
+              let players = fields["players"]?.array, players.count <= peerIDs.count else { throw EngineError.unboundPeer }
+        var result: [String: [String]] = [:]
+        for player in players {
+            guard let row = player.object, Set(row.keys) == ["id", "commanders"],
+                  let id = row["id"]?.string, peerIDs.contains(id), result[id] == nil,
+                  let commanders = row["commanders"]?.array, commanders.count <= 4 else { throw EngineError.unboundPeer }
+            let names = commanders.compactMap(\.string)
+            guard names.count == commanders.count,
+                  names.allSatisfy({ !$0.isEmpty && $0.count <= 200 && !$0.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) })
+            else { throw EngineError.unboundPeer }
+            result[id] = names
+        }
+        return result
+    }
+
+    var submittedPeers: Set<String> { Set(submissions.keys) }
+
     mutating func submit(_ value: MagicMobileOnDevice.JSONValue, from authenticatedPeerID: String) throws {
         _ = try seatID(for: authenticatedPeerID)
         try Self.validateSubmission(value)
@@ -477,6 +515,8 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     @Published private(set) var rollProgress: OnDeviceStartingRollProgress?
     @Published private(set) var hasRolled = false
     @Published private(set) var rollStatus = ""
+    /// The pregame room between matchmaking and the first engine snapshot.
+    @Published private(set) var room: MatchRoom?
 
     private let identity: BuildIdentity
     private let makeHostEngine: @MainActor () async throws -> EngineClient
@@ -502,6 +542,27 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     private var closing = false
     private var failed = false
     private var generation = UUID()
+    private var localReady = false
+    private var playerNames: [String: String] = [:]
+    /// Guests learn readiness from the host's roster packets.
+    private var reportedReady: [String: [String]] = [:]
+    private var authenticationHandlerInstalled = false
+    private var userRequestedSignIn = false
+    private var pendingSignInController: UIViewController?
+
+    struct MatchRoom: Equatable {
+        struct Player: Equatable, Identifiable {
+            let id: String
+            let name: String
+            let isHost: Bool
+            let isLocal: Bool
+            let isReady: Bool
+            let commanders: [String]
+        }
+        let players: [Player]
+        let localReady: Bool
+        let aiSummary: String?
+    }
 
     init(identity: BuildIdentity,
          makeHostEngine: @escaping @MainActor () async throws -> EngineClient,
@@ -580,11 +641,30 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         }
     }
 
-    func authenticate() {
+    /// Called quietly at launch: GameKit signs in with the phone's Game Center account
+    /// without any UI. The sign-in sheet appears only after the player taps Sign in.
+    func authenticate(userInitiated: Bool = true) {
+        isAuthenticated = GKLocalPlayer.local.isAuthenticated
+        if userInitiated {
+            userRequestedSignIn = true
+            if let pending = pendingSignInController {
+                pendingSignInController = nil
+                authenticationController = pending
+                return
+            }
+        }
+        // Installing the handler again asks GameKit to retry after a cancelled sheet.
+        guard !authenticationHandlerInstalled || (userInitiated && !isAuthenticated) else { return }
+        authenticationHandlerInstalled = true
         GKLocalPlayer.local.authenticateHandler = { [weak self] controller, error in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                self.authenticationController = controller
+                if let controller, !self.userRequestedSignIn {
+                    self.pendingSignInController = controller
+                } else {
+                    self.authenticationController = controller
+                    if controller == nil { self.pendingSignInController = nil }
+                }
                 self.isAuthenticated = GKLocalPlayer.local.isAuthenticated
                 if let lobby = self.lobby, GKLocalPlayer.local.gamePlayerID != lobby.localPeerID {
                     self.fail("The Game Center account changed. Leave this match before starting another.")
@@ -651,8 +731,13 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
             let localID = GKLocalPlayer.local.gamePlayerID
             var roster = try OnDeviceMultiplayerLobby(peerIDs: match.players.map(\.gamePlayerID) + [localID],
                                                        localPeerID: localID, aiSeats: requestedAISeats)
-            if roster.hostID == localID { try roster.submit(submission, from: localID); epoch = UUID() }
+            // Nobody's deck counts until that player taps Ready in the match room.
+            if roster.hostID == localID { epoch = UUID() }
             lobby = roster
+            localReady = false; reportedReady = [:]
+            playerNames = Dictionary(match.players.map { ($0.gamePlayerID, $0.displayName) }, uniquingKeysWith: { first, _ in first })
+            playerNames[localID] = GKLocalPlayer.local.displayName
+            updateRoom()
             hostAISeatSummary = roster.hostID == localID ? roster.hostAISeatSummary : nil
             let transport = GameKitTransport(match: match)
             self.transport = transport
@@ -681,13 +766,17 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
                 guard let self, self.generation == token, !self.closing else { return }
                 self.fail(message)
             }
-            status = "Connected. Checking builds and host AI settings, then waiting for every deck…"
+            status = "Match room: choose your deck, then tap Ready. The game starts when everyone is ready."
             lobbyTimer = Task { @MainActor [weak self] in
-                // Repeat the host offer while peers install their GameKit delegate.
-                for _ in 0..<120 {
+                // Repeat the host offer while peers install their GameKit delegate and ready up.
+                for _ in 0..<600 {
                     guard let self, !Task.isCancelled, self.generation == token, !self.failed, self.endpoint == nil else { return }
                     if self.startup == nil, self.lobby?.hostID == localID {
-                        do { try self.broadcast(self.lobbyPacket(type: "offer")) } catch { self.fail(error.localizedDescription); return }
+                        do {
+                            try self.broadcast(self.lobbyPacket(type: "offer"))
+                            // Late joiners also learn who is already ready.
+                            try self.broadcastReadyRoster()
+                        } catch { self.fail(error.localizedDescription); return }
                     }
                     do { try await Task.sleep(nanoseconds: 1_000_000_000) } catch { return }
                 }
@@ -719,15 +808,14 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
                 self.lobby = acceptedLobby
                 hostAISeatSummary = acceptedLobby.hostAISeatSummary
                 epoch = incomingEpoch
-                if remote == nil {
-                    var reply = try lobbyPacket(type: "submission").object!
-                    reply["player"] = submission
-                    try send(.object(reply), to: peer)
-                }
+                updateRoom()
+                if remote == nil, localReady { try sendSubmission(submission, to: peer) }
             } else {
                 if type == "submission" {
                     guard let player = value["player"] else { throw EngineError.unboundPeer }
                     try self.lobby?.submit(player, from: peer)
+                    try broadcastReadyRoster()
+                    updateRoom()
                     if self.lobby?.isReady == true, startup == nil, hostEngine == nil { startHost() }
                 } else {
                     guard let matchID = value["matchId"]?.string, UUID(uuidString: matchID) != nil else { throw EngineError.unboundPeer }
@@ -770,6 +858,9 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
             rollProgress = progress
             hasRolled = false
             updateRollStatus()
+        case "ready":
+            reportedReady = try lobby.acceptReadyPacket(value, from: peer)
+            updateRoom()
         case "presence":
             guard Set(fields.keys) == ["type", "epoch", "sequence", "suspended"],
                   let sequence = fields["sequence"]?.integer, sequence > (peerPresenceSequences[peer] ?? 0),
@@ -788,6 +879,54 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
             fail(OnDeviceMultiplayerLobby.HandshakeFailure.differentSettings.localizedDescription)
         default: throw EngineError.invalidMessage("Unknown multiplayer packet.")
         }
+    }
+
+    /// The local player confirms their deck in the match room. The host counts its own
+    /// deck now; a guest sends it to the host (now, or on the host's next offer).
+    func markReady(name: String, deck: MagicMobileOnDevice.JSONValue) throws {
+        guard var lobby, !localReady, !failed, !closing, endpoint == nil else { return }
+        let value: MagicMobileOnDevice.JSONValue = .object(["name": .string(name.trimmingCharacters(in: .whitespacesAndNewlines)), "deck": deck])
+        try OnDeviceMultiplayerLobby.validateSubmission(value)
+        submission = value
+        localReady = true
+        if lobby.localPeerID == lobby.hostID {
+            try lobby.submit(value, from: lobby.localPeerID)
+            self.lobby = lobby
+            try broadcastReadyRoster()
+            if lobby.isReady, startup == nil, hostEngine == nil { startHost() }
+        } else if epoch != nil, lobby.acceptedHostSettings {
+            try sendSubmission(value, to: lobby.hostID)
+        }
+        status = lobby.localPeerID == lobby.hostID || epoch != nil
+            ? "Ready. Waiting for the other players…" : "Ready. Waiting for the host…"
+        updateRoom()
+    }
+
+    private func sendSubmission(_ value: MagicMobileOnDevice.JSONValue?, to peer: String) throws {
+        guard let value else { throw EngineError.unboundPeer }
+        var reply = try lobbyPacket(type: "submission").object!
+        reply["player"] = value
+        try send(.object(reply), to: peer)
+    }
+
+    private func broadcastReadyRoster() throws {
+        guard let lobby, let epoch, lobby.localPeerID == lobby.hostID else { return }
+        try broadcast(lobby.readyPacket(epoch: epoch))
+    }
+
+    private func updateRoom() {
+        guard let lobby, endpoint == nil, !failed else { room = nil; return }
+        let isHost = lobby.localPeerID == lobby.hostID
+        let players = lobby.peerIDs.map { peer -> MatchRoom.Player in
+            let local = peer == lobby.localPeerID
+            let submitted = lobby.submissions[peer]
+            let ready = isHost ? submitted != nil : (local ? localReady : reportedReady[peer] != nil)
+            let commanders = submitted.map(OnDeviceMultiplayerLobby.commanderNames)
+                ?? (local ? OnDeviceMultiplayerLobby.commanderNames(localReady ? submission : nil) : reportedReady[peer] ?? [])
+            return .init(id: peer, name: local ? "You" : (playerNames[peer] ?? "Player"), isHost: peer == lobby.hostID,
+                         isLocal: local, isReady: ready, commanders: commanders)
+        }
+        room = MatchRoom(players: players, localReady: localReady, aiSummary: hostAISeatSummary)
     }
 
     private func startHost() {
@@ -835,6 +974,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
                 self.rollProgress = OnDeviceStartingRollProgress(
                     roll: result, humanSeatIDs: Set((1...lobby.peerIDs.count).map { "player\($0)" }))
                 self.endpoint = OnDeviceMultiplayerEndpoint(client: engine, matchID: matchID, seatID: try lobby.seatID(for: lobby.localPeerID), isHost: true)
+                self.room = nil
                 self.isConnected = true
                 self.updateRollStatus()
                 self.lobbyTimer?.cancel(); self.status = "Connected as host. Every player must keep the app in the foreground."
@@ -858,6 +998,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
                 try await remote.hello(identity: self.identity)
                 guard self.generation == token, !self.failed, !self.closing, !Task.isCancelled else { return }
                 self.endpoint = OnDeviceMultiplayerEndpoint(client: EngineClient(transport: remote), matchID: matchID, seatID: seatID, isHost: false)
+                self.room = nil
                 self.isConnected = true
                 self.updateRollStatus()
                 self.lobbyTimer?.cancel(); self.status = "Connected. Every player must keep the app in the foreground."
@@ -930,12 +1071,13 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         suspendedPeers.removeAll(); peerPresenceSequences.removeAll(); presenceSequence = 0
         suspensionRevision = 0
         matchmakerController?.dismiss(animated: true); matchmakerController = nil
+        room = nil; localReady = false; reportedReady = [:]; playerNames = [:]
         failed = false; isSuspended = false; status = "Match closed."
     }
 
     private func fail(_ message: String) {
         guard !failed else { return }
-        failed = true; isConnected = false; status = message; seatNames = [:]
+        failed = true; isConnected = false; status = message; seatNames = [:]; room = nil
         rollTimer?.cancel(); rollTimer = nil
         startingRoll = nil; rollProgress = nil; hasRolled = false; rollStatus = ""
         lobbyTimer?.cancel(); startup?.cancel(); remote?.close()

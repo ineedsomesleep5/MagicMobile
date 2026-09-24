@@ -648,3 +648,25 @@ private actor MultiplayerRecordingEngine: EngineTransport {
         return try MagicMobileOnDevice.JSONValue.object(["protocol": .integer(1), "ok": .bool(true), "result": result]).encoded()
     }
 }
+
+extension OnDeviceMultiplayerTests {
+    func testMatchRoomReadyRosterComesOnlyFromTheHostAndCarriesPublicCommanders() throws {
+        let deck: MagicMobileOnDevice.JSONValue = .object(["main": .array([]), "commanders": .array([
+            .object(["name": .string("Chatterfang, Squirrel General"), "setCode": .string("MH2"), "collectorNumber": .string("151"), "count": .integer(1)]),
+        ])])
+        var host = try OnDeviceMultiplayerLobby(peerIDs: ["bob", "alice", "carol"], localPeerID: "alice")
+        let guest = try OnDeviceMultiplayerLobby(peerIDs: ["bob", "alice", "carol"], localPeerID: "bob")
+        let epoch = UUID()
+        XCTAssertEqual(try host.readyPacket(epoch: epoch)["players"]?.array?.count, 0, "nobody is ready yet")
+        try host.submit(.object(["name": .string("Alice"), "deck": deck]), from: "alice")
+        XCTAssertFalse(host.isReady, "the game waits for every player to ready up")
+        let packet = try host.readyPacket(epoch: epoch)
+        XCTAssertEqual(try guest.acceptReadyPacket(packet, from: "alice"), ["alice": ["Chatterfang, Squirrel General"]])
+        XCTAssertThrowsError(try guest.acceptReadyPacket(packet, from: "carol"), "only the host reports readiness")
+        XCTAssertThrowsError(try guest.readyPacket(epoch: epoch), "guests never author the roster")
+        var forged = packet.object!
+        forged["players"] = .array([.object(["id": .string("intruder"), "commanders": .array([])])])
+        XCTAssertThrowsError(try guest.acceptReadyPacket(.object(forged), from: "alice"), "unknown players are rejected")
+        XCTAssertEqual(host.submittedPeers, ["alice"])
+    }
+}

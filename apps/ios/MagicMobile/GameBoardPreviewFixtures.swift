@@ -310,6 +310,22 @@ enum GameBoardPreviewFixtures {
                 ["id": "stack-spell-object", "objectId": "stack-spell-object", "objectType": "SPELL", "name": "Swords to Plowshares", "sourceName": "Swords to Plowshares", "sourceCard": spell, "controllerId": "human", "targetIds": ["ai-creature-1"], "paid": true]
             ]
         }
+        if state == .stackTray {
+            // Roaming Throne doubling Chatterfang: twelve identical triggers above a spell.
+            // Preview snapshots list the stack bottom first.
+            let chatterfang = card("ai-1-chatterfang", "Chatterfang, Squirrel General", "Legendary Creature — Squirrel Warrior", "{2}{G}", "Forestwalk", power: 3)
+            let trigger: (Int) -> [String: Any] = { index in
+                ["id": "stack-trigger-\(index)", "objectId": "stack-trigger-\(index)", "objectType": "TRIGGERED_ABILITY", "name": "Chatterfang trigger",
+                 "rulesText": "Create a 1/1 green Squirrel creature token.", "sourceInstanceId": "ai-1-chatterfang",
+                 "sourceName": "Chatterfang, Squirrel General", "sourceZone": "battlefield", "sourceCard": chatterfang, "controllerId": "ai-1", "paid": true]
+            }
+            let spell = card("stack-bolt-card", "Lightning Bolt", "Instant", "{R}", "Lightning Bolt deals 3 damage to any target.")
+            xmage["stack"] = [["id": "stack-bolt", "objectId": "stack-bolt", "objectType": "SPELL", "name": "Lightning Bolt",
+                "sourceName": "Lightning Bolt", "sourceCard": spell, "controllerId": "human", "targetIds": ["ai-1"], "paid": true]] + (0..<12).map(trigger)
+        }
+        if state == .victory {
+            root["gameStatus"] = "completed"; root["winnerPlayerIds"] = ["human"]; root["endReason"] = "opponent_lost"
+        }
         if state == .combatArrows {
             let own = (players[0]["zones"] as! [String: Any])["battlefield"] as! [[String: Any]]
             let opposing = (players[1]["zones"] as! [String: Any])["battlefield"] as! [[String: Any]]

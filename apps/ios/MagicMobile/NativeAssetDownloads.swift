@@ -86,6 +86,21 @@ actor NativeAssetStore {
         }
         return nil
     }
+    /// One directory listing instead of opening every image: which card keys and tokens
+    /// have an image stored at `quality` or better. A truncated file (under 512 bytes) counts
+    /// as missing; images are still fully validated when shown. Tokens also need valid metadata.
+    func storedArtworkKeys(cards cardKeys: [String], tokens: [NativeTokenArtwork],
+                           quality: NativeArtworkQuality) -> (cards: Set<String>, tokens: Set<String>, bytes: Int) {
+        try? reconcile()
+        let sizes = fileSizes ?? [:]
+        let qualities = NativeArtworkQuality.allCases.filter { $0.minShortEdge >= quality.minShortEdge }
+        func stored(_ key: String) -> Bool {
+            qualities.contains { (sizes[file(key: qualityKey(key, quality: $0)).lastPathComponent] ?? 0) >= 512 }
+        }
+        return (Set(cardKeys.filter(stored)),
+                Set(tokens.filter { stored($0.artworkKey) && tokenDetails(id: $0.id, face: $0.face) != nil }.map(\.artworkKey)),
+                accountedBytes)
+    }
     nonisolated static func freeBytes(at url: URL) throws -> Int64 {
         let attributes = try FileManager.default.attributesOfFileSystem(forPath: url.path)
         guard let value = attributes[.systemFreeSize] as? NSNumber else { throw StoreError.lowDiskSpace }
@@ -212,12 +227,17 @@ actor NativeAssetStore {
         guard data.count <= 6 * 1024 * 1024 else { throw DeckStudioScryfallError.tooLarge }
         try write(data, to: catalogueFacesFile)
     }
+    /// `offlineFallback` accepts a downloaded token whose rules are worded differently when
+    /// its name, type, colors and printed P/T agree and every such download is the same token.
+    /// Only used without network access; online, the exact Scryfall match is looked up instead.
     func tokenImage(name: String, typeLine: String?, oracleText: String?, power: String?, toughness: String?, colors: [String]?,
-                    quality: NativeArtworkQuality = .compact) -> Data? {
+                    quality: NativeArtworkQuality = .compact, offlineFallback: Bool = false) -> Data? {
         let lookupName = Self.tokenArtworkName(name).lowercased()
         let candidates = storedTokens().values.filter { Self.tokenArtworkName($0.name).lowercased() == lookupName }
         guard let token = Self.matchTokenArtwork(candidates, name: name, typeLine: typeLine, oracleText: oracleText,
-                                                power: power, toughness: toughness, colors: colors) else { return nil }
+                                                power: power, toughness: toughness, colors: colors)
+                ?? (offlineFallback ? Self.looseTokenArtwork(candidates, name: name, typeLine: typeLine, power: power,
+                                                              toughness: toughness, colors: colors) : nil) else { return nil }
         if let data = image(key: token.artworkKey, quality: quality) { return data }
         for alternate in candidates.sorted(by: { $0.artworkKey < $1.artworkKey }) where
             Self.sameTokenIdentity(alternate, token) {
@@ -255,8 +275,9 @@ actor NativeAssetStore {
         // name ("Sacrifice Food Token:") where Oracle says "this token". Limit
         // this equivalence to a self-named cost; "a Food Token" and references
         // elsewhere in the effect must keep their distinct meaning.
-        let selfName = normalizedTokenText(tokenArtworkName(name)) + " token"
-        let pattern = "(?<![a-z0-9])sacrifice " + NSRegularExpression.escapedPattern(for: selfName) + "(?=\\s*:)"
+        // Older printings and some engine text say "Sacrifice Food:" without "token".
+        let selfName = normalizedTokenText(tokenArtworkName(name))
+        let pattern = "(?<![a-z0-9])sacrifice " + NSRegularExpression.escapedPattern(for: selfName) + "(?: token)?(?=\\s*:)"
         if let regex = try? NSRegularExpression(pattern: pattern) {
             rules = regex.stringByReplacingMatches(in: rules, range: NSRange(rules.startIndex..., in: rules),
                                                   withTemplate: "sacrifice this permanent")
@@ -292,6 +313,23 @@ actor NativeAssetStore {
         guard let first = matches.first,
               matches.allSatisfy({ $0.power == first.power && $0.toughness == first.toughness }) else { return nil }
         return matches.sorted { $0.artworkKey < $1.artworkKey }.first
+    }
+    /// Same name, type and colors; printed P/T equal when both are known; and every such
+    /// download describes one token. Otherwise unresolved.
+    static func looseTokenArtwork(_ candidates: [NativeTokenArtwork], name: String, typeLine: String?,
+                                  power: String?, toughness: String?, colors: [String]?) -> NativeTokenArtwork? {
+        guard let colors, let typeLine, !typeLine.isEmpty else { return nil }
+        func sameStat(_ stored: String?, _ runtime: String?) -> Bool {
+            let stored = stored.flatMap { $0.isEmpty ? nil : $0 }, runtime = runtime.flatMap { $0.isEmpty || $0 == "0" ? nil : $0 }
+            return stored == nil || runtime == nil || stored == runtime
+        }
+        let matches = candidates.filter {
+            $0.hasMatchingMetadata && normalizedTokenText(tokenArtworkName($0.name)) == normalizedTokenText(tokenArtworkName(name)) &&
+            normalizedTokenType($0.typeLine ?? "") == normalizedTokenType(typeLine) && Set($0.colors ?? []) == Set(colors) &&
+            sameStat($0.power, power) && sameStat($0.toughness, toughness)
+        }.sorted { $0.artworkKey < $1.artworkKey }
+        guard let first = matches.first, matches.allSatisfy({ sameTokenIdentity($0, first) }) else { return nil }
+        return first
     }
     static func matchToken(_ candidates: [NativeTokenArtwork], name: String, typeLine: String?, oracleText: String?,
                            power: String?, toughness: String?, colors: [String]?) -> NativeTokenArtwork? {
@@ -459,10 +497,13 @@ actor NativeTokenDiscovery {
             var missingTokens: [String] = []
             var missingIDs = Set<String>()
             var unavailable: [String] = []
-            for name in names {
-                guard generation == scanGeneration, !Task.isCancelled else { return }
-                if await store.image(key: NativeAssetStore.cardKey(name), quality: quality) == nil { missing.append(name) }
-                if !fullCatalogue {
+            let storedCards = await store.storedArtworkKeys(cards: names.map(NativeAssetStore.cardKey), tokens: [], quality: quality)
+            guard generation == scanGeneration, !Task.isCancelled else { return }
+            storedBytes = storedCards.bytes
+            missing = names.filter { !storedCards.cards.contains(NativeAssetStore.cardKey($0)) }
+            if !fullCatalogue {
+                for name in names {
+                    guard generation == scanGeneration, !Task.isCancelled else { return }
                     if let found = await store.relations(name: name) {
                         related += found.filter { seen.insert($0.artworkKey).inserted }
                     } else { unknown += 1 }
@@ -474,14 +515,13 @@ actor NativeTokenDiscovery {
                 if !(await store.catalogueTokenCoverageCurrent()) { unknown = max(1, unknown) }
                 unavailable = await store.unavailableCatalogueTokenNames()
             }
+            let storedTokens = await store.storedArtworkKeys(cards: [], tokens: related, quality: quality).tokens
             for token in related {
-                guard generation == scanGeneration, !Task.isCancelled else { return }
-                if await store.tokenDetails(id: token.id, face: token.face) != nil,
-                   await store.image(key: token.artworkKey, quality: quality) != nil { savedTokens += 1 }
+                if storedTokens.contains(token.artworkKey) { savedTokens += 1 }
                 else { missingTokens.append(token.name); missingIDs.insert(token.artworkKey) }
             }
-            let bytes = await store.storedBytes(refresh: true)
-            guard generation == scanGeneration else { return }
+            let bytes = storedCards.bytes
+            guard generation == scanGeneration, !Task.isCancelled else { return }
             cardTotal = names.count; cardStored = names.count - missing.count; missingNames = missing
             tokens = related; tokenTotal = related.count + unavailable.count; tokenStored = savedTokens; tokenDiscoveryRemaining = unknown; storedBytes = bytes
             missingTokenNames = missingTokens + unavailable
@@ -626,6 +666,7 @@ actor NativeTokenDiscovery {
             ? "\(preparationFailures.count) images could not be prepared. Review Needs attention below."
             : queue.status
         failures = preparationFailures + queue.failureMessages
+        if isRunning { Task { [weak self] in guard let self else { return }; storedBytes = await store.storedBytes() } }
         if wasRunning && !isRunning {
             NotificationCenter.default.post(name: Self.didFinish, object: nil)
             if let context = scanContext {

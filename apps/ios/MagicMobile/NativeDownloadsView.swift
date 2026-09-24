@@ -50,11 +50,10 @@ struct NativeDownloadsView: View {
         let deck: String
         let quality: NativeArtworkQuality
         let catalogueCount: Int
-        let running: Bool
     }
     @State private var scannedSelection: ScanSelection?
     private var scanSelection: ScanSelection {
-        ScanSelection(scope: scope, deck: selectedDeckID, quality: quality, catalogueCount: catalogueNames.count, running: downloads.isRunning)
+        ScanSelection(scope: scope, deck: selectedDeckID, quality: quality, catalogueCount: catalogueNames.count)
     }
     private var downloadsTokens: Bool { includeTokens || scope == "tokens" }
     private var missingCardCount: Int { scope == "tokens" ? 0 : downloads.missingNames.count }
@@ -236,11 +235,10 @@ struct NativeDownloadsView: View {
                 loadingCatalogue = false
             }
             .task(id: scanSelection) {
+                // Checking reads one directory listing, so it also runs during a download.
                 let selection = scanSelection
-                if !downloads.isRunning {
-                    await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens")
-                    if selection == scanSelection && !downloads.isScanning && downloads.scanSucceeded { scannedSelection = selection }
-                }
+                await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens")
+                if selection == scanSelection && !downloads.isScanning && downloads.scanSucceeded { scannedSelection = selection }
             }
             .alert("Download missing artwork?", isPresented: $confirmFullDownload) {
                 Button("Download missing images · \(quality.label)") { startDownload() }

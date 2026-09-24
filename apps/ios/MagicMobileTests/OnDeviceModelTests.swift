@@ -65,3 +65,25 @@ final class OnDeviceModelTests: XCTestCase {
         return try JSONDecoder().decode(GameSnapshot.self, from: JSONSerialization.data(withJSONObject: json))
     }
 }
+
+extension OnDeviceModelTests {
+    func testKeywordIconsFillInFromCurrentRulesLinesOnly() {
+        let icons = XmageCardIcon.keywordIcons(rules: "Flying\nAt the beginning of your upkeep, draw a card unless target opponent sacrifices a creature or pays 3 life.")
+        XCTAssertEqual(icons.map(\.iconType), ["ABILITY_FLYING"])
+        XCTAssertEqual(XmageCardIcon.keywordIcons(rules: "Vigilance, trample (This creature can deal excess combat damage.)\nReach").map(\.iconType),
+                       ["ABILITY_VIGILANCE", "ABILITY_TRAMPLE", "ABILITY_REACH"])
+        XCTAssertEqual(XmageCardIcon.keywordIcons(rules: "Creatures you control have flying.\nForestwalk\nMenace"), [],
+                       "mentions, unmapped keywords and engine-only menace are ignored")
+        XCTAssertEqual(XmageCardIcon.keywordIcons(rules: nil), [])
+
+        var identity = CardIdentity(name: "Indulgent Tormentor", typeLine: "Creature — Demon", oracleText: "Flying")
+        identity.manaCost = "{3}{B}{B}"
+        let engineFlying = XmageCardIcon(iconType: "ABILITY_FLYING", resourceName: nil, category: "ABILITY", text: nil, hint: "Flying")
+        for engine in [[], [engineFlying]] {
+            let card = ZoneCard(instanceId: "t", card: identity, tapped: false, summoningSickness: true, cardIcons: engine,
+                                counters: nil, power: 5, toughness: 3, isCreaturePermanent: true, damage: nil,
+                                isAttacking: nil, blocking: nil, attachedToInstanceId: nil)
+            XCTAssertEqual(card.visibleXmageIcons.map(\.iconType), ["ABILITY_FLYING"], "exactly one flying icon either way")
+        }
+    }
+}
