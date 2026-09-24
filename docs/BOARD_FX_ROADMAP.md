@@ -173,6 +173,7 @@ single MIT file with its license header when that is enough.
 | 4 Particles and sound upgrade | Sounds (cast, land, damage, death, player hit) and Effect Sounds toggle on `codex/board-fx-polish`. Vortex particles not adopted. |
 | 5 RealityKit moments | Not started. D20 migration deliberately deferred (see log 2026-09-23 build 14). |
 | 6 Game feel (build 14) | Readable spell showcases, arrival-after-cast, showcase for unseen casts, commander cast/entrance, attack stance + block tether + strike with impact-timed damage, turn-start ribbon, compact phase pill, victory/defeat screen, hand fan + lift under finger + breathing playable glow, legendary gold edge, inspection foil, color-identity particles, life badge de-duplication. Verified in the board-fx simulator walkthrough (optimized Debug build). Not yet: device feel, landscape combat pass. |
+| 7 Device feedback (builds 15–17) | Ability-ID auto-answers (mana, abilities, MDFC/split/adventure play and cast), turn bar, inspector details, rematch and Game Center room, one-Confirm multi-select plans, full-screen result, unclipped glows, portrait stack tray, faster AI turns on big stacks (engine change). Simulator previews and unit tests pass; phone feel pending Caleb. |
 
 ## Log
 
@@ -240,3 +241,25 @@ single MIT file with its license header when that is enough.
   drop (GameKit real-time matches cannot rejoin; needs a host re-invite design or the
   online relay). Match room not yet exercised with two phones.
 
+- 2026-09-24 (Claude, build 17 work on the same branch, for TestFlight): from Caleb's build
+  15–16 notes. Multi-select plans (discard 14, sacrifice N) now answer every one-card
+  XMage prompt from one Confirm: the plan's next send waits for the previous answer's
+  refresh instead of being dropped by the busy guard (the cause of one card per Confirm),
+  and a dropped automatic send now reports an error; selection labels read "Selected N" /
+  "Tap to select". Play-land and cast offers carry their ability ID and XMage's follow-up
+  "which ability" prompt for MDFC/split/adventure cards is answered with it (row sourceId
+  names the half card, so only the unique ability ID is compared). Victory/defeat overlay
+  moved above the whole board presentation (edge to edge, closes sheets). Hand and
+  battlefield scroll rows use `scrollClipDisabled` plus side-only masks, so glows, stances
+  and cost badges are no longer cut. Portrait stack tray in the center strip: top art,
+  count, identical consecutive triggers grouped ("Chatterfang trigger ×12"), opens the
+  stack inspector. Offline token art: "Sacrifice Food:" wording normalized, and without
+  network an exact name/type/color/P-T identity with a single downloaded variant is used.
+  Downloads check uses one directory listing (and runs during downloads). Unchanged polls
+  are not re-adapted; idle polling backs off to 600 ms. Skip button in the portrait dock
+  is a 44pt circle (its capsule used to spill behind the life orb). Engine: the MAD AI
+  passes without a search when it has no non-mana playable ability, and stack responses
+  cap think time at 2 s (`MobileAICancellation`); new native build required. DEBUG
+  previews `stack-tray` and `victory` added. Pre-existing unit failures left as found:
+  landscape dock height (since the priority-help line) — the outdated keyword-badge test
+  was updated to build 15's intended behavior.
