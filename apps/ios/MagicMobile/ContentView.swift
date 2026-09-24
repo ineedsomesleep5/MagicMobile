@@ -1299,100 +1299,105 @@ struct TavernMainMenu: View {
     var body: some View {
         GeometryReader { proxy in
             let horizontal = proxy.size.width > proxy.size.height && !dynamicTypeSize.isAccessibilitySize
-            let cardWidth = horizontal ? min(190, proxy.size.height * 0.42) : min(210, proxy.size.width * 0.53)
-            let layout = horizontal ? AnyLayout(HStackLayout(alignment: .center, spacing: 48)) : AnyLayout(VStackLayout(spacing: 28))
+            let cardWidth = horizontal ? min(150, proxy.size.height * 0.36) : min(168, proxy.size.width * 0.41, proxy.size.height * 0.2)
+            let layout = horizontal ? AnyLayout(HStackLayout(alignment: .center, spacing: 44)) : AnyLayout(VStackLayout(spacing: 14))
             ScrollView(.vertical, showsIndicators: false) {
                 layout {
-                    VStack(spacing: 18) {
+                    VStack(spacing: 6) {
                         if !horizontal { identity(compact: false) }
-                        CommanderDeckPortrait(name: commanderName, namespace: commanderNamespace)
-                            .frame(width: cardWidth, height: cardWidth / 0.716)
-                            .rotationEffect(.degrees(reduceMotion ? 0 : -4))
-                            .padding(.vertical, 8)
+                        HeroCommanderCard(name: commanderName, namespace: commanderNamespace, width: cardWidth)
                         deckTile
                     }
                     .frame(maxWidth: .infinity)
-                    VStack(alignment: .leading, spacing: 12) {
-                        if horizontal { identity(compact: true).padding(.bottom, 14) }
-                        Button(action: play) {
-                            HStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        if horizontal { identity(compact: true).padding(.bottom, 8) }
+                        Button {
+                            GameAudio.shared.play(.menuPlay)
+                            play()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "flame.fill")
                                 Text("Play Commander")
-                                    .font(.title3.weight(.bold))
                                     .multilineTextAlignment(.leading)
-                                Spacer()
-                                Image(systemName: "arrow.up.right")
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right").font(.system(size: 15, weight: .heavy))
                             }
                             .frame(maxWidth: .infinity)
                             .contentShape(Rectangle())
                         }
-                        .buttonStyle(CommanderActionStyle())
+                        .buttonStyle(BrandButtonStyle(kind: .primary))
                         .accessibilityIdentifier("menu.play")
-                        Button(action: decks) {
-                            HStack(spacing: 16) {
-                                Image(systemName: "rectangle.stack")
+                        Button {
+                            GameAudio.shared.play(.uiOpen)
+                            decks()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "rectangle.stack.fill")
                                 Text("Decks")
-                                Spacer()
-                                Image(systemName: "arrow.right")
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right").font(.system(size: 14, weight: .bold))
                             }
                             .frame(maxWidth: .infinity)
                             .contentShape(Rectangle())
                         }
-                        .buttonStyle(CommanderActionStyle(primary: false))
+                        .buttonStyle(BrandButtonStyle(kind: .secondary))
                         .accessibilityIdentifier("menu.decks")
                         ViewThatFits(in: .horizontal) {
-                            HStack(spacing: 16) { utilityActions }
+                            HStack(spacing: 20) { utilityActions }
                             VStack(alignment: .leading, spacing: 0) { utilityActions }
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.top, 4)
+                        .padding(.top, 6)
                     }
                     .frame(maxWidth: 400)
                 }
                 .padding(.horizontal, horizontal ? 36 : 26)
-                .padding(.vertical, horizontal ? 24 : 28)
+                .padding(.vertical, horizontal ? 16 : 12)
                 .frame(maxWidth: 960, minHeight: proxy.size.height)
                 .frame(maxWidth: .infinity)
                 .opacity(appeared ? 1 : 0)
-                .offset(y: appeared || reduceMotion ? 0 : 12)
+                .offset(y: appeared || reduceMotion ? 0 : 14)
             }
         }
-        .background(CommanderPresentation.canvas.ignoresSafeArea())
+        .background(BrandBackdrop().ignoresSafeArea())
         .preferredColorScheme(.dark)
         .onAppear {
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.24)) { appeared = true }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.45)) { appeared = true }
         }
     }
 
     private func identity(compact: Bool) -> some View {
         VStack(alignment: compact ? .leading : .center, spacing: 8) {
+            BrandMark(size: compact ? 52 : 64)
             Text("MAGICMOBILE")
-                .font(.caption.weight(.bold)).tracking(3)
-                .foregroundStyle(CommanderPresentation.secondary)
+                .font(.caption.weight(.heavy)).tracking(3)
+                .foregroundStyle(BrandTheme.inkSecondary)
             Text("Your next\ngreat game.")
-                .font(.system(.largeTitle, design: .default, weight: .black))
-                .tracking(-1)
-                .foregroundStyle(CommanderPresentation.ink)
+                .brandTitle(compact ? 32 : 36)
                 .multilineTextAlignment(compact ? .leading : .center)
                 .fixedSize(horizontal: false, vertical: true)
             if !playerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text("Welcome back, \(playerName)")
-                    .font(.subheadline).foregroundStyle(CommanderPresentation.secondary)
+                    .font(.subheadline)
+                    .foregroundStyle(BrandTheme.inkSecondary)
                     .multilineTextAlignment(compact ? .leading : .center)
             }
         }
     }
 
     private var deckTile: some View {
-        VStack(spacing: 5) {
+        VStack(spacing: 4) {
             Text("YOUR DECK")
-                .font(.caption2.weight(.bold)).tracking(2)
-                .foregroundStyle(CommanderPresentation.accent)
+                .font(.caption2.weight(.heavy)).tracking(2.4)
+                .foregroundStyle(BrandTheme.ember)
             Text(deckName)
-                .font(.title3.weight(.bold))
-                .foregroundStyle(CommanderPresentation.ink)
+                .font(.system(size: 22, weight: .heavy))
+                .foregroundStyle(BrandTheme.ink)
+                .shadow(color: .black.opacity(0.7), radius: 2, y: 1)
             if let commanderName, !commanderName.isEmpty {
-                Text(commanderName).font(.caption)
-                    .foregroundStyle(CommanderPresentation.secondary)
+                Text(commanderName)
+                    .font(.footnote)
+                    .foregroundStyle(BrandTheme.inkSecondary)
             }
         }
         .multilineTextAlignment(.center)
@@ -1402,32 +1407,23 @@ struct TavernMainMenu: View {
     }
 
     @ViewBuilder private var utilityActions: some View {
-        Button(action: settings) {
-            Label("Settings", systemImage: "gearshape")
-                .font(.footnote).frame(minHeight: 44)
-                .contentShape(Rectangle())
+        BrandIconButton(title: "Settings", systemImage: "gearshape.fill") {
+            GameAudio.shared.play(.uiOpen)
+            settings()
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(CommanderPresentation.secondary)
         .accessibilityIdentifier("menu.settings")
         if let news {
-            Button(action: news) {
-                Label("Updates", systemImage: "arrow.down.circle")
-                    .font(.footnote).frame(minHeight: 44)
-                    .contentShape(Rectangle())
+            BrandIconButton(title: "Updates", systemImage: "scroll.fill") {
+                GameAudio.shared.play(.pageFlip)
+                news()
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(CommanderPresentation.secondary)
             .accessibilityIdentifier("menu.updates")
         }
         if let downloads {
-            Button(action: downloads) {
-                Label("Downloads", systemImage: "externaldrive")
-                    .font(.footnote).frame(minHeight: 44)
-                    .contentShape(Rectangle())
+            BrandIconButton(title: "Downloads", systemImage: "arrow.down.to.line.circle.fill") {
+                GameAudio.shared.play(.uiOpen)
+                downloads()
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(CommanderPresentation.secondary)
             .accessibilityIdentifier("menu.downloads")
         }
     }
@@ -2702,6 +2698,7 @@ struct NativeGameView: View {
     @State private var showsTurnCue = false
     /// Game, turn and active player of the last turn-start banner.
     @State private var lastTurnBannerKey: String?
+    @State private var lastTurnSoundKey: String?
     @State private var showsTurnBanner = false
     /// The phase pill is flying up into the top bar.
     @State private var phaseCueMerging = false
@@ -3434,6 +3431,14 @@ struct NativeGameView: View {
                     guard completed else { return }
                     isLogOpen = false; isLandscapeStackOpen = false; isPromptDetailOpen = false
                     isCardChoiceOpen = false; dragActionChoice = nil; inspectedCard = nil
+                    let won = snapshot.winnerPlayerIds?.contains(snapshot.viewerID) == true
+                    GameAudio.shared.duckMusic(for: 6)
+                    GameAudio.shared.play(won ? .victory : .defeat, after: 0.25)
+                }
+                .onChange(of: GameSoundSignature(snapshot)) { old, new in
+                    for (index, sound) in GameSoundSignature.cues(from: old, to: new).enumerated() {
+                        GameAudio.shared.play(sound, after: Double(index) * 0.11)
+                    }
                 }
         } else {
             LoadingGameView(startupStatus: startupStatus)
@@ -3451,7 +3456,19 @@ struct NativeGameView: View {
         let scheduled = boardFX.ingest(snapshot, level: level, now: Date())
         guard !scheduled.isEmpty else { return }
         BoardFXHaptics.play(scheduled, viewerID: snapshot.viewerID)
-        if boardSoundsEnabled { BoardFXSound.play(scheduled, viewerID: snapshot.viewerID) }
+        if boardSoundsEnabled {
+            var arrivals: [String: BoardFXSound.Arrival] = [:]
+            let arrived = Set(scheduled.compactMap { fx -> String? in
+                if case let .enteredBattlefield(id, _, _, _, _) = fx.event { return id }; return nil
+            })
+            if !arrived.isEmpty {
+                for card in snapshot.players.flatMap(\.zones.battlefield) where arrived.contains(card.instanceId) {
+                    arrivals[card.instanceId] = BoardFXSound.Arrival(isLand: card.card.typeLine.localizedCaseInsensitiveContains("land"),
+                                                                    isToken: card.card.isToken == true)
+                }
+            }
+            BoardFXSound.play(scheduled, viewerID: snapshot.viewerID, arrivals: arrivals)
+        }
         guard level == .full else { return }
         // Shake when the hit lands: the viewer losing life, or a commander touching down.
         let viewerHit = scheduled.first { if case let .lifeChanged(id, delta) = $0.event { return id == snapshot.viewerID && delta < 0 }; return false }
@@ -3536,7 +3553,11 @@ struct NativeGameView: View {
             .onChange(of: pendingActionId) { oldValue, newValue in
                 handleCardChoicePendingChange(from: oldValue, to: newValue, snapshot: snapshot)
             }
+            .onChange(of: isLogOpen) { _, open in GameAudio.shared.play(open ? .pageFlip : .uiClose) }
+            .onChange(of: isGameMenuOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
+            .onChange(of: isLandscapeStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
             .onChange(of: lastActionRejection?.message) { _, newValue in
+                if newValue != nil { GameAudio.shared.play(.uiError) }
                 if newValue != nil && committedCardChoice != nil { cancelCommittedCardChoice() }
             }
             .onChange(of: commandFailure) { oldValue, newValue in
@@ -3544,8 +3565,11 @@ struct NativeGameView: View {
             }
             .onChange(of: PortraitInteractionPolicy.detailChoiceKey(snapshot)) { _, key in
                 isPromptDetailOpen = key != nil
+                // A decision that needs you, not a routine priority pass.
+                if key != nil { GameAudio.shared.play(.responseAlert) }
             }
             .onChange(of: PortraitInteractionPolicy.cardChoiceKey(snapshot)) { _, key in
+                if key != nil && committedCardChoice == nil { GameAudio.shared.play(.responseAlert) }
                 isCardChoiceOpen = key != nil && committedCardChoice == nil && !reviewCardChoiceAfterPending
                 inspectedCard = nil
                 selectedCard = nil
@@ -3642,6 +3666,14 @@ struct NativeGameView: View {
                 lastTurnCueKey = key
                 // The first phase of a new turn gets the turn-start banner instead of a phase card.
                 let turnKey = "\(snapshot.id):\(snapshot.turn):\(snapshot.activePlayerId ?? "")"
+                if turnKey != lastTurnSoundKey {
+                    // A bell for each new turn (the game-start fanfare covers the first one).
+                    let firstTurn = lastTurnSoundKey == nil
+                    lastTurnSoundKey = turnKey
+                    if !firstTurn || snapshot.turn > 1 {
+                        GameAudio.shared.play(snapshot.isViewer(snapshot.activePlayerId) ? .turnYou : .turnOpponent)
+                    }
+                }
                 if turnKey != lastTurnBannerKey && BoardFXLevel(rawValue: boardFXLevel) != .off {
                     let firstBanner = lastTurnBannerKey == nil
                     lastTurnBannerKey = turnKey
@@ -3730,8 +3762,7 @@ struct NativeGameView: View {
     ) -> some View {
         GeometryReader { proxy in
             let metrics = PortraitBattlefieldLayoutMetrics(proxy: proxy, paymentActive: InlinePaymentPromptState.isActive(in: snapshot), largeText: GameBoardMotion.largeText(dynamicTypeSize),
-                centerControlsVisible: BoardDecisionPresentation.needsCenterSpace(snapshot, hasRejection: lastActionRejection != nil)
-                    || !snapshot.stackTopFirst.isEmpty)
+                centerControlsVisible: BoardDecisionPresentation.needsCenterSpace(snapshot, hasRejection: lastActionRejection != nil))
             let actions = snapshot.legalActions ?? []
             let targetableIds = GameBoardInteractionState.boardTargetableIds(for: snapshot)
             let combatHighlights = CombatHighlightSet(
@@ -3800,9 +3831,6 @@ struct NativeGameView: View {
                             FloatingZoneChip(title: "Looked", count: lookedAtCards.count, icon: "eye.trianglebadge.exclamationmark") {
                                 inspectBoardZone(.collection(.lookedAt))
                             }
-                        }
-                        if !snapshot.stackTopFirst.isEmpty {
-                            BoardStackTray(objects: snapshot.stackTopFirst) { isLandscapeStackOpen = true }
                         }
                     }
                     if let lastActionRejection {
@@ -4248,39 +4276,65 @@ struct NativeGameView: View {
 
 struct LoadingGameView: View {
     let startupStatus: CommanderStartupResponse?
+    @State private var tipIndex = Int.random(in: 0..<LoadingGameView.tips.count)
+
+    static let tips = [
+        "Hold a card to inspect it. Drag a card upward to play it.",
+        "Tap the stack beside your mana to see everything waiting to resolve.",
+        "Skip ends your turn but stops for anything that needs your answer.",
+        "Tap a land to add its mana; the engine pays costs exactly as the rules say.",
+        "Your commander returns to the command zone when it would leave play.",
+        "Legendary permanents wear a gold edge on the battlefield.",
+        "Turn on music and effect sounds in Settings for the full table experience."
+    ]
 
     var body: some View {
         ZStack {
-            BattlefieldSurface()
+            BrandBackdrop()
                 .ignoresSafeArea()
 
-            VStack(spacing: 12) {
+            VStack(spacing: 16) {
                 if startupStatus?.status == "failed" {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.title.weight(.black))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(BrandTheme.ember)
                 } else {
-                    ProgressView()
-                        .tint(.orange)
+                    BrandMark(size: 72)
                 }
 
-                Text(startupStatus?.status == "failed" ? "XMage start failed" : "Creating XMage table")
-                    .font(.title3.weight(.black))
-                    .foregroundStyle(.white)
+                Text(startupStatus?.status == "failed" ? "XMage start failed" : "Shuffling up…")
+                    .brandTitle(26)
 
-                Text(startupStatus?.error ?? startupStatus?.message ?? "The battlefield is ready while the rules engine finishes seating players.")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.72))
+                Text(startupStatus?.error ?? startupStatus?.message ?? "Seating players at the table.")
+                    .font(.callout)
+                    .foregroundStyle(BrandTheme.inkSecondary)
                     .multilineTextAlignment(.center)
                     .lineLimit(3)
+
+                if startupStatus?.status != "failed" {
+                    BrandDivider(title: "Tip").frame(maxWidth: 240).padding(.top, 4)
+                    Text(Self.tips[tipIndex % Self.tips.count])
+                        .font(.footnote)
+                        .foregroundStyle(BrandTheme.ink.opacity(0.85))
+                        .multilineTextAlignment(.center)
+                        .frame(minHeight: 40)
+                        .id(tipIndex)
+                        .transition(.opacity)
+                }
             }
-            .padding(20)
+            .padding(24)
             .frame(maxWidth: 420)
-            .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.14)))
+            .brandPanel(padding: 0)
+            .padding(24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(4))
+                withAnimation(.easeInOut(duration: 0.4)) { tipIndex += 1 }
+            }
+        }
     }
 }
 
@@ -4662,11 +4716,14 @@ struct PlayerStrip: View {
     }
 }
 
-/// Arena-style stack tray for the portrait board: the top objects with their art and a
-/// count. Consecutive identical triggers are grouped ("Chatterfang ×12").
+/// The dock's stack control: beside the floating mana it shows what is on the stack —
+/// the top objects' art, the count and the top object's name, with consecutive identical
+/// triggers grouped ("Chatterfang trigger ×12"). Tap to open the full stack.
 struct BoardStackTray: View {
     let objects: [XmageStackObject]
+    var count: Int? = nil
     let open: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     struct Group {
         let object: XmageStackObject
@@ -4691,56 +4748,68 @@ struct BoardStackTray: View {
         group.count > 1 ? "\(group.object.displayName) ×\(group.count)" : group.object.displayName
     }
 
+    private var total: Int { max(count ?? 0, objects.count) }
+
     var body: some View {
         let groups = Self.groups(objects)
         Button(action: open) {
-            HStack(spacing: 7) {
-                ZStack(alignment: .leading) {
-                    ForEach(Array(groups.prefix(3).enumerated().reversed()), id: \.offset) { index, group in
-                        thumbnail(group.object)
-                            .rotationEffect(.degrees(Double(index) * 5))
-                            .offset(x: CGFloat(index) * 8)
+            if let top = groups.first {
+                HStack(spacing: 7) {
+                    ZStack(alignment: .leading) {
+                        ForEach(Array(groups.prefix(3).enumerated().reversed()), id: \.offset) { index, group in
+                            thumbnail(group.object)
+                                .rotationEffect(.degrees(Double(index) * 6))
+                                .offset(x: CGFloat(index) * 7)
+                        }
                     }
-                }
-                .frame(width: 22 + CGFloat(max(min(groups.count, 3) - 1, 0)) * 8, height: 30, alignment: .leading)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("STACK · \(objects.count)")
-                        .font(.system(size: 8, weight: .black))
-                        .foregroundStyle(MagicPalette.antiqueGold)
-                    if let top = groups.first {
-                        // The name may truncate; the trigger count never does.
+                    .frame(width: 24 + CGFloat(max(min(groups.count, 3) - 1, 0)) * 7, height: 32, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("STACK · \(total)")
+                            .font(.system(size: 8, weight: .black)).tracking(0.6)
+                            .foregroundStyle(MagicPalette.antiqueGold)
                         HStack(spacing: 3) {
+                            // The name may truncate; the trigger count never does.
                             Text(top.object.displayName).lineLimit(1)
                             if top.count > 1 {
                                 Text("×\(top.count)").foregroundStyle(MagicPalette.antiqueGold).fixedSize()
                             }
                         }
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
                     }
+                    .frame(maxWidth: 118, alignment: .leading)
                 }
-                .frame(maxWidth: 190, alignment: .leading)
+                .padding(.horizontal, 8)
+                .frame(minHeight: 44)
+                .background(MagicPalette.iron.opacity(0.92), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(MagicPalette.antiqueGold.opacity(0.7), lineWidth: 1.5))
+                .shadow(color: MagicPalette.antiqueGold.opacity(0.35), radius: 6)
+                .transition(reduceMotion ? .opacity : .scale(scale: 0.85, anchor: .trailing).combined(with: .opacity))
+            } else {
+                HStack(spacing: 4) {
+                    Image(systemName: "square.stack.3d.up")
+                    Text("\(total)").monospacedDigit()
+                }
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(MagicPalette.parchment.opacity(total > 0 ? 0.9 : 0.5))
+                .frame(minWidth: 44, minHeight: 44)
             }
-            .padding(.horizontal, 7)
-            .frame(height: 34)
-            .background(MagicPalette.iron.opacity(0.95), in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(MagicPalette.antiqueGold.opacity(0.55), lineWidth: 1.5))
-            .foregroundStyle(.white)
-            .shadow(color: .black.opacity(0.4), radius: 4, y: 2)
         }
         .buttonStyle(.plain)
         .fixedSize()
-        .accessibilityLabel("Stack, \(objects.count) \(objects.count == 1 ? "item" : "items")" + (groups.first.map { ". Top: \(Self.title($0))" } ?? ""))
-        .accessibilityHint("Opens the stack")
+        .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.8), value: groups.isEmpty)
+        .accessibilityLabel("Inspect stack")
+        .accessibilityValue(groups.first.map { "\(total) \(total == 1 ? "item" : "items"). Top: \(Self.title($0))" } ?? "Empty")
         .accessibilityIdentifier("board.stack.tray")
     }
 
     @ViewBuilder
     private func thumbnail(_ object: XmageStackObject) -> some View {
         if let card = object.displaySourceCard {
-            CardTile(card: card, selected: false, zoneName: "Stack", width: 22, height: 30, ignoreTappedRotation: true)
+            CardTile(card: card, selected: false, zoneName: "Stack", width: 23, height: 32, ignoreTappedRotation: true)
                 .allowsHitTesting(false)
         } else {
-            SyntheticStackObjectTile(object: object, width: 22, height: 30)
+            SyntheticStackObjectTile(object: object, width: 23, height: 32)
         }
     }
 }
@@ -7739,6 +7808,7 @@ struct PanelActionButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .pressSound(isPressed: configuration.isPressed)
             .foregroundStyle(.white)
             .padding(.horizontal, compact ? 6 : 7)
             .padding(.vertical, compact ? 4 : 5)
@@ -9944,6 +10014,7 @@ struct PortraitHandRow: View {
                                         if draggingCardId == nil {
                                             guard let bounds = handCardBounds[card.id] else { return }
                                             dragStartCenter = CGPoint(x: bounds.midX, y: bounds.midY)
+                                            GameAudio.shared.play(.cardPickup)
                                         }
                                         selectedCard = nil
                                         inspectedCard = nil
@@ -9981,6 +10052,7 @@ struct PortraitHandRow: View {
                                             interactionState.mode = .selectedCard(cardId: card.instanceId)
                                         case let .submit(action):
                                             interactionState.mode = .awaitingCastSnapshot(actionId: action.id)
+                                            if action.type == "cast_spell" { GameAudio.shared.play(.cardPlay) }
                                             runAction(action)
                                         }
                                     }, inspect: { selectedCard = nil; inspectedCard = card }, tap: {
@@ -10007,11 +10079,14 @@ struct PortraitHandRow: View {
 
                 HStack(spacing: 12) {
                     Button {
+                        GameAudio.shared.play(.handFan)
                         withAnimation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.2)) { handExpanded.toggle() }
                     } label: {
                         Label("Hand · \(cards.count)", systemImage: handExpanded ? "chevron.down" : "chevron.up")
                             .font(.caption2.bold()).padding(.horizontal, 12)
-                            .frame(minHeight: 44).background(.black.opacity(0.75), in: Capsule())
+                            .foregroundStyle(MagicPalette.parchment)
+                            .frame(minHeight: 44).background(.black.opacity(0.78), in: Capsule())
+                            .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.55), lineWidth: 1))
                     }
                     .accessibilityLabel(handExpanded ? "Tuck hand" : "Expand hand")
                     .accessibilityIdentifier("board.hand.expand")
@@ -10219,7 +10294,7 @@ struct GameplayActionDock: View {
                     Button(action: control.stop) {
                         secondaryLabel("Stop skipping", icon: "stop.fill")
                     }
-                    .buttonStyle(CircularWhenIconOnly(iconOnly: horizontal, fallback: GameplayDockButtonStyle(isPrimary: false)))
+                    .modifier(DockSecondaryButtonStyle(circular: horizontal))
                     .accessibilityLabel("Stop skipping")
                     .accessibilityHint(control.status ?? "Stops future automatic passes")
                 } else {
@@ -10233,7 +10308,7 @@ struct GameplayActionDock: View {
                     } label: {
                         secondaryLabel("Skip…", icon: "forward.end")
                     }
-                    .buttonStyle(CircularWhenIconOnly(iconOnly: horizontal, fallback: GameplayDockButtonStyle(isPrimary: false)))
+                    .modifier(DockSecondaryButtonStyle(circular: horizontal))
                     .disabled(!control.canEndTurn && !control.canSkipResponses && !control.canSkipToMyTurn)
                     .accessibilityLabel("Skip options")
                     .accessibilityHint("Choose how long to skip responses. Required choices always stop skipping.")
@@ -10242,7 +10317,7 @@ struct GameplayActionDock: View {
                 Button(action: openPromptDetails) {
                     secondaryLabel("Choices", icon: "list.bullet.rectangle.portrait")
                 }
-                .buttonStyle(CircularWhenIconOnly(iconOnly: horizontal, fallback: GameplayDockButtonStyle(isPrimary: false)))
+                .modifier(DockSecondaryButtonStyle(circular: horizontal))
                 .accessibilityLabel("View all choices")
             } else {
                 YieldActionsControl(
@@ -10272,6 +10347,7 @@ private struct GameplayDockButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .pressSound(isPressed: configuration.isPressed)
             .foregroundStyle(isPrimary ? Color.white : MagicPalette.parchment)
             .padding(.horizontal, 8)
             .frame(maxWidth: .infinity, minHeight: 44)
@@ -10301,19 +10377,28 @@ private struct GameplayDockButtonStyle: ButtonStyle {
 }
 
 /// The portrait dock shows its secondary control as an icon beside the settings button;
-/// give it the same 44pt circle instead of a wide capsule spilling past its slot.
-private struct CircularWhenIconOnly<Fallback: ButtonStyle>: ButtonStyle {
-    let iconOnly: Bool
-    let fallback: Fallback
-    @ViewBuilder func makeBody(configuration: Configuration) -> some View {
-        if iconOnly { GameplayDockMenuButtonStyle().makeBody(configuration: configuration) }
-        else { fallback.makeBody(configuration: configuration) }
+/// give it the same 44pt circle instead of a wide capsule spilling past its slot. Applied
+/// as real button styles so each keeps its own environment (enabled state, Reduce Motion).
+private struct DockSecondaryButtonStyle: ViewModifier {
+    let circular: Bool
+    func body(content: Content) -> some View {
+        if circular { content.buttonStyle(GameplayDockMenuButtonStyle()) }
+        else { content.buttonStyle(GameplayDockButtonStyle(isPrimary: false)) }
+    }
+}
+
+private struct CompactOrCircleButtonStyle: ViewModifier {
+    let circular: Bool
+    func body(content: Content) -> some View {
+        if circular { content.buttonStyle(GameplayDockMenuButtonStyle()) }
+        else { content.buttonStyle(CompactActionButtonStyle(isPrimary: false)) }
     }
 }
 
 private struct GameplayDockMenuButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .pressSound(isPressed: configuration.isPressed)
             .foregroundStyle(MagicPalette.parchment)
             .frame(width: 44, height: 44)
             .background(configuration.isPressed ? MagicPalette.brass.opacity(0.62) : MagicPalette.iron.opacity(0.84), in: Circle())
@@ -10424,12 +10509,8 @@ struct PortraitBottomCommandBar: View {
                     }
                     .frame(maxWidth: .infinity)
                     .accessibilityLabel("Floating mana; swipe to view all colors")
-                    Button { isStackOpen = true } label: {
-                        Label("\(snapshot.xmage?.stack.count ?? human.zones.stack.count)", systemImage: "square.stack.3d.up")
-                            .font(.system(size: 17, weight: .semibold))
-                            .frame(minWidth: 44, minHeight: 44)
-                    }
-                    .accessibilityLabel("Inspect stack")
+                    BoardStackTray(objects: snapshot.stackTopFirst,
+                                   count: snapshot.xmage?.stack.count ?? human.zones.stack.count) { isStackOpen = true }
                 }
                 HStack(spacing: 8) {
                     VStack(spacing: 0) {
@@ -10470,6 +10551,7 @@ struct PortraitBottomCommandBar: View {
             .sheet(isPresented: $isStackOpen) {
                 BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
             }
+            .onChange(of: isStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
         }
     }
 }
@@ -11695,7 +11777,7 @@ struct YieldActionsControl: View {
                 } label: {
                     actionLabel(GameplayActionPresentation.title(for: action, snapshot: snapshot), showsDisclosure: false)
                 }
-                .buttonStyle(CircularWhenIconOnly(iconOnly: iconOnly, fallback: CompactActionButtonStyle(isPrimary: false)))
+                .modifier(CompactOrCircleButtonStyle(circular: iconOnly))
                 .accessibilityLabel(GameplayActionPresentation.title(for: action, snapshot: snapshot))
             } else {
                 Menu {
@@ -11707,7 +11789,7 @@ struct YieldActionsControl: View {
                 } label: {
                     actionLabel("Timing Options", showsDisclosure: true)
                 }
-                .buttonStyle(CircularWhenIconOnly(iconOnly: iconOnly, fallback: CompactActionButtonStyle(isPrimary: false)))
+                .modifier(CompactOrCircleButtonStyle(circular: iconOnly))
                 .disabled(actions.isEmpty)
                 .accessibilityLabel(actions.isEmpty ? "No timing options available" : "Open timing options")
                 .accessibilityHint(actions.isEmpty ? "" : "Choose how far XMage should yield priority")
@@ -12358,6 +12440,7 @@ struct Panel<Content: View>: View {
 struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .pressSound(isPressed: configuration.isPressed)
             .font(.callout.weight(.black))
             .foregroundStyle(.white)
             .padding(.horizontal, 15)
@@ -12371,6 +12454,7 @@ struct PrimaryButtonStyle: ButtonStyle {
 struct SecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .pressSound(isPressed: configuration.isPressed)
             .font(.callout.weight(.black))
             .foregroundStyle(.white)
             .padding(.horizontal, 15)
@@ -12387,6 +12471,7 @@ struct CompactActionButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .pressSound(isPressed: configuration.isPressed)
             .font(.system(size: isPrimary ? 15 : 13, weight: .black, design: .rounded))
             .foregroundStyle(.white)
             .lineLimit(1)
@@ -12414,6 +12499,7 @@ struct IconButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .pressSound(isPressed: configuration.isPressed)
             .font(.system(size: small ? 12 : 16, weight: .black))
             .foregroundStyle(.white)
             .frame(width: small ? 28 : 42, height: small ? 28 : 42)

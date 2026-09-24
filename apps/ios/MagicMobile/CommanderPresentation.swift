@@ -2,39 +2,25 @@ import SwiftUI
 
 /// Shared presentation for the journey from choosing a deck to taking a seat.
 enum CommanderPresentation {
-    static let canvas = Color(red: 20 / 255, green: 21 / 255, blue: 24 / 255)
-    static let surface = Color(red: 31 / 255, green: 33 / 255, blue: 37 / 255)
-    static let ink = Color(red: 243 / 255, green: 241 / 255, blue: 236 / 255)
-    static let secondary = Color(red: 177 / 255, green: 178 / 255, blue: 182 / 255)
-    static let accent = Color(red: 1, green: 128 / 255, blue: 88 / 255)
+    static let canvas = BrandTheme.canvas
+    static let surface = BrandTheme.surface
+    static let ink = BrandTheme.ink
+    static let secondary = BrandTheme.inkSecondary
+    static let accent = BrandTheme.ember
 }
 
+/// Menu and setup buttons share the brand look (ember primary, dark secondary).
 struct CommanderActionStyle: ButtonStyle {
     var primary = true
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.headline)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 15)
-            .frame(maxWidth: .infinity, minHeight: 52)
-            .contentShape(Rectangle())
-            .foregroundStyle(primary ? CommanderPresentation.canvas : CommanderPresentation.ink)
-            .background(primary ? CommanderPresentation.accent : CommanderPresentation.surface,
-                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .opacity(isEnabled ? (configuration.isPressed ? 0.82 : 1) : 0.45)
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+        BrandButtonStyle(kind: primary ? .primary : .secondary).makeBody(configuration: configuration)
     }
 }
 
 struct CommanderPanel: ViewModifier {
     func body(content: Content) -> some View {
-        content.padding(18)
-            .background(CommanderPresentation.surface,
-                        in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        content.modifier(BrandPanel())
     }
 }
 
@@ -69,7 +55,9 @@ struct CommanderDeckPortrait: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: .black.opacity(0.35), radius: 18, y: 12)
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .strokeBorder(BrandTheme.border, lineWidth: 1.4))
+        .shadow(color: .black.opacity(0.45), radius: 18, y: 12)
     }
 
     private var placeholder: some View {

@@ -45,6 +45,33 @@ struct OnDeviceRootView: View {
     @State private var aiStartingRoll: OnDeviceStartingRoll?
     @State private var aiRevealedRollCount = 0
     @State private var aiRollSeatNames: [String: String] = [:]
+    @State private var versusIntro: VersusIntro?
+
+    private struct VersusIntro {
+        let you: VersusIntroOverlay.Seat
+        let opponents: [VersusIntroOverlay.Seat]
+    }
+
+    /// Seats for the intro: the table's own players when known, else the chosen decks.
+    private func makeVersusIntro() -> VersusIntro {
+        let name = playerDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let you = VersusIntroOverlay.Seat(id: "you", name: name.isEmpty ? "You" : name,
+                                          commander: selectedDeck?.commander?.cardName)
+        if let snapshot = session.snapshot {
+            let others = snapshot.players.filter { !snapshot.isViewer($0.playerId) }.prefix(3).map {
+                VersusIntroOverlay.Seat(id: $0.playerId, name: $0.displayName ?? "Opponent",
+                                        commander: $0.zones.command.first?.card.name)
+            }
+            if !others.isEmpty { return VersusIntro(you: you, opponents: Array(others)) }
+        }
+        if playWithFriends {
+            return VersusIntro(you: you, opponents: [VersusIntroOverlay.Seat(id: "friends", name: "Challengers", commander: nil)])
+        }
+        let opponents = aiPrecons.prefix(max(1, opponentCount)).enumerated().map { index, deck in
+            VersusIntroOverlay.Seat(id: "ai-\(index)", name: deck.name, commander: deck.deckList.commander?.cardName)
+        }
+        return VersusIntro(you: you, opponents: opponents)
+    }
 
     init() {
         let session = OnDeviceSession()
@@ -121,8 +148,13 @@ struct OnDeviceRootView: View {
         ZStack {
             if activeGame {
                 game
+                if let versusIntro {
+                    VersusIntroOverlay(you: versusIntro.you, opponents: versusIntro.opponents) { self.versusIntro = nil }
+                        .transition(.opacity)
+                        .zIndex(10)
+                }
             } else {
-                CommanderPresentation.canvas.ignoresSafeArea()
+                BrandTheme.canvas.ignoresSafeArea()
                 if showSetup || setup.needsLeave {
                     setupContent
                 } else {
@@ -138,6 +170,8 @@ struct OnDeviceRootView: View {
         .preferredColorScheme(.dark)
         .animation(reduceMotion ? .easeOut(duration: 0.12) : .easeOut(duration: 0.26), value: showSetup)
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: activeGame)
+        // Menu ambience pauses while anything covers the menu.
+        .environment(\.brandAmbientMotion, !(showImport || showAppearance || showUpdates || showDownloads || showDiagnostics))
         .sheet(isPresented: $showAppearance) { AppearanceSettingsView(portraitModeEnabled: $portraitModeEnabled) }
         .sheet(isPresented: $showUpdates) { NativeUpdateNewsView(upstreamCommit: setup.identity?.upstreamCommit) }
         .sheet(isPresented: $showDownloads) {
@@ -190,7 +224,21 @@ struct OnDeviceRootView: View {
         .onChange(of: portraitModeEnabled) { _, enabled in
             MagicMobileOrientationController.shared.setPortraitModeEnabled(enabled)
         }
-        .onChange(of: scenePhase) { _, phase in setup.setSceneActive(phase == .active) }
+        .onChange(of: scenePhase) { _, phase in
+            setup.setSceneActive(phase == .active)
+            if phase == .active { GameAudio.shared.resume() }
+        }
+        .onAppear { GameAudio.shared.setScene(activeGame ? .game : .menu) }
+        .onChange(of: activeGame) { _, playing in
+            GameAudio.shared.setScene(playing ? .game : .menu)
+            guard playing else { versusIntro = nil; return }
+            if reduceMotion {
+                GameAudio.shared.play(.gameStart, after: 0.2)
+            } else {
+                versusIntro = makeVersusIntro()
+                GameAudio.shared.play(.versus, after: 0.05)
+            }
+        }
         .onChange(of: session.errorMessage) { _, message in
             if message != nil { Task { await setup.captureDiagnostics(in: diagnostics) } }
         }
@@ -399,7 +447,10 @@ struct OnDeviceRootView: View {
                 source: setup.errorMessage != nil ? .setup : .session),
             liveUpdateStatus: setup.liveStatus,
             onInteractionFeedback: { setup.feedback = $0 },
-            runAction: { action in Task { await setup.perform { try await session.send(action: action) } } },
+            runAction: { action in
+                if action.type == "mulligan" { GameAudio.shared.play(.shuffle) }
+                Task { await setup.perform { try await session.send(action: action) } }
+            },
             runCommand: { command, label, id in
                 Task {
                     // A card plan answers XMage's next one-card prompt as soon as it lands,
@@ -480,22 +531,29 @@ struct OnDeviceRootView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
-                    Button { showSetup = false } label: { Label("Main menu", systemImage: "chevron.left") }
+                    Button {
+                        GameAudio.shared.play(.uiBack)
+                        showSetup = false
+                    } label: { Label("Main menu", systemImage: "chevron.left") }
+                        .font(.body.weight(.semibold))
                         .disabled(setup.isBusy || setup.needsLeave)
                     Spacer()
-                    Button { showAppearance = true } label: { Image(systemName: "gearshape.fill") }
+                    Button {
+                        GameAudio.shared.play(.uiOpen)
+                        showAppearance = true
+                    } label: { Image(systemName: "gearshape.fill") }
                         .accessibilityLabel("Settings")
                 }
-                Text("Your next game.").font(.largeTitle.weight(.bold)).foregroundStyle(CommanderPresentation.ink)
+                Text("Your next game.").brandTitle(34)
                 Text("Choose your deck. Take your seat.")
                     .font(.subheadline).foregroundStyle(CommanderPresentation.secondary)
                 setupDecks
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("YOUR SEAT").font(.caption.weight(.bold)).tracking(1.4)
-                        .foregroundStyle(CommanderPresentation.secondary)
+                    BrandDivider(title: "Your seat")
                     TextField("Player name", text: $playerDisplayName)
                         .textContentType(.nickname).autocorrectionDisabled()
                         .padding(12).background(CommanderPresentation.canvas, in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(BrandTheme.border, lineWidth: 1))
                         .accessibilityIdentifier("ondevice.playerName")
                     Text("Choose a name with 1–24 characters.").font(.caption).foregroundStyle(.secondary)
                     Toggle("Auto-Rotate", isOn: $portraitModeEnabled)
@@ -623,6 +681,7 @@ struct OnDeviceRootView: View {
             .frame(maxWidth: 640).padding(16).frame(maxWidth: .infinity)
         }
         .scrollDismissesKeyboard(.interactively)
+        .background(BrandBackdrop(cards: false).ignoresSafeArea())
     }
 
     private var setupDecks: some View {
@@ -630,14 +689,14 @@ struct OnDeviceRootView: View {
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: 20))
             : AnyLayout(HStackLayout(alignment: .top, spacing: 24))
         return layout {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .center, spacing: 10) {
                 CommanderDeckPortrait(name: selectedDeck?.commander?.cardName,
                                        namespace: reduceMotion ? nil : commanderTransition)
                     .frame(width: 112, height: 156)
                 Text("Your deck").font(.caption).foregroundStyle(CommanderPresentation.secondary)
                 Text(selectedDeck?.name ?? "Choose a deck").font(.headline).fixedSize(horizontal: false, vertical: true)
-            }.frame(maxWidth: .infinity, alignment: .leading)
-            VStack(alignment: .leading, spacing: 10) {
+            }.frame(maxWidth: .infinity).multilineTextAlignment(.center)
+            VStack(alignment: .center, spacing: 10) {
                 if playWithFriends {
                     Image(systemName: "person.2.fill")
                         .font(.largeTitle).foregroundStyle(CommanderPresentation.secondary)
@@ -654,9 +713,14 @@ struct OnDeviceRootView: View {
                     Text(opponentCount == 1 ? (aiPrecon?.name ?? "Choose opponents") : "Choose each deck below")
                         .font(.headline).fixedSize(horizontal: false, vertical: true)
                 }
-            }.frame(maxWidth: .infinity, alignment: .leading)
+            }.frame(maxWidth: .infinity).multilineTextAlignment(.center)
         }
         .padding(.vertical, 12)
+        .overlay(alignment: .top) {
+            if !dynamicType.isAccessibilitySize {
+                VersusMedallion(size: 50).padding(.top, 12 + 156 / 2 - 25)
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Selected decks")
     }

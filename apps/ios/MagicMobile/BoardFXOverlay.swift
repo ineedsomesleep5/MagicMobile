@@ -606,68 +606,71 @@ struct BoardImpactShake: GeometryEffect {
 /// Ambient session: respects the silent switch and mixes with the player's music.
 @MainActor
 enum BoardFXSound {
-    enum Cue: String, CaseIterable {
-        case cast = "fx-cast", land = "fx-land", damage = "fx-damage", death = "fx-death", playerHit = "fx-player-hit"
+    static let key = GameAudio.effectsKey
 
-        var volume: Float {
-            switch self {
-            case .cast: return 0.35
-            case .land: return 0.6
-            case .damage: return 0.55
-            case .death: return 0.45
-            case .playerHit: return 0.7
-            }
+    /// What arrived, so a land thuds, a token pops and a creature lands with weight.
+    struct Arrival: Equatable {
+        var isLand = false
+        var isToken = false
+    }
+
+    /// Sounds for one board transition, each timed to the effect it accompanies. Casts use
+    /// the spell's color identity; GameAudio's cooldowns turn bursts into a flurry.
+    @MainActor
+    static func play(_ scheduled: [ScheduledBoardFX], viewerID: String, arrivals: [String: Arrival] = [:]) {
+        let hasStrike = scheduled.contains { if case .combatStrike = $0.event { return true }; return false }
+        for cue in cues(scheduled, viewerID: viewerID, arrivals: arrivals, hasStrike: hasStrike) {
+            GameAudio.shared.play(cue.sound, after: cue.at, volume: cue.volume)
         }
     }
 
-    static let key = "magicmobile.boardSoundsEnabled"
-    private static var players: [Cue: AVAudioPlayer] = [:]
-    private static var sessionReady = false
-
-    private static func player(_ cue: Cue) -> AVAudioPlayer? {
-        if let player = players[cue] { return player }
-        guard let url = Bundle.main.url(forResource: cue.rawValue, withExtension: "m4a"),
-              let player = try? AVAudioPlayer(contentsOf: url) else { return nil }
-        player.volume = cue.volume
-        player.prepareToPlay()
-        players[cue] = player
-        return player
+    struct Cue: Equatable {
+        let sound: GameSound
+        let at: TimeInterval
+        var volume: Float = 1
     }
 
-    static func play(_ cue: Cue, after delay: TimeInterval) {
-        if !sessionReady {
-            try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
-            sessionReady = true
-        }
-        guard let player = player(cue) else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, delay)) {
-            player.currentTime = 0
-            player.play()
-        }
-    }
-
-    /// One sound per cue per transition, timed to the first matching effect.
-    static func play(_ scheduled: [ScheduledBoardFX], viewerID: String) {
-        var cues: [Cue: TimeInterval] = [:]
+    static func cues(_ scheduled: [ScheduledBoardFX], viewerID: String, arrivals: [String: Arrival] = [:],
+                     hasStrike: Bool) -> [Cue] {
+        var cues: [Cue] = []
         for fx in scheduled {
-            let cue: Cue?
-            var at = fx.delay
             switch fx.event {
-            case .spellCast: cue = .cast
-            case .enteredBattlefield:
-                cue = .land
-                at = fx.landing
+            case let .spellCast(_, _, _, tint, weight):
+                switch weight {
+                case .ability: cues.append(Cue(sound: .ability, at: fx.delay))
+                case .commander: cues.append(Cue(sound: .commanderCast, at: fx.delay))
+                case .big:
+                    cues.append(Cue(sound: GameSound.cast(for: tint), at: fx.delay))
+                    cues.append(Cue(sound: .spellBig, at: fx.delay + 0.05))
+                case .spell: cues.append(Cue(sound: GameSound.cast(for: tint), at: fx.delay))
+                }
+            case .attackDeclared: cues.append(Cue(sound: .attack, at: fx.delay))
+            case .blockDeclared: cues.append(Cue(sound: .block, at: fx.delay))
             case let .combatStrike(_, target, _):
-                cue = target == .player(viewerID) ? .playerHit : .damage
-                at = fx.handoff
-            case .damageMarked, .attackDeclared, .blockDeclared: cue = .damage
-            case .leftBattlefield: cue = .death
-            case let .lifeChanged(id, delta): cue = id == viewerID && delta < 0 ? .playerHit : nil
-            case .countersAdded: cue = nil
+                cues.append(Cue(sound: target == .player(viewerID) ? .playerHit : .strike, at: fx.handoff))
+            case .damageMarked:
+                if !hasStrike { cues.append(Cue(sound: .strike, at: fx.delay, volume: 0.7)) }
+            case let .leftBattlefield(_, _, to, _):
+                switch to {
+                case .exile?: cues.append(Cue(sound: .exile, at: fx.delay))
+                case .hand?, .library?: cues.append(Cue(sound: .cardPickup, at: fx.delay))
+                default: cues.append(Cue(sound: .death, at: fx.delay))
+                }
+            case let .enteredBattlefield(id, _, _, _, entrance):
+                let arrival = arrivals[id] ?? Arrival()
+                let sound: GameSound = entrance == .commander ? .creatureEnter
+                    : arrival.isLand ? .landDrop : arrival.isToken ? .tokenCreate : .creatureEnter
+                cues.append(Cue(sound: sound, at: fx.landing))
+            case .countersAdded: cues.append(Cue(sound: .counter, at: fx.delay))
+            case let .lifeChanged(id, delta):
+                if delta > 0 {
+                    cues.append(Cue(sound: .lifeGain, at: fx.delay, volume: id == viewerID ? 1 : 0.55))
+                } else if id == viewerID, !hasStrike {
+                    cues.append(Cue(sound: .lifeLoss, at: fx.delay))
+                }
             }
-            if let cue, cues[cue].map({ at < $0 }) ?? true { cues[cue] = at }
         }
-        for (cue, at) in cues { play(cue, after: at) }
+        return cues
     }
 }
 
@@ -698,7 +701,6 @@ enum BoardFXHaptics {
 
 struct BoardEffectsPicker: View {
     @AppStorage(BoardFXLevel.key) private var level = BoardFXLevel.defaultValue
-    @AppStorage(BoardFXSound.key) private var sounds = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -716,13 +718,44 @@ struct BoardEffectsPicker: View {
             }
             .pickerStyle(.segmented)
             .accessibilityIdentifier("settings.boardEffects")
-            Toggle("Effect Sounds", isOn: $sounds)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.white.opacity(0.85))
-                .tint(GameBoardTheme.current.emeraldPriority)
-                .accessibilityIdentifier("settings.boardSounds")
+            GameAudioSettings()
         }
         .magicPanel(.iron, prominence: .quiet, cornerRadius: 9, padding: 10)
+    }
+}
+
+/// Sound effects and music, each with a level. Changes apply immediately.
+struct GameAudioSettings: View {
+    @AppStorage(GameAudio.effectsKey) private var effects = true
+    @AppStorage(GameAudio.musicKey) private var music = true
+    @AppStorage(GameAudio.effectsVolumeKey) private var effectsVolume = 0.9
+    @AppStorage(GameAudio.musicVolumeKey) private var musicVolume = 0.6
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle("Effect Sounds", isOn: $effects)
+                .accessibilityIdentifier("settings.boardSounds")
+            if effects {
+                Slider(value: $effectsVolume, in: 0...1) { Text("Effects volume") }
+                    .accessibilityIdentifier("settings.effectsVolume")
+            }
+            Toggle("Music", isOn: $music)
+                .accessibilityIdentifier("settings.music")
+            if music {
+                Slider(value: $musicVolume, in: 0...1) { Text("Music volume") }
+                    .accessibilityIdentifier("settings.musicVolume")
+            }
+            Text("Sounds follow your iPhone's Silent switch.")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.5))
+        }
+        .font(.caption.weight(.bold))
+        .foregroundStyle(.white.opacity(0.85))
+        .tint(GameBoardTheme.current.antiqueGold)
+        .onChange(of: effects) { _, on in if on { GameAudio.shared.play(.uiToggle) } }
+        .onChange(of: music) { _, _ in GameAudio.shared.settingsChanged() }
+        .onChange(of: musicVolume) { _, _ in GameAudio.shared.settingsChanged() }
+        .onChange(of: effectsVolume) { _, _ in GameAudio.shared.play(.uiTick) }
     }
 }
 
@@ -1082,49 +1115,70 @@ struct BoardTurnBanner: View {
     }
 }
 
-/// Animated backdrop for the game-over panel: turning gold rays and rising sparks
-/// for a win, falling ash under a dark red vignette for a loss.
+/// Animated backdrop for the game-over panel, edge to edge with no banding: one continuous
+/// tint sized to the screen diagonal (so the status bar, top bar, board and dock share it),
+/// turning rays and rising motes for a win, falling ash for a loss.
 struct GameResultBackdrop: View {
     let victory: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var start = Date()
 
     var body: some View {
-        if reduceMotion {
-            vignette
-        } else {
-            TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
-                let t = timeline.date.timeIntervalSince(start)
-                Canvas { context, size in
-                    let center = CGPoint(x: size.width / 2, y: size.height * 0.42)
-                    let intro = min(1, t / 0.8)
-                    if victory {
-                        BoardFXPainter.rays(at: center, color: BoardFXPainter.gold, radius: max(size.width, size.height) * 0.75,
-                                            progress: 0.4, elapsed: t * 0.6, in: &context)
-                        let sparks = CGRect(x: 0, y: size.height * 0.2, width: size.width, height: size.height * 0.7)
-                        BoardFXPainter.elemental(.multicolor, around: sparks, elapsed: t, fade: intro, seed: 7, in: &context)
-                    } else {
-                        for i in 0..<40 {
-                            let life = (t * (0.08 + 0.1 * BoardFXPainter.noise(3, i, 1)) + BoardFXPainter.noise(3, i, 2))
-                                .truncatingRemainder(dividingBy: 1)
-                            let x = size.width * BoardFXPainter.noise(3, i, 3) + sin(t + Double(i)) * 12
-                            let y = size.height * life
-                            var ash = context
-                            ash.opacity = 0.5 * sin(.pi * life) * intro
-                            ash.fill(Path(ellipseIn: CGRect(x: x, y: y, width: 3, height: 3)),
-                                     with: .color(Color(red: 0.75, green: 0.7, blue: 0.68)))
-                        }
+        GeometryReader { proxy in
+            let size = proxy.size
+            ZStack {
+                wash(size)
+                if !reduceMotion {
+                    TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
+                        let t = timeline.date.timeIntervalSince(start)
+                        Canvas { context, size in draw(in: &context, size: size, t: t) }
                     }
                 }
             }
-            .background(vignette)
         }
+        .allowsHitTesting(false)
     }
 
-    private var vignette: some View {
-        RadialGradient(colors: victory ? [Color(red: 0.3, green: 0.22, blue: 0.05).opacity(0.75), .black.opacity(0.85)]
-                                       : [Color(red: 0.25, green: 0.03, blue: 0.03).opacity(0.75), .black.opacity(0.9)],
-                       center: .center, startRadius: 40, endRadius: 520)
-            .ignoresSafeArea()
+    private func wash(_ size: CGSize) -> some View {
+        let reach = max(1, hypot(size.width, size.height) * 0.6)
+        let center = UnitPoint(x: 0.5, y: 0.42)
+        return RadialGradient(colors: victory
+                ? [Color(red: 0.62, green: 0.46, blue: 0.12).opacity(0.62), Color(red: 0.40, green: 0.28, blue: 0.07).opacity(0.46)]
+                : [Color(red: 0.42, green: 0.05, blue: 0.04).opacity(0.62), Color(red: 0.20, green: 0.02, blue: 0.02).opacity(0.5)],
+                center: center, startRadius: 0, endRadius: reach)
+    }
+
+    private func draw(in context: inout GraphicsContext, size: CGSize, t: Double) {
+        let center = CGPoint(x: size.width / 2, y: size.height * 0.42)
+        let intro = min(1, t / 0.8)
+        let reach = hypot(size.width, size.height)
+        if victory {
+            BoardFXPainter.rays(at: center, color: BoardFXPainter.gold, radius: reach * 0.7,
+                                progress: 0.4, elapsed: t * 0.6, in: &context)
+            // Motes rise across the whole screen, not a band.
+            for i in 0..<70 {
+                let speed = 0.05 + 0.08 * BoardFXPainter.noise(9, i, 1)
+                let life = (t * speed + BoardFXPainter.noise(9, i, 2)).truncatingRemainder(dividingBy: 1)
+                let x = size.width * BoardFXPainter.noise(9, i, 3) + sin(t * 0.8 + Double(i)) * 14
+                let y = size.height * (1.02 - 1.08 * life)
+                let r = 1.2 + 2.4 * BoardFXPainter.noise(9, i, 4)
+                var mote = context
+                mote.blendMode = .plusLighter
+                mote.opacity = intro * sin(.pi * life) * (0.55 + 0.45 * sin(t * 3 + Double(i)))
+                mote.fill(Path(ellipseIn: CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)),
+                          with: .color(i % 3 == 0 ? .white : BoardFXPainter.gold))
+            }
+        } else {
+            for i in 0..<60 {
+                let life = (t * (0.06 + 0.08 * BoardFXPainter.noise(3, i, 1)) + BoardFXPainter.noise(3, i, 2))
+                    .truncatingRemainder(dividingBy: 1)
+                let x = size.width * BoardFXPainter.noise(3, i, 3) + sin(t + Double(i)) * 12
+                let y = size.height * (1.08 * life - 0.04)
+                var ash = context
+                ash.opacity = 0.5 * sin(.pi * life) * intro
+                ash.fill(Path(ellipseIn: CGRect(x: x, y: y, width: 3, height: 3)),
+                         with: .color(Color(red: 0.75, green: 0.7, blue: 0.68)))
+            }
+        }
     }
 }

@@ -174,6 +174,7 @@ single MIT file with its license header when that is enough.
 | 5 RealityKit moments | Not started. D20 migration deliberately deferred (see log 2026-09-23 build 14). |
 | 6 Game feel (build 14) | Readable spell showcases, arrival-after-cast, showcase for unseen casts, commander cast/entrance, attack stance + block tether + strike with impact-timed damage, turn-start ribbon, compact phase pill, victory/defeat screen, hand fan + lift under finger + breathing playable glow, legendary gold edge, inspection foil, color-identity particles, life badge de-duplication. Verified in the board-fx simulator walkthrough (optimized Debug build). Not yet: device feel, landscape combat pass. |
 | 7 Device feedback (builds 15–17) | Ability-ID auto-answers (mana, abilities, MDFC/split/adventure play and cast), turn bar, inspector details, rematch and Game Center room, one-Confirm multi-select plans, full-screen result, unclipped glows, portrait stack tray, faster AI turns on big stacks (engine change). Simulator previews and unit tests pass; phone feel pending Caleb. |
+| 8 AAA pass (build 18) | Game audio (54 cues + menu/table music, GameAudio.swift, scripts/audio), brand-styled menus/setup/loading/versus from the app icon and download site (BrandUI.swift, traced BrandMarkPaths.swift), dock stack tray, even result wash, tapped-land art, branded launch screen. Simulator previews, unit and UI tests; phone feel and audio mix pending Caleb. |
 
 ## Log
 
@@ -263,3 +264,27 @@ single MIT file with its license header when that is enough.
   previews `stack-tray` and `victory` added. Pre-existing unit failures left as found:
   landscape dock height (since the priority-help line) — the outdated keyword-badge test
   was updated to build 15's intended behavior.
+- 2026-09-24 (Claude, build 18 on `codex/board-fx-build-18`, TestFlight 0.1.1 build 16): Caleb asked
+  for a Hearthstone/Arena-level pass. Audio: GameAudio.swift plays 54 cues through voice
+  pools with pitch variation and per-cue cooldowns (a burst of triggers reads as a flurry);
+  menu and table music crossfade and duck under victory/defeat; settings have effects and
+  music toggles with volumes; sounds follow the Silent switch (ambient session). Sources:
+  Kenney CC0 foley (Casino, Interface, RPG, Impact packs) layered with original synthesis,
+  rendered by scripts/audio/build_game_audio.py (numpy/scipy; loudness balanced with a
+  phone-speaker weighting and bass harmonics so thuds survive iPhone speakers; report in
+  scripts/audio/audio-manifest.json). Board events map to color-identity casts, big-spell
+  and commander layers, land/token/creature arrivals, attack/block/strike, death/exile/
+  bounce, counters and life; snapshot changes add draws, mana taps and stack resolutions;
+  turn bells, choice alerts, error tone, dice, versus, victory and defeat. Menus: the
+  gold/serif "arcane" draft was replaced at Caleb's request by the brand from the app icon
+  and apps/site/DESIGN.md (charcoal, ember #ff8058, warm white, heavy sans, small-corner
+  controls): the icon's mark traced to vector paths (scripts/brand/trace_logo.py, glinting
+  sparkle), an ember backdrop with the logo's fanned cards and rising sparks, a floating
+  hero commander, ember primary buttons with a shine sweep, a VS medallion on setup and a
+  versus intro before the first draw, a themed loading screen with tips, and a branded
+  launch screen (scripts/brand/render_mark.swift). Board: the stack tray now lives in the
+  dock beside the mana (center strip stays clear), the victory/defeat wash is one
+  continuous tint edge to edge, tapped lands keep their art with a tap badge, names
+  shrink before truncating, the hand pill is themed. Deck Studio keeps its deliberate
+  ivory workspace (press sounds only). Wrapped button styles now apply real styles so
+  disabled state survives. Pre-existing: landscape dock height unit test.
