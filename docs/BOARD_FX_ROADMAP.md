@@ -215,3 +215,5 @@ single MIT file with its license header when that is enough.
   a real 3D feature) and a tilted 3D table (perspective would misalign touch targets and
   the effect anchors). Next: Caleb plays build 14 on device; tune durations, landscape
   combat pass, then consider RealityKit hero moments.
+- 2026-09-24 (Claude): Build 14 work merged (#29) and shipped in TestFlight build 14
+  (VALID, Beta App Review APPROVED, Internal + External). Next: Caleb's device notes.

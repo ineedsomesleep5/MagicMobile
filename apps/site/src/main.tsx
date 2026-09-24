@@ -315,13 +315,14 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 13 brings the battlefield to life: spells rise to the
-                center with a foil shimmer, creatures fly in and burn away when
-                they die, attackers lunge, and damage and life changes pop with
-                sound and haptics. Choose Full, Reduced or Off in Settings. It
-                keeps the new MagicMobile icon, the shared D20 roll and Game
-                Center play from build 12. Apple has approved this build for
-                Internal and External TestFlight.
+                Build 14 makes every play readable: spells hold at the center
+                long enough to read before their creatures land, attackers charge
+                into blockers and players with damage landing on the hit, and
+                commanders get a golden entrance. Your hand fans and lifts under
+                your finger, turns open with a banner, games end on a victory or
+                defeat screen, and ability choices show real mana and tap symbols
+                in full. Apple has approved this build for Internal and External
+                TestFlight.
               </p>
             </details>
             <details>
