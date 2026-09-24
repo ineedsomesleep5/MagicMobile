@@ -36,9 +36,23 @@ def pad_to(x: np.ndarray, n: int) -> np.ndarray:
     return np.concatenate([x, np.zeros(shape, dtype=x.dtype)])
 
 
+def taper(x: np.ndarray) -> np.ndarray:
+    """Fade the last stretch of a layer so an oscillator that is still ringing never stops
+    dead (a click on phone speakers): up to 250 ms or a quarter of the layer."""
+    n = len(x)
+    k = min(n // 4, int(0.25 * SR))
+    if k < 2:
+        return x
+    ramp = np.cos(np.linspace(0, np.pi / 2, k)) ** 2
+    y = x.astype(np.float32).copy()
+    y[n - k :] *= (ramp[:, None] if y.ndim == 2 else ramp).astype(np.float32)
+    return y
+
+
 def mix(*parts: tuple[np.ndarray, float] | np.ndarray, length: float | None = None) -> np.ndarray:
-    """Mix mono or stereo parts. A part may be (signal, start_seconds)."""
-    items = [(p, 0.0) if isinstance(p, np.ndarray) else p for p in parts]
+    """Mix mono or stereo parts. A part may be (signal, start_seconds). Each part is
+    tapered at its end."""
+    items = [(taper(p), 0.0) if isinstance(p, np.ndarray) else (taper(p[0]), p[1]) for p in parts]
     stereo = any(sig.ndim == 2 for sig, _ in items)
     end = max(n_of(start) + len(sig) for sig, start in items)
     if length is not None:
@@ -312,6 +326,7 @@ def reverb(x: np.ndarray, wet: float = 0.3, seconds: float = 2.0, damping: float
     if key not in _IR_CACHE:
         _IR_CACHE[key] = reverb_ir(seconds, damping, predelay)
     ir = _IR_CACHE[key]
+    x = taper(x)
     dry = stereo(x) if x.ndim == 1 else x
     mono_in = dry.mean(axis=1)
     tail = np.stack([signal.fftconvolve(mono_in, ir[:, 0]), signal.fftconvolve(mono_in, ir[:, 1])], axis=1)

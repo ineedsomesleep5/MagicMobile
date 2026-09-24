@@ -3553,7 +3553,11 @@ struct NativeGameView: View {
             .onChange(of: pendingActionId) { oldValue, newValue in
                 handleCardChoicePendingChange(from: oldValue, to: newValue, snapshot: snapshot)
             }
+            .onChange(of: isLogOpen) { _, open in GameAudio.shared.play(open ? .pageFlip : .uiClose) }
+            .onChange(of: isGameMenuOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
+            .onChange(of: isLandscapeStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
             .onChange(of: lastActionRejection?.message) { _, newValue in
+                if newValue != nil { GameAudio.shared.play(.uiError) }
                 if newValue != nil && committedCardChoice != nil { cancelCommittedCardChoice() }
             }
             .onChange(of: commandFailure) { oldValue, newValue in
@@ -3561,8 +3565,11 @@ struct NativeGameView: View {
             }
             .onChange(of: PortraitInteractionPolicy.detailChoiceKey(snapshot)) { _, key in
                 isPromptDetailOpen = key != nil
+                // A decision that needs you, not a routine priority pass.
+                if key != nil { GameAudio.shared.play(.responseAlert) }
             }
             .onChange(of: PortraitInteractionPolicy.cardChoiceKey(snapshot)) { _, key in
+                if key != nil && committedCardChoice == nil { GameAudio.shared.play(.responseAlert) }
                 isCardChoiceOpen = key != nil && committedCardChoice == nil && !reviewCardChoiceAfterPending
                 inspectedCard = nil
                 selectedCard = nil
@@ -10544,6 +10551,7 @@ struct PortraitBottomCommandBar: View {
             .sheet(isPresented: $isStackOpen) {
                 BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
             }
+            .onChange(of: isStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
         }
     }
 }

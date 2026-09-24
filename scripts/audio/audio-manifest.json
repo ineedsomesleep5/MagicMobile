@@ -1,20 +1,20 @@
 {
  "ability": {
-  "bytes": 13785,
+  "bytes": 12650,
   "file": "ability.m4a",
   "loudness_db": -23.0,
   "peak_db": -10.7,
-  "seconds": 0.915
+  "seconds": 0.858
  },
  "attack": {
-  "bytes": 9062,
+  "bytes": 9003,
   "file": "attack.m4a",
   "loudness_db": -19.6,
   "peak_db": -1.7,
   "seconds": 0.5
  },
  "block": {
-  "bytes": 17446,
+  "bytes": 17517,
   "file": "block.m4a",
   "loudness_db": -19.0,
   "peak_db": -5.7,
@@ -49,74 +49,74 @@
   "seconds": 0.16
  },
  "card-place": {
-  "bytes": 11561,
+  "bytes": 11100,
   "file": "card-place.m4a",
-  "loudness_db": -21.3,
+  "loudness_db": -21.4,
   "peak_db": -2.4,
-  "seconds": 0.687
+  "seconds": 0.657
  },
  "card-play": {
-  "bytes": 12970,
+  "bytes": 12607,
   "file": "card-play.m4a",
   "loudness_db": -22.2,
   "peak_db": -1.2,
   "seconds": 0.809
  },
  "cast-black": {
-  "bytes": 33766,
+  "bytes": 33117,
   "file": "cast-black.m4a",
   "loudness_db": -19.0,
   "peak_db": -1.0,
   "seconds": 2.418
  },
  "cast-blue": {
-  "bytes": 33670,
+  "bytes": 33308,
   "file": "cast-blue.m4a",
   "loudness_db": -20.0,
   "peak_db": -9.0,
   "seconds": 2.409
  },
  "cast-colorless": {
-  "bytes": 18761,
+  "bytes": 18053,
   "file": "cast-colorless.m4a",
   "loudness_db": -20.0,
   "peak_db": -7.1,
-  "seconds": 1.281
+  "seconds": 1.192
  },
  "cast-green": {
-  "bytes": 29610,
+  "bytes": 27970,
   "file": "cast-green.m4a",
   "loudness_db": -20.0,
   "peak_db": -3.5,
-  "seconds": 2.041
+  "seconds": 1.909
  },
  "cast-multi": {
-  "bytes": 34919,
+  "bytes": 32961,
   "file": "cast-multi.m4a",
   "loudness_db": -20.0,
   "peak_db": -8.6,
-  "seconds": 2.453
+  "seconds": 2.335
  },
  "cast-red": {
-  "bytes": 38614,
+  "bytes": 38146,
   "file": "cast-red.m4a",
   "loudness_db": -20.6,
   "peak_db": -2.3,
-  "seconds": 2.252
+  "seconds": 2.167
  },
  "cast-white": {
-  "bytes": 31601,
+  "bytes": 29443,
   "file": "cast-white.m4a",
   "loudness_db": -20.0,
   "peak_db": -8.9,
-  "seconds": 2.399
+  "seconds": 2.286
  },
  "commander-cast": {
-  "bytes": 43611,
+  "bytes": 41941,
   "file": "commander-cast.m4a",
   "loudness_db": -18.2,
   "peak_db": -1.3,
-  "seconds": 3.218
+  "seconds": 3.127
  },
  "counter": {
   "bytes": 16446,
@@ -126,53 +126,53 @@
   "seconds": 0.14
  },
  "creature-enter": {
-  "bytes": 11573,
+  "bytes": 11022,
   "file": "creature-enter.m4a",
-  "loudness_db": -20.9,
-  "peak_db": -2.5,
-  "seconds": 0.687
+  "loudness_db": -21.0,
+  "peak_db": -2.4,
+  "seconds": 0.648
  },
  "death": {
-  "bytes": 17398,
+  "bytes": 17047,
   "file": "death.m4a",
   "loudness_db": -19.0,
   "peak_db": -4.8,
-  "seconds": 1.045
+  "seconds": 1.016
  },
  "defeat": {
-  "bytes": 79374,
+  "bytes": 75495,
   "file": "defeat.m4a",
   "loudness_db": -18.0,
   "peak_db": -2.1,
-  "seconds": 6.469
+  "seconds": 6.466
  },
  "dice-land": {
-  "bytes": 12312,
+  "bytes": 12048,
   "file": "dice-land.m4a",
   "loudness_db": -19.3,
   "peak_db": -2.7,
-  "seconds": 0.77
+  "seconds": 0.76
  },
  "dice-roll": {
-  "bytes": 24571,
+  "bytes": 24302,
   "file": "dice-roll.m4a",
   "loudness_db": -21.8,
   "peak_db": -1.3,
-  "seconds": 1.682
+  "seconds": 1.673
  },
  "exile": {
-  "bytes": 33041,
+  "bytes": 32581,
   "file": "exile.m4a",
   "loudness_db": -21.0,
   "peak_db": -12.5,
-  "seconds": 2.149
+  "seconds": 2.12
  },
  "game-start": {
-  "bytes": 52662,
+  "bytes": 52441,
   "file": "game-start.m4a",
   "loudness_db": -16.0,
-  "peak_db": -2.5,
-  "seconds": 3.588
+  "peak_db": -3.4,
+  "seconds": 3.658
  },
  "hand-fan": {
   "bytes": 12995,
@@ -182,56 +182,56 @@
   "seconds": 0.72
  },
  "land-drop": {
-  "bytes": 14312,
+  "bytes": 13633,
   "file": "land-drop.m4a",
   "loudness_db": -23.3,
   "peak_db": -1.2,
-  "seconds": 0.883
+  "seconds": 0.83
  },
  "life-gain": {
-  "bytes": 18886,
+  "bytes": 17277,
   "file": "life-gain.m4a",
   "loudness_db": -21.0,
   "peak_db": -11.7,
-  "seconds": 2.213
+  "seconds": 2.069
  },
  "life-loss": {
-  "bytes": 10629,
+  "bytes": 10477,
   "file": "life-loss.m4a",
   "loudness_db": -21.0,
   "peak_db": -8.0,
-  "seconds": 1.252
+  "seconds": 1.207
  },
  "mana-tap-1": {
-  "bytes": 7259,
+  "bytes": 6833,
   "file": "mana-tap-1.m4a",
   "loudness_db": -25.0,
   "peak_db": -11.3,
-  "seconds": 0.694
+  "seconds": 0.592
  },
  "mana-tap-2": {
-  "bytes": 7601,
+  "bytes": 7323,
   "file": "mana-tap-2.m4a",
   "loudness_db": -25.0,
   "peak_db": -10.3,
-  "seconds": 0.687
+  "seconds": 0.618
  },
  "menu-play": {
-  "bytes": 35754,
+  "bytes": 33784,
   "file": "menu-play.m4a",
   "loudness_db": -18.0,
   "peak_db": -5.6,
-  "seconds": 3.013
+  "seconds": 2.853
  },
  "music-game": {
-  "bytes": 989862,
+  "bytes": 988466,
   "file": "music-game.m4a",
   "loudness_db": -27.0,
   "peak_db": -10.5,
   "seconds": 64.0
  },
  "music-menu": {
-  "bytes": 1016084,
+  "bytes": 1015977,
   "file": "music-menu.m4a",
   "loudness_db": -24.0,
   "peak_db": -6.2,
@@ -245,18 +245,18 @@
   "seconds": 0.674
  },
  "player-hit": {
-  "bytes": 9988,
+  "bytes": 9572,
   "file": "player-hit.m4a",
   "loudness_db": -19.5,
   "peak_db": -1.0,
   "seconds": 0.7
  },
  "response-alert": {
-  "bytes": 10561,
+  "bytes": 9634,
   "file": "response-alert.m4a",
   "loudness_db": -24.0,
   "peak_db": -16.3,
-  "seconds": 1.264
+  "seconds": 1.17
  },
  "shuffle": {
   "bytes": 23449,
@@ -266,46 +266,46 @@
   "seconds": 1.7
  },
  "spell-big": {
-  "bytes": 50337,
+  "bytes": 49042,
   "file": "spell-big.m4a",
   "loudness_db": -17.5,
   "peak_db": -2.7,
-  "seconds": 3.479
+  "seconds": 3.452
  },
  "stack-resolve": {
-  "bytes": 10049,
+  "bytes": 10050,
   "file": "stack-resolve.m4a",
   "loudness_db": -26.0,
-  "peak_db": -12.2,
+  "peak_db": -12.1,
   "seconds": 0.676
  },
  "strike": {
-  "bytes": 9734,
+  "bytes": 9487,
   "file": "strike.m4a",
   "loudness_db": -18.3,
   "peak_db": -2.2,
-  "seconds": 0.483
+  "seconds": 0.459
  },
  "token-create": {
-  "bytes": 11701,
+  "bytes": 10997,
   "file": "token-create.m4a",
   "loudness_db": -22.0,
   "peak_db": -9.5,
-  "seconds": 0.8
+  "seconds": 0.766
  },
  "turn-opponent": {
-  "bytes": 17923,
+  "bytes": 17765,
   "file": "turn-opponent.m4a",
   "loudness_db": -22.0,
   "peak_db": -10.1,
-  "seconds": 3.158
+  "seconds": 3.138
  },
  "turn-you": {
-  "bytes": 34983,
+  "bytes": 30688,
   "file": "turn-you.m4a",
   "loudness_db": -18.0,
   "peak_db": -6.0,
-  "seconds": 3.755
+  "seconds": 3.609
  },
  "ui-back": {
   "bytes": 12034,
@@ -317,16 +317,16 @@
  "ui-close": {
   "bytes": 49956,
   "file": "ui-close.caf",
-  "loudness_db": -27.1,
+  "loudness_db": -27.0,
   "peak_db": -16.9,
   "seconds": 0.26
  },
  "ui-confirm": {
-  "bytes": 9040,
+  "bytes": 8757,
   "file": "ui-confirm.m4a",
   "loudness_db": -22.0,
   "peak_db": -9.4,
-  "seconds": 0.566
+  "seconds": 0.559
  },
  "ui-error": {
   "bytes": 26762,
@@ -336,10 +336,10 @@
   "seconds": 0.257
  },
  "ui-open": {
-  "bytes": 53412,
+  "bytes": 53440,
   "file": "ui-open.caf",
-  "loudness_db": -26.8,
-  "peak_db": -16.7,
+  "loudness_db": -26.1,
+  "peak_db": -15.3,
   "seconds": 0.28
  },
  "ui-tap": {
@@ -364,17 +364,17 @@
   "seconds": 0.122
  },
  "versus": {
-  "bytes": 48484,
+  "bytes": 41987,
   "file": "versus.m4a",
   "loudness_db": -16.9,
   "peak_db": -1.6,
   "seconds": 3.546
  },
  "victory": {
-  "bytes": 94216,
+  "bytes": 93054,
   "file": "victory.m4a",
   "loudness_db": -14.7,
   "peak_db": -2.1,
-  "seconds": 6.096
+  "seconds": 6.08
  }
 }

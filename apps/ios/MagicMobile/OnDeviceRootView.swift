@@ -445,7 +445,10 @@ struct OnDeviceRootView: View {
                 source: setup.errorMessage != nil ? .setup : .session),
             liveUpdateStatus: setup.liveStatus,
             onInteractionFeedback: { setup.feedback = $0 },
-            runAction: { action in Task { await setup.perform { try await session.send(action: action) } } },
+            runAction: { action in
+                if action.type == "mulligan" { GameAudio.shared.play(.shuffle) }
+                Task { await setup.perform { try await session.send(action: action) } }
+            },
             runCommand: { command, label, id in
                 Task {
                     // A card plan answers XMage's next one-card prompt as soon as it lands,
