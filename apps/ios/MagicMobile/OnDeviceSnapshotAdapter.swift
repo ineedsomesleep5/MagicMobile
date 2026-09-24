@@ -332,22 +332,21 @@ enum OnDeviceSnapshotAdapter {
                     // Selecting an object lets XMage ask for the exact ability when needed.
                     // Never turn an ability label or card type into an invented response UUID.
                     let baseID = "\(prompt.id):\(category):\(id)" + (actionType == commandType ? "" : ":\(actionType)")
-                    // Mana and activated abilities are offered one per ability, carrying the
-                    // engine's ability ID so the session can answer XMage's follow-up
-                    // "which ability" prompt with the one already chosen (exact ID match only).
-                    let perAbility = actionType != "cast_spell"
-                    let offered = perAbility ? actionRows : [actionRows[0]]
-                    for row in offered {
+                    // Every play, cast, mana and activated ability is offered one per ability,
+                    // carrying the engine's ability ID so the session can answer XMage's
+                    // follow-up "which ability" prompt (MDFC land/spell, split halves,
+                    // adventures) with the one already chosen (exact ID match only).
+                    for row in actionRows {
                         let abilityID = row["id"]!.string!
                         var fields: [String: J] = [
-                            "id": .string(perAbility && actionRows.count > 1 ? baseID + ":\(abilityID)" : baseID),
+                            "id": .string(actionRows.count > 1 ? baseID + ":\(abilityID)" : baseID),
                             "type": .string(actionType), "playerId": .string(viewer),
                             "label": .string(fullAbilityLabel(row["value"]!.string!, rules: card["card"]?["oracleText"]?.string)),
                             "cardInstanceId": .string(id), "sourceInstanceId": .string(id), "sourceZone": .string(zone),
                             "cardName": card["card"]?["name"] ?? .string("Card"),
                             "promptId": .string(prompt.id), "messageId": .integer(prompt.revision)
                         ]
-                        if perAbility { fields["abilityId"] = .string(abilityID) }
+                        fields["abilityId"] = .string(abilityID)
                         actions.append(.object(fields))
                     }
                 }

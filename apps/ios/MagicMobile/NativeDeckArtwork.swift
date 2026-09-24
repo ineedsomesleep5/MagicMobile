@@ -57,7 +57,8 @@ actor NativeDeckArtwork {
             }
             let quality: NativeArtworkQuality = variant == .inspection ? .high : (variant == .board ? .standard : .compact)
             let stored = await assetStore.tokenImage(name: name, typeLine: tokenTypeLine, oracleText: tokenOracleText,
-                                                      power: tokenPower, toughness: tokenToughness, colors: tokenColors)
+                                                      power: tokenPower, toughness: tokenToughness, colors: tokenColors,
+                                                      offlineFallback: !allowNetwork)
             if let stored, (!allowNetwork || quality.accepts(stored)) { return stored }
             guard allowNetwork, let tokenOracleText, let tokenColors, !tokenTypeLine.isEmpty,
                   !name.isEmpty, Set(tokenColors).isSubset(of: ["W", "U", "B", "R", "G"]),

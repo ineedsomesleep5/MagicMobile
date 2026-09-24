@@ -70,10 +70,14 @@ struct BoardCardChoiceView: View {
     private func selectionState(_ id: String) -> String {
         if let kind = draftKind {
             if let index = draftIDs.firstIndex(of: id) {
-                return kind == .scry ? "Put bottom, position \(index + 1)" : "Position \(index + 1)"
+                switch kind {
+                case .scry: return "Put bottom, position \(index + 1)"
+                case .selection: return "Selected \(index + 1)"
+                default: return "Position \(index + 1)"
+                }
             }
             if kind == .scry, let index = topIDs.firstIndex(of: id) { return "Keep top, position \(index + 1)" }
-            return "Keep top"
+            return kind == .scry ? "Keep top" : "Tap to select"
         }
         if selectedID == id { return chosenIDs.contains(id) ? "Selected to remove" : "Selected" }
         return chosenIDs.contains(id) ? "Chosen · select to remove" : "Not selected"
@@ -336,7 +340,8 @@ struct BoardCardChoiceView: View {
                 Text("Tap cards in order. Tap a numbered card again to remove it.")
                     .font(.caption)
                 if let bounds = CardChoicePlan.selectionBounds(prompt.message) {
-                    Text("\(draftIDs.count) selected · choose \(bounds.0)–\(bounds.1)")
+                    Text(bounds.0 == bounds.1 ? "\(draftIDs.count) of \(bounds.1) selected"
+                                              : "\(draftIDs.count) selected · choose \(bounds.0)–\(bounds.1)")
                         .font(.caption.weight(.semibold))
                 }
                 orderRows(draftIDs, title: "Choice order", top: false)

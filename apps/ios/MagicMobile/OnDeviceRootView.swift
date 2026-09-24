@@ -401,7 +401,14 @@ struct OnDeviceRootView: View {
             onInteractionFeedback: { setup.feedback = $0 },
             runAction: { action in Task { await setup.perform { try await session.send(action: action) } } },
             runCommand: { command, label, id in
-                Task { await setup.perform { try await session.send(command, label: label, actionID: id) } }
+                Task {
+                    // A card plan answers XMage's next one-card prompt as soon as it lands,
+                    // while the previous answer's refresh is still finishing.
+                    if id.hasPrefix("card-plan-") { await setup.waitUntilSessionIdle() }
+                    await setup.perform(reportingBusy: id.hasPrefix("card-plan-")) {
+                        try await session.send(command, label: label, actionID: id)
+                    }
+                }
             },
             refreshGame: refresh, reconnectGame: refresh,
             checkBridgeHealth: { setup.localHealth() },
@@ -955,10 +962,19 @@ private final class OnDeviceSetupModel: ObservableObject {
 
     func updateSessionForeground() { session.setForeground(canUseSession) }
 
-    func perform(_ operation: @MainActor () async throws -> Void) async {
-        guard !isBusy, !session.isWorking, canUseSession else { return }
+    func perform(reportingBusy: Bool = false, _ operation: @MainActor () async throws -> Void) async {
+        guard !isBusy, !session.isWorking, canUseSession else {
+            // A dropped tap is intentional; a dropped automatic reply must not look like progress.
+            if reportingBusy { errorMessage = String(localized: "The game was busy. Choose again to continue.") }
+            return
+        }
         errorMessage = nil; feedback = nil
         do { try await operation() } catch { errorMessage = error.localizedDescription }
+    }
+
+    /// Waits up to 3 seconds for the current response and its refresh to finish.
+    func waitUntilSessionIdle() async {
+        for _ in 0..<150 where isBusy || session.isWorking { try? await Task.sleep(for: .milliseconds(20)) }
     }
 
     func close() async -> Bool {

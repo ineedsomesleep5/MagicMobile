@@ -3,6 +3,21 @@ import UIKit
 @testable import MagicMobile
 
 final class ArenaBoardPresentationTests: XCTestCase {
+    /// Roaming Throne doubles Chatterfang: the tray groups the identical triggers on top.
+    func testStackTrayGroupsConsecutiveIdenticalTriggers() throws {
+        func object(_ id: Int, _ name: String, source: String) throws -> XmageStackObject {
+            try JSONDecoder().decode(XmageStackObject.self, from: JSONSerialization.data(withJSONObject: [
+                "id": "\(id)", "name": name, "sourceName": source, "rulesText": "Create a 1/1 green Squirrel creature token."]))
+        }
+        var objects = try (0..<12).map { try object($0, "Chatterfang trigger", source: "Chatterfang, Squirrel General") }
+        objects.append(try object(12, "Lightning Bolt", source: "Lightning Bolt"))
+        objects.append(try object(13, "Chatterfang trigger", source: "Chatterfang, Squirrel General"))
+        let groups = BoardStackTray.groups(objects)
+        XCTAssertEqual(groups.map(\.count), [12, 1, 1], "only consecutive identical objects group")
+        XCTAssertEqual(BoardStackTray.title(groups[0]), "Chatterfang trigger ×12")
+        XCTAssertEqual(BoardStackTray.title(groups[1]), "Lightning Bolt")
+    }
+
     func testPlayerEnchantmentsRemainLiveAndNeverDuplicateInPermanentLanes() throws {
         let chain = try [attachmentCard("curse", parent: "player"), attachmentCard("nested-curse", parent: "curse"), attachmentCard("orphan", parent: "missing")]
         XCTAssertEqual(ZoneCard.enchanting(playerID: "player", cards: chain).map(\.id), ["curse", "nested-curse"])
@@ -246,10 +261,14 @@ final class ArenaBoardPresentationTests: XCTestCase {
     }
 
     @MainActor
-    func testPrintedAbilitiesAloneDoNotCreateCompactBadges() throws {
-        let printedOnly = try attachmentCard("printed", type: "Creature", rules: "Flying, reach, hexproof")
-        XCTAssertTrue(printedOnly.visibleXmageIcons.isEmpty)
-        XCTAssertTrue(BattlefieldAbilityBadgePlan(icons: printedOnly.visibleXmageIcons, cardWidth: 64).visible.isEmpty)
+    func testBareKeywordLinesFillInMissingBadgesButPlainRulesDoNot() throws {
+        // Build 15: XMage does not always attach keyword icons, so a bare keyword line in the
+        // engine's current rules text shows its badge (Caleb: always show the flying symbol).
+        let keywords = try attachmentCard("keywords", type: "Creature", rules: "Flying, reach, hexproof")
+        XCTAssertEqual(keywords.visibleXmageIcons.map(\.iconType), ["ABILITY_FLYING", "ABILITY_REACH", "ABILITY_HEXPROOF"])
+        let sentence = try attachmentCard("sentence", type: "Creature", rules: "Creatures you control have flying.")
+        XCTAssertTrue(sentence.visibleXmageIcons.isEmpty, "keywords inside other rules text are not the card's own")
+        XCTAssertTrue(BattlefieldAbilityBadgePlan(icons: sentence.visibleXmageIcons, cardWidth: 64).visible.isEmpty)
     }
 
     @MainActor

@@ -104,6 +104,36 @@ final class NativeAssetDownloadsTests: XCTestCase {
             tokenPower: "0", tokenToughness: "0", tokenColors: [])
         XCTAssertEqual(artwork, imageBytes)
     }
+    /// Offline only: a downloaded token whose rules are worded differently still shows when
+    /// name, type, colors and printed P/T agree and the downloads hold one such token.
+    func testOfflineFallbackUsesTheOnlyDownloadedTokenWithTheSameIdentity() async throws {
+        let squirrel = NativeTokenArtwork(id: UUID(), name: "Squirrel", typeLine: "Token Creature — Squirrel",
+            oracleText: "", power: "1", toughness: "1", colors: ["G"])
+        let store = NativeAssetStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),
+                                     availableBytes: { _ in Int64.max })
+        let bytes = try image(width: 488, height: 680)
+        try await store.saveToken(squirrel)
+        try await store.save(bytes, key: squirrel.artworkKey, quality: .standard)
+        func lookup(_ rules: String, power: String = "1", colors: [String] = ["G"], offline: Bool) async -> Data? {
+            await store.tokenImage(name: "Squirrel Token", typeLine: "Creature — Squirrel", oracleText: rules,
+                                   power: power, toughness: "1", colors: colors, offlineFallback: offline)
+        }
+        let result1 = await lookup("Forestwalk", offline: false); XCTAssertNil(result1, "online keeps the exact match")
+        let result2 = await lookup("Forestwalk", offline: true); XCTAssertEqual(result2, bytes)
+        let result3 = await lookup("Forestwalk", power: "2", offline: true); XCTAssertNil(result3, "a different printed P/T is a different token")
+        let result4 = await lookup("Forestwalk", colors: ["B"], offline: true); XCTAssertNil(result4, "a different color is a different token")
+        let flier = NativeTokenArtwork(id: UUID(), name: "Squirrel", typeLine: "Token Creature — Squirrel",
+            oracleText: "Flying", power: "1", toughness: "1", colors: ["G"])
+        try await store.saveToken(flier)
+        try await store.save(bytes, key: flier.artworkKey, quality: .standard)
+        let result5 = await lookup("Trample", offline: true); XCTAssertNil(result5, "two different downloads stay ambiguous")
+    }
+    func testFoodWithoutTokenSuffixMatchesDownloadedFood() {
+        let food = NativeTokenArtwork(id: UUID(), name: "Food", typeLine: "Token Artifact — Food",
+            oracleText: "{2}, {T}, Sacrifice this token: You gain 3 life.", colors: [])
+        XCTAssertEqual(NativeAssetStore.matchTokenArtwork([food], name: "Food", typeLine: "Artifact — Food",
+            oracleText: "{2}, {T}, Sacrifice Food: You gain 3 life.", power: "0", toughness: "0", colors: []), food)
+    }
     func testNamedTokenSelfReferenceDoesNotCollapseOtherRulesOrVariants() {
         let food = NativeTokenArtwork(id: UUID(), name: "Food", typeLine: "Token Artifact — Food",
             oracleText: "{2}, {T}, Sacrifice this token: You gain 3 life.", colors: [])

@@ -112,6 +112,54 @@ final class OnDeviceSessionTests: XCTestCase {
         }
     }
 
+    /// An MDFC offers "play land" and "cast". After the player picks the land in the app,
+    /// XMage still asks "which ability" and names the land half as the row's source.
+    /// The session answers with the same ability ID and the question never reaches the screen.
+    @MainActor
+    func testMDFCLandChoiceAnswersXMageFollowUpNamingTheHalfCard() async throws {
+        let poll = try fixture("2p-priority")
+        var raw = try XCTUnwrap(poll.raw.object)
+        var root = try XCTUnwrap(poll.snapshot?.object)
+        var view = try XCTUnwrap(root["gameView"]?.object)
+        let source = try XCTUnwrap(view["canPlayObjects"]?["objects"]?.object?.keys.sorted().first)
+        let landAbility = UUID().uuidString, spellAbility = UUID().uuidString
+        let landHalf = UUID().uuidString, spellHalf = UUID().uuidString
+        view["canPlayObjects"] = .object(["objects": .object([source: .object([
+            "basicPlayAbilities": .array([.object(["id": .string(landAbility), "value": .string("Play Old-Growth Grove"), "manaAbility": .bool(false)])]),
+            "other": .array([.object(["id": .string(spellAbility), "value": .string("Cast Revitalizing Repast"),
+                                      "manaAbility": .bool(false), "spellAbility": .bool(true)])])])])])
+        root["gameView"] = .object(view); raw["snapshot"] = .object(root)
+        let transport = SessionFixtureTransport(poll: .object(raw))
+        var ask = raw
+        ask["prompt"] = .object(["kind": .string("CHOOSE_ABILITY"), "promptId": .string("mdfc-prompt"), "revision": .integer(12),
+                                 "responseTypes": .array([.string("uuid")]), "submitted": .bool(false), "min": .integer(1), "max": .integer(1),
+                                 "payload": .object(["abilities": .array([
+                                    .object(["id": .string(spellAbility), "label": .string("Cast Revitalizing Repast"), "sourceId": .string(spellHalf)]),
+                                    .object(["id": .string(landAbility), "label": .string("Play Old-Growth Grove"), "sourceId": .string(landHalf)]),
+                                 ]), "message": .string("Choose spell or ability to play")])])
+        ask["revision"] = .integer(poll.revision + 1)
+        var after = raw
+        after["revision"] = .integer(poll.revision + 2)
+        after["prompt"] = .null
+        await transport.queuePollsAfterResponses([.object(ask), .object(after)])
+        let session = OnDeviceSession()
+        try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID,
+                                 seatID: poll.seatID, autoPoll: false, close: {})
+        let offers = session.snapshot?.legalActions?.filter { $0.sourceInstanceId == source } ?? []
+        XCTAssertEqual(offers.first { $0.type == "cast_spell" }?.abilityId, spellAbility)
+        let land = try XCTUnwrap(offers.first { $0.type == "play_land" })
+        XCTAssertEqual(land.abilityId, landAbility)
+        try await session.send(action: land)
+        for _ in 0..<200 where await transport.responses().count < 2 { try await Task.sleep(for: .milliseconds(10)) }
+        let sent = await transport.responses()
+        XCTAssertEqual(sent.count, 2, "play plus one automatic ability answer")
+        XCTAssertEqual(sent.last?["command"]?["promptId"]?.string, "mdfc-prompt")
+        XCTAssertEqual(sent.last?["command"]?["answer"]?["value"]?.string, landAbility)
+        XCTAssertNil(session.snapshot?.promptEnvelopeV2?.abilities, "the second question never reaches the screen")
+        try await waitUntilIdle(session)
+        try await session.close()
+    }
+
     @MainActor
     func testCancelledManualWaitReleasesResponseSlotWithoutSending() async throws {
         let poll = try fixture("2p-priority")

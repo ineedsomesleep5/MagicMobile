@@ -20,6 +20,8 @@ final class OnDeviceSession: ObservableObject {
     private var allowsSeatScopedAutoYield = false
     private var responding = false
     private var waitingForPolls = false
+    /// Consecutive polls that returned exactly the previous poll.
+    private var idlePolls = 0
     private var yieldPolicy = OnDeviceYieldPolicy()
     private var yieldTask: Task<Void, Never>?
     private var yieldGeneration = UUID()
@@ -107,10 +109,16 @@ final class OnDeviceSession: ObservableObject {
         // in-flight poll restore a choice after a newer response hid it.
         if let poll, next.revision < poll.revision ||
             (next.revision == poll.revision && sequence <= appliedRefreshSequence) { return }
+        // While the AI thinks, polls repeat the same board. Re-adapting and republishing
+        // it every 300 ms only competes with the engine's search for the CPU.
+        let unchanged = poll?.raw == next.raw && heldAbilitySnapshot == nil && snapshot != nil
+        idlePolls = unchanged ? idlePolls + 1 : 0
         var nextLog = messageLog
-        try nextLog.ingest(next)
+        if !unchanged { try nextLog.ingest(next) }
         let autoAbility = chosenAbilityAnswer(for: next.prompt)
-        if next.phase == "closed" {
+        if unchanged && autoAbility == nil {
+            // Same board and prompt: keep the published snapshot.
+        } else if next.phase == "closed" {
             snapshot = nil
             nextLog = OnDeviceMessageLog()
             pending = nil; pendingActionID = nil; pendingCardID = nil
@@ -293,7 +301,7 @@ final class OnDeviceSession: ObservableObject {
             throw EngineError.invalidMessage("The game or decision changed. Refresh before choosing again.")
         }
         let answer = try OnDevicePromptAdapter.answer(for: command, prompt: prompt, viewerPlayerID: snapshot.viewerID)
-        if ["make_mana", "activate_ability"].contains(command.type), let ability = command.abilityId,
+        if ["make_mana", "activate_ability", "play_land", "cast_spell"].contains(command.type), let ability = command.abilityId,
            let source = command.sourceInstanceId ?? command.cardInstanceId {
             chosenAbility = ChosenAbility(sourceID: source, abilityID: ability, activationPromptID: prompt.id)
         } else if command.type != "choose_ability" {
@@ -378,15 +386,16 @@ final class OnDeviceSession: ObservableObject {
         }
     }
 
-    /// Only a fresh ability prompt that offers the exact chosen ability (from the same
-    /// source when XMage names it) qualifies. Anything else forgets the choice.
+    /// Only a fresh ability prompt that offers the exact chosen ability qualifies. Anything
+    /// else forgets the choice. Ability IDs are unique within a game; the row's `sourceId`
+    /// can name a half of an MDFC, split or adventure card rather than the whole card, so
+    /// it is not compared.
     private func chosenAbilityAnswer(for prompt: EnginePrompt?) -> ChosenAbility? {
         guard let chosen = chosenAbility, let prompt else { return nil }
         if prompt.id == chosen.activationPromptID { return nil }
         guard ["CHOOSE_ABILITY", "PICK_ABILITY"].contains(prompt.kind), !prompt.submitted,
               let rows = prompt.payload["abilities"]?.array,
-              rows.contains(where: { $0["id"]?.string == chosen.abilityID &&
-                  ($0["sourceId"]?.string == nil || $0["sourceId"]?.string == chosen.sourceID) }) else {
+              rows.contains(where: { $0["id"]?.string == chosen.abilityID }) else {
             chosenAbility = nil
             return nil
         }
@@ -461,7 +470,8 @@ final class OnDeviceSession: ObservableObject {
             var failures = 0
             while !Task.isCancelled {
                 do {
-                    try await Task.sleep(for: .milliseconds(self?.reconnectsAutomatically == true ? 1000 : 300))
+                    let idle = (self?.idlePolls ?? 0) >= 3
+                    try await Task.sleep(for: .milliseconds(self?.reconnectsAutomatically == true ? 1000 : idle ? 600 : 300))
                     guard let self, !Task.isCancelled else { return }
                     if self.isAutoPassing { continue }
                     try await self.refresh()

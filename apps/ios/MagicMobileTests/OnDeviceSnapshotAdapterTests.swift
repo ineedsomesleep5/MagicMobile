@@ -28,6 +28,25 @@ final class OnDeviceSnapshotAdapterTests: XCTestCase {
             }
         }
     }
+    /// Split and adventure cards list one castable spell ability per half: each becomes its
+    /// own offer carrying that ability ID, so XMage's follow-up can be answered exactly.
+    func testEachCastableHalfIsItsOwnOfferWithItsAbilityID() throws {
+        let original = try fixture("2p-priority")
+        var raw = try XCTUnwrap(original.raw.object)
+        var root = try XCTUnwrap(original.snapshot?.object)
+        var view = try XCTUnwrap(root["gameView"]?.object)
+        let source = try XCTUnwrap(view["canPlayObjects"]?["objects"]?.object?.keys.first)
+        let fire = UUID().uuidString, ice = UUID().uuidString
+        view["canPlayObjects"] = .object(["objects": .object([source: .object(["other": .array([
+            .object(["id": .string(fire), "value": .string("Cast Fire"), "manaAbility": .bool(false), "spellAbility": .bool(true)]),
+            .object(["id": .string(ice), "value": .string("Cast Ice"), "manaAbility": .bool(false), "spellAbility": .bool(true)])])])])])
+        root["gameView"] = .object(view); raw["snapshot"] = .object(root)
+        let snapshot = try OnDeviceSnapshotAdapter.snapshot(MatchPoll(.object(raw)), expectedSeatID: original.seatID)
+        let casts = snapshot.legalActions?.filter { $0.sourceInstanceId == source && $0.type == "cast_spell" } ?? []
+        XCTAssertEqual(Set(casts.compactMap(\.abilityId)), [fire, ice])
+        XCTAssertEqual(Set(casts.map(\.id)).count, 2, "distinct offer IDs")
+        XCTAssertEqual(Set(casts.map(\.label)), ["Cast Fire", "Cast Ice"])
+    }
     func testVisibleTokenArtworkUsesTemplateWhileLiveGrantedTraitsStayAuthoritative() throws {
         let original = try fixture("2p-battlefield")
         for hidden in [false, true] {

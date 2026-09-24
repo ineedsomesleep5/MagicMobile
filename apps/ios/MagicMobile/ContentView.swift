@@ -3312,16 +3312,6 @@ struct NativeGameView: View {
                     }
                 }
                 }
-
-                if snapshot.isCompleted {
-                    GameCompletionOverlay(
-                        snapshot: snapshot,
-                        newGame: newGame,
-                        quitGame: quitGame
-                    )
-                    .transition(boardOverlayTransition)
-                    .zIndex(500)
-                }
                 }
             }
                 .background(Color(red: 0.055, green: 0.085, blue: 0.10).ignoresSafeArea())
@@ -3430,7 +3420,21 @@ struct NativeGameView: View {
                 } message: {
                     Text(gameMenuConfirmation?.message ?? "")
                 }
+            // Above the HUD, dock, choice and phase layers, edge to edge.
             boardPresentation(boardSurface, snapshot: snapshot)
+                .overlay {
+                    if snapshot.isCompleted {
+                        GameCompletionOverlay(snapshot: snapshot, newGame: newGame, quitGame: quitGame)
+                            .transition(boardOverlayTransition)
+                    }
+                }
+                .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? nil : .easeOut(duration: 0.35),
+                           value: snapshot.isCompleted)
+                .onChange(of: snapshot.isCompleted) { _, completed in
+                    guard completed else { return }
+                    isLogOpen = false; isLandscapeStackOpen = false; isPromptDetailOpen = false
+                    isCardChoiceOpen = false; dragActionChoice = nil; inspectedCard = nil
+                }
         } else {
             LoadingGameView(startupStatus: startupStatus)
         }
@@ -3726,7 +3730,8 @@ struct NativeGameView: View {
     ) -> some View {
         GeometryReader { proxy in
             let metrics = PortraitBattlefieldLayoutMetrics(proxy: proxy, paymentActive: InlinePaymentPromptState.isActive(in: snapshot), largeText: GameBoardMotion.largeText(dynamicTypeSize),
-                centerControlsVisible: BoardDecisionPresentation.needsCenterSpace(snapshot, hasRejection: lastActionRejection != nil))
+                centerControlsVisible: BoardDecisionPresentation.needsCenterSpace(snapshot, hasRejection: lastActionRejection != nil)
+                    || !snapshot.stackTopFirst.isEmpty)
             let actions = snapshot.legalActions ?? []
             let targetableIds = GameBoardInteractionState.boardTargetableIds(for: snapshot)
             let combatHighlights = CombatHighlightSet(
@@ -3795,6 +3800,9 @@ struct NativeGameView: View {
                             FloatingZoneChip(title: "Looked", count: lookedAtCards.count, icon: "eye.trianglebadge.exclamationmark") {
                                 inspectBoardZone(.collection(.lookedAt))
                             }
+                        }
+                        if !snapshot.stackTopFirst.isEmpty {
+                            BoardStackTray(objects: snapshot.stackTopFirst) { isLandscapeStackOpen = true }
                         }
                     }
                     if let lastActionRejection {
@@ -4651,6 +4659,89 @@ struct PlayerStrip: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .background(.black.opacity(0.28), in: Capsule())
+    }
+}
+
+/// Arena-style stack tray for the portrait board: the top objects with their art and a
+/// count. Consecutive identical triggers are grouped ("Chatterfang ×12").
+struct BoardStackTray: View {
+    let objects: [XmageStackObject]
+    let open: () -> Void
+
+    struct Group {
+        let object: XmageStackObject
+        var count: Int
+    }
+
+    /// Groups consecutive objects (top first) with the same name, source and rules text.
+    static func groups(_ objects: [XmageStackObject]) -> [Group] {
+        var result: [Group] = []
+        for object in objects {
+            if let last = result.last, key(last.object) == key(object) { result[result.count - 1].count += 1 }
+            else { result.append(Group(object: object, count: 1)) }
+        }
+        return result
+    }
+
+    private static func key(_ object: XmageStackObject) -> String {
+        [object.displayName, object.sourceName ?? "", object.rulesText ?? ""].joined(separator: "\u{1F}")
+    }
+
+    static func title(_ group: Group) -> String {
+        group.count > 1 ? "\(group.object.displayName) ×\(group.count)" : group.object.displayName
+    }
+
+    var body: some View {
+        let groups = Self.groups(objects)
+        Button(action: open) {
+            HStack(spacing: 7) {
+                ZStack(alignment: .leading) {
+                    ForEach(Array(groups.prefix(3).enumerated().reversed()), id: \.offset) { index, group in
+                        thumbnail(group.object)
+                            .rotationEffect(.degrees(Double(index) * 5))
+                            .offset(x: CGFloat(index) * 8)
+                    }
+                }
+                .frame(width: 22 + CGFloat(max(min(groups.count, 3) - 1, 0)) * 8, height: 30, alignment: .leading)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("STACK · \(objects.count)")
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundStyle(MagicPalette.antiqueGold)
+                    if let top = groups.first {
+                        // The name may truncate; the trigger count never does.
+                        HStack(spacing: 3) {
+                            Text(top.object.displayName).lineLimit(1)
+                            if top.count > 1 {
+                                Text("×\(top.count)").foregroundStyle(MagicPalette.antiqueGold).fixedSize()
+                            }
+                        }
+                        .font(.system(size: 10, weight: .bold))
+                    }
+                }
+                .frame(maxWidth: 190, alignment: .leading)
+            }
+            .padding(.horizontal, 7)
+            .frame(height: 34)
+            .background(MagicPalette.iron.opacity(0.95), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(MagicPalette.antiqueGold.opacity(0.55), lineWidth: 1.5))
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.4), radius: 4, y: 2)
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .accessibilityLabel("Stack, \(objects.count) \(objects.count == 1 ? "item" : "items")" + (groups.first.map { ". Top: \(Self.title($0))" } ?? ""))
+        .accessibilityHint("Opens the stack")
+        .accessibilityIdentifier("board.stack.tray")
+    }
+
+    @ViewBuilder
+    private func thumbnail(_ object: XmageStackObject) -> some View {
+        if let card = object.displaySourceCard {
+            CardTile(card: card, selected: false, zoneName: "Stack", width: 22, height: 30, ignoreTappedRotation: true)
+                .allowsHitTesting(false)
+        } else {
+            SyntheticStackObjectTile(object: object, width: 22, height: 30)
+        }
     }
 }
 
@@ -9668,6 +9759,8 @@ struct PortraitOverlappingBattlefieldRow: View {
                 }
                 .frame(width: max(plan.contentWidth, rowWidth), height: max(cardHeight + 8, 44), alignment: .topLeading)
             }
+            .scrollClipDisabled()
+            .mask { BattlefieldRowMask() }
 
 
         }
@@ -9903,7 +9996,10 @@ struct PortraitHandRow: View {
                     .background(HandScrollConnection(controller: handScroll))
                 }
                 .frame(height: handExpanded ? cardHeight + 20 : ArenaHandLayout.restingHeight(cardHeight: cardHeight), alignment: .top)
-                .clipped()
+                // Tuck the resting hand at the bottom only; the playable glow, cost badges
+                // and fan tilt may draw above the row.
+                .scrollClipDisabled()
+                .mask { Rectangle().padding(.top, -48).padding(.horizontal, -12) }
                 .accessibilityIdentifier("board.hand.scroll")
                 .background { GeometryReader { geometry in
                     Color.clear.preference(key: HandViewportKey.self, value: geometry.frame(in: .named("portrait-board")))
@@ -10123,7 +10219,7 @@ struct GameplayActionDock: View {
                     Button(action: control.stop) {
                         secondaryLabel("Stop skipping", icon: "stop.fill")
                     }
-                    .buttonStyle(GameplayDockButtonStyle(isPrimary: false))
+                    .buttonStyle(CircularWhenIconOnly(iconOnly: horizontal, fallback: GameplayDockButtonStyle(isPrimary: false)))
                     .accessibilityLabel("Stop skipping")
                     .accessibilityHint(control.status ?? "Stops future automatic passes")
                 } else {
@@ -10137,7 +10233,7 @@ struct GameplayActionDock: View {
                     } label: {
                         secondaryLabel("Skip…", icon: "forward.end")
                     }
-                    .buttonStyle(GameplayDockButtonStyle(isPrimary: false))
+                    .buttonStyle(CircularWhenIconOnly(iconOnly: horizontal, fallback: GameplayDockButtonStyle(isPrimary: false)))
                     .disabled(!control.canEndTurn && !control.canSkipResponses && !control.canSkipToMyTurn)
                     .accessibilityLabel("Skip options")
                     .accessibilityHint("Choose how long to skip responses. Required choices always stop skipping.")
@@ -10146,7 +10242,7 @@ struct GameplayActionDock: View {
                 Button(action: openPromptDetails) {
                     secondaryLabel("Choices", icon: "list.bullet.rectangle.portrait")
                 }
-                .buttonStyle(GameplayDockButtonStyle(isPrimary: false))
+                .buttonStyle(CircularWhenIconOnly(iconOnly: horizontal, fallback: GameplayDockButtonStyle(isPrimary: false)))
                 .accessibilityLabel("View all choices")
             } else {
                 YieldActionsControl(
@@ -10201,6 +10297,17 @@ private struct GameplayDockButtonStyle: ButtonStyle {
                 : [Color(red: 0.78, green: 0.31, blue: 0.065), Color(red: 0.64, green: 0.20, blue: 0.05)]
         }
         return [MagicPalette.iron.opacity(0.88), MagicPalette.leather.opacity(0.76)]
+    }
+}
+
+/// The portrait dock shows its secondary control as an icon beside the settings button;
+/// give it the same 44pt circle instead of a wide capsule spilling past its slot.
+private struct CircularWhenIconOnly<Fallback: ButtonStyle>: ButtonStyle {
+    let iconOnly: Bool
+    let fallback: Fallback
+    @ViewBuilder func makeBody(configuration: Configuration) -> some View {
+        if iconOnly { GameplayDockMenuButtonStyle().makeBody(configuration: configuration) }
+        else { fallback.makeBody(configuration: configuration) }
     }
 }
 
@@ -10610,6 +10717,12 @@ extension GameSnapshot {
     }
 }
 
+/// Scrolled-away permanents stay clipped at the row's sides, while glows, attack stances,
+/// selection lift and tapped rotation may draw above and below the row.
+private struct BattlefieldRowMask: View {
+    var body: some View { Rectangle().padding(.horizontal, -4).padding(.vertical, -28) }
+}
+
 struct BattlefieldRow: View {
     let title: String
     let cards: [ZoneCard]
@@ -10692,6 +10805,8 @@ struct BattlefieldRow: View {
                                 .padding(.horizontal, 8)
                                 .frame(minWidth: rowWidth, minHeight: ((availableHeight ?? 0) - 4) / 2)
                         }
+                        .scrollClipDisabled()
+                        .mask { BattlefieldRowMask() }
                     }
                 }
             } else {
@@ -10703,6 +10818,8 @@ struct BattlefieldRow: View {
                     .padding(.vertical, availableHeight == nil ? 0 : 8)
                     .frame(minWidth: rowWidth, minHeight: availableHeight ?? max(cardHeight + 6, 44), alignment: .center)
                 }
+                .scrollClipDisabled()
+                .mask { BattlefieldRowMask() }
             }
         }
         .accessibilityIdentifier("board.battlefield.\(title)")
@@ -11578,7 +11695,7 @@ struct YieldActionsControl: View {
                 } label: {
                     actionLabel(GameplayActionPresentation.title(for: action, snapshot: snapshot), showsDisclosure: false)
                 }
-                .buttonStyle(CompactActionButtonStyle(isPrimary: false))
+                .buttonStyle(CircularWhenIconOnly(iconOnly: iconOnly, fallback: CompactActionButtonStyle(isPrimary: false)))
                 .accessibilityLabel(GameplayActionPresentation.title(for: action, snapshot: snapshot))
             } else {
                 Menu {
@@ -11590,7 +11707,7 @@ struct YieldActionsControl: View {
                 } label: {
                     actionLabel("Timing Options", showsDisclosure: true)
                 }
-                .buttonStyle(CompactActionButtonStyle(isPrimary: false))
+                .buttonStyle(CircularWhenIconOnly(iconOnly: iconOnly, fallback: CompactActionButtonStyle(isPrimary: false)))
                 .disabled(actions.isEmpty)
                 .accessibilityLabel(actions.isEmpty ? "No timing options available" : "Open timing options")
                 .accessibilityHint(actions.isEmpty ? "" : "Choose how far XMage should yield priority")
