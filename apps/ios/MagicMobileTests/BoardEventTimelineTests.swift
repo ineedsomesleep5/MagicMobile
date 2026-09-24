@@ -2,25 +2,27 @@ import XCTest
 @testable import MagicMobile
 
 final class BoardEventTimelineTests: XCTestCase {
-    private func card(_ id: String, _ name: String = "Grizzly Bears", cost: String? = "{1}{G}",
-                      damage: Int? = nil, counters: [String: Int]? = nil, attacking: Bool? = nil) -> ZoneCard {
-        var identity = CardIdentity(name: name, typeLine: "Creature — Bear", oracleText: nil)
+    private func card(_ id: String, _ name: String = "Grizzly Bears", cost: String? = "{1}{G}", type: String = "Creature — Bear",
+                      damage: Int? = nil, counters: [String: Int]? = nil, attacking: Bool? = nil,
+                      blocking: [String]? = nil) -> ZoneCard {
+        var identity = CardIdentity(name: name, typeLine: type, oracleText: nil)
         identity.manaCost = cost
         return ZoneCard(instanceId: id, card: identity, tapped: nil, summoningSickness: nil, cardIcons: nil,
                         counters: counters, power: 2, toughness: 2, isCreaturePermanent: true, damage: damage,
-                        isAttacking: attacking, blocking: nil, attachedToInstanceId: nil)
+                        isAttacking: attacking, blocking: blocking, attachedToInstanceId: nil)
     }
 
     private func player(_ id: String, life: Int = 40, hand: [ZoneCard] = [], battlefield: [ZoneCard] = [],
-                        graveyard: [ZoneCard] = [], exile: [ZoneCard] = []) -> PlayerGameState {
+                        graveyard: [ZoneCard] = [], exile: [ZoneCard] = [], command: [ZoneCard] = []) -> PlayerGameState {
         PlayerGameState(playerId: id, displayName: id, life: life, poison: 0, commanderTax: 0, manaPool: nil,
                         zones: PlayerZones(library: [], hand: hand, battlefield: battlefield, graveyard: graveyard,
-                                           exile: exile, command: [], stack: []),
+                                           exile: exile, command: command, stack: []),
                         commanderDamage: nil)
     }
 
-    private func snapshot(_ players: [PlayerGameState], id: String = "match", revision: Int = 1) -> GameSnapshot {
-        GameSnapshot(id: id, source: "xmage-ondevice", activePlayerId: "a", phase: "main", step: nil, turn: 3,
+    private func snapshot(_ players: [PlayerGameState], id: String = "match", revision: Int = 1,
+                          step: String? = nil) -> GameSnapshot {
+        GameSnapshot(id: id, source: "xmage-ondevice", activePlayerId: "a", phase: "main", step: step, turn: 3,
                      priorityPlayerId: "a", waitingOnPlayerId: nil, promptText: nil, players: players, log: [],
                      legalActions: nil, choicePrompt: nil, promptEnvelope: nil, promptEnvelopeV2: nil,
                      startupOpeningPrompts: nil, xmage: nil, engineHealth: nil, bridgeRevision: revision,
@@ -32,11 +34,29 @@ final class BoardEventTimelineTests: XCTestCase {
         BoardEventDiffer.events(from: BoardFXState(snapshot: old), to: BoardFXState(snapshot: new))
     }
 
-    func testCardPlayedFromHandEntersBattlefieldWithItsColor() {
+    private func state(step: String = "main", lives: [String: Int] = ["a": 40, "b": 40],
+                       cards: [BoardFXState.Card], stack: [BoardFXState.StackItem] = [],
+                       defenders: [String: String] = [:]) -> BoardFXState {
+        BoardFXState(gameID: "match", step: step, lives: lives,
+                     cards: Dictionary(uniqueKeysWithValues: cards.map { ($0.id, $0) }), stack: stack, defenders: defenders)
+    }
+
+    private func fxCard(_ id: String, _ player: String, _ zone: BoardFXZone = .battlefield, name: String = "Bear",
+                        attacking: Bool = false, blocking: [String] = [], damage: Int = 0,
+                        land: Bool = false, token: Bool = false) -> BoardFXState.Card {
+        BoardFXState.Card(id: id, playerID: player, zone: zone, name: name, tint: .green, damage: damage, counters: 0,
+                          attacking: attacking, blocking: blocking, isLand: land, isToken: token)
+    }
+
+    func testCreaturePlayedStraightFromHandIsShowcasedButLandsAreNot() {
         let bear = card("bear")
-        let result = events(snapshot([player("a", hand: [bear]), player("b")]),
-                            snapshot([player("a", battlefield: [bear]), player("b")], revision: 2))
-        XCTAssertEqual(result, [.enteredBattlefield(cardID: "bear", playerID: "a", from: .hand, tint: .green)])
+        let forest = card("forest", "Forest", cost: nil, type: "Basic Land — Forest")
+        let result = events(snapshot([player("a", hand: [bear, forest]), player("b")]),
+                            snapshot([player("a", battlefield: [bear, forest]), player("b")], revision: 2))
+        XCTAssertEqual(result, [
+            .enteredBattlefield(cardID: "bear", playerID: "a", from: .hand, tint: .green, entrance: .showcase),
+            .enteredBattlefield(cardID: "forest", playerID: "a", from: .hand, tint: .colorless, entrance: .plain),
+        ])
     }
 
     func testDyingCreatureWithNewObjectIDIsMatchedToGraveyardByName() {
@@ -80,6 +100,13 @@ final class BoardEventTimelineTests: XCTestCase {
         XCTAssertEqual(BoardFXTint(card: CardIdentity(name: "x", typeLine: "Token", oracleText: nil, tokenColors: ["White"])), .white)
     }
 
+    func testManaValue() {
+        XCTAssertEqual(BoardFXManaValue.of("{3}{B}{B}"), 5)
+        XCTAssertEqual(BoardFXManaValue.of("{X}{R}"), 1)
+        XCTAssertEqual(BoardFXManaValue.of("{2/W}{G/P}{10}"), 13)
+        XCTAssertEqual(BoardFXManaValue.of(nil), 0)
+    }
+
     func testBoardWipeKeepsLifeAndCapsDecoration() {
         let many = (0..<30).map { card("c\($0)") }
         let old = snapshot([player("a", battlefield: many), player("b")])
@@ -102,6 +129,89 @@ final class BoardEventTimelineTests: XCTestCase {
 }
 
 extension BoardEventTimelineTests {
+    func testSpellShowcaseIsReadableAndItsPermanentLandsAfterIt() {
+        let old = state(cards: [fxCard("spell", "b", .hand, name: "Serra Angel")])
+        let cast = state(cards: [fxCard("spell", "b", .stack, name: "Serra Angel")],
+                         stack: [.init(id: "s1", name: "Serra Angel", controllerID: "b", tint: .white, manaValue: 5)])
+        let castEvents = BoardEventDiffer.events(from: old, to: cast)
+        XCTAssertEqual(castEvents, [.spellCast(stackID: "s1", name: "Serra Angel", controllerID: "b", tint: .white, weight: .spell)])
+        let showcase = BoardFXScheduler.schedule(castEvents, level: .full)[0]
+        XCTAssertGreaterThanOrEqual(showcase.duration, 2.4, "the card holds long enough to read")
+
+        // Resolved with a new object ID: it flies from the stack, without a second showcase.
+        let resolved = state(cards: [fxCard("angel-2", "b", name: "Serra Angel")])
+        XCTAssertEqual(BoardEventDiffer.events(from: cast, to: resolved), [
+            .enteredBattlefield(cardID: "angel-2", playerID: "b", from: .stack, tint: .green, entrance: .plain),
+        ])
+
+        // Cast and resolved inside one transition batch: the arrival waits for the showcase.
+        let both = BoardFXScheduler.schedule([
+            .spellCast(stackID: "s2", name: "Shock", controllerID: "b", tint: .red, weight: .spell),
+            .enteredBattlefield(cardID: "bear", playerID: "b", from: .stack, tint: .green, entrance: .plain),
+        ], level: .full)
+        XCTAssertGreaterThanOrEqual(both[1].delay, both[0].end - 0.31)
+    }
+
+    func testLaterSnapshotWaitsForAShowcaseStillPlaying() {
+        let start = Date(timeIntervalSince1970: 5_000)
+        var director = BoardFXDirector()
+        let bear = card("bear")
+        director.ingest(snapshot([player("a"), player("b", hand: [bear])]), level: .full, now: start)
+        let first = director.ingest(snapshot([player("a"), player("b", battlefield: [bear])], revision: 2), level: .full, now: start)
+        XCTAssertEqual(first.first?.event, .enteredBattlefield(cardID: "bear", playerID: "b", from: .hand, tint: .green, entrance: .showcase))
+        let later = start.addingTimeInterval(0.5)
+        let second = director.ingest(snapshot([player("a", life: 38), player("b", battlefield: [bear])], revision: 3), level: .full, now: later)
+        let landed = start.addingTimeInterval(first[0].handoff)
+        XCTAssertEqual(later.addingTimeInterval(second[0].delay).timeIntervalSince1970, landed.timeIntervalSince1970, accuracy: 0.001)
+    }
+
+    func testCombatDamageStrikesTheBlockerThenDamageLandsOnImpact() {
+        let blockers = state(step: "declare-blockers", cards: [
+            fxCard("atk", "a", attacking: true), fxCard("blk", "b", blocking: ["atk"]),
+            fxCard("free", "a", name: "Wolf", attacking: true),
+        ], defenders: ["atk": "b", "free": "b"])
+        let damage = state(step: "combat-damage", lives: ["a": 40, "b": 38], cards: [
+            fxCard("atk", "a", attacking: true, damage: 2), fxCard("blk", "b", blocking: ["atk"], damage: 2),
+            fxCard("free", "a", name: "Wolf", attacking: true),
+        ], defenders: ["atk": "b", "free": "b"])
+        let result = BoardEventDiffer.events(from: blockers, to: damage)
+        XCTAssertEqual(result, [
+            .combatStrike(attackerID: "atk", target: .card("blk"), tint: .green),
+            .combatStrike(attackerID: "free", target: .player("b"), tint: .green),
+            .damageMarked(cardID: "atk", amount: 2),
+            .damageMarked(cardID: "blk", amount: 2),
+            .lifeChanged(playerID: "b", delta: -2),
+        ])
+        let planned = BoardFXScheduler.schedule(result, level: .full)
+        let impact = planned.filter { if case .combatStrike = $0.event { return true }; return false }.map(\.handoff).max()!
+        for fx in planned where fx.event.order > 3 {
+            XCTAssertGreaterThanOrEqual(fx.delay, impact, "\(fx.event) waits for the hit")
+        }
+        // The next snapshot inside combat damage does not strike again.
+        XCTAssertFalse(BoardEventDiffer.events(from: damage, to: state(step: "end-combat", cards: [])).contains {
+            if case .combatStrike = $0 { return true }; return false
+        })
+    }
+
+    func testBlockDeclarationIsReported() {
+        let old = state(step: "declare-attackers", cards: [fxCard("atk", "a", attacking: true), fxCard("blk", "b")])
+        let new = state(step: "declare-blockers", cards: [fxCard("atk", "a", attacking: true), fxCard("blk", "b", blocking: ["atk"])])
+        XCTAssertEqual(BoardEventDiffer.events(from: old, to: new), [.blockDeclared(cardID: "blk", attackerID: "atk")])
+    }
+
+    func testCommanderCastAndEntranceAreCeremonial() {
+        let inCommand = state(cards: [fxCard("cmd", "a", .command, name: "Atraxa")])
+        let cast = state(cards: [], stack: [.init(id: "s", name: "Atraxa", controllerID: "a", tint: .multicolor, manaValue: 4)])
+        XCTAssertEqual(BoardEventDiffer.events(from: inCommand, to: cast, commanders: ["Atraxa"]),
+                       [.spellCast(stackID: "s", name: "Atraxa", controllerID: "a", tint: .multicolor, weight: .commander)])
+        let entered = state(cards: [fxCard("cmd-2", "a", name: "Atraxa")])
+        XCTAssertEqual(BoardEventDiffer.events(from: cast, to: entered, commanders: ["Atraxa"]),
+                       [.enteredBattlefield(cardID: "cmd-2", playerID: "a", from: .stack, tint: .green, entrance: .commander)])
+        let big = state(cards: [], stack: [.init(id: "e", name: "Eldrazi", controllerID: "a", tint: .colorless, manaValue: 10)])
+        XCTAssertEqual(BoardEventDiffer.events(from: state(cards: []), to: big).first,
+                       .spellCast(stackID: "e", name: "Eldrazi", controllerID: "a", tint: .colorless, weight: .big))
+    }
+
     func testDirectorStartsQuietThenPlaysAndExpiresTransitions() {
         let start = Date(timeIntervalSince1970: 1_000)
         var director = BoardFXDirector()
@@ -114,9 +224,7 @@ extension BoardEventTimelineTests {
         director.ingest(snapshot([player("a", life: 1), player("b")], id: "other"), level: .full, now: start)
         XCTAssertEqual(director.active, [], "a different game never animates from the old board")
     }
-}
 
-extension BoardEventTimelineTests {
     func testArrivalHidesTileUntilFlightLandsAndDepartureKeepsItsFace() {
         let start = Date(timeIntervalSince1970: 2_000)
         let bear = card("bear")
@@ -125,28 +233,35 @@ extension BoardEventTimelineTests {
         director.ingest(snapshot([player("a", battlefield: [bear]), player("b")], revision: 2), level: .full, now: start)
         XCTAssertEqual(director.subjects["bear"]?.card.name, "Grizzly Bears")
         XCTAssertEqual(director.subjects["wolf"]?.card.name, "Wolf", "departed card face comes from the previous board")
-        let landing = try? XCTUnwrap(director.cardMotion(viewerID: "a").arrivals["bear"])
+        let hidden = try? XCTUnwrap(director.cardMotion(viewerID: "a").hidden["bear"])
         let arrival = director.active.first { $0.scheduled.event.subjectID == "bear" }!.scheduled
-        XCTAssertEqual(landing, BoardFXCardMotion.Arrival(batch: start, landsAfter: arrival.delay + arrival.duration * BoardFXScheduler.arrivalFlightFraction))
+        XCTAssertEqual(hidden, BoardFXCardMotion.Hidden(batch: start, from: 0, until: arrival.landing))
+        XCTAssertEqual(arrival.landing, arrival.delay + arrival.duration * BoardFXScheduler.landingFraction(.showcase))
         director.prune(now: start.addingTimeInterval(10))
         XCTAssertEqual(director.subjects, [:])
         XCTAssertEqual(director.cardMotion(viewerID: "a"), BoardFXCardMotion())
     }
 
-    func testAttackersLungeTowardTheOpponentOnlyWithMotion() {
+    func testAttackersLungeAndHoldTheirStanceTowardTheOpponent() {
         let start = Date(timeIntervalSince1970: 3_000)
         let old = snapshot([player("a", battlefield: [card("mine")]), player("b", battlefield: [card("theirs")])])
         let new = snapshot([player("a", battlefield: [card("mine", attacking: true)]),
-                            player("b", battlefield: [card("theirs", attacking: true)])], revision: 2)
+                            player("b", battlefield: [card("theirs", blocking: ["mine"])])], revision: 2)
         var full = BoardFXDirector()
         full.ingest(old, level: .full, now: start)
         full.ingest(new, level: .full, now: start)
-        let lunges = full.cardMotion(viewerID: "a").lunges
-        XCTAssertEqual(lunges["mine"]?.direction, -1)
-        XCTAssertEqual(lunges["theirs"]?.direction, 1)
+        let motion = full.cardMotion(viewerID: "a")
+        XCTAssertEqual(motion.lunges["mine"]?.direction, -1)
+        XCTAssertEqual(motion.stances["mine"], .init(kind: .attacking, direction: -1, moves: true))
+        XCTAssertEqual(motion.stances["theirs"], .init(kind: .blocking, direction: 1, moves: true))
         var reduced = BoardFXDirector()
         reduced.ingest(old, level: .reduced, now: start)
         reduced.ingest(new, level: .reduced, now: start)
-        XCTAssertEqual(reduced.cardMotion(viewerID: "a"), BoardFXCardMotion())
+        XCTAssertEqual(reduced.cardMotion(viewerID: "a").lunges, [:])
+        XCTAssertEqual(reduced.cardMotion(viewerID: "a").stances["mine"]?.moves, false, "reduced keeps the glow only")
+        var off = BoardFXDirector()
+        off.ingest(old, level: .off, now: start)
+        off.ingest(new, level: .off, now: start)
+        XCTAssertEqual(off.cardMotion(viewerID: "a"), BoardFXCardMotion())
     }
 }

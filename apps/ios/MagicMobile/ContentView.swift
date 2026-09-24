@@ -208,7 +208,7 @@ struct ContentView: View {
                         // Visual QA: MAGICMOBILE_BOARD_FX_AUTOPLAY=1 steps through the walkthrough.
                         guard ProcessInfo.processInfo.environment["MAGICMOBILE_BOARD_FX_AUTOPLAY"] == "1" else { return }
                         while !Task.isCancelled {
-                            try? await Task.sleep(for: .seconds(2.5))
+                            try? await Task.sleep(for: .seconds(3.6))
                             boardFXPreviewStep = (boardFXPreviewStep + 1) % GameBoardPreviewFixtures.boardFXStepCount
                             snapshot = GameBoardPreviewFixtures.boardFXStep(boardFXPreviewStep)
                         }
@@ -2700,6 +2700,9 @@ struct NativeGameView: View {
     @State private var focusedOpponentId: String?
     @State private var lastTurnCueKey: String?
     @State private var showsTurnCue = false
+    /// Game, turn and active player of the last turn-start banner.
+    @State private var lastTurnBannerKey: String?
+    @State private var showsTurnBanner = false
     @State private var aiWaitBeganAt = Date()
     @State private var aiWaitKey = ""
     @State private var didAutoRefreshAIWaitKey: String?
@@ -2711,6 +2714,7 @@ struct NativeGameView: View {
     @AppStorage(BoardFXLevel.key) private var boardFXLevel = BoardFXLevel.defaultValue
     @AppStorage(BoardFXSound.key) private var boardSoundsEnabled = true
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     private func openPromptDetails() {
         if let snapshot, PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil {
@@ -3441,9 +3445,14 @@ struct NativeGameView: View {
         guard !scheduled.isEmpty else { return }
         BoardFXHaptics.play(scheduled, viewerID: snapshot.viewerID)
         if boardSoundsEnabled { BoardFXSound.play(scheduled, viewerID: snapshot.viewerID) }
-        let viewerHit = scheduled.contains { if case let .lifeChanged(id, delta) = $0.event { return id == snapshot.viewerID && delta < 0 }; return false }
-        if viewerHit && level == .full {
-            withAnimation(.linear(duration: 0.36)) { boardShake += 1 }
+        guard level == .full else { return }
+        // Shake when the hit lands: the viewer losing life, or a commander touching down.
+        let viewerHit = scheduled.first { if case let .lifeChanged(id, delta) = $0.event { return id == snapshot.viewerID && delta < 0 }; return false }
+        let commander = scheduled.first { if case .enteredBattlefield(_, _, _, _, .commander) = $0.event { return true }; return false }
+        for at in [viewerHit?.delay, commander?.landing].compactMap({ $0 }) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) {
+                withAnimation(.linear(duration: 0.36)) { boardShake += 1 }
+            }
         }
     }
 
@@ -3485,6 +3494,7 @@ struct NativeGameView: View {
                 reviewCardChoiceAfterPending = false
                 focusedOpponentId = nil
                 lastTurnCueKey = nil
+                lastTurnBannerKey = nil
                 inspectingZoneTitle = nil
                 inspectingZoneCards = []
                 inspectingZoneReference = nil
@@ -3583,20 +3593,30 @@ struct NativeGameView: View {
     private func boardPhasePresentation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
         content
             .overlay {
+                if showsTurnBanner, let active = snapshot.activePlayerId, !isCardChoiceOpen, !isPromptDetailOpen {
+                    BoardTurnBanner(title: snapshot.isViewer(active) ? "Your turn" : "\(snapshot.playerLabel(active))’s turn",
+                                    turn: snapshot.turn, isViewer: snapshot.isViewer(active))
+                        .transition(.opacity)
+                        .accessibilityIdentifier("board.turn.banner")
+                }
+            }
+            .overlay {
                 if showsTurnCue, let cue = BoardPhaseAnnouncement.make(snapshot), !isCardChoiceOpen, !isPromptDetailOpen {
-                    VStack(spacing: 8) {
-                        Text(cue.owner.uppercased()).font(.headline.weight(.semibold))
+                    // A compact pill under the top HUD keeps the middle of the board clear for combat.
+                    HStack(spacing: 8) {
+                        Text(cue.owner.uppercased()).font(.caption2.weight(.heavy)).tracking(1)
                             .foregroundStyle(MagicPalette.antiqueGold)
-                        Text(cue.title).font(.system(size: 36, weight: .bold, design: .serif))
-                            .multilineTextAlignment(.center).minimumScaleFactor(0.7)
+                        Text(cue.title).font(.system(size: 17, weight: .bold, design: .serif))
+                            .lineLimit(1).minimumScaleFactor(0.7)
                     }
                         .foregroundStyle(MagicPalette.parchment)
-                        .padding(.horizontal, 28).padding(.vertical, 22)
-                        .background(MagicPalette.iron.opacity(0.95), in: RoundedRectangle(cornerRadius: 20))
-                        .overlay(RoundedRectangle(cornerRadius: 20).stroke(MagicPalette.antiqueGold.opacity(0.8), lineWidth: 1))
-                        .shadow(color: .black.opacity(0.45), radius: 20)
-                        .padding(.horizontal, 24)
-                        .transition(GameBoardMotion.reduced(accessibilityReduceMotion) ? .opacity : .scale(scale: 0.92).combined(with: .opacity))
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                        .background(MagicPalette.iron.opacity(0.92), in: Capsule())
+                        .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.7), lineWidth: 1))
+                        .shadow(color: .black.opacity(0.4), radius: 10)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                        .padding(.top, verticalSizeClass == .compact ? 8 : 64)
+                        .transition(GameBoardMotion.reduced(accessibilityReduceMotion) ? .opacity : .move(edge: .top).combined(with: .opacity))
                         .allowsHitTesting(false)
                         .accessibilityIdentifier("board.phase.announcement")
                 }
@@ -3607,6 +3627,20 @@ struct NativeGameView: View {
                     return
                 }
                 lastTurnCueKey = key
+                // The first phase of a new turn gets the turn-start banner instead of a phase card.
+                let turnKey = "\(snapshot.id):\(snapshot.turn):\(snapshot.activePlayerId ?? "")"
+                if turnKey != lastTurnBannerKey && BoardFXLevel(rawValue: boardFXLevel) != .off {
+                    let firstBanner = lastTurnBannerKey == nil
+                    lastTurnBannerKey = turnKey
+                    if !firstBanner || snapshot.turn > 1 {
+                        // The ribbon plays with the phase pill; it is center stage only briefly.
+                        if snapshot.isViewer(snapshot.activePlayerId) { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+                        withAnimation(.easeOut(duration: 0.2)) { showsTurnBanner = true; showsTurnCue = true }
+                        do { try await Task.sleep(for: .seconds(1.8)) } catch { showsTurnBanner = false; return }
+                        withAnimation(.easeOut(duration: 0.25)) { showsTurnBanner = false; showsTurnCue = false }
+                        return
+                    }
+                }
                 withAnimation(.easeOut(duration: 0.2)) { showsTurnCue = true }
                 do { try await Task.sleep(for: .seconds(1.5)) } catch { return }
                 withAnimation(.easeOut(duration: 0.2)) { showsTurnCue = false }
@@ -4411,19 +4445,36 @@ struct GameCompletionOverlay: View {
         return reason.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
+    private var isVictory: Bool { snapshot.winnerPlayerIds?.contains(snapshot.viewerID) == true }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var revealed = false
+
     var body: some View {
         ZStack {
-            Color.black.opacity(0.68)
+            Color.black.opacity(0.5)
                 .ignoresSafeArea()
+            GameResultBackdrop(victory: isVictory)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
 
             VStack(spacing: 12) {
-                Image(systemName: snapshot.winnerPlayerIds?.contains(snapshot.viewerID) == true ? "trophy.fill" : "flag.checkered")
-                    .font(.system(size: 32, weight: .black))
-                    .foregroundStyle(MagicPalette.antiqueGold)
+                Image(systemName: isVictory ? "trophy.fill" : "flag.checkered")
+                    .font(.system(size: 40, weight: .black))
+                    .foregroundStyle(isVictory ? MagicPalette.antiqueGold : Color(red: 0.8, green: 0.35, blue: 0.3))
+                    .shadow(color: (isVictory ? MagicPalette.antiqueGold : .red).opacity(0.6), radius: 12)
 
                 Text(title.uppercased())
-                    .font(.system(size: 26, weight: .black, design: .serif))
-                    .foregroundStyle(.white)
+                    .font(.system(size: 48, weight: .black, design: .serif))
+                    .tracking(4)
+                    .foregroundStyle(LinearGradient(colors: isVictory ? [.white, MagicPalette.antiqueGold, Color(red: 0.7, green: 0.5, blue: 0.16)]
+                                                                      : [Color(white: 0.9), Color(red: 0.72, green: 0.2, blue: 0.18)],
+                                                    startPoint: .top, endPoint: .bottom))
+                    .shadow(color: (isVictory ? MagicPalette.antiqueGold : .red).opacity(0.55), radius: 16)
+                    .scaleEffect(revealed || reduceMotion ? 1 : 1.6)
+                    .opacity(revealed || reduceMotion ? 1 : 0)
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
 
                 Text(winnerText)
                     .font(.callout.weight(.bold))
@@ -4444,11 +4495,16 @@ struct GameCompletionOverlay: View {
                         .buttonStyle(CompactActionButtonStyle(isPrimary: false))
                 }
             }
-            .padding(22)
+            .padding(24)
             .frame(maxWidth: 420)
-            .background(MagicPalette.iron.opacity(0.96), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(MagicPalette.antiqueGold.opacity(0.58), lineWidth: 1.5))
+            .background(MagicPalette.iron.opacity(0.9), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke((isVictory ? MagicPalette.antiqueGold : Color(red: 0.6, green: 0.2, blue: 0.18)).opacity(0.8), lineWidth: 1.5))
             .shadow(color: .black.opacity(0.48), radius: 18, y: 8)
+            .padding(.horizontal, 20)
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.62).delay(0.1)) { revealed = true }
+            UINotificationFeedbackGenerator().notificationOccurred(isVictory ? .success : .error)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Game completed. \(title). \(winnerText)")
@@ -5903,7 +5959,7 @@ struct UniversalPromptActionPanel: View {
                 VStack(alignment: .leading, spacing: 8) {
                     if let promptPresentation, snapshot.promptEnvelopeV2 == nil, snapshot.promptEnvelope == nil {
                         PromptPanelSection(title: "Choose", detail: "", isHighlighted: promptPresentation.isUnsupported) {
-                            Text(promptPresentation.message)
+                            GameRulesText(source: PromptDisplayText.clean(promptPresentation.message), symbolSize: 16)
                                 .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(promptPresentation.isUnsupported ? MagicPalette.warningAmber : .white.opacity(0.78))
                                 .fixedSize(horizontal: false, vertical: true)
@@ -5991,9 +6047,9 @@ struct UniversalPromptActionPanel: View {
     private func promptEnvelopeV2Section(_ prompt: PromptEnvelopeV2) -> some View {
         PromptPanelSection(title: promptPresentation?.title ?? "Choose", detail: "", isHighlighted: true,
                            isEmbedded: true) {
-            Text(prompt.message)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(.white.opacity(0.86))
+            GameRulesText(source: PromptDisplayText.clean(prompt.message), symbolSize: 16)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.92))
                 .fixedSize(horizontal: false, vertical: true)
 
             if isManaOrPaymentPrompt(prompt), !sourceManaActions.isEmpty {
@@ -6269,15 +6325,30 @@ struct UniversalPromptActionPanel: View {
 
     @ViewBuilder
     private func optionGrid(_ options: [(String, String)], prompt: PromptEnvelopeV2, fallbackType: String, icon: String) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 6)], spacing: 6) {
-            ForEach(options, id: \.0) { option in
-                let type = idCommandType(preferred: prompt.responseCommand?.type, fallback: fallbackType)
-                promptButton(
-                    label: option.1,
-                    systemImage: yesNoIcon(option.1) ?? icon,
-                    pendingId: "\(prompt.id)-\(option.0)",
-                    command: command(type: type, promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [option.0])
-                )
+        let type = idCommandType(preferred: prompt.responseCommand?.type, fallback: fallbackType)
+        // Modes and other sentence-length options get full-width rows so the whole text is readable.
+        if options.contains(where: { PromptDisplayText.clean($0.1).count > 16 }) {
+            VStack(spacing: 8) {
+                ForEach(options, id: \.0) { option in
+                    promptButton(
+                        label: option.1,
+                        systemImage: yesNoIcon(option.1) ?? icon,
+                        pendingId: "\(prompt.id)-\(option.0)",
+                        command: command(type: type, promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [option.0]),
+                        large: true
+                    )
+                }
+            }
+        } else {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 8)], spacing: 8) {
+                ForEach(options, id: \.0) { option in
+                    promptButton(
+                        label: option.1,
+                        systemImage: yesNoIcon(option.1) ?? icon,
+                        pendingId: "\(prompt.id)-\(option.0)",
+                        command: command(type: type, promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [option.0])
+                    )
+                }
             }
         }
     }
@@ -6954,13 +7025,14 @@ struct UniversalPromptActionPanel: View {
     }
 
     @ViewBuilder
-    private func promptButton(label: String, subtitle: String? = nil, systemImage: String? = nil, pendingId: String, command: GameCommand?) -> some View {
+    private func promptButton(label: String, subtitle: String? = nil, systemImage: String? = nil, pendingId: String, command: GameCommand?,
+                              large: Bool = false) -> some View {
         Button {
             if let command {
                 runCommand(command, label, pendingId)
             }
         } label: {
-            PromptButtonLabel(title: label, subtitle: subtitle, systemImage: systemImage, isPending: pendingActionId == pendingId)
+            PromptButtonLabel(title: label, subtitle: subtitle, systemImage: systemImage, isPending: pendingActionId == pendingId, large: large)
         }
         .buttonStyle(PanelActionButtonStyle(isPrimary: true))
         .disabled(pendingActionId != nil || command == nil)
@@ -7492,32 +7564,48 @@ struct PromptButtonLabel: View {
     var subtitle: String?
     var systemImage: String?
     var isPending = false
+    /// Replaces {this} in engine ability text.
+    var cardName: String? = nil
+    /// Full-width option rows: larger type and the whole text, never truncated.
+    var large = false
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: large ? 10 : 6) {
             if isPending {
                 ProgressView()
                     .tint(.white)
-                    .scaleEffect(0.58)
+                    .scaleEffect(large ? 0.8 : 0.58)
             } else if let systemImage {
                 Image(systemName: systemImage)
-                    .font(.system(size: 9, weight: .black))
+                    .font(.system(size: large ? 15 : 11, weight: .black))
+                    .foregroundStyle(MagicPalette.parchment)
             }
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.system(size: 10, weight: .black))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.62)
+            VStack(alignment: .leading, spacing: 2) {
+                let text = PromptDisplayText.clean(title)
+                Group {
+                    if text.contains("{") {
+                        // Mana, tap and other symbols render as icons, never as {T}.
+                        GameRulesText(source: text, cardName: cardName, symbolSize: large ? 17 : 13)
+                    } else {
+                        Text(text)
+                    }
+                }
+                .font(.system(size: large ? 15 : 12, weight: large ? .semibold : .bold))
+                .lineLimit(large ? 8 : 3)
+                .minimumScaleFactor(large ? 0.9 : 0.7)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: large)
                 if let subtitle, !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(.system(size: 7, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.62))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.62)
+                    Text(PromptDisplayText.clean(subtitle))
+                        .font(.system(size: large ? 12 : 9, weight: .semibold))
+                        .opacity(0.72)
+                        .lineLimit(large ? 3 : 1)
+                        .minimumScaleFactor(0.7)
                 }
             }
             Spacer(minLength: 0)
         }
+        .padding(.vertical, large ? 6 : 0)
     }
 }
 
@@ -7532,19 +7620,22 @@ struct PanelActionButtonStyle: ButtonStyle {
             .padding(.horizontal, compact ? 6 : 7)
             .padding(.vertical, compact ? 4 : 5)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .background(backgroundColor(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 7))
-            .overlay(RoundedRectangle(cornerRadius: 7).stroke(.white.opacity(isPrimary ? 0.18 : 0.10)))
+            .background(background(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 7))
+            .overlay(RoundedRectangle(cornerRadius: 7).stroke(isPrimary && !isDanger ? MagicPalette.antiqueGold.opacity(0.95) : .white.opacity(0.10),
+                                                              lineWidth: isPrimary ? 1.4 : 1))
             .opacity(configuration.isPressed ? 0.82 : 1)
     }
 
-    private func backgroundColor(isPressed: Bool) -> Color {
+    private func background(isPressed: Bool) -> AnyShapeStyle {
         if isDanger {
-            return isPressed ? MagicPalette.oxblood.opacity(0.68) : MagicPalette.oxblood.opacity(0.86)
+            return AnyShapeStyle(isPressed ? MagicPalette.oxblood.opacity(0.68) : MagicPalette.oxblood.opacity(0.86))
         }
         if isPrimary {
-            return isPressed ? MagicPalette.brass.opacity(0.70) : MagicPalette.antiqueGold.opacity(0.82)
+            // Deep bronze keeps white labels readable (light gold behind white text was not).
+            let top = Color(red: 0.56, green: 0.40, blue: 0.15), bottom = Color(red: 0.36, green: 0.24, blue: 0.08)
+            return AnyShapeStyle(LinearGradient(colors: isPressed ? [bottom, bottom] : [top, bottom], startPoint: .top, endPoint: .bottom))
         }
-        return isPressed ? MagicPalette.panelParchment.opacity(0.18) : MagicPalette.iron.opacity(0.58)
+        return AnyShapeStyle(isPressed ? MagicPalette.panelParchment.opacity(0.18) : MagicPalette.iron.opacity(0.58))
     }
 }
 
@@ -7652,11 +7743,11 @@ struct CompactPromptPopup: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(messageText)
-                    .font(.system(size: 13, weight: .black))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.68)
+                GameRulesText(source: PromptDisplayText.clean(messageText), symbolSize: 14)
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundStyle(.white.opacity(0.94))
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.72)
                 Spacer(minLength: 4)
                 Text(priorityLabel)
                     .font(.system(size: 8, weight: .black))
@@ -8227,19 +8318,26 @@ struct DragActionChoicePopup: View {
     let runAction: (LegalAction) -> Void
     let cancel: () -> Void
 
+    /// Ability text is sentence length; give each action its own full-width row.
+    private var usesRows: Bool {
+        choice.actions.count > 2 || choice.actions.contains { ($0.shortLabel ?? $0.label).count > 18 }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Text(choice.message)
-                    .font(.system(size: 13, weight: .black))
-                    .foregroundStyle(.white.opacity(0.92))
+                Text(PromptDisplayText.clean(choice.message))
+                    .font(.system(size: 17, weight: .black, design: .serif))
+                    .foregroundStyle(MagicPalette.parchment)
                     .lineLimit(2)
                     .minimumScaleFactor(0.7)
                 Spacer(minLength: 4)
                 Button(action: cancel) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .black))
-                        .foregroundStyle(.white.opacity(0.70))
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundStyle(.white.opacity(0.8))
+                        .frame(width: 32, height: 32)
+                        .background(.white.opacity(0.08), in: Circle())
                 }
                 .buttonStyle(.plain)
                 .frame(width: 44, height: 44)
@@ -8247,34 +8345,37 @@ struct DragActionChoicePopup: View {
                 .accessibilityLabel("Cancel action choice")
             }
 
-            HStack(spacing: 7) {
-                ForEach(choice.actions.prefix(3)) { action in
+            let layout = usesRows ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+            layout {
+                ForEach(choice.actions.prefix(4)) { action in
                     Button {
                         runAction(action)
                     } label: {
                         PromptButtonLabel(
                             title: action.shortLabel ?? action.label,
                             systemImage: action.systemImage,
-                            isPending: pendingActionId == action.id
+                            isPending: pendingActionId == action.id,
+                            cardName: action.cardName ?? choice.message,
+                            large: usesRows
                         )
                     }
-                    .buttonStyle(PanelActionButtonStyle(isPrimary: action.isPrimary == true, compact: true))
+                    .buttonStyle(PanelActionButtonStyle(isPrimary: true, compact: !usesRows))
                     .disabled(pendingActionId != nil)
                 }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
         .background(
             LinearGradient(
-                colors: [MagicPalette.iron.opacity(0.94), MagicPalette.leather.opacity(0.88)],
+                colors: [MagicPalette.iron.opacity(0.96), MagicPalette.leather.opacity(0.92)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             ),
-            in: RoundedRectangle(cornerRadius: 10)
+            in: RoundedRectangle(cornerRadius: 12)
         )
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(MagicPalette.antiqueGold.opacity(0.62), lineWidth: 1.2))
-        .shadow(color: MagicPalette.antiqueGold.opacity(0.18), radius: 14, x: 0, y: 0)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(MagicPalette.antiqueGold.opacity(0.7), lineWidth: 1.2))
+        .shadow(color: .black.opacity(0.5), radius: 16, y: 6)
     }
 }
 
@@ -9605,7 +9706,12 @@ struct PortraitHandRow: View {
     @State private var handCardBounds: [String: CGRect] = [:]
     @State private var handViewport = CGRect.zero
     @State private var handExpanded = false
+    @State private var pressedCardId: String?
+    @AppStorage(BoardFXLevel.key) private var boardFXLevel = BoardFXLevel.defaultValue
     @StateObject private var handScroll = HandScrollController()
+
+    /// Arena-style fan: cards tilt and dip away from the visible center of the hand.
+    private var fansHand: Bool { !handExpanded && BoardFXLevel(rawValue: boardFXLevel) != .off && !GameBoardMotion.reduced(reduceMotion) }
 
     private var handSpacing: CGFloat { ArenaHandLayout.spacing(count: cards.count, width: rowWidth, cardWidth: cardWidth, expanded: handExpanded) }
     private var contentWidth: CGFloat { CGFloat(cards.count) * cardWidth + CGFloat(max(cards.count - 1, 0)) * handSpacing }
@@ -9641,11 +9747,21 @@ struct PortraitHandRow: View {
                                 Color.clear.preference(key: HandCardBoundsKey.self,
                                     value: [card.id: geometry.frame(in: .named("portrait-board"))])
                             } }
-                            .scaleEffect(selected ? 1.05 : 1.0)
-                            .offset(y: selected ? -10 : 0)
+                            .visualEffect { [fansHand] content, proxy in
+                                let frame = proxy.frame(in: .scrollView(axis: .horizontal))
+                                let viewport = proxy.bounds(of: .scrollView(axis: .horizontal))?.width ?? frame.width
+                                let spread = fansHand ? min(max((frame.midX - viewport / 2) / max(viewport / 2, 1), -1), 1) : 0
+                                return content
+                                    .rotationEffect(.degrees(spread * 7), anchor: .bottom)
+                                    .offset(y: spread * spread * 9)
+                            }
+                            .rotationEffect(.degrees(pressedCardId == card.id && !selected ? -3 : 0), anchor: .bottom)
+                            .scaleEffect(selected ? 1.05 : pressedCardId == card.id ? 1.08 : 1.0, anchor: .bottom)
+                            .offset(y: selected ? -10 : pressedCardId == card.id ? -14 : 0)
                             .opacity(isDragging ? 0 : 1)
-                            .zIndex(isDragging ? 1000 : selected ? 900 : Double(index))
+                            .zIndex(isDragging ? 1000 : selected ? 900 : pressedCardId == card.id ? 950 : Double(index))
                             .animation(GameBoardMotion.reduced(reduceMotion) ? nil : .spring(response: 0.28, dampingFraction: 0.8), value: isDragging)
+                            .animation(GameBoardMotion.reduced(reduceMotion) ? nil : .spring(response: 0.22, dampingFraction: 0.7), value: pressedCardId)
                             .accessibilityHint("Tap to expand your hand. Hold to inspect. Drag upward to your battlefield to play.")
                             .accessibilityAction { selectedCard = nil; inspectedCard = card }
                             .accessibilityAction(named: "Inspect card") { selectedCard = nil; inspectedCard = card }
@@ -9704,7 +9820,10 @@ struct PortraitHandRow: View {
                                     }, inspect: { selectedCard = nil; inspectedCard = card }, tap: {
                                         if handExpanded { selectedCard = nil; inspectedCard = card }
                                         else { withAnimation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.2)) { handExpanded = true } }
-                                    }, releaseInspection: { if inspectedCard?.id == card.id { inspectedCard = nil } })
+                                    }, releaseInspection: { if inspectedCard?.id == card.id { inspectedCard = nil } },
+                                    pressed: { down in
+                                        if down { pressedCardId = card.id } else if pressedCardId == card.id { pressedCardId = nil }
+                                    })
                             }
                         }
                     }
@@ -10979,6 +11098,7 @@ struct CardTile: View {
             }
         }
         .overlay {
+            Group {
             if castOffered && legal && !selected && !pending && !targetable {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(LinearGradient(stops: [
@@ -11013,6 +11133,9 @@ struct CardTile: View {
                     .shadow(color: Color.red.opacity(0.78), radius: 11)
                     .padding(-3)
             }
+            }
+            // The existing playable glow breathes in the hand; nothing new is drawn.
+            .modifier(PlayableGlowPulse(active: zoneName == "Hand" && (legal || castOffered) && !selected && !pending && !targetable))
         }
         .shadow(color: shadowColor, radius: shadowRadius)
         .rotationEffect(.degrees(card.tapped == true && !ignoreTappedRotation ? 90 : 0))
@@ -11084,6 +11207,24 @@ struct CardTile: View {
     static func playableGlowRadius(legal: Bool, selected: Bool, pending: Bool, targetable: Bool, width: CGFloat) -> CGFloat {
         guard legal && !selected && !pending && !targetable else { return 0 }
         return max(width * 0.18, 10)
+    }
+}
+
+/// Slow breathing for the hand's playable-card glow. Full board effects only,
+/// never with Reduce Motion, and only while the card is actually playable.
+struct PlayableGlowPulse: ViewModifier {
+    let active: Bool
+    @AppStorage(BoardFXLevel.key) private var level = BoardFXLevel.defaultValue
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        if active && BoardFXLevel(rawValue: level) == .full && !reduceMotion {
+            content.phaseAnimator([0.5, 1.0]) { glow, value in
+                glow.opacity(value)
+            } animation: { _ in .easeInOut(duration: 1.2) }
+        } else {
+            content
+        }
     }
 }
 
@@ -11713,6 +11854,29 @@ struct ContextActionTray: View {
     }
 }
 
+/// Holographic sheen on the held card image only (never its rules text): a slow
+/// glint sweep with a slight tilt. Full board effects without Reduce Motion only;
+/// the timeline exists only while the inspector is on screen.
+struct InspectionFoil: ViewModifier {
+    let size: CGSize
+    @AppStorage(BoardFXLevel.key) private var level = BoardFXLevel.defaultValue
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var start = Date()
+
+    func body(content: Content) -> some View {
+        if BoardFXLevel(rawValue: level) == .full && !reduceMotion {
+            TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
+                let t = timeline.date.timeIntervalSince(start)
+                content
+                    .colorEffect(ShaderLibrary.mmFoil(.float2(size), .float(t * 0.3), .float(0.55)))
+                    .rotation3DEffect(.degrees(sin(t * 0.9) * 3), axis: (x: 0.3, y: 1, z: 0), perspective: 0.5)
+            }
+        } else {
+            content
+        }
+    }
+}
+
 struct CardInspector: View {
     let card: ZoneCard
 
@@ -11754,6 +11918,7 @@ struct CardInspector: View {
                 CardTile(card: card, selected: false, zoneName: "Inspector",
                          width: cardWidth, height: cardHeight,
                          ignoreTappedRotation: true, imageVariant: .inspection)
+                    .modifier(InspectionFoil(size: CGSize(width: cardWidth, height: cardHeight)))
                     .frame(width: horizontal ? cardWidth : availableWidth)
                 if hasFooter {
                     ScrollView(.vertical) {

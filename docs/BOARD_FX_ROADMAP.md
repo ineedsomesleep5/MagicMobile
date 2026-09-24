@@ -51,12 +51,40 @@ toward the opponent with a keyframe spring. Reduced/Off levels have no flights o
 | `apps/ios/MagicMobileTests/BoardEventTimelineTests.swift` | Portable unit tests (`swift test --package-path apps/ios --filter BoardEventTimelineTests`). |
 | `apps/ios/MagicMobile/BoardFXOverlay.swift` | SwiftUI renderer, painter helpers, flights, tile motion modifier, shader modifier, shake, haptics, settings picker. App target only. |
 | `apps/ios/MagicMobile/BoardFXShaders.metal` | `mmDissolve` (noise burn with glowing edge) and `mmFoil` (rainbow wash + glint) SwiftUI `colorEffect` shaders. App target only. |
-| `apps/ios/MagicMobile/ContentView.swift` | Integration only: state on `NativeGameView`, `ingestBoardFX`, `boardFXOverlay`, both board overlays, three settings panels. |
+| `apps/ios/MagicMobile/ContentView.swift` | Integration only: state on `NativeGameView`, `ingestBoardFX`, `boardFXOverlay`, both board overlays, three settings panels, turn banner + phase pill, hand fan/lift (`PortraitHandRow`), `PlayableGlowPulse`, `InspectionFoil`, restyled `GameCompletionOverlay`. |
+| `apps/ios/MagicMobile/ArenaBoardPresentation.swift` | Legendary gold edge on `ArenaBattlefieldCard`; `BoardLifeTotal` hides its own delta badge unless Board Effects is Off (the overlay draws the floating number). |
 
-Event order within one transition: spell cast → attack declared → left battlefield →
-damage → entered battlefield → counters → life. At most
+Event order within one transition: spell cast → attack declared → block declared →
+combat strike → damage → left battlefield → entered battlefield → counters → life. At most
 `BoardFXScheduler.decorativeLimit` decorative effects per transition; life changes
 are always kept.
+
+Pacing (build 14): each group starts at the previous group's `handoff`, not at a fixed
+stagger. Spell showcases (2.4 s, big spells 2.7 s, commanders 3.1 s) hand off only as they
+fade, so a permanent never lands before its spell has been read; strikes hand off at
+impact, so damage numbers, deaths and life changes land on the hit. Showcases play one
+after another (`isSequential`), and a later snapshot waits for a showcase still playing
+(`BoardFXDirector` passes `hold`, capped at `BoardFXScheduler.maximumHold` = 3 s so the
+board never falls far behind the engine).
+
+- `spellCast` carries a weight: ability (small, quick), spell, big (printed mana value
+  ≥ 6: board flash + light rays) or commander (name seen in a command zone this game:
+  gold flash, rays, COMMANDER banner).
+- `enteredBattlefield` carries an entrance: plain (flies to its slot), showcase (a
+  non-land, non-token card that arrived from hand or nowhere without being seen on the
+  stack: rises to the center, holds, settles into its slot) or commander (showcase with
+  gold rays, shockwave landing, haptic and shake). A permanent that was on the stack in
+  the previous snapshot flies from the stack point with no second showcase.
+- `combatStrike` fires for every attacker when the step leaves begin-combat /
+  declare-attackers / declare-blockers. Target: first blocker, else the public combat
+  defender (player or permanent), else the first opponent. The attacker's tile is hidden
+  while a flight winds up, charges, hits (shockwave + sparks) and returns.
+- `blockDeclared` draws a steel-blue tether from blocker to attacker.
+- Tiles hold a stance while the snapshot says attacking (red glow, 12 pt forward,
+  scale 1.05) or blocking (blue glow, 7 pt forward). Reduced keeps the glow only.
+- Color identity particles (`BoardFXPainter.elemental`) around showcased cards: embers
+  (red), frost shards (blue), leaves (green), light motes (white), smoke (black), gold
+  glints (multicolor), steel glints (colorless).
 
 Timing: a snapshot can stall the main thread while the board relays out (0.4–1.3 s
 seen in the Debug simulator). `BoardFXClock` starts each batch on its first drawn
@@ -119,8 +147,13 @@ single MIT file with its license header when that is enough.
   verifier refuses symlinks by design.
 - Simulator walkthrough (Debug build, no engine): launch with
   `SIMCTL_CHILD_MAGICMOBILE_DESIGN_PREVIEW=board-fx SIMCTL_CHILD_MAGICMOBILE_BOARD_FX_AUTOPLAY=1 xcrun simctl launch --terminate-running-process booted com.calebfeliciano.magicmobile`.
-  It steps every 2.5 s through cast Swords → exile Serra Angel (+4) → Sol Ring enters
-  (+1 counter) → Isamaru attacks → combat damage (-2 / -3, shake) → Isamaru dies.
+  It steps every 3.6 s through cast Swords → exile Serra Angel (+4) → Sol Ring enters
+  from hand (showcase, +1 counter) → AI casts commander Kozilek → Kozilek enters
+  (commander entrance) → Isamaru attacks → Kozilek blocks → combat damage (strike) →
+  Isamaru dies. Plain Debug builds run the simulator several times slower than real time;
+  for timing checks build with `SWIFT_OPTIMIZATION_LEVEL=-O SWIFT_COMPILATION_MODE=wholemodule`
+  (still Debug, so the preview exists). `MAGICMOBILE_DESIGN_PREVIEW=mode-choice` shows the
+  mode prompt rows.
   Record with `xcrun simctl io booted recordVideo` and inspect frames with ffmpeg
   (the Claude simulator tool's screenshot/inspect were unavailable on 2026-09-23).
   Without autoplay, the "Next board FX step" button advances manually.
@@ -138,7 +171,8 @@ single MIT file with its license header when that is enough.
 | 2 Card motion | Flights (arrive/depart/cast) and attack lunge implemented on `codex/board-fx-motion` (stacked on phase 1). Tests and generic iPhone compile pass. Visual acceptance pending. Blocker lunge/defender targeting and hand-card exact source rect not done. |
 | 3 Card shaders | Dissolve (graveyard: ember edge, exile: cold edge) on departing flights and foil on the cast showcase, on `codex/board-fx-shaders` (stacked on phase 2). Compile + preflight pass. Not yet: foil on the held inspection card image (needs the image isolated inside `CardInspector`, not its rules text), playable-card glow, heat haze. |
 | 4 Particles and sound upgrade | Sounds (cast, land, damage, death, player hit) and Effect Sounds toggle on `codex/board-fx-polish`. Vortex particles not adopted. |
-| 5 RealityKit moments | Not started |
+| 5 RealityKit moments | Not started. D20 migration deliberately deferred (see log 2026-09-23 build 14). |
+| 6 Game feel (build 14) | Readable spell showcases, arrival-after-cast, showcase for unseen casts, commander cast/entrance, attack stance + block tether + strike with impact-timed damage, turn-start ribbon, compact phase pill, victory/defeat screen, hand fan + lift under finger + breathing playable glow, legendary gold edge, inspection foil, color-identity particles, life badge de-duplication. Verified in the board-fx simulator walkthrough (optimized Debug build). Not yet: device feel, landscape combat pass. |
 
 ## Log
 
@@ -163,3 +197,21 @@ single MIT file with its license header when that is enough.
   toggle. All six walkthrough steps verified on iPhone 17 Pro simulator (portrait).
   Next: device run with the real engine, landscape check, inspection-card foil.
 - 2026-09-23 (Claude): Phases 1–4 merged (#24, #27) and shipped in TestFlight build 13. Next: real-engine game on device, landscape check, inspection-card foil, RealityKit D20 (phase 5).
+- 2026-09-23 (Claude, build 14, branch `codex/board-fx-build-14`): Caleb's device notes on
+  build 13: life number drawn twice (fixed: `BoardLifeTotal` badge only when effects are
+  Off), cast showcase too fast (now 2.4 s with a readable hold), permanents landing before
+  their spell finished (handoff pacing + cross-snapshot hold), wanted real attack motion
+  (stance, strike flight, impact-timed damage, block tether). Also shipped the "next steps"
+  list: hand fan/lift/pulse, commander entrance, turn ribbon, victory/defeat backdrop,
+  big-spell flash, inspection foil, legendary edge, color particles. The old center phase
+  card became a small pill under the top HUD so it no longer covers combat (UI test
+  updated). Prompts: `PromptButtonLabel` renders {T}/mana symbols and {this}, strips XMage
+  object IDs (`PromptDisplayText`), long options become full-width rows, primary buttons
+  moved from light gold to deep bronze for contrast, the tapped-card ability popup lists
+  abilities as full rows, and mode prompts are titled "Choose mode" (new `mode-choice`
+  preview fixture). Preview walkthrough now has 10 steps (adds Kozilek commander cast and
+  entrance, block, strike). Deferred on purpose: D20 SceneKit → RealityKit (identical
+  visuals, SceneKit still supported, would put the start-of-game roll at risk; revisit with
+  a real 3D feature) and a tilted 3D table (perspective would misalign touch targets and
+  the effect anchors). Next: Caleb plays build 14 on device; tune durations, landscape
+  combat pass, then consider RealityKit hero moments.

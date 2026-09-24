@@ -278,6 +278,14 @@ struct GameRulesText: View {
     var isHidden = false
     @ScaledMetric(relativeTo: .body) private var symbolSize = 16
 
+    /// `symbolSize` matches the inline mana and tap symbols to the surrounding font.
+    init(source: String, cardName: String? = nil, isHidden: Bool = false, symbolSize: CGFloat = 16) {
+        self.source = source
+        self.cardName = cardName
+        self.isHidden = isHidden
+        _symbolSize = ScaledMetric(wrappedValue: symbolSize, relativeTo: .body)
+    }
+
     var body: some View {
         let rules = GameRulesPresentation(source: source, cardName: cardName, isHidden: isHidden)
         let symbols = GameRulesSymbols(rules)
@@ -399,5 +407,18 @@ struct GameRulesSymbols: Equatable {
             return "\(first) or \(second) mana or two life"
         }
         return nil
+    }
+}
+
+/// Prompt and button text without XMage's short object-ID suffixes, such as
+/// "Black Market Connections [4cb]". IDs always contain a digit, so words in
+/// brackets survive.
+enum PromptDisplayText {
+    private static let objectID = try! NSRegularExpression(pattern: #"[ \t]*\[(?=[0-9a-f]*[0-9])[0-9a-f]{3,8}\]"#)
+
+    static func clean(_ text: String) -> String {
+        guard text.contains("[") else { return text }
+        let range = NSRange(location: 0, length: (text as NSString).length)
+        return objectID.stringByReplacingMatches(in: text, range: range, withTemplate: "")
     }
 }

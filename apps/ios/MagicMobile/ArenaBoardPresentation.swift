@@ -231,17 +231,20 @@ struct BoardLifeTotal: View {
     let life: Int
     var suffix = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Board effects draw their own floating life number; the badge covers Off only.
+    @AppStorage(BoardFXLevel.key) private var boardEffects = BoardFXLevel.defaultValue
     @State private var delta = 0
     @State private var changeToken = UUID()
 
     var body: some View {
+        let showsBadge = BoardFXLevel(rawValue: boardEffects) == .off
         Text("\(life)\(suffix)")
             .monospacedDigit()
             .contentTransition(.numericText(value: Double(life)))
             .foregroundStyle(delta == 0 ? MagicPalette.antiqueGold : delta < 0 ? Color.red : Color.green)
             .scaleEffect(delta == 0 || reduceMotion ? 1 : 1.16)
             .overlay(alignment: .topTrailing) {
-                if delta != 0 {
+                if delta != 0 && showsBadge {
                     Text(delta > 0 ? "+\(delta)" : "\(delta)")
                         .font(.caption.bold()).foregroundStyle(delta < 0 ? .red : .green)
                         .padding(3).background(.black.opacity(0.9), in: Capsule())
@@ -389,6 +392,8 @@ struct ArenaBattlefieldCard: View {
         card.isPhasedOut ? .gray : targetable ? .red : selected ? MagicPalette.antiqueGold : legal ? MagicPalette.legalEmerald : .white.opacity(0.35)
     }
 
+    private var isLegendary: Bool { card.card.typeLine.localizedCaseInsensitiveContains("legendary") }
+
     var showsFooter: Bool {
         card.showsPowerToughness || card.tapped == true || (card.isCreature && card.summoningSickness == true)
     }
@@ -445,6 +450,17 @@ struct ArenaBattlefieldCard: View {
             }
         }
         .overlay(RoundedRectangle(cornerRadius: 7).stroke(accent, lineWidth: legal || targetable || selected ? 2 : 1))
+        .overlay {
+            // Legendary permanents wear a gold edge unless a play/target state owns the border.
+            if isLegendary && !(legal || targetable || selected) && !card.isPhasedOut {
+                RoundedRectangle(cornerRadius: 7)
+                    .strokeBorder(AngularGradient(colors: [MagicPalette.antiqueGold, Color(red: 1, green: 0.93, blue: 0.62),
+                                                           Color(red: 0.62, green: 0.44, blue: 0.14), MagicPalette.antiqueGold],
+                                                  center: .center), lineWidth: 2)
+                    .shadow(color: MagicPalette.antiqueGold.opacity(0.45), radius: 4)
+                    .allowsHitTesting(false)
+            }
+        }
         .saturation(card.tapped == true ? 0.15 : 1)
         .brightness(card.tapped == true ? -0.16 : 0)
         .rotationEffect(.degrees(card.tapped == true ? -7 : 0))

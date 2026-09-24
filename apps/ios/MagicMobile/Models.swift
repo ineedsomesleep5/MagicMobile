@@ -274,7 +274,9 @@ struct MobilePromptPresentation: Equatable {
         case .payment: return "Pay cost"
         case .target: return "Select target"
         case .confirmation: return "Confirm choice"
-        case .cardChoice: return "Choose card"
+        case .cardChoice:
+            if prompt.modes?.isEmpty == false { return "Choose mode" }
+            return prompt.cards?.isEmpty == false ? "Choose card" : "Make a choice"
         case .playerChoice: return "Choose player"
         case .abilityChoice: return "Choose ability"
         case .order: return "Order choices"
