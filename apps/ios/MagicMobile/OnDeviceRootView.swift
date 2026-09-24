@@ -170,6 +170,8 @@ struct OnDeviceRootView: View {
         .preferredColorScheme(.dark)
         .animation(reduceMotion ? .easeOut(duration: 0.12) : .easeOut(duration: 0.26), value: showSetup)
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: activeGame)
+        // Menu ambience pauses while anything covers the menu.
+        .environment(\.brandAmbientMotion, !(showImport || showAppearance || showUpdates || showDownloads || showDiagnostics))
         .sheet(isPresented: $showAppearance) { AppearanceSettingsView(portraitModeEnabled: $portraitModeEnabled) }
         .sheet(isPresented: $showUpdates) { NativeUpdateNewsView(upstreamCommit: setup.identity?.upstreamCommit) }
         .sheet(isPresented: $showDownloads) {

@@ -23,6 +23,21 @@ enum BrandTheme {
                                               startPoint: .top, endPoint: .bottom)
 }
 
+// MARK: - Ambient motion
+
+private struct BrandAmbientMotionKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    /// False while something covers the menu (Deck Studio, settings, a game), so the
+    /// backdrop, hero card, glints and sparks stop drawing frames nobody can see.
+    var brandAmbientMotion: Bool {
+        get { self[BrandAmbientMotionKey.self] }
+        set { self[BrandAmbientMotionKey.self] = newValue }
+    }
+}
+
 // MARK: - The mark
 
 /// The app icon's mark: cream monogram under a coral card with a four-point sparkle.
@@ -32,11 +47,13 @@ struct BrandMark: View {
     var glint = true
     var tile = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.brandAmbientMotion) private var ambient
     @State private var start = Date()
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion || !glint)) { timeline in
-            let t = reduceMotion || !glint ? 0 : timeline.date.timeIntervalSince(start)
+        let still = reduceMotion || !glint || !ambient
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: still)) { timeline in
+            let t = still ? 0 : timeline.date.timeIntervalSince(start)
             // A glint every 4.5 s: a quick swell, then settle.
             let phase = t.truncatingRemainder(dividingBy: 4.5)
             let flash = phase < 0.6 ? sin(.pi * phase / 0.6) : 0
@@ -101,6 +118,7 @@ struct BrandSparkle: View {
 struct BrandBackdrop: View {
     var cards = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.brandAmbientMotion) private var ambient
     @State private var start = Date()
 
     var body: some View {
@@ -111,7 +129,7 @@ struct BrandBackdrop: View {
                                center: UnitPoint(x: 0.5, y: 1.08), startRadius: 0, endRadius: proxy.size.height * 0.62)
                 RadialGradient(colors: [Color.white.opacity(0.06), .clear], center: UnitPoint(x: 0.5, y: -0.05),
                                startRadius: 0, endRadius: proxy.size.height * 0.5)
-                if reduceMotion {
+                if reduceMotion || !ambient {
                     Canvas { context, size in draw(&context, size, t: 0) }
                 } else {
                     TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
@@ -274,6 +292,7 @@ private struct BrandButtonFace<Label: View>: View {
     let kind: BrandButtonStyle.Kind
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.brandAmbientMotion) private var ambient
 
     var body: some View {
         let primary = kind == .primary
@@ -296,7 +315,7 @@ private struct BrandButtonFace<Label: View>: View {
                 }
             }
             .overlay {
-                if primary && isEnabled && !reduceMotion { ShineSweep().clipShape(shape).allowsHitTesting(false) }
+                if primary && isEnabled && !reduceMotion && ambient { ShineSweep().clipShape(shape).allowsHitTesting(false) }
             }
             .overlay {
                 shape.strokeBorder(primary ? AnyShapeStyle(Color.white.opacity(0.22)) : AnyShapeStyle(BrandTheme.border),
@@ -313,23 +332,27 @@ private struct BrandButtonFace<Label: View>: View {
     }
 }
 
-/// A glint that crosses the button every few seconds.
+/// A glint that crosses the button every few seconds. It is one full-size gradient whose
+/// bright band moves, so nothing is ever drawn outside the button: an offset stripe would
+/// widen the button's frame for VoiceOver and for UI-test tap points.
 struct ShineSweep: View {
     @State private var start = Date()
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
             let cycle = 3.6
-            let p = timeline.date.timeIntervalSince(start).truncatingRemainder(dividingBy: cycle) / 0.9
-            GeometryReader { proxy in
-                LinearGradient(colors: [.clear, .white.opacity(0.5), .clear], startPoint: .leading, endPoint: .trailing)
-                    .frame(width: proxy.size.width * 0.3)
-                    .rotationEffect(.degrees(20))
-                    .offset(x: -proxy.size.width * 0.4 + CGFloat(min(p, 1.2)) * proxy.size.width * 1.5)
-                    .opacity(p < 1.2 ? 1 : 0)
-                    .blendMode(.plusLighter)
-            }
+            // The band travels from just before the leading edge to just past the trailing one.
+            let p = timeline.date.timeIntervalSince(start).truncatingRemainder(dividingBy: cycle) / 0.9 * 1.4 - 0.2
+            let band = 0.14
+            LinearGradient(stops: [
+                .init(color: .clear, location: min(1, max(0, p - band))),
+                .init(color: .white.opacity(p > -band && p < 1 + band ? 0.5 : 0), location: min(1, max(0, p))),
+                .init(color: .clear, location: min(1, max(0, p + band)))
+            ], startPoint: UnitPoint(x: 0, y: 0.2), endPoint: UnitPoint(x: 1, y: 0.8))
+            .blendMode(.plusLighter)
         }
+        .accessibilityHidden(true)
+        .allowsHitTesting(false)
     }
 }
 
@@ -383,12 +406,14 @@ struct HeroCommanderCard: View {
     var namespace: Namespace.ID? = nil
     var width: CGFloat
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.brandAmbientMotion) private var ambient
     @State private var start = Date()
 
     var body: some View {
         let height = width / 0.716
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { timeline in
-            let t = reduceMotion ? 0 : timeline.date.timeIntervalSince(start)
+        let still = reduceMotion || !ambient
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: still)) { timeline in
+            let t = still ? 0 : timeline.date.timeIntervalSince(start)
             ZStack {
                 Ellipse()
                     .fill(RadialGradient(colors: [BrandTheme.ember.opacity(0.42), .clear], center: .center,
