@@ -4443,10 +4443,21 @@ struct AIWaitFallbackControls: View {
     }
 }
 
+private struct GameRematchTitleKey: EnvironmentKey { static let defaultValue: String? = nil }
+
+extension EnvironmentValues {
+    /// When set (solo games), the result screen's first button restarts the same match.
+    var gameRematchTitle: String? {
+        get { self[GameRematchTitleKey.self] }
+        set { self[GameRematchTitleKey.self] = newValue }
+    }
+}
+
 struct GameCompletionOverlay: View {
     let snapshot: GameSnapshot
     let newGame: () -> Void
     let quitGame: () -> Void
+    @Environment(\.gameRematchTitle) private var rematchTitle
 
     private var title: String {
         guard let winners = snapshot.winnerPlayerIds, !winners.isEmpty else { return "Game Over" }
@@ -4509,7 +4520,8 @@ struct GameCompletionOverlay: View {
                 }
 
                 HStack(spacing: 10) {
-                    Button("New Game", action: newGame)
+                    Button(rematchTitle ?? "New Game", action: newGame)
+                        .accessibilityIdentifier("board.result.rematch")
                         .buttonStyle(CompactActionButtonStyle(isPrimary: true))
                     Button("Main Menu", action: quitGame)
                         .buttonStyle(CompactActionButtonStyle(isPrimary: false))

@@ -82,6 +82,9 @@ struct OnDeviceRootView: View {
         }
         return library.decks.first(where: { "local:\($0.id)" == selectedDeckID })?.deckList
     }
+    /// In the match room, deck and name stay editable until the player is ready.
+    private var editableInRoom: Bool { setup.multiplayer?.room.map { !$0.localReady } ?? false }
+
     private var validName: Bool { (try? OnDeviceSetupModel.playerName(playerDisplayName)) != nil }
     private var gameCenterAICount: Int { min(max(0, gameCenterAIStoredCount), max(0, 4 - playerCount)) }
     private var gameCenterAICountBinding: Binding<Int> {
@@ -402,7 +405,7 @@ struct OnDeviceRootView: View {
             },
             refreshGame: refresh, reconnectGame: refresh,
             checkBridgeHealth: { setup.localHealth() },
-            newGame: requestLeave, quitGame: requestLeave,
+            newGame: rematchOrLeave, quitGame: leaveFinishedOrAsk,
             loadProtocolDebug: { _ in
                 throw EngineError.invalidMessage("Protocol debug export is not available for this on-device session.")
             },
@@ -411,6 +414,25 @@ struct OnDeviceRootView: View {
         )
         .overlay { zoneOverlay }
         .disabled(setup.isBusy)
+        .environment(\.gameRematchTitle, setup.usingMultiplayer || setup.usingOnline ? nil : "Rematch")
+    }
+
+    /// After a solo game: close it and start again with the same deck, opponents and
+    /// settings, no confirmation. During a game (or with other players) this still asks.
+    private func rematchOrLeave() {
+        guard session.snapshot?.isCompleted == true, !setup.usingMultiplayer, !setup.usingOnline else { return requestLeave() }
+        Task {
+            guard await setup.close() else { return }
+            selectedCard = nil; inspectedCard = nil; zone = nil
+            startAI()
+        }
+    }
+
+    /// A finished game closes straight to the main menu; a live one still asks first.
+    private func leaveFinishedOrAsk() {
+        guard session.snapshot?.isCompleted == true else { return requestLeave() }
+        showSetup = false
+        closeGame()
     }
 
     // The shell owns its normal board inspections. Its external zone callback (for
@@ -484,7 +506,7 @@ struct OnDeviceRootView: View {
                     NativeArtworkPreferenceView()
                 }
                 .commanderPanel()
-                .disabled(setup.isBusy || setup.needsLeave)
+                .disabled(setup.isBusy || (setup.needsLeave && !editableInRoom))
 
                 VStack(alignment: .leading, spacing: 12) {
                     Picker("Players", selection: playerMode) {
@@ -524,6 +546,13 @@ struct OnDeviceRootView: View {
                             Text("Every player needs the same app version and must keep the app open during the match.")
                                 .font(.caption).foregroundStyle(.secondary)
                             Text(setup.multiplayer?.status ?? setup.status).font(.callout)
+                            if let room = setup.multiplayer?.room {
+                                MatchRoomView(room: room, deckName: selectedDeck?.name,
+                                              localCommander: selectedDeck?.commander?.cardName) {
+                                    guard let deck = selectedDeck else { return }
+                                    setup.readyForMatch(name: playerDisplayName, deck: deck)
+                                }
+                            }
                             if setup.multiplayer?.isAuthenticated != true {
                                 Button("Sign in to Game Center") { setup.multiplayer?.authenticate() }
                                     .buttonStyle(CommanderActionStyle(primary: false))
@@ -816,11 +845,13 @@ private final class OnDeviceSetupModel: ObservableObject {
                 throw EngineError.invalidMessage("This app is missing its build identity. Install a complete app build.")
             }
             let identity = BuildIdentity(upstreamCommit: resolver.upstreamCommit, catalogueHash: resolver.catalogueHash,
-                                         adapterVersion: "ondevice-0.1/app-\(version)/build-\(build)/rollstep-2")
+                                         adapterVersion: "ondevice-0.1/app-\(version)/build-\(build)/rollstep-2/room-1")
             let multiplayer = OnDeviceMultiplayer(identity: identity,
                 makeHostEngine: { [runtime] in try await runtime.makeClient(identity: identity) },
                 closeHostEngine: { [runtime] _ in try await runtime.close() })
             multiplayerObservation = multiplayer.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+            // Quiet sign-in with the phone's Game Center account; no sheet unless the player asks.
+            multiplayer.authenticate(userInitiated: false)
             self.resolver = resolver; self.identity = identity; self.multiplayer = multiplayer
             errorMessage = nil; status = "Choose your deck and players."
         } catch { errorMessage = error.localizedDescription; status = "Local setup unavailable" }
@@ -865,6 +896,13 @@ private final class OnDeviceSetupModel: ObservableObject {
         usingMultiplayer = true; errorMessage = nil; feedback = nil
         status = "Connecting Game Center players"
         updateSessionForeground()
+    }
+
+    /// Match room: confirm the currently selected deck and ready up.
+    func readyForMatch(name: String, deck: DeckList) {
+        guard let resolver, let multiplayer else { return }
+        do { try multiplayer.markReady(name: Self.playerName(name), deck: resolver.resolve(deck)) }
+        catch { errorMessage = error.localizedDescription }
     }
 
     func enterOnline(code: String?, name: String, deck: DeckList, playerCount: Int) async {
@@ -1050,5 +1088,62 @@ private struct OnDeviceTextImportView: View {
             .navigationTitle("Import deck text").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Cancel") { dismiss() } } }
         }
+    }
+}
+
+/// Game Center pregame room: who is here, who is ready, and their commanders.
+@MainActor
+private struct MatchRoomView: View {
+    let room: OnDeviceMultiplayer.MatchRoom
+    let deckName: String?
+    let localCommander: String?
+    let ready: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("MATCH ROOM").font(.caption.weight(.bold)).tracking(1.4)
+                .foregroundStyle(CommanderPresentation.secondary)
+            ForEach(room.players) { player in
+                let commanders = player.isLocal && !room.localReady ? (localCommander.map { [$0] } ?? []) : player.commanders
+                HStack(spacing: 10) {
+                    CommanderDeckPortrait(name: commanders.first, namespace: nil)
+                        .frame(width: 40, height: 56)
+                        .opacity(player.isReady ? 1 : 0.4)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(player.name).font(.headline)
+                            if player.isHost {
+                                Text("HOST").font(.caption2.weight(.black))
+                                    .padding(.horizontal, 5).padding(.vertical, 1)
+                                    .background(CommanderPresentation.accent.opacity(0.25), in: Capsule())
+                            }
+                        }
+                        Text(commanders.isEmpty ? (player.isReady ? "Ready" : "Choosing a deck…")
+                             : commanders.joined(separator: " & "))
+                            .font(.caption).foregroundStyle(CommanderPresentation.secondary).lineLimit(2)
+                    }
+                    Spacer()
+                    Image(systemName: player.isReady ? "checkmark.circle.fill" : "hourglass")
+                        .font(.title3)
+                        .foregroundStyle(player.isReady ? Color.green : CommanderPresentation.secondary)
+                        .accessibilityLabel(player.isReady ? "Ready" : "Not ready")
+                }
+                .accessibilityElement(children: .combine)
+            }
+            if let aiSummary = room.aiSummary { Text(aiSummary).font(.caption).foregroundStyle(.secondary) }
+            if room.localReady {
+                Label("You're ready. The game starts when everyone is.", systemImage: "checkmark.seal.fill")
+                    .font(.callout.weight(.semibold)).foregroundStyle(.green)
+            } else {
+                Text("Pick your deck above, then ready up\(deckName.map { " with \($0)" } ?? "").")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button("Ready") { ready() }
+                    .buttonStyle(CommanderActionStyle())
+                    .disabled(deckName == nil)
+                    .accessibilityIdentifier("ondevice.matchRoom.ready")
+            }
+        }
+        .padding(12)
+        .background(CommanderPresentation.canvas.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
     }
 }

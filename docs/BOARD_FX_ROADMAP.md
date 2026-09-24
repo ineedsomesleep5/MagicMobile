@@ -229,4 +229,14 @@ single MIT file with its license header when that is enough.
   shows a colored "YOUR TURN / X'S TURN · phase" line and glow, the phase pill and turn
   ribbon fly into it, and the life orb glows on your turn; the hand-card lift on touch was
   removed. Next: Caleb's device feedback, then TestFlight when he says it's done.
+- 2026-09-24 (Claude, build 16 work on the same branch, installed on Caleb's phone): solo
+  Rematch on the result screen (closes and restarts with the same deck, opponents and
+  settings; Main Menu closes a finished game without a second prompt); Game Center signs
+  in quietly at launch with the phone's account (the sheet only after tapping Sign in);
+  Game Center match room: players, host badge, commanders and ready state, deck and name
+  editable until Ready, a player's deck is sent only on Ready, the host starts when all
+  are ready (lobby timeout 10 min, host rebroadcasts the roster each second, protocol tag
+  `room-1`). Not built: Game Center rematch with the same players and reconnect after a
+  drop (GameKit real-time matches cannot rejoin; needs a host re-invite design or the
+  online relay). Match room not yet exercised with two phones.
 
