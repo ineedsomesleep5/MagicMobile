@@ -154,6 +154,16 @@ public final class CoreTests {
             m.consumed("B");ok(m.poll("B",0).get("prompt")==null,"consumed prompt removed");
             m.ask("B",spec("boolean"),r->{});
             error("stale_prompt",()->m.submit("B",command(p,UUID.randomUUID().toString(),answer("boolean",true))));
+            Map<String,Object> open=pending(m,"B");
+            CountDownLatch retractedDelivery=new CountDownLatch(1);
+            m.ask("C",spec("boolean"),r->retractedDelivery.countDown());
+            Map<String,Object> queued=command(pending(m,"C"),UUID.randomUUID().toString(),answer("boolean",true));
+            long unretracted=m.revision();m.retract("A");ok(m.revision()==unretracted,"retracting without a question changes nothing");
+            m.retract("B");ok(m.poll("B",0).get("prompt")==null,"retracted question disappears");
+            error("stale_prompt",()->m.submit("B",command(open,UUID.randomUUID().toString(),answer("boolean",true))));
+            m.retract("C");error("stale_prompt",()->m.submit("C",queued));
+            ok(!retractedDelivery.await(100,TimeUnit.MILLISECONDS),"a retracted question is never delivered");
+            error("unauthorized_seat",()->m.retract("intruder"));
             long before=m.revision();
             error("projection_error",()->m.publishSnapshots(Map.of("A",Json.map())));
             ok(m.revision()==before,"partial projection not published");
@@ -209,6 +219,8 @@ public final class CoreTests {
         ok(service.request("{\"protocol\":1,\"op\":\"diagnostics\",\"viewerId\":\"A\"}").contains("invalid_request"),"diagnostics never accepts a viewer or peer payload");
         ok(service.request("{\"protocol\":1,\"op\":\"clearDiagnostics\"}").contains("\"ok\":true"),"local diagnostics can be cleared");
         ok(service.request("{\"protocol\":1,\"op\":\"diagnostics\"}").contains("\"report\":null"),"cleared report releases private data");
+        ok(service.request("{\"protocol\":1,\"op\":\"concede\",\"matchId\":\"m\",\"viewerId\":\"A\"}").contains("concede_unavailable"),"older backends cannot concede");
+        ok(service.request("{\"protocol\":1,\"op\":\"concede\",\"matchId\":\"m\"}").contains("invalid_request"),"concede needs the authenticated seat");
         ok(service.request("{\"protocol\":1,\"op\":\"nonsense\"}").contains("unknown_operation"),"operation whitelist");
         ok(service.request("bad").contains("invalid_json"),"malformed request");
     }

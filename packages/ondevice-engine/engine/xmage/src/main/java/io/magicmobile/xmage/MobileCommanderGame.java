@@ -14,7 +14,16 @@ final class MobileCommanderGame extends CommanderFreeForAll {
     private MobileCommanderGame(MobileCommanderGame source) {
         super(source);cancellation=source.cancellation;
     }
-    void setCancellation(MobileAICancellation cancellation) { this.cancellation=cancellation; }
+    void setCancellation(MobileAICancellation cancellation) { this.cancellation=cancellation;cancellation.bind(this); }
+    boolean hasConcedeRequest() { return cancellation.hasConcedeFor(this); }
+    void requestConcede(java.util.UUID playerId) { cancellation.requestConcede(playerId); }
+    @Override public void checkConcede(boolean mustRunInGameThread) {
+        // Upstream checks conceding players at every priority and after each resolution.
+        // Mobile requests join here, on the GAME thread: concede marks the loss and XMage's
+        // own leave() removes the player's objects; the remaining players play on.
+        for(java.util.UUID id=cancellation.nextConcede(this);id!=null;id=cancellation.nextConcede(this)) concede(id);
+        super.checkConcede(mustRunInGameThread);
+    }
     @Override public MobileCommanderGame copy() { return new MobileCommanderGame(this); }
     @Override public boolean hasEnded() {
         // Opening-player selection loops on hasEnded(), not checkIfGameIsOver().

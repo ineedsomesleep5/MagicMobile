@@ -23,6 +23,8 @@ public final class MobileHumanPlayer extends HumanPlayer {
         final BlockingQueue<Map<String,Object>> answers=new ArrayBlockingQueue<>(1);
         volatile boolean closed;
         volatile Runnable onConsumed=() -> {};
+        volatile Runnable onRetracted=() -> {};
+        volatile Runnable onBoardChanged=() -> {};
     }
     private final Channel channel;
     private final UUID proxyControllerId;
@@ -42,6 +44,10 @@ public final class MobileHumanPlayer extends HumanPlayer {
     }
     @Override public MobileHumanPlayer copy() { return new MobileHumanPlayer(this); }
     public void onConsumed(Runnable callback) { channel.onConsumed=Objects.requireNonNull(callback); }
+    /** Runs on the GAME thread when a question to this seat ends unanswered because a player left. */
+    public void onRetracted(Runnable callback) { channel.onRetracted=Objects.requireNonNull(callback); }
+    /** Runs on the GAME thread when another player's concede changed the board during this wait. */
+    public void onBoardChanged(Runnable callback) { channel.onBoardChanged=Objects.requireNonNull(callback); }
     public void offer(Map<String,Object> answer) {
         if(channel.closed || !channel.answers.offer(Json.object(Json.freeze(answer))))
             throw new BridgeException("response_channel_unavailable","Player response channel is closed or full");
@@ -69,6 +75,18 @@ public final class MobileHumanPlayer extends HumanPlayer {
                 if(input.closed || Thread.currentThread().isInterrupted())
                     throw new CancellationException("Mobile match stopped");
                 answer=input.answers.poll(250,TimeUnit.MILLISECONDS);
+                if(answer==null && game instanceof MobileCommanderGame mobile && mobile.hasConcedeRequest()) {
+                    // As upstream's async concede: process it on this GAME thread, then keep
+                    // waiting unless the asked player (or its controller) left or the game ended.
+                    mobile.checkConcede();
+                    Player asked=game.getPlayer(getId());
+                    if(game.hasEnded() || asked==null || !asked.isInGame() || !controller.isInGame()) {
+                        response.clear();
+                        input.onRetracted.run();
+                        return;
+                    }
+                    input.onBoardChanged.run();
+                }
             }
         } catch(InterruptedException e) {
             Thread.currentThread().interrupt();throw new CancellationException("Mobile match interrupted");

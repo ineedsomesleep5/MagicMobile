@@ -16,7 +16,8 @@ public struct PeerFrame: Codable, Sendable, Equatable {
 /**
  * Only the HOST constructs this actor. The authenticated GameKit peer ID is an
  * out-of-band argument, never a value read from a peer-supplied JSON actor field.
- * No create/destroy/shutdown/raw engine operation is exposed to remote peers.
+ * No create/destroy/shutdown/raw engine operation is exposed to remote peers; a peer can
+ * poll, answer and concede only as its own bound seat.
  */
 public actor HostRouter {
     private struct Binding { let seat: String; var ready = false; var lastSequence: UInt64 = 0 }
@@ -61,6 +62,10 @@ public actor HostRouter {
             guard !suspended else { throw EngineError.hostSuspended }
             guard let p = frame.payload.object, Set(p.keys) == Set(["requestId", "promptId", "promptRevision", "answer"]) else { throw EngineError.invalidMessage("Invalid answer payload") }
             return try await engine.call("respond", fields: ["matchId": .string(matchID), "viewerId": .string(binding.seat), "command": frame.payload])
+        case "concede":
+            // Always allowed, even while suspended: a peer may only concede its own bound seat.
+            guard frame.payload == .object([:]) else { throw EngineError.invalidMessage("Invalid concede payload") }
+            return try await engine.call("concede", fields: ["matchId": .string(matchID), "viewerId": .string(binding.seat)])
         default: throw EngineError.invalidMessage("Remote operation not allowed")
         }
     }

@@ -84,6 +84,11 @@ public struct EngineClient: Sendable {
     public func respond(matchID: String, seatID: String, prompt: EnginePrompt, answer: JSONValue, requestID: UUID = UUID()) async throws -> JSONValue {
         try await call("respond", fields: ["matchId": .string(matchID), "viewerId": .string(seatID), "command": prompt.command(answer: answer, requestID: requestID)])
     }
+    /// The seat concedes. In a pod the game goes on and the seat keeps polling as a spectator.
+    public func concede(matchID: String, seatID: String) async throws {
+        guard !matchID.isEmpty, !seatID.isEmpty else { throw EngineError.invalidMessage("Invalid concede identity") }
+        _ = try await call("concede", fields: ["matchId": .string(matchID), "viewerId": .string(seatID)])
+    }
     public func destroy(matchID: String) async throws { _ = try await call("destroy", fields: ["matchId": .string(matchID)]) }
 }
 public struct EnginePrompt: Sendable, Equatable {

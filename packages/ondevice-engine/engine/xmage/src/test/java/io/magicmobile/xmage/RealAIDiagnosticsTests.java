@@ -74,9 +74,11 @@ public final class RealAIDiagnosticsTests {
         check(original.equals(report()),"queued cancellation preserves prior report");
     }
     private static void searchBudgets() {
-        check(MobileAICancellation.thinkBudget(6,true)==6,"empty stack keeps the configured think time");
-        check(MobileAICancellation.thinkBudget(6,false)==MobileAICancellation.STACK_THINK_SECS,"stack responses are capped");
-        check(MobileAICancellation.thinkBudget(1,false)==1,"cap never raises a lower configured budget");
+        check(MobileAICancellation.thinkBudget(6,true,true)==6,"empty stack keeps the configured think time");
+        check(MobileAICancellation.thinkBudget(6,false,true)==MobileAICancellation.STACK_THINK_SECS,"stack responses are capped");
+        check(MobileAICancellation.thinkBudget(1,false,true)==1,"cap never raises a lower configured budget");
+        check(MobileAICancellation.thinkBudget(6,true,false)==MobileAICancellation.STACK_THINK_SECS,"AI-only games play at watching pace");
+        check(new MobileAICancellation().humansPlaying(),"an unbound match never assumes it is AI-only");
         for(PhaseStep step:PhaseStep.values()) {
             boolean upstreamSearches=step==PhaseStep.PRECOMBAT_MAIN || step==PhaseStep.DECLARE_ATTACKERS
                 || step==PhaseStep.DECLARE_BLOCKERS || step==PhaseStep.POSTCOMBAT_MAIN;

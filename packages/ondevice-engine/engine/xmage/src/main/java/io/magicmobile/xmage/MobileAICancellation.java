@@ -5,9 +5,12 @@ import mage.abilities.ActivatedAbility;
 import mage.constants.PhaseStep;
 import mage.constants.RangeOfInfluence;
 import mage.game.Game;
+import mage.players.Player;
 import mage.player.ai.ComputerPlayerControllableProxy;
 import mage.player.ai.SimulationNode2;
+import java.util.UUID;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -15,12 +18,31 @@ import java.util.concurrent.TimeUnit;
  * AI makes still comes from the upstream search.
  */
 final class MobileAICancellation {
-    /** Think-time cap while responding to a non-empty stack (each trigger gives the AI priority again). */
+    /**
+     * Think-time cap while responding to a non-empty stack (each trigger gives the AI priority
+     * again), and once only AIs remain in the game and any people left are just watching.
+     */
     static final int STACK_THINK_SECS=2;
     private volatile boolean closing;
     private int simulations;
+    /** Concede requests from CALL threads; only the live game drains them, on its GAME thread. */
+    private final ConcurrentLinkedQueue<UUID> concedes=new ConcurrentLinkedQueue<>();
+    private volatile Game live;
 
     boolean isClosing() { return closing; }
+    void bind(Game game) { live=game; }
+    void requestConcede(UUID playerId) { if(!concedes.contains(playerId)) concedes.add(playerId); }
+    boolean hasConcedeFor(Game game) { return game==live && !concedes.isEmpty(); }
+    /** Null for copies and simulations: they must never act on a player's real concede. */
+    UUID nextConcede(Game game) { return game==live ? concedes.poll() : null; }
+    /** Read on the GAME thread. AI simulations replace every player, so ask the live game. */
+    boolean humansPlaying() {
+        Game game=live;
+        if(game==null) return true;
+        for(Player player:game.getState().getPlayers().values())
+            if(player instanceof MobileHumanPlayer && player.isInGame()) return true;
+        return false;
+    }
     synchronized void close() { closing=true; }
     synchronized void runIfOpen(Runnable action) { if(!closing) action.run(); }
     private synchronized void enterSimulation() {
@@ -49,8 +71,8 @@ final class MobileAICancellation {
         return step==PhaseStep.PRECOMBAT_MAIN || step==PhaseStep.DECLARE_ATTACKERS
             || step==PhaseStep.DECLARE_BLOCKERS || step==PhaseStep.POSTCOMBAT_MAIN;
     }
-    static int thinkBudget(int configured,boolean stackEmpty) {
-        return stackEmpty?configured:Math.min(configured,STACK_THINK_SECS);
+    static int thinkBudget(int configured,boolean stackEmpty,boolean humansPlaying) {
+        return stackEmpty && humansPlaying?configured:Math.min(configured,STACK_THINK_SECS);
     }
 
     private static final class CancellablePlayer extends ComputerPlayerControllableProxy {
@@ -85,7 +107,7 @@ final class MobileAICancellation {
         @Override protected Integer addActionsTimed() {
             int configured=maxThinkTimeSecs;
             Game simulation=root==null?null:root.getGame();
-            maxThinkTimeSecs=thinkBudget(configured,simulation==null || simulation.getStack().isEmpty());
+            maxThinkTimeSecs=thinkBudget(configured,simulation==null || simulation.getStack().isEmpty(),cancellation.humansPlaying());
             try { return super.addActionsTimed(); }
             finally { maxThinkTimeSecs=configured; }
         }

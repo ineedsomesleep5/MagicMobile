@@ -53,7 +53,19 @@ public final class XmageEngine implements EnginePort {
         void snapshot() {
             if(cancellation.isClosing()) return;
             Map<String,Map<String,Object>> views=ViewProjector.project(game,seats);
-            cancellation.runIfOpen(()->mailbox.publishSnapshots(views));
+            // A seat whose player left (conceded or lost in a pod) only watches from here on.
+            List<String> left=new ArrayList<>();
+            for(Map.Entry<String,MobileHumanPlayer> s:seats.entrySet()) {
+                Player player=game.getPlayer(s.getValue().getId());
+                if(player==null || player.hasLeft()) left.add(s.getKey());
+            }
+            cancellation.runIfOpen(()->{mailbox.publishSnapshots(views);left.forEach(mailbox::retract);});
+        }
+        void concede(String seat) {
+            MobileHumanPlayer human=seats.get(seat);
+            if(human==null) throw new BridgeException("unauthorized_seat","Unknown or unbound player seat");
+            // Queued for the GAME thread; its open question can no longer be answered.
+            cancellation.runIfOpen(()->{mailbox.retract(seat);((MobileCommanderGame)game).requestConcede(human.getId());});
         }
         void query(PlayerQueryEvent e) {
             if(cancellation.isClosing()) return;
@@ -77,8 +89,11 @@ public final class XmageEngine implements EnginePort {
                 answer->cancellation.runIfOpen(()->seats.get(seat).offer(answer))));
         }
         void start() {
-            for(Map.Entry<String,MobileHumanPlayer> s:seats.entrySet())
+            for(Map.Entry<String,MobileHumanPlayer> s:seats.entrySet()) {
                 s.getValue().onConsumed(()->cancellation.runIfOpen(()->mailbox.consumed(s.getKey())));
+                s.getValue().onRetracted(()->cancellation.runIfOpen(()->mailbox.retract(s.getKey())));
+                s.getValue().onBoardChanged(this::snapshot);
+            }
             game.addPlayerQueryEventListener(this::query);
             task=worker.submit(()->{
                 try {
@@ -165,6 +180,7 @@ public final class XmageEngine implements EnginePort {
     }
     @Override public Map<String,Object> poll(String id,String seat,long after) {return match(id).mailbox.poll(seat,after);}
     @Override public Map<String,Object> respond(String id,String seat,Map<String,Object> c) {return match(id).mailbox.submit(seat,c);}
+    @Override public void concede(String id,String seat) {match(id).concede(seat);}
     @Override public synchronized void destroy(String id) {
         Running r=matches.get(id);if(r==null) throw new BridgeException("unknown_match","Match does not exist");
         if(!r.close()) throw new BridgeException("engine_busy_shutdown","The old game or AI simulation has not stopped; retry destroy before creating another match");
@@ -174,7 +190,7 @@ public final class XmageEngine implements EnginePort {
         return Json.map("protocol",1,"engine","xmage","execution",execution,"upstream",UPSTREAM,
             "catalogueHash",GeneratedCardFactory.CATALOGUE_HASH,"maxPlayers",4,"deckValidation",true,
             "nativeDeviceValidated",false,"aiEnabled",false,"hostMigration",false,
-            "saveResume",false,"experimental",true);
+            "saveResume",false,"concede",true,"experimental",true);
     }
     @Override public synchronized void close() {
         closed=true;

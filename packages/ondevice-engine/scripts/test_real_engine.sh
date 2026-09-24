@@ -22,6 +22,9 @@ REPOSITORY_TEST=$(mktemp -d "$ROOT/build/card-repo-test-XXXXXX")
   cd "$REPOSITORY_TEST"
   java -Xmx768m -Djava.awt.headless=true -cp "$CP:$ROOT/build/test-real" io.magicmobile.xmage.RealCardRepositoryTests
 ) 2>&1 | tee "$ROOT/evidence/RealCardRepositoryTests.txt"
+python3 -c 'import subprocess,sys; subprocess.run(sys.argv[1:],check=True,timeout=240)' \
+  java -Xmx768m -Djava.awt.headless=true -cp "$CP:build/test-real" io.magicmobile.xmage.RealConcedeTests \
+  2>&1 | tee evidence/RealConcedeTests.txt
 for humans in one-human two-humans; do
   args=(java -Xmx768m -Djava.awt.headless=true -cp "$CP:build/test-real" io.magicmobile.xmage.RealAILifecycleTests)
   [[ "$humans" == one-human ]] || args+=(two-humans)

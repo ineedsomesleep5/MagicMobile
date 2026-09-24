@@ -7,6 +7,10 @@ public interface EnginePort extends AutoCloseable {
     Map<String,Object> create(Map<String,Object> configuration);
     Map<String,Object> poll(String matchId,String viewerId,long after);
     Map<String,Object> respond(String matchId,String authenticatedSeat,Map<String,Object> command);
+    /** The authenticated seat concedes. Older/test backends must not pretend to support it. */
+    default void concede(String matchId,String authenticatedSeat) {
+        throw new BridgeException("concede_unavailable","This installed engine cannot concede a game");
+    }
     void destroy(String matchId);
     Map<String,Object> capabilities();
     /** Trusted local-only operation. Older/test backends must not imply validation. */
