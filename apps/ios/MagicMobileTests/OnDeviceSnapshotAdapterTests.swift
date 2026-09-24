@@ -493,3 +493,15 @@ final class OnDeviceSnapshotAdapterTests: XCTestCase {
         return try MatchPoll(MagicMobileOnDevice.JSONValue.decode(Data(contentsOf: url)))
     }
 }
+
+extension OnDeviceSnapshotAdapterTests {
+    func testShortenedAbilityLabelsUseTheMatchingRulesLine() {
+        let rules = "{T}: Add {C}.\n{T}: Add {G}. Spend this mana only to cast a creature spell.\n{G}, {T}: Put a +1/+1 counter on each Frog."
+        XCTAssertEqual(OnDeviceSnapshotAdapter.fullAbilityLabel("{T}: Add {G}. Spend this mana only to cast a crea...", rules: rules),
+                       "{T}: Add {G}. Spend this mana only to cast a creature spell.")
+        XCTAssertEqual(OnDeviceSnapshotAdapter.fullAbilityLabel("{T}: Add {C}.", rules: rules), "{T}: Add {C}.", "complete labels are kept")
+        XCTAssertEqual(OnDeviceSnapshotAdapter.fullAbilityLabel("{T}: Add...", rules: "{T}: Add {C}.\n{T}: Add {G}."), "{T}: Add...",
+                       "ambiguous prefixes keep the engine label")
+        XCTAssertEqual(OnDeviceSnapshotAdapter.fullAbilityLabel("Sacrifice a...", rules: nil), "Sacrifice a...")
+    }
+}

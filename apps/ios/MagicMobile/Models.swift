@@ -1657,6 +1657,39 @@ struct XmageCardIcon: Decodable, Hashable {
     /// No bundled XMage menace asset exists. Render this engine signal as text.
     var textBadge: String? { iconType == "ABILITY_MENACE" ? "Menace" : nil }
 
+    private static let keywordTypes: [String: String] = [
+        "flying": "ABILITY_FLYING", "defender": "ABILITY_DEFENDER", "deathtouch": "ABILITY_DEATHTOUCH",
+        "lifelink": "ABILITY_LIFELINK", "double strike": "ABILITY_DOUBLE_STRIKE", "first strike": "ABILITY_FIRST_STRIKE",
+        "trample": "ABILITY_TRAMPLE", "hexproof": "ABILITY_HEXPROOF", "infect": "ABILITY_INFECT",
+        "indestructible": "ABILITY_INDESTRUCTIBLE", "vigilance": "ABILITY_VIGILANCE", "reach": "ABILITY_REACH",
+    ]
+
+    /// Readable name for a keyword icon ("ABILITY_DOUBLE_STRIKE" → "Double strike").
+    static func keywordName(for iconType: String) -> String? {
+        guard iconType.hasPrefix("ABILITY_"), assetName(for: iconType) != nil else { return nil }
+        let words = iconType.dropFirst("ABILITY_".count).replacingOccurrences(of: "_", with: " ").lowercased()
+        return words.prefix(1).uppercased() + words.dropFirst()
+    }
+
+    /// Keyword icons from rules lines made only of keywords, such as "Flying" or
+    /// "Vigilance, trample (reminder text)". Sentences that merely mention a keyword
+    /// ("Creatures you control have flying") never count. Menace is excluded: the
+    /// engine projects it from the permanent's live abilities (see ViewProjector).
+    static func keywordIcons(rules: String?) -> [XmageCardIcon] {
+        guard let rules else { return [] }
+        var found: [String] = []
+        for rawLine in rules.split(whereSeparator: \.isNewline) {
+            let line = rawLine.replacingOccurrences(of: #"\([^)]*\)"#, with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespaces.union(CharacterSet(charactersIn: ".")))
+            guard !line.isEmpty else { continue }
+            let parts = line.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+            let types = parts.compactMap { keywordTypes[$0] }
+            guard types.count == parts.count else { continue }
+            for type in types where !found.contains(type) { found.append(type) }
+        }
+        return found.map { XmageCardIcon(iconType: $0, resourceName: nil, category: "ABILITY", text: nil, hint: nil) }
+    }
+
     static func assetName(for iconType: String) -> String? {
         switch iconType.uppercased() {
         case "PLAYABLE_COUNT": return "xmage-icon-playable-count"
@@ -1697,12 +1730,18 @@ struct XmageCardIcon: Decodable, Hashable {
 
 extension ZoneCard {
     var visibleXmageIcons: [XmageCardIcon] {
-        (cardIcons ?? []).filter { icon in
+        let engine = (cardIcons ?? []).filter { icon in
             guard icon.category?.caseInsensitiveCompare("ABILITY") == .orderedSame || icon.category?.caseInsensitiveCompare("COMMANDER") == .orderedSame else {
                 return false
             }
             return XmageCardIcon.assetName(for: icon.iconType) != nil || icon.textBadge != nil
         }
+        // XMage does not always attach keyword icons. The engine's rules text for a
+        // visible permanent lists its current abilities, so a bare keyword line there
+        // ("Flying", "Vigilance, trample") fills in any missing keyword icon.
+        let present = Set(engine.map { $0.iconType.uppercased() })
+        let derived = XmageCardIcon.keywordIcons(rules: card.oracleText).filter { !present.contains($0.iconType) }
+        return engine + derived
     }
 
     var counterBadges: [CardCounterBadge] {

@@ -2703,6 +2703,9 @@ struct NativeGameView: View {
     /// Game, turn and active player of the last turn-start banner.
     @State private var lastTurnBannerKey: String?
     @State private var showsTurnBanner = false
+    /// The phase pill is flying up into the top bar.
+    @State private var phaseCueMerging = false
+    @State private var hudPulse = 0
     @State private var aiWaitBeganAt = Date()
     @State private var aiWaitKey = ""
     @State private var didAutoRefreshAIWaitKey: String?
@@ -3476,6 +3479,7 @@ struct NativeGameView: View {
             .modifier(BoardImpactShake(animatableData: boardShake))
             .environment(\.boardFXCardMotion, boardFX.cardMotion(viewerID: snapshot.viewerID))
             .environment(\.boardFXClock, boardFXClock)
+            .environment(\.boardHUDPulse, hudPulse)
             .environment(\.boardZoneInspectionAction, inspectBoardZone)
             .onChange(of: BoardFXRevisionKey(snapshot: snapshot), initial: true) { _, _ in
                 ingestBoardFX(snapshot)
@@ -3596,7 +3600,9 @@ struct NativeGameView: View {
                 if showsTurnBanner, let active = snapshot.activePlayerId, !isCardChoiceOpen, !isPromptDetailOpen {
                     BoardTurnBanner(title: snapshot.isViewer(active) ? "Your turn" : "\(snapshot.playerLabel(active))’s turn",
                                     turn: snapshot.turn, isViewer: snapshot.isViewer(active))
-                        .transition(.opacity)
+                        // Leaves by shrinking up toward the top bar's turn label.
+                        .transition(.asymmetric(insertion: .opacity,
+                                                removal: .scale(scale: 0.2, anchor: .top).combined(with: .offset(y: -220)).combined(with: .opacity)))
                         .accessibilityIdentifier("board.turn.banner")
                 }
             }
@@ -3614,6 +3620,9 @@ struct NativeGameView: View {
                         .background(MagicPalette.iron.opacity(0.92), in: Capsule())
                         .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.7), lineWidth: 1))
                         .shadow(color: .black.opacity(0.4), radius: 10)
+                        .scaleEffect(phaseCueMerging ? 0.5 : 1)
+                        .offset(y: phaseCueMerging ? -46 : 0)
+                        .opacity(phaseCueMerging ? 0 : 1)
                         .frame(maxHeight: .infinity, alignment: .top)
                         .padding(.top, verticalSizeClass == .compact ? 8 : 64)
                         .transition(GameBoardMotion.reduced(accessibilityReduceMotion) ? .opacity : .move(edge: .top).combined(with: .opacity))
@@ -3636,14 +3645,16 @@ struct NativeGameView: View {
                         // The ribbon plays with the phase pill; it is center stage only briefly.
                         if snapshot.isViewer(snapshot.activePlayerId) { UINotificationFeedbackGenerator().notificationOccurred(.success) }
                         withAnimation(.easeOut(duration: 0.2)) { showsTurnBanner = true; showsTurnCue = true }
-                        do { try await Task.sleep(for: .seconds(1.8)) } catch { showsTurnBanner = false; return }
-                        withAnimation(.easeOut(duration: 0.25)) { showsTurnBanner = false; showsTurnCue = false }
+                        do { try await Task.sleep(for: .seconds(1.6)) } catch { showsTurnBanner = false; return }
+                        withAnimation(.easeIn(duration: 0.35)) { showsTurnBanner = false }
+                        await mergePhaseCueIntoBar()
                         return
                     }
                 }
+                phaseCueMerging = false
                 withAnimation(.easeOut(duration: 0.2)) { showsTurnCue = true }
-                do { try await Task.sleep(for: .seconds(1.5)) } catch { return }
-                withAnimation(.easeOut(duration: 0.2)) { showsTurnCue = false }
+                do { try await Task.sleep(for: .seconds(1.1)) } catch { return }
+                await mergePhaseCueIntoBar()
             }
             .onChange(of: snapshot.aiWaitSignature) { _, _ in
                 updateAIWaitStart(for: snapshot)
@@ -3651,6 +3662,15 @@ struct NativeGameView: View {
             .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { now in
                 handleAIWaitRecovery(for: snapshot, now: now)
             }
+    }
+
+    /// The pill shrinks up into the top bar, which flashes its turn label as it lands.
+    private func mergePhaseCueIntoBar() async {
+        withAnimation(.easeIn(duration: 0.3)) { phaseCueMerging = true }
+        try? await Task.sleep(for: .milliseconds(300))
+        showsTurnCue = false
+        phaseCueMerging = false
+        hudPulse += 1
     }
 
     private func updateAIWaitStart(for snapshot: GameSnapshot) {
@@ -9252,6 +9272,8 @@ struct PortraitOpponentStatusBar: View {
     let openLog: () -> Void
     var viewZone: ((String, [ZoneCard]) -> Void)? = nil
     var selectOpponent: ((String) -> Void)? = nil
+    @Environment(\.boardHUDPulse) private var hudPulse
+    @State private var pulse = false
 
     var body: some View {
         HStack(spacing: 6) {
@@ -9267,8 +9289,19 @@ struct PortraitOpponentStatusBar: View {
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(combatTargetable ? Color.red : .clear, lineWidth: 2))
             .accessibilityLabel("\(opponentName), \(opponent.life) life")
             VStack(alignment: .leading, spacing: 3) {
-                Text((snapshot.step ?? snapshot.phase).arenaPhaseTitle).font(.caption.bold())
-                Text(BoardResponseCue.make(snapshot)?.title ?? (snapshot.isViewer(snapshot.priorityPlayerId) ? "Your priority" : "\(snapshot.playerLabel(snapshot.priorityPlayerId)) priority"))
+                HStack(spacing: 5) {
+                    Circle().fill(turn.color).frame(width: 7, height: 7).shadow(color: turn.color, radius: 3)
+                    Text(turn.owner).font(.caption.weight(.black)).foregroundStyle(turn.color)
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                    Text("· \((snapshot.step ?? snapshot.phase).arenaPhaseTitle)").font(.caption.bold())
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                }
+                .padding(.horizontal, 4).padding(.vertical, 1)
+                .background(turn.color.opacity(pulse ? 0.35 : 0), in: Capsule())
+                .scaleEffect(pulse ? 1.06 : 1, anchor: .leading)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("board.turn.owner")
+                Text(BoardResponseCue.make(snapshot)?.title ?? (snapshot.isViewer(snapshot.priorityPlayerId) ? "Your priority" : "Waiting on \(snapshot.playerLabel(snapshot.priorityPlayerId))"))
                     .font(.caption2.bold()).foregroundStyle(BoardResponseCue.make(snapshot) == nil ? MagicPalette.parchment : MagicPalette.antiqueGold).lineLimit(2).minimumScaleFactor(0.75)
                     .accessibilityIdentifier("board.response.status")
             }.frame(maxWidth: .infinity, alignment: .leading)
@@ -9288,8 +9321,39 @@ struct PortraitOpponentStatusBar: View {
             ),
             in: RoundedRectangle(cornerRadius: 11)
         )
-        .overlay(RoundedRectangle(cornerRadius: 11).stroke(MagicPalette.antiqueGold.opacity(0.32), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 11).stroke(turn.color.opacity(0.75), lineWidth: 1.5))
+        .shadow(color: turn.color.opacity(0.35), radius: 8)
         .shadow(color: .black.opacity(0.34), radius: 10, y: 5)
+        .animation(.easeInOut(duration: 0.35), value: turn.owner)
+        .onChange(of: hudPulse) { _, _ in
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.55)) { pulse = true }
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(450))
+                withAnimation(.easeOut(duration: 0.4)) { pulse = false }
+            }
+        }
+    }
+
+    /// Whose turn it is, colored so a glance answers it: gold for you, blue for opponents.
+    private var turn: (owner: String, color: Color) {
+        guard let active = snapshot.activePlayerId else { return ("", MagicPalette.antiqueGold) }
+        return snapshot.isViewer(active)
+            ? ("YOUR TURN", MagicPalette.antiqueGold)
+            : ("\(snapshot.playerLabel(active).uppercased())’S TURN", BoardTurnColors.opponent)
+    }
+}
+
+enum BoardTurnColors {
+    static let opponent = Color(red: 0.62, green: 0.74, blue: 1)
+}
+
+private struct BoardHUDPulseKey: EnvironmentKey { static let defaultValue = 0 }
+
+extension EnvironmentValues {
+    /// Increments when a phase pill lands in the top bar, which then flashes its turn label.
+    var boardHUDPulse: Int {
+        get { self[BoardHUDPulseKey.self] }
+        set { self[BoardHUDPulseKey.self] = newValue }
     }
 }
 
@@ -9706,7 +9770,6 @@ struct PortraitHandRow: View {
     @State private var handCardBounds: [String: CGRect] = [:]
     @State private var handViewport = CGRect.zero
     @State private var handExpanded = false
-    @State private var pressedCardId: String?
     @AppStorage(BoardFXLevel.key) private var boardFXLevel = BoardFXLevel.defaultValue
     @StateObject private var handScroll = HandScrollController()
 
@@ -9755,13 +9818,11 @@ struct PortraitHandRow: View {
                                     .rotationEffect(.degrees(spread * 7), anchor: .bottom)
                                     .offset(y: spread * spread * 9)
                             }
-                            .rotationEffect(.degrees(pressedCardId == card.id && !selected ? -3 : 0), anchor: .bottom)
-                            .scaleEffect(selected ? 1.05 : pressedCardId == card.id ? 1.08 : 1.0, anchor: .bottom)
-                            .offset(y: selected ? -10 : pressedCardId == card.id ? -14 : 0)
+                            .scaleEffect(selected ? 1.05 : 1.0)
+                            .offset(y: selected ? -10 : 0)
                             .opacity(isDragging ? 0 : 1)
-                            .zIndex(isDragging ? 1000 : selected ? 900 : pressedCardId == card.id ? 950 : Double(index))
+                            .zIndex(isDragging ? 1000 : selected ? 900 : Double(index))
                             .animation(GameBoardMotion.reduced(reduceMotion) ? nil : .spring(response: 0.28, dampingFraction: 0.8), value: isDragging)
-                            .animation(GameBoardMotion.reduced(reduceMotion) ? nil : .spring(response: 0.22, dampingFraction: 0.7), value: pressedCardId)
                             .accessibilityHint("Tap to expand your hand. Hold to inspect. Drag upward to your battlefield to play.")
                             .accessibilityAction { selectedCard = nil; inspectedCard = card }
                             .accessibilityAction(named: "Inspect card") { selectedCard = nil; inspectedCard = card }
@@ -9820,10 +9881,7 @@ struct PortraitHandRow: View {
                                     }, inspect: { selectedCard = nil; inspectedCard = card }, tap: {
                                         if handExpanded { selectedCard = nil; inspectedCard = card }
                                         else { withAnimation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.2)) { handExpanded = true } }
-                                    }, releaseInspection: { if inspectedCard?.id == card.id { inspectedCard = nil } },
-                                    pressed: { down in
-                                        if down { pressedCardId = card.id } else if pressedCardId == card.id { pressedCardId = nil }
-                                    })
+                                    }, releaseInspection: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                             }
                         }
                     }
@@ -10264,7 +10322,10 @@ struct PortraitBottomCommandBar: View {
                     }
                     .frame(width: 52, height: 52)
                     .background(.black.opacity(0.85), in: Circle())
-                    .overlay(Circle().strokeBorder(MagicPalette.antiqueGold.opacity(0.65), lineWidth: 2))
+                    .overlay(Circle().strokeBorder(MagicPalette.antiqueGold.opacity(snapshot.isViewer(snapshot.activePlayerId) ? 1 : 0.65),
+                                                   lineWidth: snapshot.isViewer(snapshot.activePlayerId) ? 3 : 2))
+                    .shadow(color: MagicPalette.antiqueGold.opacity(snapshot.isViewer(snapshot.activePlayerId) ? 0.7 : 0), radius: 10)
+                    .animation(.easeInOut(duration: 0.35), value: snapshot.activePlayerId)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Your life: \(human.life)")
                     GameplayActionDock(
@@ -11406,6 +11467,7 @@ struct CardArtPlaceholder: View {
             }
         }
         .frame(width: width, height: height)
+        .preference(key: CardArtPlaceholderShownKey.self, value: true)
         .overlay(
             RoundedRectangle(cornerRadius: 6)
                 .stroke(
@@ -11877,28 +11939,48 @@ struct InspectionFoil: ViewModifier {
     }
 }
 
+/// True while a card view shows the drawn placeholder instead of the real card image.
+struct CardArtPlaceholderShownKey: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
+}
+
+/// Held-card inspection. Inspection lasts only while the finger is down, so nothing
+/// here can scroll: the printed card carries its own rules, and the panel adds only
+/// live state. The rules text appears only when the real image is not showing
+/// (placeholder, hidden or token art), and it shrinks to fit instead of clipping.
 struct CardInspector: View {
     let card: ZoneCard
+    @State private var artMissing = false
 
-    private var currentDetails: [String] {
+    /// Always at least the card's type; then live state on the table.
+    private var liveState: [String] {
         var details: [String] = []
         if card.card.isToken == true {
-            details.append(card.card.copySourceArtworkName == nil ? "Token" : "Token copy · source-card artwork")
-            details.append(card.card.typeLine)
+            details.append(card.card.copySourceArtworkName == nil ? "Token" : "Token copy")
         }
+        if !card.card.typeLine.isEmpty { details.append(card.card.typeLine) }
+        if card.visibleXmageIcons.contains(where: { $0.iconType == "COMMANDER" }) { details.append("Commander") }
         if card.showsPowerToughness, let power = card.displayPower, let toughness = card.displayToughness {
-            details.append("Current power/toughness: \(power)/\(toughness)")
+            details.append("\(power)/\(toughness)")
         }
         if let tapped = card.tapped { details.append(tapped ? "Tapped" : "Untapped") }
-        if card.isCreature && card.summoningSickness == true { details.append("Summoning sickness") }
+        if card.isCreature && card.summoningSickness == true { details.append("Summoning sick") }
         if card.isAttacking == true { details.append("Attacking") }
-        if let blocking = card.blocking, !blocking.isEmpty { details.append("Blocking \(blocking.count)") }
-        if let damage = card.damage, damage > 0 { details.append("Damage marked: \(damage)") }
+        if let blocking = card.blocking, !blocking.isEmpty { details.append(blocking.count == 1 ? "Blocking" : "Blocking \(blocking.count)") }
+        if let damage = card.damage, damage > 0 { details.append("\(damage) damage") }
         if card.attachedToInstanceId != nil { details.append("Attached") }
         if card.isPhasedOut { details.append("Phased out") }
-        details += card.counterBadges.map { "\($0.label) counters: \($0.count)" }
-        details += card.visibleXmageIcons.compactMap(\.displayText)
-        return details
+        details += card.counterBadges.map { "\($0.label) ×\($0.count)" }
+        details += card.visibleXmageIcons.compactMap { icon in
+            icon.displayText ?? XmageCardIcon.keywordName(for: icon.iconType)
+        }
+        var seen = Set<String>()
+        return details.filter { seen.insert($0.lowercased()).inserted }
+    }
+
+    private var showsRules: Bool {
+        artMissing || card.card.isToken == true || !NativeCardArtworkPolicy.permitsLookup(card: card)
     }
 
     var body: some View {
@@ -11906,10 +11988,11 @@ struct CardInspector: View {
             let availableHeight = max(proxy.size.height - 18, 1)
             let availableWidth = max(proxy.size.width - 18, 1)
             let rules = card.card.oracleText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let hasFooter = !currentDetails.isEmpty || !rules.isEmpty
+            let rulesVisible = showsRules && !rules.isEmpty
+            let state = liveState
             let horizontal = availableWidth > availableHeight
-            let footerHeight = hasFooter ? min(150, availableHeight * 0.30) : 0
-            let spacing: CGFloat = hasFooter ? 8 : 0
+            let footerHeight: CGFloat = rulesVisible ? min(200, availableHeight * 0.38) : (state.isEmpty ? 0 : 64)
+            let spacing: CGFloat = footerHeight > 0 ? 8 : 0
             let cardHeight = horizontal ? min(availableHeight, availableWidth * 0.55 * BattlefieldLayoutMetrics.magicCardHeightToWidth) : max(1, min(availableHeight - footerHeight - spacing, availableWidth * BattlefieldLayoutMetrics.magicCardHeightToWidth))
             let cardWidth = cardHeight / BattlefieldLayoutMetrics.magicCardHeightToWidth
 
@@ -11920,32 +12003,59 @@ struct CardInspector: View {
                          ignoreTappedRotation: true, imageVariant: .inspection)
                     .modifier(InspectionFoil(size: CGSize(width: cardWidth, height: cardHeight)))
                     .frame(width: horizontal ? cardWidth : availableWidth)
-                if hasFooter {
-                    ScrollView(.vertical) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            if !currentDetails.isEmpty {
-                                Text(currentDetails.joined(separator: " · "))
-                                    .font(.subheadline.weight(.semibold))
-                            }
-                            if !rules.isEmpty {
-                                GameRulesText(source: rules, cardName: card.card.name,
-                                              isHidden: !NativeCardArtworkPolicy.permitsLookup(card: card))
-                                    .font(.subheadline).lineSpacing(4)
-                            }
+                if footerHeight > 0 || (horizontal && (rulesVisible || !state.isEmpty)) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if !state.isEmpty {
+                            InspectorStateChips(items: state)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 4)
+                        if rulesVisible {
+                            GameRulesText(source: rules, cardName: card.card.name,
+                                          isHidden: !NativeCardArtworkPolicy.permitsLookup(card: card))
+                                .font(.body).lineSpacing(3)
+                                .minimumScaleFactor(0.5)
+                                .frame(maxHeight: .infinity, alignment: .topLeading)
+                        }
                     }
-                    .frame(height: horizontal ? availableHeight : footerHeight)
+                    .frame(maxWidth: .infinity, maxHeight: horizontal ? availableHeight : footerHeight, alignment: .topLeading)
+                    .padding(.horizontal, 4)
                     .foregroundStyle(MagicPalette.parchment)
+                    .clipped()
                 }
             }
             .frame(width: availableWidth, height: availableHeight, alignment: .top)
             .padding(9)
         }
+        .onPreferenceChange(CardArtPlaceholderShownKey.self) { artMissing = $0 }
         .background(.black.opacity(0.88), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(.cyan.opacity(0.35)))
+    }
+}
+
+/// Live card state as compact chips that wrap onto a second line when needed.
+private struct InspectorStateChips: View {
+    let items: [String]
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) { chips(items) }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) { chips(Array(items.prefix((items.count + 1) / 2))) }
+                HStack(spacing: 6) { chips(Array(items.dropFirst((items.count + 1) / 2))) }
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func chips(_ values: [String]) -> some View {
+        ForEach(Array(values.enumerated()), id: \.offset) { _, item in
+            Text(item)
+                .font(.subheadline.weight(.bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(MagicPalette.iron.opacity(0.9), in: Capsule())
+                .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.55), lineWidth: 1))
+        }
     }
 }
 

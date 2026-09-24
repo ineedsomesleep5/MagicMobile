@@ -217,3 +217,16 @@ single MIT file with its license header when that is enough.
   combat pass, then consider RealityKit hero moments.
 - 2026-09-24 (Claude): Build 14 work merged (#29) and shipped in TestFlight build 14
   (VALID, Beta App Review APPROVED, Internal + External). Next: Caleb's device notes.
+- 2026-09-24 (Claude, build 15 work, branch `codex/board-fx-build-15`, installed directly on
+  Caleb's phone, no TestFlight yet): abilities picked in the tap popup now carry the engine
+  ability ID and the session answers XMage's follow-up "choose ability" prompt with it
+  (exact ID match only, prompt held off screen, shown if anything fails); shortened XMage
+  ability labels are completed from the card's rules line; Skip availability no longer
+  flickers with the poll loop and a tap during a poll arms and passes after it; the card
+  inspector shows detail chips (type, P/T, tapped, counters, keywords) and only shows rules
+  text when the real image is not showing; keyword icons fall back to bare keyword lines in
+  the engine's current rules text (not menace, which the engine projects); the top bar
+  shows a colored "YOUR TURN / X'S TURN · phase" line and glow, the phase pill and turn
+  ribbon fly into it, and the life orb glows on your turn; the hand-card lift on touch was
+  removed. Next: Caleb's device feedback, then TestFlight when he says it's done.
+
