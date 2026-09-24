@@ -1,6 +1,7 @@
 package io.magicmobile.xmage;
 
 import io.magicmobile.core.EngineDiagnostics;
+import mage.constants.PhaseStep;
 import mage.game.Game;
 import mage.player.ai.ComputerPlayerControllableProxy;
 import mage.player.ai.SimulationNode2;
@@ -19,6 +20,7 @@ public final class RealAIDiagnosticsTests {
             unexpectedFailure(false);
             unexpectedFailure(true);
             excludedFailures();
+            searchBudgets();
             System.out.println("PASS real AI adapter diagnostics, exact rethrow, bounds and lifecycle cleanup");
         } finally {
             EngineDiagnostics.clear();
@@ -70,6 +72,16 @@ public final class RealAIDiagnosticsTests {
         }
         check(cancellation.awaitQuiescence(System.nanoTime()),"rejected simulation did not change lifecycle count");
         check(original.equals(report()),"queued cancellation preserves prior report");
+    }
+    private static void searchBudgets() {
+        check(MobileAICancellation.thinkBudget(6,true)==6,"empty stack keeps the configured think time");
+        check(MobileAICancellation.thinkBudget(6,false)==MobileAICancellation.STACK_THINK_SECS,"stack responses are capped");
+        check(MobileAICancellation.thinkBudget(1,false)==1,"cap never raises a lower configured budget");
+        for(PhaseStep step:PhaseStep.values()) {
+            boolean upstreamSearches=step==PhaseStep.PRECOMBAT_MAIN || step==PhaseStep.DECLARE_ATTACKERS
+                || step==PhaseStep.DECLARE_BLOCKERS || step==PhaseStep.POSTCOMBAT_MAIN;
+            check(MobileAICancellation.searchesAt(step)==upstreamSearches,"fast pass only replaces search steps: "+step);
+        }
     }
     private static SimulationNode2 node(MobileAICancellation cancellation,Throwable failure,boolean close) {
         Game game=(Game)Proxy.newProxyInstance(Game.class.getClassLoader(),new Class<?>[]{Game.class},
