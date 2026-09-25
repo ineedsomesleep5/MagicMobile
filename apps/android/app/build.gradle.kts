@@ -10,9 +10,9 @@ android {
         minSdk = 26
         targetSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2026092101
+        versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2026092501
         versionName = providers.gradleProperty("androidVersionName").orNull ?: "0.1.1"
-        buildConfigField("int", "RELEASE_BUILD", "7")
+        buildConfigField("int", "RELEASE_BUILD", "8")
         val onlineURL = providers.gradleProperty("onlineServerUrl").orNull ?: ""
         require(onlineURL.isEmpty() || onlineURL.startsWith("https://")) { "Online service must use HTTPS" }
         buildConfigField("String", "ONLINE_SERVER_URL", "\"${onlineURL.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
