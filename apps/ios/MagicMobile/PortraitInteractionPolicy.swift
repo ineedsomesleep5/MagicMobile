@@ -122,16 +122,113 @@ enum PortraitInteractionPolicy {
     }
 }
 
+/// Which players the board shows. Presentation only: the viewer's seat, permissions, polling
+/// and hidden information never change.
 enum BoardOpponentFocus {
+    /// The bottom seat. While the viewer watches after leaving the game, the next living
+    /// player after them in turn order stands in, so the board never shows an empty seat.
+    /// Recomputed on every poll, so a knocked-out stand-in hands the seat to the next player.
+    static func seatPlayerID(in snapshot: GameSnapshot) -> String {
+        let players = snapshot.players
+        guard snapshot.isSpectating, let viewer = players.firstIndex(where: { snapshot.isViewer($0.playerId) }) else {
+            return snapshot.viewerID
+        }
+        for offset in 1..<max(players.count, 1) {
+            let player = players[(viewer + offset) % players.count]
+            // Someone else must stay for the top of the board.
+            if !player.isOut, players.contains(where: { !snapshot.isViewer($0.playerId) && $0.playerId != player.playerId }) {
+                return player.playerId
+            }
+        }
+        return snapshot.viewerID
+    }
+
+    /// Players the top of the board can show: everyone but the viewer and the bottom seat.
     static func opponents(in snapshot: GameSnapshot) -> [PlayerGameState] {
-        snapshot.players.filter { !snapshot.isViewer($0.playerId) }
+        let seat = seatPlayerID(in: snapshot)
+        return snapshot.players.filter { !snapshot.isViewer($0.playerId) && $0.playerId != seat }
     }
 
     static func snapshot(_ snapshot: GameSnapshot, selecting playerID: String?) -> GameSnapshot {
         var selected = snapshot
+        let seat = seatPlayerID(in: snapshot)
+        selected.seatPlayerId = snapshot.isViewer(seat) ? nil : seat
         if let playerID, opponents(in: snapshot).contains(where: { $0.playerId == playerID }) {
             selected.selectedOpponentId = playerID
         }
         return selected
+    }
+
+    /// The bottom seat's hand as cards. A stand-in's hand is hidden: the board shows its count only.
+    static func seatHand(in snapshot: GameSnapshot) -> [ZoneCard] {
+        snapshot.isViewer(snapshot.seatID) ? snapshot.seat?.zones.hand ?? [] : []
+    }
+
+    /// The viewer is answering a prompt, so the board holds still under their finger.
+    static func viewerIsAnswering(_ snapshot: GameSnapshot) -> Bool {
+        guard !snapshot.isCompleted, let prompt = snapshot.promptEnvelopeV2 else { return false }
+        return snapshot.isViewer(prompt.playerId)
+    }
+}
+
+/// The top of the board follows the turn: when a turn starts it shows the active player, unless
+/// that is the viewer (or the stand-in at the bottom), where it keeps the last one shown. A tap
+/// on another opponent sticks until the next turn starts. The switch never happens while the
+/// viewer answers a prompt; it waits until the prompt is answered.
+struct BoardFocusTracker: Equatable {
+    static let followTurnsKey = "magicmobile.followTurns"
+
+    /// The opponent the viewer picked or the turn moved to; nil shows the first opponent.
+    private(set) var focusedID: String?
+    private var gameID: String?
+    private var turnKey: String?
+    private var switchPending = false
+
+    /// Changes whenever a poll could move the focus; the board observes each new value.
+    static func observationKey(_ snapshot: GameSnapshot, followTurns: Bool) -> String {
+        "\(snapshot.id)|\(snapshot.turn)|\(snapshot.activePlayerId ?? "")|\(BoardOpponentFocus.viewerIsAnswering(snapshot))|"
+            + "\(BoardOpponentFocus.seatPlayerID(in: snapshot))|\(followTurns)"
+    }
+
+    /// A tap on an opponent. It replaces any switch still waiting on a prompt.
+    mutating func select(_ playerID: String) {
+        focusedID = playerID
+        switchPending = false
+    }
+
+    mutating func observe(_ snapshot: GameSnapshot, followTurns: Bool) {
+        if snapshot.id != gameID {
+            self = BoardFocusTracker()
+            gameID = snapshot.id
+        }
+        let key = "\(snapshot.turn):\(snapshot.activePlayerId ?? "")"
+        if key != turnKey {
+            turnKey = key
+            switchPending = snapshot.activePlayerId != nil
+        }
+        guard followTurns else { switchPending = false; return }
+        guard switchPending, !BoardOpponentFocus.viewerIsAnswering(snapshot) else { return }
+        switchPending = false
+        if let active = snapshot.activePlayerId,
+           BoardOpponentFocus.opponents(in: snapshot).contains(where: { $0.playerId == active }) {
+            focusedID = active
+        }
+    }
+}
+
+/// The bar that replaces the viewer's controls while they watch: whose seat the bottom shows.
+enum SpectatorSeatPresentation {
+    static func title(_ snapshot: GameSnapshot) -> String {
+        guard let seat = snapshot.seat, !snapshot.isViewer(seat.playerId) else { return "Watching" }
+        return "Watching \(snapshot.playerLabel(seat.playerId))"
+    }
+
+    static func detail(_ snapshot: GameSnapshot) -> String {
+        let count = snapshot.remainingOpponents.count
+        let players = count == 1 ? "1 player still in" : "\(count) players still in"
+        guard let seat = snapshot.seat, !snapshot.isViewer(seat.playerId) else {
+            return "You’re out · \(players) · Turn \(snapshot.turn)"
+        }
+        return "\(seat.life) life · Hand \(seat.zones.visibleHandCount) · \(players) · Turn \(snapshot.turn)"
     }
 }
