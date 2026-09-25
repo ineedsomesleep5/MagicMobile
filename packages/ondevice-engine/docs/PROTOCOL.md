@@ -9,6 +9,7 @@ One UTF-8 JSON request per native call. Maximum input/output 4 MiB, bounded nest
 {"protocol":1,"op":"create","configuration":{"seats":[...]}}
 {"protocol":1,"op":"poll","matchId":"...","viewerId":"player-1","after":0}
 {"protocol":1,"op":"respond","matchId":"...","viewerId":"player-1","command":{...}}
+{"protocol":1,"op":"concede","matchId":"...","viewerId":"player-1"}
 {"protocol":1,"op":"destroy","matchId":"..."}
 {"protocol":1,"op":"shutdown"}
 {"protocol":1,"op":"diagnostics"}
@@ -26,6 +27,18 @@ persists only the latest report plus app/OS/time/status metadata, capped at
 64 KiB, protected on iOS and excluded from backup. The user reviews, shares or
 deletes it explicitly; no automatic upload is added. No game state or action
 payload recorder is enabled. Temporary capture is tagged `[DEBUG-native-failure]`.
+
+`concede` concedes the authenticated human seat (`unauthorized_seat` for AI or unknown
+seats; `match_unavailable` once the match ended). The request is queued on the match and
+XMage's own `GameImpl.concede` runs on the GAME thread: at the next upstream concede check
+(every priority and resolution) or within 250 ms if a human seat is waiting for an answer.
+The seat's open question is retracted at once (`prompt_retracted` event) and never delivered.
+In a pod the remaining players play on; the seat keeps receiving snapshots with its player
+`hasLeft: true` and never a prompt, so the app shows it spectating. A player eliminated
+normally also leaves this way. Once only AI seats remain, AI think time is capped at the
+2-second stack budget so a watched game moves at a readable pace. Capabilities advertise
+`"concede": true`; engines without it answer `unknown_operation` (older builds) or
+`concede_unavailable` (other backends), and the app then treats leaving as the forfeit.
 
 A configuration has 2–4 unique seats with `seatId`, `name`, `controller: "human"` or `"ai"`, and `deck`, with at least one human. AI seats use actual upstream MAD and are not poll/response recipients. Deck keys are `name`, `main`, `commanders` and optional `companions`. Card rows have `count`, `setCode`, `collectorNumber`, optional exact `name`. They do **not** accept `className`, caller-supplied rules or rarity.
 
@@ -80,7 +93,7 @@ costs remain absent, not guessed as zero. Split halves remain separate.
 
 ## Untrusted multiplayer boundary
 
-The trusted API above must **not** be exposed raw to guests. `HostRouter` accepts a framed `hello`, `poll` or `respond`, with epoch and monotonically increasing sequence. Its peer ID is supplied by authenticated GameKit transport, outside the JSON body. The host's binding supplies the seat. Guests cannot create/destroy/shutdown the host engine or select another viewer.
+The trusted API above must **not** be exposed raw to guests. `HostRouter` accepts a framed `hello`, `poll`, `respond` or `concede` (empty payload, allowed even while the host is suspended), with epoch and monotonically increasing sequence. Its peer ID is supplied by authenticated GameKit transport, outside the JSON body. The host's binding supplies the seat. Guests cannot create/destroy/shutdown the host engine or select another viewer.
 
 Build identity includes protocol version, upstream commit, catalogue fingerprint and adapter version. It must match before player input. The fingerprint covers constructor/set inventory, so commit+adapter identity must also match; do not treat the catalogue hash alone as all-code equivalence.
 
@@ -100,3 +113,12 @@ step. Clients advance only in order, and their animation never chooses a face or
 the winner. The native starting-player prompt is answered only after the final
 shared step has been shown. The app's adapter identity includes `rollstep-2`, so
 older clients cannot join this presentation protocol despite sharing XMage inputs.
+
+### Quick chat
+
+Players in a running match may broadcast `{"type":"emote","epoch":"...","emote":"<id>"}`
+directly to the other devices. `emote` is one of a fixed set (`hello`, `wellPlayed`,
+`thanks`, `oops`, `wow`, `goodGame`); there is no free text. It never reaches the engine or
+the host router, carries no seat claim (the receiver maps the authenticated GameKit peer to
+its seat's table name), and at most one line per peer per 1.5 s is shown; extra lines are
+dropped, not errors. The adapter identity includes `concede-1/emote-1`.

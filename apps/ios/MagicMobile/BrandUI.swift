@@ -298,7 +298,7 @@ private struct BrandButtonFace<Label: View>: View {
         let primary = kind == .primary
         let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         return label
-            .pressSound(primary ? .uiConfirm : .uiTap, isPressed: pressed)
+            .pressSound(primary ? .uiConfirm : nil, isPressed: pressed)
             .font(.system(size: primary ? 19 : 17, weight: primary ? .heavy : .bold))
             .foregroundStyle(primary ? BrandTheme.emberInk : BrandTheme.ink)
             .padding(.horizontal, 18)
@@ -390,7 +390,6 @@ struct BrandPressStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .pressSound(isPressed: configuration.isPressed)
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.95 : 1)
             .brightness(configuration.isPressed ? -0.06 : 0)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: configuration.isPressed)

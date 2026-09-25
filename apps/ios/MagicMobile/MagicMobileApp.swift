@@ -126,6 +126,8 @@ struct MagicMobileApp: App {
                     MultiplayerD20FixtureScreen()
                 } else if ProcessInfo.processInfo.environment["MAGICMOBILE_VERSUS_FIXTURE"] == "1" {
                     VersusFixtureScreen()
+                } else if ProcessInfo.processInfo.environment["MAGICMOBILE_SOUND_LAB_FIXTURE"] == "1" {
+                    SoundLabView()
                 } else {
                     productionRoot
                 }

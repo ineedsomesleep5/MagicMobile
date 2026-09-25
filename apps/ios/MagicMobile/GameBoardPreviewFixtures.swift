@@ -155,7 +155,7 @@ enum GameBoardPreviewFixtures {
         let resourceLayoutMode = state == .crowdedBattlefield
             ? ProcessInfo.processInfo.environment["MAGICMOBILE_BOARD_RESOURCE_LAYOUT_UI_TEST"] : nil
         var players = root["players"] as! [[String: Any]]
-        if state == .fourPlayerFocus || state == .playerTargetPrompt {
+        if state == .fourPlayerFocus || state == .playerTargetPrompt || state == .spectating {
             for number in 2...3 {
                 var opponent = players[1]
                 opponent["playerId"] = "ai-\(number)"
@@ -170,9 +170,19 @@ enum GameBoardPreviewFixtures {
                 opponent["zones"] = zones; players.append(opponent)
             }
         }
+        if state == .spectating {
+            // You conceded: XMage removed your cards; one opponent is out too.
+            players[0]["hasLeft"] = true
+            players[0]["life"] = 0
+            players[2]["hasLeft"] = true
+        }
         for index in players.indices {
             let seat = players[index]["playerId"] as! String
             players[index]["displayName"] = index == 0 ? "You" : ["", "Aurelia", "Kozilek", "Meren"][index]
+            players[index]["isHuman"] = index == 0
+            if index > 0 {
+                players[index]["commanders"] = [["id": "\(seat)-commander", "name": ["", "Aurelia, the Warleader", "Kozilek, the Great Distortion", "Meren of Clan Nel Toth"][index], "ownerPlayerId": seat]]
+            }
             var zones = players[index]["zones"] as! [String: Any]
             var battlefield = zones["battlefield"] as! [[String: Any]]
             let previewCreatures = state == .combatArrows
@@ -275,10 +285,15 @@ enum GameBoardPreviewFixtures {
                 battlefield.insert(battlefield.remove(at: ring), at: 0)
             }
             zones["battlefield"] = battlefield; players[index]["zones"] = zones
+            if state == .spectating, players[index]["hasLeft"] as? Bool == true {
+                // A player who left takes their cards out of the game (CR 800.4a).
+                zones["battlefield"] = []; zones["hand"] = []; players[index]["zones"] = zones
+            }
         }
         root["players"] = players
         var actions = root["legalActions"] as! [[String: Any]]
-        if ![GameBoardDesignPreviewState.aiThinking, .bridgeUnavailable, .unsupportedPromptFallback].contains(state) {
+        if state == .spectating { actions = [] }
+        if ![GameBoardDesignPreviewState.aiThinking, .bridgeUnavailable, .unsupportedPromptFallback, .spectating].contains(state) {
             actions.append(["id": "make-mana-sol-ring", "type": "make_mana", "playerId": "human", "label": "Tap Sol Ring", "sourceInstanceId": "human-sol-ring", "cardName": "Sol Ring", "sourceZone": "battlefield", "producedMana": ["C", "C"]])
         }
         root["legalActions"] = actions
@@ -554,6 +569,10 @@ enum GameBoardPreviewFixtures {
         case .stackResponsePrompt:
             return #"""
             {"id":"preview-stack","method":"GAME_SELECT","messageId":3,"playerId":"human","responseKind":"priority","message":"Respond to the spell on the stack.","required":false,"minChoices":0,"maxChoices":0,"responseCommand":{"type":"pass_priority","promptId":"preview-stack","messageId":3}}
+            """#
+        case .openingHand:
+            return #"""
+            {"id":"preview-mulligan","method":"GAME_ASK","messageId":2,"playerId":"human","responseKind":"confirmation","message":"Mulligan to 6 cards?","required":true,"minChoices":1,"maxChoices":1,"confirmation":{"yesLabel":"Mulligan","noLabel":"Keep","defaultValue":null,"yesCommand":{"type":"answer_yes_no","promptId":"preview-mulligan","messageId":2,"confirmed":true},"noCommand":{"type":"answer_yes_no","promptId":"preview-mulligan","messageId":2,"confirmed":false}},"responseCommand":{"type":"answer_yes_no","promptId":"preview-mulligan","messageId":2}}
             """#
         case .commanderReplacementPrompt:
             return #"""

@@ -340,6 +340,12 @@ final class OnDeviceRemoteEngineTransport: EngineTransport {
                 throw EngineError.invalidMessage("Invalid remote response.")
             }
             payload = command
+        case "concede":
+            // The host's router concedes only this peer's bound seat.
+            guard Set(fields.keys) == ["protocol", "op", "matchId", "viewerId"] else {
+                throw EngineError.invalidMessage("Invalid remote concede.")
+            }
+            payload = .object([:])
         default: throw EngineError.invalidMessage("Only the host may create or close the native match.")
         }
         let result = try await exchange(operation: operation, payload: payload)
@@ -517,6 +523,9 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     @Published private(set) var rollStatus = ""
     /// The pregame room between matchmaking and the first engine snapshot.
     @Published private(set) var room: MatchRoom?
+    /// A player's quick-chat line: their table name and a fixed emote, never free text.
+    var onEmote: ((String, GameEmote) -> Void)?
+    private var lastEmoteFrom: [String: Date] = [:]
 
     private let identity: BuildIdentity
     private let makeHostEngine: @MainActor () async throws -> EngineClient
@@ -869,6 +878,16 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
             peerPresenceSequences[peer] = sequence
             if suspended { suspendedPeers.insert(peer) } else { suspendedPeers.remove(peer) }
             updateSuspension()
+        case "emote":
+            guard Set(fields.keys) == ["type", "epoch", "emote"], nativeMatchID != nil || remote != nil,
+                  let raw = fields["emote"]?.string, let emote = GameEmote(rawValue: raw) else {
+                throw EngineError.invalidMessage("Invalid emote.")
+            }
+            // Cosmetic only: a flood from one player is dropped, never an error.
+            if let last = lastEmoteFrom[peer], Date().timeIntervalSince(last) < 1.5 { return }
+            lastEmoteFrom[peer] = Date()
+            let seat = try lobby.seatID(for: peer)
+            if let name = seatNames[seat] ?? playerNames[peer] { onEmote?(name, emote) }
         case "end":
             guard Set(fields.keys) == ["type", "epoch"] else { throw EngineError.invalidMessage("Invalid match ending.") }
             fail(peer == lobby.hostID ? "The host ended this match." : "A player left. Start a new match to play again.")
@@ -879,6 +898,12 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
             fail(OnDeviceMultiplayerLobby.HandshakeFailure.differentSettings.localizedDescription)
         default: throw EngineError.invalidMessage("Unknown multiplayer packet.")
         }
+    }
+
+    /// Quick chat to every other player in the running match.
+    func sendEmote(_ emote: GameEmote) {
+        guard let epoch, nativeMatchID != nil || remote != nil else { return }
+        try? broadcast(.object(["type": .string("emote"), "epoch": .string(epoch.uuidString), "emote": .string(emote.rawValue)]))
     }
 
     /// The local player confirms their deck in the match room. The host counts its own

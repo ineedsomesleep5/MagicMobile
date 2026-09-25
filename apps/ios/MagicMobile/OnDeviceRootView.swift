@@ -37,6 +37,7 @@ struct OnDeviceRootView: View {
     @State private var showDownloads = false
     @State private var showImport = false
     @State private var confirmLeave = false
+    @StateObject private var emotes = EmoteCenter()
     @State private var showDiagnostics = false
     @State private var confirmDeleteReport = false
     @State private var bannerError: String?
@@ -233,7 +234,7 @@ struct OnDeviceRootView: View {
             GameAudio.shared.setScene(playing ? .game : .menu)
             guard playing else { versusIntro = nil; return }
             if reduceMotion {
-                GameAudio.shared.play(.gameStart, after: 0.2)
+                GameAudio.shared.play(.versus, after: 0.2)
             } else {
                 versusIntro = makeVersusIntro()
                 GameAudio.shared.play(.versus, after: 0.05)
@@ -471,8 +472,37 @@ struct OnDeviceRootView: View {
             viewZone: { title, cards in zone = InspectedZone(title: title, cards: cards) }
         )
         .overlay { zoneOverlay }
+        .environment(\.inspectorBattlefield, session.snapshot?.visibleBattlefield ?? [])
         .disabled(setup.isBusy)
         .environment(\.gameRematchTitle, setup.usingMultiplayer || setup.usingOnline ? nil : "Rematch")
+        .environment(\.gameConcede, setup.usingOnline ? nil : GameConcedeHandler(concede: concede))
+        .environment(\.emoteCenter, setup.usingOnline ? nil : emotes)
+        .onAppear { connectEmotes() }
+        .onChange(of: session.snapshot?.id) { _, _ in emotes.reset(); connectEmotes() }
+    }
+
+    /// Game Center games carry quick chat between devices; solo games only answer from the AI.
+    private func connectEmotes() {
+        let multiplayer = setup.usingMultiplayer ? setup.multiplayer : nil
+        emotes.send = multiplayer.map { match in { emote in match.sendEmote(emote) } }
+        multiplayer?.onEmote = { [weak emotes = self.emotes, weak session = self.session] name, emote in
+            emotes?.receive(emote, fromName: name, in: session?.snapshot)
+        }
+    }
+
+    /// XMage records the loss. In a pod the others play on and you can watch.
+    private func concede() {
+        Task {
+            do {
+                try await session.concede()
+            } catch let EngineError.rejected(code, _) where code == "unknown_operation" || code == "concede_unavailable" {
+                // An engine from before concede existed: leaving the match is the forfeit.
+                showSetup = false
+                closeGame()
+            } catch {
+                setup.errorMessage = error.localizedDescription
+            }
+        }
     }
 
     /// After a solo game: close it and start again with the same deck, opponents and
@@ -488,7 +518,9 @@ struct OnDeviceRootView: View {
 
     /// A finished game closes straight to the main menu; a live one still asks first.
     private func leaveFinishedOrAsk() {
-        guard session.snapshot?.isCompleted == true else { return requestLeave() }
+        // Solo games you already conceded leave at once; a host still warns the table.
+        let spectatingSolo = session.snapshot?.isSpectating == true && !setup.usingMultiplayer && !setup.usingOnline
+        guard session.snapshot?.isCompleted == true || spectatingSolo else { return requestLeave() }
         showSetup = false
         closeGame()
     }
@@ -916,7 +948,7 @@ private final class OnDeviceSetupModel: ObservableObject {
                 throw EngineError.invalidMessage("This app is missing its build identity. Install a complete app build.")
             }
             let identity = BuildIdentity(upstreamCommit: resolver.upstreamCommit, catalogueHash: resolver.catalogueHash,
-                                         adapterVersion: "ondevice-0.1/app-\(version)/build-\(build)/rollstep-2/room-1")
+                                         adapterVersion: "ondevice-0.1/app-\(version)/build-\(build)/rollstep-2/room-1/concede-1/emote-1")
             let multiplayer = OnDeviceMultiplayer(identity: identity,
                 makeHostEngine: { [runtime] in try await runtime.makeClient(identity: identity) },
                 closeHostEngine: { [runtime] _ in try await runtime.close() })

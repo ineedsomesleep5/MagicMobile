@@ -134,6 +134,12 @@ public final class MatchMailbox implements AutoCloseable {
             record(seat,"prompt_consumed",Json.map("promptId",p.token));
         }
     }
+    /** A seat whose player left the game can no longer answer; drop its open question. */
+    public synchronized void retract(String seat) {
+        checkOpen();checkSeat(seat);
+        Pending p=pending.remove(seat);
+        if(p!=null) { revision++;record(seat,"prompt_retracted",Json.map("promptId",p.token)); }
+    }
     /** Private informational events never replace an outstanding question. */
     public synchronized void inform(String seat,Map<String,Object> message) {
         checkOpen();checkSeat(seat);revision++;record(seat,"message",message);

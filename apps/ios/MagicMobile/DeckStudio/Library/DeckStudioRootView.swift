@@ -174,7 +174,8 @@ struct DeckStudioRootView: View {
             Button { route = .deck(record, included) } label: {
                 VStack(alignment: .leading, spacing: 10) {
                     DeckStudioTileCover(height: grid ? 164 : 130) {
-                        DeckStudioArtwork(name: record.commander?.cardName ?? "", hero: true)
+                        DeckStudioArtwork(name: record.commander?.cardName ?? "", hero: true,
+                                          colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata))
                     }
                         .overlay(alignment: .topLeading) {
                             if id == selectedDeckID {
@@ -320,16 +321,71 @@ struct DeckStudioTileCover<Artwork: View>: View {
 struct DeckStudioArtwork: View {
     let name: String
     var hero = false
+    /// Color identity for the cover drawn when the commander's art is not on this iPhone.
+    var colors: [String]? = nil
     var body: some View {
-        NativeCardArtworkView(name: name, variant: .board, contentMode: hero ? .fill : .fit, artOnly: hero) { _, failed in
-            ZStack {
-                DeckStudioPalette.background
-                VStack(spacing: 8) {
-                    Image(systemName: hero ? "rectangle.stack" : "sparkle").font(hero ? .largeTitle : .body)
-                    if hero { Text(failed ? "Artwork unavailable" : "A new story to build").font(.caption) }
-                }.foregroundStyle(DeckStudioPalette.secondaryInk)
+        NativeCardArtworkView(name: name, variant: .board, contentMode: hero ? .fill : .fit, artOnly: hero) { _, _ in
+            if hero {
+                DeckCoverPlaceholder(commander: name, colors: colors)
+            } else {
+                ZStack {
+                    DeckStudioPalette.background
+                    Image(systemName: "sparkle").font(.body).foregroundStyle(DeckStudioPalette.secondaryInk)
+                }
             }
         }.accessibilityHidden(true)
+    }
+}
+
+/// A deck cover without artwork: the deck's colors as light through glass, its
+/// commander's name and mana pips. Downloaded art replaces it.
+struct DeckCoverPlaceholder: View {
+    let commander: String
+    let colors: [String]?
+
+    private static let tints: [String: Color] = [
+        "W": Color(red: 0.93, green: 0.86, blue: 0.66), "U": Color(red: 0.2, green: 0.46, blue: 0.78),
+        "B": Color(red: 0.3, green: 0.22, blue: 0.34), "R": Color(red: 0.8, green: 0.28, blue: 0.18),
+        "G": Color(red: 0.22, green: 0.55, blue: 0.32)
+    ]
+
+    private var palette: [Color] {
+        let chosen = ["W", "U", "B", "R", "G"].filter { colors?.contains($0) == true }.compactMap { Self.tints[$0] }
+        switch chosen.count {
+        case 0: return [Color(red: 0.42, green: 0.44, blue: 0.47), Color(red: 0.2, green: 0.21, blue: 0.23)]
+        case 1: return [chosen[0], chosen[0].opacity(0.55)]
+        default: return chosen
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: palette, startPoint: .topLeading, endPoint: .bottomTrailing)
+            RadialGradient(colors: [.white.opacity(0.35), .clear], center: UnitPoint(x: 0.3, y: 0.2), startRadius: 4, endRadius: 180)
+            LinearGradient(colors: [.clear, .black.opacity(0.55)], startPoint: .center, endPoint: .bottom)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Spacer()
+                    if let colors {
+                        HStack(spacing: 3) {
+                            ForEach(["W", "U", "B", "R", "G"].filter { colors.contains($0) }, id: \.self) {
+                                ManaSymbolView(symbol: $0, size: 18)
+                            }
+                            if colors.isEmpty { ManaSymbolView(symbol: "C", size: 18) }
+                        }
+                        .padding(5)
+                        .background(.black.opacity(0.35), in: Capsule())
+                    }
+                }
+                Spacer(minLength: 0)
+                Text(commander.isEmpty ? String(localized: "Choose a commander") : commander)
+                    .font(.system(size: 19, weight: .bold, design: .serif))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.5), radius: 4, y: 2)
+                    .lineLimit(2).minimumScaleFactor(0.75)
+            }
+            .padding(12)
+        }
     }
 }
 

@@ -514,6 +514,28 @@ final class OnDeviceSnapshotAdapterTests: XCTestCase {
 }
 
 extension OnDeviceSnapshotAdapterTests {
+    /// XMage's PlayerView reports who left the game and which seats are AI; a viewer who
+    /// left is spectating until the game ends.
+    func testDepartedAndAIPlayersReachTheBoard() throws {
+        let poll = try fixture("4p-initial-player-3")
+        guard case .object(var root) = poll.raw, case .object(var snapshot)? = root["snapshot"],
+              case .object(var view)? = snapshot["gameView"], case .array(var players)? = view["players"],
+              let viewer = snapshot["enginePlayerId"]?.string else { return XCTFail("fixture shape") }
+        var aiID: String?
+        for index in players.indices {
+            guard case .object(var player) = players[index], let id = player["playerId"]?.string else { continue }
+            if id == viewer { player["hasLeft"] = .bool(true) } else if aiID == nil { aiID = id; player["isHuman"] = .bool(false) }
+            players[index] = .object(player)
+        }
+        view["players"] = .array(players); snapshot["gameView"] = .object(view); root["snapshot"] = .object(snapshot)
+        let adapted = try OnDeviceSnapshotAdapter.snapshot(try MatchPoll(.object(root)), expectedSeatID: "player-3")
+        XCTAssertEqual(adapted.human?.isOut, true)
+        XCTAssertTrue(adapted.isSpectating, "a departed viewer watches the rest of the game")
+        XCTAssertEqual(adapted.remainingOpponents.count, 3)
+        XCTAssertEqual(adapted.players.first { $0.playerId == aiID }?.isHuman, false)
+        XCTAssertEqual(adapted.players.filter { $0.isHuman == false }.count, 1, "unreported seats stay unknown, never assumed AI")
+    }
+
     func testShortenedAbilityLabelsUseTheMatchingRulesLine() {
         let rules = "{T}: Add {C}.\n{T}: Add {G}. Spend this mana only to cast a creature spell.\n{G}, {T}: Put a +1/+1 counter on each Frog."
         XCTAssertEqual(OnDeviceSnapshotAdapter.fullAbilityLabel("{T}: Add {G}. Spend this mana only to cast a crea...", rules: rules),

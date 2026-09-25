@@ -112,6 +112,23 @@ struct SafetyTests {
             try await r.handle(PeerFrame(epoch: e, sequence: 3, operation: "respond", payload: answer), authenticatedPeerID: "peer")
         }
     }
+    @Test func peerConcedesOnlyItsOwnSeatEvenWhileSuspended() async throws {
+        let (r,t,_,e) = try await setup(); await r.setSuspended(true)
+        _ = try await r.handle(PeerFrame(epoch:e,sequence:2,operation:"concede",payload:.object([:])),authenticatedPeerID:"peer")
+        let call = await t.calls().last
+        #expect(call?["op"] == .string("concede")); #expect(call?["viewerId"] == .string("seat-2")); #expect(call?["matchId"] == .string("match"))
+        await #expect(throws:(any Error).self) {
+            try await r.handle(PeerFrame(epoch:e,sequence:3,operation:"concede",payload:.object(["viewerId":.string("host")])),authenticatedPeerID:"peer")
+        }
+        await #expect(throws:EngineError.unboundPeer) {
+            try await r.handle(PeerFrame(epoch:e,sequence:4,operation:"concede",payload:.object([:])),authenticatedPeerID:"intruder")
+        }
+    }
+    @Test func concedeEnvelope() async throws {
+        let t = RecordingTransport(); try await EngineClient(transport:t).concede(matchID:"m",seatID:"s")
+        let call = await t.calls().first
+        #expect(call?["op"] == .string("concede")); #expect(call?["viewerId"] == .string("s")); #expect(call?["matchId"] == .string("m"))
+    }
     @Test func duplicateSeatBinding() async throws {
         let (r,_,_,_) = try await setup()
         await #expect(throws:(any Error).self) { try await r.bind(authenticatedPeerID:"other",seatID:"seat-2") }
