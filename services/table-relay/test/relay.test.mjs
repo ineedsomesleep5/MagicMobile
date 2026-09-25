@@ -15,7 +15,9 @@ let server;
 
 before(async () => {
   if (process.env.RELAY_URL) return;
-  server = spawn("npx", ["--yes", "wrangler", "dev", "--local", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", path.join(root, ".wrangler/test-state")],
+  // test/strict-storage.js is the relay with production's storage entry limit enforced locally.
+  server = spawn("npx", ["--yes", "wrangler@4", "dev", "test/strict-storage.js", "--local", "--port", String(port), "--ip", "127.0.0.1",
+    "--persist-to", path.join(root, ".wrangler/test-state")],
     { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
   const deadline = Date.now() + 90_000;
   while (Date.now() < deadline) {
@@ -41,7 +43,7 @@ function connect(code, params) {
   });
   const closed = new Promise((resolve) => socket.addEventListener("close", (event) => resolve(event)));
   return {
-    socket, closed,
+    socket, closed, inbox,
     next(match = () => true, timeout = 5000) {
       const index = inbox.findIndex(match);
       if (index >= 0) return Promise.resolve(inbox.splice(index, 1)[0]);
@@ -51,6 +53,12 @@ function connect(code, params) {
         setTimeout(() => { const i = waiters.indexOf(entry); if (i >= 0) { waiters.splice(i, 1); reject(new Error("timed out waiting for a frame")); } }, timeout);
       });
     },
+    /** Every delivered packet up to and including the one whose text is `last`. */
+    async messagesThrough(last, timeout = 30_000) {
+      const frames = [];
+      while (frames.at(-1)?.d !== last) frames.push(await this.next((frame) => frame.t === "msg", timeout));
+      return frames;
+    },
     send(value) { socket.send(JSON.stringify(value)); },
   };
 }
@@ -59,6 +67,42 @@ async function createTable(seats = 2) {
   const response = await fetch(`${base}/v1/tables`, { method: "POST", body: JSON.stringify({ seats }) });
   assert.equal(response.status, 200);
   return response.json();
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** A host and `count` guests at a table, with every guest's connection dropped. */
+async function tableWithAwayGuests(count = 1) {
+  const { code, hostKey } = await createTable(count + 1);
+  const host = connect(code, { key: hostKey, name: "Host" });
+  const hostWelcome = await host.next((frame) => frame.t === "welcome");
+  const guests = [];
+  for (let n = 0; n < count; n++) {
+    const guest = connect(code, { name: `Guest ${n + 1}` });
+    const welcome = await guest.next((frame) => frame.t === "welcome");
+    guests.push(welcome);
+    await host.next((frame) => frame.t === "roster" && frame.peers.some((peer) => peer.id === welcome.you && peer.connected));
+    guest.socket.close();
+    await host.next((frame) => frame.t === "roster" && frame.peers.some((peer) => peer.id === welcome.you && !peer.connected));
+  }
+  return { code, host, hostWelcome, guests };
+}
+
+async function resume(code, welcome) {
+  const phone = connect(code, { resume: welcome.token, name: "Back" });
+  assert.equal((await phone.next((frame) => frame.t === "welcome")).you, welcome.you);
+  return phone;
+}
+
+/** Packet text of exactly `size` characters in the apps' shape: sorted keys, so "type" comes last. */
+function packetText(type, label, size) {
+  const head = `{"epoch":"E","label":"${label}","pad":"`;
+  const tail = `","type":"${type}"}`;
+  return head + "x".repeat(size - head.length - tail.length) + tail;
+}
+
+function assertNoErrors(phone) {
+  assert.deepEqual(phone.inbox.filter((frame) => frame.t === "error"), []);
 }
 
 test("a host opens a table, a guest joins, and messages carry the relay's sender ID", async () => {
@@ -132,4 +176,102 @@ test("codes are checked and only the creator can host", async () => {
   const impostor = connect(code, { key: "not-the-key", name: "Impostor" });
   assert.equal((await impostor.next((frame) => frame.t === "error")).error, "not_host");
   assert.equal((await fetch(`${base}/v1/tables`, { method: "POST", body: JSON.stringify({ seats: 9 }) })).status, 400);
+});
+
+test("three ~900 KB packets for an away phone all arrive, in order, when it returns", async () => {
+  const { code, host, hostWelcome, guests: [guest] } = await tableWithAwayGuests(1);
+  // Runs of emoji (surrogate pairs), in both alignments, cross the point where the relay splits a
+  // held packet for storage, and make those packets two-byte strings in storage.
+  const packets = [0, 524_200, 524_201].map((at, n) => {
+    const text = packetText("state", `big-${n}`, 900_000);
+    return at ? text.slice(0, at) + "\u{1F0A1}".repeat(64) + text.slice(at + 128) : text;
+  });
+  for (const d of packets) host.send({ t: "send", to: guest.you, d });
+  await sleep(1000);
+  assertNoErrors(host);
+
+  const back = await resume(code, guest);
+  host.send({ t: "send", to: guest.you, d: "live" });
+  const delivered = await back.messagesThrough("live");
+  assert.deepEqual(delivered.map((frame) => frame.d.length), [...packets.map((d) => d.length), 4]);
+  packets.forEach((d, n) => {
+    assert.equal(delivered[n].from, hostWelcome.you);
+    assert.ok(delivered[n].d === d, `packet ${n} arrived changed`);
+  });
+  back.socket.close(); host.socket.close();
+});
+
+test("host answers older than the guests' 15 s request timeout are dropped; everything else arrives", async () => {
+  const { code, host, guests: [first, second] } = await tableWithAwayGuests(2);
+  const sendSplit = (to, text, id) => {
+    const half = Math.floor(text.length / 2);
+    host.send({ t: "send", to, d: text.slice(0, half), p: { id, i: 0, n: 2 } });
+    host.send({ t: "send", to, d: text.slice(half), p: { id, i: 1, n: 2 } });
+  };
+  const kept = packetText("rollAdvance", "kept", 200);
+  const splitKept = packetText("presence", "split-kept", 900);
+  const staleReply = packetText("reply", "stale", 200);
+  sendSplit(first.you, packetText("reply", "stale-split", 900), "stale-split");
+  host.send({ t: "send", to: first.you, d: kept });
+  sendSplit(first.you, splitKept, "split-kept");
+  host.send({ t: "send", to: first.you, d: staleReply });
+  // Replies fill the first guest's backlog to its 512-message cap.
+  for (let n = 0; n < 512 - 6; n++) host.send({ t: "send", to: first.you, d: packetText("reply", `fill-${n}`, 120) });
+  host.send({ t: "send", to: second.you, d: staleReply });
+  host.send({ t: "send", to: second.you, d: kept });
+  await sleep(16_000);
+
+  // The stale answers make room for a new one in the full backlog.
+  const fresh = packetText("reply", "fresh", 200);
+  host.send({ t: "send", to: first.you, d: fresh });
+  await sleep(500);
+  assertNoErrors(host);
+
+  const firstBack = await resume(code, first);
+  host.send({ t: "send", to: first.you, d: "live" });
+  const firstGot = await firstBack.messagesThrough("live");
+  const half = Math.floor(splitKept.length / 2);
+  assert.deepEqual(firstGot.map((frame) => [frame.d, frame.p?.i]),
+    [[kept, undefined], [splitKept.slice(0, half), 0], [splitKept.slice(half), 1], [fresh, undefined], ["live", undefined]]);
+
+  // The second guest's backlog was never touched again: its stale answer is dropped on return.
+  const secondBack = await resume(code, second);
+  host.send({ t: "send", to: second.you, d: "live" });
+  assert.deepEqual((await secondBack.messagesThrough("live")).map((frame) => frame.d), [kept, "live"]);
+  firstBack.socket.close(); secondBack.socket.close(); host.socket.close();
+});
+
+test("a full backlog sends the sender peer_backlog and keeps what it accepted", async () => {
+  // Size: eight ~900 KB packets fit within 8,000,000 characters; the ninth does not.
+  {
+    const { code, host, guests: [guest] } = await tableWithAwayGuests(1);
+    const packets = Array.from({ length: 9 }, (_, n) => packetText("state", `size-${n}`, 900_000));
+    for (const d of packets.slice(0, 8)) host.send({ t: "send", to: guest.you, d });
+    await sleep(1500);
+    assertNoErrors(host);
+    host.send({ t: "send", to: guest.you, d: packets[8] });
+    assert.equal((await host.next((frame) => frame.t === "error", 10_000)).error, "peer_backlog");
+
+    const back = await resume(code, guest);
+    host.send({ t: "send", to: guest.you, d: "live" });
+    const delivered = await back.messagesThrough("live");
+    assert.equal(delivered.length, 9);
+    packets.slice(0, 8).forEach((d, n) => assert.ok(delivered[n].d === d, `packet ${n} arrived changed`));
+    back.socket.close(); host.socket.close();
+  }
+  // Count: 512 packets fit; the 513th does not.
+  {
+    const { code, host, guests: [guest] } = await tableWithAwayGuests(1);
+    for (let n = 0; n < 512; n++) host.send({ t: "send", to: guest.you, d: `count-${n}` });
+    await sleep(1000);
+    assertNoErrors(host);
+    host.send({ t: "send", to: guest.you, d: "count-512" });
+    assert.equal((await host.next((frame) => frame.t === "error", 10_000)).error, "peer_backlog");
+
+    const back = await resume(code, guest);
+    host.send({ t: "send", to: guest.you, d: "live" });
+    assert.deepEqual((await back.messagesThrough("live")).map((frame) => frame.d),
+      [...Array.from({ length: 512 }, (_, n) => `count-${n}`), "live"]);
+    back.socket.close(); host.socket.close();
+  }
 });
