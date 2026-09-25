@@ -421,3 +421,18 @@ data class CombatEdgeCluster(val id: String, val point: BoardPoint, val cardIDs:
         }
     }
 }
+
+/** Port of BattlefieldAdaptiveSizing.swift. One flag per rendered slot; at the readable floor, overflow scrolls. */
+object BattlefieldAdaptiveSizing {
+    fun cardWidth(availableRowWidth: Float, maxCardWidth: Float, heightRatio: Float, tappedSlots: List<Boolean>): Float {
+        if (!maxCardWidth.isFinite() || maxCardWidth <= 0) return 0f
+        if (tappedSlots.isEmpty()) return maxCardWidth
+        val minimum = minOf(44f, maxCardWidth)
+        val available = if (availableRowWidth.isFinite()) maxOf(0f, availableRowWidth) else 0f
+        val ratio = if (heightRatio.isFinite() && heightRatio > 0) heightRatio else 1f
+        val footprint = tappedSlots.sumOf { (if (it) ratio else 1f).toDouble() }.toFloat()
+        val gaps = (tappedSlots.size - 1) * 4f
+        val fitting = maxOf(0f, available - 16 - gaps) / footprint
+        return maxOf(minimum, minOf(maxCardWidth, fitting))
+    }
+}
