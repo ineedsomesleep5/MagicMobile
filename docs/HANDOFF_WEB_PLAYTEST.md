@@ -149,7 +149,7 @@ Caleb authorizes.
 | 1 Web engine spike | In progress | `codex/web-engine-spike` | Delegate |
 | 2 Playtest focus | In progress | `codex/playtest-focus` | Delegate |
 | 2 Playtest cards | In progress | `codex/playtest-cards` | Delegate |
-| 2b.1 Relay backlog + CI | In progress | `codex/relay-backlog` | Delegate |
+| 2b.1 Relay backlog + CI | Done, not deployed | #39 (draft) | Reviewed. 6/6 tests locally and in the new `Table relay` CI. Deploying needs Caleb: `cd services/table-relay && npx wrangler deploy` |
 | 2b.2–4 Guest retry, notices, crash reports | Not started | | After playtest-focus lands |
 | 3–6 Web client | Blocked on PR 1 | | |
 | Release: iOS build 18, Android build 9 | Not started | | Needs Caleb's go-ahead |
@@ -165,3 +165,10 @@ Caleb authorizes.
     have untracked files. The web spike reuses the ondevice engine build.
   - Tagged `archive/legacy-web`.
   - Five delegates are running, on the branches listed in Status.
+- 2026-09-25 (Claude Code): Relay backlog fixed in #39.
+  - Held messages are stored one entry each, in pieces of at most 524,288 characters. This
+    fixes the silent loss past Cloudflare's 2 MB SQLite key+value limit.
+  - Overflow or a refused write sends `peer_backlog`. Host `reply` packets held over 15 s are
+    dropped. The wire protocol is unchanged.
+  - New `table-relay.yml` CI runs the tests with the 2 MB limit enforced locally.
+  - The deploy was refused by Claude Code's auto-mode safety check, so it waits for Caleb.
