@@ -196,8 +196,10 @@ function App() {
               <div>
                 <span>Play</span>
                 <p>
-                  Commander against AI. On iPhone, play with 2–4 people through
-                  Game Center in the current TestFlight beta.
+                  Commander against AI, or 2–4 people at one table. On Android,
+                  host or join with a table code. On iPhone, play through Game
+                  Center in the current TestFlight beta; iPhone and Android
+                  tables arrive with the next iPhone build.
                 </p>
               </div>
             </div>
@@ -303,10 +305,12 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Deck building and local Commander against AI are available.
+                Android build 8 brings the iPhone app to Android: Deck Studio,
+                the portrait and landscape boards, and tables you host or join
+                with a code.
                 Android is an early alpha; physical-phone acceptance is still
                 pending. Live games do not yet resume after Android terminates
-                the app process. Multiplayer is not included.
+                the app process.
               </p>
             </details>
             <details>
@@ -315,14 +319,11 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 14 makes every play readable: spells hold at the center
-                long enough to read before their creatures land, attackers charge
-                into blockers and players with damage landing on the hit, and
-                commanders get a golden entrance. Your hand fans and lifts under
-                your finger, turns open with a banner, games end on a victory or
-                defeat screen, and ability choices show real mana and tap symbols
-                in full. Apple has approved this build for Internal and External
-                TestFlight.
+                Build 17 adds recorded sound and music with a Sound Lab to tune
+                them, conceding with a spectator view, Auras and Equipment tucked
+                behind their creatures, commander portraits, an opening-hand
+                screen, a result summary and quick chat. Apple has approved this
+                build for Internal and External TestFlight.
               </p>
             </details>
             <details>
