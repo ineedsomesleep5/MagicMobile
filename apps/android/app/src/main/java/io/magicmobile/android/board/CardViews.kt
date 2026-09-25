@@ -193,8 +193,14 @@ fun CardArtworkOrPlaceholder(card: ZoneCard, width: Dp, height: Dp, artOnly: Boo
     }
 }
 
+/** Tells an inspector that a card view is showing the drawn placeholder (Swift CardArtPlaceholderShownKey). */
+val LocalCardArtPlaceholderShown = androidx.compose.runtime.compositionLocalOf<((Boolean) -> Unit)?> { null }
+
 @Composable
 fun CardArtPlaceholder(card: ZoneCard, width: Dp, height: Dp, loading: Boolean = false) {
+    LocalCardArtPlaceholderShown.current?.let { report ->
+        androidx.compose.runtime.DisposableEffect(Unit) { report(true); onDispose { report(false) } }
+    }
     Box(Modifier.requiredSize(width, height)
         .background(Brush.linearGradient(listOf(MagicPalette.parchment, rgb(0.72, 0.59, 0.38), MagicPalette.parchmentShadow)))
         .border(maxOf(width * 0.035f, 1.dp), Brush.linearGradient(listOf(MagicPalette.borderBronze.copy(alpha = 0.70f), MagicPalette.borderIron.copy(alpha = 0.62f))),
