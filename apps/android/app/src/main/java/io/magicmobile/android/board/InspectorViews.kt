@@ -31,10 +31,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -57,13 +55,18 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.magicmobile.android.game.BattlefieldLayoutMetrics
 import io.magicmobile.android.game.BoardFXLevel
+import io.magicmobile.android.game.BoardSize
 import io.magicmobile.android.game.CardIdentity
+import io.magicmobile.android.game.CardInspectorFit
 import io.magicmobile.android.game.GameBoardInteractionState
 import io.magicmobile.android.game.GameLogEntry
 import io.magicmobile.android.game.GameLogPresentation
@@ -85,6 +88,7 @@ import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.rgb
 import io.magicmobile.android.ui.sf
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.launch
 
@@ -166,69 +170,81 @@ fun CardInspector(card: ZoneCard, modifier: Modifier = Modifier) {
         details.filter { seen.add(it.lowercase()) }
     }
     val showsRules = artMissing || card.card.isToken == true || !NativeCardArtworkPolicy.permitsLookup(card)
+    val rules = card.card.oracleText?.trim() ?: ""
+    val rulesVisible = showsRules && rules.isNotEmpty()
+    val reminder = CardRulesReminder.text(card)
+    val hasFooter = rulesVisible || liveState.isNotEmpty() || attachments.isNotEmpty() || reminder != null
     val shape = RoundedCornerShape(10.dp)
-    BoxWithConstraints(modifier.background(Color.Black.copy(alpha = 0.88f), shape).border(1.dp, Color.Cyan.copy(alpha = 0.35f), shape)) {
-        val availableHeight = maxOf(maxHeight.value - 18, 1f)
-        val availableWidth = maxOf(maxWidth.value - 18, 1f)
-        val rules = card.card.oracleText?.trim() ?: ""
-        val rulesVisible = showsRules && rules.isNotEmpty()
-        val reminder = CardRulesReminder.text(card)
-        val horizontal = availableWidth > availableHeight
-        val footerHeight = if (attachments.isNotEmpty() || reminder != null) minOf(320f, availableHeight * 0.48f)
-            else if (rulesVisible) minOf(200f, availableHeight * 0.38f) else if (liveState.isEmpty()) 0f else 64f
-        val spacing = if (footerHeight > 0) 8f else 0f
-        val ratio = BattlefieldLayoutMetrics.magicCardHeightToWidth
-        val cardHeight = if (horizontal) minOf(availableHeight, availableWidth * 0.55f * ratio)
-            else maxOf(1f, minOf(availableHeight - footerHeight - spacing, availableWidth * ratio))
-        val cardWidth = cardHeight / ratio
-        val showFooter = footerHeight > 0 || (horizontal && (rulesVisible || liveState.isNotEmpty() || attachments.isNotEmpty()))
 
-        @Composable
-        fun cardFace() {
-            CompositionLocalProvider(LocalCardArtPlaceholderShown provides { shown -> artMissing = shown }) {
-                androidx.compose.runtime.key(card.instanceId) {
-                    CardTile(card, false, Modifier.inspectionFoil(), zoneName = "Inspector", width = cardWidth.dp, height = cardHeight.dp, ignoreTappedRotation = true)
-                }
+    @Composable
+    fun cardFace(width: Float, height: Float) {
+        CompositionLocalProvider(LocalCardArtPlaceholderShown provides { shown -> artMissing = shown }) {
+            androidx.compose.runtime.key(card.instanceId) {
+                CardTile(card, false, Modifier.inspectionFoil(), zoneName = "Inspector", width = width.dp, height = height.dp, ignoreTappedRotation = true)
             }
         }
+    }
 
-        @Composable
-        fun footer(footerModifier: Modifier) {
-            Column(footerModifier.verticalScroll(rememberScrollState()).padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (liveState.isNotEmpty()) InspectorStateChips(liveState)
-                if (rulesVisible) GameRulesText(rules, cardName = card.card.name, isHidden = !NativeCardArtworkPolicy.permitsLookup(card),
-                    style = SfText.body(), color = MagicPalette.parchment)
-                if (reminder != null) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SfImage("info.circle", MagicPalette.parchment.copy(alpha = 0.82f), 14.dp)
-                    Text(reminder, color = MagicPalette.parchment.copy(alpha = 0.82f), style = SfText.footnote(SfWeight.semibold))
-                }
-                if (attachments.isNotEmpty()) {
-                    // A thumbnail's missing art must not read as the main card's.
-                    CompositionLocalProvider(LocalCardArtPlaceholderShown provides null) { InspectorAttachmentList(attachments) }
-                }
+    @Composable
+    fun footer(scale: Float) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy((8 * scale).dp)) {
+            if (liveState.isNotEmpty()) InspectorStateChips(liveState, scale)
+            if (rulesVisible) GameRulesText(rules, cardName = card.card.name, isHidden = !NativeCardArtworkPolicy.permitsLookup(card),
+                symbolSize = (16 * scale).dp, style = sf(17f * scale), color = MagicPalette.parchment)
+            if (reminder != null) Row(horizontalArrangement = Arrangement.spacedBy((6 * scale).dp)) {
+                SfImage("info.circle", MagicPalette.parchment.copy(alpha = 0.82f), (14 * scale).dp)
+                Text(reminder, color = MagicPalette.parchment.copy(alpha = 0.82f), style = sf(13f * scale, SfWeight.semibold))
+            }
+            if (attachments.isNotEmpty()) {
+                // A thumbnail's missing art must not read as the main card's.
+                CompositionLocalProvider(LocalCardArtPlaceholderShown provides null) { InspectorAttachmentList(attachments, scale) }
             }
         }
+    }
 
-        Box(Modifier.padding(9.dp).size(availableWidth.dp, availableHeight.dp)) {
-            if (horizontal) Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Box(Modifier.width(cardWidth.dp)) { cardFace() }
-                if (showFooter) footer(Modifier.weight(1f).heightIn(max = availableHeight.dp))
-            } else Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(spacing.dp)) {
-                cardFace()
-                if (showFooter) footer(Modifier.fillMaxWidth().heightIn(max = footerHeight.dp))
-            }
+    // Rules get their room first; CardInspectorFit shrinks the card, then the text (Swift CardInspectorLayout + ViewThatFits).
+    SubcomposeLayout(modifier.background(InspectorBackdrop, shape).border(1.dp, Color.Cyan.copy(alpha = 0.35f), shape).padding(9.dp)) { constraints ->
+        // Unbounded sides fall back to 320 × 480 (Swift replacingUnspecifiedDimensions).
+        val widthPx = if (constraints.hasBoundedWidth) constraints.maxWidth else (320 * density).roundToInt()
+        val heightPx = if (constraints.hasBoundedHeight) constraints.maxHeight else (480 * density).roundToInt()
+        val available = BoardSize(maxOf(widthPx / density, 1f), maxOf(heightPx / density, 1f))
+        fun naturalHeight(slot: String, widthPx: Int, scale: Float): Float =
+            subcompose(slot) { footer(scale) }.maxOfOrNull { it.measure(Constraints(minWidth = widthPx, maxWidth = widthPx)).height }?.div(density) ?: 0f
+        var probe = 0
+        val fit = CardInspectorFit.plan(available, hasFooter = hasFooter) { width ->
+            naturalHeight("probe-${probe++}", (width * density).roundToInt().coerceAtLeast(1), 1f)
+        }
+        val cardWidthPx = (fit.cardSize.width * density).roundToInt()
+        val cardHeightPx = (fit.cardSize.height * density).roundToInt()
+        val face = subcompose("card") { cardFace(fit.cardSize.width, fit.cardSize.height) }.map { it.measure(Constraints.fixed(cardWidthPx, cardHeightPx)) }
+        val footerWidthPx = ((if (fit.horizontal) fit.footerSize.width else available.width) * density).roundToInt().coerceAtLeast(1)
+        val footerTop = if (fit.horizontal) 0f else fit.cardSize.height + CardInspectorFit.SPACING
+        val room = maxOf(available.height - footerTop, 0f)
+        val footer = if (!hasFooter) emptyList() else {
+            val scale = CardInspectorFit.textScale(room) { s -> naturalHeight("scale-$s", footerWidthPx, s) }
+            subcompose("footer") { Box(Modifier.clipToBounds()) { footer(scale) } }
+                .map { it.measure(Constraints(minWidth = footerWidthPx, maxWidth = footerWidthPx, maxHeight = (room * density).roundToInt())) }
+        }
+        layout(widthPx, heightPx) {
+            val cardX = if (fit.horizontal) 0 else (widthPx - cardWidthPx) / 2
+            face.forEach { it.place(cardX, 0) }
+            val footerX = if (fit.horizontal) ((fit.cardSize.width + CardInspectorFit.COLUMN_SPACING) * density).roundToInt() else 0
+            footer.forEach { it.place(footerX, (footerTop * density).roundToInt()) }
         }
     }
 }
 
-/** Live card state as compact chips that wrap onto a second line when needed. */
+/** Solid, so the board never shows through the text while you read (Swift CardInspector.backdrop). */
+private val InspectorBackdrop = rgb(0.07, 0.08, 0.10)
+
+/** Live card state as compact chips that wrap onto as many lines as they need. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun InspectorStateChips(items: List<String>) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+private fun InspectorStateChips(items: List<String>, scale: Float = 1f) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy((6 * scale).dp), verticalArrangement = Arrangement.spacedBy((6 * scale).dp)) {
         for (item in items) {
-            FitText(item, SfText.subheadline(SfWeight.bold), Modifier.background(MagicPalette.iron.copy(alpha = 0.9f), CircleShape)
-                .border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.55f), CircleShape).padding(horizontal = 8.dp, vertical = 3.dp),
+            FitText(item, sf(15f * scale, SfWeight.bold), Modifier.background(MagicPalette.iron.copy(alpha = 0.9f), CircleShape)
+                .border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.55f), CircleShape).padding(horizontal = (8 * scale).dp, vertical = (3 * scale).dp),
                 color = MagicPalette.parchment, minimumScale = 0.7f)
         }
     }
@@ -236,20 +252,21 @@ private fun InspectorStateChips(items: List<String>) {
 
 /** What is attached to the inspected card: each Aura or Equipment with its rules text. */
 @Composable
-private fun InspectorAttachmentList(cards: List<ZoneCard>) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(if (cards.size == 1) "ATTACHED" else "ATTACHED · ${cards.size}", color = MagicPalette.antiqueGold, style = sf(12f, SfWeight.black, tracking = 1.2f))
+private fun InspectorAttachmentList(cards: List<ZoneCard>, scale: Float = 1f) {
+    Column(verticalArrangement = Arrangement.spacedBy((6 * scale).dp)) {
+        Text(if (cards.size == 1) "ATTACHED" else "ATTACHED · ${cards.size}", color = MagicPalette.antiqueGold, style = sf(12f * scale, SfWeight.black, tracking = 1.2f))
         for (attachment in cards.take(4)) {
             Row(Modifier.fillMaxWidth().background(MagicPalette.iron.copy(alpha = 0.85f), RoundedCornerShape(9.dp))
                 .border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.35f), RoundedCornerShape(9.dp)).padding(7.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                CardTile(attachment, false, zoneName = "Inspector attachment", width = 40.dp, height = (40 * BattlefieldLayoutMetrics.magicCardHeightToWidth).dp, ignoreTappedRotation = true)
+                horizontalArrangement = Arrangement.spacedBy((10 * scale).dp)) {
+                CardTile(attachment, false, zoneName = "Inspector attachment", width = (40 * scale).dp,
+                    height = (40 * scale * BattlefieldLayoutMetrics.magicCardHeightToWidth).dp, ignoreTappedRotation = true)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(attachment.card.name, color = Color.White, style = SfText.subheadline(SfWeight.heavy))
-                    if (attachment.card.typeLine.isNotEmpty()) Text(attachment.card.typeLine, color = MagicPalette.parchment.copy(alpha = 0.7f), style = SfText.caption(SfWeight.semibold))
+                    Text(attachment.card.name, color = Color.White, style = sf(15f * scale, SfWeight.heavy))
+                    if (attachment.card.typeLine.isNotEmpty()) Text(attachment.card.typeLine, color = MagicPalette.parchment.copy(alpha = 0.7f), style = sf(12f * scale, SfWeight.semibold))
                     attachment.card.oracleText?.trim()?.takeIf { it.isNotEmpty() }?.let { text ->
                         GameRulesText(text, cardName = attachment.card.name, isHidden = !NativeCardArtworkPolicy.permitsLookup(attachment),
-                            style = SfText.footnote(), color = MagicPalette.parchment, maxLines = 4)
+                            symbolSize = (16 * scale).dp, style = sf(13f * scale), color = MagicPalette.parchment, maxLines = 4)
                     }
                 }
             }
