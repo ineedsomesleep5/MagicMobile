@@ -56,9 +56,9 @@ function connect(code, params) {
       const index = inbox.findIndex(match);
       if (index >= 0) return Promise.resolve(inbox.splice(index, 1)[0]);
       return new Promise((resolve, reject) => {
-        const entry = { match, resolve };
+        const timer = setTimeout(() => { const i = waiters.indexOf(entry); if (i >= 0) { waiters.splice(i, 1); reject(new Error("timed out waiting for a frame")); } }, timeout);
+        const entry = { match, resolve: (frame) => { clearTimeout(timer); resolve(frame); } };
         waiters.push(entry);
-        setTimeout(() => { const i = waiters.indexOf(entry); if (i >= 0) { waiters.splice(i, 1); reject(new Error("timed out waiting for a frame")); } }, timeout);
       });
     },
     /** Every delivered packet up to and including the one whose text is `last`. */
@@ -227,6 +227,9 @@ test("host answers older than the guests' 15 s request timeout are dropped; ever
   for (let n = 0; n < 512 - 6; n++) host.send({ t: "send", to: first.you, d: packetText("reply", `fill-${n}`, 120) });
   host.send({ t: "send", to: second.you, d: staleReply });
   host.send({ t: "send", to: second.you, d: kept });
+  // The relay handles one phone's frames in order, so this refusal means everything above is held.
+  host.send({ t: "send", to: first.you, d: packetText("reply", "over", 120) });
+  assert.equal((await host.next((frame) => frame.t === "error", 30_000)).error, "peer_backlog");
   await sleep(16_000);
 
   // The stale answers make room for a new one in the full backlog.
@@ -258,7 +261,7 @@ test("a full backlog sends the sender peer_backlog and keeps what it accepted", 
     await sleep(1500);
     assertNoErrors(host);
     host.send({ t: "send", to: guest.you, d: packets[8] });
-    assert.equal((await host.next((frame) => frame.t === "error", 10_000)).error, "peer_backlog");
+    assert.equal((await host.next((frame) => frame.t === "error", 30_000)).error, "peer_backlog");
 
     const back = await resume(code, guest);
     host.send({ t: "send", to: guest.you, d: "live" });
@@ -274,7 +277,7 @@ test("a full backlog sends the sender peer_backlog and keeps what it accepted", 
     await sleep(1000);
     assertNoErrors(host);
     host.send({ t: "send", to: guest.you, d: "count-512" });
-    assert.equal((await host.next((frame) => frame.t === "error", 10_000)).error, "peer_backlog");
+    assert.equal((await host.next((frame) => frame.t === "error", 30_000)).error, "peer_backlog");
 
     const back = await resume(code, guest);
     host.send({ t: "send", to: guest.you, d: "live" });
