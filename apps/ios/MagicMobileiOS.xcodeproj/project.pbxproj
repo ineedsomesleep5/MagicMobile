@@ -56,6 +56,7 @@
 		3C59DA47815A5366726D5543 /* music-menu-2.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 37B38E682FB38C9A11F80A64 /* music-menu-2.m4a */; };
 		3CF04FAD6151365E9FB7BF17 /* GameEmotes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B027E570ED728E99BAF998FC /* GameEmotes.swift */; };
 		3ECBD0A4221A9460BDBCEF32 /* BoardEventTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = B892F4CD432E22F7B9F3DB29 /* BoardEventTimeline.swift */; };
+		26170C7ADE0934F111F96562 /* BoardCardPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6345F3071054872DF8328F7D /* BoardCardPresentation.swift */; };
 		3F4314DA60472BEFFF15C67F /* OnDevicePromptAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9F3D91659B183C793814CA9 /* OnDevicePromptAdapterTests.swift */; };
 		3F96EC34853B9833765AD8A7 /* PlayerPortrait.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7707EF30309D547A5EB5D9DF /* PlayerPortrait.swift */; };
 		3FF979A6D4BDF89CB09279E7 /* OnlineConfiguration.json in Resources */ = {isa = PBXBuildFile; fileRef = D80AFA945CC8219462272282 /* OnlineConfiguration.json */; };
@@ -84,6 +85,7 @@
 		5071C1B04ED998C6A26FE479 /* NativeDeckEDHREC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65450701680391D2656331EA /* NativeDeckEDHREC.swift */; };
 		50BF7D06B2BBBE2E1533857C /* OnDeviceDeckPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB39789F444BECD1BC439F88 /* OnDeviceDeckPersistenceTests.swift */; };
 		52EFF0E9F5732E24F902C1EC /* BoardEventTimelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EFABF9DAD47FA0A068E750D /* BoardEventTimelineTests.swift */; };
+		CCE42022F5B475B88101270F /* BoardCardPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FB8F2933678669E9D83535C /* BoardCardPresentationTests.swift */; };
 		53C0D95F2C5CC2D7629FE5DA /* ui-confirm.m4a in Resources */ = {isa = PBXBuildFile; fileRef = CAD5F9930BDDD6214920D5F9 /* ui-confirm.m4a */; };
 		53DB4EABEA8F6D7B6209DB23 /* Build19LogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4BBB00054743C8266F5341E /* Build19LogicTests.swift */; };
 		54A69CDC4089687732987FF0 /* shuffle.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 0874A2EB2BEDFB73C09B079F /* shuffle.m4a */; };
@@ -326,6 +328,7 @@
 		5A5880A440F12FAFCB5E9DB6 /* MagicMobileAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MagicMobileAPI.swift; sourceTree = "<group>"; };
 		5E1C4DF5D312EED788A54541 /* cast-white.m4a */ = {isa = PBXFileReference; path = "cast-white.m4a"; sourceTree = "<group>"; };
 		5EFABF9DAD47FA0A068E750D /* BoardEventTimelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardEventTimelineTests.swift; sourceTree = "<group>"; };
+		2FB8F2933678669E9D83535C /* BoardCardPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardCardPresentationTests.swift; sourceTree = "<group>"; };
 		608026E3694B102F64D58954 /* OnDeviceAppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceAppConfiguration.swift; sourceTree = "<group>"; };
 		6110FD6C7D0281A6D0C9E48A /* OnDeviceSetupUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceSetupUITests.swift; sourceTree = "<group>"; };
 		617C22961151F12CBFFA4E39 /* DeckStudioReplayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioReplayTests.swift; sourceTree = "<group>"; };
@@ -419,6 +422,7 @@
 		B7801D6046DE8BA6DF1EF6CC /* music-game-1.m4a */ = {isa = PBXFileReference; path = "music-game-1.m4a"; sourceTree = "<group>"; };
 		B82D8D9535EA9243C6BD4520 /* card-pickup.caf */ = {isa = PBXFileReference; path = "card-pickup.caf"; sourceTree = "<group>"; };
 		B892F4CD432E22F7B9F3DB29 /* BoardEventTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardEventTimeline.swift; sourceTree = "<group>"; };
+		6345F3071054872DF8328F7D /* BoardCardPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardCardPresentation.swift; sourceTree = "<group>"; };
 		B8B9861DFAE4F7E13665FD50 /* DeckStudioPlayProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioPlayProjection.swift; sourceTree = "<group>"; };
 		B9F3D91659B183C793814CA9 /* OnDevicePromptAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDevicePromptAdapterTests.swift; sourceTree = "<group>"; };
 		BAA1D9997DDF12AB94C88104 /* NativeDeckArtwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeDeckArtwork.swift; sourceTree = "<group>"; };
@@ -582,6 +586,7 @@
 				E93A6775473574CAA20CEFA3 /* BattlefieldViewportMetrics.swift */,
 				4BA70C9674983BCF14FFA981 /* BoardCardChoiceView.swift */,
 				B892F4CD432E22F7B9F3DB29 /* BoardEventTimeline.swift */,
+				6345F3071054872DF8328F7D /* BoardCardPresentation.swift */,
 				A88AD9394CF2AA027E75D115 /* BoardFXOverlay.swift */,
 				42BED0731F12A5926DA34D5C /* BoardFXShaders.metal */,
 				DF9DCCA6FD608F763C72ABDA /* BoardZoneReference.swift */,
@@ -673,6 +678,7 @@
 				77E01CDDFBE4A2CB47963D37 /* BattlefieldBackdropTests.swift */,
 				FE7A1008F2215F9CB7E25B2F /* BattlefieldViewportTests.swift */,
 				5EFABF9DAD47FA0A068E750D /* BoardEventTimelineTests.swift */,
+				2FB8F2933678669E9D83535C /* BoardCardPresentationTests.swift */,
 				2F4E6F7237174E453B09E62B /* BoardZoneReferenceTests.swift */,
 				C4BBB00054743C8266F5341E /* Build19LogicTests.swift */,
 				FE7B7AECD659F55C150D0846 /* CardChoicePlanTests.swift */,
@@ -1083,6 +1089,7 @@
 				D2B46EEE34E03522188A8F54 /* BattlefieldViewportMetrics.swift in Sources */,
 				707F9022D3F7045C138C3B27 /* BoardCardChoiceView.swift in Sources */,
 				3ECBD0A4221A9460BDBCEF32 /* BoardEventTimeline.swift in Sources */,
+				26170C7ADE0934F111F96562 /* BoardCardPresentation.swift in Sources */,
 				ED9559C4B716A8AD998A780F /* BoardFXOverlay.swift in Sources */,
 				4ADA44346770FB8EB262E358 /* BoardFXShaders.metal in Sources */,
 				EBED9598B43CE2C232029321 /* BoardZoneReference.swift in Sources */,
@@ -1192,6 +1199,7 @@
 				A2ED80A1AAEC165CA264AE59 /* BattlefieldBackdropTests.swift in Sources */,
 				D9356C6D34D8829E5AA844DE /* BattlefieldViewportTests.swift in Sources */,
 				52EFF0E9F5732E24F902C1EC /* BoardEventTimelineTests.swift in Sources */,
+				CCE42022F5B475B88101270F /* BoardCardPresentationTests.swift in Sources */,
 				D786849AAF75733AD7291FD6 /* BoardZoneReferenceTests.swift in Sources */,
 				53DB4EABEA8F6D7B6209DB23 /* Build19LogicTests.swift in Sources */,
 				B4CE2A5C9E5A26961D2A82A0 /* CardChoicePlanTests.swift in Sources */,
