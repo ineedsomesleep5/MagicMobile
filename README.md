@@ -16,7 +16,7 @@ XMage owns rules, legal choices, priority, the stack and authoritative game stat
 - [Latest recorded release](release/testflight/COMMANDER_POLISH_20260916.md):
   build 0.1.0 (2026091601), verification, screenshots and known limitations.
   Apple review status in release records is a dated observation.
-- [Release records](release/testflight) and
+- [Release records](release) and
   [native continuation](packages/ondevice-engine/docs/LOCAL_CONTINUATION_STATUS.md).
 - [Run a multiplayer server on your own PC](apps/multiplayer-server/selfhost/README.md):
   checksum-pinned Windows/macOS/Linux launcher and the remaining online setup requirements.
@@ -60,28 +60,23 @@ the catalogue, validate engine/app compatibility, publish a draft PR, then revie
 merge and release. Candidate builds, PR publication, native signing and TestFlight
 delivery are explicit steps; the weekly job does not automatically merge or ship.
 
-## Repository layout and retained earlier work
+## Repository layout
 
 | Path | Role |
 | --- | --- |
 | `apps/ios` | Active native iOS product and its unit/UI tests |
+| `apps/android` | Native Android (Compose) port of the iOS app |
 | `packages/ondevice-engine` | Embedded XMage engine, native bridge and verification |
 | `apps/ios-ondevice` | Engineering inspection harness |
-| `scripts/ios`, `release/testflight` | Native release tooling and delivery records |
+| `apps/multiplayer-server`, `services/table-relay`, `supabase` | Online play: self-hosted engine server, cross-play table relay and matchmaking schema |
+| `apps/site` | Download website |
+| `scripts/ios`, `scripts/release`, `release/` | Release tooling and delivery records |
 | `scripts/magicmobile-maintenance` | Upstream detection and reviewed update preparation |
-| `apps/web`, `apps/mobile`, `apps/xmage-gateway` | Earlier web/Expo/hosted-engine work, retained for reference and possible future web development |
-| TypeScript packages under `packages/` | Earlier web contracts, UI and service integrations |
 
-The historical [web architecture](ARCHITECTURE.md), [hosted deployment](DEPLOY.md)
-and [initial implementation plan](IMPLEMENTATION_PLAN.md) describe that earlier
-direction. Legacy web checks remain in CI to catch regressions in retained code.
+The earlier web app, hosted XMage gateway and TypeScript packages were removed; they are preserved at the [`archive/legacy-web`](https://github.com/ineedsomesleep5/MagicMobile/tree/archive/legacy-web) tag, with their docs in [docs/archive](docs/archive/README.md).
+
 The on-device workflow runs engine/protocol and portable app checks for native
 changes on PRs and `main`. Full simulator and native release gates remain separate.
-
-A future browser client could reuse the web UI/contracts and a hosted XMage
-service. The embedded iOS binary and SwiftUI interface do not run directly in a
-browser; that would be a separate delivery project. No web deployment is required
-for the current iOS app.
 
 ## Verification boundaries
 

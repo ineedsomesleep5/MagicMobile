@@ -1,8 +1,8 @@
 # MagicMobile Implementation Plan
 
 > Historical initial web/Expo plan. Current development focuses on native iOS;
-> see the [repository guide](README.md) and
-> [Commander implementation ledger](packages/ondevice-engine/docs/COMMANDER_POLISH_EXECUTION.md).
+> see the [repository guide](../../README.md) and
+> [Commander implementation ledger](../../packages/ondevice-engine/docs/COMMANDER_POLISH_EXECUTION.md).
 
 ## Milestone Goal
 

@@ -275,7 +275,7 @@ If the gauntlet fails, keep the generated JSON report as a local/CI artifact und
 
 ## iPhone 16 Pro Max Manual QA Checklist
 
-Real iPhone QA is required before product release. Simulator screenshots, simulator gameplay, and generic iPhoneOS builds do not count as product success. Keep visual/layout evidence in [IOS_VISUAL_QA_CHECKLIST.md](IOS_VISUAL_QA_CHECKLIST.md) and keep backend route proof in smoke reports.
+Real iPhone QA is required before product release. Simulator screenshots, simulator gameplay, and generic iPhoneOS builds do not count as product success. Keep visual/layout evidence in [IOS_VISUAL_QA_CHECKLIST.md](../IOS_VISUAL_QA_CHECKLIST.md) and keep backend route proof in smoke reports.
 
 - [ ] Put the iPhone 16 Pro Max and development Mac on the same Wi-Fi.
 - [ ] Start Docker with fixtures enabled: `ENABLE_XMAGE_FIXTURES=true NODE_ENV=test docker compose up -d --build xmage-bridge xmage-gateway`.
@@ -306,7 +306,7 @@ Real iPhone QA is required before product release. Simulator screenshots, simula
 - [x] Confirm missing card art renders a placeholder and does not block gameplay in simulator visual QA.
 - [ ] Repeat missing-art and slow-image checks on a physical iPhone network before product release.
 
-Use [IOS_VISUAL_QA_CHECKLIST.md](IOS_VISUAL_QA_CHECKLIST.md) for the full simulator screenshot inventory, pass/fail criteria, known visual issues, and the real-device QA boundary.
+Use [IOS_VISUAL_QA_CHECKLIST.md](../IOS_VISUAL_QA_CHECKLIST.md) for the full simulator screenshot inventory, pass/fail criteria, known visual issues, and the real-device QA boundary.
 
 ### Casting And Mana Payment Regression
 

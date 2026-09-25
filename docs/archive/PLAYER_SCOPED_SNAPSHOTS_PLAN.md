@@ -19,7 +19,7 @@ In 1v1 vs AI, exposing all zones to the human player is acceptable since the AI 
 
 ## Current Implementation (Alpha)
 
-The gateway now has `obfuscateSnapshotForPlayer(snapshot, targetPlayerId)` in [server.mjs](../apps/xmage-gateway/server.mjs) and the Java bridge in [MagicMobileBridge.java](../apps/xmage-gateway/bridge/MagicMobileBridge.java).
+The gateway now has `obfuscateSnapshotForPlayer(snapshot, targetPlayerId)` in [server.mjs](https://github.com/ineedsomesleep5/MagicMobile/blob/archive/legacy-web/apps/xmage-gateway/server.mjs) and the Java bridge in [MagicMobileBridge.java](https://github.com/ineedsomesleep5/MagicMobile/blob/archive/legacy-web/apps/xmage-gateway/bridge/MagicMobileBridge.java).
 
 **What it does today:**
 - Replaces opponent hand card details with `{ name: "Hidden card" }` placeholders

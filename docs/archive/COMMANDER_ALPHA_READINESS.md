@@ -11,7 +11,7 @@ This document outlines the CI configuration status, Docker environment verificat
 
 ## 1. CI Workflow Status
 
-We inspected the CI configuration file [ci.yml](../.github/workflows/ci.yml).
+We inspected the CI configuration file [ci.yml](https://github.com/ineedsomesleep5/MagicMobile/blob/archive/legacy-web/.github/workflows/ci.yml).
 
 ### Key Properties:
 - **Environment**: Node.js `22`, pnpm `10.12.4`
@@ -37,7 +37,7 @@ If GitHub Actions does not appear in the repository UI after these files are pus
 
 ## 2. Docker Architecture Status
 
-The project runs on a 5-tier architecture defined in [docker-compose.yml](../docker-compose.yml):
+The project runs on a 5-tier architecture defined in [docker-compose.yml](https://github.com/ineedsomesleep5/MagicMobile/blob/archive/legacy-web/docker-compose.yml):
 
 | Service | Image/Context | Port(s) | Health Check Status | Description |
 |---|---|---|---|---|
@@ -181,12 +181,12 @@ pnpm smoke:xmage
 1. **Viewer-scoped Snapshots**: Multiplayer human pods need snapshot filtering so opponents cannot inspect other players' libraries or hands.
 2. **Advanced UI Prompts**: Mode, ability, pile, amount, multi-amount, order, commander replacement, and damage-assignment-as-multi-amount now have touch controls. Damage assignment labels the combat-damage `GAME_GET_MULTI_AMOUNT` prompt as an explicit allocation UI when XMage exposes per-blocker metadata. These still need real iPhone QA.
 3. **Card Art fallback**: Missing image URLs now render stable parchment-style placeholders with card name/type text and do not collapse layout while images load. Card tiles now expose zone-scoped accessibility labels/identifiers for hand selection and screenshot automation. Keep this under real iPhone QA with slow/missing Scryfall art.
-4. **Casting/payment manual QA**: The live gauntlet proves land, mana, spell, search, commander replacement, and payment prompt flow, but iPhone/web still need manual regression coverage for the two-lands-into-`Arcane Signet` case documented in [CASTING_AND_MANA_FLOW.md](CASTING_AND_MANA_FLOW.md).
+4. **Casting/payment manual QA**: The live gauntlet proves land, mana, spell, search, commander replacement, and payment prompt flow, but iPhone/web still need manual regression coverage for the two-lands-into-`Arcane Signet` case documented in [CASTING_AND_MANA_FLOW.md](../CASTING_AND_MANA_FLOW.md).
 5. **Long AI endurance**: Some runs can still expose AI waiting/stall behavior, especially with weaker fixture AI or awkward fixture decks. The bridge now pings the XMage remoting session and the smoke harness fails as `bridge-disconnected` if health drops; the app must continue surfacing AI thinking/stalled states honestly while targeted fixtures keep the core loop deterministic.
 6. **Full-AI fixture upkeep**: The no-server gate self-test proves the 21-scenario aggregate fails on omitted scenarios and broken route reports. Run the expanded live `commander-full-ai` fixture aggregate whenever bridge, fixture, prompt, or iOS command models change and before release evidence is cited.
 
 ### Exact blockers before iPhone alpha:
 1. Run the full validation set on the final checkout after doc updates.
-2. Perform real iPhone manual QA against the same fixture-ready gateway using [XMAGE_MOBILE_PLAYTEST_CHECKLIST.md](XMAGE_MOBILE_PLAYTEST_CHECKLIST.md) and [IOS_VISUAL_QA_CHECKLIST.md](IOS_VISUAL_QA_CHECKLIST.md); simulator success and generic iPhoneOS builds still do not count. Current device check showed Caleb's iPhone 16 Pro Max as `unavailable` and a separate physical iPhone (`Ruthie's iPhone 16`, reported as iPhone 16 Pro Max-class hardware) as `connected`; install/launch/play QA was not run on that device without explicit permission.
+2. Perform real iPhone manual QA against the same fixture-ready gateway using [XMAGE_MOBILE_PLAYTEST_CHECKLIST.md](XMAGE_MOBILE_PLAYTEST_CHECKLIST.md) and [IOS_VISUAL_QA_CHECKLIST.md](../IOS_VISUAL_QA_CHECKLIST.md); simulator success and generic iPhoneOS builds still do not count. Current device check showed Caleb's iPhone 16 Pro Max as `unavailable` and a separate physical iPhone (`Ruthie's iPhone 16`, reported as iPhone 16 Pro Max-class hardware) as `connected`; install/launch/play QA was not run on that device without explicit permission.
 3. Confirm the iOS `/play` experience surfaces source, bridge health, revision/cycle, priority, pending status, unsupported prompts, and failed commands without falling back to simulator.
 4. Automated full Commander vs AI route proof is locally green in `build_output/smoke/smoke-report-commander-full-ai.json` from the start of this iOS-only pass. Product readiness still requires real iPhone manual QA against the same gateway and a final confirmation that the iOS client can play without debug JSON or simulator fallback.

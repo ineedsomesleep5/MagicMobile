@@ -1,7 +1,7 @@
 # Deploying MagicMobile
 
 > Historical hosted web/gateway deployment. For the current embedded iOS app,
-> use the [repository guide](README.md) and [TestFlight records](release/testflight).
+> use the [repository guide](../../README.md) and [TestFlight records](../../release/testflight).
 
 This documents how code reaches the **hosted server** that the iOS app and web client
 talk to in production. The hosted server is the source of truth for live play; GitHub
@@ -104,5 +104,5 @@ Its default Server URL is the public HTTPS URL above; it can be pointed at the d
 
 Today this is single-user. Before a second human player (vs-human / pods), the bridge needs
 **viewer-scoped snapshots** so hands and libraries are hidden per player — see
-`docs/PLAYER_SCOPED_SNAPSHOTS_PLAN.md`. The gateway already has a `playerId` obfuscation hook
+`docs/archive/PLAYER_SCOPED_SNAPSHOTS_PLAN.md`. The gateway already has a `playerId` obfuscation hook
 (`obfuscateSnapshotForPlayer`) that this will build on.
