@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>XMage Web Engine Spike</title>
+    <style>
+      :root { color-scheme: light dark; --bg: #16130f; --fg: #f1e9dc; --muted: #a89c8a; --ok: #7fbf7f; --bad: #e0795b; --line: #3a322a; }
+      body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, -apple-system, sans-serif; }
+      h1 { font-size: 18px; margin: 0 0 4px; }
+      p { margin: 4px 0 12px; color: var(--muted); max-width: 70ch; }
+      #status { font-family: ui-monospace, monospace; color: var(--muted); }
+      table { border-collapse: collapse; margin-top: 12px; width: 100%; max-width: 980px; }
+      th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+      th { color: var(--muted); font-weight: 600; }
+      .ok { color: var(--ok); } .bad { color: var(--bad); }
+      .wrap { overflow-x: auto; }
+    </style>
+  </head>
+  <body>
+    <h1>XMage in the browser (CheerpJ) — spike bench</h1>
+    <p>
+      Spike only; ships nothing to players. The real XMage engine adapter runs in a Web Worker under
+      <a href="https://cheerpj.com/">CheerpJ</a> by Leaning Technologies (Community license, runtime from their CDN).
+      One scripted human seat plays against XMage AI; timings update live.
+    </p>
+    <div id="status">starting…</div>
+    <div class="wrap"><table id="ready"></table></div>
+    <div class="wrap"><table id="games"></table></div>
+    <div class="wrap"><table id="summary"></table></div>
+    <script type="module" src="./src/bench.ts"></script>
+  </body>
+</html>
