@@ -310,3 +310,8 @@ single MIT file with its license header when that is enough.
   landscape dock height test (priority help line is portrait-only). Landscape summaries
   carry the same portraits, thinking ring and quick chat (tap your summary).
 
+- 2026-09-24 (Claude): Build 19 shipped as TestFlight 0.1.1 build 17 (Apple `VALID`, Beta
+  App Review `APPROVED`, Internal and External groups; docs/RELEASE_0.1.1_BUILD17.md). It was
+  built with Xcode 26.6 (iOS 26.5 SDK) because the App Store Xcode 27 needs macOS 26.6+ and
+  this Mac is on 26.5. Next: Caleb's phone feedback, then rebuild with Xcode 27 (iOS 27 SDK)
+  as build 18 once he installs macOS 26.7 and Xcode 27.
