@@ -103,3 +103,9 @@ fun rememberHaptics(): android.view.View = LocalView.current
 
 @Composable
 fun densityValue(): Float = LocalDensity.current.density
+
+/** The board's `@Binding selectedCard` / `@Binding inspectedCard` pair. */
+class BoardSelection {
+    var selectedCard by mutableStateOf<io.magicmobile.android.game.ZoneCard?>(null)
+    var inspectedCard by mutableStateOf<io.magicmobile.android.game.ZoneCard?>(null)
+}
