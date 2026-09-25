@@ -8,18 +8,22 @@ iOS change has one obvious Android counterpart. Update the table and the log bef
 
 ## How the port is organized
 
-- **Game logic** (no Android dependencies, JVM-tested) lives in `apps/android/core/src/main/kotlin/io/magicmobile/android/game/`.
-- **Screens** (Compose) live in `apps/android/app/src/main/java/io/magicmobile/android/`,
-  under `ui/` (theme, icons, shared controls), `board/` (the game), `menu/` (home, setup,
-  settings, Sound Lab, downloads), `studio/` (deck library and Deck Studio) and `session/`
-  (engine session, runtime, multiplayer).
-- **Shared assets** come from the iOS app at build time: the card catalogue and precons
-  (`prepare_assets.py`), artwork PNGs (`prepareBrandAssets`), audio (`prepare_audio.py`, which
-  rewrites CAF as WAV) and ability icons (`svg_to_vector.py`, committed output).
-- **Fonts:** Apple's fonts cannot ship on Android. Inter stands in for SF Pro, Source Serif 4
-  for New York (`design: .serif`) and Nunito for SF Rounded. OFL licences are in `assets/licenses/`.
-- **Icons:** `ui/SfSymbols.kt` maps every SF Symbol the iOS app uses to a Material icon, and draws
-  the three with no Material counterpart (crown, skull, sparkle).
+- **Game logic** (no Android dependencies, JVM-tested) lives in `apps/android/core/src/main/kotlin/io/magicmobile/android/game/`,
+  and Deck Studio's logic in `core/.../studio/`.
+- **Screens** (Compose) live in `apps/android/app/src/main/java/io/magicmobile/android/`: `ui/` (theme, icons,
+  iOS-style controls), `board/` (the game, portrait and landscape), `ondevice/` (menu, setup, starting roll,
+  downloads, the engine runtime, multiplayer and the relay), `studio/` (Deck Studio) and `session/` (the
+  engine session).
+- **Shared assets** come from the iOS app at build time: the card catalogue, printing index and precons
+  (`prepare_assets.py`), artwork PNGs (`prepareBrandAssets`), audio (`prepare_audio.py`, which rewrites CAF
+  as WAV) and ability icons (`svg_to_vector.py`, committed output).
+- **Fonts:** Apple's fonts cannot ship on Android. Inter stands in for SF Pro, Source Serif 4 for New York
+  (`design: .serif`) and Nunito for SF Rounded, with widths fitted to CoreText (`AppleFontMetrics`). OFL
+  licences are in `assets/licenses/`.
+- **Icons:** `ui/SfSymbols.kt` maps every SF Symbol the iOS app uses to a Material icon, and draws the few
+  with no Material counterpart (crown, skull, sparkle).
+- **Cross-play:** iPhone and Android tables go through the relay in `services/table-relay` (a Cloudflare
+  Worker). Both apps speak the unchanged multiplayer protocol over it; see that README.
 
 ## Parity checks
 
@@ -39,24 +43,24 @@ iOS change has one obvious Android counterpart. Update the table and the log bef
 | MagicMobileOnDevice/EngineClient.swift, JSONValue.swift | core `game/EngineClient.kt`, `game/Json.kt` | Ported |
 | MagicMobileOnDevice/HostRouter.swift, PacketChunks.swift | core `game/HostRouter.kt` | Ported (same wire format) |
 | Models.swift | core `game/Models.kt` | Ported (server-only types omitted) |
-| OnDeviceSnapshotAdapter.swift | core `game/OnDeviceSnapshotAdapter.kt` | Ported, parity goldens pass |
-| OnDevicePromptAdapter.swift | core `game/OnDevicePromptAdapter.kt` | Ported, parity goldens pass |
+| OnDeviceSnapshotAdapter.swift, OnDevicePromptAdapter.swift | core `game/` same names | Ported, parity goldens pass |
 | OnDeviceMessageLog.swift, OnDeviceYieldPolicy.swift | core `game/` same names | Ported |
 | GameBoardInteractionState.swift, PortraitInteractionPolicy.swift, PromptCommandBuilder.swift | core `game/BoardInteraction.kt` | Ported |
 | BattlefieldViewportMetrics.swift, ArenaBoardPresentation.swift (logic) | core `game/BoardLayout.kt` | Ported |
 | ContentView.swift (rules: compact prompt, payment, guidance, combat, row planners, hand fan) | core `game/BoardPresentation.kt` | Ported |
 | GameBoardTheme.swift, GameBoardDesignTokens.swift, MagicPalette, BrandTheme | app `ui/Theme.kt` | Ported |
-| OnDeviceSession.swift | app `session/OnDeviceSession.kt` | Next |
-| ContentView.swift (NativeGameView and board views) | app `board/` | Next |
-| BoardFXOverlay.swift, BoardEventTimeline.swift | app `board/BoardFXOverlay.kt`, core `game/BoardEventTimeline.kt` | To do |
-| BoardCardChoiceView.swift, CardChoicePlan.swift | app `board/BoardCardChoiceView.kt`, core `game/CardChoicePlan.kt` | To do |
-| OpeningHandOverlay.swift, GameStats.swift, GameEmotes.swift, PlayerPortrait.swift | app `board/` | To do |
-| GameLogPresentation.swift | core `game/GameLogPresentation.kt` | To do |
-| GameAudio.swift, SoundLabView.swift | app `ui/GameAudio.kt`, `menu/SoundLabView.kt` | To do |
-| OnDeviceRootView.swift, BrandUI.swift, BrandMarkPaths.swift, MultiplayerD20View.swift, OnDeviceStartingRoll.swift | app `menu/` | To do |
-| OnDeviceMultiplayer.swift, GameKitTransport.swift | app `session/OnDeviceMultiplayer.kt` plus the relay transport | To do |
-| NativeDeckLibraryView.swift, DeckLibrary.swift, DeckStudio/* | app `studio/` | To do |
-| NativeDownloadsView.swift, NativeAssetDownloads.swift | app `menu/` (existing Android artwork store) | To do |
+| OnDeviceSession.swift | app `session/OnDeviceSession.kt` | Ported |
+| ContentView.swift NativeGameView (portrait board) | app `board/NativeGameView.kt`, `board/PortraitBoard.kt` and siblings | Ported |
+| ContentView.swift NativeGameView (landscape board) | app `board/LandscapeBoard.kt` | Ported |
+| BoardFXOverlay.swift, BoardEventTimeline.swift | app `board/BoardFXOverlay.kt`, core `game/BoardEventTimeline.kt` | Ported |
+| BoardCardChoiceView.swift, CardChoicePlan.swift | app `board/CardChoiceView.kt`, core `game/CardChoicePlan.kt` | Ported |
+| OpeningHandOverlay.swift, GameStats.swift, GameEmotes.swift, PlayerPortrait.swift | app `board/` | Ported |
+| GameLogPresentation.swift | core `game/GameLogPresentation.kt` | Ported |
+| GameAudio.swift, SoundLabView.swift | app `ui/GameAudio.kt`, `board/SettingsViews.kt` | Ported |
+| OnDeviceRootView.swift, BrandUI.swift, BrandMarkPaths.swift, MultiplayerD20View.swift, OnDeviceStartingRoll.swift | app `ondevice/`, `ui/BrandUI.kt`, `ui/D20Die.kt` | Ported |
+| OnDeviceMultiplayer.swift, RelayTransport.swift (GameKitTransport has no Android counterpart) | app `ondevice/OnDeviceMultiplayer.kt`, `ondevice/RelayTransport.kt` | Ported; relay tables only |
+| DeckStudio/*, DeckLibrary.swift, OnDeviceDeckEditing.swift, NativeDeckMetadataCatalogue.swift, OnDeviceDeckResolver.swift, OnDeviceDeckLinkImporter.swift | core `studio/`, app `studio/` | Ported (37 iOS tests ported) |
+| NativeDownloadsView.swift | app `ondevice/NativeDownloadsView.kt` (Android's download engine and service) | Ported |
 
 ## Log
 
@@ -64,3 +68,9 @@ iOS change has one obvious Android counterpart. Update the table and the log bef
   board rules ported; iOS/Android parity goldens pass for all 13 real engine fixtures and 12
   synthetic prompt cases. Theme, fonts, icons, shared artwork and audio staging added. Android
   native engine rebuilt from main (run 36091168558) with the build 19 engine (concede).
+- 2026-09-25 (Claude): Cross-play relay (services/table-relay, deployed to workers.dev) and both apps'
+  relay clients; an Android host and an iPhone simulator guest played a real match through it.
+  Deck Studio ported (library, workspace, import, ideas, analysis, playtest history) with its core
+  logic and tests; the landscape board and the Downloads sheet ported. Build 7 decks keep their files;
+  favourites, tags and notes migrate once to Deck Studio's stores. Remaining differences: font glyph
+  shapes (licensed stand-ins), a few borderline text wraps, and no Game Center (relay tables instead).
