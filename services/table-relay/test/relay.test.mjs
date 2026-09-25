@@ -12,22 +12,30 @@ const port = 8900 + Math.floor(Math.random() * 90);
 const base = process.env.RELAY_URL?.replace(/\/$/, "") ?? `http://127.0.0.1:${port}`;
 const socketBase = base.replace(/^http/, "ws");
 let server;
+let serverLog = "";
 
 before(async () => {
   if (process.env.RELAY_URL) return;
   // test/strict-storage.js is the relay with production's storage entry limit enforced locally.
+  // Its own process group, so stopping it also stops wrangler and workerd under npx.
   server = spawn("npx", ["--yes", "wrangler@4", "dev", "test/strict-storage.js", "--local", "--port", String(port), "--ip", "127.0.0.1",
     "--persist-to", path.join(root, ".wrangler/test-state")],
-    { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    { cwd: root, stdio: ["ignore", "ignore", "pipe"], detached: true });
+  server.stderr.on("data", (chunk) => { serverLog = (serverLog + chunk).slice(-4000); });
   const deadline = Date.now() + 90_000;
   while (Date.now() < deadline) {
     try { if ((await fetch(`${base}/health`)).ok) return; } catch { /* starting */ }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  throw new Error("wrangler dev did not start");
+  throw new Error(`wrangler dev did not start:\n${serverLog}`);
 });
 
-after(() => server?.kill("SIGTERM"));
+after(() => {
+  if (!server) return;
+  try { process.kill(-server.pid, "SIGTERM"); } catch { /* already stopped */ }
+  server.stderr.destroy();
+  server.unref();
+});
 
 /** A socket with an inbox so tests can await specific frames. */
 function connect(code, params) {
