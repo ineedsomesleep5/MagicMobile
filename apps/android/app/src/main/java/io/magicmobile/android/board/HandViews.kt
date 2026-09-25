@@ -120,6 +120,8 @@ fun PortraitHandRow(
     onInteractionMode: (GameBoardInteractionMode) -> Unit, playerDropZone: BoardRect, onOverPlayerDropZone: (Boolean) -> Unit,
     cardWidth: Float, cardHeight: Float, rowWidth: Float, onDropFeedback: (String) -> Unit,
     onActionChoice: (List<LegalAction>, String) -> Unit, runAction: (LegalAction) -> Unit, modifier: Modifier = Modifier,
+    /** A spectator's stand-in: their hand stays hidden and only its size shows. */
+    hiddenCount: Int? = null,
 ) {
     val boardFXLevel by AppPreferences.string(BoardFXLevel.key, BoardFXLevel.defaultValue)
     val registry = LocalCardBounds.current
@@ -315,7 +317,7 @@ fun PortraitHandRow(
                     .border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.55f), CircleShape).padding(horizontal = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     SfImage(if (handExpanded) "chevron.down" else "chevron.up", MagicPalette.parchment, 11.dp)
-                    Text("Hand · ${cards.size}", color = MagicPalette.parchment, style = sf(11f, SfWeight.bold))
+                    Text("Hand · ${hiddenCount ?: cards.size}", color = MagicPalette.parchment, style = sf(11f, SfWeight.bold))
                 }
             }
             PortraitScrollScrubber(scroll.progress, contentWidth + 8 > rowWidth + 1, scroll::scrollTo, Modifier.weight(1f))

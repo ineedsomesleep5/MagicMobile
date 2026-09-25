@@ -276,15 +276,16 @@ fun GameCompletionOverlay(snapshot: GameSnapshot, newGame: () -> Unit, quitGame:
 /** Shown instead of your controls once you're out of a pod: the game plays on without you. */
 @Composable
 fun SpectatorBar(snapshot: GameSnapshot, leave: () -> Unit, modifier: Modifier = Modifier) {
-    val count = snapshot.remainingOpponents.size
-    val detail = "You’re out · ${if (count == 1) "1 player still in" else "$count players still in"} · Turn ${snapshot.turn}"
+    // Whose seat the bottom of the board shows while you watch.
+    val detail = io.magicmobile.android.game.SpectatorSeatPresentation.detail(snapshot)
     Row(modifier.glow(Color.Black.copy(alpha = 0.45f), 12.dp, 18.dp).background(MagicPalette.iron.copy(alpha = 0.94f), RoundedCornerShape(18.dp))
         .border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.42f), RoundedCornerShape(18.dp)).padding(horizontal = 12.dp, vertical = 7.dp)
         .semantics { contentDescription = "board.spectator" }, horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(40.dp).background(Color.Black.copy(alpha = 0.35f), CircleShape).border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.45f), CircleShape),
             contentAlignment = Alignment.Center) { SfImage("eye.fill", MagicPalette.antiqueGold, 18.dp) }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("Watching", color = Color.White, style = sf(16f, SfWeight.black, SfDesign.ROUNDED))
+            FitText(io.magicmobile.android.game.SpectatorSeatPresentation.title(snapshot), sf(16f, SfWeight.black, SfDesign.ROUNDED),
+                color = Color.White, minimumScale = 0.75f)
             FitText(detail, SfText.caption(SfWeight.semibold), color = MagicPalette.parchment.copy(alpha = 0.78f), minimumScale = 0.8f)
         }
         CompactActionButton(leave, Modifier.semantics { contentDescription = "board.spectator.leave" }) { CompactActionText("Leave") }
@@ -439,6 +440,7 @@ fun GameManagementMenu(snapshot: GameSnapshot, concedeAction: LegalAction?, runA
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 BoardAppearancePicker()
                 PortraitModeToggle(portraitModeEnabled, setPortraitModeEnabled)
+                FollowTurnsToggle()
                 BoardEffectsPicker()
                 if (snapshot.isSpectating) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     SfImage("eye.fill", MagicPalette.parchment.copy(alpha = 0.8f), 12.dp)
