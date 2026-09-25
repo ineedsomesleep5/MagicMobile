@@ -35,7 +35,7 @@
 
 ## Releases and permissions
 
-- Android work and releases are paused at Caleb's request (September 21, 2026) until he explicitly resumes them. Ship authorized iOS updates independently; preserve the existing Android artifact, versionCode and download links. Keep marketing version 0.1.1 and increment the iOS visible build after checking Apple and the ledger. Resume platform parity only when Android work is resumed.
+- Caleb resumed Android on September 24, 2026 (it had been paused since September 21). The goal is a native Compose app that matches the iOS app screen for screen and plays online games with iPhones. Keep marketing version 0.1.1 on both platforms. Increment the iOS visible build after checking Apple and the ledger. Increment the Android versionCode above the last published APK, and keep earlier Android downloads available.
 - Checking a build number or release status is read-only. Preparing a build number is a local mutation. Uploading, distributing and changing store/provider configuration require authorization for that action.
 - Before release, verify the selected source and artifact, existing com.calebfeliciano.magicmobile identity, build-number availability, and applicable native, signing, privacy and runtime gates. Keep real-engine evidence separate from toy probes and fixtures.
 - Preserve the user's chosen route: direct phone installation and TestFlight are different workflows. Lack of USB is not a blocker for a TestFlight request; it remains a blocker for an actual requested direct install.
