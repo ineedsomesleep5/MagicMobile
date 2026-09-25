@@ -32,6 +32,9 @@ class PrintingIndex(input: InputStream) {
     }
 
     val size: Int get() = printings.size
+    val names: Set<String> get() = printings.keys
+    /** Combined-face names ("Front // Back") mapped to the exact printing name. */
+    val nameAliases: Map<String, String> get() = aliases
     fun find(name: String): Printing? = printings[name] ?: aliases[name]?.let(printings::get)
 
     /** Catalogue.resolve: the engine's deck configuration, rejecting unknown sections and cards. */

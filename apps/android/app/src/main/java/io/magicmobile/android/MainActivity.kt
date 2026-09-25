@@ -60,6 +60,7 @@ class MainActivity: ComponentActivity() {
         io.magicmobile.android.ui.GameAudio.init(this)
         // Menus and the board are always dark, like the iOS app.
         WindowCompat.getInsetsController(window,window.decorView).apply{isAppearanceLightStatusBars=false;isAppearanceLightNavigationBars=false}
+        io.magicmobile.android.studio.DeckStudioServices.install(this)
         if(DesignPreview.active) setContent { DesignPreviewHost() }
         else setContent { io.magicmobile.android.ondevice.OnDeviceRoot(onDevice) }
     }

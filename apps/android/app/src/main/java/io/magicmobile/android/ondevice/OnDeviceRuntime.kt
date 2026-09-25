@@ -71,6 +71,7 @@ class NativeEngineTransport private constructor(private val token: Long) : Engin
 class OnDeviceRuntimeManager {
     private val ownerID = UUID.randomUUID()
     private var transport: NativeEngineTransport? = null
+    private var recording: io.magicmobile.android.studio.DeckStudioRecordingTransport? = null
     private var changing = false
     private var destroyedMatchID: String? = null
     private var startupDiagnostic: String? = null
@@ -90,7 +91,7 @@ class OnDeviceRuntimeManager {
         startupDiagnostic = null
     }
 
-    suspend fun makeClient(identity: BuildIdentity): EngineClient {
+    suspend fun makeClient(identity: BuildIdentity, observePlaytests: Boolean = true): EngineClient {
         if (changing || transport != null) throw EngineError.InvalidMessage("Close the previous native runtime first")
         if (owner != null) throw EngineError.InvalidMessage("Finish the active game or retry pending validation cleanup before opening another engine")
         changing = true
@@ -99,7 +100,12 @@ class OnDeviceRuntimeManager {
             owner = ownerID
             val native = try { NativeEngineTransport.open() } catch (error: Throwable) { if (owner == ownerID) owner = null; throw error }
             transport = native
-            val client = EngineClient(native)
+            // Local AI games feed the opt-in Deck Studio history, as on iOS; validation does not.
+            val client = if (observePlaytests) {
+                val observer = io.magicmobile.android.studio.DeckStudioRecordingTransport(native)
+                recording = observer
+                EngineClient(observer)
+            } else EngineClient(native)
             try {
                 val capabilities = client.capabilities()
                 validate(capabilities, identity)
@@ -107,7 +113,7 @@ class OnDeviceRuntimeManager {
                 return client
             } catch (error: Throwable) {
                 runCatching { client.call("diagnostics")["report"].string }.getOrNull()?.let { startupDiagnostic = it.take(16_384) }
-                try { native.close(); transport = null; if (owner == ownerID) owner = null } catch (_: Throwable) { /* Retain ownership for retry. */ }
+                try { native.close(); transport = null; recording = null; if (owner == ownerID) owner = null } catch (_: Throwable) { /* Retain ownership for retry. */ }
                 throw error
             }
         } finally { changing = false }
@@ -134,7 +140,8 @@ class OnDeviceRuntimeManager {
     private suspend fun closeTransport() {
         val transport = transport ?: return
         transport.close()
-        this.transport = null; capabilities = null; destroyedMatchID = null
+        recording?.runtimeClosed()
+        this.transport = null; recording = null; capabilities = null; destroyedMatchID = null
         if (owner == ownerID) owner = null
     }
 

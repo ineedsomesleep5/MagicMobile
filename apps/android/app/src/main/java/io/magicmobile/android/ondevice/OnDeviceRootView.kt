@@ -378,9 +378,10 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         table?.onEmote = { name, emote -> vm.emotes.receive(emote, name, session.snapshot) }
     }
 
-    BackHandler(enabled = !activeGame && (showSetup || showDecks)) {
+    // Deck Studio handles Back itself while it is open.
+    BackHandler(enabled = !activeGame && showSetup && !showDecks) {
         GameAudio.play(GameSound.UI_BACK)
-        if (showDecks) showDecks = false else if (!setup.isBusy && !setup.needsLeave) showSetup = false
+        if (!setup.isBusy && !setup.needsLeave) showSetup = false
     }
     BackHandler(enabled = activeGame) { requestLeave() }
 
@@ -514,8 +515,11 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 AppearanceSettings(portraitModeEnabled, { portraitModeEnabled = it }, inGame = activeGame) { showAppearance = false }
             }
             if (showUpdates) BoardSheet({ showUpdates = false }) { UpdatesSheet(setup.identity?.upstreamCommit) { showUpdates = false } }
-            if (showDecks) DecksSheet(setup, selectedDeckID, { selectedDeckID = it }, close = { showDecks = false },
-                play = { showDecks = false; showSetup = true })
+            // DeckStudioRootView, full screen over the menu (fullScreenCover on iOS).
+            io.magicmobile.android.studio.StudioCover(showDecks) {
+                io.magicmobile.android.studio.DeckStudioRootView(setup, selectedDeckID, { selectedDeckID = it },
+                    preparePlay = { showSetup = true }, dismiss = { showDecks = false })
+            }
             if (showDownloads) {
                 LaunchedEffect(Unit) { setup.loadCatalogue() }
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).windowInsetsPadding(WindowInsets.safeDrawing)) {
@@ -784,80 +788,6 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
     }
 }
 
-/**
- * Decks: choose an included or saved deck, or import one from text (OnDeviceTextImportView).
- * Deck Studio's full editor replaces this list.
- */
-@Composable
-private fun DecksSheet(setup: OnDeviceSetupModel, selectedDeckID: String, select: (String) -> Unit, close: () -> Unit, play: () -> Unit) {
-    val scope = rememberCoroutineScope()
-    var importing by remember { mutableStateOf(false) }
-    var name by remember { mutableStateOf("Imported Commander Deck") }
-    var text by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    Box(Modifier.fillMaxSize().background(BrandTheme.canvas)) {
-        BrandBackdrop(Modifier.fillMaxSize(), cards = false)
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-            IosSheetHeader(if (importing) "Import deck text" else "Decks", { if (importing) importing = false else close() },
-                doneTitle = if (importing) "Cancel" else "Done")
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (importing) {
-                    IosListSection("Deck", footer = "Use Commander, Deck, and Companion headings, then one card per line, such as 1 Sol Ring. Card names must match this app’s local catalogue.") {
-                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            IosTextField(name, { name = it.take(120) }, "Deck name")
-                            IosTextField(text, { text = it }, "Deck list", Modifier.semantics { contentDescription = "Deck list text" }, singleLine = false,
-                                monospaced = true, minHeight = 220.dp)
-                        }
-                    }
-                    error?.let { Text(it, color = MagicPalette.warningAmber, style = SfText.body()) }
-                    BrandButton({
-                        scope.launch {
-                            try {
-                                val preview = DeckTextImport.preview(name.trim().ifEmpty { "Imported Commander Deck" }, text)
-                                setup.resolve(preview.deck)
-                                val saved = setup.store.save(preview.deck)
-                                setup.reloadLocalDecks()
-                                select("local:${saved.id}")
-                                importing = false; text = ""; error = null
-                            } catch (failure: Throwable) { error = failure.message ?: "That list could not be imported." }
-                        }
-                    }, enabled = text.isNotBlank()) { BrandButtonText("Import and use deck") }
-                } else {
-                    BrandButton({ play() }) { BrandButtonText("Play with this deck") }
-                    BrandButton({ importing = true }, kind = BrandButtonKind.SECONDARY) {
-                        SfImage("doc.text", BrandTheme.ink, 17.dp)
-                        BrandButtonText("Import deck text", BrandButtonKind.SECONDARY)
-                    }
-                    DeckRows("Included precons", setup.precons.map { "precon:${it.id}" to (it.name to it.commander) }, selectedDeckID, select)
-                    if (setup.localDecks.isNotEmpty()) DeckRows("Saved on this device", setup.localDecks.map { "local:${it.id}" to (it.deck.name to it.deck.commanderName) },
-                        selectedDeckID, select)
-                }
-            }
-        }
-    }
-    BackHandler { if (importing) importing = false else close() }
-}
-
-@Composable
-private fun DeckRows(title: String, rows: List<Pair<String, Pair<String, String?>>>, selectedDeckID: String, select: (String) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        BrandDivider(Modifier.fillMaxWidth(), title = title)
-        rows.forEach { (id, info) ->
-            val selected = id == selectedDeckID
-            Row(Modifier.fillMaxWidth().brandPanel(12.dp).clickable { GameAudio.play(GameSound.UI_TAP); select(id) },
-                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                CommanderDeckPortrait(info.second, Modifier.size(52.dp, 72.dp))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(info.first, color = BrandTheme.ink, style = SfText.headline(), maxLines = 2)
-                    info.second?.let { Text(it, color = BrandTheme.inkSecondary, style = SfText.caption(), maxLines = 1) }
-                }
-                SfImage(if (selected) "checkmark.circle.fill" else "circle", if (selected) BrandTheme.ember else BrandTheme.inkSecondary, 20.dp)
-            }
-        }
-    }
-}
-
-/** AI seats a relay table adds beyond its human players (the Game Center AI count on iOS). */
 private fun onlineAICount(humans: Int): Int = AppPreferences.int("magicmobile.relay.aiOpponentCount", 0).value.coerceIn(0, maxOf(0, 4 - humans))
 
 /** Host or join a cross-play table, then the match room (OnDeviceRootView's Game Center section, over the relay). */

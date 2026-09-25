@@ -57,45 +57,51 @@ sealed class MenuEntry {
 
 private val menuBackground = rgb(0.17, 0.17, 0.18).copy(alpha = 0.98f)
 private val menuSeparator = Color.White.copy(alpha = 0.12f)
+/** The light appearance Deck Studio uses (`.preferredColorScheme(.light)`). */
+private val lightMenuBackground = rgb(0.97, 0.97, 0.97).copy(alpha = 0.99f)
+private val lightMenuSeparator = Color.Black.copy(alpha = 0.12f)
 
 /** An iOS-style pull-down menu: a dark rounded panel of 44-point rows anchored to its label. */
 @Composable
-fun BoardMenu(entries: () -> List<MenuEntry>, modifier: Modifier = Modifier, enabled: Boolean = true, label: @Composable () -> Unit) {
+fun BoardMenu(entries: () -> List<MenuEntry>, modifier: Modifier = Modifier, enabled: Boolean = true, light: Boolean = false,
+              label: @Composable () -> Unit) {
     var open by remember { mutableStateOf(false) }
+    val background = if (light) lightMenuBackground else menuBackground
     Box(modifier) {
         PressableBox({ open = true }, enabled = enabled) { label() }
-        MaterialTheme(colorScheme = darkColorScheme(surface = menuBackground, surfaceContainer = menuBackground)) {
-            DropdownMenu(open, { open = false }, Modifier.background(menuBackground).widthIn(min = 220.dp, max = 300.dp), offset = DpOffset(0.dp, 4.dp),
-                shape = RoundedCornerShape(13.dp), containerColor = menuBackground) {
-                MenuEntries(if (open) entries() else emptyList()) { open = false }
+        MaterialTheme(colorScheme = darkColorScheme(surface = background, surfaceContainer = background)) {
+            DropdownMenu(open, { open = false }, Modifier.background(background).widthIn(min = 220.dp, max = 300.dp), offset = DpOffset(0.dp, 4.dp),
+                shape = RoundedCornerShape(13.dp), containerColor = background) {
+                MenuEntries(if (open) entries() else emptyList(), light) { open = false }
             }
         }
     }
 }
 
 @Composable
-private fun MenuEntries(entries: List<MenuEntry>, dismiss: () -> Unit) {
+private fun MenuEntries(entries: List<MenuEntry>, light: Boolean, dismiss: () -> Unit) {
+    val ink = if (light) Color.Black else Color.White
     entries.forEachIndexed { index, entry ->
         when (entry) {
             is MenuEntry.Item -> Row(Modifier.fillMaxWidth().heightIn(min = 44.dp)
                 .clickable(enabled = entry.enabled) { dismiss(); entry.action() }
                 .padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (entry.checked) SfImage("checkmark", Color.White, 14.dp, Modifier.padding(end = 8.dp))
+                if (entry.checked) SfImage("checkmark", ink, 14.dp, Modifier.padding(end = 8.dp))
                 Text(entry.title, Modifier.weight(1f), color = when {
-                    !entry.enabled -> Color.White.copy(alpha = 0.3f); entry.destructive -> rgb(1.0, 0.27, 0.23); else -> Color.White
+                    !entry.enabled -> ink.copy(alpha = 0.3f); entry.destructive -> rgb(1.0, 0.27, 0.23); else -> ink
                 }, style = sf(17f))
-                entry.icon?.let { SfImage(it, if (entry.enabled) Color.White else Color.White.copy(alpha = 0.3f), 17.dp) }
+                entry.icon?.let { SfImage(it, when { !entry.enabled -> ink.copy(alpha = 0.3f); entry.destructive -> rgb(1.0, 0.27, 0.23); else -> ink }, 17.dp) }
             }
             is MenuEntry.Label -> Text(entry.title, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 11.dp),
-                color = Color.White.copy(alpha = 0.9f), style = sf(17f))
+                color = ink.copy(alpha = 0.9f), style = sf(17f))
             is MenuEntry.Section -> {
-                if (index > 0) Box(Modifier.fillMaxWidth().height(8.dp).background(Color.Black.copy(alpha = 0.25f)))
-                Text(entry.title, Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp), color = Color.White.copy(alpha = 0.55f), style = sf(13f))
+                if (index > 0) Box(Modifier.fillMaxWidth().height(8.dp).background(Color.Black.copy(alpha = if (light) 0.06f else 0.25f)))
+                Text(entry.title, Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp), color = ink.copy(alpha = 0.55f), style = sf(13f))
             }
-            MenuEntry.Divider -> Box(Modifier.fillMaxWidth().height(8.dp).background(Color.Black.copy(alpha = 0.25f)))
+            MenuEntry.Divider -> Box(Modifier.fillMaxWidth().height(8.dp).background(Color.Black.copy(alpha = if (light) 0.06f else 0.25f)))
         }
         if (entry is MenuEntry.Item && index < entries.lastIndex && entries[index + 1] is MenuEntry.Item) {
-            HorizontalDivider(thickness = 0.5.dp, color = menuSeparator)
+            HorizontalDivider(thickness = 0.5.dp, color = if (light) lightMenuSeparator else menuSeparator)
         }
     }
 }
@@ -104,7 +110,11 @@ private fun MenuEntries(entries: List<MenuEntry>, dismiss: () -> Unit) {
 data class ConfirmationAction(val title: String, val destructive: Boolean = false, val action: () -> Unit)
 
 @Composable
-fun ConfirmationDialog(title: String, message: String?, actions: List<ConfirmationAction>, cancelTitle: String = "Cancel", dismiss: () -> Unit) {
+fun ConfirmationDialog(title: String, message: String?, actions: List<ConfirmationAction>, cancelTitle: String = "Cancel", light: Boolean = false,
+                       dismiss: () -> Unit) {
+    val menuBackground = if (light) Color.White.copy(alpha = 0.97f) else menuBackground
+    val menuSeparator = if (light) lightMenuSeparator else menuSeparator
+    val caption = if (light) Color.Black.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.6f)
     Dialog(dismiss, DialogProperties(usePlatformDefaultWidth = false)) {
         Column(Modifier.fillMaxSize().clickable(onClick = dismiss, indication = null,
             interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() })
@@ -112,8 +122,8 @@ fun ConfirmationDialog(title: String, message: String?, actions: List<Confirmati
             Column(Modifier.fillMaxWidth().background(menuBackground, RoundedCornerShape(14.dp))) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(title, color = Color.White.copy(alpha = 0.6f), style = sf(13f, SfWeight.semibold))
-                    message?.let { Text(it, color = Color.White.copy(alpha = 0.6f), style = sf(13f), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
+                    Text(title, color = caption, style = sf(13f, SfWeight.semibold))
+                    message?.let { Text(it, color = caption, style = sf(13f), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
                 }
                 for (action in actions) {
                     HorizontalDivider(thickness = 0.5.dp, color = menuSeparator)

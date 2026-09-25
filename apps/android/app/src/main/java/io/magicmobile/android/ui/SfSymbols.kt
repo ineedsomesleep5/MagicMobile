@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.LibraryBooks
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.NoteAdd
@@ -20,6 +21,8 @@ import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Cancel
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Pending
+import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material.icons.outlined.Collections
 import androidx.compose.material.icons.outlined.CropPortrait
 import androidx.compose.material.icons.outlined.Delete
@@ -141,13 +144,19 @@ object SfSymbols {
         "network" -> Icons.Filled.Hub
         "network.slash" -> Icons.Filled.CloudOff
         "line.3.horizontal.decrease" -> Icons.Filled.FilterList
+        "line.3.horizontal.decrease.circle.fill" -> Icons.Filled.FilterAlt
+        "list.bullet" -> Icons.AutoMirrored.Filled.List
+        "star" -> Icons.Outlined.StarOutline
+        "star.fill" -> Icons.Filled.Star
+        "wifi.exclamationmark" -> Icons.Filled.WifiOff
         "hourglass" -> Icons.Outlined.HourglassEmpty
         "flag.fill" -> Icons.Filled.Flag
         "flag.checkered" -> Icons.Filled.SportsScore
         "eye" -> Icons.Outlined.Visibility
         "eye.fill" -> Icons.Filled.Visibility
         "eye.trianglebadge.exclamationmark" -> Icons.Outlined.RemoveRedEye
-        "ellipsis", "ellipsis.circle" -> Icons.Filled.MoreHoriz
+        "ellipsis" -> Icons.Filled.MoreHoriz
+        "ellipsis.circle" -> Icons.Outlined.Pending
         "bolt" -> Icons.Outlined.Bolt
         "bolt.fill" -> Icons.Filled.Bolt
         "bolt.circle.fill" -> Icons.Filled.OfflineBolt
@@ -172,7 +181,7 @@ object SfSymbols {
         "globe" -> Icons.Filled.Language
         "forward.end" -> Icons.Outlined.SkipNext
         "forward.end.fill" -> Icons.Filled.SkipNext
-        "ellipsis.circle.fill" -> Icons.Filled.MoreHoriz
+        "ellipsis.circle.fill" -> Icons.Filled.Pending
         "list.bullet.rectangle.portrait" -> Icons.AutoMirrored.Filled.ListAlt
         "speaker.wave.2.fill" -> Icons.Filled.VolumeUp
         "stop.fill" -> Icons.Filled.Stop

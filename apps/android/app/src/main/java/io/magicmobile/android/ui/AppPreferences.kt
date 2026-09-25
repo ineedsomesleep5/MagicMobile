@@ -36,6 +36,8 @@ object AppPreferences {
         persisted(mutableStateOf(prefs?.getString(key, null)?.toDoubleOrNull() ?: default)) { prefs?.edit()?.putString(key, it.toString())?.apply() }
     }
     fun contains(key: String): Boolean = prefs?.contains(key) == true
+    /** The underlying store, for payloads kept as raw strings (Deck Studio drafts and preferences). */
+    fun raw(): SharedPreferences? = prefs
     fun remove(key: String) { prefs?.edit()?.remove(key)?.apply(); strings.remove(key); booleans.remove(key); ints.remove(key); doubles.remove(key) }
 
     private fun <T> persisted(state: MutableState<T>, save: (T) -> Unit): MutableState<T> = object : MutableState<T> by state {

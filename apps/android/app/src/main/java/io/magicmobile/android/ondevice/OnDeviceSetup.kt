@@ -153,6 +153,21 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
         }
     }
 
+    /** The compact printing index, once `prepare()` has loaded it. */
+    val printingIndex: PrintingIndex? get() = printings
+
+    /** Deck Studio's library store: saved decks stay in this model's deck store. */
+    val library: io.magicmobile.android.studio.DeckLibraryStore by lazy {
+        io.magicmobile.android.studio.DeckLibraryStore(store) { saved -> localDecks = saved }
+    }
+
+    /** The full catalogue, loading it on first use. */
+    suspend fun awaitCatalogue(): Catalogue {
+        catalogue?.let { return it }
+        loadCatalogue()
+        return catalogueLoad?.await() ?: catalogue ?: throw EngineError.InvalidMessage("The local card catalogue could not be loaded.")
+    }
+
     fun reloadLocalDecks() {
         scope.launch { runCatching { withContext(Dispatchers.IO) { store.all() } }.onSuccess { localDecks = it } }
     }
