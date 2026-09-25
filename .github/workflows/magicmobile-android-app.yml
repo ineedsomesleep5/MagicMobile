@@ -1,7 +1,7 @@
 name: Android app checks
 on:
   push:
-    branches: [main, codex/android-ios-parity]
+    branches: [main]
     paths:
       - 'apps/android/**'
       - 'scripts/android/**'
