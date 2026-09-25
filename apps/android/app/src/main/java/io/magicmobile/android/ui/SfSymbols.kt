@@ -33,6 +33,7 @@ import androidx.compose.material.icons.outlined.LocalOffer
 import androidx.compose.material.icons.outlined.NightsStay
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.PanTool
+import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material.icons.outlined.RemoveRedEye
 import androidx.compose.material.icons.outlined.SkipNext
@@ -180,6 +181,7 @@ object SfSymbols {
         "flame.fill" -> Icons.Filled.LocalFireDepartment
         "externaldrive" -> Icons.Filled.Storage
         "dice" -> Icons.Filled.Casino
+        "circle" -> Icons.Outlined.RadioButtonUnchecked
         "books.vertical" -> Icons.AutoMirrored.Outlined.LibraryBooks
         "books.vertical.fill" -> Icons.AutoMirrored.Filled.LibraryBooks
         "bell" -> Icons.Outlined.Notifications

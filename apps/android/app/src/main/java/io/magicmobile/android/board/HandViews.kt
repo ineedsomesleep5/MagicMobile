@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToUp
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.boundsInRoot
@@ -167,6 +168,8 @@ fun PortraitHandRow(
         val scale by animateFloatAsState(if (selected) 1.05f else 1f, if (reduceMotion) tween(0) else spring(0.8f, 500f), label = "handScale")
         val currentCard by rememberUpdatedState(card)
         val currentActions by rememberUpdatedState(playableActions)
+        val currentLegalActions by rememberUpdatedState(legalActions)
+        val currentDropZone by rememberUpdatedState(playerDropZone)
         val cardX = 4 + index * (cardWidth + spacing)
         Box(Modifier
             .zIndex(if (isDragging) 1000f else if (selected) 900f else index.toFloat())
@@ -180,59 +183,86 @@ fun PortraitHandRow(
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val slop = viewConfiguration.touchSlop
-                    // 0 = tap, 1 = hold, 2 = drag up, 3 = browse (the scroller owns it) or cancel.
-                    val outcome = withTimeoutOrNull(350) {
+                    // Like UIKit's recognizers, decide by when each touch happened, not when it was delivered.
+                    val deadline = down.uptimeMillis + 350
+                    // 0 = tap, 2 = drag up, 3 = browse (the scroller owns it) or cancel; null = undecided.
+                    fun decide(change: PointerInputChange): Int? {
+                        if (!change.pressed) return 0
+                        if (change.isConsumed) return 3
+                        val delta = change.position - down.position
+                        // Reject sideways pans so the hand scroller owns browsing (HandCardPan).
+                        return if (delta.getDistance() > slop) (if (delta.y < 0 && abs(delta.y) > abs(delta.x) * 1.35f) 2 else 3) else null
+                    }
+                    fun tap() { if (handExpanded) { selection.selectedCard = null; selection.inspectedCard = currentCard } else handExpanded = true }
+                    var first: PointerInputChange? = null
+                    var outcome = withTimeoutOrNull(350) {
                         while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: return@withTimeoutOrNull 3
-                            if (change.changedToUp()) return@withTimeoutOrNull 0
-                            if (change.isConsumed) return@withTimeoutOrNull 3
-                            val delta = change.position - down.position
-                            if (delta.getDistance() > slop) {
-                                // Reject sideways pans so the hand scroller owns browsing (HandCardPan).
-                                return@withTimeoutOrNull if (delta.y < 0 && abs(delta.y) > abs(delta.x) * 1.35f) { change.consume(); 2 } else 3
-                            }
+                            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: return@withTimeoutOrNull 3
+                            if (change.uptimeMillis >= deadline) return@withTimeoutOrNull if (change.pressed) 1 else 4
+                            decide(change)?.let { result -> if (result == 2) { change.consume(); first = change }; return@withTimeoutOrNull result }
                         }
                         @Suppress("UNREACHABLE_CODE") 3
                     } ?: 1
-                    when (outcome) {
-                        0 -> if (handExpanded) { selection.selectedCard = null; selection.inspectedCard = currentCard } else handExpanded = true
-                        1 -> {
-                            val release = { if (selection.inspectedCard?.id == currentCard.id) selection.inspectedCard = null }
-                            inspection?.begin(release)
-                            selection.selectedCard = null; selection.inspectedCard = currentCard
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                change.consume()
-                                if (change.changedToUp()) break
+                    if (outcome == 1) {
+                        val release = { if (selection.inspectedCard?.id == currentCard.id) selection.inspectedCard = null }
+                        inspection?.begin(release)
+                        selection.selectedCard = null; selection.inspectedCard = currentCard
+                        var checkedLateEvents = false
+                        while (true) {
+                            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                            // Events queued behind a busy frame may predate the hold: honour what the finger did then.
+                            if (!checkedLateEvents && change.uptimeMillis < deadline) {
+                                val early = decide(change)
+                                if (early != null) {
+                                    if (inspection != null) inspection.end() else release()
+                                    outcome = early
+                                    if (early == 2) { change.consume(); first = change }
+                                    break
+                                }
+                                continue
                             }
-                            if (inspection != null) inspection.end() else release()
+                            checkedLateEvents = true
+                            change.consume()
+                            // changedToUp() is false once consumed: test the pointer itself.
+                            if (!change.pressed) break
                         }
+                        if (outcome == 1) { if (inspection != null) inspection.end() else release() }
+                    }
+                    when (outcome) {
+                        0 -> tap()
                         2 -> {
                             val bounds = handCardBounds[currentCard.id] ?: return@awaitEachGesture
                             dragStartCenter = Offset(bounds.midX, bounds.midY)
                             GameAudio.play(GameSound.CARD_PICKUP)
                             var translation = Offset.Zero
                             var cancelled = false
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull { it.id == down.id }
-                                if (change == null) { cancelled = true; break }
+                            fun track(change: PointerInputChange) {
                                 translation = change.position - down.position
                                 selection.selectedCard = null; selection.inspectedCard = null
                                 draggingCardId = currentCard.id
                                 dragOffset = translation / density
-                                onOverPlayerDropZone(playerDropZone.contains(boardPoint(bounds, down.position, translation)))
+                                onOverPlayerDropZone(currentDropZone.contains(boardPoint(bounds, down.position, translation)))
                                 onInteractionMode(GameBoardInteractionMode.DraggingCard(currentCard.instanceId, currentActions.map { it.id }))
                                 change.consume()
-                                if (change.changedToUp()) break
+                            }
+                            try {
+                                first?.let(::track)
+                                if (first?.pressed != false) while (true) {
+                                    val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id }
+                                    if (change == null) { cancelled = true; break }
+                                    track(change)
+                                    if (!change.pressed) break
+                                }
+                            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                                // The card left the hand mid-drag: never leave its ghost on the board.
+                                if (draggingCardId == currentCard.id) { draggingCardId = null; dragOffset = Offset.Zero; onOverPlayerDropZone(false) }
+                                throw cancellation
                             }
                             selection.selectedCard = null
-                            val shouldPlay = !cancelled && playerDropZone.contains(boardPoint(bounds, down.position, translation))
+                            val shouldPlay = !cancelled && currentDropZone.contains(boardPoint(bounds, down.position, translation))
                             draggingCardId = null; dragOffset = Offset.Zero; onOverPlayerDropZone(false)
                             if (!shouldPlay) { onInteractionMode(GameBoardInteractionMode.SelectedCard(currentCard.instanceId)); return@awaitEachGesture }
-                            when (val result = DragCastDropResolver.resolve(currentCard, legalActions, true)) {
+                            when (val result = DragCastDropResolver.resolve(currentCard, currentLegalActions, true)) {
                                 DragCastDropResult.Ignored -> onInteractionMode(GameBoardInteractionMode.SelectedCard(currentCard.instanceId))
                                 is DragCastDropResult.Rejected -> {
                                     onDropFeedback(result.message); onInteractionMode(GameBoardInteractionMode.SelectedCard(currentCard.instanceId))
