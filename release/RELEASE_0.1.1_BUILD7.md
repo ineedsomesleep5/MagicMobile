@@ -12,7 +12,7 @@ Its source/CI checks passed; release-specific gates below remain separate.
 Adaptive land/mana-rock rows, searchable large choices, guarded multi-card/scry drafts,
 token-only artwork downloads and on-demand caching, explicit copied-token source artwork,
 and expanded private match history on iOS and Android. See
-[implementation and verification](BOARD_CHOICES_TOKEN_HISTORY.md).
+[implementation and verification](../docs/BOARD_CHOICES_TOKEN_HISTORY.md).
 
 XMage remains pinned to `4825513287ba6c42c32fd205d227f4a5fc44c2f3`.
 Only the mobile bridge's seat-scoped artwork metadata changed; live rules and token

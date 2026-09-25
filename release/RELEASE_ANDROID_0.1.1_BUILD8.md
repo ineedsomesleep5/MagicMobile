@@ -3,7 +3,7 @@
 ## Scope
 
 - Caleb resumed Android on September 24, 2026. Build 8 is the parity port described in
-  [ANDROID_PARITY.md](ANDROID_PARITY.md): the iPhone game board in portrait and landscape,
+  [ANDROID_PARITY.md](../docs/ANDROID_PARITY.md): the iPhone game board in portrait and landscape,
   Deck Studio, the Downloads screen, recorded audio and the Sound Lab, and tables that
   iPhone and Android players share through the relay in `services/table-relay`.
 - iPhone players can join these tables only from the next iPhone TestFlight build.

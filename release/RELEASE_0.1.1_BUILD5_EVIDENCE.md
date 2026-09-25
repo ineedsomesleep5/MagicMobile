@@ -3,7 +3,7 @@
 ## Shared engine
 
 The approved upstream is `4825513287ba6c42c32fd205d227f4a5fc44c2f3`.
-See [the source/inventory review](ENGINE_UPDATE_4825513.md). The exact-source
+See [the source/inventory review](../docs/ENGINE_UPDATE_4825513.md). The exact-source
 non-simulator gate [35526972236](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/35526972236)
 passed on `9453fe648cb0890c2bc072a80aead81305b22512`.
 
@@ -58,7 +58,7 @@ remain disabled until its independent deployment/security/device gates pass.
 
 After restarting Codex restored its connection, the existing
 `watch-xmage-updates-for-magicmobile` heartbeat was updated and its saved active
-configuration verified. It now runs the [weekly gated release policy](AUTOMATIC_UPDATE_PIPELINE.md)
+configuration verified. It now runs the [weekly gated release policy](../docs/AUTOMATIC_UPDATE_PIPELINE.md)
 on Mondays at 09:23 using the selected repository. Its existing thread attachment
 was preserved; no duplicate automation or workaround cron was created. Automatic
 publication is conditional on reviewed changes and passing release gates.

@@ -34,7 +34,7 @@ Both platforms retain engine source
 `9453fe648cb0890c2bc072a80aead81305b22512`, reviewed XMage upstream
 `4825513287ba6c42c32fd205d227f4a5fc44c2f3`, and 31,881 supported names.
 The unchanged-source and staged-artifact integrity guards passed locally.
-See [build 5 evidence](RELEASE_0.1.1_BUILD5.md) for native runtime provenance.
+See [build 5 evidence](RELEASE_0.1.1_BUILD5_EVIDENCE.md) for native runtime provenance.
 No engine rebuild was dispatched. Game Center remains available; dedicated Online
 and Render remain on hold.
 
