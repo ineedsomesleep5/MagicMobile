@@ -24,6 +24,7 @@ import io.magicmobile.android.game.obj
 import io.magicmobile.android.game.string
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -163,8 +164,11 @@ class OnDeviceSession(private val scope: CoroutineScope) {
                 }
             }
             val prompt = next.prompt
-            if (autoAbility != null && prompt != null && abilityAutoAnswer == null) {
-                abilityAutoAnswer = scope.launch { answerChosenAbility(autoAbility, prompt.id) }
+            if (autoAbility != null && prompt != null && abilityAutoAnswer?.isActive != true) {
+                // The main dispatcher may run this to completion at once: register it before it starts.
+                val job = scope.launch(start = CoroutineStart.LAZY) { answerChosenAbility(autoAbility, prompt.id) }
+                abilityAutoAnswer = job
+                job.start()
             }
             status = when (next.phase) {
                 "ended" -> "Game complete"; "failed" -> "Game stopped"; "closed" -> "Game closed"; "starting" -> "Starting game"

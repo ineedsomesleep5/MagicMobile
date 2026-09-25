@@ -12,6 +12,7 @@ import io.magicmobile.android.core.Deck
 import io.magicmobile.android.core.PrintingIndex
 import io.magicmobile.android.core.Wire
 import io.magicmobile.android.core.array
+import io.magicmobile.android.game.BuildIdentity
 import io.magicmobile.android.game.EngineClient
 import io.magicmobile.android.game.EngineError
 import io.magicmobile.android.game.EngineHealth
@@ -66,6 +67,9 @@ object OnDeviceSetupPreferences {
     fun normalizedDeckID(saved: String, deckIDs: Set<String>): String =
         if (saved in deckIDs) saved else if (defaultDeckID in deckIDs) defaultDeckID else deckIDs.sorted().firstOrNull() ?: ""
 }
+
+/** The table features every cross-play phone must share (see RelayTable). */
+const val RELAY_ADAPTER_VERSION = "ondevice-0.1/relay-1/rollstep-2/room-1/concede-1/emote-1"
 
 /** Port of OnDeviceAppConfiguration.aiGameSeats. */
 object OnDeviceAppConfiguration {
@@ -209,6 +213,54 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
     }
 
     fun beginTable(table: TableConnection) { multiplayer = table; usingMultiplayer = true; errorMessage = null; feedback = null; updateSessionForeground() }
+
+    /**
+     * Cross-play tables share one identity on iPhone and Android: the same protocol, rules source,
+     * card registry and table features. App build numbers differ between platforms, so they are left out.
+     */
+    val relayIdentity: BuildIdentity? get() = identity?.let { BuildIdentity(it.upstreamCommit, it.catalogueHash, RELAY_ADAPTER_VERSION) }
+
+    /** Opens a relay table that this phone hosts: `humans` players plus any AI seats. */
+    suspend fun hostOnline(name: String, deck: Deck, humans: Int, aiDecks: List<Deck>, aiSkill: Int) {
+        val identity = relayIdentity ?: return
+        if (isBusy || needsLeave) return
+        isBusy = true; errorMessage = null; feedback = null; status = "Opening a table"
+        val table = RelayTable(identity, scope, makeHostEngine = { openHostEngine() }, closeHostEngine = { closeHostEngine() })
+        try {
+            val playerName = playerName(name)
+            val aiSeats = aiDecks.map { AISeatDescriptor(resolve(it), aiSkill) }
+            beginTable(table)
+            table.host(humans, playerName, resolve(deck), aiSeats)
+            status = "Table open"
+        } catch (error: Throwable) {
+            errorMessage = error.message ?: "Could not open a table."
+            if (multiplayer === table && table.tableCode == null) { multiplayer = null; usingMultiplayer = false }
+            status = "Choose your deck and players."
+        } finally { isBusy = false }
+    }
+
+    /** Joins another player's relay table by its code. */
+    fun joinOnline(code: String, name: String, deck: Deck) {
+        val identity = relayIdentity ?: return
+        if (isBusy || needsLeave) return
+        errorMessage = null; feedback = null
+        val table = RelayTable(identity, scope, makeHostEngine = { openHostEngine() }, closeHostEngine = { closeHostEngine() })
+        try {
+            val playerName = playerName(name)
+            val resolved = resolve(deck)
+            beginTable(table)
+            table.join(code, playerName, resolved)
+        } catch (error: Throwable) {
+            errorMessage = error.message ?: "Could not join that table."
+            if (multiplayer === table && table.tableCode == null) { multiplayer = null; usingMultiplayer = false }
+        }
+    }
+
+    /** Match room: confirm the currently selected deck and ready up. */
+    fun readyForMatch(name: String, deck: Deck) {
+        val table = multiplayer as? RelayTable ?: return
+        try { table.markReady(playerName(name), resolve(deck)) } catch (error: Throwable) { errorMessage = error.message }
+    }
 
     fun setSceneActive(active: Boolean) {
         sceneActive = active

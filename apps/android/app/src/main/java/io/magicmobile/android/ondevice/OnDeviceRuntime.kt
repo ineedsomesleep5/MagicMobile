@@ -2,6 +2,7 @@ package io.magicmobile.android.ondevice
 
 import io.magicmobile.android.BuildConfig
 import io.magicmobile.android.NativeBridge
+import io.magicmobile.android.game.BuildIdentity
 import io.magicmobile.android.game.EngineClient
 import io.magicmobile.android.game.EngineError
 import io.magicmobile.android.game.EngineTransport
@@ -18,9 +19,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.Executors
-
-/** The build a table must share: protocol, rules source, card registry and adapter features. */
-data class BuildIdentity(val upstreamCommit: String, val catalogueHash: String, val adapterVersion: String, val protocolVersion: Int = 1)
 
 /** Converts the deck catalogue's plain maps (core `Obj`) into engine JSON. */
 fun anyToJson(value: Any?): J = when (value) {

@@ -18,6 +18,9 @@ android {
         buildConfigField("String", "ONLINE_SERVER_URL", "\"${onlineURL.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
         ndk { abiFilters += "arm64-v8a" }
         buildConfigField("boolean", "NATIVE_ENGINE", withNative.toString())
+        val relayURL = providers.gradleProperty("relayUrl").orNull ?: "https://magicmobile-relay.calebjfeliciano.workers.dev"
+        require(relayURL.startsWith("https://")) { "The table relay must use HTTPS" }
+        buildConfigField("String", "RELAY_URL", "\"$relayURL\"")
         if(withNative) externalNativeBuild { cmake { arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON" } }
     }
     buildFeatures { compose = true; buildConfig = true }
@@ -98,6 +101,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // WebSocket client for the cross-play table relay.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 }
 tasks.register<JavaExec>("artworkCatalogueChecks") {
