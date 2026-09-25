@@ -12,8 +12,25 @@ const PROTOCOL = 1;
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_PATTERN = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/;
 const MAX_FRAME_CHARS = 1_000_000;
+/** What the relay holds for one phone that is away, in messages and in UTF-16 characters. */
 const MAX_QUEUE_MESSAGES = 512;
 const MAX_QUEUE_CHARS = 8_000_000;
+/**
+ * SQLite-backed Durable Objects refuse a key and value over 2 MB, and V8 stores a string at up
+ * to 2 bytes per UTF-16 unit, so a held message is stored in pieces of at most this many units.
+ */
+const STORED_PIECE_CHARS = 512 * 1024;
+/**
+ * A guest's OnDeviceRemoteEngineTransport stops waiting for the host's answer after 15 seconds,
+ * and it sent its request before the host answered, so an answer held longer is never used.
+ */
+const ANSWER_WAIT_MS = 15_000;
+/**
+ * Both apps encode packets with sorted keys, so "type" is every packet's last key and a host's
+ * answer ends like this. Only the end of a whole packet or of its last part is checked; anything
+ * that does not match is held like any other packet.
+ */
+const ANSWER_END = /[{,]"type":"reply"}\s*$/;
 /** A phone that loses its connection keeps its seat this long. */
 const RESUME_GRACE_MS = 90_000;
 /** An unopened or abandoned table closes after this long. */
@@ -51,6 +68,26 @@ function validPart(part) {
   if (!Number.isInteger(n) || n < 1 || n > 64 || !Number.isInteger(i) || i < 0 || i >= n) return null;
   return { id, i, n };
 }
+
+/** Splits text into stored pieces without separating the halves of a surrogate pair. */
+function storedPieces(text) {
+  const pieces = [];
+  for (let start = 0; start < text.length || pieces.length === 0;) {
+    let end = Math.min(text.length, start + STORED_PIECE_CHARS);
+    const last = text.charCodeAt(end - 1);
+    if (end < text.length && last >= 0xd800 && last <= 0xdbff) end -= 1;
+    pieces.push(text.slice(start, end));
+    start = end;
+  }
+  return pieces;
+}
+
+const queueIndexKey = (peerID) => `qi:${peerID}`;
+const pieceKey = (peerID, seq, piece) => `q:${peerID}:${seq}:${piece}`;
+const pieceKeys = (peerID, item) => Array.from({ length: item.pieces }, (_, piece) => pieceKey(peerID, item.seq, piece));
+/** The first relay version held a phone's whole backlog under this one key. */
+const legacyQueueKey = (peerID) => `q:${peerID}`;
+const staleAnswer = (item, now) => item.answer && now - item.at > ANSWER_WAIT_MS;
 
 export default {
   async fetch(request, env) {
@@ -201,21 +238,69 @@ export class TableRoom extends DurableObject {
     await this.save();
     this.send(server, { t: "welcome", protocol: PROTOCOL, you: peer.id, token: peer.token, code: table.code, seats: table.seats,
       peers: this.roster(), full: this.livePeers().length === table.seats });
-    const queued = (await this.ctx.storage.get(`q:${peer.id}`)) ?? [];
-    for (const text of queued) this.send(server, text);
-    if (queued.length) await this.ctx.storage.delete(`q:${peer.id}`);
+    await this.deliverQueue(peer.id, server);
     this.broadcastRoster(peer.id);
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  async enqueue(peerID, text) {
-    const key = `q:${peerID}`;
-    const queue = (await this.ctx.storage.get(key)) ?? [];
-    const size = queue.reduce((total, item) => total + item.length, 0);
-    if (queue.length >= MAX_QUEUE_MESSAGES || size + text.length > MAX_QUEUE_CHARS) return false;
-    queue.push(text);
-    await this.ctx.storage.put(key, queue);
+  /** Deletes any number of keys in one atomic write (the storage API takes 128 keys per call). */
+  async deleteKeys(keys) {
+    const batches = [];
+    for (let start = 0; start < keys.length; start += 128) batches.push(this.ctx.storage.delete(keys.slice(start, start + 128)));
+    await Promise.all(batches);
+  }
+
+  /**
+   * Holds a message for a phone that is away. Each message is its own entry, stored in pieces,
+   * and the phone's queue index lists them in order. Answers the guest no longer waits for are
+   * dropped first. Returns false when the backlog is full or storage refuses the message.
+   */
+  async enqueue(peerID, text, answer, packet) {
+    const now = Date.now();
+    const index = (await this.ctx.storage.get(queueIndexKey(peerID))) ?? { next: 1, items: [] };
+    const stale = index.items.filter((item) => staleAnswer(item, now));
+    index.items = index.items.filter((item) => !staleAnswer(item, now));
+    const size = index.items.reduce((total, item) => total + item.chars, 0);
+    if (index.items.length >= MAX_QUEUE_MESSAGES || size + text.length > MAX_QUEUE_CHARS) {
+      if (stale.length) {
+        const removed = this.deleteKeys(stale.flatMap((item) => pieceKeys(peerID, item)));
+        await Promise.all([removed, this.ctx.storage.put(queueIndexKey(peerID), index)]);
+      }
+      return false;
+    }
+    // The last part of a split answer marks the earlier parts, so they are dropped together.
+    if (answer && packet) {
+      for (const item of index.items) if (item.packet === packet) { item.answer = true; item.at = now; }
+    }
+    const seq = index.next++;
+    const pieces = storedPieces(text);
+    index.items.push({ seq, pieces: pieces.length, chars: text.length, at: now, answer, packet });
+    const entries = { [queueIndexKey(peerID)]: index };
+    pieces.forEach((piece, n) => { entries[pieceKey(peerID, seq, n)] = piece; });
+    // No await in between: the deletes and the put are stored as one atomic write.
+    const removed = this.deleteKeys(stale.flatMap((item) => pieceKeys(peerID, item)));
+    await Promise.all([removed, this.ctx.storage.put(entries)]);
     return true;
+  }
+
+  /** Sends a returning phone everything held for it, in order, then forgets it. */
+  async deliverQueue(peerID, socket) {
+    const legacy = (await this.ctx.storage.get(legacyQueueKey(peerID))) ?? [];
+    for (const text of legacy) this.send(socket, text);
+    const index = await this.ctx.storage.get(queueIndexKey(peerID));
+    const now = Date.now();
+    for (const item of index?.items ?? []) {
+      if (staleAnswer(item, now)) continue;
+      const keys = pieceKeys(peerID, item);
+      const stored = await this.ctx.storage.get(keys);
+      if (keys.every((key) => typeof stored.get(key) === "string")) this.send(socket, keys.map((key) => stored.get(key)).join(""));
+    }
+    if (legacy.length || index) await this.clearQueue(peerID, index);
+  }
+
+  async clearQueue(peerID, index) {
+    index ??= await this.ctx.storage.get(queueIndexKey(peerID));
+    await this.deleteKeys([legacyQueueKey(peerID), queueIndexKey(peerID), ...(index?.items ?? []).flatMap((item) => pieceKeys(peerID, item))]);
   }
 
   async webSocketMessage(socket, message) {
@@ -238,14 +323,16 @@ export class TableRoom extends DurableObject {
       const sockets = this.ctx.getWebSockets(target.id);
       if (sockets.length > 0) {
         for (const destination of sockets) this.send(destination, text);
-      } else if (!(await this.enqueue(target.id, text))) {
-        this.send(socket, { t: "error", error: "peer_backlog", message: "Another player has been away too long." });
+      } else {
+        const answer = id === table.peers[0].id && (!part || part.i === part.n - 1) && ANSWER_END.test(frame.d.slice(-64));
+        const held = await this.enqueue(target.id, text, answer, part ? `${id}/${part.id}` : undefined).catch(() => false);
+        if (!held) this.send(socket, { t: "error", error: "peer_backlog", message: "Another player has been away too long." });
       }
     } else if (frame?.t === "bye") {
       const peer = table.peers.find((candidate) => candidate.id === id);
       if (peer && !peer.gone) {
         peer.gone = true; peer.connected = false;
-        await this.ctx.storage.delete(`q:${peer.id}`);
+        await this.clearQueue(peer.id);
         await this.save();
         this.broadcast({ t: "gone", id: peer.id }, id);
         this.broadcastRoster(id);
@@ -295,14 +382,13 @@ export class TableRoom extends DurableObject {
       if (!peer.gone && !peer.connected && this.ctx.getWebSockets(peer.id).length === 0 && now - peer.lastSeen >= RESUME_GRACE_MS) {
         peer.gone = true;
         changed = true;
-        await this.ctx.storage.delete(`q:${peer.id}`);
+        await this.clearQueue(peer.id);
         this.broadcast({ t: "gone", id: peer.id }, peer.id);
       }
     }
     if (changed) { await this.save(); this.broadcastRoster(); }
     const sockets = this.ctx.getWebSockets().length;
     if (sockets === 0 && (this.livePeers().length === 0 || now - table.activeAt >= IDLE_MS)) {
-      for (const peer of table.peers) await this.ctx.storage.delete(`q:${peer.id}`);
       await this.ctx.storage.deleteAll();
       this.table = null;
       return;
