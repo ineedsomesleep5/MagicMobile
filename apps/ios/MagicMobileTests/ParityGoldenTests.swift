@@ -53,6 +53,27 @@ final class ParityGoldenTests: XCTestCase {
         try check(["cases": results], name: "prompt-cases.json")
     }
 
+    func testTextFormattingMatchesAndroidGoldens() throws {
+        let data = try Data(contentsOf: parityDirectory.appendingPathComponent("text-cases.json"))
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let logs = (root["log"] as? [String] ?? []).map { message -> [String: Any] in
+            let presentation = GameLogPresentation(message)
+            return ["plain": presentation.plainText, "spans": presentation.spans.map { span -> [String: Any] in
+                ["text": span.text, "role": "\(span.role)", "bold": span.bold, "italic": span.italic,
+                 "card": ParitySummary.o(span.cardReference?.name)]
+            }]
+        }
+        let rules = (root["rules"] as? [[String: Any]] ?? []).map { item -> [String: Any] in
+            let presentation = GameRulesPresentation(source: item["source"] as? String ?? "", cardName: item["cardName"] as? String,
+                                                     isHidden: item["hidden"] as? Bool ?? false)
+            let symbols = GameRulesSymbols(presentation)
+            return ["plain": presentation.plainText, "spoken": symbols.accessibilityText,
+                    "fragments": symbols.fragments.map { ["literal": $0.literal, "code": ParitySummary.o($0.code)] as [String: Any] }]
+        }
+        let prompts = (root["prompts"] as? [String] ?? []).map(PromptDisplayText.clean)
+        try check(["log": logs, "rules": rules, "prompts": prompts], name: "text-cases.json")
+    }
+
     private func check(_ summary: [String: Any], name: String) throws {
         let data = try JSONSerialization.data(withJSONObject: summary, options: [.sortedKeys, .prettyPrinted, .withoutEscapingSlashes])
         let directory = parityDirectory.appendingPathComponent("golden")

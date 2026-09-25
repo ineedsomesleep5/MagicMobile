@@ -58,6 +58,25 @@ class ParityGoldenTest {
         compare(jsonObject("cases" to JsonArray(results)), "prompt-cases.json")
     }
 
+    @Test fun textFormattingMatchesIOS() {
+        val root = Json.parseToJsonElement(File(parity, "text-cases.json").readText())
+        val logs = root["log"].array!!.map { message ->
+            val presentation = GameLogPresentation(message.string!!)
+            jsonObject("plain" to JsonPrimitive(presentation.plainText), "spans" to JsonArray(presentation.spans.map { span ->
+                jsonObject("text" to JsonPrimitive(span.text), "role" to JsonPrimitive(span.role.name.lowercase()), "bold" to JsonPrimitive(span.bold),
+                    "italic" to JsonPrimitive(span.italic), "card" to ParitySummary.o(span.cardReference?.name))
+            }))
+        }
+        val rules = root["rules"].array!!.map { item ->
+            val presentation = GameRulesPresentation(item["source"].string ?: "", item["cardName"].string, item["hidden"].bool ?: false)
+            val symbols = GameRulesSymbols(presentation)
+            jsonObject("plain" to JsonPrimitive(presentation.plainText), "spoken" to JsonPrimitive(symbols.accessibilityText),
+                "fragments" to JsonArray(symbols.fragments.map { jsonObject("literal" to JsonPrimitive(it.literal), "code" to ParitySummary.o(it.code)) }))
+        }
+        val prompts = root["prompts"].array!!.map { JsonPrimitive(PromptDisplayText.clean(it.string!!)) }
+        compare(jsonObject("log" to JsonArray(logs), "rules" to JsonArray(rules), "prompts" to JsonArray(prompts)), "text-cases.json")
+    }
+
     private fun compare(actual: J, name: String) {
         val expected = Json.parseToJsonElement(File(parity, "golden/$name").readText())
         val difference = difference(expected, actual, name)

@@ -1,0 +1,32 @@
+{
+  "log": [
+    "TURN 1 for <font color='#20B2AA'>Caleb</font> (40 - 40)",
+    "<font color='#20B2AA'>Caleb</font> plays <font color='#B0C4DE' object_id='36fc54d7-1afc-4506-92f8-a4f8cceace1c'>Temple of Plenty</font> [36f]",
+    "<b>Bold</b> and <i>italic</i> &amp; <script>alert(1)</script>safe",
+    "Entities &lt;b&gt;not tags&lt;/b&gt; &#160;space &#x41;&#66; &nbsp;done",
+    "<font color='#90EE90'>Llanowar Elves</font> deals 1 damage<br>next line<p>para</p>",
+    "<font color=\"#ff6347\" object_id=\"not-a-uuid\">Fire</font>",
+    "<svg><text>hidden</text></svg>visible <style>.x{}</style>after",
+    "<font color='#B0C4DE' object_id='11111111-2222-3333-4444-555555555555'>Hidden card</font> [111]",
+    "Unclosed <font color='#20b2aa'>Player text",
+    "Truncated <font color='#b0c4de' object_id='abc",
+    "<!-- comment -->Comment removed <img alt='{W}' src='x'> mana",
+    "Control\u0007chars‮removed",
+    "<font color='#daa520' object_id='22222222-3333-4444-5555-666666666666'>Sol Ring</font> [222], then more"
+  ],
+  "rules": [
+    {"source": "{T}: Add {G}.", "cardName": null},
+    {"source": "When {this} enters, draw a card. {this} has flying.", "cardName": "Serra Angel"},
+    {"source": "<b>Kicker</b> {2}{R} &mdash; hybrid {W/U} {2/B} {G/P} {R/G/P} {X}{S}{Q}{C}", "cardName": null},
+    {"source": "Hidden rules", "cardName": null, "hidden": true},
+    {"source": "{this} costs {1} less. {this}", "cardName": ""},
+    {"source": "Pay {10}{1000} and {ZZ} {W/W}", "cardName": null},
+    {"source": "&lt;i&gt;escaped&lt;/i&gt; stays text", "cardName": "Card"}
+  ],
+  "prompts": [
+    "Black Market Connections [4cb]",
+    "Choose [one] option",
+    "Sol Ring [a1b2c3] and Island [deadbeef9]",
+    "Keep [abc] letters-only"
+  ]
+}

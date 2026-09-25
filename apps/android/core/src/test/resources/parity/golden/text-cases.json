@@ -1,0 +1,456 @@
+{
+  "log" : [
+    {
+      "plain" : "TURN 1 for Caleb (40 - 40)",
+      "spans" : [
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : "TURN 1 for "
+        },
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "player",
+          "text" : "Caleb"
+        },
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : " (40 - 40)"
+        }
+      ]
+    },
+    {
+      "plain" : "Caleb plays Temple of Plenty",
+      "spans" : [
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "player",
+          "text" : "Caleb"
+        },
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : " plays "
+        },
+        {
+          "bold" : false,
+          "card" : "Temple of Plenty",
+          "italic" : false,
+          "role" : "card",
+          "text" : "Temple of Plenty"
+        }
+      ]
+    },
+    {
+      "plain" : "Bold and italic & safe",
+      "spans" : [
+        {
+          "bold" : true,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : "Bold"
+        },
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : " and "
+        },
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : true,
+          "role" : "action",
+          "text" : "italic"
+        },
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : " & "
+        },
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : "safe"
+        }
+      ]
+    },
+    {
+      "plain" : "Entities <b>not tags</b>  space AB  done",
+      "spans" : [
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : "Entities <b>not tags</b>  space AB  done"
+        }
+      ]
+    },
+    {
+      "plain" : "Llanowar Elves deals 1 damage\nnext line\npara\n",
+      "spans" : [
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "card",
+          "text" : "Llanowar Elves"
+        },
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : " deals 1 damage"
+        },
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : "\n"
+        },
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : "next line"
+        },
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : "\n"
+        },
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : "para"
+        },
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : "\n"
+        }
+      ]
+    },
+    {
+      "plain" : "Fire",
+      "spans" : [
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "card",
+          "text" : "Fire"
+        }
+      ]
+    },
+    {
+      "plain" : "visible after",
+      "spans" : [
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : "visible "
+        },
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : "after"
+        }
+      ]
+    },
+    {
+      "plain" : "Hidden card",
+      "spans" : [
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "card",
+          "text" : "Hidden card"
+        }
+      ]
+    },
+    {
+      "plain" : "Unclosed Player text",
+      "spans" : [
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : "Unclosed "
+        },
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "player",
+          "text" : "Player text"
+        }
+      ]
+    },
+    {
+      "plain" : "Truncated ",
+      "spans" : [
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : "Truncated "
+        }
+      ]
+    },
+    {
+      "plain" : "Comment removed {W} mana",
+      "spans" : [
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : "Comment removed "
+        },
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : "{W}"
+        },
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : " mana"
+        }
+      ]
+    },
+    {
+      "plain" : "Controlcharsremoved",
+      "spans" : [
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : "Controlcharsremoved"
+        }
+      ]
+    },
+    {
+      "plain" : "Sol Ring, then more",
+      "spans" : [
+        {
+          "bold" : false,
+          "card" : "Sol Ring",
+          "italic" : false,
+          "role" : "card",
+          "text" : "Sol Ring"
+        },
+        {
+          "bold" : false,
+          "card" : null,
+          "italic" : false,
+          "role" : "action",
+          "text" : ", then more"
+        }
+      ]
+    }
+  ],
+  "prompts" : [
+    "Black Market Connections",
+    "Choose [one] option",
+    "Sol Ring and Island [deadbeef9]",
+    "Keep [abc] letters-only"
+  ],
+  "rules" : [
+    {
+      "fragments" : [
+        {
+          "code" : "T",
+          "literal" : "{T}"
+        },
+        {
+          "code" : null,
+          "literal" : ": Add "
+        },
+        {
+          "code" : "G",
+          "literal" : "{G}"
+        },
+        {
+          "code" : null,
+          "literal" : "."
+        }
+      ],
+      "plain" : "{T}: Add {G}.",
+      "spoken" : "tap : Add green mana ."
+    },
+    {
+      "fragments" : [
+        {
+          "code" : null,
+          "literal" : "When Serra Angel enters, draw a card. Serra Angel has flying."
+        }
+      ],
+      "plain" : "When Serra Angel enters, draw a card. Serra Angel has flying.",
+      "spoken" : "When Serra Angel enters, draw a card. Serra Angel has flying."
+    },
+    {
+      "fragments" : [
+        {
+          "code" : null,
+          "literal" : "Kicker "
+        },
+        {
+          "code" : "2",
+          "literal" : "{2}"
+        },
+        {
+          "code" : "R",
+          "literal" : "{R}"
+        },
+        {
+          "code" : null,
+          "literal" : " — hybrid "
+        },
+        {
+          "code" : "W/U",
+          "literal" : "{W/U}"
+        },
+        {
+          "code" : null,
+          "literal" : " "
+        },
+        {
+          "code" : "2/B",
+          "literal" : "{2/B}"
+        },
+        {
+          "code" : null,
+          "literal" : " "
+        },
+        {
+          "code" : "G/P",
+          "literal" : "{G/P}"
+        },
+        {
+          "code" : null,
+          "literal" : " "
+        },
+        {
+          "code" : "R/G/P",
+          "literal" : "{R/G/P}"
+        },
+        {
+          "code" : null,
+          "literal" : " "
+        },
+        {
+          "code" : "X",
+          "literal" : "{X}"
+        },
+        {
+          "code" : "S",
+          "literal" : "{S}"
+        },
+        {
+          "code" : "Q",
+          "literal" : "{Q}"
+        },
+        {
+          "code" : "C",
+          "literal" : "{C}"
+        }
+      ],
+      "plain" : "Kicker {2}{R} — hybrid {W/U} {2/B} {G/P} {R/G/P} {X}{S}{Q}{C}",
+      "spoken" : "Kicker 2 generic mana red mana — hybrid white or blue mana two generic or black mana green mana or two life red or green mana or two life X generic mana snow mana untap colorless mana"
+    },
+    {
+      "fragments" : [
+
+      ],
+      "plain" : "",
+      "spoken" : ""
+    },
+    {
+      "fragments" : [
+        {
+          "code" : null,
+          "literal" : "This card costs "
+        },
+        {
+          "code" : "1",
+          "literal" : "{1}"
+        },
+        {
+          "code" : null,
+          "literal" : " less. This card"
+        }
+      ],
+      "plain" : "This card costs {1} less. This card",
+      "spoken" : "This card costs 1 generic mana less. This card"
+    },
+    {
+      "fragments" : [
+        {
+          "code" : null,
+          "literal" : "Pay "
+        },
+        {
+          "code" : "10",
+          "literal" : "{10}"
+        },
+        {
+          "code" : null,
+          "literal" : "{1000} and {ZZ} {W/W}"
+        }
+      ],
+      "plain" : "Pay {10}{1000} and {ZZ} {W/W}",
+      "spoken" : "Pay 10 generic mana {1000} and {ZZ} {W/W}"
+    },
+    {
+      "fragments" : [
+        {
+          "code" : null,
+          "literal" : "escaped stays text"
+        }
+      ],
+      "plain" : "escaped stays text",
+      "spoken" : "escaped stays text"
+    }
+  ]
+}
