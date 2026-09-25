@@ -580,7 +580,17 @@ fun NativeGameView(
                 BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)
                     .onGloballyPositioned { cardBounds.boardOrigin = it.positionInRoot() }) {
                     val size = BoardSize(maxWidth.value, maxHeight.value)
-                    PortraitGameContent(board, human, opponent, size, selection, pendingActionId, pendingCardInstanceId, liveUpdateStatus,
+                    if (!GameOrientationMode.isPortraitLayout(size.width, size.height, portraitModeEnabled)) {
+                        LandscapeGameContent(board, human, opponent, selection, pendingActionId, pendingCardInstanceId, liveUpdateStatus,
+                            combatSelection, combatPreviewArrows, isOverPlayerDropZone, { isOverPlayerDropZone = it }, { interactionMode = it },
+                            inspectingZoneTitle, inspectingZoneCards, inspectingZoneReference, { inspectingZoneTitle = null; inspectingZoneCards = emptyList(); inspectingZoneReference = null },
+                            isPromptDetailOpen, dragActionChoice, { dragActionChoice = it }, aiWaitBeganAt, didAutoRefreshAIWaitKey == aiWaitKey,
+                            didAutoReconnectAIWaitKey == aiWaitKey, didAutoDiagnoseAIWaitKey == aiWaitKey, boardFX, boardFXClock, { boardFX.prune(System.currentTimeMillis()); fxVersion += 1 },
+                            onInteractionFeedback, runAction, runCommand, refreshGame, reconnectGame, ::submitTarget, ::handleCombatCardTap, ::submitAttackers,
+                            ::submitBlockers, ::finishAttackers, ::finishBlockers, { combatSelection = it }, { focusedOpponentId = it },
+                            { isLogOpen = true }, { isGameMenuOpen = true }, ::openPromptDetails, ::localViewZone, { isPromptDetailOpen = true },
+                            { isStackSheetOpen = true })
+                    } else PortraitGameContent(board, human, opponent, size, selection, pendingActionId, pendingCardInstanceId, liveUpdateStatus,
                         combatSelection, combatPreviewArrows, isOverPlayerDropZone, { isOverPlayerDropZone = it }, { interactionMode = it },
                         inspectingZoneTitle, inspectingZoneCards, inspectingZoneReference, { inspectingZoneTitle = null; inspectingZoneCards = emptyList(); inspectingZoneReference = null },
                         isPromptDetailOpen, dragActionChoice, { dragActionChoice = it }, aiWaitBeganAt, didAutoRefreshAIWaitKey == aiWaitKey,

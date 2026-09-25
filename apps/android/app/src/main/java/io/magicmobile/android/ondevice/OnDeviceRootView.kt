@@ -145,17 +145,14 @@ class OnDeviceViewModel(application: Application) : AndroidViewModel(application
     }
 }
 
-/** On Android, iOS's orientation lock: Auto-Rotate allows portrait and landscape, off keeps landscape. */
+/**
+ * On Android, iOS's orientation lock (GameOrientationMode.supportedOrientations): Auto-Rotate
+ * allows portrait and landscape, off keeps landscape. The board follows with its landscape layout.
+ */
 object OrientationController {
-    /** Until the landscape board is ported, games stay in portrait. */
-    var landscapeBoardAvailable = false
-    fun apply(activity: Activity?, portraitEnabled: Boolean, inGame: Boolean) {
+    fun apply(activity: Activity?, portraitEnabled: Boolean, @Suppress("UNUSED_PARAMETER") inGame: Boolean) {
         activity ?: return
-        activity.requestedOrientation = when {
-            inGame && !landscapeBoardAvailable -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            portraitEnabled -> ActivityInfo.SCREEN_ORIENTATION_FULL_USER
-            else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        }
+        activity.requestedOrientation = if (portraitEnabled) ActivityInfo.SCREEN_ORIENTATION_FULL_USER else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
     }
 }
 
@@ -522,10 +519,12 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             }
             if (showDownloads) {
                 LaunchedEffect(Unit) { setup.loadCatalogue() }
-                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).windowInsetsPadding(WindowInsets.safeDrawing)) {
-                    ArtworkDownloadsScreen(setup.catalogue, setup.localDecks, precons.map { it.deck }, { showDownloads = false }) { setup.errorMessage = it }
+                val catalogueNames = setup.catalogue?.cards?.map { it.name }
+                BoardSheet({ showDownloads = false }, skipPartiallyExpanded = true) {
+                    NativeDownloadsView(setup.localDecks.map { NativeDownloadDeck.of("local:${it.id}", it.deck) } +
+                        precons.map { NativeDownloadDeck.of("precon:${it.id}", it.deck) }, selectedDeckID, setup.identity != null,
+                        catalogueNames, setup.errorMessage?.takeIf { setup.catalogue == null }) { showDownloads = false }
                 }
-                BackHandler { showDownloads = false }
             }
             if (confirmLeave) {
                 val message = when {

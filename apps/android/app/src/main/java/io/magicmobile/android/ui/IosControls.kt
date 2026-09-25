@@ -175,3 +175,26 @@ fun IosListRow(title: String, modifier: Modifier = Modifier, systemImage: String
         value?.let { Text(it, color = Color.White.copy(alpha = 0.55f), style = if (monospacedValue) sf(12f, design = SfDesign.MONOSPACED) else sf(17f), maxLines = 1) }
     }
 }
+
+/** An iOS 26 `.alert`: a centred rounded panel, title and message, then capsule buttons with Cancel last. */
+@Composable
+fun IosAlert(title: String, message: String?, actions: List<Pair<String, () -> Unit>>, cancelTitle: String = "Cancel", cancel: () -> Unit) {
+    androidx.compose.ui.window.Dialog(cancel) {
+        androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth().background(rgb(0.16, 0.16, 0.17), RoundedCornerShape(30.dp)).padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(title, color = Color.White, style = sf(17f, SfWeight.semibold), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            message?.let { Text(it, color = Color.White.copy(alpha = 0.75f), style = sf(13f), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
+            androidx.compose.foundation.layout.Spacer(Modifier.height(4.dp))
+            for ((label, action) in actions) {
+                Box(Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp).background(BrandTheme.ember, CircleShape).clickable { action() }
+                    .padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+                    Text(label, color = Color.White, style = sf(17f, SfWeight.semibold), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                }
+            }
+            Box(Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp).background(Color.White.copy(alpha = 0.12f), CircleShape).clickable { cancel() },
+                contentAlignment = Alignment.Center) {
+                Text(cancelTitle, color = Color.White, style = sf(17f))
+            }
+        }
+    }
+}
