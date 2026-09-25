@@ -1,0 +1,692 @@
+{
+  "activePlayerId" : "83c51f38-1926-4c78-a744-ca1ec0b4048a",
+  "answers" : [
+    {
+      "answer" : {
+        "kind" : "boolean",
+        "value" : true
+      },
+      "type" : "answer_yes_no"
+    },
+    {
+      "answer" : {
+        "kind" : "string",
+        "value" : "special"
+      },
+      "type" : "resolve_choice"
+    },
+    {
+      "answer" : {
+        "kind" : "uuid",
+        "value" : "d80199fe-06bb-486b-b9f7-a3d4a685bdd5"
+      },
+      "type" : "choose_target"
+    }
+  ],
+  "bridgeRevision" : 74,
+  "gameStatus" : "in_progress",
+  "id" : "efa40d5a-f81e-46a7-aa4a-9d7c2e1d2bea",
+  "isSpectating" : false,
+  "legalActions" : [
+    {
+      "abilityId" : null,
+      "cardInstanceId" : null,
+      "cardName" : null,
+      "choiceIds" : null,
+      "compactPromptTitle" : "Done",
+      "confirmed" : true,
+      "id" : "d3698d41-57c6-470b-9c5f-1a466b9818da:answer_yes_no",
+      "label" : "Done",
+      "messageId" : 74,
+      "playerId" : "83c51f38-1926-4c78-a744-ca1ec0b4048a",
+      "promptId" : "d3698d41-57c6-470b-9c5f-1a466b9818da",
+      "sourceInstanceId" : null,
+      "sourceZone" : null,
+      "type" : "answer_yes_no"
+    },
+    {
+      "abilityId" : null,
+      "cardInstanceId" : null,
+      "cardName" : null,
+      "choiceIds" : [
+        "special"
+      ],
+      "compactPromptTitle" : "All attack",
+      "confirmed" : null,
+      "id" : "d3698d41-57c6-470b-9c5f-1a466b9818da:resolve_choice",
+      "label" : "All attack",
+      "messageId" : 74,
+      "playerId" : "83c51f38-1926-4c78-a744-ca1ec0b4048a",
+      "promptId" : "d3698d41-57c6-470b-9c5f-1a466b9818da",
+      "sourceInstanceId" : null,
+      "sourceZone" : null,
+      "type" : "resolve_choice"
+    }
+  ],
+  "log" : [
+
+  ],
+  "manaPayment" : null,
+  "pendingStatus" : null,
+  "phase" : "COMBAT",
+  "players" : [
+    {
+      "battlefield" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "43fb4d78-0a51-4b73-8954-dda7cb24cd29",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Swamp",
+          "oracleText" : "{T}: Add {B}.",
+          "phasedIn" : true,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : true,
+          "tapped" : false,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Swamp",
+          "visibleIcons" : [
+
+          ]
+        }
+      ],
+      "command" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "9",
+          "displayToughness" : "3",
+          "icons" : [
+
+          ],
+          "instanceId" : "f3e88691-b49b-4d77-a161-2a95ca4a42ce",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : "{4}{B}",
+          "name" : "Yargle, Glutton of Urborg",
+          "oracleText" : "<b>Commander</b>",
+          "phasedIn" : null,
+          "reportedPower" : "9",
+          "reportedToughness" : "3",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Legendary Creature — Frog Spirit",
+          "visibleIcons" : [
+
+          ]
+        }
+      ],
+      "commanderDamage" : {
+
+      },
+      "commanders" : [
+        {
+          "castsFromCommandZone" : 0,
+          "commanderTax" : 0,
+          "damageToPlayers" : {
+
+          },
+          "id" : "f3e88691-b49b-4d77-a161-2a95ca4a42ce",
+          "name" : "Yargle, Glutton of Urborg",
+          "ownerPlayerId" : "8d3bec80-e9fa-409e-8960-4918885793cb"
+        }
+      ],
+      "commanderTax" : 0,
+      "commanderTaxKnown" : true,
+      "counters" : {
+
+      },
+      "displayName" : "Fixture Player 2",
+      "exile" : [
+
+      ],
+      "graveyard" : [
+
+      ],
+      "hand" : [
+
+      ],
+      "handCount" : 7,
+      "hasLeft" : false,
+      "initiative" : false,
+      "isHuman" : true,
+      "library" : [
+
+      ],
+      "libraryCount" : 91,
+      "life" : 40,
+      "manaPool" : {
+        "B" : 0,
+        "C" : 0,
+        "G" : 0,
+        "R" : 0,
+        "U" : 0,
+        "W" : 0
+      },
+      "monarch" : false,
+      "playerId" : "8d3bec80-e9fa-409e-8960-4918885793cb",
+      "poison" : 0,
+      "stack" : [
+
+      ]
+    },
+    {
+      "battlefield" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "3cba58bb-b9e6-4ac8-9948-0cb890e1b9f5",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Plains",
+          "oracleText" : "{T}: Add {W}.",
+          "phasedIn" : true,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : false,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Plains",
+          "visibleIcons" : [
+
+          ]
+        },
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "658ca568-336d-46be-9068-344af7cee765",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Plains",
+          "oracleText" : "{T}: Add {W}.",
+          "phasedIn" : true,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : true,
+          "tapped" : false,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Plains",
+          "visibleIcons" : [
+
+          ]
+        },
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : [
+
+          ],
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : 0,
+          "disabledReason" : null,
+          "displayPower" : "2",
+          "displayToughness" : "2",
+          "icons" : [
+            {
+              "category" : "COMMANDER",
+              "hint" : "Card is commander",
+              "iconType" : "COMMANDER",
+              "text" : ""
+            }
+          ],
+          "instanceId" : "d80199fe-06bb-486b-b9f7-a3d4a685bdd5",
+          "isAttacking" : false,
+          "isToken" : false,
+          "manaCost" : "{W}",
+          "name" : "Isamaru, Hound of Konda",
+          "oracleText" : "<b>Commander</b> 1 time played from the command zone.",
+          "phasedIn" : true,
+          "reportedPower" : "2",
+          "reportedToughness" : "2",
+          "selectable" : null,
+          "summoningSickness" : false,
+          "tapped" : false,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Legendary Creature — Dog",
+          "visibleIcons" : [
+            "COMMANDER"
+          ]
+        }
+      ],
+      "command" : [
+
+      ],
+      "commanderDamage" : {
+
+      },
+      "commanders" : [
+        {
+          "castsFromCommandZone" : 1,
+          "commanderTax" : 2,
+          "damageToPlayers" : {
+
+          },
+          "id" : "d80199fe-06bb-486b-b9f7-a3d4a685bdd5",
+          "name" : "Isamaru, Hound of Konda",
+          "ownerPlayerId" : "83c51f38-1926-4c78-a744-ca1ec0b4048a"
+        }
+      ],
+      "commanderTax" : 2,
+      "commanderTaxKnown" : true,
+      "counters" : {
+
+      },
+      "displayName" : "Fixture Player 1",
+      "exile" : [
+
+      ],
+      "graveyard" : [
+
+      ],
+      "hand" : [
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "77f5b673-ab32-4dd9-b8f7-dc8ba9662c5a",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Plains",
+          "oracleText" : "{T}: Add {W}.",
+          "phasedIn" : null,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Plains",
+          "visibleIcons" : [
+
+          ]
+        },
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "8bd9f614-d861-450f-9dc5-8ccd1a3fc5b7",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Plains",
+          "oracleText" : "{T}: Add {W}.",
+          "phasedIn" : null,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Plains",
+          "visibleIcons" : [
+
+          ]
+        },
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "8db72e8b-f44d-4204-afab-8b4124286623",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Plains",
+          "oracleText" : "{T}: Add {W}.",
+          "phasedIn" : null,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Plains",
+          "visibleIcons" : [
+
+          ]
+        },
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "97c438c8-98f2-4965-b7ca-ea1dc555c549",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Plains",
+          "oracleText" : "{T}: Add {W}.",
+          "phasedIn" : null,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Plains",
+          "visibleIcons" : [
+
+          ]
+        },
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "d613cae4-2688-409d-8f69-15a1f7f10071",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Plains",
+          "oracleText" : "{T}: Add {W}.",
+          "phasedIn" : null,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Plains",
+          "visibleIcons" : [
+
+          ]
+        },
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "ed3f18fd-2ced-4024-8be8-d2f9b23f07cf",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Plains",
+          "oracleText" : "{T}: Add {W}.",
+          "phasedIn" : null,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Plains",
+          "visibleIcons" : [
+
+          ]
+        },
+        {
+          "attachedToInstanceId" : null,
+          "blocking" : null,
+          "copySourceArtworkName" : null,
+          "counters" : null,
+          "damage" : null,
+          "disabledReason" : null,
+          "displayPower" : "0",
+          "displayToughness" : "0",
+          "icons" : [
+
+          ],
+          "instanceId" : "f13bfa69-f2d2-465b-a3d3-8f2d429f02b3",
+          "isAttacking" : null,
+          "isToken" : false,
+          "manaCost" : null,
+          "name" : "Plains",
+          "oracleText" : "{T}: Add {W}.",
+          "phasedIn" : null,
+          "reportedPower" : "0",
+          "reportedToughness" : "0",
+          "selectable" : null,
+          "summoningSickness" : null,
+          "tapped" : null,
+          "tokenArtwork" : null,
+          "tokenColors" : null,
+          "typeLine" : "Basic Land — Plains",
+          "visibleIcons" : [
+
+          ]
+        }
+      ],
+      "handCount" : 7,
+      "hasLeft" : false,
+      "initiative" : false,
+      "isHuman" : true,
+      "library" : [
+
+      ],
+      "libraryCount" : 90,
+      "life" : 40,
+      "manaPool" : {
+        "B" : 0,
+        "C" : 0,
+        "G" : 0,
+        "R" : 0,
+        "U" : 0,
+        "W" : 0
+      },
+      "monarch" : false,
+      "playerId" : "83c51f38-1926-4c78-a744-ca1ec0b4048a",
+      "poison" : 0,
+      "stack" : [
+
+      ]
+    }
+  ],
+  "priorityPlayerId" : "83c51f38-1926-4c78-a744-ca1ec0b4048a",
+  "promptEnvelopeV2" : {
+    "abilities" : null,
+    "amounts" : null,
+    "cards" : null,
+    "choices" : null,
+    "chosenTargets" : null,
+    "confirmation" : null,
+    "id" : "d3698d41-57c6-470b-9c5f-1a466b9818da",
+    "kind" : "target",
+    "manaChoices" : null,
+    "maxChoices" : 1,
+    "message" : "Select attackers",
+    "messageId" : 74,
+    "method" : "GAME_SELECT",
+    "minChoices" : 1,
+    "modes" : null,
+    "multiAmounts" : null,
+    "optionKeys" : [
+      "possibleAttackers",
+      "queryType",
+      "specialButton"
+    ],
+    "orderedItems" : null,
+    "piles" : null,
+    "playerId" : "83c51f38-1926-4c78-a744-ca1ec0b4048a",
+    "players" : null,
+    "required" : false,
+    "responseCommand" : {
+      "confirmed" : null,
+      "messageId" : 74,
+      "pay" : null,
+      "promptId" : "d3698d41-57c6-470b-9c5f-1a466b9818da",
+      "type" : "choose_target"
+    },
+    "responseKind" : "target",
+    "targetIds" : null,
+    "targets" : [
+      {
+        "id" : "d80199fe-06bb-486b-b9f7-a3d4a685bdd5",
+        "label" : "Isamaru, Hound of Konda"
+      }
+    ],
+    "totalMax" : null,
+    "totalMin" : null
+  },
+  "promptText" : "Select attackers",
+  "source" : "xmage-ondevice",
+  "step" : "DECLARE_ATTACKERS",
+  "thinkingPlayerID" : null,
+  "turn" : 3,
+  "viewerPlayerId" : "83c51f38-1926-4c78-a744-ca1ec0b4048a",
+  "waitingOnPlayerId" : "83c51f38-1926-4c78-a744-ca1ec0b4048a",
+  "winnerPlayerIds" : [
+
+  ],
+  "xmage" : {
+    "bridgeRevision" : 74,
+    "combat" : [
+
+    ],
+    "gameId" : "efa40d5a-f81e-46a7-aa4a-9d7c2e1d2bea",
+    "panels" : {
+      "command" : true,
+      "exile" : true,
+      "graveyard" : true,
+      "lookedAt" : false,
+      "revealed" : false,
+      "search" : false,
+      "stack" : false
+    },
+    "playableObjects" : [
+
+    ],
+    "players" : [
+      {
+        "active" : false,
+        "hasPriority" : false,
+        "name" : "Fixture Player 2",
+        "passedAllTurns" : false,
+        "passedTurn" : false,
+        "playerId" : "8d3bec80-e9fa-409e-8960-4918885793cb",
+        "sideboard" : [
+
+        ],
+        "timerActive" : false
+      },
+      {
+        "active" : true,
+        "hasPriority" : true,
+        "name" : "Fixture Player 1",
+        "passedAllTurns" : false,
+        "passedTurn" : false,
+        "playerId" : "83c51f38-1926-4c78-a744-ca1ec0b4048a",
+        "sideboard" : [
+
+        ],
+        "timerActive" : true
+      }
+    ],
+    "stack" : [
+
+    ],
+    "xmageCycle" : 89,
+    "zones" : [
+      {
+        "cards" : [
+
+        ],
+        "id" : "712e3513-5657-435d-84fc-6b344ac1b811",
+        "name" : "Permanent - Exile"
+      }
+    ]
+  },
+  "xmageCycle" : 89
+}
