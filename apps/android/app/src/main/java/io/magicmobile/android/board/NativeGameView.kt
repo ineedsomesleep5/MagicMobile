@@ -638,7 +638,7 @@ fun NativeGameView(
                         .background(MagicPalette.iron.copy(alpha = 0.92f), CircleShape).border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.7f), CircleShape)
                         .padding(horizontal = 16.dp, vertical = 8.dp).semantics { contentDescription = "board.phase.announcement" },
                         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(cue.owner.uppercase(), color = MagicPalette.antiqueGold, style = SfText.caption2(SfWeight.heavy).copy(letterSpacing = androidx.compose.ui.unit.TextUnit(1f, androidx.compose.ui.unit.TextUnitType.Sp)))
+                        Text(cue.owner.uppercase(), color = MagicPalette.antiqueGold, style = sf(11f, SfWeight.heavy, tracking = 1f))
                         io.magicmobile.android.ui.FitText(cue.title, sf(17f, SfWeight.bold, io.magicmobile.android.ui.SfDesign.SERIF), color = MagicPalette.parchment, minimumScale = 0.7f)
                     }
                 }

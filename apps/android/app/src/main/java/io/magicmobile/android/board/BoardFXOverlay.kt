@@ -551,9 +551,8 @@ fun BoardFXOverlay(effects: List<ActiveBoardFX>, subjects: Map<String, ZoneCard>
                 drawEffect(effect.scheduled, p, p * effect.scheduled.duration, measurer, anchors, subjects, ::rect, ::point)
             }
         }
-        for (flight in flights) key(flight.id) {
-            val p = progress(flight.effect) ?: return@key
-            val placement = flight.placement(p) ?: return@key
+        val placed = flights.mapNotNull { flight -> progress(flight.effect)?.let { p -> flight.placement(p)?.let { Triple(flight, p, it) } } }
+        for ((flight, p, placement) in placed) key(flight.id) {
             val w = placement.size.width; val h = placement.size.height
             val shading = flight.shading(p)
             val shaded = when (shading) {
@@ -588,7 +587,7 @@ fun BoardFXOverlay(effects: List<ActiveBoardFX>, subjects: Map<String, ZoneCard>
 }
 
 private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Double, measurer: TextMeasurer, anchors: BoardFXAnchors,
-                                 subjects: Map<String, ZoneCard>, rect: (String) -> BoardRect?, point: (BoardFXStrikeTarget) -> BoardPoint?) = with(BoardFXPainter) {
+                                 subjects: Map<String, ZoneCard>, rect: (String) -> BoardRect?, point: (BoardFXStrikeTarget) -> BoardPoint?) { with(BoardFXPainter) {
     val motion = fx.usesMotion
     when (val event = fx.event) {
         is BoardFXEvent.SpellCast -> {
@@ -608,7 +607,7 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
             banner(measurer, event.name, if (event.weight == BoardFXSpellWeight.COMMANDER) "COMMANDER" else null, BoardPoint(center.x, bannerY), heroColor, p)
         }
         is BoardFXEvent.EnteredBattlefield -> {
-            val r = rect(event.cardID) ?: return@with
+            val r = rect(event.cardID) ?: return
             // With a flight, the glow is the landing; without one it plays immediately.
             val flying = motion && subjects[event.cardID] != null
             val landing = if (flying) BoardFXScheduler.landingFraction(event.entrance) else 0.0
@@ -628,7 +627,7 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
                         min(1.0, p / (landing * 0.8)))
                 }
             }
-            if (flying && p < landing) return@with
+            if (flying && p < landing) return
             val glow = if (flying) (p - landing) / (1 - landing) else p
             val color = if (event.entrance == BoardFXEntrance.COMMANDER) gold else event.tint.color
             arrivalGlow(r, color, glow, motion)
@@ -638,7 +637,7 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
             }
         }
         is BoardFXEvent.LeftBattlefield -> {
-            val r = rect(event.cardID) ?: return@with
+            val r = rect(event.cardID) ?: return
             if (!(motion && subjects[event.cardID] != null)) departure(r, event.tint.color, event.to, p, motion)
             if (motion) {
                 val exile = event.to == BoardFXZone.EXILE
@@ -646,29 +645,29 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
             }
         }
         is BoardFXEvent.DamageMarked -> {
-            val r = rect(event.cardID) ?: return@with
+            val r = rect(event.cardID) ?: return
             flash(r, Color.Red, p)
             if (motion) sparks(r, rgb(1.0, 0.3, 0.2), 12, p, fx.id, BoardFXPainter.SparkStyle.BURST)
             number(measurer, "-${event.amount}", BoardPoint(r.midX, r.midY), rgb(1.0, 0.32, 0.28), 26.0, p, motion)
         }
         is BoardFXEvent.CountersAdded -> {
-            val r = rect(event.cardID) ?: return@with
+            val r = rect(event.cardID) ?: return
             if (motion) sparks(r, rgb(0.55, 1.0, 0.55), 10, p, fx.id, BoardFXPainter.SparkStyle.RISE)
             number(measurer, "+${event.amount}", BoardPoint(r.midX, r.y + 12), rgb(0.55, 1.0, 0.55), 20.0, p, motion)
         }
         is BoardFXEvent.AttackDeclared -> {
-            val r = rect(event.cardID) ?: return@with
+            val r = rect(event.cardID) ?: return
             arrivalGlow(r, attackRed, p, motion)
             if (motion) { sparks(r, event.tint.color, 10, p, fx.id, BoardFXPainter.SparkStyle.BURST); slash(r, attackRed, p) }
         }
         is BoardFXEvent.BlockDeclared -> {
-            val blocker = rect(event.cardID) ?: return@with
+            val blocker = rect(event.cardID) ?: return
             arrivalGlow(blocker, blockSteel, p, motion)
             rect(event.attackerID)?.let { link(blocker, it, blockSteel, p) }
         }
         is BoardFXEvent.CombatStrike -> {
-            val origin = rect(event.attackerID) ?: return@with
-            val hit = point(event.target) ?: return@with
+            val origin = rect(event.attackerID) ?: return
+            val hit = point(event.target) ?: return
             val impact = BoardFXScheduler.strikeImpactFraction
             if (motion && p > 0.15 && p < impact + 0.05) trail(BoardPoint(origin.midX, origin.midY), hit, event.tint.color, (p - 0.15) / (impact - 0.15))
             if (p >= impact) {
@@ -685,7 +684,7 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
             number(measurer, if (event.delta < 0) "${event.delta}" else "+${event.delta}", at, color, size, p, motion)
         }
     }
-}
+} }
 
 /** Board events to recorded cues (Swift BoardFXSound). */
 object BoardFXSound {

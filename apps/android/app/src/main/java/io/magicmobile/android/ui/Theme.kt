@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import io.magicmobile.android.R
 
@@ -147,10 +148,70 @@ object SfWeight {
     val black = FontWeight.W900
 }
 
-/** `.font(.system(size:weight:design:))`. Inter runs slightly wider than SF Pro, so text sizes are unchanged and layouts keep iOS geometry. */
-fun sf(size: Float, weight: FontWeight = SfWeight.regular, design: SfDesign = SfDesign.DEFAULT, tracking: Float = 0f): TextStyle =
-    TextStyle(fontFamily = AppFonts.family(design), fontWeight = weight, fontSize = size.sp,
-        letterSpacing = if (tracking == 0f) TextStyle.Default.letterSpacing else tracking.sp)
+/**
+ * Width and line-height corrections that make the stand-in fonts set text like Apple's.
+ * Measured by comparing advance widths (plus SF/New York's own size-specific tracking)
+ * over board and menu strings: em to add per character, by weight and point size.
+ */
+object AppleFontMetrics {
+    private val sizes = floatArrayOf(8f, 10f, 12f, 15f, 17f, 20f, 24f, 34f, 48f)
+    private val weights = intArrayOf(400, 500, 600, 700, 800, 900)
+    // Fitted on a device against CoreText widths of 40 UI strings (kerning included). SwiftUI weights resolve to
+    // each Apple font's named instance (SF Black is wght 1000, New York Black 934).
+    private val sans = arrayOf(
+        floatArrayOf(0.0216f, 0.0117f, -0.0052f, -0.0240f, -0.0309f, -0.0447f, -0.0511f, -0.0534f, -0.0584f),
+        floatArrayOf(0.0310f, 0.0119f, 0.0017f, -0.0116f, -0.0265f, -0.0333f, -0.0426f, -0.0453f, -0.0495f),
+        floatArrayOf(0.0312f, 0.0167f, 0.0083f, -0.0114f, -0.0194f, -0.0310f, -0.0385f, -0.0400f, -0.0442f),
+        floatArrayOf(0.0355f, 0.0269f, 0.0120f, -0.0020f, -0.0145f, -0.0228f, -0.0293f, -0.0312f, -0.0351f),
+        floatArrayOf(0.0556f, 0.0325f, 0.0245f, 0.0059f, -0.0005f, -0.0099f, -0.0157f, -0.0151f, -0.0197f),
+        floatArrayOf(0.0551f, 0.0476f, 0.0344f, 0.0189f, 0.0081f, -0.0029f, -0.0031f, -0.0036f, -0.0091f))
+    private val serif = arrayOf(
+        floatArrayOf(0.0528f, 0.0447f, 0.0336f, 0.0252f, 0.0181f, 0.0094f, 0.0068f, -0.0016f, -0.0118f),
+        floatArrayOf(0.0637f, 0.0548f, 0.0445f, 0.0367f, 0.0324f, 0.0236f, 0.0196f, 0.0125f, 0.0021f),
+        floatArrayOf(0.0767f, 0.0641f, 0.0527f, 0.0454f, 0.0415f, 0.0319f, 0.0284f, 0.0194f, 0.0116f),
+        floatArrayOf(0.0756f, 0.0744f, 0.0633f, 0.0554f, 0.0498f, 0.0416f, 0.0385f, 0.0304f, 0.0218f),
+        floatArrayOf(0.0978f, 0.0911f, 0.0811f, 0.0741f, 0.0682f, 0.0612f, 0.0579f, 0.0513f, 0.0442f),
+        floatArrayOf(0.1138f, 0.1086f, 0.1025f, 0.0904f, 0.0829f, 0.0817f, 0.0751f, 0.0696f, 0.0614f))
+    private val rounded = arrayOf(
+        floatArrayOf(0.0321f, 0.0169f, 0.0092f, -0.0110f, -0.0174f, -0.0201f, -0.0252f, -0.0281f, -0.0323f),
+        floatArrayOf(0.0421f, 0.0282f, 0.0193f, 0.0000f, -0.0058f, -0.0105f, -0.0133f, -0.0178f, -0.0231f),
+        floatArrayOf(0.0498f, 0.0374f, 0.0261f, 0.0072f, 0.0021f, -0.0045f, -0.0090f, -0.0116f, -0.0151f),
+        floatArrayOf(0.0536f, 0.0397f, 0.0246f, 0.0146f, 0.0017f, -0.0006f, -0.0025f, -0.0078f, -0.0104f),
+        floatArrayOf(0.0656f, 0.0530f, 0.0376f, 0.0187f, 0.0161f, 0.0094f, 0.0074f, 0.0038f, -0.0012f),
+        floatArrayOf(0.0720f, 0.0558f, 0.0468f, 0.0284f, 0.0195f, 0.0185f, 0.0127f, 0.0106f, 0.0068f))
+
+    private fun interpolate(xs: FloatArray, ys: FloatArray, x: Float): Float {
+        if (x <= xs.first()) return ys.first()
+        if (x >= xs.last()) return ys.last()
+        for (i in 0 until xs.size - 1) if (x <= xs[i + 1]) return ys[i] + (ys[i + 1] - ys[i]) * (x - xs[i]) / (xs[i + 1] - xs[i])
+        return ys.last()
+    }
+
+    /** Em per character to add so the stand-in font matches Apple's width at this size and weight. */
+    fun widthCorrection(design: SfDesign, weight: Int, size: Float): Float {
+        val table = when (design) { SfDesign.DEFAULT -> sans; SfDesign.SERIF -> serif; SfDesign.ROUNDED -> rounded; SfDesign.MONOSPACED -> return 0f }
+        val w = weight.coerceIn(400, 900)
+        val row = weights.indexOfLast { it <= w }.coerceAtLeast(0)
+        val next = (row + 1).coerceAtMost(weights.size - 1)
+        val a = interpolate(sizes, table[row], size); val b = interpolate(sizes, table[next], size)
+        return if (next == row) a else a + (b - a) * (w - weights[row]) / (weights[next] - weights[row]).toFloat()
+    }
+
+    /** Apple's line box (ascent + descent): SF Pro and SF Rounded 1.178 em, New York 1.193 em. */
+    fun lineHeight(design: SfDesign): Float = when (design) { SfDesign.SERIF -> 1.193f; SfDesign.MONOSPACED -> 1.2f; else -> 1.178f }
+}
+
+/**
+ * `.font(.system(size:weight:design:))` with the stand-in fonts corrected to Apple's widths
+ * and line heights, so text wraps, truncates and stacks where it does on the iPhone.
+ */
+fun sf(size: Float, weight: FontWeight = SfWeight.regular, design: SfDesign = SfDesign.DEFAULT, tracking: Float = 0f): TextStyle {
+    val letterSpacing = AppleFontMetrics.widthCorrection(design, weight.weight, size) + if (size > 0f) tracking / size else 0f
+    return TextStyle(fontFamily = AppFonts.family(design), fontWeight = weight, fontSize = size.sp, letterSpacing = letterSpacing.em,
+        lineHeight = AppleFontMetrics.lineHeight(design).em,
+        lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(androidx.compose.ui.text.style.LineHeightStyle.Alignment.Proportional,
+            androidx.compose.ui.text.style.LineHeightStyle.Trim.None))
+}
 
 /** Dynamic Type text styles at their default (Large) sizes. */
 object SfText {

@@ -1,5 +1,7 @@
 package io.magicmobile.android.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallSplit
@@ -40,10 +42,14 @@ import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.graphics.vector.VectorGroup
+import androidx.compose.ui.graphics.vector.VectorPath
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -164,6 +170,12 @@ object SfSymbols {
         "hands.clap.fill" -> Icons.Filled.Celebration
         "globe" -> Icons.Filled.Language
         "forward.end" -> Icons.Outlined.SkipNext
+        "forward.end.fill" -> Icons.Filled.SkipNext
+        "ellipsis.circle.fill" -> Icons.Filled.MoreHoriz
+        "list.bullet.rectangle.portrait" -> Icons.AutoMirrored.Filled.ListAlt
+        "speaker.wave.2.fill" -> Icons.Filled.VolumeUp
+        "stop.fill" -> Icons.Filled.Stop
+        "trophy.fill" -> Icons.Filled.EmojiEvents
         "forward.fill" -> Icons.Filled.FastForward
         "flame.fill" -> Icons.Filled.LocalFireDepartment
         "externaldrive" -> Icons.Filled.Storage
@@ -217,8 +229,38 @@ object SfSymbols {
     }
 }
 
-/** `Image(systemName:)` with a tint and a point size (SF symbols scale with their font size). */
+private val glyphExtents = HashMap<ImageVector, Float>()
+
+/** The share of its viewport a Material glyph covers (its larger side, from the path bounds). */
+private fun glyphExtent(vector: ImageVector): Float = synchronized(glyphExtents) {
+    glyphExtents.getOrPut(vector) {
+        var bounds: androidx.compose.ui.geometry.Rect? = null
+        fun visit(group: VectorGroup) {
+            for (node in group) when (node) {
+                is VectorGroup -> visit(node)
+                is VectorPath -> {
+                    val b = PathParser().addPathNodes(node.pathData).toPath().getBounds()
+                    if (!b.isEmpty) bounds = bounds?.let { androidx.compose.ui.geometry.Rect(minOf(it.left, b.left), minOf(it.top, b.top),
+                        maxOf(it.right, b.right), maxOf(it.bottom, b.bottom)) } ?: b
+                }
+            }
+        }
+        visit(vector.root)
+        bounds?.let { maxOf(it.width / vector.viewportWidth, it.height / vector.viewportHeight) }?.takeIf { it > 0f } ?: (20f / 24f)
+    }
+}
+
+/**
+ * `Image(systemName:)` with a tint and a point size. An SF symbol draws about 1–1.15× its point
+ * size, while a Material glyph covers 50–83% of its box: the box is scaled so a full glyph matches,
+ * and small glyphs (skip, stop, chevrons) are raised to about the point size. The layout frame is
+ * 1.1× the point size, like SwiftUI's symbol frame; the glyph may draw past it.
+ */
 @Composable
 fun SfImage(name: String, tint: Color, size: Dp, modifier: Modifier = Modifier, contentDescription: String? = null) {
-    Icon(SfSymbols.vector(name), contentDescription, modifier.size(size), tint = tint)
+    val vector = SfSymbols.vector(name)
+    val boost = if (name == "xmark") 1f else (0.75f / glyphExtent(vector)).coerceIn(1f, 1.7f)
+    Box(modifier.size(size * 1.1f), contentAlignment = Alignment.Center) {
+        Icon(vector, contentDescription, Modifier.requiredSize(size * 1.32f * boost), tint = tint)
+    }
 }

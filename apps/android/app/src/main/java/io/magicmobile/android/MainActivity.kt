@@ -51,7 +51,18 @@ private val Night=Color(0xFF121A17)
 private val Parchment=Color(0xFFF2E9D8)
 class MainActivity: ComponentActivity() {
     private val model: AppModel by viewModels()
-    override fun onCreate(savedInstanceState:Bundle?) { super.onCreate(savedInstanceState);enableEdgeToEdge();setContent { MagicApp(model) } }
+    override fun onCreate(savedInstanceState:Bundle?) {
+        super.onCreate(savedInstanceState);enableEdgeToEdge()
+        val extras=DesignPreview.extras(intent)
+        io.magicmobile.android.ui.LaunchEnvironment.load(this,extras)
+        // UI previews and tests use their own preferences, like iOS's MAGICMOBILE_UI_TEST_PREFERENCES suite.
+        io.magicmobile.android.ui.AppPreferences.init(this,extras["MAGICMOBILE_UI_TEST_PREFERENCES"]?.let{"magicmobile.preferences.$it"} ?: "magicmobile.preferences")
+        io.magicmobile.android.ui.GameAudio.init(this)
+        if(DesignPreview.active){
+            WindowCompat.getInsetsController(window,window.decorView).apply{isAppearanceLightStatusBars=false;isAppearanceLightNavigationBars=false}
+            setContent { DesignPreviewHost() }
+        } else setContent { MagicApp(model) }
+    }
     override fun onResume(){super.onResume();model.foreground(true)}
     override fun onStop(){model.foreground(false);super.onStop()}
 }

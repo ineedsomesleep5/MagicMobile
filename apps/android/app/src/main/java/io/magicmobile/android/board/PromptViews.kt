@@ -191,7 +191,7 @@ fun ManaPaymentTray(snapshot: GameSnapshot, prompt: PromptEnvelopeV2, pendingAct
 
     if (compact) {
         Row(modifier.height(44.dp), horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
-            Row(Modifier.weight(1f, fill = false).defaultMinSize(48.dp, 44.dp).horizontalScroll(rememberScrollState())
+            Row(Modifier.weight(1f).defaultMinSize(48.dp, 44.dp).horizontalScroll(rememberScrollState())
                 .semantics { contentDescription = "Remaining cost and mana choices; swipe to view" },
                 horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
                 pipRow()
@@ -262,8 +262,10 @@ fun InlinePaymentPromptBar(snapshot: GameSnapshot, pendingActionId: String?, run
         Text("PAY COST", Modifier.background(MagicPalette.antiqueGold.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
             color = MagicPalette.antiqueGold, style = sf(9f, SfWeight.black))
         val prompt = InlinePaymentPromptState.paymentPrompt(snapshot)
+        // SwiftUI splits the free width between the tray's scroll view and the trailing spacer.
         if (prompt != null) ManaPaymentTray(snapshot, prompt, pendingActionId, runAction, runCommand, Modifier.weight(1f), compact = true)
-        else Text("Tap mana sources", Modifier.weight(1f), color = Color.White, style = sf(11f, SfWeight.black))
+        else Text("Tap mana sources", color = Color.White, style = sf(11f, SfWeight.black))
+        Spacer(Modifier.weight(1f))
         if (snapshot.source == "xmage-ondevice") {
             Box(Modifier.alpha(if (pendingActionId != null) 0.5f else 1f)) {
                 GameIconButton("list.bullet.rectangle", { if (pendingActionId == null) openDetails() }, small = true, contentDescription = "Payment choices")

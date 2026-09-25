@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -129,7 +130,7 @@ fun CardTile(card: ZoneCard, selected: Boolean, modifier: Modifier = Modifier, p
             val size = maxOf(width * 0.22f, 13.dp)
             Box(Modifier.align(Alignment.CenterEnd).padding(3.dp).size(size).background(MagicPalette.warningAmber.copy(alpha = 0.92f), CircleShape)
                 .border(0.7.dp, Color.Black.copy(alpha = 0.32f), CircleShape), contentAlignment = Alignment.Center) {
-                SfImage("hourglass", MagicPalette.iron, maxOf(width * 0.105f, 7.dp) * 1.2f)
+                SfImage("hourglass", MagicPalette.iron, maxOf(width * 0.105f, 7.dp))
             }
         }
         if (!ignoreTappedRotation && card.counterBadges.isNotEmpty()) {
@@ -181,8 +182,13 @@ fun cardPlayHint(legal: Boolean, castOffered: Boolean): String = when (CardPlayA
 /** The consent-aware artwork route (Android's CardArtwork) with the iOS placeholder while art is missing or loading. */
 @Composable
 fun CardArtworkOrPlaceholder(card: ZoneCard, width: Dp, height: Dp, artOnly: Boolean = false) {
-    if (!NativeCardArtworkPolicy.permitsLookup(card) || BoardArtwork.forcePlaceholders) {
+    if (!NativeCardArtworkPolicy.permitsLookup(card)) {
         CardArtPlaceholder(card, width, height)
+        return
+    }
+    if (BoardArtwork.forcePlaceholders) {
+        // iOS previews request no image at all, so their placeholder stays in its loading state.
+        CardArtPlaceholder(card, width, height, loading = true)
         return
     }
     val isToken = card.card.isToken == true
@@ -207,14 +213,16 @@ fun CardArtPlaceholder(card: ZoneCard, width: Dp, height: Dp, loading: Boolean =
             RoundedCornerShape(6.dp))) {
         Column(Modifier.fillMaxSize().padding(maxOf(width * 0.07f, 3.5.dp)), verticalArrangement = Arrangement.spacedBy(maxOf(height * 0.025f, 2.dp))) {
             Row(Modifier.fillMaxWidth().background(MagicPalette.parchment.copy(alpha = 0.72f), RoundedCornerShape(3.dp))
-                .padding(horizontal = maxOf(width * 0.03f, 2.dp), vertical = maxOf(height * 0.018f, 1.5.dp))) {
-                FitText(card.card.name, sf(maxOf(width.value * 0.115f, 6f), SfWeight.black, SfDesign.SERIF), Modifier.weight(1f),
+                .padding(horizontal = maxOf(width * 0.03f, 2.dp), vertical = maxOf(height * 0.018f, 1.5.dp)),
+                horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                FitText(card.card.name, sf(maxOf(width.value * 0.115f, 6f), SfWeight.black, SfDesign.SERIF), Modifier.weight(1f, fill = false),
                     color = MagicPalette.iron, maxLines = 2, minimumScale = 0.58f)
+                Spacer(Modifier.width(2.dp))
             }
             Box(Modifier.fillMaxWidth().height(maxOf(height * 0.38f, 22.dp)).clip(RoundedCornerShape(4.dp))
                 .background(Brush.linearGradient(listOf(MagicPalette.leather.copy(alpha = 0.78f), MagicPalette.moss.copy(alpha = 0.62f), MagicPalette.iron.copy(alpha = 0.86f)))),
                 contentAlignment = Alignment.Center) {
-                SfImage(if (loading) "hourglass" else "sparkles", MagicPalette.antiqueGold.copy(alpha = if (loading) 0.34f else 0.42f), maxOf(width * 0.18f, 10.dp) * 1.2f)
+                SfImage(if (loading) "hourglass" else "sparkles", MagicPalette.antiqueGold.copy(alpha = if (loading) 0.34f else 0.42f), maxOf(width * 0.18f, 10.dp))
             }
             Box(Modifier.fillMaxWidth().background(MagicPalette.parchmentShadow.copy(alpha = 0.14f), RoundedCornerShape(3.dp))
                 .padding(horizontal = maxOf(width * 0.035f, 2.dp), vertical = maxOf(height * 0.012f, 1.dp))) {
@@ -394,7 +402,8 @@ fun ArenaBattlefieldCard(card: ZoneCard, zoneName: String, width: Dp, height: Dp
                 FitText(card.card.name, sf(maxOf(8f, width.value * 0.115f), SfWeight.semibold, SfDesign.SERIF), color = Color.White, minimumScale = 0.62f)
             }
             Box(Modifier.width(width).height(maxOf(12.dp, height - 15.dp - if (showsFooter) 20.dp else 0.dp)).clipToBounds(), contentAlignment = Alignment.TopCenter) {
-                Box(Modifier.offset(y = -(width * 0.19f)).requiredSize(width * 1.08f, width * 1.51f)) {
+                // Pinned to the top like SwiftUI's `.frame(alignment: .top)`; Compose would otherwise center the overflow.
+                Box(Modifier.wrapContentSize(Alignment.TopCenter, unbounded = true).offset(y = -(width * 0.19f)).requiredSize(width * 1.08f, width * 1.51f)) {
                     CardTile(card, selected = false, zoneName = zoneName, width = width * 1.08f, height = width * 1.51f, ignoreTappedRotation = true)
                 }
             }
@@ -418,7 +427,7 @@ fun ArenaBattlefieldCard(card: ZoneCard, zoneName: String, width: Dp, height: Dp
             Box(Modifier.align(Alignment.BottomEnd).padding(end = 3.dp, bottom = if (showsFooter) 23.dp else 3.dp).size(size)
                 .background(Color.Black.copy(alpha = 0.78f), CircleShape).border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.7f), CircleShape),
                 contentAlignment = Alignment.Center) {
-                SfImage("arrow.turn.down.right", MagicPalette.parchment, maxOf(8.dp, width * 0.12f) * 1.15f)
+                SfImage("arrow.turn.down.right", MagicPalette.parchment, maxOf(8.dp, width * 0.12f))
             }
         }
         Box(Modifier.fillMaxSize().border(if (legal || targetable || selected) 2.dp else 1.dp, accent, shape))

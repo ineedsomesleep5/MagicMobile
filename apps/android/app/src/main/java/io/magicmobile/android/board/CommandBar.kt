@@ -54,6 +54,7 @@ import io.magicmobile.android.game.ManaPool
 import io.magicmobile.android.game.PlayerGameState
 import io.magicmobile.android.game.ZoneCard
 import io.magicmobile.android.ui.FitText
+import io.magicmobile.android.ui.colorAdjust
 import io.magicmobile.android.ui.GameSound
 import io.magicmobile.android.ui.MagicPalette
 import io.magicmobile.android.ui.SfDesign
@@ -101,11 +102,11 @@ private fun DockCircle(pressed: Boolean = false, content: @Composable () -> Unit
 @Composable
 fun YieldActionsControl(snapshot: GameSnapshot, actions: List<LegalAction>, fontSize: Float, runAction: (LegalAction) -> Unit, iconOnly: Boolean = false) {
     @Composable
-    fun label(title: String, disclosure: Boolean) {
-        if (iconOnly) SfImage("forward.end", MagicPalette.parchment, 18.dp)
+    fun label(title: String, disclosure: Boolean, color: Color = Color.White) {
+        if (iconOnly) SfImage("forward.end", MagicPalette.parchment, 16.dp)
         else Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(title, color = Color.White, style = sf(fontSize, SfWeight.black, SfDesign.SERIF), textAlign = TextAlign.Center)
-            if (disclosure) SfImage("chevron.up.chevron.down", Color.White, maxOf(fontSize - 2, 7f).dp)
+            Text(title, color = color, style = sf(fontSize, SfWeight.black, SfDesign.SERIF), textAlign = TextAlign.Center)
+            if (disclosure) SfImage("chevron.up.chevron.down", color, maxOf(fontSize - 2, 7f).dp)
         }
     }
     val single = actions.singleOrNull()
@@ -117,11 +118,11 @@ fun YieldActionsControl(snapshot: GameSnapshot, actions: List<LegalAction>, font
         BoardMenu({ actions.map { action -> MenuEntry.Item(GameplayActionPresentation.title(action, snapshot)) { runAction(action) } } },
             Modifier.semantics { contentDescription = if (actions.isEmpty()) "No timing options available" else "Open timing options" },
             enabled = actions.isNotEmpty()) {
-            Box(Modifier.alpha(if (actions.isEmpty()) 0.5f else 1f)) {
-                if (iconOnly) DockCircle { label("Timing Options", true) }
-                else Box(Modifier.defaultMinSize(94.dp, 44.dp).background(MagicPalette.iron.copy(alpha = 0.58f), CircleShape).padding(horizontal = 12.dp),
-                    contentAlignment = Alignment.Center) { label("Timing Options", true) }
-            }
+            // Like iOS, the dock's circle style never dims; the capsule style reads as disabled.
+            if (iconOnly) DockCircle { label("Timing Options", true) }
+            else Box(Modifier.defaultMinSize(94.dp, 44.dp).colorAdjust(if (actions.isEmpty()) 0.1f else 1f).alpha(if (actions.isEmpty()) 0.5f else 1f)
+                .background(MagicPalette.iron.copy(alpha = 0.58f), CircleShape).padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center) { label("Timing Options", true, Color.White.copy(alpha = if (actions.isEmpty()) 0.55f else 1f)) }
         }
     }
 }
@@ -274,7 +275,7 @@ fun PortraitBottomCommandBar(humanName: String, human: PlayerGameState, opponent
                         .background(Color.Black.copy(alpha = 0.85f), CircleShape).border(if (viewerActive) 3.dp else 2.dp, ring, CircleShape),
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                         SfImage("heart.fill", MagicPalette.antiqueGold, 9.dp)
-                        key(human.playerId) { BoardLifeTotal(human.life, sf(23f, SfWeight.bold, SfDesign.SERIF), baseColor = Color.White) }
+                        key(human.playerId) { BoardLifeTotal(human.life, sf(23f, SfWeight.bold, SfDesign.SERIF)) }
                     }
                 }
                 if (emoteCenter != null) {

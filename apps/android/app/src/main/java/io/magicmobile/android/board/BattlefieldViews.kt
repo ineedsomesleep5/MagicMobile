@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -272,7 +273,8 @@ fun BattlefieldRow(
         val lift = peek * shown.size
         val scale = renderedCardHeight / (renderedCardHeight + lift)
         Box(Modifier.requiredSize(renderedCardWidth.dp, renderedCardHeight.dp), contentAlignment = Alignment.BottomCenter) {
-            Box(Modifier.requiredSize(renderedCardWidth.dp, (renderedCardHeight + lift).dp)
+            // Bottom-aligned like SwiftUI's `.frame(alignment: .bottom)`: the tabs rise above the creature.
+            Box(Modifier.wrapContentSize(Alignment.BottomCenter, unbounded = true).requiredSize(renderedCardWidth.dp, (renderedCardHeight + lift).dp)
                 .graphicsLayer { scaleX = scale; scaleY = scale; transformOrigin = TransformOrigin(0.5f, 1f) },
                 contentAlignment = Alignment.BottomCenter) {
                 shown.withIndex().reversed().forEach { (index, card) ->
@@ -308,20 +310,22 @@ fun BattlefieldRow(
         if (arrangement == BattlefieldRowArrangement.LANDSCAPE_RESOURCES && rows == 2) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 for (row in 0 until 2) {
-                    val scroll = rememberScrollState()
-                    Box(Modifier.width(rowWidth.dp).horizontalScrollIndicator(scroll, rowContentWidth(arranged[row]) > rowWidth).horizontalScroll(scroll)) {
-                        Box(Modifier.defaultMinSize(minWidth = rowWidth.dp, minHeight = (((availableHeight ?: 0f) - 4) / 2).dp).padding(horizontal = 8.dp),
-                            contentAlignment = Alignment.CenterStart) { rowTiles(arranged[row]) }
+                    val scroll = rememberBoardScrollState()
+                    BoardHorizontalScroller(scroll, Modifier.width(rowWidth.dp), showsIndicator = rowContentWidth(arranged[row]) > rowWidth) {
+                        Box(Modifier.defaultMinSize(minWidth = rowWidth.dp, minHeight = (((availableHeight ?: 0f) - 4) / 2).dp), contentAlignment = Alignment.Center) {
+                            Box(Modifier.padding(horizontal = 8.dp)) { rowTiles(arranged[row]) }
+                        }
                     }
                 }
             }
         } else {
-            val scroll = rememberScrollState()
-            Box(Modifier.width(rowWidth.dp).horizontalScrollIndicator(scroll, showsOverflowIndicator).horizontalScroll(scroll)) {
-                Column(Modifier.defaultMinSize(minWidth = rowWidth.dp, minHeight = (availableHeight ?: maxOf(cardHeight + 6, 44f)).dp)
-                    .padding(horizontal = 8.dp, vertical = if (availableHeight == null) 0.dp else 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)) {
-                    for (row in 0 until rows) rowTiles(arranged.getOrElse(row) { emptyList() })
+            val scroll = rememberBoardScrollState()
+            BoardHorizontalScroller(scroll, Modifier.width(rowWidth.dp), showsIndicator = showsOverflowIndicator) {
+                // Rows keep their leading edges together; the block is centered in the lane.
+                Box(Modifier.defaultMinSize(minWidth = rowWidth.dp, minHeight = (availableHeight ?: maxOf(cardHeight + 6, 44f)).dp), contentAlignment = Alignment.Center) {
+                    Column(Modifier.padding(horizontal = 8.dp, vertical = if (availableHeight == null) 0.dp else 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        for (row in 0 until rows) rowTiles(arranged.getOrElse(row) { emptyList() })
+                    }
                 }
             }
         }

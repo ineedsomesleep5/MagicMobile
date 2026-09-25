@@ -580,7 +580,7 @@ fun UniversalPromptActionPanel(snapshot: GameSnapshot, selectedCardActions: List
                 LaunchedEffect("${prompt.id}:${prompt.messageId}") { choiceSearch = "" }
                 val matching = choices.filter { choices.size <= 20 || choiceSearch.isEmpty() || it.label.contains(choiceSearch, ignoreCase = true) }
                 if (choices.size > 20) BasicTextField(choiceSearch, { choiceSearch = it }, Modifier.fillMaxWidth()
-                    .background(Color.White.copy(alpha = 0.1f), RoundedCornerShape(6.dp)).padding(10.dp).semantics { contentDescription = "Search choices" },
+                    .background(Color.Black, RoundedCornerShape(6.dp)).padding(10.dp).semantics { contentDescription = "Search choices" },
                     singleLine = true, textStyle = SfText.body().copy(color = Color.White), cursorBrush = SolidColor(Color.White),
                     decorationBox = { inner -> Box { if (choiceSearch.isEmpty()) Text("Search choices", color = Color.White.copy(alpha = 0.4f), style = SfText.body()); inner() } })
                 if (matching.isEmpty()) Text("No matching choices", color = MagicPalette.parchment.copy(alpha = 0.6f), style = SfText.subheadline())

@@ -238,7 +238,7 @@ private fun InspectorStateChips(items: List<String>) {
 @Composable
 private fun InspectorAttachmentList(cards: List<ZoneCard>) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(if (cards.size == 1) "ATTACHED" else "ATTACHED · ${cards.size}", color = MagicPalette.antiqueGold, style = SfText.caption(SfWeight.black).copy(letterSpacing = androidx.compose.ui.unit.TextUnit(1.2f, androidx.compose.ui.unit.TextUnitType.Sp)))
+        Text(if (cards.size == 1) "ATTACHED" else "ATTACHED · ${cards.size}", color = MagicPalette.antiqueGold, style = sf(12f, SfWeight.black, tracking = 1.2f))
         for (attachment in cards.take(4)) {
             Row(Modifier.fillMaxWidth().background(MagicPalette.iron.copy(alpha = 0.85f), RoundedCornerShape(9.dp))
                 .border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.35f), RoundedCornerShape(9.dp)).padding(7.dp),
@@ -339,7 +339,7 @@ fun BoardStackInspector(snapshot: GameSnapshot, selection: BoardSelection, done:
                         color = rgb(0.04, 0.52, 1.0), style = SfText.body())
                 }
                 Text("Done", Modifier.defaultMinSize(minHeight = 44.dp).clickable { selection.inspectedCard = null; done() }.padding(8.dp)
-                    .semantics { contentDescription = "board.stack.done" }, color = rgb(0.04, 0.52, 1.0), style = SfText.body(SfWeight.semibold))
+                    .semantics { contentDescription = "board.stack.done" }, color = rgb(0.04, 0.52, 1.0), style = SfText.body())
             }
             Box {
                 PortraitStackLane(snapshot, snapshot.human?.zones?.stack ?: emptyList(), snapshot.legalActions ?: emptyList(), selection,

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
@@ -129,17 +131,27 @@ fun ConfirmationDialog(title: String, message: String?, actions: List<Confirmati
     }
 }
 
-/** An iOS `.sheet` with medium/large detents: a dark bottom sheet with a grabber. */
+/**
+ * An iOS 26 `.sheet` with medium/large detents: a rounded card inset from the screen edges,
+ * with a grabber, over a dimmed board.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BoardSheet(onDismiss: () -> Unit, background: Color = rgb(0.11, 0.11, 0.12), skipPartiallyExpanded: Boolean = false,
                sound: Boolean = true, content: @Composable () -> Unit) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = skipPartiallyExpanded)
     androidx.compose.runtime.LaunchedEffect(Unit) { if (sound) GameAudio.play(GameSound.UI_OPEN) }
-    ModalBottomSheet({ if (sound) GameAudio.play(GameSound.UI_CLOSE); onDismiss() }, sheetState = state, containerColor = background,
-        contentColor = MagicPalette.parchment, shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
-        dragHandle = { Box(Modifier.padding(vertical = 6.dp).widthIn(36.dp, 36.dp).height(5.dp).background(Color.White.copy(alpha = 0.3f), RoundedCornerShape(3.dp))) }) {
-        content()
+    ModalBottomSheet({ if (sound) GameAudio.play(GameSound.UI_CLOSE); onDismiss() }, sheetState = state, containerColor = Color.Transparent,
+        contentColor = MagicPalette.parchment, shape = RoundedCornerShape(0.dp), dragHandle = null, tonalElevation = 0.dp,
+        scrimColor = Color.Black.copy(alpha = 0.32f), contentWindowInsets = { WindowInsets(0) }) {
+        val shape = RoundedCornerShape(36.dp)
+        Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp).navigationBarsPadding().padding(bottom = 8.dp)
+            .clip(shape).background(background, shape).border(0.5.dp, Color.White.copy(alpha = 0.12f), shape)) {
+            Box(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 2.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.widthIn(36.dp, 36.dp).height(5.dp).background(Color.White.copy(alpha = 0.3f), RoundedCornerShape(3.dp)))
+            }
+            content()
+        }
     }
 }
 

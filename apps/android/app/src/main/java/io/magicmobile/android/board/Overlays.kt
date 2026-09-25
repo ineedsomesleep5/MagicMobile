@@ -149,7 +149,7 @@ fun BoardTurnBanner(title: String, turn: Int, isViewer: Boolean, modifier: Modif
             }.graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }) {
                 FitText(title.uppercase(), titleStyle, minimumScale = 0.6f)
             }
-            Text("Turn $turn", color = accent.copy(alpha = 0.85f), style = SfText.caption(SfWeight.heavy).copy(letterSpacing = androidx.compose.ui.unit.TextUnit(2f, androidx.compose.ui.unit.TextUnitType.Sp)))
+            Text("Turn $turn", color = accent.copy(alpha = 0.85f), style = sf(12f, SfWeight.heavy, tracking = 2f))
         }
     }
 }
