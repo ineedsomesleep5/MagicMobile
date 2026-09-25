@@ -25,6 +25,7 @@ android {
     kotlinOptions { jvmTarget = "17" }
     if(withNative) externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/magicmobile-assets"))
+    sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/magicmobile-audio"))
     sourceSets["main"].res.srcDir(layout.buildDirectory.dir("generated/magicmobile-res"))
     // Compress the large AOT engine in the download; Android extracts its aligned
     // ELF at install time. The actual native ABI is unchanged.
@@ -53,14 +54,27 @@ val prepareBrandAssets by tasks.registering(Copy::class) {
     from(rootProject.file("../ios/MagicMobile/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png")) {
         rename { "magicmobile_icon.png" }
     }
+    // The iOS asset catalogue is the single source for shared artwork.
     from(rootProject.file("../ios/MagicMobile/Assets.xcassets")) {
-        include("battlefield-*.imageset/battlefield-*.png")
+        include("battlefield-*.imageset/battlefield-*.png", "commander-stone-arena*.imageset/*.png",
+            "mage-mobile-*.imageset/*.png")
         eachFile { path = name.replace('-', '_') }
         includeEmptyDirs = false
     }
+    from(rootProject.file("../ios/MagicMobile/Assets.xcassets/LaunchMark.imageset/launch-mark@3x.png")) {
+        rename { "launch_mark.png" }
+    }
     into(layout.buildDirectory.dir("generated/magicmobile-res/drawable"))
 }
-tasks.named("preBuild").configure { dependsOn(prepareAssets,prepareBrandAssets) }
+val prepareAudio by tasks.registering(Exec::class) {
+    val script = rootProject.file("../../scripts/android/prepare_audio.py")
+    inputs.file(script)
+    inputs.dir(rootProject.file("../ios/MagicMobile/Resources/Audio"))
+    outputs.dir(layout.buildDirectory.dir("generated/magicmobile-audio"))
+    commandLine("python3", script.absolutePath, rootProject.file("../..").absolutePath,
+        layout.buildDirectory.dir("generated/magicmobile-audio").get().asFile.absolutePath)
+}
+tasks.named("preBuild").configure { dependsOn(prepareAssets,prepareBrandAssets,prepareAudio) }
 if(withNative) {
     val verifyNative by tasks.registering(Exec::class) {
         commandLine("python3",rootProject.file("../../scripts/android/verify_native.py").absolutePath,rootProject.file("../..").absolutePath)
@@ -79,6 +93,8 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.compose.animation:animation")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
