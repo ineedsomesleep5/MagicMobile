@@ -1,0 +1,19 @@
+# MagicMobile table relay: passes messages between the phones at one table.
+# The host's phone runs the rules engine; this service never sees a hand it was not sent
+# and keeps nothing after a table ends.
+name = "magicmobile-relay"
+main = "src/index.js"
+compatibility_date = "2025-09-15"
+workers_dev = true
+
+[[durable_objects.bindings]]
+name = "TABLES"
+class_name = "TableRoom"
+
+# SQLite-backed Durable Objects are available on the Workers free plan.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TableRoom"]
+
+[observability]
+enabled = false

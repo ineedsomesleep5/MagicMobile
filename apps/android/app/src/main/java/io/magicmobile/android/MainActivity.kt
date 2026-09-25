@@ -50,10 +50,20 @@ private val Ink=Color(0xFF20352D)
 private val Night=Color(0xFF121A17)
 private val Parchment=Color(0xFFF2E9D8)
 class MainActivity: ComponentActivity() {
-    private val model: AppModel by viewModels()
-    override fun onCreate(savedInstanceState:Bundle?) { super.onCreate(savedInstanceState);enableEdgeToEdge();setContent { MagicApp(model) } }
-    override fun onResume(){super.onResume();model.foreground(true)}
-    override fun onStop(){model.foreground(false);super.onStop()}
+    private val onDevice: io.magicmobile.android.ondevice.OnDeviceViewModel by viewModels()
+    override fun onCreate(savedInstanceState:Bundle?) {
+        super.onCreate(savedInstanceState);enableEdgeToEdge()
+        val extras=DesignPreview.extras(intent)
+        io.magicmobile.android.ui.LaunchEnvironment.load(this,extras)
+        // UI previews and tests use their own preferences, like iOS's MAGICMOBILE_UI_TEST_PREFERENCES suite.
+        io.magicmobile.android.ui.AppPreferences.init(this,extras["MAGICMOBILE_UI_TEST_PREFERENCES"]?.let{"magicmobile.preferences.$it"} ?: "magicmobile.preferences")
+        io.magicmobile.android.ui.GameAudio.init(this)
+        // Menus and the board are always dark, like the iOS app.
+        WindowCompat.getInsetsController(window,window.decorView).apply{isAppearanceLightStatusBars=false;isAppearanceLightNavigationBars=false}
+        io.magicmobile.android.studio.DeckStudioServices.install(this)
+        if(DesignPreview.active) setContent { DesignPreviewHost() }
+        else setContent { io.magicmobile.android.ondevice.OnDeviceRoot(onDevice) }
+    }
 }
 private enum class AppPage(val title:String){HOME("MagicMobile"),DECKS("Deck Studio"),DOWNLOADS("Downloads"),SETTINGS("Settings"),UPDATES("Updates"),ONLINE("Online play")}
 private data class EditorRequest(val deck:Deck,val original:SavedDeck?=null,val draftID:String=original?.id ?: java.util.UUID.randomUUID().toString(),val receipt:ImportReceipt?=null)

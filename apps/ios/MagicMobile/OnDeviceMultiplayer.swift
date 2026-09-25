@@ -523,14 +523,22 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     @Published private(set) var rollStatus = ""
     /// The pregame room between matchmaking and the first engine snapshot.
     @Published private(set) var room: MatchRoom?
+    /// Cross-play tables (the relay): the code to share, and how many seats are taken.
+    @Published private(set) var tableCode: String?
+    @Published private(set) var seatsTaken = 0
+    @Published private(set) var seatsWanted = 0
+    @Published private(set) var isRelayTable = false
+    @Published private(set) var isFailed = false
     /// A player's quick-chat line: their table name and a fixed emote, never free text.
     var onEmote: ((String, GameEmote) -> Void)?
     private var lastEmoteFrom: [String: Date] = [:]
 
-    private let identity: BuildIdentity
+    /// Game Center tables share the whole app build; relay tables share `relayIdentity` across iPhone and Android.
+    private var identity: BuildIdentity
+    private let gameCenterIdentity: BuildIdentity
     private let makeHostEngine: @MainActor () async throws -> EngineClient
     private let closeHostEngine: @MainActor (EngineClient) async throws -> Void
-    private var transport: GameKitTransport?
+    private var transport: (any TablePacketTransport)?
     private var remote: OnDeviceRemoteEngineTransport?
     private var router: HostRouter?
     private var lobby: OnDeviceMultiplayerLobby?
@@ -542,6 +550,8 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     private var hostDispatcher: OnDeviceHostRequestDispatcher?
     private var lobbyTimer: Task<Void, Never>?
     private var suspendedPeers: Set<String> = []
+    /// Players whose relay connection dropped; they may still resume their seat.
+    private var relayAwayPeers: Set<String> = []
     private var presenceSequence: Int64 = 0
     private var suspensionRevision: UInt64 = 0
     private var peerPresenceSequences: [String: Int64] = [:]
@@ -576,7 +586,8 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     init(identity: BuildIdentity,
          makeHostEngine: @escaping @MainActor () async throws -> EngineClient,
          closeHostEngine: @escaping @MainActor (EngineClient) async throws -> Void) {
-        self.identity = identity; self.makeHostEngine = makeHostEngine; self.closeHostEngine = closeHostEngine
+        self.identity = identity; self.gameCenterIdentity = identity
+        self.makeHostEngine = makeHostEngine; self.closeHostEngine = closeHostEngine
         super.init()
     }
 
@@ -675,13 +686,13 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
                     if controller == nil { self.pendingSignInController = nil }
                 }
                 self.isAuthenticated = GKLocalPlayer.local.isAuthenticated
-                if let lobby = self.lobby, GKLocalPlayer.local.gamePlayerID != lobby.localPeerID {
+                if !self.isRelayTable, let lobby = self.lobby, GKLocalPlayer.local.gamePlayerID != lobby.localPeerID {
                     self.fail("The Game Center account changed. Leave this match before starting another.")
-                } else if !self.isAuthenticated, self.transport != nil {
+                } else if !self.isAuthenticated, self.transport is GameKitTransport {
                     self.fail("Game Center signed out. Leave this match before starting another.")
                 } else if let error {
                     self.status = error.localizedDescription
-                } else if self.isAuthenticated, self.transport == nil {
+                } else if self.isAuthenticated, self.transport == nil, !self.isRelayTable {
                     self.status = "Game Center is ready. Every player must keep the app in the foreground."
                 }
             }
@@ -701,6 +712,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         request.minPlayers = playerCount; request.maxPlayers = playerCount; request.defaultNumberOfPlayers = playerCount
         guard let controller = GKMatchmakerViewController(matchRequest: request) else { throw EngineError.invalidMessage("Game Center matchmaking is unavailable.") }
         controller.matchmakerDelegate = self
+        identity = gameCenterIdentity; isRelayTable = false
         requestedPlayerCount = playerCount; requestedAISeats = aiSeats; submission = value
         failed = false; generation = UUID()
         matchmakerController = controller
@@ -736,63 +748,148 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         viewController.dismiss(animated: true); matchmakerController = nil
         do {
             guard match.expectedPlayerCount == 0, match.players.count + 1 == requestedPlayerCount,
-                  let submission else { throw EngineError.invalidMessage("Game Center has not connected the complete roster.") }
+                  submission != nil else { throw EngineError.invalidMessage("Game Center has not connected the complete roster.") }
             let localID = GKLocalPlayer.local.gamePlayerID
-            var roster = try OnDeviceMultiplayerLobby(peerIDs: match.players.map(\.gamePlayerID) + [localID],
-                                                       localPeerID: localID, aiSeats: requestedAISeats)
-            // Nobody's deck counts until that player taps Ready in the match room.
-            if roster.hostID == localID { epoch = UUID() }
-            lobby = roster
-            localReady = false; reportedReady = [:]
-            playerNames = Dictionary(match.players.map { ($0.gamePlayerID, $0.displayName) }, uniquingKeysWith: { first, _ in first })
-            playerNames[localID] = GKLocalPlayer.local.displayName
-            updateRoom()
-            hostAISeatSummary = roster.hostID == localID ? roster.hostAISeatSummary : nil
-            let transport = GameKitTransport(match: match)
-            self.transport = transport
-            let token = generation
-            transport.onPacket = { [weak self] packet, peer in
-                guard let self, self.generation == token, !self.failed, !self.closing else { return }
-                do { try self.receive(packet, from: peer) }
-                catch let error as OnDeviceMultiplayerLobby.HandshakeFailure {
-                    if case .differentSettings = error {
-                        if self.lobby?.localPeerID == self.lobby?.hostID, let epoch = self.epoch {
-                            try? self.broadcast(Self.settingsRejection(epoch: epoch.uuidString))
-                        } else if let value = try? MagicMobileOnDevice.JSONValue.decode(packet),
-                                  let incomingEpoch = value["epoch"]?.string {
-                            try? self.send(Self.settingsRejection(epoch: incomingEpoch), to: peer)
-                        }
-                    }
-                    self.fail(error.localizedDescription)
-                }
-                catch { /* Reject malformed, stale or unauthorized packets without ending the match. */ }
-            }
-            transport.onDisconnect = { [weak self] _ in
-                guard let self, self.generation == token, !self.closing else { return }
-                self.fail("A player disconnected. This match cannot reconnect or migrate hosts. Leave and start a new match.")
-            }
-            transport.onError = { [weak self] message in
-                guard let self, self.generation == token, !self.closing else { return }
-                self.fail(message)
-            }
-            status = "Match room: choose your deck, then tap Ready. The game starts when everyone is ready."
-            lobbyTimer = Task { @MainActor [weak self] in
-                // Repeat the host offer while peers install their GameKit delegate and ready up.
-                for _ in 0..<600 {
-                    guard let self, !Task.isCancelled, self.generation == token, !self.failed, self.endpoint == nil else { return }
-                    if self.startup == nil, self.lobby?.hostID == localID {
-                        do {
-                            try self.broadcast(self.lobbyPacket(type: "offer"))
-                            // Late joiners also learn who is already ready.
-                            try self.broadcastReadyRoster()
-                        } catch { self.fail(error.localizedDescription); return }
-                    }
-                    do { try await Task.sleep(nanoseconds: 1_000_000_000) } catch { return }
-                }
-                self?.fail("The multiplayer lobby timed out. Leave and try matchmaking again.")
-            }
+            var names = Dictionary(match.players.map { ($0.gamePlayerID, $0.displayName) }, uniquingKeysWith: { first, _ in first })
+            names[localID] = GKLocalPlayer.local.displayName
+            try beginLobby(peerIDs: match.players.map(\.gamePlayerID) + [localID], localID: localID, names: names,
+                           transport: GameKitTransport(match: match))
         } catch {
             match.disconnect(); fail(error.localizedDescription)
+        }
+    }
+
+
+    /// The match room, once every player is connected (Game Center's roster or a full relay table).
+    private func beginLobby(peerIDs: [String], localID: String, names: [String: String], transport: any TablePacketTransport) throws {
+        let roster = try OnDeviceMultiplayerLobby(peerIDs: peerIDs, localPeerID: localID, aiSeats: requestedAISeats)
+        // Nobody's deck counts until that player taps Ready in the match room.
+        if roster.hostID == localID { epoch = UUID() }
+        lobby = roster
+        localReady = false; reportedReady = [:]
+        playerNames = names
+        updateRoom()
+        hostAISeatSummary = roster.hostID == localID ? roster.hostAISeatSummary : nil
+        self.transport = transport
+        let token = generation
+        transport.onPacket = { [weak self] packet, peer in
+            guard let self, self.generation == token, !self.failed, !self.closing else { return }
+            do { try self.receive(packet, from: peer) }
+            catch let error as OnDeviceMultiplayerLobby.HandshakeFailure {
+                if case .differentSettings = error {
+                    if self.lobby?.localPeerID == self.lobby?.hostID, let epoch = self.epoch {
+                        try? self.broadcast(Self.settingsRejection(epoch: epoch.uuidString))
+                    } else if let value = try? MagicMobileOnDevice.JSONValue.decode(packet),
+                              let incomingEpoch = value["epoch"]?.string {
+                        try? self.send(Self.settingsRejection(epoch: incomingEpoch), to: peer)
+                    }
+                }
+                self.fail(error.localizedDescription)
+            }
+            catch { /* Reject malformed, stale or unauthorized packets without ending the match. */ }
+        }
+        transport.onDisconnect = { [weak self] peer in
+            guard let self, self.generation == token, !self.closing else { return }
+            self.fail(self.isRelayTable && self.lobby?.hostID == peer ? "The host left this table."
+                      : "A player disconnected. This match cannot reconnect or migrate hosts. Leave and start a new match.")
+        }
+        transport.onError = { [weak self] message in
+            guard let self, self.generation == token, !self.closing else { return }
+            self.fail(message)
+        }
+        status = "Match room: choose your deck, then tap Ready. The game starts when everyone is ready."
+        lobbyTimer = Task { @MainActor [weak self] in
+            // Repeat the host offer while peers install their delegate and ready up.
+            for _ in 0..<600 {
+                guard let self, !Task.isCancelled, self.generation == token, !self.failed, self.endpoint == nil else { return }
+                if self.startup == nil, self.lobby?.hostID == localID {
+                    do {
+                        try self.broadcast(self.lobbyPacket(type: "offer"))
+                        // Late joiners also learn who is already ready.
+                        try self.broadcastReadyRoster()
+                    } catch { self.fail(error.localizedDescription); return }
+                }
+                do { try await Task.sleep(nanoseconds: 1_000_000_000) } catch { return }
+            }
+            self?.fail("The multiplayer lobby timed out. Leave and try matchmaking again.")
+        }
+    }
+
+    /// Opens a cross-play table on the relay that this phone hosts: `humans` players plus any AI seats.
+    func hostRelay(humans: Int, name: String, deck: MagicMobileOnDevice.JSONValue,
+                   aiSeats: [AISeatDescriptor], relayIdentity: BuildIdentity) async throws {
+        guard transport == nil, hostEngine == nil, startup == nil, endpoint == nil, matchmakerController == nil, !closing else {
+            throw EngineError.invalidMessage("Leave the current table before opening another.")
+        }
+        let value: MagicMobileOnDevice.JSONValue = .object(["name": .string(name.trimmingCharacters(in: .whitespacesAndNewlines)), "deck": deck])
+        try OnDeviceMultiplayerLobby.validateSubmission(value)
+        _ = try OnDeviceMultiplayerLobby.makeAISettings(seats: aiSeats, humanCount: humans)
+        identity = relayIdentity; isRelayTable = true
+        requestedPlayerCount = humans; requestedAISeats = aiSeats; submission = value
+        failed = false; isFailed = false; generation = UUID(); seatsWanted = humans
+        status = "Opening a table…"
+        let relay = RelayTransport()
+        let table = try await relay.createTable(seats: humans)
+        tableCode = table.code
+        attachRelay(relay)
+        relay.connect(code: table.code, name: name.trimmingCharacters(in: .whitespacesAndNewlines), hostKey: table.hostKey)
+        status = "Share code \(table.code). Waiting for players…"
+    }
+
+    /// Joins another player's cross-play table by its code.
+    func joinRelay(code: String, name: String, deck: MagicMobileOnDevice.JSONValue, relayIdentity: BuildIdentity) throws {
+        guard transport == nil, hostEngine == nil, startup == nil, endpoint == nil, matchmakerController == nil, !closing else {
+            throw EngineError.invalidMessage("Leave the current table before joining another.")
+        }
+        let clean = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard clean.range(of: "^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$", options: .regularExpression) != nil else {
+            throw EngineError.invalidMessage("Table codes have six letters and numbers.")
+        }
+        let value: MagicMobileOnDevice.JSONValue = .object(["name": .string(name.trimmingCharacters(in: .whitespacesAndNewlines)), "deck": deck])
+        try OnDeviceMultiplayerLobby.validateSubmission(value)
+        identity = relayIdentity; isRelayTable = true
+        requestedAISeats = []; submission = value; failed = false; isFailed = false; generation = UUID()
+        tableCode = clean
+        let relay = RelayTransport()
+        attachRelay(relay)
+        relay.connect(code: clean, name: name.trimmingCharacters(in: .whitespacesAndNewlines))
+        status = "Joining table \(clean)…"
+    }
+
+    /// Before the table fills, the relay socket belongs to this object; the lobby takes it over after.
+    private func attachRelay(_ relay: RelayTransport) {
+        transport = relay
+        let token = generation
+        relay.onRoster = { [weak self] peers, full in
+            guard let self, self.generation == token, !self.failed, !self.closing else { return }
+            self.seatsTaken = peers.count
+            self.seatsWanted = relay.seats > 0 ? relay.seats : max(self.seatsWanted, peers.count)
+            if self.lobby == nil {
+                if full, let localID = relay.localPeerID {
+                    let names = Dictionary(peers.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+                    do { try self.beginLobby(peerIDs: peers.map(\.id), localID: localID, names: names, transport: relay) }
+                    catch { self.fail(error.localizedDescription) }
+                } else {
+                    self.status = "Share code \(self.tableCode ?? ""). Waiting for players (\(peers.count)/\(self.seatsWanted))…"
+                }
+            } else if let lobby = self.lobby {
+                // A dropped phone pauses the match like a backgrounded app, until it returns or the relay gives up on it.
+                // Before the match starts, the lobby's repeating offer already covers a brief drop.
+                let away = Set(peers.filter { !$0.connected && $0.id != lobby.localPeerID }.map(\.id))
+                if away != self.relayAwayPeers { self.relayAwayPeers = away; if self.endpoint != nil { self.updateSuspension() } }
+            }
+        }
+        relay.onDisconnect = { [weak self] peer in
+            guard let self, self.generation == token, !self.closing, peer != relay.localPeerID else { return }
+            self.fail(peer.hasPrefix("p1-") ? "The host left this table." : "A player left. This match cannot continue. Leave and start a new match.")
+        }
+        relay.onError = { [weak self] message in
+            guard let self, self.generation == token, !self.closing else { return }
+            self.fail(message)
+        }
+        relay.onConnectionChanged = { [weak self] connected in
+            guard let self, self.generation == token, !self.closing, !self.failed, self.endpoint != nil else { return }
+            self.status = connected ? "Connected. Every player must keep the app in the foreground." : "Reconnecting to the table…"
         }
     }
 
@@ -981,7 +1078,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
                         self.fail(message)
                     })
                 self.suspensionRevision += 1
-                await router.setSuspended(!self.suspendedPeers.isEmpty, revision: self.suspensionRevision)
+                await router.setSuspended(!self.suspendedPeers.isEmpty || !self.relayAwayPeers.isEmpty, revision: self.suspensionRevision)
                 guard self.generation == token, !self.failed, !self.closing, !Task.isCancelled else { return }
                 var start = try self.lobbyPacket(type: "start").object!
                 start["matchId"] = .string(matchID)
@@ -1048,7 +1145,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
 
     private func updateSuspension() {
         guard let lobby, !failed, !closing else { return }
-        let paused = !suspendedPeers.isEmpty
+        let paused = !suspendedPeers.isEmpty || !relayAwayPeers.isEmpty
         isSuspended = paused
         status = paused ? "Match paused. Every player must return to the foreground." : "Connected. Every player must keep the app in the foreground."
         if lobby.localPeerID == lobby.hostID {
@@ -1093,16 +1190,17 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         rollTimer?.cancel(); rollTimer = nil
         startingRoll = nil; rollProgress = nil; hasRolled = false; rollStatus = ""
         remote = nil; router = nil; hostDispatcher = nil; transport = nil; lobby = nil; epoch = nil; submission = nil; requestedAISeats = []
-        suspendedPeers.removeAll(); peerPresenceSequences.removeAll(); presenceSequence = 0
+        suspendedPeers.removeAll(); relayAwayPeers.removeAll(); peerPresenceSequences.removeAll(); presenceSequence = 0
+        tableCode = nil; seatsTaken = 0; seatsWanted = 0; isRelayTable = false; identity = gameCenterIdentity
         suspensionRevision = 0
         matchmakerController?.dismiss(animated: true); matchmakerController = nil
         room = nil; localReady = false; reportedReady = [:]; playerNames = [:]
-        failed = false; isSuspended = false; status = "Match closed."
+        failed = false; isFailed = false; isSuspended = false; status = "Match closed."
     }
 
     private func fail(_ message: String) {
         guard !failed else { return }
-        failed = true; isConnected = false; status = message; seatNames = [:]; room = nil
+        failed = true; isFailed = true; isConnected = false; status = message; seatNames = [:]; room = nil
         rollTimer?.cancel(); rollTimer = nil
         startingRoll = nil; rollProgress = nil; hasRolled = false; rollStatus = ""
         lobbyTimer?.cancel(); startup?.cancel(); remote?.close()

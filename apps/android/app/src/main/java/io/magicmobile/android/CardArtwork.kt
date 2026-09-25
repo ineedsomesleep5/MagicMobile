@@ -104,6 +104,14 @@ object Artwork {
     internal fun downloadFile(context: Context, name: String, quality: ArtworkQuality) =
         File(downloadDirectory(context), key("${quality.id}:$name") + ".img")
 
+    /** The stored image file names, read once (NativeAssetDownloads scans one directory listing too). */
+    internal fun downloadedFileNames(context: Context): Set<String> =
+        downloadDirectory(context).listFiles()?.filter { it.isFile && it.length() in 1..MAX_BYTES.toLong() }?.mapTo(HashSet()) { it.name } ?: emptySet()
+
+    /** Whether a listing holds an image at this quality or better, without decoding it. */
+    internal fun listedDownload(files: Set<String>, name: String, quality: ArtworkQuality): Boolean =
+        ArtworkQuality.entries.any { it.shortEdge >= quality.shortEdge && (key("${it.id}:$name") + ".img") in files }
+
     internal fun hasDownload(context: Context, name: String, quality: ArtworkQuality): Boolean =
         ArtworkQuality.entries.asReversed().any { candidate ->
             candidate.shortEdge >= quality.shortEdge &&

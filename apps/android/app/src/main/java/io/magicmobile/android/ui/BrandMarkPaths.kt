@@ -1,0 +1,173 @@
+package io.magicmobile.android.ui
+
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Path
+
+// Generated from apps/ios/MagicMobile/BrandMarkPaths.swift (itself traced by scripts/brand/trace_logo.py).
+// Do not edit by hand; regenerate if the logo changes.
+
+/** MagicMobile's mark in unit coordinates (0…1 across the full-bleed icon). */
+object BrandMarkPaths {
+    /** Center of the four-point sparkle, for glints and glows. */
+    val sparkleCenter = Offset(0.49992f, 0.33501f)
+    const val sparkleWidth = 0.20000f
+    const val sparkleHeight = 0.22185f
+
+    fun cardFrame(rect: Rect): Path {
+        fun x(v: Float) = rect.left + v * rect.width
+        fun y(v: Float) = rect.top + v * rect.height
+        val p = Path()
+        p.moveTo(x(0.32775f), y(0.14482f))
+        p.cubicTo(x(0.32105f), y(0.14649f), x(0.31093f), y(0.15191f), x(0.30590f), y(0.15646f))
+        p.cubicTo(x(0.29649f), y(0.16483f), x(0.28963f), y(0.17759f), x(0.28796f), y(0.18979f))
+        p.cubicTo(x(0.28748f), y(0.19354f), x(0.28716f), y(0.22767f), x(0.28716f), y(0.28238f))
+        p.lineTo(x(0.28708f), y(0.36898f))
+        p.lineTo(x(0.29370f), y(0.37448f))
+        p.cubicTo(x(0.29729f), y(0.37751f), x(0.30399f), y(0.38317f), x(0.30861f), y(0.38708f))
+        p.lineTo(x(0.31699f), y(0.39426f))
+        p.lineTo(x(0.31738f), y(0.29856f))
+        p.cubicTo(x(0.31778f), y(0.21212f), x(0.31794f), y(0.20263f), x(0.31914f), y(0.19968f))
+        p.cubicTo(x(0.32408f), y(0.18724f), x(0.33134f), y(0.17990f), x(0.34195f), y(0.17632f))
+        p.lineTo(x(0.34689f), y(0.17464f))
+        p.lineTo(x(0.50144f), y(0.17480f))
+        p.lineTo(x(0.65590f), y(0.17504f))
+        p.lineTo(x(0.66116f), y(0.17759f))
+        p.cubicTo(x(0.67033f), y(0.18214f), x(0.67608f), y(0.18836f), x(0.68038f), y(0.19856f))
+        p.lineTo(x(0.68222f), y(0.20295f))
+        p.lineTo(x(0.68262f), y(0.29841f))
+        p.lineTo(x(0.68301f), y(0.39394f))
+        p.lineTo(x(0.68860f), y(0.38907f))
+        p.cubicTo(x(0.69171f), y(0.38636f), x(0.69825f), y(0.38078f), x(0.70319f), y(0.37663f))
+        p.lineTo(x(0.71212f), y(0.36914f))
+        p.lineTo(x(0.71212f), y(0.27959f))
+        p.cubicTo(x(0.71212f), y(0.19306f), x(0.71204f), y(0.18987f), x(0.71053f), y(0.18389f))
+        p.cubicTo(x(0.70654f), y(0.16826f), x(0.69569f), y(0.15494f), x(0.68142f), y(0.14825f))
+        p.cubicTo(x(0.67073f), y(0.14322f), x(0.68341f), y(0.14354f), x(0.49960f), y(0.14362f))
+        p.cubicTo(x(0.35702f), y(0.14362f), x(0.33150f), y(0.14378f), x(0.32775f), y(0.14482f))
+        p.close()
+        p.moveTo(x(0.73620f), y(0.24458f))
+        p.lineTo(x(0.73644f), y(0.27153f))
+        p.lineTo(x(0.78301f), y(0.28716f))
+        p.cubicTo(x(0.80861f), y(0.29569f), x(0.83110f), y(0.30359f), x(0.83309f), y(0.30463f))
+        p.cubicTo(x(0.84019f), y(0.30837f), x(0.84553f), y(0.31507f), x(0.84848f), y(0.32384f))
+        p.cubicTo(x(0.85000f), y(0.32815f), x(0.85024f), y(0.33070f), x(0.85016f), y(0.34075f))
+        p.cubicTo(x(0.85008f), y(0.34729f), x(0.84992f), y(0.35335f), x(0.84968f), y(0.35431f))
+        p.cubicTo(x(0.84904f), y(0.35750f), x(0.84553f), y(0.47632f), x(0.84490f), y(0.51715f))
+        p.cubicTo(x(0.84466f), y(0.53333f), x(0.84426f), y(0.55183f), x(0.84402f), y(0.55821f))
+        p.cubicTo(x(0.84354f), y(0.57065f), x(0.84410f), y(0.57177f), x(0.84649f), y(0.56300f))
+        p.cubicTo(x(0.84721f), y(0.56013f), x(0.84888f), y(0.55455f), x(0.85008f), y(0.55064f))
+        p.cubicTo(x(0.85136f), y(0.54665f), x(0.85638f), y(0.53038f), x(0.86124f), y(0.51435f))
+        p.cubicTo(x(0.87871f), y(0.45726f), x(0.89689f), y(0.39809f), x(0.90989f), y(0.35606f))
+        p.cubicTo(x(0.91475f), y(0.34027f), x(0.91930f), y(0.32448f), x(0.91994f), y(0.32097f))
+        p.cubicTo(x(0.92313f), y(0.30319f), x(0.91332f), y(0.28317f), x(0.89697f), y(0.27400f))
+        p.cubicTo(x(0.89211f), y(0.27129f), x(0.85766f), y(0.25909f), x(0.78190f), y(0.23325f))
+        p.cubicTo(x(0.76483f), y(0.22743f), x(0.74769f), y(0.22153f), x(0.74386f), y(0.22018f))
+        p.cubicTo(x(0.74011f), y(0.21882f), x(0.73676f), y(0.21770f), x(0.73652f), y(0.21770f))
+        p.cubicTo(x(0.73620f), y(0.21770f), x(0.73612f), y(0.22982f), x(0.73620f), y(0.24458f))
+        p.close()
+        p.moveTo(x(0.25917f), y(0.21970f))
+        p.cubicTo(x(0.25566f), y(0.22105f), x(0.14657f), y(0.25853f), x(0.12360f), y(0.26635f))
+        p.cubicTo(x(0.10383f), y(0.27305f), x(0.09984f), y(0.27504f), x(0.09306f), y(0.28190f))
+        p.cubicTo(x(0.08110f), y(0.29378f), x(0.07671f), y(0.31053f), x(0.08126f), y(0.32656f))
+        p.cubicTo(x(0.08230f), y(0.33006f), x(0.08860f), y(0.35088f), x(0.09530f), y(0.37281f))
+        p.cubicTo(x(0.10199f), y(0.39474f), x(0.11077f), y(0.42360f), x(0.11483f), y(0.43700f))
+        p.cubicTo(x(0.11882f), y(0.45040f), x(0.12352f), y(0.46579f), x(0.12520f), y(0.47129f))
+        p.cubicTo(x(0.13030f), y(0.48772f), x(0.13923f), y(0.51715f), x(0.14721f), y(0.54378f))
+        p.cubicTo(x(0.15136f), y(0.55758f), x(0.15486f), y(0.56906f), x(0.15510f), y(0.56922f))
+        p.cubicTo(x(0.15638f), y(0.57049f), x(0.15303f), y(0.43301f), x(0.14984f), y(0.35431f))
+        p.cubicTo(x(0.14888f), y(0.32990f), x(0.14920f), y(0.32656f), x(0.15335f), y(0.31858f))
+        p.cubicTo(x(0.15630f), y(0.31300f), x(0.16196f), y(0.30702f), x(0.16651f), y(0.30470f))
+        p.cubicTo(x(0.16826f), y(0.30383f), x(0.18206f), y(0.29888f), x(0.19713f), y(0.29386f))
+        p.cubicTo(x(0.21212f), y(0.28876f), x(0.23317f), y(0.28166f), x(0.24386f), y(0.27807f))
+        p.lineTo(x(0.26316f), y(0.27153f))
+        p.lineTo(x(0.26316f), y(0.24506f))
+        p.cubicTo(x(0.26316f), y(0.23046f), x(0.26292f), y(0.21858f), x(0.26260f), y(0.21858f))
+        p.cubicTo(x(0.26220f), y(0.21866f), x(0.26069f), y(0.21914f), x(0.25917f), y(0.21970f))
+        p.close()
+        return p
+    }
+
+    fun sparkle(rect: Rect): Path {
+        fun x(v: Float) = rect.left + v * rect.width
+        fun y(v: Float) = rect.top + v * rect.height
+        val p = Path()
+        p.moveTo(x(0.49920f), y(0.22576f))
+        p.cubicTo(x(0.49920f), y(0.22935f), x(0.49514f), y(0.24745f), x(0.49242f), y(0.25566f))
+        p.cubicTo(x(0.48868f), y(0.26722f), x(0.48046f), y(0.28349f), x(0.47416f), y(0.29187f))
+        p.cubicTo(x(0.46443f), y(0.30478f), x(0.45175f), y(0.31531f), x(0.43692f), y(0.32273f))
+        p.cubicTo(x(0.42831f), y(0.32695f), x(0.41539f), y(0.33134f), x(0.40774f), y(0.33262f))
+        p.cubicTo(x(0.40183f), y(0.33357f), x(0.39992f), y(0.33493f), x(0.40439f), y(0.33493f))
+        p.cubicTo(x(0.40805f), y(0.33493f), x(0.42153f), y(0.33780f), x(0.42871f), y(0.34019f))
+        p.cubicTo(x(0.46459f), y(0.35183f), x(0.48573f), y(0.37775f), x(0.49553f), y(0.42185f))
+        p.cubicTo(x(0.49665f), y(0.42687f), x(0.49793f), y(0.43421f), x(0.49848f), y(0.43812f))
+        p.cubicTo(x(0.49960f), y(0.44593f), x(0.50024f), y(0.44561f), x(0.50112f), y(0.43660f))
+        p.cubicTo(x(0.50144f), y(0.43349f), x(0.50255f), y(0.42703f), x(0.50367f), y(0.42217f))
+        p.cubicTo(x(0.51467f), y(0.37225f), x(0.54211f), y(0.34386f), x(0.58684f), y(0.33620f))
+        p.cubicTo(x(0.59099f), y(0.33549f), x(0.59530f), y(0.33493f), x(0.59641f), y(0.33493f))
+        p.cubicTo(x(0.59992f), y(0.33493f), x(0.59713f), y(0.33365f), x(0.59051f), y(0.33230f))
+        p.cubicTo(x(0.56300f), y(0.32656f), x(0.53947f), y(0.31148f), x(0.52400f), y(0.28979f))
+        p.cubicTo(x(0.51794f), y(0.28126f), x(0.51148f), y(0.26818f), x(0.50766f), y(0.25662f))
+        p.cubicTo(x(0.50486f), y(0.24809f), x(0.50080f), y(0.23022f), x(0.50080f), y(0.22616f))
+        p.cubicTo(x(0.50080f), y(0.22504f), x(0.50048f), y(0.22408f), x(0.50000f), y(0.22408f))
+        p.cubicTo(x(0.49960f), y(0.22408f), x(0.49920f), y(0.22488f), x(0.49920f), y(0.22576f))
+        p.close()
+        return p
+    }
+
+    fun monogram(rect: Rect): Path {
+        fun x(v: Float) = rect.left + v * rect.width
+        fun y(v: Float) = rect.top + v * rect.height
+        val p = Path()
+        p.moveTo(x(0.18676f), y(0.33828f))
+        p.cubicTo(x(0.18604f), y(0.33923f), x(0.18581f), y(0.38812f), x(0.18565f), y(0.56108f))
+        p.cubicTo(x(0.18541f), y(0.77305f), x(0.18533f), y(0.78285f), x(0.18397f), y(0.78644f))
+        p.cubicTo(x(0.18158f), y(0.79266f), x(0.17648f), y(0.79904f), x(0.16220f), y(0.81396f))
+        p.cubicTo(x(0.14482f), y(0.83222f), x(0.13955f), y(0.83796f), x(0.13955f), y(0.83884f))
+        p.cubicTo(x(0.13955f), y(0.83923f), x(0.14011f), y(0.84019f), x(0.14083f), y(0.84083f))
+        p.cubicTo(x(0.14195f), y(0.84195f), x(0.14984f), y(0.84211f), x(0.21563f), y(0.84211f))
+        p.cubicTo(x(0.29721f), y(0.84211f), x(0.29418f), y(0.84226f), x(0.30048f), y(0.83684f))
+        p.cubicTo(x(0.30239f), y(0.83525f), x(0.30486f), y(0.83214f), x(0.30606f), y(0.82982f))
+        p.lineTo(x(0.30821f), y(0.82576f))
+        p.lineTo(x(0.30861f), y(0.68349f))
+        p.lineTo(x(0.30901f), y(0.54123f))
+        p.lineTo(x(0.35367f), y(0.59019f))
+        p.cubicTo(x(0.37823f), y(0.61715f), x(0.40191f), y(0.64306f), x(0.40630f), y(0.64785f))
+        p.cubicTo(x(0.42193f), y(0.66491f), x(0.45909f), y(0.70566f), x(0.47831f), y(0.72671f))
+        p.cubicTo(x(0.48900f), y(0.73844f), x(0.49809f), y(0.74801f), x(0.49841f), y(0.74785f))
+        p.cubicTo(x(0.49880f), y(0.74769f), x(0.51069f), y(0.73501f), x(0.52480f), y(0.71970f))
+        p.cubicTo(x(0.53900f), y(0.70431f), x(0.56762f), y(0.67344f), x(0.58852f), y(0.65112f))
+        p.cubicTo(x(0.60933f), y(0.62871f), x(0.63166f), y(0.60486f), x(0.63796f), y(0.59809f))
+        p.cubicTo(x(0.64434f), y(0.59123f), x(0.65885f), y(0.57568f), x(0.67026f), y(0.56340f))
+        p.lineTo(x(0.69099f), y(0.54115f))
+        p.lineTo(x(0.69139f), y(0.68309f))
+        p.lineTo(x(0.69179f), y(0.82496f))
+        p.lineTo(x(0.69362f), y(0.82895f))
+        p.cubicTo(x(0.69593f), y(0.83397f), x(0.69872f), y(0.83692f), x(0.70375f), y(0.83955f))
+        p.lineTo(x(0.70774f), y(0.84171f))
+        p.lineTo(x(0.78262f), y(0.84195f))
+        p.cubicTo(x(0.83780f), y(0.84211f), x(0.85774f), y(0.84187f), x(0.85853f), y(0.84123f))
+        p.cubicTo(x(0.85917f), y(0.84075f), x(0.85965f), y(0.83971f), x(0.85965f), y(0.83892f))
+        p.cubicTo(x(0.85965f), y(0.83820f), x(0.85247f), y(0.82974f), x(0.84370f), y(0.82026f))
+        p.cubicTo(x(0.83493f), y(0.81077f), x(0.82671f), y(0.80144f), x(0.82544f), y(0.79960f))
+        p.cubicTo(x(0.82137f), y(0.79370f), x(0.81802f), y(0.78764f), x(0.81627f), y(0.78309f))
+        p.lineTo(x(0.81459f), y(0.77871f))
+        p.lineTo(x(0.81435f), y(0.55909f))
+        p.cubicTo(x(0.81419f), y(0.39936f), x(0.81396f), y(0.33915f), x(0.81332f), y(0.33836f))
+        p.cubicTo(x(0.81132f), y(0.33604f), x(0.79625f), y(0.33788f), x(0.78525f), y(0.34187f))
+        p.cubicTo(x(0.77791f), y(0.34442f), x(0.76770f), y(0.34992f), x(0.76220f), y(0.35423f))
+        p.cubicTo(x(0.75606f), y(0.35901f), x(0.72129f), y(0.39035f), x(0.71053f), y(0.40072f))
+        p.cubicTo(x(0.70550f), y(0.40558f), x(0.69314f), y(0.41691f), x(0.68301f), y(0.42584f))
+        p.cubicTo(x(0.67297f), y(0.43477f), x(0.66164f), y(0.44490f), x(0.65789f), y(0.44825f))
+        p.cubicTo(x(0.65415f), y(0.45159f), x(0.63102f), y(0.47241f), x(0.60646f), y(0.49450f))
+        p.cubicTo(x(0.55662f), y(0.53931f), x(0.52464f), y(0.56826f), x(0.50933f), y(0.58238f))
+        p.cubicTo(x(0.50367f), y(0.58756f), x(0.49880f), y(0.59171f), x(0.49841f), y(0.59155f))
+        p.cubicTo(x(0.49809f), y(0.59139f), x(0.47512f), y(0.57033f), x(0.44729f), y(0.54466f))
+        p.cubicTo(x(0.39258f), y(0.49418f), x(0.37624f), y(0.47919f), x(0.32974f), y(0.43692f))
+        p.cubicTo(x(0.31308f), y(0.42177f), x(0.29514f), y(0.40542f), x(0.28987f), y(0.40064f))
+        p.cubicTo(x(0.24059f), y(0.35558f), x(0.23517f), y(0.35112f), x(0.22177f), y(0.34474f))
+        p.cubicTo(x(0.21061f), y(0.33947f), x(0.18915f), y(0.33549f), x(0.18676f), y(0.33828f))
+        p.close()
+        return p
+    }
+}

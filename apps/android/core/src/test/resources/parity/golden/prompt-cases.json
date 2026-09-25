@@ -1,0 +1,1221 @@
+{
+  "cases" : [
+    {
+      "actions" : [
+
+      ],
+      "answers" : [
+        {
+          "kind" : "boolean",
+          "value" : true
+        },
+        {
+          "kind" : "boolean",
+          "value" : false
+        },
+        {
+          "error" : "Missing confirmation"
+        }
+      ],
+      "envelope" : {
+        "abilities" : null,
+        "amounts" : null,
+        "cards" : null,
+        "choices" : null,
+        "chosenTargets" : null,
+        "confirmation" : {
+          "noCommand" : {
+            "confirmed" : false,
+            "messageId" : 37,
+            "pay" : null,
+            "promptId" : "p-ask",
+            "type" : "answer_yes_no"
+          },
+          "noLabel" : "Mulligan",
+          "yesCommand" : {
+            "confirmed" : true,
+            "messageId" : 37,
+            "pay" : null,
+            "promptId" : "p-ask",
+            "type" : "answer_yes_no"
+          },
+          "yesLabel" : "Keep & play"
+        },
+        "id" : "p-ask",
+        "kind" : "confirmation",
+        "manaChoices" : null,
+        "maxChoices" : null,
+        "message" : "Mulligan for free, draw another 7 cards?",
+        "messageId" : 37,
+        "method" : "GAME_ASK",
+        "minChoices" : null,
+        "modes" : null,
+        "multiAmounts" : null,
+        "optionKeys" : [
+          "UI.left.btn.text",
+          "UI.right.btn.text"
+        ],
+        "orderedItems" : null,
+        "piles" : null,
+        "playerId" : "00000000-0000-0000-0000-000000000001",
+        "players" : null,
+        "required" : true,
+        "responseCommand" : {
+          "confirmed" : null,
+          "messageId" : 37,
+          "pay" : null,
+          "promptId" : "p-ask",
+          "type" : "answer_yes_no"
+        },
+        "responseKind" : "confirmation",
+        "targetIds" : null,
+        "targets" : null,
+        "totalMax" : null,
+        "totalMin" : null
+      },
+      "manaPayment" : null,
+      "name" : "ask-html"
+    },
+    {
+      "actions" : [
+        {
+          "abilityId" : null,
+          "cardInstanceId" : null,
+          "cardName" : null,
+          "choiceIds" : null,
+          "compactPromptTitle" : "Choose all",
+          "confirmed" : null,
+          "id" : "p-choice:choose_empty_special",
+          "label" : "Choose all",
+          "messageId" : 12,
+          "playerId" : "00000000-0000-0000-0000-000000000001",
+          "promptId" : "p-choice",
+          "sourceInstanceId" : null,
+          "sourceZone" : null,
+          "type" : "choose_empty_special"
+        }
+      ],
+      "answers" : [
+        {
+          "kind" : "string",
+          "value" : "<b>exact&amp;token</b>"
+        },
+        {
+          "kind" : "string",
+          "value" : "#Elf"
+        },
+        {
+          "kind" : "string",
+          "value" : ""
+        },
+        {
+          "kind" : "string",
+          "value" : null
+        },
+        {
+          "error" : "Choice is not an exact engine key"
+        }
+      ],
+      "envelope" : {
+        "abilities" : null,
+        "amounts" : null,
+        "cards" : null,
+        "choices" : [
+          {
+            "id" : "Zombie",
+            "label" : "Zombie"
+          },
+          {
+            "id" : "<b>exact&amp;token</b>",
+            "label" : "Pay {2/U} & {G/P}"
+          },
+          {
+            "id" : "Elf",
+            "label" : "Elf"
+          },
+          {
+            "id" : "#Elf",
+            "label" : "Choose all: Every elf"
+          },
+          {
+            "id" : "",
+            "label" : "Cancel"
+          }
+        ],
+        "chosenTargets" : null,
+        "confirmation" : null,
+        "id" : "p-choice",
+        "kind" : "cardChoice",
+        "manaChoices" : null,
+        "maxChoices" : 1,
+        "message" : "Choose a creature type",
+        "messageId" : 12,
+        "method" : "GAME_CHOOSE_CHOICE",
+        "minChoices" : 1,
+        "modes" : null,
+        "multiAmounts" : null,
+        "optionKeys" : [
+          "choiceOrder",
+          "choices",
+          "message",
+          "options",
+          "required",
+          "specialCanBeEmpty",
+          "specialChoices",
+          "specialEnabled",
+          "specialText"
+        ],
+        "orderedItems" : null,
+        "piles" : null,
+        "playerId" : "00000000-0000-0000-0000-000000000001",
+        "players" : null,
+        "required" : false,
+        "responseCommand" : {
+          "confirmed" : null,
+          "messageId" : 12,
+          "pay" : null,
+          "promptId" : "p-choice",
+          "type" : "resolve_choice"
+        },
+        "responseKind" : "choice",
+        "targetIds" : null,
+        "targets" : null,
+        "totalMax" : null,
+        "totalMin" : null
+      },
+      "manaPayment" : null,
+      "name" : "choice-special"
+    },
+    {
+      "actions" : [
+
+      ],
+      "answers" : [
+        {
+          "kind" : "uuid",
+          "value" : "aaaaaaaa-0000-0000-0000-000000000001"
+        },
+        {
+          "error" : "Mode is not a candidate"
+        }
+      ],
+      "envelope" : {
+        "abilities" : null,
+        "amounts" : null,
+        "cards" : null,
+        "choices" : null,
+        "chosenTargets" : null,
+        "confirmation" : null,
+        "id" : "p-mode",
+        "kind" : "cardChoice",
+        "manaChoices" : null,
+        "maxChoices" : 1,
+        "message" : "Choose one",
+        "messageId" : 5,
+        "method" : "GAME_CHOOSE_MODE",
+        "minChoices" : 1,
+        "modes" : [
+          {
+            "id" : "aaaaaaaa-0000-0000-0000-000000000002",
+            "label" : "Destroy target enchantment."
+          },
+          {
+            "id" : "aaaaaaaa-0000-0000-0000-000000000001",
+            "label" : "Destroy target artifact."
+          }
+        ],
+        "multiAmounts" : null,
+        "optionKeys" : [
+
+        ],
+        "orderedItems" : null,
+        "piles" : null,
+        "playerId" : "00000000-0000-0000-0000-000000000001",
+        "players" : null,
+        "required" : true,
+        "responseCommand" : {
+          "confirmed" : null,
+          "messageId" : 5,
+          "pay" : null,
+          "promptId" : "p-mode",
+          "type" : "choose_mode"
+        },
+        "responseKind" : "mode",
+        "targetIds" : null,
+        "targets" : null,
+        "totalMax" : null,
+        "totalMin" : null
+      },
+      "manaPayment" : null,
+      "name" : "mode"
+    },
+    {
+      "actions" : [
+
+      ],
+      "answers" : [
+        {
+          "kind" : "integer",
+          "value" : 2
+        },
+        {
+          "error" : "Amount out of engine bounds"
+        }
+      ],
+      "envelope" : {
+        "abilities" : null,
+        "amounts" : [
+          0,
+          1,
+          2,
+          3
+        ],
+        "cards" : null,
+        "choices" : null,
+        "chosenTargets" : null,
+        "confirmation" : null,
+        "id" : "p-amount",
+        "kind" : "amount",
+        "manaChoices" : null,
+        "maxChoices" : 3,
+        "message" : "Choose X",
+        "messageId" : 8,
+        "method" : "GAME_GET_AMOUNT",
+        "minChoices" : 0,
+        "modes" : null,
+        "multiAmounts" : null,
+        "optionKeys" : [
+
+        ],
+        "orderedItems" : null,
+        "piles" : null,
+        "playerId" : "00000000-0000-0000-0000-000000000001",
+        "players" : null,
+        "required" : true,
+        "responseCommand" : {
+          "confirmed" : null,
+          "messageId" : 8,
+          "pay" : null,
+          "promptId" : "p-amount",
+          "type" : "choose_amount"
+        },
+        "responseKind" : "amount",
+        "targetIds" : null,
+        "targets" : null,
+        "totalMax" : null,
+        "totalMin" : null
+      },
+      "manaPayment" : null,
+      "name" : "amount-narrow"
+    },
+    {
+      "actions" : [
+
+      ],
+      "answers" : [
+        {
+          "kind" : "integer",
+          "value" : -7
+        }
+      ],
+      "envelope" : {
+        "abilities" : null,
+        "amounts" : null,
+        "cards" : null,
+        "choices" : null,
+        "chosenTargets" : null,
+        "confirmation" : null,
+        "id" : "p-wide",
+        "kind" : "amount",
+        "manaChoices" : null,
+        "maxChoices" : 100,
+        "message" : "Choose a number",
+        "messageId" : 9,
+        "method" : "GAME_GET_AMOUNT",
+        "minChoices" : -100,
+        "modes" : null,
+        "multiAmounts" : null,
+        "optionKeys" : [
+
+        ],
+        "orderedItems" : null,
+        "piles" : null,
+        "playerId" : "00000000-0000-0000-0000-000000000001",
+        "players" : null,
+        "required" : true,
+        "responseCommand" : {
+          "confirmed" : null,
+          "messageId" : 9,
+          "pay" : null,
+          "promptId" : "p-wide",
+          "type" : "choose_amount"
+        },
+        "responseKind" : "amount",
+        "targetIds" : null,
+        "targets" : null,
+        "totalMax" : null,
+        "totalMin" : null
+      },
+      "manaPayment" : null,
+      "name" : "amount-wide"
+    },
+    {
+      "actions" : [
+        {
+          "abilityId" : null,
+          "cardInstanceId" : null,
+          "cardName" : null,
+          "choiceIds" : null,
+          "compactPromptTitle" : "Cancel",
+          "confirmed" : false,
+          "id" : "p-multi:answer_yes_no",
+          "label" : "Cancel",
+          "messageId" : 14,
+          "playerId" : "00000000-0000-0000-0000-000000000001",
+          "promptId" : "p-multi",
+          "sourceInstanceId" : null,
+          "sourceZone" : null,
+          "type" : "answer_yes_no"
+        }
+      ],
+      "answers" : [
+        {
+          "kind" : "integers",
+          "value" : [
+            2,
+            1
+          ]
+        },
+        {
+          "error" : "Allocation total out of bounds"
+        },
+        {
+          "kind" : "boolean",
+          "value" : false
+        }
+      ],
+      "envelope" : {
+        "abilities" : null,
+        "amounts" : null,
+        "cards" : null,
+        "choices" : null,
+        "chosenTargets" : null,
+        "confirmation" : null,
+        "id" : "p-multi",
+        "kind" : "multiAmount",
+        "manaChoices" : null,
+        "maxChoices" : null,
+        "message" : "Distribute 3 damage",
+        "messageId" : 14,
+        "method" : "GAME_GET_MULTI_AMOUNT",
+        "minChoices" : null,
+        "modes" : null,
+        "multiAmounts" : [
+          {
+            "defaultValue" : 1,
+            "id" : "0",
+            "label" : "Grizzly Bears",
+            "max" : 3,
+            "min" : 0
+          },
+          {
+            "defaultValue" : null,
+            "id" : "1",
+            "label" : "Wall of Wood",
+            "max" : 3,
+            "min" : 0
+          }
+        ],
+        "optionKeys" : [
+          "canCancel"
+        ],
+        "orderedItems" : null,
+        "piles" : null,
+        "playerId" : "00000000-0000-0000-0000-000000000001",
+        "players" : null,
+        "required" : true,
+        "responseCommand" : {
+          "confirmed" : null,
+          "messageId" : 14,
+          "pay" : null,
+          "promptId" : "p-multi",
+          "type" : "choose_multi_amount"
+        },
+        "responseKind" : "multi_amount",
+        "targetIds" : null,
+        "targets" : null,
+        "totalMax" : 3,
+        "totalMin" : 3
+      },
+      "manaPayment" : null,
+      "name" : "multi-amount"
+    },
+    {
+      "actions" : [
+
+      ],
+      "answers" : [
+        {
+          "kind" : "boolean",
+          "value" : true
+        },
+        {
+          "kind" : "boolean",
+          "value" : false
+        },
+        {
+          "error" : "Pile must be 1 or 2"
+        }
+      ],
+      "envelope" : {
+        "abilities" : null,
+        "amounts" : null,
+        "cards" : null,
+        "choices" : null,
+        "chosenTargets" : null,
+        "confirmation" : null,
+        "id" : "p-pile",
+        "kind" : "pile",
+        "manaChoices" : null,
+        "maxChoices" : null,
+        "message" : "Choose a pile",
+        "messageId" : 3,
+        "method" : "GAME_CHOOSE_PILE",
+        "minChoices" : null,
+        "modes" : null,
+        "multiAmounts" : null,
+        "optionKeys" : [
+
+        ],
+        "orderedItems" : null,
+        "piles" : [
+          {
+            "cards" : [
+              {
+                "attachedToInstanceId" : null,
+                "blocking" : null,
+                "copySourceArtworkName" : null,
+                "counters" : null,
+                "damage" : null,
+                "disabledReason" : null,
+                "displayPower" : null,
+                "displayToughness" : null,
+                "icons" : [
+
+                ],
+                "instanceId" : "88888888-0000-0000-0000-000000000001",
+                "isAttacking" : null,
+                "isToken" : null,
+                "manaCost" : null,
+                "name" : "Forest",
+                "oracleText" : "{T}: Add {G}.",
+                "phasedIn" : null,
+                "reportedPower" : null,
+                "reportedToughness" : null,
+                "selectable" : null,
+                "summoningSickness" : null,
+                "tapped" : null,
+                "tokenArtwork" : null,
+                "tokenColors" : null,
+                "typeLine" : "LAND",
+                "visibleIcons" : [
+
+                ]
+              }
+            ],
+            "id" : "1",
+            "label" : "Pile 1",
+            "number" : 1
+          },
+          {
+            "cards" : [
+              {
+                "attachedToInstanceId" : null,
+                "blocking" : null,
+                "copySourceArtworkName" : null,
+                "counters" : null,
+                "damage" : null,
+                "disabledReason" : null,
+                "displayPower" : null,
+                "displayToughness" : null,
+                "icons" : [
+
+                ],
+                "instanceId" : "88888888-0000-0000-0000-000000000002",
+                "isAttacking" : null,
+                "isToken" : null,
+                "manaCost" : null,
+                "name" : "Face-down card",
+                "oracleText" : null,
+                "phasedIn" : null,
+                "reportedPower" : null,
+                "reportedToughness" : null,
+                "selectable" : null,
+                "summoningSickness" : null,
+                "tapped" : null,
+                "tokenArtwork" : null,
+                "tokenColors" : null,
+                "typeLine" : "",
+                "visibleIcons" : [
+
+                ]
+              },
+              {
+                "attachedToInstanceId" : null,
+                "blocking" : null,
+                "copySourceArtworkName" : null,
+                "counters" : null,
+                "damage" : null,
+                "disabledReason" : null,
+                "displayPower" : null,
+                "displayToughness" : null,
+                "icons" : [
+
+                ],
+                "instanceId" : "88888888-0000-0000-0000-000000000003",
+                "isAttacking" : null,
+                "isToken" : null,
+                "manaCost" : null,
+                "name" : "Island",
+                "oracleText" : null,
+                "phasedIn" : null,
+                "reportedPower" : null,
+                "reportedToughness" : null,
+                "selectable" : null,
+                "summoningSickness" : null,
+                "tapped" : null,
+                "tokenArtwork" : null,
+                "tokenColors" : null,
+                "typeLine" : "LAND",
+                "visibleIcons" : [
+
+                ]
+              }
+            ],
+            "id" : "2",
+            "label" : "Pile 2",
+            "number" : 2
+          }
+        ],
+        "playerId" : "00000000-0000-0000-0000-000000000001",
+        "players" : null,
+        "required" : true,
+        "responseCommand" : {
+          "confirmed" : null,
+          "messageId" : 3,
+          "pay" : null,
+          "promptId" : "p-pile",
+          "type" : "choose_pile"
+        },
+        "responseKind" : "pile",
+        "targetIds" : null,
+        "targets" : null,
+        "totalMax" : null,
+        "totalMin" : null
+      },
+      "manaPayment" : null,
+      "name" : "pile"
+    },
+    {
+      "actions" : [
+        {
+          "abilityId" : null,
+          "cardInstanceId" : null,
+          "cardName" : null,
+          "choiceIds" : null,
+          "compactPromptTitle" : "Cancel",
+          "confirmed" : false,
+          "id" : "p-ability:answer_yes_no",
+          "label" : "Cancel",
+          "messageId" : 21,
+          "playerId" : "00000000-0000-0000-0000-000000000001",
+          "promptId" : "p-ability",
+          "sourceInstanceId" : null,
+          "sourceZone" : null,
+          "type" : "answer_yes_no"
+        }
+      ],
+      "answers" : [
+        {
+          "kind" : "uuid",
+          "value" : "99999999-0000-0000-0000-000000000002"
+        },
+        {
+          "error" : "Ability is not a candidate"
+        },
+        {
+          "kind" : "boolean",
+          "value" : false
+        }
+      ],
+      "envelope" : {
+        "abilities" : [
+          {
+            "id" : "99999999-0000-0000-0000-000000000001",
+            "label" : "{T}: Add {G}.",
+            "sourceCard" : {
+              "attachedToInstanceId" : null,
+              "blocking" : null,
+              "copySourceArtworkName" : null,
+              "counters" : null,
+              "damage" : null,
+              "disabledReason" : null,
+              "displayPower" : null,
+              "displayToughness" : null,
+              "icons" : [
+
+              ],
+              "instanceId" : "44444444-0000-0000-0000-000000000000",
+              "isAttacking" : null,
+              "isToken" : null,
+              "manaCost" : "{G}",
+              "name" : "Llanowar Elves",
+              "oracleText" : "{T}: Add {G}.",
+              "phasedIn" : null,
+              "reportedPower" : null,
+              "reportedToughness" : null,
+              "selectable" : null,
+              "summoningSickness" : null,
+              "tapped" : null,
+              "tokenArtwork" : null,
+              "tokenColors" : null,
+              "typeLine" : "CREATURE",
+              "visibleIcons" : [
+
+              ]
+            },
+            "sourceInstanceId" : "44444444-0000-0000-0000-000000000000",
+            "sourceName" : "Llanowar Elves",
+            "sourceUnavailableReason" : null
+          },
+          {
+            "id" : "99999999-0000-0000-0000-000000000002",
+            "label" : "Cast Adventure",
+            "sourceCard" : null,
+            "sourceInstanceId" : "12121212-0000-0000-0000-000000000000",
+            "sourceName" : null,
+            "sourceUnavailableReason" : "Source details unavailable"
+          },
+          {
+            "id" : "99999999-0000-0000-0000-000000000003",
+            "label" : "Hidden source",
+            "sourceCard" : null,
+            "sourceInstanceId" : "13131313-0000-0000-0000-000000000000",
+            "sourceName" : null,
+            "sourceUnavailableReason" : "Source details unavailable"
+          }
+        ],
+        "amounts" : null,
+        "cards" : null,
+        "choices" : null,
+        "chosenTargets" : null,
+        "confirmation" : null,
+        "id" : "p-ability",
+        "kind" : "abilityChoice",
+        "manaChoices" : null,
+        "maxChoices" : 1,
+        "message" : "Choose ability",
+        "messageId" : 21,
+        "method" : "GAME_CHOOSE_ABILITY",
+        "minChoices" : 1,
+        "modes" : null,
+        "multiAmounts" : null,
+        "optionKeys" : [
+
+        ],
+        "orderedItems" : null,
+        "piles" : null,
+        "playerId" : "00000000-0000-0000-0000-000000000001",
+        "players" : null,
+        "required" : false,
+        "responseCommand" : {
+          "confirmed" : null,
+          "messageId" : 21,
+          "pay" : null,
+          "promptId" : "p-ability",
+          "type" : "choose_ability"
+        },
+        "responseKind" : "ability",
+        "targetIds" : null,
+        "targets" : null,
+        "totalMax" : null,
+        "totalMin" : null
+      },
+      "manaPayment" : null,
+      "name" : "ability"
+    },
+    {
+      "actions" : [
+        {
+          "abilityId" : null,
+          "cardInstanceId" : null,
+          "cardName" : null,
+          "choiceIds" : null,
+          "compactPromptTitle" : "Stop choosing",
+          "confirmed" : false,
+          "id" : "p-target:answer_yes_no",
+          "label" : "Stop choosing",
+          "messageId" : 44,
+          "playerId" : "00000000-0000-0000-0000-000000000001",
+          "promptId" : "p-target",
+          "sourceInstanceId" : null,
+          "sourceZone" : null,
+          "type" : "answer_yes_no"
+        }
+      ],
+      "answers" : [
+        {
+          "kind" : "uuid",
+          "value" : "22222222-0000-0000-0000-000000000000"
+        },
+        {
+          "error" : "Target is not a canonical legal choice"
+        },
+        {
+          "kind" : "uuid",
+          "value" : "66666666-0000-0000-0000-000000000000"
+        },
+        {
+          "error" : "Target is not a canonical legal choice"
+        },
+        {
+          "kind" : "boolean",
+          "value" : false
+        },
+        {
+          "kind" : "uuid",
+          "value" : "22222222-0000-0000-0000-000000000000"
+        }
+      ],
+      "envelope" : {
+        "abilities" : null,
+        "amounts" : null,
+        "cards" : [
+          {
+            "attachedToInstanceId" : null,
+            "blocking" : null,
+            "copySourceArtworkName" : null,
+            "counters" : null,
+            "damage" : null,
+            "disabledReason" : null,
+            "displayPower" : null,
+            "displayToughness" : null,
+            "icons" : [
+
+            ],
+            "instanceId" : "14141414-0000-0000-0000-000000000000",
+            "isAttacking" : null,
+            "isToken" : null,
+            "manaCost" : null,
+            "name" : "Ordered view",
+            "oracleText" : "Flying",
+            "phasedIn" : null,
+            "reportedPower" : null,
+            "reportedToughness" : null,
+            "selectable" : true,
+            "summoningSickness" : null,
+            "tapped" : null,
+            "tokenArtwork" : null,
+            "tokenColors" : null,
+            "typeLine" : "CREATURE",
+            "visibleIcons" : [
+              "ABILITY_FLYING"
+            ]
+          },
+          {
+            "attachedToInstanceId" : null,
+            "blocking" : null,
+            "copySourceArtworkName" : null,
+            "counters" : null,
+            "damage" : null,
+            "disabledReason" : "Not a legal choice",
+            "displayPower" : null,
+            "displayToughness" : null,
+            "icons" : [
+
+            ],
+            "instanceId" : "16161616-0000-0000-0000-000000000000",
+            "isAttacking" : null,
+            "isToken" : null,
+            "manaCost" : null,
+            "name" : "Browse only",
+            "oracleText" : null,
+            "phasedIn" : null,
+            "reportedPower" : null,
+            "reportedToughness" : null,
+            "selectable" : false,
+            "summoningSickness" : null,
+            "tapped" : null,
+            "tokenArtwork" : null,
+            "tokenColors" : null,
+            "typeLine" : "SORCERY",
+            "visibleIcons" : [
+
+            ]
+          },
+          {
+            "attachedToInstanceId" : null,
+            "blocking" : null,
+            "copySourceArtworkName" : null,
+            "counters" : null,
+            "damage" : null,
+            "disabledReason" : null,
+            "displayPower" : null,
+            "displayToughness" : null,
+            "icons" : [
+
+            ],
+            "instanceId" : "66666666-0000-0000-0000-000000000000",
+            "isAttacking" : null,
+            "isToken" : null,
+            "manaCost" : "{R}",
+            "name" : "Lightning Bolt",
+            "oracleText" : "Lightning Bolt deals 3 damage to any target.",
+            "phasedIn" : null,
+            "reportedPower" : null,
+            "reportedToughness" : null,
+            "selectable" : true,
+            "summoningSickness" : null,
+            "tapped" : null,
+            "tokenArtwork" : null,
+            "tokenColors" : null,
+            "typeLine" : "Instant",
+            "visibleIcons" : [
+
+            ]
+          }
+        ],
+        "choices" : null,
+        "chosenTargets" : [
+          "77777777-0000-0000-0000-000000000000"
+        ],
+        "confirmation" : null,
+        "id" : "p-target",
+        "kind" : "target",
+        "manaChoices" : null,
+        "maxChoices" : 1,
+        "message" : "Choose any target",
+        "messageId" : 44,
+        "method" : "GAME_PICK_TARGET",
+        "minChoices" : 1,
+        "modes" : null,
+        "multiAmounts" : null,
+        "optionKeys" : [
+          "UI.right.btn.text",
+          "chosenTargets",
+          "orderedViews",
+          "possibleTargets"
+        ],
+        "orderedItems" : null,
+        "piles" : null,
+        "playerId" : "00000000-0000-0000-0000-000000000001",
+        "players" : null,
+        "required" : false,
+        "responseCommand" : {
+          "confirmed" : null,
+          "messageId" : 44,
+          "pay" : null,
+          "promptId" : "p-target",
+          "type" : "choose_target"
+        },
+        "responseKind" : "target",
+        "targetIds" : [
+          "22222222-0000-0000-0000-000000000000",
+          "77777777-0000-0000-0000-000000000000",
+          "66666666-0000-0000-0000-000000000000",
+          "14141414-0000-0000-0000-000000000000"
+        ],
+        "targets" : [
+          {
+            "id" : "22222222-0000-0000-0000-000000000000",
+            "label" : "Aurelia & Co"
+          },
+          {
+            "id" : "77777777-0000-0000-0000-000000000000",
+            "label" : "Wall of Wood"
+          }
+        ],
+        "totalMax" : null,
+        "totalMin" : null
+      },
+      "manaPayment" : null,
+      "name" : "target"
+    },
+    {
+      "actions" : [
+        {
+          "abilityId" : null,
+          "cardInstanceId" : null,
+          "cardName" : null,
+          "choiceIds" : null,
+          "compactPromptTitle" : "Cancel",
+          "confirmed" : false,
+          "id" : "p-xmana:cancel_payment",
+          "label" : "Cancel",
+          "messageId" : 16,
+          "playerId" : "00000000-0000-0000-0000-000000000001",
+          "promptId" : "p-xmana",
+          "sourceInstanceId" : null,
+          "sourceZone" : null,
+          "type" : "cancel_payment"
+        }
+      ],
+      "answers" : [
+        {
+          "kind" : "integer",
+          "value" : 4
+        },
+        {
+          "kind" : "mana",
+          "value" : {
+            "manaType" : "WHITE",
+            "playerId" : "00000000-0000-0000-0000-000000000001"
+          }
+        },
+        {
+          "error" : "Invalid mana symbol or missing player identity"
+        },
+        {
+          "kind" : "boolean",
+          "value" : false
+        },
+        {
+          "error" : "Response type uuid is not accepted"
+        }
+      ],
+      "envelope" : {
+        "abilities" : null,
+        "amounts" : null,
+        "cards" : null,
+        "choices" : null,
+        "chosenTargets" : null,
+        "confirmation" : null,
+        "id" : "p-xmana",
+        "kind" : "payment",
+        "manaChoices" : [
+          {
+            "amount" : 2,
+            "id" : "W",
+            "label" : "Pay {W}",
+            "manaType" : "W"
+          },
+          {
+            "amount" : 1,
+            "id" : "B",
+            "label" : "Pay {B}",
+            "manaType" : "B"
+          },
+          {
+            "amount" : 3,
+            "id" : "C",
+            "label" : "Pay {C}",
+            "manaType" : "C"
+          }
+        ],
+        "maxChoices" : 5,
+        "message" : "Pay X: {X}{X}",
+        "messageId" : 16,
+        "method" : "GAME_PLAY_X_MANA",
+        "minChoices" : 0,
+        "modes" : null,
+        "multiAmounts" : null,
+        "optionKeys" : [
+
+        ],
+        "orderedItems" : null,
+        "piles" : null,
+        "playerId" : "00000000-0000-0000-0000-000000000001",
+        "players" : null,
+        "required" : true,
+        "responseCommand" : {
+          "confirmed" : null,
+          "messageId" : 16,
+          "pay" : null,
+          "promptId" : "p-xmana",
+          "type" : "play_x_mana"
+        },
+        "responseKind" : "x_mana",
+        "targetIds" : null,
+        "targets" : null,
+        "totalMax" : null,
+        "totalMin" : null
+      },
+      "manaPayment" : {
+        "active" : true,
+        "remainingText" : "Pay X: {X}{X}"
+      },
+      "name" : "x-mana"
+    },
+    {
+      "actions" : [
+        {
+          "abilityId" : null,
+          "cardInstanceId" : null,
+          "cardName" : null,
+          "choiceIds" : null,
+          "compactPromptTitle" : "Done",
+          "confirmed" : true,
+          "id" : "p-block:answer_yes_no",
+          "label" : "Done",
+          "messageId" : 30,
+          "playerId" : "00000000-0000-0000-0000-000000000001",
+          "promptId" : "p-block",
+          "sourceInstanceId" : null,
+          "sourceZone" : null,
+          "type" : "answer_yes_no"
+        }
+      ],
+      "answers" : [
+        {
+          "kind" : "uuid",
+          "value" : "55555555-0000-0000-0000-000000000000"
+        },
+        {
+          "kind" : "boolean",
+          "value" : true
+        },
+        {
+          "kind" : "integer",
+          "value" : 0
+        }
+      ],
+      "envelope" : {
+        "abilities" : null,
+        "amounts" : null,
+        "cards" : null,
+        "choices" : null,
+        "chosenTargets" : null,
+        "confirmation" : null,
+        "id" : "p-block",
+        "kind" : "target",
+        "manaChoices" : null,
+        "maxChoices" : 1,
+        "message" : "Select blockers",
+        "messageId" : 30,
+        "method" : "GAME_SELECT",
+        "minChoices" : 1,
+        "modes" : null,
+        "multiAmounts" : null,
+        "optionKeys" : [
+          "possibleBlockers"
+        ],
+        "orderedItems" : null,
+        "piles" : null,
+        "playerId" : "00000000-0000-0000-0000-000000000001",
+        "players" : null,
+        "required" : true,
+        "responseCommand" : {
+          "confirmed" : null,
+          "messageId" : 30,
+          "pay" : null,
+          "promptId" : "p-block",
+          "type" : "choose_target"
+        },
+        "responseKind" : "target",
+        "targetIds" : null,
+        "targets" : [
+          {
+            "id" : "55555555-0000-0000-0000-000000000000",
+            "label" : "Grizzly Bears"
+          }
+        ],
+        "totalMax" : null,
+        "totalMin" : null
+      },
+      "manaPayment" : null,
+      "name" : "blockers"
+    },
+    {
+      "actions" : [
+        {
+          "abilityId" : null,
+          "cardInstanceId" : null,
+          "cardName" : null,
+          "choiceIds" : null,
+          "compactPromptTitle" : "Pass Priority",
+          "confirmed" : null,
+          "id" : "p-priority:pass_priority",
+          "label" : "Pass priority",
+          "messageId" : 2,
+          "playerId" : "00000000-0000-0000-0000-000000000001",
+          "promptId" : "p-priority",
+          "sourceInstanceId" : null,
+          "sourceZone" : null,
+          "type" : "pass_priority"
+        },
+        {
+          "abilityId" : null,
+          "cardInstanceId" : null,
+          "cardName" : null,
+          "choiceIds" : [
+            "special"
+          ],
+          "compactPromptTitle" : "Special action",
+          "confirmed" : null,
+          "id" : "p-priority:resolve_choice",
+          "label" : "Special action",
+          "messageId" : 2,
+          "playerId" : "00000000-0000-0000-0000-000000000001",
+          "promptId" : "p-priority",
+          "sourceInstanceId" : null,
+          "sourceZone" : null,
+          "type" : "resolve_choice"
+        }
+      ],
+      "answers" : [
+        {
+          "kind" : "boolean",
+          "value" : true
+        },
+        {
+          "kind" : "string",
+          "value" : "special"
+        },
+        {
+          "kind" : "uuid",
+          "value" : "44444444-0000-0000-0000-000000000000"
+        }
+      ],
+      "envelope" : {
+        "abilities" : null,
+        "amounts" : null,
+        "cards" : null,
+        "choices" : null,
+        "chosenTargets" : null,
+        "confirmation" : null,
+        "id" : "p-priority",
+        "kind" : "unsupported",
+        "manaChoices" : null,
+        "maxChoices" : null,
+        "message" : "Play spells and abilities.",
+        "messageId" : 2,
+        "method" : "GAME_SELECT",
+        "minChoices" : null,
+        "modes" : null,
+        "multiAmounts" : null,
+        "optionKeys" : [
+          "specialButton"
+        ],
+        "orderedItems" : null,
+        "piles" : null,
+        "playerId" : "00000000-0000-0000-0000-000000000001",
+        "players" : null,
+        "required" : true,
+        "responseCommand" : {
+          "confirmed" : null,
+          "messageId" : 2,
+          "pay" : null,
+          "promptId" : "p-priority",
+          "type" : "pass_priority"
+        },
+        "responseKind" : "priority",
+        "targetIds" : null,
+        "targets" : null,
+        "totalMax" : null,
+        "totalMin" : null
+      },
+      "manaPayment" : null,
+      "name" : "priority-special"
+    }
+  ]
+}

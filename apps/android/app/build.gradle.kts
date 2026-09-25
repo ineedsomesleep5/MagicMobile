@@ -1,4 +1,4 @@
-plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("org.jetbrains.kotlin.plugin.compose") }
+plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("org.jetbrains.kotlin.plugin.compose"); id("org.jetbrains.kotlin.plugin.serialization") }
 val withNative = providers.gradleProperty("withNative").orNull == "true"
 android {
     namespace = "io.magicmobile.android"
@@ -10,14 +10,17 @@ android {
         minSdk = 26
         targetSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2026092101
+        versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2026092501
         versionName = providers.gradleProperty("androidVersionName").orNull ?: "0.1.1"
-        buildConfigField("int", "RELEASE_BUILD", "7")
+        buildConfigField("int", "RELEASE_BUILD", "8")
         val onlineURL = providers.gradleProperty("onlineServerUrl").orNull ?: ""
         require(onlineURL.isEmpty() || onlineURL.startsWith("https://")) { "Online service must use HTTPS" }
         buildConfigField("String", "ONLINE_SERVER_URL", "\"${onlineURL.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
         ndk { abiFilters += "arm64-v8a" }
         buildConfigField("boolean", "NATIVE_ENGINE", withNative.toString())
+        val relayURL = providers.gradleProperty("relayUrl").orNull ?: "https://magicmobile-relay.calebjfeliciano.workers.dev"
+        require(relayURL.startsWith("https://")) { "The table relay must use HTTPS" }
+        buildConfigField("String", "RELAY_URL", "\"$relayURL\"")
         if(withNative) externalNativeBuild { cmake { arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON" } }
     }
     buildFeatures { compose = true; buildConfig = true }
@@ -25,6 +28,7 @@ android {
     kotlinOptions { jvmTarget = "17" }
     if(withNative) externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/magicmobile-assets"))
+    sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/magicmobile-audio"))
     sourceSets["main"].res.srcDir(layout.buildDirectory.dir("generated/magicmobile-res"))
     // Compress the large AOT engine in the download; Android extracts its aligned
     // ELF at install time. The actual native ABI is unchanged.
@@ -53,14 +57,27 @@ val prepareBrandAssets by tasks.registering(Copy::class) {
     from(rootProject.file("../ios/MagicMobile/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png")) {
         rename { "magicmobile_icon.png" }
     }
+    // The iOS asset catalogue is the single source for shared artwork.
     from(rootProject.file("../ios/MagicMobile/Assets.xcassets")) {
-        include("battlefield-*.imageset/battlefield-*.png")
+        include("battlefield-*.imageset/battlefield-*.png", "commander-stone-arena*.imageset/*.png",
+            "mage-mobile-*.imageset/*.png")
         eachFile { path = name.replace('-', '_') }
         includeEmptyDirs = false
     }
+    from(rootProject.file("../ios/MagicMobile/Assets.xcassets/LaunchMark.imageset/launch-mark@3x.png")) {
+        rename { "launch_mark.png" }
+    }
     into(layout.buildDirectory.dir("generated/magicmobile-res/drawable"))
 }
-tasks.named("preBuild").configure { dependsOn(prepareAssets,prepareBrandAssets) }
+val prepareAudio by tasks.registering(Exec::class) {
+    val script = rootProject.file("../../scripts/android/prepare_audio.py")
+    inputs.file(script)
+    inputs.dir(rootProject.file("../ios/MagicMobile/Resources/Audio"))
+    outputs.dir(layout.buildDirectory.dir("generated/magicmobile-audio"))
+    commandLine("python3", script.absolutePath, rootProject.file("../..").absolutePath,
+        layout.buildDirectory.dir("generated/magicmobile-audio").get().asFile.absolutePath)
+}
+tasks.named("preBuild").configure { dependsOn(prepareAssets,prepareBrandAssets,prepareAudio) }
 if(withNative) {
     val verifyNative by tasks.registering(Exec::class) {
         commandLine("python3",rootProject.file("../../scripts/android/verify_native.py").absolutePath,rootProject.file("../..").absolutePath)
@@ -79,8 +96,13 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.compose.animation:animation")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // WebSocket client for the cross-play table relay.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 }
 tasks.register<JavaExec>("artworkCatalogueChecks") {

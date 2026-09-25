@@ -27,7 +27,9 @@ private enum class DownloadScope(val label: String) {
 }
 
 internal data class DownloadProgress(val completed: Int, val total: Int, val status: String)
-internal data class DownloadScan(val cards:Int,val bytes:Long,val extraStored:Int,val extraTotal:Int,val coverageKnown:Boolean)
+internal data class DownloadScan(val cards:Int,val bytes:Long,val extraStored:Int,val extraTotal:Int,val coverageKnown:Boolean,
+    val faceStored:Int=0,val faceTotal:Int=0,val tokenStored:Int=0,val tokenTotal:Int=0,val tokensKnown:Boolean=false,
+    val missingCards:List<String> = emptyList(),val missingTokens:List<String> = emptyList())
 
 /** Collection responses are a bounded list; Scryfall normally omits pagination metadata. */
 internal fun validatedArtworkCollection(response:Obj,requested:Int):List<Obj> {
@@ -46,11 +48,20 @@ internal class ArtworkDownloadClient(private val context: Context) {
     }
     suspend fun scan(names: List<String>, quality: ArtworkQuality,includeTokens:Boolean): DownloadScan = withContext(Dispatchers.IO) {
         val manifest=runCatching{val file=coverageFile(names);check(file.length() in 1..4*1024*1024);Wire.decode(file.readBytes())}.getOrNull()
-        val extras=manifest?.array("faces").orEmpty().filterIsInstance<String>()+(if(includeTokens)manifest?.array("tokens").orEmpty().filterIsInstance<String>()else emptyList())
+        val faces=manifest?.array("faces").orEmpty().filterIsInstance<String>()
+        val tokens=if(includeTokens)manifest?.array("tokens").orEmpty().filterIsInstance<String>()else emptyList()
         val unavailable=if(includeTokens)manifest?.number("unavailable")?.toInt() ?: 0 else 0
-        DownloadScan(names.count { Artwork.hasDownload(context, it, quality) },Artwork.storedDownloadBytes(context),
-            extras.count{Artwork.hasDownload(context,it,quality)},extras.size+unavailable,
-            manifest?.number("known")==names.size.toLong()&&(!includeTokens||manifest?.flag("includesTokens")==true))
+        // One directory listing answers every name, so a full-catalogue check stays quick.
+        val files=Artwork.downloadedFileNames(context)
+        fun stored(name:String)=Artwork.listedDownload(files,name,quality)
+        val missingCards=names.filterNot(::stored)
+        val missingFaces=faces.filterNot(::stored)
+        val missingTokens=tokens.filterNot(::stored)
+        DownloadScan(names.size-missingCards.size,Artwork.storedDownloadBytes(context),
+            faces.size-missingFaces.size+tokens.size-missingTokens.size,faces.size+tokens.size+unavailable,
+            manifest?.number("known")==names.size.toLong()&&(!includeTokens||manifest?.flag("includesTokens")==true),
+            faces.size-missingFaces.size,faces.size,tokens.size-missingTokens.size,tokens.size+unavailable,
+            manifest?.flag("includesTokens")==true,missingCards+missingFaces,missingTokens.map{it.removePrefix("token:")})
     }
     private fun saveCoverage(names:List<String>,faces:Set<String>,tokens:Set<String>,known:Int,includeTokens:Boolean,unavailable:Int) {
         val file=android.util.AtomicFile(coverageFile(names));val bytes=Wire.encode(mapOf("faces" to faces.toList(),"tokens" to tokens.toList(),"known" to known,"includesTokens" to includeTokens,"unavailable" to unavailable))

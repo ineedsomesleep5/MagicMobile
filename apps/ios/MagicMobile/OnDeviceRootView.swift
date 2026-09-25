@@ -124,8 +124,7 @@ struct OnDeviceRootView: View {
     }
     private var mayStart: Bool {
         validName && selectedDeck != nil && (playWithFriends || aiPrecons.count == opponentCount)
-            && (!playWithFriends || playOnline || gameCenterAIDecks.count == gameCenterAICount)
-            && (!playWithFriends || !playOnline || setup.online.available)
+            && (!playWithFriends || gameCenterAIDecks.count == gameCenterAICount)
             && setup.identity != nil && !setup.isBusy && !setup.needsLeave
     }
     private var playerMode: Binding<String> {
@@ -612,16 +611,30 @@ struct OnDeviceRootView: View {
                         Text("Online").tag("online")
                     }.pickerStyle(.segmented).disabled(setup.isBusy || setup.needsLeave)
                     if playWithFriends {
-                        if !playOnline || setup.online.available {
+                        if !(playOnline && setup.multiplayer?.isRelayTable == true) {
                             Picker("Human players", selection: $playerCount) {
                                 ForEach(2...4, id: \.self) { Text("\($0) players").tag($0) }
                             }.disabled(setup.isBusy || setup.needsLeave)
                         }
                         if playOnline {
-                            OnlineLobbyView(online: setup.online, mayEnter: mayStart) { code in
-                                guard let deck = selectedDeck else { return }
-                                Task { await setup.enterOnline(code: code, name: playerDisplayName, deck: deck, playerCount: playerCount) }
-                            }
+                            RelayTablePanel(multiplayer: setup.multiplayer, mayEnter: mayStart && !setup.needsLeave,
+                                            locked: setup.isBusy || setup.needsLeave,
+                                            aiCount: gameCenterAICountBinding, maxAI: max(0, 4 - playerCount),
+                                            aiDeckSelection: aiDeckSelection, aiSkill: $aiSkill,
+                                            deckName: selectedDeck?.name, localCommander: selectedDeck?.commander?.cardName,
+                                            host: {
+                                                guard let deck = selectedDeck else { return }
+                                                Task { await setup.hostRelay(name: playerDisplayName, deck: deck, playerCount: playerCount,
+                                                                             aiDecks: gameCenterAIDecks, aiSkill: aiSkill) }
+                                            },
+                                            join: { code in
+                                                guard let deck = selectedDeck else { return }
+                                                setup.joinRelay(code: code, name: playerDisplayName, deck: deck)
+                                            },
+                                            ready: {
+                                                guard let deck = selectedDeck else { return }
+                                                setup.readyForMatch(name: playerDisplayName, deck: deck)
+                                            })
                         } else {
                             Stepper("AI opponents: \(gameCenterAICount)", value: gameCenterAICountBinding,
                                     in: 0...max(0, 4 - playerCount))
@@ -734,9 +747,9 @@ struct OnDeviceRootView: View {
                         .font(.largeTitle).foregroundStyle(CommanderPresentation.secondary)
                         .frame(width: 112, height: 156)
                         .background(CommanderPresentation.surface, in: RoundedRectangle(cornerRadius: 12))
-                    Text(playOnline ? (setup.online.available ? "iPhone + Android" : "Online") : "Game Center")
+                    Text(playOnline ? "iPhone + Android" : "Game Center")
                         .font(.caption).foregroundStyle(CommanderPresentation.secondary)
-                    Text(playOnline && !setup.online.available ? "Coming soon" : "\(playerCount) seats").font(.headline)
+                    Text("\(playerCount) seats").font(.headline)
                 } else {
                     CommanderDeckPortrait(name: aiPrecon?.deckList.commander?.cardName)
                         .frame(width: 112, height: 156)
@@ -1001,6 +1014,48 @@ private final class OnDeviceSetupModel: ObservableObject {
         updateSessionForeground()
     }
 
+    /// Cross-play tables share one identity on iPhone and Android: protocol, rules source, card
+    /// registry and table features. App build numbers differ between the platforms, so they are left out.
+    var relayIdentity: BuildIdentity? {
+        identity.map { BuildIdentity(upstreamCommit: $0.upstreamCommit, catalogueHash: $0.catalogueHash,
+                                     adapterVersion: "ondevice-0.1/relay-1/rollstep-2/room-1/concede-1/emote-1") }
+    }
+
+    /// Opens a cross-play table this phone hosts: `playerCount` people plus any AI seats.
+    func hostRelay(name: String, deck: DeckList, playerCount: Int, aiDecks: [DeckList], aiSkill: Int) async {
+        guard !isBusy, !needsLeave, let resolver, let multiplayer, let relayIdentity else { return }
+        isBusy = true; errorMessage = nil; feedback = nil
+        defer { isBusy = false }
+        do {
+            let name = try Self.playerName(name)
+            let bots = try aiDecks.map { try OnDeviceMultiplayer.AISeatDescriptor(deck: resolver.resolve($0), skill: aiSkill) }
+            let resolved = try resolver.resolve(deck)
+            usingMultiplayer = true
+            updateSessionForeground()
+            try await multiplayer.hostRelay(humans: playerCount, name: name, deck: resolved, aiSeats: bots, relayIdentity: relayIdentity)
+        } catch {
+            errorMessage = error.localizedDescription
+            // Nothing was opened: the setup stays free to start again.
+            if multiplayer.tableCode == nil { usingMultiplayer = false; updateSessionForeground() }
+        }
+    }
+
+    /// Joins another player's cross-play table by its code.
+    func joinRelay(code: String, name: String, deck: DeckList) {
+        guard !isBusy, !needsLeave, let resolver, let multiplayer, let relayIdentity else { return }
+        errorMessage = nil; feedback = nil
+        do {
+            let name = try Self.playerName(name)
+            let resolved = try resolver.resolve(deck)
+            usingMultiplayer = true
+            updateSessionForeground()
+            try multiplayer.joinRelay(code: code, name: name, deck: resolved, relayIdentity: relayIdentity)
+        } catch {
+            errorMessage = error.localizedDescription
+            if multiplayer.tableCode == nil { usingMultiplayer = false; updateSessionForeground() }
+        }
+    }
+
     /// Match room: confirm the currently selected deck and ready up.
     func readyForMatch(name: String, deck: DeckList) {
         guard let resolver, let multiplayer else { return }
@@ -1045,7 +1100,7 @@ private final class OnDeviceSetupModel: ObservableObject {
             try await session.attach(client: endpoint.client, matchID: endpoint.matchID, seatID: endpoint.seatID,
                                      allowsSeatScopedAutoYield: true,
                                      close: { try await multiplayer.leave() })
-            status = "Game Center match connected"
+            status = multiplayer.isRelayTable ? "Table connected" : "Game Center match connected"
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -1199,6 +1254,100 @@ private struct OnDeviceTextImportView: View {
             .background(BattlefieldSurface().ignoresSafeArea())
             .navigationTitle("Import deck text").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Cancel") { dismiss() } } }
+        }
+    }
+}
+
+/// Host or join a cross-play table (iPhone and Android) through the relay, then the match room.
+/// The root re-renders on every multiplayer change (the setup model re-publishes them).
+@MainActor
+private struct RelayTablePanel: View {
+    let multiplayer: OnDeviceMultiplayer?
+    let mayEnter: Bool
+    let locked: Bool
+    @Binding var aiCount: Int
+    let maxAI: Int
+    let aiDeckSelection: (Int) -> Binding<String>
+    @Binding var aiSkill: Int
+    let deckName: String?
+    let localCommander: String?
+    let host: () -> Void
+    let join: (String) -> Void
+    let ready: () -> Void
+    @State private var code = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let multiplayer, multiplayer.isRelayTable, multiplayer.tableCode != nil {
+                activeTable(multiplayer)
+            } else {
+                Stepper("AI opponents: \(aiCount)", value: $aiCount, in: 0...maxAI)
+                    .disabled(locked)
+                    .accessibilityIdentifier("ondevice.relay.aiCount")
+                ForEach(0..<aiCount, id: \.self) { index in
+                    Picker("AI \(index + 1) deck", selection: aiDeckSelection(index)) {
+                        ForEach(PreconCatalog.all) { Text($0.name).tag($0.id) }
+                    }
+                    .disabled(locked)
+                }
+                if aiCount > 0 {
+                    Stepper("AI skill: \(aiSkill)", value: $aiSkill, in: 1...10).disabled(locked)
+                    Text("The host’s AI choices apply to everyone. Higher skill may slow turns.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Text("iPhone and Android players join with the table code. Every player needs this app version and keeps it open during the match.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button("Host a table", action: host)
+                    .buttonStyle(CommanderActionStyle())
+                    .disabled(!mayEnter)
+                    .accessibilityIdentifier("ondevice.relay.host")
+                BrandDivider(title: "or join")
+                TextField("Table code", text: $code)
+                    .textInputAutocapitalization(.characters).autocorrectionDisabled()
+                    .font(.body.monospaced())
+                    .padding(12).background(CommanderPresentation.canvas, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(BrandTheme.border, lineWidth: 1))
+                    .onChange(of: code) { _, value in
+                        let clean = String(value.uppercased().filter { "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".contains($0) }.prefix(6))
+                        if clean != value { code = clean }
+                    }
+                    .disabled(locked)
+                    .accessibilityIdentifier("ondevice.relay.code")
+                Button("Join table") { join(code) }
+                    .buttonStyle(CommanderActionStyle(primary: false))
+                    .disabled(!mayEnter || code.count != 6)
+                    .accessibilityIdentifier("ondevice.relay.join")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func activeTable(_ multiplayer: OnDeviceMultiplayer) -> some View {
+        if let tableCode = multiplayer.tableCode {
+            VStack(spacing: 6) {
+                Text("TABLE CODE").font(.caption.weight(.bold)).tracking(1.4).foregroundStyle(CommanderPresentation.secondary)
+                Text(stride(from: 0, to: tableCode.count, by: 3).map { start -> String in
+                    let from = tableCode.index(tableCode.startIndex, offsetBy: start)
+                    return String(tableCode[from..<tableCode.index(from, offsetBy: min(3, tableCode.count - start))])
+                }.joined(separator: " "))
+                    .font(.system(size: 34, weight: .black, design: .monospaced)).tracking(2)
+                    .accessibilityLabel("Table code \(tableCode)")
+                    .accessibilityIdentifier("ondevice.relay.tableCode")
+                if multiplayer.room == nil, multiplayer.endpoint == nil, !multiplayer.isFailed {
+                    Text("Players \(multiplayer.seatsTaken)/\(max(2, multiplayer.seatsWanted))")
+                        .font(.caption).foregroundStyle(CommanderPresentation.secondary)
+                    ShareLink(item: "Join my MagicMobile table with code \(tableCode)") {
+                        Label("Share code", systemImage: "square.and.arrow.up")
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(12)
+            .background(CommanderPresentation.canvas.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+        }
+        Text(multiplayer.status).font(.callout)
+        if let room = multiplayer.room {
+            MatchRoomView(room: room, deckName: deckName, localCommander: localCommander, ready: ready)
         }
     }
 }
