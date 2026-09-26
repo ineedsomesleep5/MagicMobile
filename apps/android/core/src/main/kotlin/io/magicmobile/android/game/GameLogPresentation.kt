@@ -264,3 +264,117 @@ object PromptDisplayText {
     private val objectID = Regex("[ \\t]*\\[(?=[0-9a-f]*[0-9])[0-9a-f]{3,8}\\]")
     fun clean(text: String): String = if (!text.contains("[")) text else objectID.replace(text, "")
 }
+
+/**
+ * Port of CombatLogReasons in GameLogPresentation.swift. One-line reasons for the combat damage and
+ * deaths the public log already shows, such as "Atarka, World Render has double strike (first-strike
+ * damage)". Uses only public snapshot data: the combat keywords of creatures seen attacking or
+ * blocking this turn, and XMage's step. Entering "first-combat-damage" is the first-strike step,
+ * leaving it the regular step. A reason is decided once, when its entry first appears.
+ */
+class CombatLogReasons {
+    /** Which combat damage the new log entries of one snapshot transition came from. */
+    enum class DamageStep {
+        FIRST_STRIKE, REGULAR,
+        /** Combat damage without a first-strike snapshot in between: no such step, or it was skipped. */
+        COMBINED,
+        /** No combat damage step in this transition. */
+        NONE;
+
+        companion object {
+            /** Steps as XMage names them ("FIRST_COMBAT_DAMAGE") or normalized ("first-combat-damage"). */
+            fun of(previousStep: String?, currentStep: String): DamageStep {
+                val previous = previousStep?.let { normalized(it) }
+                val step = normalized(currentStep)
+                val first = BoardEventDiffer.firstStrikeStep
+                val preDamage = BoardEventDiffer.preDamageSteps
+                return when {
+                    step == first && previous != first -> FIRST_STRIKE
+                    previous == first && step != first && step !in preDamage -> REGULAR
+                    previous != null && previous in preDamage && step != first && step !in preDamage -> COMBINED
+                    else -> NONE
+                }
+            }
+        }
+    }
+
+    data class Fighter(val name: String, val keywords: Set<CombatKeyword>)
+
+    /** Log entry ID to its reason. */
+    var reasons: Map<String, String> = emptyMap(); private set
+    private var gameID: String? = null
+    private var turn = 0
+    private var previousStep: String? = null
+    /** Creatures seen attacking or blocking this turn, by lowercased instance ID. */
+    private var fighters = mutableMapOf<String, Fighter>()
+    private var seen = mutableSetOf<String>()
+
+    fun observe(snapshot: GameSnapshot) {
+        val step = normalized(snapshot.step ?: snapshot.phase)
+        val fresh = gameID != snapshot.id
+        if (fresh) {
+            reasons = emptyMap(); gameID = snapshot.id; turn = 0; previousStep = null
+            fighters = mutableMapOf(); seen = mutableSetOf()
+        }
+        if (snapshot.turn != turn) { fighters = mutableMapOf(); turn = snapshot.turn }
+        for (card in snapshot.players.flatMap { it.zones.battlefield }) {
+            if (card.isInCombat) fighters[card.instanceId.lowercase()] = Fighter(card.card.name, card.combatKeywords.toSet())
+        }
+        val damageStep = DamageStep.of(if (fresh) null else previousStep, step)
+        val next = reasons.toMutableMap()
+        for (entry in snapshot.log) {
+            if (!seen.add(entry.id)) continue
+            // Entries already in the log when a game is first seen have no known context.
+            if (fresh) continue
+            reason(entry.message, damageStep, fighters)?.let { next[entry.id] = it }
+        }
+        val live = snapshot.log.map { it.id }.toSet()
+        seen.retainAll(live)
+        reasons = next.filterKeys { it in live }
+        previousStep = step
+    }
+
+    companion object {
+        fun normalized(step: String): String = step.lowercase().replace("_", "-")
+
+        private val damage = Regex(" deals \\d+ damage to ")
+        private val lifeLoss = Regex(" loses \\d+ life at combat from ")
+
+        /**
+         * The reason for one engine log message, or null. Reads XMage's own wording: "<source> deals N
+         * damage to <target>", "<player> loses N life at combat from <source>" and "<creature> died".
+         */
+        fun reason(message: String, step: DamageStep, fighters: Map<String, Fighter>): String? {
+            if (step == DamageStep.NONE) return null
+            val presentation = GameLogPresentation(message)
+            val text = presentation.plainText.trim()
+            val references = mutableListOf<GameLogPresentation.CardReference>()
+            for (span in presentation.spans) {
+                val reference = span.cardReference ?: continue
+                if (references.lastOrNull() != reference) references += reference
+            }
+            fun fighter(reference: GameLogPresentation.CardReference?): Fighter? =
+                reference?.let { fighters[it.objectID.toString().lowercase()] }
+            if (text.endsWith(" died")) {
+                val dead = references.firstOrNull()
+                val fighter = fighter(dead)
+                if (step != DamageStep.FIRST_STRIKE || dead == null || fighter == null) return null
+                return if (CombatKeyword.strikesFirst(fighter.keywords)) "${dead.name} dies to first-strike damage"
+                else "${dead.name} dies to first-strike damage before dealing damage"
+            }
+            val isDamage = damage.containsMatchIn(text)
+            val isLifeLoss = lifeLoss.containsMatchIn(text)
+            if (!isDamage && !isLifeLoss) return null
+            val source = (if (isDamage) references.firstOrNull() else references.lastOrNull()) ?: return null
+            val keywords = fighter(source)?.keywords ?: return null
+            if (CombatKeyword.DOUBLE_STRIKE in keywords) return when (step) {
+                DamageStep.FIRST_STRIKE -> "${source.name} has double strike (first-strike damage)"
+                DamageStep.REGULAR -> "${source.name} has double strike (regular damage)"
+                else -> "${source.name} has double strike (first-strike and regular damage)"
+            }
+            if (CombatKeyword.FIRST_STRIKE in keywords && step != DamageStep.REGULAR) return "${source.name} has first strike (first-strike damage)"
+            if (CombatKeyword.DEATHTOUCH in keywords && isDamage && references.size > 1) return "${source.name} has deathtouch (any damage is lethal)"
+            return null
+        }
+    }
+}
