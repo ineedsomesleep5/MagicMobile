@@ -155,6 +155,9 @@ Caleb authorizes.
 | Integration for build 18 / 9 | In progress | `codex/build18-integration` | #39–#43 and this doc merged; one conflict resolved (Android preview enum and tests, both kept). Android: core 73 / app 62 tests and 283 contract assertions pass, assembleDebug OK. Next: iOS 27 fixes, full iOS checks, live cross-play |
 | iOS 27 UI-test triage | In progress | `codex/ios27-ui-fixes` | Delegate. Library search focus, hand inspection, attachment and history tests fail on iOS 27 (also on base); plus a full build with Metal |
 | Build 18 polish: fan-content notice, clipped-row +N | Done, merged into integration | #45 (draft) | Reviewed. swift 496 tests, Android 144 JVM tests pass. iPhone and Android show the same counts (+7/+6/+13/+7) |
+| Combat clarity (keywords, first-strike beat, log reasons) | Done, merged into integration | #46 (draft) | Reviewed. swift 504 tests, Android suite and parity goldens pass. Blocked attackers with no blockers left strike only with trample (rules-accurate) |
+| Relay extras: joiner removal, create rate limit, host key out of URL | In progress | `codex/relay-extras` | Delegate. Backward compatible with build 8; deploy relay first, then apps |
+| Save/resume research | In progress | `codex/save-resume-research` | Delegate, doc only (`docs/SAVE_RESUME_SPIKE.md`) |
 | Release: iOS build 18, Android build 9 | Not started | | Needs Caleb's go-ahead |
 
 ## Log
@@ -248,3 +251,11 @@ Caleb authorizes.
     - `testLandscapeLandsAndPermanentsScrollFromArtwork` fails on the base, because two landscape
       resource rows share the `board.battlefield.Your lands` identifier.
     - `testLandscapeRocksUse…ScrollIndependently` is flaky on the base.
+- 2026-09-26 (Claude Code): Combat clarity #46 merged into the integration branch.
+  - Attacking and blocking cards show combat keyword badges from the live engine view, so gained
+    double strike shows. Printed and gained can't be told apart.
+  - XMage's `FIRST_COMBAT_DAMAGE` step plays as a labelled "First strike" beat before regular
+    damage.
+  - The log adds one-line first-strike and deathtouch reasons.
+  - Preview: `first-strike`. Shared cases: `parity/combat-cases.json`.
+  - Started delegates for relay extras and save/resume research.
