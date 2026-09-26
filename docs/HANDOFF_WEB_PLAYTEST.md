@@ -146,7 +146,7 @@ Caleb authorizes.
 | 0 Merge #37, #38 | Waiting on Caleb | #37, #38 | Both green and conflict-free |
 | 0 Branch cleanup | Done | | 14 remote branches deleted; 5 stale ones kept as `archive/*` tags |
 | 0 Legacy removal, CI triggers, docs | Done | #40 (draft) | Reviewed. Before merging, Caleb disconnects or deletes the Vercel project `magicmobile` (old web game, Root Directory `apps/web`) |
-| 1 Web engine spike | Paused | `codex/web-engine-spike` (local) | Entry point, bundle build and bench app committed; benchmarks and doc remaining. Resumes when a build slot frees up |
+| 1 Web engine spike | No-go on CheerpJ Java 17; Java 11 follow-up running | #44 (draft) | Engine ready in 17–26 s, tab 1.1 GB, but 0/15 games reached a prompt (missing Unsafe routines break `Watcher.copy` and Gson). PRs 3–6 wait on this |
 | 2 Playtest focus | Done | #41 (draft) | Reviewed. Android and portable Swift tests pass, iOS simulator build OK. 2 pre-existing iOS 27 UI-test failures (library search focus) |
 | 2 Playtest cards | Done | #43 (draft) | Reviewed. Swift 29 + Xcode 10 tests, Android core 69 / app 47 pass |
 | 2b.1 Relay backlog + CI | Done, not deployed | #39 (draft) | Reviewed. 6/6 tests locally and in the new `Table relay` CI. Deploying needs Caleb: `cd services/table-relay && npx wrangler deploy` |
@@ -204,3 +204,14 @@ Caleb authorizes.
   - Integration branch `codex/build18-integration` created.
   - The Metal Toolchain 27A266a is installed.
   - The emulator's /data was full (INSTALL_FAILED_INSUFFICIENT_STORAGE); a cleanup is queued.
+- 2026-09-26 (Claude Code): Web spike #44 is a no-go on CheerpJ 4.3's Java 17 runtime.
+  - The real engine starts in the browser (16.7–26.0 s first visit, 13–17 s cached against a
+    10 s target) and the tab stays at 1.1 GB, but no game reached its first prompt.
+  - Cause: CheerpJ lacks the `jdk.internal.misc.Unsafe` routines behind reflective reads of final
+    fields. XMage's `Watcher.copy` (shadowed for the web) and Gson's snapshot serialization both
+    need them, and JavaScript stand-ins could not call back into Java.
+  - Running now: a follow-up on CheerpJ's Java 11 runtime, with the six Java 16+ lines patched in
+    build-folder copies only.
+  - If that also fails, the options are hosted web solo (`apps/multiplayer-server`, a hosting-cost
+    decision for Caleb) or a GraalVM Web Image spike.
+  - #44 edits `pnpm-workspace.yaml`, which #40 deletes. Drop that edit if #40 merges first.
