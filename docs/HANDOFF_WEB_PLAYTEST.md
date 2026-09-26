@@ -147,7 +147,7 @@ Caleb authorizes.
 | 0 Branch cleanup | Done | | 14 remote branches deleted; 5 stale ones kept as `archive/*` tags |
 | 0 Legacy removal, CI triggers, docs | Done | #40 (draft) | Reviewed. Before merging, Caleb disconnects or deletes the Vercel project `magicmobile` (old web game, Root Directory `apps/web`) |
 | 1 Web engine spike | Paused | `codex/web-engine-spike` (local) | Entry point, bundle build and bench app committed; benchmarks and doc remaining. Resumes when a build slot frees up |
-| 2 Playtest focus | Finishing | #41 (draft) | Both platforms and the 4-player preview done; final checks running |
+| 2 Playtest focus | Done | #41 (draft) | Reviewed. Android and portable Swift tests pass, iOS simulator build OK. 2 pre-existing iOS 27 UI-test failures (library search focus) |
 | 2 Playtest cards | Finishing | `codex/playtest-cards` | Both platforms and previews done; screenshots, tests and PR remaining |
 | 2b.1 Relay backlog + CI | Done, not deployed | #39 (draft) | Reviewed. 6/6 tests locally and in the new `Table relay` CI. Deploying needs Caleb: `cd services/table-relay && npx wrangler deploy` |
 | 2b.2–4 Guest retry, notices, crash reports | Finishing | #42 (draft) | Retry, notices and crash reports committed; tests and cross-play check remaining |
@@ -184,3 +184,14 @@ Caleb authorizes.
 - 2026-09-25 (Claude Code): Four delegates stopped mid-work at the account usage limit, with no
   failures. After the reset, continuation delegates resumed playtest focus, playtest cards and
   multiplayer hardening in their existing worktrees. The web spike resumes next.
+- 2026-09-25 (Claude Code): Playtest focus done in #41 (`codex/playtest-focus`).
+  - The board follows the active player at each turn start. A tapped opponent sticks until the
+    next turn, and a pending prompt defers the switch. The Follow Turns setting
+    (`magicmobile.followTurns`, default on) controls it.
+  - A spectator sees the next living player after them in the bottom seat, with the hand shown
+    as a count. This is presentation only.
+  - The pre-game top bar reads "Starting the game".
+  - Shared cases: `parity/focus-cases.json` and `parity/spectator-cases.json`. Preview:
+    `four-player-spectating`.
+  - This Mac lacked Xcode 27's Metal Toolchain, so simulator builds skipped
+    `BoardFXShaders.metal`. It is being installed (`xcodebuild -downloadComponent MetalToolchain`).
