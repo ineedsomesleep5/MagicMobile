@@ -1,13 +1,16 @@
 # Web engine spike: real XMage in the browser via CheerpJ
 
-Status: spike, September 25, 2026. It ships nothing to players.
+Status: spike, September 25–26, 2026 (Java 11 follow-up on September 26). It ships nothing to
+players.
 
 Question: can the real XMage engine (the same adapter the iOS app embeds) run inside a
 browser tab through [CheerpJ](https://cheerpj.com/), fast enough for web solo play?
 
-**Verdict: no-go for CheerpJ 4.3.** The real engine boots in the browser (17–26 s first visit,
-13–17 s cached), but no game reaches its first prompt. The Java 17 runtime lacks natives that JDK
-reflection needs, and JavaScript natives could not stand in for them. Details and numbers below.
+**Verdict: no-go for CheerpJ 4.3, on both its Java 17 and Java 11 runtimes.** The real engine
+boots in the browser (17–26 s first visit, 13–17 s cached), but no game reaches its first prompt.
+Both runtimes lack the `Unsafe` natives that JDK reflection needs for final fields, and
+JavaScript natives could not stand in for them on either. The next options are hosted web solo on
+`apps/multiplayer-server` or a GraalVM Web Image spike. Details and numbers below.
 
 ## What was built
 
@@ -63,8 +66,11 @@ node scripts/bench.mjs --engine-dir ../../packages/web-engine/build/web-java11 -
 
 `bench.html` parameters: `games` (`<players>p:<seed>` list), `cap` (seconds per game), `skill`
 (XMage AI skill), `loader` (CheerpJ loader URL), `engine` (same-origin path of `build/web`),
-`debug=1` (engine stack traces to the console). `bench.mjs --debug` sets it. Metrics JSON files
-from this spike's runs are under the git-ignored `packages/web-engine/build/metrics/`.
+`debug=1` (engine stack traces to the console; `bench.mjs --debug` sets it), `natives=1|0`
+(force the worker's JavaScript `Unsafe` natives on or off; default on for Java 17 only;
+`bench.mjs --natives`). `bench.mjs --engine-dir` serves another bundle, such as
+`build/web-java11`. Metrics JSON files from this spike's runs are under the git-ignored
+`packages/web-engine/build/metrics/`.
 Seeds drive deck order, which precons meet, and the scripted human's choices. XMage's own
 shuffles and AI scheduling are not seeded, so two runs of one seed are not identical games.
 
@@ -148,7 +154,7 @@ HotSpot on this machine (`jvm-baseline.mjs`, 2 games) finished 2/2: create 0.3�
 start 0.3 s, board update median 27 ms / p95 44 ms, AI turn median 1.0 s / p95 11.3 s, games of
 12 and 39 turns in 7 s and 101 s.
 
-### Against the pass targets
+### Java 17 against the pass targets
 
 CheerpJ 4.3, Chrome 153 headless, **8 GB MacBook** under other agents' build load. Sample: 15 page
 visits across 9 bench runs (probe-1 to probe-4, run-1 to run-5), and 15 recorded 2-player and
@@ -167,29 +173,26 @@ visits across 9 bench runs (probe-1 to probe-4, run-1 to run-5), and 15 recorded
 
 ## Go / no-go
 
-**No-go for CheerpJ 4.3 (Java 17 runtime) as MagicMobile's web engine.**
+**No-go for CheerpJ 4.3 as MagicMobile's web engine, on both the Java 17 and Java 11 runtimes.**
 
-- It is broken, not slow. The engine boots, but no game reaches its first prompt. CheerpJ 4.3's
-  Java 17 runtime lacks the `Unsafe` natives JDK 17 reflection uses for every final field. XMage
-  hits them on every game copy (`Watcher.copy`), and the adapter's view projection hits them on
-  every snapshot (Gson over `mage.view`). One upstream class can be shadowed, but not every
-  reflective caller. The documented escape hatch, JavaScript natives, could not call back into
-  Java in any of the four forms tried: the raw `self`, a helper through the native's own `lib`,
-  bootstrap classes through that `lib`, and the app library.
-- Even with that fixed, the cached boot misses the target. It spends 11–15 s constructing
-  `XmageEngine` in Java before the first request.
-- By the spike's rule, broken threads/runtime point to **GraalVM Web Image or hosted play**, not
-  to a slower CheerpJ build. The cheapest route to real web play is **hosted web solo**: run the
-  same engine on the server that already hosts XMage for multiplayer (`apps/multiplayer-server`)
-  and give the browser the same JSON protocol. HotSpot plays these games in seconds on this
-  laptop.
-- Not ruled out. If CheerpJ stays interesting, try these short experiments first:
-  1. CheerpJ's older, more mature **Java 11 runtime**, which may implement these natives. It needs
-     the six-line `--release 11` change below, made on a copy.
-  2. Ask Leaning Technologies whether a newer release adds the narrow `*Volatile` natives, or
-     supports calling Java from a native on a running thread.
-  A GraalVM Web Image spike would test whether an AOT-compiled engine avoids both the reflection
-  gap (reflection is configured at build time) and the boot cost.
+- It is broken, not slow. The engine boots, but no game reaches its first prompt. Neither CheerpJ
+  runtime has the `Unsafe` `get/put<narrow>Volatile` natives that JDK reflection uses for every
+  final field. XMage hits them on every game copy (`Watcher.copy`), and the adapter's view
+  projection hits them on every snapshot (Gson over `mage.view`). One upstream class can be
+  shadowed, but not every reflective caller. The documented escape hatch, JavaScript natives,
+  could not call back into Java in any of the four forms tried on Java 17, and the documented
+  form fails the same way on Java 11 (see Java 11 follow-up).
+- Even with that fixed, the cached boot misses the target on both runtimes. It spends 11–15 s
+  constructing `XmageEngine` in Java before the first request.
+- By the spike's rule, a broken runtime points to hosted play or GraalVM Web Image, not to a
+  slower CheerpJ build. **The next options are:**
+  1. **Hosted web solo on `apps/multiplayer-server`**: run the same engine on the server that
+     already hosts XMage for multiplayer and give the browser the same JSON protocol. It is the
+     cheapest real path; HotSpot plays these games in seconds on this laptop.
+  2. **A GraalVM Web Image spike**: an AOT-compiled engine configures reflection at build time,
+     which may avoid both the reflection gap and the boot cost.
+- CheerpJ is not worth more spike time unless Leaning Technologies ships the narrow `*Volatile`
+  natives, or support for calling Java from a native on a running Java thread.
 - The license adds its own constraint (next section). Community use needs attribution, loading
   the runtime from Leaning Technologies' CDN, and MagicMobile staying a one-person or FOSS
   project.
@@ -215,26 +218,82 @@ Current version: CheerpJ 4.3 (April 21, 2026), loader
 ([changelog](https://cheerpj.com/docs/changelog.html)). Java 17 arrived as a preview in 4.1 and was
 improved in 4.2 and 4.3.
 
-## Java 11 target (next CheerpJ experiment)
+## Java 11 follow-up (September 26, 2026)
 
-CheerpJ's Java 11 runtime is the older, more mature one. The adapter compiles with
-`--release 17`; upstream XMage targets Java 8 and needs nothing. A `--release 11` adapter build
-needs exactly six source lines changed (not edited in this spike):
+Question: does CheerpJ's older, more mature Java 11 runtime (stable since CheerpJ 4.0) have the
+natives the Java 17 runtime lacks? **No.** It fails at the same place with the same error.
 
-| File:line | Java 16+ feature | Java 11 form |
+### What was built
+
+`build_web.sh --java 11` builds `packages/web-engine/build/web-java11/`, all inside the
+git-ignored build folder. `packages/ondevice-engine/` is not modified.
+
+- `java11_sources.py` copies the core, adapter and platform sources into `build/java11/src` and
+  rewrites six lines there. Each rewrite must match exactly once, or the build fails.
+- Core, adapter, platform, generated registry and `WebEntryPoints` compile with `--release 11`
+  (all 306 engine classes are class-file version 55). The web-only `Watcher` shadow and
+  `WebUnsafe` compile with `--release 11` too.
+- Upstream XMage and the third-party jars are reused unchanged. They are Java 8 bytecode or older
+  (class-file version ≤ 52).
+- The generated registry sources and card-metadata resources come from the Java 17 build's
+  build-time tools. `RegistryExporter` uses a `record` and `HexFormat`, but it runs on the build
+  JDK and is not part of the runtime.
+- The manifest records `javaRelease: 11` and the rewritten lines. The worker passes `javaRelease`
+  to `cheerpjInit({version})`; CheerpJ's documented values are 8, 11 and 17.
+
+`javac --release 11` on the unmodified sources confirms the list is exact. The first pass stops at
+the two pattern-matching `instanceof` lines (parse errors). With only those two rewritten, the
+second pass reports exactly the four `Stream.toList()` lines. With all six rewritten, every source
+compiles, generated ones included.
+
+| File:line | Java 16+ feature | Java 11 form used |
 | --- | --- | --- |
-| `engine/xmage/.../MobileHumanPlayer.java:78` | `instanceof MobileCommanderGame mobile` pattern | explicit cast after `instanceof` |
-| `engine/xmage/.../ViewProjector.java:38` | `Stream.toList()` | `collect(Collectors.toList())` (mutable; the lists are only read) |
-| `engine/xmage/.../ViewProjector.java:102` | `instanceof String artworkName` pattern | explicit cast |
-| `engine/xmage/.../ViewProjector.java:123` | `Stream.toList()` | `collect(Collectors.toList())` |
-| `engine/xmage/.../ViewProjector.java:155` | `Stream.toList()` | `collect(Collectors.toList())` |
-| `engine/xmage/.../ViewProjector.java:156` | `Stream.toList()` | `collect(Collectors.toList())` |
+| `engine/xmage/.../MobileHumanPlayer.java:78` | `instanceof MobileCommanderGame mobile` | `instanceof` check, cast in the condition, then `MobileCommanderGame mobile=(MobileCommanderGame)game;` at the start of the block |
+| `engine/xmage/.../ViewProjector.java:38` | `Stream.toList()` | `collect(collectingAndThen(toList(), Collections::unmodifiableList))` (unmodifiable and null-tolerant, as `toList()`) |
+| `engine/xmage/.../ViewProjector.java:102` | `instanceof String artworkName` | `String artworkName = x instanceof String ? (String)x : "";` before the `if` (a non-string name is blank, so it is skipped as before) |
+| `engine/xmage/.../ViewProjector.java:123` | `Stream.toList()` | as line 38 |
+| `engine/xmage/.../ViewProjector.java:155` | `Stream.toList()` | as line 38 |
+| `engine/xmage/.../ViewProjector.java:156` | `Stream.toList()` | as line 38 |
 
-The build-time tools (`RegistryExporter` uses a `record` and `HexFormat`) run on the build JDK and
-are not part of the runtime, so they can stay on 17. `build_web.sh` would take a `--release 11`
-switch for the core, generated and adapter sources, and the worker would call
-`cheerpjInit({version: 11})`. These files are the guarded native-engine input, and changing them
-in place would force a native rebuild. A follow-up spike should patch copies under
-`packages/web-engine/build/` instead. The Java 17 runtime has now proved unworkable (see
-Go / no-go), so this is the next CheerpJ experiment. Whether the Java 11 runtime has the narrow
-`*Volatile` natives is not verified.
+### Results
+
+Same machine, browser, bench and decks as the Java 17 runs (8 GB MacBook shared with other agents'
+builds; Chrome 153 headless). Metrics: `build/metrics/java11-run-1.json` and
+`java11-run-2-natives.json`.
+
+- **java11-run-1, CheerpJ's own natives** (no JavaScript natives): boot works. The first 2-player
+  game (seed 1) failed at its first snapshot, during `GameImpl.init`'s first human choice, 10.5 s
+  after `create`. The engine's diagnostics report:
+  `java.lang.UnsatisfiedLinkError: Java_jdk_internal_misc_Unsafe_getBooleanVolatile` in
+  `UnsafeQualifiedBooleanFieldAccessorImpl.get` ← `Field.get` ← Gson ← `mage.view.GameView.toJson`
+  ← `ViewProjector.project`. This is the same missing native as on Java 17: JDK 11 reflection also
+  reads every final field through the `*Volatile` accessors. The bundle includes the web-only
+  `Watcher` shadow, as the Java 17 bundle does.
+- **java11-run-2-natives, the worker's JavaScript natives on Java 11** (documented pattern:
+  `jdk.internal.misc.Unsafe.getUnsafe()` through the native's own `lib`): the first native call
+  failed with "Java code still running, check for a missing 'await'", then "Error while handling
+  user native". The game thread hung and the game was counted as stalled after 180 s without
+  progress. This is identical to Java 17 (run-5).
+
+### Java 11 against the pass targets
+
+Sample: 3 page visits with only engine boot and 2 game visits, 2 attempted 2-player games (seed
+1, once per run). No 4-player game was attempted: the failure happens at the first snapshot,
+before seat count matters.
+
+| Target | Measured (Java 11) | Result |
+| --- | --- | --- |
+| Engine ready, first visit ≤ 45 s | 17.1 s, 17.1 s (worker 5.7 s + `XmageEngine` construction 11.4 s) | pass |
+| Engine ready, cached ≤ 10 s | 12.7–13.4 s (worker 1.4–1.6 s, construction 11.1–12.0 s) | **miss** (same Java construction cost as 17) |
+| 4-player game start ≤ 10 s | no game reached a first prompt; 2-player `create` took 9.7–10.5 s | **fail** |
+| Board update ≤ 1 s typical, ≤ 3 s p95 | no game got that far | **fail** (not measurable) |
+| AI turn median ≤ 5 s, p95 ≤ 15 s | no game got that far | **fail** (not measurable) |
+| 10/10 seeded games finish | 0 of 2 (one failed, one stalled) | **fail** |
+| No main-thread stall over 100 ms | no long task over 50 ms in any of the 5 visits | pass |
+| Tab memory under 2 GB | renderer peak 1.20 GB (run-1), 1.38 GB (run-2); whole Chrome process tree 2.05 GB and 2.31 GB | pass (renderer); the whole tree went past 2 GiB in run-2 |
+
+Java 11 changes nothing about the verdict: same boot cost, same missing native, same failed
+re-entry from JavaScript natives. CheerpJ's Java 8 runtime was not tried. It would need a larger
+rewrite of the adapter than the six lines: `var` (Java 10) and Java 9–11 APIs such as `isBlank`,
+`List.of` and `Map.of` appear in about 25 more places. JDK 8 reflection also reads final fields
+through `Unsafe` volatile accessors, and whether that runtime implements them is not verified.
