@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Presentation components shared by the saved-deck browser and durable draft editor.
 struct NativeDeckCover: View {
@@ -292,5 +293,166 @@ enum NativeDeckDisplay {
         let a = order.firstIndex(of: left) ?? order.count
         let b = order.firstIndex(of: right) ?? order.count
         return a == b ? left < right : a < b
+    }
+}
+
+enum NativeArtworkPreference {
+    /// One spelling of the consent key, so a new surface cannot drift onto its own store.
+    static let key = "magicmobile.deckArtworkNetworkEnabled"
+}
+
+struct NativeArtworkPreferenceView: View {
+    @AppStorage(NativeArtworkPreference.key) private var remoteArtwork = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Scryfall live images", isOn: $remoteArtwork)
+                .accessibilityIdentifier("nativeArtwork.downloads")
+            Text("Show saved art first, then sharper images online. Offline download quality stays unchanged.")
+                .font(.caption).foregroundStyle(.secondary)
+            Text("Scryfall receives card names—including your hand—and your IP address.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+}
+
+struct NativeDeckCardImage: View {
+    let name: String
+    var inspection = false
+    var contentMode: ContentMode = .fit
+    var body: some View {
+        NativeCardArtworkView(name: name, variant: inspection ? .inspection : .board, contentMode: contentMode) { _, failed in
+            VStack(spacing: 10) {
+                Image(systemName: "rectangle.portrait.on.rectangle.portrait").font(.largeTitle)
+                Text(name.isEmpty ? "Your next deck" : name).font(.caption.bold()).multilineTextAlignment(.center)
+                Text(failed ? "Artwork unavailable" : "Artwork downloads are optional").font(.caption2)
+            }.padding(12).frame(maxWidth: .infinity, maxHeight: .infinity)
+                .foregroundStyle(MagicPalette.parchment)
+                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+        }.accessibilityElement(children: .ignore).accessibilityLabel(name.isEmpty ? "Deck cover" : name)
+    }
+}
+
+enum NativeCardArtworkPolicy {
+    static func permitsLookup(card: ZoneCard) -> Bool {
+        permitsLookup(name: card.card.name) &&
+            !(card.cardIcons ?? []).contains { $0.iconType.uppercased() == "OTHER_FACEDOWN" }
+    }
+
+    static func permitsLookup(name: String) -> Bool {
+        NativeDeckArtwork.permitsSourceName(name)
+    }
+}
+
+/// The one consent-aware artwork route for native deck and gameplay cards.
+/// AppStorage inherits the native root's default store, including isolated UI-test suites.
+struct NativeCardArtworkView<Placeholder: View>: View {
+    let name: String
+    let variant: CardImageCacheVariant
+    var contentMode: ContentMode = .fit
+    var artOnly = false
+    var tokenTypeLine: String? = nil
+    var tokenOracleText: String? = nil
+    var tokenPower: String? = nil
+    var tokenToughness: String? = nil
+    var tokenColors: [String]? = nil
+    /// Supply only an explicitly identified, visible card that the token copies.
+    var tokenSourceName: String? = nil
+    @ViewBuilder let placeholder: (_ loading: Bool, _ failed: Bool) -> Placeholder
+    @AppStorage(NativeArtworkPreference.key) private var remoteArtwork = false
+    @State private var artwork: UIImage?
+    @State private var completedRequest: Request?
+    @State private var failedRequest: Request?
+    @State private var downloadRevision = 0
+
+    private struct Request: Hashable {
+        let name: String
+        let variant: NativeDeckArtwork.Variant
+        let allowNetwork: Bool
+        let tokenTypeLine: String?
+        let tokenOracleText: String?
+        let tokenPower: String?
+        let tokenToughness: String?
+        let tokenColors: [String]?
+        let tokenSourceName: String?
+        let downloadRevision: Int
+        let artOnly: Bool
+    }
+
+    var body: some View {
+        let request = Request(name: name, variant: variant == .inspection ? .inspection : .board,
+                              allowNetwork: remoteArtwork, tokenTypeLine: tokenTypeLine, tokenOracleText: tokenOracleText,
+                              tokenPower: tokenPower, tokenToughness: tokenToughness, tokenColors: tokenColors,
+                              tokenSourceName: tokenSourceName,
+                              downloadRevision: downloadRevision, artOnly: artOnly)
+        let permitted = NativeCardArtworkPolicy.permitsLookup(name: name)
+        Group {
+            if permitted, completedRequest == request, let artwork {
+                Image(uiImage: artwork).resizable().aspectRatio(contentMode: contentMode)
+            } else {
+                placeholder(permitted && remoteArtwork && completedRequest != request && failedRequest != request,
+                            permitted && failedRequest == request)
+            }
+        }
+            .onReceive(NotificationCenter.default.publisher(for: NativeAssetDownloads.didFinish)) { _ in downloadRevision += 1 }
+            .onReceive(NotificationCenter.default.publisher(for: NativeAssetStore.didStoreArtwork).receive(on: RunLoop.main)) { note in
+                guard let key = note.userInfo?["key"] as? String else { return }
+                if NativeAssetStore.artworkChangeAffects(key: key, storedName: note.userInfo?["name"] as? String,
+                                                       name: name, isToken: tokenTypeLine != nil, sourceName: tokenSourceName) {
+                    downloadRevision += 1
+                }
+            }
+            .task(id: request) {
+                guard permitted else { artwork = nil; completedRequest = nil; failedRequest = nil; return }
+                artwork = nil; completedRequest = nil; failedRequest = nil
+                // CardImageURL only supplies a generated cache path here; never fetch its remote fallback.
+                if tokenTypeLine == nil, let url = CardImageURL.image(name, variant: variant), url.isFileURL,
+                   let data = NativeDeckArtwork.localImageData(at: url),
+                   let image = NativeDeckArtwork.decodedImage(data, variant: request.variant) {
+                    guard !Task.isCancelled else { return }
+                    artwork = presentedImage(image); completedRequest = request
+                    let quality: NativeArtworkQuality = request.variant == .inspection ? .high : .standard
+                    if !request.allowNetwork || quality.accepts(data) { return }
+                    // Keep a safe low-resolution image visible offline or if upgrade fails.
+                } else if tokenTypeLine == nil, request.variant == .inspection,
+                          let url = CardImageURL.image(name, variant: .board), url.isFileURL,
+                          let data = NativeDeckArtwork.localImageData(at: url),
+                          let image = NativeDeckArtwork.decodedImage(data, variant: .inspection) {
+                    guard !Task.isCancelled else { return }
+                    artwork = presentedImage(image); completedRequest = request
+                }
+                do {
+                    if artwork == nil,
+                       let cached = try await NativeDeckArtwork.shared.imageData(name: name, variant: .board, allowNetwork: false,
+                                                                                tokenTypeLine: tokenTypeLine, tokenOracleText: tokenOracleText,
+                                                                                tokenPower: tokenPower, tokenToughness: tokenToughness, tokenColors: tokenColors,
+                                                                                tokenSourceName: tokenSourceName),
+                       let image = NativeDeckArtwork.decodedImage(cached, variant: .inspection) {
+                        try Task.checkCancellation()
+                        artwork = presentedImage(image); completedRequest = request
+                    }
+                    guard !Task.isCancelled, request.allowNetwork == remoteArtwork else { return }
+                    let data = try await NativeDeckArtwork.shared.imageData(name: name, variant: request.variant, allowNetwork: request.allowNetwork,
+                                                                           tokenTypeLine: tokenTypeLine, tokenOracleText: tokenOracleText,
+                                                                           tokenPower: tokenPower, tokenToughness: tokenToughness, tokenColors: tokenColors,
+                                                                           tokenSourceName: tokenSourceName)
+                    try Task.checkCancellation()
+                    guard request.allowNetwork == remoteArtwork else { return }
+                    if let data, let image = NativeDeckArtwork.decodedImage(data, variant: request.variant) {
+                        artwork = presentedImage(image)
+                    }
+                    completedRequest = request
+                    failedRequest = request.allowNetwork && artwork == nil ? request : nil
+                } catch is CancellationError { } catch {
+                    guard !Task.isCancelled else { return }
+                    failedRequest = request
+                }
+            }
+    }
+
+    /// Copy-token art is always the illustration alone, even without `artOnly`:
+    /// TokenCopyCardFace draws the token's own name, type line and live stats around it,
+    /// and the printed source card (whose name or stats can differ) never shows.
+    private func presentedImage(_ image: CGImage) -> UIImage {
+        UIImage(cgImage: artOnly || tokenSourceName != nil ? (NativeDeckArtwork.illustrationImage(image) ?? image) : image)
     }
 }
