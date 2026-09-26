@@ -5,9 +5,10 @@
 # the pinned upstream checkout, Maven output and every compiled class live under this
 # package's git-ignored build/ directory. Output: build/web/ (jars + manifest.json + decks/).
 #
-# Usage: build_web.sh [all|upstream|engine|package]
+# Usage: build_web.sh [all|upstream|engine|shadow|package]
 #   upstream  fetch + patch the pinned XMage commit, Maven-package the needed modules
 #   engine    compile core, generated registry, platform catalogue and adapter (+ WebEntryPoints)
+#   shadow    compile web-only replacements of upstream classes (shadow/, CheerpJ workarounds)
 #   package   jar everything into build/web with a manifest (sizes, SHA-256, upstream, catalogue)
 # Heavy stages (upstream, engine) belong behind the machine-wide heavy-workload lock.
 set -euo pipefail
@@ -71,13 +72,25 @@ stage_engine() {
   echo "$BUILD/core:$BUILD/engine:$CP" > "$BUILD/runtime-classpath.txt"
 }
 
+stage_shadow() {
+  # Web-only replacements for upstream classes that hit CheerpJ runtime gaps (see each file's
+  # header). They go into magicmobile-engine.jar, first on the browser classpath; no other
+  # platform uses them.
+  [[ -s "$BUILD/classpath.txt" ]] || { echo "Run the engine stage first" >&2; exit 1; }
+  rm -rf "$BUILD/shadow"; mkdir -p "$BUILD/shadow"
+  (cd "$HERE/shadow" && find . -name '*.java' | sort) > "$BUILD/shadow-sources.txt"
+  # No --release: it can hide jdk.unsupported (sun.misc.Unsafe); the build JDK is checked to be 17.
+  (cd "$HERE/shadow" && javac -nowarn -cp "$(<"$BUILD/classpath.txt")" -d "$BUILD/shadow" @"$BUILD/shadow-sources.txt")
+}
+
 stage_package() {
   [[ -s "$BUILD/runtime-classpath.txt" ]] || { echo "Run the engine stage first" >&2; exit 1; }
+  [[ -s "$BUILD/shadow-sources.txt" ]] || { echo "Run the shadow stage first" >&2; exit 1; }
   rm -rf "$OUT"; mkdir -p "$OUT/jars" "$OUT/decks"
   CP=$(<"$BUILD/classpath.txt")
   # Adapter + platform catalogue + generated registry + web entry point first: the platform
   # mage.cards.repository classes must shadow the upstream (H2-backed) ones.
-  jar --create --file "$OUT/jars/magicmobile-engine.jar" -C "$BUILD/core" . -C "$BUILD/engine" .
+  jar --create --file "$OUT/jars/magicmobile-engine.jar" -C "$BUILD/core" . -C "$BUILD/engine" . -C "$BUILD/shadow" .
   local order=("magicmobile-engine.jar") entry name
   IFS=':' read -r -a entries <<< "$CP"
   for entry in "${entries[@]}"; do
@@ -96,10 +109,10 @@ stage_package() {
   # Bench decks: the bundled iOS precons, resolved against this build's catalogue.
   python3 "$HERE/export_precons.py" --catalogue "$BUILD/generated/catalogue.jsonl" \
     --swift "$REPO/apps/ios/MagicMobile/PreconCatalog.swift" --output "$OUT/decks"
-  python3 - "$OUT" "$SHA" "$BUILD/generated/java/io/magicmobile/generated/GeneratedCardFactory.java" "${order[@]}" <<'PY'
+  python3 - "$OUT" "$SHA" "$BUILD/generated/java/io/magicmobile/generated/GeneratedCardFactory.java" "$BUILD/shadow-sources.txt" "${order[@]}" <<'PY'
 import hashlib, json, re, sys, time
 from pathlib import Path
-out, sha, factory, order = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3]), sys.argv[4:]
+out, sha, factory, shadows, order = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5:]
 catalogue = re.search(r'CATALOGUE_HASH="([0-9a-f]{64})"', factory.read_text()).group(1)
 jars = []
 for name in order:
@@ -108,6 +121,8 @@ for name in order:
 manifest = {'spike': True, 'upstream': sha, 'catalogueHash': catalogue, 'javaRelease': 17,
             'builtAt': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
             'totalBytes': sum(j['bytes'] for j in jars),
+            # Upstream classes replaced in this bundle only (packages/web-engine/shadow).
+            'webShadows': [line.strip().removeprefix('./') for line in shadows.read_text().splitlines() if line.strip()],
             # Classpath order: the worker joins these (relative to jars/) in this order.
             'jars': jars, 'decks': sorted(p.stem for p in (out / 'decks').glob('*.json'))}
 (out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
@@ -119,6 +134,7 @@ case "$STAGE" in
   upstream) stage_upstream ;;
   engine) stage_engine ;;
   package) stage_package ;;
-  all) stage_upstream; stage_engine; stage_package ;;
+  shadow) stage_shadow ;;
+  all) stage_upstream; stage_engine; stage_shadow; stage_package ;;
   *) echo "Unknown stage: $STAGE" >&2; exit 2 ;;
 esac
