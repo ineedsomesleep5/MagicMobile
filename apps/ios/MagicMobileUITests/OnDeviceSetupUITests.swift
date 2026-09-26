@@ -634,13 +634,16 @@ final class OnDeviceSetupUITests: XCTestCase {
     private func replaceText(_ field: XCUIElement, with text: String) {
         field.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
-        // Delete what the field holds. A long value can leave the caret mid-text, so tap the
-        // trailing edge and delete again until nothing is left of the old value.
-        for _ in 0..<3 {
+        // Delete the old value a few keys at a time: iOS 27 dropped part of an 18-key burst.
+        // A long value can leave the caret mid-text; when nothing more deletes, move the
+        // caret to the trailing edge and continue until the field is empty.
+        for _ in 0..<60 {
             let existing = field.value as? String ?? ""
             if existing.isEmpty || existing == field.placeholderValue { break }
-            field.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5)).tap()
-            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing.count))
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: min(5, existing.count)))
+            if field.value as? String == existing {
+                field.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5)).tap()
+            }
         }
         field.typeText(text)
         let expected = text.trimmingCharacters(in: .newlines)
