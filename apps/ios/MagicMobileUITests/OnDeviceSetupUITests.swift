@@ -267,7 +267,44 @@ final class OnDeviceSetupUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Add your commander and cards. Incomplete drafts are welcome."].exists)
         XCTAssertTrue(app.buttons["Validate & playtest"].firstMatch.exists)
         XCTAssertFalse(app.buttons["Validated · playtest"].exists, "An empty draft is never presented as validated")
+        // The quick check is advisory: it flags the missing commander and names XMage as the authority.
+        XCTAssertTrue(app.staticTexts["Quick check · XMage confirms when you play"].exists)
+        XCTAssertTrue(app.buttons["Missing commander"].exists)
         // Deliberately do not select/start an incomplete draft.
+    }
+
+    func testCommanderFirstDeckQuickAddUndoAndQuickCheck() {
+        openLibrary()
+        tapDiagnosed(app.buttons["deckStudio.create"])
+        let search = app.textFields["deckStudio.commanderFirst.search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        replaceText(search, with: "Atraxa")
+        let choice = app.buttons["Choose Atraxa, Praetors' Voice as commander"]
+        XCTAssertTrue(choice.waitForExistence(timeout: 10))
+        tapDiagnosed(choice)
+        waitFor(app.buttons["deckStudio.close"], predicate: "exists == true AND hittable == true")
+        // The commander leads the deck and names it until the player renames it.
+        XCTAssertTrue(deckCount(1).waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == %@", "Atraxa, Praetors' Voice")).firstMatch.exists)
+        XCTAssertFalse(app.buttons["Missing commander"].exists)
+        // Quick Add takes a count, ignores a tag with a note, and keeps going.
+        let quickAdd = app.textFields["deckStudio.quickAdd"]
+        reveal(quickAdd)
+        tapDiagnosed(quickAdd)
+        quickAdd.typeText("2x Sol Ring [Ramp]\n")
+        assertDeckQuantity(2, card: "Sol Ring")
+        XCTAssertTrue(app.staticTexts["Ignored [Ramp] · sets and tags aren't saved"].waitForExistence(timeout: 5))
+        // Two Sol Rings break singleton; the live check says so without blocking anything.
+        XCTAssertTrue(app.buttons["Duplicates, 1 card"].waitForExistence(timeout: 5))
+        let undo = app.buttons["deckStudio.quickAdd.undo"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 5))
+        tapDiagnosed(undo)
+        waitFor(deckRow("Sol Ring", quantity: 2), predicate: "exists == false")
+        tapDiagnosed(app.buttons["deckStudio.close"])
+        let discard = app.buttons["Discard unsaved changes and close"]
+        XCTAssertTrue(discard.waitForExistence(timeout: 5))
+        tapDiagnosed(discard)
+        waitFor(app.buttons["deckStudio.create"], predicate: "exists == true")
     }
 
     func testCatalogueSearchAddAndQuantityPersistInDraft() {
@@ -471,6 +508,11 @@ final class OnDeviceSetupUITests: XCTestCase {
 
     private func createDeck() {
         tapDiagnosed(app.buttons["deckStudio.create"])
+        // A new deck opens on the commander picker. These tests start from an empty draft.
+        let skip = app.buttons["deckStudio.commanderFirst.skip"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        tapDiagnosed(skip)
+        waitFor(skip, predicate: "exists == false")
         waitFor(app.buttons["deckStudio.close"], predicate: "exists == true AND hittable == true")
     }
 

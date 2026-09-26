@@ -16,6 +16,11 @@ final class DeckStudioReadabilityUITests: XCTestCase {
         app.buttons["menu.decks"].press(forDuration: 0.15)
         XCTAssertTrue(app.buttons["deckStudio.create"].waitForExistence(timeout: 15))
         app.buttons["deckStudio.create"].tap()
+        // A new deck opens on the commander picker; these checks start from an empty draft.
+        let skip = app.buttons["deckStudio.commanderFirst.skip"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        skip.tap()
+        XCTAssertTrue(skip.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons["deckStudio.addCards"].waitForExistence(timeout: 10))
         return app
     }
