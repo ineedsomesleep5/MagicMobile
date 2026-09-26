@@ -62,6 +62,38 @@ class BoardCardPresentationTest {
         assertEquals(4, inspector.rulesLineLimit(true))
     }
 
+    @Test fun tokenCopyTagEndsBeforeTheCounterColumnOnTheBattlefieldFace() {
+        var width = 44f
+        while (width <= 120f) {
+            val context = "card width $width"
+            val columnWidth = BattlefieldCardFaceLayout.counterColumnWidth(width)
+            val column = BoardRect(width - columnWidth, BattlefieldCardFaceLayout.COUNTER_TOP, columnWidth, width)
+            val full = BattlefieldCardFaceLayout.tokenCopyTagSlot(width, showsCounters = false)
+            val tag = BattlefieldCardFaceLayout.tokenCopyTagSlot(width, showsCounters = true)
+            // Both sit in the band under the name header, so only a horizontal split keeps them apart.
+            assertTrue("without the split the tag runs under the badges, $context", full.intersects(column))
+            assertTrue(context, tag.maxX + BattlefieldCardFaceLayout.COUNTER_GAP <= column.minX + 0.001f)
+            assertFalse(context, tag.intersects(column))
+            assertTrue(context, tag.width > 1f)
+            // The tag keeps its corner and height; only its end moves.
+            assertEquals(context, full.minX, tag.minX, 0.001f)
+            assertEquals(context, full.minY, tag.minY, 0.001f)
+            assertEquals(context, full.height, tag.height, 0.001f)
+            assertTrue(context, tag.minY >= BattlefieldCardFaceLayout.HEADER_HEIGHT)
+            width += 4f
+        }
+        val tile = BattlefieldCardFaceLayout.tileFrame(60f)
+        listOf(tile.minX to -2.4f, tile.minY to 3.6f, tile.width to 64.8f, tile.height to 90.6f).forEach { (value, expected) ->
+            assertEquals("ArenaBattlefieldCard's tile, 8% wider, lifted 0.19 w", expected, value, 0.001f)
+        }
+        assertEquals(0f, BattlefieldCardFaceLayout.tagTrailingReserve(60f, showsCounters = false), 0f)
+        assertEquals(32.4f, BattlefieldCardFaceLayout.tagTrailingReserve(60f, showsCounters = true), 0.001f)
+        val size = BoardSize(tile.width, tile.height)
+        assertEquals("no reserve leaves the tag as it was", TokenCopyFrameLayout(size).tagSlot, TokenCopyFrameLayout(size, 0f).tagSlot)
+    }
+
+    private fun BoardRect.intersects(other: BoardRect) = minX < other.maxX && other.minX < maxX && minY < other.maxY && other.minY < maxY
+
     @Test fun portraitInspectorGivesRulesTheirRoomAndShrinksTheCardInstead() {
         val available = BoardSize(342f, 582f)
         var previous = Float.POSITIVE_INFINITY

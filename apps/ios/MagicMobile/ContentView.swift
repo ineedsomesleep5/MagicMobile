@@ -11276,7 +11276,7 @@ private struct BattlefieldRowOverflowMarkers: View {
             .background(MagicPalette.iron.opacity(0.94), in: Capsule())
             .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.58), lineWidth: 1))
             .transition(.opacity)
-            // The row's own identifier (on BattlefieldRow's ZStack) takes precedence here; find markers by label.
+            // The row's own identifier (on its scroll view) takes precedence here; find markers by label.
             .accessibilityLabel("\(count) more \(count == 1 ? "card" : "cards") off-screen to the \(side)")
     }
 }
@@ -11389,6 +11389,9 @@ struct BattlefieldRow: View {
                         }
                         .scrollClipDisabled()
                         .battlefieldRowOverflow(overflowLane(scroller: row, rows: [arranged[row]]), offsets: scrollOffsets)
+                        // Each resource row scrolls on its own, so each needs its own identifier:
+                        // the first keeps the lane's, the second adds ".row2".
+                        .accessibilityIdentifier("board.battlefield.\(title)" + (row == 0 ? "" : ".row\(row + 1)"))
                     }
                 }
             } else {
@@ -11403,9 +11406,9 @@ struct BattlefieldRow: View {
                 }
                 .scrollClipDisabled()
                 .battlefieldRowOverflow(overflowLane(scroller: 0, rows: Array(arranged.prefix(rows))), offsets: scrollOffsets)
+                .accessibilityIdentifier("board.battlefield.\(title)")
             }
         }
-        .accessibilityIdentifier("board.battlefield.\(title)")
         .animation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.2), value: renderedCardWidth)
     }
 
@@ -11794,6 +11797,8 @@ struct CardTile: View {
     var height: CGFloat = 112
     var ignoreTappedRotation: Bool = false
     var imageVariant: CardImageCacheVariant = .board
+    /// Room a token copy's tag leaves at the trailing edge (TokenCopyFrameLayout.tagTrailingReserve).
+    var tokenCopyTagTrailingReserve: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.nativeTurnControl) private var nativeTurnControl
 
@@ -11803,7 +11808,8 @@ struct CardTile: View {
                 if !NativeCardArtworkPolicy.permitsLookup(card: card) {
                     CardArtPlaceholder(card: card, width: width, height: height)
                 } else if let source = card.tokenCopySourceName {
-                    TokenCopyCardFace(card: card, source: source, width: width, height: height, imageVariant: imageVariant)
+                    TokenCopyCardFace(card: card, source: source, width: width, height: height, imageVariant: imageVariant,
+                                      tagTrailingReserve: tokenCopyTagTrailingReserve)
                 } else if nativeTurnControl != nil {
                     NativeCardArtworkView(name: card.card.name, variant: imageVariant,
                                           tokenTypeLine: card.card.isToken == true ? (card.card.tokenArtwork?.typeLine ?? card.card.typeLine) : nil,
@@ -12028,12 +12034,14 @@ struct CardCounterBadgeStrip: View {
     var body: some View {
         VStack(alignment: .leading, spacing: max(cardWidth * 0.012, 1)) {
             ForEach(badges, id: \.self) { badge in
+                // Shrinks rather than wraps when a caller caps the strip's width.
                 HStack(spacing: 2) {
                     Text(badge.label)
                         .font(.system(size: max(cardWidth * 0.065, 5.5), weight: .black))
                     Text("\(badge.count)")
                         .font(.system(size: max(cardWidth * 0.083, 6.5), weight: .black))
                 }
+                .lineLimit(1).minimumScaleFactor(0.6)
                 .foregroundStyle(.white)
                 .padding(.horizontal, max(cardWidth * 0.035, 2.5))
                 .padding(.vertical, max(cardWidth * 0.015, 1))
@@ -12223,10 +12231,11 @@ struct TokenCopyCardFace: View {
     let width: CGFloat
     let height: CGFloat
     var imageVariant: CardImageCacheVariant = .board
+    var tagTrailingReserve: CGFloat = 0
     @Environment(\.nativeTurnControl) private var nativeTurnControl
 
     var body: some View {
-        let frame = TokenCopyFrameLayout(size: CGSize(width: width, height: height))
+        let frame = TokenCopyFrameLayout(size: CGSize(width: width, height: height), tagTrailingReserve: tagTrailingReserve)
         let rules = card.card.oracleText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         ZStack(alignment: .topLeading) {
             LinearGradient(colors: [MagicPalette.parchment, Color(red: 0.72, green: 0.59, blue: 0.38), MagicPalette.parchmentShadow],
@@ -13127,8 +13136,14 @@ private struct InspectorChipFlow: Layout {
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? .infinity
         let rows = rows(subviews, width: width)
-        let height = rows.reduce(0) { $0 + ($1.map(\.size.height).max() ?? 0) } + spacing * CGFloat(max(rows.count - 1, 0))
-        let used = rows.map { row in row.reduce(0) { $0 + $1.size.width } + spacing * CGFloat(max(row.count - 1, 0)) }.max() ?? 0
+        // Explicit CGFloat types keep these closures cheap to type-check on older Xcode.
+        let heights: [CGFloat] = rows.map { row in row.map { $0.size.height }.max() ?? 0 }
+        let widths: [CGFloat] = rows.map { row in
+            let cards: CGFloat = row.reduce(CGFloat(0)) { $0 + $1.size.width }
+            return cards + spacing * CGFloat(max(row.count - 1, 0))
+        }
+        let height: CGFloat = heights.reduce(CGFloat(0), +) + spacing * CGFloat(max(rows.count - 1, 0))
+        let used: CGFloat = widths.max() ?? 0
         return CGSize(width: proposal.width ?? used, height: height)
     }
 

@@ -196,10 +196,9 @@ function App() {
               <div>
                 <span>Play</span>
                 <p>
-                  Commander against AI, or 2–4 people at one table. On Android,
-                  host or join with a table code. On iPhone, play through Game
-                  Center in the current TestFlight beta; iPhone and Android
-                  tables arrive with the next iPhone build.
+                  Commander against AI, or 2–4 people at one table. iPhone and
+                  Android players host or join the same table with a code, and
+                  iPhone-only groups can also play through Game Center.
                 </p>
               </div>
             </div>
@@ -305,9 +304,11 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 8 brings the iPhone app to Android: Deck Studio,
-                the portrait and landscape boards, and tables you host or join
-                with a code.
+                Android build 9 adds the fixes from our four-player playtest:
+                the board follows whose turn it is, clearer combat with first
+                strike, token copies that look like cards, and steadier online
+                tables. It builds on build 8, which brought the iPhone app to
+                Android: Deck Studio, both board layouts and table codes.
                 Android is an early alpha; physical-phone acceptance is still
                 pending. Live games do not yet resume after Android terminates
                 the app process.
@@ -319,10 +320,11 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 17 adds recorded sound and music with a Sound Lab to tune
-                them, conceding with a spectator view, Auras and Equipment tucked
-                behind their creatures, commander portraits, an opening-hand
-                screen, a result summary and quick chat. Apple has approved this
+                Build 18 lets iPhones join Android players' tables with a code,
+                while Game Center stays for iPhone-only games. The board follows
+                whose turn it is, your seat stays filled when you're knocked out,
+                combat shows keywords and first strike clearly, and token copies
+                look like cards. It is built for iOS 27. Apple has approved this
                 build for Internal and External TestFlight.
               </p>
             </details>

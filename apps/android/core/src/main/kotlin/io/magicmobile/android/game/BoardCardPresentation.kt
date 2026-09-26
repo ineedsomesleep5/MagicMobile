@@ -33,7 +33,11 @@ val ZoneCard.tokenCopySourceName: String?
  * Regions of the token copy frame, in the card's own coordinates. Proportions follow a printed
  * card, so the compact battlefield face (which crops the tile to its art) still shows the art.
  */
-data class TokenCopyFrameLayout(val size: BoardSize) {
+data class TokenCopyFrameLayout(
+    val size: BoardSize,
+    /** Room the tag leaves free at the frame's trailing edge, for badges drawn over it. */
+    val tagTrailingReserve: Float = 0f,
+) {
     val border: Float get() = maxOf(size.width * 0.045f, 2f)
     private val gap: Float get() = maxOf(size.height * 0.012f, 1f)
 
@@ -70,12 +74,14 @@ data class TokenCopyFrameLayout(val size: BoardSize) {
     /**
      * Where the token copy tag sits: the art's top-leading corner, which the compact battlefield face
      * (ArenaBattlefieldCard) keeps in view just under its name header. The art's bottom edge falls behind
-     * that face's P/T footer.
+     * that face's P/T footer. The tag ends before [tagTrailingReserve]; its text shrinks, then truncates, to fit.
      */
     val tagSlot: BoardRect get() {
         val height = maxOf(size.height * 0.06f, 9f)
         val inset = maxOf(size.width * 0.04f, 2f)
-        return BoardRect(art.minX + inset, art.minY + inset * 0.6f, maxOf(art.width - inset * 2, 1f), height)
+        val minX = art.minX + inset
+        val width = minOf(art.width - inset * 2, size.width - maxOf(tagTrailingReserve, 0f) - minX)
+        return BoardRect(minX, art.minY + inset * 0.6f, maxOf(width, 1f), height)
     }
 
     val nameFontSize: Float get() = maxOf(size.width * 0.085f, 6f)
@@ -89,6 +95,40 @@ data class TokenCopyFrameLayout(val size: BoardSize) {
     /** Whole rules lines that fit the text box; the rest is truncated. The inspector shows the full text beside the card. */
     fun rulesLineLimit(showsPowerToughness: Boolean): Int =
         maxOf(1, (rulesArea(showsPowerToughness).height / (rulesFontSize * 1.25f)).toInt())
+}
+
+/**
+ * The compact battlefield face (ArenaBattlefieldCard): a name header over a CardTile cropped to its art, with
+ * counter badges in a trailing column just under the header. A token copy's tag sits in that same band, so while
+ * counters show, the tag ends before their column.
+ */
+object BattlefieldCardFaceLayout {
+    const val HEADER_HEIGHT = 15f
+    /** Top of the counter badge column, just under the header. */
+    const val COUNTER_TOP = 16f
+    /** Clear space between the tag's end and the counter column. */
+    const val COUNTER_GAP = 2f
+
+    /** The CardTile the face shows, in the face's coordinates: 8% wider and centered, lifted so its art starts under the header. */
+    fun tileFrame(cardWidth: Float): BoardRect =
+        BoardRect(-cardWidth * 0.04f, HEADER_HEIGHT - cardWidth * 0.19f, cardWidth * 1.08f, cardWidth * 1.51f)
+
+    /** The counter badges are capped to this width at the face's trailing edge. */
+    fun counterColumnWidth(cardWidth: Float): Float = maxOf(28f, cardWidth * 0.36f)
+
+    /** What the tile's token copy tag leaves free at its trailing edge (tile coordinates). */
+    fun tagTrailingReserve(cardWidth: Float, showsCounters: Boolean): Float {
+        if (!showsCounters) return 0f
+        val columnStart = cardWidth - counterColumnWidth(cardWidth) - COUNTER_GAP
+        return maxOf(0f, tileFrame(cardWidth).maxX - columnStart)
+    }
+
+    /** The token copy tag's slot in the face's coordinates. */
+    fun tokenCopyTagSlot(cardWidth: Float, showsCounters: Boolean): BoardRect {
+        val tile = tileFrame(cardWidth)
+        val slot = TokenCopyFrameLayout(BoardSize(tile.width, tile.height), tagTrailingReserve(cardWidth, showsCounters)).tagSlot
+        return BoardRect(slot.x + tile.x, slot.y + tile.y, slot.width, slot.height)
+    }
 }
 
 /**

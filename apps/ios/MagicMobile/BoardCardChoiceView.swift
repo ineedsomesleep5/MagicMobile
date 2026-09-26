@@ -443,6 +443,10 @@ struct BoardCardChoiceView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 62, alignment: .leading)
         .contentShape(Rectangle())
+        // One accessibility element per card. iOS 27 otherwise repeats the label, identifier
+        // and actions on the row's artwork and texts, so VoiceOver and UI tests find the card
+        // several times, and an accessibility hit test on the row's empty space finds none.
+        .accessibilityElement(children: .ignore)
         .onCardInteraction(tap: { toggleSelection(card.id) }, inspect: { inspected = card },
                            release: { if inspected?.id == card.id { inspected = nil } })
         .accessibilityLabel(Text(verbatim: "\(card.card.name), \(eligibility)"))
@@ -484,6 +488,7 @@ struct BoardCardChoiceView: View {
         let selectAction = isSelected ? "Clear selection" : "Select card"
         return cardArtwork(card, width: width)
             .contentShape(Rectangle())
+            .accessibilityElement(children: .ignore) // One element per card, as in compactCardRow.
             .onCardInteraction(tap: { toggleSelection(card.id) }, inspect: { inspected = card },
                                release: { if inspected?.id == card.id { inspected = nil } })
             .accessibilityLabel(Text(verbatim: label))

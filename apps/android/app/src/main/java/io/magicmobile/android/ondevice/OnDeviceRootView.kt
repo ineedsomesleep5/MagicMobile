@@ -65,7 +65,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewModelScope
 import io.magicmobile.android.Artwork
-import io.magicmobile.android.ArtworkDownloadsScreen
 import io.magicmobile.android.BuildConfig
 import io.magicmobile.android.board.BoardAppearancePicker
 import io.magicmobile.android.board.BoardEffectsPicker

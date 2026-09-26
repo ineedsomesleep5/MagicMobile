@@ -18,26 +18,17 @@ is `MagicMobile-Android-0.1.1-build1.apk` under tag `android-v0.1.1-build.1` aft
 - Reuse exact prompt IDs, revisions, response kinds, seat ownership and private
   viewer snapshots. Preserve Commander legality checks in the actual engine.
 - First Android milestone: local Commander against actual MAD AI, local deck
-  management and user-controlled external card reference. Online tables use the shared
-  authenticated match service; Game Center is not used on Android.
+  management and user-controlled external card reference. Online tables go through the
+  cross-play relay; Game Center is not used on Android.
 
 ### Online transport
 
-`-PonlineServerUrl=https://…` sets the approved deployed match service at build time.
-The default is empty, which presents an unavailable screen rather than claiming a live
-service. `/v1/config` supplies the public Supabase authentication configuration and exact
-engine identity. The client checks protocol, upstream, catalogue and app/build identity.
-Email/password sessions use Android Keystore encrypted storage and are excluded from
-backup. Lobby creation/join sends the selected resolved deck for server validation.
-
-Online games reuse `PollState`, `GamePoll` and `GameScreen`; only poll/respond transport
-changes to authenticated HTTPS. The server binds the signed-in user to their seat.
-Backgrounding stops polling; foregrounding resumes with retry/backoff and a full snapshot
-after interruption. The last lobby survives process restart. Explicitly leaving ends the
-match for all players in this initial version, with confirmation in the UI.
-The client also discovers `/v1/lobbies/current` after sign-in and an uncertain create/join
-reply, so a lost response cannot cause repeated creation. Successful game/lobby polls
-are at least one second apart; failures back off to a bounded 30-second interval.
+Online tables use the relay in `services/table-relay` through `ondevice/RelayTransport.kt`;
+`-PrelayUrl=https://…` replaces the deployed relay at build time. Android has no client
+for the dedicated, authenticated match service: the build 7 client and its
+`-PonlineServerUrl` switch were removed with the build 7 UI. Dedicated Online stays
+disabled until a client is ported and its hosting, database, authentication and
+cross-platform gameplay gates pass.
 
 Client compilation and contract tests do not establish cross-platform gameplay acceptance.
 A configured deployment, matching engine build, and an iOS/Android live match are release gates.

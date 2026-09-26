@@ -76,7 +76,11 @@ final class DeckStudioPinnedTabsUITests: XCTestCase {
         let scrubber = app.sliders["deckHistory.timeline.scrubber"]
         center(scrubber, in: dashboard, app: app)
         XCTAssertTrue(scrubber.isHittable)
-        scrubber.adjust(toNormalizedSliderPosition: 0)
+        // adjust(toNormalizedSliderPosition:) left iOS 27's slider where it was in two of three
+        // runs (still observation 3). Drag the thumb itself to the start, as a person does.
+        let thumb = scrubber.coordinate(withNormalizedOffset: CGVector(dx: scrubber.normalizedSliderPosition, dy: 0.5))
+        thumb.press(forDuration: 0.3, thenDragTo: scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5)),
+                    withVelocity: .slow, thenHoldForDuration: 0.3)
         XCTAssertTrue((scrubber.value as? String)?.contains("observation 1 of") == true)
         let landscape = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         landscape.name = "Public history dashboard landscape fixture"; landscape.lifetime = .keepAlways; add(landscape)
@@ -101,7 +105,10 @@ final class DeckStudioPinnedTabsUITests: XCTestCase {
                 ? max(-visible.height * 0.35, min(visible.height * 0.35, visible.midY - element.frame.midY))
                 : -visible.height * 0.25
             let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.96, dy: 0.5))
-            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: shift)))
+            // Hold before lifting so the list stops where the drag ends. A release at speed
+            // flings it further on iOS 27, and the correction overshoots back the other way.
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: shift)),
+                        withVelocity: .default, thenHoldForDuration: 0.3)
         }
         XCTFail("Could not center \(element.identifier)", file: file, line: line)
     }

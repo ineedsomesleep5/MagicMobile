@@ -95,6 +95,14 @@ final class BoardScrollRotationUITests: XCTestCase {
         for title in ["Your lands", "Your board"] {
             let lane = app.scrollViews["board.battlefield.\(title)"]
             XCTAssertTrue(lane.waitForExistence(timeout: 5))
+            XCTAssertEqual(app.scrollViews.matching(identifier: "board.battlefield.\(title)").count, 1,
+                           "\(title) must resolve to one scroll view")
+            if title == "Your lands" {
+                // Landscape resources wrap into two rows that scroll separately; the second has its own identifier.
+                let second = app.scrollViews["board.battlefield.Your lands.row2"]
+                XCTAssertTrue(second.exists)
+                XCTAssertGreaterThanOrEqual(second.frame.minY, lane.frame.maxY)
+            }
             let prefix = title == "Your lands" ? "card-your-lands-" : "card-your-board-"
             let cards = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", prefix)).allElementsBoundByIndex
             guard let source = cards.filter({ $0.isHittable && lane.frame.intersection($0.frame).width > 20 })
