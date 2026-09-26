@@ -322,7 +322,10 @@ fun DeckStudioRoleInsightsView(draft: NativeDeckDraft, metadata: NativeDeckMetad
     }
 }
 
-/** DeckStudioValidationPanel.swift: check Commander rules with the installed engine, then play. */
+/**
+ * DeckStudioValidationPanel.swift: check Commander rules with the installed engine, then play. Its
+ * Play this deck runs the studio's shared Play flow, which checks the deck itself when needed.
+ */
 @Composable
 fun DeckStudioValidationPanel(state: DeckStudioValidationState, deck: DeckList?, resolver: OnDeviceDeckResolver?, play: ((DeckList) -> Unit)? = null) {
     val scope = rememberCoroutineScope()
@@ -336,7 +339,7 @@ fun DeckStudioValidationPanel(state: DeckStudioValidationState, deck: DeckList?,
         receipt.takeIf { it.matches(encoded, resolver.upstreamCommit, resolver.catalogueHash, DeckStudioServices.appBuild) }
     }
     val exclusionsAccepted = prepared?.excluded?.isEmpty() == true || acknowledgeExclusions
-    LaunchedEffect(request) { state.prepare(request) }
+    LaunchedEffect(request, DeckStudioServices.checkRevision) { state.prepare(request, resolver) }
     StudioPanel {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             SfImage("checkmark.shield", DeckStudioPalette.ink, 24.dp)
@@ -345,8 +348,7 @@ fun DeckStudioValidationPanel(state: DeckStudioValidationState, deck: DeckList?,
         Text("Check Commander rules, then start a game against AI.", color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
         if (prepared != null && prepared.excluded.isNotEmpty()) {
             StudioToggle("Validate the playing deck only", acknowledgeExclusions, { acknowledgeExclusions = it }, style = StudioText.subheadline)
-            Text("${prepared.excluded.sumOf { it.quantity }} sideboard/maybeboard cards stay in this draft. Playing creates a separate playable copy; your original remains intact.",
-                color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+            Text(DeckStudioPlayText.excluded(prepared.excluded.sumOf { it.quantity }), color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
         }
         if (currentReceipt != null) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -378,8 +380,8 @@ fun DeckStudioValidationPanel(state: DeckStudioValidationState, deck: DeckList?,
             StudioButton(if (currentReceipt == null) "Validate deck" else "Validate again", {
                 if (request != null && resolver != null && exclusionsAccepted) state.validate(request, resolver)
             }, Modifier.semantics { contentDescription = "deckStudio.validate" }, enabled = request != null && !DeckStudioValidationService.busy && exclusionsAccepted)
-            if (play != null && prepared != null) StudioButton("Play against AI", { play(prepared.playing) }, Modifier.semantics { contentDescription = "deckStudio.playtestValidated" },
-                primary = false, icon = "play.fill", enabled = currentReceipt?.valid == true && !DeckStudioValidationService.busy && exclusionsAccepted)
+            if (play != null && prepared != null) StudioButton(DeckStudioPlayText.play, { play(prepared.playing) }, Modifier.semantics { contentDescription = "deckStudio.playtestValidated" },
+                primary = false, icon = "play.fill", enabled = !state.checking && !DeckStudioValidationService.busy)
         }
         if (request == null && deck != null && resolver != null) {
             val message = runCatching { DeckStudioPlayProjection(deck).resolve(resolver); "" }.getOrElse { it.message ?: "" }

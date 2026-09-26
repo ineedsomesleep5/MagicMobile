@@ -67,17 +67,21 @@ import java.util.UUID
 
 private val workspaceTabs = listOf("Cards", "Ideas", "Analysis", "Playtest")
 
-/** DeckStudioWorkspaceScreen.swift: one deck's cards, ideas, analysis and playtest. */
+/**
+ * DeckStudioWorkspaceScreen.swift: one deck's cards, ideas, analysis and playtest. [play] is the
+ * studio's shared Play controller; [fix] filters the Cards tab to the cards Play asked to fix.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryRecord?, included: Boolean, metadata: NativeDeckMetadataCatalogue?,
-                              resolver: OnDeviceDeckResolver?, selectForPlay: (String) -> Unit, close: () -> Unit) {
+                              resolver: OnDeviceDeckResolver?, play: DeckStudioPlaySelection, close: () -> Unit,
+                              fix: DeckStudioOpen? = null, consumeFix: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val model = remember(record?.id, included) { DeckStudioEditorModel(library, record, included) }
     val combos = remember(record?.id) { DeckStudioComboModel(scope) }
     val browser = remember(record?.id) { DeckStudioEDHRECModel(scope) }
-    val validation = remember(record?.id) { DeckStudioValidationState(scope) }
+    val validation = remember(record?.id) { DeckStudioValidationState(scope) { model.sourceID } }
     var tab by rememberSaveable { mutableStateOf("Cards") }
     var headerExpanded by rememberSaveable { mutableStateOf(true) }
     var ideas by rememberSaveable { mutableStateOf("Combos") }
@@ -101,17 +105,16 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
     val draft = model.draft
     val deck = runCatching { draft.deck() }.getOrNull()
     val signature = if (deck != null && resolver != null) runCatching { DeckStudioDeckSignature.native(DeckStudioPlayProjection(deck).resolve(resolver)) }.getOrNull() else null
-    val currentValidationPassed = run {
-        val receipt = validation.receipt ?: return@run false
-        if (deck == null || resolver == null) return@run false
-        val request = runCatching { DeckStudioPlayProjection(deck).request(resolver) }.getOrNull() ?: return@run false
-        receipt.valid && receipt.matches(request, resolver.upstreamCommit, resolver.catalogueHash, DeckStudioServices.appBuild)
-    }
     fun inspect(name: String) { inspection = name }
-    fun preparePlay(playing: DeckList) {
-        if (resolver == null || !currentValidationPassed) return
-        val selection = model.preparePlayable(playing, resolver) ?: return
-        showValidation = false; selectForPlay(selection)
+    /** The validation panel's Play this deck: the same flow as the header button, for this draft. */
+    fun preparePlay(@Suppress("UNUSED_PARAMETER") playing: DeckList) {
+        showValidation = false
+        play.play(model.playSource(), resolver)
+    }
+    LaunchedEffect(fix) {
+        val target = fix ?: return@LaunchedEffect
+        tab = "Cards"; query = target.cards.firstOrNull() ?: ""; sectionFilter = ""; colorFilter = ""
+        consumeFix()
     }
     fun pauseServices() { model.persistRecovery(); browser.pause(); combos.cancel(); validation.cancelPending() }
     fun requestClose() { if (model.isDirty) confirmClose = true else { pauseServices(); close() } }
@@ -165,7 +168,7 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
     }
 
     val header: @Composable () -> Unit = {
-        WorkspaceHeader(model, metadata, headerExpanded, { headerExpanded = !headerExpanded }, currentValidationPassed) { showValidation = true }
+        WorkspaceHeader(model, metadata, headerExpanded, { headerExpanded = !headerExpanded }) { DeckStudioPlayDeckButton(play, model, resolver) }
     }
     val tabs: @Composable () -> Unit = {
         Row(Modifier.fillMaxWidth().background(DeckStudioPalette.surface, RoundedCornerShape(14.dp)).padding(4.dp)
@@ -380,7 +383,7 @@ private fun deckFilterOptions(draft: NativeDeckDraft, section: String, color: St
 
 @Composable
 private fun WorkspaceHeader(model: DeckStudioEditorModel, metadata: NativeDeckMetadataCatalogue?, expanded: Boolean, toggle: () -> Unit,
-                            validated: Boolean, validate: () -> Unit) {
+                            playButton: @Composable () -> Unit) {
     val draft = model.draft
     val rotation by animateFloatAsState(if (expanded) 180f else 0f, tween(220), label = "headerChevron")
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -406,11 +409,7 @@ private fun WorkspaceHeader(model: DeckStudioEditorModel, metadata: NativeDeckMe
                         Text("${CardCountText.label(DeckStudioDraftPresentation.gameCount(draft))} · Commander", color = DeckStudioPalette.ink, style = StudioText.caption)
                     }
                     Text(model.saveLabel, color = DeckStudioPalette.secondaryInk, style = StudioText.caption2)
-                    Row(Modifier.defaultMinSize(minHeight = 44.dp).clickable { validate() }, horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        SfImage(if (validated) "checkmark.shield.fill" else "checkmark.shield", DeckStudioPalette.ink, 13.dp)
-                        Text(if (validated) "Validated · playtest" else "Validate & playtest", color = DeckStudioPalette.ink, style = StudioText.caption.weight(SfWeight.semibold))
-                    }
+                    Box(Modifier.padding(top = 4.dp)) { playButton() }
                 }
             }
         }
