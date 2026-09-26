@@ -159,6 +159,63 @@ final class ParityGoldenTests: XCTestCase {
         }
     }
 
+    /// resume-cases.json: save/resume strings, the launch rule and the prompt detail.
+    @MainActor
+    func testResumeCasesOnBothPlatforms() throws {
+        let root = try caseFile("resume-cases.json")
+        let strings = try XCTUnwrap(root["strings"] as? [String: String])
+        let expected: [String: String] = [
+            "promptTitle": GameResumeText.promptTitle, "resume": GameResumeText.resume, "abandon": GameResumeText.abandon,
+            "expired": GameResumeText.expired, "updated": GameResumeText.updated, "resumed": GameResumeText.resumed,
+            "restoreFailed": GameResumeText.restoreFailed, "endedOnClose": GameResumeText.endedOnClose]
+        XCTAssertEqual(strings, expected)
+        XCTAssertEqual(root["windowSeconds"] as? Int, Int(GameResumeLaunchDecision.window / 1000))
+
+        let now = Date(timeIntervalSince1970: 1_790_000_000)
+        func millis(_ ago: Any?) -> Int64? { (ago as? Double).map { Int64(((now.timeIntervalSince1970 - $0) * 1000).rounded()) } }
+        let setup = GameResumeSetup(configuration: .object(["seats": .array([])]), seatID: "player1", playerName: "P",
+                                    deckID: "precon:x", aiDeckIDs: ["x"], aiSkill: 2, startingPlayerMode: "choose")
+        let cases = try XCTUnwrap(root["launch"] as? [[String: Any]])
+        XCTAssertFalse(cases.isEmpty)
+        for item in cases {
+            let at = "launch · \(item["name"] ?? "")"
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ResumeCases-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let store = GameResumeStore(directory: directory, protectsFiles: false)
+            if item["sidecar"] as? String == "corrupt" {
+                try store.writeAtomically(Data("{\"format\":1,".utf8), to: store.sidecarURL)
+            } else if item["sidecar"] as? Bool == true {
+                var record = GameResumeRecord(appBuild: item["appBuild"] as? String ?? "same",
+                                              engineIdentity: item["engineIdentity"] as? String ?? "same",
+                                              createdAt: millis(7200.0)!, lastCheckpointAt: try XCTUnwrap(millis(item["lastCheckpointAgo"]), at),
+                                              leftAt: millis(item["leftAgo"]), turn: 4, playerDeckName: "Deck",
+                                              opponents: ["AI 1"], setup: setup)
+                record.format = item["format"] as? Int ?? GameResumeRecord.currentFormat
+                try store.write(record)
+            }
+            if item["checkpoint"] as? Bool == true {
+                try store.prepareDirectory()
+                try Data("checkpoint".utf8).write(to: store.checkpointURL)
+            }
+            if item["marker"] as? Bool == true { try store.writeMarker(startedAt: millis(60.0)!) }
+            let resume = GameResumeCoordinator(store: store, now: { now })
+            resume.evaluateLaunch(appBuild: "same", engineIdentity: "same")
+            XCTAssertEqual(resume.offer != nil, item["prompt"] as? Bool, at)
+            XCTAssertEqual(resume.notice, (item["notice"] as? String).map { strings[$0] ?? "missing \($0)" }, at)
+            let remains = resume.offer != nil
+            XCTAssertEqual(store.sidecarExists, remains, at)
+            XCTAssertEqual(store.checkpointExists, remains, at)
+            XCTAssertFalse(store.hasMarker, at)
+        }
+
+        for item in try XCTUnwrap(root["detail"] as? [[String: Any]]) {
+            XCTAssertEqual(GameResumeText.detail(turn: Int64(try XCTUnwrap(item["turn"] as? Int)),
+                                                 opponents: try XCTUnwrap(item["opponents"] as? [String]),
+                                                 savedSecondsAgo: try XCTUnwrap(item["savedAgo"] as? Double)),
+                           item["text"] as? String)
+        }
+    }
+
     private func caseFile(_ name: String) throws -> [String: Any] {
         let data = try Data(contentsOf: parityDirectory.appendingPathComponent(name))
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])

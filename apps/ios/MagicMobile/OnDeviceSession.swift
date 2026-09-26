@@ -129,6 +129,8 @@ final class OnDeviceSession: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var isAutoPassing = false
     @Published private(set) var autoPassStatus = ""
+    /// The engine's latest save of this game (solo games on engines with `saveResume`).
+    @Published private(set) var checkpoint: EngineCheckpoint?
     @Published private var activeRefreshes = 0
     private var allowsSeatScopedAutoYield = false
     private var responding = false
@@ -186,7 +188,7 @@ final class OnDeviceSession: ObservableObject {
         self.allowsSeatScopedAutoYield = allowsSeatScopedAutoYield
         self.reconnectsAutomatically = reconnectsAutomatically
         self.table = table; lastActionAt = nil
-        autoPassStatus = ""
+        autoPassStatus = ""; checkpoint = nil
         closeEndpoint = close; automaticPolling = autoPoll; epoch = UUID()
         refreshSequence = 0; appliedRefreshSequence = 0; isClosing = false
         messageLog = OnDeviceMessageLog()
@@ -260,6 +262,7 @@ final class OnDeviceSession: ObservableObject {
         }
         messageLog = nextLog
         poll = next
+        if let saved = next.checkpoint, saved != checkpoint { checkpoint = saved }
         appliedRefreshSequence = max(appliedRefreshSequence, sequence)
         // A host tells its guests about each new revision, so they need not poll it constantly.
         table?.applied(revision: next.revision)
@@ -597,7 +600,7 @@ final class OnDeviceSession: ObservableObject {
         isClosing = false
         refreshSequence = 0; appliedRefreshSequence = 0
         epoch = UUID(); client = nil; matchID = nil; seatID = nil; poll = nil; snapshot = nil
-        table = nil; lastActionAt = nil
+        table = nil; lastActionAt = nil; checkpoint = nil
         messageLog = OnDeviceMessageLog()
         self.closeEndpoint = nil; pending = nil; pendingActionID = nil; pendingCardID = nil; errorMessage = nil; status = "Ready"
     }
