@@ -1,6 +1,7 @@
 // Integration tests for the table relay against a local `wrangler dev` (no Cloudflare account used).
 // Run: node --test services/table-relay/test/relay.test.mjs
-// Against a deployed relay: RELAY_URL=https://… node --test services/table-relay/test/relay.test.mjs
+// Against a deployed relay, which limits table creation to 5 a minute, so tests wait it out:
+// RELAY_URL=https://… node --test --test-timeout=300000 services/table-relay/test/relay.test.mjs
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -85,13 +86,15 @@ const random = (limit) => Math.floor(Math.random() * limit);
 const localNetwork = `10.${random(256)}.${random(256)}`;
 let callers = 0;
 /**
- * The local relay trusts the caller address a request names (Cloudflare sets it on a deployed
- * relay), so each table gets its own caller and the creation limit never slows the other tests.
+ * The local relay trusts the caller address a request names, so each table gets its own caller and
+ * the creation limit never slows the other tests. Cloudflare sets that header itself and refuses a
+ * request that names one (403), so a deployed relay is sent none.
  */
 const nextCaller = () => `${localNetwork}.${++callers % 256}`;
 
 function postTable(seats, caller = nextCaller()) {
-  return fetch(`${base}/v1/tables`, { method: "POST", headers: { "CF-Connecting-IP": caller }, body: JSON.stringify({ seats }) });
+  const headers = process.env.RELAY_URL ? {} : { "CF-Connecting-IP": caller };
+  return fetch(`${base}/v1/tables`, { method: "POST", headers, body: JSON.stringify({ seats }) });
 }
 
 async function createTable(seats = 2) {

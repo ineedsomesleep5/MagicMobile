@@ -17,6 +17,9 @@ Codes use `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`. Each caller (an IPv4 address, or a
 open 5 tables a minute, counted by Cloudflare's rate-limiting binding (`TABLE_CREATES` in
 `wrangler.toml`) at each Cloudflare location. Over the limit the answer is HTTP 429 with
 `Retry-After: 60` and `{"error":"rate_limited","message":…}`; the apps show the message.
+Cloudflare counts approximately (cached per location, eventually consistent), so it is a guard
+against floods rather than an exact quota: in a burst from one address against the deployed relay
+on September 26, 2026, the first 429 came after 22 tables.
 
 `GET /v1/tables/{code}/socket?name=…` upgrades to a WebSocket (text frames, JSON). A phone says
 who it is with WebSocket subprotocols, so no secret appears in a URL or a request log:
@@ -75,7 +78,7 @@ part and drops the whole packet. Every other message waits as before.
 
 ```sh
 node --test services/table-relay/test/relay.test.mjs          # runs wrangler dev locally
-RELAY_URL=https://magicmobile-relay.calebjfeliciano.workers.dev node --test services/table-relay/test/relay.test.mjs
+RELAY_URL=https://magicmobile-relay.calebjfeliciano.workers.dev node --test --test-timeout=300000 services/table-relay/test/relay.test.mjs
 cd services/table-relay && npx wrangler deploy
 ```
 
@@ -83,7 +86,8 @@ The local run serves `test/strict-storage.js`: the relay with the 2 MB storage e
 enforced, since local SQLite accepts larger entries. `.github/workflows/table-relay.yml` runs the
 local tests on pull requests and pushes to `main` that touch this folder. Locally the tests name a
 different caller address (`CF-Connecting-IP`) for each table, so the creation limit only applies
-where a test checks it; against a deployed relay, `createTable` waits out the limit instead.
+where a test checks it. Cloudflare refuses requests that name that header (403), so against a
+deployed relay the tests send none and `createTable` waits out the limit, which takes a few minutes.
 
 Deploy the relay before app builds that use a new protocol feature: it keeps accepting what older
 apps send. If Cloudflare refuses the `[[ratelimits]]` binding on the account's plan, remove that
