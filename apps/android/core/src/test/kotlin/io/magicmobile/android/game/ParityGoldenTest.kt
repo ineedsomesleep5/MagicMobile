@@ -77,6 +77,64 @@ class ParityGoldenTest {
         compare(jsonObject("log" to JsonArray(logs), "rules" to JsonArray(rules), "prompts" to JsonArray(prompts)), "text-cases.json")
     }
 
+    /** Shared behavior cases: both apps must meet every expectation in the file (no goldens). */
+    @Test fun opponentFocusCasesOnBothPlatforms() = runSeatCases("focus-cases.json")
+
+    @Test fun spectatorSeatCasesOnBothPlatforms() = runSeatCases("spectator-cases.json")
+
+    @Test fun priorityStatusCasesOnBothPlatforms() {
+        val root = Json.parseToJsonElement(File(parity, "focus-cases.json").readText())
+        val base = root["base"] as JsonObject
+        val cases = root["status"].array!!
+        check(cases.isNotEmpty())
+        for (item in cases) {
+            val json = base.toMutableMap()
+            json["turn"] = item["turn"] ?: JsonNull
+            json["priorityPlayerId"] = item["priority"] ?: JsonNull
+            json["waitingOnPlayerId"] = item["waitingOn"] ?: JsonNull
+            val snapshot = EngineJson.format.decodeFromJsonElement(GameSnapshot.serializer(), JsonObject(json))
+            assertEquals("status · ${item["name"].string}", item["text"].string, snapshot.priorityStatusText)
+        }
+    }
+
+    /**
+     * Runs focus-cases.json or spectator-cases.json the way NativeGameView applies them: every
+     * poll feeds BoardFocusTracker, then BoardOpponentFocus.snapshot picks the seats.
+     */
+    private fun runSeatCases(name: String) {
+        val root = Json.parseToJsonElement(File(parity, name).readText())
+        val base = root["base"] as JsonObject
+        val cases = root["cases"].array!!
+        check(cases.isNotEmpty())
+        for (item in cases) {
+            val state = linkedMapOf<String, J>("followTurns" to JsonPrimitive(item["followTurns"].bool ?: true))
+            var tracker = BoardFocusTracker()
+            (item["steps"].array ?: emptyList()).forEachIndexed { index, step ->
+                val at = "$name · ${item["name"].string} · step ${index + 1}"
+                val fields = step as JsonObject
+                for (key in SeatCase.stateKeys) fields[key]?.let { state[key] = it }
+                val snapshot = EngineJson.format.decodeFromJsonElement(GameSnapshot.serializer(), SeatCase.snapshot(base, state))
+                fields["tap"].string?.let { tracker = tracker.select(it) }
+                tracker = tracker.observe(snapshot, state["followTurns"].bool ?: true)
+                val board = BoardOpponentFocus.snapshot(snapshot, tracker.focusedID)
+                if (fields.containsKey("top")) assertEquals(at, fields["top"].string, board.opponent?.playerId)
+                fields["topChoices"].array?.let { ids -> assertEquals(at, ids.map { it.string }, BoardOpponentFocus.opponents(board).map { it.playerId }) }
+                fields["seat"].string?.let { assertEquals(at, it, board.seat?.playerId) }
+                fields["seatHand"].array?.let { ids -> assertEquals(at, ids.map { it.string }, BoardOpponentFocus.seatHand(board).map { it.instanceId }) }
+                fields["seatHandCount"].integer?.let { assertEquals(at, it.toInt(), board.seat?.zones?.visibleHandCount) }
+                fields["viewer"].string?.let {
+                    assertEquals(at, it, board.viewerID)
+                    assertEquals(at, it, board.human?.playerId)
+                }
+                fields["viewerLabel"].string?.let { assertEquals(at, it, board.playerLabel(board.viewerID)) }
+                fields["seatLabel"].string?.let { assertEquals(at, it, board.playerLabel(board.seatID)) }
+                fields["spectating"].bool?.let { assertEquals(at, it, board.isSpectating) }
+                fields["title"].string?.let { assertEquals(at, it, SpectatorSeatPresentation.title(board)) }
+                fields["detail"].string?.let { assertEquals(at, it, SpectatorSeatPresentation.detail(board)) }
+            }
+        }
+    }
+
     private fun compare(actual: J, name: String) {
         val expected = Json.parseToJsonElement(File(parity, "golden/$name").readText())
         val difference = difference(expected, actual, name)
@@ -99,6 +157,31 @@ class ParityGoldenTest {
             return null
         }
         return if (expected == actual) null else "$path: iOS $expected, Android $actual"
+    }
+}
+
+/** Builds a case step's snapshot from the file's base (Swift SeatCase). */
+object SeatCase {
+    val stateKeys = listOf("turn", "step", "active", "prompt", "out", "game", "viewer", "completed", "followTurns")
+
+    fun snapshot(base: JsonObject, state: Map<String, J>): JsonObject {
+        val json = base.toMutableMap()
+        state["game"].string?.let { json["id"] = JsonPrimitive(it) }
+        state["turn"].integer?.let { json["turn"] = JsonPrimitive(it) }
+        state["step"].string?.let { json["step"] = JsonPrimitive(it) }
+        state["viewer"].string?.let { json["viewerPlayerId"] = JsonPrimitive(it) }
+        json["activePlayerId"] = state["active"].string?.let(::JsonPrimitive) ?: JsonNull
+        if (state["completed"].bool == true) json["gameStatus"] = JsonPrimitive("completed")
+        state["prompt"].string?.let { owner ->
+            json["promptEnvelopeV2"] = jsonObject("id" to JsonPrimitive("case-prompt"), "method" to JsonPrimitive("GAME_SELECT"),
+                "messageId" to JsonPrimitive(1), "playerId" to JsonPrimitive(owner), "responseKind" to JsonPrimitive("priority"),
+                "message" to JsonPrimitive("Respond"))
+        }
+        val out = state["out"].array?.mapNotNull { it.string }?.toSet() ?: emptySet()
+        json["players"] = JsonArray((base["players"].array ?: emptyList()).map { player ->
+            JsonObject((player as JsonObject) + ("hasLeft" to JsonPrimitive(out.contains(player["playerId"].string))))
+        })
+        return JsonObject(json)
     }
 }
 

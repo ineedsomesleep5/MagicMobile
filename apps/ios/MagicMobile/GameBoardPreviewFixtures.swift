@@ -155,7 +155,8 @@ enum GameBoardPreviewFixtures {
         let resourceLayoutMode = state == .crowdedBattlefield
             ? ProcessInfo.processInfo.environment["MAGICMOBILE_BOARD_RESOURCE_LAYOUT_UI_TEST"] : nil
         var players = root["players"] as! [[String: Any]]
-        if state == .fourPlayerFocus || state == .playerTargetPrompt || state == .spectating {
+        let watching = state == .spectating || state == .fourPlayerSpectating
+        if state == .fourPlayerFocus || state == .playerTargetPrompt || watching {
             for number in 2...3 {
                 var opponent = players[1]
                 opponent["playerId"] = "ai-\(number)"
@@ -175,6 +176,17 @@ enum GameBoardPreviewFixtures {
             players[0]["hasLeft"] = true
             players[0]["life"] = 0
             players[2]["hasLeft"] = true
+        }
+        if state == .fourPlayerSpectating {
+            // You conceded in a pod of four: Aurelia, next in turn order, takes your seat while
+            // the top follows Kozilek's turn.
+            players[0]["hasLeft"] = true
+            players[0]["life"] = 0
+            root["turn"] = 6
+            root["activePlayerId"] = "ai-2"
+            root["priorityPlayerId"] = "ai-2"
+            root["waitingOnPlayerId"] = nil
+            root["promptText"] = nil
         }
         for index in players.indices {
             let seat = players[index]["playerId"] as! String
@@ -285,15 +297,15 @@ enum GameBoardPreviewFixtures {
                 battlefield.insert(battlefield.remove(at: ring), at: 0)
             }
             zones["battlefield"] = battlefield; players[index]["zones"] = zones
-            if state == .spectating, players[index]["hasLeft"] as? Bool == true {
+            if watching, players[index]["hasLeft"] as? Bool == true {
                 // A player who left takes their cards out of the game (CR 800.4a).
                 zones["battlefield"] = []; zones["hand"] = []; players[index]["zones"] = zones
             }
         }
         root["players"] = players
         var actions = root["legalActions"] as! [[String: Any]]
-        if state == .spectating { actions = [] }
-        if ![GameBoardDesignPreviewState.aiThinking, .bridgeUnavailable, .unsupportedPromptFallback, .spectating].contains(state) {
+        if watching { actions = [] }
+        if ![GameBoardDesignPreviewState.aiThinking, .bridgeUnavailable, .unsupportedPromptFallback, .spectating, .fourPlayerSpectating].contains(state) {
             actions.append(["id": "make-mana-sol-ring", "type": "make_mana", "playerId": "human", "label": "Tap Sol Ring", "sourceInstanceId": "human-sol-ring", "cardName": "Sol Ring", "sourceZone": "battlefield", "producedMana": ["C", "C"]])
         }
         root["legalActions"] = actions

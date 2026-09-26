@@ -69,6 +69,7 @@ import io.magicmobile.android.ArtworkDownloadsScreen
 import io.magicmobile.android.BuildConfig
 import io.magicmobile.android.board.BoardAppearancePicker
 import io.magicmobile.android.board.BoardEffectsPicker
+import io.magicmobile.android.board.FollowTurnsToggle
 import io.magicmobile.android.board.BoardSelection
 import io.magicmobile.android.board.BoardSheet
 import io.magicmobile.android.board.ConfirmationAction
@@ -755,6 +756,7 @@ private fun AppearanceSettings(portraitModeEnabled: Boolean, setPortraitModeEnab
             if (inGame) ArtworkPreferenceToggle()
             BoardAppearancePicker()
             PortraitModeToggle(portraitModeEnabled, setPortraitModeEnabled)
+            FollowTurnsToggle()
             BoardEffectsPicker()
         }
     }
