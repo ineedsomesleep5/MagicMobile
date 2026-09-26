@@ -1,0 +1,39 @@
+{
+  "about": "Save/resume of solo games against the AI: the exact strings, the launch rule and the prompt detail. At launch a saved game is offered iff resume.json and game.checkpoint both exist, now - (leftAt ?? lastCheckpointAt) <= windowSeconds, and appBuild and engineIdentity match the running app (an unknown format counts as a mismatch). Otherwise both files are deleted and the one-time notice is shown; a mismatch wins over expiry. A checkpoint without its sidecar was already abandoned and is deleted quietly. A sidecar without a checkpoint (the app closed before the first save) or an unreadable sidecar, and the in-progress marker of a game that cannot checkpoint, give the endedOnClose notice. Times are seconds before launch; leftAgo null means the app died in the foreground. The detail rounds seconds down to whole minutes. Read by ParityGoldenTests.swift; the Android port must meet every expectation.",
+  "windowSeconds": 600,
+  "strings": {
+    "promptTitle": "Resume your game?",
+    "resume": "Resume",
+    "abandon": "Abandon",
+    "expired": "Your unfinished game expired after 10 minutes.",
+    "updated": "Your unfinished game can't be resumed after an update.",
+    "resumed": "Resumed at your last decision.",
+    "restoreFailed": "Couldn't resume that game.",
+    "endedOnClose": "Your last game ended when the app closed."
+  },
+  "launch": [
+    {"name": "saved moments ago, app died in the foreground", "sidecar": true, "checkpoint": true, "lastCheckpointAgo": 30, "leftAgo": null, "prompt": true, "notice": null},
+    {"name": "left 599 s ago", "sidecar": true, "checkpoint": true, "lastCheckpointAgo": 700, "leftAgo": 599, "prompt": true, "notice": null},
+    {"name": "left exactly 600 s ago", "sidecar": true, "checkpoint": true, "lastCheckpointAgo": 700, "leftAgo": 600, "prompt": true, "notice": null},
+    {"name": "left 601 s ago", "sidecar": true, "checkpoint": true, "lastCheckpointAgo": 700, "leftAgo": 601, "prompt": false, "notice": "expired"},
+    {"name": "leaving counts, not the older checkpoint", "sidecar": true, "checkpoint": true, "lastCheckpointAgo": 3600, "leftAgo": 60, "prompt": true, "notice": null},
+    {"name": "foreground death, last checkpoint 599 s ago", "sidecar": true, "checkpoint": true, "lastCheckpointAgo": 599, "leftAgo": null, "prompt": true, "notice": null},
+    {"name": "foreground death, last checkpoint 601 s ago", "sidecar": true, "checkpoint": true, "lastCheckpointAgo": 601, "leftAgo": null, "prompt": false, "notice": "expired"},
+    {"name": "app updated", "sidecar": true, "checkpoint": true, "lastCheckpointAgo": 30, "leftAgo": 20, "appBuild": "other", "prompt": false, "notice": "updated"},
+    {"name": "engine changed", "sidecar": true, "checkpoint": true, "lastCheckpointAgo": 30, "leftAgo": 20, "engineIdentity": "other", "prompt": false, "notice": "updated"},
+    {"name": "future sidecar format", "sidecar": true, "checkpoint": true, "lastCheckpointAgo": 30, "leftAgo": 20, "format": 2, "prompt": false, "notice": "updated"},
+    {"name": "updated and expired", "sidecar": true, "checkpoint": true, "lastCheckpointAgo": 9000, "leftAgo": 9000, "appBuild": "other", "prompt": false, "notice": "updated"},
+    {"name": "closed before the first checkpoint", "sidecar": true, "checkpoint": false, "lastCheckpointAgo": 30, "leftAgo": null, "prompt": false, "notice": "endedOnClose"},
+    {"name": "unreadable sidecar", "sidecar": "corrupt", "checkpoint": true, "prompt": false, "notice": "endedOnClose"},
+    {"name": "checkpoint without sidecar", "sidecar": false, "checkpoint": true, "prompt": false, "notice": null},
+    {"name": "nothing saved", "sidecar": false, "checkpoint": false, "prompt": false, "notice": null},
+    {"name": "table game or engine without saveResume died mid-game", "sidecar": false, "checkpoint": false, "marker": true, "prompt": false, "notice": "endedOnClose"}
+  ],
+  "detail": [
+    {"turn": 12, "opponents": ["Alice", "Bob"], "savedAgo": 180, "text": "Turn 12 against Alice and Bob · saved 3 min ago"},
+    {"turn": 3, "opponents": ["AI 1"], "savedAgo": 20, "text": "Turn 3 against AI 1 · saved just now"},
+    {"turn": 7, "opponents": ["AI 1", "AI 2", "AI 3"], "savedAgo": 60, "text": "Turn 7 against AI 1, AI 2 and AI 3 · saved 1 min ago"},
+    {"turn": 5, "opponents": ["AI 1"], "savedAgo": 599, "text": "Turn 5 against AI 1 · saved 9 min ago"},
+    {"turn": 0, "opponents": ["AI 1"], "savedAgo": 119, "text": "Against AI 1 · saved 1 min ago"}
+  ]
+}

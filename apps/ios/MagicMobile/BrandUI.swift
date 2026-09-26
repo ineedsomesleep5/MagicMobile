@@ -14,6 +14,7 @@ enum BrandTheme {
     static let emberLight = Color(red: 1, green: 157 / 255, blue: 126 / 255)           // #ff9d7e
     static let rust = Color(red: 167 / 255, green: 68 / 255, blue: 41 / 255)           // #a74429
     static let emberInk = Color(red: 34 / 255, green: 23 / 255, blue: 19 / 255)        // #221713, text on ember
+    static let danger = Color(red: 1, green: 112 / 255, blue: 100 / 255)               // #ff7064, destructive text on dark
     // The icon's own values, measured from design/brand/icon-master-2026-09-23.png.
     static let markCoral = Color(red: 253 / 255, green: 102 / 255, blue: 72 / 255)
     static let markCream = Color(red: 248 / 255, green: 246 / 255, blue: 241 / 255)
@@ -274,9 +275,10 @@ struct BrandPanel: ViewModifier {
 // MARK: - Buttons
 
 /// Ember call to action (dark ink on coral) or a dark secondary button with a hairline
-/// border. Presses sink a pixel, darken and click, like the site's download buttons.
+/// border (red text for a destructive choice). Presses sink a pixel, darken and click, like
+/// the site's download buttons.
 struct BrandButtonStyle: ButtonStyle {
-    enum Kind { case primary, secondary }
+    enum Kind { case primary, secondary, destructive }
     var kind: Kind = .primary
 
     func makeBody(configuration: Configuration) -> some View {
@@ -300,7 +302,7 @@ private struct BrandButtonFace<Label: View>: View {
         return label
             .pressSound(primary ? .uiConfirm : nil, isPressed: pressed)
             .font(.system(size: primary ? 19 : 17, weight: primary ? .heavy : .bold))
-            .foregroundStyle(primary ? BrandTheme.emberInk : BrandTheme.ink)
+            .foregroundStyle(primary ? BrandTheme.emberInk : kind == .destructive ? BrandTheme.danger : BrandTheme.ink)
             .padding(.horizontal, 18)
             .padding(.vertical, primary ? 16 : 13)
             .frame(maxWidth: .infinity, minHeight: primary ? 58 : 50)
@@ -318,7 +320,8 @@ private struct BrandButtonFace<Label: View>: View {
                 if primary && isEnabled && !reduceMotion && ambient { ShineSweep().clipShape(shape).allowsHitTesting(false) }
             }
             .overlay {
-                shape.strokeBorder(primary ? AnyShapeStyle(Color.white.opacity(0.22)) : AnyShapeStyle(BrandTheme.border),
+                shape.strokeBorder(primary ? AnyShapeStyle(Color.white.opacity(0.22))
+                                   : kind == .destructive ? AnyShapeStyle(BrandTheme.rust) : AnyShapeStyle(BrandTheme.border),
                                    lineWidth: 1)
             }
             .shadow(color: primary ? BrandTheme.ember.opacity(isEnabled ? 0.45 : 0) : .black.opacity(0.35),

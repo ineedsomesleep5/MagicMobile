@@ -44,6 +44,18 @@ actor NativeDeckArtwork {
         // Injected HTTP fixture sessions default to an isolated budget.
         self.requestBudget = requestBudget ?? (protocolClasses == nil ? .shared : DeckStudioScryfallBudget())
     }
+    /// In the background: drop the artwork responses held in memory (the disk caches stay).
+    /// Views load their art again from disk when they next appear.
+    nonisolated static func purgeMemoryCaches() {
+        purgeMemory(of: URLCache.shared)
+        Task { await shared.purgeMemory() }
+    }
+    func purgeMemory() { Self.purgeMemory(of: cache) }
+    nonisolated static func purgeMemory(of cache: URLCache) {
+        let capacity = cache.memoryCapacity
+        cache.memoryCapacity = 0
+        cache.memoryCapacity = capacity
+    }
     func imageData(name: String, variant: Variant = .board, allowNetwork: Bool,
                    tokenTypeLine: String? = nil, tokenOracleText: String? = nil,
                    tokenPower: String? = nil, tokenToughness: String? = nil, tokenColors: [String]? = nil,
