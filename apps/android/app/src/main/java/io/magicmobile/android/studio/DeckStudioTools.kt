@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -564,8 +565,8 @@ fun DeckStudioUndoToastView(toast: DeckStudioUndoToast, model: DeckStudioEditorM
  */
 @Composable
 fun DeckStudioPreflightBar(check: DeckStudioPreflight, filter: DeckStudioPreflight.Kind?, select: (DeckStudioPreflight.Chip) -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth().background(DeckStudioPalette.surface, RoundedCornerShape(14.dp)).padding(12.dp)
-        .semantics { contentDescription = "deckStudio.preflight" }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier.fillMaxWidth().background(DeckStudioPalette.surface, RoundedCornerShape(14.dp)).padding(12.dp).testTag("deckStudio.preflight"),
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("${check.count}/${check.target}", Modifier.semantics { contentDescription = "${CardCountText.label(check.count)} of ${check.target}" },
                 color = if (check.count > check.target) DeckStudioPalette.warning else DeckStudioPalette.ink, style = StudioText.headline)
@@ -627,7 +628,7 @@ fun DeckStudioQuickAddBar(metadata: NativeDeckMetadataCatalogue?, model: DeckStu
             Row(Modifier.weight(1f).defaultMinSize(minHeight = 44.dp).background(Color.White, RoundedCornerShape(12.dp)).padding(start = 12.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SfImage("plus.circle.fill", DeckStudioPalette.ink, 18.dp)
-                BasicTextField(text, { text = it; error = null; note = null }, Modifier.weight(1f).semantics { contentDescription = "deckStudio.quickAdd" },
+                BasicTextField(text, { text = it; error = null; note = null }, Modifier.weight(1f).testTag("deckStudio.quickAdd").semantics { contentDescription = "Quick add a card" },
                     singleLine = true, textStyle = StudioText.body.copy(color = DeckStudioPalette.ink), cursorBrush = SolidColor(DeckStudioPalette.ink),
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, autoCorrectEnabled = false, imeAction = ImeAction.Done),
                     // Handling Done here (without clearing focus) keeps the keyboard open for the next card.
@@ -731,9 +732,10 @@ fun DeckStudioTextEditorSheet(draft: NativeDeckDraft, apply: (DeckStudioTextEdit
                     color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
                 error?.let { Text(it, color = DeckStudioPalette.danger, style = StudioText.caption) }
                 BasicTextField(text, { text = it; error = null; copied = false }, Modifier.fillMaxWidth().heightIn(min = 320.dp).background(Color.White, RoundedCornerShape(12.dp))
-                    .padding(12.dp).semantics { contentDescription = "deckStudio.textEditor" }, textStyle = StudioText.body.copy(color = DeckStudioPalette.ink),
-                    cursorBrush = SolidColor(DeckStudioPalette.ink),
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, autoCorrectEnabled = false))
+                    .padding(12.dp).testTag("deckStudio.textEditor").semantics { contentDescription = "Deck list text" },
+                    textStyle = StudioText.body.copy(color = DeckStudioPalette.ink), cursorBrush = SolidColor(DeckStudioPalette.ink),
+                    // Exact card names are case-sensitive, so the keyboard must not recapitalize them.
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false))
                 StudioPlainButton(if (copied) "List copied" else "Copy list", { copy(text); copied = true }, icon = if (copied) "checkmark" else "doc.on.doc")
             }
         } else {
@@ -778,7 +780,7 @@ fun DeckStudioCommanderPicker(metadata: NativeDeckMetadataCatalogue, pick: (Stri
         Text("Legendary creatures and cards that say they can be your commander. Your deck takes its name; rename it anytime.",
             Modifier.padding(horizontal = 20.dp), color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
         error?.let { Text(it, Modifier.padding(horizontal = 20.dp), color = DeckStudioPalette.danger, style = StudioText.caption) }
-        LazyColumn(Modifier.fillMaxWidth().padding(horizontal = 16.dp).clip(RoundedCornerShape(10.dp)).semantics { contentDescription = "deckStudio.commanderPicker" }) {
+        LazyColumn(Modifier.fillMaxWidth().padding(horizontal = 16.dp).clip(RoundedCornerShape(10.dp)).testTag("deckStudio.commanderPicker")) {
             items(results, key = { it.name }) { card ->
                 Row(Modifier.fillMaxWidth().background(DeckStudioPalette.surface).clickable {
                     if (!pick(card.name)) error = "This commander could not be added. Your draft is unchanged."

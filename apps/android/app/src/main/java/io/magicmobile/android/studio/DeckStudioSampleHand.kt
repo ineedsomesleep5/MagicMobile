@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -40,7 +41,7 @@ fun DeckStudioSampleHandPanel(draft: NativeDeckDraft, metadata: NativeDeckMetada
         when {
             names.isEmpty() -> Text("Add main-deck cards to draw a sample hand.", color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
             current == null -> StudioButton("Draw 7", { hand = DeckStudioSampleHand.start(names, Random.Default) },
-                Modifier.semantics { contentDescription = "deckStudio.sampleHand.draw" }, icon = "dice")
+                Modifier.testTag("deckStudio.sampleHand.draw"), icon = "dice")
             else -> {
                 Text("Turn ${current.turn} · ${CardCountText.label(current.hand.size)} in hand · ${CardCountText.label(current.library.size)} in library",
                     color = DeckStudioPalette.ink, style = StudioText.subheadline.weight(SfWeight.medium))
