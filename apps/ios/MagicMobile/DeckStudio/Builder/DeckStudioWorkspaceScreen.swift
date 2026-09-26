@@ -195,6 +195,8 @@ struct DeckStudioWorkspaceScreen: View {
             .task { await offerCommanderFirst() }
             .task(id: roleKey) { loadRolePreferences() }
             .onChange(of: tab) { _, value in if value == "Cards" { loadRolePreferences() } else { selecting = false; selection = [] } }
+            // A fixed issue clears its filter, so the list never stays filtered to nothing.
+            .onChange(of: model.draft) { _, _ in if let issueFilter, preflight.rows(issueFilter).isEmpty { self.issueFilter = nil } }
             // Presentation belongs to the workspace, not a lazy history row or
             // an orientation-specific branch which can disappear while covered.
             .fullScreenCover(item: $historyReview) { review in
