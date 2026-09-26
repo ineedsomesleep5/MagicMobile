@@ -1385,7 +1385,7 @@ private struct RelayWaitingRoomView: View {
                     Spacer()
                     if seat.removable {
                         Button("Remove", role: .destructive) { removal = seat }
-                            .font(.body.weight(.semibold))
+                            .font(.body.weight(.semibold)).foregroundStyle(Color.red)
                             .accessibilityLabel("Remove \(seat.name)")
                             .accessibilityIdentifier("ondevice.relay.remove.\(index + 1)")
                     }
