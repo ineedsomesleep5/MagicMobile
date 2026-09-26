@@ -1,6 +1,6 @@
 import XCTest
 
-/// Real setup views in a presentation-only build; no native gameplay or Game Center login.
+/// Real setup views and Deck Studio in a presentation-only build; no native gameplay or Game Center login.
 @MainActor
 final class OnDeviceSetupUITests: XCTestCase {
     private var app: XCUIApplication!
@@ -29,6 +29,7 @@ final class OnDeviceSetupUITests: XCTestCase {
             attachment.name = name
             attachment.lifetime = .keepAlways
             add(attachment)
+            XCUIDevice.shared.orientation = .portrait
             cleanupCreatedDecks()
             app.terminate()
         }
@@ -114,7 +115,8 @@ final class OnDeviceSetupUITests: XCTestCase {
         XCTAssertTrue(signIn.exists)
         XCTAssertFalse(app.buttons["Find players"].isEnabled)
         // Neither sign-in nor matchmaking is invoked by this test.
-        let ai = app.segmentedControls.buttons["Against AI"]
+        // The player-mode picker reads AI / Game Center / Online since the relay tables.
+        let ai = app.segmentedControls.buttons["AI"]
         reveal(ai, scrollingUp: false)
         ai.tap()
         XCTAssertTrue(app.buttons["Start game"].waitForExistence(timeout: 5))
@@ -125,104 +127,72 @@ final class OnDeviceSetupUITests: XCTestCase {
             let decks = app.buttons["menu.decks"]
             reveal(decks)
             decks.coordinate(withNormalizedOffset: CGVector(dx: horizontal, dy: 0.5)).tap()
-            XCTAssertTrue(app.buttons["Import"].waitForExistence(timeout: 10))
-            app.navigationBars["Decks"].buttons["Done"].tap()
-            XCTAssertTrue(app.navigationBars["Decks"].waitForNonExistence(timeout: 5))
+            XCTAssertTrue(app.buttons["deckStudio.create"].waitForExistence(timeout: 10))
+            tapDiagnosed(app.navigationBars["Deck Studio"].buttons["Done"])
+            XCTAssertTrue(app.buttons["deckStudio.create"].waitForNonExistence(timeout: 5))
         }
     }
 
     func testInvalidImportRetainsDraftUntilCancelled() {
         openLibrary()
-        app.buttons["Import"].tap()
-        let editor = app.textViews["Deck list text"]
+        tapDiagnosed(app.buttons["deckStudio.import"])
+        let editor = app.textViews["Decklist text"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        let submit = app.buttons["nativeDeck.import.submit"]
-        XCTAssertFalse(submit.isEnabled)
+        let review = app.buttons["deckStudio.import.review"]
+        XCTAssertFalse(review.isEnabled)
         let deckName = app.textFields["Deck name"]
         let originalName = deckName.value as? String
         let draft = "this is not a deck entry"
-        editor.tap()
+        tapDiagnosed(editor)
         editor.typeText(draft)
-        // A scroll dismisses the editor keyboard and exposes the import action.
-        app.swipeUp()
-        reveal(submit)
-        tapDiagnosed(submit)
-        let error = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Line 1:")).firstMatch
+        revealOutsideEditor(review)
+        tapDiagnosed(review)
+        let error = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Line 1:")).firstMatch
         XCTAssertTrue(error.waitForExistence(timeout: 5))
         XCTAssertTrue(error.label.contains("No cards were imported."))
-        reveal(editor, scrollingUp: false)
+        XCTAssertFalse(app.buttons["deckStudio.import.confirm"].exists, "An invalid list offers nothing to save")
+        revealOutsideEditor(editor, scrollingUp: false)
         XCTAssertEqual(editor.value as? String, draft)
         XCTAssertEqual(deckName.value as? String, originalName)
-        let attachment = XCTAttachment(screenshot: app.screenshot())
-        attachment.name = "Invalid import retains draft"
-        attachment.lifetime = .keepAlways
-        add(attachment)
-        tapDiagnosed(app.navigationBars["Import deck"].buttons["nativeDeck.import.cancel"])
+        capture("Invalid import retains draft")
+        tapDiagnosed(app.navigationBars["Import deck"].buttons["Cancel"])
         waitForImportDismissal(editor)
     }
 
     func testPasteValidDraftInspectEditSaveAndRelaunch() {
         let originalName = uniqueDeckName("Imported")
         let editedName = uniqueDeckName("Renamed")
-        openLibrary()
-        app.buttons["Import"].tap()
-        let name = app.textFields["Deck name"]
-        XCTAssertTrue(name.waitForExistence(timeout: 5))
-        replaceText(name, with: originalName)
-        let text = app.textViews["Deck list text"]
-        text.tap()
-        text.typeText("1x Emmara, Soul of the Accord (grn) [Commander{top}]\n1x Forest (m21) 274 [Land]")
-        let submit = app.buttons["nativeDeck.import.submit"]
-        reveal(submit); tapDiagnosed(submit)
-        let confirm = app.buttons["nativeDeck.import.confirm"]
-        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
-        reveal(confirm); tapDiagnosed(confirm)
-        waitForImportDismissal(text)
+        importDeck(named: originalName,
+                   text: "1x Emmara, Soul of the Accord (grn) [Commander{top}]\n1x Forest (m21) 274 [Land]")
         openSavedDeck(originalName)
-        let inspect = app.buttons["nativeDeck.inspect.Emmara, Soul of the Accord"]
-        reveal(inspect); inspect.tap()
-        XCTAssertTrue(app.navigationBars["Emmara, Soul of the Accord"].waitForExistence(timeout: 5))
-        app.buttons["Done"].tap()
-        let edit = app.buttons["Edit"]
-        reveal(edit, scrollingUp: false); edit.tap()
-        selectDeckBuilderPane("Deck")
-        let editorName = app.textFields["Deck name"]
-        XCTAssertTrue(editorName.waitForExistence(timeout: 5))
-        replaceText(editorName, with: editedName)
-        tapDiagnosed(app.navigationBars.buttons["nativeDeck.editor.save"])
-        waitFor(editorName, predicate: "exists == false")
+        let inspect = deckRow("Emmara, Soul of the Accord", quantity: 1)
+        reveal(inspect); tapDiagnosed(inspect)
+        let close = app.buttons["deckStudio.inspector.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Emmara, Soul of the Accord"].exists)
+        tapDiagnosed(close)
+        renameDeck(editedName)
+        saveAndCloseDeck()
         app.terminate(); app.launch()
         openLibrary()
         openSavedDeck(editedName)
-        XCTAssertTrue(app.staticTexts["2 cards · Saved locally"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["nativeDeck.inspect.Emmara, Soul of the Accord"].exists)
-        let forest = app.buttons["nativeDeck.inspect.Forest"]
+        assertSavedDeck(cards: 2)
+        XCTAssertTrue(deckRow("Emmara, Soul of the Accord", quantity: 1).exists)
+        let forest = deckRow("Forest", quantity: 1)
         reveal(forest)
         // Artwork/network availability is not an acceptance condition for deck persistence.
     }
 
     func testMoxfieldPlainTextExportPasteKeepsCardsAndQuantities() {
         let importedName = uniqueDeckName("Moxfield")
-        openLibrary()
-        app.buttons["Import"].tap()
-        let name = app.textFields["Deck name"]
-        XCTAssertTrue(name.waitForExistence(timeout: 5))
-        replaceText(name, with: importedName)
-        let text = app.textViews["Deck list text"]
-        text.tap()
-        text.typeText("Commander\n1 Emmara, Soul of the Accord (GRN) 168\n\nDeck\n2 Forest (M21) 274 *F*\n1 Sol Ring (CMM) 396")
-        let submit = app.buttons["nativeDeck.import.submit"]
-        reveal(submit); tapDiagnosed(submit)
-        let confirm = app.buttons["nativeDeck.import.confirm"]
-        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
-        reveal(confirm); tapDiagnosed(confirm)
-        waitForImportDismissal(text)
+        importDeck(named: importedName,
+                   text: "Commander\n1 Emmara, Soul of the Accord (GRN) 168\n\nDeck\n2 Forest (M21) 274 *F*\n1 Sol Ring (CMM) 396")
         openSavedDeck(importedName)
-        XCTAssertTrue(app.staticTexts["4 cards · Saved locally"].waitForExistence(timeout: 5))
-        let forest = app.buttons["nativeDeck.inspect.Forest"]
+        assertSavedDeck(cards: 4)
+        let forest = deckRow("Forest", quantity: 2)
         reveal(forest)
-        XCTAssertEqual(forest.value as? String, "2 copies")
-        let ring = app.buttons["nativeDeck.inspect.Sol Ring"]
+        XCTAssertTrue(forest.exists, "Forest keeps its imported quantity of 2")
+        let ring = deckRow("Sol Ring", quantity: 1)
         reveal(ring)
         XCTAssertTrue(ring.isHittable)
         capture("Moxfield plain-text export imported")
@@ -232,51 +202,55 @@ final class OnDeviceSetupUITests: XCTestCase {
         let copyName = uniqueDeckName("PreconCopy")
         openLibrary()
         searchLibrary("Token Triumph")
-        let bundled = app.buttons["nativeDeck.bundled.Token Triumph"]
+        let bundled = app.buttons["deckStudio.deck.precon:token-triumph"].firstMatch
         XCTAssertTrue(bundled.waitForExistence(timeout: 5))
-        reveal(bundled); bundled.tap()
-        XCTAssertTrue(app.buttons["nativeDeck.inspect.Emmara, Soul of the Accord"].waitForExistence(timeout: 5))
+        reveal(bundled); tapDiagnosed(bundled)
+        XCTAssertTrue(deckRow("Emmara, Soul of the Accord", quantity: 1).waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["deckStudio.save"].exists, "An included deck is read-only")
         capture("Included Commander deck grouped cards")
-        let editCopy = app.buttons["Edit a local copy"]
-        reveal(editCopy); editCopy.tap()
-        selectDeckBuilderPane("Deck")
-        let name = app.textFields["Deck name"]
-        XCTAssertTrue(name.waitForExistence(timeout: 5))
-        replaceText(name, with: copyName)
-        tapDiagnosed(app.navigationBars.buttons["nativeDeck.editor.save"])
-        waitFor(name, predicate: "exists == false")
+        tapDiagnosed(app.buttons["Edit a copy"])
+        waitFor(app.buttons["deckStudio.save"], predicate: "exists == true")
+        renameDeck(copyName)
+        saveAndCloseDeck()
         app.terminate(); app.launch()
         openLibrary(); openSavedDeck(copyName)
-        XCTAssertTrue(app.staticTexts["100 cards · Saved locally"].waitForExistence(timeout: 5))
+        assertSavedDeck(cards: 100)
         app.terminate(); app.launch()
         openLibrary(); searchLibrary("Token Triumph")
         XCTAssertTrue(bundled.waitForExistence(timeout: 5))
-        reveal(bundled); bundled.tap()
-        XCTAssertTrue(app.staticTexts["100 cards · Included deck"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Edit a local copy"].exists)
-        XCTAssertFalse(app.buttons["Delete local deck"].exists)
+        reveal(bundled); tapDiagnosed(bundled)
+        XCTAssertTrue(deckCount(100).waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Included / read-only"].exists)
+        XCTAssertTrue(app.staticTexts["Token Triumph"].exists)
+        XCTAssertTrue(app.buttons["Edit a copy"].exists)
+        XCTAssertFalse(app.buttons["deckStudio.save"].exists)
+        tapDiagnosed(app.buttons["deckStudio.close"])
+        let options = app.buttons["Options for Token Triumph"].firstMatch
+        reveal(options); tapDiagnosed(options)
+        XCTAssertTrue(menuItem("Duplicate locally").waitForExistence(timeout: 5))
+        XCTAssertFalse(menuItem("Delete local deck").exists, "Included decks cannot be deleted")
     }
 
     func testEDHRECManualHandoffCopiesWithoutOpeningWebsite() {
         openLibrary()
         searchLibrary("Token Triumph")
-        let bundled = app.buttons["nativeDeck.bundled.Token Triumph"]
-        reveal(bundled); bundled.tap()
-        let info = app.segmentedControls["nativeDeck.sections"].buttons["nativeDeck.section.info"]
-        reveal(info); tapDiagnosed(info)
-        waitFor(info, predicate: "selected == true")
-        XCTAssertTrue(app.searchFields["Find a card in this deck"].waitForNonExistence(timeout: 5))
-        waitFor(app.staticTexts["EDHREC · manual recommendations"], predicate: "exists == true")
-        let copy = app.buttons["nativeDeck.edhrec.copy"]
+        let bundled = app.buttons["deckStudio.deck.precon:token-triumph"].firstMatch
+        reveal(bundled); tapDiagnosed(bundled)
+        selectWorkspaceTab("Ideas")
+        let edhrec = app.buttons["EDHREC"].firstMatch
+        tapDiagnosed(edhrec)
+        waitFor(edhrec, predicate: "selected == true")
+        let copy = app.buttons["Copy commander names"]
         reveal(copy)
         XCTAssertTrue(copy.isEnabled)
         tapDiagnosed(copy)
-        let confirmation = app.staticTexts["Main deck copied. Paste it into EDHREC’s Decklist field."]
-        reveal(confirmation)
-        XCTAssertTrue(confirmation.exists)
-        let website = app.buttons["nativeDeck.edhrec.open"]
+        let confirmation = app.buttons["Commander names copied"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        let website = app.buttons["Browse commanders on EDHREC"]
         reveal(website)
         XCTAssertTrue(website.isEnabled)
+        XCTAssertEqual(app.webViews.count, 0, "Copying must not open the website")
+        XCTAssertFalse(app.buttons["Reload EDHREC"].exists)
         capture("EDHREC explicit manual handoff")
         // No external browser is opened and no deck is submitted by this test.
     }
@@ -284,58 +258,49 @@ final class OnDeviceSetupUITests: XCTestCase {
     func testEmptyNamedDraftPersistsWithoutClaimingPlayLegality() {
         let draftName = uniqueDeckName("EmptyDraft")
         openLibrary()
-        app.buttons["New deck"].tap()
-        selectDeckBuilderPane("Deck")
-        let name = app.textFields["Deck name"]
-        XCTAssertTrue(name.waitForExistence(timeout: 5))
-        replaceText(name, with: draftName)
-        tapDiagnosed(app.navigationBars.buttons["nativeDeck.editor.save"])
-        waitFor(name, predicate: "exists == false")
+        createDeck()
+        renameDeck(draftName)
+        saveAndCloseDeck()
         app.terminate(); app.launch()
         openLibrary(); openSavedDeck(draftName)
-        XCTAssertTrue(app.staticTexts["0 cards · Saved locally"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["XMage checks Commander legality when you start a game. Saved drafts may be incomplete."].exists)
+        assertSavedDeck(cards: 0)
+        XCTAssertTrue(app.staticTexts["Add your commander and cards. Incomplete drafts are welcome."].exists)
+        XCTAssertTrue(app.buttons["Validate & playtest"].firstMatch.exists)
+        XCTAssertFalse(app.buttons["Validated · playtest"].exists, "An empty draft is never presented as validated")
         // Deliberately do not select/start an incomplete draft.
     }
 
     func testCatalogueSearchAddAndQuantityPersistInDraft() {
         let draftName = uniqueDeckName("Catalogue")
         openLibrary()
-        app.buttons["New deck"].tap()
-        selectDeckBuilderPane("Deck")
-        let name = app.textFields["Deck name"]
-        XCTAssertTrue(name.waitForExistence(timeout: 5))
-        replaceText(name, with: draftName)
-        selectDeckBuilderPane("Collection")
-        let search = app.textFields["nativeDeck.cardSearch"]
-        reveal(search); replaceText(search, with: "Sol Ring\n")
+        createDeck()
+        renameDeck(draftName)
+        tapDiagnosed(app.buttons["deckStudio.addCards"])
+        let search = app.textFields["Card name or rules text"]
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        replaceText(search, with: "Sol Ring\n")
         let add = app.buttons["Add Sol Ring to deck"]
         XCTAssertTrue(add.waitForExistence(timeout: 10))
-        reveal(add); add.tap()
-        selectDeckBuilderPane("Deck")
+        reveal(add); tapDiagnosed(add)
+        XCTAssertTrue(app.buttons["Remove one Sol Ring from deck"].waitForExistence(timeout: 5))
+        tapDiagnosed(app.buttons["deckStudio.search.close"])
         let increase = app.buttons["Add one Sol Ring"]
-        reveal(increase); increase.tap()
+        reveal(increase); tapDiagnosed(increase)
         assertDeckQuantity(2, card: "Sol Ring")
-        tapDiagnosed(app.navigationBars.buttons["nativeDeck.editor.save"])
-        waitFor(name, predicate: "exists == false")
+        saveAndCloseDeck()
         app.terminate(); app.launch()
         openLibrary(); openSavedDeck(draftName)
-        XCTAssertTrue(app.staticTexts["2 cards · Saved locally"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["nativeDeck.inspect.Sol Ring"].exists)
+        assertSavedDeck(cards: 2)
         // Verify the persisted row itself, then save a decrement and relaunch again.
-        let edit = app.buttons["Edit"]
-        reveal(edit, scrollingUp: false); tapDiagnosed(edit)
-        selectDeckBuilderPane("Deck")
         assertDeckQuantity(2, card: "Sol Ring")
         let decrease = app.buttons["Remove one Sol Ring"]
         reveal(decrease); tapDiagnosed(decrease)
         assertDeckQuantity(1, card: "Sol Ring")
-        tapDiagnosed(app.navigationBars.buttons["nativeDeck.editor.save"])
-        waitFor(name, predicate: "exists == false")
+        saveAndCloseDeck()
         app.terminate(); app.launch()
         openLibrary(); openSavedDeck(draftName)
-        XCTAssertTrue(app.staticTexts["1 card · Saved locally"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["nativeDeck.inspect.Sol Ring"].exists)
+        assertSavedDeck(cards: 1)
+        assertDeckQuantity(1, card: "Sol Ring")
     }
 
     func testMissingNativeLibraryReportsFailureAndKeepsSetupAvailable() {
@@ -360,85 +325,67 @@ final class OnDeviceSetupUITests: XCTestCase {
     func testBasicLandToolsPersistAndStatisticsUseActualQuantities() {
         let draftName = uniqueDeckName("LandTools")
         openLibrary()
-        tapDiagnosed(app.buttons["New deck"])
-        selectDeckBuilderPane("Deck")
-        let name = app.textFields["Deck name"]
-        XCTAssertTrue(name.waitForExistence(timeout: 5))
-        replaceText(name, with: draftName + "\n")
-        tapDiagnosed(app.buttons["Deck tools"])
-        let basics = app.buttons["Basic lands"]
-        reveal(basics); tapDiagnosed(basics)
-        let tools = app.buttons["Basic lands · manual counts"]
-        reveal(tools); tools.tap()
-        let addForest = app.buttons["nativeDeck.basic.add.Forest"]
-        let rows = app.scrollViews["nativeDeck.editor.rows"]
-        for _ in 0..<5 {
-            if addForest.isHittable { break }
-            rows.swipeUp()
-        }
-        XCTAssertTrue(addForest.isHittable)
-        waitFor(addForest, predicate: "enabled == true")
-        addForest.tap(); addForest.tap()
-        let removeForest = app.buttons["nativeDeck.basic.remove.Forest"]
-        removeForest.tap()
+        createDeck()
+        renameDeck(draftName)
+        openDeckActions()
+        tapDiagnosed(menuItem("Basic lands"))
+        XCTAssertTrue(app.navigationBars["Basic lands"].waitForExistence(timeout: 5))
+        let forest = app.steppers.matching(NSPredicate(format: "label BEGINSWITH %@", "Forest:")).firstMatch
+        reveal(forest)
+        waitFor(forest, predicate: "label == 'Forest: 0'")
+        let addForest = stepperButton(forest, increment: true)
+        tapDiagnosed(addForest); tapDiagnosed(addForest)
+        waitFor(forest, predicate: "label == 'Forest: 2'")
+        tapDiagnosed(stepperButton(forest, increment: false))
+        waitFor(forest, predicate: "label == 'Forest: 1'")
         capture("Deck builder basic-land controls")
-        tapDiagnosed(app.navigationBars.buttons["nativeDeck.editor.save"])
-        waitFor(name, predicate: "exists == false")
+        tapDiagnosed(app.navigationBars["Basic lands"].buttons["Apply"])
+        waitFor(forest, predicate: "exists == false")
+        assertDeckQuantity(1, card: "Forest")
+        saveAndCloseDeck()
         app.terminate(); app.launch()
         openLibrary(); openSavedDeck(draftName)
-        XCTAssertTrue(app.staticTexts["1 card · Saved locally"].waitForExistence(timeout: 5))
-        let stats = app.segmentedControls["nativeDeck.sections"].buttons["nativeDeck.section.stats"]
-        reveal(stats); tapDiagnosed(stats)
-        waitFor(stats, predicate: "selected == true")
-        XCTAssertTrue(app.searchFields["Find a card in this deck"].waitForNonExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Main deck only · 1 card"].waitForExistence(timeout: 5))
+        assertSavedDeck(cards: 1)
+        selectWorkspaceTab("Analysis")
+        XCTAssertTrue(metric("Main deck", "1").waitForExistence(timeout: 5))
+        XCTAssertTrue(metric("Lands in main", "1").exists)
         capture("Deck statistics from saved quantities")
-        let cards = app.segmentedControls["nativeDeck.sections"].buttons["nativeDeck.section.cards"]
-        tapDiagnosed(cards)
-        waitFor(cards, predicate: "selected == true")
-        let forest = app.buttons["nativeDeck.inspect.Forest"]
-        reveal(forest); forest.tap()
-        XCTAssertTrue(app.navigationBars["Forest"].waitForExistence(timeout: 5))
+        selectWorkspaceTab("Cards")
+        let row = deckRow("Forest", quantity: 1)
+        reveal(row); tapDiagnosed(row)
+        let close = app.buttons["deckStudio.inspector.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Forest"].exists)
         capture("Offline card inspection")
-        app.buttons["Done"].tap()
+        tapDiagnosed(close)
     }
 
     func testLandscapeDeckBuilderSplitAddRotateAndDonePersist() {
         let draftName = uniqueDeckName("LandscapeSplit")
         openLibrary()
-        tapDiagnosed(app.buttons["New deck"])
-        selectDeckBuilderPane("Deck")
-        let name = app.textFields["Deck name"]
-        replaceText(name, with: draftName + "\n")
-        XCUIDevice.shared.orientation = .landscapeLeft
+        createDeck()
+        renameDeck(draftName)
+        rotate(to: .landscapeLeft)
         defer { XCUIDevice.shared.orientation = .portrait }
-        let split = app.otherElements["nativeDeck.builder.split"]
-        XCTAssertTrue(split.waitForExistence(timeout: 10))
-        let search = app.textFields["nativeDeck.cardSearch"]
-        XCTAssertTrue(search.waitForExistence(timeout: 5))
-        XCTAssertTrue(name.isHittable, "Deck editor remains visible beside collection.")
-        XCTAssertLessThan(search.frame.midX, name.frame.minX)
+        let search = app.textFields["Card name or rules text"]
+        XCTAssertTrue(search.waitForExistence(timeout: 10), "Landscape shows the collection beside the deck")
+        let deck = app.scrollViews["deckStudio.cards.list"]
+        XCTAssertTrue(deck.waitForExistence(timeout: 5))
+        XCTAssertTrue(deck.isHittable, "Deck list remains visible beside collection.")
+        XCTAssertLessThan(search.frame.midX, deck.frame.minX)
         replaceText(search, with: "Sol Ring\n")
-        let add = app.buttons["nativeDeck.collection.add.Sol Ring"]
+        let add = app.buttons["Add Sol Ring to deck"]
         XCTAssertTrue(add.waitForExistence(timeout: 10))
-        let collection = app.scrollViews["nativeDeck.collection.scroll"]
-        XCTAssertTrue(collection.waitForExistence(timeout: 5))
-        for _ in 0..<5 {
-            if add.isHittable { break }
-            collection.swipeUp()
-        }
         capture("Landscape collection before adding card")
         tapDiagnosed(add)
-        let row = app.buttons["nativeDeck.inspect.Sol Ring"]
+        let row = deckRow("Sol Ring", quantity: 1)
         XCTAssertTrue(row.waitForExistence(timeout: 5))
-        XCTAssertTrue(row.isHittable, "Collapsed deck tools leave the first card visible without scrolling.")
+        XCTAssertTrue(row.isHittable, "The first card is visible without scrolling.")
         XCTAssertGreaterThan(row.frame.minX, search.frame.midX)
-        assertDeckQuantity(1, card: "Sol Ring")
-        let deckScroll = app.scrollViews["nativeDeck.editor.rows"]
         let increase = app.buttons["Add one Sol Ring"]
         for _ in 0..<4 {
             if increase.isHittable { break }
-            deckScroll.swipeUp()
+            deck.swipeUp()
         }
         XCTAssertTrue(increase.isHittable)
         tapDiagnosed(increase)
@@ -447,51 +394,29 @@ final class OnDeviceSetupUITests: XCTestCase {
         XCTAssertTrue(decrease.isHittable)
         tapDiagnosed(decrease)
         assertDeckQuantity(1, card: "Sol Ring")
-        let done = app.navigationBars.buttons["nativeDeck.editor.save"]
-        XCTAssertTrue(done.isHittable, "Save stays visible outside the scrolling deck list.")
+        let save = app.buttons["deckStudio.save"]
+        XCTAssertTrue(save.isHittable, "Save stays visible outside the scrolling deck list.")
         capture("Landscape collection and persistent deck pane")
-        XCUIDevice.shared.orientation = .portrait
-        selectDeckBuilderPane("Deck")
-        XCTAssertEqual(name.value as? String, draftName)
+        rotate(to: .portrait)
+        XCTAssertTrue(app.staticTexts[draftName].firstMatch.waitForExistence(timeout: 5))
         assertDeckQuantity(1, card: "Sol Ring")
-        tapDiagnosed(done)
-        waitFor(name, predicate: "exists == false")
+        saveAndCloseDeck()
         app.terminate(); app.launch()
         openLibrary(); openSavedDeck(draftName)
-        XCTAssertTrue(app.staticTexts["1 card · Saved locally"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["nativeDeck.inspect.Sol Ring"].exists)
+        assertSavedDeck(cards: 1)
+        assertDeckQuantity(1, card: "Sol Ring")
     }
 
     func testLandscapePartnerDeckKeepsQuantityControlsReachable() {
         let draftName = uniqueDeckName("PartnerLayout")
-        openLibrary()
-        app.buttons["Import"].tap()
-        replaceText(app.textFields["Deck name"], with: draftName)
-        let text = app.textViews["Deck list text"]
-        text.tap()
-        text.typeText("Commander\n1 Rograkh, Son of Rohgahh\n1 Ardenn, Intrepid Archaeologist\n\nDeck\n1 Sol Ring")
-        let submit = app.buttons["nativeDeck.import.submit"]
-        reveal(submit); tapDiagnosed(submit)
-        let confirm = app.buttons["nativeDeck.import.confirm"]
-        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
-        reveal(confirm); tapDiagnosed(confirm)
-        waitForImportDismissal(text)
+        importDeck(named: draftName,
+                   text: "Commander\n1 Rograkh, Son of Rohgahh\n1 Ardenn, Intrepid Archaeologist\n\nDeck\n1 Sol Ring")
         openSavedDeck(draftName)
-        let edit = app.buttons["Edit"]
-        reveal(edit, scrollingUp: false); tapDiagnosed(edit)
-        selectDeckBuilderPane("Deck")
-        waitFor(app.textFields["Deck name"], predicate: "exists == true AND hittable == true")
-        XCUIDevice.shared.orientation = .landscapeLeft
+        rotate(to: .landscapeLeft)
         defer { XCUIDevice.shared.orientation = .portrait }
-        let landscape = NSPredicate { _, _ in self.app.frame.width > self.app.frame.height }
-        let rotationResult = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: landscape, object: app)], timeout: 10)
-        if rotationResult != .completed {
-            captureTransitionDiagnostics("Editor rotation before restoring portrait", control: app.otherElements["nativeDeck.builder.split"])
-        }
-        XCTAssertEqual(rotationResult, .completed)
-        waitFor(app.otherElements["nativeDeck.builder.split"], predicate: "exists == true")
-        let rows = app.scrollViews["nativeDeck.editor.rows"]
-        let card = rows.buttons["nativeDeck.inspect.Sol Ring"]
+        let rows = app.scrollViews["deckStudio.cards.list"]
+        XCTAssertTrue(rows.waitForExistence(timeout: 10))
+        let card = rows.buttons["Inspect Sol Ring, quantity 1"]
         let increase = rows.buttons["Add one Sol Ring"]
         let decrease = rows.buttons["Remove one Sol Ring"]
         for _ in 0..<10 {
@@ -505,57 +430,184 @@ final class OnDeviceSetupUITests: XCTestCase {
         tapDiagnosed(increase)
         assertDeckQuantity(2, card: "Sol Ring")
         tapDiagnosed(decrease)
-        XCTAssertTrue(app.navigationBars.buttons["nativeDeck.editor.save"].isHittable)
+        assertDeckQuantity(1, card: "Sol Ring")
+        let save = app.buttons["deckStudio.save"]
+        XCTAssertTrue(save.isHittable)
         capture("Two commanders with complete editable landscape row")
-        tapDiagnosed(app.navigationBars.buttons["nativeDeck.editor.save"])
+        tapDiagnosed(save)
+        tapDiagnosed(app.buttons["deckStudio.close"])
         XCTAssertTrue(rows.waitForNonExistence(timeout: 5))
     }
 
     func testDeckFilterKeyboardDismissalKeepsFilterText() {
         openLibrary()
-        tapDiagnosed(app.buttons["New deck"])
-        selectDeckBuilderPane("Deck")
-        tapDiagnosed(app.buttons["Deck tools"])
-        let filters = app.buttons["Filter, sort & group"]
-        reveal(filters); tapDiagnosed(filters)
-        let filter = app.textFields["nativeDeck.deckFilter"]
+        createDeck()
+        let filter = app.textFields["deckStudio.cards.search"]
         XCTAssertTrue(filter.waitForExistence(timeout: 5))
         tapDiagnosed(filter)
         filter.typeText("Forest")
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
-        tapDiagnosed(app.buttons["Hide keyboard"])
+        // Dragging the deck list down dismisses the keyboard interactively.
+        let list = app.scrollViews["deckStudio.cards.list"]
+        list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)))
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         XCTAssertEqual(filter.value as? String, "Forest")
         tapDiagnosed(filter)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         filter.typeText("\n")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         XCTAssertEqual(filter.value as? String, "Forest")
     }
 
-    private func selectDeckBuilderPane(_ pane: String) {
-        let drawerDone = app.buttons["nativeDeck.searchDrawer.done"]
-        if pane == "Deck" {
-            if drawerDone.exists {
-                tapDiagnosed(drawerDone)
-                XCTAssertTrue(drawerDone.waitForNonExistence(timeout: 5))
-            }
-            XCTAssertTrue(app.textFields["Deck name"].waitForExistence(timeout: 5))
-        } else {
-            // Landscape already exposes collection search. Portrait opens its drawer.
-            if !app.otherElements["nativeDeck.builder.split"].exists && !drawerDone.exists {
-                let name = app.textFields["Deck name"]
-                if app.keyboards.firstMatch.exists { name.typeText("\n") }
-                let addCards = app.buttons["nativeDeck.builder.searchDrawer"]
-                XCTAssertTrue(addCards.waitForExistence(timeout: 5))
-                tapDiagnosed(addCards)
-            }
-            XCTAssertTrue(app.textFields["nativeDeck.cardSearch"].waitForExistence(timeout: 5))
-        }
+    // MARK: - Deck Studio helpers
+
+    private func openLibrary() {
+        let decks = app.buttons["menu.decks"]
+        XCTAssertTrue(decks.waitForExistence(timeout: 15))
+        reveal(decks); waitForStableFrame(decks); tapDiagnosed(decks)
+        waitFor(app.buttons["deckStudio.create"], predicate: "exists == true AND hittable == true")
+    }
+
+    private func createDeck() {
+        tapDiagnosed(app.buttons["deckStudio.create"])
+        waitFor(app.buttons["deckStudio.close"], predicate: "exists == true AND hittable == true")
+    }
+
+    private func importDeck(named name: String, text: String) {
+        openLibrary()
+        tapDiagnosed(app.buttons["deckStudio.import"])
+        let field = app.textFields["Deck name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        replaceText(field, with: name)
+        let editor = app.textViews["Decklist text"]
+        tapDiagnosed(editor)
+        editor.typeText(text)
+        let review = app.buttons["deckStudio.import.review"]
+        revealOutsideEditor(review)
+        tapDiagnosed(review)
+        let confirm = app.buttons["deckStudio.import.confirm"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10))
+        tapDiagnosed(confirm)
+        waitForImportDismissal(editor)
+    }
+
+    private func searchLibrary(_ name: String) {
+        let search = app.textFields["deckStudio.library.search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        reveal(search, scrollingUp: false)
+        replaceText(search, with: name + "\n")
+    }
+
+    private func savedDeck(_ name: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+                                         "deckStudio.deck.local:", name)).firstMatch
+    }
+
+    private func openSavedDeck(_ name: String) {
+        searchLibrary(name)
+        let deck = savedDeck(name)
+        XCTAssertTrue(deck.waitForExistence(timeout: 5))
+        reveal(deck); tapDiagnosed(deck)
+        waitFor(app.buttons["deckStudio.close"], predicate: "exists == true AND hittable == true")
+    }
+
+    private func openDeckActions() {
+        // The workspace's ellipsis menu; SF Symbols name it "More".
+        let actions = app.navigationBars.buttons["More"].firstMatch
+        tapDiagnosed(actions)
+    }
+
+    private func renameDeck(_ name: String) {
+        openDeckActions()
+        tapDiagnosed(menuItem("Rename deck"))
+        let field = app.textFields["Deck name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        replaceText(field, with: name)
+        tapDiagnosed(app.navigationBars["Rename deck"].buttons["Done"])
+        waitFor(field, predicate: "exists == false")
+    }
+
+    private func saveAndCloseDeck() {
+        tapDiagnosed(app.buttons["deckStudio.save"])
+        // Closing needs no confirmation once the draft matches what was saved.
+        let close = app.buttons["deckStudio.close"]
+        tapDiagnosed(close)
+        waitFor(close, predicate: "exists == false")
+        waitFor(app.buttons["deckStudio.create"], predicate: "exists == true")
+    }
+
+    private func selectWorkspaceTab(_ tab: String) {
+        let button = app.buttons.matching(NSPredicate(format: "label == %@", tab)).firstMatch
+        reveal(button, scrollingUp: false)
+        tapDiagnosed(button)
+        waitFor(button, predicate: "selected == true")
+    }
+
+    private func deckCount(_ cards: Int) -> XCUIElement {
+        app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "^\(cards) cards? · Commander$")).firstMatch
+    }
+
+    private func assertSavedDeck(cards: Int, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(deckCount(cards).waitForExistence(timeout: 5), "Expected \(cards) cards", file: file, line: line)
+        XCTAssertTrue(app.staticTexts["Saved on this device"].exists, file: file, line: line)
+    }
+
+    private func deckRow(_ card: String, quantity: Int) -> XCUIElement {
+        app.buttons["Inspect \(card), quantity \(quantity)"].firstMatch
     }
 
     private func assertDeckQuantity(_ quantity: Int, card: String) {
-        let row = app.scrollViews["nativeDeck.editor.rows"].buttons["nativeDeck.inspect.\(card)"]
-        waitFor(row, predicate: "exists == true AND value == '\(quantity) copies'")
+        waitFor(deckRow(card, quantity: quantity), predicate: "exists == true")
+    }
+
+    private func metric(_ title: String, _ value: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "\(title), \(value)")).firstMatch
+    }
+
+    private func menuItem(_ label: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "(elementType == %d OR elementType == %d) AND label == %@",
+            XCUIElement.ElementType.button.rawValue, XCUIElement.ElementType.menuItem.rawValue, label)).firstMatch
+    }
+
+    private func stepperButton(_ stepper: XCUIElement, increment: Bool) -> XCUIElement {
+        let name = increment ? "Increment" : "Decrement"
+        return stepper.buttons.matching(NSPredicate(format: "label == %@ OR identifier ENDSWITH %@", name, name)).firstMatch
+    }
+
+    private func rotate(to orientation: UIDeviceOrientation) {
+        XCUIDevice.shared.orientation = orientation
+        let wide = orientation.isLandscape
+        let settled = NSPredicate { _, _ in (self.app.frame.width > self.app.frame.height) == wide }
+        let result = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: settled, object: app)], timeout: 10)
+        if result != .completed {
+            captureTransitionDiagnostics("Rotation to \(wide ? "landscape" : "portrait")", control: app)
+        }
+        XCTAssertEqual(result, .completed)
+    }
+
+    /// The menu settles once the selected deck's name and artwork load; a tap before then can miss.
+    private func waitForStableFrame(_ element: XCUIElement) {
+        var previous = CGRect.null
+        for _ in 0..<20 {
+            let frame = element.exists && element.isHittable ? element.frame : .null
+            if !frame.isNull && frame == previous { return }
+            previous = frame
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+    }
+
+    /// The decklist editor scrolls its own text, so drag the page from its margin instead.
+    private func revealOutsideEditor(_ element: XCUIElement, scrollingUp: Bool = true,
+                                     file: StaticString = #filePath, line: UInt = #line) {
+        for _ in 0..<6 {
+            if element.exists && element.isHittable { return }
+            let high = app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.2))
+            let low = app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5))
+            if scrollingUp { low.press(forDuration: 0.05, thenDragTo: high) }
+            else { high.press(forDuration: 0.05, thenDragTo: low) }
+        }
+        XCTAssertTrue(element.exists && element.isHittable, "Expected accessible control: \(element)", file: file, line: line)
     }
 
     private func capture(_ title: String) {
@@ -573,44 +625,25 @@ final class OnDeviceSetupUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Your next game."].exists)
     }
 
-    private func openLibrary() {
-        let decks = app.buttons["menu.decks"]
-        XCTAssertTrue(decks.waitForExistence(timeout: 15))
-        reveal(decks); tapDiagnosed(decks)
-        waitFor(app.buttons["Import"], predicate: "exists == true AND hittable == true")
-    }
-
     private func uniqueDeckName(_ suffix: String) -> String {
         let name = "UI-\(UUID().uuidString)-\(suffix)"
         createdDeckNames.append(name)
         return name
     }
 
-    private func searchLibrary(_ name: String) {
-        let search = app.searchFields["Find a deck or commander"]
-        reveal(search, scrollingUp: false)
-        replaceText(search, with: name + "\n")
-    }
-
-    private func openSavedDeck(_ name: String) {
-        searchLibrary(name)
-        let deck = app.buttons["nativeDeck.saved.\(name)"]
-        XCTAssertTrue(deck.waitForExistence(timeout: 5))
-        reveal(deck); deck.tap()
-        XCTAssertTrue(app.navigationBars["Deck details"].waitForExistence(timeout: 5))
-    }
-
     private func replaceText(_ field: XCUIElement, with text: String) {
         field.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
-        let existing = field.value as? String ?? ""
-        if !existing.isEmpty && existing != field.placeholderValue {
-            // Exercise the visible iPhone edit menu. Hardware Command-A can be
-            // ignored by the simulator; backspace depends on the caret position.
-            field.press(forDuration: 1.2)
-            let selectAll = app.menuItems["Select All"]
-            XCTAssertTrue(selectAll.waitForExistence(timeout: 5))
-            selectAll.tap()
+        // Delete the old value a few keys at a time: iOS 27 dropped part of an 18-key burst.
+        // A long value can leave the caret mid-text; when nothing more deletes, move the
+        // caret to the trailing edge and continue until the field is empty.
+        for _ in 0..<60 {
+            let existing = field.value as? String ?? ""
+            if existing.isEmpty || existing == field.placeholderValue { break }
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: min(5, existing.count)))
+            if field.value as? String == existing {
+                field.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5)).tap()
+            }
         }
         field.typeText(text)
         let expected = text.trimmingCharacters(in: .newlines)
@@ -626,18 +659,15 @@ final class OnDeviceSetupUITests: XCTestCase {
             guard menu.waitForExistence(timeout: 15) else {
                 XCTFail("Cleanup could not reach library; retained test deck: \(name)"); continue
             }
+            waitForStableFrame(menu)
             menu.tap()
-            // Wait for the sheet's actual destination before scrolling. A swipe
-            // during presentation can dismiss the sheet instead of revealing search.
-            guard app.buttons["Import"].waitForExistence(timeout: 10) else {
+            // Wait for the library itself before scrolling. A swipe during
+            // presentation can dismiss it instead of revealing search.
+            guard app.buttons["deckStudio.create"].waitForExistence(timeout: 10) else {
                 capture("Cleanup library navigation failure")
                 XCTFail("Cleanup library did not open; retained test deck: \(name)"); continue
             }
-            let search = app.searchFields["Find a deck or commander"]
-            guard search.waitForExistence(timeout: 10) else {
-                capture("Cleanup library search failure")
-                XCTFail("Cleanup search did not appear; retained test deck: \(name)"); continue
-            }
+            let search = app.textFields["deckStudio.library.search"]
             for _ in 0..<5 {
                 if search.exists && search.isHittable { break }
                 app.swipeDown()
@@ -646,37 +676,27 @@ final class OnDeviceSetupUITests: XCTestCase {
                 XCTFail("Cleanup search unavailable; retained test deck: \(name)"); continue
             }
             replaceText(search, with: name + "\n")
-            let deck = app.buttons["nativeDeck.saved.\(name)"]
-            guard deck.waitForExistence(timeout: 3) else { continue } // Never saved, or renamed.
-            deck.tap()
-            // Filter card rows away so deleting a 100-card copy does not require
-            // an unbounded scroll through its artwork. This only changes UI search.
-            let cardSearch = app.searchFields["Find a card in this deck"]
+            let options = app.buttons["Options for \(name)"].firstMatch
+            guard options.waitForExistence(timeout: 3) else { continue } // Never saved, or renamed.
             for _ in 0..<5 {
-                if cardSearch.exists && cardSearch.isHittable { break }
-                app.swipeDown()
-            }
-            guard cardSearch.exists && cardSearch.isHittable else {
-                XCTFail("Cleanup card search unavailable; retained test deck: \(name)"); continue
-            }
-            replaceText(cardSearch, with: name + "\n")
-            let delete = app.buttons["Delete local deck"]
-            for _ in 0..<5 {
-                if delete.exists && delete.isHittable { break }
+                if options.isHittable { break }
                 app.swipeUp()
             }
-            guard delete.exists && delete.isHittable else {
+            guard options.isHittable else {
+                XCTFail("Cleanup options unavailable; retained test deck: \(name)"); continue
+            }
+            options.tap()
+            let delete = menuItem("Delete local deck")
+            guard delete.waitForExistence(timeout: 5) else {
                 XCTFail("Cleanup delete unavailable; retained test deck: \(name)"); continue
             }
             delete.tap()
-            // iOS 26 exposes the confirmation action as nested buttons with the
-            // same identifier; both represent this one destructive action.
-            let confirm = app.buttons.matching(identifier: "nativeDeck.confirmDelete").firstMatch
+            let confirm = app.buttons["Delete \(name)"].firstMatch
             guard confirm.waitForExistence(timeout: 5) else {
                 XCTFail("Cleanup confirmation unavailable; retained test deck: \(name)"); continue
             }
             confirm.tap()
-            waitFor(deck, predicate: "exists == false")
+            waitFor(options, predicate: "exists == false")
         }
         createdDeckNames.removeAll()
     }
@@ -695,8 +715,7 @@ final class OnDeviceSetupUITests: XCTestCase {
                                         file: StaticString = #filePath, line: UInt = #line) {
         waitFor(editor, predicate: "exists == false", file: file, line: line)
         waitFor(app.navigationBars["Import deck"], predicate: "exists == false", file: file, line: line)
-        waitFor(app.searchFields["Find a deck or commander"], predicate: "exists == true AND hittable == true",
-                file: file, line: line)
+        waitFor(app.textFields["deckStudio.library.search"], predicate: "exists == true", file: file, line: line)
     }
 
     private func tapDiagnosed(_ control: XCUIElement,
