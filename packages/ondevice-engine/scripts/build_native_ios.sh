@@ -66,25 +66,27 @@ printf 'JVM class/resource snapshot captured: %s\n' "$NATIVE_BUILD"
 shasum -a 256 "$NATIVE_BUILD/class-snapshot.sha256"
 NATIVE_REFLECTION_PROFILE=${MM_NATIVE_REFLECTION_PROFILE:-broad}
 NATIVE_REFLECTION_CONFIG="$ROOT/build/generated/reflect-config.json"
+# Every profile also emits serialization metadata for save/resume checkpoints: the Serializable
+# engine, card and plugin classes plus the checkpoint JDK allowlist (docs/PROTOCOL.md).
+mkdir -p "$ROOT/build/tools"
+"$JAVA_HOME/bin/javac" -J-Xmx512m --release 17 \
+  -cp "$NATIVE_BUILD/core" -d "$ROOT/build/tools" \
+  "$ROOT/engine/tools/NativeReflectionExporter.java"
+"$JAVA_HOME/bin/java" -Xmx768m -cp "$ROOT/build/tools:$NATIVE_CP" \
+  NativeReflectionExporter "$ROOT/build/native-metadata" \
+  "$ROOT/.upstream/mage/Mage/target/classes" \
+  "$ROOT/.upstream/mage/Mage.Sets/target/classes" \
+  "$ROOT/.upstream/mage/Mage.Common/target/classes" \
+  --serialization "$ROOT"/.upstream/mage/Mage.Server.Plugins/*/target/classes "$NATIVE_BUILD/engine"
+NATIVE_SERIALIZATION_CONFIG="$ROOT/build/native-metadata/serialization-config.json"
 case "$NATIVE_REFLECTION_PROFILE" in
   broad) ;;
-  targeted)
-    mkdir -p "$ROOT/build/tools"
-    "$JAVA_HOME/bin/javac" -J-Xmx512m --release 17 \
-      -cp "$NATIVE_BUILD/core" -d "$ROOT/build/tools" \
-      "$ROOT/engine/tools/NativeReflectionExporter.java"
-    "$JAVA_HOME/bin/java" -Xmx512m -cp "$ROOT/build/tools:$NATIVE_CP" \
-      NativeReflectionExporter "$ROOT/build/native-metadata" \
-      "$ROOT/.upstream/mage/Mage/target/classes" \
-      "$ROOT/.upstream/mage/Mage.Sets/target/classes" \
-      "$ROOT/.upstream/mage/Mage.Common/target/classes"
-    NATIVE_REFLECTION_CONFIG="$ROOT/build/native-metadata/reflect-config.json"
-    ;;
+  targeted) NATIVE_REFLECTION_CONFIG="$ROOT/build/native-metadata/reflect-config.json" ;;
   *) printf 'Unknown MM_NATIVE_REFLECTION_PROFILE: %s\n' "$NATIVE_REFLECTION_PROFILE" >&2; exit 2 ;;
 esac
-[[ -s "$NATIVE_REFLECTION_CONFIG" ]]
-printf 'Reflection profile: %s\nConfiguration: %s\n' "$NATIVE_REFLECTION_PROFILE" "$NATIVE_REFLECTION_CONFIG"
-shasum -a 256 "$NATIVE_REFLECTION_CONFIG" "$ROOT/build/generated/reflect-config.json" "$ROOT/build/runtime-classpath.txt"
+[[ -s "$NATIVE_REFLECTION_CONFIG" && -s "$NATIVE_SERIALIZATION_CONFIG" ]]
+printf 'Reflection profile: %s\nConfiguration: %s\nSerialization: %s\n' "$NATIVE_REFLECTION_PROFILE" "$NATIVE_REFLECTION_CONFIG" "$NATIVE_SERIALIZATION_CONFIG"
+shasum -a 256 "$NATIVE_REFLECTION_CONFIG" "$NATIVE_SERIALIZATION_CONFIG" "$ROOT/build/generated/reflect-config.json" "$ROOT/build/runtime-classpath.txt"
 NATIVE_INIT_ARG='--initialize-at-run-time=io.magicmobile,mage'
 case "${MM_NATIVE_INIT_PROFILE:-runtime}" in
   runtime) ;;
@@ -142,6 +144,7 @@ mvn --batch-mode --no-transfer-progress \
   "-Dengine.root=$ROOT" "-Dnative.build=$NATIVE_BUILD" \
   "-Dnative.classpath=$NATIVE_CP" \
   "-Dnative.reflection.config=$NATIVE_REFLECTION_CONFIG" \
+  "-Dnative.serialization.config=$NATIVE_SERIALIZATION_CONFIG" \
   "-Dnative.init.arg=$NATIVE_INIT_ARG" \
   "-Dnative.orm.arg=$NATIVE_ORM_ARG" \
   "-Dnative.max.heap=$NATIVE_MAX_HEAP" \
