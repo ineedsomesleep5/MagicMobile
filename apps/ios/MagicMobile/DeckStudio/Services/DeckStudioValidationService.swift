@@ -11,7 +11,11 @@ final class DeckStudioValidationService: ObservableObject {
     @Published private(set) var cleanupRequired = false
     private let runtime = OnDeviceRuntimeManager()
     static var appBuild: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "development" }
+    /// Set by the app: true while a game or match room is open. A check never starts a
+    /// second engine beside a live game.
+    var isGameLive: () -> Bool = { false }
     func validate(_ deck: MagicMobileOnDevice.JSONValue, resolver: OnDeviceDeckResolver) async throws -> DeckStudioValidationReceipt {
+        guard !isGameLive() else { throw EngineError.invalidMessage(DeckStudioPlayText.gameLive) }
         guard !busy, !cleanupRequired, !runtime.isOpen else { throw EngineError.invalidMessage("Wait for validation or retry its cleanup before checking another deck") }
         busy = true; defer { busy = false }
         let identity = BuildIdentity(upstreamCommit: resolver.upstreamCommit, catalogueHash: resolver.catalogueHash)
