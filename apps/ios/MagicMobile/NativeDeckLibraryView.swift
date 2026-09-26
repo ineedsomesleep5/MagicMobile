@@ -251,6 +251,9 @@ struct NativeCardArtworkView<Placeholder: View>: View {
             }
     }
 
+    /// Copy-token art is always the illustration alone, even without `artOnly`:
+    /// TokenCopyCardFace draws the token's own name, type line and live stats around it,
+    /// and the printed source card (whose name or stats can differ) never shows.
     private func presentedImage(_ image: CGImage) -> UIImage {
         UIImage(cgImage: artOnly || tokenSourceName != nil ? (NativeDeckArtwork.illustrationImage(image) ?? image) : image)
     }

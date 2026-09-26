@@ -6,6 +6,14 @@ import UIKit
 // elapsed time, with card flights layered above it: no per-particle state, no
 // work while idle, and no hit testing. Event derivation lives in BoardEventTimeline.swift.
 
+#if DEBUG
+/// Visual QA: `MAGICMOBILE_BOARD_FX_FREEZE=<seconds>` holds every effect batch at that
+/// moment and never prunes it, so a design preview can be screenshotted mid-effect.
+enum BoardFXPreviewFreeze {
+    static let seconds: TimeInterval? = ProcessInfo.processInfo.environment["MAGICMOBILE_BOARD_FX_FREEZE"].flatMap(TimeInterval.init)
+}
+#endif
+
 /// Board positions in the overlay's coordinate space.
 struct BoardFXAnchors {
     var viewerID: String
@@ -71,6 +79,10 @@ struct BoardFXOverlay: View {
                     }
                 }
                 .task(id: effects.last?.id) {
+                    #if DEBUG
+                    // A frozen preview keeps its effects on screen.
+                    if BoardFXPreviewFreeze.seconds != nil { return }
+                    #endif
                     // Wait for the last effect's end on the frame clock; batches not yet
                     // drawn count from now.
                     while !Task.isCancelled {
@@ -109,7 +121,11 @@ struct BoardFXOverlay: View {
 
     private func progress(_ effect: ActiveBoardFX, now: Date) -> Double? {
         guard let origin = clock.origin(for: effect.start) else { return nil }
-        let elapsed = now.timeIntervalSince(origin) - effect.scheduled.delay
+        var sinceStart = now.timeIntervalSince(origin)
+        #if DEBUG
+        if let freeze = BoardFXPreviewFreeze.seconds { sinceStart = min(sinceStart, freeze) }
+        #endif
+        let elapsed = sinceStart - effect.scheduled.delay
         guard elapsed >= 0, elapsed <= effect.scheduled.duration else { return nil }
         return elapsed / effect.scheduled.duration
     }
@@ -146,7 +162,7 @@ struct BoardFXOverlay: View {
                       in context: inout GraphicsContext) {
         let motion = fx.usesMotion
         switch fx.event {
-        case let .spellCast(_, name, _, tint, weight):
+        case let .spellCast(stackID, name, _, tint, weight):
             let center = anchors.stackPoint
             let showcase = BoardFXFlight.castSize(weight)
             if weight == .big || weight == .commander {
@@ -165,8 +181,10 @@ struct BoardFXOverlay: View {
                 BoardFXPainter.elemental(tint, around: hold, elapsed: elapsed, fade: BoardFXPainter.window(p, fadeIn: 0.12, fadeOut: 0.85),
                                          seed: fx.id, in: &context)
             }
-            let bannerY = center.y + (weight == .ability || !motion ? 54 : showcase.height / 2 + 22)
-            BoardFXPainter.banner(name, subtitle: weight == .commander ? "COMMANDER" : nil,
+            // Below the showcased card for abilities too (the card covered it at +54).
+            let bannerY = center.y + BoardFXBannerPlan.offset(showcaseHeight: showcase.height, motion: motion)
+            let title = BoardFXBannerPlan.title(name: name, isAbility: weight == .ability, sourceName: subjects[stackID]?.card.name)
+            BoardFXPainter.banner(title, subtitle: weight == .commander ? "COMMANDER" : nil,
                                   at: CGPoint(x: center.x, y: bannerY), color: weight == .commander ? BoardFXPainter.gold : tint.color,
                                   progress: p, in: &context)
         case let .enteredBattlefield(cardID, _, _, tint, entrance):

@@ -35,6 +35,8 @@ enum GameBoardDesignPreviewState: String, CaseIterable, Identifiable {
     case victory = "victory"
     case spectating = "spectating"
     case openingHand = "opening-hand"
+    case tokenCopyInspection = "token-copy-inspection"
+    case abilityShowcase = "ability-showcase"
 
     var id: String { rawValue }
 

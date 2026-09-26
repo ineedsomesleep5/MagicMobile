@@ -1,0 +1,174 @@
+package io.magicmobile.android.game
+
+/**
+ * Port of BoardCardPresentation.swift: pure presentation rules for board cards, namely the
+ * token copy frame, the held-card inspector's fit and the showcase banner. Views live in
+ * app board/CardViews.kt, board/InspectorViews.kt and board/BoardFXOverlay.kt.
+ */
+
+/**
+ * A token that copies a visible card. It is drawn as its own card frame (name, type line and
+ * live power/toughness) around the source card's illustration, never as the printed source
+ * card, whose name or stats can differ from the token's.
+ */
+object TokenCopyPresentation {
+    /** Below this width the tag cannot name the source legibly. */
+    const val NAMED_TAG_MINIMUM_WIDTH = 120f
+
+    /** The copied card's name, only for a face-up token the engine explicitly marked as a copy. */
+    fun sourceName(isToken: Boolean?, copySourceArtworkName: String?): String? {
+        if (isToken != true) return null
+        return copySourceArtworkName?.trim()?.takeIf { it.isNotEmpty() }
+    }
+
+    fun tag(source: String, cardWidth: Float): String =
+        if (cardWidth >= NAMED_TAG_MINIMUM_WIDTH) "Token copy · $source" else "Token copy"
+}
+
+/** Non-null when this card renders as a token copy frame. */
+val ZoneCard.tokenCopySourceName: String?
+    get() = TokenCopyPresentation.sourceName(card.isToken, card.copySourceArtworkName)
+
+/**
+ * Regions of the token copy frame, in the card's own coordinates. Proportions follow a printed
+ * card, so the compact battlefield face (which crops the tile to its art) still shows the art.
+ */
+data class TokenCopyFrameLayout(val size: BoardSize) {
+    val border: Float get() = maxOf(size.width * 0.045f, 2f)
+    private val gap: Float get() = maxOf(size.height * 0.012f, 1f)
+
+    val nameBar: BoardRect get() = BoardRect(border, border, size.width - border * 2, maxOf(size.height * 0.085f, 8f))
+
+    val art: BoardRect get() {
+        val top = nameBar.maxY + gap
+        return BoardRect(border, top, size.width - border * 2, maxOf(size.height * 0.555f - top, 1f))
+    }
+
+    val typeBar: BoardRect get() = BoardRect(border, art.maxY + gap, size.width - border * 2, maxOf(size.height * 0.07f, 7f))
+
+    val textBox: BoardRect get() {
+        val top = typeBar.maxY + gap
+        return BoardRect(border, top, size.width - border * 2, maxOf(size.height - border - top, 1f))
+    }
+
+    /** Bottom-right, over the text box's corner like a printed P/T box. */
+    val powerToughnessBox: BoardRect get() {
+        val width = maxOf(size.width * 0.27f, 16f)
+        val height = maxOf(size.height * 0.075f, 8f)
+        return BoardRect(size.width - border - width, size.height - border - height, width, height)
+    }
+
+    /** Rules text area: the text box above the P/T box. */
+    fun rulesArea(showsPowerToughness: Boolean): BoardRect {
+        val dx = maxOf(size.width * 0.03f, 1.5f)
+        val dy = maxOf(size.height * 0.01f, 1f)
+        val box = textBox
+        val height = if (showsPowerToughness) maxOf(powerToughnessBox.minY - (box.minY + dy) - gap, 1f) else box.height - dy * 2
+        return BoardRect(box.minX + dx, box.minY + dy, box.width - dx * 2, height)
+    }
+
+    /**
+     * Where the token copy tag sits: the art's top-leading corner, which the compact battlefield face
+     * (ArenaBattlefieldCard) keeps in view just under its name header. The art's bottom edge falls behind
+     * that face's P/T footer.
+     */
+    val tagSlot: BoardRect get() {
+        val height = maxOf(size.height * 0.06f, 9f)
+        val inset = maxOf(size.width * 0.04f, 2f)
+        return BoardRect(art.minX + inset, art.minY + inset * 0.6f, maxOf(art.width - inset * 2, 1f), height)
+    }
+
+    val nameFontSize: Float get() = maxOf(size.width * 0.085f, 6f)
+    val typeFontSize: Float get() = maxOf(size.width * 0.062f, 5f)
+    val rulesFontSize: Float get() = maxOf(size.width * 0.052f, 4f)
+    val powerToughnessFontSize: Float get() = maxOf(size.width * 0.085f, 6f)
+    val tagFontSize: Float get() = maxOf(tagSlot.height * 0.52f, 4.5f)
+    /** Rules are drawn only where they could be read. */
+    val showsRules: Boolean get() = size.width >= 60f
+
+    /** Whole rules lines that fit the text box; the rest is truncated. The inspector shows the full text beside the card. */
+    fun rulesLineLimit(showsPowerToughness: Boolean): Int =
+        maxOf(1, (rulesArea(showsPowerToughness).height / (rulesFontSize * 1.25f)).toInt())
+}
+
+/**
+ * Held-card inspection cannot scroll (the finger is down), so the rules text gets the room it
+ * needs first and the card image shrinks instead, down to a floor. Text shrinks only when even
+ * the smallest card leaves too little room.
+ */
+data class CardInspectorFit(
+    val cardSize: BoardSize,
+    /** Zero when there is nothing to show beside the card. */
+    val footerSize: BoardSize,
+    val horizontal: Boolean,
+    /** The footer's natural height fits its room at full text size. */
+    val footerFits: Boolean,
+) {
+    companion object {
+        const val SPACING = 8f
+        const val COLUMN_SPACING = 16f
+        /** Portrait: the card keeps at least this share of the height. */
+        const val MINIMUM_CARD_FRACTION = 0.34f
+        /** Landscape: the card column is at most this share of the width. */
+        const val LANDSCAPE_CARD_FRACTION = 0.55f
+        /** Landscape: card sizes to try (shares of the largest card), largest first. */
+        val landscapeCardScales = listOf(1f, 0.86f, 0.74f, 0.64f)
+        /** Text sizes to try when the footer still does not fit, largest first. */
+        val textScales = listOf(1f, 0.9f, 0.8f, 0.7f, 0.6f)
+
+        /** [footerHeight] is the footer's natural height at full text size for a width. */
+        fun plan(available: BoardSize, cardAspect: Float = BattlefieldLayoutMetrics.magicCardHeightToWidth, hasFooter: Boolean,
+                 footerHeight: (Float) -> Float): CardInspectorFit {
+            val width = maxOf(available.width, 1f)
+            val height = maxOf(available.height, 1f)
+            if (width > height) {
+                val largestCard = minOf(width * LANDSCAPE_CARD_FRACTION, height / cardAspect)
+                if (!hasFooter) return CardInspectorFit(BoardSize(largestCard, largestCard * cardAspect), BoardSize(0f, 0f), true, true)
+                var cardWidth = largestCard
+                var footerWidth = 1f
+                var needed = 0f
+                for (scale in landscapeCardScales) {
+                    cardWidth = largestCard * scale
+                    footerWidth = maxOf(width - cardWidth - COLUMN_SPACING, 1f)
+                    needed = footerHeight(footerWidth)
+                    if (needed <= height) break
+                }
+                return CardInspectorFit(BoardSize(cardWidth, cardWidth * cardAspect), BoardSize(footerWidth, minOf(needed, height)),
+                    true, needed <= height)
+            }
+            if (!hasFooter) {
+                val cardHeight = minOf(height, width * cardAspect)
+                return CardInspectorFit(BoardSize(cardHeight / cardAspect, cardHeight), BoardSize(0f, 0f), false, true)
+            }
+            val needed = footerHeight(width)
+            val room = maxOf(height - SPACING, 1f)
+            val maximumCard = minOf(width * cardAspect, room)
+            val minimumCard = minOf(maximumCard, height * MINIMUM_CARD_FRACTION)
+            val cardHeight = maxOf(minimumCard, minOf(maximumCard, room - needed))
+            val footerRoom = maxOf(room - cardHeight, 0f)
+            return CardInspectorFit(BoardSize(cardHeight / cardAspect, cardHeight), BoardSize(width, minOf(needed, footerRoom)),
+                false, needed <= footerRoom)
+        }
+
+        /** The largest text scale whose footer fits [height]; the smallest when none does. */
+        fun textScale(height: Float, heightAtScale: (Float) -> Float): Float =
+            textScales.firstOrNull { heightAtScale(it) <= height } ?: textScales.last()
+    }
+}
+
+/** The name banner under a showcased stack object. */
+object BoardFXBannerPlan {
+    /** Reduced effects draw no card, so the banner sits just under the stack point. */
+    const val REDUCED_OFFSET = 54f
+
+    /** Distance from the stack point to the banner's center; with motion, below the showcased card, abilities included. */
+    fun offset(showcaseHeight: Float, motion: Boolean): Float = if (motion) showcaseHeight / 2 + 22 else REDUCED_OFFSET
+
+    /** Abilities read as "<source> · ability"; spells keep their own name. */
+    fun title(name: String, isAbility: Boolean, sourceName: String?): String {
+        if (!isAbility) return name
+        val source = sourceName?.trim().orEmpty()
+        if (source.isNotEmpty()) return "$source · ability"
+        return if (name.contains("ability", ignoreCase = true)) name else "$name · ability"
+    }
+}

@@ -227,6 +227,28 @@ struct ContentView: View {
                     .font(.caption).padding(8).background(.black)
                     .padding(.top, 24).accessibilityIdentifier("preview.advance")
                 }
+                if fixture == "ability-showcase" {
+                    Button("Replay ability") {
+                        snapshot = GameBoardPreviewFixtures.snapshot(.abilityShowcase)
+                        Task {
+                            try? await Task.sleep(for: .seconds(0.4))
+                            snapshot = GameBoardPreviewFixtures.snapshot(.abilityShowcase, specialStateAdvanced: true)
+                        }
+                    }
+                    .font(.caption).padding(8).background(.black)
+                    .padding(.top, 24).accessibilityIdentifier("preview.advance")
+                    .task {
+                        // The ability goes on the stack once the board has settled, and replays
+                        // unless MAGICMOBILE_BOARD_FX_FREEZE holds it for a screenshot.
+                        while !Task.isCancelled {
+                            do { try await Task.sleep(for: .seconds(1.2)) } catch { return }
+                            snapshot = GameBoardPreviewFixtures.snapshot(.abilityShowcase, specialStateAdvanced: true)
+                            if BoardFXPreviewFreeze.seconds != nil { return }
+                            do { try await Task.sleep(for: .seconds(2.4)) } catch { return }
+                            snapshot = GameBoardPreviewFixtures.snapshot(.abilityShowcase)
+                        }
+                    }
+                }
             }
             #endif
         }
@@ -626,7 +648,7 @@ struct ContentView: View {
         let previewSnapshot = previewText == "board-fx" ? GameBoardPreviewFixtures.boardFXStep(0) : GameBoardPreviewFixtures.snapshot(state)
         snapshot = previewSnapshot
         selectedCard = GameBoardPreviewFixtures.selectedCard(for: state, snapshot: previewSnapshot)
-        inspectedCard = state == .fullHandInspection ? previewSnapshot.human?.zones.hand.first : nil
+        inspectedCard = GameBoardPreviewFixtures.inspectedCard(for: state, snapshot: previewSnapshot)
         if let id = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_INSPECT"] {
             inspectedCard = previewSnapshot.visibleBattlefield.first { $0.instanceId == id }
         }
@@ -11592,6 +11614,8 @@ struct CardTile: View {
             Group {
                 if !NativeCardArtworkPolicy.permitsLookup(card: card) {
                     CardArtPlaceholder(card: card, width: width, height: height)
+                } else if let source = card.tokenCopySourceName {
+                    TokenCopyCardFace(card: card, source: source, width: width, height: height, imageVariant: imageVariant)
                 } else if nativeTurnControl != nil {
                     NativeCardArtworkView(name: card.card.name, variant: imageVariant,
                                           tokenTypeLine: card.card.isToken == true ? (card.card.tokenArtwork?.typeLine ?? card.card.typeLine) : nil,
@@ -11627,7 +11651,9 @@ struct CardTile: View {
                 .padding(.leading, 2)
                 .allowsHitTesting(false)
 
-            if !ignoreTappedRotation && card.showsPowerToughness, let power = card.displayPower, let toughness = card.displayToughness {
+            // A token copy's frame prints its live P/T itself.
+            if !ignoreTappedRotation && card.showsPowerToughness && card.tokenCopySourceName == nil,
+               let power = card.displayPower, let toughness = card.displayToughness {
                 Text("\(power)/\(toughness)")
                     .font(.system(size: 10, weight: .black))
                     .foregroundStyle(.black)
@@ -11997,6 +12023,142 @@ struct CardArtPlaceholder: View {
                     lineWidth: max(width * 0.035, 1)
                 )
         )
+    }
+}
+
+/// A token copy drawn as its own card: the token's live name, type line, rules and P/T
+/// around the copied card's illustration, with a tag naming the source. The printed
+/// source card is never shown, because its name or stats can differ from the token's.
+struct TokenCopyCardFace: View {
+    let card: ZoneCard
+    let source: String
+    let width: CGFloat
+    let height: CGFloat
+    var imageVariant: CardImageCacheVariant = .board
+    @Environment(\.nativeTurnControl) private var nativeTurnControl
+
+    var body: some View {
+        let frame = TokenCopyFrameLayout(size: CGSize(width: width, height: height))
+        let rules = card.card.oracleText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        ZStack(alignment: .topLeading) {
+            LinearGradient(colors: [MagicPalette.parchment, Color(red: 0.72, green: 0.59, blue: 0.38), MagicPalette.parchmentShadow],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+
+            Text(card.card.name)
+                .font(.system(size: frame.nameFontSize, weight: .black, design: .serif))
+                .foregroundStyle(MagicPalette.iron)
+                .lineLimit(1).minimumScaleFactor(0.5)
+                .padding(.horizontal, max(width * 0.03, 2))
+                .frame(width: frame.nameBar.width, height: frame.nameBar.height, alignment: .leading)
+                .background(MagicPalette.parchment.opacity(0.72), in: RoundedRectangle(cornerRadius: 3))
+                .offset(x: frame.nameBar.minX, y: frame.nameBar.minY)
+
+            illustration
+                .frame(width: frame.art.width, height: frame.art.height)
+                .clipShape(RoundedRectangle(cornerRadius: 3))
+                .overlay(RoundedRectangle(cornerRadius: 3).stroke(MagicPalette.iron.opacity(0.55), lineWidth: max(width * 0.006, 0.5)))
+                .offset(x: frame.art.minX, y: frame.art.minY)
+
+            Text(card.card.typeLine.isEmpty ? "Token" : card.card.typeLine)
+                .font(.system(size: frame.typeFontSize, weight: .bold, design: .serif))
+                .foregroundStyle(MagicPalette.iron.opacity(0.85))
+                .lineLimit(1).minimumScaleFactor(0.5)
+                .padding(.horizontal, max(width * 0.03, 2))
+                .frame(width: frame.typeBar.width, height: frame.typeBar.height, alignment: .leading)
+                .background(MagicPalette.parchment.opacity(0.72), in: RoundedRectangle(cornerRadius: 3))
+                .offset(x: frame.typeBar.minX, y: frame.typeBar.minY)
+
+            RoundedRectangle(cornerRadius: 3)
+                .fill(MagicPalette.parchment.opacity(0.42))
+                .frame(width: frame.textBox.width, height: frame.textBox.height)
+                .offset(x: frame.textBox.minX, y: frame.textBox.minY)
+
+            if frame.showsRules && !rules.isEmpty {
+                let area = frame.rulesArea(showsPowerToughness: card.showsPowerToughness)
+                GameRulesText(source: rules, cardName: card.card.name, symbolSize: frame.rulesFontSize)
+                    .font(.system(size: frame.rulesFontSize, weight: .medium, design: .serif))
+                    .foregroundStyle(MagicPalette.iron)
+                    .lineLimit(frame.rulesLineLimit(showsPowerToughness: card.showsPowerToughness))
+                    .frame(width: area.width, height: area.height, alignment: .topLeading)
+                    .clipped()
+                    .offset(x: area.minX, y: area.minY)
+            }
+
+            if card.showsPowerToughness, let power = card.displayPower, let toughness = card.displayToughness {
+                let box = frame.powerToughnessBox
+                Text("\(power)/\(toughness)")
+                    .font(.system(size: frame.powerToughnessFontSize, weight: .black))
+                    .foregroundStyle(MagicPalette.iron)
+                    .lineLimit(1).minimumScaleFactor(0.5)
+                    .frame(width: box.width, height: box.height)
+                    .background(MagicPalette.parchment, in: RoundedRectangle(cornerRadius: 3))
+                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(MagicPalette.borderBronze, lineWidth: max(width * 0.01, 0.8)))
+                    .offset(x: box.minX, y: box.minY)
+            }
+
+            let slot = frame.tagSlot
+            Text(TokenCopyPresentation.tag(source: source, cardWidth: width))
+                .font(.system(size: frame.tagFontSize, weight: .black))
+                .tracking(0.3)
+                .foregroundStyle(MagicPalette.antiqueGold)
+                .lineLimit(1).minimumScaleFactor(0.6)
+                .padding(.horizontal, slot.height * 0.45)
+                .frame(height: slot.height)
+                .background(MagicPalette.iron.opacity(0.88), in: Capsule())
+                .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.6), lineWidth: 0.7))
+                .frame(width: slot.width, height: slot.height, alignment: .leading)
+                .offset(x: slot.minX, y: slot.minY)
+        }
+        .frame(width: width, height: height, alignment: .topLeading)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(LinearGradient(colors: [MagicPalette.borderBronze.opacity(0.70), MagicPalette.borderIron.opacity(0.62)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing),
+                        lineWidth: max(width * 0.035, 1))
+        )
+    }
+
+    /// The source's illustration only: NativeCardArtworkView crops copy art itself, and a
+    /// whole printed image (previews, hosted games) is framed down to its art window.
+    @ViewBuilder private var illustration: some View {
+        if nativeTurnControl != nil {
+            NativeCardArtworkView(name: card.card.name, variant: imageVariant, contentMode: .fill, artOnly: true,
+                                  tokenTypeLine: card.card.tokenArtwork?.typeLine ?? card.card.typeLine,
+                                  tokenOracleText: card.card.tokenArtwork?.oracleText ?? card.card.oracleText,
+                                  tokenPower: card.card.tokenArtwork?.power ?? card.displayPower,
+                                  tokenToughness: card.card.tokenArtwork?.toughness ?? card.displayToughness,
+                                  tokenColors: card.card.tokenArtwork?.colors ?? card.card.tokenColors,
+                                  tokenSourceName: source) { loading, _ in
+                artPlaceholder(loading: loading)
+            }
+        } else {
+            // Like CardTile: previews with forced placeholders pass no URL and stay loading.
+            AsyncImage(url: CardImageURL.image(source, variant: imageVariant)) { phase in
+                switch phase {
+                case .success(let image):
+                    GeometryReader { proxy in
+                        let placement = CardIllustrationCrop.imageFrame(filling: proxy.size)
+                        image.resizable()
+                            .frame(width: placement.width, height: placement.height)
+                            .offset(x: placement.minX, y: placement.minY)
+                    }
+                case .empty:
+                    artPlaceholder(loading: true)
+                case .failure, _:
+                    artPlaceholder(loading: false)
+                }
+            }
+        }
+    }
+
+    private func artPlaceholder(loading: Bool) -> some View {
+        ZStack {
+            LinearGradient(colors: [MagicPalette.leather.opacity(0.78), MagicPalette.moss.opacity(0.62), MagicPalette.iron.opacity(0.86)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            Image(systemName: loading ? "hourglass" : "sparkles")
+                .font(.system(size: max(width * 0.18, 10), weight: .semibold))
+                .foregroundStyle(MagicPalette.antiqueGold.opacity(loading ? 0.34 : 0.42))
+        }
     }
 }
 
@@ -12556,103 +12718,147 @@ struct CardInspector: View {
         artMissing || shown.card.isToken == true || !NativeCardArtworkPolicy.permitsLookup(card: shown)
     }
 
+    /// Solid, so the board never shows through the text while you read.
+    static let backdrop = Color(red: 0.07, green: 0.08, blue: 0.10)
+
+    @ScaledMetric(relativeTo: .body) private var bodySize: CGFloat = 17
+    @ScaledMetric(relativeTo: .footnote) private var footnoteSize: CGFloat = 13
+
+    var body: some View {
+        let card = shown
+        let rules = card.card.oracleText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let rulesVisible = showsRules && !rules.isEmpty
+        let state = liveState
+        let attached = attachments
+        let reminder = CardRulesReminder.text(for: card)
+        // Rules get their room first; CardInspectorFit shrinks the card, then the text.
+        CardInspectorLayout {
+            InspectorCardFace(card: card)
+            if rulesVisible || !state.isEmpty || !attached.isEmpty || reminder != nil {
+                ViewThatFits(in: .vertical) {
+                    ForEach(CardInspectorFit.textScales, id: \.self) { scale in
+                        footer(scale: scale, card: card, rules: rulesVisible ? rules : nil, state: state,
+                               reminder: reminder, attached: attached)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .clipped()
+            }
+        }
+        .padding(9)
+        .onPreferenceChange(CardArtPlaceholderShownKey.self) { artMissing = $0 }
+        .background(Self.backdrop, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.cyan.opacity(0.35)))
+    }
+
+    private func footer(scale: CGFloat, card: ZoneCard, rules: String?, state: [String], reminder: String?,
+                        attached: [ZoneCard]) -> some View {
+        VStack(alignment: .leading, spacing: 8 * scale) {
+            if !state.isEmpty {
+                InspectorStateChips(items: state, scale: scale)
+            }
+            if let rules {
+                GameRulesText(source: rules, cardName: card.card.name,
+                              isHidden: !NativeCardArtworkPolicy.permitsLookup(card: card), symbolSize: 16 * scale)
+                    .font(.system(size: bodySize * scale)).lineSpacing(3 * scale)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let reminder {
+                Label(reminder, systemImage: "info.circle")
+                    .font(.system(size: footnoteSize * scale, weight: .semibold))
+                    .foregroundStyle(MagicPalette.parchment.opacity(0.82))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("inspector.rulesReminder")
+            }
+            if !attached.isEmpty {
+                InspectorAttachmentList(cards: attached, scale: scale)
+                    // A thumbnail's missing art must not read as the main card's.
+                    .transformPreference(CardArtPlaceholderShownKey.self) { $0 = false }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .padding(.horizontal, 4)
+        .foregroundStyle(MagicPalette.parchment)
+    }
+}
+
+/// The inspected card, as large as its slot allows.
+private struct InspectorCardFace: View {
+    let card: ZoneCard
+
     var body: some View {
         GeometryReader { proxy in
-            let card = shown
-            let availableHeight = max(proxy.size.height - 18, 1)
-            let availableWidth = max(proxy.size.width - 18, 1)
-            let rules = card.card.oracleText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let rulesVisible = showsRules && !rules.isEmpty
-            let state = liveState
-            let attached = attachments
-            let reminder = CardRulesReminder.text(for: card)
-            let horizontal = availableWidth > availableHeight
-            let footerHeight: CGFloat = !attached.isEmpty || reminder != nil
-                ? min(320, availableHeight * 0.48)
-                : rulesVisible ? min(200, availableHeight * 0.38) : (state.isEmpty ? 0 : 64)
-            let spacing: CGFloat = footerHeight > 0 ? 8 : 0
-            let cardHeight = horizontal ? min(availableHeight, availableWidth * 0.55 * BattlefieldLayoutMetrics.magicCardHeightToWidth) : max(1, min(availableHeight - footerHeight - spacing, availableWidth * BattlefieldLayoutMetrics.magicCardHeightToWidth))
-            let cardWidth = cardHeight / BattlefieldLayoutMetrics.magicCardHeightToWidth
-
-            let layout = horizontal ? AnyLayout(HStackLayout(alignment: .top, spacing: 16)) : AnyLayout(VStackLayout(spacing: spacing))
-            layout {
-                CardTile(card: card, selected: false, zoneName: "Inspector",
-                         width: cardWidth, height: cardHeight,
-                         ignoreTappedRotation: true, imageVariant: .inspection)
-                    .modifier(InspectionFoil(size: CGSize(width: cardWidth, height: cardHeight)))
-                    .id(card.instanceId)
-                    .frame(width: horizontal ? cardWidth : availableWidth)
-                if footerHeight > 0 || (horizontal && (rulesVisible || !state.isEmpty || !attached.isEmpty)) {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 8) {
-                            if !state.isEmpty {
-                                InspectorStateChips(items: state)
-                            }
-                            if rulesVisible {
-                                GameRulesText(source: rules, cardName: card.card.name,
-                                              isHidden: !NativeCardArtworkPolicy.permitsLookup(card: card))
-                                    .font(.body).lineSpacing(3)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            if let reminder {
-                                Label(reminder, systemImage: "info.circle")
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(MagicPalette.parchment.opacity(0.82))
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .accessibilityIdentifier("inspector.rulesReminder")
-                            }
-                            if !attached.isEmpty {
-                                InspectorAttachmentList(cards: attached)
-                                    // A thumbnail's missing art must not read as the main card's.
-                                    .transformPreference(CardArtPlaceholderShownKey.self) { $0 = false }
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                    }
-                    .scrollBounceBehavior(.basedOnSize)
-                    .frame(maxWidth: .infinity, maxHeight: horizontal ? availableHeight : footerHeight, alignment: .topLeading)
-                    .padding(.horizontal, 4)
-                    .foregroundStyle(MagicPalette.parchment)
-                }
-            }
-            .frame(width: availableWidth, height: availableHeight, alignment: .top)
-            .padding(9)
+            let height = max(1, min(proxy.size.height, proxy.size.width * BattlefieldLayoutMetrics.magicCardHeightToWidth))
+            let width = height / BattlefieldLayoutMetrics.magicCardHeightToWidth
+            CardTile(card: card, selected: false, zoneName: "Inspector", width: width, height: height,
+                     ignoreTappedRotation: true, imageVariant: .inspection)
+                .modifier(InspectionFoil(size: CGSize(width: width, height: height)))
+                .id(card.instanceId)
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
         }
-        .onPreferenceChange(CardArtPlaceholderShownKey.self) { artMissing = $0 }
-        .background(.black.opacity(0.88), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.cyan.opacity(0.35)))
+    }
+}
+
+/// Card above (portrait) or beside (landscape) the footer, sized by CardInspectorFit from the
+/// footer's natural height. The footer is then offered all the room left under the card.
+private struct CardInspectorLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        proposal.replacingUnspecifiedDimensions(by: CGSize(width: 320, height: 480))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let face = subviews.first else { return }
+        let footer = subviews.count > 1 ? subviews[1] : nil
+        let fit = CardInspectorFit.plan(available: bounds.size, cardAspect: BattlefieldLayoutMetrics.magicCardHeightToWidth,
+                                        hasFooter: footer != nil) { width in
+            footer?.sizeThatFits(ProposedViewSize(width: width, height: nil)).height ?? 0
+        }
+        if fit.horizontal {
+            face.place(at: bounds.origin, proposal: ProposedViewSize(fit.cardSize))
+            footer?.place(at: CGPoint(x: bounds.minX + fit.cardSize.width + CardInspectorFit.columnSpacing, y: bounds.minY),
+                          proposal: ProposedViewSize(width: fit.footerSize.width, height: bounds.height))
+        } else {
+            face.place(at: CGPoint(x: bounds.midX, y: bounds.minY), anchor: .top, proposal: ProposedViewSize(fit.cardSize))
+            let top = fit.cardSize.height + CardInspectorFit.spacing
+            footer?.place(at: CGPoint(x: bounds.minX, y: bounds.minY + top),
+                          proposal: ProposedViewSize(width: bounds.width, height: max(bounds.height - top, 0)))
+        }
     }
 }
 
 /// What is attached to the inspected card: each Aura or Equipment with its rules text.
 private struct InspectorAttachmentList: View {
     let cards: [ZoneCard]
+    var scale: CGFloat = 1
+    @ScaledMetric(relativeTo: .subheadline) private var nameSize: CGFloat = 15
+    @ScaledMetric(relativeTo: .caption) private var captionSize: CGFloat = 12
+    @ScaledMetric(relativeTo: .footnote) private var rulesSize: CGFloat = 13
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 6 * scale) {
             Text(cards.count == 1 ? "ATTACHED" : "ATTACHED · \(cards.count)")
-                .font(.caption.weight(.black)).tracking(1.2)
+                .font(.system(size: captionSize * scale, weight: .black)).tracking(1.2)
                 .foregroundStyle(MagicPalette.antiqueGold)
             ForEach(cards.prefix(4)) { attachment in
-                HStack(alignment: .top, spacing: 10) {
+                HStack(alignment: .top, spacing: 10 * scale) {
                     CardTile(card: attachment, selected: false, zoneName: "Inspector attachment",
-                             width: 40, height: 40 * BattlefieldLayoutMetrics.magicCardHeightToWidth,
+                             width: 40 * scale, height: 40 * scale * BattlefieldLayoutMetrics.magicCardHeightToWidth,
                              ignoreTappedRotation: true)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(attachment.card.name)
-                            .font(.subheadline.weight(.heavy))
+                            .font(.system(size: nameSize * scale, weight: .heavy))
                             .foregroundStyle(.white)
                         if !attachment.card.typeLine.isEmpty {
                             Text(attachment.card.typeLine)
-                                .font(.caption.weight(.semibold))
+                                .font(.system(size: captionSize * scale, weight: .semibold))
                                 .foregroundStyle(MagicPalette.parchment.opacity(0.7))
                         }
                         if let text = attachment.card.oracleText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
                             GameRulesText(source: text, cardName: attachment.card.name,
-                                          isHidden: !NativeCardArtworkPolicy.permitsLookup(card: attachment))
-                                .font(.footnote).lineSpacing(1)
+                                          isHidden: !NativeCardArtworkPolicy.permitsLookup(card: attachment), symbolSize: 16 * scale)
+                                .font(.system(size: rulesSize * scale)).lineSpacing(1)
                                 .foregroundStyle(MagicPalette.parchment)
                                 .lineLimit(4)
                                 .minimumScaleFactor(0.8)
@@ -12686,30 +12892,68 @@ enum CardRulesReminder {
     }
 }
 
-/// Live card state as compact chips that wrap onto a second line when needed.
+/// Live card state as compact chips that wrap onto as many lines as they need
+/// (Android's FlowRow), so the inspector's fit measures their real height.
 private struct InspectorStateChips: View {
     let items: [String]
+    var scale: CGFloat = 1
+    @ScaledMetric(relativeTo: .subheadline) private var chipSize: CGFloat = 15
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 6) { chips(items) }
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) { chips(Array(items.prefix((items.count + 1) / 2))) }
-                HStack(spacing: 6) { chips(Array(items.dropFirst((items.count + 1) / 2))) }
+        InspectorChipFlow(spacing: 6 * scale) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                Text(item)
+                    .font(.system(size: chipSize * scale, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.horizontal, 8 * scale).padding(.vertical, 3 * scale)
+                    .background(MagicPalette.iron.opacity(0.9), in: Capsule())
+                    .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.55), lineWidth: 1))
             }
         }
         .accessibilityElement(children: .combine)
     }
+}
 
-    private func chips(_ values: [String]) -> some View {
-        ForEach(Array(values.enumerated()), id: \.offset) { _, item in
-            Text(item)
-                .font(.subheadline.weight(.bold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(MagicPalette.iron.opacity(0.9), in: Capsule())
-                .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.55), lineWidth: 1))
+/// Left-to-right rows that wrap at the proposed width.
+private struct InspectorChipFlow: Layout {
+    var spacing: CGFloat
+
+    private func rows(_ subviews: Subviews, width: CGFloat) -> [[(index: Int, size: CGSize)]] {
+        var rows: [[(index: Int, size: CGSize)]] = [[]]
+        var x: CGFloat = 0
+        for (index, subview) in subviews.enumerated() {
+            var size = subview.sizeThatFits(.unspecified)
+            size.width = min(size.width, width)
+            if !rows[rows.count - 1].isEmpty && x + spacing + size.width > width {
+                rows.append([])
+                x = 0
+            }
+            x += (rows[rows.count - 1].isEmpty ? 0 : spacing) + size.width
+            rows[rows.count - 1].append((index, size))
+        }
+        return rows
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        let rows = rows(subviews, width: width)
+        let height = rows.reduce(0) { $0 + ($1.map(\.size.height).max() ?? 0) } + spacing * CGFloat(max(rows.count - 1, 0))
+        let used = rows.map { row in row.reduce(0) { $0 + $1.size.width } + spacing * CGFloat(max(row.count - 1, 0)) }.max() ?? 0
+        return CGSize(width: proposal.width ?? used, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in rows(subviews, width: bounds.width) {
+            var x = bounds.minX
+            let height = row.map(\.size.height).max() ?? 0
+            for item in row {
+                subviews[item.index].place(at: CGPoint(x: x, y: y + (height - item.size.height) / 2),
+                                           proposal: ProposedViewSize(item.size))
+                x += item.size.width + spacing
+            }
+            y += height + spacing
         }
     }
 }

@@ -54,11 +54,15 @@ import io.magicmobile.android.CardArtwork
 import io.magicmobile.android.R
 import io.magicmobile.android.game.BattlefieldAbilityBadgePlan
 import io.magicmobile.android.game.BoardFXLevel
+import io.magicmobile.android.game.BoardSize
 import io.magicmobile.android.game.CardCounterBadge
 import io.magicmobile.android.game.CardPlayAffordance
 import io.magicmobile.android.game.NativeCardArtworkPolicy
+import io.magicmobile.android.game.TokenCopyFrameLayout
+import io.magicmobile.android.game.TokenCopyPresentation
 import io.magicmobile.android.game.XmageCardIcon
 import io.magicmobile.android.game.ZoneCard
+import io.magicmobile.android.game.tokenCopySourceName
 import io.magicmobile.android.ui.FitText
 import io.magicmobile.android.ui.MagicPalette
 import io.magicmobile.android.ui.SfDesign
@@ -71,7 +75,7 @@ import io.magicmobile.android.ui.rgb
 import io.magicmobile.android.ui.sf
 
 /**
- * Ports of ContentView.swift's CardTile, CardArtPlaceholder, CardCounterBadgeStrip,
+ * Ports of ContentView.swift's CardTile, CardArtPlaceholder, TokenCopyCardFace, CardCounterBadgeStrip,
  * XmageCardIconStrip, TargetingStatusPill, ManaSymbolView and ArenaBoardPresentation.swift's
  * ArenaBattlefieldCard, BattlefieldAbilityBadges and HandManaCost.
  */
@@ -116,7 +120,8 @@ fun CardTile(card: ZoneCard, selected: Boolean, modifier: Modifier = Modifier, p
         if (!ignoreTappedRotation) {
             XmageCardIconStrip(card.visibleXmageIcons, width, Modifier.align(Alignment.CenterStart).padding(start = 2.dp))
         }
-        if (!ignoreTappedRotation && card.showsPowerToughness) {
+        // A token copy's frame prints its live P/T itself.
+        if (!ignoreTappedRotation && card.showsPowerToughness && card.tokenCopySourceName == null) {
             Text("${card.displayPower}/${card.displayToughness}", Modifier.align(Alignment.BottomEnd).padding(3.dp)
                 .background(Color.White.copy(alpha = 0.92f), CircleShape).padding(horizontal = 5.dp, vertical = 2.dp),
                 color = Color.Black, style = sf(10f, SfWeight.black))
@@ -186,6 +191,11 @@ fun CardArtworkOrPlaceholder(card: ZoneCard, width: Dp, height: Dp, artOnly: Boo
         CardArtPlaceholder(card, width, height)
         return
     }
+    val copySource = card.tokenCopySourceName
+    if (copySource != null && !artOnly) {
+        TokenCopyCardFace(card, copySource, width, height)
+        return
+    }
     if (BoardArtwork.forcePlaceholders) {
         // iOS previews request no image at all, so their placeholder stays in its loading state.
         CardArtPlaceholder(card, width, height, loading = true)
@@ -196,6 +206,69 @@ fun CardArtworkOrPlaceholder(card: ZoneCard, width: Dp, height: Dp, artOnly: Boo
     CardArtwork(card.card.copySourceArtworkName?.takeIf { isToken } ?: card.card.name, Modifier.fillMaxSize(), token = isToken && card.card.copySourceArtworkName == null,
         tokenIdentity = identity, artOnly = artOnly) {
         CardArtPlaceholder(card, width, height)
+    }
+}
+
+/**
+ * Port of ContentView.swift's TokenCopyCardFace: a token copy drawn as its own card, with the token's
+ * live name, type line, rules and P/T around the copied card's illustration and a tag naming the source.
+ * The printed source card is never shown, because its name or stats can differ from the token's.
+ */
+@Composable
+fun TokenCopyCardFace(card: ZoneCard, source: String, width: Dp, height: Dp) {
+    val frame = TokenCopyFrameLayout(BoardSize(width.value, height.value))
+    val rules = card.card.oracleText?.trim().orEmpty()
+    val barShape = RoundedCornerShape(3.dp)
+    Box(Modifier.requiredSize(width, height)
+        .background(Brush.linearGradient(listOf(MagicPalette.parchment, rgb(0.72, 0.59, 0.38), MagicPalette.parchmentShadow)))
+        .border(maxOf(width * 0.035f, 1.dp), Brush.linearGradient(listOf(MagicPalette.borderBronze.copy(alpha = 0.70f), MagicPalette.borderIron.copy(alpha = 0.62f))),
+            RoundedCornerShape(6.dp))) {
+        Box(Modifier.place(frame.nameBar).background(MagicPalette.parchment.copy(alpha = 0.72f), barShape)
+            .padding(horizontal = maxOf(width * 0.03f, 2.dp)), contentAlignment = Alignment.CenterStart) {
+            FitText(card.card.name, sf(frame.nameFontSize, SfWeight.black, SfDesign.SERIF), color = MagicPalette.iron, minimumScale = 0.5f)
+        }
+        Box(Modifier.place(frame.art).clip(barShape).border(maxOf(width * 0.006f, 0.5.dp), MagicPalette.iron.copy(alpha = 0.55f), barShape)) {
+            val placeholder: @Composable (Boolean) -> Unit = { loading -> TokenCopyArtPlaceholder(width, loading) }
+            // The source's illustration only, cropped from the printed card.
+            if (BoardArtwork.forcePlaceholders) placeholder(true)
+            else CardArtwork(source, Modifier.fillMaxSize(), artOnly = true) { placeholder(false) }
+        }
+        Box(Modifier.place(frame.typeBar).background(MagicPalette.parchment.copy(alpha = 0.72f), barShape)
+            .padding(horizontal = maxOf(width * 0.03f, 2.dp)), contentAlignment = Alignment.CenterStart) {
+            FitText(card.card.typeLine.ifEmpty { "Token" }, sf(frame.typeFontSize, SfWeight.bold, SfDesign.SERIF),
+                color = MagicPalette.iron.copy(alpha = 0.85f), minimumScale = 0.5f)
+        }
+        Box(Modifier.place(frame.textBox).background(MagicPalette.parchment.copy(alpha = 0.42f), barShape))
+        if (frame.showsRules && rules.isNotEmpty()) {
+            GameRulesText(rules, Modifier.place(frame.rulesArea(card.showsPowerToughness)).clipToBounds(), cardName = card.card.name,
+                symbolSize = frame.rulesFontSize.dp, style = sf(frame.rulesFontSize, SfWeight.medium, SfDesign.SERIF), color = MagicPalette.iron,
+                maxLines = frame.rulesLineLimit(card.showsPowerToughness))
+        }
+        if (card.showsPowerToughness) {
+            val box = frame.powerToughnessBox
+            Box(Modifier.place(box).background(MagicPalette.parchment, barShape).border(maxOf(width * 0.01f, 0.8.dp), MagicPalette.borderBronze, barShape),
+                contentAlignment = Alignment.Center) {
+                FitText("${card.displayPower}/${card.displayToughness}", sf(frame.powerToughnessFontSize, SfWeight.black),
+                    color = MagicPalette.iron, minimumScale = 0.5f)
+            }
+        }
+        val slot = frame.tagSlot
+        Box(Modifier.place(slot), contentAlignment = Alignment.CenterStart) {
+            Box(Modifier.height(slot.height.dp).background(MagicPalette.iron.copy(alpha = 0.88f), CircleShape)
+                .border(0.7.dp, MagicPalette.antiqueGold.copy(alpha = 0.6f), CircleShape).padding(horizontal = (slot.height * 0.45f).dp),
+                contentAlignment = Alignment.Center) {
+                FitText(TokenCopyPresentation.tag(source, width.value), sf(frame.tagFontSize, SfWeight.black, tracking = 0.3f),
+                    color = MagicPalette.antiqueGold, minimumScale = 0.6f)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TokenCopyArtPlaceholder(width: Dp, loading: Boolean) {
+    Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(MagicPalette.leather.copy(alpha = 0.78f), MagicPalette.moss.copy(alpha = 0.62f),
+        MagicPalette.iron.copy(alpha = 0.86f)))), contentAlignment = Alignment.Center) {
+        SfImage(if (loading) "hourglass" else "sparkles", MagicPalette.antiqueGold.copy(alpha = if (loading) 0.34f else 0.42f), maxOf(width * 0.18f, 10.dp))
     }
 }
 
