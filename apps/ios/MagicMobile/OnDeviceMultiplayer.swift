@@ -292,6 +292,40 @@ struct OnDeviceMultiplayerEndpoint {
     let matchID: String
     let seatID: String
     let isHost: Bool
+    /// Pass to `OnDeviceSession.attach(table:)`: revision notices and "Waiting for <host>…".
+    let table: OnDeviceTableLink
+}
+
+/// A host request that got no answer in time. The request may still run on the host, so only
+/// polls and hello, which change nothing, are retried automatically.
+struct OnDeviceHostUnavailable: LocalizedError, Equatable {
+    var errorDescription: String? { "The host did not answer in time. Keep every player’s app in the foreground." }
+}
+
+#if DEBUG
+import os
+
+/// Debug-only table traffic log (subsystem com.calebfeliciano.magicmobile, category table).
+enum OnDeviceTableLog {
+    static let logger = Logger(subsystem: "com.calebfeliciano.magicmobile", category: "table")
+}
+#endif
+
+/// Host → guest: "the game moved to `revision`; poll when you can." Tiny, idempotent and safe to
+/// drop: a guest that misses one still polls on its heartbeat, and nothing ever queues for it.
+enum OnDeviceRevisionNotice {
+    static func packet(epoch: UUID, revision: Int64) -> MagicMobileOnDevice.JSONValue {
+        .object(["type": .string("revision"), "epoch": .string(epoch.uuidString), "revision": .integer(revision)])
+    }
+
+    /// The announced revision of a notice whose epoch the caller already checked.
+    static func revision(from value: MagicMobileOnDevice.JSONValue) throws -> Int64 {
+        guard let fields = value.object, Set(fields.keys) == ["type", "epoch", "revision"],
+              fields["type"]?.string == "revision", let revision = fields["revision"]?.integer, revision >= 0 else {
+            throw EngineError.invalidMessage("Invalid revision notice.")
+        }
+        return revision
+    }
 }
 
 /// Correlations bind replies to their authenticated sender, epoch and original sequence.
@@ -360,6 +394,10 @@ final class OnDeviceRemoteEngineTransport: EngineTransport {
         guard !closed, pending.count < 4, sequence < UInt64(Int64.max) else { throw EngineError.invalidMessage("Multiplayer connection is closed or busy.") }
         sequence += 1
         let number = sequence, id = UUID()
+        #if DEBUG
+        // Debug builds only: lets a cross-play check count how often a guest asks its host.
+        OnDeviceTableLog.logger.debug("guest request \(operation, privacy: .public) #\(number)")
+        #endif
         let data = try MagicMobileOnDevice.JSONValue.object([
             "type": .string("request"), "id": .string(id.uuidString), "epoch": .string(epoch.uuidString),
             "sequence": .integer(Int64(number)), "operation": .string(operation), "payload": payload
@@ -368,7 +406,7 @@ final class OnDeviceRemoteEngineTransport: EngineTransport {
             try await withCheckedThrowingContinuation { continuation in
                 let timeout = Task { @MainActor [weak self, timeoutNanoseconds] in
                     do { try await Task.sleep(nanoseconds: timeoutNanoseconds) } catch { return }
-                    self?.finish(id, result: .failure(EngineError.invalidMessage("The host did not answer in time. Keep every player’s app in the foreground.")))
+                    self?.finish(id, result: .failure(OnDeviceHostUnavailable()))
                 }
                 pending[id] = Pending(sequence: number, continuation: continuation, timeout: timeout)
                 do { try send(data, hostID) } catch { finish(id, result: .failure(error)) }
@@ -540,6 +578,8 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     private let closeHostEngine: @MainActor (EngineClient) async throws -> Void
     private var transport: (any TablePacketTransport)?
     private var remote: OnDeviceRemoteEngineTransport?
+    /// This seat's link to its session: the host announces revisions, a guest hears them.
+    private var tableLink: OnDeviceTableLink?
     private var router: HostRouter?
     private var lobby: OnDeviceMultiplayerLobby?
     private var submission: MagicMobileOnDevice.JSONValue?
@@ -948,6 +988,13 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         case "reply":
             guard let remote else { throw EngineError.unboundPeer }
             try remote.receive(value, from: peer)
+        case "revision":
+            guard peer == lobby.hostID, lobby.localPeerID != lobby.hostID, let tableLink else { throw EngineError.unboundPeer }
+            let revision = try OnDeviceRevisionNotice.revision(from: value)
+            #if DEBUG
+            OnDeviceTableLog.logger.debug("host notice revision \(revision)")
+            #endif
+            tableLink.noticed(revision: revision)
         case "rollStep":
             guard Set(fields.keys) == ["type", "epoch", "index"],
                   lobby.localPeerID == lobby.hostID, nativeMatchID != nil,
@@ -1095,7 +1142,11 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
                 self.startingRoll = result
                 self.rollProgress = OnDeviceStartingRollProgress(
                     roll: result, humanSeatIDs: Set((1...lobby.peerIDs.count).map { "player\($0)" }))
-                self.endpoint = OnDeviceMultiplayerEndpoint(client: engine, matchID: matchID, seatID: try lobby.seatID(for: lobby.localPeerID), isHost: true)
+                let hostSeat = try lobby.seatID(for: lobby.localPeerID)
+                let link = OnDeviceTableLink(role: .host, hostName: names[hostSeat] ?? "")
+                link.announce = { [weak self] revision in self?.announceRevision(revision, token: token) }
+                self.tableLink = link
+                self.endpoint = OnDeviceMultiplayerEndpoint(client: engine, matchID: matchID, seatID: hostSeat, isHost: true, table: link)
                 self.room = nil
                 self.isConnected = true
                 self.updateRollStatus()
@@ -1113,13 +1164,25 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
             try transport.send(data, to: peer)
         }
         self.remote = remote
+        let link = OnDeviceTableLink(role: .guest, hostName: seatNames[try lobby.seatID(for: lobby.hostID)] ?? playerNames[lobby.hostID] ?? "")
+        tableLink = link
         let token = generation
         startup = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await remote.hello(identity: self.identity)
+                // Hello changes nothing on the host, so a lost answer is simply asked again.
+                var retries = OnDeviceHostRetryPolicy()
+                while true {
+                    do { try await remote.hello(identity: self.identity); break }
+                    catch {
+                        guard let delay = retries.delay(after: error), self.generation == token, !self.failed, !self.closing else { throw error }
+                        self.status = link.waitingStatus
+                        try await Task.sleep(for: .seconds(delay))
+                    }
+                }
                 guard self.generation == token, !self.failed, !self.closing, !Task.isCancelled else { return }
-                self.endpoint = OnDeviceMultiplayerEndpoint(client: EngineClient(transport: remote), matchID: matchID, seatID: seatID, isHost: false)
+                self.endpoint = OnDeviceMultiplayerEndpoint(client: EngineClient(transport: remote), matchID: matchID, seatID: seatID,
+                                                            isHost: false, table: link)
                 self.room = nil
                 self.isConnected = true
                 self.updateRollStatus()
@@ -1147,12 +1210,30 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         guard let lobby, !failed, !closing else { return }
         let paused = !suspendedPeers.isEmpty || !relayAwayPeers.isEmpty
         isSuspended = paused
-        status = paused ? "Match paused. Every player must return to the foreground." : "Connected. Every player must keep the app in the foreground."
+        if !relayAwayPeers.isEmpty {
+            // The relay says who dropped; they may still come back within its grace period.
+            let names = relayAwayPeers.sorted().map { peer in
+                (try? lobby.seatID(for: peer)).flatMap { seatNames[$0] } ?? playerNames[peer] ?? "a player"
+            }
+            status = "Waiting for \(names.joined(separator: ", "))…"
+        } else {
+            status = paused ? "Match paused. Every player must return to the foreground." : "Connected. Every player must keep the app in the foreground."
+        }
         if lobby.localPeerID == lobby.hostID {
             suspensionRevision += 1
             let revision = suspensionRevision
             if let router { Task { await router.setSuspended(paused, revision: revision) } }
             for peer in lobby.peerIDs where peer != lobby.hostID { sendPresence(paused, to: peer) }
+        }
+    }
+
+    /// Tells each connected guest that the game moved on. Best effort: a guest that misses a
+    /// notice polls on its heartbeat, so a failed send never ends the match.
+    private func announceRevision(_ revision: Int64, token: UUID) {
+        guard generation == token, !failed, !closing, let lobby, let epoch, lobby.localPeerID == lobby.hostID else { return }
+        let notice = OnDeviceRevisionNotice.packet(epoch: epoch, revision: revision)
+        for peer in lobby.peerIDs where peer != lobby.hostID && !relayAwayPeers.contains(peer) {
+            try? send(notice, to: peer)
         }
     }
 
@@ -1189,7 +1270,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         generation = UUID(); hostEngine = nil; needsCleanup = false; endpoint = nil; hostAISeatSummary = nil; seatNames = [:]
         rollTimer?.cancel(); rollTimer = nil
         startingRoll = nil; rollProgress = nil; hasRolled = false; rollStatus = ""
-        remote = nil; router = nil; hostDispatcher = nil; transport = nil; lobby = nil; epoch = nil; submission = nil; requestedAISeats = []
+        remote = nil; tableLink = nil; router = nil; hostDispatcher = nil; transport = nil; lobby = nil; epoch = nil; submission = nil; requestedAISeats = []
         suspendedPeers.removeAll(); relayAwayPeers.removeAll(); peerPresenceSequences.removeAll(); presenceSequence = 0
         tableCode = nil; seatsTaken = 0; seatsWanted = 0; isRelayTable = false; identity = gameCenterIdentity
         suspensionRevision = 0

@@ -58,6 +58,8 @@ class MainActivity: ComponentActivity() {
         // UI previews and tests use their own preferences, like iOS's MAGICMOBILE_UI_TEST_PREFERENCES suite.
         io.magicmobile.android.ui.AppPreferences.init(this,extras["MAGICMOBILE_UI_TEST_PREFERENCES"]?.let{"magicmobile.preferences.$it"} ?: "magicmobile.preferences")
         io.magicmobile.android.ui.GameAudio.init(this)
+        // Local crash and ANR summaries for the report sheet (background thread); nothing is uploaded.
+        if (savedInstanceState==null) io.magicmobile.android.ondevice.OnDeviceSystemReports.recordAtStartup(this)
         // Menus and the board are always dark, like the iOS app.
         WindowCompat.getInsetsController(window,window.decorView).apply{isAppearanceLightStatusBars=false;isAppearanceLightNavigationBars=false}
         io.magicmobile.android.studio.DeckStudioServices.install(this)

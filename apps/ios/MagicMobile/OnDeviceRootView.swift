@@ -1098,7 +1098,7 @@ private final class OnDeviceSetupModel: ObservableObject {
         do {
             updateSessionForeground()
             try await session.attach(client: endpoint.client, matchID: endpoint.matchID, seatID: endpoint.seatID,
-                                     allowsSeatScopedAutoYield: true,
+                                     allowsSeatScopedAutoYield: true, table: endpoint.table,
                                      close: { try await multiplayer.leave() })
             status = multiplayer.isRelayTable ? "Table connected" : "Game Center match connected"
         } catch { errorMessage = error.localizedDescription }
