@@ -79,7 +79,8 @@ deletion, backup exclusion, file protection). Multiplayer games are not resumabl
 - **Polls.** Additive fields, local metadata only:
   - `"checkpoint": {"sequence": n, "savedAtMillis": <epoch ms>, "turn": t, "bytes": b, "writeMillis": w}`
     describes the latest successful write. It is absent before the first one.
-    `sequence` starts at 1 and continues after a restore.
+    `sequence` starts at 1 and continues after a restore; a restored match starts with the
+    checkpoint it read (`writeMillis` 0) until the re-asked decision writes the next one.
   - `"checkpointFailure": {"code": "checkpoint_write_failed", "message": "...", "atMillis": <epoch ms>, "failedWrites": k}`
     is present only while the most recent write attempt failed (before or after a
     success). The next successful write removes it.
@@ -115,9 +116,10 @@ deletion, backup exclusion, file protection). Multiplayer games are not resumabl
   upstream lock and the reviewed upstream patches (`scripts/engine_build_identity.py`).
   Reads go through one `ObjectInputFilter` allowlist (`mage.*`,
   `io.magicmobile.xmage.*` and a fixed list of JDK collection and value types in
-  `Checkpoints.java`) with depth, reference, array and byte limits; lambdas and
-  proxies are refused. The writer enforces the same allowlist, so the engine never
-  saves a file it would refuse to read.
+  `Checkpoints.java`) with depth, reference, array and byte limits. Proxies are
+  refused; serializable lambdas (upstream keeps some `Condition` method references in
+  fields) are read only through their allowed capturing class. The writer enforces the
+  same allowlist, so the engine never saves a file it would refuse to read.
 - **Hidden information.** A checkpoint contains every hand and library. It is local
   only: never send it, or its path, to a peer, relay or poll. `HostRouter` never
   forwards `restore`. The engine never deletes checkpoint files (including a

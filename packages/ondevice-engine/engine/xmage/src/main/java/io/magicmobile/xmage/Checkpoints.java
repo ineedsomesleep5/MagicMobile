@@ -41,16 +41,20 @@ final class Checkpoints {
     private static final int PREFIX=MAGIC.length+2+4;
     static final int MAX_HEADER=64*1024;
     static final long MAX_PAYLOAD=64L*1024*1024;
-    // Deserialization bounds; measured games stay far below them (see RealCheckpointTests).
-    static final long MAX_STREAM_BYTES=512L*1024*1024, MAX_REFERENCES=16_000_000, MAX_DEPTH=5_000, MAX_ARRAY=4_000_000;
+    // Deserialization bounds. Measured 2- and 4-seat games: depth 22, 75k references, 0.8 MB stream
+    // (RealCheckpointTests prints them); the limits leave 40x or more headroom.
+    static final long MAX_STREAM_BYTES=128L*1024*1024, MAX_REFERENCES=4_000_000, MAX_DEPTH=1_000, MAX_ARRAY=1_000_000;
     private static final String[] PACKAGES={"mage.","io.magicmobile.xmage."};
-    /** JDK types a game may contain. Anything else, including lambdas and proxies, is refused both ways. */
+    /** JDK types a game may contain. Anything else, including proxies and non-engine lambdas, is refused both ways. */
     private static final Set<String> JDK_TYPES=Set.of(
         // Object and Map.Entry appear only as array components the JDK collections pre-check.
         "java.lang.Object","java.util.Map$Entry","java.lang.Enum","java.lang.Number","java.lang.Boolean","java.lang.Byte",
         "java.lang.Character","java.lang.Short","java.lang.Integer","java.lang.Long","java.lang.Float",
         "java.lang.Double","java.lang.String","java.lang.String$CaseInsensitiveComparator",
         "java.math.BigInteger","java.math.BigDecimal",
+        // Upstream stores method references in Serializable fields (Condition in Reconfigure and
+        // a dozen cards); native builds register their capturing classes as lambdaCapturingTypes.
+        "java.lang.invoke.SerializedLambda",
         "java.util.ArrayList","java.util.LinkedList","java.util.ArrayDeque","java.util.PriorityQueue",
         "java.util.Vector","java.util.Stack","java.util.HashMap","java.util.LinkedHashMap","java.util.TreeMap",
         "java.util.IdentityHashMap","java.util.EnumMap","java.util.HashSet","java.util.LinkedHashSet",
@@ -102,8 +106,8 @@ final class Checkpoints {
         }
     }
     static final class Loaded {
-        final Payload payload; final Map<String,Object> header;
-        Loaded(Payload payload,Map<String,Object> header) { this.payload=payload;this.header=header; }
+        final Payload payload; final Map<String,Object> header; final long bytes;
+        Loaded(Payload payload,Map<String,Object> header,long bytes) { this.payload=payload;this.header=header;this.bytes=bytes; }
         long sequence() { return Json.integer(header.get("sequence")); }
         long savedAtMillis() { return Json.integer(header.get("savedAtMillis")); }
         int turn() { return Math.toIntExact(Json.integer(header.get("turn"))); }
@@ -114,7 +118,9 @@ final class Checkpoints {
         while(type.isArray()) type=type.getComponentType();
         if(type.isPrimitive()) return true;
         String name=type.getName();
-        if(type.isSynthetic() || name.contains("$$Lambda") || java.lang.reflect.Proxy.isProxyClass(type)) return false;
+        // Serializable lambdas travel as SerializedLambda, which only the capturing (allowed) class
+        // can turn back into a lambda; newer JDKs also filter that resolved lambda class.
+        if(java.lang.reflect.Proxy.isProxyClass(type)) return false;
         for(String prefix:PACKAGES) if(name.startsWith(prefix)) return true;
         return JDK_TYPES.contains(name);
     }
@@ -141,13 +147,16 @@ final class Checkpoints {
             probe.put("zones",new EnumMap<>(mage.constants.Zone.class));probe.put("owner",owner);
             probe.put("zoneSet",EnumSet.of(mage.constants.Zone.BATTLEFIELD,mage.constants.Zone.GRAVEYARD));
             probe.put("list",new ArrayList<>(List.of(owner)));probe.put("linked",new LinkedList<>(List.of(1)));
+            // Upstream keeps method references in Serializable fields (Reconfigure's Condition).
+            probe.put("condition",(mage.abilities.condition.Condition)Checkpoints::probeCondition);
             byte[] bytes=serialize(probe);
             Map<?,?> read=(Map<?,?>)deserialize(bytes);
             Card copy=(Card)read.get("card");
             if(!copy.getId().equals(card.getId()) || !copy.getName().equals(card.getName())
                 || ((Exile)read.get("exile")).getExileZone(owner).size()!=1
                 || ((Random)read.get("random")).nextLong()!=new Random(7).nextLong()
-                || !read.get("zoneSet").equals(probe.get("zoneSet")) || !read.get("list").equals(probe.get("list")))
+                || !read.get("zoneSet").equals(probe.get("zoneSet")) || !read.get("list").equals(probe.get("list"))
+                || !((mage.abilities.condition.Condition)read.get("condition")).apply(null,null))
                 throw new IllegalStateException("Checkpoint self-test read different values");
             return true;
         } catch(Throwable failure) {
@@ -155,6 +164,8 @@ final class Checkpoints {
             return false;
         }
     }
+
+    private static boolean probeCondition(Game game,Ability source) { return true; }
 
     /** Runs on the GAME thread before the priority prompt is published. */
     static Written write(Path path,MobileCommanderGame game,LinkedHashMap<String,UUID> seats,ArrayList<String> humanSeats,
@@ -172,7 +183,7 @@ final class Checkpoints {
             "upstream",XmageEngine.UPSTREAM,"catalogueHash",GeneratedCardFactory.CATALOGUE_HASH,
             "engineBuild",EngineBuildIdentity.VALUE,"sequence",sequence,"savedAtMillis",savedAt,"turn",turn,
             "seats",seatSummary,"payloadBytes",(long)payload.length,"payloadSha256",sha256(payload))).getBytes(StandardCharsets.UTF_8);
-        if(header.length>MAX_HEADER) throw new IOException("Checkpoint header too large");
+        if(header.length>MAX_HEADER || payload.length>MAX_PAYLOAD) throw new IOException("Checkpoint too large to restore");
         Path temporary=path.resolveSibling(path.getFileName()+".tmp");
         try(FileChannel out=FileChannel.open(temporary,StandardOpenOption.CREATE,StandardOpenOption.WRITE,StandardOpenOption.TRUNCATE_EXISTING)) {
             ByteBuffer prefix=ByteBuffer.allocate(PREFIX).put(MAGIC).putShort((short)FORMAT).putInt(header.length);
@@ -233,7 +244,7 @@ final class Checkpoints {
         try { value=deserialize(payload); }
         catch(Exception | LinkageError | StackOverflowError | OutOfMemoryError e) { throw corrupt("The checkpoint could not be read safely",e); }
         if(!(value instanceof Payload)) throw corrupt("The checkpoint holds an unexpected object",null);
-        return new Loaded((Payload)value,header);
+        return new Loaded((Payload)value,header,file.length);
     }
 
     static byte[] serialize(Object value) throws IOException {

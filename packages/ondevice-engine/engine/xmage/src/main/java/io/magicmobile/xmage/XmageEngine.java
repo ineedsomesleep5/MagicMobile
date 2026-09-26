@@ -285,6 +285,9 @@ public final class XmageEngine implements EnginePort {
             throw Checkpoints.corrupt("The checkpoint could not be restored",e);
         }
         Running running=new Running(match,players,seats,cancellation,path,seatSummary,loaded.sequence(),true);
+        // The file just read is the latest checkpoint until the re-asked decision writes the next one.
+        running.checkpointInfo=Collections.unmodifiableMap(Json.map("sequence",loaded.sequence(),"savedAtMillis",loaded.savedAtMillis(),
+            "turn",(long)loaded.turn(),"bytes",loaded.bytes,"writeMillis",0L));
         String id=game.getId().toString();
         matches.put(id,running);
         // Last, so the restored game draws exactly what the saved process would have drawn next.
