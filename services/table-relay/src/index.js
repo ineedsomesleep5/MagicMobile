@@ -381,6 +381,8 @@ export class TableRoom extends DurableObject {
     }
     let frame;
     try { frame = JSON.parse(message); } catch { return; }
+    // A removed phone's socket may still deliver a frame while it closes; it no longer speaks for a seat.
+    if (frame?.t !== "bye" && table.peers.find((peer) => peer.id === id)?.removed) return;
     if (frame?.t === "send") {
       const target = table.peers.find((peer) => peer.id === frame.to && !peer.gone);
       const part = validPart(frame.p);
