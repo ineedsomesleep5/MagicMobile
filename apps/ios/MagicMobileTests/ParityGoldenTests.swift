@@ -94,6 +94,71 @@ final class ParityGoldenTests: XCTestCase {
         }
     }
 
+    /// combat-cases.json: keyword extraction, combat badges, first-strike beats and log reasons.
+    func testCombatClarityCasesOnBothPlatforms() throws {
+        let root = try caseFile("combat-cases.json")
+        func keywords(_ value: Any?) -> [CombatKeyword] { (value as? [String] ?? []).compactMap(CombatKeyword.init(rawValue:)) }
+        for item in try XCTUnwrap(root["keywords"] as? [[String: Any]]) {
+            let icons = (item["icons"] as? [String])?.map { XmageCardIcon(iconType: $0, resourceName: nil, category: nil, text: nil, hint: nil) }
+            XCTAssertEqual(CombatKeyword.of(icons: icons, rules: item["rules"] as? String).map(\.rawValue),
+                           item["expect"] as? [String], "keywords · \(item["name"] ?? "")")
+        }
+        for item in try XCTUnwrap(root["badges"] as? [[String: Any]]) {
+            let at = "badges · \(item["name"] ?? "")"
+            let plan = CombatKeywordBadgePlan(keywords: keywords(item["keywords"]), cardWidth: CGFloat(item["width"] as! Double),
+                                              cardHeight: CGFloat(item["height"] as! Double))
+            XCTAssertEqual(plan.visible.map(\.rawValue), item["visible"] as? [String], at)
+            XCTAssertEqual(plan.hiddenCount, item["hidden"] as? Int, at)
+            XCTAssertEqual(plan.visible.map(plan.label), item["labels"] as? [String], at)
+        }
+        func state(_ json: [String: Any]) -> BoardFXState {
+            let cards = (json["cards"] as? [[String: Any]] ?? []).map { card in
+                BoardFXState.Card(id: card["id"] as! String, playerID: card["player"] as! String,
+                                  zone: BoardFXZone(rawValue: card["zone"] as? String ?? "battlefield")!, name: card["id"] as! String,
+                                  tint: .red, damage: card["damage"] as? Int ?? 0, counters: 0,
+                                  attacking: card["attacking"] as? Bool ?? false, blocking: card["blocking"] as? [String] ?? [],
+                                  keywords: Set(keywords(card["keywords"])))
+            }
+            return BoardFXState(gameID: "combat", step: json["step"] as! String, lives: json["lives"] as? [String: Int] ?? [:],
+                                cards: Dictionary(uniqueKeysWithValues: cards.map { ($0.id, $0) }),
+                                defenders: json["defenders"] as? [String: String] ?? [:],
+                                blockedAttackers: Set(json["blocked"] as? [String] ?? []))
+        }
+        func summary(_ event: BoardFXEvent) -> String {
+            switch event {
+            case .firstStrikeBeat: return "first-strike"
+            case let .combatStrike(id, target, _, first):
+                let aim: String
+                switch target { case let .card(card): aim = "card:\(card)"; case let .player(player): aim = "player:\(player)" }
+                return "strike \(id) -> \(aim) \(first ? "first" : "regular")"
+            case let .damageMarked(id, amount): return "damage \(id) \(amount)"
+            case let .leftBattlefield(id, _, zone, _): return "left \(id) \(zone?.rawValue ?? "nil")"
+            case let .lifeChanged(id, delta): return "life \(id) \(delta)"
+            default: return "other"
+            }
+        }
+        for item in try XCTUnwrap(root["beats"] as? [[String: Any]]) {
+            let at = "beats · \(item["name"] ?? "")"
+            let events = BoardEventDiffer.events(from: state(item["old"] as! [String: Any]), to: state(item["new"] as! [String: Any]))
+            XCTAssertEqual(events.map(summary), item["events"] as? [String], at)
+            for (level, key) in [(BoardFXLevel.full, "full"), (.reduced, "reduced")] {
+                let planned = BoardFXScheduler.schedule(events, level: level).map {
+                    "\(summary($0.event)) @\(String(format: "%.3f", $0.delay)) +\(String(format: "%.3f", $0.duration))"
+                }
+                XCTAssertEqual(planned, item[key] as? [String], "\(at) · \(key)")
+            }
+        }
+        let log = try XCTUnwrap(root["log"] as? [String: Any])
+        let fighters = try XCTUnwrap(log["fighters"] as? [String: [String: Any]]).mapValues {
+            CombatLogReasons.Fighter(name: $0["name"] as! String, keywords: Set(keywords($0["keywords"])))
+        }
+        for item in try XCTUnwrap(log["cases"] as? [[String: Any]]) {
+            let step = CombatLogReasons.DamageStep(from: item["previous"] as? String, to: item["step"] as! String)
+            XCTAssertEqual(CombatLogReasons.reason(for: item["message"] as! String, step: step, fighters: fighters),
+                           item["reason"] as? String, "log · \(item["name"] ?? "")")
+        }
+    }
+
     private func caseFile(_ name: String) throws -> [String: Any] {
         let data = try Data(contentsOf: parityDirectory.appendingPathComponent(name))
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])

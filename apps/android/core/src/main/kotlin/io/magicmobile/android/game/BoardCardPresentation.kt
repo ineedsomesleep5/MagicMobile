@@ -172,3 +172,95 @@ object BoardFXBannerPlan {
         return if (name.contains("ability", ignoreCase = true)) name else "$name · ability"
     }
 }
+
+/**
+ * Combat keywords a battlefield card shows while it attacks or blocks (CombatKeyword in
+ * BoardCardPresentation.swift). They come from the permanent's current engine view: XMage's
+ * keyword icons and bare keyword rules lines are built from its live abilities, so keywords
+ * gained from other effects are included. The view carries no printed/gained provenance.
+ * Entry order is badge priority; `rawValue` matches Swift's case names (combat-cases.json).
+ */
+enum class CombatKeyword(val rawValue: String, val label: String, val iconType: String) {
+    DOUBLE_STRIKE("doubleStrike", "Double strike", "ABILITY_DOUBLE_STRIKE"),
+    FIRST_STRIKE("firstStrike", "First strike", "ABILITY_FIRST_STRIKE"),
+    DEATHTOUCH("deathtouch", "Deathtouch", "ABILITY_DEATHTOUCH"),
+    TRAMPLE("trample", "Trample", "ABILITY_TRAMPLE"),
+    LIFELINK("lifelink", "Lifelink", "ABILITY_LIFELINK"),
+    INDESTRUCTIBLE("indestructible", "Indestructible", "ABILITY_INDESTRUCTIBLE"),
+    MENACE("menace", "Menace", "ABILITY_MENACE"),
+    FLYING("flying", "Flying", "ABILITY_FLYING"),
+    REACH("reach", "Reach", "ABILITY_REACH"),
+    VIGILANCE("vigilance", "Vigilance", "ABILITY_VIGILANCE");
+
+    /** For narrow cards. */
+    val shortLabel: String get() = when (this) {
+        DOUBLE_STRIKE -> "2× strike"; FIRST_STRIKE -> "1st strike"; INDESTRUCTIBLE -> "Indestr."; else -> label
+    }
+
+    companion object {
+        private val byIcon = entries.associateBy { it.iconType }
+        private val byWord = entries.associateBy { it.label.lowercase() }
+        private val markup = Regex("<[^>]*>")
+        private val reminder = Regex("\\([^)]*\\)")
+
+        fun of(rawValue: String): CombatKeyword? = entries.firstOrNull { it.rawValue == rawValue }
+
+        /** Deals combat damage in the first-strike damage step. */
+        fun strikesFirst(keywords: Set<CombatKeyword>): Boolean = FIRST_STRIKE in keywords || DOUBLE_STRIKE in keywords
+
+        /** Deals combat damage in the regular damage step (no first strike, or double strike). */
+        fun strikesInRegularStep(keywords: Set<CombatKeyword>): Boolean = FIRST_STRIKE !in keywords || DOUBLE_STRIKE in keywords
+
+        /**
+         * Keywords from engine icons and from rules lines made only of keywords ("Double strike",
+         * "Flying, trample", "Menace <i>(reminder)</i>"). Sentences that merely mention a keyword
+         * never count. Badge order, no duplicates.
+         */
+        fun of(icons: List<XmageCardIcon>?, rules: String?): List<CombatKeyword> {
+            val found = mutableSetOf<CombatKeyword>()
+            for (icon in icons ?: emptyList()) byIcon[icon.iconType.uppercase()]?.let { found += it }
+            for (rawLine in (rules ?: "").split('\n', '\r')) {
+                val line = rawLine.replace(markup, "").replace(reminder, "").trim { it.isWhitespace() || it == '.' }
+                if (line.isEmpty()) continue
+                val words = line.split(',').map { it.trim().lowercase() }
+                val keywords = words.mapNotNull { byWord[it] }
+                if (keywords.size != words.size) continue
+                found += keywords
+            }
+            return entries.filter { it in found }
+        }
+    }
+}
+
+/** Attacking or blocking in the public combat groups. */
+val ZoneCard.isInCombat: Boolean get() = isAttacking == true || !blocking.isNullOrEmpty()
+
+val ZoneCard.combatKeywords: List<CombatKeyword> get() = CombatKeyword.of(cardIcons, card.oracleText)
+
+/**
+ * Which combat keyword badges fit on a battlefield card that is attacking or blocking.
+ * Double strike already says first strike, so first strike is not repeated beside it.
+ */
+class CombatKeywordBadgePlan(keywords: List<CombatKeyword>, cardWidth: Float, cardHeight: Float) {
+    val visible: List<CombatKeyword>
+    /** Keywords that do not fit; they keep their icon in the card's ability row. */
+    val hiddenCount: Int
+    /** Narrow cards use short labels ("2× strike"). */
+    val compact: Boolean = cardWidth < COMPACT_WIDTH
+
+    init {
+        val shown = if (CombatKeyword.DOUBLE_STRIKE in keywords) keywords.filter { it != CombatKeyword.FIRST_STRIKE } else keywords
+        val row = fontSize(cardWidth) + 7
+        // Room between the name header and the footer with its icon row.
+        val slots = maxOf(1, minOf(3, ((cardHeight - 56) / row).toInt()))
+        visible = shown.take(slots)
+        hiddenCount = shown.size - visible.size
+    }
+
+    fun label(keyword: CombatKeyword): String = if (compact) keyword.shortLabel else keyword.label
+
+    companion object {
+        const val COMPACT_WIDTH = 66f
+        fun fontSize(cardWidth: Float): Float = minOf(9f, maxOf(6.5f, cardWidth * 0.1f))
+    }
+}

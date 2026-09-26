@@ -58,10 +58,11 @@ object BoardFXColors {
 fun Modifier.boardFXCardMotion(cardID: String): Modifier = composed {
     val motion = LocalBoardFXCardMotion.current
     val clock = LocalBoardFXClock.current
-    val window = motion.hidden[cardID]
+    val windows = motion.hidden[cardID] ?: emptyList()
     var hiding by remember { mutableStateOf<BoardFXCardMotion.Hidden?>(null) }
-    var revealed by remember { mutableStateOf<BoardFXCardMotion.Hidden?>(null) }
-    val hidden = window?.let { revealed != it && (it.from <= 0 || hiding == it) } ?: false
+    // Windows that have finished; the tile shows again unless another window covers it.
+    var revealed by remember { mutableStateOf(emptySet<BoardFXCardMotion.Hidden>()) }
+    val hidden = windows.any { it !in revealed && (it.from <= 0 || hiding == it) }
     val lunge = motion.lunges[cardID]
     val stance = motion.stances[cardID]
     val direction = (lunge?.direction ?: 0.0).toFloat()
@@ -78,21 +79,27 @@ fun Modifier.boardFXCardMotion(cardID: String): Modifier = composed {
         lungeOffset.animateTo(22f, spring(dampingRatio = 0.85f, stiffness = 1200f))
         lungeOffset.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = 340f))
     }
-    LaunchedEffect(window) {
-        val current = window ?: return@LaunchedEffect
-        // Time the window on the overlay's frame clock (see BoardFXClock).
+    LaunchedEffect(windows) {
+        revealed = revealed intersect windows.toSet()
+        if (windows.isEmpty()) return@LaunchedEffect
+        // Time the windows on the overlay's frame clock (see BoardFXClock). A double striker has
+        // one window per strike, so its tile shows between them.
         var polls = 0
-        while (clock.origin(current.batch) == null && polls < 60) { delay(33); polls += 1 }
-        val origin = clock.origin(current.batch) ?: System.currentTimeMillis()
-        if (current.from > 0) {
-            val start = origin + (current.from * 1000).toLong() - System.currentTimeMillis()
-            if (start > 0) delay(start)
-            hiding = current
+        while (windows.any { clock.origin(it.batch) == null } && polls < 60) { delay(33); polls += 1 }
+        val timed = windows.map { it to (clock.origin(it.batch) ?: System.currentTimeMillis()) }
+            .sortedBy { (window, origin) -> origin + (window.from * 1000).toLong() }
+        for ((window, origin) in timed) {
+            if (window in revealed) continue
+            if (window.from > 0) {
+                val start = origin + (window.from * 1000).toLong() - System.currentTimeMillis()
+                if (start > 0) delay(start)
+                hiding = window
+            }
+            val wait = origin + (window.until * 1000).toLong() - System.currentTimeMillis()
+            if (wait > 0) delay(wait)
+            revealed = revealed + window
+            if (hiding == window) hiding = null
         }
-        val wait = origin + (current.until * 1000).toLong() - System.currentTimeMillis()
-        if (wait > 0) delay(wait)
-        revealed = current
-        hiding = null
     }
 
     val glow = if (stanceAlpha > 0f) Modifier.glowingStroke(stanceColor.copy(alpha = stanceAlpha), 2.dp,

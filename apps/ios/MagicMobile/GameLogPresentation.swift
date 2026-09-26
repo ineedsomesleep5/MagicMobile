@@ -195,6 +195,114 @@ struct GameLogPresentation: Equatable {
     }
 }
 
+/// One-line reasons for the combat damage and deaths the public log already shows, such as
+/// "Atarka, World Render has double strike (first-strike damage)". Uses only public snapshot
+/// data: the combat keywords of creatures seen attacking or blocking this turn, and XMage's
+/// step. Damage steps come from consecutive snapshots: entering "first-combat-damage" is the
+/// first-strike step, leaving it is the regular step. A reason is decided once, when its
+/// entry first appears, so a keyword that ends later ("until end of turn") never rewrites it.
+struct CombatLogReasons: Equatable {
+    /// Which combat damage the new log entries of one snapshot transition came from.
+    enum DamageStep: Equatable {
+        case firstStrike, regular
+        /// Combat damage without a first-strike snapshot in between: no such step, or it was skipped.
+        case combined
+        /// No combat damage step in this transition.
+        case none
+
+        /// Steps as XMage names them ("FIRST_COMBAT_DAMAGE") or normalized ("first-combat-damage").
+        init(from previousStep: String?, to currentStep: String) {
+            let previous = previousStep.map(CombatLogReasons.normalized)
+            let step = CombatLogReasons.normalized(currentStep)
+            let first = BoardEventDiffer.firstStrikeStep
+            let preDamage = BoardEventDiffer.preDamageSteps
+            if step == first && previous != first { self = .firstStrike }
+            else if previous == first && step != first && !preDamage.contains(step) { self = .regular }
+            else if let previous, preDamage.contains(previous) && step != first && !preDamage.contains(step) { self = .combined }
+            else { self = .none }
+        }
+    }
+
+    struct Fighter: Equatable {
+        let name: String
+        let keywords: Set<CombatKeyword>
+    }
+
+    /// Log entry ID to its reason.
+    private(set) var reasons: [String: String] = [:]
+    private var gameID: String?
+    private var turn = 0
+    private var previousStep: String?
+    /// Creatures seen attacking or blocking this turn, by lowercased instance ID.
+    private var fighters: [String: Fighter] = [:]
+    private var seen = Set<String>()
+
+    static func normalized(_ step: String) -> String {
+        step.lowercased().replacingOccurrences(of: "_", with: "-")
+    }
+
+    mutating func observe(_ snapshot: GameSnapshot) {
+        let step = Self.normalized(snapshot.step ?? snapshot.phase)
+        let fresh = gameID != snapshot.id
+        if fresh { self = CombatLogReasons(); gameID = snapshot.id }
+        if snapshot.turn != turn { fighters = [:]; turn = snapshot.turn }
+        for card in snapshot.players.flatMap(\.zones.battlefield) where card.isInCombat {
+            fighters[card.instanceId.lowercased()] = Fighter(name: card.card.name, keywords: Set(card.combatKeywords))
+        }
+        let damageStep = DamageStep(from: fresh ? nil : previousStep, to: step)
+        for entry in snapshot.log where !seen.contains(entry.id) {
+            seen.insert(entry.id)
+            // Entries already in the log when a game is first seen have no known context.
+            guard !fresh, let reason = Self.reason(for: entry.message, step: damageStep, fighters: fighters) else { continue }
+            reasons[entry.id] = reason
+        }
+        let live = Set(snapshot.log.map(\.id))
+        seen.formIntersection(live)
+        reasons = reasons.filter { live.contains($0.key) }
+        previousStep = step
+    }
+
+    /// The reason for one engine log message, or nil. Reads XMage's own wording:
+    /// "<source> deals N damage to <target>", "<player> loses N life at combat from <source>"
+    /// and "<creature> died" (a state-based death, such as from lethal damage).
+    static func reason(for message: String, step: DamageStep, fighters: [String: Fighter]) -> String? {
+        guard step != .none else { return nil }
+        let presentation = GameLogPresentation(message)
+        let text = presentation.plainText.trimmingCharacters(in: .whitespacesAndNewlines)
+        var references: [GameLogPresentation.CardReference] = []
+        for span in presentation.spans {
+            if let reference = span.cardReference, references.last != reference { references.append(reference) }
+        }
+        func fighter(_ reference: GameLogPresentation.CardReference?) -> Fighter? {
+            reference.flatMap { fighters[$0.objectID.uuidString.lowercased()] }
+        }
+        if text.hasSuffix(" died") {
+            guard step == .firstStrike, let dead = references.first, let fighter = fighter(dead) else { return nil }
+            return CombatKeyword.strikesFirst(fighter.keywords)
+                ? "\(dead.name) dies to first-strike damage"
+                : "\(dead.name) dies to first-strike damage before dealing damage"
+        }
+        let damage = text.range(of: #" deals \d+ damage to "#, options: .regularExpression) != nil
+        let lifeLoss = text.range(of: #" loses \d+ life at combat from "#, options: .regularExpression) != nil
+        guard damage || lifeLoss, let source = damage ? references.first : references.last,
+              let keywords = fighter(source)?.keywords else { return nil }
+        if keywords.contains(.doubleStrike) {
+            switch step {
+            case .firstStrike: return "\(source.name) has double strike (first-strike damage)"
+            case .regular: return "\(source.name) has double strike (regular damage)"
+            default: return "\(source.name) has double strike (first-strike and regular damage)"
+            }
+        }
+        if keywords.contains(.firstStrike) && step != .regular {
+            return "\(source.name) has first strike (first-strike damage)"
+        }
+        if keywords.contains(.deathtouch) && damage && references.count > 1 {
+            return "\(source.name) has deathtouch (any damage is lethal)"
+        }
+        return nil
+    }
+}
+
 /// Native Text only. Set usesDarkBackground for the board's always-dark log drawer.
 /// Dynamic Type is inherited; VoiceOver receives the same cleaned visible text.
 struct GameLogText: View {

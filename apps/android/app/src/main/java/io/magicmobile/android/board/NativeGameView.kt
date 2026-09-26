@@ -86,6 +86,7 @@ import io.magicmobile.android.game.BoardZoneReference
 import io.magicmobile.android.game.CardChoiceCommandFailure
 import io.magicmobile.android.game.CardChoicePlan
 import io.magicmobile.android.game.CombatArrow
+import io.magicmobile.android.game.CombatLogReasons
 import io.magicmobile.android.game.CombatArrowKind
 import io.magicmobile.android.game.CombatArrowModel
 import io.magicmobile.android.game.CombatHighlightSet
@@ -207,6 +208,8 @@ fun NativeGameView(
     var boardShakeAmplitude by remember { mutableFloatStateOf(6f) }
     val hitVignette = remember { Animatable(0f) }
     val gameStats = remember { GameStats() }
+    val combatLogReasons = remember { CombatLogReasons() }
+    var combatReasons by remember { mutableStateOf(emptyMap<String, String>()) }
     val boardFXLevel by AppPreferences.string(BoardFXLevel.key, BoardFXLevel.defaultValue)
     val boardSoundsEnabled by AppPreferences.boolean(GameAudio.effectsKey, true)
     val cardBounds = remember { CardBoundsRegistry() }
@@ -443,7 +446,10 @@ fun NativeGameView(
     }
 
     // --- Observation (boardObservation) ---
-    LaunchedEffect(BoardFXRevisionKey(board)) { ingestBoardFX(board); gameStats.record(board) }
+    LaunchedEffect(BoardFXRevisionKey(board)) {
+        ingestBoardFX(board); gameStats.record(board)
+        combatLogReasons.observe(board); combatReasons = combatLogReasons.reasons
+    }
     // The tracker starts over by itself when the game changes.
     LaunchedEffect(BoardFocusTracker.observationKey(board, followTurns)) { focusTracker = focusTracker.observe(board, followTurns) }
     LaunchedEffect(Unit) {
@@ -489,6 +495,13 @@ fun NativeGameView(
         }
     }
     OnChange(isLogOpen) { _, open -> GameAudio.play(if (open) GameSound.PAGE_FLIP else GameSound.UI_CLOSE) }
+    // Visual QA: MAGICMOBILE_PREVIEW_OPEN_LOG=<seconds> opens a design preview's log after that delay.
+    LaunchedEffect(board.source) {
+        val wait = io.magicmobile.android.ui.LaunchEnvironment["MAGICMOBILE_PREVIEW_OPEN_LOG"]?.toDoubleOrNull()
+        if (!io.magicmobile.android.BuildConfig.DEBUG || board.source != "design-preview" || wait == null) return@LaunchedEffect
+        delay((wait * 1000).toLong())
+        isLogOpen = true
+    }
     OnChange(commandFailure) { old, new -> if (committedCardChoice != null && CardChoiceCommandFailure.isNewFailure(old, new)) cancelCommittedCardChoice() }
     OnChange(PortraitInteractionPolicy.detailChoiceKey(board)) { _, key ->
         isPromptDetailOpen = key != null
@@ -676,7 +689,7 @@ fun NativeGameView(
 
         // --- Sheets ---
         if (isLogOpen) BoardSheet({ isLogOpen = false }, sound = false) {
-            GameLogDrawer(board.log, { isLogOpen = false }, Modifier.padding(14.dp).fillMaxWidth().heightInScreen(0.8f))
+            GameLogDrawer(board.log, { isLogOpen = false }, Modifier.padding(14.dp).fillMaxWidth().heightInScreen(0.8f), combatReasons)
         }
         if (isStackSheetOpen) BoardSheet({ isStackSheetOpen = false }) { BoardStackInspector(board, selection) { isStackSheetOpen = false } }
         if (isPromptDetailOpen) BoardSheet({ isPromptDetailOpen = false }) {

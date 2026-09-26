@@ -227,6 +227,28 @@ struct ContentView: View {
                     .font(.caption).padding(8).background(.black)
                     .padding(.top, 24).accessibilityIdentifier("preview.advance")
                 }
+                if fixture == "first-strike" {
+                    Button("Replay first strike") {
+                        snapshot = GameBoardPreviewFixtures.snapshot(.firstStrike)
+                        Task {
+                            try? await Task.sleep(for: .seconds(0.4))
+                            snapshot = GameBoardPreviewFixtures.snapshot(.firstStrike, specialStateAdvanced: true)
+                        }
+                    }
+                    .font(.caption).padding(8).background(.black)
+                    .padding(.top, 24).accessibilityIdentifier("preview.advance")
+                    .task {
+                        // Declared blocks first, then XMage's first-strike damage step. Replays
+                        // unless MAGICMOBILE_BOARD_FX_FREEZE holds the beat for a screenshot.
+                        while !Task.isCancelled {
+                            do { try await Task.sleep(for: .seconds(1.2)) } catch { return }
+                            snapshot = GameBoardPreviewFixtures.snapshot(.firstStrike, specialStateAdvanced: true)
+                            if BoardFXPreviewFreeze.seconds != nil { return }
+                            do { try await Task.sleep(for: .seconds(3.6)) } catch { return }
+                            snapshot = GameBoardPreviewFixtures.snapshot(.firstStrike)
+                        }
+                    }
+                }
                 if fixture == "ability-showcase" {
                     Button("Replay ability") {
                         snapshot = GameBoardPreviewFixtures.snapshot(.abilityShowcase)
@@ -2766,6 +2788,7 @@ struct NativeGameView: View {
     @State private var boardShakeAmplitude: CGFloat = 6
     @State private var hitVignette = 0.0
     @State private var gameStats = GameStats()
+    @State private var combatLogReasons = CombatLogReasons()
     @AppStorage(BoardFXLevel.key) private var boardFXLevel = BoardFXLevel.defaultValue
     @AppStorage(BoardFXSound.key) private var boardSoundsEnabled = true
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
@@ -3386,6 +3409,7 @@ struct NativeGameView: View {
                 .sheet(isPresented: $isLogOpen) {
                     GameLogDrawer(
                         log: snapshot.log,
+                        reasons: combatLogReasons.reasons,
                         close: { isLogOpen = false }
                     )
                     .padding(14)
@@ -3604,6 +3628,7 @@ struct NativeGameView: View {
             .onChange(of: BoardFXRevisionKey(snapshot: snapshot), initial: true) { _, _ in
                 ingestBoardFX(snapshot)
                 gameStats.record(snapshot)
+                combatLogReasons.observe(snapshot)
             }
             .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? .easeOut(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.88), value: inspectingZoneTitle)
             .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? .easeOut(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.88), value: inspectedCard?.id)
@@ -3657,6 +3682,15 @@ struct NativeGameView: View {
                 handleCardChoicePendingChange(from: oldValue, to: newValue, snapshot: snapshot)
             }
             .onChange(of: isLogOpen) { _, open in GameAudio.shared.play(open ? .pageFlip : .uiClose) }
+            #if DEBUG
+            // Visual QA: MAGICMOBILE_PREVIEW_OPEN_LOG=<seconds> opens a design preview's log after that delay.
+            .task(id: snapshot.source) {
+                guard snapshot.source == "design-preview",
+                      let delay = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_OPEN_LOG"].flatMap(Double.init) else { return }
+                try? await Task.sleep(for: .seconds(delay))
+                isLogOpen = true
+            }
+            #endif
             .onChange(of: isGameMenuOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
             .onChange(of: isLandscapeStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
             .onChange(of: lastActionRejection?.message) { _, newValue in
@@ -13147,6 +13181,8 @@ private struct GameLogBottomKey: PreferenceKey {
 
 struct GameLogDrawer: View {
     let log: [GameLogEntry]
+    /// One-line combat reasons by entry ID (CombatLogReasons).
+    var reasons: [String: String] = [:]
     let close: () -> Void
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var followingLatest = true
@@ -13175,38 +13211,48 @@ struct GameLogDrawer: View {
                                 .font(.subheadline).foregroundStyle(.secondary)
                         }
                         ForEach(log) { entry in
-                            GameLogText(message: entry.message, usesDarkBackground: true, onInspect: { reference in
-                                // The public log authorizes the printed identity, not a lookup
-                                // of this object's current (possibly hidden) game state.
-                                guard NativeCardArtworkPolicy.permitsLookup(name: reference.name) else { return }
-                                inspectedLogCard = ZoneCard(instanceId: reference.objectID.uuidString,
-                                    card: CardIdentity(name: reference.name, typeLine: "Card referenced in game log",
-                                                       oracleText: "Loading local card text…"),
-                                    tapped: nil, summoningSickness: nil, cardIcons: nil, counters: nil,
-                                    power: nil, toughness: nil, isCreaturePermanent: nil, damage: nil,
-                                    isAttacking: nil, blocking: nil, attachedToInstanceId: nil)
-                                Task { @MainActor in
-                                    // Disk-only catalogue lookup off the UI thread. Never resolve
-                                    // the historical object UUID against live/private game state.
-                                    let printed = await Task.detached(priority: .userInitiated) {
-                                        (try? NativeDeckMetadataCatalogue.bundled())?.card(named: reference.name)
-                                    }.value
-                                    guard inspectedLogCard?.instanceId == reference.objectID.uuidString,
-                                          inspectedLogCard?.card.name == reference.name else { return }
+                            VStack(alignment: .leading, spacing: 2) {
+                                GameLogText(message: entry.message, usesDarkBackground: true, onInspect: { reference in
+                                    // The public log authorizes the printed identity, not a lookup
+                                    // of this object's current (possibly hidden) game state.
+                                    guard NativeCardArtworkPolicy.permitsLookup(name: reference.name) else { return }
                                     inspectedLogCard = ZoneCard(instanceId: reference.objectID.uuidString,
-                                        card: CardIdentity(name: reference.name,
-                                            typeLine: printed?.typeLine ?? "Card referenced in game log",
-                                            oracleText: printed?.oracleText ?? "Rules unavailable in the local catalogue.",
-                                            manaCost: printed?.manaCost),
+                                        card: CardIdentity(name: reference.name, typeLine: "Card referenced in game log",
+                                                           oracleText: "Loading local card text…"),
                                         tapped: nil, summoningSickness: nil, cardIcons: nil, counters: nil,
                                         power: nil, toughness: nil, isCreaturePermanent: nil, damage: nil,
                                         isAttacking: nil, blocking: nil, attachedToInstanceId: nil)
+                                    Task { @MainActor in
+                                        // Disk-only catalogue lookup off the UI thread. Never resolve
+                                        // the historical object UUID against live/private game state.
+                                        let printed = await Task.detached(priority: .userInitiated) {
+                                            (try? NativeDeckMetadataCatalogue.bundled())?.card(named: reference.name)
+                                        }.value
+                                        guard inspectedLogCard?.instanceId == reference.objectID.uuidString,
+                                              inspectedLogCard?.card.name == reference.name else { return }
+                                        inspectedLogCard = ZoneCard(instanceId: reference.objectID.uuidString,
+                                            card: CardIdentity(name: reference.name,
+                                                typeLine: printed?.typeLine ?? "Card referenced in game log",
+                                                oracleText: printed?.oracleText ?? "Rules unavailable in the local catalogue.",
+                                                manaCost: printed?.manaCost),
+                                            tapped: nil, summoningSickness: nil, cardIcons: nil, counters: nil,
+                                            power: nil, toughness: nil, isCreaturePermanent: nil, damage: nil,
+                                            isAttacking: nil, blocking: nil, attachedToInstanceId: nil)
+                                    }
+                                })
+                                    .font(.subheadline)
+                                // One line of public combat context under the engine's line.
+                                if let reason = reasons[entry.id] {
+                                    Text(reason)
+                                        .font(.caption.italic())
+                                        .foregroundStyle(.white.opacity(0.62))
+                                        .lineLimit(1).minimumScaleFactor(0.8)
+                                        .accessibilityIdentifier("log.reason")
                                 }
-                            })
-                                .font(.subheadline)
-                                .padding(.top, GameLogPresentation(entry.message).plainText.hasPrefix("TURN ") ? 12 : 0)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .id(entry.id)
+                            }
+                            .padding(.top, GameLogPresentation(entry.message).plainText.hasPrefix("TURN ") ? 12 : 0)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .id(entry.id)
                         }
                         Color.clear.frame(height: 1).id("log-bottom")
                             .background(GeometryReader { geometry in

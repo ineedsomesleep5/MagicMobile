@@ -200,3 +200,123 @@ enum BoardFXBannerPlan {
         return name.localizedCaseInsensitiveContains("ability") ? name : "\(name) · ability"
     }
 }
+
+/// Combat keywords a battlefield card shows while it attacks or blocks. They come from the
+/// permanent's current engine view: XMage's keyword icons and bare keyword rules lines are
+/// built from the permanent's live abilities, so keywords gained from other effects (Atarka
+/// giving an attacking Dragon double strike) are included. The view carries no printed/gained
+/// provenance, so a gained keyword looks the same as a printed one. Case order is badge priority.
+enum CombatKeyword: String, CaseIterable, Equatable, Hashable {
+    case doubleStrike, firstStrike, deathtouch, trample, lifelink, indestructible, menace, flying, reach, vigilance
+
+    var label: String {
+        switch self {
+        case .doubleStrike: return "Double strike"
+        case .firstStrike: return "First strike"
+        case .deathtouch: return "Deathtouch"
+        case .trample: return "Trample"
+        case .lifelink: return "Lifelink"
+        case .indestructible: return "Indestructible"
+        case .menace: return "Menace"
+        case .flying: return "Flying"
+        case .reach: return "Reach"
+        case .vigilance: return "Vigilance"
+        }
+    }
+
+    /// For narrow cards.
+    var shortLabel: String {
+        switch self {
+        case .doubleStrike: return "2× strike"
+        case .firstStrike: return "1st strike"
+        case .indestructible: return "Indestr."
+        default: return label
+        }
+    }
+
+    var iconType: String {
+        switch self {
+        case .doubleStrike: return "ABILITY_DOUBLE_STRIKE"
+        case .firstStrike: return "ABILITY_FIRST_STRIKE"
+        case .deathtouch: return "ABILITY_DEATHTOUCH"
+        case .trample: return "ABILITY_TRAMPLE"
+        case .lifelink: return "ABILITY_LIFELINK"
+        case .indestructible: return "ABILITY_INDESTRUCTIBLE"
+        case .menace: return "ABILITY_MENACE"
+        case .flying: return "ABILITY_FLYING"
+        case .reach: return "ABILITY_REACH"
+        case .vigilance: return "ABILITY_VIGILANCE"
+        }
+    }
+
+    /// Deals combat damage in the first-strike damage step.
+    static func strikesFirst(_ keywords: Set<CombatKeyword>) -> Bool {
+        keywords.contains(.firstStrike) || keywords.contains(.doubleStrike)
+    }
+
+    /// Deals combat damage in the regular damage step (no first strike, or double strike).
+    static func strikesInRegularStep(_ keywords: Set<CombatKeyword>) -> Bool {
+        !keywords.contains(.firstStrike) || keywords.contains(.doubleStrike)
+    }
+
+    private static let byIcon = Dictionary(uniqueKeysWithValues: allCases.map { ($0.iconType, $0) })
+    private static let byWord = Dictionary(uniqueKeysWithValues: allCases.map { ($0.label.lowercased(), $0) })
+    private static let markup = try! NSRegularExpression(pattern: #"<[^>]*>"#)
+    private static let reminder = try! NSRegularExpression(pattern: #"\([^)]*\)"#)
+
+    /// Keywords from engine icons and from rules lines made only of keywords ("Double strike",
+    /// "Flying, trample", "Menace <i>(reminder)</i>"). Sentences that merely mention a keyword
+    /// ("Creatures you control have flying") never count. Badge order, no duplicates.
+    static func of(icons: [XmageCardIcon]?, rules: String?) -> [CombatKeyword] {
+        var found = Set<CombatKeyword>()
+        for icon in icons ?? [] {
+            if let keyword = byIcon[icon.iconType.uppercased()] { found.insert(keyword) }
+        }
+        for rawLine in (rules ?? "").split(whereSeparator: \.isNewline) {
+            var line = String(rawLine)
+            for pattern in [markup, reminder] {
+                line = pattern.stringByReplacingMatches(in: line, range: NSRange(location: 0, length: (line as NSString).length), withTemplate: "")
+            }
+            line = line.trimmingCharacters(in: .whitespaces.union(CharacterSet(charactersIn: ".")))
+            guard !line.isEmpty else { continue }
+            let words = line.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+            let keywords = words.compactMap { byWord[$0] }
+            guard keywords.count == words.count else { continue }
+            found.formUnion(keywords)
+        }
+        return allCases.filter(found.contains)
+    }
+}
+
+extension ZoneCard {
+    /// Attacking or blocking in the public combat groups.
+    var isInCombat: Bool { isAttacking == true || !(blocking ?? []).isEmpty }
+
+    var combatKeywords: [CombatKeyword] { CombatKeyword.of(icons: cardIcons, rules: card.oracleText) }
+}
+
+/// Which combat keyword badges fit on a battlefield card that is attacking or blocking.
+/// Double strike already says first strike, so first strike is not repeated beside it.
+struct CombatKeywordBadgePlan: Equatable {
+    let visible: [CombatKeyword]
+    /// Keywords that do not fit; they keep their icon in the card's ability row.
+    let hiddenCount: Int
+    /// Narrow cards use short labels ("2× strike").
+    let compact: Bool
+
+    static let compactWidth: CGFloat = 66
+
+    init(keywords: [CombatKeyword], cardWidth: CGFloat, cardHeight: CGFloat) {
+        let shown = keywords.contains(.doubleStrike) ? keywords.filter { $0 != .firstStrike } : keywords
+        let row = Self.fontSize(cardWidth: cardWidth) + 7
+        // Room between the name header and the footer with its icon row.
+        let slots = max(1, min(3, Int((cardHeight - 56) / row)))
+        visible = Array(shown.prefix(slots))
+        hiddenCount = shown.count - visible.count
+        compact = cardWidth < Self.compactWidth
+    }
+
+    func label(_ keyword: CombatKeyword) -> String { compact ? keyword.shortLabel : keyword.label }
+
+    static func fontSize(cardWidth: CGFloat) -> CGFloat { min(9, max(6.5, cardWidth * 0.1)) }
+}

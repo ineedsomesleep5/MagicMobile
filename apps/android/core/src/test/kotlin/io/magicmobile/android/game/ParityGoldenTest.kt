@@ -77,6 +77,68 @@ class ParityGoldenTest {
         compare(jsonObject("log" to JsonArray(logs), "rules" to JsonArray(rules), "prompts" to JsonArray(prompts)), "text-cases.json")
     }
 
+    /** combat-cases.json: keyword extraction, combat badges, first-strike beats and log reasons (ParityGoldenTests.swift). */
+    @Test fun combatClarityCasesOnBothPlatforms() {
+        val root = Json.parseToJsonElement(File(parity, "combat-cases.json").readText())
+        fun strings(value: J?): List<String>? = (value as? JsonArray)?.map { it.string!! }
+        fun keywords(value: J?): List<CombatKeyword> = (strings(value) ?: emptyList()).mapNotNull { CombatKeyword.of(it) }
+        for (item in root["keywords"].array!!) {
+            val icons = strings(item["icons"])?.map { XmageCardIcon(it) }
+            assertEquals("keywords · ${item["name"].string}", strings(item["expect"]),
+                CombatKeyword.of(icons, item["rules"].string).map { it.rawValue })
+        }
+        for (item in root["badges"].array!!) {
+            val at = "badges · ${item["name"].string}"
+            val plan = CombatKeywordBadgePlan(keywords(item["keywords"]), (item["width"] as JsonPrimitive).content.toFloat(),
+                (item["height"] as JsonPrimitive).content.toFloat())
+            assertEquals(at, strings(item["visible"]), plan.visible.map { it.rawValue })
+            assertEquals(at, (item["hidden"] as JsonPrimitive).content.toInt(), plan.hiddenCount)
+            assertEquals(at, strings(item["labels"]), plan.visible.map { plan.label(it) })
+        }
+        fun state(json: J): BoardFXState {
+            val cards = json["cards"].array!!.map { card ->
+                val id = card["id"].string!!
+                BoardFXState.Card(id, card["player"].string!!, BoardFXZone.valueOf((card["zone"].string ?: "battlefield").uppercase()), id,
+                    BoardFXTint.RED, 0, 0, card["attacking"].bool ?: false, strings(card["blocking"]) ?: emptyList(),
+                    keywords = keywords(card["keywords"]).toSet())
+            }
+            val lives = (json["lives"] as JsonObject).mapValues { (it.value as JsonPrimitive).content.toInt() }
+            val defenders = (json["defenders"] as? JsonObject)?.mapValues { it.value.string!! } ?: emptyMap()
+            return BoardFXState("combat", json["step"].string!!, lives, cards.associateBy { it.id }, defenders = defenders,
+                blockedAttackers = (strings(json["blocked"]) ?: emptyList()).toSet())
+        }
+        fun summary(event: BoardFXEvent): String = when (event) {
+            BoardFXEvent.FirstStrikeBeat -> "first-strike"
+            is BoardFXEvent.CombatStrike -> {
+                val aim = when (val target = event.target) { is BoardFXStrikeTarget.Card -> "card:${target.id}"; is BoardFXStrikeTarget.Player -> "player:${target.id}" }
+                "strike ${event.attackerID} -> $aim ${if (event.firstStrike) "first" else "regular"}"
+            }
+            is BoardFXEvent.DamageMarked -> "damage ${event.cardID} ${event.amount}"
+            is BoardFXEvent.LeftBattlefield -> "left ${event.cardID} ${event.to?.name?.lowercase() ?: "nil"}"
+            is BoardFXEvent.LifeChanged -> "life ${event.playerID} ${event.delta}"
+            else -> "other"
+        }
+        for (item in root["beats"].array!!) {
+            val at = "beats · ${item["name"].string}"
+            val events = BoardEventDiffer.events(state(item["old"]!!), state(item["new"]!!))
+            assertEquals(at, strings(item["events"]), events.map(::summary))
+            for ((level, key) in listOf(BoardFXLevel.FULL to "full", BoardFXLevel.REDUCED to "reduced")) {
+                val planned = BoardFXScheduler.schedule(events, level).map {
+                    "${summary(it.event)} @${"%.3f".format(java.util.Locale.US, it.delay)} +${"%.3f".format(java.util.Locale.US, it.duration)}"
+                }
+                assertEquals("$at · $key", strings(item[key]), planned)
+            }
+        }
+        val log = root["log"]!!
+        val fighters = (log["fighters"] as JsonObject).mapValues { (_, value) ->
+            CombatLogReasons.Fighter(value["name"].string!!, keywords(value["keywords"]).toSet())
+        }
+        for (item in log["cases"].array!!) {
+            val step = CombatLogReasons.DamageStep.of(item["previous"].string, item["step"].string!!)
+            assertEquals("log · ${item["name"].string}", item["reason"].string, CombatLogReasons.reason(item["message"].string!!, step, fighters))
+        }
+    }
+
     /** Shared behavior cases: both apps must meet every expectation in the file (no goldens). */
     @Test fun opponentFocusCasesOnBothPlatforms() = runSeatCases("focus-cases.json")
 

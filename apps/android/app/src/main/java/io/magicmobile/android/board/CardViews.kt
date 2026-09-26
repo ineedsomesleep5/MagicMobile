@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -57,6 +59,10 @@ import io.magicmobile.android.game.BoardFXLevel
 import io.magicmobile.android.game.BoardSize
 import io.magicmobile.android.game.CardCounterBadge
 import io.magicmobile.android.game.CardPlayAffordance
+import io.magicmobile.android.game.CombatKeyword
+import io.magicmobile.android.game.CombatKeywordBadgePlan
+import io.magicmobile.android.game.combatKeywords
+import io.magicmobile.android.game.isInCombat
 import io.magicmobile.android.game.NativeCardArtworkPolicy
 import io.magicmobile.android.game.TokenCopyFrameLayout
 import io.magicmobile.android.game.TokenCopyPresentation
@@ -450,6 +456,35 @@ private fun BattlefieldAbilityBadges(icons: List<XmageCardIcon>, cardWidth: Dp, 
     }
 }
 
+/**
+ * Named combat keywords on an attacking or blocking card (CombatKeywordBadgePlan). Strike keywords are
+ * filled red and deathtouch violet, the pair that decides most trades (ArenaBoardPresentation.swift).
+ */
+@Composable
+private fun CombatKeywordBadges(plan: CombatKeywordBadgePlan, cardWidth: Dp, modifier: Modifier = Modifier) {
+    val size = CombatKeywordBadgePlan.fontSize(cardWidth.value)
+    @Composable
+    fun badge(text: String, fill: Color, textColor: Color) {
+        Box(Modifier.height((size + 5).dp).shadow(1.5.dp, CircleShape).background(fill, CircleShape)
+            .border(0.5.dp, Color.Black.copy(alpha = 0.5f), CircleShape).padding(horizontal = 3.5.dp), contentAlignment = Alignment.Center) {
+            FitText(text, sf(size, SfWeight.black), color = textColor, minimumScale = 0.6f)
+        }
+    }
+    // Keywords that do not fit keep their icon in the card's ability row.
+    Column(modifier.widthIn(max = cardWidth - 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        for (keyword in plan.visible) {
+            val (fill, text) = combatKeywordStyle(keyword)
+            badge(plan.label(keyword).uppercase(), fill, text)
+        }
+    }
+}
+
+private fun combatKeywordStyle(keyword: CombatKeyword): Pair<Color, Color> = when (keyword) {
+    CombatKeyword.DOUBLE_STRIKE, CombatKeyword.FIRST_STRIKE -> rgb(0.86, 0.28, 0.12) to Color.White
+    CombatKeyword.DEATHTOUCH -> rgb(0.24, 0.1, 0.3) to rgb(0.86, 0.7, 1.0)
+    else -> Color.Black.copy(alpha = 0.8f) to MagicPalette.parchment
+}
+
 /** Compact public permanent face; the complete printed card remains in inspection. */
 @Composable
 fun ArenaBattlefieldCard(card: ZoneCard, zoneName: String, width: Dp, height: Dp, modifier: Modifier = Modifier, selected: Boolean = false,
@@ -461,6 +496,15 @@ fun ArenaBattlefieldCard(card: ZoneCard, zoneName: String, width: Dp, height: Dp
     val isLegendary = card.card.typeLine.contains("legendary", ignoreCase = true)
     val showsFooter = card.showsPowerToughness || (card.isCreature && card.summoningSickness == true)
     val tapped = card.tapped == true
+    // Labeled combat keywords while the card attacks or blocks, gained ones included.
+    val combatPlan = if (card.isInCombat && !card.isPhasedOut) CombatKeywordBadgePlan(card.combatKeywords, width.value, height.value)
+        .takeIf { it.visible.isNotEmpty() } else null
+    // The icon row leaves out keywords the combat badges already name.
+    val abilityIcons = if (combatPlan == null) card.visibleXmageIcons else {
+        val named = combatPlan.visible.map { it.iconType }.toMutableSet()
+        if (CombatKeyword.DOUBLE_STRIKE in combatPlan.visible) named += CombatKeyword.FIRST_STRIKE.iconType
+        card.visibleXmageIcons.filter { it.iconType.uppercase() !in named }
+    }
     val rotation by animateFloatAsState(if (tapped) -7f else 0f, if (reduceMotion) tween(0) else tween(220), label = "tapTilt")
     val phasedAlpha by animateFloatAsState(if (card.isPhasedOut) 0.42f else 1f, if (reduceMotion) tween(0) else tween(200), label = "phase")
     val shape = RoundedCornerShape(7.dp)
@@ -491,7 +535,8 @@ fun ArenaBattlefieldCard(card: ZoneCard, zoneName: String, width: Dp, height: Dp
                 }
             }
         }
-        BattlefieldAbilityBadges(card.visibleXmageIcons, width, Modifier.align(Alignment.BottomStart).padding(start = 2.dp, bottom = if (showsFooter) 22.dp else 2.dp))
+        BattlefieldAbilityBadges(abilityIcons, width, Modifier.align(Alignment.BottomStart).padding(start = 2.dp, bottom = if (showsFooter) 22.dp else 2.dp))
+        combatPlan?.let { CombatKeywordBadges(it, width, Modifier.align(Alignment.TopStart).padding(start = 2.dp, top = 17.dp)) }
         if (card.counterBadges.isNotEmpty()) {
             CardCounterBadgeStrip(card.counterBadges.take(2), width, Modifier.align(Alignment.TopEnd).padding(top = 16.dp))
         }

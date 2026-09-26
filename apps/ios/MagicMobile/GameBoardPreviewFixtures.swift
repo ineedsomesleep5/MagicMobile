@@ -33,6 +33,9 @@ enum GameBoardPreviewFixtures {
             root["xmage"] = xmage
             root["bridgeRevision"] = 100
         }
+        if state == .firstStrike, specialStateAdvanced {
+            advanceToFirstStrikeDamage(&root)
+        }
         if let step {
             root["step"] = step
             root["activePlayerId"] = "ai-1"
@@ -168,6 +171,66 @@ enum GameBoardPreviewFixtures {
     }
 
     static let tokenCopyID = "human-token-copy"
+    /// First-strike preview: UUIDs, so the public log can name these cards.
+    static let atarkaID = "a7a4ca00-6d1e-4c2a-9f10-0000000000a1"
+    static let deathtouchBlockerID = "7e9a0000-5b1d-4d2e-8f00-0000000000b2"
+
+    /// `first-strike`: Atarka gave itself double strike when it attacked, and a deathtouch
+    /// Typhoid Rats blocks. Advanced, XMage is in its first-strike damage step: Atarka's
+    /// first hit killed the Rats before they could deal damage.
+    private static func firstStrikeCombat(_ root: inout [String: Any], players: inout [[String: Any]]) {
+        var atarka = previewCard(atarkaID, "Atarka, World Render", "Legendary Creature — Dragon", "{5}{R}{R}",
+                                 "Flying\nTrample\nWhenever a Dragon you control attacks, it gains double strike until end of turn.\nDouble strike",
+                                 power: 6)
+        atarka["toughness"] = 4
+        atarka["tapped"] = true
+        atarka["isAttacking"] = true
+        atarka["summoningSickness"] = false
+        atarka["cardIcons"] = ["ABILITY_FLYING", "ABILITY_TRAMPLE", "ABILITY_DOUBLE_STRIKE"].map { ["iconType": $0, "category": "ABILITY"] }
+        var rats = previewCard(deathtouchBlockerID, "Typhoid Rats", "Creature — Rat", "{B}", "Deathtouch", power: 1)
+        rats["blocking"] = [atarkaID]
+        rats["summoningSickness"] = false
+        rats["cardIcons"] = [["iconType": "ABILITY_DEATHTOUCH", "category": "ABILITY"]]
+        for (index, card) in [(1, atarka), (0, rats)] {
+            var zones = players[index]["zones"] as! [String: Any]
+            zones["battlefield"] = [card] + (zones["battlefield"] as! [[String: Any]])
+            players[index]["zones"] = zones
+        }
+        root["phase"] = "combat"; root["step"] = "declare-blockers"
+        root["activePlayerId"] = "ai-1"
+        root["log"] = [
+            ["id": "fs-log-1", "message": "TURN 3 for <font color='#20B2AA'>Aurelia</font> (31 - 37)"],
+            ["id": "fs-log-2", "message": "<font color='#20B2AA'>Aurelia</font> attacks <font color='#20B2AA'>You</font> with 1 creature"],
+        ]
+    }
+
+    private static func advanceToFirstStrikeDamage(_ root: inout [String: Any]) {
+        var players = root["players"] as! [[String: Any]]
+        var zones = players[0]["zones"] as! [String: Any]
+        var battlefield = zones["battlefield"] as! [[String: Any]]
+        if let index = battlefield.firstIndex(where: { $0["instanceId"] as? String == deathtouchBlockerID }) {
+            var rats = battlefield.remove(at: index)
+            rats["blocking"] = nil
+            zones["graveyard"] = [rats] + (zones["graveyard"] as! [[String: Any]])
+        }
+        zones["battlefield"] = battlefield
+        players[0]["zones"] = zones
+        root["players"] = players
+        root["step"] = "first-combat-damage"
+        root["bridgeRevision"] = 100
+        if var xmage = root["xmage"] as? [String: Any], var combat = xmage["combat"] as? [[String: Any]], !combat.isEmpty {
+            combat[0]["blockers"] = []
+            xmage["combat"] = combat
+            xmage["bridgeRevision"] = 100
+            root["xmage"] = xmage
+        }
+        let atarka = "<font color='#FF6347' object_id='\(atarkaID)'>Atarka, World Render</font> [a7a]"
+        let rats = "<font color='#696969' object_id='\(deathtouchBlockerID)'>Typhoid Rats</font> [7e9]"
+        root["log"] = (root["log"] as? [[String: Any]] ?? []) + [
+            ["id": "fs-log-3", "message": "\(atarka) deals 6 damage to \(rats)"],
+            ["id": "fs-log-4", "message": "\(rats) died"],
+        ]
+    }
 
     private static func previewCard(_ id: String, _ name: String, _ type: String, _ cost: String, _ rules: String, power: Int? = nil) -> [String: Any] {
         var value: [String: Any] = ["instanceId": id, "card": ["name": name, "typeLine": type, "manaCost": cost, "oracleText": rules], "tapped": false]
@@ -253,6 +316,12 @@ enum GameBoardPreviewFixtures {
             }
             if (state == .stackResponsePrompt || state == .abilityShowcase) && index == 1 {
                 battlefield.append(card("ai-1-ability-source", "Prodigal Pyromancer", "Creature — Human Wizard", "{2}{R}", "{T}: This creature deals 1 damage to any target.", power: 1))
+            }
+            if state == .firstStrike && index == 1 {
+                zones["battlefield"] = battlefield; players[index]["zones"] = zones
+                firstStrikeCombat(&root, players: &players)
+                zones = players[index]["zones"] as! [String: Any]
+                battlefield = zones["battlefield"] as! [[String: Any]]
             }
             if state == .tokenCopyInspection && index == 0 {
                 // A token copy of Sun Titan that has grown: its frame shows the live 7/7, never the printed 6/6.
@@ -396,6 +465,13 @@ enum GameBoardPreviewFixtures {
         }
         if state == .victory {
             root["gameStatus"] = "completed"; root["winnerPlayerIds"] = ["human"]; root["endReason"] = "opponent_lost"
+        }
+        if state == .firstStrike {
+            let own = (players[0]["zones"] as! [String: Any])["battlefield"] as! [[String: Any]]
+            let opposing = (players[1]["zones"] as! [String: Any])["battlefield"] as! [[String: Any]]
+            xmage["combat"] = [["defenderId": "human", "defenderName": "You", "defenderKind": "player", "blocked": true,
+                                "attackers": opposing.filter { $0["isAttacking"] as? Bool == true },
+                                "blockers": own.filter { $0["blocking"] != nil }]]
         }
         if state == .combatArrows {
             let own = (players[0]["zones"] as! [String: Any])["battlefield"] as! [[String: Any]]

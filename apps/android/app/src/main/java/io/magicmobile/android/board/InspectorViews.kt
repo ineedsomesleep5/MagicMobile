@@ -442,7 +442,9 @@ fun CompactZoneInspectorOverlay(title: String, cards: List<ZoneCard>, legalActio
 
 /** The public game log, following the latest action unless you scroll back. */
 @Composable
-fun GameLogDrawer(log: List<GameLogEntry>, close: () -> Unit, modifier: Modifier = Modifier) {
+fun GameLogDrawer(log: List<GameLogEntry>, close: () -> Unit, modifier: Modifier = Modifier,
+                  /** One-line combat reasons by entry ID (CombatLogReasons). */
+                  reasons: Map<String, String> = emptyMap()) {
     val lookup = LocalPrintedCardLookup.current
     var inspectedLogCard by remember { mutableStateOf<ZoneCard?>(null) }
     val listState = rememberLazyListState()
@@ -469,14 +471,22 @@ fun GameLogDrawer(log: List<GameLogEntry>, close: () -> Unit, modifier: Modifier
             LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (log.isEmpty()) item { Text("No public game actions yet.", color = MagicPalette.parchment.copy(alpha = 0.6f), style = SfText.subheadline()) }
                 items(log, key = { it.id }) { entry ->
-                    GameLogText(entry.message, Modifier.fillMaxWidth().padding(top = if (GameLogPresentation(entry.message).plainText.startsWith("TURN ")) 12.dp else 0.dp),
-                        style = SfText.subheadline(), onInspect = { reference ->
-                            // The public log authorizes the printed identity, not a lookup of this object's current game state.
-                            if (!NativeCardArtworkPolicy.permitsLookup(reference.name)) return@GameLogText
-                            val printed = lookup(reference.name)
-                            inspectedLogCard = ZoneCard(reference.objectID.toString().uppercase(), CardIdentity(reference.name,
-                                printed?.typeLine ?: "Card referenced in game log", printed?.oracleText ?: "Rules unavailable in the local catalogue.", printed?.manaCost))
-                        })
+                    Column(Modifier.fillMaxWidth().padding(top = if (GameLogPresentation(entry.message).plainText.startsWith("TURN ")) 12.dp else 0.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        GameLogText(entry.message, Modifier.fillMaxWidth(),
+                            style = SfText.subheadline(), onInspect = { reference ->
+                                // The public log authorizes the printed identity, not a lookup of this object's current game state.
+                                if (!NativeCardArtworkPolicy.permitsLookup(reference.name)) return@GameLogText
+                                val printed = lookup(reference.name)
+                                inspectedLogCard = ZoneCard(reference.objectID.toString().uppercase(), CardIdentity(reference.name,
+                                    printed?.typeLine ?: "Card referenced in game log", printed?.oracleText ?: "Rules unavailable in the local catalogue.", printed?.manaCost))
+                            })
+                        // One line of public combat context under the engine's line.
+                        reasons[entry.id]?.let { reason ->
+                            FitText(reason, SfText.caption().copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
+                                Modifier.semantics { contentDescription = reason }, color = Color.White.copy(alpha = 0.62f), minimumScale = 0.8f)
+                        }
+                    }
                 }
                 item { Spacer(Modifier.height(1.dp)) }
             }
