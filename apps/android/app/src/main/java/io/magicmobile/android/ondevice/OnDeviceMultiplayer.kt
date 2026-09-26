@@ -19,6 +19,8 @@ import io.magicmobile.android.game.integer
 import io.magicmobile.android.game.isUuid
 import io.magicmobile.android.game.obj
 import io.magicmobile.android.game.string
+import io.magicmobile.android.session.OnDeviceHostRetryPolicy
+import io.magicmobile.android.session.OnDeviceTableLink
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -298,6 +300,30 @@ class OnDeviceMultiplayerLobby(peerIDs: List<String>, val localPeerID: String, a
 }
 
 /**
+ * A host request that got no answer in time (OnDeviceHostUnavailable in OnDeviceMultiplayer.swift).
+ * The request may still run on the host, so only polls and hello, which change nothing, are retried.
+ */
+class OnDeviceHostUnavailable : Exception("The host did not answer in time. Keep every player’s app in the foreground.")
+
+/**
+ * Host → guest: "the game moved to `revision`; poll when you can." Tiny, idempotent and safe to
+ * drop: a guest that misses one still polls on its heartbeat, and nothing ever queues for it.
+ */
+object OnDeviceRevisionNotice {
+    fun packet(epoch: UUID, revision: Long): J = obj("type" to text("revision"), "epoch" to text(epoch.wire), "revision" to number(revision))
+
+    /** The announced revision of a notice whose epoch the caller already checked. */
+    fun revision(value: J): Long {
+        val fields = value.obj
+        val raw = fields?.get("revision")
+        val revision = if (raw is JsonPrimitive && !raw.isString) raw.integer else null
+        if (fields == null || fields.keys != setOf("type", "epoch", "revision") || fields["type"].string != "revision" ||
+            revision == null || revision < 0) throw EngineError.InvalidMessage("Invalid revision notice.")
+        return revision
+    }
+}
+
+/**
  * Port of OnDeviceRemoteEngineTransport: a guest's engine is the host's, reached through
  * request/reply packets bound to the host's peer ID, the epoch and each request's sequence.
  */
@@ -356,7 +382,7 @@ class OnDeviceRemoteEngineTransport(private val hostID: String, private val matc
             send(data, hostID)
             return withTimeout(timeoutMillis) { result.await() }
         } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
-            throw EngineError.InvalidMessage("The host did not answer in time. Keep every player’s app in the foreground.")
+            throw OnDeviceHostUnavailable()
         } finally { pending.remove(id) }
     }
 
@@ -495,6 +521,8 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
 
     private var relay: RelayTransport? = null
     private var remote: OnDeviceRemoteEngineTransport? = null
+    /** This seat's link to its session: the host announces revisions, a guest hears them. */
+    private var tableLink: OnDeviceTableLink? = null
     private var router: HostRouter? = null
     private var lobby: OnDeviceMultiplayerLobby? = null
     private var submission: J? = null
@@ -685,9 +713,15 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
             "request" -> {
                 val dispatcher = hostDispatcher
                 if (lobby.localPeerID != lobby.hostID || dispatcher == null) throw EngineError.UnboundPeer
+                debugLog("guest request ${fields["operation"].string} from $peer")
                 dispatcher.receive(value, peer)
             }
             "reply" -> (remote ?: throw EngineError.UnboundPeer).receive(value, peer)
+            "revision" -> {
+                val link = tableLink
+                if (peer != lobby.hostID || lobby.localPeerID == lobby.hostID || link == null) throw EngineError.UnboundPeer
+                link.noticed(OnDeviceRevisionNotice.revision(value))
+            }
             "rollStep" -> {
                 val index = fields["index"].integer
                 if (fields.keys != setOf("type", "epoch", "index") || lobby.localPeerID != lobby.hostID || nativeMatchID == null ||
@@ -879,7 +913,11 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
                 startingRoll = result
                 rollProgress = OnDeviceStartingRollProgress(result, (1..lobby.peerIDs.size).map { "player$it" }.toSet())
                 rollRevealedCount = 0
-                endpoint = TableConnection.Endpoint(engine, matchID, lobby.seatID(lobby.localPeerID), isHost = true)
+                val hostSeat = lobby.seatID(lobby.localPeerID)
+                val link = OnDeviceTableLink(OnDeviceTableLink.Role.HOST, names[hostSeat] ?: "")
+                link.announce = { revision -> announceRevision(revision, token) }
+                tableLink = link
+                endpoint = TableConnection.Endpoint(engine, matchID, hostSeat, isHost = true, table = link)
                 room = null
                 isConnected = true
                 updateRollStatus()
@@ -895,12 +933,24 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
         val seatID = lobby.seatID(lobby.localPeerID)
         val remote = OnDeviceRemoteEngineTransport(lobby.hostID, matchID, seatID, epoch, scope) { data, peer -> relay.send(data, peer) }
         this.remote = remote
+        val link = OnDeviceTableLink(OnDeviceTableLink.Role.GUEST, seatNames[lobby.seatID(lobby.hostID)] ?: playerNames[lobby.hostID] ?: "")
+        tableLink = link
         val token = generation
         startup = scope.launch {
             try {
-                remote.hello(identity)
+                // Hello changes nothing on the host, so a lost answer is simply asked again.
+                val retries = OnDeviceHostRetryPolicy()
+                while (true) {
+                    try { remote.hello(identity); break }
+                    catch (error: OnDeviceHostUnavailable) {
+                        val backoff = retries.delayAfter(error)
+                        if (backoff == null || generation != token || isFailed || closing) throw error
+                        status = link.waitingStatus
+                        delay(backoff)
+                    }
+                }
                 if (generation != token || isFailed || closing) return@launch
-                endpoint = TableConnection.Endpoint(EngineClient(remote), matchID, seatID, isHost = false)
+                endpoint = TableConnection.Endpoint(EngineClient(remote), matchID, seatID, isHost = false, table = link)
                 room = null
                 isConnected = true
                 updateRollStatus()
@@ -924,13 +974,37 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
         if (isFailed || closing) return
         val paused = suspendedPeers.isNotEmpty() || relayAwayPeers.isNotEmpty()
         isSuspended = paused
-        status = if (paused) "Match paused. Every player must return to the foreground." else "Connected. Every player must keep the app in the foreground."
+        status = if (relayAwayPeers.isNotEmpty()) {
+            // The relay says who dropped; they may still come back within its grace period.
+            val names = relayAwayPeers.sorted().map { peer ->
+                runCatching { seatNames[lobby.seatID(peer)] }.getOrNull() ?: playerNames[peer] ?: "a player"
+            }
+            "Waiting for ${names.joinToString(", ")}…"
+        } else if (paused) "Match paused. Every player must return to the foreground." else "Connected. Every player must keep the app in the foreground."
         if (lobby.localPeerID == lobby.hostID) {
             suspensionRevision += 1
             val revision = suspensionRevision
             router?.let { router -> scope.launch { router.setSuspended(paused, revision) } }
             lobby.peerIDs.filter { it != lobby.hostID }.forEach { sendPresence(paused, it) }
         }
+    }
+
+    /**
+     * Tells each connected guest that the game moved on. Best effort: a guest that misses a notice
+     * polls on its heartbeat, so a failed send never ends the match.
+     */
+    private fun announceRevision(revision: Long, token: UUID) {
+        val lobby = lobby ?: return
+        val epoch = epoch ?: return
+        if (generation != token || isFailed || closing || lobby.localPeerID != lobby.hostID) return
+        val notice = OnDeviceRevisionNotice.packet(epoch, revision)
+        debugLog("host notice revision $revision")
+        for (peer in lobby.peerIDs) if (peer != lobby.hostID && peer !in relayAwayPeers) runCatching { send(notice, peer) }
+    }
+
+    /** Debug builds only: lets a cross-play check count table traffic (`adb logcat -s MagicMobileTable`). */
+    private fun debugLog(message: String) {
+        if (io.magicmobile.android.BuildConfig.DEBUG) android.util.Log.d("MagicMobileTable", message)
     }
 
     private fun sendPresence(suspended: Boolean, peer: String) {
@@ -964,7 +1038,7 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
             generation = UUID.randomUUID(); hostEngine = null; needsCleanup = false; endpoint = null; hostAISeatSummary = null; seatNames = emptyMap()
             rollTimer?.cancel(); rollTimer = null
             startingRoll = null; rollProgress = null; rollRevealedCount = 0; hasRolled = false; rollStatus = ""
-            remote = null; router = null; hostDispatcher = null; relay = null; lobby = null; epoch = null; submission = null; requestedAISeats = emptyList()
+            remote = null; tableLink = null; router = null; hostDispatcher = null; relay = null; lobby = null; epoch = null; submission = null; requestedAISeats = emptyList()
             suspendedPeers.clear(); relayAwayPeers.clear(); peerPresenceSequences.clear(); presenceSequence = 0; suspensionRevision = 0
             room = null; localReady = false; reportedReady = emptyMap(); playerNames.clear()
             tableCode = null; seatsTaken = 0; seatsWanted = 0; isHosting = false

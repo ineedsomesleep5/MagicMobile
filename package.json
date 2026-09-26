@@ -4,46 +4,9 @@
   "private": true,
   "packageManager": "pnpm@10.12.4",
   "scripts": {
-    "dev": "pnpm --filter @magicmobile/web dev",
-    "dev:xmage-gateway": "pnpm --filter @magicmobile/xmage-gateway dev",
-    "dev:xmage": "docker compose up --build xmage-bridge xmage-gateway web",
-    "build": "pnpm -r build",
-    "test": "pnpm -r test",
-    "lint": "pnpm -r lint",
-    "design:lint": "designmd lint DESIGN.md",
-    "typecheck": "pnpm -r typecheck",
-    "db:migrate": "pnpm --filter @magicmobile/shared db:migrate",
-    "db:seed": "pnpm --filter @magicmobile/card-data db:seed",
-    "sync:scryfall": "pnpm --filter @magicmobile/card-data sync:scryfall",
-    "smoke:xmage": "vite-node apps/xmage-gateway/scripts/smoke-create-commander-game.ts",
-    "smoke:xmage:gauntlet": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=commander-gauntlet XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
-    "smoke:xmage:fixture-smoke": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=fixture-smoke XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
-    "smoke:xmage:core": "XMAGE_SMOKE_SCENARIO=core-flow pnpm smoke:xmage",
-    "smoke:xmage:opening-start-player": "XMAGE_SMOKE_SCENARIO=opening-start-player pnpm smoke:xmage",
-    "smoke:xmage:ai-turn-progress": "XMAGE_SMOKE_SCENARIO=ai-turn-progress pnpm smoke:xmage",
-    "smoke:xmage:combat": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=blocker-flow XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
-    "smoke:xmage:commander-state": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=commander-replacement-tax XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
-    "smoke:xmage:commander-damage": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=commander-damage XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
-    "smoke:xmage:mana-rock": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=mana-rock XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
-    "smoke:xmage:activated-stack": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=activated-ability-stack XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
-    "smoke:xmage:triggered-stack": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=triggered-ability-stack XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
-    "smoke:xmage:prompt-mode": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=prompt-mode XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
-    "smoke:xmage:prompt-pile": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=prompt-pile XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
-    "smoke:xmage:prompt-variety": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=prompt-variety XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
-    "smoke:xmage:damage-assignment": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=damage-assignment XMAGE_USE_FIXTURE=true pnpm smoke:xmage",
-    "smoke:xmage:full-ai": "ENABLE_XMAGE_FIXTURES=true NODE_ENV=test XMAGE_SMOKE_SCENARIO=commander-full-ai XMAGE_USE_FIXTURE=true pnpm smoke:xmage"
+    "design:lint": "designmd lint DESIGN.md"
   },
   "devDependencies": {
-    "@google/design.md": "^0.3.0",
-    "@types/node": "^24.0.0",
-    "typescript": "^5.8.3",
-    "vite-node": "3.2.4",
-    "vitest": "^3.2.4"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "sharp"
-    ]
+    "@google/design.md": "^0.3.0"
   }
 }

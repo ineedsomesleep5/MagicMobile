@@ -74,6 +74,132 @@ final class ParityGoldenTests: XCTestCase {
         try check(["log": logs, "rules": rules, "prompts": prompts], name: "text-cases.json")
     }
 
+    /// Shared behavior cases: both apps must meet every expectation in the file (no goldens).
+    func testOpponentFocusCasesOnBothPlatforms() throws { try runSeatCases("focus-cases.json") }
+
+    func testSpectatorSeatCasesOnBothPlatforms() throws { try runSeatCases("spectator-cases.json") }
+
+    func testPriorityStatusCasesOnBothPlatforms() throws {
+        let root = try caseFile("focus-cases.json")
+        let base = try XCTUnwrap(root["base"] as? [String: Any])
+        let cases = try XCTUnwrap(root["status"] as? [[String: Any]])
+        XCTAssertFalse(cases.isEmpty)
+        for item in cases {
+            var json = base
+            json["turn"] = item["turn"]
+            json["priorityPlayerId"] = item["priority"]
+            json["waitingOnPlayerId"] = item["waitingOn"]
+            let snapshot = try JSONDecoder().decode(GameSnapshot.self, from: JSONSerialization.data(withJSONObject: json))
+            XCTAssertEqual(snapshot.priorityStatusText, item["text"] as? String, "status · \(item["name"] ?? "")")
+        }
+    }
+
+    /// combat-cases.json: keyword extraction, combat badges, first-strike beats and log reasons.
+    func testCombatClarityCasesOnBothPlatforms() throws {
+        let root = try caseFile("combat-cases.json")
+        func keywords(_ value: Any?) -> [CombatKeyword] { (value as? [String] ?? []).compactMap(CombatKeyword.init(rawValue:)) }
+        for item in try XCTUnwrap(root["keywords"] as? [[String: Any]]) {
+            let icons = (item["icons"] as? [String])?.map { XmageCardIcon(iconType: $0, resourceName: nil, category: nil, text: nil, hint: nil) }
+            XCTAssertEqual(CombatKeyword.of(icons: icons, rules: item["rules"] as? String).map(\.rawValue),
+                           item["expect"] as? [String], "keywords · \(item["name"] ?? "")")
+        }
+        for item in try XCTUnwrap(root["badges"] as? [[String: Any]]) {
+            let at = "badges · \(item["name"] ?? "")"
+            let plan = CombatKeywordBadgePlan(keywords: keywords(item["keywords"]), cardWidth: CGFloat(item["width"] as! Double),
+                                              cardHeight: CGFloat(item["height"] as! Double))
+            XCTAssertEqual(plan.visible.map(\.rawValue), item["visible"] as? [String], at)
+            XCTAssertEqual(plan.hiddenCount, item["hidden"] as? Int, at)
+            XCTAssertEqual(plan.visible.map(plan.label), item["labels"] as? [String], at)
+        }
+        func state(_ json: [String: Any]) -> BoardFXState {
+            let cards = (json["cards"] as? [[String: Any]] ?? []).map { card in
+                BoardFXState.Card(id: card["id"] as! String, playerID: card["player"] as! String,
+                                  zone: BoardFXZone(rawValue: card["zone"] as? String ?? "battlefield")!, name: card["id"] as! String,
+                                  tint: .red, damage: card["damage"] as? Int ?? 0, counters: 0,
+                                  attacking: card["attacking"] as? Bool ?? false, blocking: card["blocking"] as? [String] ?? [],
+                                  keywords: Set(keywords(card["keywords"])))
+            }
+            return BoardFXState(gameID: "combat", step: json["step"] as! String, lives: json["lives"] as? [String: Int] ?? [:],
+                                cards: Dictionary(uniqueKeysWithValues: cards.map { ($0.id, $0) }),
+                                defenders: json["defenders"] as? [String: String] ?? [:],
+                                blockedAttackers: Set(json["blocked"] as? [String] ?? []))
+        }
+        func summary(_ event: BoardFXEvent) -> String {
+            switch event {
+            case .firstStrikeBeat: return "first-strike"
+            case let .combatStrike(id, target, _, first):
+                let aim: String
+                switch target { case let .card(card): aim = "card:\(card)"; case let .player(player): aim = "player:\(player)" }
+                return "strike \(id) -> \(aim) \(first ? "first" : "regular")"
+            case let .damageMarked(id, amount): return "damage \(id) \(amount)"
+            case let .leftBattlefield(id, _, zone, _): return "left \(id) \(zone?.rawValue ?? "nil")"
+            case let .lifeChanged(id, delta): return "life \(id) \(delta)"
+            default: return "other"
+            }
+        }
+        for item in try XCTUnwrap(root["beats"] as? [[String: Any]]) {
+            let at = "beats · \(item["name"] ?? "")"
+            let events = BoardEventDiffer.events(from: state(item["old"] as! [String: Any]), to: state(item["new"] as! [String: Any]))
+            XCTAssertEqual(events.map(summary), item["events"] as? [String], at)
+            for (level, key) in [(BoardFXLevel.full, "full"), (.reduced, "reduced")] {
+                let planned = BoardFXScheduler.schedule(events, level: level).map {
+                    "\(summary($0.event)) @\(String(format: "%.3f", $0.delay)) +\(String(format: "%.3f", $0.duration))"
+                }
+                XCTAssertEqual(planned, item[key] as? [String], "\(at) · \(key)")
+            }
+        }
+        let log = try XCTUnwrap(root["log"] as? [String: Any])
+        let fighters = try XCTUnwrap(log["fighters"] as? [String: [String: Any]]).mapValues {
+            CombatLogReasons.Fighter(name: $0["name"] as! String, keywords: Set(keywords($0["keywords"])))
+        }
+        for item in try XCTUnwrap(log["cases"] as? [[String: Any]]) {
+            let step = CombatLogReasons.DamageStep(from: item["previous"] as? String, to: item["step"] as! String)
+            XCTAssertEqual(CombatLogReasons.reason(for: item["message"] as! String, step: step, fighters: fighters),
+                           item["reason"] as? String, "log · \(item["name"] ?? "")")
+        }
+    }
+
+    private func caseFile(_ name: String) throws -> [String: Any] {
+        let data = try Data(contentsOf: parityDirectory.appendingPathComponent(name))
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    /// Runs focus-cases.json or spectator-cases.json the way NativeGameView applies them:
+    /// every poll feeds BoardFocusTracker, then BoardOpponentFocus.snapshot picks the seats.
+    private func runSeatCases(_ name: String) throws {
+        let root = try caseFile(name)
+        let base = try XCTUnwrap(root["base"] as? [String: Any])
+        let cases = try XCTUnwrap(root["cases"] as? [[String: Any]])
+        XCTAssertFalse(cases.isEmpty)
+        for item in cases {
+            var state: [String: Any] = ["followTurns": item["followTurns"] as? Bool ?? true]
+            var tracker = BoardFocusTracker()
+            for (index, step) in (item["steps"] as? [[String: Any]] ?? []).enumerated() {
+                let at = "\(name) · \(item["name"] ?? "") · step \(index + 1)"
+                for key in SeatCase.stateKeys where step.keys.contains(key) { state[key] = step[key] }
+                let snapshot = try JSONDecoder().decode(GameSnapshot.self,
+                                                        from: JSONSerialization.data(withJSONObject: SeatCase.snapshot(base, state)))
+                if let tap = step["tap"] as? String { tracker.select(tap) }
+                tracker.observe(snapshot, followTurns: state["followTurns"] as? Bool ?? true)
+                let board = BoardOpponentFocus.snapshot(snapshot, selecting: tracker.focusedID)
+                if step.keys.contains("top") { XCTAssertEqual(board.opponent?.playerId, step["top"] as? String, at) }
+                if let ids = step["topChoices"] as? [String] { XCTAssertEqual(BoardOpponentFocus.opponents(in: board).map(\.playerId), ids, at) }
+                if let id = step["seat"] as? String { XCTAssertEqual(board.seat?.playerId, id, at) }
+                if let ids = step["seatHand"] as? [String] { XCTAssertEqual(BoardOpponentFocus.seatHand(in: board).map(\.instanceId), ids, at) }
+                if let count = step["seatHandCount"] as? Int { XCTAssertEqual(board.seat?.zones.visibleHandCount, count, at) }
+                if let id = step["viewer"] as? String {
+                    XCTAssertEqual(board.viewerID, id, at)
+                    XCTAssertEqual(board.human?.playerId, id, at)
+                }
+                if let label = step["viewerLabel"] as? String { XCTAssertEqual(board.playerLabel(board.viewerID), label, at) }
+                if let label = step["seatLabel"] as? String { XCTAssertEqual(board.playerLabel(board.seatID), label, at) }
+                if let spectating = step["spectating"] as? Bool { XCTAssertEqual(board.isSpectating, spectating, at) }
+                if let title = step["title"] as? String { XCTAssertEqual(SpectatorSeatPresentation.title(board), title, at) }
+                if let detail = step["detail"] as? String { XCTAssertEqual(SpectatorSeatPresentation.detail(board), detail, at) }
+            }
+        }
+    }
+
     private func check(_ summary: [String: Any], name: String) throws {
         let data = try JSONSerialization.data(withJSONObject: summary, options: [.sortedKeys, .prettyPrinted, .withoutEscapingSlashes])
         let directory = parityDirectory.appendingPathComponent("golden")
@@ -86,6 +212,32 @@ final class ParityGoldenTests: XCTestCase {
         let golden = try Data(contentsOf: url)
         XCTAssertEqual(String(decoding: data, as: UTF8.self), String(decoding: golden, as: UTF8.self),
                        "\(name) changed: rerun with MAGICMOBILE_WRITE_PARITY_GOLDENS=1 and port the change to Android")
+    }
+}
+
+/// Builds a case step's snapshot from the file's base. SeatCase in ParityGoldenTest.kt is its twin.
+enum SeatCase {
+    static let stateKeys = ["turn", "step", "active", "prompt", "out", "game", "viewer", "completed", "followTurns"]
+
+    static func snapshot(_ base: [String: Any], _ state: [String: Any]) -> [String: Any] {
+        var json = base
+        if let game = state["game"] as? String { json["id"] = game }
+        if let turn = state["turn"] as? Int { json["turn"] = turn }
+        if let step = state["step"] as? String { json["step"] = step }
+        if let viewer = state["viewer"] as? String { json["viewerPlayerId"] = viewer }
+        json["activePlayerId"] = state["active"] as? String
+        if state["completed"] as? Bool == true { json["gameStatus"] = "completed" }
+        if let owner = state["prompt"] as? String {
+            json["promptEnvelopeV2"] = ["id": "case-prompt", "method": "GAME_SELECT", "messageId": 1, "playerId": owner,
+                                        "responseKind": "priority", "message": "Respond"] as [String: Any]
+        }
+        let out = Set(state["out"] as? [String] ?? [])
+        json["players"] = (base["players"] as? [[String: Any]] ?? []).map { player -> [String: Any] in
+            var player = player
+            player["hasLeft"] = out.contains(player["playerId"] as? String ?? "")
+            return player
+        }
+        return json
     }
 }
 

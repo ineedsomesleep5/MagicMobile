@@ -21,10 +21,10 @@ Native local Commander against AI, Deck Studio, deck imports and analysis. Andro
 MagicMobile's existing identity and imagery. User requests a minimal, polished interactive site, motion design, and a floating 3D Magic card such as Black Lotus.
 
 ## Evidence on Hand
-Signed Android GitHub prerelease and acceptance receipt. iOS build 11 distribution evidence is recorded in `../../docs/RELEASE_0.1.1_BUILD11.md`. Actual application screenshots will be labeled by platform.
+Signed Android GitHub prerelease and acceptance receipt. iOS build 11 distribution evidence is recorded in `../../release/RELEASE_0.1.1_BUILD11.md`. Actual application screenshots will be labeled by platform.
 
 ## Verified distribution
-On September 23, 2026 UTC, App Store Connect confirmed iOS version 0.1.1 build 11 as VALID, with Beta App Review APPROVED and both Internal and External groups IN_BETA_TESTING. The External group uses public invitation https://testflight.apple.com/join/2mSHE8rZ. This confirms distribution, not physical-iPhone gameplay acceptance; see `../../docs/RELEASE_0.1.1_BUILD11.md`.
+On September 23, 2026 UTC, App Store Connect confirmed iOS version 0.1.1 build 11 as VALID, with Beta App Review APPROVED and both Internal and External groups IN_BETA_TESTING. The External group uses public invitation https://testflight.apple.com/join/2mSHE8rZ. This confirms distribution, not physical-iPhone gameplay acceptance; see `../../release/RELEASE_0.1.1_BUILD11.md`.
 
 Android uses the public GitHub release `android-v0.2.0-alpha.1`, with the signed `MagicMobile-Android-0.2.0-alpha.1.apk` asset. Links were checked against their public destinations; no sign-in is required for the APK.
 

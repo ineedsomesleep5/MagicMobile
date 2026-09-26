@@ -24,7 +24,8 @@ enum class GameBoardDesignPreviewState(val rawValue: String) {
     EMPTY_LIBRARY_CHOICE("empty-library-choice"), MIXED_CARD_CHOICE("mixed-card-choice"), HAND_DRAG("hand-drag"),
     HAND_SCRUBBER("hand-scrubber"), ZONE_INSPECTION("zone-inspection"), ABILITY_CHOICE("ability-choice"), MODE_CHOICE("mode-choice"),
     PHASE_ANNOUNCEMENT("phase-announcement"), LIFE_CHANGE("life-change"), LARGE_TEXT("large-text"), STACK_TRAY("stack-tray"),
-    VICTORY("victory"), SPECTATING("spectating"), OPENING_HAND("opening-hand");
+    VICTORY("victory"), SPECTATING("spectating"), FOUR_PLAYER_SPECTATING("four-player-spectating"), OPENING_HAND("opening-hand"),
+    TOKEN_COPY_INSPECTION("token-copy-inspection"), ABILITY_SHOWCASE("ability-showcase"), FIRST_STRIKE("first-strike");
 
     val title: String get() = capitalizedWords(rawValue.replace("-", " "))
 
@@ -51,6 +52,19 @@ object GameBoardPreviewFixtures {
                 }
             }
         }
+        if (state == GameBoardDesignPreviewState.ABILITY_SHOWCASE && specialStateAdvanced) {
+            // Prodigal Pyromancer's ability goes on the stack, as XMage names it: "Ability".
+            val xmage = map(root["xmage"])
+            val source = card("ai-1-ability-source", "Prodigal Pyromancer", "Creature — Human Wizard", "{2}{R}", "{T}: This creature deals 1 damage to any target.", 1)
+            xmage["stack"] = mutableListOf(mutableMapOf("id" to "stack-ability-showcase", "objectId" to "stack-ability-showcase",
+                "objectType" to "ACTIVATED_ABILITY", "name" to "Ability", "rulesText" to "Prodigal Pyromancer deals 1 damage to any target.",
+                "sourceInstanceId" to "ai-1-ability-source", "sourceName" to "Prodigal Pyromancer", "sourceZone" to "battlefield",
+                "sourceCard" to source, "controllerId" to "ai-1", "targetIds" to mutableListOf("human"), "paid" to true))
+            map(xmage["panels"])["stack"] = true
+            xmage["bridgeRevision"] = 100
+            root["bridgeRevision"] = 100
+        }
+        if (state == GameBoardDesignPreviewState.FIRST_STRIKE && specialStateAdvanced) advanceToFirstStrikeDamage(root)
         if (step != null) { root["step"] = step; root["activePlayerId"] = "ai-1" }
         if (life != null) players(root).firstOrNull { it["playerId"] == "human" }?.set("life", life)
         (root["promptEnvelopeV2"] as? Map<*, *>)?.let { root["promptText"] = it["message"] }
@@ -60,6 +74,61 @@ object GameBoardPreviewFixtures {
     fun selectedCard(state: GameBoardDesignPreviewState, snapshot: GameSnapshot): ZoneCard? =
         if (state in setOf(GameBoardDesignPreviewState.SELECTED_CARD_ACTION_TRAY, GameBoardDesignPreviewState.MISSING_CARD_ART,
                 GameBoardDesignPreviewState.FULL_HAND_INSPECTION)) snapshot.human?.zones?.hand?.firstOrNull() else null
+
+    const val TOKEN_COPY_ID = "human-token-copy"
+    /** First-strike preview: UUIDs, so the public log can name these cards. */
+    const val ATARKA_ID = "a7a4ca00-6d1e-4c2a-9f10-0000000000a1"
+    const val DEATHTOUCH_BLOCKER_ID = "7e9a0000-5b1d-4d2e-8f00-0000000000b2"
+
+    /**
+     * `first-strike`: Atarka gave itself double strike when it attacked, and a deathtouch Typhoid Rats
+     * blocks. Advanced, XMage is in its first-strike damage step: Atarka's first hit killed the Rats
+     * before they could deal damage.
+     */
+    private fun firstStrikeCombat(root: MutableMap<String, Any?>, players: MutableList<MutableMap<String, Any?>>) {
+        val atarka = card(ATARKA_ID, "Atarka, World Render", "Legendary Creature — Dragon", "{5}{R}{R}",
+            "Flying\nTrample\nWhenever a Dragon you control attacks, it gains double strike until end of turn.\nDouble strike", 6)
+        atarka["toughness"] = 4; atarka["tapped"] = true; atarka["isAttacking"] = true; atarka["summoningSickness"] = false
+        atarka["cardIcons"] = listOf("ABILITY_FLYING", "ABILITY_TRAMPLE", "ABILITY_DOUBLE_STRIKE")
+            .map { mutableMapOf<String, Any?>("iconType" to it, "category" to "ABILITY") }.toMutableList()
+        val rats = card(DEATHTOUCH_BLOCKER_ID, "Typhoid Rats", "Creature — Rat", "{B}", "Deathtouch", 1)
+        rats["blocking"] = mutableListOf(ATARKA_ID); rats["summoningSickness"] = false
+        rats["cardIcons"] = mutableListOf(mutableMapOf<String, Any?>("iconType" to "ABILITY_DEATHTOUCH", "category" to "ABILITY"))
+        list(zones(players[1])["battlefield"]).add(0, atarka)
+        list(zones(players[0])["battlefield"]).add(0, rats)
+        root["phase"] = "combat"; root["step"] = "declare-blockers"
+        root["activePlayerId"] = "ai-1"
+        root["log"] = mutableListOf(
+            mutableMapOf("id" to "fs-log-1", "message" to "TURN 3 for <font color='#20B2AA'>Aurelia</font> (31 - 37)"),
+            mutableMapOf("id" to "fs-log-2", "message" to "<font color='#20B2AA'>Aurelia</font> attacks <font color='#20B2AA'>You</font> with 1 creature"))
+    }
+
+    private fun advanceToFirstStrikeDamage(root: MutableMap<String, Any?>) {
+        val human = zones(players(root)[0])
+        val battlefield = list(human["battlefield"])
+        val index = battlefield.indexOfFirst { it["instanceId"] == DEATHTOUCH_BLOCKER_ID }
+        if (index >= 0) {
+            val rats = battlefield.removeAt(index)
+            rats.remove("blocking")
+            list(human["graveyard"]).add(0, rats)
+        }
+        root["step"] = "first-combat-damage"
+        root["bridgeRevision"] = 100
+        val xmage = map(root["xmage"])
+        list(xmage["combat"]).firstOrNull()?.let { it["blockers"] = mutableListOf<Any?>() }
+        xmage["bridgeRevision"] = 100
+        val atarka = "<font color='#FF6347' object_id='$ATARKA_ID'>Atarka, World Render</font> [a7a]"
+        val rats = "<font color='#696969' object_id='$DEATHTOUCH_BLOCKER_ID'>Typhoid Rats</font> [7e9]"
+        list(root["log"]).addAll(listOf(mutableMapOf("id" to "fs-log-3", "message" to "$atarka deals 6 damage to $rats"),
+            mutableMapOf("id" to "fs-log-4", "message" to "$rats died")))
+    }
+
+    /** The card a preview opens held in the inspector. */
+    fun inspectedCard(state: GameBoardDesignPreviewState, snapshot: GameSnapshot): ZoneCard? = when (state) {
+        GameBoardDesignPreviewState.FULL_HAND_INSPECTION -> snapshot.human?.zones?.hand?.firstOrNull()
+        GameBoardDesignPreviewState.TOKEN_COPY_INSPECTION -> snapshot.human?.zones?.battlefield?.firstOrNull { it.instanceId == TOKEN_COPY_ID }
+        else -> null
+    }
 
     const val boardFXStepCount = 10
 
@@ -173,7 +242,8 @@ object GameBoardPreviewFixtures {
             GameBoardDesignPreviewState.MANA_PAYMENT_PROMPT, GameBoardDesignPreviewState.COMBAT_ARROWS, GameBoardDesignPreviewState.LARGE_TEXT)
         val resourceLayoutMode = if (state == GameBoardDesignPreviewState.CROWDED_BATTLEFIELD) environment["MAGICMOBILE_BOARD_RESOURCE_LAYOUT_UI_TEST"] else null
         val players = players(root)
-        if (state in setOf(GameBoardDesignPreviewState.FOUR_PLAYER_FOCUS, GameBoardDesignPreviewState.PLAYER_TARGET_PROMPT, GameBoardDesignPreviewState.SPECTATING)) {
+        val watching = state == GameBoardDesignPreviewState.SPECTATING || state == GameBoardDesignPreviewState.FOUR_PLAYER_SPECTATING
+        if (state in setOf(GameBoardDesignPreviewState.FOUR_PLAYER_FOCUS, GameBoardDesignPreviewState.PLAYER_TARGET_PROMPT) || watching) {
             for (number in 2..3) {
                 @Suppress("UNCHECKED_CAST")
                 val opponent = deepCopy(players[1]) as MutableMap<String, Any?>
@@ -196,6 +266,17 @@ object GameBoardPreviewFixtures {
             players[0]["hasLeft"] = true
             players[0]["life"] = 0
             players[2]["hasLeft"] = true
+        }
+        if (state == GameBoardDesignPreviewState.FOUR_PLAYER_SPECTATING) {
+            // You conceded in a pod of four: Aurelia, next in turn order, takes your seat while
+            // the top follows Kozilek's turn.
+            players[0]["hasLeft"] = true
+            players[0]["life"] = 0
+            root["turn"] = 6
+            root["activePlayerId"] = "ai-2"
+            root["priorityPlayerId"] = "ai-2"
+            root.remove("waitingOnPlayerId")
+            root.remove("promptText")
         }
         for ((index, player) in players.withIndex()) {
             val seat = player["playerId"] as String
@@ -223,8 +304,21 @@ object GameBoardPreviewFixtures {
                 val graveyard = list(zones["graveyard"])
                 for (number in 0 until 24) graveyard += card("graveyard-overflow-$number", "Fixture Graveyard $number", "Creature", "", "Development scrolling fixture.", 1)
             }
-            if (state == GameBoardDesignPreviewState.STACK_RESPONSE_PROMPT && index == 1) {
+            if ((state == GameBoardDesignPreviewState.STACK_RESPONSE_PROMPT || state == GameBoardDesignPreviewState.ABILITY_SHOWCASE) && index == 1) {
                 battlefield += card("ai-1-ability-source", "Prodigal Pyromancer", "Creature — Human Wizard", "{2}{R}", "{T}: This creature deals 1 damage to any target.", 1)
+            }
+            if (state == GameBoardDesignPreviewState.FIRST_STRIKE && index == 1) firstStrikeCombat(root, players)
+            if (state == GameBoardDesignPreviewState.TOKEN_COPY_INSPECTION && index == 0) {
+                // A token copy of Sun Titan that has grown: its frame shows the live 7/7, never the printed 6/6.
+                val copy = card(TOKEN_COPY_ID, "Sun Titan", "Creature — Giant", "{4}{W}{W}",
+                    "Vigilance\nWhenever Sun Titan enters or attacks, you may return target permanent card with mana value 3 or less from your graveyard to the battlefield.", 7)
+                val identity = map(copy["card"])
+                identity["isToken"] = true
+                identity["copySourceArtworkName"] = "Sun Titan"
+                identity["tokenColors"] = mutableListOf("W")
+                copy["counters"] = mutableMapOf("+1/+1" to 1)
+                copy["summoningSickness"] = false
+                battlefield += copy
             }
             if (state == GameBoardDesignPreviewState.ATTACHED_PERMANENTS) {
                 player["poison"] = if (index == 0) 2 else 3
@@ -282,15 +376,16 @@ object GameBoardPreviewFixtures {
                 val ring = battlefield.indexOfFirst { it["instanceId"] == "human-sol-ring" }
                 if (ring >= 0) battlefield.add(0, battlefield.removeAt(ring))
             }
-            if (state == GameBoardDesignPreviewState.SPECTATING && player["hasLeft"] == true) {
+            if (watching && player["hasLeft"] == true) {
                 // A player who left takes their cards out of the game (CR 800.4a).
                 zones["battlefield"] = mutableListOf<Any?>(); zones["hand"] = mutableListOf<Any?>()
             }
         }
         var actions = list(root["legalActions"])
-        if (state == GameBoardDesignPreviewState.SPECTATING) actions = mutableListOf()
+        if (watching) actions = mutableListOf()
         if (state !in setOf(GameBoardDesignPreviewState.AI_THINKING, GameBoardDesignPreviewState.BRIDGE_UNAVAILABLE,
-                GameBoardDesignPreviewState.UNSUPPORTED_PROMPT_FALLBACK, GameBoardDesignPreviewState.SPECTATING)) {
+                GameBoardDesignPreviewState.UNSUPPORTED_PROMPT_FALLBACK, GameBoardDesignPreviewState.SPECTATING,
+                GameBoardDesignPreviewState.FOUR_PLAYER_SPECTATING)) {
             actions += mutableMapOf("id" to "make-mana-sol-ring", "type" to "make_mana", "playerId" to "human", "label" to "Tap Sol Ring",
                 "sourceInstanceId" to "human-sol-ring", "cardName" to "Sol Ring", "sourceZone" to "battlefield", "producedMana" to mutableListOf("C", "C"))
         }
@@ -343,6 +438,12 @@ object GameBoardPreviewFixtures {
         }
         if (state == GameBoardDesignPreviewState.VICTORY) {
             root["gameStatus"] = "completed"; root["winnerPlayerIds"] = mutableListOf("human"); root["endReason"] = "opponent_lost"
+        }
+        if (state == GameBoardDesignPreviewState.FIRST_STRIKE) {
+            val own = list(zones(players[0])["battlefield"])
+            val opposing = list(zones(players[1])["battlefield"])
+            xmage["combat"] = mutableListOf(mutableMapOf("defenderId" to "human", "defenderName" to "You", "defenderKind" to "player", "blocked" to true,
+                "attackers" to opposing.filter { it["isAttacking"] == true }.toMutableList(), "blockers" to own.filter { it["blocking"] != null }.toMutableList()))
         }
         if (state == GameBoardDesignPreviewState.COMBAT_ARROWS) {
             val own = list(zones(players[0])["battlefield"])

@@ -40,6 +40,21 @@ Phone → relay: `{"t":"send","to":id,"d":…,"p":…?}`, `{"t":"ping"}`, `{"t":
 
 Frames are limited to 1,000,000 characters; the apps split larger packets into parts.
 
+### Messages for a phone that is away
+
+While a phone is away (up to the 90-second resume window), messages sent to it wait at the relay
+and arrive in order, ahead of anything new, when it resumes its seat. Each waiting message is its
+own storage entry, split into pieces of at most 524,288 characters, because SQLite-backed Durable
+Objects refuse a key and value over 2 MB. One phone can have up to 512 messages and 8,000,000
+characters waiting; a message that does not fit, or that storage refuses, gets its sender
+`peer_backlog` instead of being lost.
+
+A host's answer to a guest's engine request (a packet whose `type` is `reply`, sent by the seat-1
+phone) is dropped once it has waited more than 15 seconds: the guest's request gives up after 15
+seconds, so the answer would be discarded anyway. The apps encode packets with sorted keys, so the
+relay recognises an answer by its ending, `…,"type":"reply"}`; for a split packet it checks the last
+part and drops the whole packet. Every other message waits as before.
+
 ## Develop, test, deploy
 
 ```sh
@@ -47,6 +62,10 @@ node --test services/table-relay/test/relay.test.mjs          # runs wrangler de
 RELAY_URL=https://magicmobile-relay.calebjfeliciano.workers.dev node --test services/table-relay/test/relay.test.mjs
 cd services/table-relay && npx wrangler deploy
 ```
+
+The local run serves `test/strict-storage.js`: the relay with the 2 MB storage entry limit
+enforced, since local SQLite accepts larger entries. `.github/workflows/table-relay.yml` runs the
+local tests on pull requests and pushes to `main` that touch this folder.
 
 The relay sits outside the pnpm workspace on purpose: it has no dependencies beyond `wrangler`
 run through `npx`, so it never changes the monorepo lockfile.

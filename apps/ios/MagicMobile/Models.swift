@@ -134,8 +134,14 @@ struct GameSnapshot: Decodable {
     let endReason: String?
     var viewerPlayerId: String? = nil
     var selectedOpponentId: String? = nil
+    /// Presentation only: who the bottom seat shows while the viewer watches after leaving the
+    /// game (BoardOpponentFocus). Nil is the viewer's own seat.
+    var seatPlayerId: String? = nil
 
     var viewerID: String { viewerPlayerId ?? "human" }
+
+    /// The player the bottom of the board shows: the viewer, or their stand-in while they watch.
+    var seatID: String { seatPlayerId ?? viewerID }
 
     func isViewer(_ playerID: String?) -> Bool { playerID == viewerID }
 
@@ -145,16 +151,30 @@ struct GameSnapshot: Decodable {
         return players.first { $0.playerId == playerID }?.displayName ?? playerID
     }
 
+    /// The top bar's priority line. Nobody holds priority before the first turn (the
+    /// starting-player choice and opening hands), so it never reads "Waiting on Waiting".
+    var priorityStatusText: String {
+        if let id = priorityPlayerId { return isViewer(id) ? "Your priority" : "Waiting on \(playerLabel(id))" }
+        if let id = waitingOnPlayerId, !isViewer(id) { return "Waiting on \(playerLabel(id))" }
+        return turn <= 1 ? "Starting the game" : "Waiting on the game"
+    }
+
     var human: PlayerGameState? {
         players.first { $0.playerId == viewerID }
     }
 
+    /// The bottom seat's player. Actions, stats and "You" labels stay on `human`.
+    var seat: PlayerGameState? {
+        players.first { $0.playerId == seatID }
+    }
+
     var opponent: PlayerGameState? {
-        if let selectedOpponentId, selectedOpponentId != viewerID,
+        if let selectedOpponentId, selectedOpponentId != viewerID, selectedOpponentId != seatID,
            let selected = players.first(where: { $0.playerId == selectedOpponentId }) {
             return selected
         }
-        return players.first { $0.playerId != viewerID }
+        let others = players.filter { $0.playerId != viewerID && $0.playerId != seatID }
+        return others.first { !$0.isOut } ?? others.first
     }
 
     var isCompleted: Bool {

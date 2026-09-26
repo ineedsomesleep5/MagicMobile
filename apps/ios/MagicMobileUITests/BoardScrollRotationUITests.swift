@@ -108,6 +108,58 @@ final class BoardScrollRotationUITests: XCTestCase {
         }
     }
 
+    private func overflowMarker(_ side: String, in lane: XCUIElement) -> XCUIElement? {
+        app.staticTexts.matching(NSPredicate(format: "label ENDSWITH %@", "off-screen to the \(side)")).allElementsBoundByIndex
+            .first { $0.exists && $0.frame.midY >= lane.frame.minY && $0.frame.midY <= lane.frame.maxY }
+    }
+
+    private func capture(_ name: String) {
+        let image = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        image.name = name
+        image.lifetime = .keepAlways
+        add(image)
+    }
+
+    func testBattlefieldOverflowMarkersFollowScrollingWithoutBlockingTouches() {
+        launch("combat-arrows", portrait: true)
+        let lane = app.scrollViews["board.battlefield.Your lands"]
+        XCTAssertTrue(lane.waitForExistence(timeout: 5))
+        guard let resting = overflowMarker("right", in: lane) else {
+            XCTFail("A clipped lane must count the cards hidden to its right"); return
+        }
+        XCTAssertTrue(resting.label.range(of: #"^\d+ more cards? off-screen to the right$"#, options: .regularExpression) != nil, resting.label)
+        XCTAssertNil(overflowMarker("left", in: lane), "Nothing is hidden before the lane scrolls")
+        capture("overflow-resting-portrait")
+
+        // A drag that starts on the marker scrolls the lane beneath it, and both counts follow.
+        let before = resting.label
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        let start = origin.withOffset(CGVector(dx: resting.frame.midX, dy: resting.frame.midY))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -lane.frame.width * 0.6, dy: 0)))
+        let appeared = XCTNSPredicateExpectation(predicate: NSPredicate { [self] _, _ in overflowMarker("left", in: lane) != nil }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [appeared], timeout: 5), .completed, "Scrolling must reveal a leading count")
+        XCTAssertNotEqual(overflowMarker("right", in: lane)?.label, before, "The trailing count must follow the scroll")
+        XCTAssertFalse(app.staticTexts["preview.captured-command"].exists, "Dragging from a marker must not tap a card")
+        capture("overflow-scrolled-portrait")
+
+        // A tap on the leading marker reaches the card beneath it.
+        guard let marker = overflowMarker("left", in: lane) else { XCTFail("Leading marker vanished"); return }
+        let lands = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "card-your-lands-")).allElementsBoundByIndex
+        guard let beneath = lands.max(by: { $0.frame.intersection(marker.frame).width < $1.frame.intersection(marker.frame).width }),
+              beneath.frame.intersection(marker.frame).width > 4 else {
+            XCTFail("No land card under the leading marker"); return
+        }
+        let overlap = beneath.frame.intersection(marker.frame)
+        origin.withOffset(CGVector(dx: overlap.midX, dy: overlap.midY)).press(forDuration: 0.15)
+        XCTAssertTrue(beneath.label.hasSuffix(", selected") || app.staticTexts["preview.captured-command"].exists,
+                      "The marker must not swallow a tap on \(beneath.identifier)")
+
+        rotate(false)
+        let landscapeLane = app.scrollViews["board.battlefield.Your lands"]
+        XCTAssertTrue(landscapeLane.waitForExistence(timeout: 5))
+        capture("overflow-landscape")
+    }
+
     func testCardTapAndHoldStillWorkAfterScrollingFix() {
         launch("crowded-battlefield", portrait: true)
         let creature = card("card-your-board-isamaru")

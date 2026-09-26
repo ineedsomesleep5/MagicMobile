@@ -76,6 +76,7 @@ import io.magicmobile.android.game.BoardFXEntrance
 import io.magicmobile.android.game.BoardFXEvent
 import io.magicmobile.android.game.BoardFXLevel
 import io.magicmobile.android.game.BoardFXRevisionKey
+import io.magicmobile.android.game.BoardFocusTracker
 import io.magicmobile.android.game.BoardOpponentFocus
 import io.magicmobile.android.game.BoardPhaseAnnouncement
 import io.magicmobile.android.game.BoardPoint
@@ -85,6 +86,7 @@ import io.magicmobile.android.game.BoardZoneReference
 import io.magicmobile.android.game.CardChoiceCommandFailure
 import io.magicmobile.android.game.CardChoicePlan
 import io.magicmobile.android.game.CombatArrow
+import io.magicmobile.android.game.CombatLogReasons
 import io.magicmobile.android.game.CombatArrowKind
 import io.magicmobile.android.game.CombatArrowModel
 import io.magicmobile.android.game.CombatHighlightSet
@@ -184,7 +186,9 @@ fun NativeGameView(
     var dragActionChoice by remember { mutableStateOf<DragActionChoice?>(null) }
     var combatSelection by remember { mutableStateOf(CombatSelectionState()) }
     var combatPreviewArrows by remember { mutableStateOf(listOf<CombatArrow>()) }
-    var focusedOpponentId by remember { mutableStateOf<String?>(null) }
+    /** Which opponent the top of the board shows; it follows the turn (BoardFocusTracker). */
+    var focusTracker by remember { mutableStateOf(BoardFocusTracker()) }
+    val followTurns by AppPreferences.boolean(BoardFocusTracker.followTurnsKey, true)
     var lastTurnCueKey by remember { mutableStateOf<String?>(null) }
     var showsTurnCue by remember { mutableStateOf(false) }
     var lastTurnBannerKey by remember { mutableStateOf<String?>(null) }
@@ -204,6 +208,8 @@ fun NativeGameView(
     var boardShakeAmplitude by remember { mutableFloatStateOf(6f) }
     val hitVignette = remember { Animatable(0f) }
     val gameStats = remember { GameStats() }
+    val combatLogReasons = remember { CombatLogReasons() }
+    var combatReasons by remember { mutableStateOf(emptyMap<String, String>()) }
     val boardFXLevel by AppPreferences.string(BoardFXLevel.key, BoardFXLevel.defaultValue)
     val boardSoundsEnabled by AppPreferences.boolean(GameAudio.effectsKey, true)
     val cardBounds = remember { CardBoundsRegistry() }
@@ -212,8 +218,10 @@ fun NativeGameView(
     cardBounds.density = density
 
     if (snapshot == null) { LoadingGameView(if (loadingError != null) "failed" else null, loadingMessage, loadingError); return }
-    val board = BoardOpponentFocus.snapshot(snapshot, focusedOpponentId)
-    val human = board.human
+    val board = BoardOpponentFocus.snapshot(snapshot, focusTracker.focusedID)
+    // `human` is the bottom seat: the viewer, or their stand-in while they watch. Actions, stats,
+    // haptics and "You" stay on the viewer (board.human / viewerID).
+    val human = board.seat
     val opponent = board.opponent
     if (human == null || opponent == null) { LoadingGameView(null, loadingMessage, loadingError); return }
     val currentSnapshot by rememberUpdatedState(board)
@@ -438,7 +446,12 @@ fun NativeGameView(
     }
 
     // --- Observation (boardObservation) ---
-    LaunchedEffect(BoardFXRevisionKey(board)) { ingestBoardFX(board); gameStats.record(board) }
+    LaunchedEffect(BoardFXRevisionKey(board)) {
+        ingestBoardFX(board); gameStats.record(board)
+        combatLogReasons.observe(board); combatReasons = combatLogReasons.reasons
+    }
+    // The tracker starts over by itself when the game changes.
+    LaunchedEffect(BoardFocusTracker.observationKey(board, followTurns)) { focusTracker = focusTracker.observe(board, followTurns) }
     LaunchedEffect(Unit) {
         updateAIWaitStart(board)
         isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(board) != null
@@ -448,7 +461,7 @@ fun NativeGameView(
     }
     OnChange(board.id) { _, _ ->
         cardChoiceCompletionJob?.cancel(); cardChoiceCompletionJob = null
-        committedCardChoice = null; reviewCardChoiceAfterPending = false; focusedOpponentId = null
+        committedCardChoice = null; reviewCardChoiceAfterPending = false
         lastTurnCueKey = null; lastTurnBannerKey = null
         inspectingZoneTitle = null; inspectingZoneCards = emptyList(); inspectingZoneReference = null
         selection.selectedCard = null; selection.inspectedCard = null
@@ -482,6 +495,13 @@ fun NativeGameView(
         }
     }
     OnChange(isLogOpen) { _, open -> GameAudio.play(if (open) GameSound.PAGE_FLIP else GameSound.UI_CLOSE) }
+    // Visual QA: MAGICMOBILE_PREVIEW_OPEN_LOG=<seconds> opens a design preview's log after that delay.
+    LaunchedEffect(board.source) {
+        val wait = io.magicmobile.android.ui.LaunchEnvironment["MAGICMOBILE_PREVIEW_OPEN_LOG"]?.toDoubleOrNull()
+        if (!io.magicmobile.android.BuildConfig.DEBUG || board.source != "design-preview" || wait == null) return@LaunchedEffect
+        delay((wait * 1000).toLong())
+        isLogOpen = true
+    }
     OnChange(commandFailure) { old, new -> if (committedCardChoice != null && CardChoiceCommandFailure.isNewFailure(old, new)) cancelCommittedCardChoice() }
     OnChange(PortraitInteractionPolicy.detailChoiceKey(board)) { _, key ->
         isPromptDetailOpen = key != null
@@ -587,7 +607,7 @@ fun NativeGameView(
                             isPromptDetailOpen, dragActionChoice, { dragActionChoice = it }, aiWaitBeganAt, didAutoRefreshAIWaitKey == aiWaitKey,
                             didAutoReconnectAIWaitKey == aiWaitKey, didAutoDiagnoseAIWaitKey == aiWaitKey, boardFX, boardFXClock, { boardFX.prune(System.currentTimeMillis()); fxVersion += 1 },
                             onInteractionFeedback, runAction, runCommand, refreshGame, reconnectGame, ::submitTarget, ::handleCombatCardTap, ::submitAttackers,
-                            ::submitBlockers, ::finishAttackers, ::finishBlockers, { combatSelection = it }, { focusedOpponentId = it },
+                            ::submitBlockers, ::finishAttackers, ::finishBlockers, { combatSelection = it }, { focusTracker = focusTracker.select(it) },
                             { isLogOpen = true }, { isGameMenuOpen = true }, ::openPromptDetails, ::localViewZone, { isPromptDetailOpen = true },
                             { isStackSheetOpen = true })
                     } else PortraitGameContent(board, human, opponent, size, selection, pendingActionId, pendingCardInstanceId, liveUpdateStatus,
@@ -596,7 +616,7 @@ fun NativeGameView(
                         isPromptDetailOpen, dragActionChoice, { dragActionChoice = it }, aiWaitBeganAt, didAutoRefreshAIWaitKey == aiWaitKey,
                         didAutoReconnectAIWaitKey == aiWaitKey, didAutoDiagnoseAIWaitKey == aiWaitKey, boardFX, boardFXClock, { boardFX.prune(System.currentTimeMillis()); fxVersion += 1 },
                         onInteractionFeedback, runAction, runCommand, refreshGame, reconnectGame, ::submitTarget, ::handleCombatCardTap, ::submitAttackers,
-                        ::submitBlockers, ::finishAttackers, ::finishBlockers, { combatSelection = it }, { focusedOpponentId = it },
+                        ::submitBlockers, ::finishAttackers, ::finishBlockers, { combatSelection = it }, { focusTracker = focusTracker.select(it) },
                         { isLogOpen = true }, { isGameMenuOpen = true }, ::openPromptDetails, ::localViewZone, { isPromptDetailOpen = true })
                 }
                 if (board.source == "design-preview") {
@@ -669,7 +689,7 @@ fun NativeGameView(
 
         // --- Sheets ---
         if (isLogOpen) BoardSheet({ isLogOpen = false }, sound = false) {
-            GameLogDrawer(board.log, { isLogOpen = false }, Modifier.padding(14.dp).fillMaxWidth().heightInScreen(0.8f))
+            GameLogDrawer(board.log, { isLogOpen = false }, Modifier.padding(14.dp).fillMaxWidth().heightInScreen(0.8f), combatReasons)
         }
         if (isStackSheetOpen) BoardSheet({ isStackSheetOpen = false }) { BoardStackInspector(board, selection) { isStackSheetOpen = false } }
         if (isPromptDetailOpen) BoardSheet({ isPromptDetailOpen = false }) {

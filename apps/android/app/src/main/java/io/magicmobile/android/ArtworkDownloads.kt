@@ -1,15 +1,6 @@
 package io.magicmobile.android
 
 import android.content.Context
-import android.text.format.Formatter
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import io.magicmobile.android.core.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -18,13 +9,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.URL
 import kotlin.coroutines.coroutineContext
-
-private enum class DownloadScope(val label: String) {
-    CATALOGUE("Full catalogue · recommended"),
-    TOKENS("Tokens only"),
-    ALL_DECKS("All saved & included decks"),
-    ONE_DECK("One deck"),
-}
 
 internal data class DownloadProgress(val completed: Int, val total: Int, val status: String)
 internal data class DownloadScan(val cards:Int,val bytes:Long,val extraStored:Int,val extraTotal:Int,val coverageKnown:Boolean,
@@ -186,125 +170,5 @@ internal class ArtworkDownloadClient(private val context: Context) {
             java.nio.file.Files.move(temporary.toPath(),cache.toPath(),java.nio.file.StandardCopyOption.REPLACE_EXISTING,java.nio.file.StandardCopyOption.ATOMIC_MOVE)
             return parsed
         }finally{temporary.delete()}
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun ArtworkDownloadsScreen(
-    catalogue: Catalogue?,
-    saved: List<SavedDeck>,
-    included: List<Deck>,
-    close: () -> Unit,
-    notify: (String) -> Unit,
-) {
-    val context = LocalContext.current
-    val preferences = remember { context.getSharedPreferences("magicmobile.artwork", Context.MODE_PRIVATE) }
-    val notificationPermission=androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()){}
-    val decks = remember(saved, included) {
-        saved.map { it.id to it.deck } + included.mapIndexed { index, deck -> "included:$index" to deck }
-    }
-    val deckChoices=remember(decks){decks.mapIndexed{index,(_,deck)->"${deck.name} · ${index+1}"}}
-    var scope by remember { mutableStateOf(DownloadScope.CATALOGUE) }
-    var selectedDeck by remember(decks) { mutableStateOf(decks.firstOrNull()?.first.orEmpty()) }
-    var quality by remember { mutableStateOf(ArtworkQuality.entries.firstOrNull { it.id == preferences.getString("downloadQuality", "standard") } ?: ArtworkQuality.STANDARD) }
-    var includeTokens by remember { mutableStateOf(true) }
-    var remoteArtwork by remember {mutableStateOf(Artwork.enabled(context))}
-    val downloadState by ArtworkDownloadService.state.collectAsState()
-    val running=downloadState.running
-    var scanning by remember { mutableStateOf(false) }
-    val progress=downloadState.progress
-    val failures=downloadState.failures
-    var showFailures by remember {mutableStateOf(false)}
-    var extraCoverage by remember(scope,selectedDeck,quality,includeTokens) {mutableStateOf("Tokens and alternate faces · not checked")}
-    var storedCount by remember { mutableIntStateOf(0) }
-    var storedBytes by remember { mutableLongStateOf(Artwork.storedDownloadBytes(context)) }
-    var confirmFull by remember { mutableStateOf(false) }
-    val coroutine = rememberCoroutineScope()
-    val names = remember(scope, selectedDeck, catalogue, decks) {
-        when (scope) {
-            DownloadScope.CATALOGUE -> catalogue?.cards?.map { it.name }.orEmpty()
-            DownloadScope.TOKENS -> emptyList()
-            DownloadScope.ALL_DECKS -> decks.flatMap { (_, deck) -> deck.entries.map { it.name } }
-            DownloadScope.ONE_DECK -> decks.firstOrNull { it.first == selectedDeck }?.second?.entries?.map { it.name }.orEmpty()
-        }.map(String::trim).filter(String::isNotEmpty).distinct().sorted()
-    }
-    fun scan() {
-        scanning = true
-        coroutine.launch {
-            runCatching { ArtworkDownloadClient(context).scan(names, quality,includeTokens||scope==DownloadScope.TOKENS) }
-                .onSuccess { result -> storedCount = result.cards; storedBytes = result.bytes
-                    extraCoverage=(if(includeTokens||scope==DownloadScope.TOKENS)"Tokens and alternate faces" else "Alternate faces")+" · ${result.extraStored} / ${result.extraTotal}"+(if(result.coverageKnown)"" else " known; discovery incomplete")
-                }
-                .onFailure { notify("Artwork check failed: ${it.message}") }
-            scanning = false
-        }
-    }
-    fun start() {
-        if (running || names.isEmpty() && scope!=DownloadScope.TOKENS) return
-        if(android.os.Build.VERSION.SDK_INT>=33&&!preferences.getBoolean("askedDownloadNotifications",false)){
-            preferences.edit().putBoolean("askedDownloadNotifications",true).apply()
-            notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        }
-        showFailures=false
-        coroutine.launch {
-            runCatching{ArtworkDownloadService.start(context.applicationContext,names,quality,includeTokens || scope==DownloadScope.TOKENS,scope in setOf(DownloadScope.CATALOGUE,DownloadScope.TOKENS))}
-                .onFailure{notify("Download could not start: ${it.message}")}
-        }
-    }
-    LaunchedEffect(running){if(!running)storedBytes=Artwork.storedDownloadBytes(context)}
-    Scaffold(
-        topBar = { TopAppBar(title = { Text("Downloads") }, navigationIcon = { TextButton(onClick = close) { Text("Back") } }) },
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("Keep card artwork on this device", style = MaterialTheme.typography.headlineMedium)
-            Text("The card catalogue and XMage rules engine are already included. Artwork is optional and comes from Scryfall.", style = MaterialTheme.typography.bodyMedium)
-            Text("Artwork", style = MaterialTheme.typography.titleMedium)
-            DownloadChoice("Download", scope.label, DownloadScope.entries.map { it.label }, !running && !scanning) { label -> scope = DownloadScope.entries.first { it.label == label }; storedCount=0 }
-            if (scope == DownloadScope.ONE_DECK) DownloadChoice("Deck", deckChoices.getOrNull(decks.indexOfFirst{it.first==selectedDeck}) ?: "No decks", deckChoices, !running && !scanning) { label -> selectedDeck = decks[deckChoices.indexOf(label)].first;storedCount=0 }
-            DownloadChoice("Image quality", quality.label, ArtworkQuality.entries.map { it.label }, !running && !scanning) { label ->
-                quality = ArtworkQuality.entries.first { it.label == label }
-                storedCount=0
-                preferences.edit().putString("downloadQuality", quality.id).apply()
-            }
-            if(scope!=DownloadScope.TOKENS)Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Column(Modifier.weight(1f)) { Text("Include tokens"); Text("Full catalogue includes canonical tokens; decks include linked tokens. Explicitly identified copies use source-card art even when their current stats change; ordinary tokens require a matching visible identity.", style = MaterialTheme.typography.bodySmall) }; Switch(includeTokens, { includeTokens = it }, enabled = !running && !scanning) }
-            else Text("Downloads canonical token artwork only. Explicitly identified copies use source-card art; ordinary tokens match visible identity.",style=MaterialTheme.typography.bodySmall)
-            HorizontalDivider()
-            Text("On this device", style = MaterialTheme.typography.titleMedium)
-            Text("Cards · $storedCount / ${names.size}")
-            Text(extraCoverage,style=MaterialTheme.typography.bodySmall)
-            Text("Stored · ${Formatter.formatFileSize(context, storedBytes)}")
-            Text(if(scope==DownloadScope.TOKENS)"Token download size is not known until catalogue discovery." else "Full download estimate · ≈ ${Formatter.formatFileSize(context, names.size.toLong() * quality.estimatedBytes)} plus tokens and alternate faces", style = MaterialTheme.typography.bodySmall)
-            if (scanning) LinearProgressIndicator(Modifier.fillMaxWidth())
-            OutlinedButton(onClick = ::scan, enabled = !running && !scanning && (names.isNotEmpty()||scope==DownloadScope.TOKENS), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Check for missing artwork") }
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {Column(Modifier.weight(1f)){Text("Download card artwork");Text("Uses Scryfall. Online requests share your IP and card names, including your hand.",style=MaterialTheme.typography.bodySmall)};Switch(remoteArtwork,{enabled->remoteArtwork=enabled;Artwork.setEnabled(context,enabled);if(!enabled&&running){ArtworkDownloadService.pause(context)}})}
-            if (running) {
-                LinearProgressIndicator(progress = { if (progress.total == 0) 0f else progress.completed.toFloat() / progress.total }, modifier = Modifier.fillMaxWidth())
-                Text(progress.status)
-                OutlinedButton(onClick = { ArtworkDownloadService.pause(context) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Pause download") }
-            } else Button(onClick = { if (scope in setOf(DownloadScope.CATALOGUE,DownloadScope.TOKENS)) confirmFull = true else start() }, enabled = remoteArtwork && (names.isNotEmpty()||scope==DownloadScope.TOKENS) && !scanning, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Download missing artwork") }
-            if(!running&&ArtworkDownloadService.hasPending(context))TextButton(onClick={runCatching{ArtworkDownloadService.resume(context)}.onFailure{notify("Download could not resume: ${it.message}")}},enabled=remoteArtwork){Text("Resume previous download")}
-            if(failures.isNotEmpty()) {HorizontalDivider();TextButton(onClick={showFailures=!showFailures}){Text(if(showFailures)"Hide download details" else "Needs attention · show download details")};if(showFailures){failures.take(20).forEach{Text(it,style=MaterialTheme.typography.bodySmall)};if(failures.size>20)Text("Additional details omitted. Retry missing artwork to check remaining items.",style=MaterialTheme.typography.bodySmall)}}
-            Text(if(running)"You can play or leave the app while artwork downloads." else progress.status, style = MaterialTheme.typography.bodySmall)
-            Spacer(Modifier.height(24.dp))
-        }
-    }
-    if (confirmFull) AlertDialog(
-        onDismissRequest = { confirmFull = false },
-        title = { Text("Download the full catalogue?") },
-        text = { Text(if(scope==DownloadScope.TOKENS)"Token artwork size is unknown until catalogue discovery. Use Wi-Fi. Android may pause long downloads; completed artwork is kept." else "Approximately ${Formatter.formatFileSize(context, names.size.toLong() * quality.estimatedBytes)}, plus tokens and alternate faces. Use Wi-Fi. Android may pause long downloads; completed artwork is kept.") },
-        confirmButton = { TextButton(onClick = { confirmFull = false; start() }) { Text("Download · ${quality.label}") } },
-        dismissButton = { TextButton(onClick = { confirmFull = false }) { Text("Cancel") } },
-    )
-}
-
-@Composable
-private fun DownloadChoice(label: String, selected: String, values: List<String>, enabled:Boolean=true, choose: (String) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Box(Modifier.fillMaxWidth()) {
-        OutlinedButton(onClick = { expanded = true }, enabled=enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("$label · $selected") }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            values.forEach { value -> DropdownMenuItem(text = { Text(value) }, onClick = { expanded = false; choose(value) }) }
-        }
     }
 }

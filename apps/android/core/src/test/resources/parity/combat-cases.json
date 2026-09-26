@@ -1,0 +1,293 @@
+{
+  "about": "Combat clarity (first strike, gained keywords, log reasons). Shared behavior cases: ParityGoldenTests.swift and ParityGoldenTest.kt must both meet every expectation. Schedules are delay/duration in seconds, three decimals.",
+  "keywords": [
+    {
+      "name": "gained double strike shows through the engine icon",
+      "icons": ["ABILITY_FLYING", "ABILITY_TRAMPLE", "ABILITY_DOUBLE_STRIKE"],
+      "rules": "Flying\nTrample\nWhenever a Dragon you control attacks, it gains double strike until end of turn.",
+      "expect": ["doubleStrike", "trample", "flying"]
+    },
+    {
+      "name": "gained keyword line in the live rules without an icon",
+      "icons": [],
+      "rules": "Whenever this creature attacks, it gains double strike until end of turn.\nDouble strike",
+      "expect": ["doubleStrike"]
+    },
+    {
+      "name": "markup, reminder text and keyword lists; sentences never count",
+      "icons": [],
+      "rules": "Menace <i>(This creature can't be blocked except by two or more creatures.)</i>\nFirst strike, lifelink\nCreatures you control have flying.",
+      "expect": ["firstStrike", "lifelink", "menace"]
+    },
+    {
+      "name": "engine menace icon with reach and vigilance lines",
+      "icons": ["ABILITY_MENACE", "COMMANDER"],
+      "rules": "Reach\nVigilance.",
+      "expect": ["menace", "reach", "vigilance"]
+    },
+    {
+      "name": "deathtouch icon and indestructible line",
+      "icons": ["ABILITY_DEATHTOUCH"],
+      "rules": "Indestructible",
+      "expect": ["deathtouch", "indestructible"]
+    },
+    {
+      "name": "keywords that do not change combat damage are not combat badges",
+      "icons": ["ABILITY_HEXPROOF", "COMMANDER"],
+      "rules": "Hexproof\nDefender",
+      "expect": []
+    },
+    {
+      "name": "hidden card",
+      "icons": null,
+      "rules": null,
+      "expect": []
+    }
+  ],
+  "badges": [
+    {
+      "name": "double strike covers first strike",
+      "keywords": ["doubleStrike", "firstStrike", "trample", "flying"],
+      "width": 72, "height": 100,
+      "visible": ["doubleStrike", "trample", "flying"], "hidden": 0,
+      "labels": ["Double strike", "Trample", "Flying"]
+    },
+    {
+      "name": "narrow card keeps the most important badge and counts the rest",
+      "keywords": ["doubleStrike", "trample", "flying"],
+      "width": 58, "height": 76,
+      "visible": ["doubleStrike"], "hidden": 2,
+      "labels": ["2× strike"]
+    },
+    {
+      "name": "deathtouch blocker",
+      "keywords": ["deathtouch"],
+      "width": 60, "height": 84,
+      "visible": ["deathtouch"], "hidden": 0,
+      "labels": ["Deathtouch"]
+    },
+    {
+      "name": "no keywords",
+      "keywords": [],
+      "width": 80, "height": 110,
+      "visible": [], "hidden": 0,
+      "labels": []
+    }
+  ],
+  "beats": [
+    {
+      "name": "XMage's first-strike step: Atarka strikes first, the deathtouch blocker dies before dealing damage",
+      "old": {
+        "step": "declare-blockers", "lives": {"a": 40, "b": 40},
+        "cards": [
+          {"id": "atarka", "player": "b", "attacking": true, "keywords": ["doubleStrike", "trample", "flying"]},
+          {"id": "rats", "player": "a", "blocking": ["atarka"], "keywords": ["deathtouch"]}
+        ],
+        "defenders": {"atarka": "a"}, "blocked": ["atarka"]
+      },
+      "new": {
+        "step": "first-combat-damage", "lives": {"a": 40, "b": 40},
+        "cards": [
+          {"id": "atarka", "player": "b", "attacking": true, "keywords": ["doubleStrike", "trample", "flying"]},
+          {"id": "rats", "player": "a", "zone": "graveyard"}
+        ],
+        "defenders": {"atarka": "a"}, "blocked": ["atarka"]
+      },
+      "events": ["first-strike", "strike atarka -> card:rats first", "left rats graveyard"],
+      "full": ["first-strike @0.000 +1.799", "strike atarka -> card:rats first @0.150 +0.950", "left rats graveyard @0.549 +0.950"],
+      "reduced": ["first-strike @0.000 +1.170", "strike atarka -> card:rats first @0.060 +0.600", "left rats graveyard @0.120 +0.900"]
+    },
+    {
+      "name": "leaving the first-strike step: the trampling double striker hits the player",
+      "old": {
+        "step": "first-combat-damage", "lives": {"a": 40, "b": 40},
+        "cards": [{"id": "atarka", "player": "b", "attacking": true, "keywords": ["doubleStrike", "trample", "flying"]}],
+        "defenders": {"atarka": "a"}, "blocked": ["atarka"]
+      },
+      "new": {
+        "step": "combat-damage", "lives": {"a": 34, "b": 40},
+        "cards": [{"id": "atarka", "player": "b", "attacking": true, "keywords": ["doubleStrike", "trample", "flying"]}],
+        "defenders": {"atarka": "a"}, "blocked": ["atarka"]
+      },
+      "events": ["strike atarka -> player:a regular", "life a -6"],
+      "full": ["strike atarka -> player:a regular @0.000 +0.950", "life a -6 @0.399 +1.300"],
+      "reduced": ["strike atarka -> player:a regular @0.000 +0.600", "life a -6 @0.060 +0.900"]
+    },
+    {
+      "name": "a blocked attacker whose blocker died deals no regular damage without trample",
+      "old": {
+        "step": "first-combat-damage", "lives": {"a": 40, "b": 40},
+        "cards": [
+          {"id": "knight", "player": "b", "attacking": true, "keywords": ["doubleStrike"]},
+          {"id": "first-only", "player": "b", "attacking": true, "keywords": ["firstStrike"]}
+        ],
+        "defenders": {"knight": "a", "first-only": "a"}, "blocked": ["knight"]
+      },
+      "new": {
+        "step": "combat-damage", "lives": {"a": 40, "b": 40},
+        "cards": [
+          {"id": "knight", "player": "b", "attacking": true, "keywords": ["doubleStrike"]},
+          {"id": "first-only", "player": "b", "attacking": true, "keywords": ["firstStrike"]}
+        ],
+        "defenders": {"knight": "a", "first-only": "a"}, "blocked": ["knight"]
+      },
+      "events": [],
+      "full": [],
+      "reduced": []
+    },
+    {
+      "name": "first-strike snapshot skipped: both beats in one batch, damage and deaths after the regular strikes",
+      "old": {
+        "step": "declare-blockers", "lives": {"a": 40, "b": 40},
+        "cards": [
+          {"id": "atarka", "player": "b", "attacking": true, "keywords": ["doubleStrike", "trample", "flying"]},
+          {"id": "rats", "player": "a", "blocking": ["atarka"], "keywords": ["deathtouch"]},
+          {"id": "wolf", "player": "b", "attacking": true}
+        ],
+        "defenders": {"atarka": "a", "wolf": "a"}, "blocked": ["atarka"]
+      },
+      "new": {
+        "step": "combat-damage", "lives": {"a": 37, "b": 40},
+        "cards": [
+          {"id": "atarka", "player": "b", "attacking": true, "keywords": ["doubleStrike", "trample", "flying"]},
+          {"id": "rats", "player": "a", "zone": "graveyard"},
+          {"id": "wolf", "player": "b", "attacking": true}
+        ],
+        "defenders": {"atarka": "a", "wolf": "a"}, "blocked": ["atarka"]
+      },
+      "events": ["first-strike", "strike atarka -> card:rats first", "strike atarka -> card:rats regular",
+                 "strike wolf -> player:a regular", "left rats graveyard", "life a -3"],
+      "full": ["first-strike @0.000 +1.400", "strike atarka -> card:rats first @0.150 +0.950",
+               "strike atarka -> card:rats regular @1.400 +0.950", "strike wolf -> player:a regular @1.470 +0.950",
+               "left rats graveyard @1.869 +0.950", "life a -3 @2.029 +1.300"],
+      "reduced": ["first-strike @0.000 +1.000", "strike atarka -> card:rats first @0.060 +0.600",
+                  "strike atarka -> card:rats regular @0.810 +0.600", "strike wolf -> player:a regular @0.830 +0.600",
+                  "left rats graveyard @0.890 +0.900", "life a -3 @0.950 +0.900"]
+    },
+    {
+      "name": "only a blocker has first strike: the step is still named",
+      "old": {
+        "step": "declare-blockers", "lives": {"a": 40, "b": 40},
+        "cards": [
+          {"id": "bear", "player": "a", "attacking": true},
+          {"id": "knight", "player": "b", "blocking": ["bear"], "keywords": ["firstStrike"]}
+        ],
+        "defenders": {"bear": "b"}, "blocked": ["bear"]
+      },
+      "new": {
+        "step": "first-combat-damage", "lives": {"a": 40, "b": 40},
+        "cards": [
+          {"id": "bear", "player": "a", "zone": "graveyard"},
+          {"id": "knight", "player": "b", "keywords": ["firstStrike"]}
+        ],
+        "defenders": {}, "blocked": []
+      },
+      "events": ["first-strike", "left bear graveyard"],
+      "full": ["first-strike @0.000 +1.400", "left bear graveyard @0.150 +0.950"],
+      "reduced": ["first-strike @0.000 +1.110", "left bear graveyard @0.060 +0.900"]
+    },
+    {
+      "name": "combat without first strike keeps a single beat",
+      "old": {
+        "step": "declare-blockers", "lives": {"a": 40, "b": 40},
+        "cards": [{"id": "bear", "player": "a", "attacking": true}],
+        "defenders": {"bear": "b"}, "blocked": []
+      },
+      "new": {
+        "step": "combat-damage", "lives": {"a": 40, "b": 38},
+        "cards": [{"id": "bear", "player": "a", "attacking": true}],
+        "defenders": {"bear": "b"}, "blocked": []
+      },
+      "events": ["strike bear -> player:b regular", "life b -2"],
+      "full": ["strike bear -> player:b regular @0.000 +0.950", "life b -2 @0.399 +1.300"],
+      "reduced": ["strike bear -> player:b regular @0.000 +0.600", "life b -2 @0.060 +0.900"]
+    }
+  ],
+  "log": {
+    "fighters": {
+      "a7a4ca00-6d1e-4c2a-9f10-0000000000a1": {"name": "Atarka, World Render", "keywords": ["doubleStrike", "trample", "flying"]},
+      "7e9a0000-5b1d-4d2e-8f00-0000000000b2": {"name": "Typhoid Rats", "keywords": ["deathtouch"]},
+      "5c1e0000-0000-4000-8000-0000000000c3": {"name": "Silver Knight", "keywords": ["firstStrike"]}
+    },
+    "cases": [
+      {
+        "name": "double strike damage in the first-strike step",
+        "previous": "declare-blockers", "step": "first-combat-damage",
+        "message": "<font color='#FF6347' object_id='a7a4ca00-6d1e-4c2a-9f10-0000000000a1'>Atarka, World Render</font> [a7a] deals 6 damage to <font color='#696969' object_id='7e9a0000-5b1d-4d2e-8f00-0000000000b2'>Typhoid Rats</font> [7e9]",
+        "reason": "Atarka, World Render has double strike (first-strike damage)"
+      },
+      {
+        "name": "the deathtouch blocker dies before dealing damage",
+        "previous": "declare-blockers", "step": "FIRST_COMBAT_DAMAGE",
+        "message": "<font color='#696969' object_id='7e9a0000-5b1d-4d2e-8f00-0000000000b2'>Typhoid Rats</font> [7e9] died",
+        "reason": "Typhoid Rats dies to first-strike damage before dealing damage"
+      },
+      {
+        "name": "a first striker dies in the first-strike step too",
+        "previous": "declare-blockers", "step": "first-combat-damage",
+        "message": "<font color='#FFFFFF' object_id='5c1e0000-0000-4000-8000-0000000000c3'>Silver Knight</font> [5c1] died",
+        "reason": "Silver Knight dies to first-strike damage"
+      },
+      {
+        "name": "second hit after the first-strike step",
+        "previous": "first-combat-damage", "step": "combat-damage",
+        "message": "<font color='#20B2AA'>You</font> loses 6 life at combat from <font color='#FF6347' object_id='a7a4ca00-6d1e-4c2a-9f10-0000000000a1'>Atarka, World Render</font> [a7a]",
+        "reason": "Atarka, World Render has double strike (regular damage)"
+      },
+      {
+        "name": "first-strike snapshot skipped",
+        "previous": "declare-blockers", "step": "end-combat",
+        "message": "<font color='#FF6347' object_id='a7a4ca00-6d1e-4c2a-9f10-0000000000a1'>Atarka, World Render</font> [a7a] deals 6 damage to <font color='#696969' object_id='7e9a0000-5b1d-4d2e-8f00-0000000000b2'>Typhoid Rats</font> [7e9]",
+        "reason": "Atarka, World Render has double strike (first-strike and regular damage)"
+      },
+      {
+        "name": "a first striker's combat damage",
+        "previous": "declare-blockers", "step": "first-combat-damage",
+        "message": "<font color='#FFFFFF' object_id='5c1e0000-0000-4000-8000-0000000000c3'>Silver Knight</font> [5c1] deals 2 damage to <font color='#696969' object_id='7e9a0000-5b1d-4d2e-8f00-0000000000b2'>Typhoid Rats</font> [7e9]",
+        "reason": "Silver Knight has first strike (first-strike damage)"
+      },
+      {
+        "name": "deathtouch damage to a creature",
+        "previous": "declare-blockers", "step": "combat-damage",
+        "message": "<font color='#696969' object_id='7e9a0000-5b1d-4d2e-8f00-0000000000b2'>Typhoid Rats</font> [7e9] deals 1 damage to <font color='#FF6347' object_id='a7a4ca00-6d1e-4c2a-9f10-0000000000a1'>Atarka, World Render</font> [a7a]",
+        "reason": "Typhoid Rats has deathtouch (any damage is lethal)"
+      },
+      {
+        "name": "deathtouch against a player explains nothing",
+        "previous": "declare-blockers", "step": "combat-damage",
+        "message": "<font color='#20B2AA'>Aurelia</font> loses 1 life at combat from <font color='#696969' object_id='7e9a0000-5b1d-4d2e-8f00-0000000000b2'>Typhoid Rats</font> [7e9]",
+        "reason": null
+      },
+      {
+        "name": "no combat damage step in the transition",
+        "previous": "precombat-main", "step": "precombat-main",
+        "message": "<font color='#FF6347' object_id='a7a4ca00-6d1e-4c2a-9f10-0000000000a1'>Atarka, World Render</font> [a7a] deals 6 damage to <font color='#20B2AA'>You</font>",
+        "reason": null
+      },
+      {
+        "name": "a spell that is not in combat",
+        "previous": "declare-blockers", "step": "first-combat-damage",
+        "message": "<font color='#FF6347' object_id='11110000-0000-4000-8000-0000000000d4'>Shock</font> [111] deals 2 damage to <font color='#696969' object_id='7e9a0000-5b1d-4d2e-8f00-0000000000b2'>Typhoid Rats</font> [7e9]",
+        "reason": null
+      },
+      {
+        "name": "destroyed by an effect is not a combat death",
+        "previous": "declare-blockers", "step": "first-combat-damage",
+        "message": "<font color='#696969' object_id='7e9a0000-5b1d-4d2e-8f00-0000000000b2'>Typhoid Rats</font> [7e9] died by <font color='#FF6347' object_id='11110000-0000-4000-8000-0000000000d4'>Shock</font> [111]",
+        "reason": null
+      },
+      {
+        "name": "deaths in the regular step need no reason",
+        "previous": "first-combat-damage", "step": "combat-damage",
+        "message": "<font color='#696969' object_id='7e9a0000-5b1d-4d2e-8f00-0000000000b2'>Typhoid Rats</font> [7e9] died",
+        "reason": null
+      },
+      {
+        "name": "a first striker deals no regular damage",
+        "previous": "first-combat-damage", "step": "combat-damage",
+        "message": "<font color='#FFFFFF' object_id='5c1e0000-0000-4000-8000-0000000000c3'>Silver Knight</font> [5c1] deals 2 damage to <font color='#20B2AA'>You</font>",
+        "reason": null
+      }
+    ]
+  }
+}

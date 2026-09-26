@@ -34,6 +34,15 @@ struct NativeUpdateNewsView: View {
                 } footer: {
                     Text("Opens GitHub. Upstream changes are not installed automatically. New cards and abilities become available only after a compatible MagicMobile build is tested and released.")
                 }
+                Section {
+                    LabeledContent("Card images", value: "Scryfall")
+                } header: {
+                    Text("About")
+                } footer: {
+                    // Same notice as the download site's footer.
+                    Text("Independent fan project. Not affiliated with Wizards of the Coast. Magic: The Gathering and card artwork belong to their respective owners.")
+                        .accessibilityIdentifier("updates.fanContentNotice")
+                }
             }
             .tint(CommanderPresentation.accent)
             .navigationTitle("Updates")

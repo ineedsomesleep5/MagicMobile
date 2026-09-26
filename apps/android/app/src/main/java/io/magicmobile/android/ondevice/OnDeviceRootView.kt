@@ -65,10 +65,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewModelScope
 import io.magicmobile.android.Artwork
-import io.magicmobile.android.ArtworkDownloadsScreen
 import io.magicmobile.android.BuildConfig
 import io.magicmobile.android.board.BoardAppearancePicker
 import io.magicmobile.android.board.BoardEffectsPicker
+import io.magicmobile.android.board.FollowTurnsToggle
 import io.magicmobile.android.board.BoardSelection
 import io.magicmobile.android.board.BoardSheet
 import io.magicmobile.android.board.ConfirmationAction
@@ -726,6 +726,7 @@ private fun SetupScreen(setup: OnDeviceSetupModel, selectedDeck: Deck?, aiPrecon
                     Text("Leave / retry closing", color = Color(1f, 0.27f, 0.23f), style = sf(17f, SfWeight.bold))
                 }
                 if (setup.identity == null) BrandButton({ setup.prepare() }, kind = BrandButtonKind.SECONDARY) { BrandButtonText("Retry loading local catalogue", BrandButtonKind.SECONDARY) }
+                OnDeviceDiagnosticsEntry(setup)
                 if (!BuildConfig.NATIVE_ENGINE) Text("This build has no native engine. Install the full APK to play.", color = Color(1f, 0.6f, 0.3f), style = SfText.caption(SfWeight.semibold))
             }
         }
@@ -755,6 +756,7 @@ private fun AppearanceSettings(portraitModeEnabled: Boolean, setPortraitModeEnab
             if (inGame) ArtworkPreferenceToggle()
             BoardAppearancePicker()
             PortraitModeToggle(portraitModeEnabled, setPortraitModeEnabled)
+            FollowTurnsToggle()
             BoardEffectsPicker()
         }
     }
@@ -782,6 +784,10 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
             IosListSection("XMage news", footer = "Opens GitHub. Upstream changes are not installed automatically. New cards and abilities become available only after a compatible MagicMobile build is tested and released.") {
                 IosListRow("XMage release notes", systemImage = "arrow.up.right.square") { open("https://github.com/magefree/mage/releases") }
                 IosListRow("Latest upstream changes", systemImage = "arrow.up.right.square") { open("https://github.com/magefree/mage/commits/master/") }
+            }
+            // Same notice as the download site's footer.
+            IosListSection("About", footer = "Independent fan project. Not affiliated with Wizards of the Coast. Magic: The Gathering and card artwork belong to their respective owners.") {
+                IosListRow("Card images", value = "Scryfall")
             }
         }
     }

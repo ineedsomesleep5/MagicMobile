@@ -54,10 +54,13 @@ data class BoardFXRevisionKey(val gameID: String, val bridgeRevision: Int?, val 
 /** Minimal public board state used for diffing. */
 data class BoardFXState(val gameID: String, val step: String, val lives: Map<String, Int>, val cards: Map<String, Card>,
                         val stack: List<StackItem> = emptyList(), val defenders: Map<String, String> = emptyMap(),
-                        val commandNames: Set<String> = emptySet()) {
+                        val commandNames: Set<String> = emptySet(),
+                        /** Attackers whose combat group is blocked, even if every blocker has since left. */
+                        val blockedAttackers: Set<String> = emptySet()) {
+    /** `keywords`: combat keywords, read only for cards attacking or blocking. */
     data class Card(val id: String, val playerID: String, val zone: BoardFXZone, val name: String, val tint: BoardFXTint, val damage: Int,
                     val counters: Int, val attacking: Boolean, val blocking: List<String> = emptyList(), val isLand: Boolean = false,
-                    val isToken: Boolean = false)
+                    val isToken: Boolean = false, val keywords: Set<CombatKeyword> = emptySet())
     data class StackItem(val id: String, val name: String, val controllerID: String?, val tint: BoardFXTint, val isAbility: Boolean = false,
                          val manaValue: Int = 0)
 
@@ -75,7 +78,7 @@ data class BoardFXState(val gameID: String, val step: String, val lives: Map<Str
                     if (cards.containsKey(card.instanceId)) continue
                     cards[card.instanceId] = Card(card.instanceId, player.playerId, zone, card.card.name, BoardFXTint.of(card.card), card.damage ?: 0,
                         (card.counters ?: emptyMap()).values.sum(), card.isAttacking == true, card.blocking ?: emptyList(), card.card.isLand,
-                        card.card.isToken == true)
+                        card.card.isToken == true, if (zone == BoardFXZone.BATTLEFIELD && card.isInCombat) card.combatKeywords.toSet() else emptySet())
                 }
                 for (card in z.command) if (card.card.isToken != true) commandNames += card.card.name
             }
@@ -86,8 +89,13 @@ data class BoardFXState(val gameID: String, val step: String, val lives: Map<Str
                 StackItem(item.id, item.displayName, item.controllerId, tint, ability, BoardFXManaValue.of(source?.card?.manaCost))
             }
             val defenders = LinkedHashMap<String, String>()
-            for (group in snapshot.xmage?.combat ?: emptyList()) for (attacker in group.attackers) defenders[attacker.instanceId] = group.defenderId
-            return BoardFXState(snapshot.id, (snapshot.step ?: snapshot.phase).lowercase().replace("_", "-"), lives, cards, stack, defenders, commandNames)
+            val blocked = mutableSetOf<String>()
+            for (group in snapshot.xmage?.combat ?: emptyList()) for (attacker in group.attackers) {
+                defenders[attacker.instanceId] = group.defenderId
+                if (group.blocked) blocked += attacker.instanceId
+            }
+            return BoardFXState(snapshot.id, (snapshot.step ?: snapshot.phase).lowercase().replace("_", "-"), lives, cards, stack, defenders,
+                commandNames, blocked)
         }
     }
 }
@@ -107,7 +115,13 @@ sealed class BoardFXEvent {
     data class SpellCast(val stackID: String, val name: String, val controllerID: String?, val tint: BoardFXTint, val weight: BoardFXSpellWeight) : BoardFXEvent()
     data class AttackDeclared(val cardID: String, val tint: BoardFXTint) : BoardFXEvent()
     data class BlockDeclared(val cardID: String, val attackerID: String) : BoardFXEvent()
-    data class CombatStrike(val attackerID: String, val target: BoardFXStrikeTarget, val tint: BoardFXTint) : BoardFXEvent()
+    /**
+     * XMage's first-strike combat damage step: a "First strike" label spans its strikes, damage
+     * and deaths, and the regular damage waits for it (see BoardFXScheduler).
+     */
+    data object FirstStrikeBeat : BoardFXEvent()
+    /** `firstStrike` marks a strike in the first-strike damage step. */
+    data class CombatStrike(val attackerID: String, val target: BoardFXStrikeTarget, val tint: BoardFXTint, val firstStrike: Boolean = false) : BoardFXEvent()
     data class DamageMarked(val cardID: String, val amount: Int) : BoardFXEvent()
     data class LeftBattlefield(val cardID: String, val playerID: String, val to: BoardFXZone?, val tint: BoardFXTint) : BoardFXEvent()
     data class EnteredBattlefield(val cardID: String, val playerID: String, val from: BoardFXZone?, val tint: BoardFXTint, val entrance: BoardFXEntrance) : BoardFXEvent()
@@ -116,18 +130,28 @@ sealed class BoardFXEvent {
 
     /** Presentation order inside one snapshot transition. */
     val order: Int get() = when (this) {
-        is SpellCast -> 0; is AttackDeclared -> 1; is BlockDeclared -> 2; is CombatStrike -> 3; is DamageMarked -> 4
-        is LeftBattlefield -> 5; is EnteredBattlefield -> 6; is CountersAdded -> 7; is LifeChanged -> 8
+        is SpellCast -> 0; is AttackDeclared -> 1; is BlockDeclared -> 2; FirstStrikeBeat -> 3
+        is CombatStrike -> if (firstStrike) 4 else 5; is DamageMarked -> 6
+        is LeftBattlefield -> 7; is EnteredBattlefield -> 8; is CountersAdded -> 9; is LifeChanged -> 10
     }
 
     /** Card, stack object or player the effect is about. */
     val subjectID: String get() = when (this) {
         is SpellCast -> stackID; is LeftBattlefield -> cardID; is DamageMarked -> cardID; is EnteredBattlefield -> cardID
         is CountersAdded -> cardID; is AttackDeclared -> cardID; is BlockDeclared -> cardID; is CombatStrike -> attackerID; is LifeChanged -> playerID
+        FirstStrikeBeat -> FIRST_STRIKE_SUBJECT
     }
 
-    /** Life totals are always shown; they carry game information, not decoration. */
-    val isEssential: Boolean get() = this is LifeChanged
+    /** Life totals and the first-strike label are always shown; they carry game information. */
+    val isEssential: Boolean get() = this is LifeChanged || this == FirstStrikeBeat
+
+    /** A strike in the regular combat damage step. */
+    val isRegularStrike: Boolean get() = this is CombatStrike && !firstStrike
+
+    companion object {
+        /** Subject of the first-strike label, which is about the step, not a card. */
+        const val FIRST_STRIKE_SUBJECT = "first-strike"
+    }
 }
 
 object BoardEventDiffer {
@@ -194,13 +218,7 @@ object BoardEventDiffer {
             if (card.damage > previous.damage) events += BoardFXEvent.DamageMarked(card.id, card.damage - previous.damage)
             if (card.counters > previous.counters) events += BoardFXEvent.CountersAdded(card.id, card.counters - previous.counters)
         }
-        if (preDamageSteps.contains(old.step) && !preDamageSteps.contains(new.step)) {
-            for (attacker in old.cards.values.sortedBy { it.id }) {
-                if (attacker.zone == BoardFXZone.BATTLEFIELD && attacker.attacking) {
-                    events += BoardFXEvent.CombatStrike(attacker.id, strikeTarget(attacker, old, new), attacker.tint)
-                }
-            }
-        }
+        events += combatStrikes(old, new)
         for ((playerID, life) in new.lives.toSortedMap()) {
             val previous = old.lives[playerID]
             if (previous != null && previous != life) events += BoardFXEvent.LifeChanged(playerID, life - previous)
@@ -208,11 +226,45 @@ object BoardEventDiffer {
         return events.withIndex().sortedWith(compareBy({ it.value.order }, { it.index })).map { it.value }
     }
 
-    /** Blocker first, then the public combat defender, then the first opponent. */
-    fun strikeTarget(attacker: BoardFXState.Card, old: BoardFXState, new: BoardFXState): BoardFXStrikeTarget {
-        val blockers = (old.cards.values.filter { it.blocking.contains(attacker.id) } + new.cards.values.filter { it.blocking.contains(attacker.id) })
-            .map { it.id }.sorted()
+    /** XMage's first-strike combat damage step, normalized like `BoardFXState.step`. */
+    const val firstStrikeStep = "first-combat-damage"
+
+    /**
+     * Combat damage, one beat per damage step. XMage reports its first-strike step when a creature
+     * in combat has first or double strike: entering it plays the "First strike" beat with the
+     * attackers that strike first; leaving it plays the regular strikes. A transition that skips
+     * the first-strike snapshot plays both beats, first strikers first, but cannot tell which damage
+     * came from which step, so damage and deaths follow the regular strikes.
+     */
+    fun combatStrikes(old: BoardFXState, new: BoardFXState): List<BoardFXEvent> {
+        val afterDamage = !preDamageSteps.contains(new.step) && new.step != firstStrikeStep
+        val attackers = old.cards.values.sortedBy { it.id }.filter { it.zone == BoardFXZone.BATTLEFIELD && it.attacking }
+        fun strikes(cards: List<BoardFXState.Card>, firstStrike: Boolean): List<BoardFXEvent> = cards.mapNotNull { attacker ->
+            strikeTarget(attacker, old, new)?.let { BoardFXEvent.CombatStrike(attacker.id, it, attacker.tint, firstStrike) }
+        }
+        val first = attackers.filter { CombatKeyword.strikesFirst(keywords(it.id, old, new)) }
+        val regular = attackers.filter { CombatKeyword.strikesInRegularStep(keywords(it.id, old, new)) }
+        if (preDamageSteps.contains(old.step) && new.step == firstStrikeStep) return listOf(BoardFXEvent.FirstStrikeBeat) + strikes(first, true)
+        if (old.step == firstStrikeStep && afterDamage) return strikes(regular, false)
+        if (!(preDamageSteps.contains(old.step) && afterDamage)) return emptyList()
+        val firstStrikes = strikes(first, true)
+        if (firstStrikes.isEmpty()) return strikes(attackers, false)
+        return listOf(BoardFXEvent.FirstStrikeBeat) + firstStrikes + strikes(regular, false)
+    }
+
+    fun keywords(id: String, old: BoardFXState, new: BoardFXState): Set<CombatKeyword> =
+        (old.cards[id]?.keywords ?: emptySet()) + (new.cards[id]?.keywords ?: emptySet())
+
+    /**
+     * Blocker first, then the public combat defender, then the first opponent. A blocked attacker
+     * whose blockers have all left deals no combat damage unless it has trample.
+     */
+    fun strikeTarget(attacker: BoardFXState.Card, old: BoardFXState, new: BoardFXState): BoardFXStrikeTarget? {
+        val blockers = (old.cards.values.filter { it.zone == BoardFXZone.BATTLEFIELD && it.blocking.contains(attacker.id) } +
+            new.cards.values.filter { it.zone == BoardFXZone.BATTLEFIELD && it.blocking.contains(attacker.id) }).map { it.id }.sorted()
         blockers.firstOrNull()?.let { return BoardFXStrikeTarget.Card(it) }
+        if ((old.blockedAttackers.contains(attacker.id) || new.blockedAttackers.contains(attacker.id)) &&
+            CombatKeyword.TRAMPLE !in keywords(attacker.id, old, new)) return null
         val defender = old.defenders[attacker.id] ?: new.defenders[attacker.id]
         if (defender != null) {
             if (old.lives[defender] != null) return BoardFXStrikeTarget.Player(defender)
@@ -252,9 +304,17 @@ data class ScheduledBoardFX(val id: Int, val event: BoardFXEvent, val delay: Dou
     val handoff: Double get() = when (event) {
         is BoardFXEvent.SpellCast -> if (!usesMotion) delay + 0.4 else if (event.weight == BoardFXSpellWeight.ABILITY) delay + 0.55 else end - 0.3
         is BoardFXEvent.CombatStrike -> if (usesMotion) delay + duration * BoardFXScheduler.strikeImpactFraction else delay + 0.06
+        // The label opens the beat; its strikes follow at once.
+        BoardFXEvent.FirstStrikeBeat -> delay + if (usesMotion) 0.15 else 0.06
         is BoardFXEvent.EnteredBattlefield -> if (usesMotion && event.entrance != BoardFXEntrance.PLAIN) landing else delay + if (usesMotion) 0.16 else 0.06
         else -> delay + if (usesMotion) 0.16 else 0.06
     }
+
+    /**
+     * Until when a later snapshot's effects wait: a showcase until it hands off, and the
+     * first-strike beat until it ends, so the regular damage never overlaps it.
+     */
+    val holdsLaterBatchesUntil: Double? get() = if (event == BoardFXEvent.FirstStrikeBeat) end else if (isSequential) handoff else null
 
     /** Showcases share the center of the board, so they play one after another. */
     val isSequential: Boolean get() {
@@ -295,6 +355,8 @@ object BoardFXScheduler {
         for (event in kept) {
             if (previousOrder != null && previousOrder != event.order) {
                 groupStart = result.maxOfOrNull { it.handoff } ?: groupStart
+                // Regular damage waits a short beat after the first strikers' hits.
+                if (event.isRegularStrike) firstStrikeBeatEnd(result, motion)?.let { groupStart = maxOf(groupStart, it) }
                 sequentialCursor = groupStart
                 indexInGroup = 0
             }
@@ -309,7 +371,35 @@ object BoardFXScheduler {
             }
             result += fx
         }
+        // The label spans its beat, so a later snapshot's regular damage waits for it too.
+        val index = result.indexOfFirst { it.event == BoardFXEvent.FirstStrikeBeat }
+        if (index >= 0) {
+            val label = result[index]
+            val end = firstStrikeBeatEnd(result, motion) ?: label.end
+            result[index] = label.copy(duration = maxOf(label.duration, end - label.delay))
+        }
         return result
+    }
+
+    /** The pause between the first-strike beat and the regular damage. */
+    fun firstStrikeBeatPause(motion: Boolean): Double = if (motion) 0.3 else 0.15
+
+    /**
+     * When the first-strike beat is over: a short pause after its strikes, and, when the batch
+     * holds only that step, after its damage and deaths too.
+     */
+    fun firstStrikeBeatEnd(scheduled: List<ScheduledBoardFX>, motion: Boolean): Double? {
+        val combined = scheduled.any { it.event.isRegularStrike }
+        val beat = scheduled.filter { fx ->
+            when (val event = fx.event) {
+                is BoardFXEvent.CombatStrike -> event.firstStrike
+                is BoardFXEvent.DamageMarked, is BoardFXEvent.LeftBattlefield -> !combined
+                else -> false
+            }
+        }
+        if (scheduled.none { it.event == BoardFXEvent.FirstStrikeBeat }) return null
+        val end = beat.maxOfOrNull { it.end } ?: return null
+        return end + firstStrikeBeatPause(motion)
     }
 
     fun landingFraction(entrance: BoardFXEntrance): Double = when (entrance) {
@@ -333,6 +423,7 @@ object BoardFXScheduler {
         is BoardFXEvent.AttackDeclared -> if (motion) 0.7 else 0.6
         is BoardFXEvent.BlockDeclared -> if (motion) 0.8 else 0.6
         is BoardFXEvent.CombatStrike -> if (motion) 0.95 else 0.6
+        BoardFXEvent.FirstStrikeBeat -> if (motion) 1.2 else 1.0
         is BoardFXEvent.LifeChanged -> if (motion) 1.3 else 0.9
     }
 }
@@ -343,7 +434,8 @@ data class ActiveBoardFX(val scheduled: ScheduledBoardFX, val start: Long) {
     val endDate: Long get() = start + (scheduled.end * 1000).toLong()
 }
 
-data class BoardFXCardMotion(val hidden: Map<String, Hidden> = emptyMap(), val lunges: Map<String, Lunge> = emptyMap(),
+/** `hidden`: windows per card, in the order their effects were scheduled (a double striker flies twice). */
+data class BoardFXCardMotion(val hidden: Map<String, List<Hidden>> = emptyMap(), val lunges: Map<String, Lunge> = emptyMap(),
                              val stances: Map<String, Stance> = emptyMap()) {
     /** -1 moves up the screen (the viewer's creatures), +1 moves down. */
     data class Lunge(val token: Int, val direction: Double)
@@ -382,8 +474,8 @@ class BoardFXDirector {
             }
             commanderNames = commanderNames + state.commandNames
             val events = BoardEventDiffer.events(previous, state, commanderNames)
-            // Let a showcase from an earlier snapshot finish before this batch plays.
-            val showcaseEnd = active.filter { it.scheduled.isSequential }.maxOfOrNull { it.start + (it.scheduled.handoff * 1000).toLong() }
+            // Let a showcase or first-strike beat from an earlier snapshot finish before this batch plays.
+            val showcaseEnd = active.mapNotNull { effect -> effect.scheduled.holdsLaterBatchesUntil?.let { effect.start + (it * 1000).toLong() } }.maxOrNull()
             val hold = showcaseEnd?.let { (it - now) / 1000.0 } ?: 0.0
             val scheduled = BoardFXScheduler.schedule(events, level, nextID, hold)
             nextID += scheduled.size
@@ -412,15 +504,18 @@ class BoardFXDirector {
     /** Per-card motion for the real board tiles: hide cards while a flight stands in, lunge attackers, hold stances. */
     fun cardMotion(viewerID: String): BoardFXCardMotion {
         if (level == BoardFXLevel.OFF) return BoardFXCardMotion()
-        val hidden = HashMap<String, BoardFXCardMotion.Hidden>()
+        val hidden = HashMap<String, MutableList<BoardFXCardMotion.Hidden>>()
         val lunges = HashMap<String, BoardFXCardMotion.Lunge>()
         val stances = HashMap<String, BoardFXCardMotion.Stance>()
         for (effect in active) {
             if (!effect.scheduled.usesMotion) continue
             val fx = effect.scheduled
             when (val event = fx.event) {
-                is BoardFXEvent.EnteredBattlefield -> if (subjects[event.cardID] != null) hidden[event.cardID] = BoardFXCardMotion.Hidden(effect.start, 0.0, fx.landing)
-                is BoardFXEvent.CombatStrike -> if (subjects[event.attackerID] != null) hidden[event.attackerID] = BoardFXCardMotion.Hidden(effect.start, fx.delay, fx.end)
+                is BoardFXEvent.EnteredBattlefield -> if (subjects[event.cardID] != null)
+                    hidden.getOrPut(event.cardID) { mutableListOf() } += BoardFXCardMotion.Hidden(effect.start, 0.0, fx.landing)
+                // A double striker flies twice; each strike hides its tile only while it flies.
+                is BoardFXEvent.CombatStrike -> if (subjects[event.attackerID] != null)
+                    hidden.getOrPut(event.attackerID) { mutableListOf() } += BoardFXCardMotion.Hidden(effect.start, fx.delay, fx.end)
                 is BoardFXEvent.AttackDeclared -> {
                     val owner = previous?.cards?.get(event.cardID)?.playerID
                     lunges[event.cardID] = BoardFXCardMotion.Lunge(effect.id, if (owner == viewerID) -1.0 else 1.0)

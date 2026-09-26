@@ -16,6 +16,8 @@ build_output/
 .DS_Store
 *.log
 *.tsbuildinfo
+# Local reports from the removed web stack (tag archive/legacy-web). Kept ignored so
+# existing checkouts don't show these leftovers as untracked source.
 apps/xmage-gateway/smoke-report.json
 apps/xmage-gateway/smoke-report-*.json
 .vercel

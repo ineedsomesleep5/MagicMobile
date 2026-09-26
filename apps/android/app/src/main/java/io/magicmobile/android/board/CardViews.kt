@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -53,12 +55,21 @@ import androidx.compose.ui.unit.dp
 import io.magicmobile.android.CardArtwork
 import io.magicmobile.android.R
 import io.magicmobile.android.game.BattlefieldAbilityBadgePlan
+import io.magicmobile.android.game.BattlefieldCardFaceLayout
 import io.magicmobile.android.game.BoardFXLevel
+import io.magicmobile.android.game.BoardSize
 import io.magicmobile.android.game.CardCounterBadge
 import io.magicmobile.android.game.CardPlayAffordance
+import io.magicmobile.android.game.CombatKeyword
+import io.magicmobile.android.game.CombatKeywordBadgePlan
+import io.magicmobile.android.game.combatKeywords
+import io.magicmobile.android.game.isInCombat
 import io.magicmobile.android.game.NativeCardArtworkPolicy
+import io.magicmobile.android.game.TokenCopyFrameLayout
+import io.magicmobile.android.game.TokenCopyPresentation
 import io.magicmobile.android.game.XmageCardIcon
 import io.magicmobile.android.game.ZoneCard
+import io.magicmobile.android.game.tokenCopySourceName
 import io.magicmobile.android.ui.FitText
 import io.magicmobile.android.ui.MagicPalette
 import io.magicmobile.android.ui.SfDesign
@@ -71,14 +82,16 @@ import io.magicmobile.android.ui.rgb
 import io.magicmobile.android.ui.sf
 
 /**
- * Ports of ContentView.swift's CardTile, CardArtPlaceholder, CardCounterBadgeStrip,
+ * Ports of ContentView.swift's CardTile, CardArtPlaceholder, TokenCopyCardFace, CardCounterBadgeStrip,
  * XmageCardIconStrip, TargetingStatusPill, ManaSymbolView and ArenaBoardPresentation.swift's
  * ArenaBattlefieldCard, BattlefieldAbilityBadges and HandManaCost.
  */
 @Composable
 fun CardTile(card: ZoneCard, selected: Boolean, modifier: Modifier = Modifier, pending: Boolean = false, legal: Boolean = false,
              castOffered: Boolean = false, targetable: Boolean = false, zoneName: String? = null, width: Dp = 82.dp, height: Dp = 112.dp,
-             ignoreTappedRotation: Boolean = false, reduceMotion: Boolean = BoardMotion.reduceMotion) {
+             ignoreTappedRotation: Boolean = false, reduceMotion: Boolean = BoardMotion.reduceMotion,
+             /** Room a token copy's tag leaves at the trailing edge (TokenCopyFrameLayout.tagTrailingReserve). */
+             tokenCopyTagTrailingReserve: Dp = 0.dp) {
     val tapped = card.tapped == true && !ignoreTappedRotation
     val rotation by animateFloatAsState(if (tapped) 90f else 0f,
         if (reduceMotion) tween(0) else spring(dampingRatio = 0.7f, stiffness = 320f), label = "tap")
@@ -111,12 +124,13 @@ fun CardTile(card: ZoneCard, selected: Boolean, modifier: Modifier = Modifier, p
         .glow(shadowColor, shadowRadius, 6.dp)
         .semantics { contentDescription = card.accessibilityLabel(zoneName, selected, legal, pending) }) {
         Box(Modifier.fillMaxSize().clip(RoundedCornerShape(6.dp)).colorAdjust(if (tapped) 0.3f else 1f, if (tapped) -0.12f else 0f)) {
-            CardArtworkOrPlaceholder(card, width, height)
+            CardArtworkOrPlaceholder(card, width, height, tokenCopyTagTrailingReserve = tokenCopyTagTrailingReserve)
         }
         if (!ignoreTappedRotation) {
             XmageCardIconStrip(card.visibleXmageIcons, width, Modifier.align(Alignment.CenterStart).padding(start = 2.dp))
         }
-        if (!ignoreTappedRotation && card.showsPowerToughness) {
+        // A token copy's frame prints its live P/T itself.
+        if (!ignoreTappedRotation && card.showsPowerToughness && card.tokenCopySourceName == null) {
             Text("${card.displayPower}/${card.displayToughness}", Modifier.align(Alignment.BottomEnd).padding(3.dp)
                 .background(Color.White.copy(alpha = 0.92f), CircleShape).padding(horizontal = 5.dp, vertical = 2.dp),
                 color = Color.Black, style = sf(10f, SfWeight.black))
@@ -181,9 +195,14 @@ fun cardPlayHint(legal: Boolean, castOffered: Boolean): String = when (CardPlayA
 
 /** The consent-aware artwork route (Android's CardArtwork) with the iOS placeholder while art is missing or loading. */
 @Composable
-fun CardArtworkOrPlaceholder(card: ZoneCard, width: Dp, height: Dp, artOnly: Boolean = false) {
+fun CardArtworkOrPlaceholder(card: ZoneCard, width: Dp, height: Dp, artOnly: Boolean = false, tokenCopyTagTrailingReserve: Dp = 0.dp) {
     if (!NativeCardArtworkPolicy.permitsLookup(card)) {
         CardArtPlaceholder(card, width, height)
+        return
+    }
+    val copySource = card.tokenCopySourceName
+    if (copySource != null && !artOnly) {
+        TokenCopyCardFace(card, copySource, width, height, tokenCopyTagTrailingReserve)
         return
     }
     if (BoardArtwork.forcePlaceholders) {
@@ -196,6 +215,69 @@ fun CardArtworkOrPlaceholder(card: ZoneCard, width: Dp, height: Dp, artOnly: Boo
     CardArtwork(card.card.copySourceArtworkName?.takeIf { isToken } ?: card.card.name, Modifier.fillMaxSize(), token = isToken && card.card.copySourceArtworkName == null,
         tokenIdentity = identity, artOnly = artOnly) {
         CardArtPlaceholder(card, width, height)
+    }
+}
+
+/**
+ * Port of ContentView.swift's TokenCopyCardFace: a token copy drawn as its own card, with the token's
+ * live name, type line, rules and P/T around the copied card's illustration and a tag naming the source.
+ * The printed source card is never shown, because its name or stats can differ from the token's.
+ */
+@Composable
+fun TokenCopyCardFace(card: ZoneCard, source: String, width: Dp, height: Dp, tagTrailingReserve: Dp = 0.dp) {
+    val frame = TokenCopyFrameLayout(BoardSize(width.value, height.value), tagTrailingReserve.value)
+    val rules = card.card.oracleText?.trim().orEmpty()
+    val barShape = RoundedCornerShape(3.dp)
+    Box(Modifier.requiredSize(width, height)
+        .background(Brush.linearGradient(listOf(MagicPalette.parchment, rgb(0.72, 0.59, 0.38), MagicPalette.parchmentShadow)))
+        .border(maxOf(width * 0.035f, 1.dp), Brush.linearGradient(listOf(MagicPalette.borderBronze.copy(alpha = 0.70f), MagicPalette.borderIron.copy(alpha = 0.62f))),
+            RoundedCornerShape(6.dp))) {
+        Box(Modifier.place(frame.nameBar).background(MagicPalette.parchment.copy(alpha = 0.72f), barShape)
+            .padding(horizontal = maxOf(width * 0.03f, 2.dp)), contentAlignment = Alignment.CenterStart) {
+            FitText(card.card.name, sf(frame.nameFontSize, SfWeight.black, SfDesign.SERIF), color = MagicPalette.iron, minimumScale = 0.5f)
+        }
+        Box(Modifier.place(frame.art).clip(barShape).border(maxOf(width * 0.006f, 0.5.dp), MagicPalette.iron.copy(alpha = 0.55f), barShape)) {
+            val placeholder: @Composable (Boolean) -> Unit = { loading -> TokenCopyArtPlaceholder(width, loading) }
+            // The source's illustration only, cropped from the printed card.
+            if (BoardArtwork.forcePlaceholders) placeholder(true)
+            else CardArtwork(source, Modifier.fillMaxSize(), artOnly = true) { placeholder(false) }
+        }
+        Box(Modifier.place(frame.typeBar).background(MagicPalette.parchment.copy(alpha = 0.72f), barShape)
+            .padding(horizontal = maxOf(width * 0.03f, 2.dp)), contentAlignment = Alignment.CenterStart) {
+            FitText(card.card.typeLine.ifEmpty { "Token" }, sf(frame.typeFontSize, SfWeight.bold, SfDesign.SERIF),
+                color = MagicPalette.iron.copy(alpha = 0.85f), minimumScale = 0.5f)
+        }
+        Box(Modifier.place(frame.textBox).background(MagicPalette.parchment.copy(alpha = 0.42f), barShape))
+        if (frame.showsRules && rules.isNotEmpty()) {
+            GameRulesText(rules, Modifier.place(frame.rulesArea(card.showsPowerToughness)).clipToBounds(), cardName = card.card.name,
+                symbolSize = frame.rulesFontSize.dp, style = sf(frame.rulesFontSize, SfWeight.medium, SfDesign.SERIF), color = MagicPalette.iron,
+                maxLines = frame.rulesLineLimit(card.showsPowerToughness))
+        }
+        if (card.showsPowerToughness) {
+            val box = frame.powerToughnessBox
+            Box(Modifier.place(box).background(MagicPalette.parchment, barShape).border(maxOf(width * 0.01f, 0.8.dp), MagicPalette.borderBronze, barShape),
+                contentAlignment = Alignment.Center) {
+                FitText("${card.displayPower}/${card.displayToughness}", sf(frame.powerToughnessFontSize, SfWeight.black),
+                    color = MagicPalette.iron, minimumScale = 0.5f)
+            }
+        }
+        val slot = frame.tagSlot
+        Box(Modifier.place(slot), contentAlignment = Alignment.CenterStart) {
+            Box(Modifier.height(slot.height.dp).background(MagicPalette.iron.copy(alpha = 0.88f), CircleShape)
+                .border(0.7.dp, MagicPalette.antiqueGold.copy(alpha = 0.6f), CircleShape).padding(horizontal = (slot.height * 0.45f).dp),
+                contentAlignment = Alignment.Center) {
+                FitText(TokenCopyPresentation.tag(source, width.value), sf(frame.tagFontSize, SfWeight.black, tracking = 0.3f),
+                    color = MagicPalette.antiqueGold, minimumScale = 0.6f)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TokenCopyArtPlaceholder(width: Dp, loading: Boolean) {
+    Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(MagicPalette.leather.copy(alpha = 0.78f), MagicPalette.moss.copy(alpha = 0.62f),
+        MagicPalette.iron.copy(alpha = 0.86f)))), contentAlignment = Alignment.Center) {
+        SfImage(if (loading) "hourglass" else "sparkles", MagicPalette.antiqueGold.copy(alpha = if (loading) 0.34f else 0.42f), maxOf(width * 0.18f, 10.dp))
     }
 }
 
@@ -245,8 +327,10 @@ fun CardCounterBadgeStrip(badges: List<CardCounterBadge>, cardWidth: Dp, modifie
                 .border(0.7.dp, Color.Black.copy(alpha = 0.38f), CircleShape)
                 .padding(horizontal = maxOf(cardWidth * 0.035f, 2.5.dp), vertical = maxOf(cardWidth * 0.015f, 1.dp)),
                 horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(badge.label, color = Color.White, style = sf(maxOf(cardWidth.value * 0.065f, 5.5f), SfWeight.black))
-                Text("${badge.count}", color = Color.White, style = sf(maxOf(cardWidth.value * 0.083f, 6.5f), SfWeight.black))
+                // Shrinks rather than wraps when a caller caps the strip's width (Swift minimumScaleFactor 0.6).
+                FitText(badge.label, sf(maxOf(cardWidth.value * 0.065f, 5.5f), SfWeight.black), Modifier.weight(1f, fill = false),
+                    color = Color.White, minimumScale = 0.6f)
+                FitText("${badge.count}", sf(maxOf(cardWidth.value * 0.083f, 6.5f), SfWeight.black), color = Color.White, minimumScale = 0.6f)
             }
         }
     }
@@ -377,6 +461,35 @@ private fun BattlefieldAbilityBadges(icons: List<XmageCardIcon>, cardWidth: Dp, 
     }
 }
 
+/**
+ * Named combat keywords on an attacking or blocking card (CombatKeywordBadgePlan). Strike keywords are
+ * filled red and deathtouch violet, the pair that decides most trades (ArenaBoardPresentation.swift).
+ */
+@Composable
+private fun CombatKeywordBadges(plan: CombatKeywordBadgePlan, cardWidth: Dp, modifier: Modifier = Modifier) {
+    val size = CombatKeywordBadgePlan.fontSize(cardWidth.value)
+    @Composable
+    fun badge(text: String, fill: Color, textColor: Color) {
+        Box(Modifier.height((size + 5).dp).shadow(1.5.dp, CircleShape).background(fill, CircleShape)
+            .border(0.5.dp, Color.Black.copy(alpha = 0.5f), CircleShape).padding(horizontal = 3.5.dp), contentAlignment = Alignment.Center) {
+            FitText(text, sf(size, SfWeight.black), color = textColor, minimumScale = 0.6f)
+        }
+    }
+    // Keywords that do not fit keep their icon in the card's ability row.
+    Column(modifier.widthIn(max = cardWidth - 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        for (keyword in plan.visible) {
+            val (fill, text) = combatKeywordStyle(keyword)
+            badge(plan.label(keyword).uppercase(), fill, text)
+        }
+    }
+}
+
+private fun combatKeywordStyle(keyword: CombatKeyword): Pair<Color, Color> = when (keyword) {
+    CombatKeyword.DOUBLE_STRIKE, CombatKeyword.FIRST_STRIKE -> rgb(0.86, 0.28, 0.12) to Color.White
+    CombatKeyword.DEATHTOUCH -> rgb(0.24, 0.1, 0.3) to rgb(0.86, 0.7, 1.0)
+    else -> Color.Black.copy(alpha = 0.8f) to MagicPalette.parchment
+}
+
 /** Compact public permanent face; the complete printed card remains in inspection. */
 @Composable
 fun ArenaBattlefieldCard(card: ZoneCard, zoneName: String, width: Dp, height: Dp, modifier: Modifier = Modifier, selected: Boolean = false,
@@ -388,6 +501,15 @@ fun ArenaBattlefieldCard(card: ZoneCard, zoneName: String, width: Dp, height: Dp
     val isLegendary = card.card.typeLine.contains("legendary", ignoreCase = true)
     val showsFooter = card.showsPowerToughness || (card.isCreature && card.summoningSickness == true)
     val tapped = card.tapped == true
+    // Labeled combat keywords while the card attacks or blocks, gained ones included.
+    val combatPlan = if (card.isInCombat && !card.isPhasedOut) CombatKeywordBadgePlan(card.combatKeywords, width.value, height.value)
+        .takeIf { it.visible.isNotEmpty() } else null
+    // The icon row leaves out keywords the combat badges already name.
+    val abilityIcons = if (combatPlan == null) card.visibleXmageIcons else {
+        val named = combatPlan.visible.map { it.iconType }.toMutableSet()
+        if (CombatKeyword.DOUBLE_STRIKE in combatPlan.visible) named += CombatKeyword.FIRST_STRIKE.iconType
+        card.visibleXmageIcons.filter { it.iconType.uppercase() !in named }
+    }
     val rotation by animateFloatAsState(if (tapped) -7f else 0f, if (reduceMotion) tween(0) else tween(220), label = "tapTilt")
     val phasedAlpha by animateFloatAsState(if (card.isPhasedOut) 0.42f else 1f, if (reduceMotion) tween(0) else tween(200), label = "phase")
     val shape = RoundedCornerShape(7.dp)
@@ -404,7 +526,9 @@ fun ArenaBattlefieldCard(card: ZoneCard, zoneName: String, width: Dp, height: Dp
             Box(Modifier.width(width).height(maxOf(12.dp, height - 15.dp - if (showsFooter) 20.dp else 0.dp)).clipToBounds(), contentAlignment = Alignment.TopCenter) {
                 // Pinned to the top like SwiftUI's `.frame(alignment: .top)`; Compose would otherwise center the overflow.
                 Box(Modifier.wrapContentSize(Alignment.TopCenter, unbounded = true).offset(y = -(width * 0.19f)).requiredSize(width * 1.08f, width * 1.51f)) {
-                    CardTile(card, selected = false, zoneName = zoneName, width = width * 1.08f, height = width * 1.51f, ignoreTappedRotation = true)
+                    // BattlefieldCardFaceLayout.tileFrame: the token copy tag ends before the counter column.
+                    CardTile(card, selected = false, zoneName = zoneName, width = width * 1.08f, height = width * 1.51f, ignoreTappedRotation = true,
+                        tokenCopyTagTrailingReserve = BattlefieldCardFaceLayout.tagTrailingReserve(width.value, card.counterBadges.isNotEmpty()).dp)
                 }
             }
             if (showsFooter) {
@@ -418,9 +542,12 @@ fun ArenaBattlefieldCard(card: ZoneCard, zoneName: String, width: Dp, height: Dp
                 }
             }
         }
-        BattlefieldAbilityBadges(card.visibleXmageIcons, width, Modifier.align(Alignment.BottomStart).padding(start = 2.dp, bottom = if (showsFooter) 22.dp else 2.dp))
+        BattlefieldAbilityBadges(abilityIcons, width, Modifier.align(Alignment.BottomStart).padding(start = 2.dp, bottom = if (showsFooter) 22.dp else 2.dp))
+        combatPlan?.let { CombatKeywordBadges(it, width, Modifier.align(Alignment.TopStart).padding(start = 2.dp, top = 17.dp)) }
         if (card.counterBadges.isNotEmpty()) {
-            CardCounterBadgeStrip(card.counterBadges.take(2), width, Modifier.align(Alignment.TopEnd).padding(top = 16.dp))
+            val column = if (card.tokenCopySourceName == null) Modifier else Modifier.widthIn(max = BattlefieldCardFaceLayout.counterColumnWidth(width.value).dp)
+            CardCounterBadgeStrip(card.counterBadges.take(2), width,
+                Modifier.align(Alignment.TopEnd).padding(top = BattlefieldCardFaceLayout.COUNTER_TOP.dp).then(column))
         }
         if (tapped) {
             val size = maxOf(15.dp, width * 0.24f)

@@ -310,10 +310,103 @@ object PortraitInteractionPolicy {
     }
 }
 
+/** Which players the board shows. Presentation only: the viewer's seat, permissions, polling and hidden information never change. */
 object BoardOpponentFocus {
-    fun opponents(snapshot: GameSnapshot): List<PlayerGameState> = snapshot.players.filter { !snapshot.isViewer(it.playerId) }
-    fun snapshot(snapshot: GameSnapshot, selecting: String?): GameSnapshot =
-        if (selecting != null && opponents(snapshot).any { it.playerId == selecting }) snapshot.copy(selectedOpponentId = selecting) else snapshot
+    /**
+     * The bottom seat. While the viewer watches after leaving the game, the next living player
+     * after them in turn order stands in, so the board never shows an empty seat. Recomputed on
+     * every poll, so a knocked-out stand-in hands the seat to the next player.
+     */
+    fun seatPlayerID(snapshot: GameSnapshot): String {
+        val players = snapshot.players
+        val viewer = players.indexOfFirst { snapshot.isViewer(it.playerId) }
+        if (!snapshot.isSpectating || viewer < 0) return snapshot.viewerID
+        for (offset in 1 until maxOf(players.size, 1)) {
+            val player = players[(viewer + offset) % players.size]
+            // Someone else must stay for the top of the board.
+            if (!player.isOut && players.any { !snapshot.isViewer(it.playerId) && it.playerId != player.playerId }) return player.playerId
+        }
+        return snapshot.viewerID
+    }
+
+    /** Players the top of the board can show: everyone but the viewer and the bottom seat. */
+    fun opponents(snapshot: GameSnapshot): List<PlayerGameState> {
+        val seat = seatPlayerID(snapshot)
+        return snapshot.players.filter { !snapshot.isViewer(it.playerId) && it.playerId != seat }
+    }
+
+    fun snapshot(snapshot: GameSnapshot, selecting: String?): GameSnapshot {
+        val seat = seatPlayerID(snapshot)
+        val selected = selecting?.takeIf { id -> opponents(snapshot).any { it.playerId == id } }
+        return snapshot.copy(seatPlayerId = if (snapshot.isViewer(seat)) null else seat, selectedOpponentId = selected ?: snapshot.selectedOpponentId)
+    }
+
+    /** The bottom seat's hand as cards. A stand-in's hand is hidden: the board shows its count only. */
+    fun seatHand(snapshot: GameSnapshot): List<ZoneCard> =
+        if (snapshot.isViewer(snapshot.seatID)) snapshot.seat?.zones?.hand ?: emptyList() else emptyList()
+
+    /** The viewer is answering a prompt, so the board holds still under their finger. */
+    fun viewerIsAnswering(snapshot: GameSnapshot): Boolean {
+        if (snapshot.isCompleted) return false
+        val prompt = snapshot.promptEnvelopeV2 ?: return false
+        return snapshot.isViewer(prompt.playerId)
+    }
+}
+
+/**
+ * The top of the board follows the turn: when a turn starts it shows the active player, unless
+ * that is the viewer (or the stand-in at the bottom), where it keeps the last one shown. A tap on
+ * another opponent sticks until the next turn starts. The switch never happens while the viewer
+ * answers a prompt; it waits until the prompt is answered. (Swift BoardFocusTracker, a value
+ * type here too, so it can live in Compose state.)
+ */
+data class BoardFocusTracker(
+    /** The opponent the viewer picked or the turn moved to; null shows the first opponent. */
+    val focusedID: String? = null,
+    private val gameID: String? = null,
+    private val turnKey: String? = null,
+    private val switchPending: Boolean = false,
+) {
+    /** A tap on an opponent. It replaces any switch still waiting on a prompt. */
+    fun select(playerID: String): BoardFocusTracker = copy(focusedID = playerID, switchPending = false)
+
+    fun observe(snapshot: GameSnapshot, followTurns: Boolean): BoardFocusTracker {
+        var next = if (snapshot.id != gameID) BoardFocusTracker(gameID = snapshot.id) else this
+        val key = "${snapshot.turn}:${snapshot.activePlayerId ?: ""}"
+        if (key != next.turnKey) next = next.copy(turnKey = key, switchPending = snapshot.activePlayerId != null)
+        if (!followTurns) return next.copy(switchPending = false)
+        if (!next.switchPending || BoardOpponentFocus.viewerIsAnswering(snapshot)) return next
+        val active = snapshot.activePlayerId
+        val switched = active != null && BoardOpponentFocus.opponents(snapshot).any { it.playerId == active }
+        return next.copy(focusedID = if (switched) active else next.focusedID, switchPending = false)
+    }
+
+    companion object {
+        const val followTurnsKey = "magicmobile.followTurns"
+
+        /** Changes whenever a poll could move the focus; the board observes each new value. */
+        fun observationKey(snapshot: GameSnapshot, followTurns: Boolean): String =
+            "${snapshot.id}|${snapshot.turn}|${snapshot.activePlayerId ?: ""}|${BoardOpponentFocus.viewerIsAnswering(snapshot)}|" +
+                "${BoardOpponentFocus.seatPlayerID(snapshot)}|$followTurns"
+    }
+}
+
+/** The bar that replaces the viewer's controls while they watch: whose seat the bottom shows. */
+object SpectatorSeatPresentation {
+    fun title(snapshot: GameSnapshot): String {
+        val seat = snapshot.seat
+        if (seat == null || snapshot.isViewer(seat.playerId)) return "Watching"
+        return "Watching ${snapshot.playerLabel(seat.playerId)}"
+    }
+
+    fun detail(snapshot: GameSnapshot): String {
+        val count = snapshot.remainingOpponents.size
+        val players = if (count == 1) "1 player still in" else "$count players still in"
+        val seat = snapshot.seat
+        if (seat == null || snapshot.isViewer(seat.playerId)) return "You’re out · $players · Turn ${snapshot.turn}"
+        // The hand row already shows the stand-in's hand count; this line fits a phone.
+        return "${seat.life} life · $players · Turn ${snapshot.turn}"
+    }
 }
 
 object PromptCommandBuilder {

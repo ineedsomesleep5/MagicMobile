@@ -1,20 +1,5 @@
 name: Android native development
 on:
-  push:
-    branches: [codex/android-native-xmage, codex/android-ios-parity]
-    # Android consumes the shared XMage engine and the iOS-owned catalogue,
-    # precon, mana-symbol and role-tag sources. A change to any of them must at
-    # least enter this guarded workflow; the commit marker/manual dispatch still
-    # controls the expensive native-image job below.
-    paths:
-      - 'apps/android/**'
-      - 'scripts/android/**'
-      - 'packages/ondevice-engine/**'
-      - 'apps/ios/MagicMobile/Resources/ondevice-catalogue.json'
-      - 'apps/ios/MagicMobile/PreconCatalog.swift'
-      - 'apps/ios/MagicMobile/Assets.xcassets/mana-*.imageset/**'
-      - 'apps/ios/MagicMobile/Assets.xcassets/AppIcon.appiconset/**'
-      - '.github/workflows/magicmobile-android.yml'
   workflow_dispatch:
 permissions:
   contents: read

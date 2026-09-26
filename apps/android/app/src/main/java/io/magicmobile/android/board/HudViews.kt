@@ -356,7 +356,7 @@ fun PortraitOpponentStatusBar(snapshot: GameSnapshot, opponentName: String, oppo
                 when {
                     cue == null && thinker != null -> ThinkingLabel(snapshot.playerLabel(thinker), BoardTurnColors.opponent, statusStyle)
                     cue == null && snapshot.isSpectating -> Text("You’re watching", color = MagicPalette.parchment, style = statusStyle)
-                    else -> Text(cue?.title ?: if (snapshot.isViewer(snapshot.priorityPlayerId)) "Your priority" else "Waiting on ${snapshot.playerLabel(snapshot.priorityPlayerId)}",
+                    else -> Text(cue?.title ?: snapshot.priorityStatusText,
                         color = if (cue == null) MagicPalette.parchment else MagicPalette.antiqueGold, style = statusStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }

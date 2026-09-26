@@ -178,6 +178,7 @@ single MIT file with its license header when that is enough.
 | 8 AAA pass (build 18) | Game audio (54 cues + menu/table music, GameAudio.swift, scripts/audio), brand-styled menus/setup/loading/versus from the app icon and download site (BrandUI.swift, traced BrandMarkPaths.swift), dock stack tray, even result wash, tapped-land art, branded launch screen. Simulator previews, unit and UI tests; phone feel and audio mix pending Caleb. |
 | 9 Next level (build 19) | Recorded audio (Sonniss GDC + Kenney CC0 effects, Kevin MacLeod CC BY playlists and stingers, SoundLabView.swift), fewer and quieter cues, concede with pod spectating (engine op), Arena-style attachment stacks and inspector attachment text, opponent portraits with AI-thinking ring, opening-hand screen, result summary (GameStats.swift), quick chat (GameEmotes.swift), weighted big hits, deck covers. Unit, real-XMage JVM and UI tests pass; phone feel and audio choices pending Caleb. |
 | 10 Android parity (Android build 8) | Phases 1–4 and 6–9 are ported to the Compose app in portrait and landscape: the timeline, overlay, card motion, dissolve and foil shaders, recorded audio with the Sound Lab, and the game-feel pieces. Each lives in the same-named Kotlin file (map in docs/ANDROID_PARITY.md). All 34 iOS preview states render on the emulator, and emulator games pass. Android phone feel is pending. |
+| 11 Playtest fixes (iOS build 18 / Android build 9) | On both platforms, in `codex/build18-integration`: the top of the board follows the active player (Follow Turns setting); a spectator's bottom seat goes to the next living player; copy tokens draw as their own frame with a "Token copy" tag; the held-card inspector fits its rules without scrolling; the ability banner sits below the card; combat keyword badges (live, so gained double strike shows); the first-strike damage step is its own beat; clipped battlefield rows fade and show "+N". Unit and parity tests, simulator and emulator previews pass; phone feel pending Caleb. |
 
 ## Log
 
@@ -312,13 +313,27 @@ single MIT file with its license header when that is enough.
   carry the same portraits, thinking ring and quick chat (tap your summary).
 
 - 2026-09-24 (Claude): Build 19 shipped as TestFlight 0.1.1 build 17 (Apple `VALID`, Beta
-  App Review `APPROVED`, Internal and External groups; docs/RELEASE_0.1.1_BUILD17.md). It was
+  App Review `APPROVED`, Internal and External groups; release/RELEASE_0.1.1_BUILD17.md). It was
   built with Xcode 26.6 (iOS 26.5 SDK) because the App Store Xcode 27 needs macOS 26.6+ and
   this Mac is on 26.5. Next: Caleb's phone feedback, then rebuild with Xcode 27 (iOS 27 SDK)
   as build 18 once he installs macOS 26.7 and Xcode 27.
 
 - 2026-09-25 (Claude): The board FX work is ported to Android and shipped in Android build 8
-  (docs/RELEASE_ANDROID_0.1.1_BUILD8.md). Each iOS FX file has a same-named Kotlin counterpart
+  (release/RELEASE_ANDROID_0.1.1_BUILD8.md). Each iOS FX file has a same-named Kotlin counterpart
   (docs/ANDROID_PARITY.md), so an iOS board change now needs the matching Android change.
   iPhone tables with Android need the next TestFlight build (18), which waits on macOS 26.7 and
   Xcode 27 on this Mac.
+
+- 2026-09-26 (Claude): Playtest fixes from Caleb's 4-player game, on iOS and Android:
+  - #41: follow turns and the spectator seat
+  - #43: token-copy frames, the fitted inspector and the ability banner
+  - #45: row overflow fades and "+N"
+  - #46: combat clarity. `FIRST_COMBAT_DAMAGE` plays as a labelled beat, and a blocked attacker
+    with no blockers left strikes only with trample.
+  - #49: an iOS 27 accessibility fix for card choices
+  - All are integrated on `codex/build18-integration` for iOS build 18 and Android build 9.
+  - The Metal Toolchain 27A266a is installed for Xcode 27.
+  - Shared parity cases: `focus-cases.json`, `spectator-cases.json` and `combat-cases.json`.
+  - New previews: `four-player-spectating`, `token-copy-inspection`, `ability-showcase` and
+    `first-strike`.
+

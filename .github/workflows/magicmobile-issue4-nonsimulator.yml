@@ -1,11 +1,6 @@
 name: Issue 4 non-simulator verification
 
 on:
-  push:
-    branches: [codex/issue-4-native-mvp, codex/issue-4-verified-continuation, codex/testflight-readiness-audit, codex/native-runtime-hardening]
-    paths-ignore:
-      - '**/*.md'
-      - 'packages/ondevice-engine/implementation-status.json'
   workflow_dispatch:
 
 permissions:

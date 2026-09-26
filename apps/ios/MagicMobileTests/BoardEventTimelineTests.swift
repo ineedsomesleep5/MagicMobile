@@ -184,7 +184,8 @@ extension BoardEventTimelineTests {
         ])
         let planned = BoardFXScheduler.schedule(result, level: .full)
         let impact = planned.filter { if case .combatStrike = $0.event { return true }; return false }.map(\.handoff).max()!
-        for fx in planned where fx.event.order > 3 {
+        for fx in planned where fx.event.order > planned[0].event.order {
+            if case .combatStrike = fx.event { continue }
             XCTAssertGreaterThanOrEqual(fx.delay, impact, "\(fx.event) waits for the hit")
         }
         // The next snapshot inside combat damage does not strike again.
@@ -235,7 +236,7 @@ extension BoardEventTimelineTests {
         XCTAssertEqual(director.subjects["wolf"]?.card.name, "Wolf", "departed card face comes from the previous board")
         let hidden = try? XCTUnwrap(director.cardMotion(viewerID: "a").hidden["bear"])
         let arrival = director.active.first { $0.scheduled.event.subjectID == "bear" }!.scheduled
-        XCTAssertEqual(hidden, BoardFXCardMotion.Hidden(batch: start, from: 0, until: arrival.landing))
+        XCTAssertEqual(hidden, [BoardFXCardMotion.Hidden(batch: start, from: 0, until: arrival.landing)])
         XCTAssertEqual(arrival.landing, arrival.delay + arrival.duration * BoardFXScheduler.landingFraction(.showcase))
         director.prune(now: start.addingTimeInterval(10))
         XCTAssertEqual(director.subjects, [:])
@@ -263,5 +264,103 @@ extension BoardEventTimelineTests {
         off.ingest(old, level: .off, now: start)
         off.ingest(new, level: .off, now: start)
         XCTAssertEqual(off.cardMotion(viewerID: "a"), BoardFXCardMotion())
+    }
+}
+
+/// First strike as its own beat. Shared transition cases: combat-cases.json (ParityGoldenTests).
+extension BoardEventTimelineTests {
+    private func combatCard(_ id: String, _ name: String, icons: [String] = [], rules: String? = nil, attacking: Bool? = nil,
+                            blocking: [String]? = nil) -> ZoneCard {
+        ZoneCard(instanceId: id, card: CardIdentity(name: name, typeLine: "Creature", oracleText: rules, manaCost: "{R}"),
+                 tapped: nil, summoningSickness: false,
+                 cardIcons: icons.map { XmageCardIcon(iconType: $0, resourceName: nil, category: "ABILITY", text: nil, hint: nil) },
+                 counters: nil, power: 6, toughness: 4, isCreaturePermanent: true, damage: nil,
+                 isAttacking: attacking, blocking: blocking, attachedToInstanceId: nil)
+    }
+
+    private func combatSnapshot(step: String, revision: Int, lifeA: Int = 40, a: [ZoneCard], b: [ZoneCard],
+                                graveyardA: [ZoneCard] = [], blocked: Bool) -> GameSnapshot {
+        let base = snapshot([player("a", life: lifeA, battlefield: a, graveyard: graveyardA), player("b", battlefield: b)],
+                            revision: revision, step: step)
+        let attackers = b.filter { $0.isAttacking == true }
+        let combat = XmageCombatGroup(defenderId: "a", defenderName: "a", defenderKind: "player", blocked: blocked,
+                                      attackers: attackers, blockers: a.filter { !($0.blocking ?? []).isEmpty })
+        let xmage = XmageMobileSnapshot(schemaVersion: 1, gameId: "match", bridgeRevision: revision, xmageCycle: nil, callbackCoverage: [],
+                                        stack: [], combat: [combat], players: [], exileZones: [], revealed: [], lookedAt: [],
+                                        companion: [], playableObjects: [],
+                                        panels: XmagePanels(stack: false, command: true, graveyard: true, exile: true, revealed: false,
+                                                            lookedAt: false, search: false))
+        return GameSnapshot(id: base.id, source: base.source, activePlayerId: "b", phase: "combat", step: step, turn: 3,
+                            priorityPlayerId: "a", waitingOnPlayerId: nil, promptText: nil, players: base.players, log: [],
+                            legalActions: nil, choicePrompt: nil, promptEnvelope: nil, promptEnvelopeV2: nil,
+                            startupOpeningPrompts: nil, xmage: xmage, engineHealth: nil, bridgeRevision: revision,
+                            xmageCycle: nil, pendingStatus: nil, manaPayment: nil, gameStatus: nil,
+                            winnerPlayerIds: nil, endReason: nil, viewerPlayerId: "a")
+    }
+
+    /// Atarka gains double strike when it attacks; a deathtouch Typhoid Rats blocks.
+    private var atarkaCombat: (blocks: GameSnapshot, firstStrike: GameSnapshot, regular: GameSnapshot) {
+        let atarka = combatCard("atarka", "Atarka, World Render", icons: ["ABILITY_FLYING", "ABILITY_TRAMPLE", "ABILITY_DOUBLE_STRIKE"],
+                                rules: "Flying\nTrample", attacking: true)
+        let rats = combatCard("rats", "Typhoid Rats", icons: ["ABILITY_DEATHTOUCH"], rules: "Deathtouch", blocking: ["atarka"])
+        let dead = combatCard("rats", "Typhoid Rats", rules: "Deathtouch")
+        return (combatSnapshot(step: "DECLARE_BLOCKERS", revision: 10, a: [rats], b: [atarka], blocked: true),
+                combatSnapshot(step: "FIRST_COMBAT_DAMAGE", revision: 11, a: [], b: [atarka], graveyardA: [dead], blocked: true),
+                combatSnapshot(step: "COMBAT_DAMAGE", revision: 12, lifeA: 34, a: [], b: [atarka], graveyardA: [dead], blocked: true))
+    }
+
+    func testSnapshotKeywordsOfCombatantsReachTheBoardState() {
+        let state = BoardFXState(snapshot: atarkaCombat.blocks)
+        XCTAssertEqual(state.cards["atarka"]?.keywords, [.doubleStrike, .trample, .flying])
+        XCTAssertEqual(state.cards["rats"]?.keywords, [.deathtouch])
+        XCTAssertEqual(state.blockedAttackers, ["atarka"])
+        XCTAssertEqual(state.step, "declare-blockers")
+        XCTAssertEqual(BoardFXState(snapshot: atarkaCombat.firstStrike).step, BoardEventDiffer.firstStrikeStep)
+    }
+
+    func testFirstStrikeStepPlaysItsOwnLabelledBeatBeforeTheRegularDamage() {
+        let combat = atarkaCombat
+        let start = Date(timeIntervalSince1970: 7_000)
+        var director = BoardFXDirector()
+        director.ingest(combat.blocks, level: .full, now: start)
+        let first = director.ingest(combat.firstStrike, level: .full, now: start)
+        XCTAssertEqual(first.map(\.event), [
+            .firstStrikeBeat,
+            .combatStrike(attackerID: "atarka", target: .card("rats"), tint: .red, firstStrike: true),
+            .leftBattlefield(cardID: "rats", playerID: "a", to: .graveyard, tint: .red),
+        ])
+        let label = first[0]
+        XCTAssertEqual(label.delay, 0)
+        XCTAssertGreaterThanOrEqual(label.end, first.map(\.end).max()! , "the label spans the whole first-strike beat")
+        // The regular damage arrives while the first-strike beat still plays: it waits for it.
+        let later = start.addingTimeInterval(0.4)
+        let second = director.ingest(combat.regular, level: .full, now: later)
+        XCTAssertEqual(second.map(\.event), [
+            .combatStrike(attackerID: "atarka", target: .player("a"), tint: .red, firstStrike: false),
+            .lifeChanged(playerID: "a", delta: -6),
+        ])
+        XCTAssertEqual(later.addingTimeInterval(second[0].delay).timeIntervalSince1970,
+                       start.addingTimeInterval(label.end).timeIntervalSince1970, accuracy: 0.001)
+        // The double striker flies twice; its tile hides only while each strike flies.
+        let windows = director.cardMotion(viewerID: "a").hidden["atarka"] ?? []
+        XCTAssertEqual(windows.count, 2)
+        XCTAssertEqual(windows[0], BoardFXCardMotion.Hidden(batch: start, from: first[1].delay, until: first[1].end))
+        XCTAssertEqual(windows[1], BoardFXCardMotion.Hidden(batch: later, from: second[0].delay, until: second[0].end))
+        XCTAssertLessThan(start.addingTimeInterval(windows[0].until), later.addingTimeInterval(windows[1].from))
+    }
+
+    func testFirstStrikeBeatFollowsTheEffectLevels() {
+        let combat = atarkaCombat
+        let events = BoardEventDiffer.events(from: BoardFXState(snapshot: combat.blocks), to: BoardFXState(snapshot: combat.firstStrike))
+        XCTAssertEqual(BoardFXScheduler.schedule(events, level: .off), [])
+        let reduced = BoardFXScheduler.schedule(events, level: .reduced)
+        XCTAssertEqual(reduced.first?.event, .firstStrikeBeat, "reduced keeps the label, without motion")
+        XCTAssertFalse(reduced.contains(where: \.usesMotion))
+        XCTAssertEqual(reduced.first?.holdsLaterBatchesUntil, reduced.first?.end)
+        // The label is information, not decoration: a crowded batch never drops it.
+        let crowded = [BoardFXEvent.firstStrikeBeat] + (0..<20).map { .damageMarked(cardID: "c\($0)", amount: 1) }
+        let planned = BoardFXScheduler.schedule(crowded, level: .full)
+        XCTAssertEqual(planned.first?.event, .firstStrikeBeat)
+        XCTAssertEqual(planned.count, BoardFXScheduler.decorativeLimit + 1)
     }
 }

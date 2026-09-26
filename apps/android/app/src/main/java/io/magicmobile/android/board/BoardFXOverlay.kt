@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import io.magicmobile.android.game.ActiveBoardFX
+import io.magicmobile.android.game.BoardFXBannerPlan
 import io.magicmobile.android.game.BoardFXEntrance
 import io.magicmobile.android.game.BoardFXEvent
 import io.magicmobile.android.game.BoardFXScheduler
@@ -481,6 +482,14 @@ class BoardFXFlight(val effect: ActiveBoardFX, val card: ZoneCard, val kind: Kin
     }
 }
 
+/**
+ * Visual QA (debug launch extras only): MAGICMOBILE_BOARD_FX_FREEZE=<seconds> holds every effect batch at
+ * that moment and never prunes it, so a design preview can be screenshotted mid-effect (Swift BoardFXPreviewFreeze).
+ */
+object BoardFXPreviewFreeze {
+    val seconds: Double? get() = io.magicmobile.android.ui.LaunchEnvironment["MAGICMOBILE_BOARD_FX_FREEZE"]?.toDoubleOrNull()
+}
+
 /** The board's effect layer: particle Canvas plus flying card faces. */
 @Composable
 fun BoardFXOverlay(effects: List<ActiveBoardFX>, subjects: Map<String, ZoneCard>, cardBounds: Map<String, BoardRect>, anchors: BoardFXAnchors,
@@ -493,6 +502,8 @@ fun BoardFXOverlay(effects: List<ActiveBoardFX>, subjects: Map<String, ZoneCard>
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(effects) { while (true) withFrameMillis { now = System.currentTimeMillis() } }
     LaunchedEffect(effects.lastOrNull()?.id) {
+        // A frozen preview keeps its effects on screen.
+        if (BoardFXPreviewFreeze.seconds != null) return@LaunchedEffect
         // Wait for the last effect's end on the frame clock; batches not yet drawn count from now.
         while (true) {
             val current = System.currentTimeMillis()
@@ -512,7 +523,8 @@ fun BoardFXOverlay(effects: List<ActiveBoardFX>, subjects: Map<String, ZoneCard>
     }
     fun progress(effect: ActiveBoardFX): Double? {
         val origin = clock.origin(effect.start) ?: return null
-        val elapsed = (now - origin) / 1000.0 - effect.scheduled.delay
+        val sinceStart = (now - origin) / 1000.0
+        val elapsed = minOf(sinceStart, BoardFXPreviewFreeze.seconds ?: sinceStart) - effect.scheduled.delay
         if (elapsed < 0 || elapsed > effect.scheduled.duration) return null
         return elapsed / effect.scheduled.duration
     }
@@ -603,8 +615,10 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
                 val hold = BoardRect(center.x - showcase.width / 2, center.y - showcase.height / 2, showcase.width, showcase.height)
                 elemental(event.tint, hold, elapsed, window(p, 0.12, 0.85), fx.id)
             }
-            val bannerY = center.y + if (event.weight == BoardFXSpellWeight.ABILITY || !motion) 54f else showcase.height / 2 + 22
-            banner(measurer, event.name, if (event.weight == BoardFXSpellWeight.COMMANDER) "COMMANDER" else null, BoardPoint(center.x, bannerY), heroColor, p)
+            // Below the showcased card for abilities too (the card covered it at +54).
+            val bannerY = center.y + BoardFXBannerPlan.offset(showcase.height, motion)
+            val title = BoardFXBannerPlan.title(event.name, event.weight == BoardFXSpellWeight.ABILITY, subjects[event.stackID]?.card?.name)
+            banner(measurer, title, if (event.weight == BoardFXSpellWeight.COMMANDER) "COMMANDER" else null, BoardPoint(center.x, bannerY), heroColor, p)
         }
         is BoardFXEvent.EnteredBattlefield -> {
             val r = rect(event.cardID) ?: return
@@ -665,6 +679,8 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
             arrivalGlow(blocker, blockSteel, p, motion)
             rect(event.attackerID)?.let { link(blocker, it, blockSteel, p) }
         }
+        // XMage's first-strike damage step: named while its strikes, damage and deaths play.
+        BoardFXEvent.FirstStrikeBeat -> banner(measurer, "First strike", null, anchors.stackPoint, attackRed, p)
         is BoardFXEvent.CombatStrike -> {
             val origin = rect(event.attackerID) ?: return
             val hit = point(event.target) ?: return
@@ -713,6 +729,7 @@ object BoardFXSound {
             is BoardFXEvent.AttackDeclared -> cues += Cue(GameSound.ATTACK, fx.delay)
             is BoardFXEvent.BlockDeclared -> cues += Cue(GameSound.BLOCK, fx.delay)
             is BoardFXEvent.CombatStrike -> cues += Cue(if (event.target == BoardFXStrikeTarget.Player(viewerID)) GameSound.PLAYER_HIT else GameSound.STRIKE, fx.handoff)
+            BoardFXEvent.FirstStrikeBeat -> {}
             is BoardFXEvent.DamageMarked -> if (!hasStrike) cues += Cue(GameSound.STRIKE, fx.delay, 0.7f)
             is BoardFXEvent.LeftBattlefield -> cues += when (event.to) {
                 BoardFXZone.EXILE -> Cue(GameSound.EXILE, fx.delay)

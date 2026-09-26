@@ -2,6 +2,119 @@ import Foundation
 import Combine
 import MagicMobileOnDevice
 
+/// A seat's side of a phone-hosted table (Game Center or the cross-play relay). The host's session
+/// announces each new game revision; a guest's session polls when an announcement arrives, promptly
+/// while its own answer is outstanding, and otherwise only on a slow heartbeat, so a quiet table
+/// sends almost nothing through the relay.
+@MainActor
+final class OnDeviceTableLink {
+    enum Role: Equatable { case host, guest }
+    let role: Role
+    /// The host's table name, for "Waiting for <host>…".
+    let hostName: String
+    /// Host: shares a revision notice with every guest. Set by the multiplayer connection.
+    var announce: ((Int64) -> Void)?
+    private var announcedRevision: Int64 = -1
+    /// Guest: the newest revision the host announced. Until the first notice arrives the guest
+    /// cannot tell whether its host announces at all, so it keeps polling on the short timer.
+    private(set) var noticedRevision: Int64 = -1
+    private(set) var hostAnnounces = false
+    private var waiters: [UUID: (continuation: CheckedContinuation<Void, Never>, timer: Task<Void, Never>)] = [:]
+
+    init(role: Role, hostName: String) {
+        self.role = role
+        let name = hostName.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.hostName = name.isEmpty ? "the host" : name
+    }
+
+    var waitingStatus: String { "Waiting for \(hostName)…" }
+
+    /// Host: the session applied a poll at `revision`. Each revision is announced once.
+    func applied(revision: Int64) {
+        guard role == .host, revision > announcedRevision else { return }
+        announcedRevision = revision
+        announce?(revision)
+    }
+
+    /// Guest: the host announced `revision`. Repeated, late or out-of-order notices are harmless.
+    func noticed(revision: Int64) {
+        guard role == .guest else { return }
+        hostAnnounces = true
+        noticedRevision = max(noticedRevision, revision)
+        wake()
+    }
+
+    /// Returns after a notice, `wake()`, cancellation or `timeout` seconds, whichever comes first.
+    func waitForNotice(timeout: TimeInterval) async {
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let timer = Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: UInt64(max(0, min(timeout, 3600)) * 1_000_000_000))
+                    self.resume(id)
+                }
+                waiters[id] = (continuation, timer)
+            }
+        } onCancel: {
+            Task { @MainActor in self.resume(id) }
+        }
+    }
+
+    /// Releases every waiting poll loop so it re-evaluates its schedule now.
+    func wake() {
+        for id in Array(waiters.keys) { resume(id) }
+    }
+
+    private func resume(_ id: UUID) {
+        guard let waiter = waiters.removeValue(forKey: id) else { return }
+        waiter.timer.cancel()
+        waiter.continuation.resume()
+    }
+}
+
+/// When a guest at a phone-hosted table polls its host next. Pure, so it is tested directly.
+enum OnDeviceGuestPollSchedule {
+    /// Safety net for a dropped notice. Notices are never queued or acknowledged.
+    static let heartbeat: TimeInterval = 15
+    /// After sending an answer, the guest polls promptly this long, or until the answer lands.
+    static let answerWindow: TimeInterval = 10
+
+    enum Step: Equatable {
+        case poll(after: TimeInterval)
+        case awaitNotice(timeout: TimeInterval)
+    }
+
+    static func next(hostAnnounces: Bool, noticedRevision: Int64, appliedRevision: Int64?,
+                     awaitingAnswer: Bool, sinceAction: TimeInterval?, sinceLastPoll: TimeInterval,
+                     spacing: TimeInterval) -> Step {
+        let gap = max(0, spacing - sinceLastPoll)
+        // A host that never announced (an older build) is polled on the short timer, as before.
+        guard hostAnnounces, let applied = appliedRevision, noticedRevision <= applied else { return .poll(after: gap) }
+        if awaitingAnswer, let sinceAction, sinceAction < answerWindow { return .poll(after: gap) }
+        let remaining = heartbeat - sinceLastPoll
+        return remaining > gap ? .awaitNotice(timeout: remaining) : .poll(after: gap)
+    }
+}
+
+/// A guest retries a poll a few times when its host stops answering, then gives up with the
+/// usual message. Only polls and hello are retried: an answer keeps its exact request ID for
+/// the player's explicit retry, and a host that left ends the table through the roster.
+struct OnDeviceHostRetryPolicy {
+    static let defaultDelays: [TimeInterval] = [1, 2, 4]
+    let delays: [TimeInterval]
+    private(set) var attempts = 0
+
+    init(delays: [TimeInterval] = Self.defaultDelays) { self.delays = delays }
+
+    mutating func delay(after error: Error) -> TimeInterval? {
+        guard error is OnDeviceHostUnavailable, attempts < delays.count else { return nil }
+        attempts += 1
+        return delays[attempts - 1]
+    }
+
+    mutating func reset() { attempts = 0 }
+}
+
 /// One authenticated seat. UI changes are applied only from a current engine poll.
 @MainActor
 final class OnDeviceSession: ObservableObject {
@@ -37,6 +150,12 @@ final class OnDeviceSession: ObservableObject {
     private var isForeground = true
     private var automaticPolling = true
     private var reconnectsAutomatically = false
+    /// Set for a seat at a phone-hosted table; nil for local and online games.
+    private var table: OnDeviceTableLink?
+    /// Uptime of this seat's latest answer or concede, for prompt polling until it lands.
+    private var lastActionAt: TimeInterval?
+    /// Backoff between a guest's poll retries after its host stops answering (shortened by tests).
+    var hostRetryDelays = OnDeviceHostRetryPolicy.defaultDelays
     private struct Submission {
         let prompt: EnginePrompt
         let answer: MagicMobileOnDevice.JSONValue
@@ -59,12 +178,14 @@ final class OnDeviceSession: ObservableObject {
 
     func attach(client: EngineClient, matchID: String, seatID: String, autoPoll: Bool = true,
                 allowsSeatScopedAutoYield: Bool = false, reconnectsAutomatically: Bool = false,
+                table: OnDeviceTableLink? = nil,
                 close: @escaping @MainActor () async throws -> Void) async throws {
         guard self.client == nil, !isWorking else { throw EngineError.invalidMessage("Close the active game first") }
         self.client = client; self.matchID = matchID; self.seatID = seatID
         // Only trusted routes opt in. Every pass still uses this seat's authenticated prompt.
         self.allowsSeatScopedAutoYield = allowsSeatScopedAutoYield
         self.reconnectsAutomatically = reconnectsAutomatically
+        self.table = table; lastActionAt = nil
         autoPassStatus = ""
         closeEndpoint = close; automaticPolling = autoPoll; epoch = UUID()
         refreshSequence = 0; appliedRefreshSequence = 0; isClosing = false
@@ -72,9 +193,14 @@ final class OnDeviceSession: ObservableObject {
         status = "Starting game"
         do { try await refresh() }
         catch {
-            guard reconnectsAutomatically, error is URLError else { throw error }
-            status = "Reconnecting…"
-            errorMessage = "Connection interrupted. Reconnecting to your game."
+            if let table, table.role == .guest, error is OnDeviceHostUnavailable {
+                // The poll loop retries the host a few times before giving up.
+                status = table.waitingStatus
+            } else {
+                guard reconnectsAutomatically, error is URLError else { throw error }
+                status = "Reconnecting…"
+                errorMessage = "Connection interrupted. Reconnecting to your game."
+            }
         }
         beginPolling()
     }
@@ -135,6 +261,8 @@ final class OnDeviceSession: ObservableObject {
         messageLog = nextLog
         poll = next
         appliedRefreshSequence = max(appliedRefreshSequence, sequence)
+        // A host tells its guests about each new revision, so they need not poll it constantly.
+        table?.applied(revision: next.revision)
         if let pending, next.prompt?.id != pending.prompt.id || next.prompt?.revision != pending.prompt.revision {
             self.pending = nil
             if autoAbility == nil { pendingActionID = nil; pendingCardID = nil }
@@ -194,13 +322,16 @@ final class OnDeviceSession: ObservableObject {
         let generation = yieldGeneration
         let token = epoch
         yieldTask = Task { [weak self] in
+            var lastPoll = ProcessInfo.processInfo.systemUptime
             do {
                 while !Task.isCancelled {
-                    try await Task.sleep(for: .milliseconds(300))
+                    try await self?.waitForNextPoll(since: lastPoll, interval: 0.3)
+                    lastPoll = ProcessInfo.processInfo.systemUptime
                     guard let self, self.epoch == token, self.yieldGeneration == generation, self.isAutoPassing else { return }
                     guard !self.isWorking, self.activeRefreshes == 0 else { continue }
                     // A new authenticated poll, never just the rendered snapshot, authorizes each pass.
                     try await self.refresh()
+                    lastPoll = ProcessInfo.processInfo.systemUptime
                     guard !Task.isCancelled, self.epoch == token, self.yieldGeneration == generation,
                           self.isAutoPassing else { return }
                     guard !self.isWorking, self.activeRefreshes == 0 else { continue }
@@ -363,6 +494,7 @@ final class OnDeviceSession: ObservableObject {
         do {
             responding = true
             waitingForPolls = false
+            noteAction()
             _ = try await client.respond(matchID: matchID, seatID: seatID, prompt: pending.prompt,
                                          answer: pending.answer, requestID: pending.requestID)
             responseAcknowledged = true
@@ -437,6 +569,7 @@ final class OnDeviceSession: ObservableObject {
         }
         abilityAutoAnswer?.cancel(); abilityAutoAnswer = nil
         chosenAbility = nil; heldAbilitySnapshot = nil
+        noteAction()
         try await client.concede(matchID: matchID, seatID: seatID)
         // The engine retracted this seat's open question; nothing sent earlier can still apply.
         pending = nil; pendingActionID = nil; pendingCardID = nil
@@ -464,6 +597,7 @@ final class OnDeviceSession: ObservableObject {
         isClosing = false
         refreshSequence = 0; appliedRefreshSequence = 0
         epoch = UUID(); client = nil; matchID = nil; seatID = nil; poll = nil; snapshot = nil
+        table = nil; lastActionAt = nil
         messageLog = OnDeviceMessageLog()
         self.closeEndpoint = nil; pending = nil; pendingActionID = nil; pendingCardID = nil; errorMessage = nil; status = "Ready"
     }
@@ -486,20 +620,30 @@ final class OnDeviceSession: ObservableObject {
               !["ended", "failed", "closed"].contains(poll?.phase ?? "") else { return }
         pollingTask = Task { [weak self] in
             var failures = 0
+            var hostRetries = OnDeviceHostRetryPolicy(delays: self?.hostRetryDelays ?? OnDeviceHostRetryPolicy.defaultDelays)
+            var lastPoll = ProcessInfo.processInfo.systemUptime
+            // A new loop (attach, return to the foreground, a manual refresh) polls on the short
+            // timer first, so a guest catches up on notices it could not receive meanwhile.
+            var firstPoll = true, retryNow = false
             while !Task.isCancelled {
                 do {
                     let idle = (self?.idlePolls ?? 0) >= 3
-                    try await Task.sleep(for: .milliseconds(self?.reconnectsAutomatically == true ? 1000 : idle ? 600 : 300))
+                    let interval: TimeInterval = self?.reconnectsAutomatically == true ? 1 : idle ? 0.6 : 0.3
+                    if firstPoll { try await Task.sleep(for: .seconds(interval)) }
+                    else if !retryNow { try await self?.waitForNextPoll(since: lastPoll, interval: interval) }
+                    firstPoll = false; retryNow = false
                     guard let self, !Task.isCancelled else { return }
-                    if self.isAutoPassing { continue }
+                    if self.isAutoPassing { lastPoll = ProcessInfo.processInfo.systemUptime; continue }
                     try await self.refresh()
-                    failures = 0
+                    lastPoll = ProcessInfo.processInfo.systemUptime
+                    failures = 0; hostRetries.reset()
                     guard !Task.isCancelled else { return }
                     if ["ended", "failed", "closed"].contains(self.poll?.phase ?? "") {
                         self.pollingTask = nil
                         return
                     }
                 } catch {
+                    lastPoll = ProcessInfo.processInfo.systemUptime
                     guard let self, !Task.isCancelled else { return }
                     if self.reconnectsAutomatically, error is URLError {
                         failures += 1
@@ -508,11 +652,50 @@ final class OnDeviceSession: ObservableObject {
                         do { try await Task.sleep(for: .seconds(min(10, failures * 2))) } catch { return }
                         continue
                     }
+                    // A lost host answer: poll again (never re-send an answer) before giving up.
+                    if let table = self.table, table.role == .guest, let delay = hostRetries.delay(after: error) {
+                        self.status = table.waitingStatus
+                        do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+                        retryNow = true
+                        continue
+                    }
                     self.pollingTask = nil
                     self.errorMessage = error.localizedDescription; self.status = "Updates interrupted. Refresh to retry."
                     return
                 }
             }
         }
+    }
+
+    /// Local and online games poll on a short timer. A guest at a phone-hosted table waits for its
+    /// host's revision notice, polls promptly while its own answer is outstanding, and otherwise
+    /// polls only on the heartbeat.
+    private func waitForNextPoll(since lastPoll: TimeInterval, interval: TimeInterval) async throws {
+        guard let table, table.role == .guest else {
+            try await Task.sleep(for: .seconds(interval))
+            return
+        }
+        while true {
+            let now = ProcessInfo.processInfo.systemUptime
+            let step = OnDeviceGuestPollSchedule.next(
+                hostAnnounces: table.hostAnnounces, noticedRevision: table.noticedRevision, appliedRevision: poll?.revision,
+                awaitingAnswer: pending != nil || abilityAutoAnswer != nil, sinceAction: lastActionAt.map { now - $0 },
+                sinceLastPoll: now - lastPoll, spacing: interval)
+            switch step {
+            case .poll(let delay):
+                if delay > 0 { try await Task.sleep(for: .seconds(delay)) } else { await Task.yield() }
+                try Task.checkCancellation()
+                return
+            case .awaitNotice(let timeout):
+                await table.waitForNotice(timeout: timeout)
+                try Task.checkCancellation()
+            }
+        }
+    }
+
+    /// An answer or concede is on its way: a waiting guest polls promptly until it lands.
+    private func noteAction() {
+        lastActionAt = ProcessInfo.processInfo.systemUptime
+        table?.wake()
     }
 }

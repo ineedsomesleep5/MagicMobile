@@ -76,7 +76,8 @@ fun PortraitCombatArrowOverlay(snapshot: GameSnapshot, groups: List<XmageCombatG
     fun playerAnchor(id: String, kind: String?): BoardPoint? {
         if (!(kind == null || kind.lowercase() == "player")) return null
         val rect = when {
-            CombatPlayerIdentity.ids(snapshot.viewerID, snapshot).contains(id) -> metrics.bottomControlsRect
+            // The bottom seat: the viewer, or their stand-in while they watch.
+            CombatPlayerIdentity.ids(snapshot.seatID, snapshot).contains(id) -> metrics.bottomControlsRect
             focusedOpponentID != null && CombatPlayerIdentity.ids(focusedOpponentID, snapshot).contains(id) -> metrics.topHUDRect
             else -> return null
         }

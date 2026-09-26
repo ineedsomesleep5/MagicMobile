@@ -2,7 +2,7 @@
 
 Implementation branch: `codex/board-choices-token-history`, based on main `9097d31`.
 This records implementation and acceptance; current distribution evidence is in
-[the build 7 release record](RELEASE_0.1.1_BUILD7.md).
+[the build 7 release record](../release/RELEASE_0.1.1_BUILD7.md).
 
 ## Approved behavior
 
@@ -40,7 +40,7 @@ XMage remains pinned to `4825513287ba6c42c32fd205d227f4a5fc44c2f3`. A bridge art
 
 Android build 7 and its matching self-host package are published and their public bytes
 have been checksum-verified. iOS build 7 is approved and in beta testing for both groups; see the current
-[release record](RELEASE_0.1.1_BUILD7.md) for Apple processing and group status.
+[release record](../release/RELEASE_0.1.1_BUILD7.md) for Apple processing and group status.
 
 ## Frozen engine candidate
 

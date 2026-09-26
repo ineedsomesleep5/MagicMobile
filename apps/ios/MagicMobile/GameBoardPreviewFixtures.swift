@@ -18,6 +18,24 @@ enum GameBoardPreviewFixtures {
             }
             root["players"] = players
         }
+        if state == .abilityShowcase, specialStateAdvanced, var xmage = root["xmage"] as? [String: Any] {
+            // Prodigal Pyromancer's ability goes on the stack, as XMage names it: "Ability".
+            let source = previewCard("ai-1-ability-source", "Prodigal Pyromancer", "Creature — Human Wizard", "{2}{R}",
+                                     "{T}: This creature deals 1 damage to any target.", power: 1)
+            xmage["stack"] = [["id": "stack-ability-showcase", "objectId": "stack-ability-showcase", "objectType": "ACTIVATED_ABILITY",
+                               "name": "Ability", "rulesText": "Prodigal Pyromancer deals 1 damage to any target.",
+                               "sourceInstanceId": "ai-1-ability-source", "sourceName": "Prodigal Pyromancer", "sourceZone": "battlefield",
+                               "sourceCard": source, "controllerId": "ai-1", "targetIds": ["human"], "paid": true]]
+            var panels = xmage["panels"] as? [String: Any] ?? [:]
+            panels["stack"] = true
+            xmage["panels"] = panels
+            xmage["bridgeRevision"] = 100
+            root["xmage"] = xmage
+            root["bridgeRevision"] = 100
+        }
+        if state == .firstStrike, specialStateAdvanced {
+            advanceToFirstStrikeDamage(&root)
+        }
         if let step {
             root["step"] = step
             root["activePlayerId"] = "ai-1"
@@ -143,19 +161,95 @@ enum GameBoardPreviewFixtures {
         return snapshot.human?.zones.hand.first
     }
 
+    /// The card a preview opens held in the inspector.
+    static func inspectedCard(for state: GameBoardDesignPreviewState, snapshot: GameSnapshot) -> ZoneCard? {
+        switch state {
+        case .fullHandInspection: return snapshot.human?.zones.hand.first
+        case .tokenCopyInspection: return snapshot.human?.zones.battlefield.first { $0.instanceId == tokenCopyID }
+        default: return nil
+        }
+    }
+
+    static let tokenCopyID = "human-token-copy"
+    /// First-strike preview: UUIDs, so the public log can name these cards.
+    static let atarkaID = "a7a4ca00-6d1e-4c2a-9f10-0000000000a1"
+    static let deathtouchBlockerID = "7e9a0000-5b1d-4d2e-8f00-0000000000b2"
+
+    /// `first-strike`: Atarka gave itself double strike when it attacked, and a deathtouch
+    /// Typhoid Rats blocks. Advanced, XMage is in its first-strike damage step: Atarka's
+    /// first hit killed the Rats before they could deal damage.
+    private static func firstStrikeCombat(_ root: inout [String: Any], players: inout [[String: Any]]) {
+        var atarka = previewCard(atarkaID, "Atarka, World Render", "Legendary Creature — Dragon", "{5}{R}{R}",
+                                 "Flying\nTrample\nWhenever a Dragon you control attacks, it gains double strike until end of turn.\nDouble strike",
+                                 power: 6)
+        atarka["toughness"] = 4
+        atarka["tapped"] = true
+        atarka["isAttacking"] = true
+        atarka["summoningSickness"] = false
+        atarka["cardIcons"] = ["ABILITY_FLYING", "ABILITY_TRAMPLE", "ABILITY_DOUBLE_STRIKE"].map { ["iconType": $0, "category": "ABILITY"] }
+        var rats = previewCard(deathtouchBlockerID, "Typhoid Rats", "Creature — Rat", "{B}", "Deathtouch", power: 1)
+        rats["blocking"] = [atarkaID]
+        rats["summoningSickness"] = false
+        rats["cardIcons"] = [["iconType": "ABILITY_DEATHTOUCH", "category": "ABILITY"]]
+        for (index, card) in [(1, atarka), (0, rats)] {
+            var zones = players[index]["zones"] as! [String: Any]
+            zones["battlefield"] = [card] + (zones["battlefield"] as! [[String: Any]])
+            players[index]["zones"] = zones
+        }
+        root["phase"] = "combat"; root["step"] = "declare-blockers"
+        root["activePlayerId"] = "ai-1"
+        root["log"] = [
+            ["id": "fs-log-1", "message": "TURN 3 for <font color='#20B2AA'>Aurelia</font> (31 - 37)"],
+            ["id": "fs-log-2", "message": "<font color='#20B2AA'>Aurelia</font> attacks <font color='#20B2AA'>You</font> with 1 creature"],
+        ]
+    }
+
+    private static func advanceToFirstStrikeDamage(_ root: inout [String: Any]) {
+        var players = root["players"] as! [[String: Any]]
+        var zones = players[0]["zones"] as! [String: Any]
+        var battlefield = zones["battlefield"] as! [[String: Any]]
+        if let index = battlefield.firstIndex(where: { $0["instanceId"] as? String == deathtouchBlockerID }) {
+            var rats = battlefield.remove(at: index)
+            rats["blocking"] = nil
+            zones["graveyard"] = [rats] + (zones["graveyard"] as! [[String: Any]])
+        }
+        zones["battlefield"] = battlefield
+        players[0]["zones"] = zones
+        root["players"] = players
+        root["step"] = "first-combat-damage"
+        root["bridgeRevision"] = 100
+        if var xmage = root["xmage"] as? [String: Any], var combat = xmage["combat"] as? [[String: Any]], !combat.isEmpty {
+            combat[0]["blockers"] = []
+            xmage["combat"] = combat
+            xmage["bridgeRevision"] = 100
+            root["xmage"] = xmage
+        }
+        let atarka = "<font color='#FF6347' object_id='\(atarkaID)'>Atarka, World Render</font> [a7a]"
+        let rats = "<font color='#696969' object_id='\(deathtouchBlockerID)'>Typhoid Rats</font> [7e9]"
+        root["log"] = (root["log"] as? [[String: Any]] ?? []) + [
+            ["id": "fs-log-3", "message": "\(atarka) deals 6 damage to \(rats)"],
+            ["id": "fs-log-4", "message": "\(rats) died"],
+        ]
+    }
+
+    private static func previewCard(_ id: String, _ name: String, _ type: String, _ cost: String, _ rules: String, power: Int? = nil) -> [String: Any] {
+        var value: [String: Any] = ["instanceId": id, "card": ["name": name, "typeLine": type, "manaCost": cost, "oracleText": rules], "tapped": false]
+        if let power { value.merge(["power": power, "toughness": power, "isCreaturePermanent": true]) { _, new in new } }
+        return value
+    }
+
     // Development fixture projection only. These actions never enter a live engine session.
     private static func enrich(_ root: inout [String: Any], for state: GameBoardDesignPreviewState) {
         func card(_ id: String, _ name: String, _ type: String, _ cost: String, _ rules: String, power: Int? = nil) -> [String: Any] {
-            var value: [String: Any] = ["instanceId": id, "card": ["name": name, "typeLine": type, "manaCost": cost, "oracleText": rules], "tapped": false]
-            if let power { value.merge(["power": power, "toughness": power, "isCreaturePermanent": true]) { _, new in new } }
-            return value
+            previewCard(id, name, type, cost, rules, power: power)
         }
         let creatures = [("Silvercoat Lion", "{1}{W}", 2), ("Serra Angel", "{3}{W}{W}", 4), ("Grizzly Bears", "{1}{G}", 2), ("Llanowar Elves", "{G}", 1), ("Spirited Companion", "{1}{W}", 1), ("Sun Titan", "{4}{W}{W}", 6)]
         let crowded = [GameBoardDesignPreviewState.crowdedBattlefield, .fourPlayerFocus, .manaPaymentPrompt, .combatArrows, .largeText].contains(state)
         let resourceLayoutMode = state == .crowdedBattlefield
             ? ProcessInfo.processInfo.environment["MAGICMOBILE_BOARD_RESOURCE_LAYOUT_UI_TEST"] : nil
         var players = root["players"] as! [[String: Any]]
-        if state == .fourPlayerFocus || state == .playerTargetPrompt || state == .spectating {
+        let watching = state == .spectating || state == .fourPlayerSpectating
+        if state == .fourPlayerFocus || state == .playerTargetPrompt || watching {
             for number in 2...3 {
                 var opponent = players[1]
                 opponent["playerId"] = "ai-\(number)"
@@ -175,6 +269,17 @@ enum GameBoardPreviewFixtures {
             players[0]["hasLeft"] = true
             players[0]["life"] = 0
             players[2]["hasLeft"] = true
+        }
+        if state == .fourPlayerSpectating {
+            // You conceded in a pod of four: Aurelia, next in turn order, takes your seat while
+            // the top follows Kozilek's turn.
+            players[0]["hasLeft"] = true
+            players[0]["life"] = 0
+            root["turn"] = 6
+            root["activePlayerId"] = "ai-2"
+            root["priorityPlayerId"] = "ai-2"
+            root["waitingOnPlayerId"] = nil
+            root["promptText"] = nil
         }
         for index in players.indices {
             let seat = players[index]["playerId"] as! String
@@ -209,8 +314,28 @@ enum GameBoardPreviewFixtures {
                 }
                 zones["graveyard"] = graveyard
             }
-            if state == .stackResponsePrompt && index == 1 {
+            if (state == .stackResponsePrompt || state == .abilityShowcase) && index == 1 {
                 battlefield.append(card("ai-1-ability-source", "Prodigal Pyromancer", "Creature — Human Wizard", "{2}{R}", "{T}: This creature deals 1 damage to any target.", power: 1))
+            }
+            if state == .firstStrike && index == 1 {
+                zones["battlefield"] = battlefield; players[index]["zones"] = zones
+                firstStrikeCombat(&root, players: &players)
+                zones = players[index]["zones"] as! [String: Any]
+                battlefield = zones["battlefield"] as! [[String: Any]]
+            }
+            if state == .tokenCopyInspection && index == 0 {
+                // A token copy of Sun Titan that has grown: its frame shows the live 7/7, never the printed 6/6.
+                var copy = card(tokenCopyID, "Sun Titan", "Creature — Giant", "{4}{W}{W}",
+                                "Vigilance\nWhenever Sun Titan enters or attacks, you may return target permanent card with mana value 3 or less from your graveyard to the battlefield.",
+                                power: 7)
+                var identity = copy["card"] as! [String: Any]
+                identity["isToken"] = true
+                identity["copySourceArtworkName"] = "Sun Titan"
+                identity["tokenColors"] = ["W"]
+                copy["card"] = identity
+                copy["counters"] = ["+1/+1": 1]
+                copy["summoningSickness"] = false
+                battlefield.append(copy)
             }
             if state == .attachedPermanents {
                 players[index]["poison"] = index == 0 ? 2 : 3
@@ -285,15 +410,15 @@ enum GameBoardPreviewFixtures {
                 battlefield.insert(battlefield.remove(at: ring), at: 0)
             }
             zones["battlefield"] = battlefield; players[index]["zones"] = zones
-            if state == .spectating, players[index]["hasLeft"] as? Bool == true {
+            if watching, players[index]["hasLeft"] as? Bool == true {
                 // A player who left takes their cards out of the game (CR 800.4a).
                 zones["battlefield"] = []; zones["hand"] = []; players[index]["zones"] = zones
             }
         }
         root["players"] = players
         var actions = root["legalActions"] as! [[String: Any]]
-        if state == .spectating { actions = [] }
-        if ![GameBoardDesignPreviewState.aiThinking, .bridgeUnavailable, .unsupportedPromptFallback, .spectating].contains(state) {
+        if watching { actions = [] }
+        if ![GameBoardDesignPreviewState.aiThinking, .bridgeUnavailable, .unsupportedPromptFallback, .spectating, .fourPlayerSpectating].contains(state) {
             actions.append(["id": "make-mana-sol-ring", "type": "make_mana", "playerId": "human", "label": "Tap Sol Ring", "sourceInstanceId": "human-sol-ring", "cardName": "Sol Ring", "sourceZone": "battlefield", "producedMana": ["C", "C"]])
         }
         root["legalActions"] = actions
@@ -340,6 +465,13 @@ enum GameBoardPreviewFixtures {
         }
         if state == .victory {
             root["gameStatus"] = "completed"; root["winnerPlayerIds"] = ["human"]; root["endReason"] = "opponent_lost"
+        }
+        if state == .firstStrike {
+            let own = (players[0]["zones"] as! [String: Any])["battlefield"] as! [[String: Any]]
+            let opposing = (players[1]["zones"] as! [String: Any])["battlefield"] as! [[String: Any]]
+            xmage["combat"] = [["defenderId": "human", "defenderName": "You", "defenderKind": "player", "blocked": true,
+                                "attackers": opposing.filter { $0["isAttacking"] as? Bool == true },
+                                "blockers": own.filter { $0["blocking"] != nil }]]
         }
         if state == .combatArrows {
             let own = (players[0]["zones"] as! [String: Any])["battlefield"] as! [[String: Any]]

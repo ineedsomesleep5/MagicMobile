@@ -117,7 +117,8 @@ class NativeGameTest {
                     assertTrue("${deck.name} remains valid for packaged Commander",validation.flag("valid"))
                 }
             }
-            val seats=localGameSeats("You",resolved.first(),resolved.drop(1),2)
+            val seats=listOf(mapOf("seatId" to "player-1","name" to "You","controller" to "human","deck" to resolved.first()))+
+                resolved.drop(1).mapIndexed {index,deck->mapOf("seatId" to "player-${index+2}","name" to "AI ${index+1}","controller" to "ai","deck" to deck,"aiSkill" to 2)}
             val created=request("create","configuration" to mapOf("seats" to seats))
             assertEquals(listOf("player-1","player-2","player-3","player-4"),created.array("seats"))
             val match=Wire.string(created["matchId"])

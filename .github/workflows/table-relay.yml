@@ -1,0 +1,33 @@
+name: Table relay
+
+on:
+  pull_request:
+    paths:
+      - 'services/table-relay/**'
+      - '.github/workflows/table-relay.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'services/table-relay/**'
+      - '.github/workflows/table-relay.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # Node 22: the tests use the built-in WebSocket client.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Relay tests against a local wrangler dev (no Cloudflare account or secrets)
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+        run: node --test services/table-relay/test/relay.test.mjs

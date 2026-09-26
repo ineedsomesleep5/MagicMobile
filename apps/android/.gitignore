@@ -2,7 +2,8 @@
 .kotlin/
 **/build/
 local.properties
-native-artifact/
+# No trailing slash: worktrees often link this to a shared artifact, and a symlink is not a directory.
+native-artifact
 *.jks
 *.keystore
 .idea/

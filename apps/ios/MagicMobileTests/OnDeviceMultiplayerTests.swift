@@ -696,3 +696,68 @@ extension OnDeviceMultiplayerTests {
         XCTAssertEqual(host.submittedPeers, ["alice"])
     }
 }
+
+// MARK: Revision notices and lost host answers
+
+extension OnDeviceMultiplayerTests {
+    @MainActor
+    func testLostHostAnswerIsARetryableHostUnavailableError() async throws {
+        let identity = BuildIdentity(upstreamCommit: "commit", catalogueHash: "catalogue")
+        let timed = OnDeviceRemoteEngineTransport(hostID: "host", matchID: "match", seatID: "player2", epoch: UUID(),
+                                                  timeoutNanoseconds: 10_000_000) { _, _ in }
+        defer { timed.close() }
+        do { try await timed.hello(identity: identity); XCTFail("Expected timeout") }
+        catch {
+            XCTAssertTrue(error is OnDeviceHostUnavailable, "The session retries only this error, and only for polls")
+            XCTAssertTrue(error.localizedDescription.contains("in time"))
+        }
+    }
+
+    func testRevisionNoticeIsTinyStrictAndCarriesOnlyTheRevision() throws {
+        let epoch = UUID()
+        let notice = OnDeviceRevisionNotice.packet(epoch: epoch, revision: 1234)
+        XCTAssertLessThan(try notice.encoded().count, 100)
+        XCTAssertEqual(notice["epoch"]?.string, epoch.uuidString)
+        XCTAssertEqual(try OnDeviceRevisionNotice.revision(from: notice), 1234)
+        XCTAssertEqual(try OnDeviceRevisionNotice.revision(from: MagicMobileOnDevice.JSONValue.decode(notice.encoded())), 1234)
+        var extra = notice.object!; extra["seat"] = .string("player1")
+        XCTAssertThrowsError(try OnDeviceRevisionNotice.revision(from: .object(extra)))
+        var negative = notice.object!; negative["revision"] = .integer(-1)
+        XCTAssertThrowsError(try OnDeviceRevisionNotice.revision(from: .object(negative)))
+        var text = notice.object!; text["revision"] = .string("12")
+        XCTAssertThrowsError(try OnDeviceRevisionNotice.revision(from: .object(text)))
+        var other = notice.object!; other["type"] = .string("presence")
+        XCTAssertThrowsError(try OnDeviceRevisionNotice.revision(from: .object(other)))
+    }
+
+    @MainActor
+    func testTableLinkWakesOnNoticesAndOtherwiseTimesOut() async throws {
+        let link = OnDeviceTableLink(role: .guest, hostName: "  ")
+        XCTAssertEqual(link.waitingStatus, "Waiting for the host…")
+        XCTAssertFalse(link.hostAnnounces)
+        let start = ProcessInfo.processInfo.systemUptime
+        await link.waitForNotice(timeout: 0.1)
+        XCTAssertGreaterThanOrEqual(ProcessInfo.processInfo.systemUptime - start, 0.09)
+        var woke = false
+        let waiter = Task { @MainActor in await link.waitForNotice(timeout: 30); woke = true }
+        for _ in 0..<100 { await Task.yield() }
+        XCTAssertFalse(woke)
+        link.noticed(revision: 5)
+        await waiter.value
+        XCTAssertTrue(woke)
+        XCTAssertTrue(link.hostAnnounces)
+        link.noticed(revision: 3)
+        XCTAssertEqual(link.noticedRevision, 5, "A late notice never moves the revision back")
+        let cancelled = Task { @MainActor in await link.waitForNotice(timeout: 30) }
+        for _ in 0..<100 { await Task.yield() }
+        cancelled.cancel()
+        await cancelled.value
+        let host = OnDeviceTableLink(role: .host, hostName: "Caleb")
+        var announced: [Int64] = []
+        host.announce = { announced.append($0) }
+        host.applied(revision: 4); host.applied(revision: 4); host.applied(revision: 2); host.applied(revision: 6)
+        host.noticed(revision: 10)
+        XCTAssertEqual(announced, [4, 6])
+        XCTAssertFalse(host.hostAnnounces, "Only guests hear notices")
+    }
+}

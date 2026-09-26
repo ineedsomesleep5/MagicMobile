@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.magicmobile.android.R
 import io.magicmobile.android.game.BoardFXLevel
+import io.magicmobile.android.game.BoardFocusTracker
 import io.magicmobile.android.ui.AppPreferences
 import io.magicmobile.android.ui.BrandDivider
 import io.magicmobile.android.ui.BrandPressable
@@ -141,6 +142,22 @@ fun PortraitModeToggle(isOn: Boolean, onChange: (Boolean) -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("Auto-Rotate", color = Color.White, style = SfText.callout(SfWeight.black))
                 Text("Portrait and landscape", color = Color.White.copy(alpha = 0.58f), style = SfText.caption2(SfWeight.semibold), maxLines = 2)
+            }
+        }
+    }
+}
+
+/** The top of the board switches to whoever's turn starts (BoardFocusTracker). On by default. */
+@Composable
+fun FollowTurnsToggle() {
+    var isOn by AppPreferences.boolean(BoardFocusTracker.followTurnsKey, true)
+    Box(Modifier.fillMaxWidth().magicPanel(MagicPanelMaterial.IRON, MagicPanelProminence.QUIET, cornerRadius = 9.dp, padding = 10.dp)
+        .semantics { contentDescription = "settings.followTurns" }) {
+        IosToggle(isOn, { isOn = it }) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Follow Turns", color = Color.White, style = SfText.callout(SfWeight.black))
+                Text("Show whose turn it is at the top. A tap on an opponent holds until the next turn.", color = Color.White.copy(alpha = 0.58f),
+                    style = SfText.caption2(SfWeight.semibold), maxLines = 2)
             }
         }
     }

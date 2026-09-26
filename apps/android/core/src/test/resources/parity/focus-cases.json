@@ -1,0 +1,98 @@
+{
+  "about": "Which opponent the top of the board shows (BoardFocusTracker + BoardOpponentFocus) and the top bar's priority line. Read by ParityGoldenTests.swift and ParityGoldenTest.kt: both apps must meet every expectation. A step sets snapshot state (turn, active, prompt = the player a pending prompt is for, out = players who left, game, followTurns) that later steps inherit, or taps an opponent. Each step then polls once and checks its expectations.",
+  "base": {
+    "id": "focus-game", "phase": "beginning", "step": "upkeep", "turn": 1, "log": [], "viewerPlayerId": "p1",
+    "players": [
+      {"playerId": "p1", "displayName": "Ash", "life": 40, "poison": 0, "commanderTax": 0,
+       "zones": {"library": [], "hand": [{"instanceId": "p1-hand-1", "card": {"name": "Llanowar Elves", "typeLine": "Creature — Elf Druid"}}],
+                 "battlefield": [], "graveyard": [], "exile": [], "command": [], "stack": [], "handCount": 1, "libraryCount": 90}},
+      {"playerId": "p2", "displayName": "Birch", "life": 38, "poison": 0, "commanderTax": 0,
+       "zones": {"library": [], "hand": [], "battlefield": [], "graveyard": [], "exile": [], "command": [], "stack": [], "handCount": 6, "libraryCount": 88}},
+      {"playerId": "p3", "displayName": "Cedar", "life": 31, "poison": 0, "commanderTax": 0,
+       "zones": {"library": [], "hand": [], "battlefield": [], "graveyard": [], "exile": [], "command": [], "stack": [], "handCount": 4, "libraryCount": 85}},
+      {"playerId": "p4", "displayName": "Dune", "life": 27, "poison": 0, "commanderTax": 0,
+       "zones": {"library": [], "hand": [], "battlefield": [], "graveyard": [], "exile": [], "command": [], "stack": [], "handCount": 2, "libraryCount": 80}}
+    ]
+  },
+  "cases": [
+    {"name": "a new turn moves the top to the active opponent", "steps": [
+      {"turn": 1, "active": "p1", "top": "p2", "topChoices": ["p2", "p3", "p4"]},
+      {"turn": 2, "active": "p2", "top": "p2"},
+      {"turn": 3, "active": "p3", "top": "p3"},
+      {"turn": 4, "active": "p4", "top": "p4"}
+    ]},
+    {"name": "the viewer's own turn keeps the last opponent", "steps": [
+      {"turn": 4, "active": "p4", "top": "p4"},
+      {"turn": 5, "active": "p1", "top": "p4"},
+      {"step": "draw", "top": "p4"}
+    ]},
+    {"name": "joining mid-game shows the active opponent", "steps": [
+      {"turn": 7, "active": "p3", "top": "p3"}
+    ]},
+    {"name": "a tap sticks until the next turn starts", "steps": [
+      {"turn": 2, "active": "p2", "top": "p2"},
+      {"tap": "p4", "top": "p4"},
+      {"step": "draw", "top": "p4"},
+      {"step": "precombat-main", "prompt": "p1", "top": "p4"},
+      {"prompt": null, "top": "p4"},
+      {"turn": 3, "active": "p3", "top": "p3"}
+    ]},
+    {"name": "a tap on the viewer's turn sticks through it", "steps": [
+      {"turn": 5, "active": "p1", "top": "p2"},
+      {"tap": "p3", "top": "p3"},
+      {"step": "draw", "top": "p3"},
+      {"turn": 6, "active": "p2", "top": "p2"}
+    ]},
+    {"name": "a prompt defers the switch until it is answered", "steps": [
+      {"turn": 2, "active": "p2", "top": "p2"},
+      {"turn": 3, "active": "p3", "prompt": "p1", "top": "p2"},
+      {"step": "draw", "top": "p2"},
+      {"prompt": null, "top": "p3"}
+    ]},
+    {"name": "a deferred switch lands on the turn current when the prompt is answered", "steps": [
+      {"turn": 2, "active": "p2", "top": "p2"},
+      {"turn": 3, "active": "p3", "prompt": "p1", "top": "p2"},
+      {"turn": 4, "active": "p4", "top": "p2"},
+      {"prompt": null, "top": "p4"}
+    ]},
+    {"name": "a tap while a switch waits on a prompt wins", "steps": [
+      {"turn": 2, "active": "p2", "top": "p2"},
+      {"turn": 3, "active": "p3", "prompt": "p1", "top": "p2"},
+      {"tap": "p4", "top": "p4"},
+      {"prompt": null, "top": "p4"}
+    ]},
+    {"name": "another player's prompt does not hold the switch", "steps": [
+      {"turn": 2, "active": "p2", "top": "p2"},
+      {"turn": 3, "active": "p3", "prompt": "p3", "top": "p3"}
+    ]},
+    {"name": "follow turns off keeps the first or tapped opponent", "followTurns": false, "steps": [
+      {"turn": 2, "active": "p3", "top": "p2"},
+      {"tap": "p4", "top": "p4"},
+      {"turn": 3, "active": "p2", "top": "p4"},
+      {"turn": 4, "active": "p3", "top": "p4"}
+    ]},
+    {"name": "follow turns switched back on takes effect at the next turn", "followTurns": false, "steps": [
+      {"turn": 2, "active": "p3", "top": "p2"},
+      {"followTurns": true, "top": "p2"},
+      {"turn": 3, "active": "p4", "top": "p4"}
+    ]},
+    {"name": "a new game starts over", "steps": [
+      {"turn": 3, "active": "p3", "top": "p3"},
+      {"tap": "p4", "top": "p4"},
+      {"game": "focus-game-2", "turn": 1, "active": "p1", "top": "p2"}
+    ]},
+    {"name": "the viewer cannot be focused", "steps": [
+      {"turn": 2, "active": "p2", "top": "p2"},
+      {"tap": "p1", "top": "p2", "topChoices": ["p2", "p3", "p4"]}
+    ]}
+  ],
+  "status": [
+    {"name": "starting-player choice", "turn": 1, "priority": null, "waitingOn": "p1", "text": "Starting the game"},
+    {"name": "an opponent chooses the starting player", "turn": 1, "priority": null, "waitingOn": null, "text": "Starting the game"},
+    {"name": "turn zero", "turn": 0, "priority": null, "waitingOn": null, "text": "Starting the game"},
+    {"name": "your priority", "turn": 3, "priority": "p1", "waitingOn": "p1", "text": "Your priority"},
+    {"name": "an opponent's priority", "turn": 3, "priority": "p3", "waitingOn": null, "text": "Waiting on Cedar"},
+    {"name": "waiting on an opponent's decision", "turn": 3, "priority": null, "waitingOn": "p4", "text": "Waiting on Dune"},
+    {"name": "nobody named later in the game", "turn": 5, "priority": null, "waitingOn": null, "text": "Waiting on the game"}
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "about": "The spectator seat (BoardOpponentFocus): while the viewer watches after leaving the game, the next living player after them in turn order takes the bottom seat, the top follows turns among the rest, and hidden information stays hidden. Same step format as focus-cases.json, plus viewer (the seat the engine authenticated) and completed. Read by ParityGoldenTests.swift and ParityGoldenTest.kt.",
+  "base": {
+    "id": "spectator-game", "phase": "beginning", "step": "upkeep", "turn": 1, "log": [], "viewerPlayerId": "p1",
+    "players": [
+      {"playerId": "p1", "displayName": "Ash", "life": 40, "poison": 0, "commanderTax": 0,
+       "zones": {"library": [], "hand": [{"instanceId": "p1-hand-1", "card": {"name": "Llanowar Elves", "typeLine": "Creature — Elf Druid"}}],
+                 "battlefield": [], "graveyard": [], "exile": [], "command": [], "stack": [], "handCount": 1, "libraryCount": 90}},
+      {"playerId": "p2", "displayName": "Birch", "life": 38, "poison": 0, "commanderTax": 0,
+       "zones": {"library": [], "hand": [{"instanceId": "p2-hidden", "card": {"name": "Counterspell", "typeLine": "Instant"}}],
+                 "battlefield": [{"instanceId": "p2-bear", "card": {"name": "Grizzly Bears", "typeLine": "Creature — Bear"}}],
+                 "graveyard": [], "exile": [], "command": [], "stack": [], "handCount": 6, "libraryCount": 88}},
+      {"playerId": "p3", "displayName": "Cedar", "life": 31, "poison": 0, "commanderTax": 0,
+       "zones": {"library": [], "hand": [], "battlefield": [], "graveyard": [], "exile": [], "command": [], "stack": [], "handCount": 4, "libraryCount": 85}},
+      {"playerId": "p4", "displayName": "Dune", "life": 27, "poison": 0, "commanderTax": 0,
+       "zones": {"library": [], "hand": [], "battlefield": [], "graveyard": [], "exile": [], "command": [], "stack": [], "handCount": 2, "libraryCount": 80}}
+    ]
+  },
+  "cases": [
+    {"name": "while playing the viewer keeps the bottom seat and its hand", "steps": [
+      {"turn": 6, "active": "p3", "seat": "p1", "viewer": "p1", "spectating": false, "topChoices": ["p2", "p3", "p4"], "top": "p3",
+       "seatHand": ["p1-hand-1"], "seatHandCount": 1, "seatLabel": "You"}
+    ]},
+    {"name": "the viewer out: the next living player takes the bottom seat, hand as a count", "steps": [
+      {"turn": 6, "active": "p3", "out": ["p1"], "seat": "p2", "viewer": "p1", "spectating": true,
+       "topChoices": ["p3", "p4"], "top": "p3", "seatHand": [], "seatHandCount": 6,
+       "viewerLabel": "You", "seatLabel": "Birch", "title": "Watching Birch", "detail": "38 life · 3 players still in · Turn 6"}
+    ]},
+    {"name": "the top follows turns among the rest and holds on the stand-in's turn", "steps": [
+      {"turn": 6, "active": "p3", "out": ["p1"], "seat": "p2", "top": "p3"},
+      {"turn": 7, "active": "p4", "top": "p4"},
+      {"turn": 8, "active": "p2", "seat": "p2", "top": "p4"},
+      {"tap": "p3", "top": "p3"},
+      {"turn": 9, "active": "p4", "top": "p4"}
+    ]},
+    {"name": "the stand-in knocked out: the seat moves to the next living player", "steps": [
+      {"turn": 6, "active": "p3", "out": ["p1"], "seat": "p2", "top": "p3"},
+      {"out": ["p1", "p2"], "seat": "p3", "topChoices": ["p2", "p4"], "top": "p4", "seatHand": [], "seatHandCount": 4,
+       "seatLabel": "Cedar", "viewerLabel": "You", "title": "Watching Cedar", "detail": "31 life · 2 players still in · Turn 6"},
+      {"turn": 7, "active": "p4", "top": "p4"},
+      {"turn": 8, "active": "p3", "top": "p4"}
+    ]},
+    {"name": "the seat wraps around the turn order and never shows another player's hand", "steps": [
+      {"viewer": "p3", "turn": 6, "active": "p2", "out": ["p3", "p4"], "seat": "p1", "topChoices": ["p2", "p4"], "top": "p2",
+       "seatHand": [], "seatHandCount": 1, "viewerLabel": "You", "seatLabel": "Ash", "title": "Watching Ash",
+       "detail": "40 life · 2 players still in · Turn 6"}
+    ]},
+    {"name": "players already out are skipped", "steps": [
+      {"turn": 6, "active": "p4", "out": ["p1", "p2", "p3"], "seat": "p4", "topChoices": ["p2", "p3"], "top": "p2"}
+    ]},
+    {"name": "a finished game gives the seat back to the viewer", "steps": [
+      {"turn": 9, "active": "p3", "out": ["p1"], "completed": true, "seat": "p1", "spectating": false, "topChoices": ["p2", "p3", "p4"],
+       "seatHand": ["p1-hand-1"]}
+    ]}
+  ]
+}
