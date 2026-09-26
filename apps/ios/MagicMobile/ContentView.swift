@@ -11160,6 +11160,115 @@ private struct BattlefieldRowMask: View {
     var body: some View { Rectangle().padding(.horizontal, -4).padding(.vertical, -28) }
 }
 
+/// Scroll offsets live outside BattlefieldRow's body, so scrolling redraws only the edge fade and markers.
+@Observable
+final class BattlefieldRowScrollOffsets {
+    var byScroller: [Int: CGFloat] = [:]
+}
+
+private struct BattlefieldRowOffsetKey: PreferenceKey {
+    static let defaultValue: [Int: CGFloat] = [:]
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
+/// One BattlefieldRow scroller and the rows it moves together.
+struct BattlefieldRowOverflowLane: Equatable {
+    let scroller: Int
+    let cardWidth: CGFloat
+    let viewportWidth: CGFloat
+    let cardsPerSlotByRow: [[Int]]
+
+    func overflow(_ offsets: BattlefieldRowScrollOffsets) -> BattlefieldRowOverflow {
+        BattlefieldRowOverflow.lane(contentOffset: offsets.byScroller[scroller] ?? 0, viewportWidth: viewportWidth,
+                                    cardWidth: cardWidth, cardsPerSlotByRow: cardsPerSlotByRow)
+    }
+}
+
+/// BattlefieldRowMask, with a soft fade at an edge where the lane clips cards.
+private struct BattlefieldRowFadeMask: View {
+    let lane: BattlefieldRowOverflowLane
+    let offsets: BattlefieldRowScrollOffsets
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let overflow = lane.overflow(offsets)
+        HStack(spacing: 0) {
+            edge(fades: overflow.clipsLeading, from: .leading, to: .trailing)
+            Rectangle()
+            edge(fades: overflow.clipsTrailing, from: .trailing, to: .leading)
+        }
+        .padding(.horizontal, -4).padding(.vertical, -28)
+        .animation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.18),
+                   value: [overflow.clipsLeading, overflow.clipsTrailing])
+    }
+
+    private func edge(fades: Bool, from start: UnitPoint, to end: UnitPoint) -> some View {
+        ZStack {
+            Rectangle().opacity(fades ? 0 : 1)
+            LinearGradient(colors: [.clear, .black], startPoint: start, endPoint: end).opacity(fades ? 1 : 0)
+        }
+        .frame(width: 28)
+    }
+}
+
+/// "+N" counts of cards entirely scrolled out of view. Drawing only: touches reach the lane beneath.
+private struct BattlefieldRowOverflowMarkers: View {
+    let lane: BattlefieldRowOverflowLane
+    let offsets: BattlefieldRowScrollOffsets
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let overflow = lane.overflow(offsets)
+        HStack(spacing: 0) {
+            if overflow.hiddenLeading > 0 { marker(overflow.hiddenLeading, side: "left") }
+            Spacer(minLength: 0)
+            if overflow.hiddenTrailing > 0 { marker(overflow.hiddenTrailing, side: "right") }
+        }
+        .padding(.horizontal, 3)
+        .allowsHitTesting(false)
+        .animation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.18),
+                   value: [overflow.hiddenLeading > 0, overflow.hiddenTrailing > 0])
+    }
+
+    private func marker(_ count: Int, side: String) -> some View {
+        Text("+\(count)")
+            .font(.system(size: 11, weight: .black))
+            .monospacedDigit()
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(MagicPalette.iron.opacity(0.94), in: Capsule())
+            .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.58), lineWidth: 1))
+            .transition(.opacity)
+            // The row's own identifier (on BattlefieldRow's ZStack) takes precedence here; find markers by label.
+            .accessibilityLabel("\(count) more \(count == 1 ? "card" : "cards") off-screen to the \(side)")
+    }
+}
+
+private extension View {
+    /// Reports how far the scroller holding this content has moved, for the edge fade and markers.
+    func reportsBattlefieldRowOffset(_ scroller: Int) -> some View {
+        background(GeometryReader { geometry in
+            Color.clear.preference(key: BattlefieldRowOffsetKey.self,
+                                   value: [scroller: -geometry.frame(in: .named(BattlefieldRow.scrollSpace)).minX])
+        })
+    }
+
+    /// The lane's clipping mask with its edge fade, the "+N" markers and the offset they read.
+    func battlefieldRowOverflow(_ lane: BattlefieldRowOverflowLane, offsets: BattlefieldRowScrollOffsets) -> some View {
+        coordinateSpace(.named(BattlefieldRow.scrollSpace))
+            .mask { BattlefieldRowFadeMask(lane: lane, offsets: offsets) }
+            .overlay { BattlefieldRowOverflowMarkers(lane: lane, offsets: offsets) }
+            .onPreferenceChange(BattlefieldRowOffsetKey.self) { values in
+                for (scroller, offset) in values where offsets.byScroller[scroller] != offset {
+                    offsets.byScroller[scroller] = offset
+                }
+            }
+    }
+}
+
 struct BattlefieldRow: View {
     let title: String
     let cards: [ZoneCard]
@@ -11181,6 +11290,7 @@ struct BattlefieldRow: View {
     let runTargetAction: (ZoneCard) -> Void
     let runCombatCardAction: (ZoneCard) -> Bool
     @State private var expandedGroupIds: Set<String> = []
+    @State private var scrollOffsets = BattlefieldRowScrollOffsets()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var visibleCards: [ZoneCard] {
@@ -11241,9 +11351,10 @@ struct BattlefieldRow: View {
                             rowTiles(arranged[row])
                                 .padding(.horizontal, 8)
                                 .frame(minWidth: rowWidth, minHeight: ((availableHeight ?? 0) - 4) / 2)
+                                .reportsBattlefieldRowOffset(row)
                         }
                         .scrollClipDisabled()
-                        .mask { BattlefieldRowMask() }
+                        .battlefieldRowOverflow(overflowLane(scroller: row, rows: [arranged[row]]), offsets: scrollOffsets)
                     }
                 }
             } else {
@@ -11254,9 +11365,10 @@ struct BattlefieldRow: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, availableHeight == nil ? 0 : 8)
                     .frame(minWidth: rowWidth, minHeight: availableHeight ?? max(cardHeight + 6, 44), alignment: .center)
+                    .reportsBattlefieldRowOffset(0)
                 }
                 .scrollClipDisabled()
-                .mask { BattlefieldRowMask() }
+                .battlefieldRowOverflow(overflowLane(scroller: 0, rows: Array(arranged.prefix(rows))), offsets: scrollOffsets)
             }
         }
         .accessibilityIdentifier("board.battlefield.\(title)")
@@ -11267,6 +11379,14 @@ struct BattlefieldRow: View {
         16 + groups.reduce(CGFloat.zero) { width, group in
             width + renderedCardWidth
         } + CGFloat(max(groups.count - 1, 0)) * 4
+    }
+
+    static let scrollSpace = "battlefield-row-scroll"
+
+    /// Every tile is one card wide; a collapsed group or attachment stack counts all of its cards.
+    private func overflowLane(scroller: Int, rows: [[BattlefieldCardGroup]]) -> BattlefieldRowOverflowLane {
+        BattlefieldRowOverflowLane(scroller: scroller, cardWidth: renderedCardWidth, viewportWidth: rowWidth,
+                                   cardsPerSlotByRow: rows.map { $0.map(\.count) })
     }
 
     @ViewBuilder

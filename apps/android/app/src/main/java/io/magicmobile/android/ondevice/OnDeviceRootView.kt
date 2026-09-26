@@ -786,6 +786,10 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
                 IosListRow("XMage release notes", systemImage = "arrow.up.right.square") { open("https://github.com/magefree/mage/releases") }
                 IosListRow("Latest upstream changes", systemImage = "arrow.up.right.square") { open("https://github.com/magefree/mage/commits/master/") }
             }
+            // Same notice as the download site's footer.
+            IosListSection("About", footer = "Independent fan project. Not affiliated with Wizards of the Coast. Magic: The Gathering and card artwork belong to their respective owners.") {
+                IosListRow("Card images", value = "Scryfall")
+            }
         }
     }
 }

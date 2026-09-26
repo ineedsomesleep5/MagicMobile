@@ -1,7 +1,10 @@
 package io.magicmobile.android.board
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
@@ -12,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,7 +32,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -41,16 +47,22 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
 import androidx.compose.ui.zIndex
 import io.magicmobile.android.R
 import io.magicmobile.android.game.ArenaPermanentLayout
@@ -58,6 +70,7 @@ import io.magicmobile.android.game.BattlefieldAdaptiveSizing
 import io.magicmobile.android.game.BattlefieldAttachments
 import io.magicmobile.android.game.BattlefieldCardGroup
 import io.magicmobile.android.game.BattlefieldRowArrangement
+import io.magicmobile.android.game.BattlefieldRowOverflow
 import io.magicmobile.android.game.GameBoardInteractionState
 import io.magicmobile.android.game.LegalAction
 import io.magicmobile.android.game.PortraitInteractionPolicy
@@ -311,7 +324,8 @@ fun BattlefieldRow(
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 for (row in 0 until 2) {
                     val scroll = rememberBoardScrollState()
-                    BoardHorizontalScroller(scroll, Modifier.width(rowWidth.dp), showsIndicator = rowContentWidth(arranged[row]) > rowWidth) {
+                    BattlefieldRowScroller(scroll, title, rowWidth, targetRenderedWidth, listOf(arranged[row].map { it.count }),
+                        showsIndicator = rowContentWidth(arranged[row]) > rowWidth) {
                         Box(Modifier.defaultMinSize(minWidth = rowWidth.dp, minHeight = (((availableHeight ?: 0f) - 4) / 2).dp), contentAlignment = Alignment.Center) {
                             Box(Modifier.padding(horizontal = 8.dp)) { rowTiles(arranged[row]) }
                         }
@@ -320,7 +334,8 @@ fun BattlefieldRow(
             }
         } else {
             val scroll = rememberBoardScrollState()
-            BoardHorizontalScroller(scroll, Modifier.width(rowWidth.dp), showsIndicator = showsOverflowIndicator) {
+            BattlefieldRowScroller(scroll, title, rowWidth, targetRenderedWidth, (0 until rows).map { row -> arranged.getOrElse(row) { emptyList() }.map { it.count } },
+                showsIndicator = showsOverflowIndicator) {
                 // Rows keep their leading edges together; the block is centered in the lane.
                 Box(Modifier.defaultMinSize(minWidth = rowWidth.dp, minHeight = (availableHeight ?: maxOf(cardHeight + 6, 44f)).dp), contentAlignment = Alignment.Center) {
                     Column(Modifier.padding(horizontal = 8.dp, vertical = if (availableHeight == null) 0.dp else 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -331,6 +346,75 @@ fun BattlefieldRow(
         }
     }
 }
+
+/**
+ * One BattlefieldRow scroller (ContentView.swift battlefieldRowOverflow): a soft fade at an edge that clips
+ * cards and "+N" markers for cards entirely out of view. The markers only draw, so taps, drags and holds
+ * reach the lane beneath. Every tile is one card wide; a group counts all of its cards.
+ */
+@Composable
+private fun BattlefieldRowScroller(scroll: BoardScrollState, title: String, rowWidth: Float, cardWidth: Float,
+                                   cardsPerSlotByRow: List<List<Int>>, showsIndicator: Boolean, content: @Composable () -> Unit) {
+    val density = LocalDensity.current.density
+    // Scrolling recomposes only when a count or an edge changes, not on every frame.
+    val overflow by remember(scroll, rowWidth, cardWidth, cardsPerSlotByRow, density) {
+        derivedStateOf { BattlefieldRowOverflow.lane(scroll.offset / density, rowWidth, cardWidth, cardsPerSlotByRow) }
+    }
+    val motion = tween<Float>(if (BoardMotion.reduceMotion) 0 else 180)
+    val leadingFade by animateFloatAsState(if (overflow.clipsLeading) 1f else 0f, motion, label = "rowFadeLeading")
+    val trailingFade by animateFloatAsState(if (overflow.clipsTrailing) 1f else 0f, motion, label = "rowFadeTrailing")
+    Box {
+        BoardHorizontalScroller(scroll, Modifier.width(rowWidth.dp).battlefieldRowEdgeFade({ leadingFade }, { trailingFade }),
+            showsIndicator = showsIndicator, content = content)
+        Row(Modifier.matchParentSize().padding(horizontal = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+            BattlefieldRowOverflowMarker(overflow.hiddenLeading, "left", title)
+            Spacer(Modifier.weight(1f))
+            BattlefieldRowOverflowMarker(overflow.hiddenTrailing, "right", title)
+        }
+    }
+}
+
+/** "+N" count of cards scrolled entirely out of view on one side. */
+@Composable
+private fun RowScope.BattlefieldRowOverflowMarker(count: Int, side: String, title: String) {
+    var shown by remember { mutableIntStateOf(count) }
+    if (count > 0) shown = count // Keep the last count while the marker fades out.
+    val motion = if (BoardMotion.reduceMotion) 0 else 180
+    AnimatedVisibility(count > 0, enter = fadeIn(tween(motion)), exit = fadeOut(tween(motion)), label = "rowOverflow-$side") {
+        val label = "$shown more ${if (shown == 1) "card" else "cards"} off-screen to the $side"
+        Text("+$shown", Modifier.semantics { contentDescription = label; testTag = "board.battlefield.$title.hidden.$side" }
+            .background(MagicPalette.iron.copy(alpha = 0.94f), CircleShape)
+            .border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.58f), CircleShape)
+            .padding(horizontal = 6.dp, vertical = 3.dp), color = Color.White, style = sf(11f, SfWeight.black).copy(fontFeatureSettings = "tnum"))
+    }
+}
+
+/**
+ * iOS BattlefieldRowFadeMask: the lane's content fades out across 28 dp at an edge where it clips cards.
+ * The fade layer grows by the scroller's clip insets, so glows above and below the row still draw; its
+ * layout nets out to zero, so the row keeps its size, position and touch area.
+ */
+private fun Modifier.battlefieldRowEdgeFade(leading: () -> Float, trailing: () -> Float, fadeWidth: Dp = 28.dp,
+                                            bleedHorizontal: Dp = 4.dp, bleedVertical: Dp = 28.dp): Modifier = this
+    .layout { measurable, constraints ->
+        val h = bleedHorizontal.roundToPx(); val v = bleedVertical.roundToPx()
+        val placeable = measurable.measure(constraints.offset(2 * h, 2 * v))
+        layout(maxOf(0, placeable.width - 2 * h), maxOf(0, placeable.height - 2 * v)) { placeable.place(-h, -v) }
+    }
+    .graphicsLayer { compositingStrategy = if (leading() > 0f || trailing() > 0f) CompositingStrategy.Offscreen else CompositingStrategy.Auto }
+    .drawWithContent {
+        drawContent()
+        val start = leading().coerceIn(0f, 1f); val end = trailing().coerceIn(0f, 1f)
+        if (start <= 0f && end <= 0f || size.width <= 0f) return@drawWithContent
+        val band = (fadeWidth.toPx() / size.width).coerceIn(0f, 0.5f)
+        drawRect(Brush.horizontalGradient(0f to Color.Black.copy(alpha = 1f - start), band to Color.Black,
+            1f - band to Color.Black, 1f to Color.Black.copy(alpha = 1f - end)), blendMode = BlendMode.DstIn)
+    }
+    .layout { measurable, constraints ->
+        val h = bleedHorizontal.roundToPx(); val v = bleedVertical.roundToPx()
+        val placeable = measurable.measure(constraints.offset(-2 * h, -2 * v))
+        layout(placeable.width + 2 * h, placeable.height + 2 * v) { placeable.place(h, v) }
+    }
 
 fun requiresIndividualCombatCards(group: BattlefieldCardGroup, highlightedIDs: Set<String>): Boolean = group.cards.any {
     it.isAttacking == true || it.blocking?.isNotEmpty() == true || highlightedIDs.contains(it.instanceId) || highlightedIDs.contains(it.id)
