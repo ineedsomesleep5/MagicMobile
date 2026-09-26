@@ -157,7 +157,7 @@ Caleb authorizes.
 | Build 18 polish: fan-content notice, clipped-row +N | Done, merged into integration | #45 (draft) | Reviewed. swift 496 tests, Android 144 JVM tests pass. iPhone and Android show the same counts (+7/+6/+13/+7) |
 | Combat clarity (keywords, first-strike beat, log reasons) | Done, merged into integration | #46 (draft) | Reviewed. swift 504 tests, Android suite and parity goldens pass. Blocked attackers with no blockers left strike only with trample (rules-accurate) |
 | Relay extras: joiner removal, create rate limit, host key out of URL | In progress | `codex/relay-extras` | Delegate. Backward compatible with build 8; deploy relay first, then apps |
-| Save/resume research | In progress | `codex/save-resume-research` | Delegate, doc only (`docs/SAVE_RESUME_SPIKE.md`) |
+| Save/resume research | Done | #47 (draft, doc only) | Recommends engine checkpoints (Java serialization at human priority points): ~13–19 days to iOS single-player resume. Phase 0 (app-only) next; Phase 1+ need Caleb (engine change, native rebuild, CI) |
 | Release: iOS build 18, Android build 9 | Not started | | Needs Caleb's go-ahead |
 
 ## Log
@@ -259,3 +259,28 @@ Caleb authorizes.
   - The log adds one-line first-strike and deathtouch reasons.
   - Preview: `first-strike`. Shared cases: `parity/combat-cases.json`.
   - Started delegates for relay extras and save/resume research.
+- 2026-09-26 (Claude Code): Save/resume research done in #47 (`docs/SAVE_RESUME_SPIKE.md`).
+  - JVM experiments on the old build: 11 of 11 fresh-process restores matched the saved game
+    exactly (including library order) and played to legal ends.
+  - Saves are 135–287 KB without AI search trees, take 10–12 ms (0.2 s cold), and load in
+    0.5–0.8 s.
+  - Blockers found:
+    - the human player object isn't serializable
+    - the engine's copy function zeroes AI limits
+    - XMage's load hook leaves a null field
+    - the exile zone is keyed per process (re-keying fixed it)
+  - Seeded replay diverged at turns 8 and 11, so replay is not the path.
+  - Plan phases:
+    - 0: app-only mitigations, 1–2 days
+    - 1: engine checkpoint on the JVM, 5–7 days, forces a native rebuild
+    - 2: native probe, 3–5 days, needs CI
+    - 3: iOS, 4–6 days
+    - 4: Android, 2–4 days
+    - 5: relay multiplayer, optional, 6–10 days
+  - Caleb decides:
+    - Phase 1/2 approval
+    - upstream patches or adapter workarounds
+    - resume UX: auto or ask, force-quit behavior, saving RNG state
+    - accepting that the AI may play differently after a restore
+    - relay multiplayer scope
+    - Android foreground-service policy
