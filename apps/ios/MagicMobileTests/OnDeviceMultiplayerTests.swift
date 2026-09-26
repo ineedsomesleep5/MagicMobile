@@ -760,4 +760,39 @@ extension OnDeviceMultiplayerTests {
         XCTAssertEqual(announced, [4, 6])
         XCTAssertFalse(host.hostAnnounces, "Only guests hear notices")
     }
+
+    /// services/table-relay: credentials ride in subprotocols, never the socket URL.
+    func testRelaySocketCredentialsAreSubprotocols() {
+        XCTAssertEqual(RelayWire.socketProtocols(hostKey: nil, resume: nil), ["magicmobile.1"])
+        XCTAssertEqual(RelayWire.socketProtocols(hostKey: "Ab-9_x", resume: nil), ["magicmobile.1", "magicmobile.key.Ab-9_x"])
+        XCTAssertEqual(RelayWire.socketProtocols(hostKey: nil, resume: "tok_EN-1"), ["magicmobile.1", "magicmobile.resume.tok_EN-1"])
+    }
+
+    func testRelayCreateFailureShowsTheRelayMessageOrAFriendlyOne() {
+        XCTAssertEqual(RelayWire.createFailureMessage(status: 429, message: "Wait a minute."), "Wait a minute.")
+        XCTAssertEqual(RelayWire.createFailureMessage(status: 429, message: nil),
+                       "You opened several tables in the last minute. Wait a minute, then try again.")
+        XCTAssertEqual(RelayWire.createFailureMessage(status: 503, message: "  "), "The table service could not open a table. Try again.")
+        XCTAssertEqual(RelayWire.createFailureMessage(status: nil, message: nil), "The table service could not open a table. Try again.")
+    }
+
+    func testRelayRemoveFrame() throws {
+        let frame = try JSONSerialization.jsonObject(with: Data(RelayWire.removeFrame(peerID: "p2-\"x\"").utf8)) as? [String: String]
+        XCTAssertEqual(frame, ["t": "remove", "id": "p2-\"x\""])
+    }
+
+    /// Only the host sees Remove, only for joiners, and only while the table is still filling.
+    func testRelayWaitingSeatsListJoinersInSeatOrder() {
+        let peers = [RelayPeer(id: "p3-ccc", name: "Sam", connected: false), RelayPeer(id: "p1-aaa", name: "Caleb", connected: true),
+                     RelayPeer(id: "p2-bbb", name: "Robin", connected: true)]
+        let host = RelayWaitingSeat.seats(peers: peers, localPeerID: "p1-aaa", full: false)
+        XCTAssertEqual(host.map(\.name), ["Caleb", "Robin", "Sam"])
+        XCTAssertEqual(host.map(\.isHost), [true, false, false])
+        XCTAssertEqual(host.map(\.isLocal), [true, false, false])
+        XCTAssertEqual(host.map(\.removable), [false, true, true])
+        XCTAssertEqual(host.map(\.connected), [true, true, false])
+        XCTAssertEqual(RelayWaitingSeat.seats(peers: peers, localPeerID: "p2-bbb", full: false).map(\.removable), [false, false, false])
+        XCTAssertEqual(RelayWaitingSeat.seats(peers: peers, localPeerID: "p1-aaa", full: true).map(\.removable), [false, false, false])
+        XCTAssertEqual(RelayWaitingSeat.seats(peers: [], localPeerID: "p1-aaa", full: false), [])
+    }
 }

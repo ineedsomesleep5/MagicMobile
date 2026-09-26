@@ -15,13 +15,6 @@ protocol TablePacketTransport: AnyObject {
 
 extension GameKitTransport: TablePacketTransport {}
 
-/// One seat at a relay table, as the relay reports it.
-struct RelayPeer: Equatable, Sendable {
-    let id: String
-    let name: String
-    let connected: Bool
-}
-
 enum RelayConfiguration {
     static let defaultURL = URL(string: "https://magicmobile-relay.calebjfeliciano.workers.dev")!
 
@@ -87,9 +80,10 @@ final class RelayTransport: TablePacketTransport {
         do { (data, response) = try await session.data(for: request) }
         catch { throw EngineError.invalidMessage("Could not reach the table service. Check your connection and try again.") }
         let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+        let status = (response as? HTTPURLResponse)?.statusCode
+        guard let status, (200..<300).contains(status),
               let code = value?["code"] as? String, let key = value?["hostKey"] as? String else {
-            throw EngineError.invalidMessage((value?["message"] as? String) ?? "The table service could not open a table. Try again.")
+            throw EngineError.invalidMessage(RelayWire.createFailureMessage(status: status, message: value?["message"] as? String))
         }
         return (code, key)
     }
@@ -107,9 +101,8 @@ final class RelayTransport: TablePacketTransport {
         var components = URLComponents(url: baseURL.appendingPathComponent("v1/tables/\(code)/socket"), resolvingAgainstBaseURL: false)!
         components.scheme = components.scheme == "https" ? "wss" : "ws"
         components.queryItems = [URLQueryItem(name: "name", value: name)]
-            + (hostKey.map { [URLQueryItem(name: "key", value: $0)] } ?? [])
-            + (resume.map { [URLQueryItem(name: "resume", value: $0)] } ?? [])
-        let task = session.webSocketTask(with: components.url!)
+        // The host key or resume token goes in a subprotocol, not the URL, so it stays out of logs.
+        let task = session.webSocketTask(with: components.url!, protocols: RelayWire.socketProtocols(hostKey: hostKey, resume: resume))
         task.maximumMessageSize = 4 * 1024 * 1024
         self.task = task
         task.resume()
@@ -234,6 +227,12 @@ final class RelayTransport: TablePacketTransport {
             let slice = String(characters[(index * Self.partCharacters)..<min(characters.count, (index + 1) * Self.partCharacters)])
             try write(try frame(to: authenticatedPeerID, text: slice, part: ["id": id, "i": index, "n": count]))
         }
+    }
+
+    /// Host only: turns a joiner away while the table is still filling (the relay ignores it after).
+    func remove(_ peerID: String) {
+        guard !closed else { return }
+        try? write(RelayWire.removeFrame(peerID: peerID))
     }
 
     /// Sends now, or holds the frame until the relay returns this phone's seat.

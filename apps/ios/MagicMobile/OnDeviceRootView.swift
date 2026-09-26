@@ -1346,8 +1346,64 @@ private struct RelayTablePanel: View {
             .background(CommanderPresentation.canvas.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
         }
         Text(multiplayer.status).font(.callout)
+        if multiplayer.room == nil, multiplayer.endpoint == nil, !multiplayer.isFailed, !multiplayer.waitingSeats.isEmpty {
+            RelayWaitingRoomView(seats: multiplayer.waitingSeats) { multiplayer.removeFromTable($0) }
+        }
         if let room = multiplayer.room {
             MatchRoomView(room: room, deckName: deckName, localCommander: localCommander, ready: ready)
+        }
+    }
+}
+
+/// A relay table that is still filling: who has joined and, for the host, a Remove control per joiner.
+@MainActor
+private struct RelayWaitingRoomView: View {
+    let seats: [RelayWaitingSeat]
+    let remove: (String) -> Void
+    @State private var removal: RelayWaitingSeat?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("AT THE TABLE").font(.caption.weight(.bold)).tracking(1.4)
+                .foregroundStyle(CommanderPresentation.secondary)
+            ForEach(Array(seats.enumerated()), id: \.element.id) { index, seat in
+                HStack(spacing: 10) {
+                    Image(systemName: seat.connected ? "person.crop.circle" : "wifi.exclamationmark")
+                        .font(.title3).foregroundStyle(CommanderPresentation.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(seat.name).font(.headline)
+                            if seat.isHost {
+                                Text("HOST").font(.caption2.weight(.black))
+                                    .padding(.horizontal, 5).padding(.vertical, 1)
+                                    .background(CommanderPresentation.accent.opacity(0.25), in: Capsule())
+                            }
+                        }
+                        Text(seat.isLocal ? "You" : seat.connected ? "Joined" : "Reconnecting…")
+                            .font(.caption).foregroundStyle(CommanderPresentation.secondary)
+                    }
+                    Spacer()
+                    if seat.removable {
+                        Button("Remove", role: .destructive) { removal = seat }
+                            .font(.body.weight(.semibold)).foregroundStyle(Color.red)
+                            .accessibilityLabel("Remove \(seat.name)")
+                            .accessibilityIdentifier("ondevice.relay.remove.\(index + 1)")
+                    }
+                }
+            }
+            if seats.contains(where: \.removable) {
+                Text("Remove anyone you did not invite. The match room opens when every seat is taken.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(CommanderPresentation.canvas.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+        .confirmationDialog("Remove \(removal?.name ?? "this player") from the table?",
+                            isPresented: Binding(get: { removal != nil }, set: { if !$0 { removal = nil } }),
+                            titleVisibility: .visible, presenting: removal) { seat in
+            Button("Remove", role: .destructive) { remove(seat.id) }
+        } message: { _ in
+            Text("Their seat opens for someone else. Anyone with the code can still join.")
         }
     }
 }

@@ -37,10 +37,10 @@ after(() => {
   server.unref();
 });
 
-/** A socket with an inbox so tests can await specific frames. */
-function connect(code, params) {
+/** A socket with an inbox so tests can await specific frames; `protocols` are WebSocket subprotocols to offer. */
+function connect(code, params, protocols) {
   const url = `${socketBase}/v1/tables/${code}/socket?${new URLSearchParams(params)}`;
-  const socket = new WebSocket(url);
+  const socket = protocols ? new WebSocket(url, protocols) : new WebSocket(url);
   const inbox = [];
   const waiters = [];
   socket.addEventListener("message", (event) => {
@@ -71,8 +71,36 @@ function connect(code, params) {
   };
 }
 
+/**
+ * How a phone presents its host key or resume token: `query` is Android build 8's form, and
+ * `subprotocol` the current apps' (offered beside "magicmobile.1"). Returns connect()'s arguments.
+ */
+const credentialForms = {
+  query: (name, { key, resume } = {}) => [{ name, ...(key === undefined ? {} : { key }), ...(resume === undefined ? {} : { resume }) }],
+  subprotocol: (name, { key, resume } = {}) => [{ name },
+    ["magicmobile.1", ...(key === undefined ? [] : [`magicmobile.key.${key}`]), ...(resume === undefined ? [] : [`magicmobile.resume.${resume}`])]],
+};
+
+const random = (limit) => Math.floor(Math.random() * limit);
+const localNetwork = `10.${random(256)}.${random(256)}`;
+let callers = 0;
+/**
+ * The local relay trusts the caller address a request names (Cloudflare sets it on a deployed
+ * relay), so each table gets its own caller and the creation limit never slows the other tests.
+ */
+const nextCaller = () => `${localNetwork}.${++callers % 256}`;
+
+function postTable(seats, caller = nextCaller()) {
+  return fetch(`${base}/v1/tables`, { method: "POST", headers: { "CF-Connecting-IP": caller }, body: JSON.stringify({ seats }) });
+}
+
 async function createTable(seats = 2) {
-  const response = await fetch(`${base}/v1/tables`, { method: "POST", body: JSON.stringify({ seats }) });
+  let response = await postTable(seats);
+  // A deployed relay sees one caller for every test, so waits out its creation limit.
+  for (let retry = 0; response.status === 429 && process.env.RELAY_URL && retry < 3; retry++) {
+    await sleep(Number(response.headers.get("retry-after") ?? 60) * 1000);
+    response = await postTable(seats);
+  }
   assert.equal(response.status, 200);
   return response.json();
 }
@@ -183,7 +211,94 @@ test("codes are checked and only the creator can host", async () => {
   assert.equal((await early.next((frame) => frame.t === "error")).error, "host_missing");
   const impostor = connect(code, { key: "not-the-key", name: "Impostor" });
   assert.equal((await impostor.next((frame) => frame.t === "error")).error, "not_host");
-  assert.equal((await fetch(`${base}/v1/tables`, { method: "POST", body: JSON.stringify({ seats: 9 }) })).status, 400);
+  assert.equal((await postTable(9)).status, 400);
+});
+
+for (const form of ["query", "subprotocol"]) {
+  test(`a host key and a resume token sent in the ${form} open the table and reclaim a seat`, async () => {
+    const { code, hostKey } = await createTable(2);
+    const open = (name, credential) => connect(code, ...credentialForms[form](name, credential));
+    // A refusal names the subprotocol too; a WebSocket client that offered one fails a handshake without it.
+    const impostor = open("Impostor", { key: "not-the-key" });
+    assert.equal((await impostor.next((frame) => frame.t === "error")).error, "not_host");
+    assert.equal((await impostor.closed).code, 4400);
+
+    const host = open("Host", { key: hostKey });
+    assert.match((await host.next((frame) => frame.t === "welcome")).you, /^p1-/);
+    const guest = open("Guest");
+    const guestWelcome = await guest.next((frame) => frame.t === "welcome");
+    assert.match(guestWelcome.you, /^p2-/);
+    const protocol = form === "subprotocol" ? "magicmobile.1" : "";
+    assert.equal(host.socket.protocol, protocol);
+    assert.equal(guest.socket.protocol, protocol);
+    await host.next((frame) => frame.t === "roster" && frame.full);
+
+    guest.socket.close();
+    await host.next((frame) => frame.t === "roster" && frame.peers.some((peer) => peer.id === guestWelcome.you && !peer.connected));
+    host.send({ t: "send", to: guestWelcome.you, d: "while-away" });
+    await sleep(300);
+    const back = open("Guest", { resume: guestWelcome.token });
+    assert.equal((await back.next((frame) => frame.t === "welcome")).you, guestWelcome.you);
+    assert.equal((await back.next((frame) => frame.t === "msg")).d, "while-away");
+    assert.equal(back.socket.protocol, protocol);
+    const late = open("Late", { resume: "not-a-token" });
+    assert.equal((await late.next((frame) => frame.t === "error")).error, "resume_failed");
+    back.socket.close(); host.socket.close();
+  });
+}
+
+test("the host removes a joiner while the table fills: the joiner is told, its seat frees, others see a roster", async () => {
+  const { code, hostKey } = await createTable(4);
+  const host = connect(code, { key: hostKey, name: "Host" });
+  const hostWelcome = await host.next((frame) => frame.t === "welcome");
+  const stranger = connect(code, { name: "Stranger" });
+  const strangerWelcome = await stranger.next((frame) => frame.t === "welcome");
+  const friend = connect(code, { name: "Friend" });
+  const friendWelcome = await friend.next((frame) => frame.t === "welcome");
+  assert.match(strangerWelcome.you, /^p2-/);
+  assert.match(friendWelcome.you, /^p3-/);
+  await host.next((frame) => frame.t === "roster" && frame.peers.length === 3);
+
+  // Only the host may remove. The relay handles one phone's frames in order, so the friend's
+  // packet arriving means its remove was already ignored.
+  friend.send({ t: "remove", id: strangerWelcome.you });
+  friend.send({ t: "send", to: strangerWelcome.you, d: "still-here" });
+  assert.equal((await stranger.next((frame) => frame.t === "msg")).d, "still-here");
+
+  host.send({ t: "remove", id: strangerWelcome.you });
+  const removed = await stranger.next((frame) => frame.t === "error");
+  assert.deepEqual(removed, { t: "error", error: "removed", message: "The host removed you from this table." });
+  const withoutStranger = (frame) => frame.t === "roster" && !frame.peers.some((peer) => peer.id === strangerWelcome.you);
+  const hostRoster = await host.next(withoutStranger);
+  assert.deepEqual(hostRoster.peers.map((peer) => peer.id), [hostWelcome.you, friendWelcome.you]);
+  assert.equal(hostRoster.full, false);
+  await friend.next(withoutStranger);
+
+  // The removed phone cannot take its seat back; a newcomer gets the freed seat number.
+  const retry = connect(code, { resume: strangerWelcome.token, name: "Stranger" });
+  assert.equal((await retry.next((frame) => frame.t === "error")).error, "removed");
+  const newcomer = connect(code, { name: "Newcomer" });
+  const newcomerWelcome = await newcomer.next((frame) => frame.t === "welcome");
+  assert.match(newcomerWelcome.you, /^p2-/);
+  assert.notEqual(newcomerWelcome.you, strangerWelcome.you);
+  // Sorted peer IDs still give seat order.
+  assert.deepEqual(newcomerWelcome.peers.map((peer) => peer.id).sort(), [hostWelcome.you, newcomerWelcome.you, friendWelcome.you]);
+
+  // Once the table is full every phone is in the match room, and the host can no longer remove anyone.
+  const fourth = connect(code, { name: "Fourth" });
+  assert.match((await fourth.next((frame) => frame.t === "welcome")).you, /^p4-/);
+  await host.next((frame) => frame.t === "roster" && frame.full);
+  host.send({ t: "remove", id: newcomerWelcome.you });
+  host.send({ t: "send", to: newcomerWelcome.you, d: "after-full" });
+  assert.equal((await newcomer.next((frame) => frame.t === "msg")).d, "after-full");
+  for (const phone of [host, friend, newcomer, fourth]) {
+    assertNoErrors(phone);
+    assert.deepEqual(phone.inbox.filter((frame) => frame.t === "gone"), []);
+  }
+  for (const phone of [host, friend, newcomer, fourth]) phone.socket.close();
+  // The relay closed the removed phone's socket with the code the apps treat as final. (The local
+  // runtime completes that close slowly, so it is checked last.)
+  assert.equal((await stranger.closed).code, 4400);
 });
 
 test("three ~900 KB packets for an away phone all arrive, in order, when it returns", async () => {
@@ -286,3 +401,37 @@ test("a full backlog sends the sender peer_backlog and keeps what it accepted", 
     back.socket.close(); host.socket.close();
   }
 });
+
+/**
+ * Opens tables for `caller` until the relay refuses one. The local limit counts in windows aligned
+ * to the clock, so a burst may straddle two of them: up to two windows' worth may open first.
+ */
+async function openUntilRefused(caller) {
+  for (let n = 0; n <= 10; n++) {
+    const response = await postTable(2, caller);
+    if (response.status !== 200) return response;
+    await response.body?.cancel();
+  }
+  assert.fail(`${caller} opened 11 tables in a row`);
+}
+
+test("each caller may open only a few tables a minute; the refusal is JSON the apps can show",
+  { skip: process.env.RELAY_URL ? "a deployed relay sets the caller address itself" : false }, async () => {
+    const refused = await openUntilRefused(`172.16.${random(256)}.${random(256)}`);
+    assert.equal(refused.status, 429);
+    assert.equal(refused.headers.get("retry-after"), "60");
+    assert.deepEqual(await refused.json(),
+      { error: "rate_limited", message: "You opened several tables in the last minute. Wait a minute, then try again." });
+    // Another caller is not affected.
+    assert.equal((await postTable(2)).status, 200);
+
+    // An IPv6 caller counts by its /64 network, however it writes its address. A window may roll
+    // over between the two requests, so the pair is tried twice.
+    let sibling;
+    for (let attempt = 0; attempt < 2 && sibling?.status !== 429; attempt++) {
+      const network = `2001:db8:${random(0x10000).toString(16)}:${random(0x10000).toString(16)}`;
+      assert.equal((await openUntilRefused(`${network}::1`)).status, 429);
+      sibling = await postTable(2, `${network}:1234:5678:9abc:def0`.toUpperCase());
+    }
+    assert.equal(sibling.status, 429);
+  });
