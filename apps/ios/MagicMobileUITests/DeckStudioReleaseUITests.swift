@@ -39,6 +39,11 @@ final class DeckStudioReleaseUITests: XCTestCase {
         app.buttons["menu.decks"].tap()
         XCTAssertTrue(app.buttons["deckStudio.create"].waitForExistence(timeout: 15))
         app.buttons["deckStudio.create"].tap()
+        // A new deck opens on the commander picker; this flow builds from an empty draft.
+        let skip = app.buttons["deckStudio.commanderFirst.skip"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        skip.tap()
+        XCTAssertTrue(skip.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons["deckStudio.addCards"].waitForExistence(timeout: 10))
         app.buttons["deckStudio.addCards"].tap()
         let search = app.textFields["Card name or rules text"]
