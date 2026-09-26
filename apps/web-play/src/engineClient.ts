@@ -121,6 +121,8 @@ export type WorkerEngineOptions = {
   javaProperties?: string[];
   /** CheerpJ runtime, 17 (default) or 11: the manifest's javaRelease. */
   javaVersion?: number;
+  /** Install the worker's JavaScript Unsafe natives; default only on the Java 17 runtime. */
+  unsafeNatives?: boolean;
 };
 
 /** The CheerpJ engine in a dedicated worker; the page's main thread only posts JSON strings. */

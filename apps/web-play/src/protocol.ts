@@ -1,7 +1,8 @@
 // SPIKE ONLY. Messages between the page and the CheerpJ engine worker.
 export type WorkerInbound =
   // javaVersion: CheerpJ runtime (17 or 11), from the bundle manifest's javaRelease.
-  | { type: "init"; loaderUrl: string; jarBase: string; jars: string[]; javaProperties?: string[]; javaVersion?: number }
+  // unsafeNatives: install the JavaScript Unsafe natives (default: only on the Java 17 runtime).
+  | { type: "init"; loaderUrl: string; jarBase: string; jars: string[]; javaProperties?: string[]; javaVersion?: number; unsafeNatives?: boolean }
   | { type: "request"; id: number; json: string }
   | { type: "resources"; id: number };
 

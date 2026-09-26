@@ -8,6 +8,7 @@
 //
 // Options: --games <list> --cap <s per game> --skill <n> --ready-visits <n> --out <file>
 //          --loader <CheerpJ loader URL> --timeout <s overall> --engine-dir <bundle dir>
+//          --natives 1|0 (force the worker's JavaScript Unsafe natives; default Java 17 only)
 // It is a heavy workload: run it behind the machine-wide lock, in holds under ~30 minutes.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -28,6 +29,7 @@ const skill = arg("skill", null);
 const readyVisits = Number(arg("ready-visits", "1"));
 const loader = arg("loader", null);
 const engineDir = arg("engine-dir", null);
+const natives = arg("natives", null);
 const out = resolve(arg("out", resolve(here, "../../../packages/web-engine/build/metrics/bench.json")));
 const gameCount = games ? games.split(",").length : 0;
 const overallS = Number(arg("timeout", String(600 + gameCount * (capS + 120))));
@@ -67,7 +69,7 @@ const report = {
   browser: `Google Chrome ${browser?.version() ?? "?"} (headless, playwright-core channel "chrome", fresh on-disk profile)`,
   machine: "8 GB MacBook, shared with other workloads (numbers are from this machine only)",
   startedAt: new Date().toISOString(),
-  params: { games, capS, skill, readyVisits, engineDir },
+  params: { games, capS, skill, readyVisits, engineDir, natives },
   visits: [],
 };
 const deadline = Date.now() + overallS * 1000;
@@ -83,6 +85,7 @@ async function visit(kind, gameList) {
   if (skill) query.set("skill", skill);
   if (loader) query.set("loader", loader);
   if (process.argv.includes("--debug")) query.set("debug", "1");
+  if (natives !== null) query.set("natives", natives);
   const memory = { maxRendererBytes: 0, maxTotalBytes: 0, samples: 0 };
   const sampler = setInterval(() => {
     if (!browserPid) return;
