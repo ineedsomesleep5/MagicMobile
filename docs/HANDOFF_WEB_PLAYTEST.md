@@ -146,12 +146,12 @@ Caleb authorizes.
 | 0 Merge #37, #38 | Waiting on Caleb | #37, #38 | Both green and conflict-free |
 | 0 Branch cleanup | Done | | 14 remote branches deleted; 5 stale ones kept as `archive/*` tags |
 | 0 Legacy removal, CI triggers, docs | Done | #40 (draft) | Reviewed. Before merging, Caleb disconnects or deletes the Vercel project `magicmobile` (old web game, Root Directory `apps/web`) |
-| 1 Web engine spike | No-go on CheerpJ Java 17; Java 11 follow-up running | #44 (draft) | Engine ready in 17–26 s, tab 1.1 GB, but 0/15 games reached a prompt (missing Unsafe routines break `Watcher.copy` and Gson). PRs 3–6 wait on this |
+| 1 Web engine spike | Done: no-go for CheerpJ (Java 17 and 11) | #44 (draft) | Results in `docs/WEB_ENGINE_SPIKE.md` on the branch. Caleb chooses the next web route: hosted solo or a GraalVM Web Image spike |
 | 2 Playtest focus | Done | #41 (draft) | Reviewed. Android and portable Swift tests pass, iOS simulator build OK. 2 pre-existing iOS 27 UI-test failures (library search focus) |
 | 2 Playtest cards | Done | #43 (draft) | Reviewed. Swift 29 + Xcode 10 tests, Android core 69 / app 47 pass |
 | 2b.1 Relay backlog + CI | Done, not deployed | #39 (draft) | Reviewed. 6/6 tests locally and in the new `Table relay` CI. Deploying needs Caleb: `cd services/table-relay && npx wrangler deploy` |
 | 2b.2–4 Guest retry, notices, crash reports | Done, cross-play check pending | #42 (draft) | Reviewed. iOS swift 79 tests, Android core 60 / app 62 pass. The live Android-host/iPhone-guest run could not complete on the loaded Mac; the integration owner reruns it |
-| 3–6 Web client | Blocked on PR 1 | | |
+| 3–6 Web client | Blocked on Caleb | | Needs a route (hosted solo vs GraalVM spike) plus the open questions: audience, hosting cost, sign-in, meaning of "syncing" |
 | Integration for build 18 / 9 | In progress | `codex/build18-integration` | #39–#43 and this doc merged; one conflict resolved (Android preview enum and tests, both kept). Android: core 73 / app 62 tests and 283 contract assertions pass, assembleDebug OK. Next: iOS 27 fixes, full iOS checks, live cross-play |
 | iOS 27 UI-test triage | In progress | `codex/ios27-ui-fixes` | Delegate. Library search focus, hand inspection, attachment and history tests fail on iOS 27 (also on base); plus a full build with Metal |
 | Release: iOS build 18, Android build 9 | Not started | | Needs Caleb's go-ahead |
@@ -226,3 +226,14 @@ Caleb authorizes.
     (Android build 8 with a newer iPhone) can share a table. The notices are negotiated, so older
     clients keep polling. Decision: keep it negotiated rather than block mixed builds, so build 8
     Android players can play with build 18 iPhones.
+- 2026-09-26 (Claude Code): Web spike, Java 11 follow-up. The six Java 16+ lines were patched in
+  build-folder copies only (`build_web.sh --java 11`, `cheerpjInit({version: 11})`).
+  - The engine boots in 17.1 s, but the first snapshot fails with
+    `UnsatisfiedLinkError: Java_jdk_internal_misc_Unsafe_getBooleanVolatile` (Gson →
+    `GameView.toJson`). The JavaScript stand-in natives hang the Java thread, as on Java 17.
+  - Final verdict: CheerpJ 4.3 cannot run the engine.
+  - Next options for web play:
+    - hosted solo on `apps/multiplayer-server`, which costs hosting money
+    - a GraalVM Web Image spike, which needs CI runners because a Wasm image build of XMage does
+      not fit this 8 GB Mac
+  - Caleb decides. `packages/ondevice-engine` is unchanged and no native rebuild is needed.
