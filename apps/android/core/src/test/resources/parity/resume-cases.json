@@ -1,0 +1,52 @@
+{
+  "about": "Save/resume behavior both apps must meet (no goldens). Launch times are seconds before launch; appBuild and engine are 'same' or 'other' than the running app. After any outcome but an offer, the checkpoint, the sidecar and the marker are all deleted; an offer keeps both files and deletes the marker.",
+  "strings": {
+    "promptTitle": "Resume your game?",
+    "resume": "Resume",
+    "abandon": "Abandon",
+    "resumed": "Resumed at your last decision.",
+    "resumeFailed": "Couldn't resume that game.",
+    "expired": "Your unfinished game expired after 10 minutes.",
+    "updated": "Your unfinished game can't be resumed after an update.",
+    "lost": "Your last game ended when the app closed."
+  },
+  "windowSeconds": 600,
+  "files": {
+    "checkpoint": "game.checkpoint",
+    "sidecar": "resume.json",
+    "sidecarFormat": 1,
+    "sidecarKeys": ["appBuild", "createdAt", "engineIdentity", "format", "lastCheckpointAt", "leftAt", "opponents", "playerDeckName", "setup", "turn"]
+  },
+  "engineIdentity": {"protocol": 1, "upstream": "abc123", "catalogueHash": "hash9", "text": "xmage/protocol-1/abc123/hash9"},
+  "detail": [
+    {"turn": 12, "opponents": ["Alice", "Bob"], "savedAgoSeconds": 180, "text": "Turn 12 against Alice and Bob · saved 3 min ago"},
+    {"turn": 3, "opponents": ["AI 1"], "savedAgoSeconds": 59, "text": "Turn 3 against AI 1 · saved just now"},
+    {"turn": 7, "opponents": ["AI 1", "AI 2", "AI 3"], "savedAgoSeconds": 60, "text": "Turn 7 against AI 1, AI 2 and AI 3 · saved 1 min ago"},
+    {"turn": 9, "opponents": ["AI 1"], "savedAgoSeconds": 599, "text": "Turn 9 against AI 1 · saved 9 min ago"},
+    {"turn": 0, "opponents": ["AI 1"], "savedAgoSeconds": 30, "text": "Against AI 1 · saved just now"},
+    {"turn": 5, "opponents": ["AI 1"], "savedAgoSeconds": 3700, "text": "Turn 5 against AI 1 · saved 1 hr ago"},
+    {"turn": 5, "opponents": [], "savedAgoSeconds": -5, "text": "Turn 5 · saved just now"}
+  ],
+  "over": [
+    {"name": "the game ended", "phase": "ended", "viewerLeft": false, "over": true},
+    {"name": "the player conceded or lost in a pod and spectates", "phase": "running", "viewerLeft": true, "over": true},
+    {"name": "another seat left", "phase": "running", "viewerLeft": false, "over": false}
+  ],
+  "launch": [
+    {"name": "left 599 s ago", "files": ["checkpoint", "sidecar"], "leftAgo": 599, "checkpointAgo": 900, "expect": "offer"},
+    {"name": "left exactly 600 s ago", "files": ["checkpoint", "sidecar"], "leftAgo": 600, "checkpointAgo": 600, "expect": "offer"},
+    {"name": "left 601 s ago", "files": ["checkpoint", "sidecar"], "leftAgo": 601, "checkpointAgo": 601, "expect": "expired"},
+    {"name": "died in the foreground 599 s after its last checkpoint", "files": ["checkpoint", "sidecar"], "leftAgo": null, "checkpointAgo": 599, "expect": "offer"},
+    {"name": "died in the foreground 601 s after its last checkpoint", "files": ["checkpoint", "sidecar"], "leftAgo": null, "checkpointAgo": 601, "expect": "expired"},
+    {"name": "leaving counts, not an older checkpoint", "files": ["checkpoint", "sidecar"], "leftAgo": 30, "checkpointAgo": 7200, "expect": "offer"},
+    {"name": "after an app update", "files": ["checkpoint", "sidecar"], "leftAgo": 30, "checkpointAgo": 60, "appBuild": "other", "expect": "updated"},
+    {"name": "with another engine", "files": ["checkpoint", "sidecar"], "leftAgo": 30, "checkpointAgo": 60, "engine": "other", "expect": "updated"},
+    {"name": "expired and updated: expiry is reported", "files": ["checkpoint", "sidecar"], "leftAgo": 601, "checkpointAgo": 700, "appBuild": "other", "expect": "expired"},
+    {"name": "closed before the first checkpoint", "files": ["sidecar"], "leftAgo": 10, "checkpointAgo": 20, "expect": "lost"},
+    {"name": "unreadable sidecar", "files": ["checkpoint", "corruptSidecar"], "expect": "lost"},
+    {"name": "checkpoint left over after leaving", "files": ["checkpoint"], "expect": "none"},
+    {"name": "a game that could not checkpoint", "files": ["marker"], "expect": "lost"},
+    {"name": "a resumable game and a stale marker", "files": ["checkpoint", "sidecar", "marker"], "leftAgo": 30, "checkpointAgo": 60, "expect": "offer"},
+    {"name": "nothing saved", "files": [], "expect": "none"}
+  ]
+}
