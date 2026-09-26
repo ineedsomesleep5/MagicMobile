@@ -222,7 +222,8 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
         try {
             multiplayer = table; usingMultiplayer = true
             updateSessionForeground()
-            session.attach(endpoint.client, endpoint.matchID, endpoint.seatID, allowsSeatScopedAutoYield = true, close = { table.leave() })
+            session.attach(endpoint.client, endpoint.matchID, endpoint.seatID, allowsSeatScopedAutoYield = true, table = endpoint.table,
+                close = { table.leave() })
             status = "Match connected"
         } catch (error: Throwable) { errorMessage = error.message } finally { isBusy = false }
     }
@@ -364,7 +365,9 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
 
 /** A table whose engine lives elsewhere: the relay host's phone, or this phone hosting for others. */
 interface TableConnection {
-    class Endpoint(val client: EngineClient, val matchID: String, val seatID: String, val isHost: Boolean)
+    /** [table] goes to `OnDeviceSession.attach(table = …)`: revision notices and "Waiting for <host>…". */
+    class Endpoint(val client: EngineClient, val matchID: String, val seatID: String, val isHost: Boolean,
+                   val table: io.magicmobile.android.session.OnDeviceTableLink? = null)
     val endpoint: Endpoint?
     val isConnected: Boolean
     val isSuspended: Boolean
