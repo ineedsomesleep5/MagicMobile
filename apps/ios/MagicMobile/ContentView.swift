@@ -11217,7 +11217,6 @@ private struct BattlefieldRowFadeMask: View {
 private struct BattlefieldRowOverflowMarkers: View {
     let lane: BattlefieldRowOverflowLane
     let offsets: BattlefieldRowScrollOffsets
-    let title: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -11243,8 +11242,8 @@ private struct BattlefieldRowOverflowMarkers: View {
             .background(MagicPalette.iron.opacity(0.94), in: Capsule())
             .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.58), lineWidth: 1))
             .transition(.opacity)
+            // The row's own identifier (on BattlefieldRow's ZStack) takes precedence here; find markers by label.
             .accessibilityLabel("\(count) more \(count == 1 ? "card" : "cards") off-screen to the \(side)")
-            .accessibilityIdentifier("board.battlefield.\(title).hidden.\(side)")
     }
 }
 
@@ -11258,10 +11257,10 @@ private extension View {
     }
 
     /// The lane's clipping mask with its edge fade, the "+N" markers and the offset they read.
-    func battlefieldRowOverflow(_ lane: BattlefieldRowOverflowLane, offsets: BattlefieldRowScrollOffsets, title: String) -> some View {
+    func battlefieldRowOverflow(_ lane: BattlefieldRowOverflowLane, offsets: BattlefieldRowScrollOffsets) -> some View {
         coordinateSpace(.named(BattlefieldRow.scrollSpace))
             .mask { BattlefieldRowFadeMask(lane: lane, offsets: offsets) }
-            .overlay { BattlefieldRowOverflowMarkers(lane: lane, offsets: offsets, title: title) }
+            .overlay { BattlefieldRowOverflowMarkers(lane: lane, offsets: offsets) }
             .onPreferenceChange(BattlefieldRowOffsetKey.self) { values in
                 for (scroller, offset) in values where offsets.byScroller[scroller] != offset {
                     offsets.byScroller[scroller] = offset
@@ -11355,7 +11354,7 @@ struct BattlefieldRow: View {
                                 .reportsBattlefieldRowOffset(row)
                         }
                         .scrollClipDisabled()
-                        .battlefieldRowOverflow(overflowLane(scroller: row, rows: [arranged[row]]), offsets: scrollOffsets, title: title)
+                        .battlefieldRowOverflow(overflowLane(scroller: row, rows: [arranged[row]]), offsets: scrollOffsets)
                     }
                 }
             } else {
@@ -11369,7 +11368,7 @@ struct BattlefieldRow: View {
                     .reportsBattlefieldRowOffset(0)
                 }
                 .scrollClipDisabled()
-                .battlefieldRowOverflow(overflowLane(scroller: 0, rows: Array(arranged.prefix(rows))), offsets: scrollOffsets, title: title)
+                .battlefieldRowOverflow(overflowLane(scroller: 0, rows: Array(arranged.prefix(rows))), offsets: scrollOffsets)
             }
         }
         .accessibilityIdentifier("board.battlefield.\(title)")
