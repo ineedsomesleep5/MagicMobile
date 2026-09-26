@@ -8,7 +8,47 @@ object Decisions {
     private val breakPattern=Regex("(?i)<br\\s*/?>")
     private val tagPattern=Regex("<[^>]*>")
     private val whitespacePattern=Regex("\\s+")
+    /** Trims each line, collapses \s runs to one space and drops empty lines (the last step of plain). */
+    private fun normalizeLines(text: String): String = text.lines().mapNotNull { raw ->
+        val line = raw.trim()
+        if (line.isEmpty()) return@mapNotNull null
+        val out = StringBuilder(line.length); var space = false
+        for (c in line) {
+            if (isRegexSpace(c)) { if (!space) { out.append(' '); space = true } }
+            else { out.append(c); space = false }
+        }
+        out.toString()
+    }.joinToString("\n")
+    private fun isRegexSpace(c: Char) = c == ' ' || c == '\t' || c == '\n' || c == '\u000B' || c == '\u000C' || c == '\r'
+    /** breakPattern then tagPattern, as two scans; null when the result needs the full pass. */
+    private fun stripMarkup(text: String): String? {
+        if (text.indexOf('<') < 0) return text
+        if (text.contains("<script", true) || text.contains("<style", true)) return null
+        val broken = StringBuilder(text.length)
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            if (c == '<' && i + 3 <= text.length && text.regionMatches(i + 1, "br", 0, 2, true)) {
+                var j = i + 3
+                while (j < text.length && isRegexSpace(text[j])) j++
+                if (j < text.length && text[j] == '/') j++
+                if (j < text.length && text[j] == '>') { broken.append('\n'); i = j + 1; continue }
+            }
+            broken.append(c); i++
+        }
+        val out = StringBuilder(broken.length)
+        i = 0
+        while (i < broken.length) {
+            val c = broken[i]
+            if (c == '<') { val close = broken.indexOf(">", i + 1); if (close >= 0) { i = close + 1; continue } }
+            out.append(c); i++
+        }
+        return out.toString().takeIf { it.indexOf('<') < 0 }
+    }
     fun plain(text: String): String {
+        // Without entities, one markup pass reaches the fixed point the loop below would find;
+        // doing it by hand keeps loading the 30,000-card catalogue fast.
+        if (text.indexOf('&') < 0) stripMarkup(text)?.let { return normalizeLines(it) }
         var current=text
         while(true) {
             val decoded=entityPattern.replace(current) {match->

@@ -107,6 +107,8 @@ class Catalogue(input: InputStream) {
         require(aliases.size<=100_000 && aliases.all { (alias,target)->validName(alias) && target in byName && alias.startsWith("$target // ") && validName(alias.removePrefix("$target // ")) })
     }
     fun find(name: String): CardInfo? = byName[name] ?: aliases[name]?.let(byName::get)
+    /** Combined-face names ("Front // Back") mapped to the exact catalogue name. */
+    val nameAliases: Map<String, String> get() = aliases
     fun search(query: String,limit:Int=80): List<CardInfo> {
         val term=query.trim();if(term.isEmpty()||limit<=0)return emptyList()
         return cards.asSequence().filter {it.name.contains(term,true)||it.rules?.contains(term,true)==true}

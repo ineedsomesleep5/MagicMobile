@@ -57,6 +57,16 @@ with (out/'catalogue.jsonl').open('w') as f:
 names={row['name'] for row in data['cards']}
 assert all(v in names for v in header.get('nameAliases',{}).values()), 'Alias target missing from cards'
 
+# A compact name -> printing index. Starting a game resolves decks from it at once; the full
+# catalogue above loads only for screens that search or describe cards.
+with (out/'printings.tsv').open('w') as f:
+    f.write('\t'.join(['#', header['catalogueHash'], header['upstreamCommit']])+'\n')
+    for row in data['cards']:
+        assert not any(c in row[k] for k in ('name','setCode','collectorNumber') for c in '\t\n\r'), 'Tab or newline in a printing'
+        f.write('\t'.join([row['name'],row['setCode'],row['collectorNumber']])+'\n')
+    for alias, target in sorted(header.get('nameAliases',{}).items()):
+        f.write('\t'.join(['=',alias,target])+'\n')
+
 (out/'precons.json').write_text(json.dumps({'decks':decks},ensure_ascii=False))
 (out/'asset-provenance.json').write_text(json.dumps({'catalogueSourceSHA256':hashlib.sha256(raw).hexdigest(),'preconSourceSHA256':hashlib.sha256(precon_source.read_bytes()).hexdigest(),'cards':len(data['cards']),'cardsWithMetadata':joined,'precons':len(decks),'catalogueHash':data['catalogueHash']},indent=2))
 print('Prepared',len(data['cards']),'compiled catalogue cards (',joined,'with metadata ) and',len(decks),'unchanged precons')

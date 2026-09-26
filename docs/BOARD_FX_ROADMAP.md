@@ -177,6 +177,7 @@ single MIT file with its license header when that is enough.
 | 7 Device feedback (builds 15–17) | Ability-ID auto-answers (mana, abilities, MDFC/split/adventure play and cast), turn bar, inspector details, rematch and Game Center room, one-Confirm multi-select plans, full-screen result, unclipped glows, portrait stack tray, faster AI turns on big stacks (engine change). Simulator previews and unit tests pass; phone feel pending Caleb. |
 | 8 AAA pass (build 18) | Game audio (54 cues + menu/table music, GameAudio.swift, scripts/audio), brand-styled menus/setup/loading/versus from the app icon and download site (BrandUI.swift, traced BrandMarkPaths.swift), dock stack tray, even result wash, tapped-land art, branded launch screen. Simulator previews, unit and UI tests; phone feel and audio mix pending Caleb. |
 | 9 Next level (build 19) | Recorded audio (Sonniss GDC + Kenney CC0 effects, Kevin MacLeod CC BY playlists and stingers, SoundLabView.swift), fewer and quieter cues, concede with pod spectating (engine op), Arena-style attachment stacks and inspector attachment text, opponent portraits with AI-thinking ring, opening-hand screen, result summary (GameStats.swift), quick chat (GameEmotes.swift), weighted big hits, deck covers. Unit, real-XMage JVM and UI tests pass; phone feel and audio choices pending Caleb. |
+| 10 Android parity (Android build 8) | Phases 1–4 and 6–9 are ported to the Compose app in portrait and landscape: the timeline, overlay, card motion, dissolve and foil shaders, recorded audio with the Sound Lab, and the game-feel pieces. Each lives in the same-named Kotlin file (map in docs/ANDROID_PARITY.md). All 34 iOS preview states render on the emulator, and emulator games pass. Android phone feel is pending. |
 
 ## Log
 
@@ -315,3 +316,9 @@ single MIT file with its license header when that is enough.
   built with Xcode 26.6 (iOS 26.5 SDK) because the App Store Xcode 27 needs macOS 26.6+ and
   this Mac is on 26.5. Next: Caleb's phone feedback, then rebuild with Xcode 27 (iOS 27 SDK)
   as build 18 once he installs macOS 26.7 and Xcode 27.
+
+- 2026-09-25 (Claude): The board FX work is ported to Android and shipped in Android build 8
+  (docs/RELEASE_ANDROID_0.1.1_BUILD8.md). Each iOS FX file has a same-named Kotlin counterpart
+  (docs/ANDROID_PARITY.md), so an iOS board change now needs the matching Android change.
+  iPhone tables with Android need the next TestFlight build (18), which waits on macOS 26.7 and
+  Xcode 27 on this Mac.
