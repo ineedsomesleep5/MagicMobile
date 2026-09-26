@@ -152,8 +152,9 @@ Caleb authorizes.
 | 2b.1 Relay backlog + CI | Done, not deployed | #39 (draft) | Reviewed. 6/6 tests locally and in the new `Table relay` CI. Deploying needs Caleb: `cd services/table-relay && npx wrangler deploy` |
 | 2b.2–4 Guest retry, notices, crash reports | Done, cross-play check pending | #42 (draft) | Reviewed. iOS swift 79 tests, Android core 60 / app 62 pass. The live Android-host/iPhone-guest run could not complete on the loaded Mac; the integration owner reruns it |
 | 3–6 Web client | Blocked on Caleb | | Needs a route (hosted solo vs GraalVM spike) plus the open questions: audience, hosting cost, sign-in, meaning of "syncing" |
-| Integration for build 18 / 9 | In progress | `codex/build18-integration` | #39–#43 and this doc merged; one conflict resolved (Android preview enum and tests, both kept). Android: core 73 / app 62 tests and 283 contract assertions pass, assembleDebug OK. Next: iOS 27 fixes, full iOS checks, live cross-play |
-| iOS 27 UI-test triage | In progress | `codex/ios27-ui-fixes` | Delegate. Library search focus, hand inspection, attachment and history tests fail on iOS 27 (also on base); plus a full build with Metal |
+| Integration for build 18 / 9 | In progress | #51 (draft) | Contains #39–#43, #45–#47, #49 and #50 (not #48, which needs the relay deployed first). Android green; `swift test` 505 green; iOS unit suite 774/774 on iOS 27; Metal build OK. Remaining: setup UI-test triage, ios-fast preflight. Live cross-play moves to real phones (8 GB Mac can't run emulator + simulator together) |
+| iOS 27 UI-test triage (board) | Done, merged into integration | #49 | Card-choice accessibility was a real iOS 27 bug (fixed); attachment, hand-inspection and history tests were stale or quirky (updated) |
+| iOS 27 UI-test triage (setup / Deck Studio) | In progress | `codex/ios27-setup-tests` | 13 OnDeviceSetupUITests plus one duplicate identifier; delegate restarted after a session interruption. Game Center stays |
 | Build 18 polish: fan-content notice, clipped-row +N | Done, merged into integration | #45 (draft) | Reviewed. swift 496 tests, Android 144 JVM tests pass. iPhone and Android show the same counts (+7/+6/+13/+7) |
 | Combat clarity (keywords, first-strike beat, log reasons) | Done, merged into integration | #46 (draft) | Reviewed. swift 504 tests, Android suite and parity goldens pass. Blocked attackers with no blockers left strike only with trample (rules-accurate) |
 | Relay extras: joiner removal, create rate limit, host key out of URL | In progress | `codex/relay-extras` | Delegate. Backward compatible with build 8; deploy relay first, then apps |
@@ -284,3 +285,13 @@ Caleb authorizes.
     - accepting that the AI may play differently after a restore
     - relay multiplayer scope
     - Android foreground-service policy
+- 2026-09-26 (Claude Code): Paused and reassessed after the Mac overloaded.
+  - Running the Android emulator and an iOS simulator together (plus macOS 27's post-update
+    indexing) drove the load average past 900, and swap reached 8.2 of 9.2 GB. Both were shut
+    down; free memory recovered to 52% and swap fell to 3.5 GB.
+  - From now on only one device runs at a time. The live Android-host / iPhone-guest check moves
+    to Caleb's phones after install.
+  - Merged #50 (the build 7 UI removal, from a separate session) and #47 into the integration
+    branch, and opened integration PR #51.
+  - Caleb confirmed that Game Center stays for iPhone-only games; Online table codes are for
+    iPhone plus Android.
