@@ -305,9 +305,11 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 8 brings the iPhone app to Android: Deck Studio,
-                the portrait and landscape boards, and tables you host or join
-                with a code.
+                Android build 9 adds the fixes from our four-player playtest:
+                the board follows whose turn it is, clearer combat with first
+                strike, token copies that look like cards, and steadier online
+                tables. It builds on build 8, which brought the iPhone app to
+                Android: Deck Studio, both board layouts and table codes.
                 Android is an early alpha; physical-phone acceptance is still
                 pending. Live games do not yet resume after Android terminates
                 the app process.
