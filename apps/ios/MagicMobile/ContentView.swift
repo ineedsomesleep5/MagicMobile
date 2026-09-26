@@ -13133,8 +13133,14 @@ private struct InspectorChipFlow: Layout {
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? .infinity
         let rows = rows(subviews, width: width)
-        let height = rows.reduce(0) { $0 + ($1.map(\.size.height).max() ?? 0) } + spacing * CGFloat(max(rows.count - 1, 0))
-        let used = rows.map { row in row.reduce(0) { $0 + $1.size.width } + spacing * CGFloat(max(row.count - 1, 0)) }.max() ?? 0
+        // Explicit CGFloat types keep these closures cheap to type-check on older Xcode.
+        let heights: [CGFloat] = rows.map { row in row.map { $0.size.height }.max() ?? 0 }
+        let widths: [CGFloat] = rows.map { row in
+            let cards: CGFloat = row.reduce(CGFloat(0)) { $0 + $1.size.width }
+            return cards + spacing * CGFloat(max(row.count - 1, 0))
+        }
+        let height: CGFloat = heights.reduce(CGFloat(0), +) + spacing * CGFloat(max(rows.count - 1, 0))
+        let used: CGFloat = widths.max() ?? 0
         return CGSize(width: proposal.width ?? used, height: height)
     }
 
