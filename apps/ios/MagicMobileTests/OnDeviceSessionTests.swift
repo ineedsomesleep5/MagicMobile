@@ -726,6 +726,204 @@ final class OnDeviceSessionTests: XCTestCase {
         try await session.close()
     }
 
+    // MARK: Phone-hosted tables: revision notices and host retries
+
+    func testGuestPollScheduleFollowsNoticesAnswersAndHeartbeat() {
+        typealias Schedule = OnDeviceGuestPollSchedule
+        // A host that never announced (an older build) keeps the short timer.
+        XCTAssertEqual(Schedule.next(hostAnnounces: false, noticedRevision: -1, appliedRevision: 7, awaitingAnswer: false,
+                                     sinceAction: nil, sinceLastPoll: 0.1, spacing: 0.3), .poll(after: 0.3 - 0.1))
+        // Caught up: wait for a notice, at most until the heartbeat is due.
+        XCTAssertEqual(Schedule.next(hostAnnounces: true, noticedRevision: 7, appliedRevision: 7, awaitingAnswer: false,
+                                     sinceAction: nil, sinceLastPoll: 5, spacing: 0.3), .awaitNotice(timeout: Schedule.heartbeat - 5))
+        XCTAssertEqual(Schedule.next(hostAnnounces: true, noticedRevision: 7, appliedRevision: 7, awaitingAnswer: false,
+                                     sinceAction: nil, sinceLastPoll: Schedule.heartbeat, spacing: 0.3), .poll(after: 0))
+        // A newer notice polls, still spaced like the short timer.
+        XCTAssertEqual(Schedule.next(hostAnnounces: true, noticedRevision: 9, appliedRevision: 7, awaitingAnswer: false,
+                                     sinceAction: nil, sinceLastPoll: 0.1, spacing: 0.3), .poll(after: 0.3 - 0.1))
+        XCTAssertEqual(Schedule.next(hostAnnounces: true, noticedRevision: 9, appliedRevision: 7, awaitingAnswer: false,
+                                     sinceAction: nil, sinceLastPoll: 2, spacing: 0.3), .poll(after: 0))
+        // No poll applied yet: poll.
+        XCTAssertEqual(Schedule.next(hostAnnounces: true, noticedRevision: 3, appliedRevision: nil, awaitingAnswer: false,
+                                     sinceAction: nil, sinceLastPoll: 0, spacing: 0.3), .poll(after: 0.3))
+        // An answer on its way polls promptly, but only for the answer window.
+        XCTAssertEqual(Schedule.next(hostAnnounces: true, noticedRevision: 7, appliedRevision: 7, awaitingAnswer: true,
+                                     sinceAction: 1, sinceLastPoll: 0.6, spacing: 0.6), .poll(after: 0))
+        XCTAssertEqual(Schedule.next(hostAnnounces: true, noticedRevision: 7, appliedRevision: 7, awaitingAnswer: true,
+                                     sinceAction: Schedule.answerWindow + 1, sinceLastPoll: 1, spacing: 0.3),
+                       .awaitNotice(timeout: Schedule.heartbeat - 1))
+        XCTAssertEqual(Schedule.next(hostAnnounces: true, noticedRevision: 7, appliedRevision: 7, awaitingAnswer: false,
+                                     sinceAction: 1, sinceLastPoll: 1, spacing: 0.3), .awaitNotice(timeout: Schedule.heartbeat - 1))
+    }
+
+    func testHostRetryPolicyRetriesOnlyLostHostAnswersAFewTimes() {
+        var policy = OnDeviceHostRetryPolicy()
+        XCTAssertNil(policy.delay(after: EngineError.invalidMessage("The host is busy. Retry the same action.")))
+        XCTAssertNil(policy.delay(after: CancellationError()))
+        XCTAssertNil(policy.delay(after: URLError(.timedOut)))
+        XCTAssertEqual(policy.delay(after: OnDeviceHostUnavailable()), 1)
+        XCTAssertEqual(policy.delay(after: OnDeviceHostUnavailable()), 2)
+        XCTAssertEqual(policy.delay(after: OnDeviceHostUnavailable()), 4)
+        XCTAssertNil(policy.delay(after: OnDeviceHostUnavailable()), "Give up after a few retries")
+        policy.reset()
+        XCTAssertEqual(policy.delay(after: OnDeviceHostUnavailable()), 1)
+        XCTAssertEqual(OnDeviceHostUnavailable().localizedDescription,
+                       "The host did not answer in time. Keep every player’s app in the foreground.")
+    }
+
+    @MainActor
+    func testHostAnnouncesEachNewRevisionOnce() async throws {
+        let poll = try fixture()
+        let transport = SessionFixtureTransport(poll: poll.raw)
+        let link = OnDeviceTableLink(role: .host, hostName: "Caleb")
+        var announced: [Int64] = []
+        link.announce = { announced.append($0) }
+        let session = OnDeviceSession()
+        try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID, seatID: poll.seatID,
+                                 autoPoll: false, table: link, close: {})
+        try await session.refresh()
+        XCTAssertEqual(announced, [poll.revision], "An unchanged revision is announced once")
+        await transport.consumePrompt()
+        try await session.refresh()
+        XCTAssertEqual(announced, [poll.revision, poll.revision + 1])
+        let guest = OnDeviceTableLink(role: .guest, hostName: "Caleb")
+        guest.announce = { _ in XCTFail("A guest never announces") }
+        guest.applied(revision: 99)
+        try await session.close()
+    }
+
+    @MainActor
+    func testGuestPollsOnHostNoticesInsteadOfTheShortTimer() async throws {
+        let poll = try fixture()
+        let transport = SessionFixtureTransport(poll: poll.raw)
+        let link = OnDeviceTableLink(role: .guest, hostName: "Caleb")
+        link.noticed(revision: poll.revision)
+        let session = OnDeviceSession()
+        try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID, seatID: poll.seatID,
+                                 table: link, close: {})
+        try await Task.sleep(for: .milliseconds(1500))
+        let quiet = await transport.pollCount()
+        // Attach, then one catch-up poll; the 300 ms timer would have polled about six times.
+        XCTAssertLessThanOrEqual(quiet, 2)
+        await transport.consumePrompt()
+        link.noticed(revision: poll.revision + 1)
+        for _ in 0..<200 where session.snapshot?.bridgeRevision == Int(poll.revision) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(session.snapshot?.bridgeRevision, Int(poll.revision + 1), "A notice brings the new state")
+        let afterNotice = await transport.pollCount()
+        XCTAssertEqual(afterNotice, quiet + 1)
+        // A repeated or stale notice does not poll again.
+        link.noticed(revision: poll.revision)
+        try await Task.sleep(for: .milliseconds(700))
+        let settled = await transport.pollCount()
+        XCTAssertEqual(settled, afterNotice)
+        try await session.close()
+    }
+
+    @MainActor
+    func testGuestOfAHostWithoutNoticesKeepsTheShortTimer() async throws {
+        let poll = try fixture()
+        let transport = SessionFixtureTransport(poll: poll.raw)
+        let session = OnDeviceSession()
+        try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID, seatID: poll.seatID,
+                                 table: OnDeviceTableLink(role: .guest, hostName: "Caleb"), close: {})
+        try await Task.sleep(for: .milliseconds(1500))
+        let count = await transport.pollCount()
+        XCTAssertGreaterThanOrEqual(count, 3, "An older host never announces, so its guests keep polling")
+        try await session.close()
+    }
+
+    @MainActor
+    func testGuestPollsPromptlyUntilItsAnswerLands() async throws {
+        let poll = try fixture("2p-priority")
+        let transport = SessionFixtureTransport(poll: poll.raw)
+        let link = OnDeviceTableLink(role: .guest, hostName: "Caleb")
+        link.noticed(revision: poll.revision)
+        let session = OnDeviceSession()
+        try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID, seatID: poll.seatID,
+                                 table: link, close: {})
+        try await Task.sleep(for: .milliseconds(500))
+        let action = try XCTUnwrap(session.snapshot?.legalActions?.first(where: { $0.type == "pass_priority" }))
+        try await session.send(action: action)
+        // XMage queued the answer but the prompt is unchanged: keep asking until it lands.
+        let sent = await transport.pollCount()
+        try await Task.sleep(for: .milliseconds(1200))
+        let prompt = await transport.pollCount()
+        XCTAssertGreaterThanOrEqual(prompt - sent, 2)
+        await transport.consumePrompt()
+        for _ in 0..<200 where session.pendingActionID != nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(session.pendingActionID)
+        try await Task.sleep(for: .milliseconds(300))
+        let landed = await transport.pollCount()
+        try await Task.sleep(for: .milliseconds(1200))
+        let quiet = await transport.pollCount()
+        XCTAssertEqual(quiet, landed, "Once the answer landed, the guest waits for notices again")
+        let responses = await transport.responses()
+        XCTAssertEqual(responses.count, 1)
+        try await session.close()
+    }
+
+    @MainActor
+    func testGuestWaitsForAnUnansweringHostAndRecoversWithoutResending() async throws {
+        let poll = try fixture()
+        let transport = SessionFixtureTransport(poll: poll.raw)
+        let session = OnDeviceSession()
+        session.hostRetryDelays = [0.3, 0.3, 0.3]
+        try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID, seatID: poll.seatID,
+                                 table: OnDeviceTableLink(role: .guest, hostName: "Caleb"), close: {})
+        await transport.loseHostAnswers(2)
+        var sawWaiting = false
+        for _ in 0..<300 {
+            if session.status == "Waiting for Caleb…" { sawWaiting = true; break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertTrue(sawWaiting)
+        XCTAssertNil(session.errorMessage, "Waiting is not an error yet")
+        await transport.consumePrompt()
+        for _ in 0..<300 where session.snapshot?.bridgeRevision == Int(poll.revision) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(session.snapshot?.bridgeRevision, Int(poll.revision + 1))
+        XCTAssertNotEqual(session.status, "Waiting for Caleb…")
+        XCTAssertNil(session.errorMessage)
+        let responses = await transport.responses()
+        XCTAssertTrue(responses.isEmpty, "Retries only poll")
+        try await session.close()
+    }
+
+    @MainActor
+    func testGuestGivesUpAfterAFewRetriesWithTheUsualMessage() async throws {
+        let poll = try fixture()
+        let transport = SessionFixtureTransport(poll: poll.raw)
+        let session = OnDeviceSession()
+        session.hostRetryDelays = [0.05, 0.05, 0.05]
+        try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID, seatID: poll.seatID,
+                                 table: OnDeviceTableLink(role: .guest, hostName: "Caleb"), close: {})
+        let before = await transport.pollCount()
+        await transport.loseHostAnswers(100)
+        for _ in 0..<300 where session.errorMessage == nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(session.status, "Updates interrupted. Refresh to retry.")
+        XCTAssertEqual(session.errorMessage, OnDeviceHostUnavailable().localizedDescription)
+        try await Task.sleep(for: .milliseconds(300))
+        let after = await transport.pollCount()
+        XCTAssertEqual(after - before, 4, "One poll and three retries")
+        try await session.close()
+    }
+
+    @MainActor
+    func testLocalSessionDoesNotRetryHostErrors() async throws {
+        let poll = try fixture()
+        let transport = SessionFixtureTransport(poll: poll.raw)
+        let session = OnDeviceSession()
+        session.hostRetryDelays = [0.05, 0.05, 0.05]
+        try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID, seatID: poll.seatID, close: {})
+        await transport.loseHostAnswers(1)
+        for _ in 0..<200 where session.errorMessage == nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(session.status, "Updates interrupted. Refresh to retry.")
+        try await session.close()
+    }
+
     private func fixture(_ name: String = "2p-initial-player-1") throws -> MatchPoll {
         #if SWIFT_PACKAGE
         let bundle = Bundle.module
@@ -742,6 +940,8 @@ private actor SessionFixtureTransport: EngineTransport {
     private var sent: [MagicMobileOnDevice.JSONValue] = []
     private var responseFailures: [Error]
     private var shouldFailPoll = false
+    private var hostFailures = 0
+    private var polls = 0
     private var pollGate: SessionGate?
     private var responseGate: SessionGate?
     private var concurrentRequests = 0
@@ -754,7 +954,9 @@ private actor SessionFixtureTransport: EngineTransport {
         let request = try MagicMobileOnDevice.JSONValue.decode(data)
         let result: MagicMobileOnDevice.JSONValue
         if request["op"]?.string == "poll" {
+            polls += 1
             if shouldFailPoll { shouldFailPoll = false; throw URLError(.timedOut) }
+            if hostFailures > 0 { hostFailures -= 1; throw OnDeviceHostUnavailable() }
             result = poll
             if let gate = pollGate {
                 pollGate = nil
@@ -777,6 +979,9 @@ private actor SessionFixtureTransport: EngineTransport {
     func queuePollsAfterResponses(_ values: [MagicMobileOnDevice.JSONValue]) { pollsAfterResponse = values }
     func suspendNextResponse() -> SessionGate { let gate = SessionGate(); responseGate = gate; return gate }
     func failNextPoll() { shouldFailPoll = true }
+    /// The next `count` polls get no host answer, as when a relay packet is lost.
+    func loseHostAnswers(_ count: Int) { hostFailures = count }
+    func pollCount() -> Int { polls }
     func suspendNextPoll() -> SessionGate {
         let gate = SessionGate()
         pollGate = gate

@@ -727,6 +727,7 @@ private fun SetupScreen(setup: OnDeviceSetupModel, selectedDeck: Deck?, aiPrecon
                     Text("Leave / retry closing", color = Color(1f, 0.27f, 0.23f), style = sf(17f, SfWeight.bold))
                 }
                 if (setup.identity == null) BrandButton({ setup.prepare() }, kind = BrandButtonKind.SECONDARY) { BrandButtonText("Retry loading local catalogue", BrandButtonKind.SECONDARY) }
+                OnDeviceDiagnosticsEntry(setup)
                 if (!BuildConfig.NATIVE_ENGINE) Text("This build has no native engine. Install the full APK to play.", color = Color(1f, 0.6f, 0.3f), style = SfText.caption(SfWeight.semibold))
             }
         }
