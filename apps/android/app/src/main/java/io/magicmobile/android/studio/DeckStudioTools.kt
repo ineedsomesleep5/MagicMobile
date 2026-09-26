@@ -347,11 +347,15 @@ fun DeckStudioReplacementPicker(metadata: NativeDeckMetadataCatalogue?, commande
     var keepOld by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     val identity = colors.takeUnless { commander }
-    val results = remember(query, metadata, identity) {
-        metadata?.let { catalogue ->
+    var results by remember { mutableStateOf<List<CardInfo>>(emptyList()) }
+    LaunchedEffect(query, metadata, identity) {
+        val catalogue = metadata ?: run { results = emptyList(); return@LaunchedEffect }
+        if (query.isNotEmpty()) delay(120)
+        // Identity search merges one pass per colour subset, so it runs off the main thread.
+        results = withContext(Dispatchers.Default) {
             if (identity != null) DeckStudioCatalogueSearch.cards(catalogue, query, allowedIdentity = identity)
             else catalogue.search(NativeDeckMetadataCatalogue.SearchFilter(query = query), 80)
-        } ?: emptyList()
+        }
     }
     Column(Modifier.fillMaxWidth().height(largeSheetHeight()).imePadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         StudioSheetBar(if (commander) "Change commander" else "Replace card", cancel = dismiss)

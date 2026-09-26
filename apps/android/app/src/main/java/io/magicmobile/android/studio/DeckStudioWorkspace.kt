@@ -201,8 +201,9 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
     // Group by Role lists a main-deck card under every role it has; other boards keep their section group.
     val sections: List<Pair<String, List<NativeDeckRow>>> = if (grouping == "Role") {
         val boards = filteredRows.filter { DeckStudioDraftPresentation.section(it) != "deck" }.groupBy(::groupName)
-        boards.filterKeys { it == "Commanders" }.toList() + DeckStudioRoleGroups.groups(filteredRows, { metadata?.card(it) }, roleOverrides).toList() +
-            boards.filterKeys { it != "Commanders" }.toSortedMap().toList()
+        // Classifying rules text is the costly part; keep it across unrelated recompositions.
+        val roles = remember(filteredRows, metadata, roleOverrides) { DeckStudioRoleGroups.groups(filteredRows, { metadata?.card(it) }, roleOverrides) }
+        boards.filterKeys { it == "Commanders" }.toList() + roles.toList() + boards.filterKeys { it != "Commanders" }.toSortedMap().toList()
     } else groups.map { group -> group to filteredRows.filter { groupName(it) == group } }
 
     val header: @Composable () -> Unit = {
