@@ -36,8 +36,13 @@ extension ZoneCard {
 /// shows the illustration.
 struct TokenCopyFrameLayout: Equatable {
     let size: CGSize
+    /// Room the tag leaves free at the frame's trailing edge, for badges drawn over it.
+    let tagTrailingReserve: CGFloat
 
-    init(size: CGSize) { self.size = size }
+    init(size: CGSize, tagTrailingReserve: CGFloat = 0) {
+        self.size = size
+        self.tagTrailingReserve = max(0, tagTrailingReserve)
+    }
 
     var border: CGFloat { max(size.width * 0.045, 2) }
     private var gap: CGFloat { max(size.height * 0.012, 1) }
@@ -75,11 +80,14 @@ struct TokenCopyFrameLayout: Equatable {
 
     /// Where the token copy tag sits: the art's top-leading corner, which the compact
     /// battlefield face (ArenaBattlefieldCard) keeps in view just under its name header.
-    /// The art's bottom edge falls behind that face's P/T footer.
+    /// The art's bottom edge falls behind that face's P/T footer. The tag ends before
+    /// `tagTrailingReserve`; its text shrinks, then truncates, to fit.
     var tagSlot: CGRect {
         let height = max(size.height * 0.06, 9)
         let inset = max(size.width * 0.04, 2)
-        return CGRect(x: art.minX + inset, y: art.minY + inset * 0.6, width: max(art.width - inset * 2, 1), height: height)
+        let minX = art.minX + inset
+        let width = min(art.width - inset * 2, size.width - tagTrailingReserve - minX)
+        return CGRect(x: minX, y: art.minY + inset * 0.6, width: max(width, 1), height: height)
     }
 
     var nameFontSize: CGFloat { max(size.width * 0.085, 6) }
@@ -94,6 +102,41 @@ struct TokenCopyFrameLayout: Equatable {
     /// too small to read. The inspector shows the full text beside the card.
     func rulesLineLimit(showsPowerToughness: Bool) -> Int {
         max(1, Int(rulesArea(showsPowerToughness: showsPowerToughness).height / (rulesFontSize * 1.25)))
+    }
+}
+
+/// The compact battlefield face (ArenaBattlefieldCard): a name header over a CardTile cropped to
+/// its art, with counter badges in a trailing column just under the header. A token copy's tag
+/// sits in that same band, so while counters show, the tag ends before their column.
+enum BattlefieldCardFaceLayout {
+    static let headerHeight: CGFloat = 15
+    /// Top of the counter badge column, just under the header.
+    static let counterTop: CGFloat = 16
+    /// Clear space between the tag's end and the counter column.
+    static let counterGap: CGFloat = 2
+
+    /// The CardTile the face shows, in the face's coordinates: 8% wider and centered, lifted so
+    /// its art starts under the header.
+    static func tileFrame(cardWidth: CGFloat) -> CGRect {
+        CGRect(x: -cardWidth * 0.04, y: headerHeight - cardWidth * 0.19, width: cardWidth * 1.08, height: cardWidth * 1.51)
+    }
+
+    /// The counter badges are capped to this width at the face's trailing edge.
+    static func counterColumnWidth(cardWidth: CGFloat) -> CGFloat { max(28, cardWidth * 0.36) }
+
+    /// What the tile's token copy tag leaves free at its trailing edge (tile coordinates).
+    static func tagTrailingReserve(cardWidth: CGFloat, showsCounters: Bool) -> CGFloat {
+        guard showsCounters else { return 0 }
+        let columnStart = cardWidth - counterColumnWidth(cardWidth: cardWidth) - counterGap
+        return max(0, tileFrame(cardWidth: cardWidth).maxX - columnStart)
+    }
+
+    /// The token copy tag's slot in the face's coordinates.
+    static func tokenCopyTagSlot(cardWidth: CGFloat, showsCounters: Bool) -> CGRect {
+        let tile = tileFrame(cardWidth: cardWidth)
+        let frame = TokenCopyFrameLayout(size: tile.size,
+                                         tagTrailingReserve: tagTrailingReserve(cardWidth: cardWidth, showsCounters: showsCounters))
+        return frame.tagSlot.offsetBy(dx: tile.minX, dy: tile.minY)
     }
 }
 

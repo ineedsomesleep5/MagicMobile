@@ -86,13 +86,16 @@ final class BattlefieldViewportTests: XCTestCase {
                     pendingActionId: nil, compact: true, landscapeSidebar: true,
                     openPromptDetails: {}, openLog: {}, openSettings: {}, runAction: { _ in })
                     .frame(width: contentWidth)
-                let renderer = ImageRenderer(content: dock)
-                let image = try XCTUnwrap(renderer.uiImage)
-                XCTAssertEqual(image.size.width, contentWidth, accuracy: 0.01)
+                // Measured in a hosting controller, as the board lays it out. On iOS 27,
+                // ImageRenderer aborts inside SwiftUI's layout for this dock ("precondition
+                // failure: accessing attribute in a different namespace"), crashing the suite.
+                let size = UIHostingController(rootView: dock)
+                    .sizeThatFits(in: CGSize(width: contentWidth, height: .greatestFiniteMagnitude))
+                XCTAssertEqual(size.width, contentWidth, accuracy: 0.01)
                 // Two accessible 44pt rows plus 4pt spacing; the old dock used
                 // 96pt plus 12pt bottom padding, taking another 12pt from stack.
-                XCTAssertLessThanOrEqual(image.size.height, 92.5)
-                XCTAssertLessThanOrEqual(image.size.height + LandscapeActionDockLayout.bottomPadding, 96.5)
+                XCTAssertLessThanOrEqual(size.height, 92.5)
+                XCTAssertLessThanOrEqual(size.height + LandscapeActionDockLayout.bottomPadding, 96.5)
             }
         }
     }

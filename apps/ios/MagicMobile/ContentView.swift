@@ -11794,6 +11794,8 @@ struct CardTile: View {
     var height: CGFloat = 112
     var ignoreTappedRotation: Bool = false
     var imageVariant: CardImageCacheVariant = .board
+    /// Room a token copy's tag leaves at the trailing edge (TokenCopyFrameLayout.tagTrailingReserve).
+    var tokenCopyTagTrailingReserve: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.nativeTurnControl) private var nativeTurnControl
 
@@ -11803,7 +11805,8 @@ struct CardTile: View {
                 if !NativeCardArtworkPolicy.permitsLookup(card: card) {
                     CardArtPlaceholder(card: card, width: width, height: height)
                 } else if let source = card.tokenCopySourceName {
-                    TokenCopyCardFace(card: card, source: source, width: width, height: height, imageVariant: imageVariant)
+                    TokenCopyCardFace(card: card, source: source, width: width, height: height, imageVariant: imageVariant,
+                                      tagTrailingReserve: tokenCopyTagTrailingReserve)
                 } else if nativeTurnControl != nil {
                     NativeCardArtworkView(name: card.card.name, variant: imageVariant,
                                           tokenTypeLine: card.card.isToken == true ? (card.card.tokenArtwork?.typeLine ?? card.card.typeLine) : nil,
@@ -12028,12 +12031,14 @@ struct CardCounterBadgeStrip: View {
     var body: some View {
         VStack(alignment: .leading, spacing: max(cardWidth * 0.012, 1)) {
             ForEach(badges, id: \.self) { badge in
+                // Shrinks rather than wraps when a caller caps the strip's width.
                 HStack(spacing: 2) {
                     Text(badge.label)
                         .font(.system(size: max(cardWidth * 0.065, 5.5), weight: .black))
                     Text("\(badge.count)")
                         .font(.system(size: max(cardWidth * 0.083, 6.5), weight: .black))
                 }
+                .lineLimit(1).minimumScaleFactor(0.6)
                 .foregroundStyle(.white)
                 .padding(.horizontal, max(cardWidth * 0.035, 2.5))
                 .padding(.vertical, max(cardWidth * 0.015, 1))
@@ -12223,10 +12228,11 @@ struct TokenCopyCardFace: View {
     let width: CGFloat
     let height: CGFloat
     var imageVariant: CardImageCacheVariant = .board
+    var tagTrailingReserve: CGFloat = 0
     @Environment(\.nativeTurnControl) private var nativeTurnControl
 
     var body: some View {
-        let frame = TokenCopyFrameLayout(size: CGSize(width: width, height: height))
+        let frame = TokenCopyFrameLayout(size: CGSize(width: width, height: height), tagTrailingReserve: tagTrailingReserve)
         let rules = card.card.oracleText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         ZStack(alignment: .topLeading) {
             LinearGradient(colors: [MagicPalette.parchment, Color(red: 0.72, green: 0.59, blue: 0.38), MagicPalette.parchmentShadow],

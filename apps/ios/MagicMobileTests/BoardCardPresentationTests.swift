@@ -58,6 +58,34 @@ final class BoardCardPresentationTests: XCTestCase {
         XCTAssertEqual(inspector.rulesLineLimit(showsPowerToughness: true), 4)
     }
 
+    func testTokenCopyTagEndsBeforeTheCounterColumnOnTheBattlefieldFace() {
+        for width in stride(from: CGFloat(44), through: 120, by: 4) {
+            let context = "card width \(width)"
+            let columnWidth = BattlefieldCardFaceLayout.counterColumnWidth(cardWidth: width)
+            let column = CGRect(x: width - columnWidth, y: BattlefieldCardFaceLayout.counterTop, width: columnWidth, height: width)
+            let full = BattlefieldCardFaceLayout.tokenCopyTagSlot(cardWidth: width, showsCounters: false)
+            let tag = BattlefieldCardFaceLayout.tokenCopyTagSlot(cardWidth: width, showsCounters: true)
+            // Both sit in the band under the name header, so only a horizontal split keeps them apart.
+            XCTAssertTrue(full.intersects(column), "without the split the tag runs under the badges, \(context)")
+            XCTAssertLessThanOrEqual(tag.maxX + BattlefieldCardFaceLayout.counterGap, column.minX + 0.001, context)
+            XCTAssertFalse(tag.intersects(column), context)
+            XCTAssertGreaterThan(tag.width, 1, context)
+            // The tag keeps its corner and height; only its end moves.
+            XCTAssertEqual(tag.minX, full.minX, accuracy: 0.001, context)
+            XCTAssertEqual(tag.minY, full.minY, accuracy: 0.001, context)
+            XCTAssertEqual(tag.height, full.height, accuracy: 0.001, context)
+            XCTAssertGreaterThanOrEqual(tag.minY, BattlefieldCardFaceLayout.headerHeight, context)
+        }
+        let tile = BattlefieldCardFaceLayout.tileFrame(cardWidth: 60)
+        for (value, expected) in zip([tile.minX, tile.minY, tile.width, tile.height], [-2.4, 3.6, 64.8, 90.6] as [CGFloat]) {
+            XCTAssertEqual(value, expected, accuracy: 0.001, "ArenaBattlefieldCard's tile, 8% wider, lifted 0.19 w")
+        }
+        XCTAssertEqual(BattlefieldCardFaceLayout.tagTrailingReserve(cardWidth: 60, showsCounters: false), 0)
+        XCTAssertEqual(BattlefieldCardFaceLayout.tagTrailingReserve(cardWidth: 60, showsCounters: true), 32.4, accuracy: 0.001)
+        XCTAssertEqual(TokenCopyFrameLayout(size: tile.size).tagSlot,
+                       TokenCopyFrameLayout(size: tile.size, tagTrailingReserve: 0).tagSlot, "no reserve leaves the tag as it was")
+    }
+
     func testIllustrationCropFillsTheBoxWithTheArtWindowCentered() {
         for box in [CGSize(width: 70, height: 46), CGSize(width: 270, height: 130), CGSize(width: 120, height: 120)] {
             let image = CardIllustrationCrop.imageFrame(filling: box)
