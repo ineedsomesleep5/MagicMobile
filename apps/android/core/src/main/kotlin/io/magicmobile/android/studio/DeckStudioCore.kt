@@ -180,326 +180,364 @@ object DeckStudioEditorOperations {
         return candidate
     }
 
-    /** Quick Add: merge copies into the same board's row, or append one new row. */
+    /** Adds `quantity` copies to an existing row on the same board, or appends one row. */
     fun addCopies(draft: NativeDeckDraft, name: String, section: String, quantity: Int): NativeDeckDraft {
-        if (quantity !in 1..2000) throw DeckEditingError.InvalidEntry
-        val effective = DeckStudioDraftPresentation.normalizedSection(section)
-        val index = draft.rows.indexOfFirst { it.cardName == name && DeckStudioDraftPresentation.section(it) == effective }
+        if (quantity !in 1..2000 || name.isBlank()) throw DeckEditingError.InvalidEntry
+        val board = DeckStudioDraftPresentation.normalizedSection(section)
+        val index = draft.rows.indexOfFirst { it.cardName == name && DeckStudioDraftPresentation.section(it) == board }
         if (index < 0) return draft.copy(rows = draft.rows + NativeDeckRow(cardName = name, quantity = quantity, section = section))
         val total = draft.rows[index].quantity.toLong() + quantity
-        if (total > 2000) throw DeckEditingError.InvalidEntry
+        if (total > Int.MAX_VALUE) throw DeckEditingError.InvalidEntry
         return draft.copy(rows = draft.rows.toMutableList().also { it[index] = it[index].copy(quantity = total.toInt()) })
     }
 
-    /** A new deck starts from its commander and, while still unnamed, takes the commander's name. */
+    /** Commander-first new decks: the chosen card leads the deck, and an untouched default name becomes the commander's name. */
     fun startWithCommander(draft: NativeDeckDraft, name: String): NativeDeckDraft {
         val next = replacePrimaryCommander(draft, name, keepOld = false)
-        val unnamed = draft.name.isBlank() || draft.name == NativeDeckDraft().name
-        return if (unnamed && name.isNotBlank() && name.utf8Size <= 512) next.copy(name = name) else next
+        val current = draft.name.trim()
+        return if (current.isEmpty() || current == NativeDeckDraft().name) next.copy(name = name.take(96)) else next
     }
 
-    private fun selected(draft: NativeDeckDraft, ids: Set<UUID>): Set<UUID> {
-        if (ids.isEmpty() || !ids.all { id -> draft.rows.any { it.id == id } }) throw DeckEditingError.MissingEntry
-        return ids
+    /** Bulk edits commit as one history step. Every selected row must still exist, so a stale selection changes nothing. */
+    private fun requireRows(draft: NativeDeckDraft, ids: Set<UUID>) {
+        if (ids.isEmpty() || !draft.rows.map { it.id }.toSet().containsAll(ids)) throw DeckEditingError.MissingEntry
     }
 
-    /** Bulk Move to…: one undo step; an explicit move clears the primary-commander mark, as a single move does. */
+    /** An explicit move clears the primary-commander mark, as a single move does. */
     fun moveRows(draft: NativeDeckDraft, ids: Set<UUID>, section: String): NativeDeckDraft {
-        val chosen = selected(draft, ids)
-        return draft.copy(rows = draft.rows.map { if (it.id in chosen) it.copy(section = section, isPrimaryCommander = false) else it })
+        requireRows(draft, ids)
+        return draft.copy(rows = draft.rows.map { if (it.id in ids) it.copy(section = section, isPrimaryCommander = false) else it })
     }
 
-    /** Bulk Set quantity: every selected row gets exactly `quantity` copies. */
     fun setQuantity(draft: NativeDeckDraft, ids: Set<UUID>, quantity: Int): NativeDeckDraft {
         if (quantity !in 1..2000) throw DeckEditingError.InvalidEntry
-        val chosen = selected(draft, ids)
-        return draft.copy(rows = draft.rows.map { if (it.id in chosen) it.copy(quantity = quantity) else it })
+        requireRows(draft, ids)
+        return draft.copy(rows = draft.rows.map { if (it.id in ids) it.copy(quantity = quantity) else it })
     }
 
     fun removeRows(draft: NativeDeckDraft, ids: Set<UUID>): NativeDeckDraft {
-        val chosen = selected(draft, ids)
-        return draft.copy(rows = draft.rows.filterNot { it.id in chosen })
+        requireRows(draft, ids)
+        return draft.copy(rows = draft.rows.filterNot { it.id in ids })
     }
 }
 
+private fun String.trimWhitespace(): String = trim { it.isWhitespace() }
+
 /**
- * The Quick Add grammar, shared with iOS: "Sol Ring", "2 Sol Ring" or "2x Sol Ring". A trailing
- * "(set)" printing (with an optional collector number) and "[tag]" category are ignored and reported,
- * because a row stores neither.
+ * Quick Add grammar (DeckStudioQuickAdd in DeckStudioEditorOperations.swift): an optional count
+ * ("2 " or "2x "), then the card name. A trailing printing "(set)" / "(set) 123" and "[tag]" are
+ * ignored and reported.
  */
-object DeckStudioQuickAdd {
-    data class Entry(val quantity: Int, val name: String, val ignored: List<String>) {
-        val note: String? get() = if (ignored.isEmpty()) null else "Ignored ${ignored.joinToString(" ")} · printings and tags aren't saved"
-    }
-    class Invalid(message: String) : Exception(message)
+data class DeckStudioQuickAdd(val quantity: Int, val name: String, val ignored: List<String>) {
+    val note: String? get() = if (ignored.isEmpty()) null else "Ignored ${ignored.joinToString(" ")} · sets and tags aren't saved"
 
-    private val counted = Regex("""^([0-9]{1,5})[xX]?\s+(.+)$""")
-    private val tag = Regex("""\s*\[[^\[\]\r\n]*\]$""")
-    private val printing = Regex("""\s*\([A-Za-z0-9]+\)(?:\s+[A-Za-z0-9★†-]+)?$""")
+    companion object {
+        private val decoration = Regex("""\s*(?:\[[^\[\]]*\]|\([A-Za-z0-9]{2,6}\)(?:\s+[A-Za-z0-9★†-]+)?)$""")
+        private val countOnly = Regex("""^[0-9]{1,4}[xX]?$""")
+        private val count = Regex("""^[0-9]{1,4}[xX]?\s+""")
 
-    /** Null for blank input. */
-    fun parse(text: String): Entry? {
-        var line = text.trimSpaces().replace(Regex("\\s+"), " ")
-        if (line.isEmpty()) return null
-        var quantity = 1
-        counted.matchEntire(line)?.let { match ->
-            quantity = match.groupValues[1].toIntOrNull()?.takeIf { it in 1..2000 } ?: throw Invalid("Use a quantity from 1 to 2,000.")
-            line = match.groupValues[2]
+        /** Null while there is nothing to add yet or the count is out of range. `isCardName` lets an exact card name that starts with a number win over the count. */
+        fun parse(raw: String, isCardName: (String) -> Boolean = { false }): DeckStudioQuickAdd? {
+            var text = raw.trimWhitespace()
+            if (text.isEmpty() || text.utf8Size > 2000) return null
+            val ignored = ArrayList<String>()
+            while (true) {
+                val match = decoration.find(text) ?: break
+                ignored.add(0, match.value.trim { it == ' ' || it == '\t' })
+                text = text.substring(0, match.range.first).trim { it == ' ' || it == '\t' }
+            }
+            if (text.isEmpty()) return null
+            if (isCardName(text)) return DeckStudioQuickAdd(1, text, ignored)
+            // A count with no name yet ("2x") is still being typed.
+            if (countOnly.matches(text)) return null
+            var quantity = 1
+            count.find(text)?.let { match ->
+                val value = match.value.trimWhitespace().trimEnd('x', 'X').toIntOrNull()
+                if (value == null || value !in 1..2000) return null
+                quantity = value
+                text = text.substring(match.range.last + 1).trimWhitespace()
+            }
+            if (text.isEmpty()) return null
+            return DeckStudioQuickAdd(quantity, text, ignored)
         }
-        val ignored = ArrayList<String>()
-        while (line.isNotEmpty()) {
-            val match = tag.find(line) ?: printing.find(line) ?: break
-            ignored.add(0, match.value.trim())
-            line = line.removeRange(match.range).trimSpaces()
-        }
-        if (line.isEmpty() || line.utf8Size > 2000) throw Invalid("Type a card name, like 2 Sol Ring.")
-        return Entry(quantity, line, ignored)
     }
-
-    /** The top local autocomplete results for the name part: exact, then prefix, then contains. */
-    fun suggestions(catalogue: NativeDeckMetadataCatalogue, text: String, limit: Int = 5): List<CardInfo> {
-        val name = runCatching { parse(text) }.getOrNull()?.name ?: return emptyList()
-        val matches = catalogue.cards.filter { it.name.contains(name, ignoreCase = true) }
-        return NativeDeckMetadataCatalogue.ranked(matches, name).take(limit)
-    }
-
-    /** Submitting adds the exact card (case-insensitive) or else the top suggestion. */
-    fun resolve(catalogue: NativeDeckMetadataCatalogue, entry: Entry): String? =
-        catalogue.card(entry.name)?.name ?: suggestions(catalogue, entry.name, 1).firstOrNull()?.name
 }
 
 /**
- * Edit as text: the whole deck in the plain-text export format, reviewed as cards added and
- * removed, then applied as one undo step. Unchanged rows keep their IDs, order and exact section.
+ * Edit as text (DeckStudioTextDiff in DeckStudioTextExport.swift): the whole deck in the export
+ * format, reviewed as cards added and removed per board before it is applied as one undo step.
  */
-object DeckStudioTextEdit {
-    data class Change(val name: String, val board: String, val quantity: Int)
-    data class Review(val added: List<Change>, val removed: List<Change>, val result: NativeDeckDraft, val ignoredLines: Int) {
-        val isEmpty: Boolean get() = added.isEmpty() && removed.isEmpty()
+data class DeckStudioTextDiff(val added: List<Change>, val removed: List<Change>) {
+    data class Change(val board: String, val name: String, val before: Int, val after: Int) {
+        val delta: Int get() = after - before
+        /** e.g. "+2 Sol Ring · Deck", "−1 Island · Maybeboard". */
+        val label: String get() = "${if (delta > 0) "+" else "−"}${kotlin.math.abs(delta)} $name · ${title(board)}"
     }
+    val isEmpty: Boolean get() = added.isEmpty() && removed.isEmpty()
 
-    /** The board a row plays in, with "considering" as maybeboard; null for a custom section. */
-    fun board(section: String): String? = when (section.trim().lowercase()) {
-        "deck", "main", "mainboard" -> "deck"
-        "commander", "commanders" -> "commanders"
-        "companion", "companions" -> "companions"
-        "sideboard" -> "sideboard"
-        "maybeboard", "considering" -> "maybeboard"
-        else -> null
-    }
+    companion object {
+        private val order = listOf("commanders", "deck", "companions", "sideboard", "maybeboard")
 
-    fun boardTitle(board: String): String = when (board) {
-        "deck" -> "Deck"; "commanders" -> "Commander"; "companions" -> "Companion"; "sideboard" -> "Sideboard"; "maybeboard" -> "Maybeboard"
-        else -> board
-    }
+        fun title(board: String): String = mapOf("commanders" to "Commander", "deck" to "Deck", "companions" to "Companion", "sideboard" to "Sideboard",
+            "maybeboard" to "Maybeboard")[board] ?: board.split(" ").joinToString(" ") { word -> word.lowercase().replaceFirstChar { it.uppercase() } }
 
-    private fun board(row: NativeDeckRow): String = if (row.isPrimaryCommander) "commanders" else board(row.section) ?: throw DeckStudioTextExport.RequiresJSON()
-
-    /** The editable text; an empty draft starts blank. Custom sections need JSON instead. */
-    fun text(draft: NativeDeckDraft): String = if (draft.rows.isEmpty()) "" else DeckStudioTextExport.text(draft.deck())
-
-    fun review(draft: NativeDeckDraft, text: String): Review {
-        draft.rows.forEach { board(it) }
-        val imported = if (text.isBlank()) null else OnDeviceDeckEditing.importText(text, draft.name.takeIf { it.isNotBlank() && it.utf8Size <= 512 } ?: "Draft")
-        val wanted = LinkedHashMap<Pair<String, String>, Int>()
-        imported?.deck?.let { deck ->
-            for (entry in listOfNotNull(deck.commander) + deck.entries) {
-                wanted.merge((board(entry.section) ?: throw DeckStudioTextExport.RequiresJSON()) to entry.cardName, entry.quantity, Int::plus)
+        fun between(old: NativeDeckDraft, new: NativeDeckDraft): DeckStudioTextDiff {
+            fun totals(draft: NativeDeckDraft): Map<Pair<String, String>, Int> {
+                val result = LinkedHashMap<Pair<String, String>, Int>()
+                for (row in draft.rows) result.merge(DeckStudioDraftPresentation.section(row) to row.cardName, row.quantity, Int::plus)
+                return result
             }
-        }
-        val existing = LinkedHashMap<Pair<String, String>, Int>()
-        for (row in draft.rows) existing.merge(board(row) to row.cardName, row.quantity, Int::plus)
-        val removed = existing.mapNotNull { (key, old) -> (old - (wanted[key] ?: 0)).takeIf { it > 0 }?.let { Change(key.second, key.first, it) } }
-        val added = wanted.mapNotNull { (key, new) -> (new - (existing[key] ?: 0)).takeIf { it > 0 }?.let { Change(key.second, key.first, it) } }
-        val kept = HashSet<Pair<String, String>>()
-        val rows = ArrayList<NativeDeckRow>()
-        for (row in draft.rows) {
-            val key = board(row) to row.cardName
-            val quantity = wanted[key] ?: 0
-            when {
-                quantity == 0 -> {}
-                quantity == existing[key] -> rows += row
-                key !in kept -> { rows += row.copy(quantity = quantity); kept += key }
+            val before = totals(old); val after = totals(new)
+            val changes = (before.keys + after.keys).mapNotNull { key ->
+                Change(key.first, key.second, before[key] ?: 0, after[key] ?: 0).takeIf { it.delta != 0 }
+            }.sortedWith { a, b ->
+                val left = order.indexOf(a.board).let { if (it < 0) order.size else it }
+                val right = order.indexOf(b.board).let { if (it < 0) order.size else it }
+                if (left != right) left.compareTo(right) else if (a.board == b.board) a.name.compareTo(b.name) else a.board.compareTo(b.board)
             }
+            return DeckStudioTextDiff(changes.filter { it.delta > 0 }, changes.filter { it.delta < 0 })
         }
-        for ((key, quantity) in wanted) if (key !in existing) rows += NativeDeckRow(cardName = key.second, quantity = quantity, section = key.first)
-        val result = draft.copy(rows = rows)
-        result.copy(name = "Draft").deck()
-        return Review(added, removed, result, imported?.annotations?.map { it.line }?.toSet()?.size ?: 0)
+
+        /**
+         * Parses edited text with the plain-text importer and returns the new draft and the
+         * importer's notes. Rows that stay on the same board keep their identity and section
+         * spelling, and the current primary commander stays primary while it remains a commander.
+         */
+        fun draft(text: String, replacing: NativeDeckDraft): Pair<NativeDeckDraft, List<String>> {
+            val draft = replacing
+            val name = if (draft.name.trim().isEmpty()) "Draft" else draft.name
+            val notes = ArrayList<String>()
+            val imported = if (text.isBlank()) DeckList(name, null, emptyList()) else OnDeviceDeckEditing.importText(text, name).also { result ->
+                notes += result.annotations.map { "Line ${it.line}: ${it.text}" }
+            }.deck
+            val unused = draft.rows.toMutableList()
+            val rows = NativeDeckDraft.of(imported).rows.map { fresh ->
+                val board = DeckStudioDraftPresentation.section(fresh)
+                val index = unused.indexOfFirst { DeckStudioDraftPresentation.section(it) == board && it.cardName == fresh.cardName }
+                if (index < 0) fresh else {
+                    val old = unused.removeAt(index)
+                    fresh.copy(id = old.id, section = if (DeckStudioDraftPresentation.normalizedSection(old.section) == board) old.section else fresh.section)
+                }
+            }.toMutableList()
+            val previousPrimary = draft.rows.firstOrNull { it.isPrimaryCommander }?.cardName
+            val keep = rows.indexOfFirst { DeckStudioDraftPresentation.section(it) == "commanders" && it.cardName == previousPrimary }
+            // Every row on the commander board has a commander section, so moving the flag keeps both commanders.
+            if (previousPrimary != null && keep >= 0) for (index in rows.indices) rows[index] = rows[index].copy(isPrimaryCommander = index == keep)
+            return draft.copy(rows = rows) to notes
+        }
     }
 }
 
 /**
- * Group by Role: automatic categories from the role classifier. A main-deck card sits under every
- * role it has, as in Archidekt, and under "Other" when it has none; your reviewed roles win.
+ * Group by Role for the Cards list: automatic categories from the role classifier. A card sits under
+ * every role it has, and your own role review replaces the automatic hints for that card. Cards with
+ * no role are "Other".
  */
 object DeckStudioRoleGroups {
     const val other = "Other"
     val order: List<String> = DeckStudioRole.entries.map { it.title } + other
 
-    fun roles(card: CardInfo?, reviewed: Set<DeckStudioRole>?): List<String> {
-        val evidence = DeckStudioRoleClassifier.classify(card?.oracleText, card?.types, (card?.roles ?: emptyList()).mapNotNull(DeckStudioRole::of), reviewed)
-        return evidence.map { it.role.title }.ifEmpty { listOf(other) }
-    }
-
-    /** Role title to its main-deck rows, in role order with "Other" last; empty groups are left out. */
-    fun groups(rows: List<NativeDeckRow>, card: (String) -> CardInfo?,
-               overrides: Map<String, Set<DeckStudioRole>>): LinkedHashMap<String, List<NativeDeckRow>> {
-        val grouped = HashMap<String, MutableList<NativeDeckRow>>()
-        for (row in rows) {
-            if (DeckStudioDraftPresentation.section(row) != "deck") continue
-            for (role in roles(card(row.cardName), overrides[row.cardName])) grouped.getOrPut(role) { ArrayList() } += row
+    /** Role group titles for each row, in `order`. */
+    fun membership(rows: List<NativeDeckRow>, card: (String) -> CardInfo?, overrides: Map<String, Set<DeckStudioRole>>): Map<UUID, List<String>> {
+        val byName = HashMap<String, List<String>>()
+        return rows.associate { row ->
+            row.id to byName.getOrPut(row.cardName) {
+                val info = card(row.cardName)
+                val roles = DeckStudioRoleClassifier.classify(info?.oracleText, info?.types, (info?.roles ?: emptyList()).mapNotNull(DeckStudioRole::of),
+                    overrides[row.cardName]).map { it.role }
+                if (roles.isEmpty()) listOf(other) else DeckStudioRole.entries.filter { it in roles }.map { it.title }
+            }
         }
-        return order.filter { it in grouped }.associateWithTo(LinkedHashMap()) { grouped.getValue(it) }
     }
 
-    /** Headers count unique cards, since one card can appear in several groups. */
+    /** Group headers count unique cards, since one card can appear in several groups. */
     fun uniqueCards(rows: List<NativeDeckRow>): Int = rows.map { it.cardName }.toSet().size
 }
 
 /**
- * The Playtest tab's sample hand: draw 7, London mulligan (shuffle back, draw 7, then put one card
- * on the bottom per mulligan), draw the next card and count turns. Only main-deck cards are in the
- * library; commanders, companions, sideboard and maybeboard stay out.
+ * Goldfish sample hand: draw seven from the main deck, London mulligan (shuffle, draw seven, put one
+ * card on the bottom per mulligan taken), then draw a card each turn. Commanders and other boards stay
+ * out of the library.
  */
 data class DeckStudioSampleHand(
     val library: List<Card>,
-    val hand: List<Card>,
+    val hand: List<Card> = emptyList(),
     val mulligans: Int = 0,
-    val bottomed: Int = 0,
-    val drawn: Int = 0,
-    val turn: Int = 1,
+    /** Cards still to put on the bottom after the latest mulligan. */
+    val toBottom: Int = 0,
+    val draws: Int = 0,
 ) {
     data class Card(val id: Int, val name: String)
 
-    /** Cards still to put on the bottom before the hand is kept. */
-    val toBottom: Int get() = maxOf(0, minOf(mulligans, hand.size + bottomed) - bottomed)
-    val canMulligan: Boolean get() = drawn == 0 && bottomed == 0 && mulligans < 7 && size > 0
+    val turn: Int get() = draws + 1
+    val canMulligan: Boolean get() = draws == 0 && toBottom == 0 && mulligans < handSize && hand.isNotEmpty()
     val canDraw: Boolean get() = toBottom == 0 && library.isNotEmpty()
-    val size: Int get() = library.size + hand.size
 
-    fun mulligan(random: kotlin.random.Random): DeckStudioSampleHand {
+    /** A fresh opening hand from the whole deck. */
+    fun dealt(random: kotlin.random.Random): DeckStudioSampleHand =
+        DeckStudioSampleHand((library + hand).sortedBy { it.id }).drawSeven(random)
+
+    fun mulliganed(random: kotlin.random.Random): DeckStudioSampleHand {
         if (!canMulligan) return this
-        return deal(library + hand, random).copy(mulligans = mulligans + 1)
+        val next = copy(library = library + hand, hand = emptyList(), mulligans = mulligans + 1).drawSeven(random)
+        return next.copy(toBottom = minOf(next.mulligans, next.hand.size))
     }
 
-    fun putOnBottom(id: Int): DeckStudioSampleHand {
-        if (toBottom == 0) return this
-        val card = hand.firstOrNull { it.id == id } ?: return this
-        return copy(hand = hand - card, library = library + card, bottomed = bottomed + 1)
+    fun puttingOnBottom(id: Int): DeckStudioSampleHand {
+        val card = hand.firstOrNull { it.id == id }
+        if (toBottom <= 0 || card == null) return this
+        return copy(hand = hand - card, library = library + card, toBottom = toBottom - 1)
     }
 
-    fun draw(): DeckStudioSampleHand {
-        if (!canDraw) return this
-        return copy(hand = hand + library.first(), library = library.drop(1), drawn = drawn + 1)
-    }
+    fun drawn(): DeckStudioSampleHand = if (!canDraw) this else copy(hand = hand + library.first(), library = library.drop(1), draws = draws + 1)
 
-    /** The next turn's draw step. */
-    fun nextTurn(): DeckStudioSampleHand = if (!canDraw) this else draw().copy(turn = turn + 1)
+    private fun drawSeven(random: kotlin.random.Random): DeckStudioSampleHand {
+        val shuffled = library.shuffled(random)
+        val count = minOf(handSize, shuffled.size)
+        return copy(hand = shuffled.take(count), library = shuffled.drop(count))
+    }
 
     companion object {
         const val handSize = 7
 
-        /** Main-deck cards, one entry per copy, in row order. */
-        fun library(draft: NativeDeckDraft): List<String> =
-            draft.rows.filter { DeckStudioDraftPresentation.section(it) == "deck" }.flatMap { row -> List(row.quantity.coerceIn(0, 2000)) { row.cardName } }.take(2000)
+        /** Main-deck cards, one entry per copy. */
+        fun libraryNames(draft: NativeDeckDraft): List<String> =
+            draft.rows.filter { DeckStudioDraftPresentation.section(it) == "deck" }.flatMap { row -> List(maxOf(0, minOf(row.quantity, 2000))) { row.cardName } }
 
-        fun start(names: List<String>, random: kotlin.random.Random): DeckStudioSampleHand =
-            deal(names.mapIndexed { index, name -> Card(index, name) }, random)
+        fun of(names: List<String>): DeckStudioSampleHand = DeckStudioSampleHand(names.mapIndexed { index, name -> Card(index, name) })
+    }
+}
 
-        private fun deal(cards: List<Card>, random: kotlin.random.Random): DeckStudioSampleHand {
-            val shuffled = cards.shuffled(random)
-            return DeckStudioSampleHand(shuffled.drop(handSize), shuffled.take(handSize))
+/**
+ * Local search syntax, a small Scryfall-style subset (DeckStudioSearchSyntax in
+ * DeckStudioCatalogueSearch.swift): `t:creature`, `o:draw`, `mv<=3`, `mv>=2`, `mv=3`, `id:wu`
+ * (identity within W and U; `id:c` is colorless). Values may be quoted: `t:"legendary creature"`.
+ * Every term must match. Anything else, including an incomplete term, stays as name or rules text.
+ */
+data class DeckStudioSearchSyntax(
+    val text: String = "",
+    val types: List<String> = emptyList(),
+    val oracle: List<String> = emptyList(),
+    val minimumManaValue: Double? = null,
+    val maximumManaValue: Double? = null,
+    val identity: Set<String>? = null,
+    val setCode: String = "",
+) {
+    val hasFilters: Boolean get() = types.isNotEmpty() || oracle.isNotEmpty() || minimumManaValue != null || maximumManaValue != null || identity != null
+
+    companion object {
+        private val colors = setOf("W", "U", "B", "R", "G")
+        private val decimal = Regex("""^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$""")
+
+        fun parse(query: String): DeckStudioSearchSyntax {
+            val text = ArrayList<String>()
+            var result = DeckStudioSearchSyntax()
+            for (token in tokens(query)) {
+                val lower = token.lowercase()
+                fun value(prefix: String): String? {
+                    if (!lower.startsWith(prefix)) return null
+                    return token.substring(prefix.length).trim { it == '"' || it == ' ' || it == '\t' }.ifEmpty { null }
+                }
+                fun bound(prefix: String): Double? = value(prefix)?.takeIf(decimal::matches)?.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0 }
+                // A term still being typed filters nothing yet.
+                if (listOf("t:", "o:", "id:", "mv<=", "mv>=", "mv=").any { lower.startsWith(it) && value(it) == null }) continue
+                val type = value("t:"); val rules = value("o:"); val identity = value("id:")?.uppercase()?.map { it.toString() }?.toSet()
+                val atMost = bound("mv<="); val atLeast = bound("mv>="); val exactly = bound("mv=")
+                result = when {
+                    type != null -> result.copy(types = result.types + type)
+                    rules != null -> result.copy(oracle = result.oracle + rules)
+                    identity != null && (colors + "C").containsAll(identity) && !("C" in identity && identity.size > 1) ->
+                        result.copy(identity = (result.identity ?: colors).intersect(identity - "C"))
+                    atMost != null -> result.copy(maximumManaValue = minOf(result.maximumManaValue ?: atMost, atMost))
+                    atLeast != null -> result.copy(minimumManaValue = maxOf(result.minimumManaValue ?: atLeast, atLeast))
+                    exactly != null -> result.copy(minimumManaValue = maxOf(result.minimumManaValue ?: exactly, exactly),
+                        maximumManaValue = minOf(result.maximumManaValue ?: exactly, exactly))
+                    else -> { text += token; result }
+                }
+            }
+            return result.copy(text = text.joinToString(" "))
+        }
+
+        /** Whitespace-separated tokens; double quotes keep spaces inside a token. */
+        private fun tokens(query: String): List<String> {
+            val tokens = ArrayList<String>()
+            val current = StringBuilder()
+            var quoted = false
+            for (character in query) {
+                if (character == '"') { quoted = !quoted; current.append(character) }
+                else if (character.isWhitespace() && !quoted) { if (current.isNotEmpty()) { tokens += current.toString(); current.clear() } }
+                else current.append(character)
+            }
+            if (current.isNotEmpty()) tokens += current.toString()
+            return tokens
         }
     }
 }
 
 /**
- * Local search syntax, shared with iOS: `t:` type line, `o:` rules text, `mv<=`/`mv>=` mana value
- * and `id:` colour identity (the card fits within the colours, `id:c` for colourless). Values may be
- * quoted, as in o:"draw a card". Everything else searches names and rules text as before.
+ * The builder's local searches over the bundled catalogue (DeckStudioCatalogueSearch.swift): Add
+ * cards with the search syntax, Quick Add name suggestions and the commander-first picker.
  */
-object DeckStudioSearchSyntax {
-    data class Query(
-        val text: String = "",
-        val types: List<String> = emptyList(),
-        val oracle: List<String> = emptyList(),
-        val minimumManaValue: Double? = null,
-        val maximumManaValue: Double? = null,
-        val identity: Set<String>? = null,
-    ) {
-        val hasSyntax: Boolean get() = types.isNotEmpty() || oracle.isNotEmpty() || minimumManaValue != null || maximumManaValue != null || identity != null
-    }
-    class Invalid : Exception("Use t:type, o:text, mv<=3, mv>=2 or id:wubrg (id:c for colorless).")
-
-    private fun tokens(input: String): List<String> {
-        val result = ArrayList<String>()
-        var index = 0
-        while (index < input.length) {
-            if (input[index].isWhitespace()) { index++; continue }
-            val token = StringBuilder()
-            var quoted = false
-            while (index < input.length && (quoted || !input[index].isWhitespace())) {
-                if (input[index] == '"') quoted = !quoted else token.append(input[index])
-                index++
-            }
-            result += token.toString()
-        }
-        return result
-    }
-
-    fun parse(input: String): Query {
-        val words = ArrayList<String>()
-        var query = Query()
-        for (token in tokens(input)) {
-            val lower = token.lowercase()
-            fun value(prefix: String) = token.substring(prefix.length).trim().ifEmpty { throw Invalid() }
-            fun number(prefix: String) = value(prefix).toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0 } ?: throw Invalid()
-            query = when {
-                lower.startsWith("t:") -> query.copy(types = query.types + value("t:"))
-                lower.startsWith("o:") -> query.copy(oracle = query.oracle + value("o:"))
-                lower.startsWith("mv<=") -> number("mv<=").let { query.copy(maximumManaValue = minOf(query.maximumManaValue ?: it, it)) }
-                lower.startsWith("mv>=") -> number("mv>=").let { query.copy(minimumManaValue = maxOf(query.minimumManaValue ?: it, it)) }
-                lower.startsWith("id:") -> {
-                    val letters = value("id:").lowercase()
-                    val colors = if (letters == "c") emptySet() else letters.map { letter ->
-                        "wubrg".indexOf(letter).takeIf { it >= 0 }?.let { "WUBRG"[it].toString() } ?: throw Invalid()
-                    }.toSet()
-                    query.copy(identity = query.identity?.intersect(colors) ?: colors)
-                }
-                else -> { words += token; query }
-            }
-        }
-        return query.copy(text = words.joinToString(" "))
-    }
-
-    fun matches(card: CardInfo, query: Query): Boolean {
-        fun contains(text: String?, value: String) = text?.contains(value, ignoreCase = true) == true
-        return (query.text.isEmpty() || contains(card.name, query.text) || contains(card.oracleText, query.text)) &&
-            query.types.all { contains(card.typeLine, it) } && query.oracle.all { contains(card.oracleText, it) } &&
-            (query.minimumManaValue == null || card.manaValue?.let { it >= query.minimumManaValue } == true) &&
-            (query.maximumManaValue == null || card.manaValue?.let { it <= query.maximumManaValue } == true) &&
-            (query.identity == null || card.colorIdentity?.let { query.identity.containsAll(it) } == true)
-    }
-
+object DeckStudioBuilderSearch {
     /**
-     * The Add cards search. Plain queries keep DeckStudioCatalogueSearch's behaviour exactly; syntax
-     * filters apply before the cap, together with the sheet's own filters.
+     * Add cards: search syntax filters apply before the cap together with the sheet's own filters.
+     * Without filter terms this is DeckStudioCatalogueSearch's plain name or rules-text search (minus
+     * any half-typed term).
      */
-    fun cards(catalogue: NativeDeckMetadataCatalogue, input: String, type: String = "", allowedIdentity: List<String>? = null, setCode: String = "",
+    fun cards(catalogue: NativeDeckMetadataCatalogue, query: String, type: String = "", allowedIdentity: List<String>? = null, setCode: String = "",
               minimumManaValue: Double? = null, maximumManaValue: Double? = null, limit: Int = 80): List<CardInfo> {
-        val parsed = parse(input)
-        if (!parsed.hasSyntax) return DeckStudioCatalogueSearch.cards(catalogue, input, type, allowedIdentity, setCode, minimumManaValue, maximumManaValue, limit)
+        if (limit <= 0 || minimumManaValue?.let { !it.isFinite() || it < 0 } == true || maximumManaValue?.let { !it.isFinite() || it < 0 } == true ||
+            (minimumManaValue != null && maximumManaValue != null && minimumManaValue > maximumManaValue)) return emptyList()
+        val syntax = DeckStudioSearchSyntax.parse(query)
+        if (!syntax.hasFilters) return DeckStudioCatalogueSearch.cards(catalogue, syntax.text, type, allowedIdentity, setCode, minimumManaValue, maximumManaValue, limit)
+        if (allowedIdentity?.let { setOf("W", "U", "B", "R", "G").containsAll(it) } == false) return emptyList()
+        val combined = syntax.copy(types = syntax.types + listOf(type).filter { it.isNotEmpty() }, setCode = setCode,
+            minimumManaValue = listOfNotNull(syntax.minimumManaValue, minimumManaValue).maxOrNull(),
+            maximumManaValue = listOfNotNull(syntax.maximumManaValue, maximumManaValue).minOrNull(),
+            identity = allowedIdentity?.let { allowed -> (syntax.identity ?: setOf("W", "U", "B", "R", "G")).intersect(allowed.toSet()) } ?: syntax.identity)
+        return scan(catalogue, combined, nameOnly = false, limit = minOf(limit, 2000))
+    }
+
+    /** Quick Add autocomplete: names only, exact and prefix matches first. */
+    fun nameSuggestions(catalogue: NativeDeckMetadataCatalogue, query: String, limit: Int = 5): List<CardInfo> {
+        val text = query.trimWhitespace()
+        if (text.isEmpty() || limit <= 0) return emptyList()
+        return scan(catalogue, DeckStudioSearchSyntax(text = text), nameOnly = true, limit = minOf(limit, 2000))
+    }
+
+    /** Legendary creatures and cards whose text says they can be your commander. Partner and background pairings are left to XMage. */
+    fun isCommanderCandidate(card: CardInfo): Boolean =
+        (card.types?.contains("CREATURE") == true && card.typeLine?.contains("Legendary", ignoreCase = true) == true) ||
+            card.oracleText?.contains("can be your commander", ignoreCase = true) == true
+
+    /** Commander-first picker. Plain words match the name; the search syntax also applies. */
+    fun commanders(catalogue: NativeDeckMetadataCatalogue, query: String, limit: Int = 80): List<CardInfo> {
         if (limit <= 0) return emptyList()
-        val query = parsed.copy(
-            types = parsed.types + listOf(type).filter { it.isNotEmpty() },
-            minimumManaValue = listOfNotNull(parsed.minimumManaValue, minimumManaValue).maxOrNull(),
-            maximumManaValue = listOfNotNull(parsed.maximumManaValue, maximumManaValue).minOrNull(),
-            identity = allowedIdentity?.toSet()?.let { allowed -> parsed.identity?.intersect(allowed) ?: allowed } ?: parsed.identity)
-        val matches = catalogue.cards.filter { card ->
-            matches(card, query) && (setCode.isEmpty() || card.setCodes.any { it.equals(setCode, ignoreCase = true) })
+        return scan(catalogue, DeckStudioSearchSyntax.parse(query), nameOnly = true, limit = minOf(limit, 2000), extra = ::isCommanderCandidate)
+    }
+
+    private fun fold(text: String): String = if (text.all { it.code < 128 }) text.lowercase(java.util.Locale.ROOT) else DeckStudioLibraryQuery.key(text)
+
+    private fun scan(catalogue: NativeDeckMetadataCatalogue, syntax: DeckStudioSearchSyntax, nameOnly: Boolean, limit: Int,
+                     extra: (CardInfo) -> Boolean = { true }): List<CardInfo> {
+        // Case- and diacritic-insensitive, as on iOS; the folded card text is only built when a plain match fails.
+        fun matcher(query: String): (String?) -> Boolean {
+            val folded = fold(query)
+            return { text -> text != null && (text.contains(query, ignoreCase = true) || fold(text).contains(folded)) }
         }
-        return NativeDeckMetadataCatalogue.ranked(matches, query.text).take(minOf(limit, 2000))
+        val name = matcher(syntax.text)
+        val types = syntax.types.map(::matcher)
+        val oracle = syntax.oracle.map(::matcher)
+        val matches = catalogue.cards.filter { card ->
+            (syntax.text.isEmpty() || name(card.name) || (!nameOnly && name(card.oracleText))) &&
+                types.all { it(card.typeLine) } && oracle.all { it(card.oracleText) } &&
+                (syntax.setCode.isEmpty() || card.setCodes.any { it.equals(syntax.setCode, ignoreCase = true) }) &&
+                (syntax.identity == null || card.colorIdentity?.let { syntax.identity.containsAll(it) } == true) &&
+                (syntax.minimumManaValue == null || card.manaValue?.let { it >= syntax.minimumManaValue } == true) &&
+                (syntax.maximumManaValue == null || card.manaValue?.let { it <= syntax.maximumManaValue } == true) &&
+                extra(card)
+        }
+        return NativeDeckMetadataCatalogue.ranked(matches, syntax.text).take(limit)
     }
 }
 

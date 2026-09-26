@@ -2,122 +2,99 @@ package io.magicmobile.android.studio
 
 import io.magicmobile.android.core.CardInfo
 import io.magicmobile.android.game.CardCountText
+import java.util.UUID
 
 /**
- * DeckStudioPreflight.swift: an instant, offline Commander quick check while editing, read from the
- * bundled catalogue's colour identity and rules text. It never blocks Play; the installed XMage
- * validator stays authoritative when a game starts.
- *
- * Only the playing boards count (Main, Commander(s), Companion); sideboard and maybeboard stay out.
- * It is deliberately conservative: an unknown commander skips the colour check, partner-style pairs
- * use the union of their identities, and commander eligibility is left to XMage.
+ * DeckStudioPreflight.swift: a fast, offline quick check of the Commander basics while editing:
+ * deck size, a commander, colour identity, singleton copies and cards this build can play. It is
+ * advisory only. XMage checks the deck when it is played, and a quick check never blocks Play.
+ * Anything it cannot judge (missing metadata, an unknown commander identity, partner or background
+ * pairings) is left to XMage rather than reported, so the check errs towards staying quiet.
  */
-class DeckStudioPreflight(draft: NativeDeckDraft, card: (String) -> CardInfo?) {
-    enum class Kind(val badge: String) {
-        MISSING_COMMANDER("No commander"), OFF_COLOR("Off-color"), DUPLICATE("Duplicate"), UNRESOLVED("Unresolved")
+class DeckStudioPreflight(draft: NativeDeckDraft, card: (String) -> CardInfo?, resolves: ((String) -> Boolean)?) {
+    enum class Issue(val title: String, val badge: String) {
+        MISSING_COMMANDER("Missing commander", "Missing commander"),
+        OFF_IDENTITY("Off-color", "Off-color"),
+        DUPLICATE("Duplicates", "Duplicate"),
+        UNRESOLVED("Unresolved", "Unresolved"),
     }
 
-    /** One header chip; `names` are the card names a tap filters the list to. */
-    data class Chip(val kind: Kind, val names: Set<String>) {
-        val title: String get() = when (kind) {
-            Kind.MISSING_COMMANDER -> "No commander"
-            Kind.OFF_COLOR -> "Off-color · ${CardCountText.label(names.size)}"
-            Kind.DUPLICATE -> "Duplicates · ${CardCountText.label(names.size)}"
-            Kind.UNRESOLVED -> "Unresolved · ${CardCountText.label(names.size)}"
-        }
-    }
+    /** Main deck plus commanders; companions and other boards are outside the 100. */
+    val count: Int
+    val missingCommander: Boolean
+    /** Union of the commanders' identities; null when there is no commander or any commander's identity is unknown. */
+    val commanderIdentity: Set<String>?
+    private val flagged: Map<Issue, Set<UUID>>
 
-    /** Main deck plus commanders, the cards counted toward 100. */
-    val count: Int = DeckStudioDraftPresentation.gameCount(draft)
-    val target: Int = 100
-    /** The commanders' combined identity; null while there is no commander or one is unknown. */
-    val identity: Set<String>?
-    val chips: List<Chip>
-    private val byName: Map<String, List<Kind>>
+    /** The catalogue-backed check: the resolver decides playability when it is loaded, else the catalogue. */
+    constructor(draft: NativeDeckDraft, metadata: NativeDeckMetadataCatalogue?, resolver: OnDeviceDeckResolver?) : this(draft, { name -> metadata?.card(name) },
+        resolver?.let { value -> { name: String -> value.canonicalCardName(name) != null } } ?: metadata?.let { value -> { name: String -> value.card(name) != null } })
 
     init {
-        val playing = draft.rows.filter { DeckStudioDraftPresentation.section(it) in playingSections }
+        val playing = draft.rows.filter { DeckStudioDraftPresentation.section(it) in playingBoards }
         val commanders = playing.filter { DeckStudioDraftPresentation.section(it) == "commanders" }
-        identity = if (commanders.isEmpty()) null else {
+        count = draft.rows.filter { DeckStudioDraftPresentation.section(it) in setOf("deck", "commanders") }.sumOf { it.quantity }
+        missingCommander = commanders.isEmpty()
+        commanderIdentity = if (commanders.isEmpty()) null else {
             val union = HashSet<String>()
             var known = true
-            for (row in commanders) {
-                val colors = card(row.cardName)?.colorIdentity
-                if (colors == null) known = false else union += colors
-            }
+            for (row in commanders) { val colors = card(row.cardName)?.colorIdentity; if (colors == null) { known = false; break }; union += colors }
             if (known) union else null
         }
-        val unresolved = playing.filter { card(it.cardName) == null }.mapTo(LinkedHashSet()) { it.cardName }
-        val offColor = LinkedHashSet<String>()
-        identity?.let { allowed ->
-            for (row in playing) {
-                if (DeckStudioDraftPresentation.section(row) == "commanders") continue
-                val colors = card(row.cardName)?.colorIdentity ?: continue
-                if (!allowed.containsAll(colors)) offColor += row.cardName
-            }
+        val result = LinkedHashMap<Issue, Set<UUID>>()
+        if (resolves != null) result[Issue.UNRESOLVED] = playing.filter { !resolves(it.cardName) }.mapTo(LinkedHashSet()) { it.id }
+        commanderIdentity?.let { identity ->
+            result[Issue.OFF_IDENTITY] = playing.filter { row ->
+                if (DeckStudioDraftPresentation.section(row) == "commanders") return@filter false
+                val colors = card(row.cardName)?.colorIdentity ?: return@filter false
+                !identity.containsAll(colors)
+            }.mapTo(LinkedHashSet()) { it.id }
         }
-        // The 100-card deck: a card in both the main deck and the command zone is a duplicate too.
-        val totals = LinkedHashMap<String, Int>()
-        for (row in playing) if (DeckStudioDraftPresentation.section(row) in setOf("deck", "commanders")) totals.merge(row.cardName, row.quantity, Int::plus)
-        val duplicates = LinkedHashSet<String>()
-        for ((name, total) in totals) {
-            val info = card(name) ?: continue
-            if (total > copyLimit(name, info)) duplicates += name
+        // Copies are counted across main, commanders and companions by canonical name.
+        val groups = LinkedHashMap<String, Triple<CardInfo, Int, List<UUID>>>()
+        for (row in playing) {
+            val info = card(row.cardName) ?: continue
+            val prior = groups[info.name]
+            groups[info.name] = Triple(info, (prior?.second ?: 0) + row.quantity, (prior?.third ?: emptyList()) + row.id)
         }
-        chips = buildList {
-            if (commanders.isEmpty()) add(Chip(Kind.MISSING_COMMANDER, emptySet()))
-            if (offColor.isNotEmpty()) add(Chip(Kind.OFF_COLOR, offColor))
-            if (duplicates.isNotEmpty()) add(Chip(Kind.DUPLICATE, duplicates))
-            if (unresolved.isNotEmpty()) add(Chip(Kind.UNRESOLVED, unresolved))
-        }
-        val badges = LinkedHashMap<String, MutableList<Kind>>()
-        for (chip in chips) for (name in chip.names) badges.getOrPut(name) { ArrayList() } += chip.kind
-        byName = badges
+        result[Issue.DUPLICATE] = groups.values.filter { (info, total) -> copyLimit(info)?.let { total > it } ?: false }.flatMapTo(LinkedHashSet()) { it.third }
+        flagged = result.filterValues { it.isNotEmpty() }
     }
 
-    /** Inline badges for a row; boards outside play never carry any. */
-    fun issues(row: NativeDeckRow): List<Kind> =
-        if (DeckStudioDraftPresentation.section(row) in playingSections) byName[row.cardName] ?: emptyList() else emptyList()
-
-    fun rows(kind: Kind, rows: List<NativeDeckRow>): List<NativeDeckRow> = rows.filter { kind in issues(it) }
-
-    val hasIssues: Boolean get() = chips.isNotEmpty()
+    fun rows(issue: Issue): Set<UUID> = flagged[issue] ?: emptySet()
+    fun issues(row: UUID): List<Issue> = Issue.entries.filter { flagged[it]?.contains(row) == true }
+    val issueCount: Int get() = (if (missingCommander) 1 else 0) + flagged.values.sumOf { it.size }
+    /** Chips with something to show, in a fixed order. */
+    val activeIssues: List<Issue> get() = Issue.entries.filter { if (it == Issue.MISSING_COMMANDER) missingCommander else rows(it).isNotEmpty() }
+    /** Row issues add " · N" with the number of affected rows. */
+    fun chipTitle(issue: Issue): String = if (issue == Issue.MISSING_COMMANDER) issue.title else "${issue.title} · ${rows(issue).size}"
+    /** e.g. "3 cards to go · 2 issues", "1 card over · No issues found". */
+    val summary: String get() = buildList {
+        if (count < targetCount) add("${CardCountText.label(targetCount - count)} to go")
+        if (count > targetCount) add("${CardCountText.label(count - targetCount)} over")
+        add(if (issueCount == 0) "No issues found" else issueCountText(issueCount))
+    }.joinToString(" · ")
 
     companion object {
-        const val label = "Quick check · XMage confirms when you play"
-        val playingSections = setOf("deck", "commanders", "companions")
-        private val anyNumber = Regex("""a deck can have any number of cards named""", RegexOption.IGNORE_CASE)
-        private val upTo = Regex("""a deck can have up to ([a-z]+|[0-9]{1,4}) cards named""", RegexOption.IGNORE_CASE)
-        private val words = listOf("one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
-            "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty")
+        const val targetCount = 100
+        const val caption = "Quick check · XMage confirms when you play"
+        val playingBoards = setOf("deck", "commanders", "companions")
+        private val upTo = Regex("""a deck can have up to ([a-z0-9]+) cards named""")
+        private val numbers = mapOf("one" to 1, "two" to 2, "three" to 3, "four" to 4, "five" to 5, "six" to 6, "seven" to 7, "eight" to 8, "nine" to 9, "ten" to 10)
 
-        /** Copies a Commander deck may hold: basics and "any number" cards are unlimited, "up to seven" is seven. */
-        fun copyLimit(name: String, card: CardInfo?): Int {
-            if (name in NativeDeckDraft.basicLandNames || card?.typeLine?.startsWith("Basic ") == true) return Int.MAX_VALUE
-            val text = card?.oracleText ?: return 1
-            if (anyNumber.containsMatchIn(text)) return Int.MAX_VALUE
+        fun issueCountText(count: Int): String = "$count ${if (count == 1) "issue" else "issues"}"
+
+        /** How many copies a Commander deck may hold; null means any number. */
+        fun copyLimit(card: CardInfo): Int? {
+            if (card.typeLine?.trim()?.lowercase()?.startsWith("basic ") == true) return null
+            val text = (card.oracleText ?: "").lowercase()
+            if ("a deck can have any number of cards named" in text) return null
             upTo.find(text)?.let { match ->
-                val value = match.groupValues[1].lowercase()
-                return value.toIntOrNull() ?: (words.indexOf(value).takeIf { it >= 0 }?.plus(1) ?: 1)
+                val value = match.groupValues[1]
+                val limit = numbers[value] ?: value.toIntOrNull()
+                if (limit != null && limit > 0) return limit
             }
             return 1
         }
-    }
-}
-
-/** Commander-first new decks: legendary creatures and cards whose text says they can be your commander. */
-object DeckStudioCommanderSearch {
-    fun isCandidate(card: CardInfo): Boolean =
-        (card.typeLine?.contains("Legendary", ignoreCase = true) == true && card.types?.contains("CREATURE") == true) ||
-            card.oracleText?.contains("can be your commander", ignoreCase = true) == true
-
-    /** Filters before the cap so a later eligible card is never hidden by ineligible matches. */
-    fun candidates(catalogue: NativeDeckMetadataCatalogue, query: String, limit: Int = 80): List<CardInfo> {
-        if (limit <= 0) return emptyList()
-        val text = query.trim()
-        val matches = catalogue.cards.filter { card ->
-            isCandidate(card) && (text.isEmpty() || card.name.contains(text, ignoreCase = true) || card.oracleText?.contains(text, ignoreCase = true) == true)
-        }
-        return NativeDeckMetadataCatalogue.ranked(matches, text).take(minOf(limit, 2000))
     }
 }

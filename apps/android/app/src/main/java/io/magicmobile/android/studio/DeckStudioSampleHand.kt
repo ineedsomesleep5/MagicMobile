@@ -15,54 +15,60 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.magicmobile.android.game.CardCountText
+import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfWeight
 import kotlin.random.Random
 
 /**
- * DeckStudioSampleHandView.swift: a goldfish opening hand in the Playtest tab. Draw 7 from the main
- * deck (commanders and other boards stay out), London mulligan, draw the next card and count turns.
- * Nothing here plays a game or changes the deck.
+ * DeckStudioSampleHandView.swift: goldfish a sample hand from the main deck. Draw seven, London
+ * mulligan, then draw a card per turn. Commanders stay out of the library. Nothing here plays a game
+ * or changes the deck.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun DeckStudioSampleHandPanel(draft: NativeDeckDraft, metadata: NativeDeckMetadataCatalogue?, preview: (String) -> Unit) {
-    val names = remember(draft) { DeckStudioSampleHand.library(draft) }
+fun DeckStudioSampleHandPanel(draft: NativeDeckDraft, metadata: NativeDeckMetadataCatalogue?, inspect: (String) -> Unit, preview: (String) -> Unit) {
+    val names = remember(draft) { DeckStudioSampleHand.libraryNames(draft) }
     var hand by remember(names) { mutableStateOf<DeckStudioSampleHand?>(null) }
+    fun deal() { hand = DeckStudioSampleHand.of(names).dealt(Random.Default) }
     StudioPanel(spacing = 12.dp) {
-        Text("Sample hand", color = DeckStudioPalette.ink, style = StudioText.title2.weight(SfWeight.semibold))
-        Text("Draw 7 from the main deck. Commanders stay out of the library.", color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            SfImage("hand.raised", DeckStudioPalette.ink, 20.dp)
+            Text("Sample hand", color = DeckStudioPalette.ink, style = StudioText.title2.weight(SfWeight.semibold))
+        }
+        Text("Draw seven from your main deck. Commanders stay in the command zone, and sideboard and maybeboard cards stay out.",
+            color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
         val current = hand
         when {
-            names.isEmpty() -> Text("Add main-deck cards to draw a sample hand.", color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
-            current == null -> StudioButton("Draw 7", { hand = DeckStudioSampleHand.start(names, Random.Default) },
-                Modifier.testTag("deckStudio.sampleHand.draw"), icon = "dice")
+            names.isEmpty() -> Text("Add main-deck cards to draw a sample hand.", color = DeckStudioPalette.ink, style = StudioText.subheadline)
+            current == null -> StudioButton("Draw 7", ::deal, Modifier.testTag("deckStudio.sampleHand.draw7"), icon = "hand.raised")
             else -> {
-                Text("Turn ${current.turn} · ${CardCountText.label(current.hand.size)} in hand · ${CardCountText.label(current.library.size)} in library",
-                    color = DeckStudioPalette.ink, style = StudioText.subheadline.weight(SfWeight.medium))
-                if (current.mulligans > 0) Text("Mulligans: ${current.mulligans}", color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
-                if (current.toBottom > 0) Text("Tap ${CardCountText.label(current.toBottom)} to put on the bottom", color = DeckStudioPalette.accent,
-                    style = StudioText.caption.weight(SfWeight.semibold))
+                val status = if (current.toBottom > 0) "Put ${CardCountText.label(current.toBottom)} on the bottom"
+                else "Turn ${current.turn}" + if (current.mulligans == 0) "" else " · ${current.mulligans} ${if (current.mulligans == 1) "mulligan" else "mulligans"}"
+                Text(status, Modifier.testTag("deckStudio.sampleHand.status"), color = if (current.toBottom > 0) DeckStudioPalette.accent else DeckStudioPalette.ink,
+                    style = StudioText.subheadline.weight(SfWeight.semibold))
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (card in current.hand) {
                         val bottoming = current.toBottom > 0
-                        Box(Modifier.width(92.dp).combinedClickable(remember { MutableInteractionSource() }, null,
-                            onLongClick = { preview(card.name) }, onClick = { if (bottoming) hand = current.putOnBottom(card.id) else preview(card.name) })
-                            .semantics { contentDescription = if (bottoming) "Put ${card.name} on the bottom" else "Preview ${card.name}" }) {
+                        Box(Modifier.width(96.dp).combinedClickable(remember { MutableInteractionSource() }, null, onLongClick = { preview(card.name) },
+                            onClick = { if (bottoming) hand = current.puttingOnBottom(card.id) else inspect(card.name) })
+                            .semantics { contentDescription = card.name + if (bottoming) ". Puts this card on the bottom of your library" else ". Shows the card" }) {
                             DeckStudioCardImage(card.name, metadata?.card(card.name))
                         }
                     }
                 }
+                Text("${CardCountText.label(current.hand.size)} in hand · ${CardCountText.label(current.library.size)} in library",
+                    color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StudioButton("New hand", { hand = DeckStudioSampleHand.start(names, Random.Default) }, primary = false, compactText = true)
-                    StudioButton("Mulligan", { hand = current.mulligan(Random.Default) }, primary = false, enabled = current.canMulligan, compactText = true)
-                    StudioButton("Draw", { hand = current.draw() }, primary = false, enabled = current.canDraw, compactText = true)
-                    StudioButton("Next turn", { hand = current.nextTurn() }, enabled = current.canDraw, compactText = true)
+                    StudioButton("New hand", ::deal, primary = false, compactText = true)
+                    StudioButton("Mulligan", { hand = current.mulliganed(Random.Default) }, primary = false, enabled = current.canMulligan, compactText = true)
+                    StudioButton("Draw", { hand = current.drawn() }, Modifier.testTag("deckStudio.sampleHand.drawCard"), enabled = current.canDraw, compactText = true)
                 }
             }
         }
