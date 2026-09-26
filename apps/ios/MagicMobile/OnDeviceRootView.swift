@@ -36,6 +36,7 @@ struct OnDeviceRootView: View {
     @State private var showUpdates = false
     @State private var showDownloads = false
     @State private var showImport = false
+    @State private var studioFocus: DeckStudioPlaySelection.FixRequest?
     @State private var confirmLeave = false
     @StateObject private var emotes = EmoteCenter()
     @State private var showDiagnostics = false
@@ -104,7 +105,10 @@ struct OnDeviceRootView: View {
             }
         })
     }
-    private var selectedDeck: DeckList? {
+    /// What every game start and match room sends (AI, Game Center host and joiner, Online):
+    /// sideboard, maybeboard and considering cards stay in the saved deck and out of play.
+    private var selectedDeck: DeckList? { selectedSourceDeck.map(DeckStudioPlaySelection.playingDeck) }
+    private var selectedSourceDeck: DeckList? {
         if let precon = PreconCatalog.all.first(where: { "precon:\($0.id)" == selectedDeckID }) {
             return precon.deckList
         }
@@ -181,8 +185,9 @@ struct OnDeviceRootView: View {
         .overlay(alignment: .bottom) { recoveryBanner }
         .overlay { startingRollOverlay }
         .environment(\.nativeTurnControl, turnControl)
-        .fullScreenCover(isPresented: $showImport) {
-            DeckStudioRootView(library: library, selectedDeckID: $selectedDeckID, preparePlay: {
+        .fullScreenCover(isPresented: $showImport, onDismiss: { studioFocus = nil }) {
+            DeckStudioRootView(library: library, selectedDeckID: $selectedDeckID,
+                               isGameLive: { [setup = self.setup] in setup.needsLeave || setup.isBusy }, focus: studioFocus, preparePlay: {
                 showImport = false; showSetup = true
             })
         }
@@ -740,6 +745,10 @@ struct OnDeviceRootView: View {
                     .frame(width: 112, height: 156)
                 Text("Your deck").font(.caption).foregroundStyle(CommanderPresentation.secondary)
                 Text(selectedDeck?.name ?? "Choose a deck").font(.headline).fixedSize(horizontal: false, vertical: true)
+                OnDeviceSetupDeckDetails(deckID: selectedDeckID, deck: selectedDeck, resolver: setup.deckResolver,
+                                         rejection: setup.rejectedStart) { cards in
+                    studioFocus = DeckStudioPlaySelection.FixRequest(deckID: selectedDeckID, cards: cards); showImport = true
+                }.disabled(setup.isBusy)
             }.frame(maxWidth: .infinity).multilineTextAlignment(.center)
             VStack(alignment: .center, spacing: 10) {
                 if playWithFriends {
@@ -919,6 +928,8 @@ private final class OnDeviceSetupModel: ObservableObject {
     @Published private(set) var status = "Preparing local decks"
     @Published var errorMessage: String?
     @Published var feedback: String?
+    /// XMage rejected the player's deck at Start; the setup screen stores and explains it.
+    @Published private(set) var rejectedStart: DeckStudioStartRejection?
     private let session: OnDeviceSession
     private let runtime = OnDeviceRuntimeManager()
     private var resolver: OnDeviceDeckResolver?
@@ -995,6 +1006,7 @@ private final class OnDeviceSetupModel: ObservableObject {
             status = "Game started"
         } catch {
             errorMessage = error.localizedDescription
+            rejectedStart = DeckStudioStartRejection(error)
             if !runtime.isOpen, aiMatchID == nil { aiClient = nil }
             status = needsLeave ? "Game startup interrupted. Refresh or leave before starting again." : "Unable to start local game"
         }
@@ -1184,6 +1196,11 @@ private final class OnDeviceSetupModel: ObservableObject {
             try await store.clear(engine: { try await runtime.clearDiagnostics() })
         } catch { store.errorMessage = "Could not delete the local engine report: \(error.localizedDescription)" }
     }
+}
+
+private extension OnDeviceSetupModel {
+    /// The setup screen reads deck check status with the same resolver games use.
+    var deckResolver: OnDeviceDeckResolver? { resolver }
 }
 
 @MainActor
