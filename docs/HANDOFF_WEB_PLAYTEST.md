@@ -150,9 +150,9 @@ Caleb authorizes.
 | 2 Playtest focus | Done | #41 (draft) | Reviewed. Android and portable Swift tests pass, iOS simulator build OK. 2 pre-existing iOS 27 UI-test failures (library search focus) |
 | 2 Playtest cards | Done | #43 (draft) | Reviewed. Swift 29 + Xcode 10 tests, Android core 69 / app 47 pass |
 | 2b.1 Relay backlog + CI | Done, not deployed | #39 (draft) | Reviewed. 6/6 tests locally and in the new `Table relay` CI. Deploying needs Caleb: `cd services/table-relay && npx wrangler deploy` |
-| 2b.2–4 Guest retry, notices, crash reports | Finishing | #42 (draft) | Retry, notices and crash reports committed; tests and cross-play check remaining |
+| 2b.2–4 Guest retry, notices, crash reports | Done, cross-play check pending | #42 (draft) | Reviewed. iOS swift 79 tests, Android core 60 / app 62 pass. The live Android-host/iPhone-guest run could not complete on the loaded Mac; the integration owner reruns it |
 | 3–6 Web client | Blocked on PR 1 | | |
-| Integration for build 18 / 9 | In progress | `codex/build18-integration` | #39, #40, #41, #42 (partial), #43 and this doc, merged. One conflict resolved (Android preview enum and tests, both sides kept) |
+| Integration for build 18 / 9 | In progress | `codex/build18-integration` | #39–#43 and this doc merged; one conflict resolved (Android preview enum and tests, both kept). Android: core 73 / app 62 tests and 283 contract assertions pass, assembleDebug OK. Next: iOS 27 fixes, full iOS checks, live cross-play |
 | iOS 27 UI-test triage | In progress | `codex/ios27-ui-fixes` | Delegate. Library search focus, hand inspection, attachment and history tests fail on iOS 27 (also on base); plus a full build with Metal |
 | Release: iOS build 18, Android build 9 | Not started | | Needs Caleb's go-ahead |
 
@@ -215,3 +215,14 @@ Caleb authorizes.
   - If that also fails, the options are hosted web solo (`apps/multiplayer-server`, a hosting-cost
     decision for Caleb) or a GraalVM Web Image spike.
   - #44 edits `pnpm-workspace.yaml`, which #40 deletes. Drop that edit if #40 merges first.
+- 2026-09-26 (Claude Code): Multiplayer hardening done in #42.
+  - A guest retries a lost poll or `hello` 3 times (1/2/4 s) and shows "Waiting for <host>…". A
+    relay `gone` still ends the table at once.
+  - Host revision notices (`{"type":"revision"}`) drive guest polls: promptly for 10 s after an
+    action, otherwise on a 15 s heartbeat.
+  - Crash and hang summaries from MetricKit and ApplicationExitInfo are kept locally in the
+    diagnostics export. This also added Android's `OnDeviceDiagnostics.kt`.
+  - Finding: relay tables check only the relay identity, not the app build, so mixed builds
+    (Android build 8 with a newer iPhone) can share a table. The notices are negotiated, so older
+    clients keep polling. Decision: keep it negotiated rather than block mixed builds, so build 8
+    Android players can play with build 18 iPhones.
