@@ -48,6 +48,19 @@ class PreviewFixturesTest {
         assertEquals("Prodigal Pyromancer · ability", BoardFXBannerPlan.title(cast.name, true, source))
     }
 
+    @Test fun fourPlayerSpectatingSeatsTheNextPlayerAndFollowsTheTurn() {
+        val snapshot = GameBoardPreviewFixtures.snapshot(GameBoardDesignPreviewState.FOUR_PLAYER_SPECTATING)
+        assertTrue(snapshot.isSpectating)
+        assertEquals(3, snapshot.remainingOpponents.size)
+        val board = BoardOpponentFocus.snapshot(snapshot, BoardFocusTracker().observe(snapshot, followTurns = true).focusedID)
+        assertEquals("Aurelia, next in turn order, stands in", "ai-1", board.seat?.playerId)
+        assertEquals("the top follows Kozilek's turn", "ai-2", board.opponent?.playerId)
+        assertEquals("human", board.human?.playerId)
+        assertTrue("a stand-in's hand is a count only", BoardOpponentFocus.seatHand(board).isEmpty())
+        assertEquals(2, board.seat!!.zones.visibleHandCount)
+        assertEquals("Watching Aurelia", SpectatorSeatPresentation.title(board))
+    }
+
     @Test fun boardShapesMatchIOS() {
         val normal = GameBoardPreviewFixtures.snapshot(GameBoardDesignPreviewState.NORMAL_BATTLEFIELD)
         assertEquals(8, normal.human!!.zones.hand.size)

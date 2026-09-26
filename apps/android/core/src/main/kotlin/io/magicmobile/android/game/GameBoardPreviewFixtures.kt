@@ -24,8 +24,8 @@ enum class GameBoardDesignPreviewState(val rawValue: String) {
     EMPTY_LIBRARY_CHOICE("empty-library-choice"), MIXED_CARD_CHOICE("mixed-card-choice"), HAND_DRAG("hand-drag"),
     HAND_SCRUBBER("hand-scrubber"), ZONE_INSPECTION("zone-inspection"), ABILITY_CHOICE("ability-choice"), MODE_CHOICE("mode-choice"),
     PHASE_ANNOUNCEMENT("phase-announcement"), LIFE_CHANGE("life-change"), LARGE_TEXT("large-text"), STACK_TRAY("stack-tray"),
-    VICTORY("victory"), SPECTATING("spectating"), OPENING_HAND("opening-hand"), TOKEN_COPY_INSPECTION("token-copy-inspection"),
-    ABILITY_SHOWCASE("ability-showcase");
+    VICTORY("victory"), SPECTATING("spectating"), FOUR_PLAYER_SPECTATING("four-player-spectating"), OPENING_HAND("opening-hand"),
+    TOKEN_COPY_INSPECTION("token-copy-inspection"), ABILITY_SHOWCASE("ability-showcase");
 
     val title: String get() = capitalizedWords(rawValue.replace("-", " "))
 
@@ -195,7 +195,8 @@ object GameBoardPreviewFixtures {
             GameBoardDesignPreviewState.MANA_PAYMENT_PROMPT, GameBoardDesignPreviewState.COMBAT_ARROWS, GameBoardDesignPreviewState.LARGE_TEXT)
         val resourceLayoutMode = if (state == GameBoardDesignPreviewState.CROWDED_BATTLEFIELD) environment["MAGICMOBILE_BOARD_RESOURCE_LAYOUT_UI_TEST"] else null
         val players = players(root)
-        if (state in setOf(GameBoardDesignPreviewState.FOUR_PLAYER_FOCUS, GameBoardDesignPreviewState.PLAYER_TARGET_PROMPT, GameBoardDesignPreviewState.SPECTATING)) {
+        val watching = state == GameBoardDesignPreviewState.SPECTATING || state == GameBoardDesignPreviewState.FOUR_PLAYER_SPECTATING
+        if (state in setOf(GameBoardDesignPreviewState.FOUR_PLAYER_FOCUS, GameBoardDesignPreviewState.PLAYER_TARGET_PROMPT) || watching) {
             for (number in 2..3) {
                 @Suppress("UNCHECKED_CAST")
                 val opponent = deepCopy(players[1]) as MutableMap<String, Any?>
@@ -218,6 +219,17 @@ object GameBoardPreviewFixtures {
             players[0]["hasLeft"] = true
             players[0]["life"] = 0
             players[2]["hasLeft"] = true
+        }
+        if (state == GameBoardDesignPreviewState.FOUR_PLAYER_SPECTATING) {
+            // You conceded in a pod of four: Aurelia, next in turn order, takes your seat while
+            // the top follows Kozilek's turn.
+            players[0]["hasLeft"] = true
+            players[0]["life"] = 0
+            root["turn"] = 6
+            root["activePlayerId"] = "ai-2"
+            root["priorityPlayerId"] = "ai-2"
+            root.remove("waitingOnPlayerId")
+            root.remove("promptText")
         }
         for ((index, player) in players.withIndex()) {
             val seat = player["playerId"] as String
@@ -316,15 +328,16 @@ object GameBoardPreviewFixtures {
                 val ring = battlefield.indexOfFirst { it["instanceId"] == "human-sol-ring" }
                 if (ring >= 0) battlefield.add(0, battlefield.removeAt(ring))
             }
-            if (state == GameBoardDesignPreviewState.SPECTATING && player["hasLeft"] == true) {
+            if (watching && player["hasLeft"] == true) {
                 // A player who left takes their cards out of the game (CR 800.4a).
                 zones["battlefield"] = mutableListOf<Any?>(); zones["hand"] = mutableListOf<Any?>()
             }
         }
         var actions = list(root["legalActions"])
-        if (state == GameBoardDesignPreviewState.SPECTATING) actions = mutableListOf()
+        if (watching) actions = mutableListOf()
         if (state !in setOf(GameBoardDesignPreviewState.AI_THINKING, GameBoardDesignPreviewState.BRIDGE_UNAVAILABLE,
-                GameBoardDesignPreviewState.UNSUPPORTED_PROMPT_FALLBACK, GameBoardDesignPreviewState.SPECTATING)) {
+                GameBoardDesignPreviewState.UNSUPPORTED_PROMPT_FALLBACK, GameBoardDesignPreviewState.SPECTATING,
+                GameBoardDesignPreviewState.FOUR_PLAYER_SPECTATING)) {
             actions += mutableMapOf("id" to "make-mana-sol-ring", "type" to "make_mana", "playerId" to "human", "label" to "Tap Sol Ring",
                 "sourceInstanceId" to "human-sol-ring", "cardName" to "Sol Ring", "sourceZone" to "battlefield", "producedMana" to mutableListOf("C", "C"))
         }

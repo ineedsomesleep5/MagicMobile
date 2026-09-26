@@ -1592,6 +1592,7 @@ struct AppearanceSettingsView: View {
                     if nativeTurnControl != nil { NativeArtworkPreferenceView() }
                     BoardAppearancePicker()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
+                    FollowTurnsToggle()
                     BoardEffectsPicker()
                 }.padding(20).frame(maxWidth: 600).frame(maxWidth: .infinity)
             }
@@ -1771,6 +1772,29 @@ struct PortraitModeToggle: View {
     }
 }
 
+/// The top of the board switches to whoever's turn starts (BoardFocusTracker). On by default.
+struct FollowTurnsToggle: View {
+    @AppStorage(BoardFocusTracker.followTurnsKey) private var isOn = true
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Follow Turns")
+                    .font(.callout.weight(.black))
+                    .foregroundStyle(.white)
+                Text("Show whose turn it is at the top. A tap on an opponent holds until the next turn.")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .lineLimit(2)
+            }
+        }
+        .toggleStyle(.switch)
+        .tint(GameBoardTheme.current.emeraldPriority)
+        .magicPanel(.iron, prominence: .quiet, cornerRadius: 9, padding: 10)
+        .accessibilityIdentifier("settings.followTurns")
+    }
+}
+
 struct CardCachePanel: View {
     let metadata: CardCacheMetadata?
     let isSyncing: Bool
@@ -1894,6 +1918,7 @@ struct SettingsView: View {
                     MenuAppearancePicker()
                     BoardAppearancePicker()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
+                    FollowTurnsToggle()
                     BoardEffectsPicker()
                     Text("When enabled, gameplay and menus automatically adapt between portrait and landscape on iPhone.")
                         .font(.caption.weight(.medium))
@@ -2718,7 +2743,9 @@ struct NativeGameView: View {
     @State private var dragActionChoice: DragActionChoice?
     @State private var combatSelection = CombatSelectionState()
     @State private var combatPreviewArrows: [CombatArrow] = []
-    @State private var focusedOpponentId: String?
+    /// Which opponent the top of the board shows; it follows the turn (BoardFocusTracker).
+    @State private var focusTracker = BoardFocusTracker()
+    @AppStorage(BoardFocusTracker.followTurnsKey) private var followTurns = true
     @State private var lastTurnCueKey: String?
     @State private var showsTurnCue = false
     /// Game, turn and active player of the last turn-start banner.
@@ -2884,8 +2911,10 @@ struct NativeGameView: View {
 
     @ViewBuilder
     var body: some View {
-        if let snapshot = snapshot.map({ BoardOpponentFocus.snapshot($0, selecting: focusedOpponentId) }),
-           let human = snapshot.human, let opponent = snapshot.opponent {
+        // `human` is the bottom seat: the viewer, or their stand-in while they watch. Actions,
+        // stats, haptics and "You" stay on the viewer (snapshot.human / viewerID).
+        if let snapshot = snapshot.map({ BoardOpponentFocus.snapshot($0, selecting: focusTracker.focusedID) }),
+           let human = snapshot.seat, let opponent = snapshot.opponent {
             let humanName = snapshot.playerLabel(human.playerId)
             let opponentName = snapshot.playerLabel(opponent.playerId)
             let sideCombatHighlights = CombatHighlightSet(
@@ -2932,7 +2961,7 @@ struct NativeGameView: View {
                         HStack(spacing: 4) {
                             PlayerZoneMenu(player: opponent, viewZone: localViewZone)
                             BoardPlayerEffects(player: opponent, attachments: BattlefieldAttachments.enchanting(playerID: opponent.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: localViewZone,
-                                opponents: BoardOpponentFocus.opponents(in: snapshot), selectOpponent: { focusedOpponentId = $0 })
+                                opponents: BoardOpponentFocus.opponents(in: snapshot), selectOpponent: { focusTracker.select($0) })
                         }
 
                         Spacer()
@@ -2950,7 +2979,7 @@ struct NativeGameView: View {
                                     }
                                 })
                             LandscapePlayerSummary(name: humanName, player: human, active: snapshot.activePlayerId == human.playerId,
-                                                   opponentId: opponent.playerId, chatSnapshot: snapshot)
+                                                   opponentId: opponent.playerId, chatSnapshot: snapshot.isViewer(human.playerId) ? snapshot : nil)
                             HStack(spacing: 4) {
                                 PlayerZoneMenu(player: human, viewZone: localViewZone, snapshot: snapshot, pendingActionID: pendingActionId)
                                 BoardPlayerEffects(player: human, attachments: BattlefieldAttachments.enchanting(playerID: human.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: localViewZone)
@@ -3061,7 +3090,7 @@ struct NativeGameView: View {
                             }
 
                             PortraitHandRow(
-                                cards: human.zones.hand,
+                                cards: BoardOpponentFocus.seatHand(in: snapshot),
                                 legalActions: snapshot.legalActions ?? [],
                                 selectedCard: $selectedCard,
                                 inspectedCard: $inspectedCard,
@@ -3076,7 +3105,8 @@ struct NativeGameView: View {
                                 onActionChoice: { actions, message in
                                     dragActionChoice = DragActionChoice(message: message, actions: actions)
                                 },
-                                runAction: runAction
+                                runAction: runAction,
+                                hiddenCount: snapshot.isViewer(human.playerId) ? nil : human.zones.visibleHandCount
                             )
                                 .frame(width: metrics.handRect.width, height: metrics.handRect.height)
                                 .position(x: metrics.handRect.midX, y: metrics.handRect.midY)
@@ -3582,12 +3612,15 @@ struct NativeGameView: View {
                 isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil
                 isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snapshot) != nil
             }
+            // The tracker starts over by itself when the game changes.
+            .onChange(of: BoardFocusTracker.observationKey(snapshot, followTurns: followTurns), initial: true) { _, _ in
+                focusTracker.observe(snapshot, followTurns: followTurns)
+            }
             .onChange(of: snapshot.id) { _, _ in
                 cardChoiceCompletionTask?.cancel()
                 cardChoiceCompletionTask = nil
                 committedCardChoice = nil
                 reviewCardChoiceAfterPending = false
-                focusedOpponentId = nil
                 lastTurnCueKey = nil
                 lastTurnBannerKey = nil
                 inspectingZoneTitle = nil
@@ -3861,7 +3894,7 @@ struct NativeGameView: View {
                     },
                     openLog: { isLogOpen = true },
                     viewZone: { localViewZone(title: $0, cards: $1) },
-                    selectOpponent: { focusedOpponentId = $0 }
+                    selectOpponent: { focusTracker.select($0) }
                 )
                 .frame(width: metrics.topHUDRect.width, height: metrics.topHUDRect.height)
                 .position(x: metrics.topHUDRect.midX, y: metrics.topHUDRect.midY)
@@ -3921,7 +3954,7 @@ struct NativeGameView: View {
                     .position(x: metrics.playerLandsRect.midX, y: metrics.playerLandsRect.midY)
 
                 PortraitHandRow(
-                    cards: human.zones.hand,
+                    cards: BoardOpponentFocus.seatHand(in: snapshot),
                     legalActions: actions,
                     selectedCard: $selectedCard,
                     inspectedCard: $inspectedCard,
@@ -3936,7 +3969,8 @@ struct NativeGameView: View {
                     onActionChoice: { choiceActions, message in
                         dragActionChoice = DragActionChoice(message: message, actions: choiceActions)
                     },
-                    runAction: runAction
+                    runAction: runAction,
+                    hiddenCount: snapshot.isViewer(human.playerId) ? nil : human.zones.visibleHandCount
                 )
                 .frame(width: metrics.handRect.width, height: metrics.handRect.height)
                 .position(x: metrics.handRect.midX, y: metrics.handRect.midY)
@@ -4754,10 +4788,13 @@ struct SpectatorBar: View {
                 .overlay(Circle().stroke(MagicPalette.antiqueGold.opacity(0.45), lineWidth: 1))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Watching")
+                // Whose seat the bottom of the board shows while you watch.
+                Text(SpectatorSeatPresentation.title(snapshot))
                     .font(.system(size: 16, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
-                Text(detail)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Text(SpectatorSeatPresentation.detail(snapshot))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(MagicPalette.parchment.opacity(0.78))
                     .lineLimit(1)
@@ -4776,12 +4813,6 @@ struct SpectatorBar: View {
         .shadow(color: .black.opacity(0.45), radius: 12, y: 5)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("board.spectator")
-    }
-
-    private var detail: String {
-        let count = snapshot.remainingOpponents.count
-        let players = count == 1 ? String(localized: "1 player still in") : String(localized: "\(count) players still in")
-        return String(localized: "You’re out · \(players) · Turn \(snapshot.turn)")
     }
 }
 
@@ -9594,7 +9625,8 @@ struct PortraitCombatArrowOverlay: View {
     private func playerAnchor(_ id: String, kind: String?) -> CGPoint? {
         guard kind == nil || kind?.lowercased() == "player" else { return nil }
         let rect: CGRect
-        if CombatPlayerIdentity.ids(for: snapshot.viewerID, in: snapshot).contains(id) { rect = metrics.bottomControlsRect }
+        // The bottom seat: the viewer, or their stand-in while they watch.
+        if CombatPlayerIdentity.ids(for: snapshot.seatID, in: snapshot).contains(id) { rect = metrics.bottomControlsRect }
         else if let focusedOpponentID, CombatPlayerIdentity.ids(for: focusedOpponentID, in: snapshot).contains(id) { rect = metrics.topHUDRect }
         else { return nil }
         return CGPoint(x: rect.midX, y: rect.midY)
@@ -9763,7 +9795,7 @@ struct PortraitOpponentStatusBar: View {
                     } else if BoardResponseCue.make(snapshot) == nil, snapshot.isSpectating {
                         Text("You’re watching")
                     } else {
-                        Text(BoardResponseCue.make(snapshot)?.title ?? (snapshot.isViewer(snapshot.priorityPlayerId) ? "Your priority" : "Waiting on \(snapshot.playerLabel(snapshot.priorityPlayerId))"))
+                        Text(BoardResponseCue.make(snapshot)?.title ?? snapshot.priorityStatusText)
                             .foregroundStyle(BoardResponseCue.make(snapshot) == nil ? MagicPalette.parchment : MagicPalette.antiqueGold)
                     }
                 }
@@ -10237,6 +10269,8 @@ struct PortraitHandRow: View {
     let onDropFeedback: (String) -> Void
     let onActionChoice: ([LegalAction], String) -> Void
     let runAction: (LegalAction) -> Void
+    /// A spectator's stand-in: their hand stays hidden and only its size shows.
+    var hiddenCount: Int? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var draggingCardId: String?
     @State private var dragOffset: CGSize = .zero
@@ -10380,7 +10414,7 @@ struct PortraitHandRow: View {
                     Button {
                         withAnimation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.2)) { handExpanded.toggle() }
                     } label: {
-                        Label("Hand · \(cards.count)", systemImage: handExpanded ? "chevron.down" : "chevron.up")
+                        Label("Hand · \(hiddenCount ?? cards.count)", systemImage: handExpanded ? "chevron.down" : "chevron.up")
                             .font(.caption2.bold()).padding(.horizontal, 12)
                             .foregroundStyle(MagicPalette.parchment)
                             .frame(minHeight: 44).background(.black.opacity(0.78), in: Capsule())
@@ -12456,6 +12490,7 @@ struct GameManagementMenu: View {
             VStack(alignment: .leading, spacing: 12) {
             BoardAppearancePicker()
             PortraitModeToggle(isOn: $portraitModeEnabled)
+            FollowTurnsToggle()
             BoardEffectsPicker()
 
             if snapshot.isSpectating {

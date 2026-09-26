@@ -76,6 +76,7 @@ import io.magicmobile.android.game.BoardFXEntrance
 import io.magicmobile.android.game.BoardFXEvent
 import io.magicmobile.android.game.BoardFXLevel
 import io.magicmobile.android.game.BoardFXRevisionKey
+import io.magicmobile.android.game.BoardFocusTracker
 import io.magicmobile.android.game.BoardOpponentFocus
 import io.magicmobile.android.game.BoardPhaseAnnouncement
 import io.magicmobile.android.game.BoardPoint
@@ -184,7 +185,9 @@ fun NativeGameView(
     var dragActionChoice by remember { mutableStateOf<DragActionChoice?>(null) }
     var combatSelection by remember { mutableStateOf(CombatSelectionState()) }
     var combatPreviewArrows by remember { mutableStateOf(listOf<CombatArrow>()) }
-    var focusedOpponentId by remember { mutableStateOf<String?>(null) }
+    /** Which opponent the top of the board shows; it follows the turn (BoardFocusTracker). */
+    var focusTracker by remember { mutableStateOf(BoardFocusTracker()) }
+    val followTurns by AppPreferences.boolean(BoardFocusTracker.followTurnsKey, true)
     var lastTurnCueKey by remember { mutableStateOf<String?>(null) }
     var showsTurnCue by remember { mutableStateOf(false) }
     var lastTurnBannerKey by remember { mutableStateOf<String?>(null) }
@@ -212,8 +215,10 @@ fun NativeGameView(
     cardBounds.density = density
 
     if (snapshot == null) { LoadingGameView(if (loadingError != null) "failed" else null, loadingMessage, loadingError); return }
-    val board = BoardOpponentFocus.snapshot(snapshot, focusedOpponentId)
-    val human = board.human
+    val board = BoardOpponentFocus.snapshot(snapshot, focusTracker.focusedID)
+    // `human` is the bottom seat: the viewer, or their stand-in while they watch. Actions, stats,
+    // haptics and "You" stay on the viewer (board.human / viewerID).
+    val human = board.seat
     val opponent = board.opponent
     if (human == null || opponent == null) { LoadingGameView(null, loadingMessage, loadingError); return }
     val currentSnapshot by rememberUpdatedState(board)
@@ -439,6 +444,8 @@ fun NativeGameView(
 
     // --- Observation (boardObservation) ---
     LaunchedEffect(BoardFXRevisionKey(board)) { ingestBoardFX(board); gameStats.record(board) }
+    // The tracker starts over by itself when the game changes.
+    LaunchedEffect(BoardFocusTracker.observationKey(board, followTurns)) { focusTracker = focusTracker.observe(board, followTurns) }
     LaunchedEffect(Unit) {
         updateAIWaitStart(board)
         isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(board) != null
@@ -448,7 +455,7 @@ fun NativeGameView(
     }
     OnChange(board.id) { _, _ ->
         cardChoiceCompletionJob?.cancel(); cardChoiceCompletionJob = null
-        committedCardChoice = null; reviewCardChoiceAfterPending = false; focusedOpponentId = null
+        committedCardChoice = null; reviewCardChoiceAfterPending = false
         lastTurnCueKey = null; lastTurnBannerKey = null
         inspectingZoneTitle = null; inspectingZoneCards = emptyList(); inspectingZoneReference = null
         selection.selectedCard = null; selection.inspectedCard = null
@@ -587,7 +594,7 @@ fun NativeGameView(
                             isPromptDetailOpen, dragActionChoice, { dragActionChoice = it }, aiWaitBeganAt, didAutoRefreshAIWaitKey == aiWaitKey,
                             didAutoReconnectAIWaitKey == aiWaitKey, didAutoDiagnoseAIWaitKey == aiWaitKey, boardFX, boardFXClock, { boardFX.prune(System.currentTimeMillis()); fxVersion += 1 },
                             onInteractionFeedback, runAction, runCommand, refreshGame, reconnectGame, ::submitTarget, ::handleCombatCardTap, ::submitAttackers,
-                            ::submitBlockers, ::finishAttackers, ::finishBlockers, { combatSelection = it }, { focusedOpponentId = it },
+                            ::submitBlockers, ::finishAttackers, ::finishBlockers, { combatSelection = it }, { focusTracker = focusTracker.select(it) },
                             { isLogOpen = true }, { isGameMenuOpen = true }, ::openPromptDetails, ::localViewZone, { isPromptDetailOpen = true },
                             { isStackSheetOpen = true })
                     } else PortraitGameContent(board, human, opponent, size, selection, pendingActionId, pendingCardInstanceId, liveUpdateStatus,
@@ -596,7 +603,7 @@ fun NativeGameView(
                         isPromptDetailOpen, dragActionChoice, { dragActionChoice = it }, aiWaitBeganAt, didAutoRefreshAIWaitKey == aiWaitKey,
                         didAutoReconnectAIWaitKey == aiWaitKey, didAutoDiagnoseAIWaitKey == aiWaitKey, boardFX, boardFXClock, { boardFX.prune(System.currentTimeMillis()); fxVersion += 1 },
                         onInteractionFeedback, runAction, runCommand, refreshGame, reconnectGame, ::submitTarget, ::handleCombatCardTap, ::submitAttackers,
-                        ::submitBlockers, ::finishAttackers, ::finishBlockers, { combatSelection = it }, { focusedOpponentId = it },
+                        ::submitBlockers, ::finishAttackers, ::finishBlockers, { combatSelection = it }, { focusTracker = focusTracker.select(it) },
                         { isLogOpen = true }, { isGameMenuOpen = true }, ::openPromptDetails, ::localViewZone, { isPromptDetailOpen = true })
                 }
                 if (board.source == "design-preview") {

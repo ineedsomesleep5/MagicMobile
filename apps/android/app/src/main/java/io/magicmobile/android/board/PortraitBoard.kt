@@ -27,6 +27,7 @@ import androidx.compose.ui.zIndex
 import io.magicmobile.android.game.BattlefieldAttachments
 import io.magicmobile.android.game.BoardDecisionPresentation
 import io.magicmobile.android.game.BoardFXDirector
+import io.magicmobile.android.game.BoardOpponentFocus
 import io.magicmobile.android.game.BoardPoint
 import io.magicmobile.android.game.BoardSize
 import io.magicmobile.android.game.BoardZoneReference
@@ -121,10 +122,10 @@ fun PortraitGameContent(
             metrics.landCardWidth, metrics.landCardHeight, metrics.playerLandsRect.width, runAction, submitTarget, handleCombatCardTap,
             Modifier.place(metrics.playerLandsRect), allowsManaUndo = true, manaPaymentActive = snapshot.manaPayment?.active == true)
 
-        PortraitHandRow(human.zones.hand, actions, selection, pendingCardInstanceId, setInteractionMode, metrics.playerDropZone, setOverPlayerDropZone,
+        PortraitHandRow(BoardOpponentFocus.seatHand(snapshot), actions, selection, pendingCardInstanceId, setInteractionMode, metrics.playerDropZone, setOverPlayerDropZone,
             metrics.handCardWidth, metrics.handCardHeight, metrics.handRect.width, onInteractionFeedback,
             { choiceActions, message -> setDragActionChoice(DragActionChoice(message, choiceActions)) }, runAction,
-            Modifier.place(metrics.handRect).zIndex(4f))
+            Modifier.place(metrics.handRect).zIndex(4f), hiddenCount = if (snapshot.isViewer(human.playerId)) null else human.zones.visibleHandCount)
 
         if (isOverPlayerDropZone) {
             Box(Modifier.place(metrics.playerDropZone).background(MagicPalette.antiqueGold.copy(alpha = 0.13f), RoundedCornerShape(14.dp))

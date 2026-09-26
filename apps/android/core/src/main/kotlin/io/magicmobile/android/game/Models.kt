@@ -59,19 +59,35 @@ data class GameSnapshot(
     val endReason: String? = null,
     val viewerPlayerId: String? = null,
     val selectedOpponentId: String? = null,
+    /** Presentation only: who the bottom seat shows while the viewer watches after leaving the game (BoardOpponentFocus). Null is the viewer's own seat. */
+    val seatPlayerId: String? = null,
 ) {
     val viewerID: String get() = viewerPlayerId ?: "human"
+    /** The player the bottom of the board shows: the viewer, or their stand-in while they watch. */
+    val seatID: String get() = seatPlayerId ?: viewerID
     fun isViewer(playerID: String?): Boolean = playerID == viewerID
     fun playerLabel(playerID: String?): String {
         if (playerID == null) return "Waiting"
         if (isViewer(playerID)) return "You"
         return players.firstOrNull { it.playerId == playerID }?.displayName ?: playerID
     }
+    /**
+     * The top bar's priority line. Nobody holds priority before the first turn (the
+     * starting-player choice and opening hands), so it never reads "Waiting on Waiting".
+     */
+    val priorityStatusText: String get() {
+        priorityPlayerId?.let { return if (isViewer(it)) "Your priority" else "Waiting on ${playerLabel(it)}" }
+        waitingOnPlayerId?.let { if (!isViewer(it)) return "Waiting on ${playerLabel(it)}" }
+        return if (turn <= 1) "Starting the game" else "Waiting on the game"
+    }
     val human: PlayerGameState? get() = players.firstOrNull { it.playerId == viewerID }
+    /** The bottom seat's player. Actions, stats and "You" labels stay on [human]. */
+    val seat: PlayerGameState? get() = players.firstOrNull { it.playerId == seatID }
     val opponent: PlayerGameState? get() {
         val selected = selectedOpponentId
-        if (selected != null && selected != viewerID) players.firstOrNull { it.playerId == selected }?.let { return it }
-        return players.firstOrNull { it.playerId != viewerID }
+        if (selected != null && selected != viewerID && selected != seatID) players.firstOrNull { it.playerId == selected }?.let { return it }
+        val others = players.filter { it.playerId != viewerID && it.playerId != seatID }
+        return others.firstOrNull { !it.isOut } ?: others.firstOrNull()
     }
     val isCompleted: Boolean get() = gameStatus == GameStatus.COMPLETED
     val stackTopFirst: List<XmageStackObject> get() {

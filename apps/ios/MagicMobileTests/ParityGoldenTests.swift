@@ -74,6 +74,67 @@ final class ParityGoldenTests: XCTestCase {
         try check(["log": logs, "rules": rules, "prompts": prompts], name: "text-cases.json")
     }
 
+    /// Shared behavior cases: both apps must meet every expectation in the file (no goldens).
+    func testOpponentFocusCasesOnBothPlatforms() throws { try runSeatCases("focus-cases.json") }
+
+    func testSpectatorSeatCasesOnBothPlatforms() throws { try runSeatCases("spectator-cases.json") }
+
+    func testPriorityStatusCasesOnBothPlatforms() throws {
+        let root = try caseFile("focus-cases.json")
+        let base = try XCTUnwrap(root["base"] as? [String: Any])
+        let cases = try XCTUnwrap(root["status"] as? [[String: Any]])
+        XCTAssertFalse(cases.isEmpty)
+        for item in cases {
+            var json = base
+            json["turn"] = item["turn"]
+            json["priorityPlayerId"] = item["priority"]
+            json["waitingOnPlayerId"] = item["waitingOn"]
+            let snapshot = try JSONDecoder().decode(GameSnapshot.self, from: JSONSerialization.data(withJSONObject: json))
+            XCTAssertEqual(snapshot.priorityStatusText, item["text"] as? String, "status · \(item["name"] ?? "")")
+        }
+    }
+
+    private func caseFile(_ name: String) throws -> [String: Any] {
+        let data = try Data(contentsOf: parityDirectory.appendingPathComponent(name))
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    /// Runs focus-cases.json or spectator-cases.json the way NativeGameView applies them:
+    /// every poll feeds BoardFocusTracker, then BoardOpponentFocus.snapshot picks the seats.
+    private func runSeatCases(_ name: String) throws {
+        let root = try caseFile(name)
+        let base = try XCTUnwrap(root["base"] as? [String: Any])
+        let cases = try XCTUnwrap(root["cases"] as? [[String: Any]])
+        XCTAssertFalse(cases.isEmpty)
+        for item in cases {
+            var state: [String: Any] = ["followTurns": item["followTurns"] as? Bool ?? true]
+            var tracker = BoardFocusTracker()
+            for (index, step) in (item["steps"] as? [[String: Any]] ?? []).enumerated() {
+                let at = "\(name) · \(item["name"] ?? "") · step \(index + 1)"
+                for key in SeatCase.stateKeys where step.keys.contains(key) { state[key] = step[key] }
+                let snapshot = try JSONDecoder().decode(GameSnapshot.self,
+                                                        from: JSONSerialization.data(withJSONObject: SeatCase.snapshot(base, state)))
+                if let tap = step["tap"] as? String { tracker.select(tap) }
+                tracker.observe(snapshot, followTurns: state["followTurns"] as? Bool ?? true)
+                let board = BoardOpponentFocus.snapshot(snapshot, selecting: tracker.focusedID)
+                if step.keys.contains("top") { XCTAssertEqual(board.opponent?.playerId, step["top"] as? String, at) }
+                if let ids = step["topChoices"] as? [String] { XCTAssertEqual(BoardOpponentFocus.opponents(in: board).map(\.playerId), ids, at) }
+                if let id = step["seat"] as? String { XCTAssertEqual(board.seat?.playerId, id, at) }
+                if let ids = step["seatHand"] as? [String] { XCTAssertEqual(BoardOpponentFocus.seatHand(in: board).map(\.instanceId), ids, at) }
+                if let count = step["seatHandCount"] as? Int { XCTAssertEqual(board.seat?.zones.visibleHandCount, count, at) }
+                if let id = step["viewer"] as? String {
+                    XCTAssertEqual(board.viewerID, id, at)
+                    XCTAssertEqual(board.human?.playerId, id, at)
+                }
+                if let label = step["viewerLabel"] as? String { XCTAssertEqual(board.playerLabel(board.viewerID), label, at) }
+                if let label = step["seatLabel"] as? String { XCTAssertEqual(board.playerLabel(board.seatID), label, at) }
+                if let spectating = step["spectating"] as? Bool { XCTAssertEqual(board.isSpectating, spectating, at) }
+                if let title = step["title"] as? String { XCTAssertEqual(SpectatorSeatPresentation.title(board), title, at) }
+                if let detail = step["detail"] as? String { XCTAssertEqual(SpectatorSeatPresentation.detail(board), detail, at) }
+            }
+        }
+    }
+
     private func check(_ summary: [String: Any], name: String) throws {
         let data = try JSONSerialization.data(withJSONObject: summary, options: [.sortedKeys, .prettyPrinted, .withoutEscapingSlashes])
         let directory = parityDirectory.appendingPathComponent("golden")
@@ -86,6 +147,32 @@ final class ParityGoldenTests: XCTestCase {
         let golden = try Data(contentsOf: url)
         XCTAssertEqual(String(decoding: data, as: UTF8.self), String(decoding: golden, as: UTF8.self),
                        "\(name) changed: rerun with MAGICMOBILE_WRITE_PARITY_GOLDENS=1 and port the change to Android")
+    }
+}
+
+/// Builds a case step's snapshot from the file's base. SeatCase in ParityGoldenTest.kt is its twin.
+enum SeatCase {
+    static let stateKeys = ["turn", "step", "active", "prompt", "out", "game", "viewer", "completed", "followTurns"]
+
+    static func snapshot(_ base: [String: Any], _ state: [String: Any]) -> [String: Any] {
+        var json = base
+        if let game = state["game"] as? String { json["id"] = game }
+        if let turn = state["turn"] as? Int { json["turn"] = turn }
+        if let step = state["step"] as? String { json["step"] = step }
+        if let viewer = state["viewer"] as? String { json["viewerPlayerId"] = viewer }
+        json["activePlayerId"] = state["active"] as? String
+        if state["completed"] as? Bool == true { json["gameStatus"] = "completed" }
+        if let owner = state["prompt"] as? String {
+            json["promptEnvelopeV2"] = ["id": "case-prompt", "method": "GAME_SELECT", "messageId": 1, "playerId": owner,
+                                        "responseKind": "priority", "message": "Respond"] as [String: Any]
+        }
+        let out = Set(state["out"] as? [String] ?? [])
+        json["players"] = (base["players"] as? [[String: Any]] ?? []).map { player -> [String: Any] in
+            var player = player
+            player["hasLeft"] = out.contains(player["playerId"] as? String ?? "")
+            return player
+        }
+        return json
     }
 }
 
