@@ -74,3 +74,8 @@ iOS change has one obvious Android counterpart. Update the table and the log bef
   logic and tests; the landscape board and the Downloads sheet ported. Build 7 decks keep their files;
   favourites, tags and notes migrate once to Deck Studio's stores. Remaining differences: font glyph
   shapes (licensed stand-ins), a few borderline text wraps, and no Game Center (relay tables instead).
+- 2026-09-26 (Claude): Removed the unreachable build 7 UI: `MagicApp`, `AppModel`, `GameScreen`, the
+  dedicated Online client and screen with its `onlineServerUrl` switch, and the editor dialogs, stores and
+  helpers only they used. Kept: `DeckStore` (the Deck Studio library and build 7 migration), `CardArtwork`,
+  the artwork download engine and service, and `NativeBridge`. Build 7 draft, receipt and playtest files
+  stay on the device unread, as in build 8.
