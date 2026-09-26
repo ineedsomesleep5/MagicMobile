@@ -24,7 +24,7 @@
     {"name": "the viewer out: the next living player takes the bottom seat, hand as a count", "steps": [
       {"turn": 6, "active": "p3", "out": ["p1"], "seat": "p2", "viewer": "p1", "spectating": true,
        "topChoices": ["p3", "p4"], "top": "p3", "seatHand": [], "seatHandCount": 6,
-       "viewerLabel": "You", "seatLabel": "Birch", "title": "Watching Birch", "detail": "38 life · Hand 6 · 3 players still in · Turn 6"}
+       "viewerLabel": "You", "seatLabel": "Birch", "title": "Watching Birch", "detail": "38 life · 3 players still in · Turn 6"}
     ]},
     {"name": "the top follows turns among the rest and holds on the stand-in's turn", "steps": [
       {"turn": 6, "active": "p3", "out": ["p1"], "seat": "p2", "top": "p3"},
@@ -36,14 +36,14 @@
     {"name": "the stand-in knocked out: the seat moves to the next living player", "steps": [
       {"turn": 6, "active": "p3", "out": ["p1"], "seat": "p2", "top": "p3"},
       {"out": ["p1", "p2"], "seat": "p3", "topChoices": ["p2", "p4"], "top": "p4", "seatHand": [], "seatHandCount": 4,
-       "seatLabel": "Cedar", "viewerLabel": "You", "title": "Watching Cedar", "detail": "31 life · Hand 4 · 2 players still in · Turn 6"},
+       "seatLabel": "Cedar", "viewerLabel": "You", "title": "Watching Cedar", "detail": "31 life · 2 players still in · Turn 6"},
       {"turn": 7, "active": "p4", "top": "p4"},
       {"turn": 8, "active": "p3", "top": "p4"}
     ]},
     {"name": "the seat wraps around the turn order and never shows another player's hand", "steps": [
       {"viewer": "p3", "turn": 6, "active": "p2", "out": ["p3", "p4"], "seat": "p1", "topChoices": ["p2", "p4"], "top": "p2",
        "seatHand": [], "seatHandCount": 1, "viewerLabel": "You", "seatLabel": "Ash", "title": "Watching Ash",
-       "detail": "40 life · Hand 1 · 2 players still in · Turn 6"}
+       "detail": "40 life · 2 players still in · Turn 6"}
     ]},
     {"name": "players already out are skipped", "steps": [
       {"turn": 6, "active": "p4", "out": ["p1", "p2", "p3"], "seat": "p4", "topChoices": ["p2", "p3"], "top": "p2"}
