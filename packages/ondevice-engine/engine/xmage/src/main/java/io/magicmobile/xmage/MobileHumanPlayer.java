@@ -13,7 +13,7 @@ import java.util.function.Consumer;
 
 /**
  * Retains HumanPlayer's rule/choice logic. Replaces only the desktop wait/notify transport.
- * Requires the single visibility change applied by scripts/prepare_upstream.py.
+ * Requires the response hook applied by scripts/prepare_upstream.py.
  * No response mutates XMage off its GAME thread. Copies share the input channel, as
  * vanilla HumanPlayer copies share PlayerResponse. Interrupted/closed games abort,
  * never auto-answer a choice or fall back to a simulator.
@@ -26,8 +26,12 @@ public final class MobileHumanPlayer extends HumanPlayer {
         volatile Runnable onRetracted=() -> {};
         volatile Runnable onBoardChanged=() -> {};
     }
-    private final Channel channel;
+    private static final long serialVersionUID=1L;
+    // Transient: a checkpoint keeps the rules state only; a restored seat gets a new channel.
+    private transient Channel channel;
     private final UUID proxyControllerId;
+    /** GAME thread: set on entering priority(), consumed by the first question it publishes. */
+    private transient boolean firstPriorityQuestion;
     public MobileHumanPlayer(String name) {
         super(name,RangeOfInfluence.ALL,1);
         channel=new Channel();
@@ -42,7 +46,25 @@ public final class MobileHumanPlayer extends HumanPlayer {
         super(controlled,controller.response);
         channel=controller.channel;proxyControllerId=controller.getId();
     }
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+        in.defaultReadObject();
+        channel=new Channel(); // HumanPlayer.readObject (prepare_upstream.py) recreates the response.
+    }
     @Override public MobileHumanPlayer copy() { return new MobileHumanPlayer(this); }
+    @Override public boolean priority(Game game) {
+        firstPriorityQuestion=true;
+        try { return super.priority(game); }
+        finally { firstPriorityQuestion=false; }
+    }
+    /**
+     * True once per priority() call, for the first question it publishes: the save/resume safe
+     * point, between actions. Later questions in the same call are not safe points.
+     */
+    boolean takeFirstPriorityQuestion() {
+        boolean first=firstPriorityQuestion;
+        firstPriorityQuestion=false;
+        return first;
+    }
     public void onConsumed(Runnable callback) { channel.onConsumed=Objects.requireNonNull(callback); }
     /** Runs on the GAME thread when a question to this seat ends unanswered because a player left. */
     public void onRetracted(Runnable callback) { channel.onRetracted=Objects.requireNonNull(callback); }

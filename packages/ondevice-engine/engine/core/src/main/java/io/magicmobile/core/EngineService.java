@@ -38,6 +38,8 @@ public final class EngineService implements AutoCloseable {
                 case "clearDiagnostics": keys(r,"protocol","op");EngineDiagnostics.clear();result=Json.map("cleared",true);break;
                 case "validateDeck": keys(r,"protocol","op","deck");result=engine().validateDeck(Json.object(r.get("deck")));break;
                 case "create": keys(r,"protocol","op","configuration");result=engine().create(Json.object(r.get("configuration")));break;
+                // Trusted local API only: the checkpoint holds every hidden zone. HostRouter never forwards it.
+                case "restore": keys(r,"protocol","op","checkpoint");result=engine().restore(Json.object(r.get("checkpoint")));break;
                 case "poll": keys(r,"protocol","op","matchId","viewerId","after");result=engine().poll(Json.requiredString(r,"matchId"),Json.requiredString(r,"viewerId"),Json.integer(r.get("after")));break;
                 case "respond": keys(r,"protocol","op","matchId","viewerId","command");result=engine().respond(Json.requiredString(r,"matchId"),Json.requiredString(r,"viewerId"),Json.object(r.get("command")));break;
                 case "concede": keys(r,"protocol","op","matchId","viewerId");engine().concede(Json.requiredString(r,"matchId"),Json.requiredString(r,"viewerId"));result=Json.map("conceded",true);break;
