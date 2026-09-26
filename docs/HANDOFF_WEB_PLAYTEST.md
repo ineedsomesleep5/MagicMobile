@@ -148,10 +148,12 @@ Caleb authorizes.
 | 0 Legacy removal, CI triggers, docs | Done | #40 (draft) | Reviewed. Before merging, Caleb disconnects or deletes the Vercel project `magicmobile` (old web game, Root Directory `apps/web`) |
 | 1 Web engine spike | Paused | `codex/web-engine-spike` (local) | Entry point, bundle build and bench app committed; benchmarks and doc remaining. Resumes when a build slot frees up |
 | 2 Playtest focus | Done | #41 (draft) | Reviewed. Android and portable Swift tests pass, iOS simulator build OK. 2 pre-existing iOS 27 UI-test failures (library search focus) |
-| 2 Playtest cards | Finishing | `codex/playtest-cards` | Both platforms and previews done; screenshots, tests and PR remaining |
+| 2 Playtest cards | Done | #43 (draft) | Reviewed. Swift 29 + Xcode 10 tests, Android core 69 / app 47 pass |
 | 2b.1 Relay backlog + CI | Done, not deployed | #39 (draft) | Reviewed. 6/6 tests locally and in the new `Table relay` CI. Deploying needs Caleb: `cd services/table-relay && npx wrangler deploy` |
 | 2b.2–4 Guest retry, notices, crash reports | Finishing | #42 (draft) | Retry, notices and crash reports committed; tests and cross-play check remaining |
 | 3–6 Web client | Blocked on PR 1 | | |
+| Integration for build 18 / 9 | In progress | `codex/build18-integration` | #39, #40, #41, #42 (partial), #43 and this doc, merged. One conflict resolved (Android preview enum and tests, both sides kept) |
+| iOS 27 UI-test triage | In progress | `codex/ios27-ui-fixes` | Delegate. Library search focus, hand inspection, attachment and history tests fail on iOS 27 (also on base); plus a full build with Metal |
 | Release: iOS build 18, Android build 9 | Not started | | Needs Caleb's go-ahead |
 
 ## Log
@@ -195,3 +197,10 @@ Caleb authorizes.
     `four-player-spectating`.
   - This Mac lacked Xcode 27's Metal Toolchain, so simulator builds skipped
     `BoardFXShaders.metal`. It is being installed (`xcodebuild -downloadComponent MetalToolchain`).
+- 2026-09-26 (Claude Code): Playtest cards done in #43. Copy tokens draw as their own card frame
+  with a "Token copy" tag. The inspector gives rules full height without scrolling, over a solid
+  backdrop. The ability banner sits below the card. New previews: `token-copy-inspection` and
+  `ability-showcase`.
+  - Integration branch `codex/build18-integration` created.
+  - The Metal Toolchain 27A266a is installed.
+  - The emulator's /data was full (INSTALL_FAILED_INSUFFICIENT_STORAGE); a cleanup is queued.
