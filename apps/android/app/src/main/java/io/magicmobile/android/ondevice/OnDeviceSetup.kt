@@ -350,6 +350,9 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
 
     suspend fun diagnosticReport(): String? = runCatching { runtime.diagnosticReport() }.getOrNull()
 
+    /** Deletes the engine's own copy of its latest report (OnDeviceSetupModel.clearDiagnostics on iOS). */
+    suspend fun clearDiagnostics() = runtime.clearDiagnostics()
+
     companion object {
         fun playerName(raw: String): String {
             val name = raw.trim()

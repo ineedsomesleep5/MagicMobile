@@ -66,6 +66,8 @@ final class MagicMobileAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         MainActor.assumeIsolated {
             _ = NativeAssetDownloads.shared
+            // Local crash and hang summaries for the report sheet; nothing is uploaded.
+            OnDeviceCrashReporter.shared.start()
             artworkConsentObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { _ in
                 MainActor.assumeIsolated {
                     if !MagicMobilePreferences.current.bool(forKey: NativeArtworkPreference.key) {
