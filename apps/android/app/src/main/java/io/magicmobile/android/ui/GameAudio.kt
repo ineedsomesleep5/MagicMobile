@@ -327,7 +327,19 @@ object GameAudio {
 
     /** Android pauses nothing for us; the activity calls these on stop/start. */
     fun suspend() { musicPlayer?.let { if (it.isPlaying) it.pause() } }
+
+    /**
+     * ON_STOP: stop the music and free every decoded sample, so a backgrounded game is less likely
+     * to be ended by the system. `resume()` brings them back; samples reload as they are played.
+     */
+    fun releaseForBackground() {
+        stopMusic(0.0)
+        pool?.release(); pool = null
+        samples.clear(); loaded.clear(); streams.clear()
+    }
+
     fun resume() {
+        context?.let { if (pool == null) init(it) }
         val scene = currentTrack ?: return
         if (!musicEnabled) return
         val player = musicPlayer

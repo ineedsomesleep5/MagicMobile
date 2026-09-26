@@ -33,6 +33,21 @@ cross-platform gameplay gates pass.
 Client compilation and contract tests do not establish cross-platform gameplay acceptance.
 A configured deployment, matching engine build, and an iOS/Android live match are release gates.
 
+### Resuming a solo game
+
+Solo games against the AI resume after the app closes, with the same rules and words as
+iOS. Only an engine whose capabilities say `saveResume` receives `create`'s
+`checkpoint: {path}` or the `restore` op; older engines never see either. The engine writes
+`game.checkpoint` at each of the player's priority decisions into `noBackupFilesDir/resume/`,
+next to the app's `resume.json` sidecar (`GameResumeStore` in `:core`). Leaving the app
+(`ON_STOP`) starts a 10-minute window; the next launch offers **Resume** or **Abandon** while
+the app build and engine match. Ending, conceding, leaving or starting another game deletes
+both files. Relay tables never checkpoint; a small marker explains a game lost when the app
+closed. `GameResumeController` holds the app rules; `resume-cases.json` in the parity
+fixtures lists the shared strings and launch outcomes for both apps. `NativeCheckpointTest`
+checks checkpoint and restore on the packaged engine and skips until the engine has
+`saveResume`.
+
 ## What one change has to touch for both platforms
 
 Android reads the iOS app's committed data rather than keeping a second copy, so
