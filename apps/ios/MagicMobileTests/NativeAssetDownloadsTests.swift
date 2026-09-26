@@ -4,6 +4,12 @@ import ImageIO
 @testable import MagicMobile
 
 final class NativeAssetDownloadsTests: XCTestCase {
+    /// A finished download starts its own recount. A test scan that begins before that
+    /// recount runs is superseded and returns without publishing, so wait for both.
+    @MainActor private func settle(_ model: NativeAssetDownloads) async throws {
+        for _ in 0..<500 where model.isRunning || model.isScanning { try await Task.sleep(for: .milliseconds(10)) }
+    }
+
     @MainActor func testFailedScanCannotLeaveSuccessfulCoverageState() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -199,7 +205,7 @@ final class NativeAssetDownloadsTests: XCTestCase {
         XCTAssertEqual(DownloadImageFixtureProtocol.urls.count, 0)
         for run in 0..<2 {
             model.download(names: [], includeTokens: true, allowNetwork: true, quality: .standard, fullCatalogue: true, tokenOnly: true)
-            for _ in 0..<500 where model.isRunning { try await Task.sleep(for: .milliseconds(10)) }
+            try await settle(model)
             await model.scan(names: [], quality: .standard, fullCatalogue: true, tokenOnly: true)
             XCTAssertFalse(model.isRunning)
             XCTAssertEqual(model.failures, [])
@@ -302,7 +308,7 @@ final class NativeAssetDownloadsTests: XCTestCase {
         let observer = NotificationCenter.default.addObserver(forName: NativeArtworkBackgroundQueue.didStoreImage, object: nil, queue: .main) { _ in stored.fulfill() }
         defer { NotificationCenter.default.removeObserver(observer) }
         model.download(names: [front], includeTokens: true, allowNetwork: true, quality: .standard, fullCatalogue: fullCatalogue)
-        for _ in 0..<500 where model.isRunning { try await Task.sleep(for: .milliseconds(10)) }
+        try await settle(model)
         XCTAssertFalse(model.isRunning); XCTAssertFalse(queue.isRunning)
         XCTAssertEqual(model.failures, []); XCTAssertEqual(model.completed, 3); XCTAssertEqual(model.total, 3)
         await fulfillment(of: [stored], timeout: 2)
@@ -320,7 +326,7 @@ final class NativeAssetDownloadsTests: XCTestCase {
         await model.scan(names: [front, back], quality: .standard, fullCatalogue: fullCatalogue)
         XCTAssertEqual(model.cardStored, 2); XCTAssertEqual(model.tokenStored, 1)
         model.download(names: [front], includeTokens: true, allowNetwork: true, quality: .standard, fullCatalogue: fullCatalogue)
-        for _ in 0..<500 where model.isRunning { try await Task.sleep(for: .milliseconds(10)) }
+        try await settle(model)
         XCTAssertFalse(model.isRunning); XCTAssertEqual(model.failures, [])
         XCTAssertEqual(queue.total, 0); XCTAssertEqual(model.total, 0)
         XCTAssertEqual(DownloadImageFixtureProtocol.urls.count, 3, "Repeat should not transfer any already stored image")
@@ -330,7 +336,7 @@ final class NativeAssetDownloadsTests: XCTestCase {
         await model.scan(names: [front], quality: .standard, fullCatalogue: fullCatalogue)
         XCTAssertEqual(model.missingNames, [front])
         model.download(names: [front], includeTokens: true, allowNetwork: true, quality: .standard, fullCatalogue: fullCatalogue)
-        for _ in 0..<500 where model.isRunning { try await Task.sleep(for: .milliseconds(10)) }
+        try await settle(model)
         XCTAssertFalse(model.isRunning)
         XCTAssertEqual(queue.total, 1)
         XCTAssertEqual(DownloadImageFixtureProtocol.urls.count, 4)
