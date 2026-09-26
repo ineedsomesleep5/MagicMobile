@@ -8,7 +8,8 @@
 # Usage: build_web.sh [all|upstream|engine|shadow|package]
 #   upstream  fetch + patch the pinned XMage commit, Maven-package the needed modules
 #   engine    compile core, generated registry, platform catalogue and adapter (+ WebEntryPoints)
-#   shadow    compile web-only replacements of upstream classes (shadow/, CheerpJ workarounds)
+#   shadow    compile web-only classes: replacements of upstream classes (shadow/) and the
+#             WebUnsafe helper behind the worker's Unsafe natives (CheerpJ workarounds)
 #   package   jar everything into build/web with a manifest (sizes, SHA-256, upstream, catalogue)
 # Heavy stages (upstream, engine) belong behind the machine-wide heavy-workload lock.
 set -euo pipefail
@@ -74,13 +75,13 @@ stage_engine() {
 
 stage_shadow() {
   # Web-only replacements for upstream classes that hit CheerpJ runtime gaps (see each file's
-  # header). They go into magicmobile-engine.jar, first on the browser classpath; no other
-  # platform uses them.
+  # header), plus WebUnsafe. They go into magicmobile-engine.jar, first on the browser
+  # classpath; no other platform uses them.
   [[ -s "$BUILD/classpath.txt" ]] || { echo "Run the engine stage first" >&2; exit 1; }
   rm -rf "$BUILD/shadow"; mkdir -p "$BUILD/shadow"
   (cd "$HERE/shadow" && find . -name '*.java' | sort) > "$BUILD/shadow-sources.txt"
   # No --release: it can hide jdk.unsupported (sun.misc.Unsafe); the build JDK is checked to be 17.
-  (cd "$HERE/shadow" && javac -nowarn -cp "$(<"$BUILD/classpath.txt")" -d "$BUILD/shadow" @"$BUILD/shadow-sources.txt")
+  (cd "$HERE/shadow" && javac -nowarn -cp "$(<"$BUILD/classpath.txt")" -d "$BUILD/shadow" @"$BUILD/shadow-sources.txt" "$HERE/WebUnsafe.java")
 }
 
 stage_package() {

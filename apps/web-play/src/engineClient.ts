@@ -128,6 +128,8 @@ export class WorkerTransport implements EngineTransport {
   private readonly pending = new Map<number, { resolve: (json: string) => void; reject: (error: Error) => void }>();
   /** Java-side time of the most recent call, excluding postMessage hops. */
   lastJavaMs = 0;
+  /** Unsafe *Volatile natives served through WebUnsafe so far (see engine.worker.ts). */
+  unsafeBridgeCalls = 0;
 
   private constructor(worker: Worker) {
     this.worker = worker;
@@ -173,6 +175,7 @@ export class WorkerTransport implements EngineTransport {
     if (!waiter) return;
     this.pending.delete(message.id);
     this.lastJavaMs = message.javaMs;
+    if (message.bridgeCalls !== undefined) this.unsafeBridgeCalls = message.bridgeCalls;
     if (message.error !== undefined || message.json === undefined) waiter.reject(new Error("Java call failed: " + message.error));
     else waiter.resolve(message.json);
   }

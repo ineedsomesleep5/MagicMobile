@@ -15,7 +15,7 @@ export type ReadyTimings = {
 export type WorkerOutbound =
   | { type: "ready"; timings: ReadyTimings }
   | { type: "fatal"; message: string }
-  | { type: "reply"; id: number; json?: string; error?: string; javaMs: number }
+  | { type: "reply"; id: number; json?: string; error?: string; javaMs: number; bridgeCalls?: number }
   | { type: "resources"; id: number; summary: ResourceSummary };
 
 /** What the worker fetched (CheerpJ runtime from the CDN, jars from this origin). */

@@ -30,6 +30,7 @@ type BenchState = {
   summary?: ReturnType<typeof summarize>;
   longTasks: { start: number; duration: number }[];
   resourcesAtEnd?: ResourceSummary;
+  unsafeBridgeCalls?: number;
 };
 
 const params = new URLSearchParams(location.search);
@@ -132,6 +133,7 @@ async function main() {
       result = failedToStart(spec, error);
     }
     bench.games.push(result);
+    bench.unsafeBridgeCalls = transport.unsafeBridgeCalls;
     bench.summary = summarize(bench.games);
     renderGames();
     renderSummary();
