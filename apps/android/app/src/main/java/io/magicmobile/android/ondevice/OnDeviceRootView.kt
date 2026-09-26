@@ -185,6 +185,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var showUpdates by remember { mutableStateOf(false) }
     var showDownloads by remember { mutableStateOf(false) }
     var showDecks by remember { mutableStateOf(false) }
+    var studioOpen by remember { mutableStateOf<io.magicmobile.android.studio.DeckStudioOpen?>(null) }
     var confirmLeave by remember { mutableStateOf(false) }
     var bannerError by remember { mutableStateOf<String?>(null) }
     var didDismissStartingRoll by remember { mutableStateOf(false) }
@@ -240,7 +241,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         scope.launch {
             try { playerDisplayName = OnDeviceSetupModel.playerName(playerDisplayName) }
             catch (error: EngineError) { setup.errorMessage = error.message; return@launch }
-            setup.startAI(playerDisplayName, deck, opponentDecks, aiSkill)
+            setup.startAI(playerDisplayName, deck, opponentDecks, aiSkill, deckID = selectedDeckID)
         }
     }
 
@@ -437,7 +438,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         readyOnline = { selectedDeck?.let { setup.readyForMatch(playerDisplayName, it) } },
                         back = { GameAudio.play(GameSound.UI_BACK); showSetup = false },
                         openSettings = { GameAudio.play(GameSound.UI_OPEN); showAppearance = true },
-                        openDecks = { showDecks = true }, start = ::startAI, leave = { confirmLeave = true })
+                        openDecks = { showDecks = true }, start = ::startAI, leave = { confirmLeave = true },
+                        openStudio = { studioOpen = it; showDecks = true })
                 } else {
                     TavernMainMenu(selectedDeck?.name ?: "Choose a deck", playerDisplayName, play = { showSetup = true },
                         decks = { showDecks = true }, settings = { showAppearance = true }, news = { showUpdates = true },
@@ -515,7 +517,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             // DeckStudioRootView, full screen over the menu (fullScreenCover on iOS).
             io.magicmobile.android.studio.StudioCover(showDecks) {
                 io.magicmobile.android.studio.DeckStudioRootView(setup, selectedDeckID, { selectedDeckID = it },
-                    preparePlay = { showSetup = true }, dismiss = { showDecks = false })
+                    preparePlay = { showSetup = true }, dismiss = { showDecks = false; studioOpen = null }, open = studioOpen)
             }
             if (showDownloads) {
                 LaunchedEffect(Unit) { setup.loadCatalogue() }
@@ -621,7 +623,8 @@ private fun SetupScreen(setup: OnDeviceSetupModel, selectedDeck: Deck?, aiPrecon
                         playWithFriends: Boolean, setPlayWithFriends: (Boolean) -> Unit, mayStart: Boolean,
                         onlinePlayers: Int, setOnlinePlayers: (Int) -> Unit, hostOnline: () -> Unit, joinOnline: (String) -> Unit,
                         readyOnline: () -> Unit,
-                        back: () -> Unit, openSettings: () -> Unit, openDecks: () -> Unit, start: () -> Unit, leave: () -> Unit) {
+                        back: () -> Unit, openSettings: () -> Unit, openDecks: () -> Unit, start: () -> Unit, leave: () -> Unit,
+                        openStudio: (io.magicmobile.android.studio.DeckStudioOpen) -> Unit) {
     // In a match room, the deck and name stay editable until the player taps Ready.
     val editableInRoom = (setup.multiplayer as? RelayTable)?.room?.let { !it.localReady } ?: false
     val seatLocked = setup.isBusy || (setup.needsLeave && !editableInRoom)
@@ -651,6 +654,7 @@ private fun SetupScreen(setup: OnDeviceSetupModel, selectedDeck: Deck?, aiPrecon
                             CommanderDeckPortrait(selectedDeck?.commanderName, Modifier.size(112.dp, 156.dp))
                             Text("Your deck", color = setupSecondary, style = SfText.caption())
                             Text(selectedDeck?.name ?: "Choose a deck", color = setupInk, style = SfText.headline(), textAlign = TextAlign.Center)
+                            io.magicmobile.android.studio.DeckStudioSetupDeckStatus(setup, selectedDeckID, selectedDeck, openStudio)
                         }
                         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             if (playWithFriends) {
