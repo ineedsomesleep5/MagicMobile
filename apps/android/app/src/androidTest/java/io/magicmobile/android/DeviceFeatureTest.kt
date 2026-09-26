@@ -16,7 +16,7 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 class DeviceFeatureTest {
-    @Test fun savedDeckAndSeparateDraftSurviveReopening() {
+    @Test fun savedDeckSurvivesReopeningAndRejectsAStaleSave() {
         // Isolated cache folder under the instrumentation process's own UID.
         val target=InstrumentationRegistry.getInstrumentation().targetContext
         val directory=java.io.File(target.cacheDir,"acceptance-${UUID.randomUUID()}").apply {mkdirs()}
@@ -24,7 +24,7 @@ class DeviceFeatureTest {
             override fun getFilesDir()=java.io.File(directory,"files").apply {mkdirs()}
             override fun getNoBackupFilesDir()=java.io.File(directory,"no-backup").apply {mkdirs()}
         }
-        val store=DeckStore(context);val drafts=DeckDraftStore(context)
+        val store=DeckStore(context)
         val deck=Deck("Acceptance ${UUID.randomUUID()}",listOf(CardEntry("Emmara, Soul of the Accord",1,"commanders"),CardEntry("Forest",99)))
         var saved=store.save(deck)
         try {
@@ -32,11 +32,14 @@ class DeviceFeatureTest {
             val reopened=DeckStore(context).all().single {it.id==saved.id}
             assertEquals(saved,reopened)
             val changed=deck.change(1,-1)
-            drafts.write(saved.id,saved.revision,changed)
-            assertEquals(changed,DeckDraftStore(context).read(saved.id)?.deck)
-            assertEquals(deck,DeckStore(context).all().single {it.id==saved.id}.deck)
+            // Saving over the reopened copy keeps its identity; that stale copy cannot overwrite the update.
+            saved=store.save(changed,reopened)
+            assertEquals(reopened.id,saved.id)
+            assertEquals(reopened.revision+1,saved.revision)
+            assertEquals(changed,DeckStore(context).all().single().deck)
+            assertTrue(runCatching{store.save(deck,reopened)}.isFailure)
             assertEquals(changed,Deck.parse(changed.name,changed.export()))
-        } finally {drafts.delete(saved.id);store.delete(saved)}
+        } finally {store.delete(saved)}
     }
 
     @Test fun bundledPhotoRecognitionReadsDeckText() {

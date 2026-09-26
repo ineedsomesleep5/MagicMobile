@@ -86,4 +86,8 @@ iOS change has one obvious Android counterpart. Update the table and the log bef
 
   New shared JSON cases under `core/src/test/resources/parity/` are read by both platforms'
   tests: `focus-cases`, `spectator-cases` and `combat-cases`.
-
+- 2026-09-26 (Claude): Removed the unreachable build 7 UI: `MagicApp`, `AppModel`, `GameScreen`, the
+  dedicated Online client and screen with its `onlineServerUrl` switch, and the editor dialogs, stores and
+  helpers only they used. Kept: `DeckStore` (the Deck Studio library and build 7 migration), `CardArtwork`,
+  the artwork download engine and service, and `NativeBridge`. Build 7 draft, receipt and playtest files
+  stay on the device unread, as in build 8.
