@@ -414,8 +414,11 @@ struct ArenaBattlefieldCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 3)
                 .frame(height: 15)
             ZStack(alignment: .top) {
+                // BattlefieldCardFaceLayout.tileFrame: the token copy tag ends before the counter column.
                 CardTile(card: card, selected: false, zoneName: zoneName,
-                         width: width * 1.08, height: width * 1.51, ignoreTappedRotation: true)
+                         width: width * 1.08, height: width * 1.51, ignoreTappedRotation: true,
+                         tokenCopyTagTrailingReserve: BattlefieldCardFaceLayout.tagTrailingReserve(
+                            cardWidth: width, showsCounters: !card.counterBadges.isEmpty))
                     .offset(y: -width * 0.19)
                     .allowsHitTesting(false).accessibilityIdentifier("").accessibilityHidden(true)
             }
@@ -446,7 +449,9 @@ struct ArenaBattlefieldCard: View {
         .overlay(alignment: .topTrailing) {
             if !card.counterBadges.isEmpty {
                 CardCounterBadgeStrip(badges: Array(card.counterBadges.prefix(2)), cardWidth: width)
-                    .padding(.top, 16).allowsHitTesting(false)
+                    .frame(maxWidth: card.tokenCopySourceName == nil ? nil : BattlefieldCardFaceLayout.counterColumnWidth(cardWidth: width),
+                           alignment: .trailing)
+                    .padding(.top, BattlefieldCardFaceLayout.counterTop).allowsHitTesting(false)
             }
         }
         .overlay(alignment: .bottomTrailing) {
