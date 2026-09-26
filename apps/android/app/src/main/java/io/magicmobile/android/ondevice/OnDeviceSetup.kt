@@ -16,11 +16,15 @@ import io.magicmobile.android.game.BuildIdentity
 import io.magicmobile.android.game.EngineClient
 import io.magicmobile.android.game.EngineError
 import io.magicmobile.android.game.EngineHealth
+import io.magicmobile.android.game.GameResumeIdentity
+import io.magicmobile.android.game.GameResumeSettings
+import io.magicmobile.android.game.GameResumeStore
 import io.magicmobile.android.game.J
 import io.magicmobile.android.game.get
 import io.magicmobile.android.game.string
 import io.magicmobile.android.session.OnDeviceSession
 import io.magicmobile.android.ui.AppPreferences
+import io.magicmobile.android.ui.LaunchEnvironment
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
@@ -30,7 +34,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import java.io.File
 import java.time.Instant
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
 
 /** An included Commander precon (PreconCatalog.swift). */
 data class PreconDeck(val id: String, val name: String, val deck: Deck) {
@@ -104,6 +111,8 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
     /** Set while another transport (the cross-play relay) owns the current table. */
     var multiplayer by mutableStateOf<TableConnection?>(null); private set
     val store = DeckStore(context)
+    /** Save/resume for solo games: the launch prompt, the live game's sidecar and the in-progress marker. */
+    val resume = GameResumeController(resumeStore(context), BuildConfig.VERSION_CODE.toString(), resumeIO)
     private val runtime = OnDeviceRuntimeManager()
     private var aiClient: EngineClient? = null
     private var aiMatchID: String? = null
@@ -144,9 +153,12 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
                 val index = withContext(Dispatchers.IO) { PrintingIndex(context.assets.open("printings.tsv")) }
                 android.util.Log.i("MagicMobile", "Printing index loaded in ${(System.nanoTime() - started) / 1_000_000} ms")
                 printings = index
-                identity = BuildIdentity(index.upstreamCommit, index.catalogueHash,
+                val built = BuildIdentity(index.upstreamCommit, index.catalogueHash,
                     "ondevice-0.1/app-${BuildConfig.VERSION_NAME}/build-${BuildConfig.RELEASE_BUILD}/rollstep-2/room-1/concede-1/emote-1")
+                identity = built
                 status = "Choose your deck and players."
+                // A saved game is offered (or explained) once the build it must match is known.
+                resume.checkAtLaunch(GameResumeIdentity.engine(built))
             } catch (error: Throwable) {
                 errorMessage = error.message ?: "The local card catalogue could not be loaded."; status = "Local setup unavailable"
             } finally { preparing = false }
@@ -186,10 +198,13 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
         }
     }
 
-    suspend fun startAI(name: String, deck: Deck, aiDecks: List<Deck>, aiSkill: Int = 2) {
+    /** `settings` are the setup choices kept with a checkpoint, so a resumed game can rebuild its menu state and Rematch. */
+    suspend fun startAI(name: String, deck: Deck, aiDecks: List<Deck>, aiSkill: Int = 2, settings: GameResumeSettings? = null) {
         val identity = identity ?: return
         if (isBusy || needsLeave) return
         isBusy = true; errorMessage = null; feedback = null; status = "Starting XMage"
+        // A new game replaces any saved one.
+        resume.discard()
         try {
             val playerName = playerName(name)
             val humanDeck = resolve(deck)
@@ -198,13 +213,18 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
             val client = runtime.makeClient(identity)
             runtimeOpen = runtime.isOpen
             aiClient = client
-            val created = runtime.create(client, JsonObject(mapOf("seats" to JsonArray(seats))))
+            // The checkpoint field goes only to an engine that advertises saveResume.
+            val capabilities = runtime.capabilities
+            val base = JsonObject(mapOf("seats" to JsonArray(seats)))
+            val checkpoint = resume.checkpointFor(capabilities, seats)
+            val created = runtime.create(client, checkpoint?.let { JsonObject(base + ("checkpoint" to it)) } ?: base)
             runtimeOpen = runtime.isOpen
             val matchID = created["matchId"].string?.takeIf { it.isNotEmpty() }
                 ?: throw EngineError.InvalidMessage("XMage did not return a match ID. Close the runtime before trying again.")
             aiMatchID = matchID
+            resume.gameStarted(base, checkpoint, capabilities, "player1", deck.name, settings)
             updateSessionForeground()
-            session.attach(client, matchID, "player1", allowsSeatScopedAutoYield = true, close = { closeAI() })
+            session.attach(client, matchID, "player1", allowsSeatScopedAutoYield = true, observe = resume::observe, close = { closeAI() })
             status = "Game started"
         } catch (error: Throwable) {
             errorMessage = error.message ?: error.javaClass.simpleName
@@ -221,9 +241,11 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
         isBusy = true
         try {
             multiplayer = table; usingMultiplayer = true
+            // Tables never checkpoint; the marker explains a game lost when the app closed.
+            resume.tableStarted()
             updateSessionForeground()
             session.attach(endpoint.client, endpoint.matchID, endpoint.seatID, allowsSeatScopedAutoYield = true, table = endpoint.table,
-                close = { table.leave() })
+                observe = resume::observe, close = { table.leave() })
             status = "Match connected"
         } catch (error: Throwable) { errorMessage = error.message } finally { isBusy = false }
     }
@@ -241,6 +263,7 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
         val identity = relayIdentity ?: return
         if (isBusy || needsLeave) return
         isBusy = true; errorMessage = null; feedback = null; status = "Opening a table"
+        resume.discard()
         val table = RelayTable(identity, scope, makeHostEngine = { openHostEngine() }, closeHostEngine = { closeHostEngine() })
         try {
             val playerName = playerName(name)
@@ -260,6 +283,7 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
         val identity = relayIdentity ?: return
         if (isBusy || needsLeave) return
         errorMessage = null; feedback = null
+        resume.discard()
         val table = RelayTable(identity, scope, makeHostEngine = { openHostEngine() }, closeHostEngine = { closeHostEngine() })
         try {
             val playerName = playerName(name)
@@ -299,6 +323,43 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
     /** Waits up to 3 seconds for the current response and its refresh to finish. */
     suspend fun waitUntilSessionIdle() {
         repeat(150) { if (!isBusy && !session.isWorking) return; delay(20) }
+    }
+
+    /**
+     * The player leaves the game: its saved checkpoint goes too, including anything the engine
+     * wrote while it was closing. `close` alone (the app closing) keeps a resumable game.
+     */
+    suspend fun leave(): Boolean {
+        if (isBusy || session.isWorking) return false
+        resume.discard()
+        return close().also { closed -> if (closed) resume.discard() }
+    }
+
+    /** Resume: restore the saved solo game in a fresh engine and open its board. A failure closes it and stays on the menu. */
+    suspend fun resumeGame() {
+        val identity = identity ?: return
+        if (isBusy || needsLeave) return
+        val sidecar = resume.accept() ?: return
+        isBusy = true; errorMessage = null; feedback = null; status = "Resuming your game"
+        val engine = object : GameResumeController.ResumeEngine {
+            override suspend fun open(): EngineClient = runtime.makeClient(identity).also { aiClient = it; runtimeOpen = runtime.isOpen }
+            override val capabilities: J? get() = runtime.capabilities
+            override suspend fun restore(client: EngineClient, path: String): J = runtime.restore(client, path).also { runtimeOpen = runtime.isOpen }
+            override suspend fun attach(client: EngineClient, matchID: String, seatID: String) {
+                aiMatchID = matchID
+                updateSessionForeground()
+                session.attach(client, matchID, seatID, allowsSeatScopedAutoYield = true, observe = resume::observe, close = { closeAI() })
+            }
+            override suspend fun cleanup() {
+                try { if (session.matchID != null) session.close() else if (runtime.isOpen) closeAI() }
+                finally {
+                    runtimeOpen = runtime.isOpen
+                    if (!runtime.isOpen) { aiClient = null; aiMatchID = null }
+                }
+            }
+        }
+        try { status = if (resume.resume(sidecar, engine)) "Game resumed" else "Choose your deck and players." }
+        finally { isBusy = false; runtimeOpen = runtime.isOpen }
     }
 
     suspend fun close(): Boolean {
@@ -363,6 +424,19 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
         }
 
         val savedPlayerName get() = AppPreferences.string(OnDeviceSetupPreferences.playerNameKey, "")
+
+        /** Resume files are written in this order, off the main thread. */
+        private val resumeIO: Executor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "MagicMobileResume").apply { isDaemon = true } }
+
+        /**
+         * noBackupFilesDir/resume: never backed up, since a checkpoint holds every hand and library.
+         * UI tests get their own folder and design previews none, so neither touches a real saved game.
+         */
+        fun resumeStore(context: Context): GameResumeStore? = when {
+            io.magicmobile.android.DesignPreview.active -> null
+            LaunchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] != null -> GameResumeStore(File(context.noBackupFilesDir, "resume-ui-test"))
+            else -> GameResumeStore(File(context.noBackupFilesDir, "resume"))
+        }
     }
 }
 

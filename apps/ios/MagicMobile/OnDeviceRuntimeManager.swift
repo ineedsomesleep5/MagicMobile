@@ -73,6 +73,18 @@ final class OnDeviceRuntimeManager {
             throw error
         }
     }
+    /// Restores a checkpointed solo game. Like create, a failure records diagnostics and
+    /// closes the runtime. Never sent to an engine without `saveResume`.
+    func restore(client: EngineClient, checkpointPath: String) async throws -> EngineRestoredMatch {
+        guard !changing else { throw EngineError.invalidMessage("Native runtime is still processing an operation") }
+        changing = true; defer { changing = false }
+        do { return try await client.restore(checkpointPath: checkpointPath, capabilities: capabilities) }
+        catch {
+            if let report = try? await client.call("diagnostics")["report"]?.string { startupDiagnostic = String(report.prefix(16_384)) }
+            try? await closeTransport()
+            throw error
+        }
+    }
     func close() async throws {
         guard !changing else { throw EngineError.invalidMessage("Native runtime is still processing an operation") }
         changing = true; defer { changing = false }

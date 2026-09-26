@@ -12,6 +12,7 @@ clang -std=c11 -Wall -Wextra -Werror -pthread \
 swiftc -swift-version 6 -parse-as-library -I"$ROOT/native/tests" \
   "$ROOT/swift/Sources/MagicMobileOnDevice/JSONValue.swift" \
   "$ROOT/swift/Sources/MagicMobileOnDevice/EngineClient.swift" \
+  "$ROOT/swift/Sources/MagicMobileOnDevice/SaveResume.swift" \
   "$ROOT/native/tests/NativeCloseTests.swift" "$OUT/runtime_swift_close.o" \
   -o "$OUT/swift_close_tests"
 "$OUT/swift_close_tests" | tee "$ROOT/evidence/swift-close-tests.txt"
