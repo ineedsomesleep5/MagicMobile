@@ -1,3 +1,5 @@
 packages:
   - "apps/*"
   - "packages/*"
+  # Spike bench with its own npm lockfile; kept out of the pnpm workspace and CI installs.
+  - "!apps/web-play"
