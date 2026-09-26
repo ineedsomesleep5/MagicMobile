@@ -124,6 +124,46 @@ final class DeckStudioEditorModelTests: XCTestCase {
         XCTAssertEqual(defaults.data(forKey: key), corrupt)
         XCTAssertEqual(defaults.data(forKey: "deckStudio.draft.unrelated.1"), corrupt)
     }
+    func testPlayingSavesADirtyDraftAndSelectsTheSourceDeckWithoutACopy() throws {
+        let boards = DeckList(name: "Boards", commander: DeckEntry(cardName: "Emmara, Soul of the Accord", quantity: 1, section: "commanders"), entries: [
+            DeckEntry(cardName: "Forest", quantity: 1, section: "deck"),
+            DeckEntry(cardName: "Island", quantity: 2, section: "sideboard"),
+            DeckEntry(cardName: "Plains", quantity: 1, section: "maybeboard")
+        ])
+        let library = store(), record = try library.addLocalDurably(boards)
+        let model = DeckStudioEditorModel(library: library, record: record, defaults: defaults)
+        XCTAssertEqual(model.playDeckID, "local:\(record.id)")
+        XCTAssertTrue(model.change { $0.name = "Boards v2" })
+        XCTAssertTrue(model.isDirty)
+        XCTAssertEqual(try model.preparePlayable(), "local:\(record.id)")
+        XCTAssertFalse(model.isDirty, "The dirty draft is saved before it plays")
+        XCTAssertEqual(library.decks.count, 1, "Playing never creates a '— Playtest' copy")
+        XCTAssertEqual(library.decks.first?.name, "Boards v2")
+        XCTAssertEqual(library.decks.first?.entries.count, 3, "Sideboard and maybeboard stay in the saved deck")
+        XCTAssertEqual(try model.preparePlayable(), "local:\(record.id)", "A clean deck plays as saved")
+        XCTAssertEqual(library.decks.first?.revision, record.revision + 1)
+    }
+    func testPlayingANewDraftSavesItAndAnUnsaveableDraftExplainsWhy() throws {
+        let library = store()
+        let model = DeckStudioEditorModel(library: library, record: nil, defaults: defaults)
+        XCTAssertNil(model.playDeckID)
+        XCTAssertTrue(model.change { $0.name = "Fresh"; $0.rows = [NativeDeckRow(cardName: "Forest", section: "deck")] })
+        let id = try model.preparePlayable()
+        XCTAssertEqual(library.decks.count, 1)
+        XCTAssertEqual(id, "local:\(try XCTUnwrap(library.decks.first?.id))")
+
+        let unnamed = DeckStudioEditorModel(library: store(), record: nil, defaults: defaults)
+        XCTAssertTrue(unnamed.change { $0.name = ""; $0.rows = [NativeDeckRow(cardName: "Forest", section: "deck")] })
+        XCTAssertThrowsError(try unnamed.preparePlayable())
+        XCTAssertNil(unnamed.record)
+    }
+    func testIncludedDecksPlayDirectlyWithoutEditingACopy() throws {
+        let library = store()
+        let model = DeckStudioEditorModel(library: library, record: DeckLibraryRecord(deck: deck, id: "precon:example"), included: true, defaults: defaults)
+        XCTAssertEqual(try model.preparePlayable(), "precon:example")
+        XCTAssertTrue(model.readOnly)
+        XCTAssertTrue(library.decks.isEmpty)
+    }
     func testQuantityOverflowIsRejectedWithoutChangingHistory() throws {
         let library = store(), record = try library.addLocalDurably(deck)
         let model = DeckStudioEditorModel(library: library, record: record, defaults: defaults)

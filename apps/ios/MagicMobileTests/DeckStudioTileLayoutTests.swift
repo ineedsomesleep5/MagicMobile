@@ -27,6 +27,21 @@ final class DeckStudioTileLayoutTests: XCTestCase {
             }
         }
     }
+    func testPlayingBadgeAndCheckChipFitTheNarrowestCover() throws {
+        // The narrowest grid tile is 160pt; the overlay keeps 10pt from each edge.
+        for size: DynamicTypeSize in [.large, .xLarge] {
+            for status: DeckStudioPlayStatus in [.ready, .needsFixes, .notChecked] {
+                let view = VStack(alignment: .leading, spacing: 6) {
+                    DeckStudioPlayingBadge()
+                    DeckStudioPlayStatusChip(status: status)
+                }.fixedSize().environment(\.dynamicTypeSize, size)
+                let renderer = ImageRenderer(content: view); renderer.scale = 1
+                let image = try XCTUnwrap(renderer.uiImage?.cgImage)
+                XCTAssertLessThanOrEqual(image.width, 140, "\(status.label) at \(size)")
+                XCTAssertLessThanOrEqual(image.height, 144, "\(status.label) at \(size)")
+            }
+        }
+    }
     func testLoadedBitmapCoversRespectAdaptiveColumnsAndGutters() throws {
         // Content widths after the library's 20pt side padding, including compact
         // portrait, landscape, and the accessibility single-column presentation.
