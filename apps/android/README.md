@@ -41,7 +41,8 @@ iOS. Only an engine whose capabilities say `saveResume` receives `create`'s
 `game.checkpoint` at each of the player's priority decisions into `noBackupFilesDir/resume/`,
 next to the app's `resume.json` sidecar (`GameResumeStore` in `:core`). Leaving the app
 (`ON_STOP`) starts a 10-minute window; the next launch offers **Resume** or **Abandon** while
-the app build and engine match. Ending, conceding, leaving or starting another game deletes
+the app build and engine match (an expired game is reported as expired even after an update).
+Ending, conceding, leaving, losing and spectating in a pod, or starting another game deletes
 both files. Relay tables never checkpoint; a small marker explains a game lost when the app
 closed. `GameResumeController` holds the app rules; `resume-cases.json` in the parity
 fixtures lists the shared strings and launch outcomes for both apps. `NativeCheckpointTest`

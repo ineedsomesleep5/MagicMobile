@@ -18,15 +18,21 @@ enum GameResumeText {
     static let resumed = "Resumed at your last decision."
     static let restoreFailed = "Couldn't resume that game."
     static let endedOnClose = "Your last game ended when the app closed."
+    /// The notice's close button, for VoiceOver.
+    static let dismiss = "Dismiss notification"
+    /// A notice dismisses itself after this long.
+    static let noticeSeconds = 6
 
-    /// "Turn 12 against Alice and Bob · saved 3 min ago".
+    /// "Turn 12 against Alice and Bob · saved 3 min ago". Whole minutes, rounded down:
+    /// "saved just now" under a minute, whole hours from 60 minutes.
     static func detail(turn: Int64, opponents: [String], savedSecondsAgo: TimeInterval) -> String {
         let names = list(opponents)
         let game: String
         if turn > 0 { game = names.isEmpty ? "Turn \(turn)" : "Turn \(turn) against \(names)" }
         else { game = names.isEmpty ? "Your game" : "Against \(names)" }
         let minutes = Int(max(0, savedSecondsAgo) / 60)
-        return "\(game) · " + (minutes < 1 ? "saved just now" : "saved \(minutes) min ago")
+        let saved = minutes < 1 ? "saved just now" : minutes < 60 ? "saved \(minutes) min ago" : "saved \(minutes / 60) hr ago"
+        return "\(game) · \(saved)"
     }
 
     /// "A", "A and B", "A, B and C".
@@ -111,9 +117,26 @@ enum GameResumeIdentity {
     /// The engine the app validates at startup (capabilities must match the bundled
     /// catalogue, upstream and protocol). Known before the engine opens, so the launch
     /// prompt needs no engine. The engine still rejects a foreign build itself
-    /// (`checkpoint_incompatible`).
+    /// (`checkpoint_incompatible`). The same text as Android.
     static func engine(_ identity: BuildIdentity) -> String {
-        "xmage/native-aot/protocol-\(identity.protocolVersion)/\(identity.upstreamCommit)/\(identity.catalogueHash)"
+        engine(protocolVersion: Int64(identity.protocolVersion), upstream: identity.upstreamCommit,
+               catalogueHash: identity.catalogueHash)
+    }
+
+    static func engine(protocolVersion: Int64, upstream: String, catalogueHash: String) -> String {
+        "xmage/protocol-\(protocolVersion)/\(upstream)/\(catalogueHash)"
+    }
+}
+
+enum GameResumePolicy {
+    /// The game is over for this seat: it ended, or the player left it (conceded or lost in a
+    /// pod, and now spectates). What was saved before must not come back.
+    static func isOver(_ poll: MatchPoll) -> Bool {
+        if poll.phase == "ended" || poll.snapshot?["outcome"]?["ended"]?.bool == true { return true }
+        guard let viewer = poll.snapshot?["enginePlayerId"]?.string else { return false }
+        return poll.snapshot?["gameView"]?["players"]?.array?.contains {
+            $0["playerId"]?.string == viewer && $0["hasLeft"]?.bool == true
+        } == true
     }
 }
 
@@ -130,13 +153,16 @@ enum GameResumeLaunchDecision: Equatable {
 
     static let window: Int64 = 600_000
 
+    /// Expiry comes first: a game older than the window has expired whatever the build. Only a
+    /// fresh game saved by another app build, engine or sidecar format is "updated".
     static func decide(record: GameResumeRecord?, sidecarExists: Bool, checkpointExists: Bool,
                        nowMillis: Int64, appBuild: String, engineIdentity: String) -> Self {
         guard sidecarExists else { return checkpointExists ? .orphanCheckpoint : .nothing }
         guard let record, checkpointExists else { return .endedOnClose }
+        guard nowMillis - (record.leftAt ?? record.lastCheckpointAt) <= window else { return .expired }
         guard record.format == GameResumeRecord.currentFormat, record.appBuild == appBuild,
               record.engineIdentity == engineIdentity else { return .updated }
-        return nowMillis - (record.leftAt ?? record.lastCheckpointAt) <= window ? .resumable(record) : .expired
+        return .resumable(record)
     }
 }
 
@@ -149,7 +175,7 @@ final class GameResumeStore {
 
     var checkpointURL: URL { directory.appendingPathComponent("game.checkpoint") }
     var sidecarURL: URL { directory.appendingPathComponent("resume.json") }
-    var markerURL: URL { directory.appendingPathComponent("in-progress.json") }
+    var markerURL: URL { directory.appendingPathComponent("game-in-progress.json") }
     /// The engine writes `path.tmp`, fsyncs and renames it over the checkpoint.
     var checkpointTemporaryURL: URL { URL(fileURLWithPath: checkpointURL.path + ".tmp") }
 

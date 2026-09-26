@@ -138,10 +138,21 @@ class GameResumeTest {
         store.write(value.copy(leftAt = null))
         assertTrue(EngineJson.decode(store.sidecarFile.readBytes())["leftAt"] is JsonNull)
         assertNull(store.read()!!.leftAt)
-        // Unknown formats are not guessed at.
+        // Another format is read only to report it at launch; it is never resumed.
         val future = JsonObject(value.json() + ("format" to JsonPrimitive(2)))
-        assertNull(GameResumeSidecar.decode(future))
+        assertEquals(2L, GameResumeSidecar.decode(future)?.format)
+        assertNull(GameResumeSidecar.decode(JsonObject(value.json() - "format")))
         assertNull(GameResumeSidecar.decode(JsonObject(value.json() - "engineIdentity")))
+    }
+
+    @Test fun aSidecarOfAnotherFormatIsUpdatedWhileFreshAndExpiredAfterTheWindow() {
+        save(sidecar(leftAt = now).copy(format = 2))
+        assertEquals(GameResumeLaunch.Notice(GameResumeText.UPDATED), store.launch("2026092601", "engine-a"))
+        assertGone()
+        save(sidecar(leftAt = now).copy(format = 2))
+        now += 601_000
+        assertEquals(GameResumeLaunch.Notice(GameResumeText.EXPIRED), store.launch("2026092601", "engine-a"))
+        assertGone()
     }
 
     @Test fun sidecarWritesAreAtomic() {
@@ -218,6 +229,9 @@ class GameResumeTest {
                 "gameView" to jsonObject("players" to JsonArray(listOf(jsonObject("playerId" to JsonPrimitive("u1"), "hasLeft" to JsonPrimitive(viewerLeft)),
                     jsonObject("playerId" to JsonPrimitive("u2"), "hasLeft" to JsonPrimitive(true))))))))
         assertTrue(GameResumePolicy.over(poll("ended", false)))
+        val outcomeEnded = MatchPoll(JsonObject(poll("running", false).raw.obj!! + ("snapshot" to jsonObject("enginePlayerId" to JsonPrimitive("u1"),
+            "outcome" to jsonObject("ended" to JsonPrimitive(true))))))
+        assertTrue("the game's outcome is in before the match phase", GameResumePolicy.over(outcomeEnded))
         assertTrue("conceded or lost in a pod, now spectating", GameResumePolicy.over(poll("running", true)))
         assertFalse("another seat leaving is not this seat's end", GameResumePolicy.over(poll("running", false)))
         assertFalse(GameResumePolicy.over(poll("running", false, snapshot = false)))
@@ -230,5 +244,6 @@ class GameResumeTest {
         assertEquals("Against AI 1 · saved 9 min ago", GameResumeText.detail(0, listOf("AI 1"), 599_000))
         assertEquals("Turn 5 against AI 1 · saved 1 hr ago", GameResumeText.detail(5, listOf("AI 1"), 3_700_000))
         assertEquals("a clock that moved back reads as now", "Turn 5 · saved just now", GameResumeText.detail(5, emptyList(), -5_000))
+        assertEquals("Your game · saved just now", GameResumeText.detail(0, emptyList(), 30_000))
     }
 }

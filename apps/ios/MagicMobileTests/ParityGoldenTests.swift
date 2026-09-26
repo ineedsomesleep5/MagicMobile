@@ -159,18 +159,29 @@ final class ParityGoldenTests: XCTestCase {
         }
     }
 
-    /// resume-cases.json: save/resume strings, the launch rule and the prompt detail.
+    /// resume-cases.json: the save/resume strings, files, launch outcomes, prompt detail and
+    /// game-over rule. ParityGoldenTest.kt runs the same cases on Android.
     @MainActor
     func testResumeCasesOnBothPlatforms() throws {
         let root = try caseFile("resume-cases.json")
         let strings = try XCTUnwrap(root["strings"] as? [String: String])
         let expected: [String: String] = [
             "promptTitle": GameResumeText.promptTitle, "resume": GameResumeText.resume, "abandon": GameResumeText.abandon,
-            "expired": GameResumeText.expired, "updated": GameResumeText.updated, "resumed": GameResumeText.resumed,
-            "restoreFailed": GameResumeText.restoreFailed, "endedOnClose": GameResumeText.endedOnClose]
+            "resumed": GameResumeText.resumed, "restoreFailed": GameResumeText.restoreFailed,
+            "expired": GameResumeText.expired, "updated": GameResumeText.updated,
+            "endedOnClose": GameResumeText.endedOnClose, "dismiss": GameResumeText.dismiss]
         XCTAssertEqual(strings, expected)
         XCTAssertEqual(root["windowSeconds"] as? Int, Int(GameResumeLaunchDecision.window / 1000))
+        XCTAssertEqual(root["noticeSeconds"] as? Int, GameResumeText.noticeSeconds)
+        let identity = try XCTUnwrap(root["engineIdentity"] as? [String: Any])
+        XCTAssertEqual(GameResumeIdentity.engine(protocolVersion: Int64(try XCTUnwrap(identity["protocol"] as? Int)),
+                                                 upstream: try XCTUnwrap(identity["upstream"] as? String),
+                                                 catalogueHash: try XCTUnwrap(identity["catalogueHash"] as? String)),
+                       identity["text"] as? String)
 
+        let files = try XCTUnwrap(root["files"] as? [String: Any])
+        let sidecarKeys = try XCTUnwrap(files["sidecarKeys"] as? [String])
+        XCTAssertEqual(files["sidecarFormat"] as? Int, GameResumeRecord.currentFormat)
         let now = Date(timeIntervalSince1970: 1_790_000_000)
         func millis(_ ago: Any?) -> Int64? { (ago as? Double).map { Int64(((now.timeIntervalSince1970 - $0) * 1000).rounded()) } }
         let setup = GameResumeSetup(configuration: .object(["seats": .array([])]), seatID: "player1", playerName: "P",
@@ -179,40 +190,72 @@ final class ParityGoldenTests: XCTestCase {
         XCTAssertFalse(cases.isEmpty)
         for item in cases {
             let at = "launch · \(item["name"] ?? "")"
+            let present = Set(try XCTUnwrap(item["files"] as? [String], at))
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ResumeCases-\(UUID().uuidString)")
             defer { try? FileManager.default.removeItem(at: directory) }
             let store = GameResumeStore(directory: directory, protectsFiles: false)
-            if item["sidecar"] as? String == "corrupt" {
-                try store.writeAtomically(Data("{\"format\":1,".utf8), to: store.sidecarURL)
-            } else if item["sidecar"] as? Bool == true {
-                var record = GameResumeRecord(appBuild: item["appBuild"] as? String ?? "same",
-                                              engineIdentity: item["engineIdentity"] as? String ?? "same",
-                                              createdAt: millis(7200.0)!, lastCheckpointAt: try XCTUnwrap(millis(item["lastCheckpointAgo"]), at),
-                                              leftAt: millis(item["leftAgo"]), turn: 4, playerDeckName: "Deck",
-                                              opponents: ["AI 1"], setup: setup)
-                record.format = item["format"] as? Int ?? GameResumeRecord.currentFormat
-                try store.write(record)
+            XCTAssertEqual(store.checkpointURL.lastPathComponent, files["checkpoint"] as? String)
+            XCTAssertEqual(store.sidecarURL.lastPathComponent, files["sidecar"] as? String)
+            XCTAssertEqual(store.markerURL.lastPathComponent, files["marker"] as? String)
+            if present.contains("sidecar") {
+                if let text = item["sidecarText"] as? String {
+                    try store.writeAtomically(Data(text.utf8), to: store.sidecarURL)
+                } else {
+                    var record = GameResumeRecord(appBuild: item["appBuild"] as? String ?? "same",
+                                                  engineIdentity: item["engine"] as? String ?? "same",
+                                                  createdAt: millis(7200.0)!,
+                                                  lastCheckpointAt: try XCTUnwrap(millis(item["checkpointAgo"]), at),
+                                                  leftAt: millis(item["leftAgo"]), turn: 12, playerDeckName: "Token Triumph",
+                                                  opponents: ["AI 1"], setup: setup)
+                    record.format = item["format"] as? Int ?? GameResumeRecord.currentFormat
+                    try store.write(record)
+                    let written = try JSONSerialization.jsonObject(with: Data(contentsOf: store.sidecarURL)) as? [String: Any]
+                    XCTAssertEqual(written?.keys.sorted(), sidecarKeys.sorted(), at)
+                }
             }
-            if item["checkpoint"] as? Bool == true {
+            if present.contains("checkpoint") {
                 try store.prepareDirectory()
                 try Data("checkpoint".utf8).write(to: store.checkpointURL)
             }
-            if item["marker"] as? Bool == true { try store.writeMarker(startedAt: millis(60.0)!) }
+            if present.contains("marker") { try store.writeMarker(startedAt: millis(60.0)!) }
             let resume = GameResumeCoordinator(store: store, now: { now })
             resume.evaluateLaunch(appBuild: "same", engineIdentity: "same")
-            XCTAssertEqual(resume.offer != nil, item["prompt"] as? Bool, at)
-            XCTAssertEqual(resume.notice, (item["notice"] as? String).map { strings[$0] ?? "missing \($0)" }, at)
-            let remains = resume.offer != nil
-            XCTAssertEqual(store.sidecarExists, remains, at)
-            XCTAssertEqual(store.checkpointExists, remains, at)
-            XCTAssertFalse(store.hasMarker, at)
+            let outcome: String
+            if resume.offer != nil {
+                XCTAssertNil(resume.notice, at)
+                outcome = "offer"
+            } else if let notice = resume.notice {
+                outcome = strings.first { $0.value == notice }?.key ?? "unknown notice: \(notice)"
+            } else {
+                outcome = "none"
+            }
+            XCTAssertEqual(outcome, item["expect"] as? String, at)
+            let remains = outcome == "offer"
+            XCTAssertEqual(store.sidecarExists, remains, "\(at) · sidecar")
+            XCTAssertEqual(store.checkpointExists, remains, "\(at) · checkpoint")
+            XCTAssertFalse(store.hasMarker, "\(at) · marker")
         }
 
         for item in try XCTUnwrap(root["detail"] as? [[String: Any]]) {
             XCTAssertEqual(GameResumeText.detail(turn: Int64(try XCTUnwrap(item["turn"] as? Int)),
                                                  opponents: try XCTUnwrap(item["opponents"] as? [String]),
-                                                 savedSecondsAgo: try XCTUnwrap(item["savedAgo"] as? Double)),
+                                                 savedSecondsAgo: try XCTUnwrap(item["savedAgoSeconds"] as? Double)),
                            item["text"] as? String)
+        }
+
+        // A game over for this seat deletes what it saved, so it cannot be resumed.
+        for item in try XCTUnwrap(root["over"] as? [[String: Any]]) {
+            var poll: [String: Any] = ["matchId": "m", "viewerId": "player1", "revision": 1, "phase": item["phase"] ?? "",
+                                       "resyncRequired": false, "prompt": NSNull(), "snapshot": NSNull()]
+            if item["snapshot"] as? Bool != false {
+                let players: [[String: Any]] = [["playerId": "me", "hasLeft": item["viewerLeft"] ?? false],
+                                                ["playerId": "other", "hasLeft": true]]
+                let snapshot: [String: Any] = ["enginePlayerId": "me", "outcome": ["ended": item["outcomeEnded"] ?? false] as [String: Any],
+                                               "gameView": ["players": players] as [String: Any]]
+                poll["snapshot"] = snapshot
+            }
+            let value = try MagicMobileOnDevice.JSONValue.decode(JSONSerialization.data(withJSONObject: poll))
+            XCTAssertEqual(GameResumePolicy.isOver(try MatchPoll(value)), item["over"] as? Bool, "over · \(item["name"] ?? "")")
         }
     }
 

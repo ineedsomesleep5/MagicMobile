@@ -7,7 +7,7 @@ import MagicMobileOnDevice
 final class GameResumeTests: XCTestCase {
     private static let launch = Date(timeIntervalSince1970: 1_790_000_000)
     private static let build = "0.1.1 (21)"
-    private static let engine = "xmage/native-aot/protocol-1/upstream/catalogue"
+    private static let engine = "xmage/protocol-1/upstream/catalogue"
     private static let checkpointCapabilities = MagicMobileOnDevice.JSONValue.object(["engine": .string("xmage"), "saveResume": .bool(true)])
     private static let oldCapabilities = MagicMobileOnDevice.JSONValue.object(["engine": .string("xmage"), "saveResume": .bool(false)])
 
@@ -73,12 +73,40 @@ final class GameResumeTests: XCTestCase {
     func testBuildOrEngineMismatchCannotResume() {
         let fresh = Self.record(checkpointAgo: 10, leftAgo: nil)
         XCTAssertEqual(decide(fresh, appBuild: "0.1.1 (22)"), .updated)
-        XCTAssertEqual(decide(fresh, engine: "xmage/native-aot/protocol-1/other/catalogue"), .updated)
+        XCTAssertEqual(decide(fresh, engine: "xmage/protocol-1/other/catalogue"), .updated)
         var future = fresh
         future.format = 2
         XCTAssertEqual(decide(future), .updated)
-        XCTAssertEqual(decide(Self.record(checkpointAgo: 9000, leftAgo: 9000), appBuild: "0.1.1 (22)"), .updated,
-                       "An update is the reason even when the game also expired")
+        XCTAssertEqual(decide(Self.record(checkpointAgo: 900, leftAgo: 600), appBuild: "0.1.1 (22)"), .updated,
+                       "Still inside the window: the update is the reason")
+        XCTAssertEqual(decide(Self.record(checkpointAgo: 9000, leftAgo: 9000), appBuild: "0.1.1 (22)"), .expired,
+                       "Expiry is the reason even when the app was also updated")
+        future.lastCheckpointAt = Self.millis(Self.launch.addingTimeInterval(-601))
+        XCTAssertEqual(decide(future), .expired)
+    }
+
+    func testEngineIdentityMatchesAndroid() {
+        XCTAssertEqual(GameResumeIdentity.engine(BuildIdentity(upstreamCommit: "abc123", catalogueHash: "hash9")),
+                       "xmage/protocol-1/abc123/hash9")
+    }
+
+    func testGameIsOverWhenItEndsOrThisSeatLeftIt() throws {
+        func poll(phase: String, ended: Bool, viewerLeft: Bool) throws -> MatchPoll {
+            try MatchPoll(.object([
+                "matchId": .string("m"), "viewerId": .string("player1"), "revision": .integer(3), "phase": .string(phase),
+                "resyncRequired": .bool(false), "prompt": .null,
+                "snapshot": .object(["enginePlayerId": .string("u1"), "outcome": .object(["ended": .bool(ended)]),
+                                     "gameView": .object(["players": .array([
+                                        .object(["playerId": .string("u1"), "hasLeft": .bool(viewerLeft)]),
+                                        .object(["playerId": .string("u2"), "hasLeft": .bool(true)])])])])
+            ]))
+        }
+        XCTAssertTrue(GameResumePolicy.isOver(try poll(phase: "ended", ended: true, viewerLeft: false)))
+        XCTAssertTrue(GameResumePolicy.isOver(try poll(phase: "running", ended: true, viewerLeft: false)))
+        XCTAssertTrue(GameResumePolicy.isOver(try poll(phase: "running", ended: false, viewerLeft: true)),
+                      "Conceded or lost in a pod, now spectating")
+        XCTAssertFalse(GameResumePolicy.isOver(try poll(phase: "running", ended: false, viewerLeft: false)),
+                       "Another seat leaving is not this seat's end")
     }
 
     func testMissingFilesDecisions() {
@@ -138,6 +166,7 @@ final class GameResumeTests: XCTestCase {
         XCTAssertEqual(GameResumeText.detail(turn: 7, opponents: ["AI 1", "AI 2", "AI 3"], savedSecondsAgo: 60),
                        "Turn 7 against AI 1, AI 2 and AI 3 · saved 1 min ago")
         XCTAssertEqual(GameResumeText.detail(turn: 0, opponents: ["AI 1"], savedSecondsAgo: 119), "Against AI 1 · saved 1 min ago")
+        XCTAssertEqual(GameResumeText.detail(turn: 5, opponents: ["AI 1"], savedSecondsAgo: 3700), "Turn 5 against AI 1 · saved 1 hr ago")
         XCTAssertEqual(GameResumeRecord.opponents(in: Self.configuration), ["AI 1", "AI 2"])
     }
 
@@ -454,8 +483,18 @@ final class GameResumeTests: XCTestCase {
         try await session.attach(client: EngineClient(transport: GameResumeRecordingTransport(result: poll.raw)),
                                  matchID: poll.matchID, seatID: poll.seatID, autoPoll: false, close: {})
         XCTAssertEqual(session.checkpoint, EngineCheckpoint(sequence: 3, savedAtMillis: 1_790_000_000_000, turn: 2, bytes: 584_000))
+        XCTAssertFalse(session.isOverForSeat)
         try await session.close()
         XCTAssertNil(session.checkpoint)
+
+        // The poll that ends the game tells save/resume to delete the saved game.
+        fields["phase"] = .string("ended")
+        let ended = try MatchPoll(.object(fields))
+        try await session.attach(client: EngineClient(transport: GameResumeRecordingTransport(result: ended.raw)),
+                                 matchID: ended.matchID, seatID: ended.seatID, autoPoll: false, close: {})
+        XCTAssertTrue(session.isOverForSeat)
+        try await session.close()
+        XCTAssertFalse(session.isOverForSeat)
     }
 }
 

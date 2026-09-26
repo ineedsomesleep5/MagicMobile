@@ -70,16 +70,16 @@ fun ResumeGamePrompt(detail: String, enabled: Boolean, resume: () -> Unit, aband
     }
 }
 
-/** A one-time save/resume notice at the top of the screen; it dismisses itself after a few seconds. */
+/** A one-time save/resume notice at the top of the screen; it dismisses itself after 6 s, or with its close button. */
 @Composable
 fun ResumeNoticeBanner(message: String, modifier: Modifier = Modifier, dismiss: () -> Unit) {
-    LaunchedEffect(message) { delay(6_000); dismiss() }
+    LaunchedEffect(message) { delay(GameResumeText.NOTICE_MILLIS); dismiss() }
     Box(modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 16.dp, vertical = 8.dp),
         contentAlignment = Alignment.TopCenter) {
         Row(Modifier.widthIn(max = 480.dp).brandPanel(12.dp).semantics { liveRegion = LiveRegionMode.Polite },
             horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(message, Modifier.weight(1f, fill = false), color = BrandTheme.ink, style = SfText.callout(SfWeight.semibold))
-            Box(Modifier.size(44.dp).clickable(onClick = dismiss).semantics { contentDescription = "Dismiss notification" },
+            Box(Modifier.size(44.dp).clickable(onClick = dismiss).semantics { contentDescription = GameResumeText.DISMISS },
                 contentAlignment = Alignment.Center) { SfImage("xmark", BrandTheme.inkSecondary, 12.dp) }
         }
     }

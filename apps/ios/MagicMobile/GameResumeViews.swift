@@ -66,7 +66,7 @@ struct GameResumeNoticeBanner: View {
                     .foregroundStyle(BrandTheme.inkSecondary)
                     .frame(width: 44, height: 44)
             }
-            .accessibilityLabel("Dismiss notification")
+            .accessibilityLabel(GameResumeText.dismiss)
         }
         .padding(.leading, 14)
         .background {

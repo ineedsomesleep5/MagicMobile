@@ -254,7 +254,7 @@ struct OnDeviceRootView: View {
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: resume.notice)
         .task(id: resume.notice) {
             guard resume.notice != nil else { return }
-            do { try await Task.sleep(for: .seconds(6)) } catch { return }
+            do { try await Task.sleep(for: .seconds(GameResumeText.noticeSeconds)) } catch { return }
             resume.notice = nil
         }
         .environment(\.nativeTurnControl, turnControl)
@@ -1024,8 +1024,9 @@ private final class OnDeviceSetupModel: ObservableObject {
         resumeObservations = [
             // Keep the sidecar in step with the engine's latest save.
             session.$checkpoint.compactMap { $0 }.sink { [weak resume] in resume?.checkpointSaved($0) },
-            // A finished game (win, loss or draw) is never offered again.
-            session.$snapshot.map { $0?.isCompleted == true }.removeDuplicates().filter { $0 }
+            // A finished game (win, loss or draw), or one this seat lost or left and now
+            // spectates, is never offered again.
+            session.$isOverForSeat.removeDuplicates().filter { $0 }
                 .sink { [weak resume] _ in resume?.gameFinished() }
         ]
     }

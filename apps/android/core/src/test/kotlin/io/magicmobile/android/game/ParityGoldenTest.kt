@@ -160,33 +160,27 @@ class ParityGoldenTest {
         }
     }
 
-    /** resume-cases.json: the save/resume strings, the prompt detail and every launch outcome, on both apps. */
+    /**
+     * resume-cases.json: the save/resume strings, files, launch outcomes, prompt detail and
+     * game-over rule. ParityGoldenTests.swift runs the same cases on iOS.
+     */
     @Test fun resumeCasesOnBothPlatforms() {
         val root = Json.parseToJsonElement(File(parity, "resume-cases.json").readText())
-        val strings = root["strings"]!!
-        assertEquals(listOf(GameResumeText.PROMPT_TITLE, GameResumeText.RESUME, GameResumeText.ABANDON, GameResumeText.RESUMED,
-            GameResumeText.RESUME_FAILED, GameResumeText.EXPIRED, GameResumeText.UPDATED, GameResumeText.LOST),
-            listOf("promptTitle", "resume", "abandon", "resumed", "resumeFailed", "expired", "updated", "lost").map { strings[it].string })
+        val strings = root["strings"]!!.obj!!.mapValues { it.value.string }
+        assertEquals(mapOf("promptTitle" to GameResumeText.PROMPT_TITLE, "resume" to GameResumeText.RESUME, "abandon" to GameResumeText.ABANDON,
+            "resumed" to GameResumeText.RESUMED, "restoreFailed" to GameResumeText.RESUME_FAILED, "expired" to GameResumeText.EXPIRED,
+            "updated" to GameResumeText.UPDATED, "endedOnClose" to GameResumeText.LOST, "dismiss" to GameResumeText.DISMISS), strings)
         assertEquals(root["windowSeconds"].integer!! * 1000, GameResumePolicy.WINDOW_MILLIS)
+        assertEquals(root["noticeSeconds"].integer!! * 1000, GameResumeText.NOTICE_MILLIS)
+        val identity = root["engineIdentity"]!!
+        assertEquals(identity["text"].string, GameResumeIdentity.engine(identity["protocol"].integer!!, identity["upstream"].string!!, identity["catalogueHash"].string!!))
         val files = root["files"]!!
         assertEquals(files["checkpoint"].string, GameResumeStore.CHECKPOINT)
         assertEquals(files["sidecar"].string, GameResumeStore.SIDECAR)
+        assertEquals(files["marker"].string, GameResumeStore.MARKER)
         assertEquals(files["sidecarFormat"].integer, GameResumeSidecar.FORMAT)
-        val identity = root["engineIdentity"]!!
-        assertEquals(identity["text"].string, GameResumeIdentity.engine(identity["protocol"].integer!!, identity["upstream"].string!!, identity["catalogueHash"].string!!))
-        for (item in root["detail"].array!!) {
-            assertEquals("detail", item["text"].string, GameResumeText.detail(item["turn"].integer!!, item["opponents"].array!!.map { it.string!! },
-                item["savedAgoSeconds"].integer!! * 1000))
-        }
-        // A game over for this seat deletes what it saved, so it cannot be resumed.
-        for (item in root["over"].array!!) {
-            val poll = MatchPoll(jsonObject("matchId" to JsonPrimitive("m"), "viewerId" to JsonPrimitive("player1"), "revision" to JsonPrimitive(1),
-                "phase" to item["phase"]!!, "resyncRequired" to JsonPrimitive(false), "prompt" to JsonNull,
-                "snapshot" to jsonObject("enginePlayerId" to JsonPrimitive("me"), "gameView" to jsonObject("players" to JsonArray(listOf(
-                    jsonObject("playerId" to JsonPrimitive("me"), "hasLeft" to item["viewerLeft"]!!),
-                    jsonObject("playerId" to JsonPrimitive("other"), "hasLeft" to JsonPrimitive(true))))))))
-            assertEquals("over · ${item["name"].string}", item["over"].bool, GameResumePolicy.over(poll))
-        }
+        val sidecarKeys = files["sidecarKeys"].array!!.map { it.string }.toSet()
+
         val cases = root["launch"].array!!
         check(cases.isNotEmpty())
         val directory = java.nio.file.Files.createTempDirectory("mm-resume-cases").toFile()
@@ -197,28 +191,48 @@ class ParityGoldenTest {
                 val store = GameResumeStore(File(directory, "case-$index")) { now }
                 store.prepare()
                 val present = item["files"].array!!.map { it.string!! }.toSet()
-                val left = item["leftAgo"]?.takeUnless { it is JsonNull }?.integer?.let { now - it * 1000 }
-                val saved = now - (item["checkpointAgo"].integer ?: 0) * 1000
-                val sidecar = GameResumeSidecar(if (item["appBuild"].string == "other") "old-build" else "build", if (item["engine"].string == "other") "old-engine" else "engine",
-                    saved - 60_000, saved, left, 12, "Token Triumph", listOf("AI 1"), GameResumeSidecar.setup(jsonObject("seats" to JsonArray(emptyList())), "player1", null))
-                if ("sidecar" in present) store.write(sidecar)
-                if ("corruptSidecar" in present) store.sidecarFile.writeText("{")
+                if ("sidecar" in present) {
+                    val text = item["sidecarText"].string
+                    if (text != null) store.sidecarFile.writeText(text)
+                    else {
+                        val left = item["leftAgo"]?.takeUnless { it is JsonNull }?.integer?.let { now - it * 1000 }
+                        val saved = now - item["checkpointAgo"].integer!! * 1000
+                        store.write(GameResumeSidecar(item["appBuild"].string ?: "same", item["engine"].string ?: "same", now - 7_200_000, saved, left,
+                            12, "Token Triumph", listOf("AI 1"), GameResumeSidecar.setup(jsonObject("seats" to JsonArray(emptyList())), "player1", null),
+                            item["format"].integer ?: GameResumeSidecar.FORMAT))
+                        assertEquals(at, sidecarKeys, EngineJson.decode(store.sidecarFile.readBytes()).obj!!.keys)
+                    }
+                }
                 if ("checkpoint" in present) store.checkpointFile.writeBytes(byteArrayOf(1))
                 if ("marker" in present) store.markInProgress("solo")
-                if (files["sidecarKeys"] != null && "sidecar" in present) {
-                    assertEquals(at, files["sidecarKeys"].array!!.map { it.string }.toSet(), EngineJson.decode(store.sidecarFile.readBytes()).obj!!.keys)
-                }
-                val outcome = when (val launch = store.launch("build", "engine")) {
+                val outcome = when (val launch = store.launch("same", "same")) {
                     is GameResumeLaunch.Offer -> "offer"
-                    is GameResumeLaunch.Notice -> listOf("expired", "updated", "lost").first { strings[it].string == launch.message }
+                    is GameResumeLaunch.Notice -> strings.entries.firstOrNull { it.value == launch.message }?.key ?: "unknown notice: ${launch.message}"
                     GameResumeLaunch.Nothing -> "none"
                 }
                 assertEquals(at, item["expect"].string, outcome)
                 assertFalse("$at · marker", store.markerFile.exists())
-                assertEquals("$at · files kept", outcome == "offer", store.checkpointFile.exists() && store.sidecarFile.exists())
-                if (outcome != "offer") assertFalse("$at · nothing left", store.checkpointFile.exists() || store.sidecarFile.exists())
+                assertEquals("$at · sidecar", outcome == "offer", store.sidecarFile.exists())
+                assertEquals("$at · checkpoint", outcome == "offer", store.checkpointFile.exists())
             }
         } finally { directory.deleteRecursively() }
+
+        for (item in root["detail"].array!!) {
+            assertEquals("detail", item["text"].string, GameResumeText.detail(item["turn"].integer!!, item["opponents"].array!!.map { it.string!! },
+                item["savedAgoSeconds"].integer!! * 1000))
+        }
+
+        // A game over for this seat deletes what it saved, so it cannot be resumed.
+        for (item in root["over"].array!!) {
+            val snapshot = if (item["snapshot"].bool == false) JsonNull else jsonObject("enginePlayerId" to JsonPrimitive("me"),
+                "outcome" to jsonObject("ended" to JsonPrimitive(item["outcomeEnded"].bool ?: false)),
+                "gameView" to jsonObject("players" to JsonArray(listOf(
+                    jsonObject("playerId" to JsonPrimitive("me"), "hasLeft" to JsonPrimitive(item["viewerLeft"].bool ?: false)),
+                    jsonObject("playerId" to JsonPrimitive("other"), "hasLeft" to JsonPrimitive(true))))))
+            val poll = MatchPoll(jsonObject("matchId" to JsonPrimitive("m"), "viewerId" to JsonPrimitive("player1"), "revision" to JsonPrimitive(1),
+                "phase" to item["phase"]!!, "resyncRequired" to JsonPrimitive(false), "prompt" to JsonNull, "snapshot" to snapshot))
+            assertEquals("over · ${item["name"].string}", item["over"].bool, GameResumePolicy.over(poll))
+        }
     }
 
     /**

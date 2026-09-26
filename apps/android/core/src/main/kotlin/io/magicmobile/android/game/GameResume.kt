@@ -25,17 +25,19 @@ object GameResumeText {
     const val EXPIRED = "Your unfinished game expired after 10 minutes."
     const val UPDATED = "Your unfinished game can't be resumed after an update."
     const val LOST = "Your last game ended when the app closed."
+    /** The notice's close button, for TalkBack. */
+    const val DISMISS = "Dismiss notification"
+    /** A notice dismisses itself after this long. */
+    const val NOTICE_MILLIS = 6_000L
 
     /** "Turn 12 against Alice and Bob · saved 3 min ago"; "Against …" before the first turn is known. */
     fun detail(turn: Long, opponents: List<String>, savedAgoMillis: Long): String {
-        val against = opponents.takeIf { it.isNotEmpty() }?.let { "against ${names(it)}" }
-        val lead = when {
-            turn >= 1 && against != null -> "Turn $turn $against"
-            turn >= 1 -> "Turn $turn"
-            against != null -> against.replaceFirstChar { it.uppercase() }
-            else -> null
+        val names = names(opponents)
+        val game = when {
+            turn >= 1 -> if (names.isEmpty()) "Turn $turn" else "Turn $turn against $names"
+            else -> if (names.isEmpty()) "Your game" else "Against $names"
         }
-        return listOfNotNull(lead, savedAgo(savedAgoMillis)).joinToString(" · ")
+        return "$game · ${savedAgo(savedAgoMillis)}"
     }
 
     /** "Alice", "Alice and Bob", "Alice, Bob and Carol". */
@@ -72,7 +74,7 @@ object GameResumePolicy {
      * and now spectates). What was saved before must not come back.
      */
     fun over(poll: MatchPoll): Boolean {
-        if (poll.phase == "ended") return true
+        if (poll.phase == "ended" || poll.snapshot["outcome"]["ended"].bool == true) return true
         val viewer = poll.snapshot["enginePlayerId"].string ?: return false
         return poll.snapshot["gameView"]["players"].array?.any { it["playerId"].string == viewer && it["hasLeft"].bool == true } == true
     }
@@ -147,7 +149,8 @@ data class GameResumeSettings(val deckID: String, val aiDeckIDs: List<String>, v
 /**
  * resume.json, format 1. `setup` holds the create configuration (without the checkpoint path),
  * the human seat and the local settings; nothing beyond what that configuration already holds.
- * Times are milliseconds since 1970.
+ * Times are milliseconds since 1970. A sidecar of another format is read only so that the launch
+ * can report it as expired or updated; it is never resumed.
  */
 data class GameResumeSidecar(
     val appBuild: String,
@@ -159,11 +162,12 @@ data class GameResumeSidecar(
     val playerDeckName: String,
     val opponents: List<String>,
     val setup: JsonObject,
+    val format: Long = FORMAT,
 ) {
     val seatID: String? get() = setup["seatId"].string
     val settings: GameResumeSettings? get() = GameResumeSettings.decode(setup["settings"])
 
-    fun json(): JsonObject = jsonObject("format" to JsonPrimitive(FORMAT), "appBuild" to JsonPrimitive(appBuild),
+    fun json(): JsonObject = jsonObject("format" to JsonPrimitive(format), "appBuild" to JsonPrimitive(appBuild),
         "engineIdentity" to JsonPrimitive(engineIdentity), "createdAt" to JsonPrimitive(createdAt),
         "lastCheckpointAt" to JsonPrimitive(lastCheckpointAt), "leftAt" to (leftAt?.let(::JsonPrimitive) ?: JsonNull),
         "turn" to JsonPrimitive(turn), "playerDeckName" to JsonPrimitive(playerDeckName),
@@ -181,7 +185,7 @@ data class GameResumeSidecar(
             (configuration["seats"].array ?: emptyList()).filter { it["controller"].string == "ai" }.mapNotNull { it["name"].string }
 
         fun decode(value: J): GameResumeSidecar? {
-            if (value["format"].integer != FORMAT) return null
+            val format = value["format"].integer ?: return null
             val setup = value["setup"] as? JsonObject ?: return null
             val left = value["leftAt"]
             return GameResumeSidecar(
@@ -194,6 +198,7 @@ data class GameResumeSidecar(
                 playerDeckName = value["playerDeckName"].string ?: return null,
                 opponents = value["opponents"].array?.map { it.string ?: return null } ?: return null,
                 setup = setup,
+                format = format,
             ).takeIf { it.seatID != null }
         }
     }
@@ -247,8 +252,9 @@ class GameResumeStore(val directory: File, private val clock: () -> Long = Syste
 
     /**
      * The launch decision. Resumable iff both files exist, the player left at most 10 minutes
-     * ago and the saved app build and engine match this app. Anything else is deleted, with at
-     * most one notice: expired first, then an update, then a game that died before it could be saved.
+     * ago and the saved app build, engine and sidecar format match this app. Anything else is
+     * deleted, with at most one notice: a game that died before it could be saved (or whose sidecar
+     * cannot be read), then expired whatever the build, then an update.
      */
     fun launch(appBuild: String, engineIdentity: String): GameResumeLaunch {
         val marker = markerFile.exists()
@@ -264,7 +270,8 @@ class GameResumeStore(val directory: File, private val clock: () -> Long = Syste
         val outcome = when {
             sidecar == null || !hasCheckpoint -> GameResumeLaunch.Notice(GameResumeText.LOST)
             GameResumePolicy.expired(now, sidecar.leftAt, sidecar.lastCheckpointAt) -> GameResumeLaunch.Notice(GameResumeText.EXPIRED)
-            sidecar.appBuild != appBuild || sidecar.engineIdentity != engineIdentity -> GameResumeLaunch.Notice(GameResumeText.UPDATED)
+            sidecar.format != GameResumeSidecar.FORMAT || sidecar.appBuild != appBuild || sidecar.engineIdentity != engineIdentity ->
+                GameResumeLaunch.Notice(GameResumeText.UPDATED)
             else -> GameResumeLaunch.Offer(sidecar, GameResumeText.detail(sidecar.turn, sidecar.opponents, now - sidecar.lastCheckpointAt))
         }
         if (outcome is GameResumeLaunch.Offer) clearMarker() else deleteAll()
