@@ -7024,7 +7024,7 @@ struct UniversalPromptActionPanel: View {
 
             promptButton(
                 label: "Submit selection",
-                subtitle: valid ? "\(selectedCount) cards from \(searchZoneName(for: prompt))" : "Select \(PromptSelectionRules.boundsText(minChoices: prompt.minChoices, maxChoices: prompt.maxChoices))",
+                subtitle: valid ? "\(CardCountText.label(selectedCount)) from \(searchZoneName(for: prompt))" : "Select \(PromptSelectionRules.boundsText(minChoices: prompt.minChoices, maxChoices: prompt.maxChoices))",
                 systemImage: "checkmark.circle",
                 pendingId: "\(prompt.id)-search-select",
                 command: valid ? command(type: type, promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: selectedIds) : nil
@@ -7102,7 +7102,7 @@ struct UniversalPromptActionPanel: View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(piles) { pile in
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("\(pile.label) · \(pile.cards.count) cards")
+                    Text("\(pile.label) · \(CardCountText.label(pile.cards.count))")
                         .font(.subheadline.bold())
                         .foregroundStyle(MagicPalette.parchment)
                     if pile.cards.isEmpty {
@@ -7137,7 +7137,7 @@ struct UniversalPromptActionPanel: View {
                     }
                     promptButton(
                         label: "Choose \(pile.label)",
-                        subtitle: "\(pile.cards.count) cards",
+                        subtitle: CardCountText.label(pile.cards.count),
                         systemImage: "tray.full",
                         pendingId: "\(prompt.id)-pile-\(pile.id)",
                         command: command(type: "choose_pile", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, pile: pile.explicitPileNumber)
@@ -7895,19 +7895,19 @@ struct MobileSurfacesPanel: View {
     var body: some View {
         PromptPanelSection(title: "Zones", detail: surfaceSummary) {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 76), spacing: 5)], spacing: 5) {
-                zoneButton(title: "Stack", value: "\(stackObjectCount)", systemImage: "sparkles", cards: stackCards)
-                zoneButton(title: "Command", value: "\(commandCards.count)", systemImage: "crown", cards: commandCards)
-                zoneButton(title: "Grave", value: "\(graveyardCards.count)", systemImage: "archivebox", cards: graveyardCards)
-                zoneButton(title: "Exile", value: "\(exileCards.count)", systemImage: "moon.stars", cards: exileCards)
+                zoneButton(title: "Stack", count: stackObjectCount, systemImage: "sparkles", cards: stackCards)
+                zoneButton(title: "Command", count: commandCards.count, systemImage: "crown", cards: commandCards)
+                zoneButton(title: "Grave", count: graveyardCards.count, systemImage: "archivebox", cards: graveyardCards)
+                zoneButton(title: "Exile", count: exileCards.count, systemImage: "moon.stars", cards: exileCards)
                 SurfaceChip(title: "Library", value: "\(libraryCount)", systemImage: "books.vertical")
                 if !revealedCards.isEmpty || snapshot.xmage?.panels.revealed == true {
-                    zoneButton(title: "Revealed", value: "\(revealedCards.count)", systemImage: "eye", cards: revealedCards)
+                    zoneButton(title: "Revealed", count: revealedCards.count, systemImage: "eye", cards: revealedCards)
                 }
                 if !lookedAtCards.isEmpty || snapshot.xmage?.panels.lookedAt == true {
-                    zoneButton(title: "Looked", value: "\(lookedAtCards.count)", systemImage: "eye.trianglebadge.exclamationmark", cards: lookedAtCards)
+                    zoneButton(title: "Looked", count: lookedAtCards.count, systemImage: "eye.trianglebadge.exclamationmark", cards: lookedAtCards)
                 }
                 if let companions = snapshot.xmage?.companion, !companions.isEmpty {
-                    zoneButton(title: "Companion", value: "\(companions.flatMap(\.cards).count)", systemImage: "person.crop.square", cards: companions.flatMap(\.cards))
+                    zoneButton(title: "Companion", count: companions.flatMap(\.cards).count, systemImage: "person.crop.square", cards: companions.flatMap(\.cards))
                 }
                 SurfaceChip(title: "Priority", value: priorityOwner, systemImage: "hand.raised")
                 SurfaceChip(title: "Actions", value: "\((snapshot.legalActions ?? []).count)", systemImage: "bolt")
@@ -7947,14 +7947,14 @@ struct MobileSurfacesPanel: View {
         }
     }
 
-    private func zoneButton(title: String, value: String, systemImage: String, cards: [ZoneCard]) -> some View {
+    private func zoneButton(title: String, count: Int, systemImage: String, cards: [ZoneCard]) -> some View {
         Button {
             viewZone(title == "Grave" ? "Graveyard" : title, cards)
         } label: {
-            SurfaceChip(title: title, value: value, systemImage: systemImage)
+            SurfaceChip(title: title, value: "\(count)", systemImage: systemImage)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(title) zone, \(value) cards")
+        .accessibilityLabel("\(title) zone, \(CardCountText.label(count))")
     }
 
     private var surfaceSummary: String {
@@ -9945,7 +9945,7 @@ private struct PortraitOpponentCommanderHUD: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(name), \(summary.life) life, \(summary.handCount) cards in hand, \(summary.libraryCount) cards in library")
+        .accessibilityLabel("\(name), \(summary.life) life, \(CardCountText.label(summary.handCount)) in hand, \(CardCountText.label(summary.libraryCount)) in library")
         .accessibilityHint(combatTargetable ? "Double tap to attack this player" : "")
     }
 }

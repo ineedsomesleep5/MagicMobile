@@ -46,6 +46,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import io.magicmobile.android.game.CardCountText
 import io.magicmobile.android.game.ChoicePrompt
 import io.magicmobile.android.game.CompactPromptPopup
 import io.magicmobile.android.game.GameCommand
@@ -324,7 +325,7 @@ fun UniversalPromptActionPanel(snapshot: GameSnapshot, selectedCardActions: List
             }
             promptButton("Submit selection", "${prompt.id}-search-select",
                 if (valid) command(type, prompt.responseCommand?.promptId ?: prompt.id, prompt.playerId, selectedIds) else null,
-                subtitle = if (valid) "${selectedIds.size} cards from $zone" else "Select ${PromptSelectionRules.boundsText(prompt.minChoices, prompt.maxChoices)}",
+                subtitle = if (valid) "${CardCountText.label(selectedIds.size)} from $zone" else "Select ${PromptSelectionRules.boundsText(prompt.minChoices, prompt.maxChoices)}",
                 systemImage = "checkmark.circle")
         }
     }
@@ -365,7 +366,7 @@ fun UniversalPromptActionPanel(snapshot: GameSnapshot, selectedCardActions: List
             for (pile in piles) {
                 Column(Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(8.dp)).padding(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("${pile.label} · ${pile.cards.size} cards", color = MagicPalette.parchment, style = SfText.subheadline(SfWeight.bold))
+                    Text("${pile.label} · ${CardCountText.label(pile.cards.size)}", color = MagicPalette.parchment, style = SfText.subheadline(SfWeight.bold))
                     if (pile.cards.isEmpty()) Text("This pile is empty.", color = MagicPalette.parchment.copy(alpha = 0.7f), style = SfText.caption())
                     else Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
                         for (card in pile.cards) {
@@ -379,7 +380,7 @@ fun UniversalPromptActionPanel(snapshot: GameSnapshot, selectedCardActions: List
                     }
                     promptButton("Choose ${pile.label}", "${prompt.id}-pile-${pile.id}",
                         command("choose_pile", prompt.responseCommand?.promptId ?: prompt.id, prompt.playerId, pile = pile.explicitPileNumber),
-                        subtitle = "${pile.cards.size} cards", systemImage = "tray.full")
+                        subtitle = CardCountText.label(pile.cards.size), systemImage = "tray.full")
                 }
             }
         }
@@ -781,19 +782,19 @@ fun MobileSurfacesPanel(snapshot: GameSnapshot, viewZone: (String, List<ZoneCard
 
     PromptPanelSection("Zones", summary) {
         val chips = buildList<@Composable () -> Unit> {
-            fun zone(title: String, value: String, icon: String, cards: List<ZoneCard>) = add {
-                Box(Modifier.clickable { viewZone(if (title == "Grave") "Graveyard" else title, cards) }.semantics { contentDescription = "$title zone, $value cards" }) {
-                    SurfaceChip(title, value, icon)
+            fun zone(title: String, count: Int, icon: String, cards: List<ZoneCard>) = add {
+                Box(Modifier.clickable { viewZone(if (title == "Grave") "Graveyard" else title, cards) }.semantics { contentDescription = "$title zone, ${CardCountText.label(count)}" }) {
+                    SurfaceChip(title, "$count", icon)
                 }
             }
-            zone("Stack", "$stackObjectCount", "sparkles", stackCards)
-            zone("Command", "${commandCards.size}", "crown", commandCards)
-            zone("Grave", "${graveyardCards.size}", "archivebox", graveyardCards)
-            zone("Exile", "${exileCards.size}", "moon.stars", exileCards)
+            zone("Stack", stackObjectCount, "sparkles", stackCards)
+            zone("Command", commandCards.size, "crown", commandCards)
+            zone("Grave", graveyardCards.size, "archivebox", graveyardCards)
+            zone("Exile", exileCards.size, "moon.stars", exileCards)
             add { SurfaceChip("Library", "$libraryCount", "books.vertical") }
-            if (revealed.isNotEmpty() || xmage?.panels?.revealed == true) zone("Revealed", "${revealed.size}", "eye", revealed)
-            if (lookedAt.isNotEmpty() || xmage?.panels?.lookedAt == true) zone("Looked", "${lookedAt.size}", "eye.trianglebadge.exclamationmark", lookedAt)
-            xmage?.companion?.takeIf { it.isNotEmpty() }?.let { companions -> zone("Companion", "${companions.flatMap { it.cards }.size}", "person.crop.square", companions.flatMap { it.cards }) }
+            if (revealed.isNotEmpty() || xmage?.panels?.revealed == true) zone("Revealed", revealed.size, "eye", revealed)
+            if (lookedAt.isNotEmpty() || xmage?.panels?.lookedAt == true) zone("Looked", lookedAt.size, "eye.trianglebadge.exclamationmark", lookedAt)
+            xmage?.companion?.takeIf { it.isNotEmpty() }?.let { companions -> zone("Companion", companions.flatMap { it.cards }.size, "person.crop.square", companions.flatMap { it.cards }) }
             add { SurfaceChip("Priority", priorityOwner, "hand.raised") }
             add { SurfaceChip("Actions", "${(snapshot.legalActions ?: emptyList()).size}", "bolt") }
         }

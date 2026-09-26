@@ -265,6 +265,11 @@ object PromptDisplayText {
     fun clean(text: String): String = if (!text.contains("[")) text else objectID.replace(text, "")
 }
 
+/** Port of CardCountText in GameLogPresentation.swift: "0 cards", "1 card", "2 cards" for decks, sections, bins, piles and zones. */
+object CardCountText {
+    fun label(count: Int): String = "$count ${if (count == 1) "card" else "cards"}"
+}
+
 /**
  * Port of CombatLogReasons in GameLogPresentation.swift. One-line reasons for the combat damage and
  * deaths the public log already shows, such as "Atarka, World Render has double strike (first-strike

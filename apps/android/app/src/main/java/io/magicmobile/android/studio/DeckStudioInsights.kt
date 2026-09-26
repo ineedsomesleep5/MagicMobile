@@ -53,6 +53,7 @@ import io.magicmobile.android.board.ConfirmationAction
 import io.magicmobile.android.board.ConfirmationDialog
 import io.magicmobile.android.board.ManaSymbolView
 import io.magicmobile.android.board.MenuEntry
+import io.magicmobile.android.game.CardCountText
 import io.magicmobile.android.ui.IosSlider
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfDesign
@@ -120,7 +121,7 @@ fun DeckStudioAnalysisContent(draft: NativeDeckDraft, metadata: NativeDeckMetada
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Bottom) {
                 for (bin in 0..7) {
                     Column(Modifier.width(44.dp).height(144.dp).clickable { selectedBin = if (selectedBin == bin) null else bin }
-                        .semantics { contentDescription = "Mana value ${if (bin == 7) "7 or more" else "$bin"}, ${binCount(bin)} cards. Show cards." },
+                        .semantics { contentDescription = "Mana value ${if (bin == 7) "7 or more" else "$bin"}, ${CardCountText.label(binCount(bin))}. Show cards." },
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(7.dp, Alignment.Bottom)) {
                         Text("${binCount(bin)}", color = DeckStudioPalette.ink, style = StudioText.caption)
                         Box(Modifier.fillMaxWidth().height(maxOf(3f, 100f * binCount(bin) / maximum).dp)
@@ -164,7 +165,7 @@ fun DeckStudioAnalysisContent(draft: NativeDeckDraft, metadata: NativeDeckMetada
                 HorizontalDivider(thickness = 0.5.dp, color = DeckStudioPalette.separator)
                 val names = mapOf("W" to "White", "U" to "Blue", "B" to "Black", "R" to "Red", "G" to "Green", "C" to "Colorless")
                 for (color in listOf("W", "U", "B", "R", "G", "C")) Row(Modifier.semantics(mergeDescendants = true) {
-                    contentDescription = "${names[color]}: ${colorCount(color)} cards"
+                    contentDescription = "${names[color]}: ${CardCountText.label(colorCount(color))}"
                 }, verticalAlignment = Alignment.CenterVertically) {
                     ManaSymbolView(color, 24.dp); Spacer(Modifier.weight(1f))
                     Text("${colorCount(color)}", color = DeckStudioPalette.secondaryInk, style = StudioText.body)
@@ -245,7 +246,7 @@ fun DeckStudioRoleInsightsView(draft: NativeDeckDraft, metadata: NativeDeckMetad
         if (analysis == null) { Text("Role analysis is unavailable for malformed or oversized draft data. Your deck is unchanged.", color = DeckStudioPalette.ink, style = StudioText.caption); return@StudioPanel }
         for (role in DeckStudioRole.entries) {
             Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).clickable { selectedRole = if (selectedRole == role) null else role }
-                .semantics { contentDescription = "${role.title}, ${analysis.count(role)} cards. Review detected cards." }, verticalAlignment = Alignment.CenterVertically) {
+                .semantics { contentDescription = "${role.title}, ${CardCountText.label(analysis.count(role))}. Review detected cards." }, verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(role.title, color = DeckStudioPalette.ink, style = StudioText.subheadline.weight(SfWeight.medium))
                     val target = preferences.targets[role]

@@ -288,6 +288,13 @@ final class GameLogPresentationTests: XCTestCase {
         XCTAssertEqual(PromptDisplayText.clean("Choose [add] or [Copy]"), "Choose [add] or [Copy]")
         XCTAssertEqual(PromptDisplayText.clean("{T}, Pay 1 life"), "{T}, Pay 1 life")
     }
+
+    func testCardCountLabelIsSingularOnlyForOne() {
+        XCTAssertEqual(CardCountText.label(0), "0 cards")
+        XCTAssertEqual(CardCountText.label(1), "1 card")
+        XCTAssertEqual(CardCountText.label(2), "2 cards")
+        XCTAssertEqual(CardCountText.label(100), "100 cards")
+    }
 }
 
 /// CombatLogReasons over consecutive snapshots. Message cases: combat-cases.json (ParityGoldenTests).
