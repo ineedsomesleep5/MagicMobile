@@ -325,7 +325,7 @@ public final class RealCheckpointTests {
         Path log=checkpoint.resolveSibling(checkpoint.getFileName()+".child.log");
         Path restoreCopy=checkpoint.resolveSibling(checkpoint.getFileName()+".restore");
         Files.copy(checkpoint,restoreCopy,StandardCopyOption.REPLACE_EXISTING); // the restored game keeps writing to its path
-        Process process=new ProcessBuilder(java,"-Xmx768m","-Djava.awt.headless=true","-cp",System.getProperty("java.class.path"),
+        Process process=new ProcessBuilder(java,"-Xmx1g","-Djava.awt.headless=true","-cp",System.getProperty("java.class.path"),
             RealCheckpointTests.class.getName(),"child",restoreCopy.toString(),expected.toString(),mode,Integer.toString(prompts))
             .redirectErrorStream(true).redirectOutput(log.toFile()).start();
         if(!process.waitFor(420,TimeUnit.SECONDS)) { process.destroyForcibly();throw new AssertionError("restore child timed out: "+log); }
@@ -378,7 +378,7 @@ public final class RealCheckpointTests {
                 Map<String,Object> prompt=state.get("prompt")==null?null:Json.object(state.get("prompt"));
                 if(prompt!=null && !Boolean.TRUE.equals(prompt.get("submitted")) && !seen.contains((String)prompt.get("promptId"))) return state;
                 if(!"running".equals(state.get("phase")) && !"starting".equals(state.get("phase"))) return state;
-                Thread.sleep(2);
+                Thread.sleep(5);
             }
             throw new AssertionError("no prompt within "+seconds+"s"+diagnostics());
         }

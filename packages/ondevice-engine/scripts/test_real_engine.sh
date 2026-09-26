@@ -62,7 +62,7 @@ python3 scripts/resolve_deck.py --catalogue build/generated/catalogue.jsonl \
   --input tests/decks/checkpoint-features.txt --commander 'Zedruu the Greathearted' --output build/checkpoint-features.json
 CHECKPOINT_TEST=$(mktemp -d "$ROOT/build/checkpoint-test-XXXXXX")
 python3 -c 'import subprocess,sys; subprocess.run(sys.argv[1:],check=True,timeout=1500)' \
-  java -Xmx768m -Djava.awt.headless=true -cp "$CP:build/test-real" io.magicmobile.xmage.RealCheckpointTests \
+  java -Xmx1g -Djava.awt.headless=true -cp "$CP:build/test-real" io.magicmobile.xmage.RealCheckpointTests \
   "$CHECKPOINT_TEST" build/token-triumph.json build/chaos-incarnate.json build/first-flight.json \
   build/isamaru.json build/yargle.json build/adeline.json build/checkpoint-features.json \
   2>&1 | tee evidence/RealCheckpointTests.txt
