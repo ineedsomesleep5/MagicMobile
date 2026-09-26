@@ -154,6 +154,7 @@ Caleb authorizes.
 | 3–6 Web client | Blocked on Caleb | | Needs a route (hosted solo vs GraalVM spike) plus the open questions: audience, hosting cost, sign-in, meaning of "syncing" |
 | Integration for build 18 / 9 | In progress | `codex/build18-integration` | #39–#43 and this doc merged; one conflict resolved (Android preview enum and tests, both kept). Android: core 73 / app 62 tests and 283 contract assertions pass, assembleDebug OK. Next: iOS 27 fixes, full iOS checks, live cross-play |
 | iOS 27 UI-test triage | In progress | `codex/ios27-ui-fixes` | Delegate. Library search focus, hand inspection, attachment and history tests fail on iOS 27 (also on base); plus a full build with Metal |
+| Build 18 polish: fan-content notice, clipped-row +N | Done, merged into integration | #45 (draft) | Reviewed. swift 496 tests, Android 144 JVM tests pass. iPhone and Android show the same counts (+7/+6/+13/+7) |
 | Release: iOS build 18, Android build 9 | Not started | | Needs Caleb's go-ahead |
 
 ## Log
@@ -237,3 +238,13 @@ Caleb authorizes.
     - a GraalVM Web Image spike, which needs CI runners because a Wasm image build of XMage does
       not fit this 8 GB Mac
   - Caleb decides. `packages/ondevice-engine` is unchanged and no native rebuild is needed.
+- 2026-09-26 (Claude Code): Polish #45 merged into the integration branch.
+  - Both apps' Updates sheet has an About section with the site's fan-content notice and a
+    Scryfall credit.
+  - Scrolling battlefield rows fade at clipped edges and show "+N" hidden-card badges. The logic
+    is `BattlefieldRowOverflow`, with mirrored tests.
+  - Fixed `apps/android/.gitignore`: `native-artifact/` did not match the symlinks worktrees use.
+  - Pre-existing and noted:
+    - `testLandscapeLandsAndPermanentsScrollFromArtwork` fails on the base, because two landscape
+      resource rows share the `board.battlefield.Your lands` identifier.
+    - `testLandscapeRocksUse…ScrollIndependently` is flaky on the base.
