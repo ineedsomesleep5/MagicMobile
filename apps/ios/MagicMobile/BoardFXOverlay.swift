@@ -149,7 +149,7 @@ struct BoardFXOverlay: View {
             case let .spellCast(_, _, controllerID, _, weight):
                 return BoardFXFlight(effect: effect, card: card,
                                      kind: .cast(from: anchors.handPoint(controllerID), to: anchors.stackPoint, weight: weight))
-            case let .combatStrike(id, target, _):
+            case let .combatStrike(id, target, _, _):
                 guard let origin = rect(id), let hit = point(target) else { return nil }
                 return BoardFXFlight(effect: effect, card: card, kind: .strike(from: origin, to: hit))
             default:
@@ -255,7 +255,10 @@ struct BoardFXOverlay: View {
             if let attacker = rect(attackerID) {
                 BoardFXPainter.link(from: blocker, to: attacker, color: BoardFXPainter.blockSteel, progress: p, in: &context)
             }
-        case let .combatStrike(attackerID, target, tint):
+        case .firstStrikeBeat:
+            // XMage's first-strike damage step: named while its strikes, damage and deaths play.
+            BoardFXPainter.banner("First strike", at: anchors.stackPoint, color: BoardFXPainter.attackRed, progress: p, in: &context)
+        case let .combatStrike(attackerID, target, tint, _):
             guard let origin = rect(attackerID), let hit = point(target) else { return }
             let impact = BoardFXScheduler.strikeImpactFraction
             if motion && p > 0.15 && p < impact + 0.05 {
@@ -688,8 +691,9 @@ enum BoardFXSound {
                 }
             case .attackDeclared: cues.append(Cue(sound: .attack, at: fx.delay))
             case .blockDeclared: cues.append(Cue(sound: .block, at: fx.delay))
-            case let .combatStrike(_, target, _):
+            case let .combatStrike(_, target, _, _):
                 cues.append(Cue(sound: target == .player(viewerID) ? .playerHit : .strike, at: fx.handoff))
+            case .firstStrikeBeat: break
             case .damageMarked:
                 if !hasStrike { cues.append(Cue(sound: .strike, at: fx.delay, volume: 0.7)) }
             case let .leftBattlefield(_, _, to, _):
@@ -1038,12 +1042,12 @@ struct BoardFXCardMotionModifier: ViewModifier {
     @Environment(\.boardFXClock) private var clock
     /// The window currently hiding the tile (for windows that start later).
     @State private var hiding: BoardFXCardMotion.Hidden?
-    /// The last window that has finished; the tile shows again.
-    @State private var revealed: BoardFXCardMotion.Hidden?
+    /// Windows that have finished; the tile shows again unless another window covers it.
+    @State private var revealed = Set<BoardFXCardMotion.Hidden>()
 
     func body(content: Content) -> some View {
-        let window = motion.hidden[cardID]
-        let hidden = window.map { revealed != $0 && ($0.from <= 0 || hiding == $0) } ?? false
+        let windows = motion.hidden[cardID] ?? []
+        let hidden = windows.contains { !revealed.contains($0) && ($0.from <= 0 || hiding == $0) }
         let lunge = motion.lunges[cardID]
         let stance = motion.stances[cardID]
         // Direction 0 (no lunge) keeps the offset at zero when the trigger resets.
@@ -1071,25 +1075,31 @@ struct BoardFXCardMotionModifier: ViewModifier {
                 SpringKeyframe(CGFloat(22), duration: 0.18, spring: .snappy)
                 SpringKeyframe(CGFloat.zero, duration: 0.34, spring: .bouncy)
             }
-            .task(id: window) {
-                guard let window else { return }
-                // Time the window on the overlay's frame clock (see BoardFXClock).
+            .task(id: windows) {
+                revealed.formIntersection(windows)
+                guard !windows.isEmpty else { return }
+                // Time the windows on the overlay's frame clock (see BoardFXClock). A double
+                // striker has one window per strike, so its tile shows between them.
                 var polls = 0
-                while clock.origin(for: window.batch) == nil && polls < 60 && !Task.isCancelled {
+                while windows.contains(where: { clock.origin(for: $0.batch) == nil }) && polls < 60 && !Task.isCancelled {
                     try? await Task.sleep(for: .milliseconds(33)); polls += 1
                 }
-                let origin = clock.origin(for: window.batch) ?? Date()
-                if window.from > 0 {
-                    let start = origin.addingTimeInterval(window.from).timeIntervalSinceNow
-                    if start > 0 { try? await Task.sleep(for: .seconds(start)) }
+                let timed = windows.map { window -> (window: BoardFXCardMotion.Hidden, origin: Date) in
+                    (window, clock.origin(for: window.batch) ?? Date())
+                }.sorted { $0.origin.addingTimeInterval($0.window.from) < $1.origin.addingTimeInterval($1.window.from) }
+                for (window, origin) in timed where !revealed.contains(window) {
+                    if window.from > 0 {
+                        let start = origin.addingTimeInterval(window.from).timeIntervalSinceNow
+                        if start > 0 { try? await Task.sleep(for: .seconds(start)) }
+                        guard !Task.isCancelled else { return }
+                        hiding = window
+                    }
+                    let wait = origin.addingTimeInterval(window.until).timeIntervalSinceNow
+                    if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
                     guard !Task.isCancelled else { return }
-                    hiding = window
+                    revealed.insert(window)
+                    if hiding == window { hiding = nil }
                 }
-                let wait = origin.addingTimeInterval(window.until).timeIntervalSinceNow
-                if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
-                guard !Task.isCancelled else { return }
-                revealed = window
-                hiding = nil
             }
     }
 }

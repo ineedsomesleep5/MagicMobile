@@ -299,6 +299,7 @@ extension ZoneCard {
 /// Double strike already says first strike, so first strike is not repeated beside it.
 struct CombatKeywordBadgePlan: Equatable {
     let visible: [CombatKeyword]
+    /// Keywords that do not fit; they keep their icon in the card's ability row.
     let hiddenCount: Int
     /// Narrow cards use short labels ("2× strike").
     let compact: Bool
