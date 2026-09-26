@@ -20,11 +20,12 @@ let queue: Promise<unknown> = Promise.resolve();
 // (XMage's Watcher.copy, then Gson serializing mage.view.GameView). These natives forward to the
 // plain accessors: first jdk.internal.misc.Unsafe.getUnsafe() through the `lib` the native
 // receives (CheerpJ's documented way to call Java from a native), else
-// io.magicmobile.web.WebUnsafe through the app library. Tried and failed in this spike: calling
-// the raw `self` Unsafe object (ArithmeticException, then "Java code still running"), WebUnsafe
-// through the native's `lib` (it belongs to the bootstrap loader: ClassNotFoundException), and
-// WebUnsafe through the app library ("Java code still running"). The hot per-game-copy caller,
-// Watcher.copy, is also shadowed in the web bundle so AI simulations do not cross this bridge.
+// io.magicmobile.web.WebUnsafe through the app library. None of this works in CheerpJ 4.3 (see
+// docs/WEB_ENGINE_SPIKE.md): the raw `self` Unsafe object (ArithmeticException, then "Java code
+// still running"), WebUnsafe through the native's `lib` (bootstrap loader: ClassNotFoundException),
+// WebUnsafe through the app library and Unsafe through the native's `lib` (both "Java code still
+// running"; the Java thread hangs). Kept so the failure reproduces with `bench.mjs --debug`.
+// The hot per-game-copy caller, Watcher.copy, is shadowed in the web bundle and needs no bridge.
 type Native = (...args: unknown[]) => Promise<unknown>;
 type Callable = Record<string, (...args: unknown[]) => Promise<unknown>>;
 type BootLibrary = { jdk: { internal: { misc: { Unsafe: Promise<{ getUnsafe(): Promise<Callable> }> } } } };
