@@ -50,3 +50,19 @@ python3 scripts/resolve_deck.py --catalogue build/generated/catalogue.jsonl \
 python3 scripts/make_match.py build/adeline.json build/yargle.json --output build/token-match.json
 python3 scripts/play_jvm.py build/token-match.json --timeout 240 --mulligans 2 --require-tokens \
   --report evidence/real-jvm-token-mulligan-game.json
+# Save/resume checkpoints: every restore runs in a fresh child JVM (process death), with bundled
+# precons that exile, make tokens, copy and change control. JVM only; not native or phone evidence.
+python3 scripts/resolve_deck.py --catalogue build/generated/catalogue.jsonl \
+  --input tests/decks/token-triumph.txt --commander 'Emmara, Soul of the Accord' --output build/token-triumph.json
+python3 scripts/resolve_deck.py --catalogue build/generated/catalogue.jsonl \
+  --input tests/decks/chaos-incarnate.txt --commander 'Kardur, Doomscourge' --output build/chaos-incarnate.json
+python3 scripts/resolve_deck.py --catalogue build/generated/catalogue.jsonl \
+  --input tests/decks/first-flight.txt --commander 'Isperia, Supreme Judge' --output build/first-flight.json
+python3 scripts/resolve_deck.py --catalogue build/generated/catalogue.jsonl \
+  --input tests/decks/checkpoint-features.txt --commander 'Zedruu the Greathearted' --output build/checkpoint-features.json
+CHECKPOINT_TEST=$(mktemp -d "$ROOT/build/checkpoint-test-XXXXXX")
+python3 -c 'import subprocess,sys; subprocess.run(sys.argv[1:],check=True,timeout=1500)' \
+  java -Xmx768m -Djava.awt.headless=true -cp "$CP:build/test-real" io.magicmobile.xmage.RealCheckpointTests \
+  "$CHECKPOINT_TEST" build/token-triumph.json build/chaos-incarnate.json build/first-flight.json \
+  build/isamaru.json build/yargle.json build/adeline.json build/checkpoint-features.json \
+  2>&1 | tee evidence/RealCheckpointTests.txt

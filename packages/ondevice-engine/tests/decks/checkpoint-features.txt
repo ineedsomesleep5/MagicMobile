@@ -1,0 +1,44 @@
+# Save/resume fixture: cheap token, exile, copy and control-change spells (RealCheckpointTests).
+1 Zedruu the Greathearted
+1 Raise the Alarm
+1 Dragon Fodder
+1 Krenko's Command
+1 Beetleback Chief
+1 Goblin Instigator
+1 Siege-Gang Commander
+1 Battle Screech
+1 Young Pyromancer
+1 Hordeling Outburst
+1 Gather the Townsfolk
+1 Midnight Haunting
+1 Captain's Call
+1 Swords to Plowshares
+1 Path to Exile
+1 Journey to Nowhere
+1 Banishing Light
+1 Oblivion Ring
+1 Detention Sphere
+1 Declaration in Stone
+1 Council's Judgment
+1 Phantasmal Image
+1 Clone
+1 Spark Double
+1 Quasiduplicate
+1 Cackling Counterpart
+1 Mirror Image
+1 Clever Impersonator
+1 Phyrexian Metamorph
+1 Irenicus's Vile Duplication
+1 Rite of Replication
+1 Act of Treason
+1 Threaten
+1 Claim the Firstborn
+1 Traitorous Instinct
+1 Control Magic
+1 Mind Control
+1 Switcheroo
+1 Sower of Temptation
+1 Hijack
+20 Plains
+20 Island
+20 Mountain
