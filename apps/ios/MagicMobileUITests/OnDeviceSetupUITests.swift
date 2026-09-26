@@ -59,6 +59,12 @@ final class OnDeviceSetupUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What's new"].exists)
         app.swipeUp()
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "not installed automatically")).firstMatch.exists)
+        let notice = app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "Independent fan project. Not affiliated with Wizards of the Coast.")).firstMatch
+        reveal(notice)
+        XCTAssertTrue(notice.label.hasSuffix("Magic: The Gathering and card artwork belong to their respective owners."))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Scryfall")).firstMatch.exists,
+                      "Card images must credit Scryfall")
+        capture("Updates about and fan-content notice")
         app.buttons["Done"].tap()
         XCTAssertTrue(app.buttons["menu.play"].exists)
     }
