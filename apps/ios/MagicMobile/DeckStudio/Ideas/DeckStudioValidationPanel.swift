@@ -8,28 +8,31 @@ struct DeckStudioValidationPanel: View {
     let resolver: OnDeviceDeckResolver?
     var play: ((DeckList) -> Void)? = nil
     @ObservedObject private var service = DeckStudioValidationService.shared
-    @State private var acknowledgeExclusions = false
+    @ObservedObject private var store = DeckStudioReceiptStore.shared
     private var prepared: DeckStudioPlayProjection? { deck.flatMap { try? DeckStudioPlayProjection($0) } }
     private var request: MagicMobileOnDevice.JSONValue? {
         guard let prepared, let resolver else { return nil }
         return try? prepared.resolve(resolver)
     }
+    /// This session's check, or a stored one for these exact playing cards and this install.
     private var currentReceipt: DeckStudioValidationReceipt? {
-        guard let request, let encoded = try? request.encoded(), let resolver, let receipt = state.receipt,
-              receipt.matches(request: encoded, upstream: resolver.upstreamCommit, catalogue: resolver.catalogueHash,
-                              appBuild: DeckStudioValidationService.appBuild) else { return nil }
-        return receipt
+        guard let request, let encoded = try? request.encoded(), let resolver else { return nil }
+        let appBuild = DeckStudioValidationService.appBuild
+        if let receipt = state.receipt, receipt.matches(request: encoded, upstream: resolver.upstreamCommit,
+                                                        catalogue: resolver.catalogueHash, appBuild: appBuild) { return receipt }
+        guard let deckID = state.deckID else { return nil }
+        return store.check(for: DeckStudioCheckKey(deckID: deckID, request: encoded, upstream: resolver.upstreamCommit,
+                                                   catalogue: resolver.catalogueHash, appBuild: appBuild))?.receipt(request: encoded)
     }
-    private var exclusionsAccepted: Bool { prepared?.excluded.isEmpty == true || acknowledgeExclusions }
+    private var gameLive: Bool { service.isGameLive() }
     var body: some View {
         DeckStudioPanel {
             VStack(alignment: .leading, spacing: 12) {
                 Label("Ready to play?", systemImage: "checkmark.shield").font(.title2.weight(.semibold))
-                Text("Check Commander rules, then start a game against AI.")
+                Text("Check the Commander rules on this device, then play this deck.")
                     .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                 if let prepared, !prepared.excluded.isEmpty {
-                    Toggle("Validate the playing deck only", isOn: $acknowledgeExclusions).font(.subheadline)
-                    Text("\(prepared.excluded.reduce(0) { $0 + $1.quantity }) sideboard/maybeboard cards stay in this draft. Playing creates a separate playable copy; your original remains intact.")
+                    Text(DeckStudioPlayText.excluded(prepared.excluded.reduce(0) { $0 + $1.quantity }))
                         .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                 }
                 if let value = currentReceipt {
@@ -60,21 +63,22 @@ struct DeckStudioValidationPanel: View {
                     }.buttonStyle(DeckStudioButtonStyle(primary: false)).disabled(service.busy)
                 } else {
                     Button(currentReceipt == nil ? "Validate deck" : "Validate again") { validate() }
-                        .buttonStyle(DeckStudioButtonStyle()).disabled(request == nil || service.busy || !exclusionsAccepted)
+                        .buttonStyle(DeckStudioButtonStyle()).disabled(request == nil || service.busy || gameLive)
                         .accessibilityIdentifier("deckStudio.validate")
+                    // The same flow as the header button: it checks the deck when needed.
                     if let play, let prepared {
-                        Button("Play against AI", systemImage: "play.fill") { play(prepared.playing) }
+                        Button(DeckStudioPlayText.play, systemImage: "play.fill") { play(prepared.playing) }
                             .buttonStyle(DeckStudioButtonStyle(primary: false))
-                            .disabled(currentReceipt?.valid != true || service.busy || !exclusionsAccepted)
+                            .disabled(service.busy || state.checking || gameLive)
                             .accessibilityIdentifier("deckStudio.playtestValidated")
                     }
+                    if gameLive { Text(DeckStudioPlayText.gameLive).font(.caption).foregroundStyle(DeckStudioPalette.warning) }
                 }
                 if request == nil, let deck, let resolver { Text(preparationError(deck, resolver)).font(.caption).foregroundStyle(DeckStudioPalette.warning) }
             }
         }
         .onAppear { state.prepare(request) }
         .onChange(of: request) { _, value in state.prepare(value) }
-        .onChange(of: deck) { _, _ in acknowledgeExclusions = false }
         .onDisappear { state.cancelPending() }
     }
     private func preparationError(_ deck: DeckList, _ resolver: OnDeviceDeckResolver) -> String {
@@ -82,7 +86,7 @@ struct DeckStudioValidationPanel: View {
         catch { return error.localizedDescription }
     }
     private func validate() {
-        guard let request, let resolver, exclusionsAccepted else { return }
+        guard let request, let resolver, !gameLive else { return }
         state.validate(request, resolver: resolver)
     }
 }

@@ -8,7 +8,7 @@ struct DeckStudioWorkspaceScreen: View {
     @StateObject private var validation = DeckStudioValidationState()
     let metadata: NativeDeckMetadataCatalogue?
     let resolver: OnDeviceDeckResolver?
-    let selectForPlay: (String) -> Void
+    @ObservedObject private var play: DeckStudioPlaySelection
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicType
@@ -35,9 +35,9 @@ struct DeckStudioWorkspaceScreen: View {
     @State private var showArtworkPreferences = false
     @FocusState private var deckSearchFocused: Bool
     init(library: DeckLibraryStore, record: DeckLibraryRecord?, included: Bool,
-         metadata: NativeDeckMetadataCatalogue?, resolver: OnDeviceDeckResolver?, selectForPlay: @escaping (String) -> Void) {
+         metadata: NativeDeckMetadataCatalogue?, resolver: OnDeviceDeckResolver?, play: DeckStudioPlaySelection) {
         _model = StateObject(wrappedValue: DeckStudioEditorModel(library: library, record: record, included: included, defaults: MagicMobilePreferences.current))
-        self.metadata = metadata; self.resolver = resolver; self.selectForPlay = selectForPlay
+        self.metadata = metadata; self.resolver = resolver; self.play = play
     }
     private struct InspectedCard: Identifiable { let name: String; var id: String { name } }
     private struct HistoryReview: Identifiable {
@@ -53,11 +53,6 @@ struct DeckStudioWorkspaceScreen: View {
     private var signature: DeckStudioDeckSignature? {
         guard let deck, let resolver else { return nil }
         return try? DeckStudioPlayProjection(deck).signature(resolver)
-    }
-    private var currentValidationPassed: Bool {
-        guard let deck, let resolver, let receipt = validation.receipt,
-              let request = try? DeckStudioPlayProjection(deck).resolve(resolver).encoded() else { return false }
-        return receipt.valid && receipt.matches(request: request, upstream: resolver.upstreamCommit, catalogue: resolver.catalogueHash, appBuild: DeckStudioValidationService.appBuild)
     }
     var body: some View {
         NavigationStack {
@@ -132,6 +127,7 @@ struct DeckStudioWorkspaceScreen: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
+                        DeckStudioPlayMenuItem(selection: play, model: model)
                         Button("Validate & playtest", systemImage: "checkmark.shield") { showValidation = true }
                         Button("Change primary commander", systemImage: "crown") { showCommander = true }.disabled(model.readOnly || metadata == nil)
                         Button("Basic lands", systemImage: "leaf") { showBasics = true }.disabled(model.readOnly)
@@ -143,6 +139,7 @@ struct DeckStudioWorkspaceScreen: View {
                     } label: { Image(systemName: "ellipsis.circle").frame(width: 44, height: 44) }
                 }
             }
+            .deckStudioPlayFeedback(play, deckID: model.playDeckID, validation: validation, fix: fixDeck)
             .sheet(isPresented: $showSearch) {
                 cardSearch(embedded: false)
             }
@@ -248,7 +245,7 @@ struct DeckStudioWorkspaceScreen: View {
                     }
                 }
                 Text(model.saveLabel).font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk)
-                Button { showValidation = true } label: { Label(currentValidationPassed ? "Validated · playtest" : "Validate & playtest", systemImage: currentValidationPassed ? "checkmark.shield.fill" : "checkmark.shield").font(.caption.weight(.semibold)).frame(minHeight: 44) }
+                DeckStudioPlayDeckButton(selection: play, model: model).padding(.top, 4)
             }
             Spacer(minLength: 0)
         }
@@ -467,9 +464,17 @@ struct DeckStudioWorkspaceScreen: View {
             }
         }
     }
+    /// The validation panel's Play runs the same flow as the header button. Its sheet
+    /// closes first, so the flow's own sheet can present.
     private func preparePlay(_ playing: DeckList) {
-        guard let resolver, currentValidationPassed, let selection = model.preparePlayable(playing, resolver: resolver) else { return }
-        showValidation = false; selectForPlay(selection)
+        guard showValidation else { DeckStudioPlayAction.perform(play, model: model); return }
+        showValidation = false
+        Task { try? await Task.sleep(for: .milliseconds(450)); DeckStudioPlayAction.perform(play, model: model) }
+    }
+    /// Fix deck: back to the Cards tab, showing the named card when there is one.
+    private func fixDeck(_ deckID: String?, _ cards: [String]) {
+        showValidation = false; tab = "Cards"
+        query = cards.count == 1 ? cards[0] : ""
     }
     private func inspect(_ name: String) { inspection = InspectedCard(name: name) }
 }

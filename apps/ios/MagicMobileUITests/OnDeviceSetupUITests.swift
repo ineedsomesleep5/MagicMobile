@@ -265,8 +265,14 @@ final class OnDeviceSetupUITests: XCTestCase {
         openLibrary(); openSavedDeck(draftName)
         assertSavedDeck(cards: 0)
         XCTAssertTrue(app.staticTexts["Add your commander and cards. Incomplete drafts are welcome."].exists)
-        XCTAssertTrue(app.buttons["Validate & playtest"].firstMatch.exists)
-        XCTAssertFalse(app.buttons["Validated · playtest"].exists, "An empty draft is never presented as validated")
+        // The header's primary action is Play; checking alone moved to the options menu.
+        let play = app.buttons["deckStudio.play"]
+        XCTAssertTrue(play.waitForExistence(timeout: 5))
+        XCTAssertEqual(play.label, "Play this deck")
+        XCTAssertFalse(app.buttons["This is your playing deck"].exists, "An empty draft is never presented as playing")
+        openDeckActions()
+        XCTAssertTrue(menuItem("Validate & playtest").waitForExistence(timeout: 5))
+        XCTAssertTrue(menuItem("Play this deck").exists)
         // Deliberately do not select/start an incomplete draft.
     }
 
@@ -489,7 +495,16 @@ final class OnDeviceSetupUITests: XCTestCase {
         let confirm = app.buttons["deckStudio.import.confirm"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 10))
         tapDiagnosed(confirm)
-        waitForImportDismissal(editor)
+        // A saved import opens its own workspace, with Play one tap away, and does not
+        // change the playing deck. Close it to continue from the library.
+        waitFor(editor, predicate: "exists == false")
+        let close = app.buttons["deckStudio.close"]
+        waitFor(close, predicate: "exists == true AND hittable == true")
+        XCTAssertTrue(app.buttons["deckStudio.play"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["This is your playing deck"].exists, "Importing never selects the deck for play")
+        tapDiagnosed(close)
+        waitFor(close, predicate: "exists == false")
+        waitFor(app.textFields["deckStudio.library.search"], predicate: "exists == true")
     }
 
     private func searchLibrary(_ name: String) {

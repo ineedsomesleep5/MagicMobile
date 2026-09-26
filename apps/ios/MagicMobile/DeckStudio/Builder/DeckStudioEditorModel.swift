@@ -130,21 +130,20 @@ final class DeckStudioEditorModel: ObservableObject {
         guard expected == draft else { error = "The draft changed. Reopen the land tool."; return false }
         return change { try DeckStudioEditorOperations.setBasicLands(in: &$0, quantities: values) }
     }
-    /// A draft with non-playing boards produces a separate playable copy. It is
-    /// never rewritten to satisfy the resolver; unsaved source changes are saved first.
-    func preparePlayable(_ playing: DeckList, resolver: OnDeviceDeckResolver) -> String? {
-        do {
-            let projection = try DeckStudioPlayProjection(draft.deck())
-            guard try projection.resolve(resolver) == resolver.resolve(playing) else { throw OnDeviceDeckEditing.Error.staleRevision }
-            if projection.excluded.isEmpty {
-                if readOnly, let record { return record.id.hasPrefix("precon:") ? record.id : "local:\(record.id)" }
-                return save().map { "local:\($0.id)" }
+    /// The id the game setup screen selects for this deck; included decks keep their precon id.
+    var playDeckID: String? { record.map { $0.id.hasPrefix("precon:") ? $0.id : "local:\($0.id)" } }
+    /// Playing never copies or rewrites the deck: a dirty or new draft is saved, then the
+    /// source deck's id is returned. Sideboard and maybeboard stay in the saved deck; every
+    /// game start leaves them out of play.
+    func preparePlayable() throws -> String {
+        if !readOnly, isDirty || record == nil {
+            _ = try draft.deck()
+            guard save() != nil else {
+                throw OnDeviceDeckResolver.ResolutionError(error ?? "This deck could not be saved. Your changes are kept as a recovery draft.")
             }
-            if !readOnly, isDirty || record == nil { guard save() != nil else { return nil } }
-            let copy = DeckList(name: String(playing.name.prefix(96)) + " — Playtest", commander: playing.commander, entries: playing.entries)
-            let saved = try library.addLocalDurably(copy, sourceURL: sourceURL)
-            return "local:\(saved.id)"
-        } catch { self.error = error.localizedDescription; return nil }
+        }
+        guard let playDeckID else { throw OnDeviceDeckResolver.ResolutionError("Save this deck before playing it.") }
+        return playDeckID
     }
     @discardableResult func save() -> DeckLibraryRecord? {
         guard canSave else { return nil }

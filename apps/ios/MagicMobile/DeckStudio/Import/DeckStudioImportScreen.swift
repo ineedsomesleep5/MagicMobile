@@ -188,6 +188,10 @@ struct DeckStudioImportScreen: View {
                 try await DeckStudioOrganizationStore.shared.retainImport(recordID: saved.id,
                     annotations: preview.annotations.map { "Line \($0.line): \($0.text)" },
                     source: sourceURL, receiptFile: receiptURL.lastPathComponent)
+                // A check made during review applies to the saved deck: same playing cards.
+                if let receipt = validation.receipt {
+                    DeckStudioReceiptStore.shared.record(DeckStudioStoredCheck(deckID: "local:\(saved.id)", receipt: receipt))
+                }
                 didImport(saved); dismiss()
             } catch {
                 self.error = saved == nil ? error.localizedDescription :
