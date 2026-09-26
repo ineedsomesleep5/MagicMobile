@@ -1,6 +1,6 @@
 // SPIKE ONLY. Messages between the page and the CheerpJ engine worker.
 export type WorkerInbound =
-  | { type: "init"; loaderUrl: string; jarBase: string; jars: string[] }
+  | { type: "init"; loaderUrl: string; jarBase: string; jars: string[]; javaProperties?: string[] }
   | { type: "request"; id: number; json: string }
   | { type: "resources"; id: number };
 

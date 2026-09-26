@@ -43,7 +43,9 @@ export function startServer({ port = 5178, host = "127.0.0.1", dist = DIST, engi
     const headers = {
       "Content-Type": TYPES[extname(file)] ?? "application/octet-stream",
       "Accept-Ranges": "bytes",
-      "Cache-Control": "no-cache", // revalidate with ETag; CheerpJ keeps its own jar cache
+      // Jars behave like immutable CDN assets (a real host would content-hash their names);
+      // everything else revalidates with its ETag.
+      "Cache-Control": file.endsWith(".jar") ? "public, max-age=86400" : "no-cache",
       ETag: `"${info.size}-${info.mtimeMs}"`,
       "Last-Modified": info.mtime.toUTCString(),
       "Access-Control-Allow-Origin": "*",

@@ -36,6 +36,7 @@ export type GameResult = {
   respondMs: number[];
   maxSnapshotBytes: number;
   destroyMs: number | null;
+  diagnostics?: string; // EngineDiagnostics report when a game did not end normally (local only)
 };
 
 // Deterministic PRNG (mulberry32) for driver choices and deck order.
@@ -315,6 +316,14 @@ export async function playGame(
     result.failure = String((error as Error)?.message ?? error);
   } finally {
     result.wallMs = now() - started;
+    if (result.result !== "ended") {
+      try {
+        const report = (await client.diagnostics()).report;
+        if (typeof report === "string") result.diagnostics = report.slice(0, 6000);
+      } catch {
+        /* diagnostics are best effort */
+      }
+    }
     const destroyStart = now();
     for (let attempt = 0; attempt < 100; attempt++) {
       try {
@@ -333,6 +342,16 @@ export async function playGame(
     }
   }
   return result;
+}
+
+/** A game whose create() call threw: counted as failed, with the error. */
+export function failedToStart(spec: GameSpec, error: unknown): GameResult {
+  return {
+    label: spec.label, seed: spec.seed, players: spec.players, deckIds: spec.decks.slice(0, spec.players).map((d) => d.id),
+    result: "failed", failure: "create: " + String((error as Error)?.message ?? error), winner: null, wallMs: 0, createMs: 0,
+    firstPromptMs: null, turns: 0, humanResponses: 0, promptKinds: {}, boardUpdateMs: [], aiTurnMs: [], humanTurnMs: [],
+    pollMs: [], respondMs: [], maxSnapshotBytes: 0, destroyMs: null,
+  };
 }
 
 export function stats(values: number[]) {

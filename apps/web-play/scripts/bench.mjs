@@ -9,8 +9,9 @@
 //          --loader <CheerpJ loader URL> --timeout <s overall>
 // It is a heavy workload: run it behind the machine-wide lock, in holds under ~30 minutes.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { startServer } from "./serve.mjs";
@@ -41,7 +42,7 @@ function sampleMemory(rootPid) {
     grew = false;
     for (const row of rows) if (!tree.has(row.pid) && tree.has(row.ppid)) (tree.add(row.pid), (grew = true));
   }
-  const members = rows.filter((row) => tree.has(row.pid));
+  const members = rows.filter((row) => tree.has(row.pid) && row.pid !== rootPid && row.command.includes("Chrome"));
   const renderers = members.filter((row) => row.command.includes("--type=renderer"));
   return {
     totalBytes: members.reduce((sum, row) => sum + row.rss, 0),
@@ -50,14 +51,18 @@ function sampleMemory(rootPid) {
 }
 
 const { server, stats: served, reset, url } = await startServer({ port: 0 });
-const browser = await chromium.launch({ channel: "chrome", headless: true });
-const browserPid = browser.process()?.pid;
-const context = await browser.newContext(); // fresh profile: empty HTTP cache and IndexedDB
+// A fresh on-disk profile per run: the first visit is cold, later visits use Chrome's disk cache
+// (an in-memory incognito cache is too small to hold the jars).
+const profile = mkdtempSync(join(tmpdir(), "web-play-bench-"));
+const context = await chromium.launchPersistentContext(profile, { channel: "chrome", headless: true });
+const browser = context.browser();
+// playwright-core launches Chrome as a child of this Node process; sample that subtree.
+const browserPid = process.pid;
 const report = {
   spike: true,
   runtime: "cheerpj",
   loader: loader ?? "https://cjrtnc.leaningtech.com/4.3/loader.js",
-  browser: `Google Chrome ${browser.version()} (headless, playwright-core channel "chrome")`,
+  browser: `Google Chrome ${browser?.version() ?? "?"} (headless, playwright-core channel "chrome", fresh on-disk profile)`,
   machine: "8 GB MacBook, shared with other workloads (numbers are from this machine only)",
   startedAt: new Date().toISOString(),
   params: { games, capS, skill, readyVisits },
@@ -69,11 +74,13 @@ async function visit(kind, gameList) {
   reset();
   const page = await context.newPage();
   const consoleLines = [];
-  page.on("console", (message) => consoleLines.length < 400 && consoleLines.push(`[${message.type()}] ${message.text()}`.slice(0, 500)));
+  const keep = (line) => consoleLines.length < 600 && consoleLines.push(line.slice(0, 800));
+  page.on("console", (message) => keep(`[${message.type()}] ${message.text()}`));
   page.on("pageerror", (error) => consoleLines.push("[pageerror] " + String(error).slice(0, 500)));
   const query = new URLSearchParams({ games: gameList, cap: String(capS) });
   if (skill) query.set("skill", skill);
   if (loader) query.set("loader", loader);
+  if (process.argv.includes("--debug")) query.set("debug", "1");
   const memory = { maxRendererBytes: 0, maxTotalBytes: 0, samples: 0 };
   const sampler = setInterval(() => {
     if (!browserPid) return;
@@ -134,6 +141,6 @@ try {
   writeFileSync(out, JSON.stringify(report, null, 2) + "\n");
   console.log("wrote " + out);
   await context.close().catch(() => {});
-  await browser.close().catch(() => {});
+  rmSync(profile, { recursive: true, force: true }); // this run's own temporary Chrome profile
   server.close();
 }

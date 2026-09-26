@@ -101,6 +101,10 @@ export class EngineClient {
   async destroy(matchId: string): Promise<void> {
     await this.call("destroy", { matchId });
   }
+  /** Trusted local-only: the last captured engine failure (EngineDiagnostics), if any. */
+  diagnostics(): Promise<JsonObject> {
+    return this.call("diagnostics") as Promise<JsonObject>;
+  }
   async shutdown(): Promise<void> {
     await this.call("shutdown");
   }
@@ -113,6 +117,8 @@ export type WorkerEngineOptions = {
   jarBase: string;
   /** Classpath order from build/web/manifest.json. */
   jars: string[];
+  /** Extra Java system properties, e.g. "magicmobile.debug=true" (stack traces to the console). */
+  javaProperties?: string[];
 };
 
 /** The CheerpJ engine in a dedicated worker; the page's main thread only posts JSON strings. */

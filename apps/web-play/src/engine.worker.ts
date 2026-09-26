@@ -15,6 +15,10 @@ let entry: JavaClass | null = null;
 // One Java call at a time: the protocol is request/response and the driver is sequential.
 let queue: Promise<unknown> = Promise.resolve();
 
+// CheerpJ 4.3's Java 17 runtime has no natives for Unsafe get/put<narrow>Volatile, which JDK 17
+// reflection uses for final fields. JavaScript natives cannot fill the gap (they would have to call
+// back into Java, which CheerpJ rejects while Java is running), so the web bundle shadows the one
+// upstream caller instead: packages/web-engine/shadow/mage/watchers/Watcher.java.
 function post(message: WorkerOutbound) {
   scope.postMessage(message);
 }
@@ -23,7 +27,11 @@ async function init(message: Extract<WorkerInbound, { type: "init" }>) {
   const t0 = performance.now();
   scope.importScripts(message.loaderUrl);
   const tLoader = performance.now();
-  await cheerpjInit({ version: 17, status: "none", javaProperties: ["java.awt.headless=true"] });
+  await cheerpjInit({
+    version: 17,
+    status: "none",
+    javaProperties: ["java.awt.headless=true", ...(message.javaProperties ?? [])],
+  });
   const tInit = performance.now();
   // "/app/" is CheerpJ's read-only mount of this origin; jars are fetched lazily with Range requests.
   const classPath = message.jars.map((jar) => "/app" + message.jarBase + jar).join(":");

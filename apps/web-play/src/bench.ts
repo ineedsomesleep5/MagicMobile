@@ -5,8 +5,9 @@
 //   skill=1           XMage AI skill (default: engine default)
 //   loader=<url>      CheerpJ loader (default: 4.3 from the CheerpJ CDN)
 //   engine=/engine/   same-origin path of packages/web-engine/build/web
+//   debug=1           Java stack traces of engine failures to the console
 import { EngineClient, WorkerTransport, type JsonObject } from "./engineClient.ts";
-import { playGame, stats, type GameResult } from "./autoplay.ts";
+import { failedToStart, playGame, stats, type GameResult } from "./autoplay.ts";
 import { gameSpec, parseGames, summarize, TARGETS } from "./plan.ts";
 import type { ReadyTimings, ResourceSummary } from "./protocol.ts";
 
@@ -37,6 +38,7 @@ const engineBase = params.get("engine") ?? "/engine/";
 const games = parseGames(params.get("games") ?? "2p:1,4p:2");
 const capMs = Number(params.get("cap") ?? 600) * 1000;
 const aiSkill = params.has("skill") ? Number(params.get("skill")) : undefined;
+const javaProperties = params.get("debug") === "1" ? ["magicmobile.debug=true"] : [];
 
 const bench: BenchState = { status: "loading", startedAt: performance.now(), games: [], longTasks: [] };
 (window as unknown as { __bench: BenchState }).__bench = bench;
@@ -100,7 +102,7 @@ async function main() {
   const manifest = (await (await fetch(engineBase + "manifest.json")).json()) as Manifest;
   bench.manifest = manifest;
   status(`Loading CheerpJ + ${manifest.jars.length} jars (${(manifest.totalBytes / 1e6).toFixed(0)} MB, fetched lazily)…`);
-  const { transport, timings } = await WorkerTransport.start({ loaderUrl, jarBase: engineBase + "jars/", jars: manifest.jars.map((j) => j.name) });
+  const { transport, timings } = await WorkerTransport.start({ loaderUrl, jarBase: engineBase + "jars/", jars: manifest.jars.map((j) => j.name), javaProperties });
   const client = new EngineClient(transport);
   status("CheerpJ ready; constructing XmageEngine (set registry)…");
   const capStart = performance.now();
@@ -122,7 +124,13 @@ async function main() {
   for (const game of games) {
     const spec = gameSpec(game, decks, capMs, aiSkill);
     status(`${spec.label}: creating match…`);
-    const result = await playGame(client, spec, (text) => status(text));
+    let result: GameResult;
+    try {
+      result = await playGame(client, spec, (text) => status(text));
+    } catch (error) {
+      // create() itself failed, e.g. match_limit after a game whose engine thread never came back.
+      result = failedToStart(spec, error);
+    }
     bench.games.push(result);
     bench.summary = summarize(bench.games);
     renderGames();
