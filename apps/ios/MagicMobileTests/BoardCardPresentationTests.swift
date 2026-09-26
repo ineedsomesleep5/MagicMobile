@@ -170,3 +170,43 @@ extension BoardCardPresentationTests {
     }
 }
 #endif
+
+/// Combat keyword badges; the shared cases live in combat-cases.json (ParityGoldenTests).
+extension BoardCardPresentationTests {
+    private func fighter(icons: [String] = [], rules: String? = nil, attacking: Bool? = nil, blocking: [String]? = nil) -> ZoneCard {
+        ZoneCard(instanceId: "atarka", card: CardIdentity(name: "Atarka, World Render", typeLine: "Legendary Creature — Dragon", oracleText: rules),
+                 tapped: true, summoningSickness: false,
+                 cardIcons: icons.map { XmageCardIcon(iconType: $0, resourceName: nil, category: "ABILITY", text: nil, hint: nil) },
+                 counters: nil, power: 6, toughness: 4, isCreaturePermanent: true, damage: nil,
+                 isAttacking: attacking, blocking: blocking, attachedToInstanceId: nil)
+    }
+
+    func testGainedDoubleStrikeIsACombatKeywordOfTheLivePermanent() {
+        let atarka = fighter(icons: ["ABILITY_FLYING", "ABILITY_TRAMPLE", "ABILITY_DOUBLE_STRIKE", "COMMANDER"],
+                             rules: "Flying\nTrample\nWhenever a Dragon you control attacks, it gains double strike until end of turn.",
+                             attacking: true)
+        XCTAssertEqual(atarka.combatKeywords, [.doubleStrike, .trample, .flying])
+        XCTAssertTrue(atarka.isInCombat)
+        XCTAssertTrue(CombatKeyword.strikesFirst(Set(atarka.combatKeywords)))
+        XCTAssertTrue(CombatKeyword.strikesInRegularStep(Set(atarka.combatKeywords)), "double strike hits in both steps")
+        XCTAssertFalse(CombatKeyword.strikesInRegularStep([.firstStrike]), "first strike alone hits only first")
+        XCTAssertFalse(CombatKeyword.strikesFirst([.deathtouch]))
+    }
+
+    func testOnlyAttackersAndBlockersAreInCombat() {
+        XCTAssertFalse(fighter(rules: "Deathtouch").isInCombat)
+        XCTAssertFalse(fighter(rules: "Deathtouch", attacking: false, blocking: []).isInCombat)
+        XCTAssertTrue(fighter(rules: "Deathtouch", blocking: ["atarka"]).isInCombat)
+    }
+
+    func testBadgePlanAlwaysNamesTheMostImportantKeyword() {
+        let tiny = CombatKeywordBadgePlan(keywords: [.firstStrike, .deathtouch, .lifelink], cardWidth: 44, cardHeight: 50)
+        XCTAssertEqual(tiny.visible, [.firstStrike])
+        XCTAssertEqual(tiny.hiddenCount, 2)
+        XCTAssertEqual(tiny.label(.firstStrike), "1st strike")
+        let roomy = CombatKeywordBadgePlan(keywords: CombatKeyword.allCases, cardWidth: 120, cardHeight: 170)
+        XCTAssertEqual(roomy.visible, [.doubleStrike, .deathtouch, .trample], "at most three, first strike folded into double strike")
+        XCTAssertEqual(roomy.hiddenCount, 6)
+        XCTAssertEqual(roomy.label(.indestructible), "Indestructible")
+    }
+}

@@ -289,3 +289,57 @@ final class GameLogPresentationTests: XCTestCase {
         XCTAssertEqual(PromptDisplayText.clean("{T}, Pay 1 life"), "{T}, Pay 1 life")
     }
 }
+
+/// CombatLogReasons over consecutive snapshots. Message cases: combat-cases.json (ParityGoldenTests).
+extension GameLogPresentationTests {
+    private static let atarka = "a7a4ca00-6d1e-4c2a-9f10-0000000000a1"
+    private static let rats = "7e9a0000-5b1d-4d2e-8f00-0000000000b2"
+
+    private func combatant(_ id: String, _ name: String, icons: [String], attacking: Bool? = nil, blocking: [String]? = nil) -> ZoneCard {
+        ZoneCard(instanceId: id, card: CardIdentity(name: name, typeLine: "Creature", oracleText: nil), tapped: nil,
+                 summoningSickness: nil,
+                 cardIcons: icons.map { XmageCardIcon(iconType: $0, resourceName: nil, category: "ABILITY", text: nil, hint: nil) },
+                 counters: nil, power: 1, toughness: 1, isCreaturePermanent: true, damage: nil, isAttacking: attacking,
+                 blocking: blocking, attachedToInstanceId: nil)
+    }
+
+    private func board(step: String, turn: Int = 3, battlefield: [ZoneCard], log: [(String, String)], game: String = "match") -> GameSnapshot {
+        let zones = PlayerZones(library: [], hand: [], battlefield: battlefield, graveyard: [], exile: [], command: [], stack: [])
+        let player = PlayerGameState(playerId: "a", displayName: "a", life: 40, poison: 0, commanderTax: 0, manaPool: nil,
+                                     zones: zones, commanderDamage: nil)
+        return GameSnapshot(id: game, source: "xmage-ondevice", activePlayerId: "b", phase: "combat", step: step, turn: turn,
+                            priorityPlayerId: "a", waitingOnPlayerId: nil, promptText: nil, players: [player],
+                            log: log.map { GameLogEntry(id: $0.0, message: $0.1, createdAt: nil) },
+                            legalActions: nil, choicePrompt: nil, promptEnvelope: nil, promptEnvelopeV2: nil,
+                            startupOpeningPrompts: nil, xmage: nil, engineHealth: nil, bridgeRevision: 1,
+                            xmageCycle: nil, pendingStatus: nil, manaPayment: nil, gameStatus: nil,
+                            winnerPlayerIds: nil, endReason: nil, viewerPlayerId: "a")
+    }
+
+    func testCombatReasonsComeFromTheStepAndKeywordsWhenTheEntryAppears() {
+        let atarkaName = "<font color='#FF6347' object_id='\(Self.atarka)'>Atarka, World Render</font> [a7a]"
+        let ratsName = "<font color='#696969' object_id='\(Self.rats)'>Typhoid Rats</font> [7e9]"
+        let attacking = combatant(Self.atarka, "Atarka, World Render", icons: ["ABILITY_DOUBLE_STRIKE", "ABILITY_TRAMPLE"], attacking: true)
+        let blocking = combatant(Self.rats, "Typhoid Rats", icons: ["ABILITY_DEATHTOUCH"], blocking: [Self.atarka])
+        let earlier = ("old", "\(atarkaName) deals 6 damage to \(ratsName)")
+        var reasons = CombatLogReasons()
+        // Entries already there when the game is first seen have no known step: no reason.
+        reasons.observe(board(step: "DECLARE_BLOCKERS", battlefield: [attacking, blocking], log: [earlier]))
+        XCTAssertEqual(reasons.reasons, [:])
+        reasons.observe(board(step: "FIRST_COMBAT_DAMAGE", battlefield: [attacking],
+                              log: [earlier, ("hit", "\(atarkaName) deals 6 damage to \(ratsName)"), ("died", "\(ratsName) died")]))
+        XCTAssertEqual(reasons.reasons, [
+            "hit": "Atarka, World Render has double strike (first-strike damage)",
+            "died": "Typhoid Rats dies to first-strike damage before dealing damage",
+        ])
+        // Next turn Atarka no longer has double strike; the recorded reasons do not change.
+        let calm = combatant(Self.atarka, "Atarka, World Render", icons: ["ABILITY_TRAMPLE"])
+        reasons.observe(board(step: "UPKEEP", turn: 4, battlefield: [calm], log: [("hit", ""), ("died", "")]))
+        XCTAssertEqual(reasons.reasons["hit"], "Atarka, World Render has double strike (first-strike damage)")
+        // Entries that leave the retained log drop their reasons; another game starts clean.
+        reasons.observe(board(step: "UPKEEP", turn: 4, battlefield: [calm], log: [("died", "")]))
+        XCTAssertEqual(Array(reasons.reasons.keys), ["died"])
+        reasons.observe(board(step: "FIRST_COMBAT_DAMAGE", battlefield: [], log: [("died", "")], game: "other"))
+        XCTAssertEqual(reasons.reasons, [:])
+    }
+}
