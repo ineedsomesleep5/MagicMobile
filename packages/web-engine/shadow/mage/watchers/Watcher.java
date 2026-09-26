@@ -6,10 +6,11 @@
 // Why: CheerpJ 4.3's Java 17 runtime lacks the jdk.internal.misc.Unsafe
 // get/put{Boolean,Byte,Short,Char,Float,Double}Volatile natives. JDK 17 core reflection uses them for
 // every final field (UnsafeQualified*FieldAccessorImpl), and copy() reflects over final primitive
-// fields on every game copy, so the first snapshot died with UnsatisfiedLinkError. Implementing the
-// natives in JavaScript does not work either: they must call back into Java, and CheerpJ rejects
-// that re-entry ("Java code still running"). A cached method-handle version also still reached
-// getBooleanVolatile (not isolated whether through the handles or a failed-handle fallback).
+// fields on every game copy, so the first snapshot died with UnsatisfiedLinkError. The worker's
+// JavaScript natives (apps/web-play/src/engine.worker.ts) are the general fix but must call back
+// into Java; this shadow keeps the hottest caller (AI game copies) off that bridge. A cached
+// method-handle version also still reached getBooleanVolatile (not isolated whether through the
+// handles or a failed-handle fallback).
 // Only copy() differs from upstream: same constructor rule, same fields, same deep copy, but field
 // values move through sun.misc.Unsafe's plain accessors (cached offsets per watcher class). Falls
 // back to upstream reflection if Unsafe is unavailable.

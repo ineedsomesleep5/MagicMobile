@@ -18,12 +18,13 @@ let queue: Promise<unknown> = Promise.resolve();
 // CheerpJ 4.3's Java 17 runtime has no natives for Unsafe get/put<narrow>Volatile, which JDK 17
 // reflection uses for every final field: Field.get on a final boolean threw UnsatisfiedLinkError
 // (XMage's Watcher.copy, then Gson serializing mage.view.GameView). These natives forward to the
-// plain accessors: preferably io.magicmobile.web.WebUnsafe through the app library (the `lib` a
-// native receives belongs to Unsafe's bootstrap loader and cannot see app classes:
-// ClassNotFoundException), else jdk.internal.misc.Unsafe.getUnsafe() through that `lib`.
-// Calling methods on the raw `self` Unsafe object failed (ArithmeticException, then "Java code
-// still running"). The hot per-game-copy caller, Watcher.copy, is also shadowed in the web bundle
-// so AI simulations do not cross this bridge. Crossings are counted for the bench.
+// plain accessors: first jdk.internal.misc.Unsafe.getUnsafe() through the `lib` the native
+// receives (CheerpJ's documented way to call Java from a native), else
+// io.magicmobile.web.WebUnsafe through the app library. Tried and failed in this spike: calling
+// the raw `self` Unsafe object (ArithmeticException, then "Java code still running"), WebUnsafe
+// through the native's `lib` (it belongs to the bootstrap loader: ClassNotFoundException), and
+// WebUnsafe through the app library ("Java code still running"). The hot per-game-copy caller,
+// Watcher.copy, is also shadowed in the web bundle so AI simulations do not cross this bridge.
 type Native = (...args: unknown[]) => Promise<unknown>;
 type Callable = Record<string, (...args: unknown[]) => Promise<unknown>>;
 type BootLibrary = { jdk: { internal: { misc: { Unsafe: Promise<{ getUnsafe(): Promise<Callable> }> } } } };
@@ -34,18 +35,18 @@ function unsafeNatives(): Record<string, Native> {
   let resolving: Promise<void> | null = null;
   const resolve = (lib: unknown) =>
     (resolving ??= (async () => {
+      try {
+        const unsafe = await (await (lib as BootLibrary).jdk.internal.misc.Unsafe).getUnsafe();
+        targets.push({ name: "jdk.internal.misc.Unsafe via native lib", target: unsafe });
+      } catch (error) {
+        console.log(`[unsafe-natives] jdk.internal.misc.Unsafe via native lib unavailable: ${String(error)}`);
+      }
       if (appLibrary) {
         try {
           targets.push({ name: "WebUnsafe via app library", target: (await appLibrary.io.magicmobile.web.WebUnsafe) as unknown as Callable });
         } catch (error) {
           console.log(`[unsafe-natives] WebUnsafe via app library unavailable: ${String(error)}`);
         }
-      }
-      try {
-        const unsafe = await (await (lib as BootLibrary).jdk.internal.misc.Unsafe).getUnsafe();
-        targets.push({ name: "jdk.internal.misc.Unsafe via native lib", target: unsafe });
-      } catch (error) {
-        console.log(`[unsafe-natives] jdk.internal.misc.Unsafe via native lib unavailable: ${String(error)}`);
       }
     })());
   const call = async (lib: unknown, method: string, args: unknown[]) => {
