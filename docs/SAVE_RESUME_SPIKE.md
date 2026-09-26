@@ -96,7 +96,7 @@ about 875 distinct classes and **no serialized lambdas**. The JDK types seen wer
 | Upstream `readObject` only ("raw") | NPE on `stackObjectsCheck` at the first resolution, then XMage's "Auto-restored … due game error" loop (d1). |
 | Reflective rehydrate ("fixed": `stackObjectsCheck`, `gameStatesRollBack`, `ComputerPlayer` finals, `setCancellation`) | 7/7 restores (2- and 4-seat, full and lean, turns 3–24) had an **identical fingerprint** to the checkpoint. All played to a legal end, a win or the turn cap, with `getTotalErrorsCount()==0` in the live game. |
 | "fixed" in a new process, before the exile fix | AI simulations hit 135 NPEs from `Exile.getPermanentExile()` being null (`static` random key). A live-game exile would fail the same way. The singleton `no sourceId` FATAL log appeared about 1,600 times in AI-simulation threads and never in uninterrupted runs. |
-| "fixed" + re-keying `Exile.PERMANENT` | _Result pending; see the [log](#spike-log)._ |
+| "fixed" + re-keying `Exile.PERMANENT` | 4/4 restores (l2, l4, d1, p4) had an identical fingerprint and finished with 0 live-game errors. There were **0 exile NPEs**. The singleton `no sourceId` log remained in the 4-seat games (106 and 1,133 lines, in AI-simulation threads). It is logging, not an exception (`ContinuousEffects.setControllerForEffect` skips that ability), but it shows process-global singleton state that serialization does not carry. |
 
 The continuation after a restore is legal, but it is **not** the continuation the
 uninterrupted game would have played. d1 matched the original for 89 priority fingerprints
@@ -269,8 +269,8 @@ Game Center tables end when the host dies.
     token. Messages for an away phone are held.
   - After 90 s the peer is `gone`, and both apps then fail the match for everyone
     (`OnDeviceMultiplayer` `onDisconnect`).
-  - Because suspension drops the socket, a host backgrounded for more than 90 s already ends
-    the table today, even if the process survives.
+  - Inference, not tested: if suspension closes the host's socket, a host backgrounded for
+    more than 90 s already ends the table today, even when the process survives.
 - **Host resume** would need all of the following:
   - option 1;
   - a checkpoint taken at every human seat's priority prompt, local and remote;
@@ -361,7 +361,7 @@ normal native release gates.
   - `copy()` breaks AI budgets.
   - The upstream `readObject` gap (NPE).
   - The reflective rehydrate plays games to a legal end.
-  - The `Exile.PERMANENT` and singleton `sourceId` hazards.
+  - The `Exile.PERMANENT` hazard and its re-key fix; the singleton `sourceId` hazard.
   - A restored continuation differs from the uninterrupted game.
   - Same-seed games diverge.
   - A 4-seat stream has no serialized lambdas.
@@ -371,8 +371,9 @@ normal native release gates.
   - Relay grace and token handling.
   - App lifecycle code.
   - GraalVM 22.1 serialization requirements.
-  - iOS and Android background and foreground-service policies (general platform knowledge,
-    not re-verified against this week's documentation).
+  - iOS and Android background and foreground-service policies, and the claim that a
+    relaunched process cannot rejoin a `GKMatch` (general platform knowledge, not re-verified
+    against this week's documentation).
 - **Not done:**
   - Native-image serialization.
   - Any device run.
@@ -385,4 +386,4 @@ normal native release gates.
   - `run.sh` (compile/probe/play/resume), `compare.py`, and `batch1–6.sh`.
   - `uuid-src`: the seeded `java.util.UUID` patch, used only for the determinism runs.
   - Runs are named a1, d1/d2, n1/n2, t1, p4, s2/s4/s4late and l2/l4.
-- Exile re-key follow-up (batch 6): _pending at the time of writing; see the PR description._
+- Exile re-key follow-up (batch 6): exile NPEs dropped to 0 in 4 restores. With it, 11 of 11 "fixed" restores matched their checkpoint fingerprint.
