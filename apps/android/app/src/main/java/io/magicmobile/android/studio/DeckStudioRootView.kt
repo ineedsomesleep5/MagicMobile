@@ -8,8 +8,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -33,6 +35,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -40,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,10 +89,15 @@ private sealed class StudioRoute {
     object Importer : StudioRoute()
 }
 
-/** DeckStudioRootView.swift: the collection and editor share a quiet, artwork-led workshop. */
+/**
+ * DeckStudioRootView.swift: the collection and editor share a quiet, artwork-led workshop. [open]
+ * opens a deck straight away (the setup screen's "Fix in Deck Studio").
+ */
 @Composable
-fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select: (String) -> Unit, preparePlay: () -> Unit, dismiss: () -> Unit) {
+fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select: (String) -> Unit, preparePlay: () -> Unit, dismiss: () -> Unit,
+                       open: DeckStudioOpen? = null) {
     val context = LocalContext.current
+    DeckStudioServices.install(context)
     val library = setup.library
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf(DeckStudioLibraryQuery()) }
@@ -101,6 +110,14 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
     var route by remember { mutableStateOf<StudioRoute?>(null) }
     var pendingDelete by remember { mutableStateOf<DeckLibraryRecord?>(null) }
     var showPreferences by remember { mutableStateOf(false) }
+    var pendingFix by remember { mutableStateOf<DeckStudioOpen?>(null) }
+    var openedFromSetup by remember { mutableStateOf<DeckStudioOpen?>(null) }
+    var statuses by remember { mutableStateOf<Map<String, DeckStudioPlayStatus>>(emptyMap()) }
+    val currentSelection by rememberUpdatedState(selectedDeckID)
+    val currentSelect by rememberUpdatedState(select)
+    val play = remember {
+        DeckStudioPlaySelection(scope, gameLive = { setup.needsLeave || setup.isBusy }, select = { currentSelect(it) }, selectedID = { currentSelection })
+    }
 
     data class Entry(val record: DeckLibraryRecord, val included: Boolean) { val id get() = if (included) record.id else "local:${record.id}" }
     val records = library.decks.map { Entry(it, false) } + setup.precons.map { Entry(DeckLibraryRecord.included(it), true) }
@@ -134,6 +151,7 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
                     .onFailure { error = "Deck cards were deleted, but optional local details could not be removed: ${it.message}" }
             }
             favorites = favorites - "local:${record.id}"; saveFavorites()
+            scope.launch(Dispatchers.IO) { runCatching { DeckStudioServices.checkResults.remove("local:${record.id}") } }
             if (selectedDeckID == "local:${record.id}") select(OnDeviceSetupPreferences.defaultDeckID)
         } catch (failure: Exception) { error = failure.message }
         pendingDelete = null
@@ -145,13 +163,13 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
                 val index = setup.printingIndex ?: throw IllegalStateException(setup.errorMessage ?: "The local card catalogue could not load.")
                 val loaded = setup.awaitCatalogue()
                 val metadata = withContext(Dispatchers.Default) { NativeDeckMetadataCatalogue(loaded) }
-                StudioCatalogue(metadata, OnDeviceDeckResolver(index), null)
+                StudioCatalogue(metadata, setup.deckResolver ?: OnDeviceDeckResolver(index), null)
             } catch (failure: Exception) { StudioCatalogue(null, null, failure.message ?: "The local card catalogue could not load.") }
         }
     }
 
     LaunchedEffect(Unit) {
-        DeckStudioServices.install(context)
+        DeckStudioValidationService.gameLive = { setup.needsLeave || setup.isBusy }
         withContext(Dispatchers.IO) { runCatching { DeckLibraryStore.migrateBuild7Details(setup.localDecks) } }
         DeckLibraryStore.loadFavorites().onSuccess { favorites = it }.onFailure {
             favoritesReadable = false; error = "Favorite preferences could not load. They have been preserved; your decks are unchanged."
@@ -164,6 +182,32 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
     LightSystemBars()
 
     val metadata = catalogue?.metadata
+    val resolver = catalogue?.resolver
+    // Each tile's status comes only from a stored result whose key matches the deck as it is now.
+    val checkRevision = DeckStudioServices.checkRevision
+    LaunchedEffect(records.map { it.id to it.record.revision }, resolver, checkRevision) {
+        val current = resolver ?: return@LaunchedEffect
+        val decks = records.map { it.id to it.record.deckList }
+        statuses = withContext(Dispatchers.Default) {
+            decks.associate { (id, deck) ->
+                id to runCatching { DeckStudioPlayRules.status(id, deck, current, DeckStudioServices.appBuild, DeckStudioServices.checkResults) }
+                    .getOrDefault(DeckStudioPlayStatus.NOT_CHECKED)
+            }
+        }
+    }
+    fun openDeck(target: DeckStudioOpen) {
+        val entry = records.firstOrNull { it.id == target.deckID } ?: return
+        pendingFix = target.takeIf { it.cards.isNotEmpty() }
+        route = StudioRoute.Deck(entry.record, entry.included)
+    }
+    /** Fix deck: the open workspace filters its own cards; from the library it opens the deck first. */
+    fun fix(target: DeckStudioOpen) { if (route is StudioRoute.Deck) pendingFix = target else openDeck(target) }
+    LaunchedEffect(open, records.map { it.id }) {
+        if (open == null || open == openedFromSetup || records.none { it.id == open.deckID }) return@LaunchedEffect
+        openedFromSetup = open
+        openDeck(open)
+    }
+    fun playRecord(entry: Entry) = play.play(DeckStudioPlaySelection.source(entry.id, entry.record.deckList), resolver)
     StudioScreen {
         Column(Modifier.fillMaxSize()) {
             StudioNavBar("Deck Studio", leading = {
@@ -171,6 +215,10 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
             }, trailing = {
                 StudioGlassGroup { StudioGlassIcon("slider.horizontal.3", "Deck artwork and privacy", { showPreferences = true }) }
             })
+            records.firstOrNull { it.id == selectedDeckID }?.let { playing ->
+                DeckStudioNowPlayingStrip(playing.record.name, statuses[playing.id], { route = StudioRoute.Deck(playing.record, playing.included) },
+                    Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 4.dp).widthIn(max = 960.dp))
+            }
             LazyVerticalGrid(if (grid) GridCells.Adaptive(160.dp) else GridCells.Fixed(1), Modifier.fillMaxSize().widthIn(max = 1000.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 40.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -207,11 +255,12 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
                     }
                 }
                 items(visible, key = { it.id }) { value ->
-                    DeckTile(value.record, value.included, value.id == selectedDeckID, grid, metadata, tags[value.record.id] ?: emptyList(),
+                    DeckTile(value.record, value.included, value.id == selectedDeckID, statuses[value.id], grid, metadata, tags[value.record.id] ?: emptyList(),
                         showTags = tags.values.any { it.isNotEmpty() }, favorite = value.id in favorites,
                         open = { route = StudioRoute.Deck(value.record, value.included) }, toggleFavorite = { toggleFavorite(value.id) },
                         actions = {
-                            deckActions(context, value.record, value.included, open = { route = StudioRoute.Deck(value.record, value.included) },
+                            deckActions(context, value.record, value.included, playEnabled = resolver != null && !play.checking, play = { playRecord(value) },
+                                open = { route = StudioRoute.Deck(value.record, value.included) },
                                 duplicate = {
                                     try {
                                         val copy = library.duplicateLocalDurably(value.record, value.record.name + " — Copy")
@@ -229,13 +278,16 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
         StudioCover(route != null) {
             when (val current = route) {
                 is StudioRoute.Deck -> DeckStudioWorkspaceScreen(library, current.record, current.included, metadata, catalogue?.resolver,
-                    selectForPlay = { id -> select(id); route = null; dismiss(); preparePlay() }, close = { route = null; reloadTags() })
-                StudioRoute.Importer -> DeckStudioImportScreen(library, catalogue?.resolver, didImport = { saved -> select("local:${saved.id}") },
+                    play = play, close = { route = null; reloadTags() }, fix = pendingFix, consumeFix = { pendingFix = null })
+                // A new import opens in its workspace, where Play is one tap away; the playing deck is unchanged.
+                StudioRoute.Importer -> DeckStudioImportScreen(library, catalogue?.resolver, didImport = { saved -> reloadTags(); route = StudioRoute.Deck(saved, false) },
                     close = { route = null; reloadTags() })
                 null -> {}
             }
         }
+        DeckStudioPlayBanner(play, setUpGame = { route = null; dismiss(); preparePlay() }, Modifier.align(Alignment.BottomCenter))
     }
+    DeckStudioPlaySheets(play, fix = ::fix)
     if (showPreferences) BoardSheet({ showPreferences = false }, background = rgbLight, skipPartiallyExpanded = false) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
             StudioSheetBar("Artwork & privacy", done = { showPreferences = false })
@@ -243,7 +295,10 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
         }
     }
     pendingDelete?.let { record ->
-        ConfirmationDialog("Delete this local deck?", "Included decks and source websites are never changed.",
+        val replacement = setup.precons.firstOrNull { "precon:${it.id}" == OnDeviceSetupPreferences.defaultDeckID }?.name ?: "The default deck"
+        val message = listOfNotNull(DeckStudioPlayText.deletePlaying(replacement).takeIf { selectedDeckID == "local:${record.id}" },
+            "Included decks and source websites are never changed.").joinToString(" ")
+        ConfirmationDialog("Delete this local deck?", message,
             listOf(ConfirmationAction("Delete ${record.name}", destructive = true) { delete(record) }), light = true) { pendingDelete = null }
     }
 }
@@ -307,10 +362,12 @@ private fun LibraryFilters(query: DeckStudioLibraryQuery, change: (DeckStudioLib
     }
 }
 
-private fun deckActions(context: Context, record: DeckLibraryRecord, included: Boolean, open: () -> Unit, duplicate: () -> Unit, delete: () -> Unit): List<MenuEntry> {
+private fun deckActions(context: Context, record: DeckLibraryRecord, included: Boolean, playEnabled: Boolean, play: () -> Unit, open: () -> Unit,
+                        duplicate: () -> Unit, delete: () -> Unit): List<MenuEntry> {
     val json = runCatching { OnDeviceDeckEditing.exportJSON(record.deckList) }.getOrNull()
     val text = runCatching { DeckStudioTextExport.text(record.deckList) }.getOrNull()
     return buildList {
+        add(MenuEntry.Item(DeckStudioPlayText.play, "play.fill", enabled = playEnabled) { play() })
         add(MenuEntry.Item("Open deck", "pencil") { open() })
         add(MenuEntry.Item("Duplicate locally", "doc.on.doc") { duplicate() })
         json?.let { add(MenuEntry.Item("Export native JSON", "square.and.arrow.up") { shareText(context, it) }) }
@@ -320,26 +377,28 @@ private fun deckActions(context: Context, record: DeckLibraryRecord, included: B
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun DeckTile(record: DeckLibraryRecord, included: Boolean, selected: Boolean, grid: Boolean, metadata: NativeDeckMetadataCatalogue?,
+private fun DeckTile(record: DeckLibraryRecord, included: Boolean, selected: Boolean, status: DeckStudioPlayStatus?, grid: Boolean, metadata: NativeDeckMetadataCatalogue?,
                      tags: List<String>, showTags: Boolean, favorite: Boolean, open: () -> Unit, toggleFavorite: () -> Unit, actions: () -> List<MenuEntry>) {
     val draft = remember(record) { NativeDeckDraft.of(record.deckList) }
     val colors = DeckStudioDraftPresentation.colors(draft, metadata)
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    var contextMenu by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(20.dp)
     Column(Modifier.fillMaxWidth().shadow(12.dp, shape, ambientColor = DeckStudioPalette.ink.copy(alpha = 0.04f), spotColor = DeckStudioPalette.ink.copy(alpha = 0.06f))
         .background(DeckStudioPalette.surface, shape).clip(shape)) {
+        // Long-press opens the same deck actions as the ⋯ button, like the iOS tile's context menu.
         Column(Modifier.fillMaxWidth().scale(if (pressed) 0.985f else 1f).alpha(if (pressed) 0.86f else 1f)
-            .clickable(interaction, null) { open() }.semantics { contentDescription = "deckStudio.deck.${if (included) record.id else "local:${record.id}"}" },
+            .combinedClickable(interaction, null, onLongClickLabel = "Deck actions", onLongClick = { contextMenu = true }) { open() }
+            .semantics { contentDescription = "deckStudio.deck.${if (included) record.id else "local:${record.id}"}" },
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(Modifier.fillMaxWidth().height(if (grid) 164.dp else 130.dp).clip(RoundedCornerShape(0.dp))) {
                 DeckStudioArtwork(record.commander?.cardName ?: "", Modifier.fillMaxSize(), hero = true, colors = colors)
-                if (selected) Row(Modifier.padding(10.dp).background(DeckStudioPalette.ink, CircleShape).padding(horizontal = 10.dp, vertical = 7.dp),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SfImage("checkmark.circle.fill", Color.White, 12.dp)
-                    Text("Selected", color = Color.White, style = StudioText.caption2.weight(SfWeight.semibold))
-                }
+                if (selected) DeckStudioPlayingBadge(Modifier.padding(10.dp))
+                status?.let { DeckStudioPlayStatusChip(it, Modifier.align(Alignment.BottomStart).padding(10.dp)) }
+                DeckTileContextMenu(contextMenu, { contextMenu = false }, actions)
             }
             DeckStudioTileDetails(record.name, DeckStudioDraftPresentation.commanders(draft).joinToString(" • "), colors, tags, showTags,
                 "${CardCountText.label(DeckStudioDraftPresentation.gameCount(draft))} · ${if (included) "Included" else "Local draft"}",
@@ -354,6 +413,26 @@ private fun DeckTile(record: DeckLibraryRecord, included: Boolean, selected: Boo
                     SfImage("ellipsis.circle", DeckStudioPalette.ink, 20.dp)
                 }
             }
+        }
+    }
+}
+
+/** The tile's long-press menu: the ⋯ menu's entries in the same light pull-down style. */
+@Composable
+private fun DeckTileContextMenu(expanded: Boolean, dismiss: () -> Unit, entries: () -> List<MenuEntry>) {
+    val background = io.magicmobile.android.ui.rgb(0.97, 0.97, 0.97)
+    DropdownMenu(expanded, dismiss, Modifier.background(background).widthIn(min = 220.dp, max = 300.dp), shape = RoundedCornerShape(13.dp),
+        containerColor = background) {
+        if (!expanded) return@DropdownMenu
+        for (entry in entries()) when (entry) {
+            is MenuEntry.Item -> Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).clickable(enabled = entry.enabled) { dismiss(); entry.action() }
+                .padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                val tint = when { !entry.enabled -> Color.Black.copy(alpha = 0.3f); entry.destructive -> DeckStudioPalette.danger; else -> Color.Black }
+                Text(entry.title, Modifier.weight(1f), color = tint, style = sf(17f))
+                entry.icon?.let { SfImage(it, tint, 17.dp) }
+            }
+            is MenuEntry.Label -> Text(entry.title, Modifier.padding(horizontal = 16.dp, vertical = 11.dp), color = Color.Black.copy(alpha = 0.6f), style = sf(15f))
+            else -> {}
         }
     }
 }

@@ -71,6 +71,12 @@ object DeckStudioServices {
     val spellbook by lazy { CommanderSpellbookClient(File(appContext.cacheDir, "MagicMobile-Spellbook-v1")) }
     val scryfall by lazy { DeckStudioScryfallClient(File(appContext.cacheDir, "DeckStudio-Scryfall-v1")) }
     val appBuild: String get() = BuildConfig.VERSION_CODE.toString()
+    /** Bumped whenever a stored check result changes, so tiles and the setup screen refresh. */
+    var checkRevision by mutableStateOf(0L); private set
+    /** Stored XMage check results, keyed by deck, exact request, engine, catalogue and app build. */
+    val checkResults: DeckStudioReceiptStore by lazy {
+        DeckStudioReceiptStore(File(appContext.filesDir, "MagicMobile/DeckStudio/CheckResults/results-v1.json")) { checkRevision += 1 }
+    }
 
     fun install(context: Context) { if (!::appContext.isInitialized) appContext = context.applicationContext }
 }
@@ -161,9 +167,12 @@ class DeckStudioRecordingTransport(private val base: EngineTransport, private va
 object DeckStudioValidationService {
     var busy by mutableStateOf(false); private set
     var cleanupRequired by mutableStateOf(false); private set
+    /** Validation starts its own runtime, so it never runs beside a live game or match room. */
+    var gameLive: () -> Boolean = { false }
     private val runtime = OnDeviceRuntimeManager()
 
     suspend fun validate(deck: J, resolver: OnDeviceDeckResolver): DeckStudioValidationReceipt {
+        if (gameLive()) throw EngineError.InvalidMessage(DeckStudioPlayText.gameLive)
         if (busy || cleanupRequired || runtime.isOpen) throw EngineError.InvalidMessage("Wait for validation or retry its cleanup before checking another deck")
         busy = true
         try {
@@ -201,8 +210,11 @@ object DeckStudioValidationService {
     }
 }
 
-/** DeckStudioValidationState.swift: one pending check per draft request. */
-class DeckStudioValidationState(private val scope: CoroutineScope) {
+/**
+ * DeckStudioValidationState.swift: one pending check per draft request. With a deck ID, a matching
+ * stored result shows at once and every new result is stored for Play and the library.
+ */
+class DeckStudioValidationState(private val scope: CoroutineScope, private val deckID: () -> String? = { null }) {
     var receipt by mutableStateOf<DeckStudioValidationReceipt?>(null); private set
     var checking by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null)
@@ -210,10 +222,18 @@ class DeckStudioValidationState(private val scope: CoroutineScope) {
     private var token = UUID.randomUUID()
     private var job: Job? = null
 
-    fun prepare(deck: J?) {
+    fun prepare(deck: J?, resolver: OnDeviceDeckResolver? = null) {
         val data = deck?.let { runCatching { String(EngineJson.encode(it), Charsets.UTF_8) }.getOrNull() }
-        if (data == request) return
-        cancelPending(); request = data; receipt = null; error = null
+        if (data != request) { cancelPending(); request = data; receipt = null; error = null }
+        if (checking || data == null || resolver == null) return
+        // A newer stored result (from Play or Start) replaces the one shown.
+        stored(data, resolver)?.let { value -> if (value.checkedAt > (receipt?.checkedAt ?: Long.MIN_VALUE)) receipt = value }
+    }
+
+    private fun stored(request: String, resolver: OnDeviceDeckResolver): DeckStudioValidationReceipt? {
+        val id = deckID() ?: return null
+        val key = DeckStudioCheckKey.of(id, request, resolver.upstreamCommit, resolver.catalogueHash, DeckStudioServices.appBuild)
+        return runCatching { DeckStudioServices.checkResults.result(key)?.receipt(request) }.getOrNull()
     }
 
     fun cancelPending() { token = UUID.randomUUID(); job?.cancel(); job = null; checking = false }
@@ -225,6 +245,7 @@ class DeckStudioValidationState(private val scope: CoroutineScope) {
         job = scope.launch {
             try {
                 val value = DeckStudioValidationService.validate(deck, resolver)
+                deckID()?.let { id -> withContext(Dispatchers.IO) { runCatching { DeckStudioServices.checkResults.record(DeckStudioCheckResult.of(id, value)) } } }
                 if (token != captured) return@launch
                 receipt = value; checking = false; job = null
             } catch (cancelled: CancellationException) {
