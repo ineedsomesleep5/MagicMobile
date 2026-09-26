@@ -145,7 +145,7 @@ Caleb authorizes.
 |---|---|---|---|
 | 0 Merge #37, #38 | Waiting on Caleb | #37, #38 | Both green and conflict-free |
 | 0 Branch cleanup | Done | | 14 remote branches deleted; 5 stale ones kept as `archive/*` tags |
-| 0 Legacy removal, CI triggers, docs | In progress | `codex/repo-tidy` | Delegate |
+| 0 Legacy removal, CI triggers, docs | Done | #40 (draft) | Reviewed. Before merging, Caleb disconnects or deletes the Vercel project `magicmobile` (old web game, Root Directory `apps/web`) |
 | 1 Web engine spike | In progress | `codex/web-engine-spike` | Delegate |
 | 2 Playtest focus | In progress | `codex/playtest-focus` | Delegate |
 | 2 Playtest cards | In progress | `codex/playtest-cards` | Delegate |
@@ -172,3 +172,12 @@ Caleb authorizes.
     dropped. The wire protocol is unchanged.
   - New `table-relay.yml` CI runs the tests with the 2 MB limit enforced locally.
   - The deploy was refused by Claude Code's auto-mode safety check, so it waits for Caleb.
+- 2026-09-25 (Claude Code): Repo tidy in #40 (215 files, -38.5k lines).
+  - Removed the legacy apps and TS packages (tag `archive/legacy-web`), `docker-compose.yml`
+    and the pnpm workspace. Also removed two scripts for the offline Hostinger stack.
+  - `ci.yml` now builds the download site. The TestFlight repository preflight runs the release
+    tooling checks, and its dispatched run passed.
+  - Dead branch triggers are gone.
+  - Release records moved to `release/`, and web-era docs to `docs/archive/`, with links fixed.
+  - Vercel `magicmobile` (magicmobile.vercel.app) will fail once `apps/web` is gone, and no kept
+    code uses that URL.
