@@ -36,13 +36,74 @@ const RESUME_GRACE_MS = 90_000;
 /** An unopened or abandoned table closes after this long. */
 const IDLE_MS = 30 * 60_000;
 const NAME_LIMIT = 40;
+/**
+ * Current apps open their socket offering this WebSocket subprotocol, plus their credential as a
+ * second one (`magicmobile.key.<hostKey>` or `magicmobile.resume.<token>`), so a host key or resume
+ * token never appears in a URL or a request log. The relay answers with this protocol. Android
+ * build 8 sends `key=` and `resume=` in the query instead, which the relay still accepts.
+ */
+const SOCKET_PROTOCOL = "magicmobile.1";
+const HOST_KEY_PROTOCOL = "magicmobile.key.";
+const RESUME_PROTOCOL = "magicmobile.resume.";
+/** The window of the TABLE_CREATES rate limit in wrangler.toml, sent as Retry-After. */
+const CREATE_LIMIT_PERIOD_SECONDS = 60;
+const REMOVED_MESSAGE = "The host removed you from this table.";
 
-function json(value, status = 200) {
+function json(value, status = 200, headers = {}) {
   return new Response(JSON.stringify(value), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers },
   });
 }
+
+/**
+ * Whom the table-creation limit counts: the caller's address, or an IPv6 address's /64 network,
+ * since one phone may use many addresses within its network.
+ */
+function clientKey(address) {
+  const ip = String(address ?? "").trim().toLowerCase();
+  if (!ip.includes(":")) return ip || "unknown";
+  const [head, tail] = ip.split("::");
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const groups = tail === undefined ? left : [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right];
+  return `${groups.slice(0, 4).map((group) => group.replace(/^0+(?=.)/, "")).join(":")}::/64`;
+}
+
+/**
+ * Cloudflare's rate-limiting binding (TABLE_CREATES in wrangler.toml) caps how many tables one
+ * caller opens a minute. Without the binding, or if it fails, a table opens as before.
+ */
+async function mayCreateTable(request, env) {
+  if (!env.TABLE_CREATES) return true;
+  try {
+    return (await env.TABLE_CREATES.limit({ key: clientKey(request.headers.get("CF-Connecting-IP")) })).success !== false;
+  } catch {
+    return true;
+  }
+}
+
+/** The subprotocol to answer with, and the credential a phone opened its socket with (see SOCKET_PROTOCOL). */
+function socketCredentials(request, url) {
+  const offered = (request.headers.get("Sec-WebSocket-Protocol") ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+  const credential = (prefix, query) => {
+    const value = offered.find((candidate) => candidate.startsWith(prefix));
+    return value === undefined ? url.searchParams.get(query) : value.slice(prefix.length);
+  };
+  return {
+    protocol: offered.includes(SOCKET_PROTOCOL) ? SOCKET_PROTOCOL : null,
+    key: credential(HOST_KEY_PROTOCOL, "key"),
+    resume: credential(RESUME_PROTOCOL, "resume"),
+  };
+}
+
+/** The 101 answer that hands a phone its socket, naming the subprotocol when the phone offered it. */
+function upgraded(client, protocol) {
+  return new Response(null, { status: 101, webSocket: client, headers: protocol ? { "Sec-WebSocket-Protocol": protocol } : {} });
+}
+
+/** A peer's seat number: peer IDs are `p<seat>-<random>`. */
+const seatOf = (peer) => Number(/^p(\d+)-/.exec(peer.id)?.[1] ?? 0);
 
 function randomToken(bytes = 18) {
   const data = crypto.getRandomValues(new Uint8Array(bytes));
@@ -97,6 +158,10 @@ export default {
     }
     if (url.pathname === "/v1/tables") {
       if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+      if (!(await mayCreateTable(request, env))) {
+        return json({ error: "rate_limited", message: "You opened several tables in the last minute. Wait a minute, then try again." },
+          429, { "retry-after": String(CREATE_LIMIT_PERIOD_SECONDS) });
+      }
       const body = await request.json().catch(() => null);
       const seats = body?.seats;
       if (!Number.isInteger(seats) || seats < 2 || seats > 4) {
@@ -174,13 +239,13 @@ export class TableRoom extends DurableObject {
   }
 
   /** Accepts the socket so a phone can read why it was turned away, then closes it. */
-  refuse(error, message) {
+  refuse(error, message, protocol) {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     server.accept();
     server.send(JSON.stringify({ t: "error", error, message }));
     server.close(4400, error);
-    return new Response(null, { status: 101, webSocket: client });
+    return upgraded(client, protocol);
   }
 
   async scheduleAlarm(at) {
@@ -199,29 +264,32 @@ export class TableRoom extends DurableObject {
       return json({ code, hostKey: this.table.hostKey, seats, protocol: PROTOCOL });
     }
 
+    const { protocol, key, resume } = socketCredentials(request, url);
+    const refuse = (error, message) => this.refuse(error, message, protocol);
     const table = await this.load();
-    if (!table || table.closed) return this.refuse("no_table", "No table uses that code. Check it with the host.");
+    if (!table || table.closed) return refuse("no_table", "No table uses that code. Check it with the host.");
     const name = cleanName(url.searchParams.get("name"));
-    const resume = url.searchParams.get("resume");
-    const key = url.searchParams.get("key");
     let peer;
     if (resume) {
-      peer = table.peers.find((candidate) => candidate.token === resume && !candidate.gone);
-      if (!peer) return this.refuse("resume_failed", "Your seat at this table has closed. Leave and start a new match.");
+      peer = table.peers.find((candidate) => candidate.token === resume);
+      if (peer?.removed) return refuse("removed", REMOVED_MESSAGE);
+      if (!peer || peer.gone) return refuse("resume_failed", "Your seat at this table has closed. Leave and start a new match.");
     } else if (key !== null) {
-      if (key !== table.hostKey) return this.refuse("not_host", "Only the phone that created this table can host it.");
-      if (table.peers.length > 0) return this.refuse("host_taken", "This table is already open.");
+      if (key !== table.hostKey) return refuse("not_host", "Only the phone that created this table can host it.");
+      if (table.peers.length > 0) return refuse("host_taken", "This table is already open.");
       peer = { id: `p1-${randomToken(6)}`, name, token: randomToken(), connected: false, gone: false, lastSeen: Date.now() };
       table.peers.push(peer);
       table.next = 2;
     } else {
-      if (table.peers.length === 0) return this.refuse("host_missing", "The host has not opened this table yet.");
-      if (table.peers[0].gone) return this.refuse("host_left", "The host left this table.");
-      if (this.livePeers().length >= table.seats || table.next > table.seats) {
-        return this.refuse("table_full", "This table is already full.");
+      if (table.peers.length === 0) return refuse("host_missing", "The host has not opened this table yet.");
+      if (table.peers[0].gone) return refuse("host_left", "The host left this table.");
+      // A seat the host freed by removing a joiner is taken first, so peer IDs still sort in seat order.
+      const free = table.free ?? [];
+      if (this.livePeers().length >= table.seats || (free.length === 0 && table.next > table.seats)) {
+        return refuse("table_full", "This table is already full.");
       }
-      peer = { id: `p${table.next}-${randomToken(6)}`, name, token: randomToken(), connected: false, gone: false, lastSeen: Date.now() };
-      table.next += 1;
+      const seat = free.length > 0 ? free.shift() : table.next++;
+      peer = { id: `p${seat}-${randomToken(6)}`, name, token: randomToken(), connected: false, gone: false, lastSeen: Date.now() };
       table.peers.push(peer);
     }
 
@@ -240,7 +308,7 @@ export class TableRoom extends DurableObject {
       peers: this.roster(), full: this.livePeers().length === table.seats });
     await this.deliverQueue(peer.id, server);
     this.broadcastRoster(peer.id);
-    return new Response(null, { status: 101, webSocket: client });
+    return upgraded(client, protocol);
   }
 
   /** Deletes any number of keys in one atomic write (the storage API takes 128 keys per call). */
@@ -313,6 +381,8 @@ export class TableRoom extends DurableObject {
     }
     let frame;
     try { frame = JSON.parse(message); } catch { return; }
+    // A removed phone's socket may still deliver a frame while it closes; it no longer speaks for a seat.
+    if (frame?.t !== "bye" && table.peers.find((peer) => peer.id === id)?.removed) return;
     if (frame?.t === "send") {
       const target = table.peers.find((peer) => peer.id === frame.to && !peer.gone);
       const part = validPart(frame.p);
@@ -328,6 +398,8 @@ export class TableRoom extends DurableObject {
         const held = await this.enqueue(target.id, text, answer, part ? `${id}/${part.id}` : undefined).catch(() => false);
         if (!held) this.send(socket, { t: "error", error: "peer_backlog", message: "Another player has been away too long." });
       }
+    } else if (frame?.t === "remove") {
+      await this.remove(id, frame.id);
     } else if (frame?.t === "bye") {
       const peer = table.peers.find((candidate) => candidate.id === id);
       if (peer && !peer.gone) {
@@ -340,6 +412,27 @@ export class TableRoom extends DurableObject {
       try { socket.close(1000, "bye"); } catch { /* closed */ }
       await this.closeIfEmpty();
     }
+  }
+
+  /**
+   * The host turns a joiner away while the table is still filling. Once the table is full every
+   * phone has opened the match room with a fixed roster, so seats no longer change. The other
+   * phones get a roster without the joiner, never `gone`, which ends a table. Anything else is ignored.
+   */
+  async remove(senderID, targetID) {
+    const table = this.table;
+    const target = table.peers.find((peer) => peer.id === targetID && !peer.gone);
+    if (senderID !== table.peers[0]?.id || !target || target.id === senderID || this.livePeers().length >= table.seats) return;
+    target.gone = true; target.removed = true; target.connected = false;
+    table.free = [...(table.free ?? []), seatOf(target)].sort((a, b) => a - b);
+    table.activeAt = Date.now();
+    await this.clearQueue(target.id);
+    await this.save();
+    for (const socket of this.ctx.getWebSockets(target.id)) {
+      this.send(socket, { t: "error", error: "removed", message: REMOVED_MESSAGE });
+      try { socket.close(4400, "removed"); } catch { /* already closed */ }
+    }
+    this.broadcastRoster(target.id);
   }
 
   async webSocketClose(socket, code) {

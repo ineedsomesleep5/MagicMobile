@@ -13,18 +13,32 @@ are deleted when everyone leaves or it sits idle for 30 minutes.
 ## Protocol 1
 
 `POST /v1/tables` with `{"seats": 2…4}` → `{"code": "ABC234", "hostKey": "…", "seats": n}`.
-Codes use `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`.
+Codes use `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`. Each caller (an IPv4 address, or an IPv6 /64) may
+open 5 tables a minute, counted by Cloudflare's rate-limiting binding (`TABLE_CREATES` in
+`wrangler.toml`) at each Cloudflare location. Over the limit the answer is HTTP 429 with
+`Retry-After: 60` and `{"error":"rate_limited","message":…}`; the apps show the message.
 
-`GET /v1/tables/{code}/socket` upgrades to a WebSocket (text frames, JSON):
+`GET /v1/tables/{code}/socket?name=…` upgrades to a WebSocket (text frames, JSON). A phone says
+who it is with WebSocket subprotocols, so no secret appears in a URL or a request log:
 
-| Query | Meaning |
+| Offered subprotocols | Meaning |
 |---|---|
-| `key=<hostKey>&name=…` | The creator opens the table and takes seat 1. |
-| `name=…` | A guest takes the next free seat. |
-| `resume=<token>` | A phone that dropped reclaims its seat within 90 seconds. |
+| `magicmobile.1, magicmobile.key.<hostKey>` | The creator opens the table and takes seat 1. |
+| `magicmobile.1` | A guest takes the next free seat. |
+| `magicmobile.1, magicmobile.resume.<token>` | A phone that dropped reclaims its seat within 90 seconds. |
+
+The relay answers with the `magicmobile.1` subprotocol, including when it turns a phone away.
+Android build 8 sends the same credentials in the query instead (`key=<hostKey>`,
+`resume=<token>`, no subprotocol); the relay still accepts that form.
 
 Peer IDs are `p<seat>-<random>`, so sorting them gives seat order; the host sorts first,
 matching the Game Center lobby's rule that the first sorted peer hosts.
+
+While the table is still filling, the host may send `{"t":"remove","id":peer}` to turn a joiner
+away. That phone gets the `removed` error and its socket closes; the others get a roster without
+it (never `gone`, which ends a table), and the next phone to join takes the freed seat number.
+Once the table is full every phone has opened the match room, so the relay ignores `remove`, as it
+does one from any phone but the host. A removed phone cannot resume its seat.
 
 Relay → phone:
 
@@ -33,10 +47,12 @@ Relay → phone:
 - `{"t":"msg","from":id,"d":"<packet JSON text>","p":{"id","i","n"}?}`; `p` marks one part of a split packet
 - `{"t":"gone","id":…}` a player left or did not return in time
 - `{"t":"error","error":code,"message":…}` then the socket closes (`no_table`, `table_full`,
-  `host_missing`, `host_left`, `not_host`, `host_taken`, `resume_failed`, `too_large`, `peer_backlog`)
+  `host_missing`, `host_left`, `not_host`, `host_taken`, `resume_failed`, `removed`, `too_large`, `peer_backlog`)
 - `{"t":"pong"}` answers `{"t":"ping"}` without waking the table
 
-Phone → relay: `{"t":"send","to":id,"d":…,"p":…?}`, `{"t":"ping"}`, `{"t":"bye"}` (leave for good).
+Phone → relay: `{"t":"send","to":id,"d":…,"p":…?}`, `{"t":"ping"}`, `{"t":"bye"}` (leave for good),
+`{"t":"remove","id":peer}` (host only, while the table fills). Both apps ignore frame types they
+do not know.
 
 Frames are limited to 1,000,000 characters; the apps split larger packets into parts.
 
@@ -65,7 +81,13 @@ cd services/table-relay && npx wrangler deploy
 
 The local run serves `test/strict-storage.js`: the relay with the 2 MB storage entry limit
 enforced, since local SQLite accepts larger entries. `.github/workflows/table-relay.yml` runs the
-local tests on pull requests and pushes to `main` that touch this folder.
+local tests on pull requests and pushes to `main` that touch this folder. Locally the tests name a
+different caller address (`CF-Connecting-IP`) for each table, so the creation limit only applies
+where a test checks it; against a deployed relay, `createTable` waits out the limit instead.
+
+Deploy the relay before app builds that use a new protocol feature: it keeps accepting what older
+apps send. If Cloudflare refuses the `[[ratelimits]]` binding on the account's plan, remove that
+block and deploy again; without the binding the relay opens tables with no limit.
 
 The relay sits outside the pnpm workspace on purpose: it has no dependencies beyond `wrangler`
 run through `npx`, so it never changes the monorepo lockfile.

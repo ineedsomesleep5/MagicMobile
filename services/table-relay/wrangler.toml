@@ -15,5 +15,13 @@ class_name = "TableRoom"
 tag = "v1"
 new_sqlite_classes = ["TableRoom"]
 
+# POST /v1/tables: at most 5 new tables a minute per caller (an IPv4 address or an IPv6 /64),
+# counted at each Cloudflare location. Over the limit the relay answers 429 `rate_limited`.
+# The relay opens tables without a limit if this binding is missing.
+[[ratelimits]]
+name = "TABLE_CREATES"
+namespace_id = "1001"
+simple = { limit = 5, period = 60 }
+
 [observability]
 enabled = false

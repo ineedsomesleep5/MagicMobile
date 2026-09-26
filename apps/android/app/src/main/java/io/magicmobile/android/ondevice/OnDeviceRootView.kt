@@ -853,8 +853,45 @@ private fun OnlineTablePanel(setup: OnDeviceSetupModel, selectedDeck: Deck?, pla
                 }
             }
             Text(table.status, color = setupInk, style = SfText.callout())
+            if (table.room == null && table.endpoint == null && !table.isFailed && table.waitingSeats.isNotEmpty()) {
+                RelayWaitingRoomView(table.waitingSeats) { table.removeFromTable(it) }
+            }
             table.room?.let { room -> MatchRoomView(room, selectedDeck?.name, selectedDeck?.commanderName, ready) }
         }
+    }
+}
+
+/** A relay table that is still filling: who has joined and, for the host, a Remove control per joiner (RelayWaitingRoomView). */
+@Composable
+private fun RelayWaitingRoomView(seats: List<RelayWaitingSeat>, remove: (String) -> Unit) {
+    var removal by remember { mutableStateOf<RelayWaitingSeat?>(null) }
+    Column(Modifier.fillMaxWidth().background(BrandTheme.canvas.copy(alpha = 0.6f), RoundedCornerShape(12.dp)).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("AT THE TABLE", color = setupSecondary, style = sf(12f, SfWeight.bold, tracking = 1.4f))
+        for (seat in seats) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                SfImage(if (seat.connected) "person.crop.circle" else "wifi.exclamationmark", setupSecondary, 20.dp)
+                Column(Modifier.weight(1f).semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(seat.name, color = setupInk, style = SfText.headline())
+                        if (seat.isHost) Text("HOST", Modifier.background(setupAccent.copy(alpha = 0.25f), RoundedCornerShape(50))
+                            .padding(horizontal = 5.dp, vertical = 1.dp), color = setupInk, style = sf(11f, SfWeight.black))
+                    }
+                    Text(if (seat.isLocal) "You" else if (seat.connected) "Joined" else "Reconnecting…", color = setupSecondary, style = SfText.caption())
+                }
+                if (seat.removable) {
+                    IosTextButton("Remove", { removal = seat }, Modifier.semantics { contentDescription = "Remove ${seat.name}" },
+                        color = io.magicmobile.android.ui.rgb(1.0, 0.27, 0.23), bold = true)
+                }
+            }
+        }
+        if (seats.any { it.removable }) {
+            Text("Remove anyone you did not invite. The match room opens when every seat is taken.", color = setupSecondary, style = SfText.caption())
+        }
+    }
+    removal?.let { seat ->
+        ConfirmationDialog("Remove ${seat.name} from the table?", "Their seat opens for someone else. Anyone with the code can still join.",
+            listOf(ConfirmationAction("Remove", destructive = true) { remove(seat.id) })) { removal = null }
     }
 }
 

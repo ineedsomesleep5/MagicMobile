@@ -487,6 +487,41 @@ class OnDeviceHostRequestDispatcher(private val router: HostRouter, private val 
     fun cancel() { closed = true; queues.clear(); workers.values.forEach { it.cancel() } }
 }
 
+/** What the apps say to the cross-play relay besides packets (services/table-relay/README.md). */
+object RelayWire {
+    /** Offered on every table socket; the relay answers with it. */
+    const val SOCKET_PROTOCOL = "magicmobile.1"
+
+    /** The host key or resume token travels as a subprotocol, so it never appears in the socket URL. */
+    fun socketProtocols(hostKey: String?, resume: String?): List<String> =
+        listOf(SOCKET_PROTOCOL) + listOfNotNull(hostKey?.let { "magicmobile.key.$it" }, resume?.let { "magicmobile.resume.$it" })
+
+    /** What to show when the relay does not open a table: its own message, else a plain one. */
+    fun createFailureMessage(status: Int?, message: String?): String =
+        message?.trim()?.takeIf { it.isNotEmpty() }
+            ?: if (status == 429) "You opened several tables in the last minute. Wait a minute, then try again."
+            else "The table service could not open a table. Try again."
+
+    /** The host turns a joiner away; the relay honors it only while the table is still filling. */
+    fun removeFrame(peerID: String): String = JsonObject(mapOf("id" to JsonPrimitive(peerID), "t" to JsonPrimitive("remove"))).toString()
+}
+
+/** A relay table that is still filling: who has joined, in seat order. */
+data class RelayWaitingSeat(val id: String, val name: String, val connected: Boolean, val isHost: Boolean, val isLocal: Boolean,
+                            /** Only the host may remove a joiner, and only until the table is full: then every phone opens the match room. */
+                            val removable: Boolean) {
+    companion object {
+        fun seats(peers: List<RelayPeer>, localPeerID: String?, full: Boolean): List<RelayWaitingSeat> {
+            val sorted = peers.sortedBy { it.id }
+            val hostID = sorted.firstOrNull()?.id ?: return emptyList()
+            return sorted.map { peer ->
+                RelayWaitingSeat(peer.id, peer.name, peer.connected, isHost = peer.id == hostID, isLocal = peer.id == localPeerID,
+                    removable = localPeerID == hostID && !full && peer.id != hostID)
+            }
+        }
+    }
+}
+
 /**
  * Port of OnDeviceMultiplayer over the relay: iPhones and Android phones meet at a table code.
  * The host's phone runs XMage; everyone else polls and answers it through the relay.
@@ -514,6 +549,8 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
     var tableCode by mutableStateOf<String?>(null); private set
     var seatsTaken by mutableStateOf(0); private set
     var seatsWanted by mutableStateOf(0); private set
+    /** Who has joined a table that is still filling; empty once the match room opens. */
+    var waitingSeats by mutableStateOf<List<RelayWaitingSeat>>(emptyList()); private set
     var isHosting by mutableStateOf(false); private set
     var isFailed by mutableStateOf(false); private set
     /** A player's quick-chat line: their table name and a fixed emote, never free text. */
@@ -593,6 +630,7 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
                 seatsTaken = peers.size
                 seatsWanted = transport.seats.takeIf { it > 0 } ?: maxOf(seatsWanted, peers.size)
                 peers.forEach { playerNames[it.id] = it.name }
+                waitingSeats = if (lobby == null && !full) RelayWaitingSeat.seats(peers, transport.localPeerID, full) else emptyList()
                 val lobby = lobby
                 if (lobby == null && full) startLobby(peers.map { it.id })
                 else if (lobby == null) status = "Share code ${tableCode ?: ""}. Waiting for players (${peers.size}/$seatsWanted)…"
@@ -630,6 +668,15 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
                 else status = "Reconnecting to the table…"
             }
         }
+    }
+
+    /**
+     * The host turns a joiner away while the table is still filling. The relay confirms it with a
+     * roster without that player; it ignores a removal once the table is full.
+     */
+    fun removeFromTable(peerID: String) {
+        if (lobby != null || isFailed || closing || waitingSeats.none { it.id == peerID && it.removable }) return
+        relay?.remove(peerID)
     }
 
     private fun startLobby(peerIDs: List<String>) {
@@ -1041,14 +1088,14 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
             remote = null; tableLink = null; router = null; hostDispatcher = null; relay = null; lobby = null; epoch = null; submission = null; requestedAISeats = emptyList()
             suspendedPeers.clear(); relayAwayPeers.clear(); peerPresenceSequences.clear(); presenceSequence = 0; suspensionRevision = 0
             room = null; localReady = false; reportedReady = emptyMap(); playerNames.clear()
-            tableCode = null; seatsTaken = 0; seatsWanted = 0; isHosting = false
+            tableCode = null; seatsTaken = 0; seatsWanted = 0; waitingSeats = emptyList(); isHosting = false
             isFailed = false; isSuspended = false; status = "Match closed."
         } finally { closing = false }
     }
 
     private fun fail(message: String) {
         if (isFailed) return
-        isFailed = true; isConnected = false; status = message; seatNames = emptyMap(); room = null
+        isFailed = true; isConnected = false; status = message; seatNames = emptyMap(); room = null; waitingSeats = emptyList()
         rollTimer?.cancel(); rollTimer = null
         startingRoll = null; rollProgress = null; rollRevealedCount = 0; hasRolled = false; rollStatus = ""
         lobbyTimer?.cancel(); startup?.cancel(); remote?.close(); hostDispatcher?.cancel()

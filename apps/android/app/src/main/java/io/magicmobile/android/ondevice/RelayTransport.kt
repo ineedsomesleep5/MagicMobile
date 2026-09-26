@@ -74,7 +74,7 @@ class RelayTransport(private val baseURL: String = defaultURL) {
             val value = runCatching { Json.parseToJsonElement(it.body?.string().orEmpty()) }.getOrNull()
             val code = value["code"].string; val key = value["hostKey"].string
             if (!it.isSuccessful || code == null || key == null) {
-                throw EngineError.InvalidMessage(value["message"].string ?: "The table service could not open a table. Try again.")
+                throw EngineError.InvalidMessage(RelayWire.createFailureMessage(it.code, value["message"].string))
             }
             code to key
         }
@@ -89,13 +89,11 @@ class RelayTransport(private val baseURL: String = defaultURL) {
     private fun open(hostKey: String?, resume: String?) {
         val code = code ?: return
         val current = ++generation
-        val query = buildList {
-            add("name=" + URLEncoder.encode(name, "UTF-8"))
-            hostKey?.let { add("key=" + URLEncoder.encode(it, "UTF-8")) }
-            resume?.let { add("resume=" + URLEncoder.encode(it, "UTF-8")) }
-        }.joinToString("&")
-        val url = baseURL.replaceFirst("http", "ws") + "/v1/tables/$code/socket?$query"
-        socket = client.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
+        val url = baseURL.replaceFirst("http", "ws") + "/v1/tables/$code/socket?name=" + URLEncoder.encode(name, "UTF-8")
+        // The host key or resume token goes in a subprotocol, not the URL, so it stays out of logs.
+        val request = Request.Builder().url(url)
+            .header("Sec-WebSocket-Protocol", RelayWire.socketProtocols(hostKey, resume).joinToString(", ")).build()
+        socket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onMessage(webSocket: WebSocket, text: String) {
                 main.post { if (current == generation && !closed) receive(text) }
             }
@@ -192,6 +190,12 @@ class RelayTransport(private val baseURL: String = defaultURL) {
         pieces.forEachIndexed { index, piece ->
             write(frame(peer, piece, JsonObject(mapOf("id" to JsonPrimitive(id), "i" to JsonPrimitive(index), "n" to JsonPrimitive(pieces.size)))))
         }
+    }
+
+    /** Host only: turns a joiner away while the table is still filling (the relay ignores it after). */
+    fun remove(peerID: String) {
+        if (closed) return
+        runCatching { write(RelayWire.removeFrame(peerID)) }
     }
 
     /** Sends now, or holds the frame until the relay returns this phone's seat. */
