@@ -146,11 +146,11 @@ Caleb authorizes.
 | 0 Merge #37, #38 | Waiting on Caleb | #37, #38 | Both green and conflict-free |
 | 0 Branch cleanup | Done | | 14 remote branches deleted; 5 stale ones kept as `archive/*` tags |
 | 0 Legacy removal, CI triggers, docs | Done | #40 (draft) | Reviewed. Before merging, Caleb disconnects or deletes the Vercel project `magicmobile` (old web game, Root Directory `apps/web`) |
-| 1 Web engine spike | In progress | `codex/web-engine-spike` | Delegate |
-| 2 Playtest focus | In progress | `codex/playtest-focus` | Delegate |
-| 2 Playtest cards | In progress | `codex/playtest-cards` | Delegate |
+| 1 Web engine spike | Paused | `codex/web-engine-spike` (local) | Entry point, bundle build and bench app committed; benchmarks and doc remaining. Resumes when a build slot frees up |
+| 2 Playtest focus | Finishing | #41 (draft) | Both platforms and the 4-player preview done; final checks running |
+| 2 Playtest cards | Finishing | `codex/playtest-cards` | Both platforms and previews done; screenshots, tests and PR remaining |
 | 2b.1 Relay backlog + CI | Done, not deployed | #39 (draft) | Reviewed. 6/6 tests locally and in the new `Table relay` CI. Deploying needs Caleb: `cd services/table-relay && npx wrangler deploy` |
-| 2b.2–4 Guest retry, notices, crash reports | Not started | | After playtest-focus lands |
+| 2b.2–4 Guest retry, notices, crash reports | Finishing | #42 (draft) | Retry, notices and crash reports committed; tests and cross-play check remaining |
 | 3–6 Web client | Blocked on PR 1 | | |
 | Release: iOS build 18, Android build 9 | Not started | | Needs Caleb's go-ahead |
 
@@ -181,3 +181,6 @@ Caleb authorizes.
   - Release records moved to `release/`, and web-era docs to `docs/archive/`, with links fixed.
   - Vercel `magicmobile` (magicmobile.vercel.app) will fail once `apps/web` is gone, and no kept
     code uses that URL.
+- 2026-09-25 (Claude Code): Four delegates stopped mid-work at the account usage limit, with no
+  failures. After the reset, continuation delegates resumed playtest focus, playtest cards and
+  multiplayer hardening in their existing worktrees. The web spike resumes next.
