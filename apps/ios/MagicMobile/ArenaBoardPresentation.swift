@@ -376,6 +376,44 @@ private struct BattlefieldAbilityBadges: View {
     }
 }
 
+/// Named combat keywords on an attacking or blocking card (CombatKeywordBadgePlan). Strike
+/// keywords are filled red and deathtouch violet, the pair that decides most trades. Keywords
+/// that do not fit keep their icon in the card's ability row.
+private struct CombatKeywordBadges: View {
+    let plan: CombatKeywordBadgePlan
+    let cardWidth: CGFloat
+
+    var body: some View {
+        let size = CombatKeywordBadgePlan.fontSize(cardWidth: cardWidth)
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(plan.visible, id: \.self) { keyword in
+                badge(plan.label(keyword).uppercased(), size: size, style: Self.style(keyword))
+            }
+        }
+        .frame(maxWidth: cardWidth - 4, alignment: .leading)
+        .accessibilityHidden(true)
+    }
+
+    private func badge(_ text: String, size: CGFloat, style: (fill: Color, text: Color)) -> some View {
+        Text(text)
+            .font(.system(size: size, weight: .black))
+            .lineLimit(1).minimumScaleFactor(0.6)
+            .foregroundStyle(style.text)
+            .padding(.horizontal, 3.5).frame(height: size + 5)
+            .background(style.fill, in: Capsule())
+            .overlay(Capsule().stroke(.black.opacity(0.5), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.5), radius: 1.5, y: 1)
+    }
+
+    static func style(_ keyword: CombatKeyword) -> (fill: Color, text: Color) {
+        switch keyword {
+        case .doubleStrike, .firstStrike: return (Color(red: 0.86, green: 0.28, blue: 0.12), .white)
+        case .deathtouch: return (Color(red: 0.24, green: 0.1, blue: 0.3), Color(red: 0.86, green: 0.7, blue: 1))
+        default: return (Color.black.opacity(0.8), MagicPalette.parchment)
+        }
+    }
+}
+
 /// Compact public permanent face; the complete printed card remains in inspection.
 /// Keeping a nearly square footprint also prevents a tap from displacing its neighbors.
 struct ArenaBattlefieldCard: View {
@@ -406,6 +444,21 @@ struct ArenaBattlefieldCard: View {
                 .map { ", \(BattlefieldAbilityBadgePlan.accessibleName(for: $0))" }.joined()
     }
 
+    /// Labeled combat keywords while the card attacks or blocks, gained ones included.
+    private var combatPlan: CombatKeywordBadgePlan? {
+        guard card.isInCombat, !card.isPhasedOut else { return nil }
+        let plan = CombatKeywordBadgePlan(keywords: card.combatKeywords, cardWidth: width, cardHeight: height)
+        return plan.visible.isEmpty ? nil : plan
+    }
+
+    /// The icon row leaves out keywords the combat badges already name.
+    private var abilityIcons: [XmageCardIcon] {
+        guard let combatPlan else { return card.visibleXmageIcons }
+        var named = Set(combatPlan.visible.map(\.iconType))
+        if combatPlan.visible.contains(.doubleStrike) { named.insert(CombatKeyword.firstStrike.iconType) }
+        return card.visibleXmageIcons.filter { !named.contains($0.iconType.uppercased()) }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             Text(card.card.name)
@@ -414,8 +467,11 @@ struct ArenaBattlefieldCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 3)
                 .frame(height: 15)
             ZStack(alignment: .top) {
+                // BattlefieldCardFaceLayout.tileFrame: the token copy tag ends before the counter column.
                 CardTile(card: card, selected: false, zoneName: zoneName,
-                         width: width * 1.08, height: width * 1.51, ignoreTappedRotation: true)
+                         width: width * 1.08, height: width * 1.51, ignoreTappedRotation: true,
+                         tokenCopyTagTrailingReserve: BattlefieldCardFaceLayout.tagTrailingReserve(
+                            cardWidth: width, showsCounters: !card.counterBadges.isEmpty))
                     .offset(y: -width * 0.19)
                     .allowsHitTesting(false).accessibilityIdentifier("").accessibilityHidden(true)
             }
@@ -439,14 +495,23 @@ struct ArenaBattlefieldCard: View {
         .background(Color(red: 0.07, green: 0.08, blue: 0.10))
         .clipShape(RoundedRectangle(cornerRadius: 7))
         .overlay(alignment: .bottomLeading) {
-            BattlefieldAbilityBadges(icons: card.visibleXmageIcons, cardWidth: width)
+            BattlefieldAbilityBadges(icons: abilityIcons, cardWidth: width)
                 .padding(.leading, 2).padding(.bottom, showsFooter ? 22 : 2)
                 .allowsHitTesting(false)
+        }
+        .overlay(alignment: .topLeading) {
+            if let combatPlan {
+                CombatKeywordBadges(plan: combatPlan, cardWidth: width)
+                    .padding(.leading, 2).padding(.top, 17)
+                    .allowsHitTesting(false)
+            }
         }
         .overlay(alignment: .topTrailing) {
             if !card.counterBadges.isEmpty {
                 CardCounterBadgeStrip(badges: Array(card.counterBadges.prefix(2)), cardWidth: width)
-                    .padding(.top, 16).allowsHitTesting(false)
+                    .frame(maxWidth: card.tokenCopySourceName == nil ? nil : BattlefieldCardFaceLayout.counterColumnWidth(cardWidth: width),
+                           alignment: .trailing)
+                    .padding(.top, BattlefieldCardFaceLayout.counterTop).allowsHitTesting(false)
             }
         }
         .overlay(alignment: .bottomTrailing) {

@@ -22,15 +22,108 @@ import io.magicmobile.android.game.get
 import io.magicmobile.android.game.integer
 import io.magicmobile.android.game.obj
 import io.magicmobile.android.game.string
+import io.magicmobile.android.ondevice.OnDeviceHostUnavailable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.yield
 import java.io.IOException
 import java.util.UUID
+
+/**
+ * Port of OnDeviceTableLink (OnDeviceSession.swift): a seat's side of a phone-hosted table. The host's
+ * session announces each new game revision; a guest's session polls when an announcement arrives,
+ * promptly while its own answer is outstanding, and otherwise only on a slow heartbeat, so a quiet
+ * table sends almost nothing through the relay. Main thread only.
+ */
+class OnDeviceTableLink(val role: Role, hostName: String) {
+    enum class Role { HOST, GUEST }
+
+    /** The host's table name, for "Waiting for <host>…". */
+    val hostName: String = hostName.trim().ifEmpty { "the host" }
+    /** Host: shares a revision notice with every guest. Set by the table connection. */
+    var announce: ((Long) -> Unit)? = null
+    private var announcedRevision = -1L
+    /** Guest: the newest revision the host announced. Until the first notice the guest cannot tell whether its host announces at all. */
+    var noticedRevision = -1L; private set
+    var hostAnnounces = false; private set
+    private val wakes = MutableStateFlow(0L)
+
+    val waitingStatus: String get() = "Waiting for $hostName…"
+
+    /** Host: the session applied a poll at [revision]. Each revision is announced once. */
+    fun applied(revision: Long) {
+        if (role != Role.HOST || revision <= announcedRevision) return
+        announcedRevision = revision
+        announce?.invoke(revision)
+    }
+
+    /** Guest: the host announced [revision]. Repeated, late or out-of-order notices are harmless. */
+    fun noticed(revision: Long) {
+        if (role != Role.GUEST) return
+        hostAnnounces = true
+        noticedRevision = maxOf(noticedRevision, revision)
+        wake()
+    }
+
+    /** Returns after a notice, [wake], cancellation or [timeoutMillis], whichever comes first. */
+    suspend fun waitForNotice(timeoutMillis: Long) {
+        val start = wakes.value
+        withTimeoutOrNull(timeoutMillis.coerceIn(0L, 3_600_000L)) { wakes.first { it != start } }
+    }
+
+    /** Releases every waiting poll loop so it re-evaluates its schedule now. */
+    fun wake() { wakes.value = wakes.value + 1 }
+}
+
+/** Port of OnDeviceGuestPollSchedule: when a guest at a phone-hosted table polls its host next. */
+object OnDeviceGuestPollSchedule {
+    /** Safety net for a dropped notice. Notices are never queued or acknowledged. */
+    const val HEARTBEAT_MILLIS = 15_000L
+    /** After sending an answer, the guest polls promptly this long, or until the answer lands. */
+    const val ANSWER_WINDOW_MILLIS = 10_000L
+
+    sealed interface Step {
+        data class Poll(val afterMillis: Long) : Step
+        data class AwaitNotice(val timeoutMillis: Long) : Step
+    }
+
+    fun next(hostAnnounces: Boolean, noticedRevision: Long, appliedRevision: Long?, awaitingAnswer: Boolean,
+             sinceActionMillis: Long?, sinceLastPollMillis: Long, spacingMillis: Long): Step {
+        val gap = maxOf(0L, spacingMillis - sinceLastPollMillis)
+        // A host that never announced (an older build) is polled on the short timer, as before.
+        if (!hostAnnounces || appliedRevision == null || noticedRevision > appliedRevision) return Step.Poll(gap)
+        if (awaitingAnswer && sinceActionMillis != null && sinceActionMillis < ANSWER_WINDOW_MILLIS) return Step.Poll(gap)
+        val remaining = HEARTBEAT_MILLIS - sinceLastPollMillis
+        return if (remaining > gap) Step.AwaitNotice(remaining) else Step.Poll(gap)
+    }
+}
+
+/**
+ * Port of OnDeviceHostRetryPolicy: a guest retries a poll a few times when its host stops answering,
+ * then gives up with the usual message. Only polls and hello are retried: an answer keeps its exact
+ * request ID for the player's explicit retry, and a host that left ends the table through the roster.
+ */
+class OnDeviceHostRetryPolicy(private val delaysMillis: List<Long> = DEFAULT_DELAYS_MILLIS) {
+    var attempts = 0; private set
+
+    fun delayAfter(error: Throwable): Long? {
+        if (error !is OnDeviceHostUnavailable || attempts >= delaysMillis.size) return null
+        attempts += 1
+        return delaysMillis[attempts - 1]
+    }
+
+    fun reset() { attempts = 0 }
+
+    companion object { val DEFAULT_DELAYS_MILLIS = listOf(1_000L, 2_000L, 4_000L) }
+}
 
 /**
  * Port of apps/ios/MagicMobile/OnDeviceSession.swift. One authenticated seat. UI state changes
@@ -71,6 +164,12 @@ class OnDeviceSession(private val scope: CoroutineScope) {
     private var isForeground = true
     private var automaticPolling = true
     private var reconnectsAutomatically = false
+    /** Set for a seat at a phone-hosted table; null for local and online games. */
+    private var table: OnDeviceTableLink? = null
+    /** Uptime of this seat's latest answer or concede, for prompt polling until it lands. */
+    private var lastActionAt: Long? = null
+    /** Backoff between a guest's poll retries after its host stops answering (shortened by tests). */
+    var hostRetryDelaysMillis: List<Long> = OnDeviceHostRetryPolicy.DEFAULT_DELAYS_MILLIS
 
     private class Submission(val prompt: EnginePrompt, val answer: J, val requestID: UUID, val label: String)
     private var pending: Submission? = null
@@ -83,23 +182,30 @@ class OnDeviceSession(private val scope: CoroutineScope) {
     private var abilityAutoAnswer: Job? = null
 
     private fun uptime(): Double = System.nanoTime() / 1_000_000_000.0
+    private fun nowMillis(): Long = System.nanoTime() / 1_000_000
 
     suspend fun attach(client: EngineClient, matchID: String, seatID: String, autoPoll: Boolean = true,
                        allowsSeatScopedAutoYield: Boolean = false, reconnectsAutomatically: Boolean = false,
-                       close: suspend () -> Unit) {
+                       table: OnDeviceTableLink? = null, close: suspend () -> Unit) {
         if (this.client != null || isWorking) throw EngineError.InvalidMessage("Close the active game first")
         this.client = client; this.matchID = matchID; this.seatID = seatID
         this.allowsSeatScopedAutoYield = allowsSeatScopedAutoYield
         this.reconnectsAutomatically = reconnectsAutomatically
+        this.table = table; lastActionAt = null
         autoPassStatus = ""
         closeEndpoint = close; automaticPolling = autoPoll; epoch = UUID.randomUUID()
         refreshSequence = 0; appliedRefreshSequence = 0; isClosing = false
         messageLog = OnDeviceMessageLog()
         status = "Starting game"
         try { refresh() } catch (error: Exception) {
-            if (!reconnectsAutomatically || error !is IOException) throw error
-            status = "Reconnecting…"
-            errorMessage = "Connection interrupted. Reconnecting to your game."
+            if (table != null && table.role == OnDeviceTableLink.Role.GUEST && error is OnDeviceHostUnavailable) {
+                // The poll loop retries the host a few times before giving up.
+                status = table.waitingStatus
+            } else {
+                if (!reconnectsAutomatically || error !is IOException) throw error
+                status = "Reconnecting…"
+                errorMessage = "Connection interrupted. Reconnecting to your game."
+            }
         }
         beginPolling()
     }
@@ -157,6 +263,8 @@ class OnDeviceSession(private val scope: CoroutineScope) {
             messageLog = publishedLog
             poll = next
             appliedRefreshSequence = maxOf(appliedRefreshSequence, sequence)
+            // A host tells its guests about each new revision, so they need not poll it constantly.
+            table?.applied(next.revision)
             pending?.let { current ->
                 if (next.prompt?.id != current.prompt.id || next.prompt?.revision != current.prompt.revision) {
                     pending = null
@@ -214,13 +322,16 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         val generation = yieldGeneration
         val token = epoch
         yieldJob = scope.launch {
+            var lastPoll = nowMillis()
             try {
                 while (isActive) {
-                    delay(300)
+                    waitForNextPoll(lastPoll, 300)
+                    lastPoll = nowMillis()
                     if (epoch != token || yieldGeneration != generation || !isAutoPassing) return@launch
                     if (isWorking || activeRefreshes != 0) continue
                     // A new authenticated poll, never the rendered snapshot, authorizes each pass.
                     refresh()
+                    lastPoll = nowMillis()
                     if (!isActive || epoch != token || yieldGeneration != generation || !isAutoPassing) return@launch
                     if (isWorking || activeRefreshes != 0) continue
                     val current = yieldContext ?: run { stopAutoPass(OnDeviceYieldPolicy.StopReason.INTERRUPTED.message); return@launch }
@@ -375,6 +486,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         try {
             responding = true
             waitingForPolls = false
+            noteAction()
             client.respond(matchID, seatID, pending.prompt, pending.answer, pending.requestID)
             acknowledged = true
             responding = false
@@ -451,6 +563,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         }
         abilityAutoAnswer?.cancel(); abilityAutoAnswer = null
         chosenAbility = null; heldAbilitySnapshot = null
+        noteAction()
         client.concede(matchID, seatID)
         // The engine retracted this seat's open question; nothing sent earlier can still apply.
         pending = null; pendingActionID = null; pendingCardID = null
@@ -477,6 +590,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
             isClosing = false
             refreshSequence = 0; appliedRefreshSequence = 0
             epoch = UUID.randomUUID(); client = null; matchID = null; seatID = null; poll = null; snapshot = null
+            table = null; lastActionAt = null
             messageLog = OnDeviceMessageLog()
             this.closeEndpoint = null; pending = null; pendingActionID = null; pendingCardID = null; errorMessage = null; status = "Ready"
         } finally {
@@ -501,22 +615,40 @@ class OnDeviceSession(private val scope: CoroutineScope) {
             poll?.phase in setOf("ended", "failed", "closed")) return
         pollingJob = scope.launch {
             var failures = 0
+            val hostRetries = OnDeviceHostRetryPolicy(hostRetryDelaysMillis)
+            var lastPoll = nowMillis()
+            // A new loop (attach, return to the foreground, a manual refresh) polls on the short
+            // timer first, so a guest catches up on notices it could not receive meanwhile.
+            var firstPoll = true
+            var retryNow = false
             while (isActive) {
                 try {
-                    val idle = idlePolls >= 3
-                    delay(if (reconnectsAutomatically) 1000 else if (idle) 600 else 300)
-                    if (isAutoPassing) continue
+                    val interval = if (reconnectsAutomatically) 1000L else if (idlePolls >= 3) 600L else 300L
+                    if (firstPoll) delay(interval) else if (!retryNow) waitForNextPoll(lastPoll, interval)
+                    firstPoll = false; retryNow = false
+                    if (isAutoPassing) { lastPoll = nowMillis(); continue }
                     refresh()
-                    failures = 0
+                    lastPoll = nowMillis()
+                    failures = 0; hostRetries.reset()
                     if (poll?.phase in setOf("ended", "failed", "closed")) { pollingJob = null; return@launch }
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
+                    lastPoll = nowMillis()
                     if (reconnectsAutomatically && error is IOException) {
                         failures += 1
                         status = "Reconnecting…"
                         errorMessage = "Connection interrupted. Reconnecting to your game."
                         delay(minOf(10, failures * 2) * 1000L)
+                        continue
+                    }
+                    // A lost host answer: poll again (never re-send an answer) before giving up.
+                    val table = table
+                    val backoff = if (table?.role == OnDeviceTableLink.Role.GUEST) hostRetries.delayAfter(error) else null
+                    if (table != null && backoff != null) {
+                        status = table.waitingStatus
+                        delay(backoff)
+                        retryNow = true
                         continue
                     }
                     pollingJob = null
@@ -525,5 +657,30 @@ class OnDeviceSession(private val scope: CoroutineScope) {
                 }
             }
         }
+    }
+
+    /**
+     * Local and online games poll on a short timer. A guest at a phone-hosted table waits for its
+     * host's revision notice, polls promptly while its own answer is outstanding, and otherwise
+     * polls only on the heartbeat.
+     */
+    private suspend fun waitForNextPoll(lastPoll: Long, intervalMillis: Long) {
+        val table = table
+        if (table == null || table.role != OnDeviceTableLink.Role.GUEST) { delay(intervalMillis); return }
+        while (true) {
+            val now = nowMillis()
+            val step = OnDeviceGuestPollSchedule.next(table.hostAnnounces, table.noticedRevision, poll?.revision,
+                pending != null || abilityAutoAnswer != null, lastActionAt?.let { now - it }, now - lastPoll, intervalMillis)
+            when (step) {
+                is OnDeviceGuestPollSchedule.Step.Poll -> { if (step.afterMillis > 0) delay(step.afterMillis) else yield(); return }
+                is OnDeviceGuestPollSchedule.Step.AwaitNotice -> table.waitForNotice(step.timeoutMillis)
+            }
+        }
+    }
+
+    /** An answer or concede is on its way: a waiting guest polls promptly until it lands. */
+    private fun noteAction() {
+        lastActionAt = nowMillis()
+        table?.wake()
     }
 }

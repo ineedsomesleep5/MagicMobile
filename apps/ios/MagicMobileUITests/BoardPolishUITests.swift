@@ -319,21 +319,33 @@ final class BoardPolishUITests: XCTestCase {
                 lane.swipeLeft()
             }
             visible(host, in: app)
+            // Since build 19, Auras and Equipment tuck behind their creature, each peeking above it
+            // as a named tab. Two tabs keep the creature near full size; the rest count on the top
+            // tab, and the inspector lists every attachment (Build19FeatureUITests).
             let aura = card(in: app, identifierPrefix: "card-opponent-board-karametra-s-favor-human-at")
-            let equipment = card(in: app, identifierPrefix: "card-opponent-board-short-sword")
+            let secondAura = card(in: app, identifierPrefix: "card-opponent-board-karametra-s-favor-ai-1-att")
             visible(aura, in: app)
-            visible(equipment, in: app)
-            XCTAssertEqual(aura.frame.midY, host.frame.midY, accuracy: 8)
-            XCTAssertLessThan(equipment.frame.minX, host.frame.minX)
-            XCTAssertLessThanOrEqual(host.frame.minX - equipment.frame.minX, max(44, equipment.frame.width))
+            visible(secondAura, in: app)
+            for tucked in [aura, secondAura] {
+                XCTAssertEqual(tucked.frame.midX, host.frame.midX, accuracy: 2, "An attachment stays with its host")
+                XCTAssertLessThan(tucked.frame.minY, host.frame.minY, "Its tab peeks above the host")
+            }
+            XCTAssertFalse(card(in: app, identifierPrefix: "card-opponent-board-short-sword").exists,
+                           "The third attachment is counted on the top tab, not drawn beside the host")
+            XCTAssertFalse(card(in: app, identifierPrefix: "card-your-board-short-sword").exists)
             XCTAssertFalse(card(in: app, identifierPrefix: "card-your-board-karametra-s-favor").exists,
                            "Cross-controller Aura follows its public host, without a duplicate in the controller lane")
-            aura.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 20, dy: 25)).tap()
+            // Touch the Aura where it shows: its tab strip, down to the next card drawn over it.
+            let covering = [host, secondAura].map(\.frame.minY).filter { $0 > aura.frame.minY + 1 }.min() ?? host.frame.minY
+            let tab = aura.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: aura.frame.width / 2, dy: (covering - aura.frame.minY) / 2))
+            tab.tap()
             XCTAssertTrue(aura.label.hasSuffix(", selected"))
-            aura.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 20, dy: 25)).press(forDuration: 0.7)
+            tab.press(forDuration: 0.7)
             XCTAssertTrue(card(in: app, identifierPrefix: "card-inspector-karametra-s-favor").waitForNonExistence(timeout: 3))
             XCTAssertFalse(app.staticTexts["preview.captured-command"].exists)
-            let phased = card(in: app, identifierPrefix: "card-your-board-sol-ring")
+            // Landscape keeps mana rocks such as Sol Ring in the resource lane beside the lands.
+            let phased = card(in: app, identifierPrefix: portrait ? "card-your-board-sol-ring" : "card-your-lands-sol-ring")
             visible(phased, in: app)
             XCTAssertTrue((phased.value as? String)?.contains("Phased out") == true)
             phased.tap()
@@ -345,12 +357,14 @@ final class BoardPolishUITests: XCTestCase {
             app.buttons["Curse of Opulence · attached"].tap()
             visible(app.buttons["Inspect Curse of Opulence"], in: app)
             app.buttons["Close Enchanting Aurelia"].tap()
-            app.buttons["preview.advance"].tap()
+            // Let the viewer finish closing: a tap during its dismissal can land on the viewer.
+            XCTAssertTrue(app.buttons["Close Enchanting Aurelia"].waitForNonExistence(timeout: 5))
+            advancePreview(app)
             XCTAssertFalse((phased.value as? String)?.contains("Phased out") == true)
             XCTAssertTrue(app.buttons["board.player.effects.human"].label.contains("Poison 5"))
             XCTAssertTrue(app.buttons["board.player.effects.human"].label.contains("Curse of Opulence attached"))
         case "phase-announcement":
-            app.buttons["preview.advance"].tap()
+            advancePreview(app)
             captureImage(name: currentCapture + "-visible")
             let cue = app.staticTexts["Declare blockers"].firstMatch
             XCTAssertTrue(cue.exists || cue.waitForExistence(timeout: 6))
@@ -359,10 +373,10 @@ final class BoardPolishUITests: XCTestCase {
             XCTAssertTrue(cue.waitForNonExistence(timeout: 5))
             XCTAssertTrue(app.buttons["board.hand.expand"].isHittable)
         case "life-change":
-            app.buttons["preview.advance"].tap()
+            advancePreview(app)
             captureImage(name: currentCapture + "-loss")
             XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "35 life")).firstMatch.waitForExistence(timeout: 5))
-            app.buttons["preview.advance"].tap()
+            advancePreview(app)
             captureImage(name: currentCapture + "-gain")
             XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "43 life")).firstMatch.waitForExistence(timeout: 5))
         case "ability-choice":
@@ -699,10 +713,23 @@ final class BoardPolishUITests: XCTestCase {
         case "full-hand-inspection":
             // ContentView sets the first supplied hand card as inspected on this fixture.
             visible(card(in: app, identifierPrefix: "card-inspector-sol-ring"), in: app)
-            visible(app.staticTexts["{T}: Add {C}{C}."], in: app)
+            // GameRulesText draws {T} and {C} as symbols and reads them by name
+            // (GameLogPresentationTests pins the spoken form), so match that label.
+            let rules = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label == %@", "tap : Add colorless mana colorless mana .")).firstMatch
+            visible(rules, in: app)
         default:
             XCTFail("Unreviewed fixture: \(fixture)")
         }
+    }
+
+    /// The development fixture's advance button. In portrait it sits over the top bar, and on
+    /// iOS 27 XCUITest picks a hit point in its padding, which the button does not own, so the
+    /// tap did nothing. Tap the middle of its label instead.
+    private func advancePreview(_ app: XCUIApplication) {
+        let advance = app.buttons["preview.advance"]
+        XCTAssertTrue(advance.waitForExistence(timeout: 5))
+        advance.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     }
 
     private func card(in app: XCUIApplication, identifierPrefix: String) -> XCUIElement {

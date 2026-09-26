@@ -147,7 +147,8 @@ fun LandscapeGameContent(
                             runCommand(command, "Spend floating {$symbol}", "floating-${snapshot.promptEnvelopeV2?.id ?: ""}-$symbol")
                         }
                     })
-                LandscapePlayerSummary(humanName, human, snapshot.activePlayerId == human.playerId, opponent.playerId, chatSnapshot = snapshot)
+                LandscapePlayerSummary(humanName, human, snapshot.activePlayerId == human.playerId, opponent.playerId,
+                    chatSnapshot = if (snapshot.isViewer(human.playerId)) snapshot else null)
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     PlayerZoneMenu(human, viewZone, snapshot, pendingActionId)
                     BoardPlayerEffects(human, BattlefieldAttachments.enchanting(human.playerId, allBattlefield), viewZone)
@@ -210,10 +211,10 @@ fun LandscapeGameContent(
                         .border(2.dp, MagicPalette.antiqueGold.copy(alpha = 0.72f), RoundedCornerShape(14.dp)))
                 }
 
-                PortraitHandRow(human.zones.hand, actions, selection, pendingCardInstanceId, setInteractionMode, metrics.playerDropZone, setOverPlayerDropZone,
+                PortraitHandRow(BoardOpponentFocus.seatHand(snapshot), actions, selection, pendingCardInstanceId, setInteractionMode, metrics.playerDropZone, setOverPlayerDropZone,
                     metrics.handCardWidth, metrics.handCardHeight, metrics.handRect.width, onInteractionFeedback,
                     { choiceActions, message -> setDragActionChoice(DragActionChoice(message, choiceActions)) }, runAction,
-                    Modifier.place(metrics.handRect).zIndex(4f))
+                    Modifier.place(metrics.handRect).zIndex(4f), hiddenCount = if (snapshot.isViewer(human.playerId)) null else human.zones.visibleHandCount)
 
                 if (TargetingHelperVisibility.shouldShow(snapshot, pendingActionId, interactionMode, targetableIds)) {
                     TargetingStatusPill(targetableIds.size, Modifier.centerAt(metrics.bottomActionRect.midX, metrics.bottomActionRect.midY))

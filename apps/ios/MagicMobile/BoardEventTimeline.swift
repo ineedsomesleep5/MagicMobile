@@ -92,6 +92,8 @@ struct BoardFXState: Equatable {
         var blocking: [String] = []
         var isLand = false
         var isToken = false
+        /// Combat keywords, read only for cards attacking or blocking.
+        var keywords: Set<CombatKeyword> = []
     }
 
     struct StackItem: Equatable {
@@ -112,9 +114,11 @@ struct BoardFXState: Equatable {
     let defenders: [String: String]
     /// Non-token card names currently in any command zone (commanders).
     let commandNames: Set<String>
+    /// Attackers whose combat group is blocked, even if every blocker has since left.
+    let blockedAttackers: Set<String>
 
     init(gameID: String, step: String, lives: [String: Int], cards: [String: Card], stack: [StackItem] = [],
-         defenders: [String: String] = [:], commandNames: Set<String> = []) {
+         defenders: [String: String] = [:], commandNames: Set<String> = [], blockedAttackers: Set<String> = []) {
         self.gameID = gameID
         self.step = step
         self.lives = lives
@@ -122,6 +126,7 @@ struct BoardFXState: Equatable {
         self.stack = stack
         self.defenders = defenders
         self.commandNames = commandNames
+        self.blockedAttackers = blockedAttackers
     }
 
     init(snapshot: GameSnapshot) {
@@ -146,7 +151,8 @@ struct BoardFXState: Equatable {
                         attacking: card.isAttacking == true,
                         blocking: card.blocking ?? [],
                         isLand: card.card.isLand,
-                        isToken: card.card.isToken == true)
+                        isToken: card.card.isToken == true,
+                        keywords: zone == .battlefield && card.isInCombat ? Set(card.combatKeywords) : [])
                 }
             }
             for card in player.zones.command where card.card.isToken != true {
@@ -164,10 +170,15 @@ struct BoardFXState: Equatable {
                              isAbility: ability, manaValue: BoardFXManaValue.of(source?.card.manaCost))
         }
         var defenders: [String: String] = [:]
+        var blocked = Set<String>()
         for group in snapshot.xmage?.combat ?? [] {
-            for attacker in group.attackers { defenders[attacker.instanceId] = group.defenderId }
+            for attacker in group.attackers {
+                defenders[attacker.instanceId] = group.defenderId
+                if group.blocked { blocked.insert(attacker.instanceId) }
+            }
         }
         self.defenders = defenders
+        blockedAttackers = blocked
     }
 }
 
@@ -189,7 +200,11 @@ enum BoardFXEvent: Equatable {
     case spellCast(stackID: String, name: String, controllerID: String?, tint: BoardFXTint, weight: BoardFXSpellWeight)
     case attackDeclared(cardID: String, tint: BoardFXTint)
     case blockDeclared(cardID: String, attackerID: String)
-    case combatStrike(attackerID: String, target: BoardFXStrikeTarget, tint: BoardFXTint)
+    /// XMage's first-strike combat damage step: a "First strike" label spans its strikes,
+    /// damage and deaths, and the regular damage waits for it (see BoardFXScheduler).
+    case firstStrikeBeat
+    /// `firstStrike` marks a strike in the first-strike damage step.
+    case combatStrike(attackerID: String, target: BoardFXStrikeTarget, tint: BoardFXTint, firstStrike: Bool = false)
     case damageMarked(cardID: String, amount: Int)
     case leftBattlefield(cardID: String, playerID: String, to: BoardFXZone?, tint: BoardFXTint)
     case enteredBattlefield(cardID: String, playerID: String, from: BoardFXZone?, tint: BoardFXTint, entrance: BoardFXEntrance)
@@ -202,28 +217,42 @@ enum BoardFXEvent: Equatable {
         case .spellCast: return 0
         case .attackDeclared: return 1
         case .blockDeclared: return 2
-        case .combatStrike: return 3
-        case .damageMarked: return 4
-        case .leftBattlefield: return 5
-        case .enteredBattlefield: return 6
-        case .countersAdded: return 7
-        case .lifeChanged: return 8
+        case .firstStrikeBeat: return 3
+        case let .combatStrike(_, _, _, firstStrike): return firstStrike ? 4 : 5
+        case .damageMarked: return 6
+        case .leftBattlefield: return 7
+        case .enteredBattlefield: return 8
+        case .countersAdded: return 9
+        case .lifeChanged: return 10
         }
     }
+
+    /// Subject of the first-strike label, which is about the step, not a card.
+    static let firstStrikeSubject = "first-strike"
 
     /// Card, stack object or player the effect is about.
     var subjectID: String {
         switch self {
         case let .spellCast(id, _, _, _, _), let .leftBattlefield(id, _, _, _), let .damageMarked(id, _),
              let .enteredBattlefield(id, _, _, _, _), let .countersAdded(id, _), let .attackDeclared(id, _),
-             let .blockDeclared(id, _), let .combatStrike(id, _, _), let .lifeChanged(id, _):
+             let .blockDeclared(id, _), let .combatStrike(id, _, _, _), let .lifeChanged(id, _):
             return id
+        case .firstStrikeBeat:
+            return Self.firstStrikeSubject
         }
     }
 
-    /// Life totals are always shown; they carry game information, not decoration.
+    /// Life totals and the first-strike label are always shown; they carry game information.
     var isEssential: Bool {
-        if case .lifeChanged = self { return true }
+        switch self {
+        case .lifeChanged, .firstStrikeBeat: return true
+        default: return false
+        }
+    }
+
+    /// A strike in the regular combat damage step.
+    var isRegularStrike: Bool {
+        if case .combatStrike(_, _, _, false) = self { return true }
         return false
     }
 }
@@ -305,12 +334,7 @@ enum BoardEventDiffer {
             }
         }
 
-        if preDamageSteps.contains(old.step) && !preDamageSteps.contains(new.step) {
-            for attacker in old.cards.values.sorted(by: { $0.id < $1.id })
-            where attacker.zone == .battlefield && attacker.attacking {
-                events.append(.combatStrike(attackerID: attacker.id, target: strikeTarget(attacker, old: old, new: new), tint: attacker.tint))
-            }
-        }
+        events += combatStrikes(from: old, to: new)
 
         for (playerID, life) in new.lives.sorted(by: { $0.key < $1.key }) {
             if let previous = old.lives[playerID], previous != life {
@@ -323,11 +347,54 @@ enum BoardEventDiffer {
             .map(\.element)
     }
 
-    /// Blocker first, then the public combat defender, then the first opponent.
-    static func strikeTarget(_ attacker: BoardFXState.Card, old: BoardFXState, new: BoardFXState) -> BoardFXStrikeTarget {
-        let blockers = (old.cards.values.filter { $0.blocking.contains(attacker.id) }
-            + new.cards.values.filter { $0.blocking.contains(attacker.id) }).map(\.id).sorted()
+    /// Combat damage, one beat per damage step. XMage reports its first-strike step
+    /// ("first-combat-damage") when a creature in combat has first or double strike:
+    /// entering it plays the "First strike" beat with the attackers that strike first;
+    /// leaving it plays the regular strikes. A transition that skips the first-strike
+    /// snapshot plays both beats, first strikers first, but cannot tell which damage came
+    /// from which step, so damage and deaths follow the regular strikes.
+    static func combatStrikes(from old: BoardFXState, to new: BoardFXState) -> [BoardFXEvent] {
+        let firstStep = firstStrikeStep
+        let afterDamage = !preDamageSteps.contains(new.step) && new.step != firstStep
+        let attackers = old.cards.values.sorted(by: { $0.id < $1.id }).filter { $0.zone == .battlefield && $0.attacking }
+        func strikes(_ cards: [BoardFXState.Card], firstStrike: Bool) -> [BoardFXEvent] {
+            cards.compactMap { attacker in
+                strikeTarget(attacker, old: old, new: new).map {
+                    BoardFXEvent.combatStrike(attackerID: attacker.id, target: $0, tint: attacker.tint, firstStrike: firstStrike)
+                }
+            }
+        }
+        let first = attackers.filter { CombatKeyword.strikesFirst(keywords(of: $0.id, old: old, new: new)) }
+        let regular = attackers.filter { CombatKeyword.strikesInRegularStep(keywords(of: $0.id, old: old, new: new)) }
+        if preDamageSteps.contains(old.step) && new.step == firstStep {
+            return [.firstStrikeBeat] + strikes(first, firstStrike: true)
+        }
+        if old.step == firstStep && afterDamage {
+            return strikes(regular, firstStrike: false)
+        }
+        guard preDamageSteps.contains(old.step) && afterDamage else { return [] }
+        let firstStrikes = strikes(first, firstStrike: true)
+        if firstStrikes.isEmpty { return strikes(attackers, firstStrike: false) }
+        return [.firstStrikeBeat] + firstStrikes + strikes(regular, firstStrike: false)
+    }
+
+    /// XMage's first-strike combat damage step, normalized like `BoardFXState.step`.
+    static let firstStrikeStep = "first-combat-damage"
+
+    static func keywords(of id: String, old: BoardFXState, new: BoardFXState) -> Set<CombatKeyword> {
+        (old.cards[id]?.keywords ?? []).union(new.cards[id]?.keywords ?? [])
+    }
+
+    /// Blocker first, then the public combat defender, then the first opponent. A blocked
+    /// attacker whose blockers have all left deals no combat damage unless it has trample.
+    static func strikeTarget(_ attacker: BoardFXState.Card, old: BoardFXState, new: BoardFXState) -> BoardFXStrikeTarget? {
+        let blockers = (old.cards.values.filter { $0.zone == .battlefield && $0.blocking.contains(attacker.id) }
+            + new.cards.values.filter { $0.zone == .battlefield && $0.blocking.contains(attacker.id) }).map(\.id).sorted()
         if let blocker = blockers.first { return .card(blocker) }
+        if old.blockedAttackers.contains(attacker.id) || new.blockedAttackers.contains(attacker.id),
+           !keywords(of: attacker.id, old: old, new: new).contains(.trample) {
+            return nil
+        }
         if let defender = old.defenders[attacker.id] ?? new.defenders[attacker.id] {
             if old.lives[defender] != nil { return .player(defender) }
             if old.cards[defender] != nil { return .card(defender) }
@@ -385,11 +452,21 @@ struct ScheduledBoardFX: Equatable, Identifiable {
             return weight == .ability ? delay + 0.55 : end - 0.3
         case .combatStrike where usesMotion:
             return delay + duration * BoardFXScheduler.strikeImpactFraction
+        case .firstStrikeBeat:
+            // The label opens the beat; its strikes follow at once.
+            return delay + (usesMotion ? 0.15 : 0.06)
         case let .enteredBattlefield(_, _, _, _, entrance) where usesMotion && entrance != .plain:
             return landing
         default:
             return delay + (usesMotion ? 0.16 : 0.06)
         }
+    }
+
+    /// Until when a later snapshot's effects wait: a showcase until it hands off, and the
+    /// first-strike beat until it ends, so the regular damage never overlaps it.
+    var holdsLaterBatchesUntil: TimeInterval? {
+        if case .firstStrikeBeat = event { return end }
+        return isSequential ? handoff : nil
     }
 
     /// Showcases share the center of the board, so they play one after another.
@@ -432,6 +509,10 @@ enum BoardFXScheduler {
         for event in kept {
             if let previousOrder, previousOrder != event.order {
                 groupStart = result.map(\.handoff).max() ?? groupStart
+                // Regular damage waits a short beat after the first strikers' hits.
+                if event.isRegularStrike, let beat = firstStrikeBeatEnd(result, motion: motion) {
+                    groupStart = max(groupStart, beat)
+                }
                 sequentialCursor = groupStart
                 indexInGroup = 0
             }
@@ -450,7 +531,32 @@ enum BoardFXScheduler {
             }
             result.append(fx)
         }
+        // The label spans its beat, so a later snapshot's regular damage waits for it too.
+        if let index = result.firstIndex(where: { $0.event == .firstStrikeBeat }) {
+            let label = result[index]
+            let end = firstStrikeBeatEnd(result, motion: motion) ?? label.end
+            result[index] = ScheduledBoardFX(id: label.id, event: label.event, delay: label.delay,
+                                             duration: max(label.duration, end - label.delay), usesMotion: motion)
+        }
         return result
+    }
+
+    /// The pause between the first-strike beat and the regular damage.
+    static func firstStrikeBeatPause(motion: Bool) -> TimeInterval { motion ? 0.3 : 0.15 }
+
+    /// When the first-strike beat is over: a short pause after its strikes, and, when the
+    /// batch holds only that step, after its damage and deaths too.
+    static func firstStrikeBeatEnd(_ scheduled: [ScheduledBoardFX], motion: Bool) -> TimeInterval? {
+        let combined = scheduled.contains { $0.event.isRegularStrike }
+        let beat = scheduled.filter { fx in
+            switch fx.event {
+            case .combatStrike(_, _, _, true): return true
+            case .damageMarked, .leftBattlefield: return !combined
+            default: return false
+            }
+        }
+        guard scheduled.contains(where: { $0.event == .firstStrikeBeat }), let end = beat.map(\.end).max() else { return nil }
+        return end + firstStrikeBeatPause(motion: motion)
     }
 
     /// Share of a plain arrival spent flying before the card lands (Full level only).
@@ -489,6 +595,7 @@ enum BoardFXScheduler {
         case .attackDeclared: return motion ? 0.7 : 0.6
         case .blockDeclared: return motion ? 0.8 : 0.6
         case .combatStrike: return motion ? 0.95 : 0.6
+        case .firstStrikeBeat: return motion ? 1.2 : 1.0
         case .lifeChanged: return motion ? 1.3 : 0.9
         }
     }
@@ -536,9 +643,10 @@ struct BoardFXDirector: Equatable {
         }
         commanderNames.formUnion(state.commandNames)
         let events = BoardEventDiffer.events(from: previous, to: state, commanders: commanderNames)
-        // Let a showcase from an earlier snapshot finish before this batch plays.
-        let showcaseEnd = active.filter(\.scheduled.isSequential)
-            .map { $0.start.addingTimeInterval($0.scheduled.handoff) }.max()
+        // Let a showcase or first-strike beat from an earlier snapshot finish before this batch plays.
+        let showcaseEnd = active.compactMap { effect in
+            effect.scheduled.holdsLaterBatchesUntil.map { effect.start.addingTimeInterval($0) }
+        }.max()
         let hold = showcaseEnd.map { $0.timeIntervalSince(now) } ?? 0
         let scheduled = BoardFXScheduler.schedule(events, level: level, firstID: nextID, hold: hold)
         nextID += scheduled.count
@@ -547,7 +655,7 @@ struct BoardFXDirector: Equatable {
             switch fx.event {
             case let .enteredBattlefield(id, _, _, _, _): subjects[id] = battlefield[id]
             case let .leftBattlefield(id, _, _, _): subjects[id] = departedFaces[id]
-            case let .combatStrike(id, _, _): subjects[id] = departedFaces[id] ?? battlefield[id]
+            case let .combatStrike(id, _, _, _): subjects[id] = departedFaces[id] ?? battlefield[id]
             case let .spellCast(id, _, _, _, _):
                 subjects[id] = snapshot.stackTopFirst.first { $0.id == id }?.displaySourceCard
             default: break
@@ -573,9 +681,10 @@ struct BoardFXDirector: Equatable {
             let fx = effect.scheduled
             switch fx.event {
             case let .enteredBattlefield(id, _, _, _, _) where subjects[id] != nil:
-                motion.hidden[id] = BoardFXCardMotion.Hidden(batch: effect.start, from: 0, until: fx.landing)
-            case let .combatStrike(id, _, _) where subjects[id] != nil:
-                motion.hidden[id] = BoardFXCardMotion.Hidden(batch: effect.start, from: fx.delay, until: fx.end)
+                motion.hidden[id, default: []].append(BoardFXCardMotion.Hidden(batch: effect.start, from: 0, until: fx.landing))
+            case let .combatStrike(id, _, _, _) where subjects[id] != nil:
+                // A double striker flies twice; each strike hides its tile only while it flies.
+                motion.hidden[id, default: []].append(BoardFXCardMotion.Hidden(batch: effect.start, from: fx.delay, until: fx.end))
             case let .attackDeclared(id, _):
                 let owner = previous?.cards[id]?.playerID
                 motion.lunges[id] = BoardFXCardMotion.Lunge(token: effect.id, direction: owner == viewerID ? -1 : 1)
@@ -605,7 +714,7 @@ struct BoardFXCardMotion: Equatable {
 
     /// A window, timed from the batch's first drawn frame (see BoardFXClock), in
     /// which a flight draws the card instead of its tile. `from` 0 hides at once.
-    struct Hidden: Equatable {
+    struct Hidden: Equatable, Hashable {
         let batch: Date
         let from: TimeInterval
         let until: TimeInterval
@@ -620,7 +729,8 @@ struct BoardFXCardMotion: Equatable {
         let moves: Bool
     }
 
-    var hidden: [String: Hidden] = [:]
+    /// Windows per card, in the order their effects were scheduled.
+    var hidden: [String: [Hidden]] = [:]
     var lunges: [String: Lunge] = [:]
     var stances: [String: Stance] = [:]
 }

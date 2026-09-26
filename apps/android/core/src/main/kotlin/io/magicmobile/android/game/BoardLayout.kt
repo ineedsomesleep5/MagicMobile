@@ -436,3 +436,54 @@ object BattlefieldAdaptiveSizing {
         return maxOf(minimum, minOf(maxCardWidth, fitting))
     }
 }
+
+/**
+ * Port of BattlefieldRowOverflow (BattlefieldAdaptiveSizing.swift): which cards a horizontally scrolled
+ * battlefield lane hides at each edge. BattlefieldRow draws a soft fade where content is clipped and a
+ * "+N" marker for cards entirely out of view. [hiddenLeading]/[hiddenTrailing] count cards whose slot lies
+ * entirely left/right of the viewport; [clipsLeading]/[clipsTrailing] mean some slot extends past that edge.
+ */
+data class BattlefieldRowOverflow(val hiddenLeading: Int = 0, val hiddenTrailing: Int = 0,
+                                  val clipsLeading: Boolean = false, val clipsTrailing: Boolean = false) {
+    operator fun plus(other: BattlefieldRowOverflow) = BattlefieldRowOverflow(hiddenLeading + other.hiddenLeading,
+        hiddenTrailing + other.hiddenTrailing, clipsLeading || other.clipsLeading, clipsTrailing || other.clipsTrailing)
+
+    companion object {
+        val NONE = BattlefieldRowOverflow()
+        /** BattlefieldRow pads each row by 8 dp and separates slots by 4. */
+        const val ROW_PADDING = 8f
+        const val SLOT_SPACING = 4f
+        /** Sub-point slivers from rounding never count as clipped or visible. */
+        const val TOLERANCE = 0.5f
+
+        /**
+         * One row of slots laid out left to right from [leadingInset] in content coordinates, scrolled by
+         * [contentOffset]. [cardsPerSlot] is how many cards each slot shows (a collapsed group or an attachment
+         * stack counts all of its cards); a missing entry counts one.
+         */
+        fun measure(contentOffset: Float, viewportWidth: Float, slotWidths: List<Float>, spacing: Float,
+                    leadingInset: Float = 0f, cardsPerSlot: List<Int> = emptyList()): BattlefieldRowOverflow {
+            if (slotWidths.isEmpty() || !contentOffset.isFinite() || !viewportWidth.isFinite() || viewportWidth <= 0) return NONE
+            val gap = if (spacing.isFinite()) maxOf(0f, spacing) else 0f
+            var hiddenLeading = 0; var hiddenTrailing = 0; var clipsLeading = false; var clipsTrailing = false
+            var minX = (if (leadingInset.isFinite()) leadingInset else 0f) - contentOffset
+            slotWidths.forEachIndexed { index, rawWidth ->
+                val maxX = minX + (if (rawWidth.isFinite()) maxOf(0f, rawWidth) else 0f)
+                val cards = if (index < cardsPerSlot.size) maxOf(0, cardsPerSlot[index]) else 1
+                val pastLeading = minX < -TOLERANCE; val pastTrailing = maxX > viewportWidth + TOLERANCE
+                if (pastLeading) clipsLeading = true
+                if (pastTrailing) clipsTrailing = true
+                if (pastLeading && maxX <= TOLERANCE) hiddenLeading += cards
+                else if (pastTrailing && minX >= viewportWidth - TOLERANCE) hiddenTrailing += cards
+                minX = maxX + gap
+            }
+            return BattlefieldRowOverflow(hiddenLeading, hiddenTrailing, clipsLeading, clipsTrailing)
+        }
+
+        /** A BattlefieldRow scroller: its rows share one offset, start at the row padding and use one card width. */
+        fun lane(contentOffset: Float, viewportWidth: Float, cardWidth: Float, cardsPerSlotByRow: List<List<Int>>): BattlefieldRowOverflow =
+            cardsPerSlotByRow.fold(NONE) { total, row ->
+                total + measure(contentOffset, viewportWidth, List(row.size) { cardWidth }, SLOT_SPACING, ROW_PADDING, row)
+            }
+    }
+}

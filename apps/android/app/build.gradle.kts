@@ -13,9 +13,6 @@ android {
         versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2026092501
         versionName = providers.gradleProperty("androidVersionName").orNull ?: "0.1.1"
         buildConfigField("int", "RELEASE_BUILD", "8")
-        val onlineURL = providers.gradleProperty("onlineServerUrl").orNull ?: ""
-        require(onlineURL.isEmpty() || onlineURL.startsWith("https://")) { "Online service must use HTTPS" }
-        buildConfigField("String", "ONLINE_SERVER_URL", "\"${onlineURL.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
         ndk { abiFilters += "arm64-v8a" }
         buildConfigField("boolean", "NATIVE_ENGINE", withNative.toString())
         val relayURL = providers.gradleProperty("relayUrl").orNull ?: "https://magicmobile-relay.calebjfeliciano.workers.dev"

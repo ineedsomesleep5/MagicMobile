@@ -18,20 +18,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-python@v5
         with:
-          version: 10.12.4
+          python-version: '3.12'
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-      - name: Install locked dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Existing gateway regression checks
-        run: pnpm --filter @magicmobile/xmage-gateway test
-      - name: Repository typecheck
-        run: pnpm typecheck
-      - name: Compile existing bridge image without running or publishing it
-        run: docker build -t magicmobile-xmage-bridge-check apps/xmage-gateway/bridge
-# This verifies retained repository components only. It never signs/uploads an
+      - name: Release tooling preflight
+        run: python3 scripts/release/preflight.py run --profile tooling
+      - name: TestFlight version guard and group distribution regressions
+        run: python3 -m unittest discover -s scripts/ios -p 'test_*.py'
+      - name: Build-number script syntax
+        # Its behavior tests need macOS PlistBuddy and run in the Issue 4 workflow.
+        run: node --check scripts/ios/testflight-build-number.mjs
+# This verifies retained repository release tooling only. It never signs/uploads an
 # app, runs a game server, or establishes native iOS or on-device gameplay proof.

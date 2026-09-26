@@ -227,6 +227,50 @@ struct ContentView: View {
                     .font(.caption).padding(8).background(.black)
                     .padding(.top, 24).accessibilityIdentifier("preview.advance")
                 }
+                if fixture == "first-strike" {
+                    Button("Replay first strike") {
+                        snapshot = GameBoardPreviewFixtures.snapshot(.firstStrike)
+                        Task {
+                            try? await Task.sleep(for: .seconds(0.4))
+                            snapshot = GameBoardPreviewFixtures.snapshot(.firstStrike, specialStateAdvanced: true)
+                        }
+                    }
+                    .font(.caption).padding(8).background(.black)
+                    .padding(.top, 24).accessibilityIdentifier("preview.advance")
+                    .task {
+                        // Declared blocks first, then XMage's first-strike damage step. Replays
+                        // unless MAGICMOBILE_BOARD_FX_FREEZE holds the beat for a screenshot.
+                        while !Task.isCancelled {
+                            do { try await Task.sleep(for: .seconds(1.2)) } catch { return }
+                            snapshot = GameBoardPreviewFixtures.snapshot(.firstStrike, specialStateAdvanced: true)
+                            if BoardFXPreviewFreeze.seconds != nil { return }
+                            do { try await Task.sleep(for: .seconds(3.6)) } catch { return }
+                            snapshot = GameBoardPreviewFixtures.snapshot(.firstStrike)
+                        }
+                    }
+                }
+                if fixture == "ability-showcase" {
+                    Button("Replay ability") {
+                        snapshot = GameBoardPreviewFixtures.snapshot(.abilityShowcase)
+                        Task {
+                            try? await Task.sleep(for: .seconds(0.4))
+                            snapshot = GameBoardPreviewFixtures.snapshot(.abilityShowcase, specialStateAdvanced: true)
+                        }
+                    }
+                    .font(.caption).padding(8).background(.black)
+                    .padding(.top, 24).accessibilityIdentifier("preview.advance")
+                    .task {
+                        // The ability goes on the stack once the board has settled, and replays
+                        // unless MAGICMOBILE_BOARD_FX_FREEZE holds it for a screenshot.
+                        while !Task.isCancelled {
+                            do { try await Task.sleep(for: .seconds(1.2)) } catch { return }
+                            snapshot = GameBoardPreviewFixtures.snapshot(.abilityShowcase, specialStateAdvanced: true)
+                            if BoardFXPreviewFreeze.seconds != nil { return }
+                            do { try await Task.sleep(for: .seconds(2.4)) } catch { return }
+                            snapshot = GameBoardPreviewFixtures.snapshot(.abilityShowcase)
+                        }
+                    }
+                }
             }
             #endif
         }
@@ -626,7 +670,7 @@ struct ContentView: View {
         let previewSnapshot = previewText == "board-fx" ? GameBoardPreviewFixtures.boardFXStep(0) : GameBoardPreviewFixtures.snapshot(state)
         snapshot = previewSnapshot
         selectedCard = GameBoardPreviewFixtures.selectedCard(for: state, snapshot: previewSnapshot)
-        inspectedCard = state == .fullHandInspection ? previewSnapshot.human?.zones.hand.first : nil
+        inspectedCard = GameBoardPreviewFixtures.inspectedCard(for: state, snapshot: previewSnapshot)
         if let id = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_INSPECT"] {
             inspectedCard = previewSnapshot.visibleBattlefield.first { $0.instanceId == id }
         }
@@ -1570,6 +1614,7 @@ struct AppearanceSettingsView: View {
                     if nativeTurnControl != nil { NativeArtworkPreferenceView() }
                     BoardAppearancePicker()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
+                    FollowTurnsToggle()
                     BoardEffectsPicker()
                 }.padding(20).frame(maxWidth: 600).frame(maxWidth: .infinity)
             }
@@ -1749,6 +1794,29 @@ struct PortraitModeToggle: View {
     }
 }
 
+/// The top of the board switches to whoever's turn starts (BoardFocusTracker). On by default.
+struct FollowTurnsToggle: View {
+    @AppStorage(BoardFocusTracker.followTurnsKey) private var isOn = true
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Follow Turns")
+                    .font(.callout.weight(.black))
+                    .foregroundStyle(.white)
+                Text("Show whose turn it is at the top. A tap on an opponent holds until the next turn.")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .lineLimit(2)
+            }
+        }
+        .toggleStyle(.switch)
+        .tint(GameBoardTheme.current.emeraldPriority)
+        .magicPanel(.iron, prominence: .quiet, cornerRadius: 9, padding: 10)
+        .accessibilityIdentifier("settings.followTurns")
+    }
+}
+
 struct CardCachePanel: View {
     let metadata: CardCacheMetadata?
     let isSyncing: Bool
@@ -1872,6 +1940,7 @@ struct SettingsView: View {
                     MenuAppearancePicker()
                     BoardAppearancePicker()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
+                    FollowTurnsToggle()
                     BoardEffectsPicker()
                     Text("When enabled, gameplay and menus automatically adapt between portrait and landscape on iPhone.")
                         .font(.caption.weight(.medium))
@@ -2696,7 +2765,9 @@ struct NativeGameView: View {
     @State private var dragActionChoice: DragActionChoice?
     @State private var combatSelection = CombatSelectionState()
     @State private var combatPreviewArrows: [CombatArrow] = []
-    @State private var focusedOpponentId: String?
+    /// Which opponent the top of the board shows; it follows the turn (BoardFocusTracker).
+    @State private var focusTracker = BoardFocusTracker()
+    @AppStorage(BoardFocusTracker.followTurnsKey) private var followTurns = true
     @State private var lastTurnCueKey: String?
     @State private var showsTurnCue = false
     /// Game, turn and active player of the last turn-start banner.
@@ -2717,6 +2788,7 @@ struct NativeGameView: View {
     @State private var boardShakeAmplitude: CGFloat = 6
     @State private var hitVignette = 0.0
     @State private var gameStats = GameStats()
+    @State private var combatLogReasons = CombatLogReasons()
     @AppStorage(BoardFXLevel.key) private var boardFXLevel = BoardFXLevel.defaultValue
     @AppStorage(BoardFXSound.key) private var boardSoundsEnabled = true
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
@@ -2862,8 +2934,10 @@ struct NativeGameView: View {
 
     @ViewBuilder
     var body: some View {
-        if let snapshot = snapshot.map({ BoardOpponentFocus.snapshot($0, selecting: focusedOpponentId) }),
-           let human = snapshot.human, let opponent = snapshot.opponent {
+        // `human` is the bottom seat: the viewer, or their stand-in while they watch. Actions,
+        // stats, haptics and "You" stay on the viewer (snapshot.human / viewerID).
+        if let snapshot = snapshot.map({ BoardOpponentFocus.snapshot($0, selecting: focusTracker.focusedID) }),
+           let human = snapshot.seat, let opponent = snapshot.opponent {
             let humanName = snapshot.playerLabel(human.playerId)
             let opponentName = snapshot.playerLabel(opponent.playerId)
             let sideCombatHighlights = CombatHighlightSet(
@@ -2910,7 +2984,7 @@ struct NativeGameView: View {
                         HStack(spacing: 4) {
                             PlayerZoneMenu(player: opponent, viewZone: localViewZone)
                             BoardPlayerEffects(player: opponent, attachments: BattlefieldAttachments.enchanting(playerID: opponent.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: localViewZone,
-                                opponents: BoardOpponentFocus.opponents(in: snapshot), selectOpponent: { focusedOpponentId = $0 })
+                                opponents: BoardOpponentFocus.opponents(in: snapshot), selectOpponent: { focusTracker.select($0) })
                         }
 
                         Spacer()
@@ -2928,7 +3002,7 @@ struct NativeGameView: View {
                                     }
                                 })
                             LandscapePlayerSummary(name: humanName, player: human, active: snapshot.activePlayerId == human.playerId,
-                                                   opponentId: opponent.playerId, chatSnapshot: snapshot)
+                                                   opponentId: opponent.playerId, chatSnapshot: snapshot.isViewer(human.playerId) ? snapshot : nil)
                             HStack(spacing: 4) {
                                 PlayerZoneMenu(player: human, viewZone: localViewZone, snapshot: snapshot, pendingActionID: pendingActionId)
                                 BoardPlayerEffects(player: human, attachments: BattlefieldAttachments.enchanting(playerID: human.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: localViewZone)
@@ -3039,7 +3113,7 @@ struct NativeGameView: View {
                             }
 
                             PortraitHandRow(
-                                cards: human.zones.hand,
+                                cards: BoardOpponentFocus.seatHand(in: snapshot),
                                 legalActions: snapshot.legalActions ?? [],
                                 selectedCard: $selectedCard,
                                 inspectedCard: $inspectedCard,
@@ -3054,7 +3128,8 @@ struct NativeGameView: View {
                                 onActionChoice: { actions, message in
                                     dragActionChoice = DragActionChoice(message: message, actions: actions)
                                 },
-                                runAction: runAction
+                                runAction: runAction,
+                                hiddenCount: snapshot.isViewer(human.playerId) ? nil : human.zones.visibleHandCount
                             )
                                 .frame(width: metrics.handRect.width, height: metrics.handRect.height)
                                 .position(x: metrics.handRect.midX, y: metrics.handRect.midY)
@@ -3334,6 +3409,7 @@ struct NativeGameView: View {
                 .sheet(isPresented: $isLogOpen) {
                     GameLogDrawer(
                         log: snapshot.log,
+                        reasons: combatLogReasons.reasons,
                         close: { isLogOpen = false }
                     )
                     .padding(14)
@@ -3552,6 +3628,7 @@ struct NativeGameView: View {
             .onChange(of: BoardFXRevisionKey(snapshot: snapshot), initial: true) { _, _ in
                 ingestBoardFX(snapshot)
                 gameStats.record(snapshot)
+                combatLogReasons.observe(snapshot)
             }
             .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? .easeOut(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.88), value: inspectingZoneTitle)
             .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? .easeOut(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.88), value: inspectedCard?.id)
@@ -3560,12 +3637,15 @@ struct NativeGameView: View {
                 isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil
                 isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snapshot) != nil
             }
+            // The tracker starts over by itself when the game changes.
+            .onChange(of: BoardFocusTracker.observationKey(snapshot, followTurns: followTurns), initial: true) { _, _ in
+                focusTracker.observe(snapshot, followTurns: followTurns)
+            }
             .onChange(of: snapshot.id) { _, _ in
                 cardChoiceCompletionTask?.cancel()
                 cardChoiceCompletionTask = nil
                 committedCardChoice = nil
                 reviewCardChoiceAfterPending = false
-                focusedOpponentId = nil
                 lastTurnCueKey = nil
                 lastTurnBannerKey = nil
                 inspectingZoneTitle = nil
@@ -3602,6 +3682,15 @@ struct NativeGameView: View {
                 handleCardChoicePendingChange(from: oldValue, to: newValue, snapshot: snapshot)
             }
             .onChange(of: isLogOpen) { _, open in GameAudio.shared.play(open ? .pageFlip : .uiClose) }
+            #if DEBUG
+            // Visual QA: MAGICMOBILE_PREVIEW_OPEN_LOG=<seconds> opens a design preview's log after that delay.
+            .task(id: snapshot.source) {
+                guard snapshot.source == "design-preview",
+                      let delay = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_OPEN_LOG"].flatMap(Double.init) else { return }
+                try? await Task.sleep(for: .seconds(delay))
+                isLogOpen = true
+            }
+            #endif
             .onChange(of: isGameMenuOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
             .onChange(of: isLandscapeStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
             .onChange(of: lastActionRejection?.message) { _, newValue in
@@ -3839,7 +3928,7 @@ struct NativeGameView: View {
                     },
                     openLog: { isLogOpen = true },
                     viewZone: { localViewZone(title: $0, cards: $1) },
-                    selectOpponent: { focusedOpponentId = $0 }
+                    selectOpponent: { focusTracker.select($0) }
                 )
                 .frame(width: metrics.topHUDRect.width, height: metrics.topHUDRect.height)
                 .position(x: metrics.topHUDRect.midX, y: metrics.topHUDRect.midY)
@@ -3899,7 +3988,7 @@ struct NativeGameView: View {
                     .position(x: metrics.playerLandsRect.midX, y: metrics.playerLandsRect.midY)
 
                 PortraitHandRow(
-                    cards: human.zones.hand,
+                    cards: BoardOpponentFocus.seatHand(in: snapshot),
                     legalActions: actions,
                     selectedCard: $selectedCard,
                     inspectedCard: $inspectedCard,
@@ -3914,7 +4003,8 @@ struct NativeGameView: View {
                     onActionChoice: { choiceActions, message in
                         dragActionChoice = DragActionChoice(message: message, actions: choiceActions)
                     },
-                    runAction: runAction
+                    runAction: runAction,
+                    hiddenCount: snapshot.isViewer(human.playerId) ? nil : human.zones.visibleHandCount
                 )
                 .frame(width: metrics.handRect.width, height: metrics.handRect.height)
                 .position(x: metrics.handRect.midX, y: metrics.handRect.midY)
@@ -4732,10 +4822,13 @@ struct SpectatorBar: View {
                 .overlay(Circle().stroke(MagicPalette.antiqueGold.opacity(0.45), lineWidth: 1))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Watching")
+                // Whose seat the bottom of the board shows while you watch.
+                Text(SpectatorSeatPresentation.title(snapshot))
                     .font(.system(size: 16, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
-                Text(detail)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Text(SpectatorSeatPresentation.detail(snapshot))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(MagicPalette.parchment.opacity(0.78))
                     .lineLimit(1)
@@ -4754,12 +4847,6 @@ struct SpectatorBar: View {
         .shadow(color: .black.opacity(0.45), radius: 12, y: 5)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("board.spectator")
-    }
-
-    private var detail: String {
-        let count = snapshot.remainingOpponents.count
-        let players = count == 1 ? String(localized: "1 player still in") : String(localized: "\(count) players still in")
-        return String(localized: "You’re out · \(players) · Turn \(snapshot.turn)")
     }
 }
 
@@ -9572,7 +9659,8 @@ struct PortraitCombatArrowOverlay: View {
     private func playerAnchor(_ id: String, kind: String?) -> CGPoint? {
         guard kind == nil || kind?.lowercased() == "player" else { return nil }
         let rect: CGRect
-        if CombatPlayerIdentity.ids(for: snapshot.viewerID, in: snapshot).contains(id) { rect = metrics.bottomControlsRect }
+        // The bottom seat: the viewer, or their stand-in while they watch.
+        if CombatPlayerIdentity.ids(for: snapshot.seatID, in: snapshot).contains(id) { rect = metrics.bottomControlsRect }
         else if let focusedOpponentID, CombatPlayerIdentity.ids(for: focusedOpponentID, in: snapshot).contains(id) { rect = metrics.topHUDRect }
         else { return nil }
         return CGPoint(x: rect.midX, y: rect.midY)
@@ -9741,7 +9829,7 @@ struct PortraitOpponentStatusBar: View {
                     } else if BoardResponseCue.make(snapshot) == nil, snapshot.isSpectating {
                         Text("You’re watching")
                     } else {
-                        Text(BoardResponseCue.make(snapshot)?.title ?? (snapshot.isViewer(snapshot.priorityPlayerId) ? "Your priority" : "Waiting on \(snapshot.playerLabel(snapshot.priorityPlayerId))"))
+                        Text(BoardResponseCue.make(snapshot)?.title ?? snapshot.priorityStatusText)
                             .foregroundStyle(BoardResponseCue.make(snapshot) == nil ? MagicPalette.parchment : MagicPalette.antiqueGold)
                     }
                 }
@@ -10215,6 +10303,8 @@ struct PortraitHandRow: View {
     let onDropFeedback: (String) -> Void
     let onActionChoice: ([LegalAction], String) -> Void
     let runAction: (LegalAction) -> Void
+    /// A spectator's stand-in: their hand stays hidden and only its size shows.
+    var hiddenCount: Int? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var draggingCardId: String?
     @State private var dragOffset: CGSize = .zero
@@ -10358,7 +10448,7 @@ struct PortraitHandRow: View {
                     Button {
                         withAnimation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.2)) { handExpanded.toggle() }
                     } label: {
-                        Label("Hand · \(cards.count)", systemImage: handExpanded ? "chevron.down" : "chevron.up")
+                        Label("Hand · \(hiddenCount ?? cards.count)", systemImage: handExpanded ? "chevron.down" : "chevron.up")
                             .font(.caption2.bold()).padding(.horizontal, 12)
                             .foregroundStyle(MagicPalette.parchment)
                             .frame(minHeight: 44).background(.black.opacity(0.78), in: Capsule())
@@ -11104,6 +11194,115 @@ private struct BattlefieldRowMask: View {
     var body: some View { Rectangle().padding(.horizontal, -4).padding(.vertical, -28) }
 }
 
+/// Scroll offsets live outside BattlefieldRow's body, so scrolling redraws only the edge fade and markers.
+@Observable
+final class BattlefieldRowScrollOffsets {
+    var byScroller: [Int: CGFloat] = [:]
+}
+
+private struct BattlefieldRowOffsetKey: PreferenceKey {
+    static let defaultValue: [Int: CGFloat] = [:]
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
+/// One BattlefieldRow scroller and the rows it moves together.
+struct BattlefieldRowOverflowLane: Equatable {
+    let scroller: Int
+    let cardWidth: CGFloat
+    let viewportWidth: CGFloat
+    let cardsPerSlotByRow: [[Int]]
+
+    func overflow(_ offsets: BattlefieldRowScrollOffsets) -> BattlefieldRowOverflow {
+        BattlefieldRowOverflow.lane(contentOffset: offsets.byScroller[scroller] ?? 0, viewportWidth: viewportWidth,
+                                    cardWidth: cardWidth, cardsPerSlotByRow: cardsPerSlotByRow)
+    }
+}
+
+/// BattlefieldRowMask, with a soft fade at an edge where the lane clips cards.
+private struct BattlefieldRowFadeMask: View {
+    let lane: BattlefieldRowOverflowLane
+    let offsets: BattlefieldRowScrollOffsets
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let overflow = lane.overflow(offsets)
+        HStack(spacing: 0) {
+            edge(fades: overflow.clipsLeading, from: .leading, to: .trailing)
+            Rectangle()
+            edge(fades: overflow.clipsTrailing, from: .trailing, to: .leading)
+        }
+        .padding(.horizontal, -4).padding(.vertical, -28)
+        .animation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.18),
+                   value: [overflow.clipsLeading, overflow.clipsTrailing])
+    }
+
+    private func edge(fades: Bool, from start: UnitPoint, to end: UnitPoint) -> some View {
+        ZStack {
+            Rectangle().opacity(fades ? 0 : 1)
+            LinearGradient(colors: [.clear, .black], startPoint: start, endPoint: end).opacity(fades ? 1 : 0)
+        }
+        .frame(width: 28)
+    }
+}
+
+/// "+N" counts of cards entirely scrolled out of view. Drawing only: touches reach the lane beneath.
+private struct BattlefieldRowOverflowMarkers: View {
+    let lane: BattlefieldRowOverflowLane
+    let offsets: BattlefieldRowScrollOffsets
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let overflow = lane.overflow(offsets)
+        HStack(spacing: 0) {
+            if overflow.hiddenLeading > 0 { marker(overflow.hiddenLeading, side: "left") }
+            Spacer(minLength: 0)
+            if overflow.hiddenTrailing > 0 { marker(overflow.hiddenTrailing, side: "right") }
+        }
+        .padding(.horizontal, 3)
+        .allowsHitTesting(false)
+        .animation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.18),
+                   value: [overflow.hiddenLeading > 0, overflow.hiddenTrailing > 0])
+    }
+
+    private func marker(_ count: Int, side: String) -> some View {
+        Text("+\(count)")
+            .font(.system(size: 11, weight: .black))
+            .monospacedDigit()
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(MagicPalette.iron.opacity(0.94), in: Capsule())
+            .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.58), lineWidth: 1))
+            .transition(.opacity)
+            // The row's own identifier (on BattlefieldRow's ZStack) takes precedence here; find markers by label.
+            .accessibilityLabel("\(count) more \(count == 1 ? "card" : "cards") off-screen to the \(side)")
+    }
+}
+
+private extension View {
+    /// Reports how far the scroller holding this content has moved, for the edge fade and markers.
+    func reportsBattlefieldRowOffset(_ scroller: Int) -> some View {
+        background(GeometryReader { geometry in
+            Color.clear.preference(key: BattlefieldRowOffsetKey.self,
+                                   value: [scroller: -geometry.frame(in: .named(BattlefieldRow.scrollSpace)).minX])
+        })
+    }
+
+    /// The lane's clipping mask with its edge fade, the "+N" markers and the offset they read.
+    func battlefieldRowOverflow(_ lane: BattlefieldRowOverflowLane, offsets: BattlefieldRowScrollOffsets) -> some View {
+        coordinateSpace(.named(BattlefieldRow.scrollSpace))
+            .mask { BattlefieldRowFadeMask(lane: lane, offsets: offsets) }
+            .overlay { BattlefieldRowOverflowMarkers(lane: lane, offsets: offsets) }
+            .onPreferenceChange(BattlefieldRowOffsetKey.self) { values in
+                for (scroller, offset) in values where offsets.byScroller[scroller] != offset {
+                    offsets.byScroller[scroller] = offset
+                }
+            }
+    }
+}
+
 struct BattlefieldRow: View {
     let title: String
     let cards: [ZoneCard]
@@ -11125,6 +11324,7 @@ struct BattlefieldRow: View {
     let runTargetAction: (ZoneCard) -> Void
     let runCombatCardAction: (ZoneCard) -> Bool
     @State private var expandedGroupIds: Set<String> = []
+    @State private var scrollOffsets = BattlefieldRowScrollOffsets()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var visibleCards: [ZoneCard] {
@@ -11185,9 +11385,10 @@ struct BattlefieldRow: View {
                             rowTiles(arranged[row])
                                 .padding(.horizontal, 8)
                                 .frame(minWidth: rowWidth, minHeight: ((availableHeight ?? 0) - 4) / 2)
+                                .reportsBattlefieldRowOffset(row)
                         }
                         .scrollClipDisabled()
-                        .mask { BattlefieldRowMask() }
+                        .battlefieldRowOverflow(overflowLane(scroller: row, rows: [arranged[row]]), offsets: scrollOffsets)
                     }
                 }
             } else {
@@ -11198,9 +11399,10 @@ struct BattlefieldRow: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, availableHeight == nil ? 0 : 8)
                     .frame(minWidth: rowWidth, minHeight: availableHeight ?? max(cardHeight + 6, 44), alignment: .center)
+                    .reportsBattlefieldRowOffset(0)
                 }
                 .scrollClipDisabled()
-                .mask { BattlefieldRowMask() }
+                .battlefieldRowOverflow(overflowLane(scroller: 0, rows: Array(arranged.prefix(rows))), offsets: scrollOffsets)
             }
         }
         .accessibilityIdentifier("board.battlefield.\(title)")
@@ -11211,6 +11413,14 @@ struct BattlefieldRow: View {
         16 + groups.reduce(CGFloat.zero) { width, group in
             width + renderedCardWidth
         } + CGFloat(max(groups.count - 1, 0)) * 4
+    }
+
+    static let scrollSpace = "battlefield-row-scroll"
+
+    /// Every tile is one card wide; a collapsed group or attachment stack counts all of its cards.
+    private func overflowLane(scroller: Int, rows: [[BattlefieldCardGroup]]) -> BattlefieldRowOverflowLane {
+        BattlefieldRowOverflowLane(scroller: scroller, cardWidth: renderedCardWidth, viewportWidth: rowWidth,
+                                   cardsPerSlotByRow: rows.map { $0.map(\.count) })
     }
 
     @ViewBuilder
@@ -11584,6 +11794,8 @@ struct CardTile: View {
     var height: CGFloat = 112
     var ignoreTappedRotation: Bool = false
     var imageVariant: CardImageCacheVariant = .board
+    /// Room a token copy's tag leaves at the trailing edge (TokenCopyFrameLayout.tagTrailingReserve).
+    var tokenCopyTagTrailingReserve: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.nativeTurnControl) private var nativeTurnControl
 
@@ -11592,6 +11804,9 @@ struct CardTile: View {
             Group {
                 if !NativeCardArtworkPolicy.permitsLookup(card: card) {
                     CardArtPlaceholder(card: card, width: width, height: height)
+                } else if let source = card.tokenCopySourceName {
+                    TokenCopyCardFace(card: card, source: source, width: width, height: height, imageVariant: imageVariant,
+                                      tagTrailingReserve: tokenCopyTagTrailingReserve)
                 } else if nativeTurnControl != nil {
                     NativeCardArtworkView(name: card.card.name, variant: imageVariant,
                                           tokenTypeLine: card.card.isToken == true ? (card.card.tokenArtwork?.typeLine ?? card.card.typeLine) : nil,
@@ -11627,7 +11842,9 @@ struct CardTile: View {
                 .padding(.leading, 2)
                 .allowsHitTesting(false)
 
-            if !ignoreTappedRotation && card.showsPowerToughness, let power = card.displayPower, let toughness = card.displayToughness {
+            // A token copy's frame prints its live P/T itself.
+            if !ignoreTappedRotation && card.showsPowerToughness && card.tokenCopySourceName == nil,
+               let power = card.displayPower, let toughness = card.displayToughness {
                 Text("\(power)/\(toughness)")
                     .font(.system(size: 10, weight: .black))
                     .foregroundStyle(.black)
@@ -11814,12 +12031,14 @@ struct CardCounterBadgeStrip: View {
     var body: some View {
         VStack(alignment: .leading, spacing: max(cardWidth * 0.012, 1)) {
             ForEach(badges, id: \.self) { badge in
+                // Shrinks rather than wraps when a caller caps the strip's width.
                 HStack(spacing: 2) {
                     Text(badge.label)
                         .font(.system(size: max(cardWidth * 0.065, 5.5), weight: .black))
                     Text("\(badge.count)")
                         .font(.system(size: max(cardWidth * 0.083, 6.5), weight: .black))
                 }
+                .lineLimit(1).minimumScaleFactor(0.6)
                 .foregroundStyle(.white)
                 .padding(.horizontal, max(cardWidth * 0.035, 2.5))
                 .padding(.vertical, max(cardWidth * 0.015, 1))
@@ -11997,6 +12216,143 @@ struct CardArtPlaceholder: View {
                     lineWidth: max(width * 0.035, 1)
                 )
         )
+    }
+}
+
+/// A token copy drawn as its own card: the token's live name, type line, rules and P/T
+/// around the copied card's illustration, with a tag naming the source. The printed
+/// source card is never shown, because its name or stats can differ from the token's.
+struct TokenCopyCardFace: View {
+    let card: ZoneCard
+    let source: String
+    let width: CGFloat
+    let height: CGFloat
+    var imageVariant: CardImageCacheVariant = .board
+    var tagTrailingReserve: CGFloat = 0
+    @Environment(\.nativeTurnControl) private var nativeTurnControl
+
+    var body: some View {
+        let frame = TokenCopyFrameLayout(size: CGSize(width: width, height: height), tagTrailingReserve: tagTrailingReserve)
+        let rules = card.card.oracleText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        ZStack(alignment: .topLeading) {
+            LinearGradient(colors: [MagicPalette.parchment, Color(red: 0.72, green: 0.59, blue: 0.38), MagicPalette.parchmentShadow],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+
+            Text(card.card.name)
+                .font(.system(size: frame.nameFontSize, weight: .black, design: .serif))
+                .foregroundStyle(MagicPalette.iron)
+                .lineLimit(1).minimumScaleFactor(0.5)
+                .padding(.horizontal, max(width * 0.03, 2))
+                .frame(width: frame.nameBar.width, height: frame.nameBar.height, alignment: .leading)
+                .background(MagicPalette.parchment.opacity(0.72), in: RoundedRectangle(cornerRadius: 3))
+                .offset(x: frame.nameBar.minX, y: frame.nameBar.minY)
+
+            illustration
+                .frame(width: frame.art.width, height: frame.art.height)
+                .clipShape(RoundedRectangle(cornerRadius: 3))
+                .overlay(RoundedRectangle(cornerRadius: 3).stroke(MagicPalette.iron.opacity(0.55), lineWidth: max(width * 0.006, 0.5)))
+                .offset(x: frame.art.minX, y: frame.art.minY)
+
+            Text(card.card.typeLine.isEmpty ? "Token" : card.card.typeLine)
+                .font(.system(size: frame.typeFontSize, weight: .bold, design: .serif))
+                .foregroundStyle(MagicPalette.iron.opacity(0.85))
+                .lineLimit(1).minimumScaleFactor(0.5)
+                .padding(.horizontal, max(width * 0.03, 2))
+                .frame(width: frame.typeBar.width, height: frame.typeBar.height, alignment: .leading)
+                .background(MagicPalette.parchment.opacity(0.72), in: RoundedRectangle(cornerRadius: 3))
+                .offset(x: frame.typeBar.minX, y: frame.typeBar.minY)
+
+            RoundedRectangle(cornerRadius: 3)
+                .fill(MagicPalette.parchment.opacity(0.42))
+                .frame(width: frame.textBox.width, height: frame.textBox.height)
+                .offset(x: frame.textBox.minX, y: frame.textBox.minY)
+
+            if frame.showsRules && !rules.isEmpty {
+                let area = frame.rulesArea(showsPowerToughness: card.showsPowerToughness)
+                GameRulesText(source: rules, cardName: card.card.name, symbolSize: frame.rulesFontSize)
+                    .font(.system(size: frame.rulesFontSize, weight: .medium, design: .serif))
+                    .foregroundStyle(MagicPalette.iron)
+                    .lineLimit(frame.rulesLineLimit(showsPowerToughness: card.showsPowerToughness))
+                    .frame(width: area.width, height: area.height, alignment: .topLeading)
+                    .clipped()
+                    .offset(x: area.minX, y: area.minY)
+            }
+
+            if card.showsPowerToughness, let power = card.displayPower, let toughness = card.displayToughness {
+                let box = frame.powerToughnessBox
+                Text("\(power)/\(toughness)")
+                    .font(.system(size: frame.powerToughnessFontSize, weight: .black))
+                    .foregroundStyle(MagicPalette.iron)
+                    .lineLimit(1).minimumScaleFactor(0.5)
+                    .frame(width: box.width, height: box.height)
+                    .background(MagicPalette.parchment, in: RoundedRectangle(cornerRadius: 3))
+                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(MagicPalette.borderBronze, lineWidth: max(width * 0.01, 0.8)))
+                    .offset(x: box.minX, y: box.minY)
+            }
+
+            let slot = frame.tagSlot
+            Text(TokenCopyPresentation.tag(source: source, cardWidth: width))
+                .font(.system(size: frame.tagFontSize, weight: .black))
+                .tracking(0.3)
+                .foregroundStyle(MagicPalette.antiqueGold)
+                .lineLimit(1).minimumScaleFactor(0.6)
+                .padding(.horizontal, slot.height * 0.45)
+                .frame(height: slot.height)
+                .background(MagicPalette.iron.opacity(0.88), in: Capsule())
+                .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.6), lineWidth: 0.7))
+                .frame(width: slot.width, height: slot.height, alignment: .leading)
+                .offset(x: slot.minX, y: slot.minY)
+        }
+        .frame(width: width, height: height, alignment: .topLeading)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(LinearGradient(colors: [MagicPalette.borderBronze.opacity(0.70), MagicPalette.borderIron.opacity(0.62)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing),
+                        lineWidth: max(width * 0.035, 1))
+        )
+    }
+
+    /// The source's illustration only: NativeCardArtworkView crops copy art itself, and a
+    /// whole printed image (previews, hosted games) is framed down to its art window.
+    @ViewBuilder private var illustration: some View {
+        if nativeTurnControl != nil {
+            NativeCardArtworkView(name: card.card.name, variant: imageVariant, contentMode: .fill, artOnly: true,
+                                  tokenTypeLine: card.card.tokenArtwork?.typeLine ?? card.card.typeLine,
+                                  tokenOracleText: card.card.tokenArtwork?.oracleText ?? card.card.oracleText,
+                                  tokenPower: card.card.tokenArtwork?.power ?? card.displayPower,
+                                  tokenToughness: card.card.tokenArtwork?.toughness ?? card.displayToughness,
+                                  tokenColors: card.card.tokenArtwork?.colors ?? card.card.tokenColors,
+                                  tokenSourceName: source) { loading, _ in
+                artPlaceholder(loading: loading)
+            }
+        } else {
+            // Like CardTile: previews with forced placeholders pass no URL and stay loading.
+            AsyncImage(url: CardImageURL.image(source, variant: imageVariant)) { phase in
+                switch phase {
+                case .success(let image):
+                    GeometryReader { proxy in
+                        let placement = CardIllustrationCrop.imageFrame(filling: proxy.size)
+                        image.resizable()
+                            .frame(width: placement.width, height: placement.height)
+                            .offset(x: placement.minX, y: placement.minY)
+                    }
+                case .empty:
+                    artPlaceholder(loading: true)
+                case .failure, _:
+                    artPlaceholder(loading: false)
+                }
+            }
+        }
+    }
+
+    private func artPlaceholder(loading: Bool) -> some View {
+        ZStack {
+            LinearGradient(colors: [MagicPalette.leather.opacity(0.78), MagicPalette.moss.opacity(0.62), MagicPalette.iron.opacity(0.86)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            Image(systemName: loading ? "hourglass" : "sparkles")
+                .font(.system(size: max(width * 0.18, 10), weight: .semibold))
+                .foregroundStyle(MagicPalette.antiqueGold.opacity(loading ? 0.34 : 0.42))
+        }
     }
 }
 
@@ -12294,6 +12650,7 @@ struct GameManagementMenu: View {
             VStack(alignment: .leading, spacing: 12) {
             BoardAppearancePicker()
             PortraitModeToggle(isOn: $portraitModeEnabled)
+            FollowTurnsToggle()
             BoardEffectsPicker()
 
             if snapshot.isSpectating {
@@ -12556,103 +12913,147 @@ struct CardInspector: View {
         artMissing || shown.card.isToken == true || !NativeCardArtworkPolicy.permitsLookup(card: shown)
     }
 
+    /// Solid, so the board never shows through the text while you read.
+    static let backdrop = Color(red: 0.07, green: 0.08, blue: 0.10)
+
+    @ScaledMetric(relativeTo: .body) private var bodySize: CGFloat = 17
+    @ScaledMetric(relativeTo: .footnote) private var footnoteSize: CGFloat = 13
+
+    var body: some View {
+        let card = shown
+        let rules = card.card.oracleText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let rulesVisible = showsRules && !rules.isEmpty
+        let state = liveState
+        let attached = attachments
+        let reminder = CardRulesReminder.text(for: card)
+        // Rules get their room first; CardInspectorFit shrinks the card, then the text.
+        CardInspectorLayout {
+            InspectorCardFace(card: card)
+            if rulesVisible || !state.isEmpty || !attached.isEmpty || reminder != nil {
+                ViewThatFits(in: .vertical) {
+                    ForEach(CardInspectorFit.textScales, id: \.self) { scale in
+                        footer(scale: scale, card: card, rules: rulesVisible ? rules : nil, state: state,
+                               reminder: reminder, attached: attached)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .clipped()
+            }
+        }
+        .padding(9)
+        .onPreferenceChange(CardArtPlaceholderShownKey.self) { artMissing = $0 }
+        .background(Self.backdrop, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.cyan.opacity(0.35)))
+    }
+
+    private func footer(scale: CGFloat, card: ZoneCard, rules: String?, state: [String], reminder: String?,
+                        attached: [ZoneCard]) -> some View {
+        VStack(alignment: .leading, spacing: 8 * scale) {
+            if !state.isEmpty {
+                InspectorStateChips(items: state, scale: scale)
+            }
+            if let rules {
+                GameRulesText(source: rules, cardName: card.card.name,
+                              isHidden: !NativeCardArtworkPolicy.permitsLookup(card: card), symbolSize: 16 * scale)
+                    .font(.system(size: bodySize * scale)).lineSpacing(3 * scale)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let reminder {
+                Label(reminder, systemImage: "info.circle")
+                    .font(.system(size: footnoteSize * scale, weight: .semibold))
+                    .foregroundStyle(MagicPalette.parchment.opacity(0.82))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("inspector.rulesReminder")
+            }
+            if !attached.isEmpty {
+                InspectorAttachmentList(cards: attached, scale: scale)
+                    // A thumbnail's missing art must not read as the main card's.
+                    .transformPreference(CardArtPlaceholderShownKey.self) { $0 = false }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .padding(.horizontal, 4)
+        .foregroundStyle(MagicPalette.parchment)
+    }
+}
+
+/// The inspected card, as large as its slot allows.
+private struct InspectorCardFace: View {
+    let card: ZoneCard
+
     var body: some View {
         GeometryReader { proxy in
-            let card = shown
-            let availableHeight = max(proxy.size.height - 18, 1)
-            let availableWidth = max(proxy.size.width - 18, 1)
-            let rules = card.card.oracleText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let rulesVisible = showsRules && !rules.isEmpty
-            let state = liveState
-            let attached = attachments
-            let reminder = CardRulesReminder.text(for: card)
-            let horizontal = availableWidth > availableHeight
-            let footerHeight: CGFloat = !attached.isEmpty || reminder != nil
-                ? min(320, availableHeight * 0.48)
-                : rulesVisible ? min(200, availableHeight * 0.38) : (state.isEmpty ? 0 : 64)
-            let spacing: CGFloat = footerHeight > 0 ? 8 : 0
-            let cardHeight = horizontal ? min(availableHeight, availableWidth * 0.55 * BattlefieldLayoutMetrics.magicCardHeightToWidth) : max(1, min(availableHeight - footerHeight - spacing, availableWidth * BattlefieldLayoutMetrics.magicCardHeightToWidth))
-            let cardWidth = cardHeight / BattlefieldLayoutMetrics.magicCardHeightToWidth
-
-            let layout = horizontal ? AnyLayout(HStackLayout(alignment: .top, spacing: 16)) : AnyLayout(VStackLayout(spacing: spacing))
-            layout {
-                CardTile(card: card, selected: false, zoneName: "Inspector",
-                         width: cardWidth, height: cardHeight,
-                         ignoreTappedRotation: true, imageVariant: .inspection)
-                    .modifier(InspectionFoil(size: CGSize(width: cardWidth, height: cardHeight)))
-                    .id(card.instanceId)
-                    .frame(width: horizontal ? cardWidth : availableWidth)
-                if footerHeight > 0 || (horizontal && (rulesVisible || !state.isEmpty || !attached.isEmpty)) {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 8) {
-                            if !state.isEmpty {
-                                InspectorStateChips(items: state)
-                            }
-                            if rulesVisible {
-                                GameRulesText(source: rules, cardName: card.card.name,
-                                              isHidden: !NativeCardArtworkPolicy.permitsLookup(card: card))
-                                    .font(.body).lineSpacing(3)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            if let reminder {
-                                Label(reminder, systemImage: "info.circle")
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(MagicPalette.parchment.opacity(0.82))
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .accessibilityIdentifier("inspector.rulesReminder")
-                            }
-                            if !attached.isEmpty {
-                                InspectorAttachmentList(cards: attached)
-                                    // A thumbnail's missing art must not read as the main card's.
-                                    .transformPreference(CardArtPlaceholderShownKey.self) { $0 = false }
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                    }
-                    .scrollBounceBehavior(.basedOnSize)
-                    .frame(maxWidth: .infinity, maxHeight: horizontal ? availableHeight : footerHeight, alignment: .topLeading)
-                    .padding(.horizontal, 4)
-                    .foregroundStyle(MagicPalette.parchment)
-                }
-            }
-            .frame(width: availableWidth, height: availableHeight, alignment: .top)
-            .padding(9)
+            let height = max(1, min(proxy.size.height, proxy.size.width * BattlefieldLayoutMetrics.magicCardHeightToWidth))
+            let width = height / BattlefieldLayoutMetrics.magicCardHeightToWidth
+            CardTile(card: card, selected: false, zoneName: "Inspector", width: width, height: height,
+                     ignoreTappedRotation: true, imageVariant: .inspection)
+                .modifier(InspectionFoil(size: CGSize(width: width, height: height)))
+                .id(card.instanceId)
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
         }
-        .onPreferenceChange(CardArtPlaceholderShownKey.self) { artMissing = $0 }
-        .background(.black.opacity(0.88), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.cyan.opacity(0.35)))
+    }
+}
+
+/// Card above (portrait) or beside (landscape) the footer, sized by CardInspectorFit from the
+/// footer's natural height. The footer is then offered all the room left under the card.
+private struct CardInspectorLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        proposal.replacingUnspecifiedDimensions(by: CGSize(width: 320, height: 480))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let face = subviews.first else { return }
+        let footer = subviews.count > 1 ? subviews[1] : nil
+        let fit = CardInspectorFit.plan(available: bounds.size, cardAspect: BattlefieldLayoutMetrics.magicCardHeightToWidth,
+                                        hasFooter: footer != nil) { width in
+            footer?.sizeThatFits(ProposedViewSize(width: width, height: nil)).height ?? 0
+        }
+        if fit.horizontal {
+            face.place(at: bounds.origin, proposal: ProposedViewSize(fit.cardSize))
+            footer?.place(at: CGPoint(x: bounds.minX + fit.cardSize.width + CardInspectorFit.columnSpacing, y: bounds.minY),
+                          proposal: ProposedViewSize(width: fit.footerSize.width, height: bounds.height))
+        } else {
+            face.place(at: CGPoint(x: bounds.midX, y: bounds.minY), anchor: .top, proposal: ProposedViewSize(fit.cardSize))
+            let top = fit.cardSize.height + CardInspectorFit.spacing
+            footer?.place(at: CGPoint(x: bounds.minX, y: bounds.minY + top),
+                          proposal: ProposedViewSize(width: bounds.width, height: max(bounds.height - top, 0)))
+        }
     }
 }
 
 /// What is attached to the inspected card: each Aura or Equipment with its rules text.
 private struct InspectorAttachmentList: View {
     let cards: [ZoneCard]
+    var scale: CGFloat = 1
+    @ScaledMetric(relativeTo: .subheadline) private var nameSize: CGFloat = 15
+    @ScaledMetric(relativeTo: .caption) private var captionSize: CGFloat = 12
+    @ScaledMetric(relativeTo: .footnote) private var rulesSize: CGFloat = 13
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 6 * scale) {
             Text(cards.count == 1 ? "ATTACHED" : "ATTACHED · \(cards.count)")
-                .font(.caption.weight(.black)).tracking(1.2)
+                .font(.system(size: captionSize * scale, weight: .black)).tracking(1.2)
                 .foregroundStyle(MagicPalette.antiqueGold)
             ForEach(cards.prefix(4)) { attachment in
-                HStack(alignment: .top, spacing: 10) {
+                HStack(alignment: .top, spacing: 10 * scale) {
                     CardTile(card: attachment, selected: false, zoneName: "Inspector attachment",
-                             width: 40, height: 40 * BattlefieldLayoutMetrics.magicCardHeightToWidth,
+                             width: 40 * scale, height: 40 * scale * BattlefieldLayoutMetrics.magicCardHeightToWidth,
                              ignoreTappedRotation: true)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(attachment.card.name)
-                            .font(.subheadline.weight(.heavy))
+                            .font(.system(size: nameSize * scale, weight: .heavy))
                             .foregroundStyle(.white)
                         if !attachment.card.typeLine.isEmpty {
                             Text(attachment.card.typeLine)
-                                .font(.caption.weight(.semibold))
+                                .font(.system(size: captionSize * scale, weight: .semibold))
                                 .foregroundStyle(MagicPalette.parchment.opacity(0.7))
                         }
                         if let text = attachment.card.oracleText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
                             GameRulesText(source: text, cardName: attachment.card.name,
-                                          isHidden: !NativeCardArtworkPolicy.permitsLookup(card: attachment))
-                                .font(.footnote).lineSpacing(1)
+                                          isHidden: !NativeCardArtworkPolicy.permitsLookup(card: attachment), symbolSize: 16 * scale)
+                                .font(.system(size: rulesSize * scale)).lineSpacing(1)
                                 .foregroundStyle(MagicPalette.parchment)
                                 .lineLimit(4)
                                 .minimumScaleFactor(0.8)
@@ -12686,30 +13087,68 @@ enum CardRulesReminder {
     }
 }
 
-/// Live card state as compact chips that wrap onto a second line when needed.
+/// Live card state as compact chips that wrap onto as many lines as they need
+/// (Android's FlowRow), so the inspector's fit measures their real height.
 private struct InspectorStateChips: View {
     let items: [String]
+    var scale: CGFloat = 1
+    @ScaledMetric(relativeTo: .subheadline) private var chipSize: CGFloat = 15
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 6) { chips(items) }
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) { chips(Array(items.prefix((items.count + 1) / 2))) }
-                HStack(spacing: 6) { chips(Array(items.dropFirst((items.count + 1) / 2))) }
+        InspectorChipFlow(spacing: 6 * scale) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                Text(item)
+                    .font(.system(size: chipSize * scale, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.horizontal, 8 * scale).padding(.vertical, 3 * scale)
+                    .background(MagicPalette.iron.opacity(0.9), in: Capsule())
+                    .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.55), lineWidth: 1))
             }
         }
         .accessibilityElement(children: .combine)
     }
+}
 
-    private func chips(_ values: [String]) -> some View {
-        ForEach(Array(values.enumerated()), id: \.offset) { _, item in
-            Text(item)
-                .font(.subheadline.weight(.bold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(MagicPalette.iron.opacity(0.9), in: Capsule())
-                .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.55), lineWidth: 1))
+/// Left-to-right rows that wrap at the proposed width.
+private struct InspectorChipFlow: Layout {
+    var spacing: CGFloat
+
+    private func rows(_ subviews: Subviews, width: CGFloat) -> [[(index: Int, size: CGSize)]] {
+        var rows: [[(index: Int, size: CGSize)]] = [[]]
+        var x: CGFloat = 0
+        for (index, subview) in subviews.enumerated() {
+            var size = subview.sizeThatFits(.unspecified)
+            size.width = min(size.width, width)
+            if !rows[rows.count - 1].isEmpty && x + spacing + size.width > width {
+                rows.append([])
+                x = 0
+            }
+            x += (rows[rows.count - 1].isEmpty ? 0 : spacing) + size.width
+            rows[rows.count - 1].append((index, size))
+        }
+        return rows
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        let rows = rows(subviews, width: width)
+        let height = rows.reduce(0) { $0 + ($1.map(\.size.height).max() ?? 0) } + spacing * CGFloat(max(rows.count - 1, 0))
+        let used = rows.map { row in row.reduce(0) { $0 + $1.size.width } + spacing * CGFloat(max(row.count - 1, 0)) }.max() ?? 0
+        return CGSize(width: proposal.width ?? used, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in rows(subviews, width: bounds.width) {
+            var x = bounds.minX
+            let height = row.map(\.size.height).max() ?? 0
+            for item in row {
+                subviews[item.index].place(at: CGPoint(x: x, y: y + (height - item.size.height) / 2),
+                                           proposal: ProposedViewSize(item.size))
+                x += item.size.width + spacing
+            }
+            y += height + spacing
         }
     }
 }
@@ -12748,6 +13187,8 @@ private struct GameLogBottomKey: PreferenceKey {
 
 struct GameLogDrawer: View {
     let log: [GameLogEntry]
+    /// One-line combat reasons by entry ID (CombatLogReasons).
+    var reasons: [String: String] = [:]
     let close: () -> Void
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var followingLatest = true
@@ -12776,38 +13217,48 @@ struct GameLogDrawer: View {
                                 .font(.subheadline).foregroundStyle(.secondary)
                         }
                         ForEach(log) { entry in
-                            GameLogText(message: entry.message, usesDarkBackground: true, onInspect: { reference in
-                                // The public log authorizes the printed identity, not a lookup
-                                // of this object's current (possibly hidden) game state.
-                                guard NativeCardArtworkPolicy.permitsLookup(name: reference.name) else { return }
-                                inspectedLogCard = ZoneCard(instanceId: reference.objectID.uuidString,
-                                    card: CardIdentity(name: reference.name, typeLine: "Card referenced in game log",
-                                                       oracleText: "Loading local card text…"),
-                                    tapped: nil, summoningSickness: nil, cardIcons: nil, counters: nil,
-                                    power: nil, toughness: nil, isCreaturePermanent: nil, damage: nil,
-                                    isAttacking: nil, blocking: nil, attachedToInstanceId: nil)
-                                Task { @MainActor in
-                                    // Disk-only catalogue lookup off the UI thread. Never resolve
-                                    // the historical object UUID against live/private game state.
-                                    let printed = await Task.detached(priority: .userInitiated) {
-                                        (try? NativeDeckMetadataCatalogue.bundled())?.card(named: reference.name)
-                                    }.value
-                                    guard inspectedLogCard?.instanceId == reference.objectID.uuidString,
-                                          inspectedLogCard?.card.name == reference.name else { return }
+                            VStack(alignment: .leading, spacing: 2) {
+                                GameLogText(message: entry.message, usesDarkBackground: true, onInspect: { reference in
+                                    // The public log authorizes the printed identity, not a lookup
+                                    // of this object's current (possibly hidden) game state.
+                                    guard NativeCardArtworkPolicy.permitsLookup(name: reference.name) else { return }
                                     inspectedLogCard = ZoneCard(instanceId: reference.objectID.uuidString,
-                                        card: CardIdentity(name: reference.name,
-                                            typeLine: printed?.typeLine ?? "Card referenced in game log",
-                                            oracleText: printed?.oracleText ?? "Rules unavailable in the local catalogue.",
-                                            manaCost: printed?.manaCost),
+                                        card: CardIdentity(name: reference.name, typeLine: "Card referenced in game log",
+                                                           oracleText: "Loading local card text…"),
                                         tapped: nil, summoningSickness: nil, cardIcons: nil, counters: nil,
                                         power: nil, toughness: nil, isCreaturePermanent: nil, damage: nil,
                                         isAttacking: nil, blocking: nil, attachedToInstanceId: nil)
+                                    Task { @MainActor in
+                                        // Disk-only catalogue lookup off the UI thread. Never resolve
+                                        // the historical object UUID against live/private game state.
+                                        let printed = await Task.detached(priority: .userInitiated) {
+                                            (try? NativeDeckMetadataCatalogue.bundled())?.card(named: reference.name)
+                                        }.value
+                                        guard inspectedLogCard?.instanceId == reference.objectID.uuidString,
+                                              inspectedLogCard?.card.name == reference.name else { return }
+                                        inspectedLogCard = ZoneCard(instanceId: reference.objectID.uuidString,
+                                            card: CardIdentity(name: reference.name,
+                                                typeLine: printed?.typeLine ?? "Card referenced in game log",
+                                                oracleText: printed?.oracleText ?? "Rules unavailable in the local catalogue.",
+                                                manaCost: printed?.manaCost),
+                                            tapped: nil, summoningSickness: nil, cardIcons: nil, counters: nil,
+                                            power: nil, toughness: nil, isCreaturePermanent: nil, damage: nil,
+                                            isAttacking: nil, blocking: nil, attachedToInstanceId: nil)
+                                    }
+                                })
+                                    .font(.subheadline)
+                                // One line of public combat context under the engine's line.
+                                if let reason = reasons[entry.id] {
+                                    Text(reason)
+                                        .font(.caption.italic())
+                                        .foregroundStyle(.white.opacity(0.62))
+                                        .lineLimit(1).minimumScaleFactor(0.8)
+                                        .accessibilityIdentifier("log.reason")
                                 }
-                            })
-                                .font(.subheadline)
-                                .padding(.top, GameLogPresentation(entry.message).plainText.hasPrefix("TURN ") ? 12 : 0)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .id(entry.id)
+                            }
+                            .padding(.top, GameLogPresentation(entry.message).plainText.hasPrefix("TURN ") ? 12 : 0)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .id(entry.id)
                         }
                         Color.clear.frame(height: 1).id("log-bottom")
                             .background(GeometryReader { geometry in
