@@ -4,14 +4,15 @@
 //   cap=600           per-game wall-time cap in seconds
 //   skill=1           XMage AI skill (default: engine default)
 //   loader=<url>      CheerpJ loader (default: 4.3 from the CheerpJ CDN)
-//   engine=/engine/   same-origin path of packages/web-engine/build/web
+//   engine=/engine/   same-origin path of the bundle (build/web, or build/web-java11 via bench.mjs
+//                     --engine-dir); its manifest's javaRelease picks the CheerpJ runtime
 //   debug=1           Java stack traces of engine failures to the console
 import { EngineClient, WorkerTransport, type JsonObject } from "./engineClient.ts";
 import { failedToStart, playGame, stats, type GameResult } from "./autoplay.ts";
 import { gameSpec, parseGames, summarize, TARGETS } from "./plan.ts";
 import type { ReadyTimings, ResourceSummary } from "./protocol.ts";
 
-type Manifest = { upstream: string; catalogueHash: string; totalBytes: number; jars: { name: string; bytes: number }[]; decks: string[] };
+type Manifest = { upstream: string; catalogueHash: string; javaRelease?: number; totalBytes: number; jars: { name: string; bytes: number }[]; decks: string[] };
 
 type BenchState = {
   status: "loading" | "running" | "done" | "error";
@@ -66,7 +67,7 @@ function renderReady() {
   $("ready").innerHTML = `
     <tr><th>Engine boot</th><th>ms</th></tr>
     <tr><td>CheerpJ loader script</td><td>${w.loaderMs.toFixed(0)}</td></tr>
-    <tr><td>cheerpjInit (Java 17 runtime)</td><td>${w.cheerpjInitMs.toFixed(0)}</td></tr>
+    <tr><td>cheerpjInit (Java ${bench.manifest?.javaRelease ?? 17} runtime)</td><td>${w.cheerpjInitMs.toFixed(0)}</td></tr>
     <tr><td>cheerpjRunLibrary (${bench.manifest?.jars.length} jars)</td><td>${w.runLibraryMs.toFixed(0)}</td></tr>
     <tr><td>WebEntryPoints class</td><td>${w.entryClassMs.toFixed(0)}</td></tr>
     <tr><td>First request: XmageEngine + set registry</td><td>${r.capabilitiesMs.toFixed(0)}</td></tr>
@@ -103,7 +104,7 @@ async function main() {
   const manifest = (await (await fetch(engineBase + "manifest.json")).json()) as Manifest;
   bench.manifest = manifest;
   status(`Loading CheerpJ + ${manifest.jars.length} jars (${(manifest.totalBytes / 1e6).toFixed(0)} MB, fetched lazily)…`);
-  const { transport, timings } = await WorkerTransport.start({ loaderUrl, jarBase: engineBase + "jars/", jars: manifest.jars.map((j) => j.name), javaProperties });
+  const { transport, timings } = await WorkerTransport.start({ loaderUrl, jarBase: engineBase + "jars/", jars: manifest.jars.map((j) => j.name), javaProperties, javaVersion: manifest.javaRelease ?? 17 });
   const client = new EngineClient(transport);
   status("CheerpJ ready; constructing XmageEngine (set registry)…");
   const capStart = performance.now();

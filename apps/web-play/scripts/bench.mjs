@@ -4,9 +4,10 @@
 //
 //   node scripts/bench.mjs --ready-visits 2                     # cold + cached engine boot only
 //   node scripts/bench.mjs --ready-visits 1 --games 2p:1,4p:2   # warm the cache, then play
+//   node scripts/bench.mjs --engine-dir ../../packages/web-engine/build/web-java11 ...  # Java 11 bundle
 //
 // Options: --games <list> --cap <s per game> --skill <n> --ready-visits <n> --out <file>
-//          --loader <CheerpJ loader URL> --timeout <s overall>
+//          --loader <CheerpJ loader URL> --timeout <s overall> --engine-dir <bundle dir>
 // It is a heavy workload: run it behind the machine-wide lock, in holds under ~30 minutes.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -26,6 +27,7 @@ const capS = Number(arg("cap", "600"));
 const skill = arg("skill", null);
 const readyVisits = Number(arg("ready-visits", "1"));
 const loader = arg("loader", null);
+const engineDir = arg("engine-dir", null);
 const out = resolve(arg("out", resolve(here, "../../../packages/web-engine/build/metrics/bench.json")));
 const gameCount = games ? games.split(",").length : 0;
 const overallS = Number(arg("timeout", String(600 + gameCount * (capS + 120))));
@@ -50,7 +52,7 @@ function sampleMemory(rootPid) {
   };
 }
 
-const { server, stats: served, reset, url } = await startServer({ port: 0 });
+const { server, stats: served, reset, url } = await startServer({ port: 0, ...(engineDir ? { engine: resolve(engineDir) } : {}) });
 // A fresh on-disk profile per run: the first visit is cold, later visits use Chrome's disk cache
 // (an in-memory incognito cache is too small to hold the jars).
 const profile = mkdtempSync(join(tmpdir(), "web-play-bench-"));
@@ -65,7 +67,7 @@ const report = {
   browser: `Google Chrome ${browser?.version() ?? "?"} (headless, playwright-core channel "chrome", fresh on-disk profile)`,
   machine: "8 GB MacBook, shared with other workloads (numbers are from this machine only)",
   startedAt: new Date().toISOString(),
-  params: { games, capS, skill, readyVisits },
+  params: { games, capS, skill, readyVisits, engineDir },
   visits: [],
 };
 const deadline = Date.now() + overallS * 1000;

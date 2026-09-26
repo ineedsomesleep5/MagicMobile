@@ -26,6 +26,7 @@ let queue: Promise<unknown> = Promise.resolve();
 // WebUnsafe through the app library and Unsafe through the native's `lib` (both "Java code still
 // running"; the Java thread hangs). Kept so the failure reproduces with `bench.mjs --debug`.
 // The hot per-game-copy caller, Watcher.copy, is shadowed in the web bundle and needs no bridge.
+// Installed for the Java 17 runtime only: the Java 11 bundle tests CheerpJ's own natives.
 type Native = (...args: unknown[]) => Promise<unknown>;
 type Callable = Record<string, (...args: unknown[]) => Promise<unknown>>;
 type BootLibrary = { jdk: { internal: { misc: { Unsafe: Promise<{ getUnsafe(): Promise<Callable> }> } } } };
@@ -84,11 +85,12 @@ async function init(message: Extract<WorkerInbound, { type: "init" }>) {
   const t0 = performance.now();
   scope.importScripts(message.loaderUrl);
   const tLoader = performance.now();
+  const version = message.javaVersion ?? 17;
   await cheerpjInit({
-    version: 17,
+    version,
     status: "none",
     javaProperties: ["java.awt.headless=true", ...(message.javaProperties ?? [])],
-    natives: unsafeNatives(),
+    ...(version === 17 ? { natives: unsafeNatives() } : {}),
   });
   const tInit = performance.now();
   // "/app/" is CheerpJ's read-only mount of this origin; jars are fetched lazily with Range requests.

@@ -14,11 +14,12 @@ reflection needs, and JavaScript natives could not stand in for them. Details an
 | Path | What it is |
 | --- | --- |
 | `packages/web-engine/WebEntryPoints.java` | Static `request(String) -> String` that lazily creates `EngineService` over `new XmageEngine("web-cheerpj")`. Same JSON protocol as `EngineCli` and `NativeEntryPoints`. |
-| `packages/web-engine/build_web.sh` | Builds git-ignored `packages/web-engine/build/web/`: 33 jars, resolved precon decks and `manifest.json` (sizes, SHA-256, upstream commit, catalogue hash, shadowed classes). |
+| `packages/web-engine/build_web.sh` | Builds git-ignored `packages/web-engine/build/web/`: 33 jars, resolved precon decks and `manifest.json` (sizes, SHA-256, upstream commit, catalogue hash, shadowed classes, `javaRelease`). `--java 11` builds the Java 11 variant into `build/web-java11/` (see Java 11 follow-up). |
+| `packages/web-engine/java11_sources.py` | Copies the adapter sources into `build/java11/src` and rewrites their six Java 16+ lines there, so they compile with `--release 11`. Fails if any line no longer matches. |
 | `packages/web-engine/shadow/mage/watchers/Watcher.java` | Web-only copy of upstream `Watcher` whose `copy()` moves field values with `sun.misc.Unsafe` plain accessors instead of reflection (CheerpJ workaround, see Results). Compiled into `magicmobile-engine.jar`, which is first on the browser classpath. iOS, Android and the JVM baseline keep upstream's class. |
 | `packages/web-engine/WebUnsafe.java` | Static plain `Unsafe` accessors that the worker's JavaScript natives call (CheerpJ workaround, see Results). |
 | `packages/web-engine/export_precons.py` | Resolves the five bundled iOS precons (`PreconCatalog.swift`) against this build's catalogue with `resolve_deck.py`'s printing rule. |
-| `apps/web-play/src/engine.worker.ts` | Classic Web Worker: `importScripts` the CheerpJ 4.3 loader, `cheerpjInit({version: 17})` with JavaScript implementations of six missing `Unsafe` natives, `cheerpjRunLibrary` over the jars, then forwards JSON requests to `WebEntryPoints.request`. |
+| `apps/web-play/src/engine.worker.ts` | Classic Web Worker: `importScripts` the CheerpJ 4.3 loader, `cheerpjInit({version})` with the bundle manifest's `javaRelease` (17 or 11; for 17 also JavaScript implementations of six missing `Unsafe` natives), `cheerpjRunLibrary` over the jars, then forwards JSON requests to `WebEntryPoints.request`. |
 | `apps/web-play/src/engineClient.ts` | Promise client with the Swift `EngineClient` operations: `capabilities`, `validateDeck`, `create`, `poll`, `respond`, `concede`, `destroy` (+ `shutdown`). |
 | `apps/web-play/src/autoplay.ts` | Transport-agnostic driver: seat 0 is a scripted human (land, castable spells, attack with all, never block), other seats are XMage AI. |
 | `apps/web-play/bench.html` | Boots the engine, plays the requested games (default a 1v1 and a 4-player Commander game) and shows timings live. |
@@ -55,6 +56,9 @@ npm run serve                               # http://127.0.0.1:5178/bench.html (
 node scripts/bench.mjs --ready-visits 2     # cold + cached engine boot, headless Chrome
 node scripts/bench.mjs --ready-visits 1 --games 2p:1,4p:2 --cap 900 --out <file>.json
 node scripts/jvm-baseline.mjs --games 2p:1,4p:2 --cap 900 --out <file>.json
+# Java 11 variant (after the Java 17 upstream + engine stages):
+packages/web-engine/build_web.sh --java 11  # -> packages/web-engine/build/web-java11/
+node scripts/bench.mjs --engine-dir ../../packages/web-engine/build/web-java11 --ready-visits 1 --games 2p:1,4p:2
 ```
 
 `bench.html` parameters: `games` (`<players>p:<seed>` list), `cap` (seconds per game), `skill`

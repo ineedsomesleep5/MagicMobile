@@ -1,6 +1,7 @@
 // SPIKE ONLY. Messages between the page and the CheerpJ engine worker.
 export type WorkerInbound =
-  | { type: "init"; loaderUrl: string; jarBase: string; jars: string[]; javaProperties?: string[] }
+  // javaVersion: CheerpJ runtime (17 or 11), from the bundle manifest's javaRelease.
+  | { type: "init"; loaderUrl: string; jarBase: string; jars: string[]; javaProperties?: string[]; javaVersion?: number }
   | { type: "request"; id: number; json: string }
   | { type: "resources"; id: number };
 
