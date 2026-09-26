@@ -18,6 +18,21 @@ enum GameBoardPreviewFixtures {
             }
             root["players"] = players
         }
+        if state == .abilityShowcase, specialStateAdvanced, var xmage = root["xmage"] as? [String: Any] {
+            // Prodigal Pyromancer's ability goes on the stack, as XMage names it: "Ability".
+            let source = previewCard("ai-1-ability-source", "Prodigal Pyromancer", "Creature — Human Wizard", "{2}{R}",
+                                     "{T}: This creature deals 1 damage to any target.", power: 1)
+            xmage["stack"] = [["id": "stack-ability-showcase", "objectId": "stack-ability-showcase", "objectType": "ACTIVATED_ABILITY",
+                               "name": "Ability", "rulesText": "Prodigal Pyromancer deals 1 damage to any target.",
+                               "sourceInstanceId": "ai-1-ability-source", "sourceName": "Prodigal Pyromancer", "sourceZone": "battlefield",
+                               "sourceCard": source, "controllerId": "ai-1", "targetIds": ["human"], "paid": true]]
+            var panels = xmage["panels"] as? [String: Any] ?? [:]
+            panels["stack"] = true
+            xmage["panels"] = panels
+            xmage["bridgeRevision"] = 100
+            root["xmage"] = xmage
+            root["bridgeRevision"] = 100
+        }
         if let step {
             root["step"] = step
             root["activePlayerId"] = "ai-1"
@@ -143,12 +158,27 @@ enum GameBoardPreviewFixtures {
         return snapshot.human?.zones.hand.first
     }
 
+    /// The card a preview opens held in the inspector.
+    static func inspectedCard(for state: GameBoardDesignPreviewState, snapshot: GameSnapshot) -> ZoneCard? {
+        switch state {
+        case .fullHandInspection: return snapshot.human?.zones.hand.first
+        case .tokenCopyInspection: return snapshot.human?.zones.battlefield.first { $0.instanceId == tokenCopyID }
+        default: return nil
+        }
+    }
+
+    static let tokenCopyID = "human-token-copy"
+
+    private static func previewCard(_ id: String, _ name: String, _ type: String, _ cost: String, _ rules: String, power: Int? = nil) -> [String: Any] {
+        var value: [String: Any] = ["instanceId": id, "card": ["name": name, "typeLine": type, "manaCost": cost, "oracleText": rules], "tapped": false]
+        if let power { value.merge(["power": power, "toughness": power, "isCreaturePermanent": true]) { _, new in new } }
+        return value
+    }
+
     // Development fixture projection only. These actions never enter a live engine session.
     private static func enrich(_ root: inout [String: Any], for state: GameBoardDesignPreviewState) {
         func card(_ id: String, _ name: String, _ type: String, _ cost: String, _ rules: String, power: Int? = nil) -> [String: Any] {
-            var value: [String: Any] = ["instanceId": id, "card": ["name": name, "typeLine": type, "manaCost": cost, "oracleText": rules], "tapped": false]
-            if let power { value.merge(["power": power, "toughness": power, "isCreaturePermanent": true]) { _, new in new } }
-            return value
+            previewCard(id, name, type, cost, rules, power: power)
         }
         let creatures = [("Silvercoat Lion", "{1}{W}", 2), ("Serra Angel", "{3}{W}{W}", 4), ("Grizzly Bears", "{1}{G}", 2), ("Llanowar Elves", "{G}", 1), ("Spirited Companion", "{1}{W}", 1), ("Sun Titan", "{4}{W}{W}", 6)]
         let crowded = [GameBoardDesignPreviewState.crowdedBattlefield, .fourPlayerFocus, .manaPaymentPrompt, .combatArrows, .largeText].contains(state)
@@ -209,8 +239,22 @@ enum GameBoardPreviewFixtures {
                 }
                 zones["graveyard"] = graveyard
             }
-            if state == .stackResponsePrompt && index == 1 {
+            if (state == .stackResponsePrompt || state == .abilityShowcase) && index == 1 {
                 battlefield.append(card("ai-1-ability-source", "Prodigal Pyromancer", "Creature — Human Wizard", "{2}{R}", "{T}: This creature deals 1 damage to any target.", power: 1))
+            }
+            if state == .tokenCopyInspection && index == 0 {
+                // A token copy of Sun Titan that has grown: its frame shows the live 7/7, never the printed 6/6.
+                var copy = card(tokenCopyID, "Sun Titan", "Creature — Giant", "{4}{W}{W}",
+                                "Vigilance\nWhenever Sun Titan enters or attacks, you may return target permanent card with mana value 3 or less from your graveyard to the battlefield.",
+                                power: 7)
+                var identity = copy["card"] as! [String: Any]
+                identity["isToken"] = true
+                identity["copySourceArtworkName"] = "Sun Titan"
+                identity["tokenColors"] = ["W"]
+                copy["card"] = identity
+                copy["counters"] = ["+1/+1": 1]
+                copy["summoningSickness"] = false
+                battlefield.append(copy)
             }
             if state == .attachedPermanents {
                 players[index]["poison"] = index == 0 ? 2 : 3

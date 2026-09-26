@@ -139,3 +139,31 @@ final class BoardCardPresentationTests: XCTestCase {
         XCTAssertEqual(BoardFXBannerPlan.title(name: "Lightning Bolt", isAbility: false, sourceName: "Lightning Bolt"), "Lightning Bolt")
     }
 }
+
+#if !SWIFT_PACKAGE
+// The DEBUG board fixtures live in the app target only (Android: PreviewFixturesTest.kt).
+extension BoardCardPresentationTests {
+    func testTokenCopyPreviewOpensTheInspectorOnALiveTokenCopy() throws {
+        let snapshot = GameBoardPreviewFixtures.snapshot(.tokenCopyInspection)
+        let token = try XCTUnwrap(GameBoardPreviewFixtures.inspectedCard(for: .tokenCopyInspection, snapshot: snapshot))
+        XCTAssertEqual(token.tokenCopySourceName, "Sun Titan")
+        XCTAssertEqual(token.displayPower, "7")
+        XCTAssertEqual(token.displayToughness, "7")
+        XCTAssertTrue(snapshot.human?.zones.battlefield.contains { $0.instanceId == token.instanceId } == true)
+        XCTAssertNil(GameBoardPreviewFixtures.inspectedCard(for: .normalBattlefield, snapshot: snapshot))
+    }
+
+    func testAbilityShowcasePutsAnAbilityWithItsSourceOnTheStack() throws {
+        let base = GameBoardPreviewFixtures.snapshot(.abilityShowcase)
+        let advanced = GameBoardPreviewFixtures.snapshot(.abilityShowcase, specialStateAdvanced: true)
+        XCTAssertTrue(base.stackTopFirst.isEmpty)
+        XCTAssertNotEqual(BoardFXRevisionKey(snapshot: base), BoardFXRevisionKey(snapshot: advanced), "the board observes the change")
+        let events = BoardEventDiffer.events(from: BoardFXState(snapshot: base), to: BoardFXState(snapshot: advanced))
+        XCTAssertEqual(events.count, 1)
+        guard case let .spellCast(_, name, _, _, weight) = try XCTUnwrap(events.first) else { return XCTFail("expected a cast") }
+        XCTAssertEqual(weight, .ability)
+        let source = advanced.stackTopFirst.first?.displaySourceCard?.card.name
+        XCTAssertEqual(BoardFXBannerPlan.title(name: name, isAbility: true, sourceName: source), "Prodigal Pyromancer · ability")
+    }
+}
+#endif

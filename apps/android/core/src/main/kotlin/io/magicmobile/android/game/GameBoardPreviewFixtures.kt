@@ -24,7 +24,8 @@ enum class GameBoardDesignPreviewState(val rawValue: String) {
     EMPTY_LIBRARY_CHOICE("empty-library-choice"), MIXED_CARD_CHOICE("mixed-card-choice"), HAND_DRAG("hand-drag"),
     HAND_SCRUBBER("hand-scrubber"), ZONE_INSPECTION("zone-inspection"), ABILITY_CHOICE("ability-choice"), MODE_CHOICE("mode-choice"),
     PHASE_ANNOUNCEMENT("phase-announcement"), LIFE_CHANGE("life-change"), LARGE_TEXT("large-text"), STACK_TRAY("stack-tray"),
-    VICTORY("victory"), SPECTATING("spectating"), OPENING_HAND("opening-hand");
+    VICTORY("victory"), SPECTATING("spectating"), OPENING_HAND("opening-hand"), TOKEN_COPY_INSPECTION("token-copy-inspection"),
+    ABILITY_SHOWCASE("ability-showcase");
 
     val title: String get() = capitalizedWords(rawValue.replace("-", " "))
 
@@ -51,6 +52,18 @@ object GameBoardPreviewFixtures {
                 }
             }
         }
+        if (state == GameBoardDesignPreviewState.ABILITY_SHOWCASE && specialStateAdvanced) {
+            // Prodigal Pyromancer's ability goes on the stack, as XMage names it: "Ability".
+            val xmage = map(root["xmage"])
+            val source = card("ai-1-ability-source", "Prodigal Pyromancer", "Creature — Human Wizard", "{2}{R}", "{T}: This creature deals 1 damage to any target.", 1)
+            xmage["stack"] = mutableListOf(mutableMapOf("id" to "stack-ability-showcase", "objectId" to "stack-ability-showcase",
+                "objectType" to "ACTIVATED_ABILITY", "name" to "Ability", "rulesText" to "Prodigal Pyromancer deals 1 damage to any target.",
+                "sourceInstanceId" to "ai-1-ability-source", "sourceName" to "Prodigal Pyromancer", "sourceZone" to "battlefield",
+                "sourceCard" to source, "controllerId" to "ai-1", "targetIds" to mutableListOf("human"), "paid" to true))
+            map(xmage["panels"])["stack"] = true
+            xmage["bridgeRevision"] = 100
+            root["bridgeRevision"] = 100
+        }
         if (step != null) { root["step"] = step; root["activePlayerId"] = "ai-1" }
         if (life != null) players(root).firstOrNull { it["playerId"] == "human" }?.set("life", life)
         (root["promptEnvelopeV2"] as? Map<*, *>)?.let { root["promptText"] = it["message"] }
@@ -60,6 +73,15 @@ object GameBoardPreviewFixtures {
     fun selectedCard(state: GameBoardDesignPreviewState, snapshot: GameSnapshot): ZoneCard? =
         if (state in setOf(GameBoardDesignPreviewState.SELECTED_CARD_ACTION_TRAY, GameBoardDesignPreviewState.MISSING_CARD_ART,
                 GameBoardDesignPreviewState.FULL_HAND_INSPECTION)) snapshot.human?.zones?.hand?.firstOrNull() else null
+
+    const val TOKEN_COPY_ID = "human-token-copy"
+
+    /** The card a preview opens held in the inspector. */
+    fun inspectedCard(state: GameBoardDesignPreviewState, snapshot: GameSnapshot): ZoneCard? = when (state) {
+        GameBoardDesignPreviewState.FULL_HAND_INSPECTION -> snapshot.human?.zones?.hand?.firstOrNull()
+        GameBoardDesignPreviewState.TOKEN_COPY_INSPECTION -> snapshot.human?.zones?.battlefield?.firstOrNull { it.instanceId == TOKEN_COPY_ID }
+        else -> null
+    }
 
     const val boardFXStepCount = 10
 
@@ -223,8 +245,20 @@ object GameBoardPreviewFixtures {
                 val graveyard = list(zones["graveyard"])
                 for (number in 0 until 24) graveyard += card("graveyard-overflow-$number", "Fixture Graveyard $number", "Creature", "", "Development scrolling fixture.", 1)
             }
-            if (state == GameBoardDesignPreviewState.STACK_RESPONSE_PROMPT && index == 1) {
+            if ((state == GameBoardDesignPreviewState.STACK_RESPONSE_PROMPT || state == GameBoardDesignPreviewState.ABILITY_SHOWCASE) && index == 1) {
                 battlefield += card("ai-1-ability-source", "Prodigal Pyromancer", "Creature — Human Wizard", "{2}{R}", "{T}: This creature deals 1 damage to any target.", 1)
+            }
+            if (state == GameBoardDesignPreviewState.TOKEN_COPY_INSPECTION && index == 0) {
+                // A token copy of Sun Titan that has grown: its frame shows the live 7/7, never the printed 6/6.
+                val copy = card(TOKEN_COPY_ID, "Sun Titan", "Creature — Giant", "{4}{W}{W}",
+                    "Vigilance\nWhenever Sun Titan enters or attacks, you may return target permanent card with mana value 3 or less from your graveyard to the battlefield.", 7)
+                val identity = map(copy["card"])
+                identity["isToken"] = true
+                identity["copySourceArtworkName"] = "Sun Titan"
+                identity["tokenColors"] = mutableListOf("W")
+                copy["counters"] = mutableMapOf("+1/+1" to 1)
+                copy["summoningSickness"] = false
+                battlefield += copy
             }
             if (state == GameBoardDesignPreviewState.ATTACHED_PERMANENTS) {
                 player["poison"] = if (index == 0) 2 else 3

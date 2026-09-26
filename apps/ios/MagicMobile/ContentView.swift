@@ -227,6 +227,28 @@ struct ContentView: View {
                     .font(.caption).padding(8).background(.black)
                     .padding(.top, 24).accessibilityIdentifier("preview.advance")
                 }
+                if fixture == "ability-showcase" {
+                    Button("Replay ability") {
+                        snapshot = GameBoardPreviewFixtures.snapshot(.abilityShowcase)
+                        Task {
+                            try? await Task.sleep(for: .seconds(0.4))
+                            snapshot = GameBoardPreviewFixtures.snapshot(.abilityShowcase, specialStateAdvanced: true)
+                        }
+                    }
+                    .font(.caption).padding(8).background(.black)
+                    .padding(.top, 24).accessibilityIdentifier("preview.advance")
+                    .task {
+                        // The ability goes on the stack once the board has settled, and replays
+                        // unless MAGICMOBILE_BOARD_FX_FREEZE holds it for a screenshot.
+                        while !Task.isCancelled {
+                            do { try await Task.sleep(for: .seconds(1.2)) } catch { return }
+                            snapshot = GameBoardPreviewFixtures.snapshot(.abilityShowcase, specialStateAdvanced: true)
+                            if BoardFXPreviewFreeze.seconds != nil { return }
+                            do { try await Task.sleep(for: .seconds(2.4)) } catch { return }
+                            snapshot = GameBoardPreviewFixtures.snapshot(.abilityShowcase)
+                        }
+                    }
+                }
             }
             #endif
         }
@@ -626,7 +648,7 @@ struct ContentView: View {
         let previewSnapshot = previewText == "board-fx" ? GameBoardPreviewFixtures.boardFXStep(0) : GameBoardPreviewFixtures.snapshot(state)
         snapshot = previewSnapshot
         selectedCard = GameBoardPreviewFixtures.selectedCard(for: state, snapshot: previewSnapshot)
-        inspectedCard = state == .fullHandInspection ? previewSnapshot.human?.zones.hand.first : nil
+        inspectedCard = GameBoardPreviewFixtures.inspectedCard(for: state, snapshot: previewSnapshot)
         if let id = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_INSPECT"] {
             inspectedCard = previewSnapshot.visibleBattlefield.first { $0.instanceId == id }
         }

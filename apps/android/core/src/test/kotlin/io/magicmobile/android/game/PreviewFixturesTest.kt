@@ -28,6 +28,26 @@ class PreviewFixturesTest {
         assertNull("your own priority is not the AI thinking", GameBoardPreviewFixtures.snapshot(GameBoardDesignPreviewState.NORMAL_BATTLEFIELD).thinkingPlayerID)
     }
 
+    @Test fun tokenCopyPreviewOpensTheInspectorOnALiveTokenCopy() {
+        val snapshot = GameBoardPreviewFixtures.snapshot(GameBoardDesignPreviewState.TOKEN_COPY_INSPECTION)
+        val token = GameBoardPreviewFixtures.inspectedCard(GameBoardDesignPreviewState.TOKEN_COPY_INSPECTION, snapshot)!!
+        assertEquals("Sun Titan", token.tokenCopySourceName)
+        assertEquals("7" to "7", token.displayPower to token.displayToughness)
+        assertTrue(snapshot.human!!.zones.battlefield.contains(token))
+        assertNull(GameBoardPreviewFixtures.inspectedCard(GameBoardDesignPreviewState.NORMAL_BATTLEFIELD, snapshot))
+    }
+
+    @Test fun abilityShowcasePutsAnAbilityWithItsSourceOnTheStack() {
+        val base = GameBoardPreviewFixtures.snapshot(GameBoardDesignPreviewState.ABILITY_SHOWCASE)
+        val advanced = GameBoardPreviewFixtures.snapshot(GameBoardDesignPreviewState.ABILITY_SHOWCASE, specialStateAdvanced = true)
+        assertTrue(base.xmage!!.stack.isEmpty())
+        assertTrue("the board observes the change", BoardFXRevisionKey(base) != BoardFXRevisionKey(advanced))
+        val cast = BoardEventDiffer.events(BoardFXState.of(base), BoardFXState.of(advanced)).single() as BoardFXEvent.SpellCast
+        assertEquals(BoardFXSpellWeight.ABILITY, cast.weight)
+        val source = advanced.xmage!!.stack.single().displaySourceCard?.card?.name
+        assertEquals("Prodigal Pyromancer · ability", BoardFXBannerPlan.title(cast.name, true, source))
+    }
+
     @Test fun boardShapesMatchIOS() {
         val normal = GameBoardPreviewFixtures.snapshot(GameBoardDesignPreviewState.NORMAL_BATTLEFIELD)
         assertEquals(8, normal.human!!.zones.hand.size)
