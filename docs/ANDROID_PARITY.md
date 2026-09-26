@@ -74,3 +74,16 @@ iOS change has one obvious Android counterpart. Update the table and the log bef
   logic and tests; the landscape board and the Downloads sheet ported. Build 7 decks keep their files;
   favourites, tags and notes migrate once to Deck Studio's stores. Remaining differences: font glyph
   shapes (licensed stand-ins), a few borderline text wraps, and no Game Center (relay tables instead).
+- 2026-09-26 (Claude): Build 18 / build 9 work, integrated on `codex/build18-integration`.
+  Every change landed on both platforms:
+  - relay backlog fix (#39)
+  - playtest focus (#41) and cards (#43)
+  - multiplayer hardening (#42): guest retry, host revision notices, and local crash and hang
+    reports, including a new Android `OnDeviceDiagnostics.kt` that ports the iOS export
+  - fan-content notice and row overflow badges (#45)
+  - combat clarity (#46)
+  - an iOS 27 card-choice accessibility fix (#49; Android needed no change)
+
+  New shared JSON cases under `core/src/test/resources/parity/` are read by both platforms'
+  tests: `focus-cases`, `spectator-cases` and `combat-cases`.
+
