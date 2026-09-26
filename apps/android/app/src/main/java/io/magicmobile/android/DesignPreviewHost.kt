@@ -46,7 +46,7 @@ import kotlinx.coroutines.launch
 object DesignPreview {
     val keys = listOf("MAGICMOBILE_DESIGN_PREVIEW", "MAGICMOBILE_FORCE_CARD_PLACEHOLDERS", "MAGICMOBILE_UI_TEST_PREFERENCES",
         "MAGICMOBILE_PREVIEW_INSPECT", "MAGICMOBILE_BOARD_FX_AUTOPLAY", "MAGICMOBILE_BOARD_EFFECTS", "MAGICMOBILE_FONT_CHECK", "MAGICMOBILE_RELAY_URL",
-        "MAGICMOBILE_BOARD_FX_FREEZE")
+        "MAGICMOBILE_BOARD_FX_FREEZE", "MAGICMOBILE_PREVIEW_OPEN_LOG")
 
     fun extras(intent: Intent?): Map<String, String> {
         if (!BuildConfig.DEBUG || intent == null) return emptyMap()
@@ -102,6 +102,19 @@ fun DesignPreviewHost() {
             }
         }
     }
+    if (preview == "first-strike") {
+        LaunchedEffect(Unit) {
+            // Declared blocks first, then XMage's first-strike damage step. Replays unless
+            // MAGICMOBILE_BOARD_FX_FREEZE holds the beat for a screenshot.
+            while (true) {
+                delay(1200)
+                snapshot = GameBoardPreviewFixtures.snapshot(GameBoardDesignPreviewState.FIRST_STRIKE, specialStateAdvanced = true)
+                if (io.magicmobile.android.board.BoardFXPreviewFreeze.seconds != null) break
+                delay(3600)
+                snapshot = GameBoardPreviewFixtures.snapshot(GameBoardDesignPreviewState.FIRST_STRIKE)
+            }
+        }
+    }
     if (preview == "ability-showcase") {
         LaunchedEffect(Unit) {
             // The ability goes on the stack once the board has settled, and replays unless
@@ -131,6 +144,16 @@ fun DesignPreviewHost() {
                         boardFXStep = (boardFXStep + 1) % GameBoardPreviewFixtures.boardFXStepCount
                         snapshot = GameBoardPreviewFixtures.boardFXStep(boardFXStep)
                     }.padding(8.dp).semantics { contentDescription = "preview.boardFX.next" }, color = Color(0xFF0A84FF), style = SfText.caption())
+                }
+                if (preview == "first-strike") {
+                    val scope = androidx.compose.runtime.rememberCoroutineScope()
+                    Text("Replay first strike", Modifier.background(Color.Black).clickable {
+                        snapshot = GameBoardPreviewFixtures.snapshot(GameBoardDesignPreviewState.FIRST_STRIKE)
+                        scope.launch {
+                            delay(400)
+                            snapshot = GameBoardPreviewFixtures.snapshot(GameBoardDesignPreviewState.FIRST_STRIKE, specialStateAdvanced = true)
+                        }
+                    }.padding(8.dp).semantics { contentDescription = "preview.advance" }, color = Color(0xFF0A84FF), style = SfText.caption())
                 }
                 if (preview == "ability-showcase") {
                     val scope = androidx.compose.runtime.rememberCoroutineScope()

@@ -679,6 +679,8 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
             arrivalGlow(blocker, blockSteel, p, motion)
             rect(event.attackerID)?.let { link(blocker, it, blockSteel, p) }
         }
+        // XMage's first-strike damage step: named while its strikes, damage and deaths play.
+        BoardFXEvent.FirstStrikeBeat -> banner(measurer, "First strike", null, anchors.stackPoint, attackRed, p)
         is BoardFXEvent.CombatStrike -> {
             val origin = rect(event.attackerID) ?: return
             val hit = point(event.target) ?: return
@@ -727,6 +729,7 @@ object BoardFXSound {
             is BoardFXEvent.AttackDeclared -> cues += Cue(GameSound.ATTACK, fx.delay)
             is BoardFXEvent.BlockDeclared -> cues += Cue(GameSound.BLOCK, fx.delay)
             is BoardFXEvent.CombatStrike -> cues += Cue(if (event.target == BoardFXStrikeTarget.Player(viewerID)) GameSound.PLAYER_HIT else GameSound.STRIKE, fx.handoff)
+            BoardFXEvent.FirstStrikeBeat -> {}
             is BoardFXEvent.DamageMarked -> if (!hasStrike) cues += Cue(GameSound.STRIKE, fx.delay, 0.7f)
             is BoardFXEvent.LeftBattlefield -> cues += when (event.to) {
                 BoardFXZone.EXILE -> Cue(GameSound.EXILE, fx.delay)

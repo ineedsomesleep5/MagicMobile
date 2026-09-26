@@ -243,6 +243,7 @@ val ZoneCard.combatKeywords: List<CombatKeyword> get() = CombatKeyword.of(cardIc
  */
 class CombatKeywordBadgePlan(keywords: List<CombatKeyword>, cardWidth: Float, cardHeight: Float) {
     val visible: List<CombatKeyword>
+    /** Keywords that do not fit; they keep their icon in the card's ability row. */
     val hiddenCount: Int
     /** Narrow cards use short labels ("2× strike"). */
     val compact: Boolean = cardWidth < COMPACT_WIDTH
