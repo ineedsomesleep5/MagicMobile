@@ -11276,7 +11276,7 @@ private struct BattlefieldRowOverflowMarkers: View {
             .background(MagicPalette.iron.opacity(0.94), in: Capsule())
             .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.58), lineWidth: 1))
             .transition(.opacity)
-            // The row's own identifier (on BattlefieldRow's ZStack) takes precedence here; find markers by label.
+            // The row's own identifier (on its scroll view) takes precedence here; find markers by label.
             .accessibilityLabel("\(count) more \(count == 1 ? "card" : "cards") off-screen to the \(side)")
     }
 }
@@ -11389,6 +11389,9 @@ struct BattlefieldRow: View {
                         }
                         .scrollClipDisabled()
                         .battlefieldRowOverflow(overflowLane(scroller: row, rows: [arranged[row]]), offsets: scrollOffsets)
+                        // Each resource row scrolls on its own, so each needs its own identifier:
+                        // the first keeps the lane's, the second adds ".row2".
+                        .accessibilityIdentifier("board.battlefield.\(title)" + (row == 0 ? "" : ".row\(row + 1)"))
                     }
                 }
             } else {
@@ -11403,9 +11406,9 @@ struct BattlefieldRow: View {
                 }
                 .scrollClipDisabled()
                 .battlefieldRowOverflow(overflowLane(scroller: 0, rows: Array(arranged.prefix(rows))), offsets: scrollOffsets)
+                .accessibilityIdentifier("board.battlefield.\(title)")
             }
         }
-        .accessibilityIdentifier("board.battlefield.\(title)")
         .animation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.2), value: renderedCardWidth)
     }
 
