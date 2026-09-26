@@ -59,6 +59,7 @@ import io.magicmobile.android.board.BoardSheet
 import io.magicmobile.android.board.ConfirmationAction
 import io.magicmobile.android.board.ConfirmationDialog
 import io.magicmobile.android.board.MenuEntry
+import io.magicmobile.android.game.CardCountText
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.sf
@@ -387,7 +388,7 @@ private fun WorkspaceHeader(model: DeckStudioEditorModel, metadata: NativeDeckMe
             horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(draft.name.ifEmpty { "Untitled draft" }, Modifier.weight(1f), color = DeckStudioPalette.ink, style = StudioText.headline, maxLines = 1,
                 overflow = TextOverflow.Ellipsis)
-            Text("${DeckStudioDraftPresentation.gameCount(draft)} cards", color = DeckStudioPalette.ink, style = StudioText.caption)
+            Text(CardCountText.label(DeckStudioDraftPresentation.gameCount(draft)), color = DeckStudioPalette.ink, style = StudioText.caption)
             SfImage("chevron.down", DeckStudioPalette.ink, 15.dp, Modifier.rotate(rotation))
         }
         AnimatedVisibility(expanded, enter = expandVertically(tween(220)) + fadeIn(tween(220)), exit = shrinkVertically(tween(220)) + fadeOut(tween(160))) {
@@ -402,7 +403,7 @@ private fun WorkspaceHeader(model: DeckStudioEditorModel, metadata: NativeDeckMe
                     Text(DeckStudioDraftPresentation.commanders(draft).joinToString(" • "), color = DeckStudioPalette.secondaryInk, style = StudioText.caption, maxLines = 2)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         DeckStudioColorIdentity(DeckStudioDraftPresentation.colors(draft, metadata))
-                        Text("${DeckStudioDraftPresentation.gameCount(draft)} cards · Commander", color = DeckStudioPalette.ink, style = StudioText.caption)
+                        Text("${CardCountText.label(DeckStudioDraftPresentation.gameCount(draft))} · Commander", color = DeckStudioPalette.ink, style = StudioText.caption)
                     }
                     Text(model.saveLabel, color = DeckStudioPalette.secondaryInk, style = StudioText.caption2)
                     Row(Modifier.defaultMinSize(minHeight = 44.dp).clickable { validate() }, horizontalArrangement = Arrangement.spacedBy(6.dp),

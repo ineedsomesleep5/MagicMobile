@@ -60,7 +60,7 @@ struct DeckStudioAnalysisContent: View {
                         Text("Tap a bar to see its cards. Main-deck nonlands only.").font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                         if dynamicType.isAccessibilitySize {
                             ForEach(0...7, id: \.self) { bin in
-                                Button { selectedBin = selectedBin == bin ? nil : bin } label: { metric(bin == 7 ? "7+ mana" : "\(bin) mana", "\(binCount(bin)) cards") }.frame(minHeight: 44)
+                                Button { selectedBin = selectedBin == bin ? nil : bin } label: { metric(bin == 7 ? "7+ mana" : "\(bin) mana", CardCountText.label(binCount(bin))) }.frame(minHeight: 44)
                             }
                         } else {
                             ScrollView(.horizontal, showsIndicators: false) {
@@ -73,7 +73,7 @@ struct DeckStudioAnalysisContent: View {
                                                     .frame(height: max(3, 100 * Double(binCount(bin)) / Double(max(1, (0...7).map(binCount).max() ?? 1))))
                                                 Text(bin == 7 ? "7+" : "\(bin)").font(.caption)
                                             }.frame(width: 44, height: 144, alignment: .bottom)
-                                        }.buttonStyle(.plain).accessibilityLabel("Mana value \(bin == 7 ? "7 or more" : "\(bin)"), \(binCount(bin)) cards. Show cards.")
+                                        }.buttonStyle(.plain).accessibilityLabel("Mana value \(bin == 7 ? "7 or more" : "\(bin)"), \(CardCountText.label(binCount(bin))). Show cards.")
                                     }
                                 }
                             }
@@ -124,7 +124,7 @@ struct DeckStudioAnalysisContent: View {
                                     Spacer()
                                     Text("\(colorCount(color))").foregroundStyle(DeckStudioPalette.secondaryInk)
                                 }.accessibilityElement(children: .ignore)
-                                    .accessibilityLabel("\(["W": "White", "U": "Blue", "B": "Black", "R": "Red", "G": "Green", "C": "Colorless"][color] ?? color): \(colorCount(color)) cards")
+                                    .accessibilityLabel("\(["W": "White", "U": "Blue", "B": "Black", "R": "Red", "G": "Green", "C": "Colorless"][color] ?? color): \(CardCountText.label(colorCount(color)))")
                             }
                             DisclosureGroup("About types and colors") {
                                 Text("Main-deck quantities; categories overlap for multi-type and multicolor cards. Unknown colors are excluded. Card colors are not commander identity or mana sources.")

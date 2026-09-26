@@ -188,7 +188,7 @@ struct DeckStudioRootView: View {
                         commanders: DeckStudioDraftPresentation.commanders(draft).joined(separator: " • "),
                         colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata),
                         tags: tags[record.id] ?? [], showTags: tags.values.contains(where: { !$0.isEmpty }),
-                        summary: "\(DeckStudioDraftPresentation.gameCount(draft)) cards · \(included ? "Included" : "Local draft")")
+                        summary: "\(CardCountText.label(DeckStudioDraftPresentation.gameCount(draft))) · \(included ? "Included" : "Local draft")")
                         .padding(.horizontal, 14).padding(.bottom, 10)
                 }.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             }.buttonStyle(DeckStudioArtworkButtonStyle()).accessibilityIdentifier("deckStudio.deck.\(id)")

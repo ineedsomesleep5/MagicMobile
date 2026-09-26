@@ -18,7 +18,7 @@ struct NativeDeckCover: View {
                     Spacer(minLength: 0)
                     if selected { Image(systemName: "checkmark.circle.fill").foregroundStyle(MagicPalette.antiqueGold) }
                 }
-                Text("Commander · \(NativeDeckDisplay.cardCount(record.cardCount))").font(.caption)
+                Text("Commander · \(CardCountText.label(record.cardCount))").font(.caption)
             }.foregroundStyle(.white).padding(12)
         }
         .frame(height: 200)
@@ -125,7 +125,7 @@ struct NativeDeckGroupHeader: View {
         HStack {
             Text(title).font(.subheadline.bold())
             Spacer()
-            Text(NativeDeckDisplay.cardCount(count)).font(.caption).foregroundStyle(.secondary)
+            Text(CardCountText.label(count)).font(.caption).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 10).padding(.vertical, 9)
         .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 6))
@@ -191,8 +191,8 @@ struct NativeDeckStatsPanel: View {
     let types: [String: Int]
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Main deck only · \(NativeDeckDisplay.cardCount(statistics.cardCount))").font(.headline)
-            Text("Commander, companion and other sections excluded: \(statistics.excludedCardCount) cards.")
+            Text("Main deck only · \(CardCountText.label(statistics.cardCount))").font(.headline)
+            Text("Commander, companion and other sections excluded: \(CardCountText.label(statistics.excludedCardCount)).")
                 .font(.caption).foregroundStyle(.secondary)
             Text("Mana value · nonlands").font(.headline)
             let curve = statistics.manaCurve
@@ -207,7 +207,7 @@ struct NativeDeckStatsPanel: View {
                         Text(value.formatted()).font(.caption)
                     }.frame(width: 38)
                         .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("Mana value \(value.formatted()): \(curve[value] ?? 0) cards")
+                        .accessibilityLabel("Mana value \(value.formatted()): \(CardCountText.label(curve[value] ?? 0))")
                 }
               }.frame(height: 180, alignment: .bottom)
             } }
@@ -263,8 +263,6 @@ struct NativeDeckStatisticsView: View {
 
 /// View-only grouping/filtering; never changes names, sections, quantities or commander roles.
 enum NativeDeckDisplay {
-    static func cardCount(_ count: Int) -> String { "\(count) \(count == 1 ? "card" : "cards")" }
-
     static func matches(name: String, query: String, type: String, color: String, metadata: NativeDeckMetadataCatalogue?) -> Bool {
         let card = metadata?.card(named: name)
         let nameMatches = query.isEmpty || name.localizedCaseInsensitiveContains(query) || card?.oracleText?.localizedCaseInsensitiveContains(query) == true

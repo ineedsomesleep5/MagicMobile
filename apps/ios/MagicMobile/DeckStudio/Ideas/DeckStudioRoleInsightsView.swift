@@ -63,7 +63,7 @@ struct DeckStudioRoleInsightsView: View {
                                 Text("\(analysis.count(role))").font(.subheadline.monospacedDigit())
                                 Image(systemName: selectedRole == role ? "chevron.up" : "chevron.down").font(.caption2)
                             }.frame(minHeight: 44)
-                        }.buttonStyle(.plain).accessibilityLabel("\(role.title), \(analysis.count(role)) cards. Review detected cards.")
+                        }.buttonStyle(.plain).accessibilityLabel("\(role.title), \(CardCountText.label(analysis.count(role))). Review detected cards.")
                         if selectedRole == role {
                             let matching = analysis.cards.filter { $0.evidence.contains { $0.role == role } }
                             if matching.isEmpty {

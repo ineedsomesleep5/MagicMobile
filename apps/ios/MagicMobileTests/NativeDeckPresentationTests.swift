@@ -2,11 +2,6 @@ import XCTest
 @testable import MagicMobile
 
 final class NativeDeckPresentationTests: XCTestCase {
-    func testCardCountLabels() {
-        XCTAssertEqual(NativeDeckDisplay.cardCount(0), "0 cards")
-        XCTAssertEqual(NativeDeckDisplay.cardCount(1), "1 card")
-        XCTAssertEqual(NativeDeckDisplay.cardCount(100), "100 cards")
-    }
     func testGroupingPreservesExplicitRolesAndUnknownSections() {
         XCTAssertEqual(NativeDeckDisplay.group(section: "deck", primary: true, card: nil), "Commander")
         XCTAssertEqual(NativeDeckDisplay.group(section: " Commanders ", primary: false, card: nil), "Commander")

@@ -58,6 +58,7 @@ import io.magicmobile.android.board.BoardSheet
 import io.magicmobile.android.board.ConfirmationAction
 import io.magicmobile.android.board.ConfirmationDialog
 import io.magicmobile.android.board.MenuEntry
+import io.magicmobile.android.game.CardCountText
 import io.magicmobile.android.ondevice.OnDeviceSetupModel
 import io.magicmobile.android.ondevice.OnDeviceSetupPreferences
 import io.magicmobile.android.ui.AppPreferences
@@ -341,7 +342,7 @@ private fun DeckTile(record: DeckLibraryRecord, included: Boolean, selected: Boo
                 }
             }
             DeckStudioTileDetails(record.name, DeckStudioDraftPresentation.commanders(draft).joinToString(" • "), colors, tags, showTags,
-                "${DeckStudioDraftPresentation.gameCount(draft)} cards · ${if (included) "Included" else "Local draft"}",
+                "${CardCountText.label(DeckStudioDraftPresentation.gameCount(draft))} · ${if (included) "Included" else "Local draft"}",
                 Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp))
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {

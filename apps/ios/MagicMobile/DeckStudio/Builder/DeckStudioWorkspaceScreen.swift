@@ -72,7 +72,7 @@ struct DeckStudioWorkspaceScreen: View {
                     HStack {
                         Text(model.draft.name.isEmpty ? "Untitled draft" : model.draft.name).font(.headline).lineLimit(1)
                         Spacer()
-                        Text("\(DeckStudioDraftPresentation.gameCount(model.draft)) cards").font(.caption)
+                        Text(CardCountText.label(DeckStudioDraftPresentation.gameCount(model.draft))).font(.caption)
                         Text(model.saveLabel).font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk)
                     }.padding(.horizontal, 20).padding(.vertical, 6)
                 }
@@ -118,7 +118,7 @@ struct DeckStudioWorkspaceScreen: View {
                                 ForEach(["Cards", "Ideas", "Analysis", "Playtest"], id: \.self) { Text($0).tag($0) }
                             }.pickerStyle(.menu).accessibilityIdentifier("deckStudio.workspace")
                             Text("\(DeckStudioDraftPresentation.gameCount(model.draft))").font(.caption).monospacedDigit()
-                                .accessibilityLabel("\(DeckStudioDraftPresentation.gameCount(model.draft)) cards")
+                                .accessibilityLabel(CardCountText.label(DeckStudioDraftPresentation.gameCount(model.draft)))
                         }
                     }
                 }
@@ -216,7 +216,7 @@ struct DeckStudioWorkspaceScreen: View {
                     Text(model.draft.name.isEmpty ? "Untitled draft" : model.draft.name)
                         .font(.headline).lineLimit(1)
                     Spacer(minLength: 0)
-                    Text("\(DeckStudioDraftPresentation.gameCount(model.draft)) cards")
+                    Text(CardCountText.label(DeckStudioDraftPresentation.gameCount(model.draft)))
                         .font(.caption).monospacedDigit()
                     Image(systemName: "chevron.down").rotationEffect(.degrees(headerExpanded ? 180 : 0))
                 }.frame(minHeight: 44).contentShape(Rectangle())
@@ -254,7 +254,7 @@ struct DeckStudioWorkspaceScreen: View {
         }
     }
     private var deckCount: some View {
-        Text("\(DeckStudioDraftPresentation.gameCount(model.draft)) cards · Commander")
+        Text("\(CardCountText.label(DeckStudioDraftPresentation.gameCount(model.draft))) · Commander")
             .font(.caption).monospacedDigit()
             .contentTransition(.numericText())
             .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: DeckStudioDraftPresentation.gameCount(model.draft))

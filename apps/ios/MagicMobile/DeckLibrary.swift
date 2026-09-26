@@ -803,7 +803,7 @@ private struct DeckDetailView: View {
                     Text(deck.name).font(.system(size: 30, weight: .bold, design: .serif)).foregroundStyle(.white)
                     Label(deck.commander?.cardName ?? "Commander needed", systemImage: "crown.fill")
                         .font(.headline).foregroundStyle(MagicPalette.antiqueGold)
-                    Text("\(deck.cardCount) cards · Revision \(deck.revision)").font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.62))
+                    Text("\(CardCountText.label(deck.cardCount)) · Revision \(deck.revision)").font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.62))
                 }
                 if !deck.validationMessages.isEmpty {
                     VStack(alignment: .leading, spacing: 5) {
