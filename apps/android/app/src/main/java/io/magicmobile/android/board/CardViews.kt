@@ -253,7 +253,7 @@ fun TokenCopyCardFace(card: ZoneCard, source: String, width: Dp, height: Dp) {
             }
         }
         val slot = frame.tagSlot
-        Box(Modifier.place(slot), contentAlignment = Alignment.Center) {
+        Box(Modifier.place(slot), contentAlignment = Alignment.CenterStart) {
             Box(Modifier.height(slot.height.dp).background(MagicPalette.iron.copy(alpha = 0.88f), CircleShape)
                 .border(0.7.dp, MagicPalette.antiqueGold.copy(alpha = 0.6f), CircleShape).padding(horizontal = (slot.height * 0.45f).dp),
                 contentAlignment = Alignment.Center) {

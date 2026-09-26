@@ -73,11 +73,13 @@ struct TokenCopyFrameLayout: Equatable {
         return area
     }
 
-    /// Where the token copy tag sits: along the bottom edge inside the art.
+    /// Where the token copy tag sits: the art's top-leading corner, which the compact
+    /// battlefield face (ArenaBattlefieldCard) keeps in view just under its name header.
+    /// The art's bottom edge falls behind that face's P/T footer.
     var tagSlot: CGRect {
         let height = max(size.height * 0.06, 9)
         let inset = max(size.width * 0.04, 2)
-        return CGRect(x: art.minX + inset, y: art.maxY - height - inset * 0.6, width: max(art.width - inset * 2, 1), height: height)
+        return CGRect(x: art.minX + inset, y: art.minY + inset * 0.6, width: max(art.width - inset * 2, 1), height: height)
     }
 
     var nameFontSize: CGFloat { max(size.width * 0.085, 6) }

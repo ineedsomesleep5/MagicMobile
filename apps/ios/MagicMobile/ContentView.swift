@@ -12106,7 +12106,7 @@ struct TokenCopyCardFace: View {
                 .frame(height: slot.height)
                 .background(MagicPalette.iron.opacity(0.88), in: Capsule())
                 .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.6), lineWidth: 0.7))
-                .frame(width: slot.width, height: slot.height)
+                .frame(width: slot.width, height: slot.height, alignment: .leading)
                 .offset(x: slot.minX, y: slot.minY)
         }
         .frame(width: width, height: height, alignment: .topLeading)

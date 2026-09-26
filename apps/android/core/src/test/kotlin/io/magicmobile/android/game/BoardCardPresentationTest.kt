@@ -51,6 +51,9 @@ class BoardCardPresentationTest {
             // ArenaBattlefieldCard shows the tile from 0.19 w of a 1.51 w tall tile, about 12.6% down.
             assertTrue(context, frame.art.minY / size.height <= 0.15f)
             assertTrue(context, frame.art.maxY / size.height >= 0.5f)
+            // The tag sits in that visible band, clear of the face's P/T footer.
+            assertTrue(context, frame.tagSlot.minY / size.height >= 0.19f / 1.51f)
+            assertTrue(context, frame.tagSlot.maxY / size.height <= 0.3f)
         }
         // Same numbers as iOS for the inspector-sized frame.
         val inspector = TokenCopyFrameLayout(BoardSize(300f, 419f))

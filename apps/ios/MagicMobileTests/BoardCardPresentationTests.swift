@@ -47,6 +47,9 @@ final class BoardCardPresentationTests: XCTestCase {
             // ArenaBattlefieldCard shows the tile from 0.19 w of a 1.51 w tall tile, about 12.6% down.
             XCTAssertLessThanOrEqual(frame.art.minY / size.height, 0.15, context)
             XCTAssertGreaterThanOrEqual(frame.art.maxY / size.height, 0.5, context)
+            // The tag sits in that visible band, clear of the face's P/T footer.
+            XCTAssertGreaterThanOrEqual(frame.tagSlot.minY / size.height, 0.19 / 1.51, context)
+            XCTAssertLessThanOrEqual(frame.tagSlot.maxY / size.height, 0.3, context)
         }
         // Same numbers as Android for the inspector-sized frame.
         let inspector = TokenCopyFrameLayout(size: CGSize(width: 300, height: 419))

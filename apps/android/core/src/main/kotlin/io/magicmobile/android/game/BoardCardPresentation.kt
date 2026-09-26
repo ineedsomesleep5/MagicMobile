@@ -67,11 +67,15 @@ data class TokenCopyFrameLayout(val size: BoardSize) {
         return BoardRect(box.minX + dx, box.minY + dy, box.width - dx * 2, height)
     }
 
-    /** Where the token copy tag sits: along the bottom edge inside the art. */
+    /**
+     * Where the token copy tag sits: the art's top-leading corner, which the compact battlefield face
+     * (ArenaBattlefieldCard) keeps in view just under its name header. The art's bottom edge falls behind
+     * that face's P/T footer.
+     */
     val tagSlot: BoardRect get() {
         val height = maxOf(size.height * 0.06f, 9f)
         val inset = maxOf(size.width * 0.04f, 2f)
-        return BoardRect(art.minX + inset, art.maxY - height - inset * 0.6f, maxOf(art.width - inset * 2, 1f), height)
+        return BoardRect(art.minX + inset, art.minY + inset * 0.6f, maxOf(art.width - inset * 2, 1f), height)
     }
 
     val nameFontSize: Float get() = maxOf(size.width * 0.085f, 6f)
