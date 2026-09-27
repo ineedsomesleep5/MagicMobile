@@ -30,7 +30,9 @@ jobs:
       # Reviewed helper + cheap-workflow commit, independent of candidate inputs.
       # This is workflow policy, never a dispatch input or mutable branch name.
       # Includes the reviewed real card-choice/payment regression step; helper unchanged.
-      TRUSTED_POLICY_SHA: 'a5dc8e032cbdd91827765d0313589649687a5354'
+      # 9b26186: the cheap workflow only lost its push triggers (6bc69ba); jobs, steps and
+      # scripts/magicmobile-native-gate are unchanged since a5dc8e0.
+      TRUSTED_POLICY_SHA: '9b261869eb9cbd2ec9da2ec69d1c1d42860489fc'
     steps:
       - name: Require an immutable reviewed policy pin
         shell: bash
