@@ -169,16 +169,14 @@ def prepare(repo, project, report, approval, destination):
     module = types.ModuleType('port_transform')
     module.__file__ = str(patcher)
     exec(compile(patcher.read_bytes(), str(patcher), 'exec'), module.__dict__)
-    # The trusted transformer names each reviewed upstream path it patches.
-    functions = module.PATCHES
+    functions = {'CardImpl.java': module.patch_card, 'Sets.java': module.patch_sets,
+                 'HumanPlayer.java': module.patch_human}
     outputs = {}
     for path, info in report['sourceBlobs'].items():
         data = (upstream / path).read_bytes()
         if module.git_blob(data) != info['candidate']['blob']:
             raise ValueError('Reviewed source blob mismatch: ' + path)
-        if path not in functions:
-            raise ValueError('No reviewed transformation for locked source: ' + path)
-        outputs[path] = functions[path](data.decode()).encode()
+        outputs[path] = functions[Path(path).name](data.decode()).encode()
     factory = 'Mage/src/main/java/mage/cards/MobileCardFactories.java'
     if (upstream / factory).exists():
         raise ValueError('Upstream now owns the injected factory path; review required')

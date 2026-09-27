@@ -138,7 +138,6 @@ jobs:
           cp -R "$OUT/engine/mage/mobile" build/native-candidate/catalogue
           cp build/generated/platform/repository-patch-manifest.json build/native-candidate/
           cp build/native-metadata/reflect-config.json build/native-candidate/
-          cp build/native-metadata/serialization-config.json build/native-candidate/
           cp build/generated/registry-report.json build/native-candidate/
           git rev-parse HEAD > build/native-candidate/commit.txt
           find build/ios-compiler-patch-* -name compiler-patch-manifest.json -exec cp '{}' build/native-candidate/ \;

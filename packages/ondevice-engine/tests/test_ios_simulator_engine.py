@@ -58,11 +58,6 @@ class NativeTargetTests(unittest.TestCase):
                 'native-image': 'exit 0', 'javac': 'exit 0', 'xcodebuild': 'exit 0',
                 'uname': 'if [[ "$1" == -s ]]; then echo Darwin; else echo x86_64; fi',
                 'mvn': 'printf "%s\\n" "$@" > "$MM_TEST_ARGS"; exit 73',
-                # Metadata exporter stand-in: records its arguments and writes both outputs.
-                'java': 'printf "%s\\n" "$@" > "$MM_TEST_ARGS.exporter"\n'
-                        'while [[ $# -gt 0 && "$1" != NativeReflectionExporter ]]; do shift; done\n'
-                        'mkdir -p "$2"; echo "[]" > "$2/reflect-config.json"\n'
-                        'echo \'{"types":[],"lambdaCapturingTypes":[]}\' > "$2/serialization-config.json"',
             }.items():
                 file = commands / name
                 file.write_text('#!/bin/bash\n' + body + '\n')
@@ -83,10 +78,6 @@ class NativeTargetTests(unittest.TestCase):
             self.assertEqual(color_args[:3], ['--graalvm-home', str(compiler), '--output'])
             self.assertTrue(color_args[3].endswith('/color-patch'))
             self.assertIn('-Dnative.color.patch=' + color_args[3] + '/classes', args)
-            # Every profile passes save/resume serialization metadata from the exporter.
-            exporter = (root / 'args.txt.exporter').read_text().splitlines()
-            self.assertIn('--serialization', exporter)
-            self.assertIn('-Dnative.serialization.config=' + str(root / 'build/native-metadata/serialization-config.json'), args)
             return args
 
     def test_default_keeps_device_compile_and_staticlib(self):

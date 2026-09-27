@@ -28,7 +28,7 @@ INPUT_PATHS = tuple(ENGINE + name for name in (
 ))
 REQUIRED_FILES = {
     'libmmengine.a', 'include/io.magicmobile.nativebridge.ioslibrarymain.h', 'include/graal_isolate.h',
-    'class-snapshot.sha256', 'reflect-config.json', 'serialization-config.json', 'registry-report.json',
+    'class-snapshot.sha256', 'reflect-config.json', 'registry-report.json',
     'commit.txt', 'compiler-patch-manifest.json',
     'color-patch/src/java/awt/Color.java', 'color-patch/classes/java/awt/Color.class',
     'color-patch/color-patch-manifest.json',

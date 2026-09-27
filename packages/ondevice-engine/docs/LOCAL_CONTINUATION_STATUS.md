@@ -5,53 +5,6 @@ Use [PR #9](https://github.com/ineedsomesleep5/MagicMobile/pull/9), branch
 and PR #6's native engine integration. Do not reinstall an earlier ZIP or reset
 the project to its original checkpoint. Preserve uncommitted desktop work.
 
-## Save/resume checkpoints for solo games: JVM-verified, native pending (September 26, 2026)
-
-Branch `codex/save-resume-engine`. Engine phase 1 of
-[the save/resume spike](../../../docs/SAVE_RESUME_SPIKE.md) plus the native metadata it needs
-(phase 2 preparation). Contract: [PROTOCOL.md](PROTOCOL.md#saveresume-checkpoints-solo-games).
-The app Resume/Abandon flow, file location and 10-minute window are app-side work.
-
-- **Engine.** `create` takes `checkpoint.path` for exactly one human seat; the GAME thread
-  writes the match atomically at each human priority decision before publishing it; polls
-  report `checkpoint`/`checkpointFailure`; `restore` rebuilds the match in a new process and
-  re-asks that decision. The RNG state is saved and restored. Seven reviewed upstream
-  sources are now patched by `prepare_upstream.py` (four new: `Exile`, `GameImpl`,
-  `RandomUtil`, `ComputerPlayer`; `HumanPlayer` gained `readObject`). Existing
-  `.upstream/mage` checkouts must be bootstrapped again; the patcher refuses an old stamp.
-- **Verified (desktop JVM only).** `RealCheckpointTests`, now part of `test_real_engine.sh`
-  and so of the real-jvm CI job. One human seat against 1 or 3 AI seats:
-  - In each of two consecutive full-suite runs, 8 of 8 fresh-JVM restores matched the
-    checkpoint's turn, step, life, hands, full library order, battlefield, graveyards, exile and
-    stack, re-asked the same prompt, kept checkpointing and played to a legal end (win or turn
-    cap) with 0 game errors.
-  - Every run restores checkpoints holding tokens, exile, a token copy, a control change and a
-    stack object. The four-seat precon scenario saves the first natural appearance of each;
-    whatever play has not produced by turn 10 is put on the live game through upstream rules
-    code (a Soldier token, a token copy of a basic land, the top library card moved to exile,
-    Zedruu's own gain-control effect, a reflexive trigger on the stack) while the GAME thread
-    waits for the human's priority answer. A click on no object then makes XMage re-ask that
-    decision, and that next checkpoint is restored like the others. The log names natural and
-    placed features (`FEATURES`, `PLACED`); both runs had a natural stack object and placed the
-    other four (the stack placement was checked separately). This replaced waiting up to three
-    AI-driven games for them, which failed once in CI.
-  - 97–103 checkpoint writes per run: median 26–27 ms, p90 35–38 ms, max 115–127 ms; 162–318 KB
-    each. Restores took 0.4–0.75 s in a cold JVM. `RealCheckpointTests` took 109–118 s (was 319 s).
-  - RNG continuity: 64 draws after a restore equal the saved process's next 64 draws.
-  - Rejections: more than one human seat, bad paths, header identity, format, SHA-256,
-    truncation, a filter-rejected class and a wrong root; a failed write keeps the game playing;
-    a failed restore leaves no match or threads.
-- **Not verified.** Any native-image build with the new serialization metadata (48,715
-  registered types, 15 lambda capturing classes; builder heap, time and image size unknown,
-  see [NATIVE_METADATA.md](NATIVE_METADATA.md#saveresume-serialization-metadata-september-26-2026)),
-  native serialization at runtime, phone write/restore times, iOS/Android app integration,
-  process-kill acceptance.
-- **Next native gates (need dispatch).** iOS: `magicmobile-issue4-nonsimulator.yml` on the
-  candidate SHA, then `magicmobile-far-calls.yml` with `candidate_sha` and that run's
-  `cheap_run_id`, then `magicmobile-product-device.yml` with `engine_run_id`/`engine_commit`.
-  Android: `magicmobile-android.yml`. A build without the metadata reports
-  `saveResume: false` rather than failing games.
-
 ## Subsequent authorized internal TestFlight upload
 
 [Build 2026091401](TESTFLIGHT_2026091401.md), release source

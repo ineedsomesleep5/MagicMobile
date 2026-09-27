@@ -9,8 +9,6 @@ import mage.game.*;
 import mage.game.events.PlayerQueryEvent;
 import mage.game.events.TableEvent;
 import mage.players.Player;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -32,17 +30,8 @@ public final class XmageEngine implements EnginePort {
         final MatchMailbox mailbox;
         final ExecutorService worker;
         volatile Future<?> task;
-        /** Null unless this solo match saves checkpoints; see docs/PROTOCOL.md. */
-        final Path checkpointPath;
-        final List<Map<String,Object>> seatSummary;
-        final boolean resumed;
-        private long checkpointSequence; // GAME thread
-        private long failedCheckpoints; // GAME thread
-        volatile Map<String,Object> checkpointInfo,checkpointFailure;
-        Running(MobileCommanderMatch match,LinkedHashMap<String,Player> players,LinkedHashMap<String,MobileHumanPlayer> seats,
-                MobileAICancellation cancellation,Path checkpointPath,List<Map<String,Object>> seatSummary,long checkpointSequence,boolean resumed) {
+        Running(MobileCommanderMatch match,LinkedHashMap<String,Player> players,LinkedHashMap<String,MobileHumanPlayer> seats,MobileAICancellation cancellation) {
             this.match=match;this.game=match.getGame();this.players=players;this.seats=seats;
-            this.checkpointPath=checkpointPath;this.seatSummary=seatSummary;this.checkpointSequence=checkpointSequence;this.resumed=resumed;
             this.cancellation=cancellation;((MobileCommanderGame)game).setCancellation(cancellation);
             mailbox=new MatchMailbox(game.getId().toString(),seats.keySet());
             worker=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"GAME mobile-"+game.getId());t.setDaemon(true);return t;});
@@ -95,35 +84,9 @@ public final class XmageEngine implements EnginePort {
             if(e.getQueryType()==PlayerQueryEvent.QueryType.PERSONAL_MESSAGE) {
                 cancellation.runIfOpen(()->mailbox.inform(seat,Json.map("message",e.getMessage())));return;
             }
-            // Safe point: the first question of this seat's own priority() call, between actions.
-            // Written before the prompt is published, so the file always matches a published decision.
-            boolean firstPriorityQuestion=((MobileHumanPlayer)controller).takeFirstPriorityQuestion();
-            if(checkpointPath!=null && firstPriorityQuestion && acting==controller
-                    && e.getQueryType()==PlayerQueryEvent.QueryType.SELECT && game.getStep()!=null
-                    && game.getStep().getStepPart()==mage.game.turn.Step.StepPart.PRIORITY) checkpoint();
             snapshot();
             cancellation.runIfOpen(()->mailbox.ask(seat,QueryEncoder.encode(e,game),
                 answer->cancellation.runIfOpen(()->seats.get(seat).offer(answer))));
-        }
-        /** Never ends or blocks the game: a failed write is recorded for polls and diagnostics. */
-        private void checkpoint() {
-            if(cancellation.isClosing()) return;
-            try {
-                LinkedHashMap<String,UUID> seatPlayers=new LinkedHashMap<>();
-                players.forEach((seat,player)->seatPlayers.put(seat,player.getId()));
-                Checkpoints.Written written=Checkpoints.write(checkpointPath,(MobileCommanderGame)game,seatPlayers,
-                    new ArrayList<>(seats.keySet()),seatSummary,checkpointSequence+1);
-                checkpointSequence=written.sequence;
-                checkpointInfo=Collections.unmodifiableMap(Json.map("sequence",written.sequence,"savedAtMillis",written.savedAtMillis,
-                    "turn",written.turn,"bytes",written.bytes,"writeMillis",written.writeMillis));
-                checkpointFailure=null;failedCheckpoints=0;
-            } catch(Throwable failure) {
-                EngineDiagnostics.capture("checkpoint-write",failure);
-                failedCheckpoints++;
-                checkpointFailure=Collections.unmodifiableMap(Json.map("code","checkpoint_write_failed",
-                    "message","The game could not be saved; it continues without a new checkpoint.",
-                    "atMillis",System.currentTimeMillis(),"failedWrites",failedCheckpoints));
-            }
         }
         void start() {
             for(Map.Entry<String,MobileHumanPlayer> s:seats.entrySet()) {
@@ -134,10 +97,7 @@ public final class XmageEngine implements EnginePort {
             game.addPlayerQueryEventListener(this::query);
             task=worker.submit(()->{
                 try {
-                    // A restored game re-asks the checkpointed priority decision (upstream
-                    // GameImpl.resume -> playPriority(resuming=true)).
-                    if(resumed) game.resume();
-                    else game.start(seats.values().iterator().next().getId());
+                    game.start(seats.values().iterator().next().getId());
                     if(cancellation.isClosing()) return;
                     if(game.hasEnded()) {match.endGame();snapshot();mailbox.finish();}
                     else mailbox.fail("engine_stopped","XMage returned before ending the match");
@@ -178,22 +138,12 @@ public final class XmageEngine implements EnginePort {
     }
     @Override public synchronized Map<String,Object> create(Map<String,Object> configuration) {
         if(closed) throw new BridgeException("engine_closed","Engine is closed");
-        Json.onlyKeys(configuration,Set.of("seats","checkpoint"));
+        Json.onlyKeys(configuration,Set.of("seats"));
         if(!matches.isEmpty()) throw new BridgeException("match_limit","Destroy the active match before starting another");
         List<Object> configSeats=Json.array(configuration.get("seats"));
         if(configSeats.size()<2 || configSeats.size()>4) throw new BridgeException("invalid_seats","Need 2–4 seats");
-        Path checkpointPath=null;
-        if(configuration.containsKey("checkpoint")) {
-            // Solo games against AI only: a checkpoint holds every hidden zone of the match.
-            checkpointPath=newCheckpointPath(configuration.get("checkpoint"));
-            long humans=configSeats.stream().filter(s->s instanceof Map
-                && "human".equals(((Map<?,?>)s).containsKey("controller")?((Map<?,?>)s).get("controller"):"human")).count();
-            if(humans!=1) throw new BridgeException("invalid_configuration","Checkpoints need exactly one human seat");
-            if(!Checkpoints.available()) throw new BridgeException("checkpoint_unavailable","This engine build cannot save games");
-        }
         LinkedHashMap<String,MobileHumanPlayer> seats=new LinkedHashMap<>();
         LinkedHashMap<String,Player> players=new LinkedHashMap<>();
-        List<Map<String,Object>> seatSummary=new ArrayList<>();
         MobileAICancellation cancellation=new MobileAICancellation();
         MobileCommanderMatch match=new MobileCommanderMatch();
         for(Object value:configSeats) {
@@ -209,92 +159,13 @@ public final class XmageEngine implements EnginePort {
                 player=cancellation.player(Json.requiredString(s,"name"),aiSkill(s));
             } else throw new BridgeException("invalid_controller","Controller must be human or ai");
             match.addPlayer(player,DeckLoader.load(Json.object(s.get("deck"))));players.put(id,player);
-            seatSummary.add(Json.map("seatId",id,"name",player.getName(),"controller",controller));
         }
         if(seats.isEmpty()) throw new BridgeException("invalid_seats","Need at least one human seat");
         try {match.startMatch();match.startGame();}
         catch(GameException e) {throw new BridgeException("match_initialization_failed","XMage could not initialize this match");}
-        Running running=new Running(match,players,seats,cancellation,checkpointPath,seatSummary,0,false);
-        String id=match.getGame().getId().toString();
+        Running running=new Running(match,players,seats,cancellation);String id=match.getGame().getId().toString();
         matches.put(id,running);running.start();
         return Json.map("matchId",id,"seats",new ArrayList<>(players.keySet()),"engine",capabilities());
-    }
-    /** Absolute file path inside an existing directory. The app owns the file; the engine never deletes it. */
-    private static Path checkpointPath(Object value,String code) {
-        Map<String,Object> checkpoint;String text;
-        try {
-            checkpoint=Json.object(value);
-            if(!checkpoint.keySet().equals(Set.of("path"))) throw new BridgeException(code,"A checkpoint has exactly one path");
-            text=Json.requiredString(checkpoint,"path");
-        } catch(BridgeException e) {
-            if(e.code().equals(code)) throw e;
-            throw new BridgeException(code,"A checkpoint needs an absolute file path");
-        }
-        Path path;
-        try { path=text.isEmpty() || text.length()>4096 || text.indexOf('\0')>=0 ? null : Path.of(text); }
-        catch(java.nio.file.InvalidPathException e) { path=null; }
-        if(path==null || !path.isAbsolute() || path.getFileName()==null || path.getParent()==null)
-            throw new BridgeException(code,"A checkpoint needs an absolute file path");
-        return path.normalize();
-    }
-    private static Path newCheckpointPath(Object value) {
-        Path path=checkpointPath(value,"invalid_configuration");
-        if(!Files.isDirectory(path.getParent())) throw new BridgeException("invalid_configuration","The checkpoint directory does not exist");
-        if(Files.isDirectory(path)) throw new BridgeException("invalid_configuration","The checkpoint path is a directory");
-        return path;
-    }
-    /**
-     * Restores a solo match saved by this engine build. Every check and the whole read happen
-     * before any match or thread exists, so a failure leaves nothing running.
-     */
-    @Override public synchronized Map<String,Object> restore(Map<String,Object> request) {
-        if(closed) throw new BridgeException("engine_closed","Engine is closed");
-        if(!Checkpoints.available()) throw new BridgeException("checkpoint_unavailable","This engine build cannot restore games");
-        Path path=checkpointPath(request,"invalid_request");
-        if(!matches.isEmpty()) throw new BridgeException("match_limit","Destroy the active match before starting another");
-        Checkpoints.Loaded loaded=Checkpoints.read(path);
-        Checkpoints.Payload payload=loaded.payload;
-        MobileCommanderGame game=payload.game;
-        LinkedHashMap<String,Player> players=new LinkedHashMap<>();
-        LinkedHashMap<String,MobileHumanPlayer> seats=new LinkedHashMap<>();
-        List<Map<String,Object>> seatSummary=new ArrayList<>();
-        MobileAICancellation cancellation=new MobileAICancellation();
-        MobileCommanderMatch match;
-        try {
-            if(game==null || payload.seats==null || payload.humanSeats==null || payload.random==null
-                    || payload.humanSeats.size()!=1 || payload.seats.size()<2 || payload.seats.size()>4 || game.hasEnded())
-                throw new IllegalStateException("Checkpoint does not describe a live solo match");
-            List<Object> headerSeats=Json.array(loaded.header.get("seats"));
-            if(headerSeats.size()!=payload.seats.size()) throw new IllegalStateException("Checkpoint seats differ from its header");
-            int index=0;
-            for(Map.Entry<String,UUID> seat:payload.seats.entrySet()) {
-                Player player=game.getPlayer(seat.getValue());
-                Map<String,Object> summary=Json.object(headerSeats.get(index++));
-                boolean human=payload.humanSeats.contains(seat.getKey());
-                if(player==null || !seat.getKey().equals(summary.get("seatId")) || human!=(player instanceof MobileHumanPlayer)
-                        || !(human?"human":"ai").equals(summary.get("controller")))
-                    throw new IllegalStateException("Checkpoint seat binding is inconsistent");
-                players.put(seat.getKey(),player);
-                if(human) seats.put(seat.getKey(),(MobileHumanPlayer)player);
-                seatSummary.add(Json.map("seatId",seat.getKey(),"name",player.getName(),"controller",human?"human":"ai"));
-            }
-            cancellation.adopt(game);
-            Checkpoints.rehydrateSingletons(game);
-            match=MobileCommanderMatch.restored(game);
-        } catch(RuntimeException | LinkageError e) {
-            throw Checkpoints.corrupt("The checkpoint could not be restored",e);
-        }
-        Running running=new Running(match,players,seats,cancellation,path,seatSummary,loaded.sequence(),true);
-        // The file just read is the latest checkpoint until the re-asked decision writes the next one.
-        running.checkpointInfo=Collections.unmodifiableMap(Json.map("sequence",loaded.sequence(),"savedAtMillis",loaded.savedAtMillis(),
-            "turn",(long)loaded.turn(),"bytes",loaded.bytes,"writeMillis",0L));
-        String id=game.getId().toString();
-        matches.put(id,running);
-        // Last, so the restored game draws exactly what the saved process would have drawn next.
-        mage.util.RandomUtil.restoreRandom(payload.random);
-        running.start();
-        return Json.map("matchId",id,"seats",new ArrayList<>(players.keySet()),"engine",capabilities(),
-            "restored",Json.map("turn",loaded.turn(),"savedAtMillis",loaded.savedAtMillis(),"sequence",loaded.sequence()));
     }
     static int aiSkill(Map<String,Object> seat) {
         if(!seat.containsKey("aiSkill")) return 1; // Preserve existing callers' upstream budget.
@@ -307,15 +178,7 @@ public final class XmageEngine implements EnginePort {
     private synchronized Running match(String id) {
         Running r=matches.get(id);if(r==null) throw new BridgeException("unknown_match","Match does not exist");return r;
     }
-    @Override public Map<String,Object> poll(String id,String seat,long after) {
-        Running running=match(id);
-        Map<String,Object> result=running.mailbox.poll(seat,after);
-        // Local metadata only; the checkpoint file itself never enters a poll.
-        Map<String,Object> saved=running.checkpointInfo,failure=running.checkpointFailure;
-        if(saved!=null) result.put("checkpoint",saved);
-        if(failure!=null) result.put("checkpointFailure",failure);
-        return result;
-    }
+    @Override public Map<String,Object> poll(String id,String seat,long after) {return match(id).mailbox.poll(seat,after);}
     @Override public Map<String,Object> respond(String id,String seat,Map<String,Object> c) {return match(id).mailbox.submit(seat,c);}
     @Override public void concede(String id,String seat) {match(id).concede(seat);}
     @Override public synchronized void destroy(String id) {
@@ -327,8 +190,7 @@ public final class XmageEngine implements EnginePort {
         return Json.map("protocol",1,"engine","xmage","execution",execution,"upstream",UPSTREAM,
             "catalogueHash",GeneratedCardFactory.CATALOGUE_HASH,"maxPlayers",4,"deckValidation",true,
             "nativeDeviceValidated",false,"aiEnabled",false,"hostMigration",false,
-            // True only when this build passes its checkpoint round trip (native needs serialization metadata).
-            "saveResume",Checkpoints.available(),"concede",true,"experimental",true);
+            "saveResume",false,"concede",true,"experimental",true);
     }
     @Override public synchronized void close() {
         closed=true;

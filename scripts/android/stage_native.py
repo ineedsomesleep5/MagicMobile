@@ -47,10 +47,7 @@ def main():
     unresolved = {line.split()[-1] for line in subprocess.check_output(
         [str(ndk/'llvm-nm'), '-D', '--undefined-only', str(library)], text=True).splitlines()
         if line.split() and '@' not in line.split()[-1]}
-    # System zlib (already resolved for inflate). Save/resume checkpoints are gzip'd, which makes
-    # the JDK Deflater reachable and adds its deflate entry points from the same library.
-    system = {'crc32','inflate','inflateEnd','inflateInit2_','inflateReset','getgrgid_r','stderr',
-              'deflate','deflateEnd','deflateInit2_','deflateParams','deflateReset','deflateSetDictionary'}
+    system = {'crc32','inflate','inflateEnd','inflateInit2_','inflateReset','getgrgid_r','stderr'}
     missing = unresolved - provided - system
     if missing:
         raise ValueError('Engine has undefined symbols nothing provides: ' + repr(sorted(missing)))

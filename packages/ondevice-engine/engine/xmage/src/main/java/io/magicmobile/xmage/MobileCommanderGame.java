@@ -5,12 +5,7 @@ import mage.game.mulligan.LondonMulligan;
 import mage.constants.*;
 /** Casual Commander pod rules, including when tested with two seats. Not Duel Commander. */
 final class MobileCommanderGame extends CommanderFreeForAll {
-    private static final long serialVersionUID=1L;
     private transient MobileAICancellation cancellation=new MobileAICancellation();
-    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
-        in.defaultReadObject();
-        cancellation=new MobileAICancellation(); // Replaced by the restoring match's setCancellation.
-    }
     MobileCommanderGame() {
         super(MultiplayerAttackOption.MULTIPLE,RangeOfInfluence.ALL,new LondonMulligan(1),40,7);
         this.gameOptions=new GameOptions();

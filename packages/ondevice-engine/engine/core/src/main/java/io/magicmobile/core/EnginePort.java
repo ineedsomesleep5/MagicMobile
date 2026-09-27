@@ -11,10 +11,6 @@ public interface EnginePort extends AutoCloseable {
     default void concede(String matchId,String authenticatedSeat) {
         throw new BridgeException("concede_unavailable","This installed engine cannot concede a game");
     }
-    /** Restores a solo match from a local checkpoint file. Backends without save/resume say so. */
-    default Map<String,Object> restore(Map<String,Object> checkpoint) {
-        throw new BridgeException("checkpoint_unavailable","This installed engine cannot restore saved games");
-    }
     void destroy(String matchId);
     Map<String,Object> capabilities();
     /** Trusted local-only operation. Older/test backends must not imply validation. */

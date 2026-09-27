@@ -18,8 +18,6 @@ javac --release 17 -cp "$ROOT/build/core" -d "$ROOT/build/tools" "$ROOT/engine/t
 java -Xmx4g -cp "$ROOT/build/core:$ROOT/build/tools:$CP" RegistryExporter "$ROOT/build/generated" \
  "$U/Mage/target/classes" "$U/Mage.Sets/target/classes" "$U/Mage.Common/target/classes"
 python3 "$ROOT/scripts/prepare_mobile_repository.py" --mode runtime --output "$ROOT/build/generated/platform"
-# Save/resume checkpoints are readable only by a build with the same adapter and upstream patches.
-python3 "$ROOT/scripts/engine_build_identity.py" --output "$ROOT/build/generated/java"
 find "$ROOT/engine/xmage/src/main/java" "$ROOT/build/generated/java" "$ROOT/build/generated/platform" \
   "$ROOT/platform/java" -name '*.java' | sort > "$ROOT/build/engine-sources.txt"
 javac --release 17 -cp "$ROOT/build/core:$CP" -d "$ROOT/build/engine" @"$ROOT/build/engine-sources.txt"
