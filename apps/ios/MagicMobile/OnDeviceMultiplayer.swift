@@ -302,6 +302,57 @@ struct OnDeviceHostUnavailable: LocalizedError, Equatable {
     var errorDescription: String? { "The host did not answer in time. Keep every player’s app in the foreground." }
 }
 
+/// One seat at a relay table, as the relay reports it.
+struct RelayPeer: Equatable, Sendable {
+    let id: String
+    let name: String
+    let connected: Bool
+}
+
+/// What the apps say to the cross-play relay besides packets (services/table-relay/README.md).
+enum RelayWire {
+    /// Offered on every table socket; the relay answers with it.
+    static let socketProtocol = "magicmobile.1"
+
+    /// The host key or resume token travels as a subprotocol, so it never appears in the socket URL.
+    static func socketProtocols(hostKey: String?, resume: String?) -> [String] {
+        [socketProtocol] + (hostKey.map { ["magicmobile.key.\($0)"] } ?? []) + (resume.map { ["magicmobile.resume.\($0)"] } ?? [])
+    }
+
+    /// What to show when the relay does not open a table: its own message, else a plain one.
+    static func createFailureMessage(status: Int?, message: String?) -> String {
+        if let message = message?.trimmingCharacters(in: .whitespacesAndNewlines), !message.isEmpty { return message }
+        return status == 429 ? "You opened several tables in the last minute. Wait a minute, then try again."
+            : "The table service could not open a table. Try again."
+    }
+
+    /// The host turns a joiner away; the relay honors it only while the table is still filling.
+    static func removeFrame(peerID: String) -> String {
+        let data = (try? JSONSerialization.data(withJSONObject: ["t": "remove", "id": peerID], options: [.sortedKeys])) ?? Data()
+        return String(decoding: data, as: UTF8.self)
+    }
+}
+
+/// A relay table that is still filling: who has joined, in seat order.
+struct RelayWaitingSeat: Equatable, Identifiable {
+    let id: String
+    let name: String
+    let connected: Bool
+    let isHost: Bool
+    let isLocal: Bool
+    /// Only the host may remove a joiner, and only until the table is full: then every phone opens the match room.
+    let removable: Bool
+
+    static func seats(peers: [RelayPeer], localPeerID: String?, full: Bool) -> [RelayWaitingSeat] {
+        let sorted = peers.sorted { $0.id < $1.id }
+        guard let hostID = sorted.first?.id else { return [] }
+        return sorted.map { peer in
+            RelayWaitingSeat(id: peer.id, name: peer.name, connected: peer.connected, isHost: peer.id == hostID,
+                             isLocal: peer.id == localPeerID, removable: localPeerID == hostID && !full && peer.id != hostID)
+        }
+    }
+}
+
 #if DEBUG
 import os
 
@@ -565,6 +616,8 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     @Published private(set) var tableCode: String?
     @Published private(set) var seatsTaken = 0
     @Published private(set) var seatsWanted = 0
+    /// Who has joined a relay table that is still filling; empty once the match room opens.
+    @Published private(set) var waitingSeats: [RelayWaitingSeat] = []
     @Published private(set) var isRelayTable = false
     @Published private(set) var isFailed = false
     /// A player's quick-chat line: their table name and a fixed emote, never free text.
@@ -904,6 +957,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
             guard let self, self.generation == token, !self.failed, !self.closing else { return }
             self.seatsTaken = peers.count
             self.seatsWanted = relay.seats > 0 ? relay.seats : max(self.seatsWanted, peers.count)
+            self.waitingSeats = self.lobby == nil && !full ? RelayWaitingSeat.seats(peers: peers, localPeerID: relay.localPeerID, full: full) : []
             if self.lobby == nil {
                 if full, let localID = relay.localPeerID {
                     let names = Dictionary(peers.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
@@ -931,6 +985,14 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
             guard let self, self.generation == token, !self.closing, !self.failed, self.endpoint != nil else { return }
             self.status = connected ? "Connected. Every player must keep the app in the foreground." : "Reconnecting to the table…"
         }
+    }
+
+    /// The host turns a joiner away while the table is still filling. The relay confirms it with a
+    /// roster without that player; it ignores a removal once the table is full.
+    func removeFromTable(_ peerID: String) {
+        guard lobby == nil, !failed, !closing, waitingSeats.contains(where: { $0.id == peerID && $0.removable }),
+              let relay = transport as? RelayTransport else { return }
+        relay.remove(peerID)
     }
 
     private func lobbyPacket(type: String) throws -> MagicMobileOnDevice.JSONValue {
@@ -1272,7 +1334,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         startingRoll = nil; rollProgress = nil; hasRolled = false; rollStatus = ""
         remote = nil; tableLink = nil; router = nil; hostDispatcher = nil; transport = nil; lobby = nil; epoch = nil; submission = nil; requestedAISeats = []
         suspendedPeers.removeAll(); relayAwayPeers.removeAll(); peerPresenceSequences.removeAll(); presenceSequence = 0
-        tableCode = nil; seatsTaken = 0; seatsWanted = 0; isRelayTable = false; identity = gameCenterIdentity
+        tableCode = nil; seatsTaken = 0; seatsWanted = 0; waitingSeats = []; isRelayTable = false; identity = gameCenterIdentity
         suspensionRevision = 0
         matchmakerController?.dismiss(animated: true); matchmakerController = nil
         room = nil; localReady = false; reportedReady = [:]; playerNames = [:]
@@ -1281,7 +1343,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
 
     private func fail(_ message: String) {
         guard !failed else { return }
-        failed = true; isFailed = true; isConnected = false; status = message; seatNames = [:]; room = nil
+        failed = true; isFailed = true; isConnected = false; status = message; seatNames = [:]; room = nil; waitingSeats = []
         rollTimer?.cancel(); rollTimer = nil
         startingRoll = nil; rollProgress = nil; hasRolled = false; rollStatus = ""
         lobbyTimer?.cancel(); startup?.cancel(); remote?.close()

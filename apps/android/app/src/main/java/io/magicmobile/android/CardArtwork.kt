@@ -61,6 +61,9 @@ object Artwork {
     private val memory = object : LruCache<String, Bitmap>(24 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
+    /** ON_STOP: drop decoded images; they reload from the disk cache when the board is shown again. */
+    fun releaseMemory() = memory.evictAll()
+
     private val downloadLock=Any()
     private var accountedDownloadBytes=-1L
     private var tokenMetadata: Map<String,ArtworkRecord>? = null

@@ -17,6 +17,7 @@ struct OnDeviceRootView: View {
     @StateObject private var setup: OnDeviceSetupModel
     @StateObject private var library = DeckLibraryStore()
     @StateObject private var diagnostics: OnDeviceDiagnostics
+    @StateObject private var resume: GameResumeCoordinator
     @State private var selectedCard: ZoneCard?
     @State private var inspectedCard: ZoneCard?
     @State private var zone: InspectedZone?
@@ -47,6 +48,8 @@ struct OnDeviceRootView: View {
     @State private var aiRevealedRollCount = 0
     @State private var aiRollSeatNames: [String: String] = [:]
     @State private var versusIntro: VersusIntro?
+    /// A resumed game skips the versus intro: it is already under way.
+    @State private var skipNextVersusIntro = false
 
     private struct VersusIntro {
         let you: VersusIntroOverlay.Seat
@@ -76,8 +79,10 @@ struct OnDeviceRootView: View {
 
     init() {
         let session = OnDeviceSession()
+        let resume = Self.makeResumeCoordinator()
         _session = StateObject(wrappedValue: session)
-        _setup = StateObject(wrappedValue: OnDeviceSetupModel(session: session))
+        _resume = StateObject(wrappedValue: resume)
+        _setup = StateObject(wrappedValue: OnDeviceSetupModel(session: session, resume: resume))
         var diagnosticDirectory: URL?
         #if DEBUG
         if OnDeviceAppConfiguration.entryPoint == .setupPreview,
@@ -87,6 +92,57 @@ struct OnDeviceRootView: View {
         }
         #endif
         _diagnostics = StateObject(wrappedValue: OnDeviceDiagnostics(directory: diagnosticDirectory))
+    }
+
+    /// Only the embedded app outside XCTest uses Application Support/Resume; tests and
+    /// previews get a fresh temporary directory.
+    private static func makeResumeCoordinator() -> GameResumeCoordinator {
+        let support = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
+                                                   appropriateFor: nil, create: true)
+        let directory = GameResumeStore.directory(entryPoint: OnDeviceAppConfiguration.entryPoint,
+                                                  testing: NSClassFromString("XCTestCase") != nil,
+                                                  applicationSupport: support)
+        let resume = GameResumeCoordinator(store: GameResumeStore(directory: directory, protectsFiles: true))
+        // Lower the chance that iOS ends the app in the background; everything reloads lazily.
+        resume.backgroundPurges = [{ GameAudio.shared.unloadBuffers() }, { NativeDeckArtwork.purgeMemoryCaches() }]
+        resume.runBackgroundTask = { name, body in ResumeBackgroundTask.run(name, body) }
+        return resume
+    }
+
+    /// Once the build identity is known: offer a saved game or explain why it is gone.
+    private func evaluateResumeLaunch() {
+        guard let identity = setup.identity,
+              let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+              let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String else { return }
+        resume.evaluateLaunch(appBuild: GameResumeIdentity.appBuild(version: version, build: build),
+                              engineIdentity: GameResumeIdentity.engine(identity))
+    }
+
+    private func resumeSavedGame() {
+        guard let record = resume.acceptOffer() else { return }
+        applyResumeSetup(record.setup)
+        showSetup = false
+        skipNextVersusIntro = true
+        Task {
+            if !(await setup.resumeAI(record)) { skipNextVersusIntro = false }
+        }
+    }
+
+    /// The saved game's own choices, so Rematch replays the same table.
+    private func applyResumeSetup(_ saved: GameResumeSetup) {
+        let precons = Set(PreconCatalog.all.map(\.id))
+        let decks = Set(PreconCatalog.all.map { "precon:\($0.id)" } + library.decks.map { "local:\($0.id)" })
+        if decks.contains(saved.deckID) { selectedDeckID = saved.deckID }
+        let aiIDs = saved.aiDeckIDs.filter(precons.contains)
+        if (1...3).contains(aiIDs.count), aiIDs.count == saved.aiDeckIDs.count {
+            aiPreconID = aiIDs[0]
+            if aiIDs.count > 1 { aiPrecon2ID = aiIDs[1] }
+            if aiIDs.count > 2 { aiPrecon3ID = aiIDs[2] }
+            opponentCount = aiIDs.count
+        }
+        aiSkill = min(10, max(1, saved.aiSkill))
+        if ["choose", "roll"].contains(saved.startingPlayerMode) { aiStartingPlayerMode = saved.startingPlayerMode }
+        playWithFriends = false; playOnline = false
     }
 
     private var activeGame: Bool { session.matchID != nil }
@@ -180,6 +236,27 @@ struct OnDeviceRootView: View {
         }
         .overlay(alignment: .bottom) { recoveryBanner }
         .overlay { startingRollOverlay }
+        .overlay {
+            if !activeGame, let offer = resume.offer {
+                GameResumePrompt(offer: offer, resume: resumeSavedGame, abandon: {
+                    GameAudio.shared.play(.uiBack)
+                    resume.abandon()
+                })
+                .transition(.opacity)
+            }
+        }
+        .overlay(alignment: .top) {
+            if let notice = resume.notice {
+                GameResumeNoticeBanner(message: notice) { resume.notice = nil }
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: resume.notice)
+        .task(id: resume.notice) {
+            guard resume.notice != nil else { return }
+            do { try await Task.sleep(for: .seconds(GameResumeText.noticeSeconds)) } catch { return }
+            resume.notice = nil
+        }
         .environment(\.nativeTurnControl, turnControl)
         .fullScreenCover(isPresented: $showImport) {
             DeckStudioRootView(library: library, selectedDeckID: $selectedDeckID, preparePlay: {
@@ -206,6 +283,7 @@ struct OnDeviceRootView: View {
         MagicMobileOrientationController.shared.setPortraitModeEnabled(portraitModeEnabled)
         restoreSetupPreferences()
         setup.prepare()
+        evaluateResumeLaunch()
         setup.setSceneActive(scenePhase == .active)
         #if DEBUG
         if OnDeviceAppConfiguration.entryPoint == .setupPreview,
@@ -226,12 +304,15 @@ struct OnDeviceRootView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             setup.setSceneActive(phase == .active)
-            if phase == .active { GameAudio.shared.resume() }
+            if phase == .background { resume.enteredBackground() }
+            if phase == .active { resume.enteredForeground(); GameAudio.shared.resume() }
         }
+        .onChange(of: setup.identity) { _, _ in evaluateResumeLaunch() }
         .onAppear { GameAudio.shared.setScene(activeGame ? .game : .menu) }
         .onChange(of: activeGame) { _, playing in
             GameAudio.shared.setScene(playing ? .game : .menu)
             guard playing else { versusIntro = nil; return }
+            if skipNextVersusIntro { skipNextVersusIntro = false; return }
             if reduceMotion {
                 GameAudio.shared.play(.versus, after: 0.2)
             } else {
@@ -494,6 +575,7 @@ struct OnDeviceRootView: View {
         Task {
             do {
                 try await session.concede()
+                resume.gameFinished()
             } catch let EngineError.rejected(code, _) where code == "unknown_operation" || code == "concede_unavailable" {
                 // An engine from before concede existed: leaving the match is the forfeit.
                 showSetup = false
@@ -823,7 +905,9 @@ struct OnDeviceRootView: View {
         Task {
             do { playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName) }
             catch { setup.errorMessage = error.localizedDescription; return }
-            await setup.startAI(name: playerDisplayName, deck: deck, aiDecks: opponentDecks, aiSkill: aiSkill)
+            await setup.startAI(name: playerDisplayName, deck: deck, aiDecks: opponentDecks, aiSkill: aiSkill,
+                                deckID: selectedDeckID, aiDeckIDs: aiPrecons.map(\.id),
+                                startingPlayerMode: aiStartingPlayerMode)
         }
     }
 
@@ -920,17 +1004,31 @@ private final class OnDeviceSetupModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var feedback: String?
     private let session: OnDeviceSession
+    private let resume: GameResumeCoordinator
     private let runtime = OnDeviceRuntimeManager()
     private var resolver: OnDeviceDeckResolver?
     private var multiplayerObservation: AnyCancellable?
     private var onlineObservation: AnyCancellable?
+    private var resumeObservations: [AnyCancellable] = []
     private var aiClient: EngineClient?
     private var aiMatchID: String?
     private var sceneActive = true
 
-    init(session: OnDeviceSession) {
+    /// The human seat in a solo game (OnDeviceAppConfiguration.aiGameSeats).
+    static let soloSeatID = "player1"
+
+    init(session: OnDeviceSession, resume: GameResumeCoordinator) {
         self.session = session
+        self.resume = resume
         onlineObservation = online.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        resumeObservations = [
+            // Keep the sidecar in step with the engine's latest save.
+            session.$checkpoint.compactMap { $0 }.sink { [weak resume] in resume?.checkpointSaved($0) },
+            // A finished game (win, loss or draw), or one this seat lost or left and now
+            // spectates, is never offered again.
+            session.$isOverForSeat.removeDuplicates().filter { $0 }
+                .sink { [weak resume] _ in resume?.gameFinished() }
+        ]
     }
 
     var needsLeave: Bool { usingOnline || online.lobby != nil || usingMultiplayer || runtime.isOpen || session.matchID != nil || multiplayer?.needsCleanup == true }
@@ -973,7 +1071,8 @@ private final class OnDeviceSetupModel: ObservableObject {
         } catch { errorMessage = error.localizedDescription; status = "Local setup unavailable" }
     }
 
-    func startAI(name: String, deck: DeckList, aiDecks: [DeckList], aiSkill: Int = 2) async {
+    func startAI(name: String, deck: DeckList, aiDecks: [DeckList], aiSkill: Int = 2,
+                 deckID: String, aiDeckIDs: [String], startingPlayerMode: String) async {
         guard !isBusy, !needsLeave, let resolver, let identity else { return }
         isBusy = true; errorMessage = nil; feedback = nil; status = "Starting XMage"
         defer { isBusy = false }
@@ -985,18 +1084,52 @@ private final class OnDeviceSetupModel: ObservableObject {
                 aiDecks: opponentDecks, aiSkill: aiSkill)
             let client = try await runtime.makeClient(identity: identity)
             aiClient = client
-            let created = try await runtime.create(client: client, configuration: .object(["seats": .array(seats)]))
+            // Checkpointed only when this engine advertises saveResume; otherwise sent unchanged.
+            let plan = resume.planSoloGame(configuration: .object(["seats": .array(seats)]), capabilities: runtime.capabilities)
+            let created = try await runtime.create(client: client, configuration: plan.configuration)
             guard let matchID = created["matchId"]?.string, !matchID.isEmpty else {
                 throw EngineError.invalidMessage("XMage did not return a match ID. Close the runtime before trying again.")
             }
             aiMatchID = matchID
+            resume.soloGameStarted(plan, setup: GameResumeSetup(
+                configuration: plan.baseConfiguration, seatID: Self.soloSeatID, playerName: name, deckID: deckID,
+                aiDeckIDs: aiDeckIDs, aiSkill: aiSkill, startingPlayerMode: startingPlayerMode), playerDeckName: deck.name)
             updateSessionForeground()
-            try await session.attach(client: client, matchID: matchID, seatID: "player1", allowsSeatScopedAutoYield: true, close: { [self] in try await closeAI() })
+            try await session.attach(client: client, matchID: matchID, seatID: Self.soloSeatID, allowsSeatScopedAutoYield: true, close: { [self] in try await closeAI() })
             status = "Game started"
         } catch {
             errorMessage = error.localizedDescription
             if !runtime.isOpen, aiMatchID == nil { aiClient = nil }
             status = needsLeave ? "Game startup interrupted. Refresh or leave before starting again." : "Unable to start local game"
+        }
+    }
+
+    /// Restores a saved solo game. On any failure the save is deleted, the player is told,
+    /// and the app stays on the menu.
+    func resumeAI(_ record: GameResumeRecord) async -> Bool {
+        guard !isBusy, !needsLeave, let identity else { resume.restoreFailed(); return false }
+        isBusy = true; errorMessage = nil; feedback = nil; status = "Resuming your game"
+        defer { isBusy = false }
+        do {
+            let client = try await runtime.makeClient(identity: identity)
+            aiClient = client
+            let restored = try await resume.restore(record, capabilities: runtime.capabilities) { path in
+                try await runtime.restore(client: client, checkpointPath: path)
+            }
+            aiMatchID = restored.matchID
+            updateSessionForeground()
+            try await session.attach(client: client, matchID: restored.matchID, seatID: record.setup.seatID,
+                                     allowsSeatScopedAutoYield: true, close: { [self] in try await closeAI() })
+            status = "Game resumed"
+            return true
+        } catch {
+            resume.restoreFailed()
+            if session.matchID != nil { try? await session.close() }
+            else if aiMatchID != nil { try? await closeAI() }
+            else if runtime.isOpen { try? await runtime.close() }
+            if !runtime.isOpen { aiClient = nil; aiMatchID = nil }
+            status = "Choose your deck and players."
+            return false
         }
     }
 
@@ -1086,6 +1219,7 @@ private final class OnDeviceSetupModel: ObservableObject {
             let client = EngineClient(transport: OnlineEngineTransport(api: api, matchID: matchID))
             try await session.attach(client: client, matchID: matchID, seatID: seatID, reconnectsAutomatically: true,
                                      close: { [online] in try await online.leave() })
+            resume.tableGameStarted()
             status = "Online match connected"
         } catch { errorMessage = error.localizedDescription }
     }
@@ -1100,6 +1234,7 @@ private final class OnDeviceSetupModel: ObservableObject {
             try await session.attach(client: endpoint.client, matchID: endpoint.matchID, seatID: endpoint.seatID,
                                      allowsSeatScopedAutoYield: true, table: endpoint.table,
                                      close: { try await multiplayer.leave() })
+            resume.tableGameStarted()
             status = multiplayer.isRelayTable ? "Table connected" : "Game Center match connected"
         } catch { errorMessage = error.localizedDescription }
     }
@@ -1130,6 +1265,8 @@ private final class OnDeviceSetupModel: ObservableObject {
 
     func close() async -> Bool {
         guard !isBusy, !session.isWorking else { return false }
+        // Leaving forgets the saved game, even when cleanup has to be retried.
+        resume.gameFinished()
         isBusy = true; status = "Closing game"; errorMessage = nil
         defer { isBusy = false }
         do {
@@ -1346,8 +1483,64 @@ private struct RelayTablePanel: View {
             .background(CommanderPresentation.canvas.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
         }
         Text(multiplayer.status).font(.callout)
+        if multiplayer.room == nil, multiplayer.endpoint == nil, !multiplayer.isFailed, !multiplayer.waitingSeats.isEmpty {
+            RelayWaitingRoomView(seats: multiplayer.waitingSeats) { multiplayer.removeFromTable($0) }
+        }
         if let room = multiplayer.room {
             MatchRoomView(room: room, deckName: deckName, localCommander: localCommander, ready: ready)
+        }
+    }
+}
+
+/// A relay table that is still filling: who has joined and, for the host, a Remove control per joiner.
+@MainActor
+private struct RelayWaitingRoomView: View {
+    let seats: [RelayWaitingSeat]
+    let remove: (String) -> Void
+    @State private var removal: RelayWaitingSeat?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("AT THE TABLE").font(.caption.weight(.bold)).tracking(1.4)
+                .foregroundStyle(CommanderPresentation.secondary)
+            ForEach(Array(seats.enumerated()), id: \.element.id) { index, seat in
+                HStack(spacing: 10) {
+                    Image(systemName: seat.connected ? "person.crop.circle" : "wifi.exclamationmark")
+                        .font(.title3).foregroundStyle(CommanderPresentation.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(seat.name).font(.headline)
+                            if seat.isHost {
+                                Text("HOST").font(.caption2.weight(.black))
+                                    .padding(.horizontal, 5).padding(.vertical, 1)
+                                    .background(CommanderPresentation.accent.opacity(0.25), in: Capsule())
+                            }
+                        }
+                        Text(seat.isLocal ? "You" : seat.connected ? "Joined" : "Reconnecting…")
+                            .font(.caption).foregroundStyle(CommanderPresentation.secondary)
+                    }
+                    Spacer()
+                    if seat.removable {
+                        Button("Remove", role: .destructive) { removal = seat }
+                            .font(.body.weight(.semibold)).foregroundStyle(Color.red)
+                            .accessibilityLabel("Remove \(seat.name)")
+                            .accessibilityIdentifier("ondevice.relay.remove.\(index + 1)")
+                    }
+                }
+            }
+            if seats.contains(where: \.removable) {
+                Text("Remove anyone you did not invite. The match room opens when every seat is taken.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(CommanderPresentation.canvas.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+        .confirmationDialog("Remove \(removal?.name ?? "this player") from the table?",
+                            isPresented: Binding(get: { removal != nil }, set: { if !$0 { removal = nil } }),
+                            titleVisibility: .visible, presenting: removal) { seat in
+            Button("Remove", role: .destructive) { remove(seat.id) }
+        } message: { _ in
+            Text("Their seat opens for someone else. Anyone with the code can still join.")
         }
     }
 }
@@ -1406,5 +1599,30 @@ private struct MatchRoomView: View {
         }
         .padding(12)
         .background(CommanderPresentation.canvas.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+/// iOS background time for the save-game flush and an in-flight engine checkpoint write.
+@MainActor
+private enum ResumeBackgroundTask {
+    static func run(_ name: String, _ body: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
+        let token = Token()
+        token.identifier = UIApplication.shared.beginBackgroundTask(withName: name) {
+            MainActor.assumeIsolated { token.end() }
+        }
+        return Task { @MainActor in
+            await body()
+            token.end()
+        }
+    }
+
+    @MainActor
+    private final class Token {
+        var identifier = UIBackgroundTaskIdentifier.invalid
+        func end() {
+            guard identifier != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(identifier)
+            identifier = .invalid
+        }
     }
 }

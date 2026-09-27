@@ -157,6 +157,8 @@ class OnDeviceSession(private val scope: CoroutineScope) {
     private var messageLog = OnDeviceMessageLog()
     private var pollingJob: Job? = null
     private var closeEndpoint: (suspend () -> Unit)? = null
+    /** Sees every applied poll: save/resume follows checkpoints and the game's end through it. */
+    private var observer: ((MatchPoll) -> Unit)? = null
     private var epoch = UUID.randomUUID()
     private var visibilityEpoch = UUID.randomUUID()
     private var refreshSequence = 0L
@@ -186,9 +188,9 @@ class OnDeviceSession(private val scope: CoroutineScope) {
 
     suspend fun attach(client: EngineClient, matchID: String, seatID: String, autoPoll: Boolean = true,
                        allowsSeatScopedAutoYield: Boolean = false, reconnectsAutomatically: Boolean = false,
-                       table: OnDeviceTableLink? = null, close: suspend () -> Unit) {
+                       table: OnDeviceTableLink? = null, observe: ((MatchPoll) -> Unit)? = null, close: suspend () -> Unit) {
         if (this.client != null || isWorking) throw EngineError.InvalidMessage("Close the active game first")
-        this.client = client; this.matchID = matchID; this.seatID = seatID
+        this.client = client; this.matchID = matchID; this.seatID = seatID; observer = observe
         this.allowsSeatScopedAutoYield = allowsSeatScopedAutoYield
         this.reconnectsAutomatically = reconnectsAutomatically
         this.table = table; lastActionAt = null
@@ -262,6 +264,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
             }
             messageLog = publishedLog
             poll = next
+            observer?.invoke(next)
             appliedRefreshSequence = maxOf(appliedRefreshSequence, sequence)
             // A host tells its guests about each new revision, so they need not poll it constantly.
             table?.applied(next.revision)
@@ -590,7 +593,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
             isClosing = false
             refreshSequence = 0; appliedRefreshSequence = 0
             epoch = UUID.randomUUID(); client = null; matchID = null; seatID = null; poll = null; snapshot = null
-            table = null; lastActionAt = null
+            table = null; lastActionAt = null; observer = null
             messageLog = OnDeviceMessageLog()
             this.closeEndpoint = null; pending = null; pendingActionID = null; pendingCardID = null; errorMessage = null; status = "Ready"
         } finally {

@@ -89,6 +89,7 @@ import io.magicmobile.android.core.Deck
 import io.magicmobile.android.core.DeckTextImport
 import io.magicmobile.android.game.CardChoiceCommandFailure
 import io.magicmobile.android.game.EngineError
+import io.magicmobile.android.game.GameResumeSettings
 import io.magicmobile.android.session.OnDeviceSession
 import io.magicmobile.android.ui.AppPreferences
 import io.magicmobile.android.ui.BrandBackdrop
@@ -227,8 +228,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         return you to aiPrecons.take(maxOf(1, opponentCount)).mapIndexed { index, deck -> VersusSeat("ai-$index", deck.name, deck.commander) }
     }
 
+    /** The player leaves: the board closes and its saved checkpoint is deleted. */
     fun closeGame() {
-        scope.launch { if (setup.close()) { selection.selectedCard = null; selection.inspectedCard = null } }
+        scope.launch { if (setup.leave()) { selection.selectedCard = null; selection.inspectedCard = null } }
     }
 
     fun requestLeave() { if (!setup.isBusy && !session.isWorking) confirmLeave = true }
@@ -237,11 +239,27 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         val deck = selectedDeck ?: return
         if (aiPrecons.size != opponentCount) return
         val opponentDecks = aiPrecons.map { it.deck }
+        val settings = GameResumeSettings(selectedDeckID, aiIDs.take(opponentCount.coerceIn(1, 3)), aiSkill, aiStartingPlayerMode)
         scope.launch {
             try { playerDisplayName = OnDeviceSetupModel.playerName(playerDisplayName) }
             catch (error: EngineError) { setup.errorMessage = error.message; return@launch }
-            setup.startAI(playerDisplayName, deck, opponentDecks, aiSkill)
+            setup.startAI(playerDisplayName, deck, opponentDecks, aiSkill, settings)
         }
+    }
+
+    /** Resume puts the saved game's setup back, so the menu and Rematch match the restored board. */
+    fun resumeSavedGame() {
+        setup.resume.offer?.sidecar?.settings?.let { saved ->
+            if (saved.deckID in setup.deckIDs) selectedDeckID = saved.deckID
+            val ids = saved.aiDeckIDs.filter { id -> precons.any { it.id == id } }
+            if (ids.size == saved.aiDeckIDs.size && ids.size in 1..3) {
+                opponentCount = ids.size
+                ids.getOrNull(0)?.let { aiPreconID = it }; ids.getOrNull(1)?.let { aiPrecon2ID = it }; ids.getOrNull(2)?.let { aiPrecon3ID = it }
+            }
+            aiSkill = saved.aiSkill.coerceIn(1, 10)
+            if (saved.startingPlayerMode in setOf("choose", "roll")) aiStartingPlayerMode = saved.startingPlayerMode
+        }
+        scope.launch { setup.resumeGame() }
     }
 
     fun refresh() { scope.launch { setup.perform { session.refresh(); setup.updateSessionForeground() } } }
@@ -264,7 +282,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
 
     fun concede() {
         scope.launch {
-            try { session.concede() }
+            // A conceded game is never resumed.
+            try { session.concede(); setup.resume.discard() }
             catch (error: EngineError.Rejected) {
                 if (error.code == "unknown_operation" || error.code == "concede_unavailable") { showSetup = false; closeGame() }
                 else setup.errorMessage = error.message
@@ -333,6 +352,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             when (event) {
                 Lifecycle.Event.ON_RESUME -> { setup.setSceneActive(true); GameAudio.resume() }
                 Lifecycle.Event.ON_PAUSE -> setup.setSceneActive(false)
+                Lifecycle.Event.ON_START -> setup.resume.foregrounded()
+                // Leaving starts the saved game's 10 minutes, and a smaller app is less likely to be ended.
+                Lifecycle.Event.ON_STOP -> { setup.resume.backgrounded(); Artwork.releaseMemory(); GameAudio.releaseForBackground() }
                 else -> {}
             }
         }
@@ -342,7 +364,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     LaunchedEffect(portraitModeEnabled, activeGame) { OrientationController.apply(activity, portraitModeEnabled, activeGame) }
     LaunchedEffect(activeGame) {
         GameAudio.setScene(if (activeGame) GameMusic.GAME else GameMusic.MENU)
-        if (!activeGame) { versusIntro = null; return@LaunchedEffect }
+        // A resumed game is not a new matchup: no versus intro.
+        if (!activeGame || setup.resume.resumedGame) { versusIntro = null; return@LaunchedEffect }
         if (reduceMotion) GameAudio.play(GameSound.VERSUS, after = 0.2)
         else { versusIntro = makeVersusIntro(); GameAudio.play(GameSound.VERSUS, after = 0.05) }
     }
@@ -505,6 +528,16 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                             submitStartingChoiceIfNeeded()
                         }
                     }
+                }
+
+                // Save/resume: the launch prompt over the menu, and one-time notices.
+                val resumeOffer = setup.resume.offer
+                if (resumeOffer != null && !activeGame) {
+                    ResumeGamePrompt(resumeOffer.detail, enabled = setup.identity != null && !setup.isBusy && !setup.needsLeave,
+                        resume = ::resumeSavedGame, abandon = { setup.resume.abandon() })
+                }
+                setup.resume.notice?.let { notice ->
+                    ResumeNoticeBanner(notice, Modifier.align(Alignment.TopCenter)) { setup.resume.notice = null }
                 }
             }
 
@@ -852,8 +885,45 @@ private fun OnlineTablePanel(setup: OnDeviceSetupModel, selectedDeck: Deck?, pla
                 }
             }
             Text(table.status, color = setupInk, style = SfText.callout())
+            if (table.room == null && table.endpoint == null && !table.isFailed && table.waitingSeats.isNotEmpty()) {
+                RelayWaitingRoomView(table.waitingSeats) { table.removeFromTable(it) }
+            }
             table.room?.let { room -> MatchRoomView(room, selectedDeck?.name, selectedDeck?.commanderName, ready) }
         }
+    }
+}
+
+/** A relay table that is still filling: who has joined and, for the host, a Remove control per joiner (RelayWaitingRoomView). */
+@Composable
+private fun RelayWaitingRoomView(seats: List<RelayWaitingSeat>, remove: (String) -> Unit) {
+    var removal by remember { mutableStateOf<RelayWaitingSeat?>(null) }
+    Column(Modifier.fillMaxWidth().background(BrandTheme.canvas.copy(alpha = 0.6f), RoundedCornerShape(12.dp)).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("AT THE TABLE", color = setupSecondary, style = sf(12f, SfWeight.bold, tracking = 1.4f))
+        for (seat in seats) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                SfImage(if (seat.connected) "person.crop.circle" else "wifi.exclamationmark", setupSecondary, 20.dp)
+                Column(Modifier.weight(1f).semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(seat.name, color = setupInk, style = SfText.headline())
+                        if (seat.isHost) Text("HOST", Modifier.background(setupAccent.copy(alpha = 0.25f), RoundedCornerShape(50))
+                            .padding(horizontal = 5.dp, vertical = 1.dp), color = setupInk, style = sf(11f, SfWeight.black))
+                    }
+                    Text(if (seat.isLocal) "You" else if (seat.connected) "Joined" else "Reconnecting…", color = setupSecondary, style = SfText.caption())
+                }
+                if (seat.removable) {
+                    IosTextButton("Remove", { removal = seat }, Modifier.semantics { contentDescription = "Remove ${seat.name}" },
+                        color = io.magicmobile.android.ui.rgb(1.0, 0.27, 0.23), bold = true)
+                }
+            }
+        }
+        if (seats.any { it.removable }) {
+            Text("Remove anyone you did not invite. The match room opens when every seat is taken.", color = setupSecondary, style = SfText.caption())
+        }
+    }
+    removal?.let { seat ->
+        ConfirmationDialog("Remove ${seat.name} from the table?", "Their seat opens for someone else. Anyone with the code can still join.",
+            listOf(ConfirmationAction("Remove", destructive = true) { remove(seat.id) })) { removal = null }
     }
 }
 

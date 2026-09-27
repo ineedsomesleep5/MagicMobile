@@ -101,4 +101,38 @@ class RelayLobbyTest {
         values = listOf(3).iterator()
         assertEquals(5, roll.steps.size)
     }
+
+    /** services/table-relay: credentials ride in subprotocols, never the socket URL (OnDeviceMultiplayerTests.swift). */
+    @Test fun relaySocketCredentialsAreSubprotocols() {
+        assertEquals(listOf("magicmobile.1"), RelayWire.socketProtocols(null, null))
+        assertEquals(listOf("magicmobile.1", "magicmobile.key.Ab-9_x"), RelayWire.socketProtocols("Ab-9_x", null))
+        assertEquals(listOf("magicmobile.1", "magicmobile.resume.tok_EN-1"), RelayWire.socketProtocols(null, "tok_EN-1"))
+    }
+
+    @Test fun relayCreateFailureShowsTheRelayMessageOrAFriendlyOne() {
+        assertEquals("Wait a minute.", RelayWire.createFailureMessage(429, "Wait a minute."))
+        assertEquals("You opened several tables in the last minute. Wait a minute, then try again.", RelayWire.createFailureMessage(429, null))
+        assertEquals("The table service could not open a table. Try again.", RelayWire.createFailureMessage(503, "  "))
+        assertEquals("The table service could not open a table. Try again.", RelayWire.createFailureMessage(null, null))
+    }
+
+    @Test fun relayRemoveFrame() {
+        val frame = EngineJson.decode(RelayWire.removeFrame("p2-\"x\"").toByteArray())
+        assertEquals("remove", frame["t"].string)
+        assertEquals("p2-\"x\"", frame["id"].string)
+    }
+
+    /** Only the host sees Remove, only for joiners, and only while the table is still filling. */
+    @Test fun relayWaitingSeatsListJoinersInSeatOrder() {
+        val peers = listOf(RelayPeer("p3-ccc", "Sam", false), RelayPeer("p1-aaa", "Caleb", true), RelayPeer("p2-bbb", "Robin", true))
+        val host = RelayWaitingSeat.seats(peers, "p1-aaa", full = false)
+        assertEquals(listOf("Caleb", "Robin", "Sam"), host.map { it.name })
+        assertEquals(listOf(true, false, false), host.map { it.isHost })
+        assertEquals(listOf(true, false, false), host.map { it.isLocal })
+        assertEquals(listOf(false, true, true), host.map { it.removable })
+        assertEquals(listOf(true, true, false), host.map { it.connected })
+        assertEquals(listOf(false, false, false), RelayWaitingSeat.seats(peers, "p2-bbb", full = false).map { it.removable })
+        assertEquals(listOf(false, false, false), RelayWaitingSeat.seats(peers, "p1-aaa", full = true).map { it.removable })
+        assertEquals(emptyList<RelayWaitingSeat>(), RelayWaitingSeat.seats(emptyList(), "p1-aaa", full = false))
+    }
 }

@@ -530,3 +530,9 @@ enum PromptDisplayText {
         return objectID.stringByReplacingMatches(in: text, range: range, withTemplate: "")
     }
 }
+
+/// "0 cards", "1 card", "2 cards": the one card-count label for decks, sections, bins,
+/// piles and zones. Android's CardCountText (GameLogPresentation.kt) returns the same text.
+enum CardCountText {
+    static func label(_ count: Int) -> String { "\(count) \(count == 1 ? "card" : "cards")" }
+}

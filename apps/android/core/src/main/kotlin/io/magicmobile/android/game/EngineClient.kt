@@ -31,7 +31,18 @@ class EngineClient(private val transport: EngineTransport) {
     }
 
     suspend fun capabilities(): J = call("capabilities")
+    /** `configuration` may carry `checkpoint: {path}` only for an engine whose capabilities say `saveResume`. */
     suspend fun create(configuration: J): J = call("create", mapOf("configuration" to configuration))
+
+    /**
+     * Reopens a checkpointed match (engines with `saveResume` only). Returns the create result plus
+     * `restored: {turn, savedAtMillis}`; the engine keeps checkpointing to the same path. Rejections:
+     * checkpoint_unavailable, checkpoint_incompatible (another engine build) and checkpoint_corrupt.
+     */
+    suspend fun restore(path: String): J {
+        if (path.isEmpty()) throw EngineError.InvalidMessage("Invalid checkpoint path")
+        return call("restore", mapOf("checkpoint" to jsonObject("path" to JsonPrimitive(path))))
+    }
 
     suspend fun poll(matchID: String, seatID: String, after: Long = 0): MatchPoll {
         if (matchID.isEmpty() || seatID.isEmpty() || after < 0) throw EngineError.InvalidMessage("Invalid poll identity or revision")
@@ -111,6 +122,8 @@ class MatchPoll(value: J) {
     val prompt: EnginePrompt?
     val snapshot: J?
     val resyncRequired: Boolean
+    /** The engine's latest checkpoint write, when the match checkpoints. */
+    val checkpoint: EngineCheckpoint?
 
     init {
         val matchID = value["matchId"].string
@@ -124,6 +137,7 @@ class MatchPoll(value: J) {
         this.matchID = matchID; this.seatID = seatID; this.revision = revision; this.phase = phase; resyncRequired = resync
         snapshot = value["snapshot"].takeUnless { it is JsonNull }
         prompt = value["prompt"]?.takeUnless { it is JsonNull }?.let(::EnginePrompt)
+        checkpoint = EngineCheckpoint.parse(value["checkpoint"])
     }
 
     override fun equals(other: Any?): Boolean = other is MatchPoll && other.raw == raw

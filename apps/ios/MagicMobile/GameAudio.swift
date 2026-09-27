@@ -439,6 +439,22 @@ final class GameAudio {
         if musicEnabled { playMusic(scene) } else { currentTrack = scene }
     }
 
+    /// In the background: free every decoded sound and the music buffer, which lowers the
+    /// chance that iOS ends the app. Effects reload on their next play; `resume()` restarts music.
+    func unloadBuffers() {
+        for player in pools.values.joined() { player.stop() }
+        pools.removeAll(); nextVoice.removeAll()
+        for player in fadingPlayers { player.stop() }
+        fadingPlayers.removeAll()
+        if let player = musicPlayer {
+            player.delegate = nil
+            player.stop()
+            musicPlayer = nil
+            nowPlaying = nil
+        }
+        previewing = false
+    }
+
     /// iOS stops an ambient session's players in the background; pick the playlist back up.
     func resume() {
         guard let scene = currentTrack, musicEnabled, musicPlayer?.isPlaying != true else { return }

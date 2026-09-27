@@ -119,13 +119,18 @@ class OnDeviceRuntimeManager {
         } finally { changing = false }
     }
 
-    suspend fun create(client: EngineClient, configuration: J): J {
+    suspend fun create(client: EngineClient, configuration: J): J = open(client, "create") { client.create(configuration) }
+
+    /** Reopens a checkpointed match; like `create`, a failure records diagnostics and closes the runtime. */
+    suspend fun restore(client: EngineClient, path: String): J = open(client, "restore") { client.restore(path) }
+
+    private suspend fun open(client: EngineClient, label: String, operation: suspend () -> J): J {
         if (changing) throw EngineError.InvalidMessage("Native runtime is still processing an operation")
         changing = true
-        try { return client.create(configuration) }
+        try { return operation() }
         catch (error: Throwable) {
             startupDiagnostic = runCatching { client.call("diagnostics")["report"].string }.getOrNull()?.take(16_384)
-                ?: "[local-engine-incident] create\nOccurred: ${Instant.now()}\n${(error.message ?: error.javaClass.simpleName).take(12_000)}"
+                ?: "[local-engine-incident] $label\nOccurred: ${Instant.now()}\n${(error.message ?: error.javaClass.simpleName).take(12_000)}"
             runCatching { closeTransport() }
             throw error
         } finally { changing = false }
