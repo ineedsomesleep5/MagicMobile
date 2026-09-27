@@ -1,6 +1,6 @@
 # Battlefield material backgrounds
 
-Six stable preferences: `arena`, `midnight`, `wood`, `moss`, `ember`, `tide`. Midnight preserves the existing native gradient. Five raster materials replace the old painted stone/wood treatment and add moss, obsidian and tidal slate. Old source assets remain intact for unrelated menu references.
+Six stable preferences: `arena`, `midnight`, `wood`, `moss`, `ember`, `tide`. Midnight preserves the existing native gradient. Five raster materials replace the old painted stone/wood treatment and add moss, obsidian and tidal slate. The old stone and painted menu/board backgrounds (`commander-stone-arena`, `mage-mobile-*-background`) were removed from the iOS asset catalog on 2026-09-27 with the legacy menu that used them.
 
 ## Integration
 
