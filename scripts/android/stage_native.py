@@ -125,7 +125,7 @@ def main():
     report = {'unstrippedBytes': library.stat().st_size, 'imageHeapBytes': sections.get('.svm_heap'),
               'textBytes': sections.get('.text'), 'classFilesInImageHeap': embedded, 'relocations': reloc,
               'peakBuilderRss': peak_rss(out / 'full-native.log'),
-              'sectionsOver1MiB': {n: s for n, s in sorted(sections.items()) if s > 1 << 20}}
+              'unstrippedSectionsOver1MiB': {n: s for n, s in sorted(sections.items()) if s > 1 << 20}}
     print('NATIVE-SIZE ' + json.dumps(report, sort_keys=True))
     if embedded: raise ValueError(f'The image heap embeds {embedded} Java class files as resources; see native/resource-config.json')
     if not reloc['packed']: raise ValueError('Expected Android-packed relocations (-Wl,--pack-dyn-relocs=android)')
