@@ -57,9 +57,12 @@ The app Resume/Abandon flow, file location and 10-minute window are app-side wor
   analysis` was still running when the 120-minute job limit cancelled it, 110 minutes later.
   GraalVM 22.1's serialization configuration makes every declared constructor and method of each
   entry reflectively invocable (roughly 315,000 compiled stubs here). So the class list now
-  registers through `CheckpointSerializationFeature`: classes, fields, queried constructors,
-  serialization hooks and GraalVM-generated constructor accessors only (see NATIVE_METADATA.md).
-  The next Android run on this branch is pending. The PR records its result.
+  registers through `CheckpointSerializationFeature`, which registers only serializable fields,
+  serialization hooks and superclass constructors. Run 36296135786 with it still exhausted the
+  10 GB builder heap in analysis (1,369 s), because GraalVM generates one constructor-accessor class
+  per class, about 43,000. The feature now registers one shared `java.base` accessor class for the
+  46,712 classes whose serialization constructor is `Object()` (see NATIVE_METADATA.md). The next
+  Android run on this branch is pending. The PR records its result.
 - **Not verified.** A complete native image with this metadata unless stated above, native
   serialization at runtime, phone write/restore times, iOS/Android app integration,
   process-kill acceptance.

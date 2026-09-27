@@ -37,6 +37,11 @@ mkdir -p "$BUILD/tools"
   "$ROOT/native/gluon/src/main/java/io/magicmobile/nativebridge/IosLibraryMain.java" \
   "$ROOT/native/gluon/src/main/java/io/magicmobile/nativebridge/OrmLiteDateFormatSubstitutions.java" \
   "$ROOT/native/gluon/src/main/java/io/magicmobile/nativebridge/CheckpointSerializationFeature.java"
+# The feature defines this java.base class while the image builds (see its source).
+"$JAVA_HOME/bin/javac" -J-Xmx256m -source 17 -target 17 --patch-module "java.base=$ROOT/native/gluon/src/main/java-base" \
+  -d "$BUILD/checkpoint-accessor" "$ROOT/native/gluon/src/main/java-base/jdk/internal/reflect/MobileCheckpointConstructorAccessor.java"
+cp "$BUILD/checkpoint-accessor/jdk/internal/reflect/MobileCheckpointConstructorAccessor.class" \
+  "$BUILD/native-java/io/magicmobile/nativebridge/checkpoint-constructor-accessor.bin"
 python3 "$ROOT/scripts/prepare_native_color.py" --graalvm-home "$JAVA_HOME" --output "$BUILD/color-patch"
 INIT_TYPES=$(paste -sd, "$ROOT/native/gluon/buildtime-enums.txt")
 [[ "$INIT_TYPES" == mage.constants.* ]]

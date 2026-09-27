@@ -54,6 +54,8 @@
             <!-- Not -H:SerializationConfigurationFiles: GraalVM 22.1 would also make every declared
                  method of the 48,730 checkpoint types invocable (docs/NATIVE_METADATA.md). -->
             <arg>-Dmagicmobile.checkpoint.serialization=${native.serialization.config}</arg>
+            <!-- CheckpointSerializationFeature defines its shared constructor accessor here. -->
+            <arg>-J--add-opens=java.base/jdk.internal.reflect=ALL-UNNAMED</arg>
             <arg>${native.checkpoint.feature}</arg>
             <arg>-H:ResourceConfigurationFiles=${engine.root}/native/resource-config.json</arg>
           </nativeImageArgs>

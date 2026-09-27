@@ -128,6 +128,11 @@ printf 'ORM profile: %s\n' "${MM_NATIVE_ORM_PROFILE:-runtime}"
   -cp "$JAVA_HOME/lib/svm/builder/svm.jar:$NATIVE_CP" -d "$NATIVE_BUILD/native-java" \
   "${NATIVE_SOURCES[@]}"
 printf 'Real NativeEntryPoints compilation passed.\n'
+# CheckpointSerializationFeature defines this java.base class while the image builds (see its source).
+"$JAVA_HOME/bin/javac" -J-Xmx256m -source 17 -target 17 --patch-module "java.base=$ROOT/native/gluon/src/main/java-base" \
+  -d "$NATIVE_BUILD/checkpoint-accessor" "$ROOT/native/gluon/src/main/java-base/jdk/internal/reflect/MobileCheckpointConstructorAccessor.java"
+cp "$NATIVE_BUILD/checkpoint-accessor/jdk/internal/reflect/MobileCheckpointConstructorAccessor.class" \
+  "$NATIVE_BUILD/native-java/io/magicmobile/nativebridge/checkpoint-constructor-accessor.bin"
 python3 "$ROOT/scripts/prepare_native_color.py" --graalvm-home "$JAVA_HOME" \
   --output "$NATIVE_BUILD/color-patch"
 

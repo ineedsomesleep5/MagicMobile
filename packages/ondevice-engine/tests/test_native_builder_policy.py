@@ -25,6 +25,7 @@ class NativeBuilderPolicyTests(unittest.TestCase):
         self.assertFalse(any(a and a.startswith('-H:SerializationConfigurationFiles') for a in args))
         self.assertIn('-Dmagicmobile.checkpoint.serialization=${native.serialization.config}', args)
         self.assertIn('${native.checkpoint.feature}', args)
+        self.assertIn('-J--add-opens=java.base/jdk.internal.reflect=ALL-UNNAMED', args)
         enable = '-Dnative.checkpoint.feature=--features=io.magicmobile.nativebridge.CheckpointSerializationFeature'
         for script in (ROOT / 'scripts/build_native_ios.sh', ROOT.parents[1] / 'scripts/android/build_native.sh'):
             with self.subTest(script=script.name):
@@ -32,6 +33,9 @@ class NativeBuilderPolicyTests(unittest.TestCase):
                 self.assertIn(enable, text)
                 self.assertIn('nativebridge/CheckpointSerializationFeature.java"', text)
                 self.assertIn('-Dnative.serialization.config=', text)
+                # The shared constructor accessor is compiled against java.base, next to the feature.
+                self.assertIn('--patch-module "java.base=$ROOT/native/gluon/src/main/java-base"', text)
+                self.assertIn('/native-java/io/magicmobile/nativebridge/checkpoint-constructor-accessor.bin"', text)
 
     def test_heap_guard_and_telemetry_remain(self):
         script = (ROOT / 'scripts/build_native_ios.sh').read_text()
