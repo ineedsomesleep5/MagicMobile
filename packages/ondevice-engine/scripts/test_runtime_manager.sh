@@ -23,6 +23,7 @@ clang -std=c11 -Wall -Wextra -Werror -pthread -I"$SRC/CMagicEngine/include" \
 swiftc -swift-version 5 -parse-as-library -whole-module-optimization \
   -emit-module -emit-object -module-name MagicMobileOnDevice -I"$OUT/CMagicEngine" \
   "$SRC/MagicMobileOnDevice/JSONValue.swift" "$SRC/MagicMobileOnDevice/EngineClient.swift" \
+  "$SRC/MagicMobileOnDevice/SaveResume.swift" \
   "$SRC/MagicMobileOnDevice/HostRouter.swift" -o "$OUT/protocol.o" \
   -emit-module-path "$OUT/MagicMobileOnDevice.swiftmodule"
 : > "$ROOT/evidence/runtime-manager-tests.txt"
