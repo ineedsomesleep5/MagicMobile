@@ -42,6 +42,11 @@ class NativeTargetTests(unittest.TestCase):
                 'import json, sys\nfrom pathlib import Path\n'
                 'Path(__file__).resolve().parents[1].joinpath("color-args.json")'
                 '.write_text(json.dumps(sys.argv[1:]))\n')
+            # The resource guard's own checks are in test_native_resources.py; record its inputs.
+            (script.parent / 'check_native_resources.py').write_text(
+                'import json, sys\nfrom pathlib import Path\n'
+                'Path(__file__).resolve().parents[1].joinpath("resource-args.json")'
+                '.write_text(json.dumps(sys.argv[1:]))\n')
             for name in ('core', 'engine', 'generated'):
                 (root / 'build' / name).mkdir(parents=True)
             (root / 'build/core/Core.class').write_text('tooling fixture only')
@@ -87,6 +92,12 @@ class NativeTargetTests(unittest.TestCase):
             self.assertEqual(color_args[:3], ['--graalvm-home', str(compiler), '--output'])
             self.assertTrue(color_args[3].endswith('/color-patch'))
             self.assertIn('-Dnative.color.patch=' + color_args[3] + '/classes', args)
+            # The resource guard sees the exact native classpath before the native build starts.
+            resource_args = json.loads((root / 'resource-args.json').read_text())
+            self.assertEqual(resource_args[0], '--classpath')
+            self.assertTrue(resource_args[1].endswith('/native-java:' + next(
+                x for x in args if x.startswith('-Dnative.classpath='))[len('-Dnative.classpath='):]))
+            self.assertEqual(resource_args[2:4], ['--config', str(root / 'native/resource-config.json')])
             # Every profile passes save/resume serialization metadata from the exporter.
             exporter = (root / 'args.txt.exporter').read_text().splitlines()
             self.assertIn('--serialization', exporter)

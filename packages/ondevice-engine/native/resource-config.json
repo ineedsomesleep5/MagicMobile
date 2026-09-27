@@ -1,9 +1,9 @@
 {
   "resources": {
     "includes": [
-      {"pattern": "mage/.*"},
+      {"pattern": "mage/mobile/.*\\.gz"},
       {"pattern": "META-INF/services/.*"},
-      {"pattern": ".*\\.properties$"},
+      {"pattern": "pennydreadful\\.properties"},
       {"pattern": "tokens-database\\.txt"}
     ]
   }
