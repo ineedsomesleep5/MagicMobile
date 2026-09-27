@@ -134,10 +134,6 @@ struct BattlefieldLayoutMetrics {
         boardColumnRect.width
     }
 
-    var playCenterX: CGFloat {
-        boardColumnRect.midX
-    }
-
     var leftInset: CGFloat {
         boardColumnRect.minX
     }
@@ -256,10 +252,6 @@ struct BattlefieldLayoutMetrics {
 
     var handFrameHeight: CGFloat {
         ArenaHandLayout.restingHeight(cardHeight: handCardHeight)
-    }
-
-    var handY: CGFloat {
-        handRect.midY
     }
 
     var handVisualTopY: CGFloat {

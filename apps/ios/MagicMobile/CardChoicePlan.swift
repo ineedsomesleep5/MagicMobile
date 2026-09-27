@@ -3,7 +3,7 @@ import Foundation
 /// Retains the source so clearing an old setup error cannot surface an older
 /// session error as a new failure during the next user-authorized attempt.
 struct CardChoiceCommandFailure: Equatable {
-    enum Source: Equatable { case legacy, setup, session }
+    enum Source: Equatable { case preview, setup, session }
     let message: String
     let source: Source
 

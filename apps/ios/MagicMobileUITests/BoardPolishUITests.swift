@@ -152,7 +152,7 @@ final class BoardPolishUITests: XCTestCase {
     }
 
     // Independent cases keep one failed control from hiding the remaining surfaces.
-    func testPendingOnlinePreservesAIAndGameCenterSetup() {
+    func testRelayTablePreservesAIAndGameCenterSetup() {
         let application = XCUIApplication()
         app = application
         application.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
@@ -175,13 +175,14 @@ final class BoardPolishUITests: XCTestCase {
         gameCenter.press(forDuration: 0.15)
         XCTAssertTrue(application.buttons["Sign in to Game Center"].waitForExistence(timeout: 10))
         XCTAssertTrue(application.buttons["Find players"].exists)
+        // "Online" is the iPhone + Android relay table; there is no hosted sign-in or lobby.
         application.segmentedControls.buttons["Online"].press(forDuration: 0.15)
-        XCTAssertTrue(application.staticTexts["Online play is coming soon"].waitForExistence(timeout: 10))
+        XCTAssertTrue(application.buttons["ondevice.relay.host"].waitForExistence(timeout: 10))
         XCTAssertFalse(application.textFields["Email"].exists)
         XCTAssertFalse(application.secureTextFields["Password"].exists)
         XCTAssertFalse(application.buttons["Create lobby"].exists)
         XCTAssertFalse(application.buttons["Join"].exists)
-        currentCapture = "pending-online-portrait-setup-fixture"
+        currentCapture = "relay-table-portrait-setup-fixture"
         capture(application, name: currentCapture)
         gameCenter.press(forDuration: 0.15)
         XCTAssertTrue(application.buttons["Find players"].waitForExistence(timeout: 5))

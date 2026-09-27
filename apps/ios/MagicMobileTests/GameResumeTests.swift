@@ -161,7 +161,7 @@ final class GameResumeTests: XCTestCase {
         XCTAssertEqual(GameResumeStore.directory(entryPoint: .embedded, testing: false, applicationSupport: support),
                        support.appendingPathComponent("Resume", isDirectory: true))
         for (entry, testing) in [(OnDeviceAppConfiguration.EntryPoint.embedded, true), (.setupPreview, false),
-                                 (.referencePreview, false), (.engineMissing, false)] {
+                                 (.engineMissing, false)] {
             let directory = GameResumeStore.directory(entryPoint: entry, testing: testing, applicationSupport: support)
             XCTAssertFalse(directory.path.hasPrefix(support.path), "\(entry) testing=\(testing)")
             XCTAssertTrue(directory.path.hasPrefix(FileManager.default.temporaryDirectory.path))

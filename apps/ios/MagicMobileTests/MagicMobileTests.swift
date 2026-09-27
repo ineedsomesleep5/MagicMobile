@@ -4,70 +4,6 @@ import SwiftUI
 
 final class MagicMobileTests: XCTestCase {
     
-    func testDeckImporter() {
-        let deckText = """
-        Commander
-        1 Sol Ring
-        Deck
-        4 Island
-        4 Forest
-        """
-        let list = DeckImporter.parse(text: deckText, source: "Test source")
-        XCTAssertNotNil(list)
-        XCTAssertEqual(list?.commander?.cardName, "Sol Ring")
-        XCTAssertEqual(list?.entries.count, 2)
-    }
-
-    func testDeckImporterPreservesPartnerCommanderAndCompanionSections() {
-        let deckText = """
-        Commanders
-        1 Frodo, Adventurous Hobbit
-        1 Sam, Loyal Attendant
-        Companion
-        1 Lurrus of the Dream-Den
-        Deck
-        97 Plains
-        """
-
-        let list = DeckImporter.parse(text: deckText, source: "Partner deck")
-
-        XCTAssertEqual(list?.commander?.cardName, "Frodo, Adventurous Hobbit")
-        XCTAssertEqual(list?.entries.first(where: { $0.cardName == "Sam, Loyal Attendant" })?.section, "commander")
-        XCTAssertEqual(list?.entries.first(where: { $0.cardName == "Lurrus of the Dream-Den" })?.section, "sideboard")
-        XCTAssertEqual(list?.entries.first(where: { $0.cardName == "Plains" })?.section, "deck")
-    }
-
-    func testDeckFileParserReadsCSVExports() throws {
-        let csv = """
-        Quantity,Name,Edition
-        1,"Atraxa, Praetors' Voice",2X2
-        99,Forest,M21
-        """
-
-        let deck = try DeckFileParser.parse(
-            data: try XCTUnwrap(csv.data(using: .utf8)),
-            filename: "Counters.csv",
-            source: "Counters"
-        )
-
-        XCTAssertEqual(deck.name, "Counters")
-        XCTAssertEqual(deck.commander?.cardName, "Atraxa, Praetors' Voice")
-        XCTAssertEqual(deck.totalCards, 100)
-    }
-
-    func testDeckEditorDraftProducesBattleDeckAndValidation() throws {
-        var draft = DeckEditorDraft()
-        draft.name = "Council of Trees"
-        draft.commanderName = "Treebeard, Gracious Host"
-        draft.rows = [DeckEditorRow(quantity: 99, cardName: "Forest")]
-
-        let record = try XCTUnwrap(draft.record)
-
-        XCTAssertEqual(record.cardCount, 100)
-        XCTAssertTrue(record.isBattleReady)
-        XCTAssertEqual(record.deckList.commander?.cardName, "Treebeard, Gracious Host")
-    }
-
     func testCloudDeckResponseAllowsServerDefaults() throws {
         let data = #"{"id":"deck-1","ownerId":"user-1","name":"Minimal","format":"commander","commander":{"cardName":"Giada, Font of Hope","quantity":1,"section":"commander"},"entries":[],"revision":2,"source":{"kind":"moxfield","url":"https://www.moxfield.com/decks/example"},"createdAt":"2026-07-20T19:00:00Z","updatedAt":"2026-07-20T19:01:00.123Z"}"#.data(using: .utf8)!
         let record = try JSONDecoder.magicMobileDecks.decode(DeckLibraryRecord.self, from: data)
@@ -79,21 +15,6 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertTrue(record.isCloudBacked)
     }
 
-    func testDeckValidationErrorsRemainActionableAcrossHostedResponses() throws {
-        let synchronousFailure = #"{"error":"Commander deck validation failed.","validationErrors":["Human: Unknown card Black Lotus"]}"#.data(using: .utf8)!
-        XCTAssertEqual(
-            MagicMobileAPI.sanitizedServerMessage(data: synchronousFailure, statusCode: 400, contentType: "application/json"),
-            "Human: Unknown card Black Lotus"
-        )
-
-        let asyncFailure = #"{"startupId":"startup-1","status":"failed","error":"Deck validation failed.","deckErrors":[{"seat":"human","deckName":"My Deck","issues":[{"code":"unknown_card","message":"Card was not found in XMage.","cardName":"Imaginary Lotus"}]}]}"#.data(using: .utf8)!
-        let startup = try JSONDecoder.magicMobile.decode(CommanderStartupResponse.self, from: asyncFailure)
-        let deckErrors = try XCTUnwrap(startup.deckErrors)
-        let message = CommanderDeckValidationError.summarizedMessage(for: deckErrors)
-
-        XCTAssertEqual(message, "Human deck My Deck — Imaginary Lotus: Card was not found in XMage.")
-    }
-    
     func testCardIdentityHelpers() {
         let landCard = CardIdentity(name: "Island", typeLine: "Basic Land — Island", oracleText: "{T}: Add {U}.")
         XCTAssertTrue(landCard.isLand)
@@ -311,13 +232,6 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertTrue(card.accessibilityLabel(zoneName: "Battlefield").contains("SHD counter 1"))
     }
 
-    func testGameplayBoardBackgroundAssetIsBundled() {
-        XCTAssertNotNil(UIImage(named: MagicMobileAssetName.boardBackground))
-        XCTAssertNotNil(UIImage(named: MagicMobileAssetName.menuBackground))
-        XCTAssertNotNil(UIImage(named: MagicMobileAssetName.portraitBoardBackground))
-        XCTAssertNotNil(UIImage(named: MagicMobileAssetName.portraitMenuBackground))
-    }
-
     func testPortraitOrientationModeDefaultsToLandscapeOnlyMask() {
         let suiteName = "MagicMobileTests.Orientation.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -336,42 +250,6 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertFalse(GameOrientationMode.isPortraitLayout(size: CGSize(width: 932, height: 430), portraitEnabled: true))
     }
 
-    func testPlayerNameIsCleanedBeforeCommanderStartupConfig() {
-        XCTAssertNil(MagicMobileAPI.cleanPlayerName("   "))
-        XCTAssertEqual(MagicMobileAPI.cleanPlayerName(" Caleb "), "Caleb")
-        XCTAssertEqual(MagicMobileAPI.cleanPlayerName("1234567890123456789012345678"), "123456789012345678901234")
-    }
-
-    func testCommanderConfigEncodesHumanDisplayName() throws {
-        let config = CommanderGameConfig(
-            roomId: "room-1",
-            humanPlayerId: "human",
-            humanDisplayName: "Caleb",
-            humanDeck: PreconCatalog.all[0].deckList,
-            aiPlayers: [],
-            startingLife: 40,
-            commanderDamageEnabled: true
-        )
-        let encoded = try JSONSerialization.jsonObject(with: JSONEncoder.magicMobile.encode(config)) as? [String: Any]
-        XCTAssertEqual(encoded?["humanDisplayName"] as? String, "Caleb")
-    }
-
-    func testHTMLServerErrorsAreSanitizedForPhoneAlerts() {
-        let html = """
-        <!DOCTYPE html><html><head><title>MagicMobile</title></head><body>Not the API</body></html>
-        """.data(using: .utf8)!
-
-        let message = MagicMobileAPI.sanitizedServerMessage(
-            data: html,
-            statusCode: 502,
-            contentType: "text/html; charset=utf-8"
-        )
-
-        XCTAssertTrue(message.contains("HTTP 502"))
-        XCTAssertTrue(message.contains("expected a JSON XMage gateway response"))
-        XCTAssertFalse(message.contains("<!DOCTYPE html>"))
-    }
-
     func testBattlefieldCardMetricsUseCompactFacesAndFullPrintedHand() {
         let metrics = BattlefieldLayoutMetrics(
             size: CGSize(width: 932, height: 430),
@@ -384,34 +262,7 @@ final class MagicMobileTests: XCTestCase {
     }
 
     func testCardImageURLCanForcePlaceholdersForVisualQA() {
-        XCTAssertNil(CardImageURL.normal("Sol Ring", forcePlaceholder: true))
-    }
-
-    func testCardImageManifestDecodesInspectionUrlsCompatibly() throws {
-        let response = try JSONDecoder.magicMobile.decode(CardImageManifestResponse.self, from: #"""
-        {
-          "metadata": {
-            "provider": "scryfall",
-            "status": "ready",
-            "cardCount": 1,
-            "imageCount": 1,
-            "missingImageCount": 0,
-            "symbolCount": 0
-          },
-          "images": [
-            {
-              "name": "Sol Ring",
-              "url": "https://cards.scryfall.io/small/front/a/b/sol-ring.jpg",
-              "normalUrl": "https://cards.scryfall.io/normal/front/a/b/sol-ring.jpg",
-              "inspectionUrl": "https://cards.scryfall.io/large/front/a/b/sol-ring.jpg"
-            }
-          ]
-        }
-        """#.data(using: .utf8)!)
-
-        XCTAssertEqual(response.images.first?.url, "https://cards.scryfall.io/small/front/a/b/sol-ring.jpg")
-        XCTAssertEqual(response.images.first?.normalUrl, "https://cards.scryfall.io/normal/front/a/b/sol-ring.jpg")
-        XCTAssertEqual(response.images.first?.inspectionUrl, "https://cards.scryfall.io/large/front/a/b/sol-ring.jpg")
+        XCTAssertNil(CardImageURL.image("Sol Ring", variant: .board, forcePlaceholder: true))
     }
 
     func testManaSymbolBundledFallbackNamesAreDeterministic() {
@@ -457,26 +308,6 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(summary.graveyardCount, 1)
         XCTAssertEqual(summary.exileCount, 0)
         XCTAssertEqual(summary.commanderDamage, 4)
-    }
-
-    func testWebSocketEndpointUsesExplicitGatewayOverride() throws {
-        let url = try XCTUnwrap(MagicMobileWebSocketEndpoint.url(
-            gameId: "game/with/slash",
-            httpBaseURL: try XCTUnwrap(URL(string: "http://127.0.0.1:3002")),
-            overrideBaseText: "http://127.0.0.1:17171"
-        ))
-
-        XCTAssertEqual(url.absoluteString, "ws://127.0.0.1:17171/ws/games/game%2Fwith%2Fslash")
-    }
-
-    func testWebSocketEndpointFallsBackToHTTPBaseWhenNoOverrideIsSet() throws {
-        let url = try XCTUnwrap(MagicMobileWebSocketEndpoint.url(
-            gameId: "game-1",
-            httpBaseURL: try XCTUnwrap(URL(string: "https://example.com/mobile")),
-            overrideBaseText: nil
-        ))
-
-        XCTAssertEqual(url.absoluteString, "wss://example.com/mobile/ws/games/game-1")
     }
 
     func testCompactPhaseTitlesFitLandscapeStatusRail() {
@@ -588,19 +419,15 @@ final class MagicMobileTests: XCTestCase {
         )
     }
 
-    func testNumericAndStringPileActionsDecodeAndBuildExactCommands() throws {
-        let api = MagicMobileAPI(baseURL: URL(string: "http://localhost:17171")!)
+    func testNumericAndStringPileActionsDecodeExactPileNumbers() throws {
         let numeric = try decodeAction(type: "choose_pile", extra: #""pile": 1"#)
         let string = try decodeAction(type: "choose_pile", extra: #""pile": "2""#)
 
         XCTAssertEqual(numeric.pile?.value, 1)
         XCTAssertEqual(string.pile?.value, 2)
-        XCTAssertEqual(try api.command(for: numeric, gameId: "game-1").pile, 1)
-        XCTAssertEqual(try api.command(for: string, gameId: "game-1").pile, 2)
     }
 
-    func testCanonicalYieldActionsKeepCompactLabelsAndBuildDirectCommands() throws {
-        let api = MagicMobileAPI(baseURL: URL(string: "http://localhost")!)
+    func testCanonicalYieldActionsKeepCompactLabels() throws {
         let cases = [
             ("resolve_stack", "Resolve Stack"),
             ("end_turn", "End Turn"),
@@ -610,7 +437,6 @@ final class MagicMobileTests: XCTestCase {
         for (type, title) in cases {
             let action = try decodeAction(type: type)
             XCTAssertEqual(action.compactPromptTitle, title)
-            XCTAssertEqual(try api.command(for: action, gameId: "game-1").type, type)
         }
     }
 
@@ -628,106 +454,6 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(snapshot.winnerDisplayNames, ["You"])
         XCTAssertEqual(snapshot.endReason, "commander_damage")
         XCTAssertEqual(GameBoardInteractionState.mode(for: snapshot, pendingActionId: nil, selectedCard: nil), .gameOver)
-    }
-
-    func testCastSubmissionClassifierRecognizesPaymentPrompt() throws {
-        let before = try snapshotWithHumanHand(cardId: "sol-ring-1", cardName: "Sol Ring")
-        let action = try decodeAction(type: "cast_spell", extra: #""sourceInstanceId": "sol-ring-1""#)
-        let afterData = String(data: try minimalSnapshotJSON(id: "payment"), encoding: .utf8)!
-            .replacingOccurrences(of: #""hand": []"#, with: #""hand": [{ "instanceId": "sol-ring-1", "card": { "name": "Sol Ring", "typeLine": "Artifact", "oracleText": "" } }]"#)
-            .replacingOccurrences(of: #""legalActions": []"#, with: #""promptEnvelopeV2": { "id": "mana-1", "method": "GAME_PLAY_MANA", "messageId": 1, "playerId": "human", "responseKind": "mana", "message": "Pay {1}", "responseCommand": { "type": "play_mana", "promptId": "mana-1", "messageId": 1 } }, "legalActions": []"#)
-            .data(using: .utf8)!
-        let after = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: afterData)
-
-        XCTAssertEqual(CastSubmissionClassifier.classify(action: action, before: before, after: after), .payment)
-    }
-
-    func testCastSubmissionClassifierFlagsRejectedStillInHand() throws {
-        let before = try snapshotWithHumanHand(cardId: "jaspera-1", cardName: "Jaspera Sentinel")
-        let action = try decodeAction(type: "cast_spell", extra: #""sourceInstanceId": "jaspera-1""#)
-        let after = try snapshotWithHumanHand(cardId: "jaspera-1", cardName: "Jaspera Sentinel")
-
-        XCTAssertEqual(CastSubmissionClassifier.classify(action: action, before: before, after: after), .rejectedStillInHand)
-    }
-
-    func testCastSubmissionClassifierPollsBeforeRejectingDelayedPaymentCast() throws {
-        let before = try snapshotWithHumanHand(cardId: "arcane-signet-1", cardName: "Arcane Signet")
-        let action = try decodeAction(type: "cast_spell", extra: #""sourceInstanceId": "arcane-signet-1", "requiresPayment": true"#)
-        let afterData = String(data: try minimalSnapshotJSON(id: "arcane-delayed-payment"), encoding: .utf8)!
-            .replacingOccurrences(of: #""hand": []"#, with: #""hand": [{ "instanceId": "arcane-signet-1", "card": { "name": "Arcane Signet", "typeLine": "Artifact", "oracleText": "" } }]"#)
-            .data(using: .utf8)!
-        let after = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: afterData)
-
-        XCTAssertTrue(CastSubmissionClassifier.shouldPollForDelayedOutcome(action: action, before: before, after: after))
-    }
-
-    func testCastSubmissionClassifierKeepsWaitingThroughIntermediateCastSnapshots() throws {
-        let before = try snapshotWithHumanHand(cardId: "arcane-signet-1", cardName: "Arcane Signet")
-        let action = try decodeAction(type: "cast_spell", extra: #""sourceInstanceId": "arcane-signet-1", "requiresPayment": true"#)
-        let intermediateData = String(data: try minimalSnapshotJSON(id: "arcane-intermediate"), encoding: .utf8)!
-            .replacingOccurrences(of: #""bridgeRevision": 1"#, with: #""bridgeRevision": 2"#)
-            .replacingOccurrences(of: #""hand": []"#, with: #""hand": [{ "instanceId": "arcane-signet-1", "card": { "name": "Arcane Signet", "typeLine": "Artifact", "oracleText": "" } }]"#)
-            .data(using: .utf8)!
-        let intermediate = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: intermediateData)
-
-        XCTAssertTrue(CastSubmissionClassifier.shouldKeepPollingForCastOutcome(action: action, before: before, after: intermediate))
-    }
-
-    func testCastSubmissionClassifierDoesNotTreatPassivePriorityAsCastProgress() throws {
-        let before = try snapshotWithHumanHand(cardId: "arcane-signet-1", cardName: "Arcane Signet")
-        let action = try decodeAction(type: "cast_spell", extra: #""sourceInstanceId": "arcane-signet-1", "requiresPayment": true"#)
-        let passiveData = String(data: try minimalSnapshotJSON(id: "passive-after-cast"), encoding: .utf8)!
-            .replacingOccurrences(of: #""bridgeRevision": 1"#, with: #""bridgeRevision": 6"#)
-            .replacingOccurrences(of: #""promptText": "Your priority""#, with: #""promptText": "Play spells and abilities""#)
-            .replacingOccurrences(of: #""hand": []"#, with: #""hand": [{ "instanceId": "arcane-signet-1", "card": { "name": "Arcane Signet", "typeLine": "Artifact", "oracleText": "" } }]"#)
-            .replacingOccurrences(of: #""legalActions": []"#, with: #""promptEnvelopeV2": { "id": "passive-priority", "method": "GAME_SELECT", "messageId": 14, "playerId": "human", "responseKind": "card", "message": "Play spells and abilities" }, "legalActions": []"#)
-            .data(using: .utf8)!
-        let passive = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: passiveData)
-
-        XCTAssertTrue(CastSubmissionClassifier.shouldKeepPollingForCastOutcome(action: action, before: before, after: passive))
-        XCTAssertEqual(CastSubmissionClassifier.classify(action: action, before: before, after: passive), .rejectedStillInHand)
-    }
-
-    func testCastSubmissionClassifierPollsDelayedLandPlay() throws {
-        let before = try snapshotWithHumanHand(cardId: "forest-1", cardName: "Forest")
-        let action = try decodeAction(type: "play_land", extra: #""sourceInstanceId": "forest-1", "cardInstanceId": "forest-1", "sourceZone": "hand""#)
-        let passiveData = String(data: try minimalSnapshotJSON(id: "passive-after-land"), encoding: .utf8)!
-            .replacingOccurrences(of: #""bridgeRevision": 1"#, with: #""bridgeRevision": 3"#)
-            .replacingOccurrences(of: #""promptText": "Your priority""#, with: #""promptText": "Play spells and abilities""#)
-            .replacingOccurrences(of: #""hand": []"#, with: #""hand": [{ "instanceId": "forest-1", "card": { "name": "Forest", "typeLine": "Basic Land - Forest", "oracleText": "" } }]"#)
-            .data(using: .utf8)!
-        let passive = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: passiveData)
-
-        XCTAssertTrue(CastSubmissionClassifier.shouldKeepPollingForCastOutcome(action: action, before: before, after: passive))
-        XCTAssertEqual(CastSubmissionClassifier.classify(action: action, before: before, after: passive), .rejectedStillInHand)
-    }
-
-    func testCastSubmissionClassifierStopsWaitingWhenPaymentPromptArrives() throws {
-        let before = try snapshotWithHumanHand(cardId: "arcane-signet-1", cardName: "Arcane Signet")
-        let action = try decodeAction(type: "cast_spell", extra: #""sourceInstanceId": "arcane-signet-1", "requiresPayment": true"#)
-        let paymentData = String(data: try minimalSnapshotJSON(id: "arcane-payment"), encoding: .utf8)!
-            .replacingOccurrences(of: #""bridgeRevision": 1"#, with: #""bridgeRevision": 3"#)
-            .replacingOccurrences(of: #""hand": []"#, with: #""hand": [{ "instanceId": "arcane-signet-1", "card": { "name": "Arcane Signet", "typeLine": "Artifact", "oracleText": "" } }]"#)
-            .replacingOccurrences(of: #""legalActions": []"#, with: #""promptEnvelopeV2": { "id": "mana-arcane", "method": "GAME_PLAY_MANA", "messageId": 8, "playerId": "human", "responseKind": "mana", "message": "Pay {2}", "responseCommand": { "type": "play_mana", "promptId": "mana-arcane", "messageId": 8 } }, "legalActions": []"#)
-            .data(using: .utf8)!
-        let payment = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: paymentData)
-
-        XCTAssertFalse(CastSubmissionClassifier.shouldKeepPollingForCastOutcome(action: action, before: before, after: payment))
-        XCTAssertEqual(CastSubmissionClassifier.classify(action: action, before: before, after: payment), .payment)
-    }
-
-    func testCastSubmissionClassifierTreatsChoicePromptAsCastProgress() throws {
-        let before = try snapshotWithHumanHand(cardId: "frontier-siege-1", cardName: "Frontier Siege")
-        let action = try decodeAction(type: "cast_spell", extra: #""sourceInstanceId": "frontier-siege-1", "requiresPayment": false"#)
-        let promptData = String(data: try minimalSnapshotJSON(id: "mode-after-cast"), encoding: .utf8)!
-            .replacingOccurrences(of: #""bridgeRevision": 1"#, with: #""bridgeRevision": 4"#)
-            .replacingOccurrences(of: #""hand": []"#, with: #""hand": [{ "instanceId": "frontier-siege-1", "card": { "name": "Frontier Siege", "typeLine": "Enchantment", "oracleText": "" } }]"#)
-            .replacingOccurrences(of: #""legalActions": []"#, with: #""promptEnvelopeV2": { "id": "mode-1", "method": "GAME_SELECT", "messageId": 12, "playerId": "human", "responseKind": "mode", "message": "Choose one", "responseCommand": { "type": "choose_mode", "promptId": "mode-1", "messageId": 12 } }, "legalActions": []"#)
-            .data(using: .utf8)!
-        let after = try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: promptData)
-
-        XCTAssertFalse(CastSubmissionClassifier.shouldKeepPollingForCastOutcome(action: action, before: before, after: after))
-        XCTAssertEqual(CastSubmissionClassifier.classify(action: action, before: before, after: after), .waiting)
     }
 
     func testStartupOpeningPromptDiagnosticsDecodeFromBridgeSnapshot() throws {
@@ -802,91 +528,6 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(payload?["abilityId"] as? String, "mana-ability")
     }
 
-    func testPreparedDragCastCommandUsesCommandTemplateSourceAndRevision() throws {
-        let action = try decodeAction(
-            type: "cast_spell",
-            extra: #"""
-            "cardInstanceId": "local-card-id",
-            "sourceInstanceId": "local-source-id",
-            "commandTemplate": {
-              "type": "cast_spell",
-              "cardInstanceId": "xmage-card-id",
-              "sourceInstanceId": "xmage-source-id",
-              "sourceZone": "hand"
-            }
-            """#
-        )
-
-        let command = try MagicMobileAPI(baseURL: URL(string: "http://localhost")!)
-            .preparedCommand(for: action, gameId: "game-1", expectedBridgeRevision: 17)
-        let payload = try JSONSerialization.jsonObject(with: JSONEncoder.magicMobile.encode(command)) as? [String: Any]
-
-        XCTAssertEqual(payload?["type"] as? String, "cast_spell")
-        XCTAssertEqual(payload?["cardInstanceId"] as? String, "xmage-card-id")
-        XCTAssertEqual(payload?["sourceInstanceId"] as? String, "xmage-source-id")
-        XCTAssertEqual(payload?["sourceZone"] as? String, "hand")
-        XCTAssertEqual(payload?["expectedBridgeRevision"] as? Int, 17)
-    }
-
-    func testPreparedCommanderCastCommandPreservesCommandZoneSourceAndFromZone() throws {
-        let action = try decodeAction(
-            type: "cast_spell",
-            label: "Cast Isamaru, Hound of Konda",
-            extra: #"""
-            "cardInstanceId": "local-command-id",
-            "sourceInstanceId": "local-command-id",
-            "commandTemplate": {
-              "type": "cast_spell",
-              "cardInstanceId": "xmage-commander-id",
-              "sourceInstanceId": "xmage-commander-id",
-              "sourceZone": "command"
-            }
-            """#
-        )
-
-        let command = try MagicMobileAPI(baseURL: URL(string: "http://localhost")!)
-            .preparedCommand(for: action, gameId: "game-1", expectedBridgeRevision: 18)
-        let payload = try JSONSerialization.jsonObject(with: JSONEncoder.magicMobile.encode(command)) as? [String: Any]
-
-        XCTAssertEqual(payload?["type"] as? String, "cast_spell")
-        XCTAssertEqual(payload?["cardInstanceId"] as? String, "xmage-commander-id")
-        XCTAssertEqual(payload?["sourceInstanceId"] as? String, "xmage-commander-id")
-        XCTAssertEqual(payload?["sourceZone"] as? String, "command")
-        XCTAssertEqual(payload?["fromZone"] as? String, "command")
-        XCTAssertEqual(payload?["expectedBridgeRevision"] as? Int, 18)
-    }
-
-    func testPromptActionCommandPreservesMessageIdWithoutTemplate() throws {
-        let data = """
-        {
-          "id": "target-action",
-          "type": "choose_target",
-          "playerId": "human",
-          "label": "Choose target",
-          "promptId": "xmage-prompt-77",
-          "messageId": 77,
-          "targetIds": ["target-1"]
-        }
-        """.data(using: .utf8)!
-
-        let action = try JSONDecoder.magicMobile.decode(LegalAction.self, from: data)
-        let command = try MagicMobileAPI(baseURL: URL(string: "http://localhost")!)
-            .command(for: action, gameId: "game-1")
-        let payload = try JSONSerialization.jsonObject(with: JSONEncoder.magicMobile.encode(command)) as? [String: Any]
-
-        XCTAssertEqual(payload?["promptId"] as? String, "xmage-prompt-77")
-        XCTAssertEqual(payload?["messageId"] as? Int, 77)
-        XCTAssertEqual(payload?["targetIds"] as? [String], ["target-1"])
-    }
-
-    func testPromptActionsFailClosedWhenRequiredValuesAreMissing() throws {
-        let api = MagicMobileAPI(baseURL: URL(string: "http://localhost")!)
-        for type in ["choose_pile", "choose_amount", "play_x_mana", "play_mana", "choose_mana", "answer_yes_no", "commander_replacement", "choose_ability"] {
-            let action = try decodeAction(type: type)
-            XCTAssertThrowsError(try api.command(for: action, gameId: "game-1"), "Expected \(type) to require explicit XMage prompt data")
-        }
-    }
-
     func testManaUndoIsOnlyAvailableFromExactXmageLegalActions() throws {
         let snapshotData = String(data: try minimalSnapshotJSON(id: "game-mana-undo"), encoding: .utf8)!
             .replacingOccurrences(of: #""manaPool": { "W": 0, "U": 0, "B": 0, "R": 0, "G": 0, "C": 0 }"#, with: #""manaPool": { "W": 0, "U": 0, "B": 0, "R": 0, "G": 1, "C": 0 }"#)
@@ -895,12 +536,6 @@ final class MagicMobileTests: XCTestCase {
 
         XCTAssertTrue(ManaPaymentTray.manaUndoActions(in: snapshot).isEmpty)
         XCTAssertEqual(ManaPaymentTray.manaUndoUnavailableText(in: snapshot), "XMage has not exposed mana undo")
-
-        let undoAction = try decodeAction(type: "cancel_payment")
-        let command = try MagicMobileAPI(baseURL: URL(string: "http://localhost")!)
-            .command(for: undoAction, gameId: "game-1")
-
-        XCTAssertEqual(command.type, "cancel_payment")
     }
 
     func testManaPaymentTrayExposesCancelCastLabelForPaymentCancelActions() throws {
@@ -942,18 +577,6 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertFalse(ManaPaymentTray.canPay(symbol: "U", in: snapshot))
     }
 
-    func testChooseAbilityUsesExplicitAbilityIdOnly() throws {
-        let action = try decodeAction(
-            type: "choose_ability",
-            extra: #""abilityId": "ability-1""#
-        )
-        let command = try MagicMobileAPI(baseURL: URL(string: "http://localhost")!)
-            .command(for: action, gameId: "game-1")
-        let payload = try JSONSerialization.jsonObject(with: JSONEncoder.magicMobile.encode(command)) as? [String: Any]
-
-        XCTAssertEqual(payload?["abilityId"] as? String, "ability-1")
-    }
-
     func testPromptPileRequiresExplicitPileNumber() throws {
         let explicit = try JSONDecoder.magicMobile.decode(XmagePromptPile.self, from: #"""
         {
@@ -972,99 +595,6 @@ final class MagicMobileTests: XCTestCase {
 
         XCTAssertEqual(explicit.explicitPileNumber, 2)
         XCTAssertNil(ambiguous.explicitPileNumber)
-    }
-
-    func testBlockedCommanderFixtureResponseIsNotPlayable() throws {
-        let data = """
-        {
-          "error": "xmage_fixture_state_seeding_unavailable",
-          "enabled": true,
-          "fixtureName": "commander-gauntlet",
-          "productionDisabled": true,
-          "directStateSeeded": false,
-          "setupMethod": "bridge_fixture_without_real_seed_proof",
-          "blockedReason": "Fixture endpoint did not return seed proof.",
-          "nextImplementationStep": "Add an in-server fixture hook."
-        }
-        """.data(using: .utf8)!
-
-        let response = try JSONDecoder.magicMobile.decode(CommanderFixtureResponse.self, from: data)
-
-        XCTAssertNil(response.playableSnapshot)
-        XCTAssertEqual(response.statusMessage, "Fixture blocked: Fixture endpoint did not return seed proof.")
-        XCTAssertEqual(response.fixtureName, "commander-gauntlet")
-        XCTAssertTrue(response.productionDisabled)
-    }
-
-    func testCommanderFixtureDecoderAcceptsRawSnapshotSuccess() throws {
-        let snapshot = try MagicMobileAPI.decodeCommanderFixtureSnapshot(from: minimalSnapshotJSON(id: "fixture-game-1"))
-
-        XCTAssertEqual(snapshot.id, "fixture-game-1")
-        XCTAssertEqual(snapshot.source, "xmage-java-bridge")
-        XCTAssertEqual(snapshot.bridgeRevision, 7)
-    }
-
-    func testCommanderFixtureDecoderRejectsBlockedResponseWithClearMessage() throws {
-        let data = """
-        {
-          "error": "xmage_fixture_state_seeding_unavailable",
-          "fixtureName": "commander-gauntlet",
-          "directStateSeeded": false,
-          "blockedReason": "Fixture endpoint did not return seed proof.",
-          "nextImplementationStep": "Run the fixture inside XMage."
-        }
-        """.data(using: .utf8)!
-
-        XCTAssertThrowsError(try MagicMobileAPI.decodeCommanderFixtureSnapshot(from: data)) { error in
-            XCTAssertEqual(
-                error.localizedDescription,
-                "Fixture blocked: Fixture endpoint did not return seed proof."
-            )
-        }
-    }
-
-    func testDeclareAttackersCommandPreservesTypedPayload() throws {
-        let action = try decodeAction(
-            type: "declare_attackers",
-            extra: #"""
-            "commandTemplate": {
-              "type": "declare_attackers",
-              "attackers": [{ "attackerId": "attacker-1", "defenderId": "ai-1" }]
-            }
-            """#
-        )
-
-        let command = try MagicMobileAPI(baseURL: URL(string: "http://localhost")!)
-            .command(for: action, gameId: "game-1")
-        let payload = try JSONSerialization.jsonObject(with: JSONEncoder.magicMobile.encode(command)) as? [String: Any]
-        let attackers = payload?["attackers"] as? [[String: Any]]
-
-        XCTAssertEqual(attackers?.count, 1)
-        XCTAssertEqual(attackers?.first?["attackerId"] as? String, "attacker-1")
-        XCTAssertEqual(attackers?.first?["defenderId"] as? String, "ai-1")
-        XCTAssertEqual(command.combatComplete, false)
-    }
-
-    func testDeclareBlockersCommandPreservesTypedPayload() throws {
-        let action = try decodeAction(
-            type: "declare_blockers",
-            extra: #"""
-            "commandTemplate": {
-              "type": "declare_blockers",
-              "blockers": [{ "blockerId": "blocker-1", "attackerId": "attacker-1" }]
-            }
-            """#
-        )
-
-        let command = try MagicMobileAPI(baseURL: URL(string: "http://localhost")!)
-            .command(for: action, gameId: "game-1")
-        let payload = try JSONSerialization.jsonObject(with: JSONEncoder.magicMobile.encode(command)) as? [String: Any]
-        let blockers = payload?["blockers"] as? [[String: Any]]
-
-        XCTAssertEqual(blockers?.count, 1)
-        XCTAssertEqual(blockers?.first?["blockerId"] as? String, "blocker-1")
-        XCTAssertEqual(blockers?.first?["attackerId"] as? String, "attacker-1")
-        XCTAssertEqual(command.combatComplete, false)
     }
 
     func testStackObjectWithoutSourceCardKeepsDisplayText() throws {
@@ -1958,45 +1488,6 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertEqual(notice.xmageCycle, 11)
     }
 
-    func testAssetDownloadStatusDistinguishesCompleteAndNewAssets() {
-        let complete = CardAssetDownloadStatus(
-            metadataStatus: "ready",
-            serverImageCount: 100,
-            serverSymbolCount: 20,
-            phoneImageCount: 100,
-            phoneInspectionImageCount: 100,
-            phoneSymbolCount: 20,
-            isSyncing: false,
-            progress: nil
-        )
-        let partial = CardAssetDownloadStatus(
-            metadataStatus: "ready",
-            serverImageCount: 100,
-            serverSymbolCount: 20,
-            phoneImageCount: 80,
-            phoneInspectionImageCount: 100,
-            phoneSymbolCount: 20,
-            isSyncing: false,
-            progress: nil
-        )
-        let downloading = CardAssetDownloadStatus(
-            metadataStatus: "ready",
-            serverImageCount: 100,
-            serverSymbolCount: 20,
-            phoneImageCount: 80,
-            phoneInspectionImageCount: 80,
-            phoneSymbolCount: 20,
-            isSyncing: true,
-            progress: "images 8/100"
-        )
-
-        XCTAssertEqual(complete.stateLabel, "ALL DOWNLOADED")
-        XCTAssertEqual(complete.buttonTitle, "All assets downloaded")
-        XCTAssertEqual(partial.stateLabel, "NEW ASSETS")
-        XCTAssertEqual(partial.buttonTitle, "Download new assets")
-        XCTAssertEqual(downloading.buttonTitle, "Downloading images 8/100")
-    }
-
     func testPlayableCardGlowIsDistinctFromNormalCardBorder() {
         XCTAssertGreaterThan(CardTile.playableGlowRadius(legal: true, selected: false, pending: false, targetable: false, width: 72), 6)
         XCTAssertEqual(CardTile.playableGlowRadius(legal: false, selected: false, pending: false, targetable: false, width: 72), 0)
@@ -2880,12 +2371,6 @@ final class MagicMobileTests: XCTestCase {
         """.data(using: .utf8)!
     }
 
-    private func snapshotWithHumanHand(cardId: String, cardName: String) throws -> GameSnapshot {
-        let json = String(data: try minimalSnapshotJSON(id: "snapshot-\(cardId)"), encoding: .utf8)!
-            .replacingOccurrences(of: #""hand": []"#, with: #""hand": [{ "instanceId": "\#(cardId)", "card": { "name": "\#(cardName)", "typeLine": "Artifact", "oracleText": "" } }]"#)
-        return try JSONDecoder.magicMobile.decode(GameSnapshot.self, from: json.data(using: .utf8)!)
-    }
-
     private func promptEnvelopeV2(responseType: String, responsePromptId: String, responseMessageId: Int) throws -> PromptEnvelopeV2 {
         let data = """
         {
@@ -2953,5 +2438,14 @@ final class MagicMobileTests: XCTestCase {
         XCTAssertLessThan(metrics.handRect.maxY, metrics.bottomControlsRect.minY + 0.1, file: file, line: line)
         // The live hand uses card lift space, VStack spacing, and its scroll scrubber.
         XCTAssertGreaterThanOrEqual(metrics.handRect.height, ArenaHandLayout.restingHeight(cardHeight: metrics.handCardHeight), file: file, line: line)
+    }
+}
+
+private extension JSONEncoder {
+    /// Stable key order for payload assertions on the board's GameCommand values.
+    static var magicMobile: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
     }
 }

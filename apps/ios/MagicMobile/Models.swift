@@ -1,14 +1,5 @@
 import Foundation
 
-enum AiDifficulty: String, CaseIterable, Identifiable, Codable {
-    case easy
-    case normal
-    case hard
-    case expert
-
-    var id: String { rawValue }
-}
-
 struct DeckEntry: Codable, Identifiable, Hashable {
     var id: String { "\(section)-\(cardName)-\(quantity)" }
     let cardName: String
@@ -26,79 +17,11 @@ struct DeckList: Codable, Hashable {
     }
 }
 
-struct GeneratedDeckResponse: Decodable {
-    let deck: DeckList
-    let validationErrors: [String]
-    let stats: DeckStats
-}
-
-struct DeckStats: Decodable {
-    let lands: Int
-    let ramp: Int
-    let draw: Int
-    let removal: Int
-    let boardWipes: Int
-    let averageManaValue: Double
-}
-
 struct EngineHealth: Decodable {
     let status: String
     let reason: String
     let checkedAt: String
     let recoveryAction: String?
-}
-
-struct CardCacheMetadata: Decodable {
-    let provider: String
-    let status: String
-    let bulkVersion: String?
-    let cardCount: Int
-    let imageCount: Int
-    let missingImageCount: Int
-    let symbolCount: Int?
-    let updatedAt: String?
-}
-
-struct CardImageManifestResponse: Decodable {
-    let metadata: CardCacheMetadata
-    let images: [CardImageManifestEntry]
-}
-
-struct CardImageManifestEntry: Decodable, Hashable {
-    let name: String
-    let url: String
-    let inspectionUrl: String?
-    let normalUrl: String?
-}
-
-struct SymbolManifestResponse: Decodable {
-    let metadata: CardCacheMetadata
-    let symbols: [SymbolManifestEntry]
-}
-
-struct SymbolManifestEntry: Decodable, Hashable {
-    let symbol: String
-    let looseVariant: String?
-    let english: String?
-    let svgUrl: String
-    let pngUrl: String?
-}
-
-struct CommanderGameConfig: Encodable {
-    let roomId: String
-    let humanPlayerId: String
-    let humanDisplayName: String?
-    let humanDeck: DeckList
-    let aiPlayers: [AiPlayerConfig]
-    let startingLife: Int
-    let commanderDamageEnabled: Bool
-}
-
-struct AiPlayerConfig: Encodable {
-    let playerId: String
-    let displayName: String
-    let difficulty: AiDifficulty
-    let deck: DeckList
 }
 
 enum GameStatus: String, Decodable, Equatable {
@@ -547,116 +470,6 @@ struct StartupOpeningPrompt: Decodable, Equatable {
     let xmageCycle: Int?
 }
 
-enum CastSubmissionOutcome: Equatable {
-    case accepted
-    case payment
-    case targeting
-    case waiting
-    case rejectedStillInHand
-    case notCastOrPlay
-
-    var statusMessage: String {
-        switch self {
-        case .accepted:
-            return "XMage accepted the play"
-        case .payment:
-            return "Tap mana sources to pay"
-        case .targeting:
-            return "Choose a highlighted XMage target"
-        case .waiting:
-            return "Waiting for XMage update"
-        case .rejectedStillInHand:
-            return "Cast did not progress. Refresh and try again."
-        case .notCastOrPlay:
-            return "Action submitted"
-        }
-    }
-}
-
-enum CastSubmissionClassifier {
-    static func classify(action: LegalAction, before: GameSnapshot, after: GameSnapshot) -> CastSubmissionOutcome {
-        guard ["cast_spell", "play_land"].contains(action.type) else { return .notCastOrPlay }
-        if isPaymentPrompt(after.promptEnvelopeV2) { return .payment }
-        if isTargetPrompt(after.promptEnvelopeV2) { return .targeting }
-        if isActionableFollowUpPrompt(after.promptEnvelopeV2) { return .waiting }
-        if after.pendingStatus == "waiting_for_xmage" { return .waiting }
-
-        guard let cardId = action.effectiveCardInstanceId ?? action.effectiveSourceInstanceId else {
-            return .accepted
-        }
-
-        let wasInHand = before.human?.zones.hand.contains { $0.instanceId == cardId } == true
-        let stillInHand = after.human?.zones.hand.contains { $0.instanceId == cardId } == true
-        if wasInHand && stillInHand {
-            return .rejectedStillInHand
-        }
-        return .accepted
-    }
-
-    static func shouldPollForDelayedOutcome(action: LegalAction, before: GameSnapshot, after: GameSnapshot) -> Bool {
-        shouldKeepPollingForCastOutcome(action: action, before: before, after: after)
-    }
-
-    static func shouldKeepPollingForCastOutcome(action: LegalAction, before: GameSnapshot, after: GameSnapshot) -> Bool {
-        guard ["cast_spell", "play_land"].contains(action.type) else { return false }
-        return classify(action: action, before: before, after: after) == .rejectedStillInHand
-    }
-
-    static func isPaymentPrompt(_ prompt: PromptEnvelopeV2?) -> Bool {
-        guard let prompt else { return false }
-        let method = prompt.method.uppercased()
-        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
-        return method == "GAME_PLAY_MANA"
-            || method == "GAME_PLAY_XMANA"
-            || ["play_mana", "choose_mana", "pay_cost", "play_x_mana", "mana", "x_mana"].contains(type)
-    }
-
-    static func isTargetPrompt(_ prompt: PromptEnvelopeV2?) -> Bool {
-        guard let prompt else { return false }
-        let method = prompt.method.uppercased()
-        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
-        return method.contains("TARGET") || type == "choose_target" || type == "target"
-    }
-
-    static func isActionableFollowUpPrompt(_ prompt: PromptEnvelopeV2?) -> Bool {
-        guard let prompt else { return false }
-        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
-        let actionableTypes: Set<String> = [
-            "answer_yes_no",
-            "choose_ability",
-            "choose_amount",
-            "choose_card",
-            "choose_mode",
-            "choose_multi_amount",
-            "choose_pile",
-            "choose_player",
-            "commander_replacement",
-            "generic_replacement",
-            "order_items",
-            "order_triggers",
-            "pay_cost",
-            "play_x_mana",
-            "resolve_choice",
-            "search_select"
-        ]
-        guard actionableTypes.contains(type) else { return false }
-
-        let hasChoices = prompt.choices?.isEmpty == false ||
-            prompt.cards?.isEmpty == false ||
-            prompt.targets?.isEmpty == false ||
-            prompt.players?.isEmpty == false ||
-            prompt.piles?.isEmpty == false ||
-            prompt.abilities?.isEmpty == false ||
-            prompt.modes?.isEmpty == false ||
-            prompt.multiAmounts?.isEmpty == false ||
-            prompt.targetIds?.isEmpty == false ||
-            (prompt.minChoices ?? 0) > 0 ||
-            prompt.required == true
-
-        return hasChoices || prompt.responseCommand != nil
-    }
-}
-
 extension GameSnapshot {
     var isStalled: Bool {
         pendingStatus == "stalled" || engineHealth?.status == "stalled"
@@ -703,80 +516,6 @@ enum AIWaitRecoveryPolicy {
             return .refresh
         }
         return .none
-    }
-}
-
-struct CommanderStartupResponse: Decodable {
-    let startupId: String
-    let status: String
-    let snapshot: GameSnapshot?
-    let message: String?
-    let error: String?
-    var deckErrors: [CommanderDeckValidationError]? = nil
-}
-
-struct CleanupGameRequest: Encodable {
-    let reason: String
-}
-
-struct CleanupGameResponse: Decodable {
-    let status: String
-    let gameId: String
-    let reason: String?
-    let removed: Bool
-    let bridgeCleanupAttempted: Bool?
-    let bridgeCleanupSucceeded: Bool?
-}
-
-struct CommanderFixtureResponse: Decodable {
-    let error: String?
-    let fixtureName: String?
-    let productionDisabled: Bool
-    let directStateSeeded: Bool
-    let setupMethod: String?
-    let blockedReason: String?
-    let nextImplementationStep: String?
-    let snapshot: GameSnapshot?
-    let latestSnapshot: GameSnapshot?
-
-    enum CodingKeys: String, CodingKey {
-        case error
-        case fixtureName
-        case productionDisabled
-        case directStateSeeded
-        case setupMethod
-        case blockedReason
-        case nextImplementationStep
-        case snapshot
-        case latestSnapshot
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        error = try container.decodeIfPresent(String.self, forKey: .error)
-        fixtureName = try container.decodeIfPresent(String.self, forKey: .fixtureName)
-        productionDisabled = try container.decodeIfPresent(Bool.self, forKey: .productionDisabled) ?? false
-        directStateSeeded = try container.decodeIfPresent(Bool.self, forKey: .directStateSeeded) ?? false
-        setupMethod = try container.decodeIfPresent(String.self, forKey: .setupMethod)
-        blockedReason = try container.decodeIfPresent(String.self, forKey: .blockedReason)
-        nextImplementationStep = try container.decodeIfPresent(String.self, forKey: .nextImplementationStep)
-        snapshot = try container.decodeIfPresent(GameSnapshot.self, forKey: .snapshot)
-        latestSnapshot = try container.decodeIfPresent(GameSnapshot.self, forKey: .latestSnapshot)
-    }
-
-    var playableSnapshot: GameSnapshot? {
-        guard directStateSeeded else { return nil }
-        return snapshot ?? latestSnapshot
-    }
-
-    var statusMessage: String {
-        if let blockedReason, !blockedReason.isEmpty {
-            return "Fixture blocked: \(blockedReason)"
-        }
-        if let error, !error.isEmpty {
-            return "Fixture blocked: \(error)"
-        }
-        return directStateSeeded ? "Fixture seeded in XMage" : "Fixture blocked"
     }
 }
 
@@ -1048,18 +787,6 @@ extension LegalAction {
 
     var effectiveSourceInstanceId: String? {
         commandTemplate?["sourceInstanceId"]?.stringValue ?? sourceInstanceId ?? cardInstanceId
-    }
-
-    var effectiveSourceZone: String? {
-        commandTemplate?["sourceZone"]?.stringValue ?? sourceZone
-    }
-
-    var effectiveFromZone: String? {
-        commandTemplate?["fromZone"]?.stringValue ?? sourceZone
-    }
-
-    var effectiveAbilityId: String? {
-        commandTemplate?["abilityId"]?.stringValue ?? abilityId
     }
 }
 
@@ -1829,5 +1556,11 @@ struct CardCounterBadge: Hashable {
         if lower.contains("loyalty") { return 2 }
         if lower.contains("shield") { return 3 }
         return 4
+    }
+}
+
+extension JSONDecoder {
+    static var magicMobile: JSONDecoder {
+        JSONDecoder()
     }
 }

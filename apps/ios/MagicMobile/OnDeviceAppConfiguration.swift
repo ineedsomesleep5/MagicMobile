@@ -3,9 +3,10 @@ import CoreFoundation
 import MagicMobileOnDevice
 
 /// Release selection is deliberately independent of launch arguments. An
-/// unlinked Release can never fall back to the legacy desktop/server client.
+/// unlinked build shows the setup preview only to DEBUG UI tests; otherwise it
+/// reports the missing engine. There is no server or reference client fallback.
 enum OnDeviceAppConfiguration {
-    enum EntryPoint: Equatable { case embedded, setupPreview, referencePreview, engineMissing }
+    enum EntryPoint: Equatable { case embedded, setupPreview, engineMissing }
 
     static func aiGameSeats(name: String, humanDeck: MagicMobileOnDevice.JSONValue,
                             aiDecks: [MagicMobileOnDevice.JSONValue],
@@ -22,8 +23,7 @@ enum OnDeviceAppConfiguration {
 
     static func select(engineLinked: Bool, debug: Bool, arguments: [String]) -> EntryPoint {
         if engineLinked { return .embedded }
-        guard debug else { return .engineMissing }
-        return arguments.contains("--ondevice-setup-ui-test") ? .setupPreview : .referencePreview
+        return debug && arguments.contains("--ondevice-setup-ui-test") ? .setupPreview : .engineMissing
     }
 
     static var entryPoint: EntryPoint {

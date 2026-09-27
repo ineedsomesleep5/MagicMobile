@@ -99,3 +99,6 @@ iOS change has one obvious Android counterpart. Update the table and the log bef
 
   Android build 10 ships with the engine package restored to `2c32482` (the native library's source), because `verify_native.py` compares the whole package, including the iOS-only Swift wrapper.
 - 2026-09-27 (Claude): Android build 11 (versionCode 2026092702) ships resume on a native engine built from `79de39c`. iOS build 20 gets the same engine once its far-calls build finishes; the app-side rules already match through `parity/resume-cases.json`.
+- 2026-09-27 (Claude): iOS removed its retired hosted-server client (`ContentView`, `MagicMobileAPI`, the
+  cloud deck library and the dead-URL card image fallback), the dormant online client and the engine-less
+  DEBUG reference entry point. This matches Android's 2026-09-26 removal; no Android change.
