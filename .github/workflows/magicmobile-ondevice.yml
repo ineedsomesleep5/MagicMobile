@@ -85,6 +85,11 @@ jobs:
         run: bash packages/ondevice-engine/scripts/test_runtime_manager.sh
       - run: bash packages/ondevice-engine/scripts/test_ios_harness.sh
         if: steps.reuse.outputs.reused != 'true'
+      # The xcode-27 image ships without Xcode 27's separately installed Metal Toolchain
+      # (actions/runner-images#14548); the app's BoardFXShaders.metal needs it.
+      - name: Install the Xcode 27 Metal Toolchain when the image lacks it
+        if: steps.reuse.outputs.reused != 'true'
+        run: xcrun metal --version >/dev/null 2>&1 || xcodebuild -downloadComponent MetalToolchain
       - name: Compile actual iOS app and tests without simulator or signing
         if: steps.reuse.outputs.reused != 'true'
         run: |
