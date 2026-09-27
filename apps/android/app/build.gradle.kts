@@ -50,7 +50,9 @@ val prepareAssets by tasks.registering(Exec::class) {
     outputs.dir(layout.buildDirectory.dir("generated/magicmobile-assets"))
     commandLine("python3",script.absolutePath, rootProject.file("../..").absolutePath,layout.buildDirectory.dir("generated/magicmobile-assets").get().asFile.absolutePath)
 }
-val prepareBrandAssets by tasks.registering(Copy::class) {
+// Sync, not Copy: drawables that stop being generated (the old background PNGs) must be removed,
+// or they collide with src/main/res in existing build directories.
+val prepareBrandAssets by tasks.registering(Sync::class) {
     from(rootProject.file("../ios/MagicMobile/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png")) {
         rename { "magicmobile_icon.png" }
     }
