@@ -91,6 +91,44 @@ final class BoardPolishUITests: XCTestCase {
         XCTAssertTrue(application.staticTexts["Starting roll preview complete"].waitForExistence(timeout: 8))
     }
 
+    /// The starting roll covers the board: XMage's pending starting-player choice (You or AI)
+    /// neither shows through nor can be reached until the roll is dismissed.
+    func testStartingRollHidesTheStartingPlayerChoice() {
+        let application = XCUIApplication()
+        app = application
+        currentCapture = "starting-roll-covers-choice"
+        application.launchEnvironment["MAGICMOBILE_STARTING_ROLL_FIXTURE"] = "1"
+        application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+        application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.portraitModeEnabled", "YES"]
+        XCUIDevice.shared.orientation = .portrait
+        application.launch()
+        let tapToRoll = application.buttons["multiplayerD20.tapToRoll"]
+        let you = application.buttons["You"]
+        let ai = application.buttons["AI"]
+        func assertChoiceCovered(_ moment: String) {
+            XCTAssertTrue(tapToRoll.exists, moment)
+            XCTAssertFalse(you.exists && you.isHittable, "You must not be reachable under the roll (\(moment))")
+            XCTAssertFalse(ai.exists && ai.isHittable, "AI must not be reachable under the roll (\(moment))")
+            XCTAssertFalse(application.staticTexts["Select a starting player"].exists, "The prompt must not show through (\(moment))")
+        }
+        XCTAssertTrue(tapToRoll.waitForExistence(timeout: 20))
+        assertChoiceCovered("before the first roll")
+        capture(application, name: currentCapture)
+        tapToRoll.tap()
+        XCTAssertTrue(waitForRollButtonToDisappear(tapToRoll))
+        application.buttons["multiplayerD20.skipAnimation"].tap()
+        XCTAssertTrue(tapToRoll.waitForExistence(timeout: 8))
+        assertChoiceCovered("before the AI roll")
+        tapToRoll.tap()
+        // Once the roll is dismissed the same choice is on the board, so the checks above were live.
+        currentCapture = "starting-roll-dismissed"
+        XCTAssertTrue(you.waitForExistence(timeout: 12), "The fixture's starting-player choice must appear after the roll")
+        let reachable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: you)
+        XCTAssertEqual(XCTWaiter.wait(for: [reachable], timeout: 5), .completed)
+        XCTAssertTrue(ai.isHittable)
+        XCTAssertFalse(tapToRoll.exists)
+    }
+
     private func waitForRollButtonToDisappear(_ button: XCUIElement) -> Bool {
         let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: button)
         return XCTWaiter.wait(for: [gone], timeout: 4) == .completed

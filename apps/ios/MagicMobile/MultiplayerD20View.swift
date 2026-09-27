@@ -822,3 +822,42 @@ struct MultiplayerD20View: View {
         }
     }
 }
+
+private struct StartingRollVisibleKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// The starting roll covers the table. The roll answers XMage's starting-player question
+    /// itself (OnDeviceRootView.submitStartingChoiceIfNeeded), so the board keeps its compact
+    /// prompt, the dock's "Open Choice" and the decision chime quiet until it is dismissed.
+    var startingRollVisible: Bool {
+        get { self[StartingRollVisibleKey.self] }
+        set { self[StartingRollVisibleKey.self] = newValue }
+    }
+}
+
+/// The starting roll's full-screen cover: the board's opaque canvas, so nothing behind it
+/// (such as "Select a starting player") shows through, and a modal for VoiceOver.
+struct StartingRollCover<Content: View>: View {
+    /// NativeGameView's board canvas (MagicPalette.boardBackdrop on Android).
+    static var canvas: Color { Color(red: 0.055, green: 0.085, blue: 0.10) }
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ZStack {
+            Self.canvas.ignoresSafeArea()
+            content
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
+    }
+}
+
+extension View {
+    /// What the starting roll covers: hidden from VoiceOver, with its prompts quiet.
+    func startingRollCovered(_ visible: Bool) -> some View {
+        accessibilityHidden(visible)
+            .environment(\.startingRollVisible, visible)
+    }
+}

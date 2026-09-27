@@ -2793,6 +2793,8 @@ struct NativeGameView: View {
     @AppStorage(BoardFXSound.key) private var boardSoundsEnabled = true
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    /// The starting roll covers the board and answers its starting-player prompt itself.
+    @Environment(\.startingRollVisible) private var startingRollVisible
 
     private func openPromptDetails() {
         if let snapshot, PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil {
@@ -3036,7 +3038,7 @@ struct NativeGameView: View {
                             actions: snapshot.legalActions ?? [],
                             combatGroups: snapshot.xmage?.combat ?? []
                         )
-                        let shouldShowCompactPrompt = CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: pendingActionId)
+                        let shouldShowCompactPrompt = !startingRollVisible && CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: pendingActionId)
                         let derivedInteractionMode = GameBoardInteractionState.mode(
                             for: snapshot,
                             pendingActionId: pendingActionId,
@@ -3702,11 +3704,11 @@ struct NativeGameView: View {
             }
             .onChange(of: PortraitInteractionPolicy.detailChoiceKey(snapshot)) { _, key in
                 isPromptDetailOpen = key != nil
-                // A decision that needs you, not a routine priority pass.
-                if key != nil { GameAudio.shared.play(.responseAlert) }
+                // A decision that needs you, not a routine priority pass (the starting roll answers its own).
+                if key != nil && !startingRollVisible { GameAudio.shared.play(.responseAlert) }
             }
             .onChange(of: PortraitInteractionPolicy.cardChoiceKey(snapshot)) { _, key in
-                if key != nil && committedCardChoice == nil { GameAudio.shared.play(.responseAlert) }
+                if key != nil && committedCardChoice == nil && !startingRollVisible { GameAudio.shared.play(.responseAlert) }
                 isCardChoiceOpen = key != nil && committedCardChoice == nil && !reviewCardChoiceAfterPending
                 inspectedCard = nil
                 selectedCard = nil
@@ -3907,7 +3909,7 @@ struct NativeGameView: View {
                 actions: actions,
                 combatGroups: snapshot.xmage?.combat ?? []
             )
-            let shouldShowCompactPrompt = CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: pendingActionId)
+            let shouldShowCompactPrompt = !startingRollVisible && CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: pendingActionId)
             let derivedInteractionMode = GameBoardInteractionState.mode(
                 for: snapshot,
                 pendingActionId: pendingActionId,
@@ -10540,6 +10542,7 @@ enum LandscapeActionDockLayout {
 
 struct GameplayActionDock: View {
     @Environment(\.nativeTurnControl) private var nativeTurnControl
+    @Environment(\.startingRollVisible) private var startingRollVisible
     let snapshot: GameSnapshot
     let passAction: LegalAction?
     let yieldActions: [LegalAction]
@@ -10556,8 +10559,9 @@ struct GameplayActionDock: View {
         CompactPromptPopup.compactLegalPromptActions(in: snapshot)
     }
 
+    /// No "Open Choice" while the starting roll covers the board: the roll answers that prompt.
     private var hasPromptDecision: Bool {
-        CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: nil)
+        !startingRollVisible && CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: nil)
     }
 
     private var model: GameActionDockModel {
