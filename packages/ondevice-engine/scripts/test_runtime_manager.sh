@@ -20,11 +20,12 @@ clang -std=c11 -Wall -Wextra -Werror -pthread -I"$SRC/CMagicEngine/include" \
   -c "$SRC/CMagicEngine/mm_runtime.c" -o "$OUT/runtime.o"
 clang -std=c11 -Wall -Wextra -Werror -pthread -I"$SRC/CMagicEngine/include" \
   -c "$FIXTURE/fixture.c" -o "$OUT/fixture.o"
+# Every package source, so a new file in MagicMobileOnDevice cannot silently fall out of this build.
+SOURCES=("$SRC"/MagicMobileOnDevice/*.swift)
+[[ -f "${SOURCES[0]}" ]] || { echo "No Swift sources in $SRC/MagicMobileOnDevice" >&2; exit 1; }
 swiftc -swift-version 5 -parse-as-library -whole-module-optimization \
   -emit-module -emit-object -module-name MagicMobileOnDevice -I"$OUT/CMagicEngine" \
-  "$SRC/MagicMobileOnDevice/JSONValue.swift" "$SRC/MagicMobileOnDevice/EngineClient.swift" \
-  "$SRC/MagicMobileOnDevice/SaveResume.swift" \
-  "$SRC/MagicMobileOnDevice/HostRouter.swift" -o "$OUT/protocol.o" \
+  "${SOURCES[@]}" -o "$OUT/protocol.o" \
   -emit-module-path "$OUT/MagicMobileOnDevice.swiftmodule"
 : > "$ROOT/evidence/runtime-manager-tests.txt"
 for CHECK in RuntimeManagerChecks RuntimeLeaseChecks; do
