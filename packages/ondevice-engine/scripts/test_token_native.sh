@@ -13,6 +13,8 @@ python3 - "$ROOT" "$PROBE_BUILD" <<'PY'
 import hashlib, json, re, subprocess, sys
 from pathlib import Path
 root, output = map(Path, sys.argv[1:])
+sys.path.insert(0, str(root / 'scripts'))
+from prepare_upstream import PATCHES
 upstream = root / '.upstream/mage'
 pin = json.loads((root / 'upstream.lock.json').read_text())['commit']
 if subprocess.check_output(['git', '-C', str(upstream), 'rev-parse', 'HEAD'], text=True).strip() != pin:
@@ -24,7 +26,10 @@ hashes = {}
 for path in paths:
     data = (upstream / path).read_bytes()
     original = subprocess.check_output(['git', '-C', str(upstream), 'show', f'{pin}:{path}'])
-    if data != original:
+    # prepare_upstream.py's reviewed transformations (RandomUtil's checkpoint state) are expected;
+    # every other file must be the pinned original.
+    expected = PATCHES[path](original.decode()).encode() if path in PATCHES else original
+    if data != expected:
         raise SystemExit(f'Unreviewed upstream change: {path}')
     hashes[path] = hashlib.sha256(data).hexdigest()
 classpath = (root / 'build/runtime-classpath.txt').read_text().strip().split(':')
