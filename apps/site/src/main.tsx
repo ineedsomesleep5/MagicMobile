@@ -304,14 +304,14 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 9 adds the fixes from our four-player playtest:
-                the board follows whose turn it is, clearer combat with first
-                strike, token copies that look like cards, and steadier online
-                tables. It builds on build 8, which brought the iPhone app to
-                Android: Deck Studio, both board layouts and table codes.
-                Android is an early alpha; physical-phone acceptance is still
-                pending. Live games do not yet resume after Android terminates
-                the app process.
+                Android build 10 lets you play any deck straight from Deck
+                Studio, with an automatic rules check, and makes building
+                faster: a live deck check, quick adds, editing the list as
+                text, grouping by role, a card grid and a sample hand. Hosts
+                can also remove a player while a table fills. Android is an
+                early alpha; physical-phone acceptance is still pending. Live
+                games do not yet resume after Android closes the app; that is
+                coming in the next build.
               </p>
             </details>
             <details>
