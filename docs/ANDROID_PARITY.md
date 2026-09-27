@@ -91,3 +91,10 @@ iOS change has one obvious Android counterpart. Update the table and the log bef
   helpers only they used. Kept: `DeckStore` (the Deck Studio library and build 7 migration), `CardArtwork`,
   the artwork download engine and service, and `NativeBridge`. Build 7 draft, receipt and playtest files
   stay on the device unread, as in build 8.
+- 2026-09-27 (Claude): Build 19 / build 10. Every change landed on both platforms:
+  - Deck Studio Play this deck and the builder improvements (#65), with a new shared fixture `parity/deck-studio-cases.json` read by both platforms' parity tests
+  - the save/resume app side (#63), with `parity/resume-cases.json`
+  - relay extras (#48)
+  - singular card counts (#56)
+
+  Android build 10 ships with the engine package restored to `2c32482` (the native library's source), because `verify_native.py` compares the whole package, including the iOS-only Swift wrapper.

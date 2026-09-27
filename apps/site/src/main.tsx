@@ -320,12 +320,13 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 18 lets iPhones join Android players' tables with a code,
-                while Game Center stays for iPhone-only games. The board follows
-                whose turn it is, your seat stays filled when you're knocked out,
-                combat shows keywords and first strike clearly, and token copies
-                look like cards. It is built for iOS 27. Apple has approved this
-                build for Internal and External TestFlight.
+                Build 19 lets you play any deck straight from Deck Studio, with
+                an automatic rules check on your phone, and makes building
+                faster: a live deck check, quick adds, editing the list as text,
+                grouping by role, a card grid and a sample hand. Hosts can also
+                remove a player while a table fills. Resuming a game after the
+                app closes is coming next. Apple has approved this build for
+                Internal and External TestFlight.
               </p>
             </details>
             <details>

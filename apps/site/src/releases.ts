@@ -1,7 +1,7 @@
 // Published release metadata. Bump iOS only after the new TestFlight build is verified live.
 export const sharedAppVersion = "0.1.1";
 const androidReleaseBuild = "10";
-const iosTestFlightBuild = "18";
+const iosTestFlightBuild = "19";
 
 // Keep platform build numbers independent; the TestFlight invitation URL is stable.
 export const releases = {
