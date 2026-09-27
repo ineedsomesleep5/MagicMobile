@@ -86,6 +86,13 @@ final class Checkpoints {
         "java.util.concurrent.locks.ReentrantLock$FairSync","java.util.concurrent.locks.AbstractQueuedSynchronizer",
         "java.util.concurrent.locks.AbstractOwnableSynchronizer");
     private static volatile Boolean available;
+    /**
+     * Tests only; null in production. Sees each admitted class that a stream writes as a class
+     * descriptor (object, superclass, enum, array, Class object) and each one a read resolves or
+     * gets back from readResolve. A native image resolves every stream class through Class.forName,
+     * so RealCheckpointTests requires all of them in the exported native metadata.
+     */
+    static volatile java.util.function.Consumer<Class<?>> classObserver;
 
     private Checkpoints() {}
 
@@ -285,7 +292,12 @@ final class Checkpoints {
                 || info.arrayLength()>MAX_ARRAY) return ObjectInputFilter.Status.REJECTED;
         Class<?> type=info.serialClass();
         if(type==null) return ObjectInputFilter.Status.ALLOWED; // limit-only callback
-        return allowed(type)?ObjectInputFilter.Status.ALLOWED:ObjectInputFilter.Status.REJECTED;
+        if(!allowed(type)) return ObjectInputFilter.Status.REJECTED;
+        // A negative length: a resolved stream class or a readResolve result. Non-negative lengths
+        // are array contents, including the JDK collections' checkArray pre-checks (Map.Entry[]).
+        java.util.function.Consumer<Class<?>> observer=classObserver;
+        if(observer!=null && info.arrayLength()<0) observer.accept(type);
+        return ObjectInputFilter.Status.ALLOWED;
     }
 
     /**
@@ -308,6 +320,8 @@ final class Checkpoints {
         CheckedOutput(OutputStream out) throws IOException { super(out); }
         @Override protected void annotateClass(Class<?> type) throws IOException {
             if(!allowed(type)) throw refuse(new InvalidClassException(type.getName(),"Class is not allowed in a checkpoint"));
+            java.util.function.Consumer<Class<?>> observer=classObserver;
+            if(observer!=null) observer.accept(type); // every class descriptor this stream writes
         }
         @Override protected void annotateProxyClass(Class<?> type) throws IOException {
             throw refuse(new InvalidClassException(type.getName(),"Proxies are not allowed in a checkpoint"));

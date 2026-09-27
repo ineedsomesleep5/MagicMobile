@@ -29,8 +29,10 @@ import org.graalvm.nativeimage.hosted.RuntimeReflection;
  * GraalVM 22.1's serialization configuration costs too much for the 48,723 checkpoint types:
  * it makes every declared constructor and method invocable (a compiled stub for each), and it
  * generates one serialization-constructor accessor class per class. Either exhausted the CI
- * builder. This feature registers, for each listed class and its Serializable superclasses, only
- * what ObjectStreamClass and ReflectionFactory use at run time:
+ * builder. Every listed name, arrays and Class-object interfaces included, is registered for
+ * reflection so that ObjectInputStream.resolveClass finds it through Class.forName. For each listed
+ * class and its Serializable superclasses, it registers only what ObjectStreamClass and
+ * ReflectionFactory use at run time:
  * <ul>
  * <li>the class, its serializable instance fields (non-static, non-transient; all instance fields
  * when it declares serialPersistentFields) and its serialVersionUID/serialPersistentFields;</li>
@@ -62,10 +64,27 @@ public final class CheckpointSerializationFeature implements Feature {
         try {
             List<String> names = typeNames(Files.readString(Path.of(config)));
             Set<Class<?>> classes = new LinkedHashSet<>();
+            int arrays = 0, forNameOnly = 0;
             for (String name : names) {
                 Class<?> listed = access.findClassByName(name);
                 if (listed == null) {
                     throw new IllegalStateException("Checkpoint serialization class not found: " + name);
+                }
+                if (listed.getName().startsWith("java.awt.") || listed.getName().startsWith("javax.swing.")) {
+                    throw new IllegalStateException("Desktop UI class in checkpoint serialization: " + listed.getName());
+                }
+                // ObjectInputStream.resolveClass loads every stream class, arrays included, through
+                // Class.forName. In 22.1 that finds only classes registered for reflection
+                // (ReflectionDataBuilder.processClass -> ClassForNameSupport.registerClass), so each
+                // listed name is registered, even one with no serialization metadata of its own.
+                RuntimeReflection.register(listed);
+                if (listed.isArray()) {
+                    arrays++;
+                    continue;
+                }
+                if (listed.isInterface() || !Serializable.class.isAssignableFrom(listed)) {
+                    forNameOnly++; // a Class object's descriptor (Ability.class): resolved, never instantiated
+                    continue;
                 }
                 for (Class<?> type = listed; type != null && Serializable.class.isAssignableFrom(type); type = type.getSuperclass()) {
                     if (type.getName().startsWith("java.awt.") || type.getName().startsWith("javax.swing.")) {
@@ -89,9 +108,6 @@ public final class CheckpointSerializationFeature implements Feature {
             int shared = 0, own = 0, fields = 0, hooks = 0;
             for (Class<?> type : classes) {
                 RuntimeReflection.register(type);
-                if (type.isArray()) {
-                    continue;
-                }
                 superclasses.add(type.getSuperclass());
                 if (!Enum.class.isAssignableFrom(type)) {
                     Class<?> constructorClass;
@@ -127,7 +143,8 @@ public final class CheckpointSerializationFeature implements Feature {
             }
             // Mirrors GraalVM's own serialization registration.
             RuntimeReflection.register(ObjectStreamClass.class.getDeclaredMethod("computeDefaultSUID", Class.class));
-            System.out.println("Checkpoint serialization: " + names.size() + " listed types, " + classes.size()
+            System.out.println("Checkpoint serialization: " + names.size() + " listed types (" + arrays + " arrays, "
+                            + forNameOnly + " resolvable only), " + classes.size()
                             + " classes with Serializable superclasses, " + shared + " shared allocating accessors, "
                             + own + " GraalVM accessors, " + fields + " fields, " + hooks + " serialization hooks, "
                             + superclasses.size() + " superclasses with queried constructors");

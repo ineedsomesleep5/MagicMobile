@@ -47,8 +47,10 @@ writes `serialization-config.json` next to `reflect-config.json`:
 
 - `types`: every Serializable, non-interface class under `mage.` and `io.magicmobile.xmage.`
   in Mage, Mage.Sets, Mage.Common, the built plugin modules and the adapter (`build/engine`),
-  the JDK allowlist read from `Checkpoints.jdkTypes()`, and the array types of serializable
-  fields.
+  the JDK allowlist read from `Checkpoints.jdkTypes()`, and (since September 27) every other
+  class a stream can name: Serializable superclasses, array types and the classes held by
+  Class-typed fields (see
+  [Stream class resolution](#stream-class-resolution-in-the-native-image-september-27-2026)).
 - `lambdaCapturingTypes`: always an empty list. The pinned 22.1 parser requires both keys of
   the object form (GraalVM 21.3+ format). Proxies and serializable lambdas are refused by the
   checkpoint writer and reader, so neither is registered.
@@ -210,3 +212,83 @@ the failure in `diagnostics`, and refuses `create` with a checkpoint and `restor
 
 Gzip makes the JDK `Deflater` reachable. iOS already links system zlib (`-lz`); Android's
 staging check now also allows the zlib `deflate*` entry points next to the `inflate*` ones.
+
+## Stream class resolution in the native image (September 27, 2026)
+
+The first native engine that built with the metadata above (Android run
+[36302037548](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/36302037548), `dd9f869`)
+reported `saveResume: false` on the Android emulator. Its self-test wrote the probe but could not
+read it back: `java.lang.ClassNotFoundException: [Ljava.lang.Enum;` from `Class.forName` in
+`ObjectInputStream.resolveClass`, while reading an `EnumSet$SerializationProxy` (whose `elements`
+field is an `Enum[]`). A JVM resolves any class; the native image only resolves what was registered.
+
+**How the pinned builder resolves stream classes.** `ObjectInputStream.resolveClass` calls
+`Class.forName(name, false, loader)`. In 22.1.0.1 that is `DynamicHub.forName`, which looks the name
+up in `ClassForNameSupport`. That map is filled by `ReflectionDataBuilder.processClass`, which calls
+`ClassForNameSupport.registerClass` for every class registered for reflection
+(`RuntimeReflection.register`), arrays included (read from the `vm-22.1.0.1` source). So every class
+descriptor a stream can contain (object classes, superclasses, enums, arrays and the classes of
+`Class` objects) needs a reflection registration of its own, whether or not it has serialization
+metadata. `CheckpointSerializationFeature` now registers every listed name that way: arrays and
+interfaces (`resolvable only`) get just that, and the others also get the serialization metadata
+described above.
+
+**Finding every gap at once, on the JVM.** `Checkpoints.classObserver` (null in production) sees
+each class a checkpoint stream writes as a class descriptor (the writer's `annotateClass`) and each
+class a read resolves or gets back from `readResolve` (input filter calls with a negative array
+length; the JDK collections' `checkArray` pre-checks are not stream classes). `RealCheckpointTests`
+records these in every process: the self-test, the named-condition round trips, all three game
+scenarios and every fresh-JVM restore, which keeps checkpointing while it plays to the end. It then
+requires each of them in `serialization-config.json`, read the way the feature reads it.
+`test_real_engine.sh` exports that file first, with the same arguments as the native builds
+(`build/native-metadata-check`, about 18 s). Primitive classes are exempt: `ObjectInputStream`
+resolves them itself.
+
+Against the previous exporter, the check found exactly two missing classes among the 933 that the
+run's streams used:
+
+- `[Ljava.lang.Enum;`: the `elements` field of `java.util.EnumSet$SerializationProxy` (the
+  device failure). The exporter only looked at the fields of engine classes, not of the JDK types.
+- `[Lmage.filter.predicate.Predicate;`: `Predicates.and(a, b)` keeps `Arrays.asList(a, b)`, whose
+  generic varargs array is a `Predicate[]`, in the `Object[] a` field of `Arrays$ArrayList`. No
+  field declares that type.
+
+Every other stream class (engine classes and 25 JDK types, among them `EnumSet$SerializationProxy`,
+`RegularEnumSet`, `Arrays$ArrayList` and `ReentrantLock$NonfairSync` with its superclasses) was
+already listed. No stream held a `Class` object of an unlisted class.
+
+**Exporter rules.** The list is closed over what a stream can name, not over what these games used:
+
+- The Serializable superclasses of every listed class (6 more names; the feature already
+  registered them).
+- Array types, each with every nested array type, when the checkpoint allowlist admits the element
+  type and it is not a desktop UI class:
+  - the serial fields of every listed class, JDK types included. For JDK classes and any class
+    declaring `serialPersistentFields`, the fields come from `ObjectStreamClass` itself (`BitSet`
+    persists a `long[]`, `BigInteger` a `byte[]`, `ConcurrentHashMap` a `Segment[]`). Enum fields
+    are skipped because an enum constant is written as its name;
+  - every array type engine code creates: the exporter reads the class files and collects the
+    operands of `anewarray`, `multianewarray` and `newarray` (JVMS 6.5). That covers generic
+    varargs, `toArray(new T[0])`, `stream.toArray(T[]::new)` and enum `values()`: 1,887 types;
+  - arrays of every allowlisted JDK type, which JDK code creates too (`String.split`).
+- Class objects: a stream names the class that a `Class`-typed serial field holds. The exporter
+  reads each such field's bound (`Class<? extends Ability>`) and lists every class literal (`ldc`)
+  in engine code within a bound. Serializable ones already are; five interfaces (`Ability`,
+  `ActivatedAbility`, `TriggeredAbility`, `Card`, `Permanent`) are added as resolvable only. Two
+  upstream fields are raw or `Class<?>`; their bounds come from the reviewed values in
+  `CLASS_FIELD_BOUNDS` (`ActivateAbilitiesAnyTimeYouCouldCastInstantEffect`: Equip, Loyalty and
+  Meditate abilities; `ExpansionSet$SetCardInfo`: card classes). A new unbounded field fails the
+  export and names the field.
+- `writeReplace` and `readResolve`: the JDK serialization proxies and their `readResolve` results
+  are on the checkpoint allowlist (`EnumSet$SerializationProxy`, `CollSer`, `RegularEnumSet`,
+  `JumboEnumSet`, `ImmutableCollections$*`), so they are listed. The JVM check sees `readResolve`
+  results, which for these proxies are the original classes; it cannot see the original object of
+  a `writeReplace` directly.
+
+The export now lists **50,684 names**: 48,632 engine classes, 84 JDK types, 6 superclasses, 1,957
+array types (10 from serial fields, the rest created by engine or JDK code) and 5 resolvable-only
+interfaces. `report.json` records the counts, the `Class` field bounds and the added classes. A JVM
+dry run of the feature over this file, with stand-ins for the GraalVM registries, registers the same
+serialization metadata as before (48,722 classes, 46,700 shared accessors, 184 GraalVM accessors,
+5,540 fields, 148 hooks, 1,232 queried constructors), and every listed name is registered for
+reflection, so for `Class.forName`.
