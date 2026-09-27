@@ -153,8 +153,7 @@ final class OnDeviceSession: ObservableObject {
     private var appliedRefreshSequence: UInt64 = 0
     private var isForeground = true
     private var automaticPolling = true
-    private var reconnectsAutomatically = false
-    /// Set for a seat at a phone-hosted table; nil for local and online games.
+    /// Set for a seat at a phone-hosted table; nil for local games.
     private var table: OnDeviceTableLink?
     /// Uptime of this seat's latest answer or concede, for prompt polling until it lands.
     private var lastActionAt: TimeInterval?
@@ -181,14 +180,12 @@ final class OnDeviceSession: ObservableObject {
     private var abilityAutoAnswer: Task<Void, Never>?
 
     func attach(client: EngineClient, matchID: String, seatID: String, autoPoll: Bool = true,
-                allowsSeatScopedAutoYield: Bool = false, reconnectsAutomatically: Bool = false,
-                table: OnDeviceTableLink? = nil,
+                allowsSeatScopedAutoYield: Bool = false, table: OnDeviceTableLink? = nil,
                 close: @escaping @MainActor () async throws -> Void) async throws {
         guard self.client == nil, !isWorking else { throw EngineError.invalidMessage("Close the active game first") }
         self.client = client; self.matchID = matchID; self.seatID = seatID
         // Only trusted routes opt in. Every pass still uses this seat's authenticated prompt.
         self.allowsSeatScopedAutoYield = allowsSeatScopedAutoYield
-        self.reconnectsAutomatically = reconnectsAutomatically
         self.table = table; lastActionAt = nil
         autoPassStatus = ""; checkpoint = nil; isOverForSeat = false
         closeEndpoint = close; automaticPolling = autoPoll; epoch = UUID()
@@ -197,14 +194,9 @@ final class OnDeviceSession: ObservableObject {
         status = "Starting game"
         do { try await refresh() }
         catch {
-            if let table, table.role == .guest, error is OnDeviceHostUnavailable {
-                // The poll loop retries the host a few times before giving up.
-                status = table.waitingStatus
-            } else {
-                guard reconnectsAutomatically, error is URLError else { throw error }
-                status = "Reconnecting…"
-                errorMessage = "Connection interrupted. Reconnecting to your game."
-            }
+            // A guest's poll loop retries the host a few times before giving up.
+            guard let table, table.role == .guest, error is OnDeviceHostUnavailable else { throw error }
+            status = table.waitingStatus
         }
         beginPolling()
     }
@@ -626,7 +618,6 @@ final class OnDeviceSession: ObservableObject {
         guard pollingTask == nil, automaticPolling, client != nil, isForeground, !isClosing,
               !["ended", "failed", "closed"].contains(poll?.phase ?? "") else { return }
         pollingTask = Task { [weak self] in
-            var failures = 0
             var hostRetries = OnDeviceHostRetryPolicy(delays: self?.hostRetryDelays ?? OnDeviceHostRetryPolicy.defaultDelays)
             var lastPoll = ProcessInfo.processInfo.systemUptime
             // A new loop (attach, return to the foreground, a manual refresh) polls on the short
@@ -635,7 +626,7 @@ final class OnDeviceSession: ObservableObject {
             while !Task.isCancelled {
                 do {
                     let idle = (self?.idlePolls ?? 0) >= 3
-                    let interval: TimeInterval = self?.reconnectsAutomatically == true ? 1 : idle ? 0.6 : 0.3
+                    let interval: TimeInterval = idle ? 0.6 : 0.3
                     if firstPoll { try await Task.sleep(for: .seconds(interval)) }
                     else if !retryNow { try await self?.waitForNextPoll(since: lastPoll, interval: interval) }
                     firstPoll = false; retryNow = false
@@ -643,7 +634,7 @@ final class OnDeviceSession: ObservableObject {
                     if self.isAutoPassing { lastPoll = ProcessInfo.processInfo.systemUptime; continue }
                     try await self.refresh()
                     lastPoll = ProcessInfo.processInfo.systemUptime
-                    failures = 0; hostRetries.reset()
+                    hostRetries.reset()
                     guard !Task.isCancelled else { return }
                     if ["ended", "failed", "closed"].contains(self.poll?.phase ?? "") {
                         self.pollingTask = nil
@@ -652,13 +643,6 @@ final class OnDeviceSession: ObservableObject {
                 } catch {
                     lastPoll = ProcessInfo.processInfo.systemUptime
                     guard let self, !Task.isCancelled else { return }
-                    if self.reconnectsAutomatically, error is URLError {
-                        failures += 1
-                        self.status = "Reconnecting…"
-                        self.errorMessage = "Connection interrupted. Reconnecting to your game."
-                        do { try await Task.sleep(for: .seconds(min(10, failures * 2))) } catch { return }
-                        continue
-                    }
                     // A lost host answer: poll again (never re-send an answer) before giving up.
                     if let table = self.table, table.role == .guest, let delay = hostRetries.delay(after: error) {
                         self.status = table.waitingStatus
@@ -674,7 +658,7 @@ final class OnDeviceSession: ObservableObject {
         }
     }
 
-    /// Local and online games poll on a short timer. A guest at a phone-hosted table waits for its
+    /// Local games poll on a short timer. A guest at a phone-hosted table waits for its
     /// host's revision notice, polls promptly while its own answer is outstanding, and otherwise
     /// polls only on the heartbeat.
     private func waitForNextPoll(since lastPoll: TimeInterval, interval: TimeInterval) async throws {

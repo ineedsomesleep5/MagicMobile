@@ -4,6 +4,8 @@ Use this checklist for the native iOS Commander gameplay surface. It separates s
 
 ## Current Evidence - June 24, 2026, after `fed99977` plus local pass-7 polish
 
+> 2026-09-27: the hosted-server client that the `MAGICMOBILE_SERVER_URL`, `MAGICMOBILE_XMAGE_WS_URL` / `MAGICMOBILE_WEBSOCKET_URL` and `MAGICMOBILE_AUTO_START_FIXTURE` overrides below configured has been removed, so those variables no longer do anything. The DEBUG design preview (`MAGICMOBILE_DESIGN_PREVIEW=<state>`) remains, hosted by its own fixture screen.
+
 - Target device for the milestone: iPhone 16 Pro Max landscape.
 - Simulator actually used: iPhone 17 Pro Max Simulator on iOS 26.5 because iPhone 16 Pro Max Simulator was unavailable.
 - Reviewed commit: `fed99977 Refine iOS arena layout QA and prompt polish`, with the follow-up local pass that adds explicit native WebSocket gateway configuration and a simpler readable phase strip.

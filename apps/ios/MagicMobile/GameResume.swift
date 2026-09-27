@@ -7,7 +7,7 @@ import MagicMobileOnDevice
 /// only when asked; older `saveResume` engines save at every decision); this app keeps
 /// `resume.json` beside it and owns both files. A game saved when the player left can be resumed
 /// for 10 minutes after they left. Coming back consumes that save, so a game that was open when
-/// the app died is reported as ended, never resumed from an older save. Game Center and online
+/// the app died is reported as ended, never resumed from an older save. Game Center and relay
 /// tables never checkpoint; for those, and for engines without `saveResume`, a small marker lets
 /// the next launch say that the game ended instead of silently showing the menu.
 /// The same strings and rules apply on Android (parity/resume-cases.json).
@@ -471,7 +471,7 @@ final class GameResumeCoordinator: ObservableObject {
 
     // MARK: Tables and endings
 
-    /// A Game Center, relay or online game started: it never checkpoints.
+    /// A Game Center or relay game started: it never checkpoints.
     func tableGameStarted() {
         discardAll()
         markInProgress(at: nowMillis)

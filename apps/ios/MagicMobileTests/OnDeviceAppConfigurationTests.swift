@@ -16,7 +16,9 @@ final class OnDeviceAppConfigurationTests: XCTestCase {
         for args in [[], ["--ondevice-setup-ui-test"], ["--legacy-server"]] {
             XCTAssertEqual(OnDeviceAppConfiguration.select(engineLinked: false, debug: false, arguments: args), .engineMissing)
         }
-        XCTAssertEqual(OnDeviceAppConfiguration.select(engineLinked: false, debug: true, arguments: []), .referencePreview)
+        // The engine-less DEBUG reference client is gone: only the UI-test setup preview remains.
+        XCTAssertEqual(OnDeviceAppConfiguration.select(engineLinked: false, debug: true, arguments: []), .engineMissing)
+        XCTAssertEqual(OnDeviceAppConfiguration.select(engineLinked: false, debug: true, arguments: ["--legacy-server"]), .engineMissing)
         XCTAssertEqual(OnDeviceAppConfiguration.select(engineLinked: false, debug: true, arguments: ["--ondevice-setup-ui-test"]), .setupPreview)
     }
 

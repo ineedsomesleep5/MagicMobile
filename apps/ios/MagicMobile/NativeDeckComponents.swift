@@ -402,7 +402,7 @@ struct NativeCardArtworkView<Placeholder: View>: View {
             .task(id: request) {
                 guard permitted else { artwork = nil; completedRequest = nil; failedRequest = nil; return }
                 artwork = nil; completedRequest = nil; failedRequest = nil
-                // CardImageURL only supplies a generated cache path here; never fetch its remote fallback.
+                // CardImageURL only supplies art an earlier build saved on this phone; it never fetches.
                 if tokenTypeLine == nil, let url = CardImageURL.image(name, variant: variant), url.isFileURL,
                    let data = NativeDeckArtwork.localImageData(at: url),
                    let image = NativeDeckArtwork.decodedImage(data, variant: request.variant) {

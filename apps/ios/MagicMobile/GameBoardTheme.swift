@@ -40,7 +40,6 @@ struct BattlefieldBackdropArt: View {
 
 struct GameBoardTheme {
     // Foundations
-    let backgroundDeepMoss = Color(red: 0.02, green: 0.10, blue: 0.07)
     let backgroundShadow = Color(red: 0.04, green: 0.03, blue: 0.02)
     let charredOak = Color(red: 0.08, green: 0.045, blue: 0.025)
     let oak = Color(red: 0.18, green: 0.10, blue: 0.05)
@@ -232,24 +231,6 @@ struct MagicPanelModifier: ViewModifier {
     }
 }
 
-struct MagicBadgeModifier: ViewModifier {
-    let tone: MagicStatusTone
-
-    func body(content: Content) -> some View {
-        let color = tone.color
-
-        content
-            .font(MagicTypography.label)
-            .foregroundStyle(tone == .neutral ? GameBoardTheme.current.primaryText : color)
-            .padding(.horizontal, 9)
-            .frame(minHeight: 28)
-            .background(color.opacity(tone == .neutral ? 0.12 : 0.15), in: Capsule())
-            .overlay {
-                Capsule().strokeBorder(color.opacity(0.5), lineWidth: 1)
-            }
-    }
-}
-
 struct MagicPrimaryButtonStyle: ButtonStyle {
     var fillsWidth = false
     var compact = false
@@ -348,9 +329,5 @@ extension View {
                 contentPadding: padding
             )
         )
-    }
-
-    func magicBadge(_ tone: MagicStatusTone = .neutral) -> some View {
-        modifier(MagicBadgeModifier(tone: tone))
     }
 }
