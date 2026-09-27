@@ -4,9 +4,9 @@ Six stable preferences: `arena`, `midnight`, `wood`, `moss`, `ember`, `tide`. Mi
 
 ## Integration
 
-Use `BattlefieldBackdrop.allCases` for the selector and `BattlefieldBackdropArt(theme: .resolved(value))` for both the selector preview and battlefield. Frame and clip at the consumer. Each image is square, with a quiet center and no artwork encoding seats, cards, health or legal actions. Existing saved `arena`, `midnight`, `wood` preferences remain valid. New enum and artwork view are in `GameBoardTheme.swift`. Android should use identical identifiers and image bytes.
+Use `BattlefieldBackdrop.allCases` for the selector and `BattlefieldBackdropArt(theme: .resolved(value))` for both the selector preview and battlefield. Frame and clip at the consumer. Each image is square, with a quiet center and no artwork encoding seats, cards, health or legal actions. Existing saved `arena`, `midnight`, `wood` preferences remain valid. New enum and artwork view are in `GameBoardTheme.swift`. Android should use identical identifiers and the same art.
 
-Assets: `Assets.xcassets/battlefield-{arena,wood,moss,ember,tide}.imageset/battlefield-{id}.png`. Actual output is 1254×1254 for each, approximately 12.3 MB combined. The generation request suggested 1536×1536; no claim of that requested resolution is made.
+Assets: `Assets.xcassets/battlefield-{arena,wood,moss,ember,tide}.imageset/battlefield-{id}.jpg` and, on Android, `apps/android/app/src/main/res/drawable/battlefield_{id}.webp`. Actual output is 1254×1254 for each. The generation request suggested 1536×1536; no claim of that requested resolution is made. The generated PNGs (approximately 12.3 MB combined) are kept in git history before the lossy re-encode (`git show 791198b:apps/ios/MagicMobile/Assets.xcassets/battlefield-{id}.imageset/battlefield-{id}.png`). The shipped files are lossy encodes of those PNGs: JPEG from ImageIO at quality 0.85 (`sips -s format jpeg -s formatOptions 85`) for iOS, and WebP from `cwebp -q 90 -m 6 -sharp_yuv -metadata icc` for Android. Re-encode from the PNGs, never from the lossy files.
 
 ## Verification
 
