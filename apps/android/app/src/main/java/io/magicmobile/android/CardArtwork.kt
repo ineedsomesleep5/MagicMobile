@@ -71,6 +71,8 @@ object Artwork {
     private val checkedTokens=mutableMapOf<ArtworkTokenIdentity,Long>()
     private const val TOKEN_RETRY_MS=5*60*1000L
 
+    /** Saved token metadata by Scryfall ID, from downloads and from live play. */
+    internal fun storedTokens(context:Context):Map<String,ArtworkRecord> = tokens(context)
     private fun tokens(context:Context):Map<String,ArtworkRecord> = synchronized(downloadLock) {
         tokenMetadata ?: downloadDirectory(context).listFiles().orEmpty().filter{it.extension=="token"&&it.length() in 1..32768}.mapNotNull{file->
             runCatching{ArtworkCatalogue.decode(Wire.objectValue(io.magicmobile.core.Json.parseObject(file.readText())))}.getOrNull()
@@ -97,15 +99,11 @@ object Artwork {
         if(!value)ArtworkDownloadService.pause(context.applicationContext)
     }
 
-    private fun key(name: String): String =
-        MessageDigest.getInstance("SHA-256").digest(name.toByteArray())
-            .joinToString("") { "%02x".format(it) }.take(40)
-
     private fun cacheFile(context: Context, name: String) =
-        File(File(context.cacheDir, "card-art").apply { mkdirs() }, key(name) + ".img")
+        File(File(context.cacheDir, "card-art").apply { mkdirs() }, artworkFileKey(name) + ".img")
 
     internal fun downloadFile(context: Context, name: String, quality: ArtworkQuality) =
-        File(downloadDirectory(context), key("${quality.id}:$name") + ".img")
+        File(downloadDirectory(context), artworkDownloadFileName(name, quality))
 
     /** The stored image file names, read once (NativeAssetDownloads scans one directory listing too). */
     internal fun downloadedFileNames(context: Context): Set<String> =
@@ -113,7 +111,10 @@ object Artwork {
 
     /** Whether a listing holds an image at this quality or better, without decoding it. */
     internal fun listedDownload(files: Set<String>, name: String, quality: ArtworkQuality): Boolean =
-        ArtworkQuality.entries.any { it.shortEdge >= quality.shortEdge && (key("${it.id}:$name") + ".img") in files }
+        listedArtworkDownload(files, name, quality)
+
+    /** A downloaded token image of any quality, even Compact, can be shown. */
+    private fun hasTokenDownload(context: Context, id: String) = hasDownload(context, "token:$id", TOKEN_DOWNLOAD_QUALITY)
 
     internal fun hasDownload(context: Context, name: String, quality: ArtworkQuality): Boolean =
         ArtworkQuality.entries.asReversed().any { candidate ->
@@ -166,8 +167,14 @@ object Artwork {
         if (name.isBlank() || name.length > 512) return@withContext null
         var lookup=if(token) {
             val identity=tokenIdentity?.normalized() ?: return@withContext null
-            val matched=selectEquivalentToken(tokens(context).values,identity){hasDownload(context,"token:${it.id}",ArtworkQuality.STANDARD)}
-                ?: if(enabled(context))fetchToken(context,identity) else null
+            val online=enabled(context)
+            val stored=tokens(context).values
+            // As on iOS: a Standard image, else online a lookup for one, else any downloaded
+            // quality (Compact downloads count), and offline a differently worded equivalent.
+            val matched=selectEquivalentToken(stored,identity){hasDownload(context,"token:${it.id}",ArtworkQuality.STANDARD)}
+                ?: (if(online)fetchToken(context,identity) else null)
+                ?: selectEquivalentToken(stored,identity){hasTokenDownload(context,it.id)}
+                ?: if(!online)looseEquivalentToken(stored,identity){hasTokenDownload(context,it.id)} else null
             "token:"+(matched?.id ?: return@withContext null)
         } else name
         var cached=memory.get(lookup)
@@ -201,7 +208,10 @@ object Artwork {
         return ArtworkTransport.bytes(context,URL(image),MAX_BYTES,ALLOWED_TYPES)
     }
 
-    /** Opt-in, bounded exact token lookup; never falls back to a card-name image. */
+    /**
+     * Opt-in, bounded exact token lookup for a Standard image; never falls back to a card-name
+     * image. load() uses a stored image of any quality when this finds nothing.
+     */
     private suspend fun fetchToken(context:Context,identity:ArtworkTokenIdentity):ArtworkRecord? = tokenLookupLock.withLock {
         selectEquivalentToken(tokens(context).values,identity){hasDownload(context,"token:${it.id}",ArtworkQuality.STANDARD)}?.let{return@withLock it}
         val name=identity.name.removeSuffix(" token")
@@ -292,6 +302,37 @@ internal fun artworkDownloadMatches(key:String,name:String,token:Boolean,expecte
 /** Duplicate printings are equivalent only when their complete public token metadata matches. */
 internal fun selectEquivalentToken(records:Collection<ArtworkRecord>,identity:ArtworkTokenIdentity,usable:(ArtworkRecord)->Boolean):ArtworkRecord? =
     records.asSequence().filter{it.token?.normalized()==identity.normalized() && usable(it)}.minByOrNull{it.id}
+
+/**
+ * Offline only (NativeAssetStore.looseTokenArtwork): a download whose rules are worded
+ * differently still shows when name, type and colors agree, printed P/T agrees where both are
+ * known, and every such download is one token. Otherwise unresolved.
+ */
+internal fun looseEquivalentToken(records:Collection<ArtworkRecord>,identity:ArtworkTokenIdentity,usable:(ArtworkRecord)->Boolean):ArtworkRecord? {
+    val wanted=identity.normalized()
+    if(wanted.typeLine.isEmpty())return null
+    fun sameStat(stored:String?,runtime:String?):Boolean {
+        val printed=stored?.takeIf{it.isNotEmpty()};val shown=runtime?.takeIf{it.isNotEmpty()&&it!="0"}
+        return printed==null||shown==null||printed==shown
+    }
+    val matches=records.mapNotNull{record->record.token?.normalized()?.let{record to it}}.filter{(_,token)->
+        token.name==wanted.name&&token.typeLine==wanted.typeLine&&token.colors==wanted.colors&&
+            sameStat(token.power,identity.power)&&sameStat(token.toughness,identity.toughness)
+    }
+    val first=matches.minByOrNull{it.first.id} ?: return null
+    if(!matches.all{it.second==first.second})return null
+    return matches.filter{usable(it.first)}.minByOrNull{it.first.id}?.first
+}
+
+/** Downloaded file name: a hash of the quality and card or token key. */
+internal fun artworkDownloadFileName(name:String,quality:ArtworkQuality)=artworkFileKey("${quality.id}:$name")+".img"
+internal fun artworkFileKey(name:String):String =
+    MessageDigest.getInstance("SHA-256").digest(name.toByteArray()).joinToString(""){"%02x".format(it)}.take(40)
+/** Whether a listing holds an image at this quality or better, without decoding it. */
+internal fun listedArtworkDownload(files:Set<String>,name:String,quality:ArtworkQuality):Boolean =
+    ArtworkQuality.entries.any{it.shortEdge>=quality.shortEdge&&artworkDownloadFileName(name,it) in files}
+/** Tokens show from a download of any quality: a Compact download is enough offline. */
+internal val TOKEN_DOWNLOAD_QUALITY=ArtworkQuality.COMPACT
 
 internal fun safeTokenSearchName(name:String):Boolean = name.isNotBlank() && name.length<=120 &&
     '"' !in name && '\\' !in name && name.none{it.isISOControl()}

@@ -302,7 +302,7 @@ final class NativeAssetDownloadsTests: XCTestCase {
             backgroundQueue: queue, deckCatalogueLoader: { names, includeTokens in
                 XCTAssertEqual(names, [front]); XCTAssertTrue(includeTokens)
                 return try NativeArtworkCatalogue.parse(file: fixture)
-            })
+            }, tokenSearch: { _ in NativeArtworkCatalogue() }, rulesText: { _ in [:] }, opponentDecks: { [] })
         let stored = expectation(description: "Each stored image refreshes artwork consumers")
         stored.expectedFulfillmentCount = 3
         let observer = NotificationCenter.default.addObserver(forName: NativeArtworkBackgroundQueue.didStoreImage, object: nil, queue: .main) { _ in stored.fulfill() }
@@ -313,6 +313,8 @@ final class NativeAssetDownloadsTests: XCTestCase {
         XCTAssertEqual(model.failures, []); XCTAssertEqual(model.completed, 3); XCTAssertEqual(model.total, 3)
         await fulfillment(of: [stored], timeout: 2)
         NotificationCenter.default.removeObserver(observer)
+        XCTAssertEqual(try queuedKeys(directory.appendingPathComponent("queue")).map { $0.hasPrefix("token:") }, [true, false, false],
+                       "Token images are queued before card images")
         XCTAssertEqual(DownloadImageFixtureProtocol.urls.count, 3)
         XCTAssertEqual(Set(DownloadImageFixtureProtocol.urls.map(\.lastPathComponent)), ["front.jpg", "back.jpg", "exact-soldier.jpg"])
         XCTAssertTrue(DownloadImageFixtureProtocol.urls.allSatisfy { $0.host == "cards.scryfall.io" && $0.path.hasPrefix("/normal/") })
@@ -613,7 +615,8 @@ final class NativeAssetDownloadsTests: XCTestCase {
         let model = NativeAssetDownloads(store: store)
         await model.scan(names: ["Black Lotus", " Black Lotus "])
         XCTAssertEqual(model.cardTotal, 1); XCTAssertEqual(model.cardStored, 0)
-        XCTAssertEqual(model.tokenDiscoveryRemaining, 1); XCTAssertEqual(model.missingNames, ["Black Lotus"])
+        // The card's own relations and the deck's common/opponent tokens are both unknown.
+        XCTAssertEqual(model.tokenDiscoveryRemaining, 2); XCTAssertEqual(model.missingNames, ["Black Lotus"])
         model.download(names: ["Black Lotus"], includeTokens: true, allowNetwork: false)
         XCTAssertFalse(model.isRunning)
         XCTAssertTrue(model.status.contains("Enable online artwork"))
@@ -639,10 +642,162 @@ final class NativeAssetDownloadsTests: XCTestCase {
         }
         XCTAssertFalse(model.isRunning)
         XCTAssertEqual(model.cardStored, 1)
-        XCTAssertEqual(model.tokenDiscoveryRemaining, 1)
+        XCTAssertEqual(model.tokenDiscoveryRemaining, 2, "Relations and the deck's extra tokens stay unknown")
         let calls = await transport.calls
         XCTAssertEqual(calls, 1)
         XCTAssertTrue(model.status.contains("cancelled"))
+    }
+
+    func testRulesTextFindsTheTokensACardMakes() {
+        typealias Request = NativeTokenRules.Request
+        XCTAssertEqual(NativeTokenRules.requests(rules: "Forestwalk\nIf one or more tokens would be created under your control, those tokens plus that many 1/1 green Squirrel creature tokens are created instead.\n{B}, Sacrifice X Squirrels: Target creature gets +X/-X until end of turn."),
+                       [Request(name: "Squirrel", power: "1", toughness: "1", colors: ["G"])], "Chatterfang makes Squirrels")
+        XCTAssertEqual(NativeTokenRules.requests(rules: "When {this} enters, create a Food token.\n{1}{G}, {T}: Create a Food token.\n{T}, Sacrifice a Food: Add one mana of any color."),
+                       [Request(name: "Food")])
+        XCTAssertEqual(NativeTokenRules.requests(rules: "<i>Landfall</i> &mdash; Whenever a land you control enters, create a Food token or a Treasure token."),
+                       [Request(name: "Food"), Request(name: "Treasure")])
+        XCTAssertEqual(NativeTokenRules.requests(rules: "If you would create a Clue, Food, or Treasure token, instead create one of each."),
+                       ["Clue", "Food", "Treasure"].map { Request(name: $0) })
+        XCTAssertEqual(NativeTokenRules.requests(rules: "Create X X/X green Ooze creature tokens."), [Request(name: "Ooze", colors: ["G"])])
+        XCTAssertEqual(NativeTokenRules.requests(rules: "create a 0/1 colorless Eldrazi Spawn creature token. It has \"Sacrifice this token: Add {C}.\""),
+                       [Request(name: "Eldrazi Spawn", power: "0", toughness: "1", colors: [])])
+        XCTAssertEqual(NativeTokenRules.requests(rules: "{1}{R}, {T}: Create a 0/1 red Kobold creature token named Kobolds of Kher Keep."),
+                       [Request(name: "Kobolds of Kher Keep")])
+        for reference in ["Populate <i>(Create a token that's a copy of a creature token you control.)</i>",
+                          "Whenever a Zombie token you control attacks, it gains lifelink.",
+                          "Creature tokens you control get +1/+1.", "Attacking tokens you control have deathtouch.",
+                          "If one or more tokens would be created under your control, twice that many of those tokens are created instead."] {
+            XCTAssertEqual(NativeTokenRules.requests(rules: reference), [], reference)
+        }
+        XCTAssertEqual(NativeTokenRules.commonTokenNames, ["Food", "Treasure", "Clue", "Blood", "Map", "Powerstone", "Incubator", "Junk", "Gold", "Shard"])
+    }
+
+    func testBundledCatalogueRulesTextFindsWhatDecksMake() async throws {
+        let rules = await NativeAssetDownloads.bundledRulesText(names: ["Chatterfang, Squirrel General", "Tireless Provisioner", "Not A Card"])
+        XCTAssertNil(rules["Not A Card"])
+        XCTAssertEqual(NativeTokenRules.requests(rules: try XCTUnwrap(rules["Chatterfang, Squirrel General"])).map(\.name), ["Squirrel"])
+        XCTAssertEqual(NativeTokenRules.requests(rules: try XCTUnwrap(rules["Tireless Provisioner"])).map(\.name), ["Food", "Treasure"])
+    }
+
+    func testTokenSelectionMatchesStatedStatsAndKeepsOnePrintingPerIdentity() throws {
+        func token(_ id: Int, _ name: String, _ type: String, _ rules: String, _ power: String?, _ toughness: String?, _ colors: [String]) -> [String: Any] {
+            var row: [String: Any] = ["id": String(format: "00000000-0000-0000-0000-%012d", id), "name": name, "layout": "token", "type_line": type,
+                                      "oracle_text": rules, "colors": colors, "image_uris": ["normal": "https://cards.scryfall.io/normal/\(id).jpg"]]
+            if let power, let toughness { row["power"] = power; row["toughness"] = toughness }
+            return row
+        }
+        func face(_ name: String, _ type: String, _ rules: String, _ path: String, power: String? = nil) -> [String: Any] {
+            var face: [String: Any] = ["name": name, "type_line": type, "oracle_text": rules, "colors": [String](),
+                                       "image_uris": ["normal": "https://cards.scryfall.io/normal/\(path).jpg"]]
+            if let power { face["power"] = power; face["toughness"] = power }
+            return face
+        }
+        let rows: [[String: Any]] = [
+            token(2, "Squirrel", "Token Creature — Squirrel", "", "1", "1", ["G"]),
+            token(1, "Squirrel", "Token Creature — Squirrel", "", "1", "1", ["G"]),
+            token(3, "Squirrel", "Token Creature — Squirrel", "", "2", "2", ["G"]),
+            token(4, "Treasure", "Token Artifact — Treasure", "{T}, Sacrifice this token: Add one mana of any color.", nil, nil, []),
+            ["id": "00000000-0000-0000-0000-000000000005", "name": "Dinosaur // Treasure", "layout": "double_faced_token", "card_faces": [
+                face("Dinosaur", "Token Creature — Dinosaur", "Trample", "dinosaur"),
+                face("Treasure", "Token Artifact — Treasure", "{T}, Sacrifice this artifact: Add one mana of any color.", "treasure-back")]],
+            ["id": "00000000-0000-0000-0000-000000000006", "name": "Incubator // Phyrexian", "layout": "double_faced_token", "card_faces": [
+                face("Incubator", "Token Artifact — Incubator", "{2}: Transform this artifact.", "incubator"),
+                face("Phyrexian", "Token Artifact Creature — Phyrexian", "", "phyrexian", power: "0")]],
+            ["id": "00000000-0000-0000-0000-000000000007", "name": "Clue // Clue", "layout": "double_faced_token", "card_faces": [
+                face("Clue", "Token Artifact — Clue", "{2}, Sacrifice this artifact: Draw a card.", "clue"),
+                face("Clue", "Token", "", "clue-back")]],
+        ]
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("tokens.json")
+        try JSONSerialization.data(withJSONObject: rows).write(to: file)
+        let catalogue = try NativeArtworkCatalogue.parse(file: file)
+        func id(_ value: Int) -> UUID { UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", value))! }
+        let selected = NativeTokenRules.select([.init(name: "Squirrel", power: "1", toughness: "1", colors: ["G"]),
+                                                .init(name: "Treasure"), .init(name: "Incubator"), .init(name: "Clue")], from: catalogue)
+        XCTAssertEqual(selected.map(\.artworkKey), [NativeAssetStore.tokenKey(id(1)), NativeAssetStore.tokenKey(id(4)),
+                                                    NativeAssetStore.tokenKey(id(6)), NativeAssetStore.tokenKey(id(6), face: "back"),
+                                                    NativeAssetStore.tokenKey(id(7))],
+                       "Stated 1/1 green excludes the 2/2; equivalent printings and the Treasure back face collapse; the Incubator brings its Phyrexian; a bare 'Token' face is skipped")
+        XCTAssertEqual(NativeTokenRules.select([.init(name: "Squirrel")], from: catalogue).count, 2, "Without stated stats every Squirrel identity is kept")
+    }
+
+    func testBatchedTokenSearchSendsTenExactNamesPerQueryAndFollowsPages() async throws {
+        let transport = TokenBatchFixture()
+        let names = (0..<12).map { "Name\($0)" } + ["Bad\" Name", "Name0 Token"]
+        let catalogue = try await NativeArtworkCatalogue.searchTokens(names: names, transport: transport, budget: DeckStudioScryfallBudget())
+        let queries = await transport.queries
+        XCTAssertEqual(queries.map(\.q), ["t:token (" + (0..<10).map { "!\"Name\($0)\"" }.joined(separator: " or ") + ")",
+                                          "t:token (!\"Name10\" or !\"Name11\")", "t:token (!\"Name10\" or !\"Name11\")"])
+        XCTAssertEqual(queries.map(\.page), ["1", "1", "2"], "The second batch reads its next page")
+        XCTAssertEqual(Set(catalogue.allTokens.map(\.name)), ["Food", "Treasure"])
+        let empty = try await NativeArtworkCatalogue.searchTokens(names: ["Missing"], transport: TokenBatchFixture(notFound: true), budget: DeckStudioScryfallBudget())
+        XCTAssertTrue(empty.allTokens.isEmpty, "No match is an empty result, not an error")
+    }
+
+    @MainActor func testDeckDownloadQueuesTokensFirstAndCountsCommonRulesTextAndOpponentTokens() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let maker = "Fixture Squirrel Maker \(UUID())"
+        func images(_ path: String) -> [String: String] { ["normal": "https://cards.scryfall.io/normal/\(path).jpg"] }
+        func token(_ id: Int, _ name: String, _ type: String, _ power: String?, _ colors: [String]) -> [String: Any] {
+            var row: [String: Any] = ["id": String(format: "00000000-0000-0000-0000-%012d", id), "name": name, "layout": "token",
+                                      "type_line": type, "oracle_text": "", "colors": colors, "image_uris": images("token-\(id)")]
+            if let power { row["power"] = power; row["toughness"] = power }
+            return row
+        }
+        let deckFile = directory.appendingPathComponent("deck.json"), tokenFile = directory.appendingPathComponent("tokens.json")
+        try JSONSerialization.data(withJSONObject: [["id": UUID().uuidString, "name": maker, "layout": "normal", "type_line": "Creature",
+                                                     "image_uris": images("maker")]]).write(to: deckFile)
+        try JSONSerialization.data(withJSONObject: [
+            token(1, "Squirrel", "Token Creature — Squirrel", "1", ["G"]), token(2, "Squirrel", "Token Creature — Squirrel", "2", ["G"]),
+            token(3, "Food", "Token Artifact — Food", nil, []), token(4, "Treasure", "Token Artifact — Treasure", nil, []),
+            token(5, "Zombie", "Token Creature — Zombie", "2", ["B"])]).write(to: tokenFile)
+        let bytes = try image(width: 488, height: 680)
+        DownloadImageFixtureProtocol.configure(data: bytes)
+        defer { DownloadImageFixtureProtocol.configure(data: Data()) }
+        let store = NativeAssetStore(directory: directory.appendingPathComponent("images"), availableBytes: { _ in Int64.max })
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DownloadImageFixtureProtocol.self]
+        let queue = NativeArtworkBackgroundQueue(directory: directory.appendingPathComponent("queue"), store: store,
+                                                configuration: configuration, allowNetwork: { true })
+        let searched = SearchedNames()
+        var opponents = [NativeAssetDownloads.OpponentDeck(id: "fixture-opponent", cardNames: ["Opponent Zombie Maker"])]
+        let model = NativeAssetDownloads(store: store, backgroundQueue: queue,
+            deckCatalogueLoader: { _, _ in try NativeArtworkCatalogue.parse(file: deckFile) },
+            tokenSearch: { names in await searched.record(names); return try NativeArtworkCatalogue.parse(file: tokenFile) },
+            rulesText: { _ in [maker: "If one or more tokens would be created under your control, those tokens plus that many 1/1 green Squirrel creature tokens are created instead.",
+                               "Opponent Zombie Maker": "When {this} dies, create a 2/2 black Zombie creature token."] },
+            opponentDecks: { opponents })
+        model.download(names: [maker], includeTokens: true, allowNetwork: true, quality: .standard)
+        try await settle(model)
+        XCTAssertEqual(model.failures, [])
+        let names = await searched.names
+        XCTAssertEqual(names, ["Squirrel"] + NativeTokenRules.commonTokenNames + ["Zombie"], "One batched search covers the deck, the common list and the opponent")
+        let keys = try queuedKeys(directory.appendingPathComponent("queue"))
+        XCTAssertEqual(keys, ["token:00000000-0000-0000-0000-000000000001", "token:00000000-0000-0000-0000-000000000003",
+                              "token:00000000-0000-0000-0000-000000000004", "token:00000000-0000-0000-0000-000000000005",
+                              NativeAssetStore.cardKey(maker)], "Stated 1/1 Squirrel only; tokens before the card")
+        let related = await store.relations(name: maker)
+        XCTAssertEqual(related?.map(\.name), ["Squirrel"], "Rules-text tokens are recorded with the card's relations")
+        let extras = await store.extraTokens(key: NativeAssetDownloads.extraTokenKey(opponents))
+        XCTAssertEqual(extras?.map(\.name), ["Food", "Treasure", "Zombie"])
+        await model.scan(names: [maker], quality: .standard)
+        XCTAssertEqual(model.tokenDiscoveryRemaining, 0)
+        XCTAssertEqual(model.tokenTotal, 4); XCTAssertEqual(model.tokenStored, 4); XCTAssertEqual(model.cardStored, 1)
+        let squirrel = await store.tokenImage(name: "Squirrel Token", typeLine: "Creature — Squirrel", oracleText: "Forestwalk",
+                                              power: "1", toughness: "1", colors: ["G"], quality: .standard, offlineFallback: true)
+        XCTAssertEqual(squirrel, bytes, "The downloaded Squirrel shows offline")
+        opponents = [NativeAssetDownloads.OpponentDeck(id: "another-opponent", cardNames: [])]
+        await model.scan(names: [maker], quality: .standard)
+        XCTAssertEqual(model.tokenDiscoveryRemaining, 1, "Different opponents need checking again")
+    }
+
+    private func queuedKeys(_ queueDirectory: URL) throws -> [String] {
+        struct Job: Decodable { struct Entry: Decodable { let key: String }; let entries: [Entry] }
+        return try JSONDecoder().decode(Job.self, from: Data(contentsOf: queueDirectory.appendingPathComponent("job.json"))).entries.map(\.key)
     }
 
     private func image(width: Int = 672, height: Int = 936) throws -> Data {
@@ -653,6 +808,32 @@ final class NativeAssetDownloadsTests: XCTestCase {
         CGImageDestinationAddImage(destination, try XCTUnwrap(context.makeImage()), nil)
         XCTAssertTrue(CGImageDestinationFinalize(destination))
         return output as Data
+    }
+}
+
+private actor SearchedNames {
+    private(set) var names: [String] = []
+    func record(_ value: [String]) { names += value }
+}
+
+/// Scryfall token search pages: the first batch has one page, the second two.
+private actor TokenBatchFixture: DeckStudioScryfallHTTP {
+    private(set) var queries: [(q: String, page: String)] = []
+    private let notFound: Bool
+    init(notFound: Bool = false) { self.notFound = notFound }
+    func send(_ request: URLRequest) async throws -> Data {
+        let items = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let q = items.first { $0.name == "q" }?.value ?? "", page = items.first { $0.name == "page" }?.value ?? ""
+        queries.append((q, page))
+        if notFound { throw DeckStudioScryfallError.http(404) }
+        func token(_ id: Int, _ name: String) -> [String: Any] {
+            ["id": String(format: "00000000-0000-0000-0000-%012d", id), "name": name, "layout": "token",
+             "type_line": "Token Artifact — \(name)", "oracle_text": "", "colors": [String](),
+             "image_uris": ["normal": "https://cards.scryfall.io/normal/\(id).jpg"]]
+        }
+        let first = q.contains("Name0")
+        let rows = first ? [token(1, "Food")] : (page == "1" ? [token(2, "Treasure")] : [])
+        return try JSONSerialization.data(withJSONObject: ["object": "list", "has_more": !first && page == "1", "data": rows])
     }
 }
 

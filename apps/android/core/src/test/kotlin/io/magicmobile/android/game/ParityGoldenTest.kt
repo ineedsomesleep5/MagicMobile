@@ -622,6 +622,25 @@ class ParityGoldenTest {
         assertEquals(expected, actual)
     }
 
+    /** token-cases.json: the tokens a card's rules text makes and the common token list (ParityGoldenTests.swift). */
+    @Test fun tokenCasesOnBothPlatforms() {
+        val root = Json.parseToJsonElement(File(parity, "token-cases.json").readText())
+        assertEquals(root["commonTokens"].array!!.map { it.string!! }, io.magicmobile.android.core.TokenRules.commonTokenNames)
+        val cases = root["cases"].array!!
+        assertTrue(cases.isNotEmpty())
+        for (item in cases) {
+            val card = item["card"].string!!
+            val text = item["text"].string!!
+            val expected = item["tokens"].array!!.map {
+                io.magicmobile.android.core.TokenRules.Request(it["name"].string!!, it["power"].string, it["toughness"].string,
+                    it["colors"].array?.map { color -> color.string!! })
+            }
+            assertEquals(card, expected, io.magicmobile.android.core.TokenRules.requests(text))
+            // Production reads the catalogue's plain rules text; it must find the same tokens.
+            assertEquals("$card (plain text)", expected, io.magicmobile.android.core.TokenRules.requests(io.magicmobile.android.core.Decisions.plain(text)))
+        }
+    }
+
     private fun difference(expected: J, actual: J, path: String): String? {
         if (expected is JsonObject && actual is JsonObject) {
             for (key in (expected.keys + actual.keys).sorted()) {

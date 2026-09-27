@@ -86,32 +86,10 @@ struct NativeArtworkCatalogue {
                             transport: any DeckStudioScryfallHTTP = DeckStudioScryfallHTTPTransport(),
                             budget: DeckStudioScryfallBudget = .shared) async throws -> (NativeTokenArtwork, URL)? {
         let name = NativeAssetStore.tokenArtworkName(name)
-        guard !name.isEmpty, name.utf8.count <= 120,
-              !name.contains("\"") && !name.contains("\\"),
-              !name.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else { return nil }
+        guard safeTokenSearchName(name) else { return nil }
         var catalogue = Self()
-        for page in 1...3 {
-            try Task.checkCancellation()
-            var parts = URLComponents(string: "https://api.scryfall.com/cards/search")!
-            parts.queryItems = [.init(name: "q", value: "!\"\(name)\" t:token"),
-                                .init(name: "unique", value: "cards"), .init(name: "page", value: String(page))]
-            let data: Data
-            do {
-                try await budget.reserve()
-                data = try await transport.send(request(parts.url!))
-            } catch DeckStudioScryfallError.http(404) { return nil }
-            guard data.count <= 4 * 1024 * 1024,
-                  let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  object["object"] as? String == "list", let rows = object["data"] as? [[String: Any]],
-                  rows.count <= 200, let more = object["has_more"] as? Bool else { throw CatalogueError.invalidResponse }
-            for row in rows {
-                try Task.checkCancellation()
-                guard ["token", "double_faced_token"].contains(row["layout"] as? String ?? "") else { continue }
-                try catalogue.accept(JSONSerialization.data(withJSONObject: row))
-            }
-            if !more { break }
-            if page == 3 { return nil } // incomplete candidates cannot establish unique identity
-        }
+        // Incomplete candidates cannot establish unique identity.
+        guard try await catalogue.acceptTokenSearch(query: "!\"\(name)\" t:token", pages: 3, transport: transport, budget: budget) else { return nil }
         guard let match = NativeAssetStore.matchTokenArtwork(catalogue.allTokens, name: name, typeLine: typeLine,
                                                                oracleText: oracleText, power: power, toughness: toughness,
                                                                colors: colors) else { return nil }
@@ -122,6 +100,56 @@ struct NativeArtworkCatalogue {
         }
         guard let equivalent, let url = catalogue.imageURL(id: equivalent.id, size: quality.imageSizeString, face: equivalent.face) else { return nil }
         return (equivalent, url)
+    }
+    /// Downloads resolve many token names at once: ten exact names per search, at most five
+    /// pages each, with the same budget and headers as on-demand lookups. A search that runs
+    /// past five pages keeps what it found; unsafe names are skipped.
+    static func searchTokens(names: [String], transport: any DeckStudioScryfallHTTP = DeckStudioScryfallHTTPTransport(),
+                             budget: DeckStudioScryfallBudget = .shared) async throws -> Self {
+        var seen = Set<String>()
+        let names = Array(names.map(NativeAssetStore.tokenArtworkName)
+            .filter { safeTokenSearchName($0) && seen.insert($0.lowercased()).inserted }.prefix(400))
+        var catalogue = Self()
+        for start in stride(from: 0, to: names.count, by: 10) {
+            let query = "t:token (" + names[start..<min(start + 10, names.count)].map { "!\"\($0)\"" }.joined(separator: " or ") + ")"
+            _ = try await catalogue.acceptTokenSearch(query: query, pages: 5, transport: transport, budget: budget)
+        }
+        return catalogue
+    }
+    static func safeTokenSearchName(_ name: String) -> Bool {
+        !name.isEmpty && name.utf8.count <= 120 && !name.contains("\"") && !name.contains("\\") &&
+            !name.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+    }
+    /// Adds every token row of one Scryfall search; false when results continue past `pages`.
+    private mutating func acceptTokenSearch(query: String, pages: Int, transport: any DeckStudioScryfallHTTP,
+                                            budget: DeckStudioScryfallBudget) async throws -> Bool {
+        for page in 1...pages {
+            try Task.checkCancellation()
+            var parts = URLComponents(string: "https://api.scryfall.com/cards/search")!
+            parts.queryItems = [.init(name: "q", value: query),
+                                .init(name: "unique", value: "cards"), .init(name: "page", value: String(page))]
+            let data: Data
+            do {
+                try await budget.reserve()
+                data = try await transport.send(Self.request(parts.url!))
+            } catch DeckStudioScryfallError.http(404) { return true } // no matching tokens
+            guard data.count <= 4 * 1024 * 1024,
+                  let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  object["object"] as? String == "list", let rows = object["data"] as? [[String: Any]],
+                  rows.count <= 200, let more = object["has_more"] as? Bool else { throw CatalogueError.invalidResponse }
+            for row in rows {
+                try Task.checkCancellation()
+                guard ["token", "double_faced_token"].contains(row["layout"] as? String ?? "") else { continue }
+                try accept(JSONSerialization.data(withJSONObject: row))
+            }
+            if !more { return true }
+        }
+        return false
+    }
+    /// Token faces found by a search join this catalogue, so their images can be queued.
+    mutating func addTokens(from other: Self) {
+        for (id, token) in other.tokens { tokens[id] = token; imagesByID[id] = other.imagesByID[id] }
+        for (id, token) in other.backTokens { backTokens[id] = token; backTokenImages[id] = other.backTokenImages[id] }
     }
     func relatedTokens(name: String) -> [NativeTokenArtwork] {
         guard let id = id(for: name) else { return [] }
