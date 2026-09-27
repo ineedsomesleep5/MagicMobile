@@ -4864,8 +4864,13 @@ struct GameSummaryPanel: View {
             }
             if let top = stats.topCard {
                 HStack(spacing: 10) {
-                    NativeCardArtworkView(name: top.name, variant: .board, contentMode: .fill, artOnly: true) { _, _ in
-                        MagicPalette.iron
+                    Group {
+                        // The battlefield card, so a token draws its own art ("Squirrel", not a card lookup).
+                        if let card = top.card {
+                            NativeCardArtworkView(card: card, variant: .board, contentMode: .fill, artOnly: true) { _, _ in MagicPalette.iron }
+                        } else {
+                            NativeCardArtworkView(name: top.name, variant: .board, contentMode: .fill, artOnly: true) { _, _ in MagicPalette.iron }
+                        }
                     }
                     .frame(width: 40, height: 40)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -11811,13 +11816,7 @@ struct CardTile: View {
                     TokenCopyCardFace(card: card, source: source, width: width, height: height, imageVariant: imageVariant,
                                       tagTrailingReserve: tokenCopyTagTrailingReserve)
                 } else if nativeTurnControl != nil {
-                    NativeCardArtworkView(name: card.card.name, variant: imageVariant,
-                                          tokenTypeLine: card.card.isToken == true ? (card.card.tokenArtwork?.typeLine ?? card.card.typeLine) : nil,
-                                          tokenOracleText: card.card.isToken == true ? (card.card.tokenArtwork?.oracleText ?? card.card.oracleText) : nil,
-                                          tokenPower: card.card.isToken == true ? (card.card.tokenArtwork?.power ?? card.displayPower) : nil,
-                                          tokenToughness: card.card.isToken == true ? (card.card.tokenArtwork?.toughness ?? card.displayToughness) : nil,
-                                          tokenColors: card.card.isToken == true ? (card.card.tokenArtwork?.colors ?? card.card.tokenColors) : nil,
-                                          tokenSourceName: card.card.isToken == true ? card.card.copySourceArtworkName : nil) { loading, _ in
+                    NativeCardArtworkView(card: card, variant: imageVariant) { loading, _ in
                         CardArtPlaceholder(card: card, width: width, height: height, loading: loading)
                     }
                 } else {

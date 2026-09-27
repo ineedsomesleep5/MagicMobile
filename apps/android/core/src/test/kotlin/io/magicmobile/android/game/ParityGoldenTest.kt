@@ -166,6 +166,35 @@ class ParityGoldenTest {
 
     @Test fun spectatorSeatCasesOnBothPlatforms() = runSeatCases("spectator-cases.json")
 
+    /** game-summary-cases.json: combat credit and the top attacker (name, damage, art card). */
+    @Test fun gameSummaryCasesOnBothPlatforms() {
+        val root = Json.parseToJsonElement(File(parity, "game-summary-cases.json").readText())
+        val base = root["base"] as JsonObject
+        val cards = root["cards"]!!.obj!!
+        val cases = root["cases"].array!!
+        check(cases.isNotEmpty())
+        for (item in cases) {
+            val at = "game-summary-cases.json · ${item["name"].string}"
+            val stats = GameStats()
+            for (step in item["steps"].array ?: emptyList()) {
+                stats.record(EngineJson.format.decodeFromJsonElement(GameSnapshot.serializer(), GameSummaryCase.snapshot(base, step as JsonObject, cards)))
+            }
+            val expect = item["expect"]!!
+            assertEquals(at, expect["combatDamage"].integer?.toInt(), stats.combatDamage)
+            assertEquals(at, expect["biggestHit"].integer?.toInt(), stats.biggestHit)
+            val top = expect["top"]
+            if (top.isNull) {
+                assertEquals(at, null, stats.topCard)
+            } else {
+                val actual = stats.topCard ?: throw AssertionError("$at: no top attacker")
+                assertEquals(at, top["name"].string, actual.name)
+                assertEquals(at, top["damage"].integer?.toInt(), actual.damage)
+                assertEquals(at, top["instanceId"].string, actual.card?.instanceId)
+                assertEquals(at, top["tokenArtwork"].string, actual.card?.card?.tokenArtwork?.name)
+            }
+        }
+    }
+
     @Test fun priorityStatusCasesOnBothPlatforms() {
         val root = Json.parseToJsonElement(File(parity, "focus-cases.json").readText())
         val base = root["base"] as JsonObject
@@ -629,6 +658,34 @@ object SeatCase {
         json["players"] = JsonArray((base["players"].array ?: emptyList()).map { player ->
             JsonObject((player as JsonObject) + ("hasLeft" to JsonPrimitive(out.contains(player["playerId"].string))))
         })
+        return JsonObject(json)
+    }
+}
+
+/** Builds a game-summary-cases.json step's snapshot (Swift GameSummaryCase). */
+object GameSummaryCase {
+    fun snapshot(base: JsonObject, step: JsonObject, cards: Map<String, J>): JsonObject {
+        fun card(key: String): JsonObject = cards[key] as? JsonObject ?: throw AssertionError("unknown card $key")
+        val life = step["life"].obj ?: emptyMap()
+        val battlefield = JsonArray((step["battlefield"].array ?: emptyList()).map { card(it.string!!) })
+        val json = base.toMutableMap()
+        json["players"] = JsonArray((base["players"].array ?: emptyList()).map { raw ->
+            val player = (raw as JsonObject).toMutableMap()
+            val id = player["playerId"].string
+            id?.let { life[it] }?.let { player["life"] = it }
+            if (id == base["viewerPlayerId"].string) player["zones"] = JsonObject((player["zones"] as JsonObject) + ("battlefield" to battlefield))
+            JsonObject(player)
+        })
+        val combat = (step["attacks"].array ?: emptyList()).map { attack ->
+            val attackers = (attack["attackers"].array ?: emptyList()).map { key ->
+                // XMage's combat groups carry no token template.
+                val attacker = card(key.string!!)
+                JsonObject(attacker + ("card" to JsonObject((attacker["card"] as JsonObject) - "tokenArtwork")))
+            }
+            jsonObject("defenderId" to (attack["defender"] ?: JsonPrimitive("")), "defenderName" to (attack["defender"] ?: JsonPrimitive("")),
+                "blocked" to JsonPrimitive(attack["blocked"].bool ?: false), "attackers" to JsonArray(attackers), "blockers" to JsonArray(emptyList()))
+        }
+        json["xmage"] = JsonObject((base["xmage"] as JsonObject) + ("combat" to JsonArray(combat)))
         return JsonObject(json)
     }
 }

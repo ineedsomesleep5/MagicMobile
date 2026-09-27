@@ -454,3 +454,20 @@ struct NativeCardArtworkView<Placeholder: View>: View {
         UIImage(cgImage: artOnly || tokenSourceName != nil ? (NativeDeckArtwork.illustrationImage(image) ?? image) : image)
     }
 }
+
+extension NativeCardArtworkView {
+    /// A game card's artwork. A token looks up its public template (the battlefield card's
+    /// `tokenArtwork`, else its live face), and a token copy its explicitly identified source.
+    init(card: ZoneCard, variant: CardImageCacheVariant, contentMode: ContentMode = .fit, artOnly: Bool = false,
+         @ViewBuilder placeholder: @escaping (_ loading: Bool, _ failed: Bool) -> Placeholder) {
+        let token = card.card.isToken == true
+        self.init(name: card.card.name, variant: variant, contentMode: contentMode, artOnly: artOnly,
+                  tokenTypeLine: token ? (card.card.tokenArtwork?.typeLine ?? card.card.typeLine) : nil,
+                  tokenOracleText: token ? (card.card.tokenArtwork?.oracleText ?? card.card.oracleText) : nil,
+                  tokenPower: token ? (card.card.tokenArtwork?.power ?? card.displayPower) : nil,
+                  tokenToughness: token ? (card.card.tokenArtwork?.toughness ?? card.displayToughness) : nil,
+                  tokenColors: token ? (card.card.tokenArtwork?.colors ?? card.card.tokenColors) : nil,
+                  tokenSourceName: token ? card.card.copySourceArtworkName : nil,
+                  placeholder: placeholder)
+    }
+}
