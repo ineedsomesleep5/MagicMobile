@@ -71,6 +71,8 @@ actor NativeAssetStore {
         guard trimmed.count > 6, trimmed.lowercased().hasSuffix(" token") else { return trimmed }
         return String(trimmed.dropLast(6)).trimmingCharacters(in: .whitespacesAndNewlines)
     }
+    /// Case- and spacing-insensitive token name, without a trailing " Token".
+    static func tokenNameKey(_ name: String) -> String { normalizedTokenText(tokenArtworkName(name)) }
     func file(key: String, extension suffix: String = "image") -> URL {
         let hash = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
         return directory.appendingPathComponent(hash).appendingPathExtension(suffix)
@@ -150,16 +152,29 @@ actor NativeAssetStore {
                                         userInfo: ["key": key, "name": name ?? ""])
     }
     func relations(name: String) -> [NativeTokenArtwork]? {
-        let url = file(key: Self.cardKey(name), extension: "json")
-        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 128 * 1024,
-              let data = try? Data(contentsOf: url), let result = try? JSONDecoder().decode([NativeTokenArtwork].self, from: data),
-              result.count <= 100, result.allSatisfy({ !$0.name.isEmpty && $0.name.utf8.count <= 512 }) else { return nil }
-        return result
+        tokenList(at: file(key: Self.cardKey(name), extension: "json"), count: 100, bytes: 128 * 1024)
     }
     func saveRelations(_ tokens: [NativeTokenArtwork], name: String) throws {
+        try saveTokenList(tokens, to: file(key: Self.cardKey(name), extension: "json"), count: 100, bytes: 128 * 1024)
+    }
+    /// Deck-scope tokens beyond each card's own relations: the common list and the selected
+    /// AI opponents' decks. `key` names that opponent selection, so a change reads as unknown.
+    func extraTokens(key: String) -> [NativeTokenArtwork]? {
+        tokenList(at: file(key: "tokens:" + key, extension: "json"), count: 2000, bytes: 2 * 1024 * 1024)
+    }
+    func saveExtraTokens(_ tokens: [NativeTokenArtwork], key: String) throws {
+        try saveTokenList(tokens, to: file(key: "tokens:" + key, extension: "json"), count: 2000, bytes: 2 * 1024 * 1024)
+    }
+    private func tokenList(at url: URL, count: Int, bytes: Int) -> [NativeTokenArtwork]? {
+        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= bytes,
+              let data = try? Data(contentsOf: url), let result = try? JSONDecoder().decode([NativeTokenArtwork].self, from: data),
+              result.count <= count, result.allSatisfy({ !$0.name.isEmpty && $0.name.utf8.count <= 512 }) else { return nil }
+        return result
+    }
+    private func saveTokenList(_ tokens: [NativeTokenArtwork], to url: URL, count: Int, bytes: Int) throws {
         let data = try JSONEncoder().encode(tokens)
-        guard tokens.count <= 100, data.count <= 128 * 1024 else { throw StoreError.full }
-        try write(data, to: file(key: Self.cardKey(name), extension: "json"))
+        guard tokens.count <= count, data.count <= bytes else { throw StoreError.full }
+        try write(data, to: url)
     }
     func saveToken(_ token: NativeTokenArtwork) throws {
         let data = try JSONEncoder().encode(token)
@@ -372,6 +387,117 @@ struct NativeTokenArtwork: Codable, Hashable, Identifiable {
     }
 }
 
+/// The tokens a deck makes, read from its cards' rules text, for offline token-art downloads.
+/// Android's TokenRules.kt reads the same rules; parity/token-cases.json checks both.
+enum NativeTokenRules {
+    /// Tokens so many cards make that deck downloads always include them.
+    static let commonTokenNames = ["Food", "Treasure", "Clue", "Blood", "Map", "Powerstone", "Incubator", "Junk", "Gold", "Shard"]
+    struct Request: Hashable {
+        let name: String
+        /// Only when the rules print numbers ("1/1"); X/X and */* leave both nil.
+        var power: String? = nil
+        var toughness: String? = nil
+        /// nil when the rules name no color; [] for colorless.
+        var colors: [String]? = nil
+    }
+    private static let word = "[A-Z][A-Za-z'\\-]*"
+    private static let color = "(?:white|blue|black|red|green|colorless)"
+    // "[1/1] [green] Squirrel [creature] token(s)", including lists such as "a Clue, Food, or Treasure token".
+    private static let described = try! NSRegularExpression(pattern:
+        "(?<![A-Za-z0-9/+])(?:([0-9X*]+)/([0-9X*]+) )?(?:(\(color)(?:(?:,? and |, )\(color))*) )?" +
+        "(\(word)(?: \(word))*(?:(?:,? or |,? and |, )\(word)(?: \(word))*)*) " +
+        "(?:(?i:legendary|snow|artifact|enchantment|land|creature|planeswalker) )*tokens?(?![A-Za-z])")
+    // "... token named Kobolds of Kher Keep".
+    private static let named = try! NSRegularExpression(pattern: "(?<![A-Za-z])tokens? named (\(word)(?: (?:(?:of|the) )*\(word))*)")
+    private static let separator = try! NSRegularExpression(pattern: ",? or |,? and |, ")
+    private static let creates = try! NSRegularExpression(pattern: "(?i)\\bcreates?\\b")
+    private static let colorWord = try! NSRegularExpression(pattern: "white|blue|black|red|green")
+    /// Capitalized words that start a sentence or describe a token rather than name one.
+    private static let stopWords: Set<String> = [
+        "A", "An", "The", "Each", "Every", "Another", "Other", "Target", "That", "This", "Those", "These", "All", "Any", "No",
+        "If", "When", "Whenever", "As", "At", "For", "Then", "Until", "Up", "Create", "Creates", "Put", "Sacrifice", "Exile",
+        "Return", "Destroy", "Copy", "Tap", "Untap", "Choose", "Nontoken", "Token", "Tokens", "X", "You", "Your", "Its", "Their",
+        "Attacking", "Blocking", "Tapped", "Untapped", "Creature", "Artifact", "Enchantment", "Land", "Snow", "Legendary",
+        "Nonland", "Noncreature"]
+
+    /// A token without a printed size or color counts only in a sentence that creates it, so
+    /// "Whenever a Zombie token you control attacks" adds nothing. Reminder text counts too:
+    /// "Investigate (Create a Clue token ...)" makes a Clue.
+    static func requests(rules: String) -> [Request] {
+        var cleaned = rules.replacingOccurrences(of: "<[^>]*>", with: " ", options: .regularExpression)
+        cleaned = cleaned.replacingOccurrences(of: "&[A-Za-z]+;|&#[0-9]+;", with: " ", options: .regularExpression)
+        cleaned = cleaned.replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression)
+        let text = cleaned as NSString
+        func substring(_ range: NSRange) -> String? { range.location == NSNotFound ? nil : text.substring(with: range) }
+        var found: [(position: Int, request: Request)] = []
+        for match in described.matches(in: cleaned, range: NSRange(location: 0, length: text.length)) {
+            if text.substring(from: NSMaxRange(match.range)).hasPrefix(" named ") { continue }
+            let power = substring(match.range(at: 1)), toughness = substring(match.range(at: 2))
+            let colors = substring(match.range(at: 3))
+            let numeric = [power, toughness].allSatisfy { $0.map { !$0.isEmpty && $0.allSatisfy { $0.isASCII && $0.isNumber } } ?? false }
+            if power == nil && colors == nil {
+                let clause = text.substring(to: match.range.location).components(separatedBy: CharacterSet(charactersIn: ".\n")).last ?? ""
+                guard creates.firstMatch(in: clause, range: NSRange(location: 0, length: (clause as NSString).length)) != nil else { continue }
+            }
+            let colorSet: [String]? = colors.map { words in
+                if words == "colorless" { return [] }
+                let letters = Set(colorWord.matches(in: words, range: NSRange(location: 0, length: (words as NSString).length)).map {
+                    ["white": "W", "blue": "U", "black": "B", "red": "R", "green": "G"][(words as NSString).substring(with: $0.range)]!
+                })
+                return ["W", "U", "B", "R", "G"].filter(letters.contains)
+            }
+            let names = text.substring(with: match.range(at: 4))
+            var pieces: [String] = [], cursor = 0
+            for split in separator.matches(in: names, range: NSRange(location: 0, length: (names as NSString).length)) {
+                pieces.append((names as NSString).substring(with: NSRange(location: cursor, length: split.range.location - cursor)))
+                cursor = NSMaxRange(split.range)
+            }
+            pieces.append((names as NSString).substring(from: cursor))
+            for piece in pieces {
+                let words = piece.components(separatedBy: " ").drop { stopWords.contains($0) }
+                guard !words.isEmpty else { continue }
+                found.append((match.range.location, Request(name: words.joined(separator: " "), power: numeric ? power : nil,
+                                                            toughness: numeric ? toughness : nil, colors: colorSet)))
+            }
+        }
+        for match in named.matches(in: cleaned, range: NSRange(location: 0, length: text.length)) {
+            found.append((match.range(at: 1).location, Request(name: text.substring(with: match.range(at: 1)))))
+        }
+        var seen = Set<Request>()
+        return found.enumerated().sorted { ($0.element.position, $0.offset) < ($1.element.position, $1.offset) }
+            .map(\.element.request).filter {
+                seen.insert(Request(name: $0.name.lowercased(), power: $0.power, toughness: $0.toughness, colors: $0.colors)).inserted
+            }
+    }
+
+    /// Every distinct printing identity these requests can mean: the exact name, and the printed
+    /// P/T and colors when the rules state them. One printing per identity, front faces first.
+    /// A matched front face brings its back face (an Incubator transforms into a Phyrexian).
+    static func select(_ requests: [Request], from catalogue: NativeArtworkCatalogue) -> [NativeTokenArtwork] {
+        // Some double-faced printings carry a bare "Token" art face with no rules.
+        func usable(_ token: NativeTokenArtwork) -> Bool {
+            token.hasMatchingMetadata && token.typeLine?.trimmingCharacters(in: .whitespaces).lowercased() != "token"
+        }
+        let candidates = catalogue.allTokens.filter(usable)
+            .sorted { ($0.face == nil ? 0 : 1, $0.artworkKey) < ($1.face == nil ? 0 : 1, $1.artworkKey) }
+        var result: [NativeTokenArtwork] = []
+        func add(_ token: NativeTokenArtwork) {
+            if !result.contains(where: { NativeAssetStore.sameTokenIdentity($0, token) }) { result.append(token) }
+        }
+        for request in requests {
+            let name = NativeAssetStore.tokenNameKey(request.name)
+            for token in candidates where NativeAssetStore.tokenNameKey(token.name) == name &&
+                (request.power == nil || token.power == request.power) &&
+                (request.toughness == nil || token.toughness == request.toughness) &&
+                (request.colors.map { Set($0) == Set(token.colors ?? []) } ?? true) {
+                add(token)
+                if token.face == nil, let back = catalogue.token(id: token.id, face: "back"), usable(back) { add(back) }
+            }
+        }
+        return result
+    }
+}
+
 /// Uses Scryfall's related-card IDs, never a fuzzy token-name match.
 actor NativeTokenDiscovery {
     private let transport: any DeckStudioScryfallHTTP
@@ -436,6 +562,10 @@ actor NativeTokenDiscovery {
     private let discovery: NativeTokenDiscovery
     private let catalogueLoader: @Sendable () async throws -> NativeArtworkCatalogue
     private let deckCatalogueLoader: @Sendable ([String], Bool) async throws -> NativeArtworkCatalogue
+    struct OpponentDeck: Equatable { let id: String; let cardNames: [String] }
+    private let tokenSearch: @Sendable ([String]) async throws -> NativeArtworkCatalogue
+    private let rulesText: @Sendable ([String]) async -> [String: String]
+    private let opponentDecks: @MainActor () -> [OpponentDeck]
     private var task: Task<Void, Never>?
     private var scanGeneration = UUID()
     private struct ScanContext {
@@ -457,10 +587,14 @@ actor NativeTokenDiscovery {
     init(store: NativeAssetStore = .shared, artwork: NativeDeckArtwork = .shared, discovery: NativeTokenDiscovery = NativeTokenDiscovery(),
          catalogueLoader: @escaping @Sendable () async throws -> NativeArtworkCatalogue = { try await NativeArtworkCatalogue.load() },
          backgroundQueue: NativeArtworkBackgroundQueue? = nil,
-         deckCatalogueLoader: @escaping @Sendable ([String], Bool) async throws -> NativeArtworkCatalogue = { try await NativeArtworkCatalogue.load(names: $0, includeTokens: $1) }) {
+         deckCatalogueLoader: @escaping @Sendable ([String], Bool) async throws -> NativeArtworkCatalogue = { try await NativeArtworkCatalogue.load(names: $0, includeTokens: $1) },
+         tokenSearch: @escaping @Sendable ([String]) async throws -> NativeArtworkCatalogue = { try await NativeArtworkCatalogue.searchTokens(names: $0) },
+         rulesText: @escaping @Sendable ([String]) async -> [String: String] = { await NativeAssetDownloads.bundledRulesText(names: $0) },
+         opponentDecks: @escaping @MainActor () -> [OpponentDeck] = { NativeAssetDownloads.selectedOpponentDecks() }) {
         self.store = store; self.artwork = artwork; self.discovery = discovery; self.catalogueLoader = catalogueLoader
         self.backgroundQueue = backgroundQueue
         self.deckCatalogueLoader = deckCatalogueLoader
+        self.tokenSearch = tokenSearch; self.rulesText = rulesText; self.opponentDecks = opponentDecks
         if let backgroundQueue {
             queueObservation = backgroundQueue.objectWillChange.sink { [weak self] in
                 Task { @MainActor [weak self] in self?.syncBackgroundProgress() }
@@ -477,6 +611,38 @@ actor NativeTokenDiscovery {
         }.filter { seen.insert(NativeAssetStore.cardKey($0)).inserted }
         guard result.count <= maximumNames else { throw DeckStudioScryfallError.invalidInput }
         return result
+    }
+    /// The AI opponents chosen in game setup, read the way OnDeviceRootView reads them.
+    static func selectedOpponentDecks() -> [OpponentDeck] {
+#if canImport(UIKit)
+        let defaults = MagicMobilePreferences.current
+#else
+        let defaults = UserDefaults.standard
+#endif
+        let saved = defaults.object(forKey: OnDeviceSetupPreferences.aiCountKey) == nil ? 1 : defaults.integer(forKey: OnDeviceSetupPreferences.aiCountKey)
+        let ids = OnDeviceSetupPreferences.normalizedAIDeckIDs(
+            [defaults.string(forKey: OnDeviceSetupPreferences.aiDeckKey) ?? OnDeviceSetupPreferences.defaultAIDeckID,
+             defaults.string(forKey: OnDeviceSetupPreferences.aiDeck2Key) ?? "",
+             defaults.string(forKey: OnDeviceSetupPreferences.aiDeck3Key) ?? ""],
+            available: PreconCatalog.all.map(\.id)).prefix(min(3, max(1, saved)))
+        return ids.compactMap { id in
+            PreconCatalog.all.first { $0.id == id }.map { deck in
+                let list = deck.deckList
+                return OpponentDeck(id: id, cardNames: Array(Set(list.entries.map(\.cardName) + [list.commander?.cardName].compactMap { $0 })).sorted())
+            }
+        }
+    }
+    /// Names the stored common and opponent tokens for this opponent selection.
+    nonisolated static func extraTokenKey(_ opponents: [OpponentDeck]) -> String {
+        "deck-extras-v1:" + Set(opponents.map(\.id)).sorted().joined(separator: ",")
+    }
+    nonisolated static func bundledRulesText(names: [String]) async -> [String: String] {
+        await Task.detached(priority: .utility) {
+            guard let catalogue = try? NativeDeckMetadataCatalogue.bundled() else { return [:] }
+            var result: [String: String] = [:]
+            for name in names { if let text = catalogue.card(named: name)?.oracleText { result[name] = text } }
+            return result
+        }.value
     }
     func scan(names: [String], quality: NativeArtworkQuality = .high, fullCatalogue: Bool = false,
               tokenOnly: Bool = false) async {
@@ -505,6 +671,11 @@ actor NativeTokenDiscovery {
                 for name in names {
                     guard generation == scanGeneration, !Task.isCancelled else { return }
                     if let found = await store.relations(name: name) {
+                        related += found.filter { seen.insert($0.artworkKey).inserted }
+                    } else { unknown += 1 }
+                }
+                if !names.isEmpty {
+                    if let found = await store.extraTokens(key: Self.extraTokenKey(opponentDecks())) {
                         related += found.filter { seen.insert($0.artworkKey).inserted }
                     } else { unknown += 1 }
                 }
@@ -700,28 +871,48 @@ actor NativeTokenDiscovery {
 #endif
             }
             do {
-                let catalogue = fullCatalogue ? try await catalogueLoader() :
+                var catalogue = fullCatalogue ? try await catalogueLoader() :
                     try await deckCatalogueLoader(inputNames, includeTokens)
                 try Task.checkCancellation()
                 let faces = tokenOnly ? [] : catalogue.additionalFaceNames(for: inputNames)
                 let names = tokenOnly ? [] : try Self.names(inputNames + faces)
                 if fullCatalogue && !tokenOnly { try await store.saveCatalogueFaces(faces) }
+                // Token images go first, so an interrupted job still has them.
                 var entries: [NativeArtworkBackgroundQueue.Entry] = []
+                var cardEntries: [NativeArtworkBackgroundQueue.Entry] = []
                 var tokenIDs = Set<String>()
                 var relatedTokens: [NativeTokenArtwork] = []
+                var madeTokens: [String: [NativeTokenArtwork]] = [:]
+                var extraTokens: [NativeTokenArtwork]?
+                let opponents = opponentDecks()
+                if includeTokens && !fullCatalogue && !names.isEmpty {
+                    do {
+                        let found = try await discoverDeckTokens(names: names, opponents: opponents)
+                        catalogue.addTokens(from: found.catalogue)
+                        madeTokens = found.cards; extraTokens = found.extras
+                    } catch is CancellationError { throw CancellationError() }
+                    catch { preparationFailures.append("Tokens your decks make: \(error.localizedDescription)") }
+                }
                 for name in names {
                     try Task.checkCancellation()
                     if includeTokens && !fullCatalogue {
-                        let related = catalogue.relatedTokens(name: name)
+                        var keys = Set<String>()
+                        let related = Array((catalogue.relatedTokens(name: name) + (madeTokens[name] ?? []))
+                            .filter { keys.insert($0.artworkKey).inserted }.prefix(100))
                         try await store.saveRelations(related, name: name)
                         relatedTokens += related.filter { tokenIDs.insert($0.artworkKey).inserted }
                     }
                     let key = NativeAssetStore.cardKey(name)
                     if await store.image(key: key, quality: quality) == nil {
                         if let url = catalogue.imageURL(name: name, size: quality.imageSizeString) {
-                            entries.append(.init(key: key, name: name, url: url, quality: quality))
+                            cardEntries.append(.init(key: key, name: name, url: url, quality: quality))
                         } else { preparationFailures.append("\(name): artwork is unavailable.") }
                     }
+                }
+                if let extraTokens {
+                    let extras = Array(extraTokens.prefix(2000))
+                    try await store.saveExtraTokens(extras, key: Self.extraTokenKey(opponents))
+                    relatedTokens += extras.filter { tokenIDs.insert($0.artworkKey).inserted }
                 }
                 if includeTokens {
                     if fullCatalogue {
@@ -744,7 +935,7 @@ actor NativeTokenDiscovery {
                     }
                 }
                 try Task.checkCancellation()
-                try queue.start(entries: entries)
+                try queue.start(entries: entries + cardEntries)
                 preparingBackgroundJob = false; task = nil
                 syncBackgroundProgress()
                 await scan(names: inputNames, quality: quality, fullCatalogue: fullCatalogue, tokenOnly: tokenOnly)
@@ -755,6 +946,24 @@ actor NativeTokenDiscovery {
                 if !(error is CancellationError) { failures = [error.localizedDescription] }
             }
         }
+    }
+
+    /// Tokens the deck's cards make (their rules text), plus the common list and the tokens
+    /// the selected AI opponents make, resolved by batched Scryfall token searches.
+    private func discoverDeckTokens(names: [String], opponents: [OpponentDeck]) async throws
+        -> (catalogue: NativeArtworkCatalogue, cards: [String: [NativeTokenArtwork]], extras: [NativeTokenArtwork]) {
+        let opponentNames = Array(Set(opponents.flatMap(\.cardNames))).sorted()
+        let rules = await rulesText(names + opponentNames)
+        try Task.checkCancellation()
+        let cardRequests = names.map { ($0, NativeTokenRules.requests(rules: rules[$0] ?? "")) }
+        let extraRequests = NativeTokenRules.commonTokenNames.map { NativeTokenRules.Request(name: $0) } +
+            opponentNames.flatMap { NativeTokenRules.requests(rules: rules[$0] ?? "") }
+        var seen = Set<String>()
+        let searchNames = (cardRequests.flatMap(\.1) + extraRequests).map(\.name).filter { seen.insert($0.lowercased()).inserted }
+        let found = try await tokenSearch(searchNames)
+        var cards: [String: [NativeTokenArtwork]] = [:]
+        for (name, requests) in cardRequests where !requests.isEmpty { cards[name] = NativeTokenRules.select(requests, from: found) }
+        return (found, cards, NativeTokenRules.select(extraRequests, from: found))
     }
 
     func cancel() { task?.cancel(); backgroundQueue?.cancel() }

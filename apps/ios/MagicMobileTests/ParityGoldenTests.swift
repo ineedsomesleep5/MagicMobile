@@ -822,3 +822,27 @@ extension ParityGoldenTests {
         }
     }
 }
+
+// MARK: - Token art downloads
+
+extension ParityGoldenTests {
+    /// token-cases.json: the tokens a card's rules text makes, and the common token list, for
+    /// offline token-art downloads. ParityGoldenTest.kt runs the same cases through TokenRules.
+    func testTokenCasesOnBothPlatforms() throws {
+        let root = try caseFile("token-cases.json")
+        XCTAssertEqual(root["commonTokens"] as? [String], NativeTokenRules.commonTokenNames)
+        let cases = try XCTUnwrap(root["cases"] as? [[String: Any]])
+        XCTAssertFalse(cases.isEmpty)
+        for item in cases {
+            let card = item["card"] as? String ?? ""
+            let text = try XCTUnwrap(item["text"] as? String, card)
+            let expected = try XCTUnwrap(item["tokens"] as? [[String: Any]], card).map {
+                NativeTokenRules.Request(name: $0["name"] as? String ?? "", power: $0["power"] as? String,
+                                         toughness: $0["toughness"] as? String, colors: $0["colors"] as? [String])
+            }
+            XCTAssertEqual(NativeTokenRules.requests(rules: text), expected, card)
+            // Production reads the catalogue's display text; it must find the same tokens.
+            XCTAssertEqual(NativeTokenRules.requests(rules: EngineDisplayText.text(text)), expected, "\(card) (display text)")
+        }
+    }
+}
