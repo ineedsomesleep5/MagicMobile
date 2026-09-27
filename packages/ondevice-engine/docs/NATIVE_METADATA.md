@@ -106,8 +106,8 @@ exporter and pass the file as `-Dnative.serialization.config`. Probe and toolcha
 the hash-covered native candidate, and `verify_native_candidate.py` requires it.
 
 **Registration through `CheckpointSerializationFeature`, not `-H:SerializationConfigurationFiles`
-(September 27, 2026).** Two Android runs measured what GraalVM 22.1's own serialization support
-costs for the checkpoint types. Before save/resume, the whole native step took 8 min 47 s: analysis
+(September 27, 2026).** The Android runs on this branch measured what GraalVM 22.1's own
+serialization support costs for the checkpoint types, and what the feature below costs. Before save/resume, the whole native step took 8 min 47 s: analysis
 ran 309 s and ended at 8.77 GB of the 10 GB builder heap, with 67,055 classes and 359,842 methods
 reachable (run 36091168558).
 
@@ -133,6 +133,20 @@ reachable (run 36091168558).
    methods reachable. The exporter now leaves out every `java.awt.Component` subclass, since a
    headless game never holds one. The feature fails the build if a `java.awt`/`javax.swing`
    class reaches it.
+4. Run [36299703566](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/36299703566)
+   (`f0f78c3`) **succeeded**. That covers the real-engine JVM tests, the ARM64 image, the staging
+   checks and the native-linked APK (artifacts `android-full-native-f0f78c3…` and
+   `MagicMobile-Android-NATIVE-APK-f0f78c3…`). Image generation took 20 min 39 s against 8 min 47 s
+   before save/resume:
+
+   | Stage | Time | Heap |
+   | --- | --- | --- |
+   | Analysis | 783 s | 9.75 GB |
+   | Building universe | 86 s | 9.92 GB |
+   | Compiling | 247 s | 8.49 GB |
+
+   Peak RSS was 12.16 GB. 68,886 classes and 382,051 methods were reachable (from 67,055 and
+   359,842). Code grew to 201 MB (from 193 MB), and the far-call pass inserted 216,864 veneers.
 
 The Gluon POM therefore no longer passes `-H:SerializationConfigurationFiles`. Full builds enable
 `native/gluon/.../CheckpointSerializationFeature.java` (`-Dnative.checkpoint.feature=--features=...`),
@@ -173,6 +187,11 @@ confirmed that for every one of them the JDK's serialization constructor is `Obj
 lacks a valid serialization constructor. Default `serialVersionUID`s are computed from this
 metadata. That differs from a JVM's value, but a checkpoint is only read by the build that wrote it
 (`engineBuild`). The Android evidence artifact now also keeps `builder-gc.log`.
+
+**Heap headroom is small.** Analysis and universe building peaked within 0.3 GB of the 10 GB
+builder heap, the most a 16 GB hosted runner allows. Growth in upstream cards or engine code may
+need more builder memory or a smaller class list. The iOS far-call build uses the same 10 GB heap on
+a different runner and compiler patch; it is a separate gate, not shown by this run.
 
 **Risk.** The feature relies on GraalVM internals that are valid for the pinned 22.1.0.1 builder,
 which runs on the classpath: the package-private `SerializationBuilder.addConstructorAccessor`, the

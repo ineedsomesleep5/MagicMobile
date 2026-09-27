@@ -43,7 +43,7 @@ The app Resume/Abandon flow, file location and 10-minute window are app-side wor
   - Rejections: more than one human seat, bad paths, header identity, format, SHA-256,
     truncation, a filter-rejected class and a wrong root; a failed write keeps the game playing;
     a failed restore leaves no match or threads.
-- **First native attempt failed; fixed without serializable lambdas (September 27).** Android
+- **Native build: the Android image now builds (September 27).** Android
   run 36287088288 (`9b26186`) stopped 20 s into image generation: GraalVM 22.1 requires
   `writeReplace` on every lambda of a `lambdaCapturingTypes` class, and `Checkpoints` and
   `XmageEngine$Running` also create ordinary lambdas. Branch `codex/native-serialization-fix`
@@ -64,16 +64,20 @@ The app Resume/Abandon flow, file location and 10-minute window are app-side wor
   46,700 classes whose serialization constructor is `Object()` (see NATIVE_METADATA.md). With it,
   run 36298334924 finished analysis (943 s, 9.92 GB) but failed because the exporter listed
   Mage.Common's Serializable Swing client components, which made AWT/X11 code reachable. The
-  exporter now leaves them out. The next Android run on this branch is pending. The PR records
-  its result.
-- **Not verified.** A complete native image with this metadata unless stated above, native
-  serialization at runtime, phone write/restore times, iOS/Android app integration,
-  process-kill acceptance.
+  exporter now leaves them out. **Run 36299703566 (`f0f78c3`) then succeeded end to end:**
+  real-engine JVM tests, the ARM64 image (20 min 39 s, analysis 783 s at 9.75 GB of the 10 GB heap,
+  peak RSS 12.16 GB), the staging checks and the native-linked APK (artifact
+  `android-full-native-f0f78c375ea7be8854f7e0ac1e9605947aafc60a`). It builds; it does not run the
+  engine, so native serialization at runtime is still unproven.
+- **Not verified.** The iOS native build with this metadata (`magicmobile-far-calls.yml`, same
+  10 GB builder heap), native serialization at runtime (the `saveResume` self-test on a device),
+  phone write/restore times, iOS/Android app integration, process-kill acceptance.
 - **Next native gates (need dispatch).** iOS: `magicmobile-issue4-nonsimulator.yml` on the
   candidate SHA, then `magicmobile-far-calls.yml` with `candidate_sha` and that run's
   `cheap_run_id`, then `magicmobile-product-device.yml` with `engine_run_id`/`engine_commit`.
-  Android: `magicmobile-android.yml`. A build without the metadata reports
-  `saveResume: false` rather than failing games.
+  Android: `magicmobile-android.yml` passed on `f0f78c3` (above); the next Android gate is running
+  the engine on a device. A build without the metadata reports `saveResume: false` rather than
+  failing games.
 
 ## Subsequent authorized internal TestFlight upload
 
