@@ -3718,7 +3718,8 @@ struct NativeGameView: View {
 
     private func boardChoicePresentation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
         content
-            .accessibilityHidden(isCardChoiceOpen || committedCardChoice != nil)
+            // The starting roll covers the board too (the root also applies startingRollCovered).
+            .accessibilityHidden(isCardChoiceOpen || committedCardChoice != nil || startingRollVisible)
             .overlay {
                 if isCardChoiceOpen, let key = PortraitInteractionPolicy.cardChoiceKey(snapshot), let prompt = snapshot.promptEnvelopeV2 {
                     BoardCardChoiceView(snapshot: snapshot, prompt: prompt, pendingActionId: pendingActionId,
