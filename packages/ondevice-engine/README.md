@@ -6,7 +6,7 @@ The native iOS product embeds XMage's actual rules engine. A player must not nee
 
 ## Actual delivery status
 
-**New authorized internal upload:** [0.1.0 (2026091401)](docs/TESTFLIGHT_2026091401.md)
+**New authorized internal upload:** [0.1.0 (2026091401)](docs/archive/TESTFLIGHT_2026091401.md)
 passed signing/layout/Apple validation and uploaded successfully on September 14.
 Apple confirms VALID/IN_BETA_TESTING and exact existing Internal-group access;
 phone acceptance remains unverified. The pre-phone evidence below describes the preceding stage.
@@ -49,19 +49,14 @@ swift test --package-path swift
 
 The first command also runs the Java core checks. These are boundary/build-tool checks, **not gameplay acceptance tests**. Apple-only `GameKit` and `SwiftUI` branches still require Xcode.
 
-## Historical installer (not for this existing continuation)
+## Historical installer (removed)
 
-Only for an authorized fresh installation from an original package; do not rerun
-this over `MagicMobile-ondevice`, reset its branch, or replace it with an old ZIP:
-
-```sh
-python3 scripts/install_into_magicmobile.py /absolute/path/to/MagicMobile
-python3 scripts/install_into_magicmobile.py /absolute/path/to/MagicMobile --apply
-```
-
-The first command is a dry run. The second creates local branch `codex/ondevice-xmage`, adds `packages/ondevice-engine` and `apps/ios-ondevice`, installs a CI template, and appends a migration note to the repository README. It refuses a dirty tree or existing destination. It does **not** commit, push, delete the existing apps, or silently replace unrelated code.
-
-The inspected repository baseline was `058478f690b713332c13d0a8369e98f5b792a282`. The installer can add the new paths on a newer clean baseline; Codex must review integration changes against that baseline.
+The one-time `scripts/install_into_magicmobile.py`, which added this package to a
+MagicMobile checkout from the original download (baseline
+`058478f690b713332c13d0a8369e98f5b792a282`), was removed after the migration. It and
+its tests remain at the `archive/design-2026-09` tag; see
+[docs/ARCHIVE.md](../../docs/ARCHIVE.md). `SHA256SUMS.txt` still lists it because
+that file records the original download.
 
 ## Build the real engine on the developer machine
 

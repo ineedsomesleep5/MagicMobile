@@ -9,7 +9,7 @@ Caleb's 2026-09-11 clarification: **Commander gameplay is the main product goal,
 ## First actions
 
 1. Read `implementation-status.json`, `evidence/README.md`, `AGENTS.md`, and `docs/NATIVE_BLOCKERS.md`.
-2. If this directory is still the downloaded package, use `scripts/install_into_magicmobile.py` to inspect and install into a clean local MagicMobile checkout. It creates a new local branch and does not push. If already installed under `packages/ondevice-engine`, work there; do not run the installer on itself.
+2. Work in `packages/ondevice-engine` of the MagicMobile checkout. The one-time installer for the original downloaded package was removed after the migration (see `docs/ARCHIVE.md` at the repository root).
 3. Re-run `bash scripts/test_tooling.sh`, `bash scripts/test_native_boundary.sh`, and `swift test --package-path swift`.
 4. Get the **real** XMage build working with `bash scripts/build_jvm.sh`. Correct source/API/build faults, not the tests' definition of success. Do not introduce dummy `mage.*` classes to make this gate green.
 

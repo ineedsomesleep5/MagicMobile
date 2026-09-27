@@ -85,14 +85,19 @@ The static SDK pin follows `DEFAULT_JAVA_STATIC_SDK_VERSION` in
 also verified in the downloaded JAR. Toolchain availability does not prove the
 full engine is compatible.
 
-## Hosted Intel build diagnostic
+## Hosted Intel build
 
-`.github/workflows/magicmobile-native-ios.yml` is manually dispatched on the
-standard `macos-26-intel` runner (14 GB RAM), using Xcode 26.6. It rebuilds the
-full pinned JVM catalogue, runs real regressions, checks the isolated iOS
-toolchain probe, then attempts the full device library with a 10 GiB builder.
-That heap setting is rejected on hosts with less than 12 GiB physical memory.
-The consumer engine remains on-device; the runner is only a build machine.
+The hosted device-library build is `.github/workflows/magicmobile-far-calls.yml`.
+It replaced the retired `magicmobile-native-ios.yml` diagnostic. It is manually
+dispatched with a reviewed candidate SHA and a successful same-SHA
+`magicmobile-issue4-nonsimulator.yml` run, whose real-JVM job supplies the real
+regressions. It runs on the standard `macos-26-intel` runner (14 GB RAM) with
+Xcode 26.6. It builds the far-call compiler backport, checks the isolated iOS
+toolchain probe and rebuilds the full pinned JVM catalogue. It then runs the
+native token, Color and catalogue checks and builds the full device library with
+a 10 GiB builder. That heap setting is rejected on hosts with less than 12 GiB
+physical memory. The consumer engine remains on-device; the runner is only a
+build machine.
 
 `scripts/setup_gluon_intel.sh` downloads the official Java 17 **Intel** Gluon
 22.1.0.1 archive and verifies SHA-256

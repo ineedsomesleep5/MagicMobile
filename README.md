@@ -13,11 +13,12 @@ XMage owns rules, legal choices, priority, the stack and authoritative game stat
   native iOS compilation and Swift transport.
 - [Native architecture](packages/ondevice-engine/docs/ARCHITECTURE.md) and
   [app/board integration](packages/ondevice-engine/docs/PORTRAIT_INTEGRATION.md).
-- [Latest recorded release](release/testflight/COMMANDER_POLISH_20260916.md):
-  build 0.1.0 (2026091601), verification, screenshots and known limitations.
+- [Latest recorded release](release/RELEASE_0.1.1_BUILD20.md):
+  iOS 0.1.1 build 20, verification and known limitations.
   Apple review status in release records is a dated observation.
 - [Release records](release) and
   [native continuation](packages/ondevice-engine/docs/LOCAL_CONTINUATION_STATUS.md).
+  Older dated notes and removed design material: [docs/ARCHIVE.md](docs/ARCHIVE.md).
 - [Run a multiplayer server on your own PC](apps/multiplayer-server/selfhost/README.md):
   checksum-pinned Windows/macOS/Linux launcher and the remaining online setup requirements.
 

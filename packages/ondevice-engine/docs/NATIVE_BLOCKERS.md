@@ -25,7 +25,7 @@ acceptance remain unexecuted.
 
 ## Signed upload and Internal availability confirmed
 
-The separately authorized [build 2026091401](TESTFLIGHT_2026091401.md) passed
+The separately authorized [build 2026091401](archive/TESTFLIGHT_2026091401.md) passed
 archive/export, distribution-signature/profile, Game Center, UUID-matched dSYM/
 native layout, privacy and Apple validation checks, then uploaded successfully.
 Apple confirms VALID/IN_BETA_TESTING and exact existing Internal-group access.

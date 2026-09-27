@@ -1,5 +1,11 @@
 # Native iOS Design QA
 
+> Archived July 2026 record of the hosted-bridge client, formerly `design-qa.md` at the
+> repository root. The `docs/design/...` screenshots it cites were removed from the tree
+> and exist only at the `archive/design-2026-09` tag, for example
+> `git show archive/design-2026-09:docs/design/qa-player-hud-focused.jpg > hud.jpg`.
+> See [ARCHIVE.md](../ARCHIVE.md).
+
 ## Comparison target
 
 - Source visual truth:

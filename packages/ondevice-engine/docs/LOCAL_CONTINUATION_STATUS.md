@@ -99,7 +99,7 @@ The app Resume/Abandon flow, file location and 10-minute window are app-side wor
 
 ## Subsequent authorized internal TestFlight upload
 
-[Build 2026091401](TESTFLIGHT_2026091401.md), release source
+[Build 2026091401](archive/TESTFLIGHT_2026091401.md), release source
 `a718978e59b0fe4ef90568cf190d5fe5b0ecff41`, passed archive/export/signing/layout
 and Apple validation, then uploaded successfully. Delivery UUID:
 `4e99955e-55eb-4371-9fc2-46e9c5ab0da2`. Apple confirms VALID and IN_BETA_TESTING, with verified access for the existing
@@ -192,7 +192,7 @@ See [the audit](NATIVE_RUNTIME_AUDIT_20260913.md) for failure reproductions and 
 
 ## Last recorded uploaded build is older
 
-[0.1.0 (2026091301)](TESTFLIGHT_2026091301.md) was recorded as uploaded and
+[0.1.0 (2026091301)](archive/TESTFLIGHT_2026091301.md) was recorded as uploaded and
 available to the existing Internal group. It uses engine `00b33cb`, not the
 runtime-hardened engine above. This GitHub continuation does not upload a new
 TestFlight build. Do not reuse that old archive, old build number or old success

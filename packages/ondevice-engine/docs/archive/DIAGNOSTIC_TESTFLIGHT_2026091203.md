@@ -81,7 +81,7 @@ peer redaction there, not the cause of the real iPhone failure.
 Build 2026091202 failed during startup. The underlying native exception is
 still unknown. Diagnostic capture, successful gameplay, native AI resource
 behavior, rendered accessibility and real multi-phone play on 2026091203 are
-not yet verified. Use [the physical checklist](TESTFLIGHT_ACCEPTANCE.md) and
+not yet verified. Use [the physical checklist](../TESTFLIGHT_ACCEPTANCE.md) and
 [issue #7](https://github.com/ineedsomesleep5/MagicMobile/issues/7).
 
 Old builds, their native inputs and their signed artifacts were preserved.
