@@ -25,6 +25,9 @@ struct DeckStudioComboPanel: View {
     let readOnly: Bool
     let add: (String, String, SpellbookDeck) -> Bool
     let inspect: (String) -> Void
+    /// Inside the workspace's own scroll (portrait): no ScrollView here, and the results
+    /// stay in this panel's lazy stack.
+    var embedded = false
     @Environment(\.dynamicTypeSize) private var dynamicType
     @State private var approval: SpellbookDeck?
     @State private var selected: SpellbookVariant?
@@ -32,8 +35,12 @@ struct DeckStudioComboPanel: View {
     private var input: SpellbookDeck? { DeckStudioSpellbookInput.make(draft, resolver: resolver) }
     private var snapshot: SpellbookSnapshot? { model.snapshot?.deck == input ? model.snapshot : nil }
 
+    @ViewBuilder private func scroll(@ViewBuilder _ content: () -> some View) -> some View {
+        if embedded { content() } else { ScrollView(content: content) }
+    }
+
     var body: some View {
-        ScrollView {
+        scroll {
             LazyVStack(alignment: .leading, spacing: 16) {
                 DeckStudioPanel {
                     VStack(alignment: .leading, spacing: 12) {
