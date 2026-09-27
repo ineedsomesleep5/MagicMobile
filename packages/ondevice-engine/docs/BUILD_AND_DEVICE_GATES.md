@@ -93,7 +93,7 @@ The exported code image/relocations/veneers passed with its UUID-matched dSYM.
 Builds **2026091201** and **2026091202** are superseded. Do not reuse uploaded numbers.
 
 Build **2026091203** was checked unused in both builds and in-flight uploads
-before the successful upload. See [the diagnostic handoff](DIAGNOSTIC_TESTFLIGHT_2026091203.md).
+before the successful upload. See [the diagnostic handoff](archive/DIAGNOSTIC_TESTFLIGHT_2026091203.md).
 The app plist declares no non-exempt encryption: inspected app/XMage sources
 have no custom encryption calls; network transport uses Apple's URLSession/GameKit.
 Apple's [export-compliance guidance](https://developer.apple.com/documentation/security/complying-with-encryption-export-regulations)

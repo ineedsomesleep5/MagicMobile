@@ -94,7 +94,7 @@ Rive or Three.js dependency was introduced. EDHREC's published terms restrict
 automated queries (https://edhrec.com/terms); the authorized website handoff stays
 honest, with a user question pending about partner API access.
 
-User-requested deeper Rive CLI review is recorded in `outputs/rive-cli-assessment.md`.
+User-requested deeper Rive CLI review is recorded in the repository's [docs/archive/rive-cli-assessment.md](../../../docs/archive/rive-cli-assessment.md).
 Official CLI authoring, headless verification/capture, RML/state machines, Apple
 runtime/version integration, accessibility and performance were investigated.
 The live getting-started documentation says published CLI exports currently carry

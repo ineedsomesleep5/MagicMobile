@@ -27,3 +27,13 @@ start from the [repository guide](../../README.md).
 | [XMAGE_MOBILE_ROUTE_COVERAGE.md](XMAGE_MOBILE_ROUTE_COVERAGE.md) | Gateway route coverage |
 | [XMAGE_PROMPT_COVERAGE.md](XMAGE_PROMPT_COVERAGE.md) | Prompt coverage for the gateway and web client |
 | [XMAGE_UPDATE_STRATEGY.md](XMAGE_UPDATE_STRATEGY.md) | Bridge image update policy |
+
+## Later additions
+
+Not web-era code, but kept here for the same reason. [ARCHIVE.md](../ARCHIVE.md) lists
+every archive location.
+
+| Document | Topic |
+| --- | --- |
+| [design-qa-2026-07.md](design-qa-2026-07.md) | July 2026 design QA; its screenshots are at the `archive/design-2026-09` tag |
+| [rive-cli-assessment.md](rive-cli-assessment.md) | September 2026 Rive CLI evaluation, formerly in `outputs/` |

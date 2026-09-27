@@ -75,11 +75,11 @@ memory/thermal behavior and artwork quality are not established by these checks.
 
 ## Local simulator screenshots
 
-- [Centered phase cue](../../build_output/commander-motion-portrait-phase/8FF5ACB0-2836-43BA-A203-9C0A1B7F795F.png)
-- [Life-loss pulse and signed delta](../../build_output/commander-motion-landscape-life/069A081B-BE31-4F59-A13C-46D30BDD8DEB.png)
-- [Landscape Deck Studio](../../build_output/commander-final-landscape-deck/D313DF21-3483-4789-8E85-7DDB5E70381D.png)
+- [Centered phase cue](../../../build_output/commander-motion-portrait-phase/8FF5ACB0-2836-43BA-A203-9C0A1B7F795F.png)
+- [Life-loss pulse and signed delta](../../../build_output/commander-motion-landscape-life/069A081B-BE31-4F59-A13C-46D30BDD8DEB.png)
+- [Landscape Deck Studio](../../../build_output/commander-final-landscape-deck/D313DF21-3483-4789-8E85-7DDB5E70381D.png)
 
 Board images are labeled development fixtures. The deck image is an actual
 local editor test with artwork downloads disabled; none proves phone artwork quality.
-The [Rive CLI assessment](../../outputs/rive-cli-assessment.md) explains the
+The [Rive CLI assessment](../../../docs/archive/rive-cli-assessment.md) explains the
 native-motion choice and prerequisites for a future authored-effects experiment.

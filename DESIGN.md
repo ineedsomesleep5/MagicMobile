@@ -287,8 +287,9 @@ either never changes the battlefield.
 
 ## Brand
 
-The app mark ships as `mage-mobile-logo` and is used on the main menu. Mana
-identity on the menu uses the real `mana-w/u/b/r/g` assets, never substitute
+The app mark is the vector `BrandMark` (`BrandUI.swift`) and is used on the main
+menu. Its paths live in `BrandMarkPaths.swift`, which `scripts/brand/trace_logo.py`
+generates from `design/brand/icon-master-2026-09-23.png`. Mana identity on the menu uses the real `mana-w/u/b/r/g` assets, never substitute
 icons. Do not rebuild the brand out of SF Symbols.
 
 ## Do's and Don'ts

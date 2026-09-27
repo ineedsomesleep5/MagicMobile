@@ -48,6 +48,10 @@ coverage feather. Result: `Assets.xcassets/mage-mobile-logo.imageset` (709×646 
 If the logo art is ever re-exported **with** an alpha channel, replace that asset and
 delete this workaround; it is a salvage, not a preference.
 
+Later note (2026-09-27): the vector `BrandMark` replaced this raster, and the unused
+`mage-mobile-logo.imageset` was removed. It is kept at the `archive/design-2026-09`
+tag; see [ARCHIVE.md](ARCHIVE.md).
+
 Menu mana pips now use the shipped `mana-w/u/b/r/g` assets. They were SF Symbols for
 weather (`sun.max.fill`, `drop.fill`, …).
 
