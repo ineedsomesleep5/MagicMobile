@@ -574,8 +574,9 @@ fun NativeGameView(
             if (!firstBanner || board.turn > 1) {
                 if (board.isViewer(board.activePlayerId)) view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                 showsTurnBanner = true; showsTurnCue = true
-                delay(1600)
-                showsTurnBanner = false
+                // A phase change during the banner restarts this effect; hide the banner even then,
+                // or the restarted effect (same turn key) leaves it on screen for the whole turn.
+                try { delay(1600) } finally { showsTurnBanner = false }
                 mergePhaseCueIntoBar()
                 return@LaunchedEffect
             }
