@@ -292,3 +292,23 @@ dry run of the feature over this file, with stand-ins for the GraalVM registries
 serialization metadata as before (48,722 classes, 46,700 shared accessors, 184 GraalVM accessors,
 5,540 fields, 148 hooks, 1,232 queried constructors), and every listed name is registered for
 reflection, so for `Class.forName`.
+
+**Native result.** Android run
+[36306841573](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/36306841573) (`e83eb15`)
+passed: the real-engine JVM tests with the new check (931 stream classes, all listed), the ARM64
+image and the native-linked APK (artifact `android-full-native-e83eb158876200f2072cd2509fd2398841b8b7b4`).
+The feature printed `50684 listed types (1957 arrays, 5 resolvable only)` with the same accessor,
+field and constructor counts as before (Linux's JDK has 144 hooks). Image generation took 19 min 45 s:
+analysis 760 s at 9.58 GB, universe 55 s at 9.76 GB, compiling 239 s, peak RSS 12.21 GB. 67,846
+classes and 382,051 methods were reachable (the same method count as `f0f78c3`), and
+`libmmengine.so` grew by 28 KB: the extra array and interface registrations did not reduce the
+builder's heap headroom.
+
+On the Android emulator (API 35, `emulator-5554`), the signed release APK built from that artifact
+reported `saveResume: true` with no diagnostics report. `NativeCheckpointTest` ran (it is skipped
+while `saveResume` is false) and passed: a Token Triumph vs Grave Danger game checkpointed its first
+priority decision (turn 1, 165,545 bytes), a new native runtime restored it in 630 ms and re-asked the
+same decision. All 6 device tests passed (`scripts/android/test_device.sh`). In the app itself, a solo game killed with
+`am force-stop` after HOME came back through "Resume your game?" twice: at turn 1 and at turn 2 with
+a land on each side and the AI's spell on the stack, which resolved when play continued. This is an
+emulator result; phones, iOS and write times on a device are separate gates.

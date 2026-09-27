@@ -5,7 +5,7 @@ Use [PR #9](https://github.com/ineedsomesleep5/MagicMobile/pull/9), branch
 and PR #6's native engine integration. Do not reinstall an earlier ZIP or reset
 the project to its original checkpoint. Preserve uncommitted desktop work.
 
-## Save/resume checkpoints for solo games: JVM-verified, native pending (September 26, 2026)
+## Save/resume checkpoints for solo games: JVM-verified, Android native verified on the emulator (September 27, 2026)
 
 Branch `codex/save-resume-engine`. Engine phase 1 of
 [the save/resume spike](../../../docs/SAVE_RESUME_SPIKE.md) plus the native metadata it needs
@@ -69,15 +69,33 @@ The app Resume/Abandon flow, file location and 10-minute window are app-side wor
   peak RSS 12.16 GB), the staging checks and the native-linked APK (artifact
   `android-full-native-f0f78c375ea7be8854f7e0ac1e9605947aafc60a`). It builds; it does not run the
   engine, so native serialization at runtime is still unproven.
+- **Native runtime: works on the Android emulator (September 27).** The engine from `dd9f869`
+  (run 36302037548) reported `saveResume: false` on the emulator: its self-test failed with
+  `ClassNotFoundException: [Ljava.lang.Enum;`, because a native `Class.forName` only finds classes
+  registered for reflection and the exporter had not listed the `Enum[]` inside `EnumSet`'s
+  serialization proxy. Branch `codex/native-serialization-runtime` makes the JVM tests find every such
+  gap at once: `RealCheckpointTests` records each class every checkpoint stream writes or reads (all
+  scenarios, the self-test and every restore process) and fails unless the exported
+  `serialization-config.json` lists it. That found `[Ljava.lang.Enum;` and
+  `[Lmage.filter.predicate.Predicate;` (from `Predicates.and`) among 933 stream classes. The exporter
+  now lists Serializable superclasses, the array types of serial fields (JDK types included), every
+  array type engine code creates, and the classes `Class` fields can hold; the feature registers
+  every listed name for `Class.forName` ([NATIVE_METADATA.md](NATIVE_METADATA.md#stream-class-resolution-in-the-native-image-september-27-2026)).
+  Android run 36306841573 (`e83eb15`) passed (image 19 min 45 s, analysis 9.58 GB); the artifact is in
+  `~/Documents/MagicMobile-native-e83eb15/artifact`. On `emulator-5554` (API 35), with the signed
+  release APK (versionCode 2026092702, local only): `saveResume: true`, `NativeCheckpointTest` ran
+  and passed (turn-1 checkpoint of 165,545 bytes, restore in 630 ms, same decision re-asked), and all
+  6 device tests passed. In the app, HOME then `am force-stop` then relaunch showed "Resume your
+  game?" and Resume restored the board twice: at turn 1, and at turn 2 with a land on each side and
+  the AI's Wayfarer's Bauble on the stack, which resolved when play continued.
 - **Not verified.** The iOS native build with this metadata (`magicmobile-far-calls.yml`, same
-  10 GB builder heap), native serialization at runtime (the `saveResume` self-test on a device),
-  phone write/restore times, iOS/Android app integration, process-kill acceptance.
+  10 GB builder heap), the iOS runtime and app flow, a physical Android phone, write/restore times on
+  a phone, and long games with large boards in a native engine.
 - **Next native gates (need dispatch).** iOS: `magicmobile-issue4-nonsimulator.yml` on the
   candidate SHA, then `magicmobile-far-calls.yml` with `candidate_sha` and that run's
   `cheap_run_id`, then `magicmobile-product-device.yml` with `engine_run_id`/`engine_commit`.
-  Android: `magicmobile-android.yml` passed on `f0f78c3` (above); the next Android gate is running
-  the engine on a device. A build without the metadata reports `saveResume: false` rather than
-  failing games.
+  Android: the emulator gates above passed on `e83eb15`; a phone is next. A build without the
+  metadata reports `saveResume: false` rather than failing games.
 
 ## Subsequent authorized internal TestFlight upload
 
