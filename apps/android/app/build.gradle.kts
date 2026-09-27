@@ -54,10 +54,10 @@ val prepareBrandAssets by tasks.registering(Copy::class) {
     from(rootProject.file("../ios/MagicMobile/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png")) {
         rename { "magicmobile_icon.png" }
     }
-    // The iOS asset catalogue is the single source for shared artwork.
+    // The iOS asset catalogue is the source for the icon, launch mark and logo. The board and menu
+    // backgrounds are lossy WebP in src/main/res/drawable (iOS ships JPEGs of the same art).
     from(rootProject.file("../ios/MagicMobile/Assets.xcassets")) {
-        include("battlefield-*.imageset/battlefield-*.png", "commander-stone-arena*.imageset/*.png",
-            "mage-mobile-*.imageset/*.png")
+        include("mage-mobile-logo.imageset/*.png")
         eachFile { path = name.replace('-', '_') }
         includeEmptyDirs = false
     }
