@@ -167,9 +167,17 @@ class StageNativeTests(unittest.TestCase):
     def test_mismatched_receipt_is_not_promoted(self):
         receipt = {"engineSourceCommit": COMMIT, "workflowRunID": RUN, "artifactID": ARTIFACT + 1,
                    "artifactDigest": DIGEST}
-        with self.assertRaisesRegex(controller.ReleaseError, "does not match the selected run"):
+        with self.assertRaisesRegex(controller.ReleaseError, "does not match the selected run.*nothing was staged"):
             self.stage(receipt=receipt)
+        self.assertEqual([call[0] for call in self.calls], ["download_issue4_native.py", "verify_native_candidate.py"])
+        self.assertFalse((self.repo / "apps/ios/NativeEngine").exists())
         self.assertFalse((self.repo / "packages/ondevice-engine/build/native-candidate-provenance.json").exists())
+
+    def test_artifact_without_run_attribution_is_refused(self):
+        self.responses[f"/actions/runs/{RUN}/artifacts?per_page=100"]["artifacts"][1]["workflow_run"] = None
+        with self.assertRaisesRegex(controller.ReleaseError, "no exact ID, digest or run attribution"):
+            self.stage()
+        self.assertEqual((self.calls, self.tokens), ([], 0))
 
 
 if __name__ == "__main__":

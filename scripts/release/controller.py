@@ -577,7 +577,7 @@ def stage_native(repo: Path, engine_run_id: str, *, api=gh_api, runner=stage_run
     artifact_id, digest = found[0].get("id"), found[0].get("digest")
     if (type(artifact_id) is not int or artifact_id <= 0
             or not re.fullmatch(r"sha256:[a-f0-9]{64}", str(digest))
-            or found[0].get("workflow_run", {}).get("id") != run_id):
+            or (found[0].get("workflow_run") or {}).get("id") != run_id):
         raise ReleaseError("Engine artifact has no exact ID, digest or run attribution")
     final = api(f"/actions/runs/{run_id}")
     if (final.get("run_attempt") != attempt or final.get("head_sha") != commit
@@ -615,6 +615,8 @@ def stage_native(repo: Path, engine_run_id: str, *, api=gh_api, runner=stage_run
         (evidence / "stage-native.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     base_env = {key: value for key, value in os.environ.items() if key not in ("GH_TOKEN", "GITHUB_TOKEN")}
     secret = token()
+    expected = {"engineSourceCommit": commit, "workflowRunID": run_id,
+                "artifactID": artifact_id, "artifactDigest": digest}
     for number, (step, command, needs_token) in enumerate(steps, 1):
         log = evidence / f"{number:02d}-{step}.log"
         # Only the download sees the token, through its environment, never argv or logs.
@@ -624,16 +626,16 @@ def stage_native(repo: Path, engine_run_id: str, *, api=gh_api, runner=stage_run
             summary["state"] = "failed"
             save()
             raise ReleaseError(f"stage-native {step} failed (exit {code}); see {log}. Later steps did not run.")
-    try:
-        recorded = json.loads(receipt.read_text())
-    except (OSError, ValueError):
-        recorded = {}
-    expected = {"engineSourceCommit": commit, "workflowRunID": run_id,
-                "artifactID": artifact_id, "artifactDigest": digest}
-    if any(recorded.get(key) != value for key, value in expected.items()):
-        summary["state"] = "failed"
-        save()
-        raise ReleaseError("Provenance receipt does not match the selected run and artifact")
+        if step == "verify":
+            # Check the receipt before anything is staged from the download.
+            try:
+                recorded = json.loads(receipt.read_text())
+            except (OSError, ValueError):
+                recorded = {}
+            if any(recorded.get(key) != value for key, value in expected.items()):
+                summary["state"] = "failed"
+                save()
+                raise ReleaseError("Provenance receipt does not match the selected run and artifact; nothing was staged")
     target = repo / INPUTS["ios"][0]
     if target.is_symlink():
         raise ReleaseError(f"Symlinked provenance receipt: {INPUTS['ios'][0]}")
