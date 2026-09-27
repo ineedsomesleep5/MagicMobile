@@ -319,13 +319,13 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 19 lets you play any deck straight from Deck Studio, with
-                an automatic rules check on your phone, and makes building
-                faster: a live deck check, quick adds, editing the list as text,
-                grouping by role, a card grid and a sample hand. Hosts can also
-                remove a player while a table fills. Resuming a game after the
-                app closes is coming next. Apple has approved this build for
-                Internal and External TestFlight.
+                Build 20 picks up where you left off: if iOS closes the app
+                during a game against the AI, open it again within 10 minutes
+                and resume at your last decision. It keeps everything from build
+                19, including playing any deck straight from Deck Studio with an
+                automatic rules check, a live deck check, quick adds and a
+                sample hand. Apple has approved this build for Internal and
+                External TestFlight.
               </p>
             </details>
             <details>
