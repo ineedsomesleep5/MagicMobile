@@ -19,8 +19,9 @@ class NativeTokenResourceTests(unittest.TestCase):
         token = {'pattern': r'tokens-database\.txt'}
         self.assertEqual(self.includes.count(token), 1)
         baseline = [e for e in self.includes if e != token]
-        self.assertEqual(baseline, [{'pattern': 'mage/.*'}, {'pattern': 'META-INF/services/.*'},
-                                    {'pattern': r'.*\.properties$'}])
+        # Only the resources the engine reads (scripts/check_native_resources.py), never class files.
+        self.assertEqual(baseline, [{'pattern': r'mage/mobile/.*\.gz'}, {'pattern': 'META-INF/services/.*'},
+                                    {'pattern': r'pennydreadful\.properties'}])
         self.assertFalse(any(re.fullmatch(e['pattern'], 'tokens-database.txt') for e in baseline))
         self.assertFalse(any(re.fullmatch(e['pattern'], 'unrelated-private.txt') for e in self.includes))
 

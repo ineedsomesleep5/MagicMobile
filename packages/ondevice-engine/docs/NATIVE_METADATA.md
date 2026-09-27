@@ -238,7 +238,7 @@ each class a checkpoint stream writes as a class descriptor (the writer's `annot
 class a read resolves or gets back from `readResolve` (input filter calls with a negative array
 length; the JDK collections' `checkArray` pre-checks are not stream classes). `RealCheckpointTests`
 records these in every process: the self-test, the named-condition round trips, all three game
-scenarios and every fresh-JVM restore, which keeps checkpointing while it plays to the end. It then
+scenarios and every fresh-JVM restore, which saves again on request and plays to the end. It then
 requires each of them in `serialization-config.json`, read the way the feature reads it.
 `test_real_engine.sh` exports that file first, with the same arguments as the native builds
 (`build/native-metadata-check`, about 18 s). Primitive classes are exempt: `ObjectInputStream`
@@ -312,3 +312,62 @@ same decision. All 6 device tests passed (`scripts/android/test_device.sh`). In 
 `am force-stop` after HOME came back through "Resume your game?" twice: at turn 1 and at turn 2 with
 a land on each side and the AI's spell on the stack, which resolved when play continued. This is an
 emulator result; phones, iOS and write times on a device are separate gates.
+
+## Embedded resources and a smaller Android engine (September 27, 2026)
+
+`native/resource-config.json` used to include `mage/.*` and `.*\.properties$`. GraalVM embeds every
+classpath file whose path matches an include pattern, so the image heap carried every XMage `.class`
+file as a resource, twice over where a module's installed jar sat next to its `target/classes`
+directory. The Android build 11 engine had 99,186 class-file headers (`CAFEBABE 0000 00xx`) in its
+461.5 MB `.svm_heap`. The engine never reads one: a JVM run of the real suites under a tracing
+system class loader (every `getResource*`/`findResource*` call, child JVMs included) saw only these
+names:
+
+- `mage/mobile/card-names.json.gz` and `mage/mobile/card-metadata.jsonl.gz` (`MobileCardCatalogue`,
+  for card-name choices and repository queries);
+- `tokens-database.txt` (`TokenRepository`);
+- `log4j.properties`, `log4j.xml` and `META-INF/services/java.lang.System$LoggerFinder`, which are
+  on no classpath entry, before or after this change.
+
+`mage.util.JarVersion` (the only upstream code that reads a `.class` resource) is reached only from
+the desktop repository and server paths that the mobile repository adapter replaces.
+
+The configuration now names `mage/mobile/.*\.gz`, `tokens-database\.txt`, `META-INF/services/.*`
+and `pennydreadful\.properties` (read only by upstream's `PennyDreadfulCommander` validator, which
+the image contains but the app never uses; kept so that path cannot fail, 199 KB).
+`scripts/check_native_resources.py` enumerates what a configuration embeds from the exact native
+classpath (directories and jars, named as GraalVM names them). Both native builds run it before
+`native-image` and stop if any `.class` file would be embedded or one of those resources would be
+missing; the report lists every embedded resource. On Android, `stage_native.py` also counts
+class-file headers in the built library's `.svm_heap` and fails on any.
+
+The runtime classpath (`classpath.py`) no longer lists a reactor module's own installed
+`org/mage/*/1.4.61` jar when its `target/classes` directory is present (Mage, Mage.Sets,
+Mage.Common, Mage.Player.AI), and `build_jvm.sh` asks the dependency plugin for runtime scope only.
+Its user property is `includeScope`; the `mdep.includeScope` spelling is silently ignored.
+JUnit, AssertJ and their service files are gone.
+
+Android also links with `-Wl,--pack-dyn-relocs=android` (build 11 had 108.0 MB of plain `RELA`
+entries, 4.5 million of them relative; minSdk 26 supports Android-packed ones, RELR needs 28) and
+stages the library stripped (`llvm-strip --strip-unneeded`: `.symtab` and `.strtab` go, the
+dynamic symbols JNI and `dlopen` use stay and are re-verified). The unstripped library is the
+separate `android-native-symbols-<sha>` artifact, paired by SHA-256 in its `symbols.json` and the
+manifest (`unstrippedLibmmengineSha256`). The app's `keepDebugSymbols` now keeps an already
+stripped file.
+
+**Result.** Android run [36335611048](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/36335611048)
+(`e5711c2`) passed: real-engine JVM tests, the ARM64 image, staging and the native-linked APK.
+
+| | Build 11 (`79de39c`) | `e5711c2` |
+|---|---|---|
+| Embedded resources | every XMage class file (99,186 class-file headers in the heap) | 7 files, 8.5 MB, no class files |
+| `.svm_heap` (image heap) | 461.5 MB | 167.1 MB |
+| Relocations | 108.0 MB `RELA` | 12.2 MB `ANDROID_RELA` |
+| `libmmengine.so` | 795.5 MB | 405.4 MB unstripped, 380.8 MB stripped |
+| `libmmengine.so` in the APK (deflated) | | 111.1 MB |
+| Debug APK | 248.6 MB artifact | 184.9 MB |
+| Builder peak RSS | 12.27 GB (`36310535888`) | 11.96 GB |
+
+Image generation took 18 min 33 s (analysis 729 s at 9.38 GB); 67,848 classes and 382,066 methods
+were reachable, as before, and the checkpoint feature registered the same 50,684 types. This is a
+build result: the emulator device tests and phones are separate gates.

@@ -20,6 +20,16 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      # Third-party Maven downloads only: the XMage modules this build installs (org/mage) are
+      # rebuilt from the pinned source every run and never restored from the cache.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository
+            !~/.m2/repository/org/mage
+            build_output/android/maven
+          key: android-native-maven-${{ runner.os }}-${{ hashFiles('packages/ondevice-engine/upstream.lock.json', 'packages/ondevice-engine/native/gluon/pom.xml') }}
+          restore-keys: android-native-maven-${{ runner.os }}-
       - name: Build the full real XMage JVM input
         run: bash packages/ondevice-engine/scripts/build_jvm.sh
       - name: Real XMage JVM regression tests
@@ -29,6 +39,8 @@ jobs:
           set -euo pipefail
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'
       - name: Cross-compile full Android ARM64 engine
+        # About 20 minutes when healthy; a stalled builder fails early instead of using the job.
+        timeout-minutes: 45
         env:
           MM_ANDROID_NATIVE_HEAP: 10g
           # Host JDK17.0.3 MXBean crashes on newer cgroup layouts. Heap/CPU limits
@@ -58,6 +70,16 @@ jobs:
           name: android-full-native-${{ github.sha }}
           path: apps/android/native-artifact/
           compression-level: 1
+          retention-days: 14
+          if-no-files-found: error
+      # The staged engine is stripped; its unstripped twin (same build, paired by SHA-256 in
+      # symbols.json and the manifest) symbolicates native crash stacks.
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: android-native-symbols-${{ github.sha }}
+          path: build_output/android/unstripped/
+          compression-level: 6
           retention-days: 14
           if-no-files-found: error
       - uses: gradle/actions/setup-gradle@v4

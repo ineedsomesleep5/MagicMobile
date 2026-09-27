@@ -43,6 +43,10 @@ mkdir -p "$BUILD/tools"
 cp "$BUILD/checkpoint-accessor/jdk/internal/reflect/MobileCheckpointConstructorAccessor.class" \
   "$BUILD/native-java/io/magicmobile/nativebridge/checkpoint-constructor-accessor.bin"
 python3 "$ROOT/scripts/prepare_native_color.py" --graalvm-home "$JAVA_HOME" --output "$BUILD/color-patch"
+# Refuse, before the long native build, a resource configuration that would embed .class files
+# (or leave out a resource the engine reads). The report lists every embedded resource.
+python3 "$ROOT/scripts/check_native_resources.py" --classpath "$BUILD/native-java:$CP" \
+  --config "$ROOT/native/resource-config.json" --report "$OUT/native-resources.json"
 INIT_TYPES=$(paste -sd, "$ROOT/native/gluon/buildtime-enums.txt")
 [[ "$INIT_TYPES" == mage.constants.* ]]
 HEAP=${MM_ANDROID_NATIVE_HEAP:-10g}
@@ -75,7 +79,9 @@ t=E.parse(sys.argv[1]); config=t.find('.//{%s}configuration'%ns)
 compiler=config.find('{%s}nativeImageArgs'%ns)
 E.SubElement(compiler,'{%s}arg'%ns).text='-H:+SpawnIsolates'
 args=E.SubElement(config,'{%s}linkerArgs'%ns)
-for value in ['-Wl,-z,max-page-size=16384','-Wl,-soname,libmmengine.so',
+# Android-packed relocations shrink millions of image-heap RELATIVE entries (API 23+; minSdk
+# 26 rules out RELR, which needs API 28). stage_native.py requires them.
+for value in ['-Wl,-z,max-page-size=16384','-Wl,-soname,libmmengine.so','-Wl,--pack-dyn-relocs=android',
               '-L'+sys.argv[3],'-lmmawtstub']:
  E.SubElement(args,'{%s}arg'%ns).text=value
 t.write(sys.argv[2],encoding='utf-8',xml_declaration=True)

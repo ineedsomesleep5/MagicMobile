@@ -8,7 +8,9 @@ MODULES="Mage.Sets,Mage.Common,Mage.Server.Plugins/Mage.Player.Human,Mage.Server
 export MAVEN_OPTS="${MAVEN_OPTS:--Xmx4g}"
 # Do not include desktop Client, SessionImpl, server networking, HTTP or Docker.
 (cd "$U" && mvn -B -pl "$MODULES" -am -Dmaven.test.skip=true install)
-(cd "$U" && mvn -B -pl "$MODULES" -am dependency:build-classpath -Dmdep.outputFile=target/mobile-classpath.txt)
+# Runtime scope only, no test jars (the plugin's user property is includeScope, not mdep.*).
+# classpath.py also drops each reactor module's own installed jar.
+(cd "$U" && mvn -B -pl "$MODULES" -am dependency:build-classpath -DincludeScope=runtime -Dmdep.outputFile=target/mobile-classpath.txt)
 mkdir -p "$ROOT/build/engine" "$ROOT/build/tools" "$ROOT/build/generated" "$ROOT/evidence"
 python3 "$ROOT/scripts/classpath.py" "$U" "$ROOT/build/classpath.txt"
 CP=$(cat "$ROOT/build/classpath.txt")

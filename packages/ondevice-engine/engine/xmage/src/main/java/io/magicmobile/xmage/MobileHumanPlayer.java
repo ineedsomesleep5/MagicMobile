@@ -25,6 +25,7 @@ public final class MobileHumanPlayer extends HumanPlayer {
         volatile Runnable onConsumed=() -> {};
         volatile Runnable onRetracted=() -> {};
         volatile Runnable onBoardChanged=() -> {};
+        volatile Runnable onIdle=() -> {};
     }
     private static final long serialVersionUID=1L;
     // Transient: a checkpoint keeps the rules state only; a restored seat gets a new channel.
@@ -70,6 +71,12 @@ public final class MobileHumanPlayer extends HumanPlayer {
     public void onRetracted(Runnable callback) { channel.onRetracted=Objects.requireNonNull(callback); }
     /** Runs on the GAME thread when another player's concede changed the board during this wait. */
     public void onBoardChanged(Runnable callback) { channel.onBoardChanged=Objects.requireNonNull(callback); }
+    /**
+     * Runs on the GAME thread about every 250 ms while this seat's question waits for an answer,
+     * with the game parked where the question was published (after onBoardChanged, if a concede
+     * changed it). Save requests are written here (docs/PROTOCOL.md), never on another thread.
+     */
+    public void onIdle(Runnable callback) { channel.onIdle=Objects.requireNonNull(callback); }
     public void offer(Map<String,Object> answer) {
         if(channel.closed || !channel.answers.offer(Json.object(Json.freeze(answer))))
             throw new BridgeException("response_channel_unavailable","Player response channel is closed or full");
@@ -109,6 +116,7 @@ public final class MobileHumanPlayer extends HumanPlayer {
                     }
                     input.onBoardChanged.run();
                 }
+                if(answer==null) input.onIdle.run();
             }
         } catch(InterruptedException e) {
             Thread.currentThread().interrupt();throw new CancellationException("Mobile match interrupted");
