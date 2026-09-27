@@ -140,25 +140,14 @@ class DeckStudioEditorModel(private val library: DeckLibraryStore, record: DeckL
     }
     fun rename(name: String) { change { it.copy(name = name) } }
 
+    /** The playing-deck ID of the saved record ("local:<id>" or "precon:<id>"); null for a new draft. */
+    val sourceID: String? get() = record?.id?.let(DeckStudioPlayRules::selectionID)
+
     /**
-     * A draft with non-playing boards produces a separate playable copy. It is never rewritten to
-     * satisfy the resolver; unsaved source changes are saved first.
+     * Play selects this source deck, never a copy: a new or changed draft is saved first, and a
+     * precon plays as it is. Sideboard and maybeboard stay in the draft and out of the play projection.
      */
-    fun preparePlayable(playing: DeckList, resolver: OnDeviceDeckResolver): String? = try {
-        val projection = DeckStudioPlayProjection(draft.deck())
-        if (projection.resolve(resolver) != resolver.resolve(playing)) throw DeckEditingError.StaleRevision
-        if (projection.excluded.isEmpty()) {
-            val current = record
-            if (readOnly && current != null) (if (current.id.startsWith("precon:")) current.id else "local:${current.id}")
-            else save()?.let { "local:${it.id}" }
-        } else {
-            if (!readOnly && (isDirty || record == null) && save() == null) null
-            else {
-                val copy = DeckList(playing.name.take(96) + " — Playtest", playing.commander, playing.entries)
-                "local:${library.addLocalDurably(copy, sourceURL).id}"
-            }
-        }
-    } catch (failure: Exception) { error = failure.message; null }
+    fun preparePlayable(): String? = DeckStudioPlayRules.sourceID(record?.id, readOnly, isDirty) { save()?.id }
 
     fun save(): DeckLibraryRecord? {
         if (!canSave) return null

@@ -1,5 +1,24 @@
 package io.magicmobile.android.game
 
+import io.magicmobile.android.core.CardInfo
+import io.magicmobile.android.studio.DeckEntry
+import io.magicmobile.android.studio.DeckList
+import io.magicmobile.android.studio.DeckStudioCheckKey
+import io.magicmobile.android.studio.DeckStudioCheckResult
+import io.magicmobile.android.studio.DeckStudioListFilter
+import io.magicmobile.android.studio.DeckStudioPlayRules
+import io.magicmobile.android.studio.DeckStudioPlayStatus
+import io.magicmobile.android.studio.DeckStudioPlayText
+import io.magicmobile.android.studio.DeckStudioPreflight
+import io.magicmobile.android.studio.DeckStudioQuickAdd
+import io.magicmobile.android.studio.DeckStudioReceiptStore
+import io.magicmobile.android.studio.DeckStudioRole
+import io.magicmobile.android.studio.DeckStudioRoleGroups
+import io.magicmobile.android.studio.DeckStudioSampleHand
+import io.magicmobile.android.studio.DeckStudioSearchSyntax
+import io.magicmobile.android.studio.DeckStudioValidationReceipt
+import io.magicmobile.android.studio.NativeDeckDraft
+import io.magicmobile.android.studio.NativeDeckRow
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -7,8 +26,10 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.doubleOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import java.io.File
@@ -270,6 +291,295 @@ class ParityGoldenTest {
                 fields["title"].string?.let { assertEquals(at, it, SpectatorSeatPresentation.title(board)) }
                 fields["detail"].string?.let { assertEquals(at, it, SpectatorSeatPresentation.detail(board)) }
             }
+        }
+    }
+
+    /**
+     * deck-studio-cases.json: Deck Studio's strings, Quick Add grammar, quick-check rules, search
+     * syntax, sample hand, role groups and stored check results. ParityGoldenTests.swift runs every
+     * case on iOS; an id either platform does not know fails the test.
+     */
+    @Test fun deckStudioCasesOnBothPlatforms() {
+        val root = Json.parseToJsonElement(File(parity, "deck-studio-cases.json").readText())
+        deckStudioStrings(root)
+        deckStudioQuickAdd(root["quickAdd"]!!)
+        deckStudioPreflight(root["preflight"]!!)
+        deckStudioSearch(root["search"].array!!)
+        deckStudioSampleHand(root["sampleHand"]!!)
+        deckStudioRoleGroups(root["roleGroups"]!!)
+        deckStudioCheckResults(root["checkResults"]!!)
+    }
+
+    private fun studioStatus(raw: J?): DeckStudioPlayStatus = when (raw.string) {
+        "ready" -> DeckStudioPlayStatus.READY
+        "needsFixes" -> DeckStudioPlayStatus.NEEDS_FIXES
+        "notChecked" -> DeckStudioPlayStatus.NOT_CHECKED
+        else -> throw AssertionError("Unknown status $raw")
+    }
+
+    private fun studioRow(raw: J): NativeDeckRow =
+        NativeDeckRow(cardName = raw["name"].string!!, quantity = raw["quantity"].integer?.toInt() ?: 1, section = raw["section"].string ?: "deck",
+            isPrimaryCommander = raw["primary"].bool ?: false)
+
+    private fun J?.texts(): List<String>? = this.array?.map { it.string!! }
+    private fun J?.double(): Double? = (this as? JsonPrimitive)?.takeIf { !it.isString && it !is JsonNull }?.doubleOrNull
+
+    private fun deckStudioStrings(root: J) {
+        val t = DeckStudioPlayText
+        val known = mapOf(
+            "play" to t.play, "saveAndPlay" to t.saveAndPlay, "playing" to t.playing, "playingAccessibility" to t.playingAccessibility,
+            "ready" to t.ready, "needsFixes" to t.needsFixes, "notChecked" to t.notChecked, "fixDeck" to t.fixDeck, "notNow" to t.notNow,
+            "setUpGame" to t.setUpGame, "cannotPlayTitle" to t.cannotPlayTitle, "checkingTitle" to t.checkingTitle,
+            "checkingProgress" to t.checkingProgress, "gameLive" to t.gameLive, "catalogueLoading" to t.catalogueLoading,
+            "setupReady" to t.setupReady, "setupNotChecked" to t.setupNotChecked, "setupNeedsFixes" to t.setupNeedsFixes,
+            "panelCaption" to t.panelCaption, "showAll" to t.showAll, "startPassed" to t.startPassed,
+            "cardDetails" to t.cardDetails, "addOne" to t.addOne, "removeOne" to t.removeOne, "replaceCard" to t.replaceCard,
+            "moveTo" to t.moveTo, "removeRow" to t.removeRow, "select" to t.select, "selectCards" to t.selectCards,
+            "doneSelecting" to t.doneSelecting, "selectAll" to t.selectAll, "setQuantity" to t.setQuantity, "remove" to t.remove,
+            "removeSelectedTitle" to t.removeSelectedTitle, "removeSelectedMessage" to t.removeSelectedMessage,
+            "quantityMessage" to t.quantityMessage, "quantityError" to t.quantityError, "showAsGrid" to t.showAsGrid, "showAsList" to t.showAsList,
+            "quickAdd" to t.quickAdd, "quickAddMain" to t.quickAddMain, "quickAddMaybe" to t.quickAddMaybe,
+            "quickAddMaybeboard" to t.quickAddMaybeboard, "addCards" to t.addCards, "quickAddHint" to t.quickAddHint,
+            "quickAddNeedsName" to t.quickAddNeedsName, "quickAddFailed" to t.quickAddFailed, "undo" to t.undo,
+            "editAsText" to t.editAsText, "copyList" to t.copyList, "listCopied" to t.listCopied, "reviewChanges" to t.reviewChanges,
+            "applyChanges" to t.applyChanges, "keepEditing" to t.keepEditing, "diffAdded" to t.diffAdded, "diffRemoved" to t.diffRemoved,
+            "noChanges" to t.noChanges, "textEditorHint" to t.textEditorHint, "chooseCommander" to t.chooseCommander, "skip" to t.skip,
+            "commanderFirstTitle" to t.commanderFirstTitle, "commanderFirstCaption" to t.commanderFirstCaption,
+            "searchCommanders" to t.searchCommanders, "searchHint" to t.searchHint, "withinIdentity" to t.withinIdentity,
+            "sampleHand" to t.sampleHand, "sampleHandCaption" to t.sampleHandCaption, "sampleHandEmpty" to t.sampleHandEmpty,
+            "draw7" to t.draw7, "newHand" to t.newHand, "mulligan" to t.mulligan, "draw" to t.draw,
+            "quickCheckCaption" to DeckStudioPreflight.caption)
+        val strings = root["strings"]!!.obj!!.mapValues { it.value.string }
+        assertEquals("Every Deck Studio string has one source on each platform", known.keys, strings.keys)
+        for ((id, text) in strings) assertEquals(id, known[id], text)
+        assertEquals(t.destinations.map { listOf(it.first, it.second) }, root["destinations"].array!!.map { it.texts() })
+
+        val formatted = root["formatted"].array!!
+        check(formatted.isNotEmpty())
+        for (item in formatted) {
+            val id = item["id"].string!!
+            val args = item["args"].array!!
+            fun text(index: Int) = args[index].string!!
+            fun number(index: Int) = args[index].integer!!.toInt()
+            val actual = when (id) {
+                "checking" -> t.checking(text(0))
+                "nowPlaying" -> t.nowPlaying(text(0))
+                "nowPlayingStrip" -> t.nowPlayingStrip(text(0), studioStatus(args[1]))
+                "issues" -> t.issues(number(0))
+                "blocked" -> t.issuesBlockPlay(number(0))
+                "notShown" -> t.notShown(number(0))
+                "excluded" -> t.excluded(number(0))
+                "deletePlaying" -> t.deletePlaying(text(0))
+                "showingOnly" -> t.showingOnly(text(0))
+                "listFilter" -> if (text(0) == "needsFixes") DeckStudioListFilter.NeedsFixes(emptyList()).title
+                    else DeckStudioListFilter.QuickCheck(studioIssue(text(0))).title
+                "selected" -> t.selected(number(0))
+                "added" -> t.added(number(0), text(1), args[2].bool!!)
+                "noCardNamed" -> t.noCardNamed(text(0))
+                "handCounts" -> t.handCounts(number(0), number(1))
+                "status" -> studioStatus(args[0]).title
+                "setupStatus" -> t.setupStatus(studioStatus(args[0]))
+                else -> { fail("Unknown formatted id $id"); "" }
+            }
+            assertEquals("$id $args", item["text"].string, actual)
+        }
+    }
+
+    private fun studioIssue(raw: String): DeckStudioPreflight.Issue = when (raw) {
+        "missingCommander" -> DeckStudioPreflight.Issue.MISSING_COMMANDER
+        "offIdentity" -> DeckStudioPreflight.Issue.OFF_IDENTITY
+        "duplicate" -> DeckStudioPreflight.Issue.DUPLICATE
+        "unresolved" -> DeckStudioPreflight.Issue.UNRESOLVED
+        else -> throw AssertionError("Unknown quick-check issue $raw")
+    }
+
+    private fun deckStudioQuickAdd(root: J) {
+        val names = root["cardNames"].texts()!!.toSet()
+        val cases = root["cases"].array!!
+        check(cases.isNotEmpty())
+        for (item in cases) {
+            val input = item["input"].string!!
+            val parsed = DeckStudioQuickAdd.parse(input) { it in names }
+            val expected = item["result"]
+            if (expected.isNull) { assertEquals("Quick Add $input", null, parsed); continue }
+            assertEquals(input, DeckStudioQuickAdd(expected["quantity"].integer!!.toInt(), expected["name"].string!!, expected["ignored"].texts()!!), parsed)
+            assertEquals(input, expected["note"].string, parsed!!.note)
+        }
+    }
+
+    private fun deckStudioPreflight(root: J) {
+        assertEquals(root["targetCount"].integer!!.toInt(), DeckStudioPreflight.targetCount)
+        assertEquals(root["caption"].string, DeckStudioPreflight.caption)
+        val issues = root["issues"]!!.obj!!
+        assertEquals(setOf("missingCommander", "offIdentity", "duplicate", "unresolved"), issues.keys)
+        for ((raw, value) in issues) {
+            val issue = studioIssue(raw)
+            assertEquals(raw, value["title"].string, issue.title)
+            assertEquals(raw, value["badge"].string, issue.badge)
+        }
+        val cards = root["cards"].array!!.associate { raw ->
+            val name = raw["name"].string!!
+            name to CardInfo(name, "", "", type = raw["typeLine"].string, rules = raw["oracleText"].string, cost = null, identity = raw["colorIdentity"].texts())
+        }
+        val aliases = root["aliases"]?.obj?.mapValues { it.value.string!! } ?: emptyMap()
+        val cases = root["cases"].array!!
+        check(cases.isNotEmpty())
+        for (item in cases) {
+            val name = item["name"].string ?: ""
+            val rows = item["rows"].array!!.map(::studioRow)
+            val catalogue = item["catalogue"].bool ?: true
+            val unresolvable = item["unresolvable"].texts()
+            val check = DeckStudioPreflight(NativeDeckDraft("Case", rows), { card -> if (catalogue) cards[aliases[card] ?: card] else null },
+                unresolvable?.let { list -> { card: String -> card !in list } })
+            val expect = item["expect"]!!
+            assertEquals(name, expect["count"].integer!!.toInt(), check.count)
+            assertEquals(name, expect["missingCommander"].bool, check.missingCommander)
+            assertEquals(name, expect["commanderIdentity"].texts(), check.commanderIdentity?.sorted())
+            val flagged = expect["rows"]!!.obj!!
+            for (issue in listOf("offIdentity", "duplicate", "unresolved")) {
+                assertEquals("$name · $issue", flagged[issue].array!!.map { rows[it.integer!!.toInt()].id }.toSet(), check.rows(studioIssue(issue)))
+            }
+            assertEquals(name, expect["issueCount"].integer!!.toInt(), check.issueCount)
+            assertEquals(name, expect["summary"].string, check.summary)
+            assertEquals(name, expect["chips"].texts(), check.activeIssues.map(check::chipTitle))
+        }
+    }
+
+    private fun deckStudioSearch(cases: List<J>) {
+        check(cases.isNotEmpty())
+        for (item in cases) {
+            val query = item["query"].string!!
+            val syntax = DeckStudioSearchSyntax.parse(query)
+            assertEquals(query, item["text"].string, syntax.text)
+            assertEquals(query, item["types"].texts(), syntax.types)
+            assertEquals(query, item["oracle"].texts(), syntax.oracle)
+            assertEquals(query, item["minimumManaValue"].double(), syntax.minimumManaValue)
+            assertEquals(query, item["maximumManaValue"].double(), syntax.maximumManaValue)
+            assertEquals(query, item["identity"].texts(), syntax.identity?.sorted())
+            assertEquals(query, item["hasFilters"].bool, syntax.hasFilters)
+        }
+    }
+
+    private fun deckStudioSampleHand(root: J) {
+        assertEquals(root["handSize"].integer!!.toInt(), DeckStudioSampleHand.handSize)
+        val random = kotlin.random.Random(7)
+        for (item in root["cases"].array!!) {
+            val name = item["name"].string ?: ""
+            val names = DeckStudioSampleHand.libraryNames(NativeDeckDraft("Case", item["rows"].array!!.map(::studioRow)))
+            assertEquals(name, item["library"].integer!!.toInt(), names.size)
+            var hand = DeckStudioSampleHand.of(names)
+            for ((index, step) in item["steps"].array!!.withIndex()) {
+                val action = step["do"].string!!
+                val at = "$name · step ${index + 1} $action"
+                hand = when (action) {
+                    "deal" -> hand.dealt(random)
+                    "mulligan" -> hand.mulliganed(random)
+                    "bottom" -> hand.hand.firstOrNull()?.let { hand.puttingOnBottom(it.id) } ?: hand
+                    "draw" -> hand.drawn()
+                    else -> { fail("Unknown sample hand step $action"); hand }
+                }
+                assertEquals(at, step["hand"].integer!!.toInt(), hand.hand.size)
+                assertEquals(at, step["library"].integer!!.toInt(), hand.library.size)
+                assertEquals(at, step["mulligans"].integer!!.toInt(), hand.mulligans)
+                assertEquals(at, step["toBottom"].integer!!.toInt(), hand.toBottom)
+                assertEquals(at, step["turn"].integer!!.toInt(), hand.turn)
+                assertEquals(at, step["canMulligan"].bool, hand.canMulligan)
+                assertEquals(at, step["canDraw"].bool, hand.canDraw)
+                assertEquals(at, step["status"].string, hand.status)
+            }
+        }
+    }
+
+    private fun deckStudioRoleGroups(root: J) {
+        assertEquals(root["order"].texts(), DeckStudioRoleGroups.order)
+        val cards = root["cards"].array!!.associate { raw ->
+            val name = raw["name"].string!!
+            name to CardInfo(name, "", "", type = null, rules = null, cost = null, identity = null, roles = raw["roles"].texts(), types = raw["types"].texts())
+        }
+        val rows = root["rows"].texts()!!.map { NativeDeckRow(cardName = it) }
+        for (item in root["cases"].array!!) {
+            val name = item["name"].string ?: ""
+            val overrides = item["overrides"]!!.obj!!.mapValues { (_, value) -> value.texts()!!.mapNotNull(DeckStudioRole::of).toSet() }
+            val membership = DeckStudioRoleGroups.membership(rows, { cards[it] }, overrides)
+            assertEquals(name, item["groups"].array!!.map { it.texts() }, rows.map { membership[it.id] ?: emptyList() })
+            val counts = item["counts"]!!.obj!!.mapValues { it.value.integer!!.toInt() }
+            assertEquals(name, counts.keys, membership.values.flatten().toSet())
+            for ((title, count) in counts) assertEquals("$name · $title", count, DeckStudioRoleGroups.uniqueCards(rows.filter { membership[it.id]?.contains(title) == true }))
+        }
+    }
+
+    private fun deckStudioCheckResults(root: J) {
+        val limits = root["limits"]!!.obj!!.mapValues { it.value.integer!!.toInt() }
+        assertEquals(mapOf("maximumResults" to DeckStudioReceiptStore.maximumResults, "maximumPerDeck" to DeckStudioReceiptStore.maximumPerDeck,
+            "maximumBytes" to DeckStudioReceiptStore.maximumBytes, "maximumIssues" to DeckStudioCheckResult.maximumIssues), limits)
+        for (item in root["sha256"].array!!) assertEquals(item["request"].string, item["sha256"].string, DeckStudioCheckKey.sha256(item["request"].string!!))
+        val requests = HashMap<String, String>()
+        fun key(raw: J): DeckStudioCheckKey {
+            val request = raw["request"].string!!
+            return DeckStudioCheckKey.of(raw["deck"].string!!, request, raw["upstream"].string!!, raw["catalogue"].string!!, raw["build"].string!!)
+                .also { requests[it.requestSHA256] = request }
+        }
+        fun label(key: DeckStudioCheckKey) = listOf(key.deckID, requests[key.requestSHA256] ?: key.requestSHA256, key.upstream, key.catalogue, key.appBuild).joinToString("|")
+        fun stored(key: DeckStudioCheckKey, at: Long, valid: Boolean, summary: String = "Checked") = DeckStudioCheckResult(key, at, valid,
+            if (valid) emptyList() else listOf(DeckStudioValidationReceipt.Issue(0, "OTHER", "Sol Ring", "Too many copies", "Sol Ring")), if (valid) 0 else 1, summary)
+        val directory = java.nio.file.Files.createTempDirectory("mm-deck-studio-cases").toFile()
+        try {
+            for ((index, scenario) in root["store"].array!!.withIndex()) {
+                val name = scenario["name"].string ?: ""
+                val file = File(directory, "store-$index.json")
+                val store = DeckStudioReceiptStore(file)
+                for (record in scenario["records"].array!!) assertEquals(name, true, store.record(stored(key(record), record["at"].integer!!, record["valid"].bool!!)))
+                val expected = scenario["expect"].texts()
+                assertEquals(name, expected, store.all().map { label(it.key) })
+                assertEquals("$name · reopened", expected, DeckStudioReceiptStore(file).all().map { label(it.key) })
+                for (lookup in scenario["lookups"].array ?: emptyList()) assertEquals("$name · $lookup", studioStatus(lookup["status"]), store.status(key(lookup)))
+            }
+            for ((index, scenario) in root["generated"].array!!.withIndex()) {
+                val name = scenario["name"].string ?: ""
+                val file = File(directory, "generated-$index.json")
+                val store = DeckStudioReceiptStore(file)
+                val summary = "x".repeat(scenario["summaryLength"].integer?.toInt() ?: 7)
+                for (deck in 0 until scenario["decks"].integer!!.toInt()) {
+                    store.record(stored(DeckStudioCheckKey.of("local:$deck", "r1", "u1", "c1", "10"), 1000L + deck, true, summary))
+                }
+                val decks = store.all().map { it.key.deckID }
+                scenario["count"].integer?.let { assertEquals(name, it.toInt(), decks.size) }
+                scenario["fewerThan"].integer?.let { assertTrue(name, decks.size < it && decks.isNotEmpty()) }
+                assertEquals(name, scenario["first"].string, decks.first())
+                scenario["last"].string?.let { assertEquals(name, it, decks.last()) }
+                for (missing in scenario["missing"].texts() ?: emptyList()) assertFalse("$name · $missing", missing in decks)
+                assertTrue(name, file.length() <= DeckStudioReceiptStore.maximumBytes)
+                assertEquals("$name · reopened", decks, DeckStudioReceiptStore(file).all().map { it.key.deckID })
+            }
+            for ((index, text) in root["corrupt"].texts()!!.withIndex()) {
+                val file = File(directory, "corrupt-$index.json").apply { writeText(text) }
+                assertTrue("A corrupt file is a cache miss: $text", DeckStudioReceiptStore(file).all().isEmpty())
+            }
+        } finally { directory.deleteRecursively() }
+        for (item in root["startResult"].array!!) {
+            assertEquals("$item", item["stores"].bool, DeckStudioPlayRules.storesStartResult(item["valid"].bool!!, item["issueCards"].texts()!!,
+                item["deckCards"].texts()!!, item["alreadyPassed"].bool!!))
+        }
+        for (item in root["fixRows"].array!!) {
+            val rows = item["rows"].array!!.map(::studioRow)
+            val canonical = item["canonical"]?.obj?.mapValues { it.value.string!! } ?: emptyMap()
+            assertEquals(item["name"].string, item["rowsShown"].array!!.map { rows[it.integer!!.toInt()].id }.toSet(),
+                DeckStudioPlayRules.fixRows(rows, item["cards"].texts()!!) { canonical[it] })
+        }
+        fun entry(raw: J) = DeckEntry(raw["name"].string!!, raw["quantity"].integer?.toInt() ?: 1, raw["section"].string ?: "deck")
+        for (item in root["unplayable"].array!!) {
+            val known = item["known"].texts()!!.toSet()
+            val deck = DeckList("Case", item["commander"]?.takeUnless { it.isNull }?.let(::entry), item["entries"].array!!.map(::entry))
+            assertEquals(item["name"].string, item["cards"].texts(), DeckStudioPlayRules.unplayableCards(deck) { if (it in known) it else null })
+        }
+        for (item in root["groups"].array!!) {
+            val issues = item["issues"].array!!.mapIndexed { index, raw ->
+                DeckStudioValidationReceipt.Issue(index, raw["type"].string!!, raw["group"].string, raw["message"].string!!, raw["cardName"].string)
+            }
+            val result = DeckStudioCheckResult(DeckStudioCheckKey.of("d", "", "u", "c", "b"), 0, false, issues, issues.size, "Failed")
+            assertEquals(item["groups"].array!!.map { listOf(it.array!![0].string!!, it.array!![1].integer!!.toInt().toString()) },
+                DeckStudioPlayRules.groupedIssues(result.issues).map { (title, rows) -> listOf(title, rows.size.toString()) })
+            assertEquals(item["cardNames"].texts(), DeckStudioPlayRules.issueCards(result))
         }
     }
 

@@ -90,6 +90,16 @@ struct DeckStudioCardSearch: View {
                             .accessibilityLabel("Collection source, destination and filters")
                     }
                 }
+                if !embedded || showEmbeddedFilters {
+                    Text(DeckStudioPlayText.searchHint)
+                        .font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                // On by default once the deck has a commander, and visible so the limit is never a surprise.
+                if colors != nil {
+                    Toggle(DeckStudioPlayText.withinIdentity, isOn: $constrainIdentity).font(.caption)
+                        .accessibilityIdentifier("deckStudio.search.identity")
+                }
                 if embedded {
                     if showEmbeddedFilters { filterFields }
                 } else {
@@ -152,7 +162,6 @@ struct DeckStudioCardSearch: View {
         VStack(spacing: 12) {
             Picker("Type", selection: $type) { Text("All types").tag(""); ForEach(["Creature", "Artifact", "Enchantment", "Instant", "Sorcery", "Land", "Planeswalker", "Battle"], id: \.self) { Text($0).tag($0) } }
             HStack { TextField("Min MV", text: $minMV).keyboardType(.decimalPad); TextField("Max MV", text: $maxMV).keyboardType(.decimalPad); TextField("Set code", text: $setCode).autocorrectionDisabled().textInputAutocapitalization(.characters) }.textFieldStyle(.roundedBorder)
-            if colors != nil { Toggle("Within commander color identity", isOn: $constrainIdentity).font(.caption) }
             Button("Reset filters") { type = ""; minMV = ""; maxMV = ""; setCode = ""; constrainIdentity = true }
         }.padding(.vertical, 10)
     }

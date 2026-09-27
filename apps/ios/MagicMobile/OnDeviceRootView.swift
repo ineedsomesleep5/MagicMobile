@@ -37,6 +37,7 @@ struct OnDeviceRootView: View {
     @State private var showUpdates = false
     @State private var showDownloads = false
     @State private var showImport = false
+    @State private var studioFocus: DeckStudioPlaySelection.FixRequest?
     @State private var confirmLeave = false
     @StateObject private var emotes = EmoteCenter()
     @State private var showDiagnostics = false
@@ -160,7 +161,10 @@ struct OnDeviceRootView: View {
             }
         })
     }
-    private var selectedDeck: DeckList? {
+    /// What every game start and match room sends (AI, Game Center host and joiner, Online):
+    /// sideboard, maybeboard and considering cards stay in the saved deck and out of play.
+    private var selectedDeck: DeckList? { selectedSourceDeck.map(DeckStudioPlaySelection.playingDeck) }
+    private var selectedSourceDeck: DeckList? {
         if let precon = PreconCatalog.all.first(where: { "precon:\($0.id)" == selectedDeckID }) {
             return precon.deckList
         }
@@ -258,8 +262,9 @@ struct OnDeviceRootView: View {
             resume.notice = nil
         }
         .environment(\.nativeTurnControl, turnControl)
-        .fullScreenCover(isPresented: $showImport) {
-            DeckStudioRootView(library: library, selectedDeckID: $selectedDeckID, preparePlay: {
+        .fullScreenCover(isPresented: $showImport, onDismiss: { studioFocus = nil }) {
+            DeckStudioRootView(library: library, selectedDeckID: $selectedDeckID,
+                               isGameLive: { [setup = self.setup] in setup.needsLeave || setup.isBusy }, focus: studioFocus, preparePlay: {
                 showImport = false; showSetup = true
             })
         }
@@ -339,7 +344,7 @@ struct OnDeviceRootView: View {
         .onChange(of: setup.multiplayer?.isConnected) { _, _ in setup.updateSessionForeground() }
         .onChange(of: setup.multiplayer?.isSuspended) { _, _ in setup.updateSessionForeground() }
         .onChange(of: setup.multiplayer?.endpoint?.matchID) { _, matchID in
-            if matchID != nil { Task { await setup.attachMultiplayer() } }
+            if matchID != nil { Task { await setup.attachMultiplayer(deckID: selectedDeckID, deck: selectedDeck) } }
         }
         .onChange(of: setup.online.lobby?.matchId) { _, matchID in
             if matchID != nil { Task { await setup.attachOnline() } }
@@ -822,6 +827,10 @@ struct OnDeviceRootView: View {
                     .frame(width: 112, height: 156)
                 Text("Your deck").font(.caption).foregroundStyle(CommanderPresentation.secondary)
                 Text(selectedDeck?.name ?? "Choose a deck").font(.headline).fixedSize(horizontal: false, vertical: true)
+                OnDeviceSetupDeckDetails(deckID: selectedDeckID, deck: selectedDeck, resolver: setup.deckResolver,
+                                         startIssues: setup.startIssues) { cards in
+                    studioFocus = DeckStudioPlaySelection.FixRequest(deckID: selectedDeckID, cards: cards); showImport = true
+                }.disabled(setup.isBusy)
             }.frame(maxWidth: .infinity).multilineTextAlignment(.center)
             VStack(alignment: .center, spacing: 10) {
                 if playWithFriends {
@@ -1003,6 +1012,8 @@ private final class OnDeviceSetupModel: ObservableObject {
     @Published private(set) var status = "Preparing local decks"
     @Published var errorMessage: String?
     @Published var feedback: String?
+    /// XMage rejected the player's deck at Start; it is stored, and the setup screen explains it.
+    @Published private(set) var startIssues: DeckStudioStartIssues?
     private let session: OnDeviceSession
     private let resume: GameResumeCoordinator
     private let runtime = OnDeviceRuntimeManager()
@@ -1097,8 +1108,17 @@ private final class OnDeviceSetupModel: ObservableObject {
             updateSessionForeground()
             try await session.attach(client: client, matchID: matchID, seatID: Self.soloSeatID, allowsSeatScopedAutoYield: true, close: { [self] in try await closeAI() })
             status = "Game started"
+            // XMage checked every deck when it created the game: the player's deck passed.
+            recordStartPass(deckID: deckID, deck: deck)
         } catch {
             errorMessage = error.localizedDescription
+            // A rejection of the player's deck is stored like a Deck Studio check and explained.
+            if let rejection = DeckStudioStartRejection(error),
+               let check = rejection.check(deckID: deckID, deck: deck, resolver: resolver,
+                                           appBuild: DeckStudioValidationService.appBuild, store: .shared) {
+                DeckStudioReceiptStore.shared.record(check)
+                startIssues = DeckStudioStartIssues(name: deck.name, check: check)
+            }
             if !runtime.isOpen, aiMatchID == nil { aiClient = nil }
             status = needsLeave ? "Game startup interrupted. Refresh or leave before starting again." : "Unable to start local game"
         }
@@ -1224,7 +1244,8 @@ private final class OnDeviceSetupModel: ObservableObject {
         } catch { errorMessage = error.localizedDescription }
     }
 
-    func attachMultiplayer() async {
+    /// `deck` is the local player's playing deck; the table locks it once the game starts.
+    func attachMultiplayer(deckID: String, deck: DeckList?) async {
         guard usingMultiplayer, !isBusy, session.matchID == nil,
               let multiplayer, let endpoint = multiplayer.endpoint else { return }
         isBusy = true
@@ -1235,6 +1256,8 @@ private final class OnDeviceSetupModel: ObservableObject {
                                      allowsSeatScopedAutoYield: true, table: endpoint.table,
                                      close: { try await multiplayer.leave() })
             resume.tableGameStarted()
+            // Only the host's engine created this game, so only the host's deck check is local.
+            if endpoint.isHost, let deck { recordStartPass(deckID: deckID, deck: deck) }
             status = multiplayer.isRelayTable ? "Table connected" : "Game Center match connected"
         } catch { errorMessage = error.localizedDescription }
     }
@@ -1320,6 +1343,18 @@ private final class OnDeviceSetupModel: ObservableObject {
         do {
             try await store.clear(engine: { try await runtime.clearDiagnostics() })
         } catch { store.errorMessage = "Could not delete the local engine report: \(error.localizedDescription)" }
+    }
+}
+
+private extension OnDeviceSetupModel {
+    /// The setup screen reads deck check status with the same resolver games use.
+    var deckResolver: OnDeviceDeckResolver? { resolver }
+
+    /// A game this phone's engine created is a passed Commander check for the player's deck.
+    func recordStartPass(deckID: String, deck: DeckList) {
+        guard let resolver, let pass = DeckStudioStartRejection.pass(deckID: deckID, deck: deck, resolver: resolver,
+                                                                    appBuild: DeckStudioValidationService.appBuild) else { return }
+        DeckStudioReceiptStore.shared.record(pass)
     }
 }
 

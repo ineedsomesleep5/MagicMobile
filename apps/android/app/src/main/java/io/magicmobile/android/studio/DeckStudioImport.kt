@@ -72,7 +72,10 @@ private object DeckStudioImportReceipt {
     }
 }
 
-/** DeckStudioImportScreen.swift: paste, link or scan a decklist, review it, then save a draft. */
+/**
+ * DeckStudioImportScreen.swift: paste, link or scan a decklist, review it, then save a draft.
+ * [didImport] takes over after a save (the studio opens the new deck); [close] is Cancel.
+ */
 @Composable
 fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckResolver?, didImport: (DeckLibraryRecord) -> Unit, close: () -> Unit) {
     val context = LocalContext.current
@@ -166,8 +169,11 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
                 val file = receipt ?: return@launch
                 withContext(Dispatchers.IO) {
                     DeckStudioServices.organization.retainImport(record.id, value.annotations.map { "Line ${it.line}: ${it.text}" }, sourceURL, file.name)
+                    // A check made during review applies to the saved deck: the same playing cards.
+                    validation.receipt?.let { checked -> runCatching { DeckStudioServices.checkResults.record(DeckStudioCheckResult.of("local:${record.id}", checked)) } }
                 }
-                didImport(record); close()
+                // The studio opens the saved deck's workspace next; importing never changes the playing deck.
+                didImport(record)
             } catch (failure: Exception) {
                 error = if (saved == null) failure.message
                 else "The deck is saved and its full receipt is archived, but linking the details failed. Tap Finish import to retry without making another deck. ${failure.message ?: ""}".trim()

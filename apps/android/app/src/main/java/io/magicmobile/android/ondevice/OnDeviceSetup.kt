@@ -16,12 +16,22 @@ import io.magicmobile.android.game.BuildIdentity
 import io.magicmobile.android.game.EngineClient
 import io.magicmobile.android.game.EngineError
 import io.magicmobile.android.game.EngineHealth
+import io.magicmobile.android.game.EngineJson
 import io.magicmobile.android.game.GameResumeIdentity
 import io.magicmobile.android.game.GameResumeSettings
 import io.magicmobile.android.game.GameResumeStore
 import io.magicmobile.android.game.J
+import io.magicmobile.android.game.array
 import io.magicmobile.android.game.get
 import io.magicmobile.android.game.string
+import io.magicmobile.android.studio.DeckList
+import io.magicmobile.android.studio.DeckStudioCheckResult
+import io.magicmobile.android.studio.DeckStudioPlayProjection
+import io.magicmobile.android.studio.DeckStudioPlayRules
+import io.magicmobile.android.studio.DeckStudioPlayText
+import io.magicmobile.android.studio.DeckStudioServices
+import io.magicmobile.android.studio.DeckStudioValidationReceipt
+import io.magicmobile.android.studio.OnDeviceDeckResolver
 import io.magicmobile.android.session.OnDeviceSession
 import io.magicmobile.android.ui.AppPreferences
 import io.magicmobile.android.ui.LaunchEnvironment
@@ -120,6 +130,12 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
     private var preparing = false
     private var catalogueLoad: kotlinx.coroutines.Deferred<Catalogue>? = null
     private var printings: PrintingIndex? = null
+    /** The offline deck resolver: game start and Deck Studio resolve the same play projection. */
+    var deckResolver by mutableStateOf<OnDeviceDeckResolver?>(null); private set
+    /** A deck XMage rejected at Start (deck ID and stored result), for the issues sheet. */
+    var deckIssues by mutableStateOf<Pair<String, DeckStudioCheckResult>?>(null)
+
+    init { DeckStudioServices.install(context) }
 
     val needsLeave: Boolean get() = usingMultiplayer || runtimeOpen || session.matchID != null || multiplayer?.needsCleanup == true
     val canUseSession: Boolean get() = sceneActive && (!usingMultiplayer || multiplayer?.let { it.isConnected && !it.isSuspended } == true)
@@ -153,6 +169,7 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
                 val index = withContext(Dispatchers.IO) { PrintingIndex(context.assets.open("printings.tsv")) }
                 android.util.Log.i("MagicMobile", "Printing index loaded in ${(System.nanoTime() - started) / 1_000_000} ms")
                 printings = index
+                deckResolver = withContext(Dispatchers.Default) { OnDeviceDeckResolver(index) }
                 val built = BuildIdentity(index.upstreamCommit, index.catalogueHash,
                     "ondevice-0.1/app-${BuildConfig.VERSION_NAME}/build-${BuildConfig.RELEASE_BUILD}/rollstep-2/room-1/concede-1/emote-1")
                 identity = built
@@ -184,10 +201,15 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
         scope.launch { runCatching { withContext(Dispatchers.IO) { store.all() } }.onSuccess { localDecks = it } }
     }
 
+    /**
+     * The engine deck for every game start (AI, hosting, joining, match room): Deck Studio's play
+     * projection, so sideboard and maybeboard stay out and a stored check's request matches exactly.
+     */
     fun resolve(deck: Deck): J {
-        val index = printings ?: throw EngineError.InvalidMessage("The local card catalogue is still loading.")
-        return try { anyToJson(index.resolve(deck, excludeOtherBoards = true)) }
-        catch (error: IllegalArgumentException) { throw EngineError.InvalidMessage(error.message ?: "This deck cannot be played.") }
+        val resolver = deckResolver ?: throw EngineError.InvalidMessage("The local card catalogue is still loading.")
+        return try { DeckStudioPlayProjection(DeckList.fromStored(deck)).resolve(resolver) }
+        catch (error: EngineError) { throw error }
+        catch (error: Exception) { throw EngineError.InvalidMessage(error.message ?: "This deck cannot be played.") }
     }
 
     /** The full catalogue (rules text and metadata), loaded once on first use. */
@@ -199,17 +221,19 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
     }
 
     /** `settings` are the setup choices kept with a checkpoint, so a resumed game can rebuild its menu state and Rematch. */
-    suspend fun startAI(name: String, deck: Deck, aiDecks: List<Deck>, aiSkill: Int = 2, settings: GameResumeSettings? = null) {
+    suspend fun startAI(name: String, deck: Deck, aiDecks: List<Deck>, aiSkill: Int = 2, settings: GameResumeSettings? = null, deckID: String? = null) {
         val identity = identity ?: return
         if (isBusy || needsLeave) return
         isBusy = true; errorMessage = null; feedback = null; status = "Starting XMage"
         // A new game replaces any saved one.
         resume.discard()
+        var humanDeck: J? = null
         try {
             val playerName = playerName(name)
-            val humanDeck = resolve(deck)
+            val resolvedDeck = resolve(deck)
+            humanDeck = resolvedDeck
             val opponentDecks = aiDecks.map(::resolve)
-            val seats = OnDeviceAppConfiguration.aiGameSeats(playerName, humanDeck, opponentDecks, aiSkill)
+            val seats = OnDeviceAppConfiguration.aiGameSeats(playerName, resolvedDeck, opponentDecks, aiSkill)
             val client = runtime.makeClient(identity)
             runtimeOpen = runtime.isOpen
             aiClient = client
@@ -226,7 +250,10 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
             updateSessionForeground()
             session.attach(client, matchID, "player1", allowsSeatScopedAutoYield = true, observe = resume::observe, close = { closeAI() })
             status = "Game started"
+            if (deckID != null) recordStartCheck(deckID, resolvedDeck, null)
         } catch (error: Throwable) {
+            val request = humanDeck
+            if (deckID != null && request != null && error is EngineError.RejectionDetails && error.code == "invalid_deck") recordStartCheck(deckID, request, error)
             errorMessage = error.message ?: error.javaClass.simpleName
             runtimeOpen = runtime.isOpen
             if (!runtime.isOpen && aiMatchID == null) aiClient = null
@@ -234,8 +261,31 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
         } finally { isBusy = false }
     }
 
-    /** Attaches the session to a table another transport owns (the host's engine or a relay endpoint). */
-    suspend fun attachTable(table: TableConnection) {
+    /**
+     * XMage checks every seat's deck when it creates a game, so Start stores that answer for the
+     * player's deck like a Deck Studio check (DeckStudioPlayRules.storesStartResult): a pass always,
+     * a rejection unless this exact deck already passed or it names a card outside this deck.
+     */
+    private fun recordStartCheck(deckID: String, request: J, rejection: EngineError.RejectionDetails?) {
+        val resolver = deckResolver ?: return
+        val text = String(EngineJson.encode(request), Charsets.UTF_8)
+        val build = DeckStudioServices.appBuild
+        val receipt = if (rejection == null) DeckStudioValidationReceipt(text, resolver.upstreamCommit, resolver.catalogueHash, build,
+            System.currentTimeMillis(), true, emptyList(), DeckStudioPlayText.startPassed)
+        else runCatching { DeckStudioValidationReceipt.rejection(rejection.details, rejection.text, text, resolver.upstreamCommit, resolver.catalogueHash, build) }.getOrNull() ?: return
+        val result = DeckStudioCheckResult.of(deckID, receipt)
+        val names = listOf("main", "commanders", "companions").flatMap { request[it].array ?: emptyList() }.mapNotNull { it["name"].string }
+        val passed = !result.valid && runCatching { DeckStudioServices.checkResults.result(result.key)?.valid == true }.getOrDefault(false)
+        if (!DeckStudioPlayRules.storesStartResult(result.valid, DeckStudioPlayRules.issueCards(result), names, passed)) return
+        if (!result.valid) deckIssues = deckID to result
+        scope.launch(Dispatchers.IO) { runCatching { DeckStudioServices.checkResults.record(result) } }
+    }
+
+    /**
+     * Attaches the session to a table another transport owns (the host's engine or a relay endpoint).
+     * [deck] is the local player's playing deck, locked once the game starts.
+     */
+    suspend fun attachTable(table: TableConnection, deckID: String? = null, deck: Deck? = null) {
         val endpoint = table.endpoint ?: return
         if (isBusy || session.matchID != null) return
         isBusy = true
@@ -247,6 +297,8 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
             session.attach(endpoint.client, endpoint.matchID, endpoint.seatID, allowsSeatScopedAutoYield = true, table = endpoint.table,
                 observe = resume::observe, close = { table.leave() })
             status = "Match connected"
+            // Only the host's engine created this game, so only the host's deck check is local.
+            if (endpoint.isHost && deckID != null && deck != null) runCatching { recordStartCheck(deckID, resolve(deck), null) }
         } catch (error: Throwable) { errorMessage = error.message } finally { isBusy = false }
     }
 

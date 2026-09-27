@@ -5,6 +5,10 @@ import SwiftUI
 struct DeckStudioRootView: View {
     @ObservedObject var library: DeckLibraryStore
     @Binding var selectedDeckID: String
+    /// True while a game or match room is open: the playing deck cannot change then.
+    var isGameLive: () -> Bool = { false }
+    /// Opens straight into this deck (the setup screen's "Fix in Deck Studio").
+    var focus: DeckStudioPlaySelection.FixRequest? = nil
     var preparePlay: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicType
@@ -22,6 +26,11 @@ struct DeckStudioRootView: View {
     @State private var route: Route?
     @State private var pendingDelete: DeckLibraryRecord?
     @State private var showPreferences = false
+    @StateObject private var play = DeckStudioPlaySelection()
+    /// Each deck's check key; nil when the resolver cannot read the deck.
+    @State private var checkKeys: [String: DeckStudioCheckKey?] = [:]
+    @State private var openAfterImport: DeckLibraryRecord?
+    @State private var focusHandled = false
     private let favoritesKey = "deckStudio.library.favorites.v1"
 
     private enum Route: Identifiable {
@@ -86,6 +95,11 @@ struct DeckStudioRootView: View {
                     }
                 }.padding(20).frame(maxWidth: 1000).frame(maxWidth: .infinity)
             }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if let playing = records.first(where: { $0.id == selectedDeckID }) {
+                    DeckStudioNowPlayingStrip(name: playing.record.name, status: status(playing.id)) { open(playing.id) }
+                }
+            }
             .background(DeckStudioPalette.background.ignoresSafeArea())
             .navigationTitle("Deck Studio").navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(DeckStudioPalette.background, for: .navigationBar)
@@ -102,28 +116,81 @@ struct DeckStudioRootView: View {
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showPreferences = false } } } }
                     .preferredColorScheme(.light)
             }
-            .fullScreenCover(item: $route, onDismiss: { Task { await reloadTags() } }) { route in
+            .fullScreenCover(item: $route, onDismiss: {
+                Task { await reloadTags() }
+                // A reviewed import opens in its workspace, where Play is one tap away.
+                if let saved = openAfterImport { openAfterImport = nil; route = .deck(saved, false) }
+            }) { route in
                 switch route {
                 case .deck(let record, let included):
                     DeckStudioWorkspaceScreen(library: library, record: record, included: included,
-                        metadata: metadata, resolver: resolver, selectForPlay: { id in
-                            selectedDeckID = id; self.route = nil; dismiss(); preparePlay()
-                        })
+                        metadata: metadata, resolver: resolver, play: play)
                 case .importer:
-                    DeckStudioImportScreen(library: library, resolver: resolver) { saved in
-                        selectedDeckID = "local:\(saved.id)"
-                    }
+                    DeckStudioImportScreen(library: library, resolver: resolver) { saved in openAfterImport = saved }
                 }
             }
             .confirmationDialog("Delete this local deck?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }), titleVisibility: .visible) {
                 if let record = pendingDelete {
                     Button("Delete \(record.name)", role: .destructive) { delete(record) }
                 }
-            } message: { Text("Included decks and source websites are never changed.") }
+            } message: {
+                if let record = pendingDelete, "local:\(record.id)" == selectedDeckID {
+                    Text(DeckStudioPlayText.deletePlaying(PreconCatalog.all.first { "precon:\($0.id)" == OnDeviceSetupPreferences.defaultDeckID }?.name ?? "The default deck"))
+                } else { Text("Included decks and source websites are never changed.") }
+            }
+            .deckStudioPlayFeedback(play, active: route == nil) { deckID, cards in
+                guard let deckID else { return }
+                play.requestFix(deckID: deckID, cards: cards); open(deckID)
+            }
         }
         .tint(DeckStudioPalette.ink).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light)
-        .task { loadFavorites(); await loadCatalogue(); await reloadTags() }
+        .task { connectPlay(); loadFavorites(); await loadCatalogue(); refreshCheckKeys(); openFocus(); await reloadTags() }
         .onChange(of: library.decks.map(\.id)) { _, _ in Task { await reloadTags() } }
+        .onChange(of: library.decks) { _, _ in refreshCheckKeys() }
+        .onChange(of: selectedDeckID) { _, value in play.selectedDeckID = value }
+    }
+
+    // MARK: Playing deck
+
+    private func connectPlay() {
+        play.selectedDeckID = selectedDeckID
+        play.onSelect = { selectedDeckID = $0 }
+        play.isGameLive = isGameLive
+        play.setUpGame = { route = nil; dismiss(); preparePlay() }
+        DeckStudioValidationService.shared.isGameLive = isGameLive
+    }
+    /// Check keys depend only on a deck's playing cards and this install, so they are
+    /// computed when decks or the catalogue change, not on every render.
+    private func refreshCheckKeys() {
+        guard let resolver else { return }
+        play.resolver = resolver
+        var keys: [String: DeckStudioCheckKey?] = [:]
+        for entry in records {
+            keys.updateValue(try? DeckStudioPlaySelection.key(deckID: entry.id, deck: entry.record.deckList, resolver: resolver, appBuild: play.appBuild),
+                             forKey: entry.id)
+            DeckStudioDeckColors.remember(commanders: DeckStudioDraftPresentation.commanders(NativeDeckDraft(deck: entry.record.deckList)), metadata: metadata)
+        }
+        checkKeys = keys
+    }
+    /// A deck the resolver cannot read needs fixes, as on the setup screen and Android.
+    private func status(_ id: String) -> DeckStudioPlayStatus {
+        switch checkKeys[id] {
+        case .some(.some(let key)): return play.store.status(for: key)
+        case .some(.none): return .needsFixes
+        case .none: return .notChecked
+        }
+    }
+    private func open(_ id: String) {
+        guard let entry = records.first(where: { $0.id == id }) else { return }
+        route = .deck(entry.record, entry.included)
+    }
+    private func openFocus() {
+        guard !focusHandled, let focus else { return }
+        focusHandled = true
+        play.requestFix(deckID: focus.deckID, cards: focus.cards); open(focus.deckID)
+    }
+    private func playFromLibrary(_ entry: Entry) {
+        play.play(name: entry.record.name) { .init(deckID: entry.id, deck: entry.record.deckList) }
     }
 
     private var header: some View {
@@ -178,11 +245,10 @@ struct DeckStudioRootView: View {
                                           colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata))
                     }
                         .overlay(alignment: .topLeading) {
-                            if id == selectedDeckID {
-                                Label("Selected", systemImage: "checkmark.circle.fill")
-                                    .font(.caption2.weight(.semibold)).padding(.horizontal, 10).padding(.vertical, 7)
-                                    .foregroundStyle(.white).background(DeckStudioPalette.ink, in: Capsule()).padding(10)
-                            }
+                            VStack(alignment: .leading, spacing: 6) {
+                                if id == selectedDeckID { DeckStudioPlayingBadge() }
+                                if resolver != nil { DeckStudioPlayStatusChip(status: status(id)) }
+                            }.padding(10)
                         }
                     DeckStudioTileDetails(name: record.name,
                         commanders: DeckStudioDraftPresentation.commanders(draft).joined(separator: " • "),
@@ -210,6 +276,8 @@ struct DeckStudioRootView: View {
         .contextMenu { deckActions(record, included: included) }
     }
     @ViewBuilder private func deckActions(_ record: DeckLibraryRecord, included: Bool) -> some View {
+            Button(DeckStudioPlayText.play, systemImage: "play.fill") { playFromLibrary(Entry(record: record, included: included)) }
+                .disabled(resolver == nil || play.isChecking)
             Button("Open deck", systemImage: "pencil") { route = .deck(record, included) }
             Button("Duplicate locally", systemImage: "doc.on.doc") {
                 Task {
@@ -241,6 +309,7 @@ struct DeckStudioRootView: View {
                 catch { self.error = "Deck cards were deleted, but optional local details could not be removed: \(error.localizedDescription)" }
             }
             favorites.remove("local:\(record.id)"); saveFavorites()
+            play.store.forget(deckID: "local:\(record.id)")
             if selectedDeckID == "local:\(record.id)" { selectedDeckID = OnDeviceSetupPreferences.defaultDeckID }
         } catch { self.error = error.localizedDescription }
         pendingDelete = nil
