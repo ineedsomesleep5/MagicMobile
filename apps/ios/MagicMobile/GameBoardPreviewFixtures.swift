@@ -51,6 +51,24 @@ enum GameBoardPreviewFixtures {
     }
 
     #if DEBUG
+    /// The board with XMage's pending "Select a starting player" question (You or AI), the
+    /// prompt the starting roll answers. For the MAGICMOBILE_STARTING_ROLL_FIXTURE screen.
+    static func startingPlayerPrompt() -> GameSnapshot {
+        var root = try! JSONSerialization.jsonObject(with: Data(json(for: .normalBattlefield).utf8)) as! [String: Any]
+        enrich(&root, for: .normalBattlefield)
+        root["id"] = "design-preview-starting-roll"
+        root["legalActions"] = []
+        root["promptText"] = "Select a starting player"
+        root["promptEnvelopeV2"] = [
+            "id": "preview-starting-player", "method": "GAME_PICK_TARGET", "messageId": 3, "playerId": "human",
+            "responseKind": "target", "message": "Select a starting player", "required": true, "minChoices": 1, "maxChoices": 1,
+            "targetIds": ["human", "ai-1"], "targets": [["id": "human", "label": "You"], ["id": "ai-1", "label": "AI"]],
+            "responseCommand": ["type": "choose_target", "promptId": "preview-starting-player", "messageId": 3]
+        ] as [String: Any]
+        let data = try! JSONSerialization.data(withJSONObject: root)
+        return try! JSONDecoder.magicMobile.decode(GameSnapshot.self, from: data)
+    }
+
     static let boardFXStepCount = 10
 
     /// Scripted board FX walkthrough for `MAGICMOBILE_DESIGN_PREVIEW=board-fx`.

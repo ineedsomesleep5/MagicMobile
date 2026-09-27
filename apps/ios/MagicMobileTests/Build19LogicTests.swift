@@ -67,6 +67,39 @@ final class Build19LogicTests: XCTestCase {
         XCTAssertNil(stats.topCard)
     }
 
+    func testTokenTopAttackerKeepsItsBattlefieldCardForArt() throws {
+        var squirrel = creature("squirrel", "Squirrel Token", power: 4)
+        squirrel["card"] = ["name": "Squirrel Token", "typeLine": "Token Creature — Squirrel", "oracleText": "", "isToken": true,
+                            "tokenColors": ["G"],
+                            "tokenArtwork": ["name": "Squirrel", "typeLine": "Token Creature — Squirrel", "oracleText": "",
+                                             "power": "1", "toughness": "1", "colors": ["G"]]]
+        // XMage's combat group carries the same card without the token template.
+        var swinging = squirrel
+        swinging["card"] = ["name": "Squirrel Token", "typeLine": "Token Creature — Squirrel", "oracleText": "", "isToken": true]
+        let bear = creature("bear", "Grizzly Bears", power: 1)
+        let board = ["me": [squirrel, bear]]
+        let attack: [[String: Any]] = [["defenderId": "them", "defenderName": "Them", "blocked": false,
+                                        "attackers": [swinging, bear], "blockers": []]]
+        var stats = GameStats()
+        stats.record(try snapshot(lives: ["me": 40, "them": 40], battlefield: board, combat: attack))
+        stats.record(try snapshot(lives: ["me": 40, "them": 35], battlefield: board))
+        let top = try XCTUnwrap(stats.topCard)
+        XCTAssertEqual(top.name, "Squirrel", "the result screen drops the Token suffix")
+        XCTAssertEqual(top.damage, 4)
+        XCTAssertEqual(top.card?.instanceId, "squirrel", "matched by instance ID")
+        XCTAssertEqual(top.card?.card.tokenArtwork?.name, "Squirrel", "the battlefield card carries the art template")
+        XCTAssertEqual(stats.damageByCard["Squirrel Token"], 4, "credit stays keyed by the engine name")
+
+        // The art card is presentation only: the same game with other art reads as the same summary.
+        var other = squirrel
+        other["card"] = swinging["card"]
+        var plain = GameStats()
+        plain.record(try snapshot(lives: ["me": 40, "them": 40], battlefield: ["me": [other, bear]], combat: attack))
+        plain.record(try snapshot(lives: ["me": 40, "them": 35], battlefield: ["me": [other, bear]]))
+        XCTAssertNil(plain.topCard?.card?.card.tokenArtwork)
+        XCTAssertEqual(plain, stats)
+    }
+
     func testSpectatingAndThinkingComeFromThePlayers() {
         let watching = GameBoardPreviewFixtures.snapshot(.spectating)
         XCTAssertTrue(watching.isSpectating)

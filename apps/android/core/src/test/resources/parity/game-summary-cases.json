@@ -1,0 +1,46 @@
+{
+  "about": "The result screen's game summary (GameStats). Combat damage is credited to your unblocked attackers, and the top attacker's art comes from its battlefield card, matched by instance ID: only battlefield cards carry a token's tokenArtwork template, XMage's combat groups do not. A token is shown without its \" Token\" suffix. Each case feeds its steps to a new GameStats in order; a step sets life totals, your battlefield (card keys) and the attacks (combat groups whose attackers are those battlefield cards without tokenArtwork). Read by ParityGoldenTests.swift and ParityGoldenTest.kt.",
+  "base": {
+    "id": "summary-game", "phase": "combat", "turn": 3, "log": [], "viewerPlayerId": "me",
+    "players": [
+      {"playerId": "me", "displayName": "You", "life": 40, "poison": 0, "commanderTax": 0,
+       "zones": {"library": [], "hand": [], "battlefield": [], "graveyard": [], "exile": [], "command": [], "stack": []}},
+      {"playerId": "them", "displayName": "AI", "life": 40, "poison": 0, "commanderTax": 0,
+       "zones": {"library": [], "hand": [], "battlefield": [], "graveyard": [], "exile": [], "command": [], "stack": []}}
+    ],
+    "xmage": {
+      "schemaVersion": 1, "gameId": "summary-game", "bridgeRevision": 1, "callbackCoverage": [], "stack": [], "combat": [],
+      "players": [], "exileZones": [], "revealed": [], "lookedAt": [], "companion": [], "playableObjects": [],
+      "panels": {"stack": false, "command": true, "graveyard": true, "exile": true, "revealed": false, "lookedAt": false, "search": false}
+    }
+  },
+  "cards": {
+    "squirrel": {"instanceId": "squirrel-1", "power": 3, "toughness": 3, "isCreaturePermanent": true, "tapped": true,
+                 "card": {"name": "Squirrel Token", "typeLine": "Token Creature — Squirrel", "oracleText": "", "isToken": true, "tokenColors": ["G"],
+                          "tokenArtwork": {"name": "Squirrel", "typeLine": "Token Creature — Squirrel", "oracleText": "", "power": "1", "toughness": "1", "colors": ["G"]}}},
+    "bear": {"instanceId": "bear-1", "power": 2, "toughness": 2, "isCreaturePermanent": true, "tapped": true,
+             "card": {"name": "Grizzly Bears", "typeLine": "Creature — Bear", "oracleText": ""}},
+    "bearCopy": {"instanceId": "bear-copy-1", "power": 4, "toughness": 4, "isCreaturePermanent": true, "tapped": true,
+                 "card": {"name": "Grizzly Bears", "typeLine": "Token Creature — Bear", "oracleText": "", "isToken": true, "tokenColors": ["G"],
+                          "copySourceArtworkName": "Grizzly Bears"}}
+  },
+  "cases": [
+    {"name": "a token top attacker keeps its battlefield card and loses the Token suffix", "steps": [
+      {"life": {"me": 40, "them": 40}, "battlefield": ["squirrel", "bear"]},
+      {"life": {"me": 40, "them": 40}, "battlefield": ["squirrel", "bear"], "attacks": [{"defender": "them", "attackers": ["squirrel", "bear"]}]},
+      {"life": {"me": 40, "them": 35}, "battlefield": ["squirrel", "bear"]}
+    ], "expect": {"combatDamage": 5, "biggestHit": 5, "top": {"name": "Squirrel", "damage": 3, "instanceId": "squirrel-1", "tokenArtwork": "Squirrel"}}},
+    {"name": "a card top attacker keeps its printed name", "steps": [
+      {"life": {"me": 40, "them": 40}, "battlefield": ["squirrel", "bear"], "attacks": [{"defender": "them", "attackers": ["bear"]}]},
+      {"life": {"me": 40, "them": 38}, "battlefield": ["squirrel", "bear"]}
+    ], "expect": {"combatDamage": 2, "biggestHit": 2, "top": {"name": "Grizzly Bears", "damage": 2, "instanceId": "bear-1", "tokenArtwork": null}}},
+    {"name": "a token copy keeps the copied card's name", "steps": [
+      {"life": {"me": 40, "them": 40}, "battlefield": ["bearCopy"], "attacks": [{"defender": "them", "attackers": ["bearCopy"]}]},
+      {"life": {"me": 40, "them": 36}, "battlefield": ["bearCopy"]}
+    ], "expect": {"combatDamage": 4, "biggestHit": 4, "top": {"name": "Grizzly Bears", "damage": 4, "instanceId": "bear-copy-1", "tokenArtwork": null}}},
+    {"name": "a blocked attack credits no top attacker", "steps": [
+      {"life": {"me": 40, "them": 40}, "battlefield": ["squirrel"], "attacks": [{"defender": "them", "blocked": true, "attackers": ["squirrel"]}]},
+      {"life": {"me": 40, "them": 37}, "battlefield": ["squirrel"]}
+    ], "expect": {"combatDamage": 0, "biggestHit": 0, "top": null}}
+  ]
+}

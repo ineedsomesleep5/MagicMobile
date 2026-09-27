@@ -2793,6 +2793,8 @@ struct NativeGameView: View {
     @AppStorage(BoardFXSound.key) private var boardSoundsEnabled = true
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    /// The starting roll covers the board and answers its starting-player prompt itself.
+    @Environment(\.startingRollVisible) private var startingRollVisible
 
     private func openPromptDetails() {
         if let snapshot, PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil {
@@ -3036,7 +3038,7 @@ struct NativeGameView: View {
                             actions: snapshot.legalActions ?? [],
                             combatGroups: snapshot.xmage?.combat ?? []
                         )
-                        let shouldShowCompactPrompt = CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: pendingActionId)
+                        let shouldShowCompactPrompt = !startingRollVisible && CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: pendingActionId)
                         let derivedInteractionMode = GameBoardInteractionState.mode(
                             for: snapshot,
                             pendingActionId: pendingActionId,
@@ -3702,11 +3704,11 @@ struct NativeGameView: View {
             }
             .onChange(of: PortraitInteractionPolicy.detailChoiceKey(snapshot)) { _, key in
                 isPromptDetailOpen = key != nil
-                // A decision that needs you, not a routine priority pass.
-                if key != nil { GameAudio.shared.play(.responseAlert) }
+                // A decision that needs you, not a routine priority pass (the starting roll answers its own).
+                if key != nil && !startingRollVisible { GameAudio.shared.play(.responseAlert) }
             }
             .onChange(of: PortraitInteractionPolicy.cardChoiceKey(snapshot)) { _, key in
-                if key != nil && committedCardChoice == nil { GameAudio.shared.play(.responseAlert) }
+                if key != nil && committedCardChoice == nil && !startingRollVisible { GameAudio.shared.play(.responseAlert) }
                 isCardChoiceOpen = key != nil && committedCardChoice == nil && !reviewCardChoiceAfterPending
                 inspectedCard = nil
                 selectedCard = nil
@@ -3716,7 +3718,8 @@ struct NativeGameView: View {
 
     private func boardChoicePresentation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
         content
-            .accessibilityHidden(isCardChoiceOpen || committedCardChoice != nil)
+            // The starting roll covers the board too (the root also applies startingRollCovered).
+            .accessibilityHidden(isCardChoiceOpen || committedCardChoice != nil || startingRollVisible)
             .overlay {
                 if isCardChoiceOpen, let key = PortraitInteractionPolicy.cardChoiceKey(snapshot), let prompt = snapshot.promptEnvelopeV2 {
                     BoardCardChoiceView(snapshot: snapshot, prompt: prompt, pendingActionId: pendingActionId,
@@ -3907,7 +3910,7 @@ struct NativeGameView: View {
                 actions: actions,
                 combatGroups: snapshot.xmage?.combat ?? []
             )
-            let shouldShowCompactPrompt = CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: pendingActionId)
+            let shouldShowCompactPrompt = !startingRollVisible && CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: pendingActionId)
             let derivedInteractionMode = GameBoardInteractionState.mode(
                 for: snapshot,
                 pendingActionId: pendingActionId,
@@ -4864,8 +4867,13 @@ struct GameSummaryPanel: View {
             }
             if let top = stats.topCard {
                 HStack(spacing: 10) {
-                    NativeCardArtworkView(name: top.name, variant: .board, contentMode: .fill, artOnly: true) { _, _ in
-                        MagicPalette.iron
+                    Group {
+                        // The battlefield card, so a token draws its own art ("Squirrel", not a card lookup).
+                        if let card = top.card {
+                            NativeCardArtworkView(card: card, variant: .board, contentMode: .fill, artOnly: true) { _, _ in MagicPalette.iron }
+                        } else {
+                            NativeCardArtworkView(name: top.name, variant: .board, contentMode: .fill, artOnly: true) { _, _ in MagicPalette.iron }
+                        }
                     }
                     .frame(width: 40, height: 40)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -10535,6 +10543,7 @@ enum LandscapeActionDockLayout {
 
 struct GameplayActionDock: View {
     @Environment(\.nativeTurnControl) private var nativeTurnControl
+    @Environment(\.startingRollVisible) private var startingRollVisible
     let snapshot: GameSnapshot
     let passAction: LegalAction?
     let yieldActions: [LegalAction]
@@ -10551,8 +10560,9 @@ struct GameplayActionDock: View {
         CompactPromptPopup.compactLegalPromptActions(in: snapshot)
     }
 
+    /// No "Open Choice" while the starting roll covers the board: the roll answers that prompt.
     private var hasPromptDecision: Bool {
-        CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: nil)
+        !startingRollVisible && CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: nil)
     }
 
     private var model: GameActionDockModel {
@@ -11811,13 +11821,7 @@ struct CardTile: View {
                     TokenCopyCardFace(card: card, source: source, width: width, height: height, imageVariant: imageVariant,
                                       tagTrailingReserve: tokenCopyTagTrailingReserve)
                 } else if nativeTurnControl != nil {
-                    NativeCardArtworkView(name: card.card.name, variant: imageVariant,
-                                          tokenTypeLine: card.card.isToken == true ? (card.card.tokenArtwork?.typeLine ?? card.card.typeLine) : nil,
-                                          tokenOracleText: card.card.isToken == true ? (card.card.tokenArtwork?.oracleText ?? card.card.oracleText) : nil,
-                                          tokenPower: card.card.isToken == true ? (card.card.tokenArtwork?.power ?? card.displayPower) : nil,
-                                          tokenToughness: card.card.isToken == true ? (card.card.tokenArtwork?.toughness ?? card.displayToughness) : nil,
-                                          tokenColors: card.card.isToken == true ? (card.card.tokenArtwork?.colors ?? card.card.tokenColors) : nil,
-                                          tokenSourceName: card.card.isToken == true ? card.card.copySourceArtworkName : nil) { loading, _ in
+                    NativeCardArtworkView(card: card, variant: imageVariant) { loading, _ in
                         CardArtPlaceholder(card: card, width: width, height: height, loading: loading)
                     }
                 } else {

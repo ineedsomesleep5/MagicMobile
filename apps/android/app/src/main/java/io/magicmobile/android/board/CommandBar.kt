@@ -72,6 +72,13 @@ data class NativeTurnControl(val canEndTurn: Boolean, val canSkipResponses: Bool
 
 val LocalNativeTurnControl = compositionLocalOf<NativeTurnControl?> { null }
 
+/**
+ * Swift `startingRollVisible`: the starting roll covers the table. The roll answers XMage's
+ * starting-player question itself (OnDeviceRootView.submitStartingChoiceIfNeeded), so the board
+ * keeps its compact prompt, the dock's "Open Choice" and the decision chime quiet until it is dismissed.
+ */
+val LocalStartingRollVisible = compositionLocalOf { false }
+
 /** GameplayDockButtonStyle: an ember capsule for the primary action, iron for the rest. */
 @Composable
 private fun DockButton(onClick: () -> Unit, isPrimary: Boolean, enabled: Boolean, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
@@ -134,7 +141,8 @@ fun GameplayActionDock(snapshot: GameSnapshot, passAction: LegalAction?, yieldAc
                        modifier: Modifier = Modifier, compact: Boolean = false, landscapeSidebar: Boolean = false, horizontal: Boolean = false) {
     val nativeTurnControl = LocalNativeTurnControl.current
     val promptActions = CompactPromptPopup.compactLegalPromptActions(snapshot)
-    val decision = CompactPromptPopup.shouldShow(snapshot, null)
+    // No "Open Choice" while the starting roll covers the board: the roll answers that prompt.
+    val decision = !LocalStartingRollVisible.current && CompactPromptPopup.shouldShow(snapshot, null)
     val model = GameActionDockModel.make(snapshot, passAction, promptActions, decision, pendingActionId)
     val hasStackForPriority = snapshot.stackTopFirst.isNotEmpty() || snapshot.players.any { it.zones.stack.isNotEmpty() }
     val showsPriorityHelp = model.mode == GameActionDockModel.Mode.PRIORITY && model.isPrimaryEnabled && model.primaryAction?.type == "pass_priority"

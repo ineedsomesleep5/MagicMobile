@@ -56,6 +56,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -80,6 +81,7 @@ import io.magicmobile.android.board.LocalGameConcede
 import io.magicmobile.android.board.LocalGameRematchTitle
 import io.magicmobile.android.board.LocalInspectorBattlefield
 import io.magicmobile.android.board.LocalNativeTurnControl
+import io.magicmobile.android.board.LocalStartingRollVisible
 import io.magicmobile.android.board.MenuEntry
 import io.magicmobile.android.board.NativeGameView
 import io.magicmobile.android.board.NativeTurnControl
@@ -410,6 +412,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     val turnControl = NativeTurnControl(session.canEndTurn, session.canEndTurnSkippingResponses, session.canSkipToMyTurn, session.isAutoPassing,
         session.autoPassStatus, { session.endTurn() }, { session.endTurnSkippingResponses() }, { session.skipToMyTurn() }, { session.stopAutoPass() })
 
+    // One flag for everything the starting roll covers (iOS startingRollVisible): a relay table's
+    // shared roll or its "Who goes first?" panel, or an AI table's local roll.
+    val multiplayerRollVisible = setup.usingMultiplayer && table != null && table.endpoint != null && table.isConnected && !didDismissStartingRoll
+    val aiRoll = aiStartingRoll
+    val aiRollVisible = !setup.usingMultiplayer && session.matchID != null && aiStartingPlayerMode == "roll" && aiRoll != null && !didDismissStartingRoll
+    val startingRollVisible = multiplayerRollVisible || aiRollVisible
+
     MaterialTheme(colorScheme = darkColorScheme()) {
         CompositionLocalProvider(LocalBrandAmbientMotion provides !(showDecks || showAppearance || showUpdates || showDownloads),
             LocalNativeTurnControl provides turnControl) {
@@ -419,8 +428,11 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         LocalInspectorBattlefield provides (session.snapshot?.players?.flatMap { it.zones.battlefield } ?: emptyList()),
                         LocalGameRematchTitle provides if (setup.usingMultiplayer) null else "Rematch",
                         LocalGameConcede provides GameConcedeHandler { concede() },
-                        LocalEmoteCenter provides vm.emotes) {
-                        Box(Modifier.fillMaxSize().alpha(if (setup.isBusy) 0.999f else 1f)) {
+                        LocalEmoteCenter provides vm.emotes,
+                        LocalStartingRollVisible provides startingRollVisible) {
+                        // Hidden from TalkBack while the starting roll covers it.
+                        Box(Modifier.fillMaxSize().alpha(if (setup.isBusy) 0.999f else 1f)
+                            .then(if (startingRollVisible) Modifier.clearAndSetSemantics {} else Modifier)) {
                             NativeGameView(session.snapshot, selection, session.pendingActionID, session.pendingCardID,
                                 CardChoiceCommandFailure.of(setup.errorMessage ?: session.errorMessage,
                                     if (setup.errorMessage != null) CardChoiceCommandFailure.Source.SETUP else CardChoiceCommandFailure.Source.SESSION),
@@ -440,9 +452,6 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                                 newGame = ::rematchOrLeave, quitGame = ::leaveFinishedOrAsk,
                                 portraitModeEnabled = portraitModeEnabled, setPortraitModeEnabled = { portraitModeEnabled = it })
                         }
-                    }
-                    versusIntro?.let { (you, opponents) ->
-                        VersusIntroOverlay(you, opponents) { versusIntro = null }
                     }
                 } else if (showSetup || setup.needsLeave) {
                     SetupScreen(setup, selectedDeck, aiPrecons, playerDisplayName, { playerDisplayName = it.take(24) }, portraitModeEnabled,
@@ -470,8 +479,47 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         commanderName = selectedDeck?.commanderName, downloads = { showDownloads = true })
                 }
 
-                // Recovery banner
-                if (setup.isBusy || bannerError != null || (activeGame && (session.snapshot == null || !setup.canUseSession))) {
+                // The starting roll, on an opaque cover: a relay table's shared roll (the host's recorded dice,
+                // played back on every phone) or its "Who goes first?" panel, or the AI table's local roll.
+                if (multiplayerRollVisible) {
+                    val sharedRoll = table.startingRoll
+                    StartingRollCover {
+                        if (sharedRoll != null) {
+                            MultiplayerD20View(sharedRoll, table.seatNames, sharedRoll.winnerSeatID == table.localSeatID, table.rollRevealedCount,
+                                table.localSeatID, rollPending = table.hasRolled,
+                                onRollTap = { runCatching { table.rollStartingPlayer() }.onFailure { bannerError = it.message } },
+                                onStepPlayed = { runCatching { table.advanceAISeatIfNeeded() }.onFailure { bannerError = it.message } }) {
+                                didDismissStartingRoll = true
+                                submitStartingChoiceIfNeeded()
+                            }
+                        } else {
+                            Column(Modifier.padding(horizontal = 16.dp).widthIn(max = 440.dp).fillMaxWidth()
+                                .background(BrandTheme.surface, RoundedCornerShape(22.dp)).padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                Text("Who goes first?", color = BrandTheme.ink, style = SfText.title2(SfWeight.bold), textAlign = TextAlign.Center)
+                                Text(table.rollStatus, color = BrandTheme.inkSecondary, style = SfText.subheadline(), textAlign = TextAlign.Center)
+                                Text(table.hostAISeatSummary ?: "Each player rolls a D20. Highest starts; ties reroll.", color = BrandTheme.inkSecondary,
+                                    style = SfText.caption(), textAlign = TextAlign.Center)
+                                BrandButton({ runCatching { table.rollStartingPlayer() }.onFailure { bannerError = it.message } },
+                                    enabled = !table.hasRolled) {
+                                    BrandButtonText(if (table.hasRolled) "Waiting for other players…" else "Roll D20")
+                                }
+                            }
+                        }
+                    }
+                } else if (aiRollVisible) {
+                    StartingRollCover {
+                        MultiplayerD20View(aiRoll, aiRollSeatNames, aiRoll.winnerSeatID == session.snapshot?.viewerID, aiRevealedRollCount,
+                            session.snapshot?.viewerID, onRollTap = ::advanceLocalAIRoll, onStepPlayed = ::advanceAIRollIfNeeded) {
+                            didDismissStartingRoll = true
+                            submitStartingChoiceIfNeeded()
+                        }
+                    }
+                }
+
+                // Recovery banner. On the starting roll's cover only a roll error shows, still readable and dismissible.
+                if ((!startingRollVisible || bannerError != null) &&
+                    (setup.isBusy || bannerError != null || (activeGame && (session.snapshot == null || !setup.canUseSession)))) {
                     Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp).padding(bottom = 8.dp)
                         .magicPanel(MagicPanelMaterial.IRON, MagicPanelProminence.ELEVATED, cornerRadius = 12.dp, padding = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -504,33 +552,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                     }
                 }
 
-                // A relay table's starting roll: the host's recorded dice, played back on every phone.
-                if (setup.usingMultiplayer && table != null && table.endpoint != null && table.isConnected && !didDismissStartingRoll) {
-                    val sharedRoll = table.startingRoll
-                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (sharedRoll == null) 0.82f else 0.58f))
-                        .windowInsetsPadding(WindowInsets.safeDrawing), contentAlignment = Alignment.Center) {
-                        if (sharedRoll != null) {
-                            MultiplayerD20View(sharedRoll, table.seatNames, sharedRoll.winnerSeatID == table.localSeatID, table.rollRevealedCount,
-                                table.localSeatID, rollPending = table.hasRolled,
-                                onRollTap = { runCatching { table.rollStartingPlayer() }.onFailure { bannerError = it.message } },
-                                onStepPlayed = { runCatching { table.advanceAISeatIfNeeded() }.onFailure { bannerError = it.message } }) {
-                                didDismissStartingRoll = true
-                                submitStartingChoiceIfNeeded()
-                            }
-                        }
-                    }
-                }
-
-                // The AI table's starting roll
-                val roll = aiStartingRoll
-                if (!setup.usingMultiplayer && session.matchID != null && aiStartingPlayerMode == "roll" && roll != null && !didDismissStartingRoll) {
-                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.58f)).windowInsetsPadding(WindowInsets.safeDrawing)) {
-                        MultiplayerD20View(roll, aiRollSeatNames, roll.winnerSeatID == session.snapshot?.viewerID, aiRevealedRollCount,
-                            session.snapshot?.viewerID, onRollTap = ::advanceLocalAIRoll, onStepPlayed = ::advanceAIRollIfNeeded) {
-                            didDismissStartingRoll = true
-                            submitStartingChoiceIfNeeded()
-                        }
-                    }
+                // The versus intro plays first, over the opaque starting roll that follows it.
+                if (activeGame) versusIntro?.let { (you, opponents) ->
+                    VersusIntroOverlay(you, opponents) { versusIntro = null }
                 }
 
                 // Save/resume: the launch prompt over the menu, and one-time notices.

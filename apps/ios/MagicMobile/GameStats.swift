@@ -12,6 +12,9 @@ struct GameStats: Equatable {
     /// The largest combat hit you landed on one player at once.
     private(set) var biggestHit = 0
     private(set) var damageByCard: [String: Int] = [:]
+    /// The battlefield card behind each credited name, for its art. Only battlefield cards carry
+    /// `tokenArtwork` (XMage's combat groups do not), so a token's template comes from here.
+    private(set) var cardByName: [String: ZoneCard] = [:]
     private(set) var creaturesDestroyed = 0
     private(set) var creaturesLost = 0
     private var previous: Capture?
@@ -25,7 +28,8 @@ struct GameStats: Equatable {
 
     private struct Attack: Equatable {
         let defender: String
-        let attackers: [(name: String, power: Int)]
+        /// `card` is the attacker's battlefield card (matched by instance ID); equality ignores it.
+        let attackers: [(name: String, power: Int, card: ZoneCard)]
 
         static func == (lhs: Attack, rhs: Attack) -> Bool {
             lhs.defender == rhs.defender && lhs.attackers.map(\.name) == rhs.attackers.map(\.name)
@@ -41,7 +45,8 @@ struct GameStats: Equatable {
             if startingLife == nil { startingLife = life }
             finalLife = life
         }
-        let yourBattlefield = Set(snapshot.human?.zones.battlefield.map(\.instanceId) ?? [])
+        let yourBattlefield = Dictionary((snapshot.human?.zones.battlefield ?? []).map { ($0.instanceId, $0) },
+                                         uniquingKeysWith: { first, _ in first })
         let capture = Capture(
             life: Dictionary(snapshot.players.map { ($0.playerId, $0.life) }, uniquingKeysWith: { first, _ in first }),
             battlefieldCreatures: Dictionary(snapshot.players.map { player in
@@ -49,9 +54,12 @@ struct GameStats: Equatable {
             }, uniquingKeysWith: { first, _ in first }),
             attacks: (snapshot.xmage?.combat ?? []).compactMap { group in
                 guard !group.blocked, group.defenderId != viewer else { return nil }
-                let mine = group.attackers.filter { yourBattlefield.contains($0.instanceId) }
-                    .map { (name: $0.card.name, power: max(0, Int($0.displayPower ?? "") ?? $0.power ?? 0)) }
-                    .filter { $0.power > 0 }
+                let mine = group.attackers.compactMap { attacker in
+                    yourBattlefield[attacker.instanceId].map { card in
+                        (name: attacker.card.name, power: max(0, Int(attacker.displayPower ?? "") ?? attacker.power ?? 0), card: card)
+                    }
+                }
+                .filter { $0.power > 0 }
                 return mine.isEmpty ? nil : Attack(defender: group.defenderId, attackers: mine)
             }
         )
@@ -70,6 +78,7 @@ struct GameStats: Equatable {
             biggestHit = max(biggestHit, credited)
             for attacker in attack.attackers {
                 damageByCard[attacker.name, default: 0] += Int((Double(attacker.power) * Double(credited) / Double(total)).rounded())
+                cardByName[attacker.name] = attacker.card
             }
         }
         // A creature that left the battlefield for its owner's graveyard died (tokens just vanish).
@@ -82,12 +91,16 @@ struct GameStats: Equatable {
         }
     }
 
-    /// The card of yours that dealt the most combat damage to players.
-    var topCard: (name: String, damage: Int)? {
-        damageByCard.max { $0.value < $1.value || ($0.value == $1.value && $0.key > $1.key) }
-            .flatMap { $0.value > 0 ? ($0.key, $0.value) : nil }
+    /// The card of yours that dealt the most combat damage to players. `name` is what the result
+    /// screen shows: a token without its " Token" suffix ("Squirrel"). `card` draws its art.
+    var topCard: (name: String, damage: Int, card: ZoneCard?)? {
+        guard let top = damageByCard.max(by: { $0.value < $1.value || ($0.value == $1.value && $0.key > $1.key) }),
+              top.value > 0 else { return nil }
+        let card = cardByName[top.key]
+        return (card?.card.isToken == true ? NativeAssetStore.tokenArtworkName(top.key) : top.key, top.value, card)
     }
 
+    /// The art cards are presentation only and never make two summaries differ.
     static func == (lhs: GameStats, rhs: GameStats) -> Bool {
         lhs.gameID == rhs.gameID && lhs.turns == rhs.turns && lhs.combatDamage == rhs.combatDamage
             && lhs.finalLife == rhs.finalLife && lhs.creaturesLost == rhs.creaturesLost

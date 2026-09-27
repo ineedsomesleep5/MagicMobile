@@ -163,7 +163,7 @@ fun LandscapeGameContent(
                 centerControlsVisible = BoardDecisionPresentation.needsCenterSpace(snapshot, false))
             val targetableIds = GameBoardInteractionState.boardTargetableIds(snapshot)
             val combatHighlights = CombatHighlightSet(combatSelection, actions, snapshot.xmage?.combat ?: emptyList())
-            val shouldShowCompactPrompt = CompactPromptPopup.shouldShow(snapshot, pendingActionId)
+            val shouldShowCompactPrompt = !LocalStartingRollVisible.current && CompactPromptPopup.shouldShow(snapshot, pendingActionId)
             val interactionMode = GameBoardInteractionState.mode(snapshot, pendingActionId, selection.selectedCard)
             val playerIDs = snapshot.players.map { it.playerId }.toSet()
             fun lane(cards: List<ZoneCard>, resources: Boolean) = BattlefieldAttachments.lane(cards, allBattlefield, resources, playerIDs, includesManaRocks = true)

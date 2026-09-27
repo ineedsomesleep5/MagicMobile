@@ -16,11 +16,21 @@ class GameStats {
     /** The largest combat hit you landed on one player at once. */
     var biggestHit = 0; private set
     val damageByCard = LinkedHashMap<String, Int>()
+    /**
+     * The battlefield card behind each credited name, for its art. Only battlefield cards carry
+     * `tokenArtwork` (XMage's combat groups do not), so a token's template comes from here.
+     */
+    val cardByName = LinkedHashMap<String, ZoneCard>()
     var creaturesDestroyed = 0; private set
     var creaturesLost = 0; private set
     private var previous: Capture? = null
 
-    private data class Attack(val defender: String, val attackers: List<Pair<String, Int>>)
+    /** `card` is the attacker's battlefield card (matched by instance ID); equality ignores it. */
+    private class Attacker(val name: String, val power: Int, val card: ZoneCard) {
+        override fun equals(other: Any?) = other is Attacker && other.name == name && other.power == power
+        override fun hashCode() = name.hashCode() * 31 + power
+    }
+    private data class Attack(val defender: String, val attackers: List<Attacker>)
     private data class Capture(val life: Map<String, Int>, val battlefieldCreatures: Map<String, Set<String>>, val attacks: List<Attack>)
 
     fun record(snapshot: GameSnapshot) {
@@ -31,15 +41,15 @@ class GameStats {
             if (startingLife == null) startingLife = life
             finalLife = life
         }
-        val yours = snapshot.human?.zones?.battlefield?.map { it.instanceId }?.toSet() ?: emptySet()
+        val yours = snapshot.human?.zones?.battlefield?.associateBy { it.instanceId } ?: emptyMap()
         val life = LinkedHashMap<String, Int>(); snapshot.players.forEach { life.putIfAbsent(it.playerId, it.life) }
         val creatures = LinkedHashMap<String, Set<String>>()
         snapshot.players.forEach { player -> creatures.putIfAbsent(player.playerId, player.zones.battlefield.filter { it.isCreature }.map { it.instanceId }.toSet()) }
         val attacks = (snapshot.xmage?.combat ?: emptyList()).mapNotNull { group ->
             if (group.blocked || group.defenderId == viewer) return@mapNotNull null
-            val mine = group.attackers.filter { it.instanceId in yours }
-                .map { it.card.name to maxOf(0, it.displayPower?.toIntOrNull() ?: it.power ?: 0) }
-                .filter { it.second > 0 }
+            val mine = group.attackers.mapNotNull { attacker ->
+                yours[attacker.instanceId]?.let { card -> Attacker(attacker.card.name, maxOf(0, attacker.displayPower?.toIntOrNull() ?: attacker.power ?: 0), card) }
+            }.filter { it.power > 0 }
             if (mine.isEmpty()) null else Attack(group.defenderId, mine)
         }
         val capture = Capture(life, creatures, attacks)
@@ -49,7 +59,7 @@ class GameStats {
 
     private fun reset(id: String) {
         gameID = id; turns = 0; startingLife = null; finalLife = null; combatDamage = 0; biggestHit = 0
-        damageByCard.clear(); creaturesDestroyed = 0; creaturesLost = 0; previous = null
+        damageByCard.clear(); cardByName.clear(); creaturesDestroyed = 0; creaturesLost = 0; previous = null
     }
 
     private fun compare(old: Capture, new: Capture, snapshot: GameSnapshot) {
@@ -58,13 +68,14 @@ class GameStats {
             val before = old.life[attack.defender] ?: continue
             val after = new.life[attack.defender] ?: continue
             if (after >= before) continue
-            val total = attack.attackers.sumOf { it.second }
+            val total = attack.attackers.sumOf { it.power }
             val credited = minOf(total, before - after)
             if (total <= 0 || credited <= 0) continue
             combatDamage += credited
             biggestHit = maxOf(biggestHit, credited)
-            for ((name, power) in attack.attackers) {
-                damageByCard[name] = (damageByCard[name] ?: 0) + (power.toDouble() * credited / total).roundToInt()
+            for (attacker in attack.attackers) {
+                damageByCard[attacker.name] = (damageByCard[attacker.name] ?: 0) + (attacker.power.toDouble() * credited / total).roundToInt()
+                cardByName[attacker.name] = attacker.card
             }
         }
         // A creature that left the battlefield for its owner's graveyard died (tokens just vanish).
@@ -77,10 +88,27 @@ class GameStats {
         }
     }
 
-    /** The card of yours that dealt the most combat damage to players. */
-    val topCard: Pair<String, Int>? get() = damageByCard.entries
+    /**
+     * The card of yours that dealt the most combat damage to players. `name` is what the result
+     * screen shows: a token without its " Token" suffix ("Squirrel"). `card` draws its art.
+     */
+    val topCard: TopAttacker? get() = damageByCard.entries
         .maxWithOrNull { a, b -> if (a.value != b.value) a.value.compareTo(b.value) else b.key.compareTo(a.key) }
-        ?.takeIf { it.value > 0 }?.let { it.key to it.value }
+        ?.takeIf { it.value > 0 }?.let { top ->
+            val card = cardByName[top.key]
+            TopAttacker(if (card?.card?.isToken == true) tokenDisplayName(top.key) else top.key, top.value, card)
+        }
+
+    data class TopAttacker(val name: String, val damage: Int, val card: ZoneCard?)
+
+    companion object {
+        /** NativeAssetStore.tokenArtworkName on iOS: "Squirrel Token" → "Squirrel". */
+        fun tokenDisplayName(name: String): String {
+            val trimmed = name.trim()
+            if (trimmed.length <= 6 || !trimmed.lowercase().endsWith(" token")) return trimmed
+            return trimmed.dropLast(6).trim()
+        }
+    }
 }
 
 /** Port of OpeningHandChoice: XMage's mulligan question, answered from the opening-hand screen. */

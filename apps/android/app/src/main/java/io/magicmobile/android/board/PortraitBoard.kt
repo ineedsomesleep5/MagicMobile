@@ -75,7 +75,7 @@ fun PortraitGameContent(
     val actions = snapshot.legalActions ?: emptyList()
     val targetableIds = GameBoardInteractionState.boardTargetableIds(snapshot)
     val combatHighlights = CombatHighlightSet(combatSelection, actions, snapshot.xmage?.combat ?: emptyList())
-    val shouldShowCompactPrompt = CompactPromptPopup.shouldShow(snapshot, pendingActionId)
+    val shouldShowCompactPrompt = !LocalStartingRollVisible.current && CompactPromptPopup.shouldShow(snapshot, pendingActionId)
     val allBattlefield = snapshot.players.flatMap { it.zones.battlefield }
     val playerIDs = snapshot.players.map { it.playerId }.toSet()
     fun lane(cards: List<ZoneCard>, lands: Boolean) = BattlefieldAttachments.lane(cards, allBattlefield, lands, playerIDs)
