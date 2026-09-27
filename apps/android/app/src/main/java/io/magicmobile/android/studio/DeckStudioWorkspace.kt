@@ -15,14 +15,20 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -31,6 +37,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -50,7 +57,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
@@ -72,6 +81,8 @@ import io.magicmobile.android.ui.sf
 import java.util.UUID
 
 private val workspaceTabs = listOf("Cards", "Ideas", "Analysis", "Playtest")
+private val workspaceLists = mapOf("Cards" to "deckStudio.cards.list", "Ideas" to "deckStudio.ideas.list",
+    "Analysis" to "deckStudio.analysis.list", "Playtest" to "deckStudio.playtest.list")
 
 /**
  * DeckStudioWorkspaceScreen.swift: one deck's cards, ideas, analysis and playtest. [play] is the
@@ -89,6 +100,10 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
     val browser = remember(record?.id) { DeckStudioEDHRECModel(scope) }
     val validation = remember(record?.id) { DeckStudioValidationState(scope) { model.sourceID } }
     var tab by rememberSaveable { mutableStateOf("Cards") }
+    // One list for every tab: the header scrolls away above the pinned tabs.
+    val listState = rememberLazyListState()
+    var landedTab by remember { mutableStateOf(tab) }
+    var tabsHeight by remember { mutableStateOf(68.dp) }
     var headerExpanded by rememberSaveable { mutableStateOf(true) }
     var ideas by rememberSaveable { mutableStateOf("Combos") }
     var query by rememberSaveable { mutableStateOf("") }
@@ -274,6 +289,15 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
     val preflightBar: @Composable () -> Unit = {
         DeckStudioPreflightBar(preflight, (builder.listFilter as? DeckStudioListFilter.QuickCheck)?.issue, ::setIssueFilter, ::chooseCommander)
     }
+    val ideasSource: @Composable () -> Unit = {
+        StudioSegmented(listOf("Combos", "EDHREC"), ideas, { ideas = it }, { it }, Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp))
+    }
+    // The combo panel's lookup, approval and details live outside the list, only while it is shown.
+    val showCombos = tab == "Ideas" && ideas == "Combos"
+    val comboPanel = remember(showCombos) { DeckStudioComboPanelState() }
+    val comboInput = if (showCombos) remember(draft, resolver) { DeckStudioSpellbookInput.make(draft, resolver) } else null
+    val density = LocalDensity.current
+    val navigationBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     StudioScreen {
         Column(Modifier.fillMaxSize()) {
@@ -305,19 +329,34 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
                     }) { Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) { SfImage("ellipsis.circle", DeckStudioPalette.ink, 20.dp) } }
                 }
             })
-            if (tab == "Cards" || tab == "Playtest") {
-                // Cards and Playtest share one scroll: the header leaves the screen while the tabs stay pinned.
-                Box(Modifier.weight(1f)) {
-                    LazyColumn(Modifier.fillMaxSize().semantics { contentDescription = if (tab == "Cards") "deckStudio.cards.list" else "deckStudio.playtest.list" },
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = if (tab != "Cards" || model.readOnly) 24.dp
-                            else if (builder.selecting) 136.dp else 88.dp)) {
-                        item(key = "header") { Box(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) { header() } }
-                        if (headerExpanded) item(key = "quickCheck") { Box(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 10.dp)) { preflightBar() } }
-                        model.error?.let { message -> item(key = "error") {
-                            DeckStudioNotice("Check this draft", message, "exclamationmark.triangle", Modifier.padding(start = 20.dp, end = 20.dp, bottom = 10.dp))
-                        } }
-                        stickyHeader(key = "tabs") { Box(Modifier.fillMaxWidth().background(DeckStudioPalette.background).padding(horizontal = 20.dp, vertical = 8.dp)) { tabs() } }
-                        if (tab == "Cards") {
+            // Every tab shares one scroll: the header leaves the screen while the tabs stay pinned.
+            BoxWithConstraints(Modifier.weight(1f)) {
+                // A short screen shows iOS's one-line header instead: name, card count and save state.
+                val compactHeader = maxHeight <= 500.dp
+                val tabsIndex = 1 + (if (headerExpanded && !compactHeader) 1 else 0) + (if (model.error != null) 1 else 0)
+                // Ideas and Analysis fill at least the screen below the tabs, so the header can always
+                // scroll away and a tab change always lands in the same place.
+                val content = (maxHeight - tabsHeight).coerceAtLeast(0.dp)
+                // A tab change lands on the pinned tabs, so the new tab starts at its top.
+                LaunchedEffect(tab) {
+                    if (tab != landedTab) { landedTab = tab; listState.scrollToItem(tabsIndex) }
+                }
+                LazyColumn(Modifier.fillMaxSize().semantics { contentDescription = workspaceLists.getValue(tab) }, state = listState,
+                    contentPadding = PaddingValues(bottom = if (tab != "Cards" || model.readOnly) 24.dp + navigationBottom
+                        else if (builder.selecting) 136.dp else 88.dp)) {
+                    item(key = "header") {
+                        if (compactHeader) CompactWorkspaceHeader(model) else Box(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) { header() }
+                    }
+                    if (headerExpanded && !compactHeader) item(key = "quickCheck") { Box(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 10.dp)) { preflightBar() } }
+                    model.error?.let { message -> item(key = "error") {
+                        DeckStudioNotice("Check this draft", message, "exclamationmark.triangle", Modifier.padding(start = 20.dp, end = 20.dp, bottom = 10.dp))
+                    } }
+                    stickyHeader(key = "tabs") {
+                        Box(Modifier.fillMaxWidth().onSizeChanged { tabsHeight = with(density) { it.height.toDp() } }.background(DeckStudioPalette.background)
+                            .padding(horizontal = 20.dp, vertical = 8.dp)) { tabs() }
+                    }
+                    when (tab) {
+                        "Cards" -> {
                             item(key = "filters") { cardFilters() }
                             if (draft.rows.isEmpty()) item(key = "empty") {
                                 StudioContentUnavailable("A deck of possibilities", "plus.rectangle.on.rectangle", "Add your commander and cards. Incomplete drafts are welcome.")
@@ -350,7 +389,23 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
                                     }
                                 }
                             }
-                        } else {
+                        }
+                        "Ideas" -> if (ideas == "EDHREC") item(key = "edhrec") {
+                            Column(Modifier.heightIn(min = content), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                ideasSource()
+                                // Below the tabs: the source picker and the browser controls, then the page.
+                                DeckStudioEDHRECPanel(browser, DeckStudioDraftPresentation.commanders(draft), webHeight = (content - 150.dp).coerceAtLeast(320.dp))
+                            }
+                        } else deckStudioComboItems(combos, comboPanel, comboInput, draft, metadata, resolver, model.readOnly, add = { name, section, approved ->
+                            approved == DeckStudioSpellbookInput.make(model.draft, resolver) && resolver?.canonicalCardName(name) == name && model.add(name, section)
+                        }, inspect = ::inspect, minHeight = content, top = ideasSource)
+                        "Analysis" -> item(key = "analysis") {
+                            Column(Modifier.heightIn(min = content).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                DeckStudioAnalysisContent(draft, metadata, curveOnly = false, inspect = ::inspect)
+                                DeckStudioRoleInsightsView(draft, metadata, model.record?.id, inspect = ::inspect)
+                            }
+                        }
+                        else -> {
                             item(key = "validation") {
                                 Box(Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp)) { DeckStudioValidationPanel(validation, deck, resolver, play = ::preparePlay) }
                             }
@@ -366,39 +421,18 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
                             }
                         }
                     }
-                    if (tab == "Cards" && !model.readOnly) {
-                        // Quick Add with Add cards, or the bulk actions while selecting.
-                        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(DeckStudioPalette.background).navigationBarsPadding().imePadding()
-                            .padding(top = 8.dp, start = 20.dp, end = 20.dp, bottom = 12.dp)) {
-                            if (builder.selecting) DeckStudioBulkBar(builder.liveSelection(draft).size, move = { section ->
-                                val ids = builder.liveSelection(model.draft)
-                                if (ids.isNotEmpty()) model.change { DeckStudioEditorOperations.moveRows(it, ids, section) }
-                            }, setQuantity = { builder.showBulkQuantity = true }, remove = { builder.confirmBulkRemove = true },
-                                selectAll = { builder.selection = filteredRows.map { it.id }.toSet() })
-                            else DeckStudioQuickAddBar(metadata, model, openSearch = { showSearch = true })
-                        }
-                    }
                 }
-            } else {
-                Column(Modifier.weight(1f)) {
-                    Box(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) { header() }
-                    if (headerExpanded) Box(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 10.dp)) { preflightBar() }
-                    model.error?.let { DeckStudioNotice("Check this draft", it, "exclamationmark.triangle", Modifier.padding(start = 20.dp, end = 20.dp, bottom = 10.dp)) }
-                    Box(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp)) { tabs() }
-                    if (tab == "Ideas") {
-                        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            StudioSegmented(listOf("Combos", "EDHREC"), ideas, { ideas = it }, { it }, Modifier.padding(horizontal = 20.dp))
-                            if (ideas == "EDHREC") DeckStudioEDHRECPanel(browser, DeckStudioDraftPresentation.commanders(draft))
-                            else DeckStudioComboPanel(combos, draft, metadata, resolver, model.readOnly, add = { name, section, approved ->
-                                approved == DeckStudioSpellbookInput.make(model.draft, resolver) && resolver?.canonicalCardName(name) == name && model.add(name, section)
-                            }, inspect = ::inspect)
-                        }
-                    } else {
-                        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp).navigationBarsPadding(),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            DeckStudioAnalysisContent(draft, metadata, curveOnly = false, inspect = ::inspect)
-                            DeckStudioRoleInsightsView(draft, metadata, model.record?.id, inspect = ::inspect)
-                        }
+                if (showCombos) DeckStudioComboPanel(combos, comboPanel, comboInput, resolver)
+                if (tab == "Cards" && !model.readOnly) {
+                    // Quick Add with Add cards, or the bulk actions while selecting.
+                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(DeckStudioPalette.background).navigationBarsPadding().imePadding()
+                        .padding(top = 8.dp, start = 20.dp, end = 20.dp, bottom = 12.dp)) {
+                        if (builder.selecting) DeckStudioBulkBar(builder.liveSelection(draft).size, move = { section ->
+                            val ids = builder.liveSelection(model.draft)
+                            if (ids.isNotEmpty()) model.change { DeckStudioEditorOperations.moveRows(it, ids, section) }
+                        }, setQuantity = { builder.showBulkQuantity = true }, remove = { builder.confirmBulkRemove = true },
+                            selectAll = { builder.selection = filteredRows.map { it.id }.toSet() })
+                        else DeckStudioQuickAddBar(metadata, model, openSearch = { showSearch = true })
                     }
                 }
             }
@@ -514,6 +548,19 @@ private fun deckFilterOptions(draft: NativeDeckDraft, section: String, color: St
     listOf("W", "U", "B", "R", "G", "C").forEach { value -> add(MenuEntry.Item(if (value == "C") "Colorless" else value, checked = color == value) { setColor(value) }) }
     add(MenuEntry.Divider)
     add(MenuEntry.Item("Clear filters") { setSection(""); setColor(""); clearIssue() })
+}
+
+/** A short screen's one-line header, as iOS shows below 500 points: name, card count and save state. */
+@Composable
+private fun CompactWorkspaceHeader(model: DeckStudioEditorModel) {
+    val draft = model.draft
+    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Text(draft.name.ifEmpty { "Untitled draft" }, Modifier.weight(1f), color = DeckStudioPalette.ink, style = StudioText.headline, maxLines = 1,
+            overflow = TextOverflow.Ellipsis)
+        Text(CardCountText.label(DeckStudioDraftPresentation.gameCount(draft)), color = DeckStudioPalette.ink, style = StudioText.caption)
+        Text(model.saveLabel, color = DeckStudioPalette.secondaryInk, style = StudioText.caption2)
+    }
 }
 
 @Composable
