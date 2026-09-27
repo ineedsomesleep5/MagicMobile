@@ -242,10 +242,8 @@ final class OnDeviceSetupUITests: XCTestCase {
         tapDiagnosed(edhrec)
         waitFor(edhrec, predicate: "selected == true")
         let copy = app.buttons["Copy commander names"]
-        // Ideas keeps the deck header fixed above its own scrolling panel. With Play and the
-        // quick check in that header, a swipe at the screen's centre lands on the header, so
-        // scroll the EDHREC panel itself.
-        let panel = app.scrollViews.containing(.button, identifier: "Browse commanders on EDHREC").firstMatch
+        // Ideas scrolls in one list with the deck header, below the pinned tabs.
+        let panel = app.scrollViews["deckStudio.ideas.list"]
         UITestHarness.reveal(copy, in: panel)
         XCTAssertTrue(copy.isEnabled)
         tapDiagnosed(copy)
