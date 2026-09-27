@@ -17,6 +17,26 @@ class NativeBuilderPolicyTests(unittest.TestCase):
         self.assertIn('-J-Xmx${native.max.heap}', args)
         self.assertIn('-H:NumberOfThreads=2', args)
 
+    def test_checkpoint_classes_use_the_light_registration_feature(self):
+        # GraalVM 22.1 serialization configuration would make every declared method of the
+        # 48,723 checkpoint types invocable (docs/NATIVE_METADATA.md).
+        args = [e.text for e in ET.parse(ROOT / 'native/gluon/pom.xml').iter(
+            '{http://maven.apache.org/POM/4.0.0}arg')]
+        self.assertFalse(any(a and a.startswith('-H:SerializationConfigurationFiles') for a in args))
+        self.assertIn('-Dmagicmobile.checkpoint.serialization=${native.serialization.config}', args)
+        self.assertIn('${native.checkpoint.feature}', args)
+        self.assertIn('-J--add-opens=java.base/jdk.internal.reflect=ALL-UNNAMED', args)
+        enable = '-Dnative.checkpoint.feature=--features=io.magicmobile.nativebridge.CheckpointSerializationFeature'
+        for script in (ROOT / 'scripts/build_native_ios.sh', ROOT.parents[1] / 'scripts/android/build_native.sh'):
+            with self.subTest(script=script.name):
+                text = script.read_text()
+                self.assertIn(enable, text)
+                self.assertIn('nativebridge/CheckpointSerializationFeature.java"', text)
+                self.assertIn('-Dnative.serialization.config=', text)
+                # The shared constructor accessor is compiled against java.base, next to the feature.
+                self.assertIn('--patch-module "java.base=$ROOT/native/gluon/src/main/java-base"', text)
+                self.assertIn('/native-java/io/magicmobile/nativebridge/checkpoint-constructor-accessor.bin"', text)
+
     def test_heap_guard_and_telemetry_remain(self):
         script = (ROOT / 'scripts/build_native_ios.sh').read_text()
         self.assertIn('sysctl -n hw.memsize', script)

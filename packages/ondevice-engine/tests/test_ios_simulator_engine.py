@@ -55,7 +55,11 @@ class NativeTargetTests(unittest.TestCase):
             (compiler / 'release').write_text(
                 'GRAALVM_VERSION="22.1.0.1"\nJAVA_VERSION="17.0.3"\nVENDOR=Gluon\n')
             for name, body in {
-                'native-image': 'exit 0', 'javac': 'exit 0', 'xcodebuild': 'exit 0',
+                'native-image': 'exit 0', 'xcodebuild': 'exit 0',
+                # Compiler stand-in: creates the output packages the script copies between.
+                'javac': 'out=; prev=; for a in "$@"; do [[ "$prev" == -d ]] && out="$a"; prev="$a"; done\n'
+                         'mkdir -p "$out/io/magicmobile/nativebridge" "$out/jdk/internal/reflect"\n'
+                         'touch "$out/jdk/internal/reflect/MobileCheckpointConstructorAccessor.class"',
                 'uname': 'if [[ "$1" == -s ]]; then echo Darwin; else echo x86_64; fi',
                 'mvn': 'printf "%s\\n" "$@" > "$MM_TEST_ARGS"; exit 73',
                 # Metadata exporter stand-in: records its arguments and writes both outputs.

@@ -15,10 +15,12 @@ The app Resume/Abandon flow, file location and 10-minute window are app-side wor
 - **Engine.** `create` takes `checkpoint.path` for exactly one human seat; the GAME thread
   writes the match atomically at each human priority decision before publishing it; polls
   report `checkpoint`/`checkpointFailure`; `restore` rebuilds the match in a new process and
-  re-asks that decision. The RNG state is saved and restored. Seven reviewed upstream
-  sources are now patched by `prepare_upstream.py` (four new: `Exile`, `GameImpl`,
-  `RandomUtil`, `ComputerPlayer`; `HumanPlayer` gained `readObject`). Existing
-  `.upstream/mage` checkouts must be bootstrapped again; the patcher refuses an old stamp.
+  re-asks that decision. The RNG state is saved and restored. Twenty reviewed upstream
+  sources are now patched by `prepare_upstream.py`: `Exile`, `GameImpl`, `RandomUtil`,
+  `ComputerPlayer` and `HumanPlayer` complete deserialization, and (September 27) thirteen
+  classes holding Serializable `Condition`/`Predicate` lambdas get named enum singletons that
+  call the same upstream code, so no checkpoint needs a serializable lambda (see below).
+  Existing `.upstream/mage` checkouts must be bootstrapped again; the patcher refuses an old stamp.
 - **Verified (desktop JVM only).** `RealCheckpointTests`, now part of `test_real_engine.sh`
   and so of the real-jvm CI job. One human seat against 1 or 3 AI seats:
   - In each of two consecutive full-suite runs, 8 of 8 fresh-JVM restores matched the
@@ -41,16 +43,41 @@ The app Resume/Abandon flow, file location and 10-minute window are app-side wor
   - Rejections: more than one human seat, bad paths, header identity, format, SHA-256,
     truncation, a filter-rejected class and a wrong root; a failed write keeps the game playing;
     a failed restore leaves no match or threads.
-- **Not verified.** Any native-image build with the new serialization metadata (48,715
-  registered types, 15 lambda capturing classes; builder heap, time and image size unknown,
-  see [NATIVE_METADATA.md](NATIVE_METADATA.md#saveresume-serialization-metadata-september-26-2026)),
-  native serialization at runtime, phone write/restore times, iOS/Android app integration,
-  process-kill acceptance.
+- **Native build: the Android image now builds (September 27).** Android
+  run 36287088288 (`9b26186`) stopped 20 s into image generation: GraalVM 22.1 requires
+  `writeReplace` on every lambda of a `lambdaCapturingTypes` class, and `Checkpoints` and
+  `XmageEngine$Running` also create ordinary lambdas. Branch `codex/native-serialization-fix`
+  removes the need for any: the 13 upstream classes use named singletons, the adapter uses named
+  classes, the checkpoint allowlist drops `SerializedLambda` (writer and reader refuse lambdas),
+  the writer now reports the refused class instead of its own follow-on error, and
+  `NativeReflectionExporter` fails if any scanned class still declares `$deserializeLambda$`. The
+  export registers 48,723 types and an empty `lambdaCapturingTypes`
+  ([NATIVE_METADATA.md](NATIVE_METADATA.md#saveresume-serialization-metadata-september-26-2026)).
+  Android run 36289659903 on this branch then got past that point, but `[2/7] Performing
+  analysis` was still running when the 120-minute job limit cancelled it, 110 minutes later.
+  GraalVM 22.1's serialization configuration makes every declared constructor and method of each
+  entry reflectively invocable (roughly 315,000 compiled stubs here). So the class list now
+  registers through `CheckpointSerializationFeature`, which registers only serializable fields,
+  serialization hooks and superclass constructors. Run 36296135786 with it still exhausted the
+  10 GB builder heap in analysis (1,369 s), because GraalVM generates one constructor-accessor class
+  per class, about 43,000. The feature now registers one shared `java.base` accessor class for the
+  46,700 classes whose serialization constructor is `Object()` (see NATIVE_METADATA.md). With it,
+  run 36298334924 finished analysis (943 s, 9.92 GB) but failed because the exporter listed
+  Mage.Common's Serializable Swing client components, which made AWT/X11 code reachable. The
+  exporter now leaves them out. **Run 36299703566 (`f0f78c3`) then succeeded end to end:**
+  real-engine JVM tests, the ARM64 image (20 min 39 s, analysis 783 s at 9.75 GB of the 10 GB heap,
+  peak RSS 12.16 GB), the staging checks and the native-linked APK (artifact
+  `android-full-native-f0f78c375ea7be8854f7e0ac1e9605947aafc60a`). It builds; it does not run the
+  engine, so native serialization at runtime is still unproven.
+- **Not verified.** The iOS native build with this metadata (`magicmobile-far-calls.yml`, same
+  10 GB builder heap), native serialization at runtime (the `saveResume` self-test on a device),
+  phone write/restore times, iOS/Android app integration, process-kill acceptance.
 - **Next native gates (need dispatch).** iOS: `magicmobile-issue4-nonsimulator.yml` on the
   candidate SHA, then `magicmobile-far-calls.yml` with `candidate_sha` and that run's
   `cheap_run_id`, then `magicmobile-product-device.yml` with `engine_run_id`/`engine_commit`.
-  Android: `magicmobile-android.yml`. A build without the metadata reports
-  `saveResume: false` rather than failing games.
+  Android: `magicmobile-android.yml` passed on `f0f78c3` (above); the next Android gate is running
+  the engine on a device. A build without the metadata reports `saveResume: false` rather than
+  failing games.
 
 ## Subsequent authorized internal TestFlight upload
 

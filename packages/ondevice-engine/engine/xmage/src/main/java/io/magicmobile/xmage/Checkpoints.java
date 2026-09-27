@@ -45,16 +45,17 @@ final class Checkpoints {
     // (RealCheckpointTests prints them); the limits leave 40x or more headroom.
     static final long MAX_STREAM_BYTES=128L*1024*1024, MAX_REFERENCES=4_000_000, MAX_DEPTH=1_000, MAX_ARRAY=1_000_000;
     private static final String[] PACKAGES={"mage.","io.magicmobile.xmage."};
-    /** JDK types a game may contain. Anything else, including proxies and non-engine lambdas, is refused both ways. */
+    /**
+     * JDK types a game may contain. Anything else, including proxies and every serializable lambda
+     * (java.lang.invoke.SerializedLambda), is refused both ways. Upstream conditions and predicates
+     * that were lambdas are named classes (scripts/prepare_upstream.py), so no game state needs one.
+     */
     private static final Set<String> JDK_TYPES=Set.of(
         // Object and Map.Entry appear only as array components the JDK collections pre-check.
         "java.lang.Object","java.util.Map$Entry","java.lang.Enum","java.lang.Number","java.lang.Boolean","java.lang.Byte",
         "java.lang.Character","java.lang.Short","java.lang.Integer","java.lang.Long","java.lang.Float",
         "java.lang.Double","java.lang.String","java.lang.String$CaseInsensitiveComparator",
         "java.math.BigInteger","java.math.BigDecimal",
-        // Upstream stores method references in Serializable fields (Condition in Reconfigure and
-        // a dozen cards); native builds register their capturing classes as lambdaCapturingTypes.
-        "java.lang.invoke.SerializedLambda",
         "java.util.ArrayList","java.util.LinkedList","java.util.ArrayDeque","java.util.PriorityQueue",
         "java.util.Vector","java.util.Stack","java.util.HashMap","java.util.LinkedHashMap","java.util.TreeMap",
         "java.util.IdentityHashMap","java.util.EnumMap","java.util.HashSet","java.util.LinkedHashSet",
@@ -118,8 +119,6 @@ final class Checkpoints {
         while(type.isArray()) type=type.getComponentType();
         if(type.isPrimitive()) return true;
         String name=type.getName();
-        // Serializable lambdas travel as SerializedLambda, which only the capturing (allowed) class
-        // can turn back into a lambda; newer JDKs also filter that resolved lambda class.
         if(java.lang.reflect.Proxy.isProxyClass(type)) return false;
         for(String prefix:PACKAGES) if(name.startsWith(prefix)) return true;
         return JDK_TYPES.contains(name);
@@ -147,8 +146,8 @@ final class Checkpoints {
             probe.put("zones",new EnumMap<>(mage.constants.Zone.class));probe.put("owner",owner);
             probe.put("zoneSet",EnumSet.of(mage.constants.Zone.BATTLEFIELD,mage.constants.Zone.GRAVEYARD));
             probe.put("list",new ArrayList<>(List.of(owner)));probe.put("linked",new LinkedList<>(List.of(1)));
-            // Upstream keeps method references in Serializable fields (Reconfigure's Condition).
-            probe.put("condition",(mage.abilities.condition.Condition)Checkpoints::probeCondition);
+            // Conditions are named Serializable classes, never lambdas (see ProbeCondition).
+            probe.put("condition",new ProbeCondition(7));
             byte[] bytes=serialize(probe);
             Map<?,?> read=(Map<?,?>)deserialize(bytes);
             Card copy=(Card)read.get("card");
@@ -165,7 +164,17 @@ final class Checkpoints {
         }
     }
 
-    private static boolean probeCondition(Game game,Ability source) { return true; }
+    /**
+     * A named Serializable Condition with state, like the upstream ones prepare_upstream.py turns
+     * lambdas into. No lambda here: a class with a serializable lambda would need GraalVM
+     * lambdaCapturingTypes metadata, which breaks the pinned native build (docs/NATIVE_METADATA.md).
+     */
+    private static final class ProbeCondition implements mage.abilities.condition.Condition {
+        private static final long serialVersionUID=1L;
+        private final int expected;
+        ProbeCondition(int expected) { this.expected=expected; }
+        @Override public boolean apply(Game game,Ability source) { return expected==7; }
+    }
 
     /** Runs on the GAME thread before the priority prompt is published. */
     static Written write(Path path,MobileCommanderGame game,LinkedHashMap<String,UUID> seats,ArrayList<String> humanSeats,
@@ -249,8 +258,13 @@ final class Checkpoints {
 
     static byte[] serialize(Object value) throws IOException {
         ByteArrayOutputStream bytes=new ByteArrayOutputStream(256*1024);
-        try(ObjectOutputStream out=new CheckedOutput(new BufferedOutputStream(new FastGzip(bytes),64*1024))) {
-            out.writeObject(value);
+        CheckedOutput out=new CheckedOutput(new BufferedOutputStream(new FastGzip(bytes),64*1024));
+        try(out) { out.writeObject(value); }
+        catch(InvalidClassException e) {
+            // ObjectOutputStream then writes the exception into the stream, which the allowlist also
+            // refuses, hiding the cause. Report the class that was refused first.
+            if(out.refused!=null && out.refused!=e) throw out.refused;
+            throw e;
         }
         return bytes.toByteArray();
     }
@@ -290,13 +304,15 @@ final class Checkpoints {
     }
     /** Refuses, at write time, any class a restore would refuse. */
     private static final class CheckedOutput extends ObjectOutputStream {
+        InvalidClassException refused;
         CheckedOutput(OutputStream out) throws IOException { super(out); }
         @Override protected void annotateClass(Class<?> type) throws IOException {
-            if(!allowed(type)) throw new InvalidClassException(type.getName(),"Class is not allowed in a checkpoint");
+            if(!allowed(type)) throw refuse(new InvalidClassException(type.getName(),"Class is not allowed in a checkpoint"));
         }
         @Override protected void annotateProxyClass(Class<?> type) throws IOException {
-            throw new InvalidClassException(type.getName(),"Proxies are not allowed in a checkpoint");
+            throw refuse(new InvalidClassException(type.getName(),"Proxies are not allowed in a checkpoint"));
         }
+        private InvalidClassException refuse(InvalidClassException e) { if(refused==null) refused=e; return e; }
     }
     static String sha256(byte[] data) {
         try {

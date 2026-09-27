@@ -20,6 +20,13 @@ public final class NativeReflectionExporter {
     private static final Set<Type> seenTypes=new HashSet<>();
     private static final Set<String> dtoTypes=new TreeSet<>();
     private static final String[] CHECKPOINT_PACKAGES={"mage.","io.magicmobile.xmage."};
+    /**
+     * Classes allowed to keep a serializable lambda ($deserializeLambda$), each with the reviewed
+     * reason its lambda can never reach a checkpoint. Empty: every such upstream lambda is a named
+     * class (scripts/prepare_upstream.py). Listed classes are still NOT lambdaCapturingTypes (that
+     * breaks the pinned GraalVM 22.1 build), and the checkpoint writer refuses SerializedLambda.
+     */
+    private static final Map<String,String> LAMBDA_SAFE=Map.of();
 
     public static void main(String[] args) throws Exception {
         List<String> arguments=new ArrayList<>(Arrays.asList(args));
@@ -81,10 +88,15 @@ public final class NativeReflectionExporter {
     /**
      * Save/resume streams may hold any Serializable engine, card, ability, effect, watcher, filter,
      * target or token class, so every one is registered (not only those one game used). The JDK
-     * list is the checkpoint allowlist itself. Serializable lambdas (upstream Condition method
-     * references) are registered through their capturing classes; proxies are refused by the
-     * checkpoint writer, so none are registered. Uses the object form with "types" and
-     * "lambdaCapturingTypes" that GraalVM 21.3+ (including the pinned 22.1) parses.
+     * list is the checkpoint allowlist itself. Proxies and serializable lambdas are refused by the
+     * checkpoint writer, so none are registered.
+     *
+     * No lambdaCapturingTypes: GraalVM 22.1 parses every method of such a class and fails the build
+     * ("Serializable lambda class must contain the writeReplace method") at the first lambda that is
+     * not serializable. So any registered class that still declares $deserializeLambda$ (a
+     * serializable lambda or method reference, e.g. after an upstream bump) fails this export and
+     * must become a named class in prepare_upstream.py. The pinned parser requires both keys of the
+     * object form, so "lambdaCapturingTypes" is written as an empty list.
      */
     private static Map<String,Object> serialization(List<String> roots,List<String> extra,ClassLoader loader,Path output) throws Exception {
         Set<String> names=new TreeSet<>();
@@ -94,12 +106,16 @@ public final class NativeReflectionExporter {
         jdk.setAccessible(true);
         @SuppressWarnings("unchecked") Set<String> jdkTypes=new TreeSet<>((Set<String>)jdk.invoke(null));
         Set<String> types=new TreeSet<>(),arrays=new TreeSet<>();
-        int concrete=0,withoutUid=0,members=0;Set<String> lambdaHosts=new TreeSet<>();
+        int concrete=0,withoutUid=0,members=0;Set<String> lambdaHosts=new TreeSet<>(),desktop=new TreeSet<>();
+        // Mage.Common's Swing client components (MageCard, MageTable, ...) are Serializable but never
+        // part of a headless game. Registering them would pull AWT/X11 into the native image.
+        Class<?> component=Class.forName("java.awt.Component",false,loader);
         for(String name:names) {
             Class<?> type=Class.forName(name,false,loader);
             Method[] methods=type.getDeclaredMethods();
-            for(Method method:methods) if(method.getName().equals("$deserializeLambda$")) lambdaHosts.add(name);
+            for(Method method:methods) if(method.getName().equals("$deserializeLambda$") && !LAMBDA_SAFE.containsKey(name)) lambdaHosts.add(name);
             if(type.isInterface() || type.isSynthetic() || !Serializable.class.isAssignableFrom(type)) continue;
+            if(component.isAssignableFrom(type)) { desktop.add(name);continue; }
             types.add(name);
             if(!Modifier.isAbstract(type.getModifiers())) concrete++;
             boolean uid=false;
@@ -121,21 +137,24 @@ public final class NativeReflectionExporter {
         // Array streams need the array class itself (Object[] from Arrays$ArrayList and CollSer,
         // Segment[] from ConcurrentHashMap).
         arrays.addAll(List.of("[Ljava.lang.Object;","[Ljava.util.concurrent.ConcurrentHashMap$Segment;"));
+        if(!lambdaHosts.isEmpty())
+            throw new IllegalStateException("Classes with serializable lambdas (not allowed in checkpoints or GraalVM 22.1 "
+                +"lambdaCapturingTypes); replace each with a named class in scripts/prepare_upstream.py: "+lambdaHosts);
         int engineClasses=types.size();
         types.addAll(jdkTypes);
-        List<Object> registered=new ArrayList<>(),capturing=new ArrayList<>();
+        List<Object> registered=new ArrayList<>();
         for(String name:types) registered.add(Json.map("name",name));
         for(String name:arrays) registered.add(Json.map("name",name));
-        for(String name:lambdaHosts) capturing.add(Json.map("name",name));
         Files.writeString(output.resolve("serialization-config.json"),
-            Json.write(Json.map("types",registered,"lambdaCapturingTypes",capturing))+"\n");
+            Json.write(Json.map("types",registered,"lambdaCapturingTypes",List.of()))+"\n");
         if(concrete<30000 || !types.contains("io.magicmobile.xmage.Checkpoints$Payload")
                 || !types.contains("io.magicmobile.xmage.MobileHumanPlayer") || !types.contains("mage.player.ai.ComputerPlayer7")
-                || !lambdaHosts.contains("io.magicmobile.xmage.Checkpoints"))
+                || !types.contains("mage.abilities.keyword.ReconfigureUnattachAbility$AttachedToCreatureCondition"))
             throw new IllegalStateException("Serialization inventory is missing checkpoint classes; pass the plugin and engine class directories");
         return Json.map("entries",registered.size(),"engineClasses",engineClasses,"concreteEngineClasses",concrete,
             "jdkTypes",jdkTypes.size(),"arrayTypes",arrays.size(),"classesWithoutSerialVersionUID",withoutUid,
-            "declaredMembersOfRegisteredEngineClasses",members,"lambdaCapturingTypes",new ArrayList<>(lambdaHosts),"proxies",0);
+            "declaredMembersOfRegisteredEngineClasses",members,"lambdaCapturingTypes",List.of(),
+            "reviewedLambdaSafe",new ArrayList<>(LAMBDA_SAFE.keySet()),"excludedDesktopUiClasses",new ArrayList<>(desktop),"proxies",0);
     }
     private static Set<String> classNames(Path root,String prefix) throws Exception {
         Set<String> names=new TreeSet<>();

@@ -9,9 +9,11 @@
   <properties>
     <native.target>ios</native.target>
     <native.reflection.config>${engine.root}/build/generated/reflect-config.json</native.reflection.config>
-    <!-- Full engine builds pass the generated save/resume metadata. Without it, checkpoint
+    <!-- Full engine builds pass the generated save/resume class list and enable
+         CheckpointSerializationFeature (native.checkpoint.feature). Without them, checkpoint
          self-tests fail at runtime and capabilities report saveResume false. -->
     <native.serialization.config>${engine.root}/native/gluon/probes/empty-serialization-config.json</native.serialization.config>
+    <native.checkpoint.feature>-Dmagicmobile.checkpoint.feature=off</native.checkpoint.feature>
     <native.init.arg>--initialize-at-run-time=io.magicmobile,mage</native.init.arg>
     <native.orm.arg>--initialize-at-run-time=io.magicmobile</native.orm.arg>
     <native.max.heap>4g</native.max.heap>
@@ -49,7 +51,12 @@
             <arg>${native.orm.arg}</arg>
             <arg>-H:+IncludeAllLocales</arg>
             <arg>-H:ReflectionConfigurationFiles=${native.reflection.config}</arg>
-            <arg>-H:SerializationConfigurationFiles=${native.serialization.config}</arg>
+            <!-- Not -H:SerializationConfigurationFiles: GraalVM 22.1 would also make every declared
+                 method of the 48,723 checkpoint types invocable (docs/NATIVE_METADATA.md). -->
+            <arg>-Dmagicmobile.checkpoint.serialization=${native.serialization.config}</arg>
+            <!-- CheckpointSerializationFeature defines its shared constructor accessor here. -->
+            <arg>-J--add-opens=java.base/jdk.internal.reflect=ALL-UNNAMED</arg>
+            <arg>${native.checkpoint.feature}</arg>
             <arg>-H:ResourceConfigurationFiles=${engine.root}/native/resource-config.json</arg>
           </nativeImageArgs>
         </configuration>

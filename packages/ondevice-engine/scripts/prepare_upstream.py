@@ -99,6 +99,110 @@ def patch_computer(text: str) -> str:
         '        pickedCards = new ArrayList<>();\n        chosenColors = new ArrayList<>();\n        lastUnpaidMana = new LinkedHashMap<>();\n    }',
         'ComputerPlayer lastUnpaidMana')
 
+# Checkpoints without serializable lambdas. The pinned GraalVM 22.1 native image fails the whole
+# build when a class registered as a serialization lambdaCapturingType also creates any lambda
+# without writeReplace, and a SerializedLambda is not a class the checkpoint filter should trust.
+# Each Serializable Condition/Predicate lambda or method reference that upstream keeps in game
+# state becomes a named enum singleton whose apply is the same upstream code (it calls the same
+# static method or holds the same expression). NativeReflectionExporter fails if any remain.
+CONDITION='mage.abilities.condition.Condition'
+PREDICATE='mage.filter.predicate.Predicate'
+
+def named(name: str, iface: str, params: str, body: str, indent: str, private: bool=False) -> str:
+    """A nested singleton implementing a Serializable functional interface, without a lambda."""
+    i=indent
+    return (f'{i}/** MOBILE_CHECKPOINT: the upstream lambda as a named singleton (no SerializedLambda). */\n'
+        f'{i}{"private " if private else ""}enum {name} implements {iface} {{\n{i}    instance;\n\n'
+        f'{i}    @Override\n{i}    public boolean apply({params}) {{\n'
+        + ''.join(f'{i}        {line}\n' for line in body.split('\n'))
+        + f'{i}    }}\n{i}}}\n\n')
+
+def lambda_free(what: str, *edits):
+    """Exact (old, new) replacements; each old text must occur exactly once."""
+    def patch(text: str) -> str:
+        for old,new in edits: text=exact(text,old,new,what+' lambda')
+        return text
+    return patch
+
+def delegate(name: str, iface: str, params: str, method: str, args: str='game, source') -> tuple:
+    """Named singleton nested in a watcher, calling the watcher's existing static check."""
+    return ('    static boolean '+method+'(',
+        named(name,iface,params,f'return {method}({args});','    ')+'    static boolean '+method+'(')
+
+MOBILE='// MOBILE_CHECKPOINT: named singleton, not a serializable lambda'
+LAMBDA_PATCHES={
+    'Mage/src/main/java/mage/abilities/keyword/ReconfigureAbility.java':lambda_free('ReconfigureUnattachAbility',
+        ('this.condition = ReconfigureUnattachAbility::checkForCreature;',
+         'this.condition = AttachedToCreatureCondition.instance; '+MOBILE),
+        ('    private static boolean checkForCreature(Game game, Ability source) {',
+         named('AttachedToCreatureCondition',CONDITION,'Game game, Ability source','return checkForCreature(game, source);','    ',True)
+         +'    private static boolean checkForCreature(Game game, Ability source) {')),
+    'Mage.Sets/src/mage/cards/a/ArcaneBombardment.java':lambda_free('ArcaneBombardment',
+        ('filter.add(ArcaneBombardmentWatcher::checkSpell);',
+         'filter.add(ArcaneBombardmentWatcher.FirstSpellPredicate.instance); '+MOBILE),
+        delegate('FirstSpellPredicate',PREDICATE+'<StackObject>','StackObject input, Game game','checkSpell','input, game')),
+    'Mage.Sets/src/mage/cards/c/CaptainNghathrod.java':lambda_free('CaptainNghathrod',
+        ('filter2.add(CaptainNghathrodWatcher::checkCard);',
+         'filter2.add(CaptainNghathrodWatcher.MilledThisTurnPredicate.instance); '+MOBILE),
+        delegate('MilledThisTurnPredicate',PREDICATE+'<Card>','Card card, Game game','checkCard','card, game')),
+    'Mage.Sets/src/mage/cards/f/ForTheAncestors.java':lambda_free('ForTheAncestorsEffect',
+        ('filter.add((Predicate<Card>) (input, game1) -> false);',
+         'filter.add(NoCardPredicate.instance); '+MOBILE),
+        ('    @Override\n    public boolean apply(Game game, Ability source) {\n        Player player',
+         named('NoCardPredicate','Predicate<Card>','Card input, Game game','return false;','    ',True)
+         +'    @Override\n    public boolean apply(Game game, Ability source) {\n        Player player')),
+    'Mage.Sets/src/mage/cards/h/HotheadedGiant.java':lambda_free('HotheadedGiant',
+        ('HotheadedGiantWatcher::checkSpell, null,',
+         'HotheadedGiantWatcher.NoOtherRedSpellCondition.instance, null, '+MOBILE),
+        delegate('NoOtherRedSpellCondition',CONDITION,'Game game, Ability source','checkSpell')),
+    'Mage.Sets/src/mage/cards/l/LeylineImmersion.java':lambda_free('LeylineImmersionConditionalMana',
+        # getManaText() is the class simple name: one stable, unique name per condition, as before.
+        ('addCondition((game, source) -> source instanceof SpellAbility);\n    }\n',
+         'addCondition(LeylineImmersionSpellCondition.instance); '+MOBILE+'\n    }\n\n'
+         +named('LeylineImmersionSpellCondition',CONDITION,'mage.game.Game game, Ability source',
+                'return source instanceof SpellAbility;','    ',True).rstrip('\n')+'\n')),
+    'Mage.Sets/src/mage/cards/m/MaarikaBrutalGladiator.java':lambda_free('MaarikaBrutalGladiator',
+        ('filter.add(MaarikaBrutalGladiatorWatcher::checkPermanent);',
+         'filter.add(MaarikaBrutalGladiatorWatcher.ExcessDamagePredicate.instance); '+MOBILE),
+        delegate('ExcessDamagePredicate',PREDICATE+'<Permanent>','Permanent input, Game game','checkPermanent','input, game')),
+    'Mage.Sets/src/mage/cards/n/NeyaliSunsVanguard.java':lambda_free('NeyaliSunsVanguardEffect',
+        ('source.getControllerId(), NeyaliSunsVanguardWatcher::checkPlayer',
+         'source.getControllerId(), NeyaliSunsVanguardWatcher.AttackedWithTokenCondition.instance '+MOBILE),
+        delegate('AttackedWithTokenCondition',CONDITION,'Game game, Ability source','checkPlayer')),
+    'Mage.Sets/src/mage/cards/s/SailorsBane.java':lambda_free('SailorsBaneValue',
+        ('                SailorsBaneValue::checkAdventure\n',
+         '                AdventurePredicate.instance '+MOBILE+'\n'),
+        ('    private static boolean checkAdventure(Card input, Game game) {',
+         named('AdventurePredicate',PREDICATE+'<Card>','Card input, Game game','return checkAdventure(input, game);','    ',True)
+         +'    private static boolean checkAdventure(Card input, Game game) {')),
+    'Mage.Sets/src/mage/cards/s/ShaileDeanOfRadiance.java':lambda_free('ShaileDeanOfRadiance',
+        ('shaileFilter.add((Predicate<Permanent>) (input, game) -> !input.checkControlChanged(game));',
+         'shaileFilter.add(ControlNotChangedPredicate.instance); '+MOBILE),
+        ('    private ShaileDeanOfRadiance(final ShaileDeanOfRadiance card) {',
+         named('ControlNotChangedPredicate','Predicate<Permanent>','Permanent input, mage.game.Game game',
+               'return !input.checkControlChanged(game);','    ',True)
+         +'    private ShaileDeanOfRadiance(final ShaileDeanOfRadiance card) {')),
+    'Mage.Sets/src/mage/cards/s/SurgeEngine.java':lambda_free('SurgeEngineAbility',
+        ('    private static final Condition staticCondition = (game, source) -> Optional\n'
+         '            .ofNullable(source.getSourcePermanentIfItStillExists(game))\n'
+         '            .map(permanent -> permanent.getColor(game))\n'
+         '            .map(ObjectColor::isBlue)\n'
+         '            .orElse(false);\n',
+         '    private static final Condition staticCondition = BlueSourceCondition.instance; '+MOBILE+'\n\n'
+         +named('BlueSourceCondition','Condition','Game game, Ability source',
+                'return Optional\n        .ofNullable(source.getSourcePermanentIfItStillExists(game))\n'
+                '        .map(permanent -> permanent.getColor(game))\n        .map(ObjectColor::isBlue)\n'
+                '        .orElse(false);','    ',True).rstrip('\n')+'\n')),
+    'Mage.Sets/src/mage/cards/s/SwordswornCavalier.java':lambda_free('SwordswornCavalier',
+        ('SwordswornCavalierWatcher::checkPermanent, "{this} has first strike as long as " +',
+         'SwordswornCavalierWatcher.AnotherKnightEnteredCondition.instance, "{this} has first strike as long as " + '+MOBILE),
+        delegate('AnotherKnightEnteredCondition',CONDITION,'Game game, Ability source','checkPermanent')),
+    'Mage.Sets/src/mage/cards/t/TalarasBattalion.java':lambda_free('TalarasBattalion',
+        ('                TalarasBattalionWatcher::checkSpell,\n',
+         '                TalarasBattalionWatcher.CastAnotherGreenSpellCondition.instance, '+MOBILE+'\n'),
+        delegate('CastAnotherGreenSpellCondition',CONDITION,'Game game, Ability source','checkSpell')),
+}
+
 def patch_sets(text: str) -> str:
     return replace_body(text,'private Sets()',
         '        // MOBILE_STATIC_SETS: populated by GeneratedSetRegistry, with direct getInstance calls.\n'
@@ -132,6 +236,7 @@ PATCHES={
     'Mage/src/main/java/mage/game/GameImpl.java':patch_game,
     'Mage/src/main/java/mage/util/RandomUtil.java':patch_random,
     'Mage.Server.Plugins/Mage.Player.AI/src/mage/player/ai/ComputerPlayer.java':patch_computer,
+    **LAMBDA_PATCHES,
 }
 
 def transform(sources: dict) -> dict:
@@ -164,5 +269,5 @@ def main() -> None:
     transformed=transform(sources)
     for path,data in transformed.items():(checkout/path).write_bytes(data)
     stamp.write_text(json.dumps({'commit':head,'outputs':{p:hashlib.sha256(b).hexdigest() for p,b in transformed.items()}},indent=2)+'\n')
-    print('Applied checked mobile patches: card factory, set registry, human response hook, checkpoint restore')
+    print('Applied checked mobile patches: card factory, set registry, human response hook, checkpoint restore, named checkpoint conditions')
 if __name__=='__main__':main()

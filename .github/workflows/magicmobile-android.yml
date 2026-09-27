@@ -48,6 +48,7 @@ jobs:
             build_output/android/*.json
             build_output/android/*.txt
             build_output/android/native-*/gluonfx/**/log/**
+            build_output/android/native-*/builder-gc.log*
             packages/ondevice-engine/evidence/
           retention-days: 7
           if-no-files-found: warn
