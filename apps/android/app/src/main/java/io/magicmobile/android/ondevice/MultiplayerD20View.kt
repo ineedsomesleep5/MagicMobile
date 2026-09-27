@@ -7,8 +7,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,7 +23,10 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -65,6 +70,7 @@ import io.magicmobile.android.ui.D20Die.drawFlatD20
 import io.magicmobile.android.ui.GameAudio
 import io.magicmobile.android.ui.GameSound
 import io.magicmobile.android.ui.LaunchEnvironment
+import io.magicmobile.android.ui.MagicPalette
 import io.magicmobile.android.ui.Quat
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfText
@@ -441,4 +447,14 @@ fun MultiplayerD20View(roll: OnDeviceStartingRoll, seatNames: Map<String, String
                 .requiredSize((size / density).dp))
         }
     }
+}
+
+/**
+ * Swift StartingRollCover: the starting roll's full-screen cover on the board's opaque canvas, so
+ * nothing behind it (such as "Select a starting player") shows through or takes a tap.
+ */
+@Composable
+fun StartingRollCover(content: @Composable BoxScope.() -> Unit) {
+    Box(Modifier.fillMaxSize().background(MagicPalette.boardBackdrop).clickable(remember { MutableInteractionSource() }, null) {}
+        .windowInsetsPadding(WindowInsets.safeDrawing), contentAlignment = Alignment.Center, content = content)
 }
