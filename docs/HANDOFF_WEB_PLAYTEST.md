@@ -162,7 +162,8 @@ Caleb authorizes.
 | Release: Android build 9 | Done | `android-v0.1.1-build.9` | Published; download site updated |
 | Deck Studio: Play this deck + builder improvements | Done | #65, #69 | Auto rules check, Playing badge, quick check, Quick Add, edit as text, role groups, select mode, grid, sample hand, search syntax; shared `deck-studio-cases.json` parity fixture |
 | Save/resume app side (iOS and Android) | Done, inactive | #63 | Resume/Abandon, 10-minute window, force-quit resumable; waits for an engine reporting `saveResume` |
-| Save/resume engine | JVM-verified; native build failing | #64 (in `main`, reverted on the release branches), #68 | GraalVM 22.1 rejects capturing classes that mix serializable and ordinary lambdas; #68 replaces them with named classes |
+| Save/resume engine | Native-verified on Android | #64, #68, #72, #73 | Resume works in the native engine on the Android emulator (checkpoint test and app-level force-stop → Resume); iOS engine building (far-calls on `79de39c`) |
+| Release: Android build 11 (resume) | Done | `android-v0.1.1-build.11` | Published and marked latest (`release/RELEASE_ANDROID_0.1.1_BUILD11.md`) |
 | Release: iOS build 19 | Done | `codex/release-build19` | TestFlight `VALID`, Beta App Review `APPROVED`, Internal and External (`release/RELEASE_0.1.1_BUILD19.md`) |
 | Release: Android build 10 | Done | `android-v0.1.1-build.10` | Published and marked latest; download site updated (`release/RELEASE_ANDROID_0.1.1_BUILD10.md`) |
 | 3–6 Web client | Blocked on Caleb | | Needs a route (hosted solo or a GraalVM spike) plus the open questions: audience, hosting cost, sign-in, meaning of "syncing" |
@@ -314,3 +315,4 @@ Caleb authorizes.
     - #48 in the next build, after a relay deploy
     - the web route and save/resume decisions
 - 2026-09-27 (Claude): Shipped iOS build 19 and Android build 10 on the current engine (Caleb chose to release without resume rather than wait). Release sources are `main` plus the revert of #64; Android also restores the engine package to its native library's source `2c32482`. The save/resume engine stays in `main` for the next builds once #68's native build passes. Lessons are in the auto-memory note `release-sequencing`.
+- 2026-09-27 (Claude): Android build 11 shipped with save/resume. On the emulator, the native engine's self-test first failed with `ClassNotFoundException: [Ljava.lang.Enum;`. #73 fixed it by adding a JVM check that every class a checkpoint uses is listed in the native metadata. iOS build 20 waits for the far-calls engine on `79de39c`.
