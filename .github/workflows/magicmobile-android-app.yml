@@ -61,5 +61,6 @@ jobs:
         with:
           name: android-DIAGNOSTIC-NO-ENGINE-${{ github.sha }}
           path: apps/android/app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 7
+          # A compile check, never installed: keep it one day, not a week of storage per push.
+          retention-days: 1
           if-no-files-found: error
