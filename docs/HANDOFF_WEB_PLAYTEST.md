@@ -157,9 +157,14 @@ Caleb authorizes.
 | iOS 27 fixes | Done | #49 via #51, #53 | Card-choice accessibility; board and setup UI tests updated for Xcode 27 |
 | Build 7 Android UI removal | Done | #50 via #51 | |
 | Integration | Done | #51 | Merged at `1a62733` |
-| Relay extras: joiner removal, create limit, key out of URL | Ready for next build | #48 | Deploy the relay first (new apps need it), then ship the apps |
+| Relay extras: joiner removal, create limit, key out of URL | Done, deployed | #48, #55 | Relay version `c75c7092-0aa1-495b-a421-970a4cb6f95f`; 9/9 live tests (the create limit is approximate: 22 tables before the first 429); apps ship in iOS 19 / Android 10 |
 | Release: iOS build 18 | Done | `codex/ios-build-18` | TestFlight `VALID`, Beta App Review `APPROVED`, Internal and External (`release/RELEASE_0.1.1_BUILD18.md`) |
 | Release: Android build 9 | Done | `android-v0.1.1-build.9` | Published; download site updated |
+| Deck Studio: Play this deck + builder improvements | Done | #65, #69 | Auto rules check, Playing badge, quick check, Quick Add, edit as text, role groups, select mode, grid, sample hand, search syntax; shared `deck-studio-cases.json` parity fixture |
+| Save/resume app side (iOS and Android) | Done, inactive | #63 | Resume/Abandon, 10-minute window, force-quit resumable; waits for an engine reporting `saveResume` |
+| Save/resume engine | JVM-verified; native build failing | #64 (in `main`, reverted on the release branches), #68 | GraalVM 22.1 rejects capturing classes that mix serializable and ordinary lambdas; #68 replaces them with named classes |
+| Release: iOS build 19 | Done | `codex/release-build19` | TestFlight `VALID`, Beta App Review `APPROVED`, Internal and External (`release/RELEASE_0.1.1_BUILD19.md`) |
+| Release: Android build 10 | Done | `android-v0.1.1-build.10` | Published and marked latest; download site updated (`release/RELEASE_ANDROID_0.1.1_BUILD10.md`) |
 | 3–6 Web client | Blocked on Caleb | | Needs a route (hosted solo or a GraalVM spike) plus the open questions: audience, hosting cost, sign-in, meaning of "syncing" |
 
 ## Log
@@ -308,3 +313,4 @@ Caleb authorizes.
     - a live iPhone–Android game on real phones
     - #48 in the next build, after a relay deploy
     - the web route and save/resume decisions
+- 2026-09-27 (Claude): Shipped iOS build 19 and Android build 10 on the current engine (Caleb chose to release without resume rather than wait). Release sources are `main` plus the revert of #64; Android also restores the engine package to its native library's source `2c32482`. The save/resume engine stays in `main` for the next builds once #68's native build passes. Lessons are in the auto-memory note `release-sequencing`.
