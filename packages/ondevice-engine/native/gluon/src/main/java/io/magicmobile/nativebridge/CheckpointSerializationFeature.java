@@ -26,7 +26,7 @@ import org.graalvm.nativeimage.hosted.RuntimeReflection;
 /**
  * Build-time registration of the save/resume checkpoint classes (docs/NATIVE_METADATA.md).
  *
- * GraalVM 22.1's serialization configuration costs too much for the 48,730 checkpoint types:
+ * GraalVM 22.1's serialization configuration costs too much for the 48,723 checkpoint types:
  * it makes every declared constructor and method invocable (a compiled stub for each), and it
  * generates one serialization-constructor accessor class per class. Either exhausted the CI
  * builder. This feature registers, for each listed class and its Serializable superclasses, only
@@ -68,6 +68,10 @@ public final class CheckpointSerializationFeature implements Feature {
                     throw new IllegalStateException("Checkpoint serialization class not found: " + name);
                 }
                 for (Class<?> type = listed; type != null && Serializable.class.isAssignableFrom(type); type = type.getSuperclass()) {
+                    if (type.getName().startsWith("java.awt.") || type.getName().startsWith("javax.swing.")) {
+                        // The exporter leaves out desktop UI classes; AWT would pull X11 into the image.
+                        throw new IllegalStateException("Desktop UI class in checkpoint serialization: " + listed.getName());
+                    }
                     if (!classes.add(type)) {
                         break; // Its Serializable superclasses were added with it.
                     }

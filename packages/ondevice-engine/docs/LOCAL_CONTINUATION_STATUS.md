@@ -51,7 +51,7 @@ The app Resume/Abandon flow, file location and 10-minute window are app-side wor
   classes, the checkpoint allowlist drops `SerializedLambda` (writer and reader refuse lambdas),
   the writer now reports the refused class instead of its own follow-on error, and
   `NativeReflectionExporter` fails if any scanned class still declares `$deserializeLambda$`. The
-  export registers 48,730 types and an empty `lambdaCapturingTypes`
+  export registers 48,723 types and an empty `lambdaCapturingTypes`
   ([NATIVE_METADATA.md](NATIVE_METADATA.md#saveresume-serialization-metadata-september-26-2026)).
   Android run 36289659903 on this branch then got past that point, but `[2/7] Performing
   analysis` was still running when the 120-minute job limit cancelled it, 110 minutes later.
@@ -61,8 +61,11 @@ The app Resume/Abandon flow, file location and 10-minute window are app-side wor
   serialization hooks and superclass constructors. Run 36296135786 with it still exhausted the
   10 GB builder heap in analysis (1,369 s), because GraalVM generates one constructor-accessor class
   per class, about 43,000. The feature now registers one shared `java.base` accessor class for the
-  46,712 classes whose serialization constructor is `Object()` (see NATIVE_METADATA.md). The next
-  Android run on this branch is pending. The PR records its result.
+  46,700 classes whose serialization constructor is `Object()` (see NATIVE_METADATA.md). With it,
+  run 36298334924 finished analysis (943 s, 9.92 GB) but failed because the exporter listed
+  Mage.Common's Serializable Swing client components, which made AWT/X11 code reachable. The
+  exporter now leaves them out. The next Android run on this branch is pending. The PR records
+  its result.
 - **Not verified.** A complete native image with this metadata unless stated above, native
   serialization at runtime, phone write/restore times, iOS/Android app integration,
   process-kill acceptance.

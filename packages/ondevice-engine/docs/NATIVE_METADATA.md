@@ -90,10 +90,13 @@ serializable lambda any more:
   with a reviewed reason that its lambda never reaches a checkpoint; even then it is not a
   capturing type.
 
-The JVM export at upstream `4825513` registers **48,730 types** (48,639 engine classes, of
-which 48,544 are concrete; 84 JDK types; 7 array types) and **no lambda capturing classes**.
-48,586 engine classes declare no `serialVersionUID`, so their stream identity is computed at
-runtime from reflective class data (340,962 declared members across the registered classes).
+The JVM export at upstream `4825513` registers **48,723 types** (48,632 engine classes, of
+which 48,539 are concrete; 84 JDK types; 7 array types) and **no lambda capturing classes**. It
+leaves out the 7 Serializable Swing client components in Mage.Common (`MageCard`, `MagePermanent`,
+`TextPopup`, `ImagePanel`, `MageTable`, `MageTable$1`, `TimeAgoTableCellRenderer`; see run 3 below),
+listed in `report.json` as `excludedDesktopUiClasses`. 48,581 engine classes declare no
+`serialVersionUID`, so their stream identity is computed at runtime from reflective class data
+(340,864 declared members across the registered classes).
 The export takes about 14 s and 0.56 GB RSS on the JVM. A probe class with a serializable
 lambda passed as an extra `--serialization` directory makes it fail and write no file.
 
@@ -121,6 +124,15 @@ reachable (run 36091168558).
    from minute 7. Classes rose to 110,066 (from 67,055), because GraalVM generates one
    serialization-constructor accessor class per concrete class (`MethodAccessorGenerator`), about
    43,000 here.
+3. Run [36298334924](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/36298334924)
+   (`dd683d2`, shared accessor below) **finished analysis**: 943 s at 9.92 GB, 17% of the time in
+   GC, with 71,748 classes and 396,899 methods reachable. It then failed on
+   `Unsupported type sun.awt.X11.XBaseWindow is reachable`, in 14 methods. The exporter had listed
+   Mage.Common's Serializable Swing client components, and registering them (and their
+   `JComponent`/`Component` superclasses and hooks) made Swing event dispatch and X11 input
+   methods reachable. The exporter now leaves out every `java.awt.Component` subclass, since a
+   headless game never holds one. The feature fails the build if a `java.awt`/`javax.swing`
+   class reaches it.
 
 The Gluon POM therefore no longer passes `-H:SerializationConfigurationFiles`. Full builds enable
 `native/gluon/.../CheckpointSerializationFeature.java` (`-Dnative.checkpoint.feature=--features=...`),
@@ -149,13 +161,14 @@ and its Serializable superclasses, it registers only what `ObjectStreamClass` an
 
 A JVM dry run over the exporter output, with stand-ins that apply GraalVM's rules, registers:
 
-- 48,745 classes (15 JDK superclasses such as `java.util.EnumSet` join the list);
-- 46,712 shared allocating accessors, from one class, and 188 GraalVM accessors;
-- 5,676 fields (from 26,356 with all declared fields);
-- 159 hooks;
-- 1,257 queried constructors on 384 superclasses (from 95,522 with all constructors).
+- 48,729 classes (6 superclasses such as `java.util.EnumSet`, `java.util.EventObject` and
+  protobuf's `GeneratedMessageV3` join the list);
+- 46,700 shared allocating accessors, from one class, and 184 GraalVM accessors;
+- 5,540 fields (from 26,356 with all declared fields);
+- 148 hooks;
+- 1,232 queried constructors on 374 superclasses (from 95,522 with all constructors).
 
-That run allocated one instance of each of the 46,712 classes through its shared accessor. It also
+That run allocated one instance of each of the 46,700 classes through its shared accessor. It also
 confirmed that for every one of them the JDK's serialization constructor is `Object()`. No class
 lacks a valid serialization constructor. Default `serialVersionUID`s are computed from this
 metadata. That differs from a JVM's value, but a checkpoint is only read by the build that wrote it

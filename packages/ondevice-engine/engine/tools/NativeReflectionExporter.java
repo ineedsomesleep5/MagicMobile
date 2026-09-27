@@ -106,12 +106,16 @@ public final class NativeReflectionExporter {
         jdk.setAccessible(true);
         @SuppressWarnings("unchecked") Set<String> jdkTypes=new TreeSet<>((Set<String>)jdk.invoke(null));
         Set<String> types=new TreeSet<>(),arrays=new TreeSet<>();
-        int concrete=0,withoutUid=0,members=0;Set<String> lambdaHosts=new TreeSet<>();
+        int concrete=0,withoutUid=0,members=0;Set<String> lambdaHosts=new TreeSet<>(),desktop=new TreeSet<>();
+        // Mage.Common's Swing client components (MageCard, MageTable, ...) are Serializable but never
+        // part of a headless game. Registering them would pull AWT/X11 into the native image.
+        Class<?> component=Class.forName("java.awt.Component",false,loader);
         for(String name:names) {
             Class<?> type=Class.forName(name,false,loader);
             Method[] methods=type.getDeclaredMethods();
             for(Method method:methods) if(method.getName().equals("$deserializeLambda$") && !LAMBDA_SAFE.containsKey(name)) lambdaHosts.add(name);
             if(type.isInterface() || type.isSynthetic() || !Serializable.class.isAssignableFrom(type)) continue;
+            if(component.isAssignableFrom(type)) { desktop.add(name);continue; }
             types.add(name);
             if(!Modifier.isAbstract(type.getModifiers())) concrete++;
             boolean uid=false;
@@ -150,7 +154,7 @@ public final class NativeReflectionExporter {
         return Json.map("entries",registered.size(),"engineClasses",engineClasses,"concreteEngineClasses",concrete,
             "jdkTypes",jdkTypes.size(),"arrayTypes",arrays.size(),"classesWithoutSerialVersionUID",withoutUid,
             "declaredMembersOfRegisteredEngineClasses",members,"lambdaCapturingTypes",List.of(),
-            "reviewedLambdaSafe",new ArrayList<>(LAMBDA_SAFE.keySet()),"proxies",0);
+            "reviewedLambdaSafe",new ArrayList<>(LAMBDA_SAFE.keySet()),"excludedDesktopUiClasses",new ArrayList<>(desktop),"proxies",0);
     }
     private static Set<String> classNames(Path root,String prefix) throws Exception {
         Set<String> names=new TreeSet<>();

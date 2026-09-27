@@ -19,7 +19,7 @@ class NativeBuilderPolicyTests(unittest.TestCase):
 
     def test_checkpoint_classes_use_the_light_registration_feature(self):
         # GraalVM 22.1 serialization configuration would make every declared method of the
-        # 48,730 checkpoint types invocable (docs/NATIVE_METADATA.md).
+        # 48,723 checkpoint types invocable (docs/NATIVE_METADATA.md).
         args = [e.text for e in ET.parse(ROOT / 'native/gluon/pom.xml').iter(
             '{http://maven.apache.org/POM/4.0.0}arg')]
         self.assertFalse(any(a and a.startswith('-H:SerializationConfigurationFiles') for a in args))
