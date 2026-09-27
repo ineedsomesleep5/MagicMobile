@@ -58,6 +58,77 @@ class ArtworkRefreshTest {
         assertFalse(artworkDownloadMatches("Swamp","Island",false,null,null))
         assertFalse(artworkDownloadMatches("token:123","Soldier",false,null,null))
     }
+    private fun token(id:Int,name:String,type:String,rules:String,power:String?,colors:List<String>)=ArtworkCatalogue.decode(mapOf(
+        "id" to "00000000-0000-0000-0000-%012d".format(id),"name" to name,"layout" to "token","type_line" to type,
+        "oracle_text" to rules,"power" to power,"toughness" to power,"colors" to colors,
+        "image_uris" to mapOf("normal" to "https://cards.scryfall.io/normal/$id.jpg")))!!
+
+    @Test fun compactTokenDownloadsCountAsStored() {
+        val files=setOf(artworkDownloadFileName("token:abc",ArtworkQuality.COMPACT))
+        assertEquals(ArtworkQuality.COMPACT,TOKEN_DOWNLOAD_QUALITY)
+        assertTrue(listedArtworkDownload(files,"token:abc",TOKEN_DOWNLOAD_QUALITY))
+        assertFalse(listedArtworkDownload(files,"token:abc",ArtworkQuality.STANDARD))
+        assertTrue(listedArtworkDownload(setOf(artworkDownloadFileName("token:abc",ArtworkQuality.HIGH)),"token:abc",TOKEN_DOWNLOAD_QUALITY))
+    }
+    @Test fun engineFoodWordingAndZeroStatsMatchScryfallFood() {
+        val food=token(1,"Food","Token Artifact — Food","{2}, {T}, Sacrifice this token: You gain 3 life.",null,emptyList())
+        for(rules in listOf("{2}, {T}, Sacrifice Food Token: You gain 3 life.","{2}, {T}, Sacrifice this artifact: You gain 3 life.","{2}, {T}, Sacrifice Food: You gain 3 life."))
+            assertEquals(rules,food,selectEquivalentToken(listOf(food),ArtworkTokenIdentity("Food Token","Artifact — Food",rules,"0","0",emptySet())){true})
+        assertNull(selectEquivalentToken(listOf(food),ArtworkTokenIdentity("Food Token","Artifact — Food","{2}, {T}, Sacrifice a Food Token: You gain 3 life.","0","0",emptySet())){true})
+        assertNull(selectEquivalentToken(listOf(food),ArtworkTokenIdentity("Food Token","Artifact — Food","{2}, {T}, Sacrifice Food Token: Draw a card.","0","0",emptySet())){true})
+        val zombie=token(2,"Zombie","Token Creature — Zombie","","2",listOf("B"))
+        assertNull("A creature's 0/0 is a real size",selectEquivalentToken(listOf(zombie),ArtworkTokenIdentity("Zombie Token","Creature — Zombie","","0","0",setOf("B"))){true})
+    }
+    @Test fun offlineFallbackUsesTheOnlyDownloadedTokenWithTheSameIdentity() {
+        val squirrel=token(1,"Squirrel","Token Creature — Squirrel","","1",listOf("G"))
+        fun visible(rules:String,power:String="1",colors:Set<String> = setOf("G"))=ArtworkTokenIdentity("Squirrel Token","Creature — Squirrel",rules,power,"1",colors)
+        assertNull("online keeps the exact match",selectEquivalentToken(listOf(squirrel),visible("Forestwalk")){true})
+        assertEquals(squirrel,looseEquivalentToken(listOf(squirrel),visible("Forestwalk")){true})
+        assertNull("a different printed P/T is a different token",looseEquivalentToken(listOf(squirrel),visible("Forestwalk","2")){true})
+        assertNull("a different color is a different token",looseEquivalentToken(listOf(squirrel),visible("Forestwalk",colors=setOf("B"))){true})
+        assertNull("needs a stored image",looseEquivalentToken(listOf(squirrel),visible("Forestwalk")){false})
+        val flier=token(2,"Squirrel","Token Creature — Squirrel","Flying","1",listOf("G"))
+        assertNull("two different downloads stay ambiguous",looseEquivalentToken(listOf(squirrel,flier),visible("Trample")){true})
+        val treasure=token(3,"Treasure","Token Artifact — Treasure","{T}, Sacrifice this token: Add one mana of any color.",null,emptyList())
+        assertEquals(treasure,looseEquivalentToken(listOf(treasure),ArtworkTokenIdentity("Treasure Token","Artifact — Treasure","{T}, Sacrifice Treasure: Add {C}.","0","0",emptySet())){true})
+    }
+    @Test fun rulesTextFindsChatterfangSquirrelsFoodAndTheCommonList() {
+        assertEquals(listOf(io.magicmobile.android.core.TokenRules.Request("Squirrel","1","1",listOf("G"))),
+            io.magicmobile.android.core.TokenRules.requests("If one or more tokens would be created under your control, those tokens plus that many 1/1 green Squirrel creature tokens are created instead."))
+        assertEquals(listOf("Food","Treasure"),io.magicmobile.android.core.TokenRules.requests("Landfall — Whenever a land you control enters, create a Food token or a Treasure token.").map{it.name})
+        assertEquals(listOf("Food","Treasure","Clue","Blood","Map","Powerstone","Incubator","Junk","Gold","Shard"),io.magicmobile.android.core.TokenRules.commonTokenNames)
+    }
+    @Test fun discoveredTokensMatchStatedStatsAndKeepOnePrintingPerIdentity() {
+        val squirrel=token(2,"Squirrel","Token Creature — Squirrel","","1",listOf("G"))
+        val reprint=token(1,"Squirrel","Token Creature — Squirrel","","1",listOf("G"))
+        val big=token(3,"Squirrel","Token Creature — Squirrel","","2",listOf("G"))
+        val food=token(4,"Food","Token Artifact — Food","{2}, {T}, Sacrifice this token: You gain 3 life.",null,emptyList())
+        val bare=token(5,"Food","Token","",null,emptyList())
+        val requests=listOf(io.magicmobile.android.core.TokenRules.Request("Squirrel","1","1",listOf("G")),io.magicmobile.android.core.TokenRules.Request("Food"))
+        assertEquals(listOf(reprint,food),selectDiscoveredTokens(listOf(squirrel,reprint,big,food,bare),requests))
+        assertEquals(2,selectDiscoveredTokens(listOf(squirrel,reprint,big),listOf(io.magicmobile.android.core.TokenRules.Request("Squirrel"))).size)
+    }
+    @Test fun tokenSearchesBatchTenExactNames() {
+        val queries=tokenSearchQueries((0 until 12).map{"Name$it"}+listOf("Bad\" Name","Name0 Token"))
+        assertEquals(listOf("t:token ("+(0 until 10).joinToString(" or "){"!\"Name$it\""}+")","t:token (!\"Name10\" or !\"Name11\")"),queries)
+    }
+    @Test fun liveSavedEquivalentTokenCountsAsStored() {
+        val wanted=token(1,"Squirrel","Token Creature — Squirrel","","1",listOf("G"))
+        val live=token(2,"Squirrel","Token Creature — Squirrel","","1",listOf("G"))
+        val other=token(3,"Zombie","Token Creature — Zombie","","2",listOf("B"))
+        val records=listOf(wanted,live,other).associateBy{it.id}
+        val keys=listOf("token:${wanted.id}","token:${other.id}")
+        assertEquals(setOf("token:${wanted.id}"),storedTokenKeys(keys,records){it=="token:${live.id}"})
+        assertEquals(emptySet<String>(),storedTokenKeys(keys,records){false})
+    }
+    @Test fun opponentSelectionAndTokenSourcesMatchSetup() {
+        val available=listOf("token-triumph","grave-danger","other")
+        assertEquals(listOf("grave-danger"),selectedOpponentIDs(null,listOf(null,null,null),available))
+        assertEquals(listOf("other","other","token-triumph"),selectedOpponentIDs(3,listOf("other","","token-triumph"),available))
+        assertEquals(listOf("other"),selectedOpponentIDs(9,listOf("other"),available).distinct())
+        assertEquals(tokenSourcesKey(listOf("b","a")),tokenSourcesKey(listOf("a","b","a")))
+        assertEquals("deck-extras-v1:a,b",tokenSourcesKey(listOf("b","a")))
+    }
     @Test fun tokenRefreshRequiresFullIdentityNotGenericName() {
         assertTrue(artworkDownloadMatches("token:123","Soldier",true,soldier,soldier))
         assertFalse(artworkDownloadMatches("token:123","Soldier",true,soldier,soldier.copy(power="2",toughness="2")))
