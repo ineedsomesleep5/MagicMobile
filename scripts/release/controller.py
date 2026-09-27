@@ -10,12 +10,15 @@ from __future__ import annotations
 import argparse
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 
@@ -34,6 +37,10 @@ INPUTS = {
 }
 RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}\Z")
 SHA = re.compile(r"[a-f0-9]{64}\Z")
+GITHUB_REPOSITORY = "ineedsomesleep5/MagicMobile"
+ENGINE_SCRIPTS = "packages/ondevice-engine/scripts"
+ENGINE_BUILD = "packages/ondevice-engine/build"
+STAGED_ENGINE = "apps/ios/NativeEngine"
 
 
 class ReleaseError(Exception):
@@ -495,6 +502,152 @@ def watch(repo: Path, run_id: str, service: str, run_number: str, timeout: int,
         time.sleep(interval)
 
 
+def gh_api(path: str) -> dict:
+    """One read-only GitHub REST GET through the gh CLI's own login."""
+    result = subprocess.run(["gh", "api", "-H", "Accept: application/vnd.github+json",
+                             f"repos/{GITHUB_REPOSITORY}{path}"],
+                            capture_output=True, text=True, timeout=60)
+    if result.returncode:
+        raise ReleaseError(f"GitHub read failed for {path}: {result.stderr.strip()}")
+    return json.loads(result.stdout)
+
+
+def gh_token() -> str:
+    result = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=30)
+    if result.returncode or not result.stdout.strip():
+        raise ReleaseError("gh auth token returned no token; run `gh auth login` first")
+    return result.stdout.strip()
+
+
+def stage_runner(command: list[str], log: Path, env: dict) -> int:
+    with log.open("xb") as output:
+        return subprocess.run(command, cwd=REPO, env=env, stdout=output,
+                              stderr=subprocess.STDOUT, check=False).returncode
+
+
+def stage_native(repo: Path, engine_run_id: str, *, api=gh_api, runner=stage_runner,
+                 token=gh_token) -> dict:
+    """Stage one far-calls engine build into apps/ios/NativeEngine for a local iOS release.
+
+    Wraps the existing scripts in their documented order: download_issue4_native.py
+    (exact artifact digest), verify_native_candidate.py (hash receipt and engine-input
+    equivalence with HEAD) and prepare_ios_app_native.py --apply, then copies the
+    provenance receipt to the path the iOS release plan reads. GitHub reads only; no
+    dispatch, signing or upload. Linkage and native execution remain separate gates.
+    """
+    if not re.fullmatch(r"[1-9][0-9]{0,19}", engine_run_id):
+        raise ReleaseError("--engine-run-id must be a positive GitHub Actions run ID")
+    run_id = int(engine_run_id)
+    repo = repo.resolve()
+    if git(repo, "rev-parse", "--show-toplevel") != str(repo):
+        raise ReleaseError("stage-native is not using the selected Git root")
+    if git(repo, "status", "--porcelain=v1", "--untracked-files=no"):
+        raise ReleaseError("Tracked files are modified; verify_native_candidate.py needs a clean HEAD")
+    staged = repo / STAGED_ENGINE
+    if staged.exists() or staged.is_symlink():
+        raise ReleaseError(f"{STAGED_ENGINE} already exists; move it aside (for example into "
+                           f"{ENGINE_BUILD}/) before staging another engine")
+    build = repo / ENGINE_BUILD
+    evidence_root = repo / "build_output/native-stage"
+    for path in (build, evidence_root, *evidence_root.parents):
+        if path.is_relative_to(repo) and path.is_symlink():
+            raise ReleaseError(f"Symlinked staging directory: {path}")
+
+    spec = importlib.util.spec_from_file_location("stage_native_gate", repo / ENGINE_SCRIPTS / "wait_issue4_native.py")
+    gate = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gate)
+    run = api(f"/actions/runs/{run_id}")
+    commit = run.get("head_sha")
+    try:
+        if not isinstance(commit, str) or not re.fullmatch(r"[a-f0-9]{40}", commit):
+            raise ValueError("run has no exact head SHA")
+        gate.validate_run(run, run_id, commit)
+        if run.get("status") != "completed" or run.get("conclusion") != "success":
+            raise ValueError(f"run is {run.get('status')}/{run.get('conclusion')}, not a completed success")
+        # The same approve-candidate and compiler-probe step list the product gate requires.
+        attempt = gate.validate_attempt(run, run_id, commit, deadline=time.monotonic() + 120,
+                                        fetch=lambda path, deadline=None: api(path))
+    except ValueError as error:
+        raise ReleaseError(f"Run {run_id} is not a trusted far-calls engine build: {error}") from None
+    name = f"issue4-full-native-candidate-{commit}"
+    found = [item for item in api(f"/actions/runs/{run_id}/artifacts?per_page=100").get("artifacts", [])
+             if item.get("name") == name and not item.get("expired")]
+    if len(found) != 1:
+        raise ReleaseError(f"Expected one unexpired {name} artifact on run {run_id}")
+    artifact_id, digest = found[0].get("id"), found[0].get("digest")
+    if (type(artifact_id) is not int or artifact_id <= 0
+            or not re.fullmatch(r"sha256:[a-f0-9]{64}", str(digest))
+            or (found[0].get("workflow_run") or {}).get("id") != run_id):
+        raise ReleaseError("Engine artifact has no exact ID, digest or run attribution")
+    final = api(f"/actions/runs/{run_id}")
+    if (final.get("run_attempt") != attempt or final.get("head_sha") != commit
+            or final.get("status") != "completed" or final.get("conclusion") != "success"):
+        raise ReleaseError("Engine run changed during lookup; retry once it is settled")
+
+    download = build / f"verified-native-{artifact_id}"
+    receipt = build / f"native-candidate-provenance-{artifact_id}.json"
+    if download.exists() or download.is_symlink():
+        raise ReleaseError(f"{download.relative_to(repo)} already exists; move it aside to download again")
+    build.mkdir(parents=True, exist_ok=True)
+    evidence_root.mkdir(parents=True, exist_ok=True)
+    evidence = Path(tempfile.mkdtemp(prefix=f"run-{run_id}-", dir=evidence_root))
+    scripts = repo / ENGINE_SCRIPTS
+    steps = [
+        ("download", [sys.executable, str(scripts / "download_issue4_native.py"),
+                      "--artifact-id", str(artifact_id), "--digest", digest,
+                      "--destination", str(download)], True),
+        ("verify", [sys.executable, str(scripts / "verify_native_candidate.py"),
+                    "--directory", str(download), "--engine-commit", commit,
+                    "--run-id", str(run_id), "--artifact-id", str(artifact_id),
+                    "--artifact-digest", digest, "--output", str(receipt)], False),
+        ("stage", [sys.executable, str(scripts / "prepare_ios_app_native.py"),
+                   "--archive", str(download / "libmmengine.a"),
+                   "--header", str(download / "include/io.magicmobile.nativebridge.ioslibrarymain.h"),
+                   "--clib-dir", str(download / "clib"), "--jdk-lib-dir", str(download / "jdk"),
+                   "--apply"], False),
+    ]
+    summary = {"engineRunID": run_id, "engineRunAttempt": attempt, "engineCommit": commit,
+               "artifactID": artifact_id, "artifactDigest": digest, "download": str(download),
+               "evidenceDirectory": str(evidence), "steps": [],
+               "scope": "Artifact digest, hash receipt, engine-input equivalence and staging only; "
+                        "unsigned product linkage and native execution are separate gates."}
+    def save():
+        (evidence / "stage-native.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+    base_env = {key: value for key, value in os.environ.items() if key not in ("GH_TOKEN", "GITHUB_TOKEN")}
+    secret = token()
+    expected = {"engineSourceCommit": commit, "workflowRunID": run_id,
+                "artifactID": artifact_id, "artifactDigest": digest}
+    for number, (step, command, needs_token) in enumerate(steps, 1):
+        log = evidence / f"{number:02d}-{step}.log"
+        # Only the download sees the token, through its environment, never argv or logs.
+        code = runner(command, log, {**base_env, "GH_TOKEN": secret} if needs_token else base_env)
+        summary["steps"].append({"name": step, "exitCode": code, "log": str(log)})
+        if code:
+            summary["state"] = "failed"
+            save()
+            raise ReleaseError(f"stage-native {step} failed (exit {code}); see {log}. Later steps did not run.")
+        if step == "verify":
+            # Check the receipt before anything is staged from the download.
+            try:
+                recorded = json.loads(receipt.read_text())
+            except (OSError, ValueError):
+                recorded = {}
+            if any(recorded.get(key) != value for key, value in expected.items()):
+                summary["state"] = "failed"
+                save()
+                raise ReleaseError("Provenance receipt does not match the selected run and artifact; nothing was staged")
+    target = repo / INPUTS["ios"][0]
+    if target.is_symlink():
+        raise ReleaseError(f"Symlinked provenance receipt: {INPUTS['ios'][0]}")
+    partial = target.with_name(target.name + ".partial")
+    shutil.copyfile(receipt, partial)
+    os.replace(partial, target)
+    summary.update({"state": "staged", "provenance": str(target), "provenanceSHA256": sha(target),
+                    "next": "Run preflight --profile ios-fast, then controller.py plan --platform ios."})
+    save()
+    return summary
+
+
 def status_summary(status: dict) -> dict:
     """Compact view of already-validated local history; never queries Apple."""
     history = status.get("events", [])
@@ -542,6 +695,8 @@ def main() -> int:
     watcher.add_argument("--github-run-id", required=True)
     watcher.add_argument("--timeout-seconds", type=int, default=20)
     watcher.add_argument("--interval-seconds", type=int, default=10)
+    stage = sub.add_parser("stage-native", help="Download, verify and stage one far-calls engine build for iOS")
+    stage.add_argument("--engine-run-id", required=True, help="Successful magicmobile-far-calls.yml run ID")
     args = parser.parse_args()
     try:
         controller = Controller(REPO)
@@ -555,6 +710,8 @@ def main() -> int:
             output = controller.resume(args.platform, args.run_id, args.authorize_fingerprint)
         elif args.action == "reconcile":
             output = controller.reconcile(args.run_id, args.authorize_fingerprint)
+        elif args.action == "stage-native":
+            output = stage_native(REPO, args.engine_run_id)
         else:
             output = watch(REPO, args.run_id, "github", args.github_run_id,
                            args.timeout_seconds, args.interval_seconds)
