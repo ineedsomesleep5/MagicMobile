@@ -44,7 +44,8 @@ REQUIRED_STEPS = {
         'Verify bounded builder-heap regression (not engine execution)',
         'Force veneers in a separate unsigned ARM64 toolchain-only probe',
         'Compile full pinned engine including AI',
-        'Execute real JVM regressions (not native acceptance)',
+        # No far-calls real-JVM step: approve-candidate above already requires the
+        # same-SHA Issue 4 real-jvm job (scripts/test_real_engine.sh) to have succeeded.
         'Reproduce and verify native Color compatibility (not iPhone acceptance)',
         'Verify real token repository resource inclusion (not iPhone acceptance)',
         'Verify bundled catalogue native decoding (not engine or iPhone acceptance)',
@@ -128,14 +129,18 @@ def validate_run(run, run_id, commit):
         raise ValueError('Native run identity differs from the pinned build')
 
 
-def validate_attempt(run, run_id, commit, *, deadline):
-    """Require successful critical work from this attempt, never blended reruns."""
+def validate_attempt(run, run_id, commit, *, deadline, fetch=None):
+    """Require successful critical work from this attempt, never blended reruns.
+
+    fetch defaults to this module's token GET; release tooling may pass its own reader.
+    """
+    fetch = fetch or get_json
     attempt = run.get('run_attempt')
     if type(attempt) is not int or attempt <= 0 or run.get('event') != 'workflow_dispatch':
         raise ValueError('A manually gated native producer with an exact attempt is required')
     jobs = []
     for page in range(1, 101):
-        result = get_json(f'/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100&page={page}', deadline=deadline)
+        result = fetch(f'/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100&page={page}', deadline=deadline)
         batch = result.get('jobs')
         count = result.get('total_count')
         if not isinstance(batch, list) or type(count) is not int or count < 0:
