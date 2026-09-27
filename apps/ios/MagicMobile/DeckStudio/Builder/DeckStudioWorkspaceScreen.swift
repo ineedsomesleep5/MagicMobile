@@ -354,7 +354,10 @@ struct DeckStudioWorkspaceScreen: View {
     private var portraitScrollingWorkspace: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                // A container keeps the header's own identifiers (deckStudio.play, the quick
+                // check); an identifier on a plain stack would replace every child's.
                 header.padding(.horizontal, 20).padding(.vertical, 12)
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("deckStudio.deckHeader")
                 if let error = model.error {
                     DeckStudioNotice(title: "Check this draft", message: error, icon: "exclamationmark.triangle")
@@ -368,7 +371,10 @@ struct DeckStudioWorkspaceScreen: View {
                             cardSections
                         }.padding(.horizontal, 20).padding(.bottom, 16)
                     } else {
-                        LazyVStack(spacing: 16) {
+                        // Three fixed panels: a plain stack. A lazy one here, between the pinned
+                        // outer stack and the history's lazy rows, kept re-measuring near the end
+                        // of the history under UI automation and hung the main thread.
+                        VStack(spacing: 16) {
                             DeckStudioValidationPanel(state: validation, deck: deck, resolver: resolver, play: preparePlay)
                             DeckStudioPlaytestInsightsView(signature: signature, metadata: metadata, openMatch: openHistory)
                             DeckStudioSampleHandView(draft: model.draft, metadata: metadata, inspect: inspect)

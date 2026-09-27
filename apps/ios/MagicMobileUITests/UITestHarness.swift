@@ -14,6 +14,18 @@ enum UITestHarness {
             + ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"] + extraArguments
     }
 
+    /// The first touch after launch moves keyboard focus to the app. On the iOS 26.5
+    /// simulator a system-gesture change follows about 0.12 s later and cancels any touch
+    /// still down (UIKit EventDispatch logs "systemGestureStateChange: 1"): a 0.15 s press,
+    /// or a tap synthesized slowly under load, then shows its pressed state but never
+    /// fires. Spend that first touch on the menu's static brand text, which has no action.
+    static func settleFirstTouch(_ app: XCUIApplication) {
+        let brand = app.staticTexts["MAGICMOBILE"]
+        guard brand.waitForExistence(timeout: 5), brand.isHittable else { return }
+        brand.tap()
+        Thread.sleep(forTimeInterval: 0.3) // Let the focus change land before the real touch.
+    }
+
     /// Search only the owning scroll view. Querying the full app repeatedly can
     /// traverse every lazy card and turn one failure into a long timeout.
     @discardableResult
