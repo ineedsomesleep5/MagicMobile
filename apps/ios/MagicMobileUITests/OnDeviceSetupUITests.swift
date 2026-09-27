@@ -21,6 +21,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         ]
         app.launch()
         XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 15))
+        UITestHarness.settleFirstTouch(app)
     }
 
     override func tearDownWithError() throws {
@@ -241,13 +242,17 @@ final class OnDeviceSetupUITests: XCTestCase {
         tapDiagnosed(edhrec)
         waitFor(edhrec, predicate: "selected == true")
         let copy = app.buttons["Copy commander names"]
-        reveal(copy)
+        // Ideas keeps the deck header fixed above its own scrolling panel. With Play and the
+        // quick check in that header, a swipe at the screen's centre lands on the header, so
+        // scroll the EDHREC panel itself.
+        let panel = app.scrollViews.containing(.button, identifier: "Browse commanders on EDHREC").firstMatch
+        UITestHarness.reveal(copy, in: panel)
         XCTAssertTrue(copy.isEnabled)
         tapDiagnosed(copy)
         let confirmation = app.buttons["Commander names copied"]
         XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
         let website = app.buttons["Browse commanders on EDHREC"]
-        reveal(website)
+        UITestHarness.reveal(website, in: panel)
         XCTAssertTrue(website.isEnabled)
         XCTAssertEqual(app.webViews.count, 0, "Copying must not open the website")
         XCTAssertFalse(app.buttons["Reload EDHREC"].exists)
@@ -298,13 +303,16 @@ final class OnDeviceSetupUITests: XCTestCase {
         reveal(quickAdd)
         tapDiagnosed(quickAdd)
         quickAdd.typeText("2x Sol Ring [Ramp]\n")
-        assertDeckQuantity(2, card: "Sol Ring")
-        XCTAssertTrue(app.staticTexts["Ignored [Ramp] · sets and tags aren't saved"].waitForExistence(timeout: 5))
-        // Two Sol Rings break singleton; the live check says so without blocking anything.
-        XCTAssertTrue(app.buttons["Duplicates, 1 card"].waitForExistence(timeout: 5))
+        // The Undo toast lives four seconds (as on Android). Find it first and read the
+        // rest of the result from the same screen, so the checks do not outlast it.
         let undo = app.buttons["deckStudio.quickAdd.undo"]
-        XCTAssertTrue(undo.waitForExistence(timeout: 5))
-        tapDiagnosed(undo)
+        XCTAssertTrue(undo.waitForExistence(timeout: 3))
+        XCTAssertTrue(deckRow("Sol Ring", quantity: 2).exists)
+        XCTAssertTrue(app.staticTexts["Ignored [Ramp] · sets and tags aren't saved"].exists)
+        // Two Sol Rings break singleton; the live check says so without blocking anything.
+        XCTAssertTrue(app.buttons["Duplicates, 1 card"].exists)
+        XCTAssertTrue(undo.isHittable)
+        undo.tap() // Exactly one tap, without the diagnostic capture that would outlast the toast.
         waitFor(deckRow("Sol Ring", quantity: 2), predicate: "exists == false")
         tapDiagnosed(app.buttons["deckStudio.close"])
         let discard = app.buttons["Discard unsaved changes and close"]
@@ -508,7 +516,9 @@ final class OnDeviceSetupUITests: XCTestCase {
     private func openLibrary() {
         let decks = app.buttons["menu.decks"]
         XCTAssertTrue(decks.waitForExistence(timeout: 15))
-        reveal(decks); waitForStableFrame(decks); tapDiagnosed(decks)
+        reveal(decks); waitForStableFrame(decks)
+        UITestHarness.settleFirstTouch(app) // Tests relaunch before opening the library.
+        tapDiagnosed(decks)
         waitFor(app.buttons["deckStudio.create"], predicate: "exists == true AND hittable == true")
     }
 
@@ -677,7 +687,9 @@ final class OnDeviceSetupUITests: XCTestCase {
     private func openSetup() {
         let play = app.buttons["menu.play"]
         XCTAssertTrue(play.waitForExistence(timeout: 15))
-        reveal(play); tapDiagnosed(play)
+        reveal(play)
+        UITestHarness.settleFirstTouch(app)
+        tapDiagnosed(play)
         waitFor(app.textFields["ondevice.playerName"], predicate: "exists == true AND hittable == true")
         XCTAssertTrue(app.staticTexts["Your next game."].exists)
     }
@@ -717,6 +729,7 @@ final class OnDeviceSetupUITests: XCTestCase {
                 XCTFail("Cleanup could not reach library; retained test deck: \(name)"); continue
             }
             waitForStableFrame(menu)
+            UITestHarness.settleFirstTouch(app)
             menu.tap()
             // Wait for the library itself before scrolling. A swipe during
             // presentation can dismiss it instead of revealing search.
@@ -753,6 +766,13 @@ final class OnDeviceSetupUITests: XCTestCase {
                 XCTFail("Cleanup confirmation unavailable; retained test deck: \(name)"); continue
             }
             confirm.tap()
+            // Cleanup only: after the search keyboard and the menu, this tap can move keyboard
+            // focus again and meet the cancelling system-gesture change described at
+            // UITestHarness.settleFirstTouch (seen in a real run). A dialog still offering the
+            // same button proves the tap was not handled, so confirm it once more.
+            if !options.waitForNonExistence(timeout: 3), confirm.exists, confirm.isHittable {
+                confirm.tap()
+            }
             waitFor(options, predicate: "exists == false")
         }
         createdDeckNames.removeAll()

@@ -10,6 +10,7 @@ final class DeckStudioPinnedTabsUITests: XCTestCase {
         app.launch()
         defer { app.terminate(); XCUIDevice.shared.orientation = .portrait }
         XCTAssertTrue(app.buttons["menu.decks"].waitForExistence(timeout: 20))
+        UITestHarness.settleFirstTouch(app)
         app.buttons["menu.decks"].press(forDuration: 0.15)
         let search = app.textFields["deckStudio.library.search"]
         XCTAssertTrue(search.waitForExistence(timeout: 10))
@@ -98,19 +99,29 @@ final class DeckStudioPinnedTabsUITests: XCTestCase {
 
     private func center(_ element: XCUIElement, in scroll: XCUIElement, app: XCUIApplication,
                         file: StaticString = #filePath, line: UInt = #line) {
+        var reach: CGFloat = 0.35
+        var lastDirection: CGFloat = 0
+        var trace: [String] = []
         for _ in 0..<16 {
             let visible = scroll.frame.intersection(app.frame).insetBy(dx: 0, dy: 50)
             if element.exists && element.isHittable && visible.contains(element.frame) { return }
-            let shift = element.exists
-                ? max(-visible.height * 0.35, min(visible.height * 0.35, visible.midY - element.frame.midY))
-                : -visible.height * 0.25
+            let offset = element.exists ? visible.midY - element.frame.midY : -visible.height
+            // A correction that crosses the target means the last drag moved further than
+            // asked (a 26.5 simulator run swung ±106 pt for 16 drags). Halve the next one.
+            let direction: CGFloat = offset < 0 ? -1 : 1
+            if lastDirection != 0 && direction != lastDirection { reach = max(reach / 2, 0.05) }
+            lastDirection = direction
+            let limit = visible.height * (element.exists ? reach : 0.25)
+            let shift = max(-limit, min(limit, offset))
+            trace.append("\(Int(element.exists ? element.frame.midY : -1))→\(Int(shift))")
             let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.96, dy: 0.5))
             // Hold before lifting so the list stops where the drag ends. A release at speed
             // flings it further on iOS 27, and the correction overshoots back the other way.
             start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: shift)),
                         withVelocity: .default, thenHoldForDuration: 0.3)
         }
-        XCTFail("Could not center \(element.identifier)", file: file, line: line)
+        XCTFail("Could not center \(element.identifier); midY→drag: \(trace.joined(separator: ", "))",
+                file: file, line: line)
     }
     func testPortraitPlaytestHistoryScrollsHeaderAwayAndPinsWorkspaceTabs() throws {
         let app = XCUIApplication()
@@ -121,6 +132,7 @@ final class DeckStudioPinnedTabsUITests: XCTestCase {
         defer { app.terminate(); XCUIDevice.shared.orientation = .portrait }
 
         XCTAssertTrue(app.buttons["menu.decks"].waitForExistence(timeout: 20))
+        UITestHarness.settleFirstTouch(app)
         app.buttons["menu.decks"].press(forDuration: 0.15)
         let search = app.textFields["deckStudio.library.search"]
         XCTAssertTrue(search.waitForExistence(timeout: 10))
@@ -173,6 +185,7 @@ final class DeckStudioPinnedTabsUITests: XCTestCase {
         defer { app.terminate(); XCUIDevice.shared.orientation = .portrait }
 
         XCTAssertTrue(app.buttons["menu.decks"].waitForExistence(timeout: 20))
+        UITestHarness.settleFirstTouch(app)
         app.buttons["menu.decks"].press(forDuration: 0.15)
         let librarySearch = app.textFields["deckStudio.library.search"]
         XCTAssertTrue(librarySearch.waitForExistence(timeout: 10))
