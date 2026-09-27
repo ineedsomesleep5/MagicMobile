@@ -4,13 +4,23 @@ import io.magicmobile.core.BridgeException;
 import io.magicmobile.core.EngineDiagnostics;
 import io.magicmobile.core.EngineService;
 import io.magicmobile.core.Json;
+import mage.abilities.Ability;
+import mage.abilities.common.delayed.ReflexiveTriggeredAbility;
+import mage.abilities.effects.Effect;
+import mage.abilities.effects.common.CreateTokenCopyTargetEffect;
+import mage.abilities.effects.common.CreateTokenEffect;
+import mage.abilities.effects.common.GainLifeEffect;
+import mage.abilities.effects.common.TargetPlayerGainControlTargetPermanentEffect;
 import mage.cards.Card;
+import mage.constants.Zone;
 import mage.game.Game;
 import mage.game.command.CommandObject;
 import mage.game.events.TableEvent;
 import mage.game.permanent.Permanent;
+import mage.game.permanent.token.SoldierToken;
 import mage.game.stack.StackObject;
 import mage.players.Player;
+import mage.target.targetpointer.FixedTarget;
 import mage.util.RandomUtil;
 import java.io.*;
 import java.lang.reflect.Field;
@@ -45,14 +55,16 @@ public final class RealCheckpointTests {
         rejections(isamaru,yargle);
         randomContinuity(isamaru,yargle);
         // One AI: bundled precons (Token Triumph human vs Chaos Incarnate MAD) at several turns.
-        scenario("solo-1ai-precons",tokens,List.of(chaos),new int[]{3,5,7},Set.of(),true,18);
+        scenario("solo-1ai-precons",tokens,List.of(chaos),new int[]{3,5,7},Set.of(),0,true,18);
         // Three AIs: four seats, every library order and hidden hand in one checkpoint.
-        scenario("solo-3ai",flight,List.of(isamaru,yargle,adeline),new int[]{2,5},Set.of(),true,30);
+        scenario("solo-3ai",flight,List.of(isamaru,yargle,adeline),new int[]{2,5},Set.of(),0,true,30);
         // Three precon AIs (tokens, Path/Swords/Banishing Light exile, Hate Mirage copies, stolen
         // creatures) against cheap token/exile/copy/control fixture spells: checkpoints are also
-        // taken the first time each of these is on the board.
+        // taken the first time each of these is on the board. Whatever play has not produced by
+        // turn 10 is put on the board through upstream rules code (see place), so every run
+        // restores all of them.
         scenario("solo-3ai-precons-features",features,List.of(chaos,flight,tokens),new int[]{3},
-            Set.of("tokens","exile","copies","controlChanged"),true,30);
+            Set.of("tokens","exile","copies","controlChanged","stack"),10,true,30);
         System.out.println("ELAPSED total "+TimeUnit.NANOSECONDS.toSeconds(System.nanoTime()-start)+"s");
         System.out.println("CHECKPOINT-WRITES count="+writeMillis.size()+" "+stats("writeMs",writeMillis)+" "+stats("bytes",writeBytes));
         System.out.println("PASS real-JVM save/resume: fresh-process restores, rejections and RNG continuity (not native, not iOS)");
@@ -182,10 +194,12 @@ public final class RealCheckpointTests {
 
     /**
      * Checkpoints at the first fresh priority decision at or after each turn, then (for each wanted
-     * board feature) at the first one where it is present; each is restored in a fresh JVM.
+     * board feature) at the first one where it is present; each is restored in a fresh JVM. From
+     * turn placeFromTurn on (0: never), features play has not produced are placed on the live
+     * game at a checkpointed decision, and the re-asked decision (the next checkpoint) is saved.
      */
     private static void scenario(String name,Map<String,Object> humanDeck,List<Map<String,Object>> aiDecks,int[] turns,
-                                 Set<String> wanted,boolean active,int promptsAfterRestore) throws Exception {
+                                 Set<String> wanted,int placeFromTurn,boolean active,int promptsAfterRestore) throws Exception {
         long started=System.nanoTime();
         Path dir=Files.createDirectories(work.resolve(name));
         Path file=dir.resolve("game.ckpt");
@@ -193,10 +207,10 @@ public final class RealCheckpointTests {
         for(int i=0;i<aiDecks.size();i++) seats.add(seat("ai"+(i+1),"AI "+(i+1),aiDecks.get(i),1));
         List<Path> saved=new ArrayList<>();List<Map<String,Object>> savedInfo=new ArrayList<>();
         List<Integer> targets=new ArrayList<>();for(int turn:turns) targets.add(turn);
-        Set<String> missing=new TreeSet<>(wanted);
+        Set<String> missing=new TreeSet<>(wanted),natural=new TreeSet<>(),placed=new TreeSet<>();
         long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(600);
-        // Board features depend on shuffles and AI play; a game that ends first is replaced by a
-        // new one (at most three). Every checkpoint taken is restored and checked either way.
+        // A game that ends before the turn targets (or before placement) is replaced by a new one
+        // (at most three). Every checkpoint taken is restored and checked either way.
         for(int attempt=1;attempt<=3 && (!targets.isEmpty() || !missing.isEmpty());attempt++) {
         XmageEngine engine=new XmageEngine("jvm-checkpoint-"+name);
         try {
@@ -205,6 +219,8 @@ public final class RealCheckpointTests {
             AtomicInteger errors=new AtomicInteger();
             game.addTableEventListener(e->{if(e.getEventType()==TableEvent.EventType.ERROR)errors.incrementAndGet();});
             Driver driver=new Driver(engine,id,active);
+            Set<String> placing=Set.of(); // placed at the previous decision, so on this checkpoint
+            long placedAt=-1;int placements=0;
             while(!targets.isEmpty() || !missing.isEmpty()) {
                 check(System.nanoTime()<deadline,name+": features never on the board at a checkpoint: "+missing+driver.diagnostics());
                 Map<String,Object> state=driver.untilCheckpoint(targets.isEmpty()?0:targets.get(0),240);
@@ -213,23 +229,39 @@ public final class RealCheckpointTests {
                     System.out.println("GAME-ENDED "+name+" attempt "+attempt+" at turn "+game.getTurnNum()+"; still missing "+missing);
                     break;
                 }
+                Map<String,Object> info=Json.object(state.get("checkpoint"));
+                long turn=Json.integer(info.get("turn"));
+                // A placement is saved by the re-asked decision itself, never by a later one.
+                check(placing.isEmpty() || Json.integer(info.get("sequence"))==placedAt+1,
+                    name+": placed "+placing+" but the next checkpoint was not the re-asked decision: "+info+driver.diagnostics());
                 Map<String,Object> board=features(game);
                 Set<String> present=new TreeSet<>();
                 for(String feature:missing) if(Json.integer(board.get(feature))>0) present.add(feature);
-                if(!targets.isEmpty()) targets.remove(0);
-                else if(present.isEmpty()) { driver.answer(state);continue; }
-                missing.removeAll(present);
-                Map<String,Object> info=Json.object(state.get("checkpoint"));
-                int index=saved.size();
-                Path copy=dir.resolve("saved-"+index+".ckpt");Files.copy(file,copy,StandardCopyOption.REPLACE_EXISTING);
-                Map<String,Object> prompt=Json.object(state.get("prompt"));
-                Map<String,Object> expected=Json.map("fingerprint",fingerprint(game),"kind",prompt.get("kind"),
-                    "message",Json.object(prompt.get("payload")).get("message"),"selectMode",Json.object(prompt.get("payload")).get("selectMode"),
-                    "features",board,"sequence",info.get("sequence"),"turn",info.get("turn"));
-                Files.writeString(dir.resolve("expected-"+index+".json"),Json.write(expected));
-                saved.add(copy);savedInfo.add(expected);
-                System.out.println("CHECKPOINT "+name+" #"+index+" turn="+info.get("turn")+" seq="+info.get("sequence")
-                    +" bytes="+info.get("bytes")+" writeMs="+info.get("writeMillis")+" features="+board);
+                Set<String> placedHere=new TreeSet<>(present),naturalHere=new TreeSet<>(present);
+                placedHere.retainAll(placing);naturalHere.removeAll(placing);
+                placing=Set.of();
+                boolean target=!targets.isEmpty();
+                if(target) targets.remove(0);
+                if(target || !present.isEmpty()) {
+                    missing.removeAll(present);natural.addAll(naturalHere);placed.addAll(placedHere);
+                    int index=saved.size();
+                    Path copy=dir.resolve("saved-"+index+".ckpt");Files.copy(file,copy,StandardCopyOption.REPLACE_EXISTING);
+                    Map<String,Object> prompt=Json.object(state.get("prompt"));
+                    Map<String,Object> expected=Json.map("fingerprint",fingerprint(game),"kind",prompt.get("kind"),
+                        "message",Json.object(prompt.get("payload")).get("message"),"selectMode",Json.object(prompt.get("payload")).get("selectMode"),
+                        "features",board,"sequence",info.get("sequence"),"turn",info.get("turn"));
+                    Files.writeString(dir.resolve("expected-"+index+".json"),Json.write(expected));
+                    saved.add(copy);savedInfo.add(expected);
+                    System.out.println("CHECKPOINT "+name+" #"+index+" turn="+info.get("turn")+" seq="+info.get("sequence")
+                        +" bytes="+info.get("bytes")+" writeMs="+info.get("writeMillis")+" features="+board
+                        +(wanted.isEmpty()?"":" natural="+naturalHere+" placed="+placedHere));
+                }
+                if(!missing.isEmpty() && placeFromTurn>0 && turn>=placeFromTurn) {
+                    check(++placements<=3,name+": placed features "+missing+" left the board before the next checkpoint"+driver.diagnostics());
+                    placing=place(game,missing,name,turn,Json.integer(info.get("sequence")));
+                    placedAt=Json.integer(info.get("sequence"));
+                    driver.reask(state);
+                } else if(!targets.isEmpty() || !missing.isEmpty()) driver.answer(state); // else destroyed while parked
             }
             check(errors.get()==0 && game.getTotalErrorsCount()==0,"original game had no errors");
             engine.destroy(id);
@@ -238,6 +270,7 @@ public final class RealCheckpointTests {
         } finally { engine.close(); }
         }
         check(targets.isEmpty() && missing.isEmpty(),name+": three games ended before board features "+missing+" were checkpointed");
+        if(!wanted.isEmpty()) System.out.println("FEATURES "+name+" natural="+natural+" placed="+placed);
         Map<String,Integer> covered=new TreeMap<>();
         for(int i=0;i<saved.size();i++) {
             Map<String,Object> result=runChild(name,saved.get(i),work.resolve(name).resolve("expected-"+i+".json"),active?"active":"passive",promptsAfterRestore);
@@ -251,6 +284,7 @@ public final class RealCheckpointTests {
         for(String feature:wanted) check(covered.getOrDefault(feature,0)>0,name+": no restored checkpoint had "+feature);
         System.out.println("PASS "+name+": "+saved.size()+" fresh-process restores matched turn, step, life, hands, full libraries,"
             +" battlefield, graveyards, exile and stack; restored checkpoints with features "+covered
+            +(wanted.isEmpty()?"":" (natural "+natural+", placed "+placed+")")
             +" ("+TimeUnit.NANOSECONDS.toSeconds(System.nanoTime()-started)+"s)");
     }
 
@@ -444,6 +478,17 @@ public final class RealCheckpointTests {
             }
             answered++;
         }
+        /**
+         * A click on no object: upstream HumanPlayer.priority returns without passing, so
+         * GameImpl.playPriority applies state-based actions, triggers and effects and asks the same
+         * player again. That new priority() call is the next safe point, in the same step.
+         */
+        void reask(Map<String,Object> state) {
+            Map<String,Object> prompt=Json.object(state.get("prompt"));
+            check(seen.add((String)prompt.get("promptId")),"re-ask of an answered prompt");
+            respond(prompt,uuid(UUID.randomUUID()));
+            actions.merge("reasks",1,Integer::sum);
+        }
         private void respond(Map<String,Object> prompt,Map<String,Object> answer) {
             engine.respond(match,HUMAN,Json.map("requestId",UUID.randomUUID().toString(),"promptId",prompt.get("promptId"),
                 "promptRevision",prompt.get("revision"),"answer",answer));
@@ -545,6 +590,91 @@ public final class RealCheckpointTests {
             throw new AssertionError("fixture policy has no answer for "+kind+" "+payload);
         }
         private static Map<String,Object> uuid(Object id) { return Json.map("kind","uuid","value",String.valueOf(id)); }
+    }
+
+    // ---- Feature placement -----------------------------------------------------------------
+
+    /**
+     * Puts each missing board feature on the live game through upstream rules code, at a
+     * checkpointed human priority decision, and returns the features placed. The caller then
+     * re-asks that decision (Driver.reask), so the next checkpoint holds them.
+     *
+     * Runs on the test thread, only while the GAME thread is parked in the human's answer wait
+     * (see parked). Nothing here asks a player a question, and upstream's
+     * ThreadUtils.isRunGameThread accepts this "main" thread as a test runner. State-based
+     * actions, triggers (onto the stack) and layered effects are left to the GAME thread, which
+     * applies them in GameImpl.playPriority before it asks again.
+     */
+    private static Set<String> place(Game game,Set<String> missing,String name,long turn,long sequence) throws InterruptedException {
+        parked(game);
+        Player human=game.getState().getPlayers().values().stream().filter(p->p instanceof MobileHumanPlayer).findFirst().orElseThrow();
+        Player opponent=game.getOpponents(human.getId()).stream().map(game::getPlayer).filter(p->p!=null && p.isInGame())
+            .min(Comparator.comparing(Player::getName)).orElseThrow();
+        // The source of every placement is the human's commander's own activated ability, Zedruu's
+        // "{U}{R}{W}: Target opponent gains control of target permanent you control".
+        Card commander=game.getCard(human.getCommandersIds().iterator().next());
+        Ability zedruu=commander.getAbilities().stream()
+            .filter(a->a.getEffects().stream().anyMatch(e->e instanceof TargetPlayerGainControlTargetPermanentEffect)).findFirst()
+            .orElseThrow(()->new AssertionError("placement needs Zedruu's gain-control ability, not "+commander.getName()));
+        Ability source=zedruu.copy();source.setControllerId(human.getId());
+        // Basic lands have no enter-the-battlefield choices, so copying or giving one asks nobody.
+        List<Permanent> lands=game.getBattlefield().getAllActivePermanents(human.getId()).stream()
+            .filter(p->!p.isToken() && p.isLand(game) && p.isBasic(game)).sorted(Comparator.comparing(Permanent::getName)).collect(Collectors.toList());
+        Set<String> placed=new TreeSet<>();List<String> how=new ArrayList<>();
+        if(missing.contains("exile")) {
+            Card top=human.getLibrary().getFromTop(game);
+            if(top!=null && human.moveCards(top,Zone.EXILED,source,game)) { placed.add("exile");how.add("exile: top library card moved to exile (Player.moveCards)"); }
+        }
+        if(missing.contains("tokens") && new CreateTokenEffect(new SoldierToken()).apply(game,source)) {
+            placed.add("tokens");how.add("tokens: a Soldier token (CreateTokenEffect, as Raise the Alarm)");
+        }
+        if(missing.contains("copies") && !lands.isEmpty()) {
+            Effect copy=new CreateTokenCopyTargetEffect().setTargetPointer(new FixedTarget(lands.get(0),game));
+            if(copy.apply(game,source)) { placed.add("copies");how.add("copies: a token copy of "+lands.get(0).getName()+" (CreateTokenCopyTargetEffect, as Quasiduplicate)"); }
+        }
+        if(missing.contains("controlChanged") && !lands.isEmpty()) {
+            // The ability's own effect with its own targets, as it resolves: a GainControlTargetEffect
+            // (Duration.Custom) that the GAME thread's layer pass applies.
+            Ability give=source.copy();
+            give.getTargets().get(0).add(opponent.getId(),game);
+            Permanent land=lands.get(lands.size()-1);
+            give.getTargets().get(1).add(land.getId(),game);
+            if(give.getEffects().stream().allMatch(e->e.apply(game,give))) {
+                placed.add("controlChanged");how.add("controlChanged: "+opponent.getName()+" gains control of "+land.getName()+" (Zedruu's effect)");
+            }
+        }
+        if(missing.contains("stack")) {
+            // Goes on the stack when the GAME thread next checks triggers, before it asks again.
+            game.fireReflexiveTriggeredAbility(new ReflexiveTriggeredAbility(new GainLifeEffect(1),false),source);
+            placed.add("stack");how.add("stack: a reflexive \"you gain 1 life\" trigger (Game.fireReflexiveTriggeredAbility)");
+        }
+        parked(game);
+        System.out.println("PLACED "+name+" turn="+turn+" seq="+sequence+" "+placed+" of missing "+missing+": "+String.join("; ",how));
+        return placed;
+    }
+
+    /**
+     * Returns once the match's GAME thread is parked in MobileHumanPlayer.waitForResponse. That
+     * loop only polls the answer queue and the concede queue until an answer arrives, and no AI
+     * search runs during a human decision, so the test thread is then the only one touching the
+     * game. Its writes happen before the GAME thread wakes: the answer passes through the
+     * synchronized mailbox and the player's answer queue.
+     */
+    private static void parked(Game game) throws InterruptedException {
+        String gameThread="GAME mobile-"+game.getId();
+        long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(10);
+        while(true) {
+            for(Map.Entry<Thread,StackTraceElement[]> entry:Thread.getAllStackTraces().entrySet()) {
+                if(!entry.getKey().getName().equals(gameThread)) continue;
+                boolean waiting=Arrays.stream(entry.getValue()).anyMatch(frame->frame.getClassName().equals(MobileHumanPlayer.class.getName())
+                    && frame.getMethodName().equals("waitForResponse"));
+                boolean conceding=Arrays.stream(entry.getValue()).anyMatch(frame->frame.getMethodName().equals("checkConcede"));
+                // Timed wait inside waitForResponse: the answer queue poll.
+                if(waiting && !conceding && entry.getKey().getState()==Thread.State.TIMED_WAITING) return;
+            }
+            check(System.nanoTime()<deadline,"GAME thread is not parked in the human's answer wait");
+            Thread.sleep(5);
+        }
     }
 
     // ---- Fingerprints ----------------------------------------------------------------------
