@@ -11,13 +11,16 @@ const buddy = "/usr/libexec/PlistBuddy";
 function fixture(t, placeholders = true) {
   const root = mkdtempSync(join(tmpdir(), "mm-build-number-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  for (const dir of ["scripts/ios", "apps/ios/MagicMobile", "release/testflight"]) mkdirSync(join(root, dir), { recursive: true });
+  for (const dir of ["scripts/ios", "apps/ios/MagicMobile", "apps/ios/MagicMobileiOS.xcodeproj", "release/testflight"]) mkdirSync(join(root, dir), { recursive: true });
   const script = join(root, "scripts/ios/testflight-build-number.mjs");
   copyFileSync(join(here, "testflight-build-number.mjs"), script);
   const info = join(root, "apps/ios/MagicMobile/Info.plist");
   const project = join(root, "apps/ios/project.yml");
+  const pbxproj = join(root, "apps/ios/MagicMobileiOS.xcodeproj/project.pbxproj");
   const ledger = join(root, "release/testflight/build-ledger.json");
   writeFileSync(project, 'name: Fixture\nsettings:\n  base:\n    MARKETING_VERSION: "0.1.0"\n    CURRENT_PROJECT_VERSION: "2026062902" # keep\ntargets:\n  App:\n    type: application\n');
+  // Two configurations, as XcodeGen writes them from settings.base.
+  writeFileSync(pbxproj, pbxprojText("2026062902"));
   writeFileSync(info, '<?xml version="1.0"?><plist version="1.0"><dict></dict></plist>');
   const set = (key, value, add = false) => execFileSync(buddy, ["-c", `${add ? "Add" : "Set"} :${key} ${add ? "string " : ""}${value}`, info]);
   set("CFBundleShortVersionString", placeholders ? "$(MARKETING_VERSION)" : "0.1.0", true);
@@ -29,7 +32,14 @@ function fixture(t, placeholders = true) {
     assert.equal(result.status, 0, result.stderr);
     return JSON.parse(readFileSync(ledger));
   };
-  return { root, info, project, ledger, set, run, prepare };
+  return { root, info, project, pbxproj, ledger, set, run, prepare };
+}
+
+function pbxprojText(first, second = first) {
+  return [`// !$*UTF8*$!`, `{`, `\t\tA /* Debug */ = {`, `\t\t\tbuildSettings = {`,
+    `\t\t\t\tCURRENT_PROJECT_VERSION = ${first};`, `\t\t\t\tMARKETING_VERSION = 0.1.0;`, `\t\t\t};`, `\t\t};`,
+    `\t\tB /* Release */ = {`, `\t\t\tbuildSettings = {`, `\t\t\t\tCURRENT_PROJECT_VERSION = ${second};`,
+    `\t\t\t\tMARKETING_VERSION = 0.1.0;`, `\t\t\t};`, `\t\t};`, `}`, ``].join("\n");
 }
 
 for (const placeholders of [true, false]) {
@@ -51,6 +61,39 @@ for (const placeholders of [true, false]) {
     assert.match(readFileSync(f.project, "utf8"), /CURRENT_PROJECT_VERSION: "2026091202"/);
   });
 }
+
+test("prepare keeps every pbxproj configuration in step with project.yml", { skip: process.platform !== "darwin" }, t => {
+  const f = fixture(t);
+  assert.equal(f.prepare().lastPreparedBuild, "2026091201");
+  assert.equal(readFileSync(f.pbxproj, "utf8"), pbxprojText("2026091201"));
+  assert.equal(f.prepare().lastPreparedBuild, "2026091201");
+  assert.equal(readFileSync(f.pbxproj, "utf8"), pbxprojText("2026091201"));
+  writeFileSync(f.pbxproj, pbxprojText('"2026091201"'));
+  const log = join(f.root, "upload.log");
+  writeFileSync(log, "Delivery UUID: 01234567-89ab-cdef-0123-456789abcdef\n");
+  f.set("CFBundleVersion", "$(CURRENT_PROJECT_VERSION)");
+  assert.equal(f.run("record", "--upload-log", log, "--ipa", join(f.root, "app.ipa")).status, 0);
+  assert.equal(f.prepare().lastPreparedBuild, "2026091202");
+  assert.equal(readFileSync(f.pbxproj, "utf8"), pbxprojText('"2026091202"'));
+});
+
+test("a stale or indirect pbxproj build number fails before writes", { skip: process.platform !== "darwin" }, t => {
+  const f = fixture(t);
+  for (const text of [pbxprojText("2026062902", "17"), pbxprojText("$(OTHER_BUILD)"), "// no build settings\n"]) {
+    writeFileSync(f.pbxproj, text);
+    const before = [f.info, f.project, f.pbxproj, f.ledger].map(p => readFileSync(p, "utf8"));
+    const result = f.run("prepare", "--date", "20260912");
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /project\.pbxproj/);
+    assert.deepEqual([f.info, f.project, f.pbxproj, f.ledger].map(p => readFileSync(p, "utf8")), before);
+  }
+});
+
+test("a checkout without the generated pbxproj still prepares", { skip: process.platform !== "darwin" }, t => {
+  const f = fixture(t);
+  rmSync(f.pbxproj);
+  assert.equal(f.prepare().lastPreparedBuild, "2026091201");
+});
 
 test("reuse prepared literal repairs stale YAML and placeholder marketing ledger", { skip: process.platform !== "darwin" }, t => {
   const f = fixture(t);
