@@ -351,11 +351,12 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_RESUME -> { setup.setSceneActive(true); GameAudio.resume() }
-                Lifecycle.Event.ON_PAUSE -> setup.setSceneActive(false)
-                Lifecycle.Event.ON_START -> setup.resume.foregrounded()
-                // Leaving starts the saved game's 10 minutes, and a smaller app is less likely to be ended.
-                Lifecycle.Event.ON_STOP -> { setup.resume.backgrounded(); Artwork.releaseMemory(); GameAudio.releaseForBackground() }
+                Lifecycle.Event.ON_RESUME -> { setup.returnedToApp(); setup.setSceneActive(true); GameAudio.resume() }
+                // The player may be leaving (perhaps to close the app from Recents): the engine saves at its next safe point.
+                Lifecycle.Event.ON_PAUSE -> { setup.setSceneActive(false); setup.armSaveForLeaving() }
+                Lifecycle.Event.ON_START -> setup.returnedToApp()
+                // Leaving starts the saved game's 10 minutes and saves it, and a smaller app is less likely to be ended.
+                Lifecycle.Event.ON_STOP -> { setup.saveForBackground(); Artwork.releaseMemory(); GameAudio.releaseForBackground() }
                 else -> {}
             }
         }

@@ -11,10 +11,13 @@ import java.nio.file.StandardCopyOption
 
 /**
  * Save/resume for solo games against the AI, the same rules and words as the iOS app.
- * The engine writes `game.checkpoint` at each of the human's priority decisions; the app owns
- * that file and its `resume.json` sidecar, and offers Resume or Abandon at the next launch for
- * 10 minutes after the player left. Relay tables and engines without `saveResume` never
- * checkpoint; they leave a small in-progress marker so a lost game is explained, not hidden.
+ * When the player leaves the app, the engine writes `game.checkpoint` (engines with
+ * `checkpointOnDemand` save only when asked; older `saveResume` engines save at every priority
+ * decision). The app owns that file and its `resume.json` sidecar, and offers Resume or Abandon at
+ * the next launch for 10 minutes after the player left. Coming back uses up that save, so a game
+ * that was open when the app died is reported as ended, never resumed from an older save. Relay
+ * tables and engines without `saveResume` never checkpoint; they leave a small in-progress marker
+ * so a lost game is explained, not hidden.
  */
 object GameResumeText {
     const val PROMPT_TITLE = "Resume your game?"
@@ -65,6 +68,12 @@ object GameResumePolicy {
     /** Only engine builds with checkpoint support say `saveResume: true`; the new request fields go to no other engine. */
     fun supported(capabilities: J?): Boolean = capabilities["saveResume"].bool == true
 
+    /**
+     * An engine that saves only when asked (`checkpoint`, `cancelCheckpoint`) instead of at every
+     * decision. Older `saveResume` engines are never sent those operations.
+     */
+    fun onDemand(capabilities: J?): Boolean = supported(capabilities) && capabilities["checkpointOnDemand"].bool == true
+
     /** A game checkpoints only on such an engine and with exactly one human seat. */
     fun checkpoints(capabilities: J?, seats: List<J>): Boolean =
         supported(capabilities) && seats.count { (it["controller"].string ?: "human") == "human" } == 1
@@ -79,8 +88,8 @@ object GameResumePolicy {
         return poll.snapshot["gameView"]["players"].array?.any { it["playerId"].string == viewer && it["hasLeft"].bool == true } == true
     }
 
-    /** Inclusive: exactly 600 s is still resumable. `leftAt` is null when the process died in the foreground. */
-    fun expired(now: Long, leftAt: Long?, lastCheckpointAt: Long): Boolean = now - (leftAt ?: lastCheckpointAt) > WINDOW_MILLIS
+    /** Inclusive: exactly 600 s after the player left is still resumable. */
+    fun expired(now: Long, leftAt: Long): Boolean = now - leftAt > WINDOW_MILLIS
 }
 
 /**
@@ -99,8 +108,12 @@ object GameResumeIdentity {
     }
 }
 
-/** A poll's optional `checkpoint`: the engine's latest write. Malformed metadata is ignored, never fatal to the game. */
-data class EngineCheckpoint(val sequence: Long, val savedAtMillis: Long, val turn: Long, val bytes: Long) {
+/**
+ * The engine's latest write: a poll's optional `checkpoint`, or a save request's result. Malformed
+ * metadata on a poll is ignored, never fatal to the game. `writeMillis` is how long the write took,
+ * when the engine reports it.
+ */
+data class EngineCheckpoint(val sequence: Long, val savedAtMillis: Long, val turn: Long, val bytes: Long, val writeMillis: Long? = null) {
     companion object {
         fun parse(value: J?): EngineCheckpoint? {
             if (value !is JsonObject) return null
@@ -109,7 +122,7 @@ data class EngineCheckpoint(val sequence: Long, val savedAtMillis: Long, val tur
             val turn = value["turn"].integer ?: return null
             val bytes = value["bytes"].integer ?: return null
             if (sequence < 0 || saved < 0 || turn < 0 || bytes < 0) return null
-            return EngineCheckpoint(sequence, saved, turn, bytes)
+            return EngineCheckpoint(sequence, saved, turn, bytes, value["writeMillis"].integer?.takeIf { it >= 0 })
         }
     }
 }
@@ -212,14 +225,16 @@ sealed interface GameResumeLaunch {
 }
 
 /**
- * The resume directory: `game.checkpoint` (engine-written), `resume.json` and the in-progress
- * marker. Production passes Android's noBackupFilesDir/resume; tests pass a temporary directory
- * and a fixed clock, so they never touch the real files.
+ * The resume directory: `game.checkpoint` (engine-written), `resume.json`, the in-progress
+ * marker and a consumed save. Production passes Android's noBackupFilesDir/resume; tests pass a
+ * temporary directory and a fixed clock, so they never touch the real files.
  */
 class GameResumeStore(val directory: File, private val clock: () -> Long = System::currentTimeMillis) {
     val checkpointFile: File get() = File(directory, CHECKPOINT)
     val sidecarFile: File get() = File(directory, SIDECAR)
     val markerFile: File get() = File(directory, MARKER)
+    /** The save made when the player last left, set aside when they came back. Never offered; the next launch deletes it. */
+    val consumedFile: File get() = File(directory, CONSUMED)
 
     fun now(): Long = clock()
 
@@ -236,9 +251,26 @@ class GameResumeStore(val directory: File, private val clock: () -> Long = Syste
         GameResumeSidecar.decode(EngineJson.decode(sidecarFile.readBytes()))
     }.getOrNull()
 
-    /** Deletes the checkpoint, the sidecar and any temporary file either writer left behind. */
+    /** Deletes the checkpoint, the sidecar, a consumed save and any temporary file either writer left behind. */
     fun deleteCheckpoint() {
-        for (name in listOf(CHECKPOINT, "$CHECKPOINT.tmp", SIDECAR, "$SIDECAR.tmp")) File(directory, name).delete()
+        for (name in listOf(CHECKPOINT, "$CHECKPOINT.tmp", SIDECAR, "$SIDECAR.tmp", CONSUMED)) File(directory, name).delete()
+    }
+
+    /**
+     * The player came back: the save made when they left is used up. From now on the game has no
+     * checkpoint, so a crash ends it. The file is set aside rather than deleted, because an engine
+     * asked to save again at the same decision reports that save instead of rewriting it.
+     */
+    fun consumeCheckpoint() {
+        if (!checkpointFile.exists()) return
+        runCatching { Files.move(checkpointFile.toPath(), consumedFile.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING) }
+            .onFailure { checkpointFile.delete() }
+    }
+
+    /** The engine reported a save. If it wrote nothing since the player came back, that save is the consumed one: put it back. Otherwise the consumed one is older and goes. */
+    fun restoreConsumedCheckpointIfLatest() {
+        if (checkpointFile.exists() || !consumedFile.exists() ||
+            runCatching { Files.move(consumedFile.toPath(), checkpointFile.toPath(), StandardCopyOption.ATOMIC_MOVE) }.isFailure) consumedFile.delete()
     }
 
     fun markInProgress(kind: String) {
@@ -251,12 +283,14 @@ class GameResumeStore(val directory: File, private val clock: () -> Long = Syste
     fun deleteAll() { deleteCheckpoint(); clearMarker() }
 
     /**
-     * The launch decision. Resumable iff both files exist, the player left at most 10 minutes
-     * ago and the saved app build, engine and sidecar format match this app. Anything else is
-     * deleted, with at most one notice: a game that died before it could be saved (or whose sidecar
-     * cannot be read), then expired whatever the build, then an update.
+     * The launch decision. Resumable iff both files exist, the game was saved when the player left
+     * the app (`leftAt`) at most 10 minutes ago, and the saved app build, engine and sidecar format
+     * match this app. Anything else is deleted, with at most one notice: a game that was not saved
+     * when the player left (it was open when the app died, or its sidecar cannot be read), then
+     * expired whatever the build, then an update. A consumed save is never offered.
      */
     fun launch(appBuild: String, engineIdentity: String): GameResumeLaunch {
+        consumedFile.delete()
         val marker = markerFile.exists()
         val hasSidecar = sidecarFile.exists()
         val hasCheckpoint = checkpointFile.isFile
@@ -267,9 +301,10 @@ class GameResumeStore(val directory: File, private val clock: () -> Long = Syste
         }
         val sidecar = read()
         val now = clock()
+        val left = sidecar?.leftAt
         val outcome = when {
-            sidecar == null || !hasCheckpoint -> GameResumeLaunch.Notice(GameResumeText.LOST)
-            GameResumePolicy.expired(now, sidecar.leftAt, sidecar.lastCheckpointAt) -> GameResumeLaunch.Notice(GameResumeText.EXPIRED)
+            sidecar == null || !hasCheckpoint || left == null -> GameResumeLaunch.Notice(GameResumeText.LOST)
+            GameResumePolicy.expired(now, left) -> GameResumeLaunch.Notice(GameResumeText.EXPIRED)
             sidecar.format != GameResumeSidecar.FORMAT || sidecar.appBuild != appBuild || sidecar.engineIdentity != engineIdentity ->
                 GameResumeLaunch.Notice(GameResumeText.UPDATED)
             else -> GameResumeLaunch.Offer(sidecar, GameResumeText.detail(sidecar.turn, sidecar.opponents, now - sidecar.lastCheckpointAt))
@@ -293,5 +328,6 @@ class GameResumeStore(val directory: File, private val clock: () -> Long = Syste
         const val CHECKPOINT = "game.checkpoint"
         const val SIDECAR = "resume.json"
         const val MARKER = "game-in-progress.json"
+        const val CONSUMED = "game.checkpoint.consumed"
     }
 }

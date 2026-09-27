@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -44,15 +45,11 @@ class GameResumeTest {
         assertFalse("marker deleted", store.markerFile.exists())
     }
 
-    @Test fun expiryIsTenMinutesFromLeavingOrTheLastCheckpoint() {
+    @Test fun expiryIsTenMinutesFromLeaving() {
         val left = now
-        assertFalse(GameResumePolicy.expired(left + 599_000, left, 0))
-        assertFalse("exactly 600 s is still resumable", GameResumePolicy.expired(left + 600_000, left, 0))
-        assertTrue(GameResumePolicy.expired(left + 601_000, left, 0))
-        // A process that died in the foreground never set leftAt: its last checkpoint counts.
-        assertFalse(GameResumePolicy.expired(left + 599_000, null, left))
-        assertTrue(GameResumePolicy.expired(left + 601_000, null, left))
-        assertFalse("leftAt wins over an older checkpoint", GameResumePolicy.expired(left + 599_000, left, left - 3_600_000))
+        assertFalse(GameResumePolicy.expired(left + 599_000, left))
+        assertFalse("exactly 600 s is still resumable", GameResumePolicy.expired(left + 600_000, left))
+        assertTrue(GameResumePolicy.expired(left + 601_000, left))
     }
 
     @Test fun launchOffersAGameLeft599SecondsAgoAndExpiresOne601SecondsAgo() {
@@ -69,13 +66,46 @@ class GameResumeTest {
         assertGone()
     }
 
-    @Test fun launchWithoutLeftAtUsesTheLastCheckpoint() {
+    @Test fun aGameOpenWhenTheAppDiedHasEndedEvenWithACheckpoint() {
+        // Only a save made when the player left is offered; an older one never is.
         save(sidecar(lastCheckpointAt = now, leftAt = null))
-        now += 599_000
-        assertTrue(store.launch("2026092601", "engine-a") is GameResumeLaunch.Offer)
-        now += 2_000
-        assertEquals(GameResumeLaunch.Notice(GameResumeText.EXPIRED), store.launch("2026092601", "engine-a"))
+        now += 5_000
+        assertEquals(GameResumeLaunch.Notice(GameResumeText.LOST), store.launch("2026092601", "engine-a"))
         assertGone()
+        save(sidecar(lastCheckpointAt = now, leftAt = null))
+        now += 601_000
+        assertEquals(GameResumeLaunch.Notice(GameResumeText.LOST), store.launch("2026092701", "engine-a"))
+        assertGone()
+    }
+
+    @Test fun comingBackSetsTheSaveAsideAndOnlyTheSameSaveComesBack() {
+        save(sidecar(leftAt = now))
+        store.consumeCheckpoint()
+        assertFalse("the save made on leaving is used up", store.checkpointFile.exists())
+        assertTrue(store.consumedFile.exists())
+        store.consumeCheckpoint()
+        assertTrue("nothing to consume leaves the consumed save", store.consumedFile.exists())
+        // The engine reports that same save again: it comes back.
+        store.restoreConsumedCheckpointIfLatest()
+        assertTrue(store.checkpointFile.exists()); assertFalse(store.consumedFile.exists())
+        assertArrayEquals(byteArrayOf(1, 2, 3), store.checkpointFile.readBytes())
+        // The engine wrote a new save: the consumed one goes.
+        store.consumeCheckpoint()
+        store.checkpointFile.writeBytes(byteArrayOf(4))
+        store.restoreConsumedCheckpointIfLatest()
+        assertArrayEquals(byteArrayOf(4), store.checkpointFile.readBytes()); assertFalse(store.consumedFile.exists())
+        store.restoreConsumedCheckpointIfLatest()
+        assertTrue(store.checkpointFile.exists())
+        // A consumed save is never offered, and the launch deletes it.
+        store.consumeCheckpoint()
+        assertEquals(GameResumeLaunch.Notice(GameResumeText.LOST), store.launch("2026092601", "engine-a"))
+        assertGone(); assertFalse(store.consumedFile.exists())
+        store.prepare(); store.consumedFile.writeBytes(byteArrayOf(9))
+        assertEquals(GameResumeLaunch.Nothing, store.launch("2026092601", "engine-a"))
+        assertFalse(store.consumedFile.exists())
+        save(sidecar(leftAt = now)); store.consumedFile.writeBytes(byteArrayOf(9))
+        assertTrue(store.launch("2026092601", "engine-a") is GameResumeLaunch.Offer)
+        assertFalse(store.consumedFile.exists())
     }
 
     @Test fun anotherAppBuildOrEngineCannotResume() {
@@ -175,9 +205,11 @@ class GameResumeTest {
     @Test fun deletingRemovesBothFilesTheirTemporariesAndTheMarker() {
         save(sidecar()); store.markInProgress("solo")
         File(store.directory, "game.checkpoint.tmp").writeBytes(byteArrayOf(1))
+        store.consumedFile.writeBytes(byteArrayOf(1))
         store.deleteAll()
         assertGone()
         assertFalse(File(store.directory, "game.checkpoint.tmp").exists())
+        assertFalse(store.consumedFile.exists())
         store.deleteAll()
     }
 
@@ -193,6 +225,14 @@ class GameResumeTest {
         assertFalse(GameResumePolicy.checkpoints(null, oneHuman))
     }
 
+    @Test fun onlyAnEngineWithCheckpointOnDemandIsAskedToSave() {
+        assertTrue(GameResumePolicy.onDemand(jsonObject("saveResume" to JsonPrimitive(true), "checkpointOnDemand" to JsonPrimitive(true))))
+        assertFalse("today's shipped engines save at every decision", GameResumePolicy.onDemand(jsonObject("saveResume" to JsonPrimitive(true))))
+        assertFalse(GameResumePolicy.onDemand(jsonObject("saveResume" to JsonPrimitive(false), "checkpointOnDemand" to JsonPrimitive(true))))
+        assertFalse(GameResumePolicy.onDemand(jsonObject("saveResume" to JsonPrimitive(true), "checkpointOnDemand" to JsonPrimitive("true"))))
+        assertFalse(GameResumePolicy.onDemand(null))
+    }
+
     @Test fun engineIdentityIsTheSameFromCapabilitiesAndTheAppBuild() {
         val capabilities = jsonObject("protocol" to JsonPrimitive(1), "engine" to JsonPrimitive("xmage"), "upstream" to JsonPrimitive("abc123"),
             "catalogueHash" to JsonPrimitive("hash9"), "saveResume" to JsonPrimitive(true))
@@ -205,6 +245,8 @@ class GameResumeTest {
         assertEquals(EngineCheckpoint(4, 1_700_000_000_123, 12, 9_876_543),
             EngineCheckpoint.parse(jsonObject("sequence" to JsonPrimitive(4), "savedAtMillis" to JsonPrimitive(1_700_000_000_123),
                 "turn" to JsonPrimitive(12), "bytes" to JsonPrimitive(9_876_543))))
+        assertEquals("writeMillis is optional", 41L, EngineCheckpoint.parse(jsonObject("sequence" to JsonPrimitive(4), "savedAtMillis" to JsonPrimitive(5),
+            "turn" to JsonPrimitive(1), "bytes" to JsonPrimitive(10), "writeMillis" to JsonPrimitive(41)))?.writeMillis)
         assertNull(EngineCheckpoint.parse(null))
         assertNull(EngineCheckpoint.parse(JsonNull))
         assertNull("malformed metadata is ignored", EngineCheckpoint.parse(jsonObject("sequence" to JsonPrimitive("4"))))

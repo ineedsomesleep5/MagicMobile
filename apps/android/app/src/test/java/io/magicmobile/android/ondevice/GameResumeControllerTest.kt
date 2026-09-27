@@ -1,5 +1,7 @@
 package io.magicmobile.android.ondevice
 
+import io.magicmobile.android.game.EngineCheckpoint
+import io.magicmobile.android.game.EngineCheckpointResult
 import io.magicmobile.android.game.EngineClient
 import io.magicmobile.android.game.EngineError
 import io.magicmobile.android.game.EngineJson
@@ -40,15 +42,20 @@ import java.util.concurrent.Executor
 class GameResumeControllerTest {
     private val root: File = Files.createTempDirectory("mm-resume-app").toFile()
     private var now = 1_800_000_000_000L
+    /** The monotonic clock for the background save's deadline; the fake engine advances it by each wait. */
+    private var uptime = 100_000L
     private val store = GameResumeStore(File(root, "resume")) { now }
     private val inline = Executor { it.run() }
-    private val controller = GameResumeController(store, "2026092601", inline)
+    private val controller = GameResumeController(store, "2026092601", inline) { uptime }
     private val engineIdentity = "xmage/protocol-1/abc123/hash9"
 
     @After fun cleanUp() { root.deleteRecursively() }
 
+    /** Today's shipped engines: they save at every decision. */
     private val newEngine = jsonObject("protocol" to JsonPrimitive(1), "engine" to JsonPrimitive("xmage"), "upstream" to JsonPrimitive("abc123"),
         "catalogueHash" to JsonPrimitive("hash9"), "saveResume" to JsonPrimitive(true))
+    /** Engines that save only when asked. */
+    private val onDemandEngine = JsonObject(newEngine + ("checkpointOnDemand" to JsonPrimitive(true)))
     private val oldEngine = JsonObject(newEngine + ("saveResume" to JsonPrimitive(false)))
     private fun seat(id: String, name: String, controller: String): J = jsonObject("seatId" to JsonPrimitive(id), "name" to JsonPrimitive(name),
         "controller" to JsonPrimitive(controller), "deck" to jsonObject("name" to JsonPrimitive("deck")))
@@ -327,5 +334,190 @@ class GameResumeControllerTest {
         assertTrue(next.offer is GameResumeLaunch.Offer)
         assertFalse(next.resumedGame)
         assertTrue(store.checkpointFile.exists() && store.sidecarFile.exists())
+    }
+
+    // Saving when the player leaves (engines with checkpointOnDemand).
+
+    /**
+     * The engine side of saving on leaving. Each request takes the next scripted result (the last
+     * one repeats) and advances [uptime] by its wait, as the engine waits. A saved result writes the
+     * checkpoint unless [writesFile] is false (a decision saved earlier).
+     */
+    private inner class FakeSave(vararg results: EngineCheckpointResult) : GameResumeController.SaveEngine {
+        val results = results.toMutableList()
+        var writesFile = true
+        var throws = false
+        val waits = ArrayList<Int>()
+        var cancels = 0
+        var onRequest: () -> Unit = {}
+        override suspend fun checkpoint(waitMillis: Int): EngineCheckpointResult {
+            waits += waitMillis; uptime += waitMillis; onRequest()
+            if (throws) throw EngineError.RuntimeFailure(3)
+            val result = if (results.size > 1) results.removeAt(0) else results[0]
+            if (result is EngineCheckpointResult.Saved && writesFile) store.checkpointFile.writeBytes(byteArrayOf(waits.size.toByte()))
+            return result
+        }
+        override suspend fun cancel() { cancels++ }
+    }
+
+    private fun saved(sequence: Long, turn: Long, at: Long = now) = EngineCheckpointResult.Saved(EngineCheckpoint(sequence, at, turn, 600_000, 40))
+
+    private fun startOnDemandGame(on: GameResumeController = controller) {
+        val path = on.checkpointFor(onDemandEngine, seats)
+        assertNotNull(path)
+        on.gameStarted(configuration, path, onDemandEngine, "player1", "Token Triumph", settings)
+        assertTrue(on.savesOnDemand)
+        assertFalse("nothing is saved while the player plays", store.checkpointFile.exists())
+    }
+
+    private fun relaunch(): GameResumeController =
+        GameResumeController(store, "2026092601", inline) { uptime }.also { runBlocking { it.checkAtLaunch(engineIdentity) } }
+
+    @Test fun leavingSavesAndTheNextLaunchOffersIt() = runBlocking {
+        startOnDemandGame()
+        now += 42_000
+        val engine = FakeSave(EngineCheckpointResult.WaitingForEngine, EngineCheckpointResult.WaitingForEngine, saved(3, 5))
+        assertTrue(controller.backgrounded())
+        assertEquals("leftAt is written before the engine is asked", now, store.read()!!.leftAt)
+        controller.saveForBackground(engine)
+        assertEquals("asks again while the AI is thinking", listOf(1000, 1000, 1000), engine.waits)
+        val sidecar = store.read()!!
+        assertEquals(5L, sidecar.turn); assertEquals(now, sidecar.lastCheckpointAt); assertEquals(now, sidecar.leftAt)
+        assertTrue(store.checkpointFile.exists())
+        // Android ends the process while the app is away.
+        now += 60_000
+        assertEquals("Turn 5 against AI 1 · saved 1 min ago", relaunch().offer?.detail)
+    }
+
+    @Test fun theBackgroundSaveStopsAtItsDeadline() = runBlocking {
+        for ((budget, waits) in listOf(GameResumeController.BACKGROUND_SAVE_MILLIS to List(5) { 1000 }, 500L to listOf(500), 0L to listOf(0))) {
+            startOnDemandGame()
+            val engine = FakeSave(EngineCheckpointResult.WaitingForEngine)
+            controller.backgrounded()
+            controller.saveForBackground(engine, budget)
+            assertEquals("budget $budget", waits, engine.waits)
+            assertFalse(store.checkpointFile.exists())
+            // Never saved: the next launch says the game ended.
+            assertEquals(GameResumeText.LOST, relaunch().notice)
+            assertNoFiles()
+        }
+    }
+
+    @Test fun theBackgroundSaveStopsWhenTheGameCannotBeSaved() = runBlocking {
+        for (result in listOf(EngineCheckpointResult.WaitingForPlayer, EngineCheckpointResult.Failed(jsonObject("message" to JsonPrimitive("disk full"))),
+            EngineCheckpointResult.Unavailable("checkpoint_unavailable"), null)) {
+            startOnDemandGame()
+            val engine = FakeSave(result ?: EngineCheckpointResult.WaitingForEngine).apply { throws = result == null }
+            controller.backgrounded()
+            controller.saveForBackground(engine)
+            assertEquals("$result", 1, engine.waits.size)
+            assertNotNull(store.read()!!.leftAt)
+            assertEquals("$result", GameResumeText.LOST, relaunch().notice)
+        }
+        // The match is over: nothing is left to resume.
+        startOnDemandGame()
+        controller.backgrounded()
+        controller.saveForBackground(FakeSave(EngineCheckpointResult.Over))
+        assertNoFiles()
+        assertFalse(controller.isCheckpointing)
+        assertNull(relaunch().notice)
+    }
+
+    @Test fun comingBackUsesUpTheSaveSoACrashEndsTheGame() = runBlocking {
+        startOnDemandGame()
+        controller.backgrounded()
+        controller.saveForBackground(FakeSave(saved(1, 3)))
+        assertTrue(store.checkpointFile.exists())
+        assertTrue("the engine's armed request must be cancelled", controller.foregrounded())
+        assertNull("a surviving process keeps its live game", store.read()!!.leftAt)
+        assertFalse("the save made on leaving is used up", store.checkpointFile.exists())
+        assertTrue(store.sidecarFile.exists())
+        assertFalse("only a return from leaving cancels", controller.foregrounded())
+        // The app dies while the player is in it: never an older save.
+        val next = relaunch()
+        assertNull(next.offer)
+        assertEquals(GameResumeText.LOST, next.notice)
+        assertNoFiles(); assertFalse(store.consumedFile.exists())
+    }
+
+    @Test fun leavingAgainAtTheSameDecisionKeepsThatSave() = runBlocking {
+        startOnDemandGame()
+        val engine = FakeSave(saved(1, 3))
+        controller.backgrounded(); controller.saveForBackground(engine)
+        controller.foregrounded()
+        assertFalse(store.checkpointFile.exists())
+        // Back out without a decision: the engine reports the save it already made.
+        engine.writesFile = false
+        controller.backgrounded(); controller.saveForBackground(engine)
+        assertTrue("the used-up save is the current one again", store.checkpointFile.exists())
+        assertFalse(store.consumedFile.exists())
+        // After a decision the engine writes a new save, and the old one goes.
+        controller.foregrounded()
+        engine.writesFile = true
+        engine.results[0] = saved(2, 4, now + 30_000)
+        controller.backgrounded(); controller.saveForBackground(engine)
+        assertTrue(store.checkpointFile.exists()); assertFalse(store.consumedFile.exists())
+        assertEquals(4L, store.read()!!.turn)
+        assertNotNull(relaunch().offer)
+        assertFalse(store.consumedFile.exists())
+    }
+
+    @Test fun pausingArmsASaveWithoutWaiting() = runBlocking {
+        startOnDemandGame()
+        val engine = FakeSave(EngineCheckpointResult.WaitingForEngine)
+        now += 10_000
+        assertTrue(controller.backgrounded())
+        controller.armSave(engine)
+        assertEquals(listOf(0), engine.waits)
+        assertEquals(now, store.read()!!.leftAt)
+        // Back without leaving (ON_PAUSE, then ON_RESUME): the request is cancelled.
+        assertTrue(controller.foregrounded())
+        assertNull(store.read()!!.leftAt)
+        // Closed from Recents after the engine saved: the next launch offers it.
+        engine.results[0] = saved(1, 2)
+        controller.backgrounded(); controller.armSave(engine)
+        assertTrue(store.checkpointFile.exists())
+        assertEquals(2L, store.read()!!.turn)
+        assertNotNull(relaunch().offer)
+    }
+
+    @Test fun aSaveAnsweredAfterTheReturnIsNotTheSaveOnLeaving() = runBlocking {
+        startOnDemandGame()
+        val engine = FakeSave(saved(1, 3))
+        // The player returns while the request is waiting; its answer comes after.
+        engine.onRequest = { controller.foregrounded() }
+        controller.backgrounded(); controller.saveForBackground(engine)
+        assertEquals(1, engine.waits.size)
+        val sidecar = store.read()!!
+        assertNull(sidecar.leftAt); assertEquals(0L, sidecar.turn)
+        assertNull(relaunch().offer)
+    }
+
+    @Test fun olderEnginesSaveAtEveryDecisionAndAreNeverAsked() = runBlocking {
+        startCheckpointedGame()
+        assertFalse(controller.savesOnDemand)
+        val engine = FakeSave(EngineCheckpointResult.WaitingForEngine)
+        assertTrue(controller.backgrounded())
+        controller.armSave(engine); controller.saveForBackground(engine)
+        assertTrue("checkpoint is never sent to an engine without checkpointOnDemand", engine.waits.isEmpty())
+        assertNotNull("its last per-decision save is offered after leaving", relaunch().offer)
+        assertFalse("nothing to cancel", controller.foregrounded())
+        assertNull(store.read()!!.leftAt)
+        assertTrue("the engine keeps writing its file", store.checkpointFile.exists())
+        assertEquals(GameResumeText.LOST, relaunch().notice)
+    }
+
+    @Test fun restoringWithAnOnDemandEngineUsesUpTheSaveAndSavesAgainOnLeaving() = runBlocking {
+        val (next, sidecar) = offered()
+        val engine = FakeResume(caps = onDemandEngine)
+        assertTrue(next.resume(sidecar, engine))
+        assertTrue(next.savesOnDemand)
+        assertFalse("playing again uses up the save: a crash now ends the game", store.checkpointFile.exists())
+        assertTrue(store.consumedFile.exists())
+        // Leaving again before any decision: the engine reports the save it restored from.
+        val save = FakeSave(saved(4, 12, 1_799_999_990_000L)).apply { writesFile = false }
+        next.backgrounded(); next.saveForBackground(save)
+        assertTrue(store.checkpointFile.exists()); assertFalse(store.consumedFile.exists())
+        assertNotNull(relaunch().offer)
     }
 }
