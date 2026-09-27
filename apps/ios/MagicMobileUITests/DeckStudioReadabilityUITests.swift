@@ -13,6 +13,7 @@ final class DeckStudioReadabilityUITests: XCTestCase {
         // Match the foreground-verified press duration; destination assertions
         // remain mandatory and the action is never silently retried.
         XCTAssertTrue(app.buttons["menu.decks"].isHittable)
+        UITestHarness.settleFirstTouch(app)
         app.buttons["menu.decks"].press(forDuration: 0.15)
         XCTAssertTrue(app.buttons["deckStudio.create"].waitForExistence(timeout: 15))
         app.buttons["deckStudio.create"].tap()
@@ -64,13 +65,16 @@ final class DeckStudioReadabilityUITests: XCTestCase {
         let prerequisites = app.staticTexts["Before you begin"]
         XCTAssertGreaterThan(prerequisites.frame.minY, cards.frame.minY)
         app.swipeUp()
-        let first = app.staticTexts["deckStudio.combo.step.1"]
-        let second = app.staticTexts["deckStudio.combo.step.2"]
+        // Steps and results use the rules-text view (inline mana symbols), which is one
+        // labelled accessibility element rather than a plain StaticText.
+        let rulesText = app.descendants(matching: .any)
+        let first = rulesText["deckStudio.combo.step.1"]
+        let second = rulesText["deckStudio.combo.step.2"]
         XCTAssertTrue(first.exists); XCTAssertTrue(second.exists)
         XCTAssertEqual(first.label, "Example first step")
         XCTAssertEqual(second.label, "Example second step")
         XCTAssertLessThan(first.frame.minY, second.frame.minY)
         XCTAssertGreaterThan(app.staticTexts["Results"].frame.minY, second.frame.minY)
-        XCTAssertTrue(app.staticTexts["Example result"].exists)
+        XCTAssertTrue(rulesText.matching(NSPredicate(format: "label == %@", "Example result")).firstMatch.exists)
     }
 }
