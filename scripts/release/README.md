@@ -27,6 +27,28 @@ untracked, missing or invalid evidence reports unknown. Different inputs mean to
 look for another exact artifact, not automatically rebuild. Equivalent inputs still
 require artifact byte/provenance verification, product linkage and release gates.
 
+For a new engine, stage the far-calls build once, from a clean checkout of the
+release source, before planning:
+
+```sh
+python3 scripts/release/controller.py stage-native --engine-run-id FAR_CALLS_RUN_ID
+```
+
+It reads the run through `gh api` and requires a completed, successful
+`magicmobile-far-calls.yml` dispatch with the same approval and compiler-probe steps
+`wait_issue4_native.py` requires. It then looks up the unexpired
+`issue4-full-native-candidate-<sha>` artifact ID and digest and runs, in order,
+`download_issue4_native.py` (with `GH_TOKEN` from `gh auth token`, passed only to
+that step's environment), `verify_native_candidate.py` and
+`prepare_ios_app_native.py --apply`. The receipt is copied to
+`packages/ondevice-engine/build/native-candidate-provenance.json`, the input
+`plan --platform ios` reads. It refuses a dirty tracked tree, an existing
+`apps/ios/NativeEngine` (move it aside first) or an existing download directory,
+and stops at the first failed step. Logs and a `stage-native.json` summary go to
+a new `build_output/native-stage/run-<id>-*/` directory. This is artifact and
+source provenance only; product linkage (`magicmobile-product-device.yml`) and
+native execution remain separate gates.
+
 Use a committed, reviewed candidate in the selected checkout. Finish the separate
 native resolver and validation work first when it applies; the controller verifies
 the actual staged native binaries against their manifests and the existing scripts
