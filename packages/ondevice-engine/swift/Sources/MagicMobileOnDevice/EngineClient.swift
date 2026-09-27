@@ -124,8 +124,6 @@ public struct MatchPoll: Sendable, Equatable {
     public let raw: JSONValue
     public let matchID: String, seatID: String, phase: String
     public let revision: Int64, prompt: EnginePrompt?, snapshot: JSONValue?, resyncRequired: Bool
-    /// The latest checkpoint write (engines with `saveResume` only).
-    public let checkpoint: EngineCheckpoint?
     public init(_ value: JSONValue) throws {
         guard let matchID = value["matchId"]?.string, let seatID = value["viewerId"]?.string,
               let revision = value["revision"]?.integer, revision >= 0,
@@ -136,6 +134,5 @@ public struct MatchPoll: Sendable, Equatable {
         self.phase = phase; self.resyncRequired = resync
         snapshot = value["snapshot"] == .null ? nil : value["snapshot"]
         if let p = value["prompt"], p != .null { prompt = try EnginePrompt(p) } else { prompt = nil }
-        checkpoint = EngineCheckpoint(value["checkpoint"])
     }
 }
