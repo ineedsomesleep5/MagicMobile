@@ -91,13 +91,13 @@ struct DeckStudioCardSearch: View {
                     }
                 }
                 if !embedded || showEmbeddedFilters {
-                    Text("Filters work too: t:creature, o:draw, mv<=3, id:wu")
+                    Text(DeckStudioPlayText.searchHint)
                         .font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 // On by default once the deck has a commander, and visible so the limit is never a surprise.
                 if colors != nil {
-                    Toggle("Within commander color identity", isOn: $constrainIdentity).font(.caption)
+                    Toggle(DeckStudioPlayText.withinIdentity, isOn: $constrainIdentity).font(.caption)
                         .accessibilityIdentifier("deckStudio.search.identity")
                 }
                 if embedded {

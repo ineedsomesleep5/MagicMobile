@@ -27,7 +27,8 @@ struct DeckStudioRootView: View {
     @State private var pendingDelete: DeckLibraryRecord?
     @State private var showPreferences = false
     @StateObject private var play = DeckStudioPlaySelection()
-    @State private var checkKeys: [String: DeckStudioCheckKey] = [:]
+    /// Each deck's check key; nil when the resolver cannot read the deck.
+    @State private var checkKeys: [String: DeckStudioCheckKey?] = [:]
     @State private var openAfterImport: DeckLibraryRecord?
     @State private var focusHandled = false
     private let favoritesKey = "deckStudio.library.favorites.v1"
@@ -163,14 +164,22 @@ struct DeckStudioRootView: View {
     private func refreshCheckKeys() {
         guard let resolver else { return }
         play.resolver = resolver
-        var keys: [String: DeckStudioCheckKey] = [:]
+        var keys: [String: DeckStudioCheckKey?] = [:]
         for entry in records {
-            keys[entry.id] = try? DeckStudioPlaySelection.key(deckID: entry.id, deck: entry.record.deckList, resolver: resolver, appBuild: play.appBuild)
+            keys.updateValue(try? DeckStudioPlaySelection.key(deckID: entry.id, deck: entry.record.deckList, resolver: resolver, appBuild: play.appBuild),
+                             forKey: entry.id)
             DeckStudioDeckColors.remember(commanders: DeckStudioDraftPresentation.commanders(NativeDeckDraft(deck: entry.record.deckList)), metadata: metadata)
         }
         checkKeys = keys
     }
-    private func status(_ id: String) -> DeckStudioPlayStatus { play.store.status(for: checkKeys[id]) }
+    /// A deck the resolver cannot read needs fixes, as on the setup screen and Android.
+    private func status(_ id: String) -> DeckStudioPlayStatus {
+        switch checkKeys[id] {
+        case .some(.some(let key)): return play.store.status(for: key)
+        case .some(.none): return .needsFixes
+        case .none: return .notChecked
+        }
+    }
     private func open(_ id: String) {
         guard let entry = records.first(where: { $0.id == id }) else { return }
         route = .deck(entry.record, entry.included)

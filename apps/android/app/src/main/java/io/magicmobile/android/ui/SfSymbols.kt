@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.filled.NoteAdd
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.AddCircleOutline
@@ -78,6 +79,8 @@ object SfSymbols {
         "checkmark.shield" -> Icons.Outlined.VerifiedUser
         "checkmark.shield.fill" -> Icons.Filled.VerifiedUser
         "checkmark.seal.fill" -> Icons.Filled.Verified
+        "questionmark.circle" -> Icons.AutoMirrored.Outlined.HelpOutline
+        "wrench.and.screwdriver" -> Icons.Filled.Build
         "xmark" -> Icons.Filled.Close
         "xmark.circle" -> Icons.Outlined.Cancel
         "xmark.circle.fill" -> Icons.Filled.Cancel

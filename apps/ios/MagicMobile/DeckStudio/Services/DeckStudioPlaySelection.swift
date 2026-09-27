@@ -2,26 +2,157 @@ import Foundation
 import Combine
 import MagicMobileOnDevice
 
-/// Player-facing wording for choosing the playing deck. Android's
-/// DeckStudioPlaySelection.kt shows the same strings; change both together.
+/// Deck Studio's player-facing wording for Play and the builder: one source on iOS.
+/// Android's DeckStudioPlayText (core) holds the same strings, and both platforms'
+/// parity tests read them from apps/android/core/src/test/resources/parity/deck-studio-cases.json.
 enum DeckStudioPlayText {
+    // Play
     static let play = "Play this deck"
     static let saveAndPlay = "Save & play"
     static let playing = "Playing"
     static let playingAccessibility = "This is your playing deck"
+    static let ready = "Ready"
+    static let needsFixes = "Needs fixes"
+    static let notChecked = "Not checked"
     static let fixDeck = "Fix deck"
     static let notNow = "Not now"
     static let setUpGame = "Set up game"
     static let cannotPlayTitle = "Can't play this deck yet"
     static let checkingTitle = "Checking your deck"
+    static let checkingProgress = "Checking Commander rules…"
     static let gameLive = "Leave your current game to change decks."
+    static let catalogueLoading = "The local card catalogue is still loading."
+    static let setupReady = "Ready · checked on this device"
+    static let setupNotChecked = "Not checked — Start will check it"
+    static let setupNeedsFixes = "Needs fixes · Fix in Deck Studio"
+    static let panelCaption = "Check the Commander rules on this device, then play this deck."
+    static let showAll = "Show all"
+    /// A stored pass from a game XMage created.
+    static let startPassed = "Passed the installed XMage Commander validator"
+    // Card actions (long-press on a row or tile)
+    static let cardDetails = "Card details"
+    static let addOne = "Add one"
+    static let removeOne = "Remove one"
+    static let replaceCard = "Replace card"
+    static let moveTo = "Move to…"
+    static let removeRow = "Remove row"
+    /// Move to… destinations: board and title. "considering" counts as maybeboard.
+    static let destinations: [(section: String, title: String)] = [
+        ("deck", "Main deck"), ("commanders", "Commanders"), ("companions", "Companions"),
+        ("sideboard", "Sideboard"), ("maybeboard", "Maybeboard")
+    ]
+    // Select mode
+    static let select = "Select"
+    static let selectCards = "Select cards"
+    static let doneSelecting = "Done selecting"
+    static let selectAll = "Select all"
+    static let setQuantity = "Set quantity"
+    static let remove = "Remove"
+    static let removeSelectedTitle = "Remove the selected cards?"
+    static let removeSelectedMessage = "Undo brings them back."
+    static let quantityMessage = "Every selected card gets this quantity, from 1 to 2,000."
+    static let quantityError = "Use a quantity from 1 to 2,000. Nothing was changed."
+    static let showAsGrid = "Show as grid"
+    static let showAsList = "Show as list"
+    // Quick Add
+    static let quickAdd = "Quick add"
+    static let quickAddMain = "Main"
+    static let quickAddMaybe = "Maybe"
+    static let quickAddMaybeboard = "Add to maybeboard"
+    static let addCards = "Add cards"
+    static let quickAddHint = "Type a card name, or a count first, like 2x Sol Ring. Return adds the top match."
+    static let quickAddNeedsName = "Type a card name, like 2x Sol Ring."
+    static let quickAddFailed = "Could not add this card. Check the draft's size limits."
+    static let undo = "Undo"
+    // Edit as text
+    static let editAsText = "Edit as text"
+    static let copyList = "Copy list"
+    static let listCopied = "List copied"
+    static let reviewChanges = "Review changes"
+    static let applyChanges = "Apply changes"
+    static let keepEditing = "Keep editing"
+    static let diffAdded = "Added"
+    static let diffRemoved = "Removed"
+    static let noChanges = "No changes to apply."
+    static let textEditorHint = "One card per line, like 1 Sol Ring, under Commander, Deck, Companion, Sideboard or Maybeboard headings."
+    // Commander-first new decks
+    static let chooseCommander = "Choose a commander"
+    static let skip = "Skip"
+    static let commanderFirstTitle = "Start with your commander"
+    static let commanderFirstCaption = "Legendary creatures and cards that say they can be your commander. The deck takes its name until you rename it."
+    static let searchCommanders = "Search commanders"
+    // Search
+    static let searchHint = "Filters work too: t:creature, o:draw, mv<=3, id:wu"
+    static let withinIdentity = "Within commander color identity"
+    // Sample hand
+    static let sampleHand = "Sample hand"
+    static let sampleHandCaption = "Draw seven from your main deck. Commanders stay in the command zone, and sideboard and maybeboard cards stay out."
+    static let sampleHandEmpty = "Add main-deck cards to draw a sample hand."
+    static let draw7 = "Draw 7"
+    static let newHand = "New hand"
+    static let mulligan = "Mulligan"
+    static let draw = "Draw"
+
     static func checking(_ name: String) -> String { "XMage is checking \(name) against the Commander rules on this device." }
     static func nowPlaying(_ name: String) -> String { "Now playing \(name)" }
     static func nowPlayingStrip(_ name: String, _ status: DeckStudioPlayStatus) -> String { "Now playing: \(name) · \(status.label)" }
-    static func issueCount(_ count: Int) -> String { "\(count) \(count == 1 ? "issue" : "issues")" }
+    static func issueCount(_ count: Int) -> String { count == 1 ? "1 issue" : "\(count) issues" }
     static func blocked(_ count: Int) -> String { count == 1 ? "1 rule issue blocks play" : "\(count) rule issues block play" }
+    static func notShown(_ count: Int) -> String { "\(issueCount(count)) not shown" }
     static func excluded(_ cards: Int) -> String { "Sideboard and maybeboard stay out of play (\(CardCountText.label(cards)))." }
     static func deletePlaying(_ fallback: String) -> String { "This is your playing deck. \(fallback) will be selected instead." }
+    static func showingOnly(_ label: String) -> String { "Showing only: \(label)" }
+    static func selected(_ count: Int) -> String { "\(count) selected" }
+    static func added(_ quantity: Int, _ name: String, maybeboard: Bool) -> String {
+        "Added \(quantity) × \(name)" + (maybeboard ? " to maybeboard" : "")
+    }
+    static func noCardNamed(_ name: String) -> String { "No card named \u{201C}\(name)\u{201D} in this app\u{2019}s catalogue." }
+    static func handCounts(hand: Int, library: Int) -> String {
+        "\(CardCountText.label(hand)) in hand · \(CardCountText.label(library)) in library"
+    }
+}
+
+/// The rules Play shares on every screen. Android's DeckStudioPlayRules (core) follows
+/// the same rules, and deck-studio-cases.json pins them on both platforms.
+enum DeckStudioPlayRules {
+    /// Rows the offline resolver cannot play: unknown names and sections, and cards
+    /// split between playing sections. Sideboard, maybeboard and considering rows stay out.
+    static func unplayableCards(_ deck: DeckList, canonical: (String) -> String?) -> [String] {
+        let playing: Set<String> = ["main", "deck", "commander", "commanders", "companion", "companions"]
+        let excluded: Set<String> = ["sideboard", "maybeboard", "considering"]
+        let rows = [deck.commander.map { DeckEntry(cardName: $0.cardName, quantity: $0.quantity, section: "commanders") }].compactMap { $0 } + deck.entries
+        var cards: [String] = []
+        func note(_ name: String) { if !cards.contains(name) { cards.append(name) } }
+        var sections: [String: Set<String>] = [:]
+        for row in rows {
+            let section = row.section.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if excluded.contains(section) { continue }
+            guard playing.contains(section), let name = canonical(row.cardName) else { note(row.cardName); continue }
+            sections[name, default: []].insert(DeckStudioBoard.normalized(section))
+        }
+        for row in rows where sections[canonical(row.cardName) ?? ""].map({ $0.count > 1 }) == true { note(row.cardName) }
+        return cards
+    }
+
+    /// Whether Start's answer is stored for the player's deck. A pass always is. A
+    /// rejection is not when this exact deck already passed, or when an issue names a
+    /// card outside the player's deck (it came from another seat's deck).
+    static func storesStartResult(valid: Bool, issueCards: [String], deckCards: [String], alreadyPassed: Bool) -> Bool {
+        if valid { return true }
+        if alreadyPassed { return false }
+        let names = Set(deckCards.map(key))
+        return issueCards.allSatisfy { names.contains(key($0)) }
+    }
+
+    /// Fix deck: the rows XMage named, matched by canonical name and ignoring case.
+    /// Sideboard and maybeboard rows are out of play, so they never match.
+    static func fixRows(_ rows: [NativeDeckRow], cards: [String], canonical: (String) -> String?) -> Set<UUID> {
+        func name(_ value: String) -> String { key(canonical(value) ?? value) }
+        let wanted = Set(cards.map(name))
+        return Set(rows.filter { !["sideboard", "maybeboard"].contains(DeckStudioBoard.of($0)) && wanted.contains(name($0.cardName)) }.map(\.id))
+    }
+
+    private static func key(_ name: String) -> String { name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
 }
 
 /// One flow for "Play this deck" from a library tile, the workspace header and the
@@ -95,7 +226,12 @@ final class DeckStudioPlaySelection: ObservableObject {
         return try? Self.key(deckID: deckID, deck: deck, resolver: resolver, appBuild: appBuild)
     }
 
-    func status(deckID: String, deck: DeckList) -> DeckStudioPlayStatus { store.status(for: key(deckID: deckID, deck: deck)) }
+    /// A deck the loaded resolver cannot read needs fixes; otherwise its stored result decides.
+    func status(deckID: String, deck: DeckList) -> DeckStudioPlayStatus {
+        guard let resolver else { return .notChecked }
+        guard let key = try? Self.key(deckID: deckID, deck: deck, resolver: resolver, appBuild: appBuild) else { return .needsFixes }
+        return store.status(for: key)
+    }
 
     /// Selected, and its check still matches these cards and this install.
     func isPlaying(deckID: String, deck: DeckList) -> Bool {
@@ -107,13 +243,9 @@ final class DeckStudioPlaySelection: ObservableObject {
     /// is returned unchanged, so the resolver reports the problem at Start.
     nonisolated static func playingDeck(_ deck: DeckList) -> DeckList { (try? DeckStudioPlayProjection(deck).playing) ?? deck }
 
-    /// Playing cards the offline resolver has no printing for.
-    nonisolated static func unresolvedCards(_ deck: DeckList, resolver: OnDeviceDeckResolver) -> [String] {
-        let playing = playingDeck(deck)
-        var seen = Set<String>()
-        return ([playing.commander].compactMap { $0 } + playing.entries).compactMap { entry in
-            resolver.canonicalCardName(entry.cardName) == nil && seen.insert(entry.cardName).inserted ? entry.cardName : nil
-        }
+    /// Rows the offline resolver cannot play (DeckStudioPlayRules.unplayableCards).
+    nonisolated static func unplayableCards(_ deck: DeckList, resolver: OnDeviceDeckResolver) -> [String] {
+        DeckStudioPlayRules.unplayableCards(deck) { resolver.canonicalCardName($0) }
     }
 
     // MARK: Flow
@@ -124,7 +256,10 @@ final class DeckStudioPlaySelection: ObservableObject {
     func play(name: String, prepare: () throws -> Prepared) -> Task<Void, Never>? {
         guard !isChecking else { return nil }
         guard !isGameLive() else { outcome = .gameLive; return nil }
-        guard let resolver else { return nil }
+        guard let resolver else {
+            outcome = .cannotPlay(deckID: nil, name: name, message: DeckStudioPlayText.catalogueLoading, cards: [])
+            return nil
+        }
         let prepared: Prepared
         do { prepared = try prepare() } catch {
             outcome = .cannotPlay(deckID: nil, name: name, message: error.localizedDescription, cards: [])
@@ -140,7 +275,7 @@ final class DeckStudioPlaySelection: ObservableObject {
                                      catalogue: resolver.catalogueHash, appBuild: appBuild)
         } catch {
             outcome = .cannotPlay(deckID: prepared.deckID, name: name, message: error.localizedDescription,
-                                  cards: Self.unresolvedCards(prepared.deck, resolver: resolver))
+                                  cards: Self.unplayableCards(prepared.deck, resolver: resolver))
             return nil
         }
         let excluded = projection.excluded.reduce(0) { $0 + $1.quantity }
@@ -228,12 +363,21 @@ struct DeckStudioStartRejection: Equatable, Identifiable {
                   request: request, upstream: resolver.upstreamCommit, catalogue: resolver.catalogueHash, appBuild: appBuild)
         else { return nil }
         let check = DeckStudioStoredCheck(deckID: deckID, receipt: receipt)
-        if store.check(for: check.key)?.valid == true { return nil }
         let playing = DeckStudioPlaySelection.playingDeck(deck)
-        let names = Set(([playing.commander].compactMap { $0 } + playing.entries).flatMap { entry in
+        let names = ([playing.commander].compactMap { $0 } + playing.entries).flatMap { entry in
             [entry.cardName, resolver.canonicalCardName(entry.cardName)].compactMap { $0 }
-        })
-        guard check.cardNames.allSatisfy(names.contains) else { return nil }
+        }
+        guard DeckStudioPlayRules.storesStartResult(valid: false, issueCards: check.cardNames, deckCards: names,
+                                                    alreadyPassed: store.check(for: check.key)?.valid == true) else { return nil }
         return check
+    }
+
+    /// XMage created the game, so the player's deck passed the same Commander check:
+    /// stored as a pass under the key Deck Studio reads.
+    @MainActor static func pass(deckID: String, deck: DeckList, resolver: OnDeviceDeckResolver, appBuild: String) -> DeckStudioStoredCheck? {
+        guard let request = try? DeckStudioPlayProjection(deck).resolve(resolver).encoded() else { return nil }
+        return DeckStudioStoredCheck(key: DeckStudioCheckKey(deckID: deckID, request: request, upstream: resolver.upstreamCommit,
+                                                             catalogue: resolver.catalogueHash, appBuild: appBuild),
+                                     checkedAt: Date(), valid: true, summary: DeckStudioPlayText.startPassed, issues: [])
     }
 }

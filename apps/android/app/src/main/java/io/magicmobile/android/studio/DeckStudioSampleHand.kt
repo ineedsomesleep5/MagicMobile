@@ -21,7 +21,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import io.magicmobile.android.game.CardCountText
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfWeight
 import kotlin.random.Random
@@ -40,18 +39,16 @@ fun DeckStudioSampleHandPanel(draft: NativeDeckDraft, metadata: NativeDeckMetada
     StudioPanel(spacing = 12.dp) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             SfImage("hand.raised", DeckStudioPalette.ink, 20.dp)
-            Text("Sample hand", color = DeckStudioPalette.ink, style = StudioText.title2.weight(SfWeight.semibold))
+            Text(DeckStudioPlayText.sampleHand, color = DeckStudioPalette.ink, style = StudioText.title2.weight(SfWeight.semibold))
         }
-        Text("Draw seven from your main deck. Commanders stay in the command zone, and sideboard and maybeboard cards stay out.",
+        Text(DeckStudioPlayText.sampleHandCaption,
             color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
         val current = hand
         when {
-            names.isEmpty() -> Text("Add main-deck cards to draw a sample hand.", color = DeckStudioPalette.ink, style = StudioText.subheadline)
-            current == null -> StudioButton("Draw 7", ::deal, Modifier.testTag("deckStudio.sampleHand.draw7"), icon = "hand.raised")
+            names.isEmpty() -> Text(DeckStudioPlayText.sampleHandEmpty, color = DeckStudioPalette.ink, style = StudioText.subheadline)
+            current == null -> StudioButton(DeckStudioPlayText.draw7, ::deal, Modifier.testTag("deckStudio.sampleHand.draw7"), icon = "hand.raised")
             else -> {
-                val status = if (current.toBottom > 0) "Put ${CardCountText.label(current.toBottom)} on the bottom"
-                else "Turn ${current.turn}" + if (current.mulligans == 0) "" else " · ${current.mulligans} ${if (current.mulligans == 1) "mulligan" else "mulligans"}"
-                Text(status, Modifier.testTag("deckStudio.sampleHand.status"), color = if (current.toBottom > 0) DeckStudioPalette.accent else DeckStudioPalette.ink,
+                Text(current.status, Modifier.testTag("deckStudio.sampleHand.status"), color = if (current.toBottom > 0) DeckStudioPalette.accent else DeckStudioPalette.ink,
                     style = StudioText.subheadline.weight(SfWeight.semibold))
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (card in current.hand) {
@@ -63,12 +60,12 @@ fun DeckStudioSampleHandPanel(draft: NativeDeckDraft, metadata: NativeDeckMetada
                         }
                     }
                 }
-                Text("${CardCountText.label(current.hand.size)} in hand · ${CardCountText.label(current.library.size)} in library",
+                Text(DeckStudioPlayText.handCounts(current.hand.size, current.library.size),
                     color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StudioButton("New hand", ::deal, primary = false, compactText = true)
-                    StudioButton("Mulligan", { hand = current.mulliganed(Random.Default) }, primary = false, enabled = current.canMulligan, compactText = true)
-                    StudioButton("Draw", { hand = current.drawn() }, Modifier.testTag("deckStudio.sampleHand.drawCard"), enabled = current.canDraw, compactText = true)
+                    StudioButton(DeckStudioPlayText.newHand, ::deal, primary = false, compactText = true)
+                    StudioButton(DeckStudioPlayText.mulligan, { hand = current.mulliganed(Random.Default) }, primary = false, enabled = current.canMulligan, compactText = true)
+                    StudioButton(DeckStudioPlayText.draw, { hand = current.drawn() }, Modifier.testTag("deckStudio.sampleHand.drawCard"), enabled = current.canDraw, compactText = true)
                 }
             }
         }

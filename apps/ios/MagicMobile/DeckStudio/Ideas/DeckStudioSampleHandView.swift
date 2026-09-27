@@ -12,13 +12,13 @@ struct DeckStudioSampleHandView: View {
     var body: some View {
         DeckStudioPanel {
             VStack(alignment: .leading, spacing: 12) {
-                Label("Sample hand", systemImage: "hand.raised").font(.title2.weight(.semibold))
-                Text("Draw seven from your main deck. Commanders stay in the command zone, and sideboard and maybeboard cards stay out.")
+                Label(DeckStudioPlayText.sampleHand, systemImage: "hand.raised").font(.title2.weight(.semibold))
+                Text(DeckStudioPlayText.sampleHandCaption)
                     .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                 if names.isEmpty {
-                    Text("Add main-deck cards to draw a sample hand.").font(.subheadline)
+                    Text(DeckStudioPlayText.sampleHandEmpty).font(.subheadline)
                 } else if let hand {
-                    Text(status(hand)).font(.subheadline.weight(.semibold))
+                    Text(hand.status).font(.subheadline.weight(.semibold))
                         .foregroundStyle(hand.toBottom > 0 ? DeckStudioPalette.accent : DeckStudioPalette.ink)
                         .accessibilityIdentifier("deckStudio.sampleHand.status")
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -30,19 +30,23 @@ struct DeckStudioSampleHandView: View {
                                     DeckStudioCardImageTile(name: card.name, card: metadata?.card(named: card.name))
                                         .frame(width: dynamicType.isAccessibilitySize ? 150 : 96)
                                 }.buttonStyle(DeckStudioArtworkButtonStyle())
+                                    // Long-press shows the card large, as on Android.
+                                    .contextMenu {
+                                        Button(DeckStudioPlayText.cardDetails, systemImage: "info.circle") { inspect(card.name) }
+                                    } preview: { DeckStudioCardPreview(name: card.name, card: metadata?.card(named: card.name)) }
                                     .accessibilityLabel(card.name)
                                     .accessibilityHint(hand.toBottom > 0 ? "Puts this card on the bottom of your library" : "Shows the card")
                             }
                         }.padding(.vertical, 2)
                     }
-                    Text("\(CardCountText.label(hand.hand.count)) in hand · \(CardCountText.label(hand.library.count)) in library")
+                    Text(DeckStudioPlayText.handCounts(hand: hand.hand.count, library: hand.library.count))
                         .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 8) { controls(hand) }
                         VStack(alignment: .leading, spacing: 8) { controls(hand) }
                     }
                 } else {
-                    Button("Draw 7", systemImage: "hand.draw") { deal() }
+                    Button(DeckStudioPlayText.draw7, systemImage: "hand.draw") { deal() }
                         .buttonStyle(DeckStudioButtonStyle()).accessibilityIdentifier("deckStudio.sampleHand.draw7")
                 }
             }
@@ -50,18 +54,13 @@ struct DeckStudioSampleHandView: View {
         .onChange(of: names) { _, _ in hand = nil }
     }
     @ViewBuilder private func controls(_ hand: DeckStudioSampleHand) -> some View {
-        Button("New hand") { deal() }.buttonStyle(DeckStudioButtonStyle(primary: false))
-        Button("Mulligan") {
+        Button(DeckStudioPlayText.newHand) { deal() }.buttonStyle(DeckStudioButtonStyle(primary: false))
+        Button(DeckStudioPlayText.mulligan) {
             var generator = SystemRandomNumberGenerator()
             self.hand?.mulligan(using: &generator)
         }.buttonStyle(DeckStudioButtonStyle(primary: false)).disabled(!hand.canMulligan)
-        Button("Draw") { self.hand?.draw() }.buttonStyle(DeckStudioButtonStyle()).disabled(!hand.canDraw)
+        Button(DeckStudioPlayText.draw) { self.hand?.draw() }.buttonStyle(DeckStudioButtonStyle()).disabled(!hand.canDraw)
             .accessibilityIdentifier("deckStudio.sampleHand.drawCard")
-    }
-    private func status(_ hand: DeckStudioSampleHand) -> String {
-        if hand.toBottom > 0 { return "Put \(CardCountText.label(hand.toBottom)) on the bottom" }
-        let mulligans = hand.mulligans == 0 ? "" : " · \(hand.mulligans) \(hand.mulligans == 1 ? "mulligan" : "mulligans")"
-        return "Turn \(hand.turn)\(mulligans)"
     }
     private func deal() {
         var generator = SystemRandomNumberGenerator()

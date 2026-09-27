@@ -1,0 +1,2450 @@
+{
+ "comment": "Deck Studio parity cases. iOS ParityGoldenTests.swift and Android ParityGoldenTest.kt run every case; an unknown id fails both.",
+ "strings": {
+  "play": "Play this deck",
+  "saveAndPlay": "Save & play",
+  "playing": "Playing",
+  "playingAccessibility": "This is your playing deck",
+  "ready": "Ready",
+  "needsFixes": "Needs fixes",
+  "notChecked": "Not checked",
+  "fixDeck": "Fix deck",
+  "notNow": "Not now",
+  "setUpGame": "Set up game",
+  "cannotPlayTitle": "Can't play this deck yet",
+  "checkingTitle": "Checking your deck",
+  "checkingProgress": "Checking Commander rules…",
+  "gameLive": "Leave your current game to change decks.",
+  "catalogueLoading": "The local card catalogue is still loading.",
+  "setupReady": "Ready · checked on this device",
+  "setupNotChecked": "Not checked — Start will check it",
+  "setupNeedsFixes": "Needs fixes · Fix in Deck Studio",
+  "panelCaption": "Check the Commander rules on this device, then play this deck.",
+  "showAll": "Show all",
+  "startPassed": "Passed the installed XMage Commander validator",
+  "cardDetails": "Card details",
+  "addOne": "Add one",
+  "removeOne": "Remove one",
+  "replaceCard": "Replace card",
+  "moveTo": "Move to…",
+  "removeRow": "Remove row",
+  "select": "Select",
+  "selectCards": "Select cards",
+  "doneSelecting": "Done selecting",
+  "selectAll": "Select all",
+  "setQuantity": "Set quantity",
+  "remove": "Remove",
+  "removeSelectedTitle": "Remove the selected cards?",
+  "removeSelectedMessage": "Undo brings them back.",
+  "quantityMessage": "Every selected card gets this quantity, from 1 to 2,000.",
+  "quantityError": "Use a quantity from 1 to 2,000. Nothing was changed.",
+  "showAsGrid": "Show as grid",
+  "showAsList": "Show as list",
+  "quickAdd": "Quick add",
+  "quickAddMain": "Main",
+  "quickAddMaybe": "Maybe",
+  "quickAddMaybeboard": "Add to maybeboard",
+  "addCards": "Add cards",
+  "quickAddHint": "Type a card name, or a count first, like 2x Sol Ring. Return adds the top match.",
+  "quickAddNeedsName": "Type a card name, like 2x Sol Ring.",
+  "quickAddFailed": "Could not add this card. Check the draft's size limits.",
+  "undo": "Undo",
+  "editAsText": "Edit as text",
+  "copyList": "Copy list",
+  "listCopied": "List copied",
+  "reviewChanges": "Review changes",
+  "applyChanges": "Apply changes",
+  "keepEditing": "Keep editing",
+  "diffAdded": "Added",
+  "diffRemoved": "Removed",
+  "noChanges": "No changes to apply.",
+  "textEditorHint": "One card per line, like 1 Sol Ring, under Commander, Deck, Companion, Sideboard or Maybeboard headings.",
+  "chooseCommander": "Choose a commander",
+  "skip": "Skip",
+  "commanderFirstTitle": "Start with your commander",
+  "commanderFirstCaption": "Legendary creatures and cards that say they can be your commander. The deck takes its name until you rename it.",
+  "searchCommanders": "Search commanders",
+  "searchHint": "Filters work too: t:creature, o:draw, mv<=3, id:wu",
+  "withinIdentity": "Within commander color identity",
+  "sampleHand": "Sample hand",
+  "sampleHandCaption": "Draw seven from your main deck. Commanders stay in the command zone, and sideboard and maybeboard cards stay out.",
+  "sampleHandEmpty": "Add main-deck cards to draw a sample hand.",
+  "draw7": "Draw 7",
+  "newHand": "New hand",
+  "mulligan": "Mulligan",
+  "draw": "Draw",
+  "quickCheckCaption": "Quick check · XMage confirms when you play"
+ },
+ "destinations": [
+  [
+   "deck",
+   "Main deck"
+  ],
+  [
+   "commanders",
+   "Commanders"
+  ],
+  [
+   "companions",
+   "Companions"
+  ],
+  [
+   "sideboard",
+   "Sideboard"
+  ],
+  [
+   "maybeboard",
+   "Maybeboard"
+  ]
+ ],
+ "formatted": [
+  {
+   "id": "checking",
+   "args": [
+    "Atraxa, Praetors' Voice"
+   ],
+   "text": "XMage is checking Atraxa, Praetors' Voice against the Commander rules on this device."
+  },
+  {
+   "id": "nowPlaying",
+   "args": [
+    "Atraxa"
+   ],
+   "text": "Now playing Atraxa"
+  },
+  {
+   "id": "nowPlayingStrip",
+   "args": [
+    "Atraxa",
+    "ready"
+   ],
+   "text": "Now playing: Atraxa · Ready"
+  },
+  {
+   "id": "nowPlayingStrip",
+   "args": [
+    "Atraxa",
+    "needsFixes"
+   ],
+   "text": "Now playing: Atraxa · Needs fixes"
+  },
+  {
+   "id": "nowPlayingStrip",
+   "args": [
+    "Atraxa",
+    "notChecked"
+   ],
+   "text": "Now playing: Atraxa · Not checked"
+  },
+  {
+   "id": "issues",
+   "args": [
+    0
+   ],
+   "text": "0 issues"
+  },
+  {
+   "id": "issues",
+   "args": [
+    1
+   ],
+   "text": "1 issue"
+  },
+  {
+   "id": "issues",
+   "args": [
+    2
+   ],
+   "text": "2 issues"
+  },
+  {
+   "id": "blocked",
+   "args": [
+    1
+   ],
+   "text": "1 rule issue blocks play"
+  },
+  {
+   "id": "blocked",
+   "args": [
+    3
+   ],
+   "text": "3 rule issues block play"
+  },
+  {
+   "id": "notShown",
+   "args": [
+    1
+   ],
+   "text": "1 issue not shown"
+  },
+  {
+   "id": "notShown",
+   "args": [
+    12
+   ],
+   "text": "12 issues not shown"
+  },
+  {
+   "id": "excluded",
+   "args": [
+    1
+   ],
+   "text": "Sideboard and maybeboard stay out of play (1 card)."
+  },
+  {
+   "id": "excluded",
+   "args": [
+    6
+   ],
+   "text": "Sideboard and maybeboard stay out of play (6 cards)."
+  },
+  {
+   "id": "deletePlaying",
+   "args": [
+    "Token Triumph"
+   ],
+   "text": "This is your playing deck. Token Triumph will be selected instead."
+  },
+  {
+   "id": "showingOnly",
+   "args": [
+    "Needs fixes"
+   ],
+   "text": "Showing only: Needs fixes"
+  },
+  {
+   "id": "listFilter",
+   "args": [
+    "offIdentity"
+   ],
+   "text": "Showing only: Off-color"
+  },
+  {
+   "id": "listFilter",
+   "args": [
+    "duplicate"
+   ],
+   "text": "Showing only: Duplicate"
+  },
+  {
+   "id": "listFilter",
+   "args": [
+    "unresolved"
+   ],
+   "text": "Showing only: Unresolved"
+  },
+  {
+   "id": "listFilter",
+   "args": [
+    "needsFixes"
+   ],
+   "text": "Showing only: Needs fixes"
+  },
+  {
+   "id": "selected",
+   "args": [
+    0
+   ],
+   "text": "0 selected"
+  },
+  {
+   "id": "selected",
+   "args": [
+    1
+   ],
+   "text": "1 selected"
+  },
+  {
+   "id": "selected",
+   "args": [
+    12
+   ],
+   "text": "12 selected"
+  },
+  {
+   "id": "added",
+   "args": [
+    2,
+    "Sol Ring",
+    false
+   ],
+   "text": "Added 2 × Sol Ring"
+  },
+  {
+   "id": "added",
+   "args": [
+    1,
+    "Island",
+    true
+   ],
+   "text": "Added 1 × Island to maybeboard"
+  },
+  {
+   "id": "noCardNamed",
+   "args": [
+    "Sol Rnig"
+   ],
+   "text": "No card named “Sol Rnig” in this app’s catalogue."
+  },
+  {
+   "id": "handCounts",
+   "args": [
+    1,
+    1
+   ],
+   "text": "1 card in hand · 1 card in library"
+  },
+  {
+   "id": "handCounts",
+   "args": [
+    7,
+    92
+   ],
+   "text": "7 cards in hand · 92 cards in library"
+  },
+  {
+   "id": "status",
+   "args": [
+    "ready"
+   ],
+   "text": "Ready"
+  },
+  {
+   "id": "status",
+   "args": [
+    "needsFixes"
+   ],
+   "text": "Needs fixes"
+  },
+  {
+   "id": "status",
+   "args": [
+    "notChecked"
+   ],
+   "text": "Not checked"
+  },
+  {
+   "id": "setupStatus",
+   "args": [
+    "ready"
+   ],
+   "text": "Ready · checked on this device"
+  },
+  {
+   "id": "setupStatus",
+   "args": [
+    "needsFixes"
+   ],
+   "text": "Needs fixes · Fix in Deck Studio"
+  },
+  {
+   "id": "setupStatus",
+   "args": [
+    "notChecked"
+   ],
+   "text": "Not checked — Start will check it"
+  }
+ ],
+ "quickAdd": {
+  "cardNames": [
+   "1996 World Champion",
+   "Sol Ring"
+  ],
+  "cases": [
+   {
+    "input": "Sol Ring",
+    "result": {
+     "quantity": 1,
+     "name": "Sol Ring",
+     "ignored": [],
+     "note": null
+    }
+   },
+   {
+    "input": "  2 Sol Ring ",
+    "result": {
+     "quantity": 2,
+     "name": "Sol Ring",
+     "ignored": [],
+     "note": null
+    }
+   },
+   {
+    "input": "2x Sol Ring",
+    "result": {
+     "quantity": 2,
+     "name": "Sol Ring",
+     "ignored": [],
+     "note": null
+    }
+   },
+   {
+    "input": "12X Forest",
+    "result": {
+     "quantity": 12,
+     "name": "Forest",
+     "ignored": [],
+     "note": null
+    }
+   },
+   {
+    "input": "2x",
+    "result": null
+   },
+   {
+    "input": "2",
+    "result": null
+   },
+   {
+    "input": "",
+    "result": null
+   },
+   {
+    "input": "   ",
+    "result": null
+   },
+   {
+    "input": "0 Sol Ring",
+    "result": null
+   },
+   {
+    "input": "2001 Forest",
+    "result": null
+   },
+   {
+    "input": "[Ramp]",
+    "result": null
+   },
+   {
+    "input": "2x Sol Ring [Ramp]",
+    "result": {
+     "quantity": 2,
+     "name": "Sol Ring",
+     "ignored": [
+      "[Ramp]"
+     ],
+     "note": "Ignored [Ramp] · sets and tags aren't saved"
+    }
+   },
+   {
+    "input": "1 Sol Ring (C21) 263",
+    "result": {
+     "quantity": 1,
+     "name": "Sol Ring",
+     "ignored": [
+      "(C21) 263"
+     ],
+     "note": "Ignored (C21) 263 · sets and tags aren't saved"
+    }
+   },
+   {
+    "input": "Sol Ring (CMM) [Ramp] [Staple]",
+    "result": {
+     "quantity": 1,
+     "name": "Sol Ring",
+     "ignored": [
+      "(CMM)",
+      "[Ramp]",
+      "[Staple]"
+     ],
+     "note": "Ignored (CMM) [Ramp] [Staple] · sets and tags aren't saved"
+    }
+   },
+   {
+    "input": "1996 World Champion",
+    "result": {
+     "quantity": 1,
+     "name": "1996 World Champion",
+     "ignored": [],
+     "note": null
+    }
+   },
+   {
+    "input": "3 1996 World Champion",
+    "result": {
+     "quantity": 3,
+     "name": "1996 World Champion",
+     "ignored": [],
+     "note": null
+    }
+   },
+   {
+    "input": "2 x Sol Ring",
+    "result": {
+     "quantity": 2,
+     "name": "x Sol Ring",
+     "ignored": [],
+     "note": null
+    }
+   },
+   {
+    "input": "2000 Forest",
+    "result": {
+     "quantity": 2000,
+     "name": "Forest",
+     "ignored": [],
+     "note": null
+    }
+   }
+  ]
+ },
+ "preflight": {
+  "targetCount": 100,
+  "caption": "Quick check · XMage confirms when you play",
+  "issues": {
+   "missingCommander": {
+    "title": "Missing commander",
+    "badge": "Missing commander"
+   },
+   "offIdentity": {
+    "title": "Off-color",
+    "badge": "Off-color"
+   },
+   "duplicate": {
+    "title": "Duplicates",
+    "badge": "Duplicate"
+   },
+   "unresolved": {
+    "title": "Unresolved",
+    "badge": "Unresolved"
+   }
+  },
+  "cards": [
+   {
+    "name": "Atraxa, Praetors' Voice",
+    "typeLine": "Legendary Creature — Phyrexian Angel Horror",
+    "oracleText": "Flying, vigilance, deathtouch, lifelink",
+    "colorIdentity": [
+     "W",
+     "U",
+     "B",
+     "G"
+    ]
+   },
+   {
+    "name": "Thrasios, Triton Hero",
+    "typeLine": "Legendary Creature — Merfolk Wizard",
+    "oracleText": "Partner",
+    "colorIdentity": [
+     "G",
+     "U"
+    ]
+   },
+   {
+    "name": "Tymna the Weaver",
+    "typeLine": "Legendary Creature — Human Cleric",
+    "oracleText": "Partner",
+    "colorIdentity": [
+     "W",
+     "B"
+    ]
+   },
+   {
+    "name": "Mystery Commander",
+    "typeLine": "Legendary Creature — Horror",
+    "oracleText": null,
+    "colorIdentity": null
+   },
+   {
+    "name": "Sol Ring",
+    "typeLine": "Artifact",
+    "oracleText": "{T}: Add {C}{C}.",
+    "colorIdentity": []
+   },
+   {
+    "name": "Lightning Bolt",
+    "typeLine": "Instant",
+    "oracleText": "Lightning Bolt deals 3 damage to any target.",
+    "colorIdentity": [
+     "R"
+    ]
+   },
+   {
+    "name": "Counterspell",
+    "typeLine": "Instant",
+    "oracleText": "Counter target spell.",
+    "colorIdentity": [
+     "U"
+    ]
+   },
+   {
+    "name": "Forest",
+    "typeLine": "Basic Land — Forest",
+    "oracleText": "({T}: Add {G}.)",
+    "colorIdentity": [
+     "G"
+    ]
+   },
+   {
+    "name": "Snow-Covered Forest",
+    "typeLine": "Basic Snow Land — Forest",
+    "oracleText": "({T}: Add {G}.)",
+    "colorIdentity": [
+     "G"
+    ]
+   },
+   {
+    "name": "Relentless Rats",
+    "typeLine": "Creature — Rat",
+    "oracleText": "Relentless Rats gets +1/+1 for each other creature you control named Relentless Rats.\nA deck can have any number of cards named Relentless Rats.",
+    "colorIdentity": [
+     "B"
+    ]
+   },
+   {
+    "name": "Seven Dwarves",
+    "typeLine": "Creature — Dwarf",
+    "oracleText": "Seven Dwarves gets +1/+1 for each other creature you control named Seven Dwarves.\nA deck can have up to seven cards named Seven Dwarves.",
+    "colorIdentity": [
+     "R"
+    ]
+   }
+  ],
+  "aliases": {
+   "sol ring": "Sol Ring"
+  },
+  "cases": [
+   {
+    "name": "empty draft",
+    "rows": [],
+    "unresolvable": [],
+    "expect": {
+     "count": 0,
+     "missingCommander": true,
+     "commanderIdentity": null,
+     "rows": {
+      "offIdentity": [],
+      "duplicate": [],
+      "unresolved": []
+     },
+     "issueCount": 1,
+     "summary": "100 cards to go · 1 issue",
+     "chips": [
+      "Missing commander"
+     ]
+    }
+   },
+   {
+    "name": "on-color deck with basics",
+    "rows": [
+     {
+      "name": "Atraxa, Praetors' Voice",
+      "quantity": 1,
+      "section": "commander"
+     },
+     {
+      "name": "Forest",
+      "quantity": 60,
+      "section": "deck"
+     },
+     {
+      "name": "Sol Ring",
+      "quantity": 1,
+      "section": "deck"
+     },
+     {
+      "name": "Counterspell",
+      "quantity": 1,
+      "section": "main"
+     }
+    ],
+    "unresolvable": [],
+    "expect": {
+     "count": 63,
+     "missingCommander": false,
+     "commanderIdentity": [
+      "B",
+      "G",
+      "U",
+      "W"
+     ],
+     "rows": {
+      "offIdentity": [],
+      "duplicate": [],
+      "unresolved": []
+     },
+     "issueCount": 0,
+     "summary": "37 cards to go · No issues found",
+     "chips": []
+    }
+   },
+   {
+    "name": "off-color and duplicates by canonical name; other boards ignored",
+    "rows": [
+     {
+      "name": "Atraxa, Praetors' Voice",
+      "quantity": 1,
+      "section": "commanders"
+     },
+     {
+      "name": "Lightning Bolt",
+      "quantity": 1,
+      "section": "deck"
+     },
+     {
+      "name": "Sol Ring",
+      "quantity": 1,
+      "section": "deck"
+     },
+     {
+      "name": "sol ring",
+      "quantity": 1,
+      "section": "deck"
+     },
+     {
+      "name": "Sol Ring",
+      "quantity": 3,
+      "section": "sideboard"
+     },
+     {
+      "name": "Lightning Bolt",
+      "quantity": 1,
+      "section": "considering"
+     }
+    ],
+    "unresolvable": [],
+    "expect": {
+     "count": 4,
+     "missingCommander": false,
+     "commanderIdentity": [
+      "B",
+      "G",
+      "U",
+      "W"
+     ],
+     "rows": {
+      "offIdentity": [
+       1
+      ],
+      "duplicate": [
+       2,
+       3
+      ],
+      "unresolved": []
+     },
+     "issueCount": 3,
+     "summary": "96 cards to go · 3 issues",
+     "chips": [
+      "Off-color · 1",
+      "Duplicates · 2"
+     ]
+    }
+   },
+   {
+    "name": "any number and up to seven; unknown commander skips colour identity",
+    "rows": [
+     {
+      "name": "Mystery Commander",
+      "quantity": 1,
+      "section": "commander"
+     },
+     {
+      "name": "Relentless Rats",
+      "quantity": 30,
+      "section": "deck"
+     },
+     {
+      "name": "Seven Dwarves",
+      "quantity": 8,
+      "section": "deck"
+     },
+     {
+      "name": "Snow-Covered Forest",
+      "quantity": 2,
+      "section": "deck"
+     }
+    ],
+    "unresolvable": [],
+    "expect": {
+     "count": 41,
+     "missingCommander": false,
+     "commanderIdentity": null,
+     "rows": {
+      "offIdentity": [],
+      "duplicate": [
+       2
+      ],
+      "unresolved": []
+     },
+     "issueCount": 1,
+     "summary": "59 cards to go · 1 issue",
+     "chips": [
+      "Duplicates · 1"
+     ]
+    }
+   },
+   {
+    "name": "seven dwarves at the limit",
+    "rows": [
+     {
+      "name": "Mystery Commander",
+      "quantity": 1,
+      "section": "commander"
+     },
+     {
+      "name": "Seven Dwarves",
+      "quantity": 7,
+      "section": "deck"
+     }
+    ],
+    "unresolvable": [],
+    "expect": {
+     "count": 8,
+     "missingCommander": false,
+     "commanderIdentity": null,
+     "rows": {
+      "offIdentity": [],
+      "duplicate": [],
+      "unresolved": []
+     },
+     "issueCount": 0,
+     "summary": "92 cards to go · No issues found",
+     "chips": []
+    }
+   },
+   {
+    "name": "partners use the union of identities",
+    "rows": [
+     {
+      "name": "Thrasios, Triton Hero",
+      "quantity": 1,
+      "section": "commanders"
+     },
+     {
+      "name": "Tymna the Weaver",
+      "quantity": 1,
+      "section": "commanders"
+     },
+     {
+      "name": "Counterspell",
+      "quantity": 1,
+      "section": "deck"
+     },
+     {
+      "name": "Lightning Bolt",
+      "quantity": 1,
+      "section": "deck"
+     }
+    ],
+    "unresolvable": [],
+    "expect": {
+     "count": 4,
+     "missingCommander": false,
+     "commanderIdentity": [
+      "B",
+      "G",
+      "U",
+      "W"
+     ],
+     "rows": {
+      "offIdentity": [
+       3
+      ],
+      "duplicate": [],
+      "unresolved": []
+     },
+     "issueCount": 1,
+     "summary": "96 cards to go · 1 issue",
+     "chips": [
+      "Off-color · 1"
+     ]
+    }
+   },
+   {
+    "name": "unresolved playing cards only",
+    "rows": [
+     {
+      "name": "Atraxa, Praetors' Voice",
+      "quantity": 1,
+      "section": "commander"
+     },
+     {
+      "name": "Imaginary Card",
+      "quantity": 1,
+      "section": "deck"
+     },
+     {
+      "name": "Imaginary Card",
+      "quantity": 1,
+      "section": "maybeboard"
+     }
+    ],
+    "unresolvable": [
+     "Imaginary Card"
+    ],
+    "expect": {
+     "count": 2,
+     "missingCommander": false,
+     "commanderIdentity": [
+      "B",
+      "G",
+      "U",
+      "W"
+     ],
+     "rows": {
+      "offIdentity": [],
+      "duplicate": [],
+      "unresolved": [
+       1
+      ]
+     },
+     "issueCount": 1,
+     "summary": "98 cards to go · 1 issue",
+     "chips": [
+      "Unresolved · 1"
+     ]
+    }
+   },
+   {
+    "name": "no catalogue loaded stays quiet",
+    "catalogue": false,
+    "rows": [
+     {
+      "name": "Atraxa, Praetors' Voice",
+      "quantity": 1,
+      "section": "commander"
+     },
+     {
+      "name": "Imaginary Card",
+      "quantity": 1,
+      "section": "deck"
+     },
+     {
+      "name": "Sol Ring",
+      "quantity": 2,
+      "section": "deck"
+     }
+    ],
+    "unresolvable": null,
+    "expect": {
+     "count": 4,
+     "missingCommander": false,
+     "commanderIdentity": null,
+     "rows": {
+      "offIdentity": [],
+      "duplicate": [],
+      "unresolved": []
+     },
+     "issueCount": 0,
+     "summary": "96 cards to go · No issues found",
+     "chips": []
+    }
+   },
+   {
+    "name": "one card over",
+    "rows": [
+     {
+      "name": "Atraxa, Praetors' Voice",
+      "quantity": 1,
+      "section": "commander"
+     },
+     {
+      "name": "Forest",
+      "quantity": 100,
+      "section": "deck"
+     }
+    ],
+    "unresolvable": [],
+    "expect": {
+     "count": 101,
+     "missingCommander": false,
+     "commanderIdentity": [
+      "B",
+      "G",
+      "U",
+      "W"
+     ],
+     "rows": {
+      "offIdentity": [],
+      "duplicate": [],
+      "unresolved": []
+     },
+     "issueCount": 0,
+     "summary": "1 card over · No issues found",
+     "chips": []
+    }
+   },
+   {
+    "name": "companions count for copies, not for the 100",
+    "rows": [
+     {
+      "name": "Atraxa, Praetors' Voice",
+      "quantity": 1,
+      "section": "commander"
+     },
+     {
+      "name": "Sol Ring",
+      "quantity": 1,
+      "section": "deck"
+     },
+     {
+      "name": "Sol Ring",
+      "quantity": 1,
+      "section": "companion"
+     }
+    ],
+    "unresolvable": [],
+    "expect": {
+     "count": 2,
+     "missingCommander": false,
+     "commanderIdentity": [
+      "B",
+      "G",
+      "U",
+      "W"
+     ],
+     "rows": {
+      "offIdentity": [],
+      "duplicate": [
+       1,
+       2
+      ],
+      "unresolved": []
+     },
+     "issueCount": 2,
+     "summary": "98 cards to go · 2 issues",
+     "chips": [
+      "Duplicates · 2"
+     ]
+    }
+   },
+   {
+    "name": "the primary commander mark makes a row a commander",
+    "rows": [
+     {
+      "name": "Atraxa, Praetors' Voice",
+      "quantity": 1,
+      "section": "deck",
+      "primary": true
+     },
+     {
+      "name": "Counterspell",
+      "quantity": 1,
+      "section": "deck"
+     }
+    ],
+    "unresolvable": [],
+    "expect": {
+     "count": 2,
+     "missingCommander": false,
+     "commanderIdentity": [
+      "B",
+      "G",
+      "U",
+      "W"
+     ],
+     "rows": {
+      "offIdentity": [],
+      "duplicate": [],
+      "unresolved": []
+     },
+     "issueCount": 0,
+     "summary": "98 cards to go · No issues found",
+     "chips": []
+    }
+   }
+  ]
+ },
+ "search": [
+  {
+   "query": "Lightning Bolt",
+   "text": "Lightning Bolt",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": null,
+   "hasFilters": false
+  },
+  {
+   "query": "t:creature",
+   "text": "",
+   "types": [
+    "creature"
+   ],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": null,
+   "hasFilters": true
+  },
+  {
+   "query": "T:Creature",
+   "text": "",
+   "types": [
+    "Creature"
+   ],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": null,
+   "hasFilters": true
+  },
+  {
+   "query": "o:draw",
+   "text": "",
+   "types": [],
+   "oracle": [
+    "draw"
+   ],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": null,
+   "hasFilters": true
+  },
+  {
+   "query": "mv<=3",
+   "text": "",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": 3,
+   "identity": null,
+   "hasFilters": true
+  },
+  {
+   "query": "mv>=2",
+   "text": "",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": 2,
+   "maximumManaValue": null,
+   "identity": null,
+   "hasFilters": true
+  },
+  {
+   "query": "mv=3",
+   "text": "",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": 3,
+   "maximumManaValue": 3,
+   "identity": null,
+   "hasFilters": true
+  },
+  {
+   "query": "mv<=3 mv<=2",
+   "text": "",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": 2,
+   "identity": null,
+   "hasFilters": true
+  },
+  {
+   "query": "mv>=.5",
+   "text": "",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": 0.5,
+   "maximumManaValue": null,
+   "identity": null,
+   "hasFilters": true
+  },
+  {
+   "query": "mv<=3.",
+   "text": "",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": 3,
+   "identity": null,
+   "hasFilters": true
+  },
+  {
+   "query": "mv<=1e2",
+   "text": "mv<=1e2",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": null,
+   "hasFilters": false
+  },
+  {
+   "query": "mv=-1",
+   "text": "mv=-1",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": null,
+   "hasFilters": false
+  },
+  {
+   "query": "mv<=abc",
+   "text": "mv<=abc",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": null,
+   "hasFilters": false
+  },
+  {
+   "query": "mv<=inf",
+   "text": "mv<=inf",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": null,
+   "hasFilters": false
+  },
+  {
+   "query": "id:wu",
+   "text": "",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": [
+    "U",
+    "W"
+   ],
+   "hasFilters": true
+  },
+  {
+   "query": "id:WU",
+   "text": "",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": [
+    "U",
+    "W"
+   ],
+   "hasFilters": true
+  },
+  {
+   "query": "id:c",
+   "text": "",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": [],
+   "hasFilters": true
+  },
+  {
+   "query": "id:wu id:ug",
+   "text": "",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": [
+    "U"
+   ],
+   "hasFilters": true
+  },
+  {
+   "query": "id:wc",
+   "text": "id:wc",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": null,
+   "hasFilters": false
+  },
+  {
+   "query": "id:xyz",
+   "text": "id:xyz",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": null,
+   "hasFilters": false
+  },
+  {
+   "query": "t:",
+   "text": "",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": null,
+   "hasFilters": false
+  },
+  {
+   "query": "mv<=",
+   "text": "",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": null,
+   "hasFilters": false
+  },
+  {
+   "query": "sol t:",
+   "text": "sol",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": null,
+   "hasFilters": false
+  },
+  {
+   "query": "o: draw",
+   "text": "draw",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": null,
+   "hasFilters": false
+  },
+  {
+   "query": "id:",
+   "text": "",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": null,
+   "hasFilters": false
+  },
+  {
+   "query": "t:\"legendary creature\" o:draw sol",
+   "text": "sol",
+   "types": [
+    "legendary creature"
+   ],
+   "oracle": [
+    "draw"
+   ],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": null,
+   "hasFilters": true
+  },
+  {
+   "query": "sol   ring",
+   "text": "sol ring",
+   "types": [],
+   "oracle": [],
+   "minimumManaValue": null,
+   "maximumManaValue": null,
+   "identity": null,
+   "hasFilters": false
+  }
+ ],
+ "sampleHand": {
+  "handSize": 7,
+  "cases": [
+   {
+    "name": "London mulligan and draws",
+    "rows": [
+     {
+      "name": "Atraxa, Praetors' Voice",
+      "quantity": 1,
+      "section": "commander"
+     },
+     {
+      "name": "Forest",
+      "quantity": 10,
+      "section": "deck"
+     },
+     {
+      "name": "Sol Ring",
+      "quantity": 1,
+      "section": "deck"
+     },
+     {
+      "name": "Island",
+      "quantity": 5,
+      "section": "sideboard"
+     },
+     {
+      "name": "Swamp",
+      "quantity": 2,
+      "section": "maybeboard"
+     },
+     {
+      "name": "Plains",
+      "quantity": 1,
+      "section": "considering"
+     },
+     {
+      "name": "Counterspell",
+      "quantity": 1,
+      "section": "companions"
+     }
+    ],
+    "library": 11,
+    "steps": [
+     {
+      "do": "deal",
+      "hand": 7,
+      "library": 4,
+      "mulligans": 0,
+      "toBottom": 0,
+      "turn": 1,
+      "canMulligan": true,
+      "canDraw": true,
+      "status": "Turn 1"
+     },
+     {
+      "do": "draw",
+      "hand": 8,
+      "library": 3,
+      "mulligans": 0,
+      "toBottom": 0,
+      "turn": 2,
+      "canMulligan": false,
+      "canDraw": true,
+      "status": "Turn 2"
+     },
+     {
+      "do": "deal",
+      "hand": 7,
+      "library": 4,
+      "mulligans": 0,
+      "toBottom": 0,
+      "turn": 1,
+      "canMulligan": true,
+      "canDraw": true,
+      "status": "Turn 1"
+     },
+     {
+      "do": "mulligan",
+      "hand": 7,
+      "library": 4,
+      "mulligans": 1,
+      "toBottom": 1,
+      "turn": 1,
+      "canMulligan": false,
+      "canDraw": false,
+      "status": "Put 1 card on the bottom"
+     },
+     {
+      "do": "mulligan",
+      "hand": 7,
+      "library": 4,
+      "mulligans": 1,
+      "toBottom": 1,
+      "turn": 1,
+      "canMulligan": false,
+      "canDraw": false,
+      "status": "Put 1 card on the bottom"
+     },
+     {
+      "do": "draw",
+      "hand": 7,
+      "library": 4,
+      "mulligans": 1,
+      "toBottom": 1,
+      "turn": 1,
+      "canMulligan": false,
+      "canDraw": false,
+      "status": "Put 1 card on the bottom"
+     },
+     {
+      "do": "bottom",
+      "hand": 6,
+      "library": 5,
+      "mulligans": 1,
+      "toBottom": 0,
+      "turn": 1,
+      "canMulligan": true,
+      "canDraw": true,
+      "status": "Turn 1 · 1 mulligan"
+     },
+     {
+      "do": "bottom",
+      "hand": 6,
+      "library": 5,
+      "mulligans": 1,
+      "toBottom": 0,
+      "turn": 1,
+      "canMulligan": true,
+      "canDraw": true,
+      "status": "Turn 1 · 1 mulligan"
+     },
+     {
+      "do": "mulligan",
+      "hand": 7,
+      "library": 4,
+      "mulligans": 2,
+      "toBottom": 2,
+      "turn": 1,
+      "canMulligan": false,
+      "canDraw": false,
+      "status": "Put 2 cards on the bottom"
+     },
+     {
+      "do": "bottom",
+      "hand": 6,
+      "library": 5,
+      "mulligans": 2,
+      "toBottom": 1,
+      "turn": 1,
+      "canMulligan": false,
+      "canDraw": false,
+      "status": "Put 1 card on the bottom"
+     },
+     {
+      "do": "bottom",
+      "hand": 5,
+      "library": 6,
+      "mulligans": 2,
+      "toBottom": 0,
+      "turn": 1,
+      "canMulligan": true,
+      "canDraw": true,
+      "status": "Turn 1 · 2 mulligans"
+     },
+     {
+      "do": "draw",
+      "hand": 6,
+      "library": 5,
+      "mulligans": 2,
+      "toBottom": 0,
+      "turn": 2,
+      "canMulligan": false,
+      "canDraw": true,
+      "status": "Turn 2 · 2 mulligans"
+     },
+     {
+      "do": "mulligan",
+      "hand": 6,
+      "library": 5,
+      "mulligans": 2,
+      "toBottom": 0,
+      "turn": 2,
+      "canMulligan": false,
+      "canDraw": true,
+      "status": "Turn 2 · 2 mulligans"
+     }
+    ]
+   },
+   {
+    "name": "a deck smaller than a hand",
+    "rows": [
+     {
+      "name": "Atraxa, Praetors' Voice",
+      "quantity": 1,
+      "section": "commander"
+     },
+     {
+      "name": "Forest",
+      "quantity": 3,
+      "section": "deck"
+     }
+    ],
+    "library": 3,
+    "steps": [
+     {
+      "do": "deal",
+      "hand": 3,
+      "library": 0,
+      "mulligans": 0,
+      "toBottom": 0,
+      "turn": 1,
+      "canMulligan": true,
+      "canDraw": false,
+      "status": "Turn 1"
+     },
+     {
+      "do": "mulligan",
+      "hand": 3,
+      "library": 0,
+      "mulligans": 1,
+      "toBottom": 1,
+      "turn": 1,
+      "canMulligan": false,
+      "canDraw": false,
+      "status": "Put 1 card on the bottom"
+     },
+     {
+      "do": "bottom",
+      "hand": 2,
+      "library": 1,
+      "mulligans": 1,
+      "toBottom": 0,
+      "turn": 1,
+      "canMulligan": true,
+      "canDraw": true,
+      "status": "Turn 1 · 1 mulligan"
+     },
+     {
+      "do": "draw",
+      "hand": 3,
+      "library": 0,
+      "mulligans": 1,
+      "toBottom": 0,
+      "turn": 2,
+      "canMulligan": false,
+      "canDraw": false,
+      "status": "Turn 2 · 1 mulligan"
+     }
+    ]
+   },
+   {
+    "name": "no main deck",
+    "rows": [
+     {
+      "name": "Atraxa, Praetors' Voice",
+      "quantity": 1,
+      "section": "commander"
+     },
+     {
+      "name": "Island",
+      "quantity": 4,
+      "section": "sideboard"
+     }
+    ],
+    "library": 0,
+    "steps": []
+   }
+  ]
+ },
+ "roleGroups": {
+  "order": [
+   "Ramp",
+   "Draw / card flow",
+   "Targeted interaction",
+   "Board wipes",
+   "Protection",
+   "Graveyard interaction",
+   "Recursion",
+   "Tutors",
+   "Other"
+  ],
+  "cards": [
+   {
+    "name": "Sol Ring",
+    "roles": [
+     "ramp"
+    ],
+    "types": [
+     "ARTIFACT"
+    ]
+   },
+   {
+    "name": "Rhystic Study",
+    "roles": [
+     "cardFlow"
+    ],
+    "types": [
+     "ENCHANTMENT"
+    ]
+   },
+   {
+    "name": "Kodama's Reach",
+    "roles": [
+     "tutor",
+     "ramp"
+    ],
+    "types": [
+     "SORCERY"
+    ]
+   },
+   {
+    "name": "Eternal Witness",
+    "roles": [
+     "recursion"
+    ],
+    "types": [
+     "CREATURE"
+    ]
+   },
+   {
+    "name": "Grizzly Bears",
+    "roles": [],
+    "types": [
+     "CREATURE"
+    ]
+   },
+   {
+    "name": "Forest",
+    "roles": [],
+    "types": [
+     "LAND"
+    ]
+   }
+  ],
+  "rows": [
+   "Sol Ring",
+   "Rhystic Study",
+   "Kodama's Reach",
+   "Kodama's Reach",
+   "Grizzly Bears",
+   "Forest",
+   "Eternal Witness",
+   "Unknown Card"
+  ],
+  "cases": [
+   {
+    "name": "a card sits under every role it has",
+    "overrides": {},
+    "groups": [
+     [
+      "Ramp"
+     ],
+     [
+      "Draw / card flow"
+     ],
+     [
+      "Ramp",
+      "Tutors"
+     ],
+     [
+      "Ramp",
+      "Tutors"
+     ],
+     [
+      "Other"
+     ],
+     [
+      "Other"
+     ],
+     [
+      "Recursion"
+     ],
+     [
+      "Other"
+     ]
+    ],
+    "counts": {
+     "Ramp": 2,
+     "Draw / card flow": 1,
+     "Tutors": 1,
+     "Recursion": 1,
+     "Other": 3
+    }
+   },
+   {
+    "name": "your own role reviews win",
+    "overrides": {
+     "Grizzly Bears": [
+      "protection"
+     ],
+     "Sol Ring": []
+    },
+    "groups": [
+     [
+      "Other"
+     ],
+     [
+      "Draw / card flow"
+     ],
+     [
+      "Ramp",
+      "Tutors"
+     ],
+     [
+      "Ramp",
+      "Tutors"
+     ],
+     [
+      "Protection"
+     ],
+     [
+      "Other"
+     ],
+     [
+      "Recursion"
+     ],
+     [
+      "Other"
+     ]
+    ],
+    "counts": {
+     "Ramp": 1,
+     "Draw / card flow": 1,
+     "Tutors": 1,
+     "Recursion": 1,
+     "Protection": 1,
+     "Other": 3
+    }
+   }
+  ]
+ },
+ "checkResults": {
+  "limits": {
+   "maximumResults": 200,
+   "maximumPerDeck": 5,
+   "maximumBytes": 2097152,
+   "maximumIssues": 100
+  },
+  "sha256": [
+   {
+    "request": "{\"main\":[]}",
+    "sha256": "e343b376e24e47f7aa484aab8e3e95dc0ba3bda7fe5ea86998d494a939973a10"
+   },
+   {
+    "request": "{\"commanders\":[{\"name\":\"Lim-Dûl's Vault\"}]}",
+    "sha256": "3e8a442e05c713682325b41f7f79b9abb299248034b5d9f3e813d22be692e98c"
+   },
+   {
+    "request": "",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   }
+  ],
+  "store": [
+   {
+    "name": "the same key is replaced, never duplicated",
+    "records": [
+     {
+      "deck": "local:a",
+      "request": "r1",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "at": 1000,
+      "valid": true
+     },
+     {
+      "deck": "local:a",
+      "request": "r1",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "at": 2000,
+      "valid": false
+     }
+    ],
+    "expect": [
+     "local:a|r1|u1|c1|10"
+    ],
+    "lookups": [
+     {
+      "deck": "local:a",
+      "request": "r1",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "status": "needsFixes"
+     },
+     {
+      "deck": "local:a",
+      "request": "r2",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "status": "notChecked"
+     },
+     {
+      "deck": "local:b",
+      "request": "r1",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "status": "notChecked"
+     },
+     {
+      "deck": "local:a",
+      "request": "r1",
+      "upstream": "u2",
+      "catalogue": "c1",
+      "build": "10",
+      "status": "notChecked"
+     },
+     {
+      "deck": "local:a",
+      "request": "r1",
+      "upstream": "u1",
+      "catalogue": "c2",
+      "build": "10",
+      "status": "notChecked"
+     },
+     {
+      "deck": "local:a",
+      "request": "r1",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "11",
+      "status": "notChecked"
+     }
+    ]
+   },
+   {
+    "name": "at most five results per deck, newest first",
+    "records": [
+     {
+      "deck": "local:b",
+      "request": "r1",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "at": 500,
+      "valid": true
+     },
+     {
+      "deck": "local:a",
+      "request": "r1",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "at": 1000,
+      "valid": true
+     },
+     {
+      "deck": "local:a",
+      "request": "r2",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "at": 2000,
+      "valid": true
+     },
+     {
+      "deck": "local:a",
+      "request": "r3",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "at": 3000,
+      "valid": true
+     },
+     {
+      "deck": "local:a",
+      "request": "r4",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "at": 4000,
+      "valid": true
+     },
+     {
+      "deck": "local:a",
+      "request": "r5",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "at": 5000,
+      "valid": true
+     },
+     {
+      "deck": "local:a",
+      "request": "r6",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "at": 6000,
+      "valid": true
+     },
+     {
+      "deck": "local:a",
+      "request": "r7",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "at": 7000,
+      "valid": true
+     }
+    ],
+    "expect": [
+     "local:a|r7|u1|c1|10",
+     "local:a|r6|u1|c1|10",
+     "local:a|r5|u1|c1|10",
+     "local:a|r4|u1|c1|10",
+     "local:a|r3|u1|c1|10",
+     "local:b|r1|u1|c1|10"
+    ],
+    "lookups": [
+     {
+      "deck": "local:a",
+      "request": "r3",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "status": "ready"
+     },
+     {
+      "deck": "local:a",
+      "request": "r2",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "status": "notChecked"
+     },
+     {
+      "deck": "local:b",
+      "request": "r1",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "status": "ready"
+     }
+    ]
+   },
+   {
+    "name": "recording drops results from other engines, catalogues and app builds",
+    "records": [
+     {
+      "deck": "local:a",
+      "request": "r1",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "at": 1000,
+      "valid": true
+     },
+     {
+      "deck": "local:b",
+      "request": "r1",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "at": 2000,
+      "valid": true
+     },
+     {
+      "deck": "local:a",
+      "request": "r1",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "11",
+      "at": 3000,
+      "valid": true
+     },
+     {
+      "deck": "local:c",
+      "request": "r1",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "11",
+      "at": 4000,
+      "valid": true
+     },
+     {
+      "deck": "local:d",
+      "request": "r1",
+      "upstream": "u2",
+      "catalogue": "c1",
+      "build": "11",
+      "at": 5000,
+      "valid": true
+     }
+    ],
+    "expect": [
+     "local:d|r1|u2|c1|11"
+    ],
+    "lookups": [
+     {
+      "deck": "local:a",
+      "request": "r1",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "11",
+      "status": "notChecked"
+     },
+     {
+      "deck": "local:b",
+      "request": "r1",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "status": "notChecked"
+     },
+     {
+      "deck": "local:d",
+      "request": "r1",
+      "upstream": "u2",
+      "catalogue": "c1",
+      "build": "11",
+      "status": "ready"
+     }
+    ]
+   },
+   {
+    "name": "a result checked earlier sorts after newer ones",
+    "records": [
+     {
+      "deck": "local:a",
+      "request": "r1",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "at": 3000,
+      "valid": true
+     },
+     {
+      "deck": "local:b",
+      "request": "r1",
+      "upstream": "u1",
+      "catalogue": "c1",
+      "build": "10",
+      "at": 1000,
+      "valid": true
+     }
+    ],
+    "expect": [
+     "local:a|r1|u1|c1|10",
+     "local:b|r1|u1|c1|10"
+    ],
+    "lookups": []
+   }
+  ],
+  "generated": [
+   {
+    "name": "the newest 200 results",
+    "decks": 205,
+    "count": 200,
+    "first": "local:204",
+    "last": "local:5",
+    "missing": [
+     "local:4",
+     "local:0"
+    ]
+   },
+   {
+    "name": "the file stays within 2 MiB; the oldest go first",
+    "decks": 140,
+    "summaryLength": 16000,
+    "fewerThan": 140,
+    "first": "local:139",
+    "missing": [
+     "local:0"
+    ]
+   }
+  ],
+  "corrupt": [
+   "",
+   "not json",
+   "{",
+   "[]",
+   "{\"schema\":2}",
+   "{\"schema\":1}",
+   "{\"schema\":1,\"checks\":[{}],\"results\":[{}]}"
+  ],
+  "startResult": [
+   {
+    "valid": true,
+    "issueCards": [
+     "Grave Titan"
+    ],
+    "deckCards": [
+     "Sol Ring"
+    ],
+    "alreadyPassed": false,
+    "stores": true
+   },
+   {
+    "valid": false,
+    "issueCards": [],
+    "deckCards": [
+     "Sol Ring"
+    ],
+    "alreadyPassed": false,
+    "stores": true
+   },
+   {
+    "valid": false,
+    "issueCards": [
+     "Sol Ring"
+    ],
+    "deckCards": [
+     "Sol Ring",
+     "Forest"
+    ],
+    "alreadyPassed": false,
+    "stores": true
+   },
+   {
+    "valid": false,
+    "issueCards": [
+     "sol ring "
+    ],
+    "deckCards": [
+     "Sol Ring"
+    ],
+    "alreadyPassed": false,
+    "stores": true
+   },
+   {
+    "valid": false,
+    "issueCards": [
+     "Sol Ring",
+     "Grave Titan"
+    ],
+    "deckCards": [
+     "Sol Ring"
+    ],
+    "alreadyPassed": false,
+    "stores": false
+   },
+   {
+    "valid": false,
+    "issueCards": [
+     "Sol Ring"
+    ],
+    "deckCards": [
+     "Sol Ring"
+    ],
+    "alreadyPassed": true,
+    "stores": false
+   }
+  ],
+  "fixRows": [
+   {
+    "name": "named cards by canonical name, ignoring case; other boards never match",
+    "rows": [
+     {
+      "name": "Sol Ring",
+      "quantity": 1,
+      "section": "deck"
+     },
+     {
+      "name": "Forest",
+      "quantity": 1,
+      "section": "deck"
+     },
+     {
+      "name": "Sol Ring",
+      "quantity": 1,
+      "section": "sideboard"
+     },
+     {
+      "name": "Lim-Dul's Vault",
+      "quantity": 1,
+      "section": "deck"
+     },
+     {
+      "name": "Delver of Secrets",
+      "quantity": 1,
+      "section": "maybeboard"
+     },
+     {
+      "name": "Delver of Secrets",
+      "quantity": 1,
+      "section": "considering"
+     }
+    ],
+    "canonical": {
+     "Lim-Dul's Vault": "Lim-Dûl's Vault"
+    },
+    "cards": [
+     "sol ring",
+     "Lim-Dûl's Vault",
+     "Delver of Secrets"
+    ],
+    "rowsShown": [
+     0,
+     3
+    ]
+   },
+   {
+    "name": "the primary commander row",
+    "rows": [
+     {
+      "name": "Atraxa, Praetors' Voice",
+      "quantity": 1,
+      "section": "deck",
+      "primary": true
+     },
+     {
+      "name": "Forest",
+      "quantity": 10,
+      "section": "deck"
+     }
+    ],
+    "canonical": {},
+    "cards": [
+     "Atraxa, Praetors' Voice"
+    ],
+    "rowsShown": [
+     0
+    ]
+   },
+   {
+    "name": "nothing named",
+    "rows": [
+     {
+      "name": "Forest",
+      "quantity": 10,
+      "section": "deck"
+     }
+    ],
+    "canonical": {},
+    "cards": [],
+    "rowsShown": []
+   }
+  ],
+  "unplayable": [
+   {
+    "name": "unknown names and sections, then cards split between playing sections",
+    "commander": {
+     "name": "Kardur, Doomscourge",
+     "quantity": 1,
+     "section": "commander"
+    },
+    "entries": [
+     {
+      "name": "Imaginary",
+      "quantity": 1,
+      "section": "deck"
+     },
+     {
+      "name": "Sol Ring",
+      "quantity": 1,
+      "section": "tokens"
+     },
+     {
+      "name": "Forest",
+      "quantity": 1,
+      "section": "deck"
+     },
+     {
+      "name": "Forest",
+      "quantity": 1,
+      "section": "companions"
+     },
+     {
+      "name": "Nope",
+      "quantity": 1,
+      "section": "maybeboard"
+     },
+     {
+      "name": "Island",
+      "quantity": 1,
+      "section": "Sideboard"
+     },
+     {
+      "name": "Ice",
+      "quantity": 1,
+      "section": "main"
+     }
+    ],
+    "known": [
+     "Kardur, Doomscourge",
+     "Sol Ring",
+     "Forest",
+     "Ice"
+    ],
+    "cards": [
+     "Imaginary",
+     "Sol Ring",
+     "Forest"
+    ]
+   },
+   {
+    "name": "a clean deck",
+    "commander": {
+     "name": "Kardur, Doomscourge",
+     "quantity": 1,
+     "section": "commander"
+    },
+    "entries": [
+     {
+      "name": "Forest",
+      "quantity": 30,
+      "section": "deck"
+     },
+     {
+      "name": "Sol Ring",
+      "quantity": 1,
+      "section": "main"
+     },
+     {
+      "name": "Mystery",
+      "quantity": 1,
+      "section": "considering"
+     }
+    ],
+    "known": [
+     "Kardur, Doomscourge",
+     "Sol Ring",
+     "Forest"
+    ],
+    "cards": []
+   }
+  ],
+  "groups": [
+   {
+    "issues": [
+     {
+      "type": "DECK_SIZE",
+      "group": "Deck",
+      "message": "Must contain 100 cards",
+      "cardName": null
+     },
+     {
+      "type": "OTHER",
+      "group": "Sol Ring",
+      "message": "Too many copies",
+      "cardName": "Sol Ring"
+     },
+     {
+      "type": "PRIMARY",
+      "group": null,
+      "message": "Commander is missing",
+      "cardName": " "
+     },
+     {
+      "type": "OTHER",
+      "group": "Deck",
+      "message": "Too few lands",
+      "cardName": " Sol Ring"
+     }
+    ],
+    "groups": [
+     [
+      "Deck",
+      2
+     ],
+     [
+      "Sol Ring",
+      1
+     ],
+     [
+      "Primary",
+      1
+     ]
+    ],
+    "cardNames": [
+     "Sol Ring"
+    ]
+   },
+   {
+    "issues": [
+     {
+      "type": "BANNED_CARD",
+      "group": "  ",
+      "message": "Banned",
+      "cardName": "Mana Crypt"
+     },
+     {
+      "type": "",
+      "group": null,
+      "message": "Something else",
+      "cardName": null
+     },
+     {
+      "type": "COLOR_IDENTITY",
+      "group": null,
+      "message": "Outside identity",
+      "cardName": "Lightning Bolt"
+     }
+    ],
+    "groups": [
+     [
+      "Banned card",
+      1
+     ],
+     [
+      "Commander rules",
+      1
+     ],
+     [
+      "Color identity",
+      1
+     ]
+    ],
+    "cardNames": [
+     "Mana Crypt",
+     "Lightning Bolt"
+    ]
+   }
+  ]
+ }
+}

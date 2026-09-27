@@ -1,6 +1,7 @@
 package io.magicmobile.android.studio
 
 import io.magicmobile.android.core.CardInfo
+import io.magicmobile.android.game.CardCountText
 import java.net.URI
 import java.text.Normalizer
 import java.util.Locale
@@ -372,6 +373,9 @@ data class DeckStudioSampleHand(
     val turn: Int get() = draws + 1
     val canMulligan: Boolean get() = draws == 0 && toBottom == 0 && mulligans < handSize && hand.isNotEmpty()
     val canDraw: Boolean get() = toBottom == 0 && library.isNotEmpty()
+    /** "Put 1 card on the bottom" after a mulligan, then "Turn 2 · 1 mulligan". */
+    val status: String get() = if (toBottom > 0) "Put ${CardCountText.label(toBottom)} on the bottom"
+        else "Turn $turn" + if (mulligans == 0) "" else " · $mulligans ${if (mulligans == 1) "mulligan" else "mulligans"}"
 
     /** A fresh opening hand from the whole deck. */
     fun dealt(random: kotlin.random.Random): DeckStudioSampleHand =

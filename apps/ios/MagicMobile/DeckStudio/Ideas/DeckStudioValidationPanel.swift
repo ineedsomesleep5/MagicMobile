@@ -29,7 +29,7 @@ struct DeckStudioValidationPanel: View {
         DeckStudioPanel {
             VStack(alignment: .leading, spacing: 12) {
                 Label("Ready to play?", systemImage: "checkmark.shield").font(.title2.weight(.semibold))
-                Text("Check the Commander rules on this device, then play this deck.")
+                Text(DeckStudioPlayText.panelCaption)
                     .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                 if let prepared, !prepared.excluded.isEmpty {
                     Text(DeckStudioPlayText.excluded(prepared.excluded.reduce(0) { $0 + $1.quantity }))
@@ -53,7 +53,7 @@ struct DeckStudioValidationPanel: View {
                 } else { Text("Not checked yet").font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk) }
                 if let error = state.error { Text(error).font(.caption).foregroundStyle(DeckStudioPalette.danger).textSelection(.enabled) }
                 if state.checking {
-                    ProgressView("Checking Commander rules…")
+                    ProgressView(DeckStudioPlayText.checkingProgress)
                     Button("Cancel check") { state.cancelPending() }
                     Text("Please wait for the engine to finish closing before playing.").font(.caption2)
                 }

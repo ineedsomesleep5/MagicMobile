@@ -169,6 +169,8 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
                 val file = receipt ?: return@launch
                 withContext(Dispatchers.IO) {
                     DeckStudioServices.organization.retainImport(record.id, value.annotations.map { "Line ${it.line}: ${it.text}" }, sourceURL, file.name)
+                    // A check made during review applies to the saved deck: the same playing cards.
+                    validation.receipt?.let { checked -> runCatching { DeckStudioServices.checkResults.record(DeckStudioCheckResult.of("local:${record.id}", checked)) } }
                 }
                 // The studio opens the saved deck's workspace next; importing never changes the playing deck.
                 didImport(record)

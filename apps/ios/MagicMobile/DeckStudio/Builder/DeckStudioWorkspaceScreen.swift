@@ -24,7 +24,7 @@ struct DeckStudioWorkspaceScreen: View {
     @State private var sorting = "Name"
     @State private var sectionFilter = ""
     @State private var colorFilter = ""
-    @State private var issueFilter: DeckStudioPreflight.Issue?
+    @State private var listFilter: DeckStudioListFilter?
     @State private var showCommanderFirst = false
     @State private var offeredCommanderFirst = false
     @State private var showTextEditor = false
@@ -150,9 +150,9 @@ struct DeckStudioWorkspaceScreen: View {
                         if let deck, let text = try? DeckStudioTextExport.text(deck) { ShareLink(item: text) { Label("Export plain text", systemImage: "doc.plaintext") } }
                         else { Text("Plain text unavailable · use JSON to preserve this draft") }
                         if let data = try? model.draft.exportJSON(), let json = String(data: data, encoding: .utf8) { ShareLink(item: json) { Label("Export native JSON", systemImage: "square.and.arrow.up") } }
-                        Button("Edit as text", systemImage: "text.alignleft") { showTextEditor = true }.disabled(model.readOnly)
+                        Button(DeckStudioPlayText.editAsText, systemImage: "text.alignleft") { showTextEditor = true }.disabled(model.readOnly)
                         if let deck, let list = try? DeckStudioTextExport.text(deck) {
-                            Button("Copy list", systemImage: "doc.on.doc") { copyList(list) }
+                            Button(DeckStudioPlayText.copyList, systemImage: "doc.on.doc") { copyList(list) }
                         }
                     } label: { Image(systemName: "ellipsis.circle").frame(width: 44, height: 44) }
                 }
@@ -173,17 +173,17 @@ struct DeckStudioWorkspaceScreen: View {
                     return model.change { $0 = next }
                 }
             }
-            .alert("Set quantity", isPresented: $showBulkQuantity) {
+            .alert(DeckStudioPlayText.setQuantity, isPresented: $showBulkQuantity) {
                 TextField("Quantity", text: $bulkQuantity).keyboardType(.numberPad)
                 Button("Apply") { applyBulkQuantity() }
                 Button("Cancel", role: .cancel) {}
-            } message: { Text("Every selected card gets this quantity, from 1 to 2,000.") }
-            .confirmationDialog("Remove the selected cards?", isPresented: $confirmBulkRemove, titleVisibility: .visible) {
-                Button("Remove", role: .destructive) { removeSelection() }
-            } message: { Text("Undo brings them back.") }
+            } message: { Text(DeckStudioPlayText.quantityMessage) }
+            .confirmationDialog(DeckStudioPlayText.removeSelectedTitle, isPresented: $confirmBulkRemove, titleVisibility: .visible) {
+                Button(DeckStudioPlayText.remove, role: .destructive) { removeSelection() }
+            } message: { Text(DeckStudioPlayText.removeSelectedMessage) }
             .overlay(alignment: .top) {
                 if listCopied {
-                    Label("List copied", systemImage: "checkmark").font(.subheadline.weight(.semibold))
+                    Label(DeckStudioPlayText.listCopied, systemImage: "checkmark").font(.subheadline.weight(.semibold))
                         .padding(.horizontal, 14).frame(minHeight: 40)
                         .foregroundStyle(DeckStudioPalette.surfaceElevated).background(DeckStudioPalette.ink, in: Capsule())
                         .padding(.top, 8).transition(.opacity).accessibilityAddTraits(.isStaticText)
@@ -193,7 +193,7 @@ struct DeckStudioWorkspaceScreen: View {
             .task(id: roleKey) { loadRolePreferences() }
             .onChange(of: tab) { _, value in if value == "Cards" { loadRolePreferences() } else { selecting = false; selection = [] } }
             // A fixed issue clears its filter, so the list never stays filtered to nothing.
-            .onChange(of: model.draft) { _, _ in if let issueFilter, preflight.rows(issueFilter).isEmpty { self.issueFilter = nil } }
+            .onChange(of: model.draft) { _, _ in if let listFilter, listRows(listFilter).isEmpty { self.listFilter = nil } }
             // Presentation belongs to the workspace, not a lazy history row or
             // an orientation-specific branch which can disappear while covered.
             .fullScreenCover(item: $historyReview) { review in
@@ -275,8 +275,8 @@ struct DeckStudioWorkspaceScreen: View {
                 expandedHeader.transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .top)))
             }
             if headerExpanded {
-                DeckStudioPreflightBar(preflight: preflight, filter: Binding(get: { issueFilter }, set: { value in
-                    issueFilter = value
+                DeckStudioPreflightBar(preflight: preflight, filter: Binding(get: { listFilter?.issue }, set: { value in
+                    listFilter = value.map(DeckStudioListFilter.quickCheck)
                     if value != nil { tab = "Cards" }
                 }), chooseCommander: { if !model.readOnly { showCommanderFirst = true } })
                 .padding(.top, 8)
@@ -394,7 +394,7 @@ struct DeckStudioWorkspaceScreen: View {
     }
 
     private var addCardsButton: some View {
-        Button { showSearch = true } label: { Label("Add cards", systemImage: "plus").frame(maxWidth: .infinity) }
+        Button { showSearch = true } label: { Label(DeckStudioPlayText.addCards, systemImage: "plus").frame(maxWidth: .infinity) }
             .buttonStyle(DeckStudioButtonStyle()).padding(.horizontal, 20).padding(.bottom, 12)
             .accessibilityIdentifier("deckStudio.addCards")
     }
@@ -413,8 +413,8 @@ struct DeckStudioWorkspaceScreen: View {
                             deckFilterOptions
                             Picker("Group cards", selection: $grouping) { ForEach(Self.groupings, id: \.self) { Text($0).tag($0) } }
                             Picker("Sort cards", selection: $sorting) { ForEach(["Name", "Quantity", "Mana value"], id: \.self) { Text($0).tag($0) } }
-                            Button(cardLayout == "Grid" ? "Show as list" : "Show as grid", systemImage: cardLayout == "Grid" ? "list.bullet" : "square.grid.3x2") { toggleLayout() }
-                            if !model.readOnly { Button(selecting ? "Done selecting" : "Select cards", systemImage: "checkmark.circle") { toggleSelecting() } }
+                            Button(cardLayout == "Grid" ? DeckStudioPlayText.showAsList : DeckStudioPlayText.showAsGrid, systemImage: cardLayout == "Grid" ? "list.bullet" : "square.grid.3x2") { toggleLayout() }
+                            if !model.readOnly { Button(selecting ? DeckStudioPlayText.doneSelecting : DeckStudioPlayText.selectCards, systemImage: "checkmark.circle") { toggleSelecting() } }
                             Button("Undo deck edit", systemImage: "arrow.uturn.backward") { model.undo() }.disabled(!model.history.canUndo || model.readOnly)
                             Button("Redo deck edit", systemImage: "arrow.uturn.forward") { model.redo() }.disabled(!model.history.canRedo || model.readOnly)
                         } label: {
@@ -431,22 +431,23 @@ struct DeckStudioWorkspaceScreen: View {
                             Menu { Picker("Group cards", selection: $grouping) { ForEach(Self.groupings, id: \.self) { Text($0).tag($0) } } } label: { Label("Group", systemImage: "square.grid.2x2").frame(minHeight: 44) }
                             Menu { Picker("Sort cards", selection: $sorting) { ForEach(["Name", "Quantity", "Mana value"], id: \.self) { Text($0).tag($0) } } } label: { Label("Sort", systemImage: "arrow.up.arrow.down").frame(minHeight: 44) }
                             Button { toggleLayout() } label: { Image(systemName: cardLayout == "Grid" ? "list.bullet" : "square.grid.3x2").frame(width: 44, height: 44) }
-                                .accessibilityLabel(cardLayout == "Grid" ? "Show as list" : "Show as grid").accessibilityIdentifier("deckStudio.cards.layout")
+                                .accessibilityLabel(cardLayout == "Grid" ? DeckStudioPlayText.showAsList : DeckStudioPlayText.showAsGrid).accessibilityIdentifier("deckStudio.cards.layout")
                             if !model.readOnly {
-                                Button { toggleSelecting() } label: { Text(selecting ? "Done" : "Select").frame(minHeight: 44) }
-                                    .accessibilityLabel(selecting ? "Done selecting" : "Select cards").accessibilityIdentifier("deckStudio.cards.select")
+                                Button { toggleSelecting() } label: { Text(selecting ? "Done" : DeckStudioPlayText.select).frame(minHeight: 44) }
+                                    .accessibilityLabel(selecting ? DeckStudioPlayText.doneSelecting : DeckStudioPlayText.selectCards).accessibilityIdentifier("deckStudio.cards.select")
                             }
                             Button { model.undo() } label: { Image(systemName: "arrow.uturn.backward").frame(width: 44, height: 44) }.disabled(!model.history.canUndo || model.readOnly).accessibilityLabel("Undo deck edit")
                             Button { model.redo() } label: { Image(systemName: "arrow.uturn.forward").frame(width: 44, height: 44) }.disabled(!model.history.canRedo || model.readOnly).accessibilityLabel("Redo deck edit")
                         }.font(.caption)
                     }
                 }
-                if let issueFilter {
+                if let listFilter {
                     HStack {
-                        Label("Showing only: \(issueFilter.badge)", systemImage: "exclamationmark.triangle").font(.caption.weight(.semibold))
+                        Label(listFilter.title, systemImage: "exclamationmark.triangle").font(.caption.weight(.semibold))
                             .foregroundStyle(DeckStudioPalette.warning)
                         Spacer()
-                        Button("Show all") { self.issueFilter = nil }.font(.caption.weight(.semibold)).frame(minHeight: 44)
+                        Button(DeckStudioPlayText.showAll) { self.listFilter = nil }.font(.caption.weight(.semibold)).frame(minHeight: 44)
+                            .accessibilityIdentifier("deckStudio.cards.showAll")
                     }.accessibilityElement(children: .contain)
                 }
         }.padding(.horizontal, 20)
@@ -464,7 +465,7 @@ struct DeckStudioWorkspaceScreen: View {
                     if model.draft.rows.isEmpty { ContentUnavailableView("A deck of possibilities", systemImage: "plus.rectangle.on.rectangle", description: Text("Add your commander and cards. Incomplete drafts are welcome.")) }
                     else if rows.isEmpty {
                         ContentUnavailableView("No matching cards", systemImage: "line.3.horizontal.decrease", description: Text("Clear the search or filters to see the full draft."))
-                        Button("Clear search and filters") { query = ""; sectionFilter = ""; colorFilter = ""; issueFilter = nil }
+                        Button("Clear search and filters") { query = ""; sectionFilter = ""; colorFilter = ""; listFilter = nil }
                             .buttonStyle(DeckStudioButtonStyle(primary: false))
                     }
                     ForEach(cardGroups(rows)) { group in
@@ -489,7 +490,7 @@ struct DeckStudioWorkspaceScreen: View {
     @ViewBuilder private var deckFilterOptions: some View {
         Picker("Section", selection: $sectionFilter) { Text("All sections").tag(""); ForEach(Set(model.draft.rows.map(DeckStudioBoard.of)).sorted(), id: \.self) { Text($0.capitalized).tag($0) } }
         Picker("Card color", selection: $colorFilter) { Text("Any color").tag(""); ForEach(["W", "U", "B", "R", "G", "C"], id: \.self) { Text($0 == "C" ? "Colorless" : $0).tag($0) } }
-        Button("Clear filters") { sectionFilter = ""; colorFilter = ""; issueFilter = nil }
+        Button("Clear filters") { sectionFilter = ""; colorFilter = ""; listFilter = nil }
     }
     private func cardRow(_ row: NativeDeckRow, issues: [DeckStudioPreflight.Issue]) -> some View {
         Group {
@@ -547,13 +548,13 @@ struct DeckStudioWorkspaceScreen: View {
     }
     /// Long-press actions shared by list rows and grid tiles.
     @ViewBuilder private func cardActions(_ row: NativeDeckRow) -> some View {
-        Button("Card details", systemImage: "info.circle") { inspect(row.cardName) }
+        Button(DeckStudioPlayText.cardDetails, systemImage: "info.circle") { inspect(row.cardName) }
         if !model.readOnly {
-            Button("Add one", systemImage: "plus") { model.quantity(id: row.id, delta: 1) }
-            Button("Remove one", systemImage: "minus") { model.quantity(id: row.id, delta: -1) }
-            Button("Replace card", systemImage: "arrow.triangle.2.circlepath") { replacement = row }
-            Menu("Move to…") { ForEach(DeckStudioBulkBar.destinations, id: \.section) { destination in Button(destination.title) { model.move(id: row.id, to: destination.section) } } }
-            Button("Remove row", systemImage: "trash", role: .destructive) { model.remove(id: row.id) }
+            Button(DeckStudioPlayText.addOne, systemImage: "plus") { model.quantity(id: row.id, delta: 1) }
+            Button(DeckStudioPlayText.removeOne, systemImage: "minus") { model.quantity(id: row.id, delta: -1) }
+            Button(DeckStudioPlayText.replaceCard, systemImage: "arrow.triangle.2.circlepath") { replacement = row }
+            Menu(DeckStudioPlayText.moveTo) { ForEach(DeckStudioBulkBar.destinations, id: \.section) { destination in Button(destination.title) { model.move(id: row.id, to: destination.section) } } }
+            Button(DeckStudioPlayText.removeRow, systemImage: "trash", role: .destructive) { model.remove(id: row.id) }
         }
     }
     private func cardControls(_ row: NativeDeckRow) -> some View {
@@ -573,8 +574,11 @@ struct DeckStudioWorkspaceScreen: View {
         }.fixedSize(horizontal: true, vertical: false)
     }
     private var preflight: DeckStudioPreflight { DeckStudioPreflight(draft: model.draft, metadata: metadata, resolver: resolver) }
+    private func listRows(_ filter: DeckStudioListFilter, _ check: DeckStudioPreflight? = nil) -> Set<UUID> {
+        filter.rows(check ?? preflight, draft: model.draft) { resolver?.canonicalCardName($0) }
+    }
     private func filteredRows(_ check: DeckStudioPreflight) -> [NativeDeckRow] {
-        let flagged = issueFilter.map(check.rows)
+        let flagged = listFilter.map { listRows($0, check) }
         return model.draft.rows.filter { row in
             let card = metadata?.card(named: row.cardName)
             return (query.isEmpty || row.cardName.localizedCaseInsensitiveContains(query) || (card?.oracleText?.localizedCaseInsensitiveContains(query) ?? false)) &&
@@ -657,7 +661,7 @@ struct DeckStudioWorkspaceScreen: View {
     private func applyBulkQuantity() {
         let ids = liveSelection
         guard let value = Int(bulkQuantity.trimmingCharacters(in: .whitespaces)), (1...2000).contains(value) else {
-            model.error = "Use a quantity from 1 to 2,000. Nothing was changed."; return
+            model.error = DeckStudioPlayText.quantityError; return
         }
         guard !ids.isEmpty else { return }
         model.change { try DeckStudioEditorOperations.setQuantity(in: &$0, ids: ids, quantity: value) }
@@ -694,10 +698,12 @@ struct DeckStudioWorkspaceScreen: View {
         showValidation = false
         Task { try? await Task.sleep(for: .milliseconds(450)); DeckStudioPlayAction.perform(play, model: model) }
     }
-    /// Fix deck: back to the Cards tab, showing the named card when there is one.
+    /// Fix deck: back to the Cards tab, showing only the rows XMage named ("Showing only:
+    /// Needs fixes" with Show all). A card the list cannot find leaves the list whole.
     private func fixDeck(_ deckID: String?, _ cards: [String]) {
-        showValidation = false; tab = "Cards"
-        query = cards.count == 1 ? cards[0] : ""
+        showValidation = false; tab = "Cards"; query = ""; sectionFilter = ""; colorFilter = ""
+        let filter = DeckStudioListFilter.needsFixes(cards)
+        listFilter = cards.isEmpty || listRows(filter).isEmpty ? nil : filter
     }
     private func inspect(_ name: String) { inspection = InspectedCard(name: name) }
 }

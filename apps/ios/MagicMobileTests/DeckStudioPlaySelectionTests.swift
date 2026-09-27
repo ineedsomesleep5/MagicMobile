@@ -90,7 +90,7 @@ final class DeckStudioPlaySelectionTests: XCTestCase {
         // A section the projection cannot place is left for the resolver to report at Start.
         let unknown = DeckList(name: "Odd", commander: nil, entries: [DeckEntry(cardName: "Forest", quantity: 1, section: "wishlist")])
         XCTAssertEqual(DeckStudioPlaySelection.playingDeck(unknown), unknown)
-        XCTAssertEqual(DeckStudioPlaySelection.unresolvedCards(deck, resolver: resolver), [])
+        XCTAssertEqual(DeckStudioPlaySelection.unplayableCards(deck, resolver: resolver), [])
     }
 
     // MARK: Stored check results
@@ -276,6 +276,19 @@ final class DeckStudioPlaySelectionTests: XCTestCase {
         XCTAssertNil(slow.outcome)
         XCTAssertEqual(slow.selectedDeckID, "precon:token-triumph")
         XCTAssertTrue(store.checks.isEmpty)
+    }
+
+    func testAnUnreadableDeckNeedsFixesAndPlayWaitsForTheCatalogue() throws {
+        let resolver = try resolver(), calls = Calls()
+        let play = selection(store(), resolver, calls: calls) { _ in XCTFail("Resolve first"); throw CancellationError() }
+        let broken = DeckList(name: "Broken", commander: deck.commander, entries: [DeckEntry(cardName: "Mystery Card", quantity: 1, section: "deck")])
+        XCTAssertEqual(play.status(deckID: "local:b", deck: broken), .needsFixes, "A deck the resolver cannot read needs fixes")
+        XCTAssertEqual(play.status(deckID: "local:a", deck: deck), .notChecked)
+        play.resolver = nil
+        XCTAssertEqual(play.status(deckID: "local:b", deck: broken), .notChecked, "Nothing is judged before the catalogue loads")
+        XCTAssertNil(play.play(name: "Broken") { calls.prepared += 1; return .init(deckID: "local:b", deck: broken) })
+        XCTAssertEqual(play.outcome, .cannotPlay(deckID: nil, name: "Broken", message: DeckStudioPlayText.catalogueLoading, cards: []))
+        XCTAssertEqual(calls.prepared, 0, "A draft is not saved while the catalogue is still loading")
     }
 
     func testFixRequestsWaitForTheirDeck() {

@@ -19,7 +19,7 @@ struct DeckStudioReplacementPicker: View {
             VStack(spacing: 12) {
                 TextField("Search exact catalogue cards", text: $query).textFieldStyle(.roundedBorder).autocorrectionDisabled().padding(.horizontal, 20)
                 if !commander, colors != nil {
-                    Toggle("Within commander color identity", isOn: $constrainIdentity).font(.caption).padding(.horizontal, 20)
+                    Toggle(DeckStudioPlayText.withinIdentity, isOn: $constrainIdentity).font(.caption).padding(.horizontal, 20)
                 }
                 if commander {
                     Toggle("Keep replaced commander in maybeboard", isOn: $keepOld).font(.caption).padding(.horizontal, 20)
@@ -94,10 +94,10 @@ struct DeckStudioCommanderFirstPicker: View {
         NavigationStack {
             List {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Start with your commander").font(.headline)
-                    Text("Legendary creatures and cards that say they can be your commander. The deck takes its name until you rename it.")
+                    Text(DeckStudioPlayText.commanderFirstTitle).font(.headline)
+                    Text(DeckStudioPlayText.commanderFirstCaption)
                         .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
-                    TextField("Search commanders", text: $query).textFieldStyle(.roundedBorder).autocorrectionDisabled()
+                    TextField(DeckStudioPlayText.searchCommanders, text: $query).textFieldStyle(.roundedBorder).autocorrectionDisabled()
                         .submitLabel(.search).accessibilityIdentifier("deckStudio.commanderFirst.search")
                     if let error { Text(error).font(.caption).foregroundStyle(DeckStudioPalette.danger) }
                 }.listRowBackground(Color.clear).listRowSeparator(.hidden)
@@ -129,10 +129,10 @@ struct DeckStudioCommanderFirstPicker: View {
                 }
             }.listStyle(.plain).scrollContentBackground(.hidden).scrollDismissesKeyboard(.interactively)
                 .background(DeckStudioPalette.background)
-                .navigationTitle("Choose a commander").navigationBarTitleDisplayMode(.inline)
+                .navigationTitle(DeckStudioPlayText.chooseCommander).navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Skip") { dismiss() }.accessibilityIdentifier("deckStudio.commanderFirst.skip")
+                        Button(DeckStudioPlayText.skip) { dismiss() }.accessibilityIdentifier("deckStudio.commanderFirst.skip")
                     }
                 }
                 .task(id: query) {
@@ -177,14 +177,14 @@ struct DeckStudioTextEditorSheet: View {
                                      icon: "exclamationmark.triangle").padding(20)
                 } else if let review {
                     List {
-                        if review.diff.isEmpty { Text("No changes to apply.").font(.subheadline) }
+                        if review.diff.isEmpty { Text(DeckStudioPlayText.noChanges).font(.subheadline) }
                         if !review.diff.added.isEmpty {
-                            Section("Added") {
+                            Section(DeckStudioPlayText.diffAdded) {
                                 ForEach(review.diff.added) { Text($0.label).font(.subheadline).foregroundStyle(DeckStudioPalette.success) }
                             }
                         }
                         if !review.diff.removed.isEmpty {
-                            Section("Removed") {
+                            Section(DeckStudioPlayText.diffRemoved) {
                                 ForEach(review.diff.removed) { Text($0.label).font(.subheadline).foregroundStyle(DeckStudioPalette.danger) }
                             }
                         }
@@ -195,7 +195,7 @@ struct DeckStudioTextEditorSheet: View {
                     }.scrollContentBackground(.hidden)
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("One card per line, like 1 Sol Ring, under Commander, Deck, Companion, Sideboard or Maybeboard headings.")
+                        Text(DeckStudioPlayText.textEditorHint)
                             .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                         TextEditor(text: $text).font(.system(.callout, design: .monospaced)).autocorrectionDisabled()
                             .textInputAutocapitalization(.never).scrollContentBackground(.hidden)
@@ -207,20 +207,20 @@ struct DeckStudioTextEditorSheet: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(DeckStudioPalette.background)
-            .navigationTitle("Edit as text").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(DeckStudioPlayText.editAsText).navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    if review != nil { Button("Keep editing") { review = nil; error = nil } }
+                    if review != nil { Button(DeckStudioPlayText.keepEditing) { review = nil; error = nil } }
                     else { Button("Cancel") { dismiss() } }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if let review {
-                        Button("Apply changes") {
+                        Button(DeckStudioPlayText.applyChanges) {
                             if apply(draft, review.draft) { dismiss() }
                             else { error = "The deck changed while you were editing, or this list exceeds its limits. Nothing was applied." }
                         }.disabled(review.diff.isEmpty).accessibilityIdentifier("deckStudio.textEditor.apply")
                     } else if !unsupported {
-                        Button("Review changes") { prepareReview() }.accessibilityIdentifier("deckStudio.textEditor.review")
+                        Button(DeckStudioPlayText.reviewChanges) { prepareReview() }.accessibilityIdentifier("deckStudio.textEditor.review")
                     }
                 }
             }
@@ -321,14 +321,14 @@ struct DeckStudioQuickAddBar: View {
             if let error { Text(error).font(.caption).foregroundStyle(DeckStudioPalette.danger) }
             else if let note { Text(note).font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk) }
             else if focused, text.isEmpty {
-                Text("Type a card name, or a count first, like 2x Sol Ring. Return adds the top match.")
+                Text(DeckStudioPlayText.quickAddHint)
                     .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
             }
             if let toast {
                 HStack {
                     Text(toast.message).font(.caption.weight(.semibold)).lineLimit(2)
                     Spacer(minLength: 8)
-                    Button("Undo") { model.undo(); self.toast = nil }
+                    Button(DeckStudioPlayText.undo) { model.undo(); self.toast = nil }
                         .font(.caption.weight(.semibold)).frame(minHeight: 44)
                         .disabled(model.history.generation != toast.generation)
                         .accessibilityIdentifier("deckStudio.quickAdd.undo")
@@ -354,7 +354,7 @@ struct DeckStudioQuickAddBar: View {
     private var field: some View {
         HStack(spacing: 4) {
             Image(systemName: "plus.magnifyingglass").foregroundStyle(DeckStudioPalette.secondaryInk).accessibilityHidden(true)
-            TextField("Quick add", text: $text).autocorrectionDisabled().textInputAutocapitalization(.words)
+            TextField(DeckStudioPlayText.quickAdd, text: $text).autocorrectionDisabled().textInputAutocapitalization(.words)
                 .focused($focused).submitLabel(.done)
                 .onSubmit { commit(nil); DispatchQueue.main.async { focused = true } }
                 .accessibilityIdentifier("deckStudio.quickAdd")
@@ -368,19 +368,19 @@ struct DeckStudioQuickAddBar: View {
     }
     private var destinationToggle: some View {
         Button { maybeboard.toggle() } label: {
-            Text(maybeboard ? "Maybe" : "Main").font(.caption.weight(.semibold)).frame(minWidth: 52, minHeight: DeckStudioMetrics.controlHeight)
+            Text(maybeboard ? DeckStudioPlayText.quickAddMaybe : DeckStudioPlayText.quickAddMain).font(.caption.weight(.semibold)).frame(minWidth: 52, minHeight: DeckStudioMetrics.controlHeight)
                 .foregroundStyle(maybeboard ? DeckStudioPalette.surfaceElevated : DeckStudioPalette.ink)
                 .background(maybeboard ? DeckStudioPalette.accent : DeckStudioPalette.surfaceElevated,
                             in: RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius))
                 .overlay(RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius).stroke(maybeboard ? .clear : DeckStudioPalette.separator))
         }.buttonStyle(.plain)
-            .accessibilityLabel("Add to maybeboard").accessibilityValue(maybeboard ? "On" : "Off")
+            .accessibilityLabel(DeckStudioPlayText.quickAddMaybeboard).accessibilityValue(maybeboard ? "On" : "Off")
             .accessibilityAddTraits(maybeboard ? [.isSelected] : [])
             .accessibilityIdentifier("deckStudio.quickAdd.maybeboard")
     }
     private var addCardsButton: some View {
         Button(action: openSearch) {
-            Label("Add cards", systemImage: "plus").font(.subheadline.weight(.semibold)).lineLimit(1)
+            Label(DeckStudioPlayText.addCards, systemImage: "plus").font(.subheadline.weight(.semibold)).lineLimit(1)
                 .padding(.horizontal, 12).frame(minHeight: DeckStudioMetrics.controlHeight)
                 .foregroundStyle(DeckStudioPalette.surfaceElevated)
                 .background(DeckStudioPalette.ink, in: RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius))
@@ -399,17 +399,17 @@ struct DeckStudioQuickAddBar: View {
     }
     private func commit(_ chosen: NativeDeckMetadataCatalogue.Card?) {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        guard let parsed else { error = "Type a card name, like 2x Sol Ring."; return }
-        guard let metadata else { error = "The local card catalogue is still loading."; return }
+        guard let parsed else { error = DeckStudioPlayText.quickAddNeedsName; return }
+        guard let metadata else { error = DeckStudioPlayText.catalogueLoading; return }
         guard let card = chosen ?? metadata.card(named: parsed.name)
                 ?? DeckStudioCatalogueSearch.nameSuggestions(in: metadata, query: parsed.name, limit: 1).first else {
-            error = "No card named \u{201C}\(parsed.name)\u{201D} in this app\u{2019}s catalogue."; return
+            error = DeckStudioPlayText.noCardNamed(parsed.name); return
         }
         let board = maybeboard ? "maybeboard" : "deck"
         if model.change({ try DeckStudioEditorOperations.add(in: &$0, name: card.name, quantity: parsed.quantity, section: board) }) {
-            toast = Toast(message: "Added \(parsed.quantity) × \(card.name)\(maybeboard ? " to maybeboard" : "")", generation: model.history.generation)
+            toast = Toast(message: DeckStudioPlayText.added(parsed.quantity, card.name, maybeboard: maybeboard), generation: model.history.generation)
             note = parsed.note; error = nil; text = ""; suggestions = []
-        } else { error = "Could not add this card. Check the draft's size limits." }
+        } else { error = DeckStudioPlayText.quickAddFailed }
     }
 }
 
@@ -422,26 +422,22 @@ struct DeckStudioBulkBar: View {
     let selectAll: () -> Void
     struct Destination: Hashable { let section: String; let title: String }
     /// "considering" rows count as maybeboard, so it is not offered separately.
-    static let destinations = [
-        Destination(section: "deck", title: "Main deck"), Destination(section: "commanders", title: "Commanders"),
-        Destination(section: "companions", title: "Companions"), Destination(section: "sideboard", title: "Sideboard"),
-        Destination(section: "maybeboard", title: "Maybeboard")
-    ]
+    static let destinations = DeckStudioPlayText.destinations.map { Destination(section: $0.section, title: $0.title) }
     var body: some View {
         VStack(spacing: 6) {
             HStack {
-                Text("\(count) selected").font(.subheadline.weight(.semibold)).monospacedDigit()
+                Text(DeckStudioPlayText.selected(count)).font(.subheadline.weight(.semibold)).monospacedDigit()
                 Spacer()
-                Button("Select all", action: selectAll).font(.subheadline).frame(minHeight: 44)
+                Button(DeckStudioPlayText.selectAll, action: selectAll).font(.subheadline).frame(minHeight: 44)
             }
             HStack(spacing: 8) {
                 Menu {
                     ForEach(Self.destinations, id: \.section) { destination in
                         Button(destination.title) { move(destination.section) }
                     }
-                } label: { action("Move to…", "arrow.right.square", tint: DeckStudioPalette.ink) }
-                Button(action: setQuantity) { action("Set quantity", "number", tint: DeckStudioPalette.ink) }.buttonStyle(.plain)
-                Button(action: remove) { action("Remove", "trash", tint: DeckStudioPalette.danger) }.buttonStyle(.plain)
+                } label: { action(DeckStudioPlayText.moveTo, "arrow.right.square", tint: DeckStudioPalette.ink) }
+                Button(action: setQuantity) { action(DeckStudioPlayText.setQuantity, "number", tint: DeckStudioPalette.ink) }.buttonStyle(.plain)
+                Button(action: remove) { action(DeckStudioPlayText.remove, "trash", tint: DeckStudioPalette.danger) }.buttonStyle(.plain)
             }.disabled(count == 0).opacity(count == 0 ? 0.45 : 1)
         }.accessibilityElement(children: .contain).accessibilityIdentifier("deckStudio.bulkBar")
     }

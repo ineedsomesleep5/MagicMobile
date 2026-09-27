@@ -27,6 +27,8 @@ import io.magicmobile.android.game.string
 import io.magicmobile.android.studio.DeckList
 import io.magicmobile.android.studio.DeckStudioCheckResult
 import io.magicmobile.android.studio.DeckStudioPlayProjection
+import io.magicmobile.android.studio.DeckStudioPlayRules
+import io.magicmobile.android.studio.DeckStudioPlayText
 import io.magicmobile.android.studio.DeckStudioServices
 import io.magicmobile.android.studio.DeckStudioValidationReceipt
 import io.magicmobile.android.studio.OnDeviceDeckResolver
@@ -261,25 +263,29 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
 
     /**
      * XMage checks every seat's deck when it creates a game, so Start stores that answer for the
-     * player's deck like a Deck Studio check. Seats load in order and the player's deck comes first;
-     * a rejection naming cards outside this deck is not stored against it.
+     * player's deck like a Deck Studio check (DeckStudioPlayRules.storesStartResult): a pass always,
+     * a rejection unless this exact deck already passed or it names a card outside this deck.
      */
     private fun recordStartCheck(deckID: String, request: J, rejection: EngineError.RejectionDetails?) {
         val resolver = deckResolver ?: return
         val text = String(EngineJson.encode(request), Charsets.UTF_8)
         val build = DeckStudioServices.appBuild
         val receipt = if (rejection == null) DeckStudioValidationReceipt(text, resolver.upstreamCommit, resolver.catalogueHash, build,
-            System.currentTimeMillis(), true, emptyList(), "Passed the installed XMage Commander validator")
+            System.currentTimeMillis(), true, emptyList(), DeckStudioPlayText.startPassed)
         else runCatching { DeckStudioValidationReceipt.rejection(rejection.details, rejection.text, text, resolver.upstreamCommit, resolver.catalogueHash, build) }.getOrNull() ?: return
-        val names = listOf("main", "commanders", "companions").flatMap { request[it].array ?: emptyList() }.mapNotNull { it["name"].string }.toSet()
-        if (receipt.issues.any { issue -> issue.cardName?.takeIf { it.isNotBlank() }?.let { it !in names } == true }) return
         val result = DeckStudioCheckResult.of(deckID, receipt)
+        val names = listOf("main", "commanders", "companions").flatMap { request[it].array ?: emptyList() }.mapNotNull { it["name"].string }
+        val passed = !result.valid && runCatching { DeckStudioServices.checkResults.result(result.key)?.valid == true }.getOrDefault(false)
+        if (!DeckStudioPlayRules.storesStartResult(result.valid, DeckStudioPlayRules.issueCards(result), names, passed)) return
         if (!result.valid) deckIssues = deckID to result
         scope.launch(Dispatchers.IO) { runCatching { DeckStudioServices.checkResults.record(result) } }
     }
 
-    /** Attaches the session to a table another transport owns (the host's engine or a relay endpoint). */
-    suspend fun attachTable(table: TableConnection) {
+    /**
+     * Attaches the session to a table another transport owns (the host's engine or a relay endpoint).
+     * [deck] is the local player's playing deck, locked once the game starts.
+     */
+    suspend fun attachTable(table: TableConnection, deckID: String? = null, deck: Deck? = null) {
         val endpoint = table.endpoint ?: return
         if (isBusy || session.matchID != null) return
         isBusy = true
@@ -291,6 +297,8 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
             session.attach(endpoint.client, endpoint.matchID, endpoint.seatID, allowsSeatScopedAutoYield = true, table = endpoint.table,
                 observe = resume::observe, close = { table.leave() })
             status = "Match connected"
+            // Only the host's engine created this game, so only the host's deck check is local.
+            if (endpoint.isHost && deckID != null && deck != null) runCatching { recordStartCheck(deckID, resolve(deck), null) }
         } catch (error: Throwable) { errorMessage = error.message } finally { isBusy = false }
     }
 

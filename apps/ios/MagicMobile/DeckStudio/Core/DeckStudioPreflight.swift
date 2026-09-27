@@ -135,3 +135,27 @@ struct DeckStudioPreflight: Equatable {
         }, resolves: resolves)
     }
 }
+
+/// What the Cards list is narrowed to: one quick-check issue, or the cards XMage named
+/// (Fix deck). Both read "Showing only: …" with Show all, and clear once nothing matches.
+/// Android's DeckStudioListFilter follows the same rules.
+enum DeckStudioListFilter: Equatable {
+    case quickCheck(DeckStudioPreflight.Issue)
+    case needsFixes([String])
+
+    var label: String {
+        switch self {
+        case .quickCheck(let issue): return issue.badge
+        case .needsFixes: return DeckStudioPlayText.needsFixes
+        }
+    }
+    var title: String { DeckStudioPlayText.showingOnly(label) }
+    var issue: DeckStudioPreflight.Issue? { if case .quickCheck(let issue) = self { return issue } else { return nil } }
+
+    func rows(_ preflight: DeckStudioPreflight, draft: NativeDeckDraft, canonical: (String) -> String?) -> Set<UUID> {
+        switch self {
+        case .quickCheck(let issue): return preflight.rows(issue)
+        case .needsFixes(let cards): return DeckStudioPlayRules.fixRows(draft.rows, cards: cards, canonical: canonical)
+        }
+    }
+}

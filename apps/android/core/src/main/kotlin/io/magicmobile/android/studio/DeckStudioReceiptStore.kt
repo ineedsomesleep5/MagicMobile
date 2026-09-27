@@ -21,6 +21,9 @@ import java.security.MessageDigest
  * build. A change to any of them is a different key, so an old result can never show as current.
  */
 data class DeckStudioCheckKey(val deckID: String, val requestSHA256: String, val upstream: String, val catalogue: String, val appBuild: String) {
+    /** Results from another engine, catalogue or app build can never match again. */
+    fun sameInstall(other: DeckStudioCheckKey): Boolean = upstream == other.upstream && catalogue == other.catalogue && appBuild == other.appBuild
+
     companion object {
         fun of(deckID: String, request: String, upstream: String, catalogue: String, appBuild: String) =
             DeckStudioCheckKey(deckID, sha256(request), upstream, catalogue, appBuild)
@@ -32,7 +35,7 @@ data class DeckStudioCheckKey(val deckID: String, val requestSHA256: String, val
 
 /** A deck's status chip, taken only from a stored result whose key matches exactly. */
 enum class DeckStudioPlayStatus(val title: String) {
-    READY("Ready"), NEEDS_FIXES("Needs fixes"), NOT_CHECKED("Not checked")
+    READY(DeckStudioPlayText.ready), NEEDS_FIXES(DeckStudioPlayText.needsFixes), NOT_CHECKED(DeckStudioPlayText.notChecked)
 }
 
 /** One stored check, passed or failed. Evidence for one exact key, never a flag on a mutable deck. */
@@ -92,7 +95,8 @@ data class DeckStudioCheckResult(
 /**
  * Stored check results on this device (DeckStudioReceiptStore.swift). Lookups match the whole key,
  * so an edit, a new engine, catalogue or app build reads as "Not checked". At most 200 results are
- * kept, newest first, and five per deck. A missing or unreadable file is only a cache miss: it
+ * kept, newest first, five per deck, in a file of at most 2 MiB (the oldest go first), and recording
+ * a result drops results from other installs. A missing or unreadable file is only a cache miss: it
  * never reads as Ready, and the next stored result replaces it.
  */
 class DeckStudioReceiptStore(private val file: File?, private val changed: () -> Unit = {}) {
@@ -111,8 +115,9 @@ class DeckStudioReceiptStore(private val file: File?, private val changed: () ->
     /** Keeps [value] as the newest result for its key. Returns false when the file could not be written. */
     @Synchronized fun record(value: DeckStudioCheckResult): Boolean {
         load()
-        val sameDeck = results.filter { it.key.deckID == value.key.deckID && it.key != value.key }.take(maximumPerDeck - 1)
-        var next = (results.filter { it.key.deckID != value.key.deckID } + sameDeck + value).sortedByDescending { it.checkedAt }.take(maximumResults)
+        val others = results.filter { it.key != value.key && it.key.sameInstall(value.key) }.sortedByDescending { it.checkedAt }
+        val sameDeck = others.filter { it.key.deckID == value.key.deckID }.take(maximumPerDeck - 1)
+        var next = (listOf(value) + others.filter { it.key.deckID != value.key.deckID } + sameDeck).sortedByDescending { it.checkedAt }.take(maximumResults)
         while (encoded(next).size > maximumBytes && next.size > 1) next = next.dropLast(1)
         results = next
         changed()

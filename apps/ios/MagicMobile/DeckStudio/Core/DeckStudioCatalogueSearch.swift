@@ -115,13 +115,19 @@ struct DeckStudioSearchSyntax: Equatable {
                     continue
                 }
             }
-            if let bound = value(after: "mv<=").flatMap(Double.init), bound.isFinite, bound >= 0 {
+            // Plain decimals only ("3", "2.5", ".5"), as on Android: no exponents, signs or hex.
+            func decimal(after prefix: String) -> Double? {
+                guard let text = value(after: prefix), text.range(of: #"^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$"#, options: .regularExpression) != nil,
+                      let number = Double(text), number.isFinite, number >= 0 else { return nil }
+                return number
+            }
+            if let bound = decimal(after: "mv<=") {
                 maximumManaValue = min(maximumManaValue ?? bound, bound); continue
             }
-            if let bound = value(after: "mv>=").flatMap(Double.init), bound.isFinite, bound >= 0 {
+            if let bound = decimal(after: "mv>=") {
                 minimumManaValue = max(minimumManaValue ?? bound, bound); continue
             }
-            if let bound = value(after: "mv=").flatMap(Double.init), bound.isFinite, bound >= 0 {
+            if let bound = decimal(after: "mv=") {
                 minimumManaValue = max(minimumManaValue ?? bound, bound)
                 maximumManaValue = min(maximumManaValue ?? bound, bound); continue
             }

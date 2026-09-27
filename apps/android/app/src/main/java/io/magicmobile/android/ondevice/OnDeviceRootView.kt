@@ -390,7 +390,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         prepareAIRollIfNeeded()
     }
     val table = setup.multiplayer as? RelayTable
-    LaunchedEffect(table?.endpoint?.matchID) { if (table?.endpoint != null) setup.attachTable(table) }
+    LaunchedEffect(table?.endpoint?.matchID) { if (table?.endpoint != null) setup.attachTable(table, selectedDeckID, selectedDeck) }
     LaunchedEffect(table?.isConnected, table?.isSuspended) { setup.updateSessionForeground() }
     // Relay tables carry quick chat between phones; solo games only answer from the AI.
     LaunchedEffect(session.snapshot?.id, table) {

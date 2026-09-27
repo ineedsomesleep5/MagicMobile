@@ -121,29 +121,32 @@ enum DeckStudioPlayStatus: Equatable, Sendable {
 
     var label: String {
         switch self {
-        case .ready: return "Ready"
-        case .needsFixes: return "Needs fixes"
-        case .notChecked: return "Not checked"
+        case .ready: return DeckStudioPlayText.ready
+        case .needsFixes: return DeckStudioPlayText.needsFixes
+        case .notChecked: return DeckStudioPlayText.notChecked
         }
     }
 
     /// The status line under the deck on the game setup screen.
     var setupLine: String {
         switch self {
-        case .ready: return "Ready · checked on this device"
-        case .needsFixes: return "Needs fixes · Fix in Deck Studio"
-        case .notChecked: return "Not checked — Start will check it"
+        case .ready: return DeckStudioPlayText.setupReady
+        case .needsFixes: return DeckStudioPlayText.setupNeedsFixes
+        case .notChecked: return DeckStudioPlayText.setupNotChecked
         }
     }
 }
 
 /// Device-local check results, newest first. It is a cache: a missing, unreadable or
 /// stale file only means decks show "Not checked" until they are checked again.
+/// Android's DeckStudioReceiptStore.kt keeps the same caps: the newest 200 results,
+/// at most five per deck, and a file of at most 2 MiB.
 @MainActor
 final class DeckStudioReceiptStore: ObservableObject {
     static let shared = DeckStudioReceiptStore()
     static let maximumResults = 200
-    static let maximumBytes = 4 * 1024 * 1024
+    static let maximumPerDeck = 5
+    static let maximumBytes = 2 * 1024 * 1024
     private struct Payload: Codable { let schema: Int; let checks: [DeckStudioStoredCheck] }
 
     @Published private(set) var checks: [DeckStudioStoredCheck] = []
@@ -163,21 +166,39 @@ final class DeckStudioReceiptStore: ObservableObject {
         return check.valid ? .ready : .needsFixes
     }
 
-    /// Keeps the newest result per key and drops results from other installs.
-    /// The in-memory result stays usable when the file cannot be written.
+    /// Keeps the newest result per key, at most five per deck and 200 in all, newest
+    /// first, and drops results from other installs. When the file would pass its size
+    /// cap, the oldest results go. The in-memory result stays usable when the file
+    /// cannot be written.
     @discardableResult func record(_ check: DeckStudioStoredCheck) -> Bool {
         guard check.bounded else { return false }
-        var next = checks.filter { $0.key != check.key && $0.key.sameInstall(as: check.key) }
-        next.insert(check, at: 0)
-        checks = Array(next.prefix(Self.maximumResults))
-        return write()
+        let others = Self.newestFirst(checks.filter { $0.key != check.key && $0.key.sameInstall(as: check.key) })
+        let sameDeck = others.filter { $0.key.deckID == check.key.deckID }.prefix(Self.maximumPerDeck - 1)
+        var next = Array(Self.newestFirst([check] + others.filter { $0.key.deckID != check.key.deckID } + sameDeck).prefix(Self.maximumResults))
+        var data = try? Self.encode(next)
+        while let current = data, current.count > Self.maximumBytes, next.count > 1 {
+            next.removeLast(); data = try? Self.encode(next)
+        }
+        checks = next
+        return write(data)
     }
 
     /// A deleted deck's results go with it.
     func forget(deckID: String) {
         guard checks.contains(where: { $0.key.deckID == deckID }) else { return }
         checks.removeAll { $0.key.deckID == deckID }
-        write()
+        write(try? Self.encode(checks))
+    }
+
+    /// Newest first; results checked at the same moment keep their order.
+    private static func newestFirst(_ values: [DeckStudioStoredCheck]) -> [DeckStudioStoredCheck] {
+        values.enumerated().sorted { left, right in
+            left.element.checkedAt != right.element.checkedAt ? left.element.checkedAt > right.element.checkedAt : left.offset < right.offset
+        }.map(\.element)
+    }
+
+    private static func encode(_ checks: [DeckStudioStoredCheck]) throws -> Data {
+        try JSONEncoder().encode(Payload(schema: 1, checks: checks))
     }
 
     private static func read(_ url: URL?) -> [DeckStudioStoredCheck] {
@@ -191,10 +212,9 @@ final class DeckStudioReceiptStore: ObservableObject {
         return payload.checks
     }
 
-    @discardableResult private func write() -> Bool {
-        guard let url else { return false }
+    @discardableResult private func write(_ data: Data?) -> Bool {
+        guard let url, let data else { return false }
         do {
-            let data = try JSONEncoder().encode(Payload(schema: 1, checks: checks))
             guard data.count <= Self.maximumBytes else { return false }
             var directory = url.deletingLastPathComponent()
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

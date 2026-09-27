@@ -1,6 +1,14 @@
 package io.magicmobile.android.studio
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.ui.semantics.Role
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -76,8 +84,8 @@ fun DeckStudioIssueBadges(issues: List<DeckStudioPreflight.Issue>, modifier: Mod
 
 /**
  * One card in the Cards grid. In select mode (`selected` non-null) a tap toggles the selection;
- * otherwise it inspects. A long press shows the large preview, Android's counterpart of the iOS
- * context-menu preview.
+ * otherwise it inspects. A long press shows the large preview with the card actions, Android's
+ * counterpart of the iOS context menu.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -111,13 +119,41 @@ fun DeckStudioCardGridRow(rows: List<NativeDeckRow>, columns: Int, tile: @Compos
     }
 }
 
-/** DeckStudioCardPreview: the card at a readable size, in a dialog; tap anywhere to close. */
+/** One long-press action under the preview; `choices` makes it expand (Move to…). */
+data class DeckStudioCardAction(val title: String, val icon: String?, val destructive: Boolean = false,
+                                val choices: List<Pair<String, () -> Unit>> = emptyList(), val action: () -> Unit = {})
+
+/**
+ * DeckStudioCardPreview: the card at a readable size, in a dialog, with the same actions as the iOS
+ * long-press menu. Tap the card to close; an action closes the dialog and runs.
+ */
 @Composable
-fun DeckStudioCardPreviewDialog(name: String, card: CardInfo?, dismiss: () -> Unit) {
+fun DeckStudioCardPreviewDialog(name: String, card: CardInfo?, actions: List<DeckStudioCardAction> = emptyList(), dismiss: () -> Unit) {
     Dialog(dismiss) {
-        Box(Modifier.clickable(remember { MutableInteractionSource() }, null) { dismiss() }.background(DeckStudioPalette.background, RoundedCornerShape(18.dp))
-            .padding(8.dp).semantics { contentDescription = "$name preview. Tap to close." }) {
-            DeckStudioCardImage(name, card, Modifier.width(300.dp), large = true)
+        var expanded by remember { mutableStateOf<String?>(null) }
+        Column(Modifier.background(DeckStudioPalette.background, RoundedCornerShape(18.dp)).padding(8.dp).verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.clickable(remember { MutableInteractionSource() }, null) { dismiss() }.semantics { contentDescription = "$name preview. Tap to close." }) {
+                DeckStudioCardImage(name, card, Modifier.width(if (actions.isEmpty()) 300.dp else 240.dp), large = true)
+            }
+            if (actions.isNotEmpty()) Column(Modifier.width(300.dp).background(DeckStudioPalette.surfaceElevated, RoundedCornerShape(13.dp))) {
+                actions.forEachIndexed { index, entry ->
+                    if (index > 0) Box(Modifier.fillMaxWidth().height(0.5.dp).background(DeckStudioPalette.separator))
+                    val tint = if (entry.destructive) DeckStudioPalette.danger else DeckStudioPalette.ink
+                    Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).clickable(role = Role.Button) {
+                        if (entry.choices.isEmpty()) { dismiss(); entry.action() } else expanded = if (expanded == entry.title) null else entry.title
+                    }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(entry.title, Modifier.weight(1f), color = tint, style = StudioText.body)
+                        val icon = entry.icon ?: if (entry.choices.isEmpty()) null else if (expanded == entry.title) "chevron.up" else "chevron.down"
+                        icon?.let { SfImage(it, tint, if (entry.icon != null) 17.dp else 13.dp) }
+                    }
+                    if (expanded == entry.title) for ((title, run) in entry.choices) Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp)
+                        .clickable(role = Role.Button) { dismiss(); run() }.padding(start = 32.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text(title, color = DeckStudioPalette.ink, style = StudioText.body)
+                    }
+                }
+            }
         }
     }
 }

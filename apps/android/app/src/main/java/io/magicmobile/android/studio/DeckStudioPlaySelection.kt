@@ -84,9 +84,9 @@ class DeckStudioPlaySelection(
     val checking: Boolean get() = phase is Phase.Checking
     private var job: Job? = null
 
-    fun play(source: DeckStudioPlayFlow.Source, resolver: OnDeviceDeckResolver?) {
+    fun play(source: DeckStudioPlayFlow.Source, resolver: OnDeviceDeckResolver?, name: String = "") {
         if (checking) return
-        when (val step = engine.start(source, gameLive(), resolver)) {
+        when (val step = engine.start(source, gameLive(), resolver, name)) {
             is DeckStudioPlayFlow.Step.Done -> finish(step.outcome)
             is DeckStudioPlayFlow.Step.Check -> {
                 val current = resolver ?: return
@@ -100,8 +100,10 @@ class DeckStudioPlaySelection(
     }
 
     private fun finish(outcome: DeckStudioPlayFlow.Outcome) {
-        if (outcome is DeckStudioPlayFlow.Outcome.Playing) select(outcome.deckID)
-        phase = Phase.Finished(outcome)
+        // A game that started during the check keeps its deck.
+        val final = if (outcome is DeckStudioPlayFlow.Outcome.Playing && gameLive()) DeckStudioPlayFlow.Outcome.GameLive else outcome
+        if (final is DeckStudioPlayFlow.Outcome.Playing) select(final.deckID)
+        phase = Phase.Finished(final)
     }
 
     /** Cancel stops a running check; the playing deck does not change. */
@@ -137,12 +139,11 @@ fun DeckStudioEmberButton(title: String, onClick: () -> Unit, modifier: Modifier
     }
 }
 
-/**
- * The workspace header's primary button: "Play this deck", "Save & play" for unsaved changes, or a
- * disabled "✓ Playing" when this deck is already selected and its stored check is still current.
- */
+/** What Play offers for the open draft (DeckStudioPlayAction): "Play this deck", "Save & play" or "Playing". */
+data class DeckStudioPlayAction(val title: String, val playing: Boolean, val enabled: Boolean)
+
 @Composable
-fun DeckStudioPlayDeckButton(selection: DeckStudioPlaySelection, model: DeckStudioEditorModel, resolver: OnDeviceDeckResolver?, modifier: Modifier = Modifier) {
+fun rememberDeckStudioPlayAction(selection: DeckStudioPlaySelection, model: DeckStudioEditorModel, resolver: OnDeviceDeckResolver?): DeckStudioPlayAction {
     val needsSave = !model.readOnly && (model.isDirty || model.record == null)
     val sourceID = model.sourceID
     val draft = model.draft
@@ -154,17 +155,27 @@ fun DeckStudioPlayDeckButton(selection: DeckStudioPlaySelection, model: DeckStud
         runCatching { DeckStudioServices.checkResults.result(key)?.valid == true }.getOrDefault(false)
     }
     val playing = current && sourceID == selection.selectedID()
-    val title = when { playing -> DeckStudioPlayText.playingButton; needsSave -> DeckStudioPlayText.saveAndPlay; else -> DeckStudioPlayText.play }
-    DeckStudioEmberButton(title, { selection.play(model.playSource(), resolver) },
-        modifier.fillMaxWidth().semantics { contentDescription = if (playing) DeckStudioPlayText.playingLabel else title },
-        enabled = !playing && !selection.checking && resolver != null && (!needsSave || model.canSave), icon = if (playing) null else "play.fill")
+    val title = when { playing -> DeckStudioPlayText.playing; needsSave -> DeckStudioPlayText.saveAndPlay; else -> DeckStudioPlayText.play }
+    return DeckStudioPlayAction(title, playing, !playing && !selection.checking && resolver != null && (!needsSave || model.canSave))
+}
+
+/**
+ * The workspace header's primary button: "Play this deck", "Save & play" for unsaved changes, or a
+ * disabled "Playing" with a checkmark when this deck is already selected and its stored check is still current.
+ */
+@Composable
+fun DeckStudioPlayDeckButton(selection: DeckStudioPlaySelection, model: DeckStudioEditorModel, resolver: OnDeviceDeckResolver?, modifier: Modifier = Modifier) {
+    val action = rememberDeckStudioPlayAction(selection, model, resolver)
+    DeckStudioEmberButton(action.title, { selection.play(model.playSource(), resolver, model.draft.name) },
+        modifier.fillMaxWidth().semantics { contentDescription = if (action.playing) DeckStudioPlayText.playingAccessibility else action.title },
+        enabled = action.enabled, icon = if (action.playing) "checkmark" else "play.fill")
 }
 
 /** The ember "Playing" badge on the playing deck's tile. */
 @Composable
 fun DeckStudioPlayingBadge(modifier: Modifier = Modifier) {
     Row(modifier.background(DeckStudioPalette.accent, CircleShape).padding(horizontal = 10.dp, vertical = 7.dp)
-        .clearAndSetSemantics { contentDescription = DeckStudioPlayText.playingLabel },
+        .clearAndSetSemantics { contentDescription = DeckStudioPlayText.playingAccessibility },
         horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
         SfImage("flame.fill", Color.White, 12.dp)
         Text(DeckStudioPlayText.playing, color = Color.White, style = StudioText.caption2.weight(SfWeight.semibold))
@@ -172,9 +183,9 @@ fun DeckStudioPlayingBadge(modifier: Modifier = Modifier) {
 }
 
 private fun DeckStudioPlayStatus.icon() = when (this) {
-    DeckStudioPlayStatus.READY -> "checkmark.circle.fill" to DeckStudioPalette.success
+    DeckStudioPlayStatus.READY -> "checkmark.seal.fill" to DeckStudioPalette.success
     DeckStudioPlayStatus.NEEDS_FIXES -> "exclamationmark.triangle.fill" to DeckStudioPalette.warning
-    DeckStudioPlayStatus.NOT_CHECKED -> "circle" to DeckStudioPalette.secondaryInk
+    DeckStudioPlayStatus.NOT_CHECKED -> "questionmark.circle" to DeckStudioPalette.secondaryInk
 }
 
 /** A tile's status chip: Ready, Needs fixes or Not checked, from its stored check result. */
@@ -182,7 +193,7 @@ private fun DeckStudioPlayStatus.icon() = when (this) {
 fun DeckStudioPlayStatusChip(status: DeckStudioPlayStatus, modifier: Modifier = Modifier) {
     val (icon, tint) = status.icon()
     Row(modifier.background(DeckStudioPalette.surfaceElevated.copy(alpha = 0.94f), CircleShape).padding(horizontal = 9.dp, vertical = 6.dp)
-        .semantics(mergeDescendants = true) {}, horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        .clearAndSetSemantics { contentDescription = "Deck check: ${status.title}" }, horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
         SfImage(icon, tint, 11.dp)
         Text(status.title, color = DeckStudioPalette.ink, style = StudioText.caption2.weight(SfWeight.semibold), maxLines = 1)
     }
@@ -236,18 +247,19 @@ fun DeckStudioPlaySheets(selection: DeckStudioPlaySelection, fix: (DeckStudioOpe
         is DeckStudioPlaySelection.Phase.Checking -> PlaySheet({ selection.cancel() }) {
             Text(DeckStudioPlayText.checkingTitle, color = DeckStudioPalette.ink, style = StudioText.title3.weight(SfWeight.semibold))
             Text(DeckStudioPlayText.checking(phase.name), color = DeckStudioPalette.secondaryInk, style = StudioText.subheadline)
-            StudioProgress("Checking Commander rules…")
+            StudioProgress(DeckStudioPlayText.checkingProgress)
             StudioButton("Cancel", { selection.cancel() }, Modifier.fillMaxWidth(), primary = false)
         }
         is DeckStudioPlaySelection.Phase.Finished -> when (val outcome = phase.outcome) {
-            is DeckStudioPlayFlow.Outcome.CannotPlay -> DeckStudioIssuesSheet(DeckStudioPlayText.cannotPlayTitle, outcome.message, emptyList(), 0,
-                fix = outcome.deckID?.let { id -> { selection.dismiss(); fix(DeckStudioOpen(id, outcome.cards)) } }, dismiss = { selection.dismiss() })
-            is DeckStudioPlayFlow.Outcome.Blocked -> DeckStudioIssuesSheet(outcome.result, { selection.dismiss(); fix(DeckStudioOpen(outcome.deckID, it)) }) { selection.dismiss() }
-            is DeckStudioPlayFlow.Outcome.CheckFailed -> PlaySheet({ selection.dismiss() }) {
-                Text(DeckStudioPlayText.checkingTitle, color = DeckStudioPalette.ink, style = StudioText.title3.weight(SfWeight.semibold))
-                Text(outcome.message, color = DeckStudioPalette.danger, style = StudioText.subheadline)
-                StudioButton(DeckStudioPlayText.notNow, { selection.dismiss() }, Modifier.fillMaxWidth(), primary = false)
-            }
+            // Without a saved deck there is nothing to open, so Fix deck is not offered.
+            is DeckStudioPlayFlow.Outcome.CannotPlay -> DeckStudioIssuesSheet(DeckStudioPlayText.cannotPlayTitle, outcome.name, outcome.message, emptyList(),
+                outcome.cards, 0, fix = outcome.deckID?.let { id -> { cards: List<String> -> selection.dismiss(); fix(DeckStudioOpen(id, cards)) } },
+                dismiss = { selection.dismiss() })
+            is DeckStudioPlayFlow.Outcome.Blocked -> DeckStudioIssuesSheet(outcome.result, outcome.name,
+                { cards -> selection.dismiss(); fix(DeckStudioOpen(outcome.deckID, cards)) }) { selection.dismiss() }
+            // An engine failure is not a deck result: the same sheet as iOS, with the engine's message.
+            is DeckStudioPlayFlow.Outcome.CheckFailed -> DeckStudioIssuesSheet(DeckStudioPlayText.cannotPlayTitle, outcome.name, outcome.message, emptyList(),
+                emptyList(), 0, fix = { cards -> selection.dismiss(); fix(DeckStudioOpen(outcome.deckID, cards)) }, dismiss = { selection.dismiss() })
             else -> {}
         }
         DeckStudioPlaySelection.Phase.Idle -> {}
@@ -256,29 +268,51 @@ fun DeckStudioPlaySheets(selection: DeckStudioPlaySelection, fix: (DeckStudioOpe
 
 /** "N rule issues block play": a stored failed check's issues, grouped as XMage reported them. */
 @Composable
-fun DeckStudioIssuesSheet(result: DeckStudioCheckResult, fix: (List<String>) -> Unit, dismiss: () -> Unit) {
-    DeckStudioIssuesSheet(DeckStudioPlayText.issuesBlockPlay(result.issueCount), null, DeckStudioPlayRules.groupedIssues(result.issues),
-        result.issueCount - result.issues.size, { fix(DeckStudioPlayRules.issueCards(result)) }, dismiss)
+fun DeckStudioIssuesSheet(result: DeckStudioCheckResult, deckName: String, fix: (List<String>) -> Unit, dismiss: () -> Unit) {
+    DeckStudioIssuesSheet(DeckStudioPlayText.issuesBlockPlay(result.issueCount), deckName, null, DeckStudioPlayRules.groupedIssues(result.issues),
+        DeckStudioPlayRules.issueCards(result), result.issueCount - result.issues.size, fix, dismiss)
 }
 
+/**
+ * Why a deck cannot be the playing deck, with the way back to its rows (DeckStudioPlayIssues). Fix
+ * deck shows every named card; each named card also has its own button that shows just its row.
+ */
 @Composable
-private fun DeckStudioIssuesSheet(title: String, message: String?, groups: List<Pair<String, List<DeckStudioValidationReceipt.Issue>>>, hidden: Int,
-                                  fix: (() -> Unit)?, dismiss: () -> Unit) {
+private fun DeckStudioIssuesSheet(title: String, deckName: String, message: String?, groups: List<Pair<String, List<DeckStudioValidationReceipt.Issue>>>,
+                                  cards: List<String>, hidden: Int, fix: ((List<String>) -> Unit)?, dismiss: () -> Unit) {
+    @Composable
+    fun card(name: String) {
+        if (fix == null) Text(name, color = DeckStudioPalette.ink, style = StudioText.subheadline.weight(SfWeight.semibold))
+        else Row(Modifier.defaultMinSize(minHeight = 32.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button) { fix(listOf(name)) }
+            .semantics(mergeDescendants = true) { contentDescription = "$name. Shows this card in the deck" },
+            horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            SfImage("magnifyingglass", DeckStudioPalette.accent, 13.dp)
+            Text(name, color = DeckStudioPalette.accent, style = StudioText.subheadline.weight(SfWeight.semibold))
+        }
+    }
     PlaySheet(dismiss) {
-        Text(title, color = DeckStudioPalette.ink, style = StudioText.title3.weight(SfWeight.semibold))
-        message?.let { Text(it, color = DeckStudioPalette.secondaryInk, style = StudioText.subheadline) }
-        for ((group, issues) in groups) Column(Modifier.fillMaxWidth().background(DeckStudioPalette.surface, RoundedCornerShape(14.dp)).padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(group, color = DeckStudioPalette.ink, style = StudioText.subheadline.weight(SfWeight.semibold))
-            for (issue in issues) Column(Modifier.semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                issue.cardName?.takeIf { it.isNotBlank() }?.let { Text(it, color = DeckStudioPalette.ink, style = StudioText.caption.weight(SfWeight.semibold)) }
-                Text(issue.message, color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            SfImage("exclamationmark.triangle.fill", DeckStudioPalette.ink, 18.dp)
+            Text(title, color = DeckStudioPalette.ink, style = StudioText.title3.weight(SfWeight.semibold))
+        }
+        if (deckName.isNotEmpty()) Text(deckName, color = DeckStudioPalette.secondaryInk, style = StudioText.subheadline)
+        message?.let { Text(it, color = DeckStudioPalette.ink, style = StudioText.subheadline) }
+        for ((group, issues) in groups) Column(Modifier.fillMaxWidth().background(DeckStudioPalette.surface, RoundedCornerShape(12.dp)).padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(group, Modifier.weight(1f), color = DeckStudioPalette.ink, style = StudioText.subheadline.weight(SfWeight.semibold))
+                Text(DeckStudioPlayText.issues(issues.size), color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+            }
+            for (issue in issues) Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                issue.cardName?.trim()?.takeIf { it.isNotEmpty() }?.let { card(it) }
+                Text(issue.message, color = DeckStudioPalette.ink, style = StudioText.caption)
             }
         }
-        if (hidden > 0) Text("${DeckStudioPlayText.issues(hidden)} not shown", color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+        if (groups.isEmpty() && cards.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(4.dp)) { cards.forEach { card(it) } }
+        if (hidden > 0) Text(DeckStudioPlayText.notShown(hidden), color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StudioButton(DeckStudioPlayText.notNow, dismiss, Modifier.weight(1f), primary = false)
-            fix?.let { DeckStudioEmberButton(DeckStudioPlayText.fixDeck, it, Modifier.weight(1f), icon = "pencil") }
+            fix?.let { DeckStudioEmberButton(DeckStudioPlayText.fixDeck, { it(cards) }, Modifier.weight(1f), icon = "wrench.and.screwdriver") }
         }
     }
 }
@@ -307,6 +341,7 @@ fun DeckStudioSetupDeckStatus(setup: OnDeviceSetupModel, deckID: String, deck: D
     }
     if (deck != null) Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         val list = remember(deck) { DeckList.fromStored(deck) }
+        // Colours only once the catalogue has loaded (Deck Studio loads it); the setup screen never loads it itself.
         val identity = setup.catalogue?.let { catalogue ->
             val commanders = deck.entries.filter { it.section == "commanders" }.map { it.name }
             val colors = commanders.map { catalogue.find(it)?.identity ?: return@let null }.flatten().toSet()
@@ -314,14 +349,15 @@ fun DeckStudioSetupDeckStatus(setup: OnDeviceSetupModel, deckID: String, deck: D
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(CardCountText.label(DeckStudioDraftPresentation.gameCount(NativeDeckDraft.of(list))), color = BrandTheme.inkSecondary, style = SfText.caption())
-            identity?.forEach { ManaSymbolView(it, 14.dp) }
+            // A colorless commander shows the colorless symbol, as on iOS.
+            identity?.let { colors -> (colors.ifEmpty { listOf("C") }).forEach { ManaSymbolView(it, 14.dp) } }
         }
         status?.let { value ->
             val (icon, _) = value.icon()
             val tint = when (value) { DeckStudioPlayStatus.READY -> BrandTheme.inkSecondary; DeckStudioPlayStatus.NEEDS_FIXES -> BrandTheme.ember; else -> BrandTheme.inkSecondary }
             Row(Modifier.defaultMinSize(minHeight = if (value == DeckStudioPlayStatus.NEEDS_FIXES) 44.dp else 0.dp)
                 .then(if (value == DeckStudioPlayStatus.NEEDS_FIXES) Modifier.clip(CircleShape).clickable(enabled = !setup.isBusy, role = Role.Button) {
-                    openStudio(DeckStudioOpen(deckID))
+                    openStudio(DeckStudioOpen(deckID, fixCards(deckID, list, resolver)))
                 } else Modifier)
                 .semantics(mergeDescendants = true) {}, horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
                 SfImage(icon, tint, 12.dp)
@@ -330,6 +366,15 @@ fun DeckStudioSetupDeckStatus(setup: OnDeviceSetupModel, deckID: String, deck: D
         }
     }
     setup.deckIssues?.let { (id, result) ->
-        DeckStudioIssuesSheet(result, { cards -> setup.deckIssues = null; openStudio(DeckStudioOpen(id, cards)) }) { setup.deckIssues = null }
+        DeckStudioIssuesSheet(result, deck?.name ?: "", { cards -> setup.deckIssues = null; openStudio(DeckStudioOpen(id, cards)) }) { setup.deckIssues = null }
     }
+}
+
+/** Fix in Deck Studio shows the cards XMage named, or the rows the resolver cannot play. */
+private fun fixCards(deckID: String, deck: DeckList, resolver: OnDeviceDeckResolver?): List<String> {
+    resolver ?: return emptyList()
+    DeckStudioPlayRules.key(deckID, deck, resolver, DeckStudioServices.appBuild)?.let { key ->
+        runCatching { DeckStudioServices.checkResults.result(key) }.getOrNull()?.let { return DeckStudioPlayRules.issueCards(it) }
+    }
+    return runCatching { DeckStudioPlayRules.unplayableCards(deck, resolver) }.getOrDefault(emptyList())
 }

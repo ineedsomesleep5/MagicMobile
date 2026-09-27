@@ -211,7 +211,7 @@ class DeckStudioPlaySelectionTest {
         assertTrue(validator.requests.isEmpty())
     }
 
-    @Test fun aRejectedDeckIsStoredAndNotSelectedAndIsCheckedAgainNextTime() = runBlocking {
+    @Test fun aRejectedDeckIsStoredAndNotSelectedAndShownAgainWithoutRecheck() = runBlocking {
         val store = store()
         val validator = Validator { rejected(it, Triple("Sol Ring is banned", "Banned", "Sol Ring"), Triple("Deck must have 100 cards", "Deck", null),
             Triple("Sol Ring is restricted", "Banned", "Sol Ring")) }
@@ -223,9 +223,9 @@ class DeckStudioPlaySelectionTest {
         assertEquals(listOf("Sol Ring"), DeckStudioPlayRules.issueCards(blocked.result))
         assertEquals(listOf("Banned" to 2, "Deck" to 1), DeckStudioPlayRules.groupedIssues(blocked.result.issues).map { it.first to it.second.size })
         assertEquals(DeckStudioPlayStatus.NEEDS_FIXES, DeckStudioPlayRules.status("local:1", source.deck, resolver(), "10", store))
-        // A stored failure never blocks a new check: Play asks XMage again.
-        flow.play(source, false, resolver())
-        assertEquals(2, validator.requests.size)
+        // The same cards on the same install get the same answer: the stored failure shows again, not rechecked.
+        assertEquals(blocked, flow.play(source, false, resolver()))
+        assertEquals(1, validator.requests.size)
     }
 
     @Test fun anEngineFailureStoresNothing() = runBlocking {

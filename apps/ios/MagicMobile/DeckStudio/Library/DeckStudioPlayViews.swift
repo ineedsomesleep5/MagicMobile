@@ -249,7 +249,7 @@ private struct DeckStudioPlaySheet: View {
                     Text(DeckStudioPlayText.checkingTitle).font(.title2.weight(.bold))
                     Text(DeckStudioPlayText.checking(name)).font(.subheadline).foregroundStyle(DeckStudioPalette.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
-                    ProgressView().frame(maxWidth: .infinity)
+                    ProgressView(DeckStudioPlayText.checkingProgress).frame(maxWidth: .infinity)
                     Button("Cancel", role: .cancel) { selection.cancel() }
                         .buttonStyle(DeckStudioButtonStyle(primary: false)).frame(maxWidth: .infinity)
                         .accessibilityIdentifier("deckStudio.play.cancel")
@@ -258,12 +258,13 @@ private struct DeckStudioPlaySheet: View {
                 .presentationDetents([.medium])
                 .interactiveDismissDisabled()
             case .cannotPlay(let deckID, let name, let message, let cards)?:
+                // Without a saved deck there is nothing to open, so Fix deck is not offered.
                 DeckStudioPlayIssues(title: DeckStudioPlayText.cannotPlayTitle, deckName: name, message: message,
                                      groups: [], cards: cards,
-                                     fix: { fix(deckID, $0) }, notNow: { selection.dismiss() })
+                                     fix: deckID.map { id in { fix(id, $0) } }, notNow: { selection.dismiss() })
             case .blocked(let deckID, let name, let check)?:
                 DeckStudioPlayIssues(title: DeckStudioPlayText.blocked(check.issueCount), deckName: name, message: nil,
-                                     groups: check.groups, cards: check.cardNames,
+                                     groups: check.groups, cards: check.cardNames, hidden: check.issueCount - check.issues.count,
                                      fix: { fix(deckID, $0) }, notNow: { selection.dismiss() })
             default:
                 Color.clear
@@ -282,8 +283,11 @@ struct DeckStudioPlayIssues: View {
     let message: String?
     let groups: [DeckStudioStoredCheck.IssueGroup]
     let cards: [String]
-    /// Fix deck, with the cards to find (all of them, or the one tapped).
-    let fix: ([String]) -> Void
+    /// XMage's issues beyond the ones kept.
+    var hidden = 0
+    /// Fix deck, with the cards to show (all of them, or the one tapped); nil when
+    /// there is no saved deck to open.
+    let fix: (([String]) -> Void)?
     let notNow: () -> Void
     var body: some View {
         VStack(spacing: 0) {
@@ -313,30 +317,39 @@ struct DeckStudioPlayIssues: View {
                     if groups.isEmpty && !cards.isEmpty {
                         VStack(alignment: .leading, spacing: 4) { ForEach(cards, id: \.self) { cardButton($0) } }
                     }
+                    if hidden > 0 { Text(DeckStudioPlayText.notShown(hidden)).font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk) }
                 }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
             }
             VStack(spacing: 10) {
-                Button { fix(cards) } label: { Label(DeckStudioPlayText.fixDeck, systemImage: "wrench.and.screwdriver").frame(maxWidth: .infinity) }
-                    .buttonStyle(DeckStudioButtonStyle()).accessibilityIdentifier("deckStudio.play.fix")
+                if let fix {
+                    Button { fix(cards) } label: { Label(DeckStudioPlayText.fixDeck, systemImage: "wrench.and.screwdriver").frame(maxWidth: .infinity) }
+                        .buttonStyle(DeckStudioButtonStyle()).accessibilityIdentifier("deckStudio.play.fix")
+                }
                 Button(DeckStudioPlayText.notNow, action: notNow).buttonStyle(DeckStudioButtonStyle(primary: false))
                     .frame(maxWidth: .infinity).accessibilityIdentifier("deckStudio.play.notNow")
             }.padding(.horizontal, 24).padding(.vertical, 12).background(DeckStudioPalette.background)
         }
         .presentationDetents([.medium, .large])
     }
-    private func cardButton(_ card: String) -> some View {
-        Button { fix([card]) } label: {
-            Label(card, systemImage: "magnifyingglass").font(.subheadline.weight(.semibold)).frame(minHeight: 32)
-        }.buttonStyle(.plain).foregroundStyle(DeckStudioPalette.accent)
-            .accessibilityHint("Shows this card in the deck")
+    /// Each named card jumps to its own row.
+    @ViewBuilder private func cardButton(_ card: String) -> some View {
+        if let fix {
+            Button { fix([card]) } label: {
+                Label(card, systemImage: "magnifyingglass").font(.subheadline.weight(.semibold)).frame(minHeight: 32)
+            }.buttonStyle(.plain).foregroundStyle(DeckStudioPalette.accent)
+                .accessibilityHint("Shows this card in the deck")
+        } else {
+            Text(card).font(.subheadline.weight(.semibold))
+        }
     }
 }
 
 // MARK: - Colour identity outside Deck Studio
 
 /// Commander colour identity for screens that do not hold the card catalogue. Deck
-/// Studio fills the cache as it lists decks; a miss loads the catalogue once, off the
-/// main thread, and keeps only the colours.
+/// Studio fills the cache as it lists decks. The setup screen shows colours only once
+/// the catalogue has loaded this way; it never loads the catalogue itself (Android's
+/// setup screen follows the same rule).
 @MainActor
 enum DeckStudioDeckColors {
     private static var cache: [[String]: [String]] = [:]
@@ -354,36 +367,36 @@ enum DeckStudioDeckColors {
         return colors
     }
 
-    static func colors(for commanders: [String]) async -> [String]? {
-        guard !commanders.isEmpty else { return nil }
-        if let hit = cache[commanders.sorted()] { return hit }
-        let metadata = await Task.detached(priority: .utility) { try? NativeDeckMetadataCatalogue.bundled() }.value
-        return remember(commanders: commanders, metadata: metadata)
+    static func colors(for commanders: [String]) -> [String]? {
+        commanders.isEmpty ? nil : cache[commanders.sorted()]
     }
 }
 
 // MARK: - Game setup
 
+/// A Start that XMage rejected for the player's deck. The setup model has already
+/// stored the failed check; the setup screen explains it with the Play issues sheet.
+struct DeckStudioStartIssues: Identifiable, Equatable {
+    let id = UUID()
+    let name: String
+    let check: DeckStudioStoredCheck
+}
+
 /// Under the playing deck on the game setup screen: its size, colours and whether XMage
-/// has checked it on this device. A failed Start is stored and explained the same way.
+/// has checked it on this device. A failed Start is explained the same way as Play.
 struct OnDeviceSetupDeckDetails: View {
     let deckID: String
     /// The playing projection that every game start sends.
     let deck: DeckList?
     let resolver: OnDeviceDeckResolver?
-    let rejection: DeckStudioStartRejection?
-    /// Opens Deck Studio on this deck, finding these cards.
+    let startIssues: DeckStudioStartIssues?
+    /// Opens Deck Studio on this deck, showing only these cards.
     let openStudio: ([String]) -> Void
     @ObservedObject private var store = DeckStudioReceiptStore.shared
-    @State private var colors: [String]?
-    @State private var issues: PresentedIssues?
+    @State private var issues: DeckStudioStartIssues?
     @State private var fixAfterDismiss: [String]?
 
-    private struct PresentedIssues: Identifiable {
-        let id = UUID()
-        let name: String
-        let check: DeckStudioStoredCheck
-    }
+    /// nil while the resolver loads or when it cannot read the deck.
     private var key: DeckStudioCheckKey? {
         guard let deck, let resolver else { return nil }
         return try? DeckStudioPlaySelection.key(deckID: deckID, deck: deck, resolver: resolver, appBuild: DeckStudioValidationService.appBuild)
@@ -392,13 +405,14 @@ struct OnDeviceSetupDeckDetails: View {
 
     var body: some View {
         let key = key
-        let status = store.status(for: key)
+        // A deck the resolver cannot read needs fixes, the same rule as Deck Studio's tiles.
+        let status: DeckStudioPlayStatus = key.map { store.status(for: $0) } ?? (deck != nil && resolver != nil ? .needsFixes : .notChecked)
         VStack(spacing: 6) {
             if let deck {
                 HStack(spacing: 6) {
                     Text(CardCountText.label(DeckStudioDraftPresentation.gameCount(NativeDeckDraft(deck: deck))))
                         .font(.caption.monospacedDigit()).foregroundStyle(CommanderPresentation.secondary)
-                    if let colors {
+                    if let colors = DeckStudioDeckColors.colors(for: commanders) {
                         HStack(spacing: 2) {
                             if colors.isEmpty { ManaSymbolView(symbol: "C", size: 16) }
                             ForEach(colors, id: \.self) { ManaSymbolView(symbol: $0, size: 16) }
@@ -408,7 +422,7 @@ struct OnDeviceSetupDeckDetails: View {
                     }
                 }
                 if status == .needsFixes {
-                    Button { openStudio(key.flatMap { store.check(for: $0)?.cardNames } ?? []) } label: {
+                    Button { openStudio(fixCards(key: key, deck: deck)) } label: {
                         Label(status.setupLine, systemImage: "exclamationmark.triangle.fill").font(.caption.weight(.semibold))
                     }
                     .foregroundStyle(CommanderPresentation.accent)
@@ -421,23 +435,24 @@ struct OnDeviceSetupDeckDetails: View {
             }
         }
         .fixedSize(horizontal: false, vertical: true)
-        .task(id: commanders) { colors = await DeckStudioDeckColors.colors(for: commanders) }
-        .onChange(of: rejection) { _, value in
-            guard let value, let deck, let resolver,
-                  let check = value.check(deckID: deckID, deck: deck, resolver: resolver,
-                                          appBuild: DeckStudioValidationService.appBuild, store: store) else { return }
-            store.record(check)
-            issues = PresentedIssues(name: deck.name, check: check)
-        }
+        .onChange(of: startIssues) { _, value in if let value { issues = value } }
         .sheet(item: $issues, onDismiss: {
             // Deck Studio opens only once this sheet has gone.
             if let cards = fixAfterDismiss { fixAfterDismiss = nil; openStudio(cards) }
         }) { presented in
             DeckStudioPlayIssues(title: DeckStudioPlayText.blocked(presented.check.issueCount), deckName: presented.name,
                                  message: nil, groups: presented.check.groups, cards: presented.check.cardNames,
+                                 hidden: presented.check.issueCount - presented.check.issues.count,
                                  fix: { cards in fixAfterDismiss = cards; issues = nil }, notNow: { issues = nil })
                 .background(DeckStudioPalette.background.ignoresSafeArea())
                 .foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light)
         }
+    }
+
+    /// The cards XMage named, or the rows the resolver cannot play.
+    private func fixCards(key: DeckStudioCheckKey?, deck: DeckList) -> [String] {
+        if let key, let check = store.check(for: key) { return check.cardNames }
+        guard let resolver else { return [] }
+        return DeckStudioPlaySelection.unplayableCards(deck, resolver: resolver)
     }
 }

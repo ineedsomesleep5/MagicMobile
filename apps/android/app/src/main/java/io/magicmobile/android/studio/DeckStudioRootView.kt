@@ -207,7 +207,7 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
         openedFromSetup = open
         openDeck(open)
     }
-    fun playRecord(entry: Entry) = play.play(DeckStudioPlaySelection.source(entry.id, entry.record.deckList), resolver)
+    fun playRecord(entry: Entry) = play.play(DeckStudioPlaySelection.source(entry.id, entry.record.deckList), resolver, entry.record.name)
     StudioScreen {
         Column(Modifier.fillMaxSize()) {
             StudioNavBar("Deck Studio", leading = {

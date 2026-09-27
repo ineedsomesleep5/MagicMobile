@@ -19,6 +19,11 @@ struct DeckStudioSampleHand: Equatable {
     var turn: Int { draws + 1 }
     var canMulligan: Bool { draws == 0 && toBottom == 0 && mulligans < Self.handSize && !hand.isEmpty }
     var canDraw: Bool { toBottom == 0 && !library.isEmpty }
+    /// "Put 1 card on the bottom" after a mulligan, then "Turn 2 · 1 mulligan".
+    var status: String {
+        if toBottom > 0 { return "Put \(CardCountText.label(toBottom)) on the bottom" }
+        return "Turn \(turn)" + (mulligans == 0 ? "" : " · \(mulligans) \(mulligans == 1 ? "mulligan" : "mulligans")")
+    }
 
     /// Main-deck cards, one entry per copy.
     static func libraryNames(from draft: NativeDeckDraft) -> [String] {

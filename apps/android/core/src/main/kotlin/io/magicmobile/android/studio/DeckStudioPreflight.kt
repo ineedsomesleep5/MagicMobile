@@ -98,3 +98,25 @@ class DeckStudioPreflight(draft: NativeDeckDraft, card: (String) -> CardInfo?, r
         }
     }
 }
+
+/**
+ * What the Cards list is narrowed to (DeckStudioListFilter in DeckStudioPreflight.swift): one
+ * quick-check issue, or the cards XMage named (Fix deck). Both read "Showing only: …" with Show all,
+ * and clear once nothing matches.
+ */
+sealed class DeckStudioListFilter {
+    abstract val label: String
+    val title: String get() = DeckStudioPlayText.showingOnly(label)
+    abstract fun rows(preflight: DeckStudioPreflight, draft: NativeDeckDraft, canonical: (String) -> String?): Set<UUID>
+
+    data class QuickCheck(val issue: DeckStudioPreflight.Issue) : DeckStudioListFilter() {
+        override val label: String get() = issue.badge
+        override fun rows(preflight: DeckStudioPreflight, draft: NativeDeckDraft, canonical: (String) -> String?) = preflight.rows(issue)
+    }
+
+    data class NeedsFixes(val cards: List<String>) : DeckStudioListFilter() {
+        override val label: String get() = DeckStudioPlayText.needsFixes
+        override fun rows(preflight: DeckStudioPreflight, draft: NativeDeckDraft, canonical: (String) -> String?) =
+            DeckStudioPlayRules.fixRows(draft.rows, cards, canonical)
+    }
+}

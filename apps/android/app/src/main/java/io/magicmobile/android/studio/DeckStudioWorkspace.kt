@@ -114,14 +114,19 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
     val deck = runCatching { draft.deck() }.getOrNull()
     val signature = if (deck != null && resolver != null) runCatching { DeckStudioDeckSignature.native(DeckStudioPlayProjection(deck).resolve(resolver)) }.getOrNull() else null
     fun inspect(name: String) { inspection = name }
+    val canonical: (String) -> String? = { name -> resolver?.canonicalCardName(name) }
     /** The validation panel's Play this deck: the same flow as the header button, for this draft. */
     fun preparePlay(@Suppress("UNUSED_PARAMETER") playing: DeckList) {
         showValidation = false
-        play.play(model.playSource(), resolver)
+        play.play(model.playSource(), resolver, model.draft.name)
     }
+    // Fix deck: the Cards tab shows only the rows XMage named ("Showing only: Needs fixes" with Show all).
+    // A card the list cannot find leaves the list whole.
     LaunchedEffect(fix) {
         val target = fix ?: return@LaunchedEffect
-        tab = "Cards"; query = target.cards.firstOrNull() ?: ""; sectionFilter = ""; colorFilter = ""
+        tab = "Cards"; query = ""; sectionFilter = ""; colorFilter = ""; showValidation = false
+        builder.listFilter = DeckStudioListFilter.NeedsFixes(target.cards)
+            .takeIf { target.cards.isNotEmpty() && DeckStudioPlayRules.fixRows(model.draft.rows, target.cards, canonical).isNotEmpty() }
         consumeFix()
     }
     fun pauseServices() { model.persistRecovery(); browser.pause(); combos.cancel(); validation.cancelPending() }
@@ -140,7 +145,7 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
     // The live quick check; XMage stays authoritative when a game starts.
     val preflight = remember(draft, metadata, resolver) { DeckStudioPreflight(draft, metadata, resolver) }
     // A fixed issue clears its filter, so the list never stays filtered to nothing.
-    LaunchedEffect(preflight) { builder.issueFilter?.let { if (preflight.rows(it).isEmpty()) builder.issueFilter = null } }
+    LaunchedEffect(preflight) { builder.listFilter?.let { if (it.rows(preflight, draft, canonical).isEmpty()) builder.listFilter = null } }
     // Your own role reviews live with the Analysis tab's role insights.
     val roleKey = "deckStudio.roles.v1." + (model.record?.id ?: "new")
     var roleOverrides by remember { mutableStateOf<Map<String, Set<DeckStudioRole>>>(emptyMap()) }
@@ -159,11 +164,11 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
     LaunchedEffect(builder.listCopied) { if (builder.listCopied > 0) { kotlinx.coroutines.delay(2000); builder.listCopied = 0 } }
     val gridColumns = deckStudioGridColumns()
     fun copyList(text: String) { copyDeckList(context, text); builder.listCopied += 1 }
-    fun setIssueFilter(issue: DeckStudioPreflight.Issue?) { builder.issueFilter = issue; if (issue != null) tab = "Cards" }
+    fun setIssueFilter(issue: DeckStudioPreflight.Issue?) { builder.listFilter = issue?.let(DeckStudioListFilter::QuickCheck); if (issue != null) tab = "Cards" }
     fun chooseCommander() { if (!model.readOnly) builder.showCommanderFirst = true }
 
     // Group, filter and sort exactly as the iOS workspace does.
-    val flagged = builder.issueFilter?.let(preflight::rows)
+    val flagged = builder.listFilter?.rows(preflight, draft, canonical)
     val filteredRows = draft.rows.filter { row ->
         val card = metadata?.card(row.cardName)
         (query.isEmpty() || row.cardName.contains(query, true) || card?.oracleText?.contains(query, true) == true) &&
@@ -213,6 +218,19 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
     fun groupCount(title: String, rows: List<NativeDeckRow>): Int =
         if (grouping == "Role" && title in DeckStudioRoleGroups.order) DeckStudioRoleGroups.uniqueCards(rows) else rows.sumOf { it.quantity }
 
+    val playAction = rememberDeckStudioPlayAction(play, model, resolver)
+    /** Long-press actions shared by list rows and grid tiles (cardActions in DeckStudioWorkspaceScreen.swift). */
+    fun cardActions(row: NativeDeckRow): List<DeckStudioCardAction> = buildList {
+        add(DeckStudioCardAction(DeckStudioPlayText.cardDetails, "info.circle") { inspect(row.cardName) })
+        if (!model.readOnly) {
+            add(DeckStudioCardAction(DeckStudioPlayText.addOne, "plus") { model.quantity(row.id, 1) })
+            add(DeckStudioCardAction(DeckStudioPlayText.removeOne, "minus") { model.quantity(row.id, -1) })
+            add(DeckStudioCardAction(DeckStudioPlayText.replaceCard, "arrow.triangle.2.circlepath") { replacement = row })
+            add(DeckStudioCardAction(DeckStudioPlayText.moveTo, null,
+                choices = DeckStudioPlayText.destinations.map { (section, title) -> title to { model.move(row.id, section) } }))
+            add(DeckStudioCardAction(DeckStudioPlayText.removeRow, "trash", destructive = true) { model.remove(row.id) })
+        }
+    }
     val header: @Composable () -> Unit = {
         WorkspaceHeader(model, metadata, headerExpanded, { headerExpanded = !headerExpanded }) { DeckStudioPlayDeckButton(play, model, resolver) }
     }
@@ -233,7 +251,7 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
         Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             StudioSearchField(query, { query = it }, "Search this deck", radius = 12.dp, padding = 12.dp, clearLabel = "Clear deck search")
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                StudioMenu({ deckFilterOptions(draft, sectionFilter, colorFilter, { sectionFilter = it }, { colorFilter = it }) { builder.issueFilter = null } }) {
+                StudioMenu({ deckFilterOptions(draft, sectionFilter, colorFilter, { sectionFilter = it }, { colorFilter = it }) { builder.listFilter = null } }) {
                     WorkspaceMenuLabel("Filter", if (sectionFilter.isEmpty() && colorFilter.isEmpty()) "line.3.horizontal.decrease" else "line.3.horizontal.decrease.circle.fill")
                 }
                 StudioMenu({ listOf("Type", "Role", "Section", "Mana value", "Color", "Name").map { MenuEntry.Item(it, checked = it == grouping) { grouping = it } } }) {
@@ -242,19 +260,19 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
                 StudioMenu({ listOf("Name", "Quantity", "Mana value").map { MenuEntry.Item(it, checked = it == sorting) { sorting = it } } }) {
                     WorkspaceMenuLabel("Sort", "arrow.up.arrow.down")
                 }
-                StudioIconButton(if (cardLayout == "Grid") "list.bullet" else "square.grid.2x2.fill", if (cardLayout == "Grid") "Show as list" else "Show as grid",
+                StudioIconButton(if (cardLayout == "Grid") "list.bullet" else "square.grid.2x2.fill", if (cardLayout == "Grid") DeckStudioPlayText.showAsList else DeckStudioPlayText.showAsGrid,
                     { cardLayout = if (cardLayout == "Grid") "List" else "Grid" }, Modifier.testTag("deckStudio.cards.layout"), size = 16.dp)
-                if (!model.readOnly) StudioPlainButton(if (builder.selecting) "Done" else "Select", builder::toggleSelecting,
-                    Modifier.testTag("deckStudio.cards.select").semantics { contentDescription = if (builder.selecting) "Done selecting" else "Select cards" },
+                if (!model.readOnly) StudioPlainButton(if (builder.selecting) "Done" else DeckStudioPlayText.select, builder::toggleSelecting,
+                    Modifier.testTag("deckStudio.cards.select").semantics { contentDescription = if (builder.selecting) DeckStudioPlayText.doneSelecting else DeckStudioPlayText.selectCards },
                     style = StudioText.caption)
                 StudioIconButton("arrow.uturn.backward", "Undo deck edit", { model.undo() }, enabled = model.history.canUndo && !model.readOnly, size = 16.dp)
                 StudioIconButton("arrow.uturn.forward", "Redo deck edit", { model.redo() }, enabled = model.history.canRedo && !model.readOnly, size = 16.dp)
             }
-            builder.issueFilter?.let { DeckStudioIssueFilterRow(it) { builder.issueFilter = null } }
+            builder.listFilter?.let { DeckStudioIssueFilterRow(it) { builder.listFilter = null } }
         }
     }
     val preflightBar: @Composable () -> Unit = {
-        DeckStudioPreflightBar(preflight, builder.issueFilter, ::setIssueFilter, ::chooseCommander)
+        DeckStudioPreflightBar(preflight, (builder.listFilter as? DeckStudioListFilter.QuickCheck)?.issue, ::setIssueFilter, ::chooseCommander)
     }
 
     StudioScreen {
@@ -268,6 +286,10 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
                     StudioGlassIcon("tag", "Deck tags, notes and import receipt", { showOrganization = true }, enabled = model.record != null)
                     StudioMenu({
                         buildList {
+                            // The same Play as the header, which compact layouts scroll away.
+                            add(MenuEntry.Item(playAction.title, if (playAction.playing) "checkmark.circle" else "play.fill", enabled = playAction.enabled) {
+                                play.play(model.playSource(), resolver, model.draft.name)
+                            })
                             add(MenuEntry.Item("Validate & playtest", "checkmark.shield") { showValidation = true })
                             add(MenuEntry.Item("Change primary commander", "crown", enabled = !model.readOnly && metadata != null) { showCommander = true })
                             add(MenuEntry.Item("Basic lands", "leaf", enabled = !model.readOnly) { showBasics = true })
@@ -277,8 +299,8 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
                             if (text != null) add(MenuEntry.Item("Export plain text", "doc.plaintext") { shareText(context, text) })
                             else add(MenuEntry.Label("Plain text unavailable · use JSON to preserve this draft"))
                             runCatching { draft.exportJSON() }.getOrNull()?.let { json -> add(MenuEntry.Item("Export native JSON", "square.and.arrow.up") { shareText(context, json) }) }
-                            add(MenuEntry.Item("Edit as text", "doc.text", enabled = !model.readOnly) { builder.showTextEditor = true })
-                            if (text != null) add(MenuEntry.Item("Copy list", "doc.on.doc") { copyList(text) })
+                            add(MenuEntry.Item(DeckStudioPlayText.editAsText, "doc.text", enabled = !model.readOnly) { builder.showTextEditor = true })
+                            if (text != null) add(MenuEntry.Item(DeckStudioPlayText.copyList, "doc.on.doc") { copyList(text) })
                         }
                     }) { Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) { SfImage("ellipsis.circle", DeckStudioPalette.ink, 20.dp) } }
                 }
@@ -302,7 +324,7 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
                             } else if (filteredRows.isEmpty()) item(key = "nomatch") {
                                 Column(Modifier.padding(horizontal = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                     StudioContentUnavailable("No matching cards", "line.3.horizontal.decrease", "Clear the search or filters to see the full draft.")
-                                    StudioButton("Clear search and filters", { query = ""; sectionFilter = ""; colorFilter = ""; builder.issueFilter = null }, primary = false)
+                                    StudioButton("Clear search and filters", { query = ""; sectionFilter = ""; colorFilter = ""; builder.listFilter = null }, primary = false)
                                 }
                             }
                             for ((group, rows) in sections) {
@@ -314,15 +336,17 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
                                     }
                                 }
                                 fun tap(row: NativeDeckRow) { if (builder.selecting) builder.toggle(row.id) else inspect(row.cardName) }
+                                // Long-press: the large preview with the row's actions, as the iOS context menu; not while selecting.
+                                fun longPress(row: NativeDeckRow) { if (!builder.selecting) builder.previewRow = row.id }
                                 if (cardLayout == "Grid") items(rows.chunked(gridColumns), key = { "$group/grid/${it.first().id}" }) { chunk ->
                                     DeckStudioCardGridRow(chunk, gridColumns) { row, modifier ->
                                         DeckStudioCardGridTile(row, metadata?.card(row.cardName), preflight.issues(row.id), if (builder.selecting) row.id in builder.selection else null,
-                                            tap = { tap(row) }, preview = { builder.preview = row.cardName }, modifier = modifier)
+                                            tap = { tap(row) }, preview = { longPress(row) }, modifier = modifier)
                                     }
                                 } else items(rows, key = { "$group/${it.id}" }) { row ->
                                     Box(Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
                                         CardRow(row, model, metadata, inspect = { tap(row) }, replace = { replacement = it }, issues = preflight.issues(row.id),
-                                            selected = if (builder.selecting) row.id in builder.selection else null, preview = { builder.preview = row.cardName })
+                                            selected = if (builder.selecting) row.id in builder.selection else null, preview = { longPress(row) })
                                     }
                                 }
                             }
@@ -414,14 +438,24 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
     if (builder.showBulkQuantity) DeckStudioQuantityDialog(apply = { value ->
         val ids = builder.liveSelection(model.draft)
         val quantity = value.trim().toIntOrNull()?.takeIf { it in 1..2000 }
-        if (quantity == null) model.error = "Use a quantity from 1 to 2,000. Nothing was changed."
+        if (quantity == null) model.error = DeckStudioPlayText.quantityError
         else if (ids.isNotEmpty()) model.change { DeckStudioEditorOperations.setQuantity(it, ids, quantity) }
     }) { builder.showBulkQuantity = false }
-    if (builder.confirmBulkRemove) ConfirmationDialog("Remove the selected cards?", "Undo brings them back.", listOf(ConfirmationAction("Remove", destructive = true) {
+    if (builder.confirmBulkRemove) ConfirmationDialog(DeckStudioPlayText.removeSelectedTitle, DeckStudioPlayText.removeSelectedMessage,
+        listOf(ConfirmationAction(DeckStudioPlayText.remove, destructive = true) {
         val ids = builder.liveSelection(model.draft)
         if (ids.isNotEmpty() && model.change { DeckStudioEditorOperations.removeRows(it, ids) }) builder.selection = emptySet()
     }), light = true) { builder.confirmBulkRemove = false }
-    builder.preview?.let { name -> DeckStudioCardPreviewDialog(name, metadata?.card(name)) { builder.preview = null } }
+    builder.preview?.let { name ->
+        DeckStudioCardPreviewDialog(name, metadata?.card(name), listOf(DeckStudioCardAction(DeckStudioPlayText.cardDetails, "info.circle") { inspect(name) })) {
+            builder.preview = null
+        }
+    }
+    builder.previewRow?.let { id ->
+        model.draft.rows.firstOrNull { it.id == id }?.let { row ->
+            DeckStudioCardPreviewDialog(row.cardName, metadata?.card(row.cardName), cardActions(row)) { builder.previewRow = null }
+        }
+    }
     if (showBasics) BoardSheet({ showBasics = false }, background = rgbLight, skipPartiallyExpanded = true, sound = false) {
         DeckStudioBasicLandsSheet(draft, apply = { values, expected -> model.basics(values, expected) }) { showBasics = false }
     }
@@ -519,7 +553,7 @@ private fun WorkspaceHeader(model: DeckStudioEditorModel, metadata: NativeDeckMe
 
 /**
  * One card row with inline quick-check badges. In select mode (`selected` non-null) the whole row
- * toggles the selection; a long press shows the large preview.
+ * toggles the selection; otherwise a long press shows the large preview with the card actions.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

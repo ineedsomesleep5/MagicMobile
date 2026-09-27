@@ -502,3 +502,323 @@ enum ParitySummary {
         return commands.map { ["type": $0.type, "answer": answer($0, prompt: prompt, viewer: snapshot.viewerID)] as [String: Any] }
     }
 }
+
+// MARK: - Deck Studio
+
+extension ParityGoldenTests {
+    /// deck-studio-cases.json: Deck Studio's strings, Quick Add grammar, quick-check rules, search
+    /// syntax, sample hand, role groups and stored check results. ParityGoldenTest.kt runs every
+    /// case on Android; an id either platform does not know fails the test.
+    @MainActor
+    func testDeckStudioCasesOnBothPlatforms() throws {
+        let root = try caseFile("deck-studio-cases.json")
+        try deckStudioStrings(root)
+        try deckStudioQuickAdd(try XCTUnwrap(root["quickAdd"] as? [String: Any]))
+        try deckStudioPreflight(try XCTUnwrap(root["preflight"] as? [String: Any]))
+        try deckStudioSearch(try XCTUnwrap(root["search"] as? [[String: Any]]))
+        try deckStudioSampleHand(try XCTUnwrap(root["sampleHand"] as? [String: Any]))
+        try deckStudioRoleGroups(try XCTUnwrap(root["roleGroups"] as? [String: Any]))
+        try deckStudioCheckResults(try XCTUnwrap(root["checkResults"] as? [String: Any]))
+    }
+
+    private func deckStudioStatus(_ raw: Any?) throws -> DeckStudioPlayStatus {
+        switch raw as? String {
+        case "ready": return .ready
+        case "needsFixes": return .needsFixes
+        case "notChecked": return .notChecked
+        default: return try XCTUnwrap(nil, "Unknown status \(String(describing: raw))")
+        }
+    }
+
+    private func deckStudioRow(_ raw: [String: Any]) throws -> NativeDeckRow {
+        NativeDeckRow(cardName: try XCTUnwrap(raw["name"] as? String), quantity: raw["quantity"] as? Int ?? 1,
+                      section: raw["section"] as? String ?? "deck", isPrimaryCommander: raw["primary"] as? Bool ?? false)
+    }
+
+    @MainActor
+    private func deckStudioStrings(_ root: [String: Any]) throws {
+        let T = DeckStudioPlayText.self
+        let known: [String: String] = [
+            "play": T.play, "saveAndPlay": T.saveAndPlay, "playing": T.playing, "playingAccessibility": T.playingAccessibility,
+            "ready": T.ready, "needsFixes": T.needsFixes, "notChecked": T.notChecked, "fixDeck": T.fixDeck, "notNow": T.notNow,
+            "setUpGame": T.setUpGame, "cannotPlayTitle": T.cannotPlayTitle, "checkingTitle": T.checkingTitle,
+            "checkingProgress": T.checkingProgress, "gameLive": T.gameLive, "catalogueLoading": T.catalogueLoading,
+            "setupReady": T.setupReady, "setupNotChecked": T.setupNotChecked, "setupNeedsFixes": T.setupNeedsFixes,
+            "panelCaption": T.panelCaption, "showAll": T.showAll, "startPassed": T.startPassed,
+            "cardDetails": T.cardDetails, "addOne": T.addOne, "removeOne": T.removeOne, "replaceCard": T.replaceCard,
+            "moveTo": T.moveTo, "removeRow": T.removeRow, "select": T.select, "selectCards": T.selectCards,
+            "doneSelecting": T.doneSelecting, "selectAll": T.selectAll, "setQuantity": T.setQuantity, "remove": T.remove,
+            "removeSelectedTitle": T.removeSelectedTitle, "removeSelectedMessage": T.removeSelectedMessage,
+            "quantityMessage": T.quantityMessage, "quantityError": T.quantityError, "showAsGrid": T.showAsGrid, "showAsList": T.showAsList,
+            "quickAdd": T.quickAdd, "quickAddMain": T.quickAddMain, "quickAddMaybe": T.quickAddMaybe,
+            "quickAddMaybeboard": T.quickAddMaybeboard, "addCards": T.addCards, "quickAddHint": T.quickAddHint,
+            "quickAddNeedsName": T.quickAddNeedsName, "quickAddFailed": T.quickAddFailed, "undo": T.undo,
+            "editAsText": T.editAsText, "copyList": T.copyList, "listCopied": T.listCopied, "reviewChanges": T.reviewChanges,
+            "applyChanges": T.applyChanges, "keepEditing": T.keepEditing, "diffAdded": T.diffAdded, "diffRemoved": T.diffRemoved,
+            "noChanges": T.noChanges, "textEditorHint": T.textEditorHint, "chooseCommander": T.chooseCommander, "skip": T.skip,
+            "commanderFirstTitle": T.commanderFirstTitle, "commanderFirstCaption": T.commanderFirstCaption,
+            "searchCommanders": T.searchCommanders, "searchHint": T.searchHint, "withinIdentity": T.withinIdentity,
+            "sampleHand": T.sampleHand, "sampleHandCaption": T.sampleHandCaption, "sampleHandEmpty": T.sampleHandEmpty,
+            "draw7": T.draw7, "newHand": T.newHand, "mulligan": T.mulligan, "draw": T.draw,
+            "quickCheckCaption": DeckStudioPreflight.caption]
+        let strings = try XCTUnwrap(root["strings"] as? [String: String])
+        XCTAssertEqual(Set(strings.keys), Set(known.keys), "Every Deck Studio string has one source on each platform")
+        for (id, text) in strings { XCTAssertEqual(known[id], text, id) }
+        XCTAssertEqual(T.destinations.map { [$0.section, $0.title] }, root["destinations"] as? [[String]])
+
+        let formatted = try XCTUnwrap(root["formatted"] as? [[String: Any]])
+        XCTAssertFalse(formatted.isEmpty)
+        for item in formatted {
+            let id = try XCTUnwrap(item["id"] as? String), args = try XCTUnwrap(item["args"] as? [Any])
+            func text(_ index: Int) throws -> String { try XCTUnwrap(args[index] as? String, id) }
+            func number(_ index: Int) throws -> Int { try XCTUnwrap(args[index] as? Int, id) }
+            let actual: String
+            switch id {
+            case "checking": actual = T.checking(try text(0))
+            case "nowPlaying": actual = T.nowPlaying(try text(0))
+            case "nowPlayingStrip": actual = T.nowPlayingStrip(try text(0), try deckStudioStatus(args[1]))
+            case "issues": actual = T.issueCount(try number(0))
+            case "blocked": actual = T.blocked(try number(0))
+            case "notShown": actual = T.notShown(try number(0))
+            case "excluded": actual = T.excluded(try number(0))
+            case "deletePlaying": actual = T.deletePlaying(try text(0))
+            case "showingOnly": actual = T.showingOnly(try text(0))
+            case "listFilter":
+                let raw = try text(0)
+                actual = raw == "needsFixes" ? DeckStudioListFilter.needsFixes([]).title
+                    : DeckStudioListFilter.quickCheck(try XCTUnwrap(DeckStudioPreflight.Issue(rawValue: raw), raw)).title
+            case "selected": actual = T.selected(try number(0))
+            case "added": actual = T.added(try number(0), try text(1), maybeboard: try XCTUnwrap(args[2] as? Bool))
+            case "noCardNamed": actual = T.noCardNamed(try text(0))
+            case "handCounts": actual = T.handCounts(hand: try number(0), library: try number(1))
+            case "status": actual = try deckStudioStatus(args[0]).label
+            case "setupStatus": actual = try deckStudioStatus(args[0]).setupLine
+            default: XCTFail("Unknown formatted id \(id)"); continue
+            }
+            XCTAssertEqual(actual, item["text"] as? String, "\(id) \(args)")
+        }
+    }
+
+    private func deckStudioQuickAdd(_ root: [String: Any]) throws {
+        let names = Set(try XCTUnwrap(root["cardNames"] as? [String]))
+        let cases = try XCTUnwrap(root["cases"] as? [[String: Any]])
+        XCTAssertFalse(cases.isEmpty)
+        for item in cases {
+            let input = try XCTUnwrap(item["input"] as? String)
+            let parsed = DeckStudioQuickAdd.parse(input) { names.contains($0) }
+            guard let expected = item["result"] as? [String: Any] else { XCTAssertNil(parsed, "Quick Add \(input)"); continue }
+            let value = try XCTUnwrap(parsed, "Quick Add \(input)")
+            XCTAssertEqual(value.quantity, expected["quantity"] as? Int, input)
+            XCTAssertEqual(value.name, expected["name"] as? String, input)
+            XCTAssertEqual(value.ignored, expected["ignored"] as? [String], input)
+            XCTAssertEqual(value.note, expected["note"] as? String, input)
+        }
+    }
+
+    private func deckStudioPreflight(_ root: [String: Any]) throws {
+        XCTAssertEqual(root["targetCount"] as? Int, DeckStudioPreflight.targetCount)
+        XCTAssertEqual(root["caption"] as? String, DeckStudioPreflight.caption)
+        let issues = try XCTUnwrap(root["issues"] as? [String: [String: String]])
+        XCTAssertEqual(Set(issues.keys), Set(DeckStudioPreflight.Issue.allCases.map(\.rawValue)))
+        for issue in DeckStudioPreflight.Issue.allCases {
+            XCTAssertEqual(issues[issue.rawValue], ["title": issue.title, "badge": issue.badge], issue.rawValue)
+        }
+        var cards: [String: DeckStudioPreflight.CardFacts] = [:]
+        for raw in try XCTUnwrap(root["cards"] as? [[String: Any]]) {
+            let name = try XCTUnwrap(raw["name"] as? String)
+            cards[name] = .init(name: name, typeLine: raw["typeLine"] as? String, oracleText: raw["oracleText"] as? String,
+                                colorIdentity: raw["colorIdentity"] as? [String])
+        }
+        let aliases = root["aliases"] as? [String: String] ?? [:]
+        let cases = try XCTUnwrap(root["cases"] as? [[String: Any]])
+        XCTAssertFalse(cases.isEmpty)
+        for item in cases {
+            let name = item["name"] as? String ?? ""
+            let rows = try (try XCTUnwrap(item["rows"] as? [[String: Any]])).map(deckStudioRow)
+            let catalogue = item["catalogue"] as? Bool ?? true
+            let unresolvable = item["unresolvable"] as? [String]
+            let check = DeckStudioPreflight(draft: NativeDeckDraft(name: "Case", rows: rows),
+                                            card: { catalogue ? cards[aliases[$0] ?? $0] : nil },
+                                            resolves: unresolvable.map { list in { !list.contains($0) } })
+            let expect = try XCTUnwrap(item["expect"] as? [String: Any], name)
+            XCTAssertEqual(check.count, expect["count"] as? Int, name)
+            XCTAssertEqual(check.missingCommander, expect["missingCommander"] as? Bool, name)
+            XCTAssertEqual(check.commanderIdentity.map { $0.sorted() }, expect["commanderIdentity"] as? [String], name)
+            let flagged = try XCTUnwrap(expect["rows"] as? [String: [Int]], name)
+            for issue in [DeckStudioPreflight.Issue.offIdentity, .duplicate, .unresolved] {
+                XCTAssertEqual(check.rows(issue), Set((flagged[issue.rawValue] ?? []).map { rows[$0].id }), "\(name) · \(issue.rawValue)")
+            }
+            XCTAssertEqual(check.issueCount, expect["issueCount"] as? Int, name)
+            XCTAssertEqual(check.summary, expect["summary"] as? String, name)
+            XCTAssertEqual(check.activeIssues.map(check.chipTitle), expect["chips"] as? [String], name)
+        }
+    }
+
+    private func deckStudioSearch(_ cases: [[String: Any]]) throws {
+        XCTAssertFalse(cases.isEmpty)
+        for item in cases {
+            let query = try XCTUnwrap(item["query"] as? String)
+            let syntax = DeckStudioSearchSyntax(query)
+            XCTAssertEqual(syntax.text, item["text"] as? String, query)
+            XCTAssertEqual(syntax.types, item["types"] as? [String], query)
+            XCTAssertEqual(syntax.oracle, item["oracle"] as? [String], query)
+            XCTAssertEqual(syntax.minimumManaValue, item["minimumManaValue"] as? Double, query)
+            XCTAssertEqual(syntax.maximumManaValue, item["maximumManaValue"] as? Double, query)
+            XCTAssertEqual(syntax.identity.map { $0.sorted() }, item["identity"] as? [String], query)
+            XCTAssertEqual(syntax.hasFilters, item["hasFilters"] as? Bool, query)
+        }
+    }
+
+    private func deckStudioSampleHand(_ root: [String: Any]) throws {
+        XCTAssertEqual(root["handSize"] as? Int, DeckStudioSampleHand.handSize)
+        var generator = SystemRandomNumberGenerator()
+        for item in try XCTUnwrap(root["cases"] as? [[String: Any]]) {
+            let name = item["name"] as? String ?? ""
+            let rows = try (try XCTUnwrap(item["rows"] as? [[String: Any]])).map(deckStudioRow)
+            let names = DeckStudioSampleHand.libraryNames(from: NativeDeckDraft(name: "Case", rows: rows))
+            XCTAssertEqual(names.count, item["library"] as? Int, name)
+            var hand = DeckStudioSampleHand(names: names)
+            for (index, step) in try XCTUnwrap(item["steps"] as? [[String: Any]]).enumerated() {
+                let action = try XCTUnwrap(step["do"] as? String), at = "\(name) · step \(index + 1) \(action)"
+                switch action {
+                case "deal": hand.deal(using: &generator)
+                case "mulligan": hand.mulligan(using: &generator)
+                case "bottom": if let card = hand.hand.first { hand.putOnBottom(card.id) }
+                case "draw": hand.draw()
+                default: XCTFail("Unknown sample hand step \(action)"); continue
+                }
+                XCTAssertEqual(hand.hand.count, step["hand"] as? Int, at)
+                XCTAssertEqual(hand.library.count, step["library"] as? Int, at)
+                XCTAssertEqual(hand.mulligans, step["mulligans"] as? Int, at)
+                XCTAssertEqual(hand.toBottom, step["toBottom"] as? Int, at)
+                XCTAssertEqual(hand.turn, step["turn"] as? Int, at)
+                XCTAssertEqual(hand.canMulligan, step["canMulligan"] as? Bool, at)
+                XCTAssertEqual(hand.canDraw, step["canDraw"] as? Bool, at)
+                XCTAssertEqual(hand.status, step["status"] as? String, at)
+            }
+        }
+    }
+
+    private func deckStudioRoleGroups(_ root: [String: Any]) throws {
+        XCTAssertEqual(DeckStudioRoleGroups.order, root["order"] as? [String])
+        var cards: [String: DeckStudioRoleGroups.CardFacts] = [:]
+        for raw in try XCTUnwrap(root["cards"] as? [[String: Any]]) {
+            cards[try XCTUnwrap(raw["name"] as? String)] = .init(text: nil, types: raw["types"] as? [String],
+                curated: (raw["roles"] as? [String] ?? []).compactMap(DeckStudioRole.init(rawValue:)))
+        }
+        let rows = try XCTUnwrap(root["rows"] as? [String]).map { NativeDeckRow(cardName: $0) }
+        for item in try XCTUnwrap(root["cases"] as? [[String: Any]]) {
+            let name = item["name"] as? String ?? ""
+            let overrides = try XCTUnwrap(item["overrides"] as? [String: [String]]).mapValues { Set($0.compactMap(DeckStudioRole.init(rawValue:))) }
+            let membership = DeckStudioRoleGroups.membership(rows: rows, card: { cards[$0] }, overrides: overrides)
+            XCTAssertEqual(rows.map { membership[$0.id] ?? [] }, item["groups"] as? [[String]], name)
+            let counts = try XCTUnwrap(item["counts"] as? [String: Int], name)
+            XCTAssertEqual(Set(membership.values.flatMap { $0 }), Set(counts.keys), name)
+            for (title, count) in counts {
+                XCTAssertEqual(DeckStudioRoleGroups.uniqueCards(rows.filter { membership[$0.id]?.contains(title) == true }), count, "\(name) · \(title)")
+            }
+        }
+    }
+
+    @MainActor
+    private func deckStudioCheckResults(_ root: [String: Any]) throws {
+        let limits = try XCTUnwrap(root["limits"] as? [String: Int])
+        XCTAssertEqual(limits, ["maximumResults": DeckStudioReceiptStore.maximumResults, "maximumPerDeck": DeckStudioReceiptStore.maximumPerDeck,
+                                "maximumBytes": DeckStudioReceiptStore.maximumBytes, "maximumIssues": DeckStudioStoredCheck.maximumIssues])
+        for item in try XCTUnwrap(root["sha256"] as? [[String: Any]]) {
+            let request = try XCTUnwrap(item["request"] as? String)
+            XCTAssertEqual(DeckStudioCheckKey(deckID: "d", request: Data(request.utf8), upstream: "u", catalogue: "c", appBuild: "b").requestSHA256,
+                           item["sha256"] as? String, request)
+        }
+        var requests: [String: String] = [:]
+        func key(_ raw: [String: Any]) throws -> DeckStudioCheckKey {
+            let request = try XCTUnwrap(raw["request"] as? String)
+            let key = DeckStudioCheckKey(deckID: try XCTUnwrap(raw["deck"] as? String), request: Data(request.utf8),
+                                         upstream: try XCTUnwrap(raw["upstream"] as? String), catalogue: try XCTUnwrap(raw["catalogue"] as? String),
+                                         appBuild: try XCTUnwrap(raw["build"] as? String))
+            requests[key.requestSHA256] = request
+            return key
+        }
+        func label(_ key: DeckStudioCheckKey) -> String {
+            [key.deckID, requests[key.requestSHA256] ?? key.requestSHA256, key.upstream, key.catalogue, key.appBuild].joined(separator: "|")
+        }
+        func stored(_ key: DeckStudioCheckKey, at: Double, valid: Bool, summary: String = "Checked") -> DeckStudioStoredCheck {
+            DeckStudioStoredCheck(key: key, checkedAt: Date(timeIntervalSince1970: at / 1000), valid: valid, summary: summary,
+                                  issues: valid ? [] : [.init(index: 0, type: "OTHER", group: "Sol Ring", message: "Too many copies", cardName: "Sol Ring")])
+        }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("DeckStudioCases-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        for (index, scenario) in try XCTUnwrap(root["store"] as? [[String: Any]]).enumerated() {
+            let name = scenario["name"] as? String ?? ""
+            let url = directory.appendingPathComponent("store-\(index).json")
+            let store = DeckStudioReceiptStore(url: url)
+            for record in try XCTUnwrap(scenario["records"] as? [[String: Any]]) {
+                XCTAssertTrue(store.record(stored(try key(record), at: try XCTUnwrap(record["at"] as? Double), valid: try XCTUnwrap(record["valid"] as? Bool))), name)
+            }
+            let expected = try XCTUnwrap(scenario["expect"] as? [String])
+            XCTAssertEqual(store.checks.map { label($0.key) }, expected, name)
+            XCTAssertEqual(DeckStudioReceiptStore(url: url).checks.map { label($0.key) }, expected, "\(name) · reopened")
+            for lookup in scenario["lookups"] as? [[String: Any]] ?? [] {
+                XCTAssertEqual(store.status(for: try key(lookup)), try deckStudioStatus(lookup["status"]), "\(name) · \(lookup)")
+            }
+        }
+        for (index, scenario) in try XCTUnwrap(root["generated"] as? [[String: Any]]).enumerated() {
+            let name = scenario["name"] as? String ?? ""
+            let url = directory.appendingPathComponent("generated-\(index).json")
+            let store = DeckStudioReceiptStore(url: url)
+            let summary = String(repeating: "x", count: scenario["summaryLength"] as? Int ?? 7)
+            for deck in 0..<(try XCTUnwrap(scenario["decks"] as? Int)) {
+                let raw: [String: Any] = ["deck": "local:\(deck)", "request": "r1", "upstream": "u1", "catalogue": "c1", "build": "10"]
+                store.record(stored(try key(raw), at: Double(1000 + deck), valid: true, summary: summary))
+            }
+            let decks = store.checks.map(\.key.deckID)
+            if let count = scenario["count"] as? Int { XCTAssertEqual(decks.count, count, name) }
+            if let fewer = scenario["fewerThan"] as? Int { XCTAssertLessThan(decks.count, fewer, name); XCTAssertGreaterThan(decks.count, 0, name) }
+            XCTAssertEqual(decks.first, scenario["first"] as? String, name)
+            if let last = scenario["last"] as? String { XCTAssertEqual(decks.last, last, name) }
+            for missing in scenario["missing"] as? [String] ?? [] { XCTAssertFalse(decks.contains(missing), "\(name) · \(missing)") }
+            let size = try XCTUnwrap(try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber).intValue
+            XCTAssertLessThanOrEqual(size, DeckStudioReceiptStore.maximumBytes, name)
+            XCTAssertEqual(DeckStudioReceiptStore(url: url).checks.map(\.key.deckID), decks, "\(name) · reopened")
+        }
+        for (index, text) in try XCTUnwrap(root["corrupt"] as? [String]).enumerated() {
+            let url = directory.appendingPathComponent("corrupt-\(index).json")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try Data(text.utf8).write(to: url)
+            XCTAssertEqual(DeckStudioReceiptStore(url: url).checks, [], "A corrupt file is a cache miss: \(text)")
+        }
+        for item in try XCTUnwrap(root["startResult"] as? [[String: Any]]) {
+            XCTAssertEqual(DeckStudioPlayRules.storesStartResult(valid: try XCTUnwrap(item["valid"] as? Bool), issueCards: try XCTUnwrap(item["issueCards"] as? [String]),
+                                                                 deckCards: try XCTUnwrap(item["deckCards"] as? [String]),
+                                                                 alreadyPassed: try XCTUnwrap(item["alreadyPassed"] as? Bool)),
+                           item["stores"] as? Bool, "\(item)")
+        }
+        for item in try XCTUnwrap(root["fixRows"] as? [[String: Any]]) {
+            let name = item["name"] as? String ?? ""
+            let rows = try (try XCTUnwrap(item["rows"] as? [[String: Any]])).map(deckStudioRow)
+            let canonical = item["canonical"] as? [String: String] ?? [:]
+            let shown = DeckStudioPlayRules.fixRows(rows, cards: try XCTUnwrap(item["cards"] as? [String])) { canonical[$0] }
+            XCTAssertEqual(shown, Set(try XCTUnwrap(item["rowsShown"] as? [Int]).map { rows[$0].id }), name)
+        }
+        func entry(_ raw: [String: Any]) throws -> DeckEntry {
+            DeckEntry(cardName: try XCTUnwrap(raw["name"] as? String), quantity: raw["quantity"] as? Int ?? 1, section: raw["section"] as? String ?? "deck")
+        }
+        for item in try XCTUnwrap(root["unplayable"] as? [[String: Any]]) {
+            let known = Set(try XCTUnwrap(item["known"] as? [String]))
+            let deck = DeckList(name: "Case", commander: try (item["commander"] as? [String: Any]).map(entry),
+                                entries: try (try XCTUnwrap(item["entries"] as? [[String: Any]])).map(entry))
+            XCTAssertEqual(DeckStudioPlayRules.unplayableCards(deck) { known.contains($0) ? $0 : nil }, item["cards"] as? [String], item["name"] as? String ?? "")
+        }
+        for item in try XCTUnwrap(root["groups"] as? [[String: Any]]) {
+            let issues = try (try XCTUnwrap(item["issues"] as? [[String: Any]])).enumerated().map { index, raw in
+                DeckStudioStoredCheck.Issue(index: index, type: try XCTUnwrap(raw["type"] as? String), group: raw["group"] as? String,
+                                            message: try XCTUnwrap(raw["message"] as? String), cardName: raw["cardName"] as? String)
+            }
+            let check = DeckStudioStoredCheck(key: DeckStudioCheckKey(deckID: "d", request: Data(), upstream: "u", catalogue: "c", appBuild: "b"),
+                                              checkedAt: Date(), valid: false, summary: "Failed", issues: issues)
+            XCTAssertEqual(check.groups.map { [$0.title, "\($0.issues.count)"] },
+                           try XCTUnwrap(item["groups"] as? [[Any]]).map { ["\($0[0])", "\($0[1])"] })
+            XCTAssertEqual(check.cardNames, item["cardNames"] as? [String])
+        }
+    }
+}
