@@ -35,7 +35,8 @@ mkdir -p "$BUILD/tools"
   -cp "$JAVA_HOME/lib/svm/builder/svm.jar:$CP" -d "$BUILD/native-java" \
   "$ROOT/engine/native/src/main/java/io/magicmobile/nativebridge/NativeEntryPoints.java" \
   "$ROOT/native/gluon/src/main/java/io/magicmobile/nativebridge/IosLibraryMain.java" \
-  "$ROOT/native/gluon/src/main/java/io/magicmobile/nativebridge/OrmLiteDateFormatSubstitutions.java"
+  "$ROOT/native/gluon/src/main/java/io/magicmobile/nativebridge/OrmLiteDateFormatSubstitutions.java" \
+  "$ROOT/native/gluon/src/main/java/io/magicmobile/nativebridge/CheckpointSerializationFeature.java"
 python3 "$ROOT/scripts/prepare_native_color.py" --graalvm-home "$JAVA_HOME" --output "$BUILD/color-patch"
 INIT_TYPES=$(paste -sd, "$ROOT/native/gluon/buildtime-enums.txt")
 [[ "$INIT_TYPES" == mage.constants.* ]]
@@ -78,6 +79,7 @@ mvn --batch-mode --no-transfer-progress -f "$BUILD/android-pom.xml" \
   "-Dmaven.repo.local=$OUT/maven" "-Dengine.root=$ROOT" "-Dnative.build=$BUILD" \
   "-Dnative.classpath=$CP" "-Dnative.reflection.config=$BUILD/metadata/reflect-config.json" \
   "-Dnative.serialization.config=$BUILD/metadata/serialization-config.json" \
+  -Dnative.checkpoint.feature=--features=io.magicmobile.nativebridge.CheckpointSerializationFeature \
   "-Dnative.init.arg=--initialize-at-build-time=$INIT_TYPES" \
   '-Dnative.orm.arg=--initialize-at-build-time=com.j256.ormlite.field.types' \
   "-Dnative.max.heap=$HEAP" "-Dnative.color.patch=$BUILD/color-patch/classes" \

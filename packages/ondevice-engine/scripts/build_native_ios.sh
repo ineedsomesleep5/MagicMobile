@@ -106,6 +106,7 @@ NATIVE_ORM_ARG='--initialize-at-run-time=io.magicmobile'
 NATIVE_SOURCES=(
   "$ROOT/engine/native/src/main/java/io/magicmobile/nativebridge/NativeEntryPoints.java"
   "$ROOT/native/gluon/src/main/java/io/magicmobile/nativebridge/IosLibraryMain.java"
+  "$ROOT/native/gluon/src/main/java/io/magicmobile/nativebridge/CheckpointSerializationFeature.java"
 )
 case "${MM_NATIVE_ORM_PROFILE:-runtime}" in
   runtime) ;;
@@ -145,6 +146,7 @@ mvn --batch-mode --no-transfer-progress \
   "-Dnative.classpath=$NATIVE_CP" \
   "-Dnative.reflection.config=$NATIVE_REFLECTION_CONFIG" \
   "-Dnative.serialization.config=$NATIVE_SERIALIZATION_CONFIG" \
+  -Dnative.checkpoint.feature=--features=io.magicmobile.nativebridge.CheckpointSerializationFeature \
   "-Dnative.init.arg=$NATIVE_INIT_ARG" \
   "-Dnative.orm.arg=$NATIVE_ORM_ARG" \
   "-Dnative.max.heap=$NATIVE_MAX_HEAP" \
