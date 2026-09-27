@@ -60,9 +60,19 @@ python3 scripts/resolve_deck.py --catalogue build/generated/catalogue.jsonl \
   --input tests/decks/first-flight.txt --commander 'Isperia, Supreme Judge' --output build/first-flight.json
 python3 scripts/resolve_deck.py --catalogue build/generated/catalogue.jsonl \
   --input tests/decks/checkpoint-features.txt --commander 'Zedruu the Greathearted' --output build/checkpoint-features.json
+# Native serialization metadata for these classes, exported exactly as the native builds do
+# (scripts/android/build_native.sh, build_native_ios.sh). RealCheckpointTests fails when a class
+# that any checkpoint stream writes or reads is missing from it.
+mkdir -p build/tools
+javac -J-Xmx512m --release 17 -cp build/core -d build/tools engine/tools/NativeReflectionExporter.java
+rm -rf build/native-metadata-check
+java -Xmx768m -cp "build/tools:$CP" NativeReflectionExporter build/native-metadata-check \
+  .upstream/mage/Mage/target/classes .upstream/mage/Mage.Sets/target/classes .upstream/mage/Mage.Common/target/classes \
+  --serialization .upstream/mage/Mage.Server.Plugins/*/target/classes build/engine > /dev/null
 CHECKPOINT_TEST=$(mktemp -d "$ROOT/build/checkpoint-test-XXXXXX")
 python3 -c 'import subprocess,sys; subprocess.run(sys.argv[1:],check=True,timeout=1500)' \
   java -Xmx1g -Djava.awt.headless=true -cp "$CP:build/test-real" io.magicmobile.xmage.RealCheckpointTests \
   "$CHECKPOINT_TEST" build/token-triumph.json build/chaos-incarnate.json build/first-flight.json \
   build/isamaru.json build/yargle.json build/adeline.json build/checkpoint-features.json \
+  build/native-metadata-check/serialization-config.json \
   2>&1 | tee evidence/RealCheckpointTests.txt

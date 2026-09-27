@@ -38,19 +38,25 @@ import java.util.zip.GZIPOutputStream;
  * Every restore runs in a fresh child JVM, as after process death. Human answers come from a
  * simple fixture policy; AI seats are upstream MAD.
  *
- * RealCheckpointTests WORK_DIR TOKEN_TRIUMPH CHAOS_INCARNATE FIRST_FLIGHT ISAMARU YARGLE ADELINE FEATURES
- * (resolved deck JSON files; see scripts/test_real_engine.sh)
+ * RealCheckpointTests WORK_DIR TOKEN_TRIUMPH CHAOS_INCARNATE FIRST_FLIGHT ISAMARU YARGLE ADELINE FEATURES SERIALIZATION_CONFIG
+ * (resolved deck JSON files and NativeReflectionExporter's serialization-config.json for these
+ * classes; see scripts/test_real_engine.sh)
  */
 public final class RealCheckpointTests {
     private static final String HUMAN="human";
     private static Path work;
     private static final List<Long> writeMillis=new ArrayList<>(), writeBytes=new ArrayList<>();
+    /** Every class a checkpoint stream wrote or read in this process (Checkpoints.classObserver). */
+    private static final Set<String> streamClasses=ConcurrentHashMap.newKeySet();
 
     public static void main(String[] args) throws Exception {
+        Checkpoints.classObserver=type->streamClasses.add(type.getName());
         if(args.length>0 && args[0].equals("child")) { child(args); return; }
         work=Path.of(args[0]).toAbsolutePath();Files.createDirectories(work);
         Map<String,Object> tokens=deck(args[1]),chaos=deck(args[2]),flight=deck(args[3]);
         Map<String,Object> isamaru=deck(args[4]),yargle=deck(args[5]),adeline=deck(args[6]),features=deck(args[7]);
+        Path serializationConfig=Path.of(args[8]);
+        check(Files.isRegularFile(serializationConfig),"serialization-config.json from NativeReflectionExporter: "+serializationConfig);
         long start=System.nanoTime();
         rejections(isamaru,yargle);
         randomContinuity(isamaru,yargle);
@@ -67,7 +73,45 @@ public final class RealCheckpointTests {
             Set.of("tokens","exile","copies","controlChanged","stack"),10,true,30);
         System.out.println("ELAPSED total "+TimeUnit.NANOSECONDS.toSeconds(System.nanoTime()-start)+"s");
         System.out.println("CHECKPOINT-WRITES count="+writeMillis.size()+" "+stats("writeMs",writeMillis)+" "+stats("bytes",writeBytes));
+        nativeMetadataCoversStreams(serializationConfig);
         System.out.println("PASS real-JVM save/resume: fresh-process restores, rejections and RNG continuity (not native, not iOS)");
+    }
+
+    // ---- Native metadata -------------------------------------------------------------------
+
+    private static final java.util.regex.Pattern CONFIG_NAME=java.util.regex.Pattern.compile("\"name\"\\s*:\\s*\"([^\"]+)\"");
+    private static final Set<String> PRIMITIVES=Set.of("boolean","byte","char","short","int","long","float","double","void");
+
+    /**
+     * A native image reads a stream class only through Class.forName, which knows just the classes
+     * CheckpointSerializationFeature registers from serialization-config.json; JVM runs never see
+     * a missing one (the device self-test first failed on [Ljava.lang.Enum; from EnumSet's proxy).
+     * So every class this run's checkpoints wrote or read (the self-test, the named conditions,
+     * all scenarios and their fresh-process restores, which keep checkpointing) must be listed:
+     * superclass, array, enum and Class-object descriptors, JDK serialization proxies and
+     * readResolve results. Only primitives, which ObjectInputStream resolves itself, are exempt.
+     * The file is read the way the feature reads it.
+     */
+    private static void nativeMetadataCoversStreams(Path config) throws IOException {
+        String json=Files.readString(config);
+        check(json.matches("(?s).*\"lambdaCapturingTypes\"\\s*:\\s*\\[\\s*\\].*"),"exporter file has no lambda capturing types");
+        Set<String> listed=new HashSet<>();
+        java.util.regex.Matcher matcher=CONFIG_NAME.matcher(json);
+        while(matcher.find()) listed.add(matcher.group(1));
+        Set<String> used=new TreeSet<>(streamClasses);
+        used.removeAll(PRIMITIVES);
+        // Guards against a vacuous pass: the observer saw real game streams and the self-test.
+        check(used.size()>500 && used.contains(Checkpoints.Payload.class.getName()) && used.contains("[Ljava.lang.Enum;")
+            && used.contains("java.util.EnumSet$SerializationProxy") && used.contains("java.util.RegularEnumSet"),
+            "stream class observer saw the checkpoints: "+used.size()+" classes");
+        Set<String> missing=new TreeSet<>(used);missing.removeAll(listed);
+        List<String> arrays=used.stream().filter(n->n.startsWith("[")).collect(Collectors.toList());
+        List<String> jdk=used.stream().filter(n->n.startsWith("java.")).collect(Collectors.toList());
+        System.out.println("NATIVE-METADATA stream classes="+used.size()+" listed="+listed.size()+" arrays="+arrays+" jdk="+jdk);
+        check(missing.isEmpty(),"serialization-config.json lacks "+missing.size()+" classes that checkpoints write or read"
+            +" (a native image could not resolve them): "+missing);
+        System.out.println("PASS native checkpoint metadata: all "+used.size()+" classes written or read by every checkpoint stream"
+            +" in this run, and its restore processes, are in serialization-config.json");
     }
 
     // ---- Rejections ------------------------------------------------------------------------
@@ -420,22 +464,25 @@ public final class RealCheckpointTests {
                 engine.destroy(id);
             }
         } finally { engine.close(); }
+        Files.write(Path.of(args[5]),new TreeSet<>(streamClasses)); // the parent checks them against native metadata
         System.out.println("RESULT "+Json.write(result));
         System.exit(0);
     }
     private static Map<String,Object> runChild(String name,Path checkpoint,Path expected,String mode,int prompts) throws Exception {
         String java=ProcessHandle.current().info().command().orElse(Path.of(System.getProperty("java.home"),"bin","java").toString());
         Path log=checkpoint.resolveSibling(checkpoint.getFileName()+".child.log");
+        Path classes=checkpoint.resolveSibling(checkpoint.getFileName()+".stream-classes.txt");
         Path restoreCopy=checkpoint.resolveSibling(checkpoint.getFileName()+".restore");
         Files.copy(checkpoint,restoreCopy,StandardCopyOption.REPLACE_EXISTING); // the restored game keeps writing to its path
         Process process=new ProcessBuilder(java,"-Xmx1g","-Djava.awt.headless=true","-cp",System.getProperty("java.class.path"),
-            RealCheckpointTests.class.getName(),"child",restoreCopy.toString(),expected.toString(),mode,Integer.toString(prompts))
+            RealCheckpointTests.class.getName(),"child",restoreCopy.toString(),expected.toString(),mode,Integer.toString(prompts),classes.toString())
             .redirectErrorStream(true).redirectOutput(log.toFile()).start();
         if(!process.waitFor(420,TimeUnit.SECONDS)) { process.destroyForcibly();throw new AssertionError("restore child timed out: "+log); }
         String output=Files.readString(log);
         String line=output.lines().filter(l->l.startsWith("RESULT ")).findFirst().orElse(null);
         if(process.exitValue()!=0 || line==null) throw new AssertionError("restore child failed ("+process.exitValue()+"): "
             +output.lines().filter(l->!l.contains("FATAL") && !l.startsWith("\t")).limit(60).collect(Collectors.joining("\n")));
+        streamClasses.addAll(Files.readAllLines(classes));
         return Json.parseObject(line.substring(7));
     }
 
