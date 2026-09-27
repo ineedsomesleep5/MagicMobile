@@ -59,6 +59,7 @@ public final class RealCheckpointTests {
         check(Files.isRegularFile(serializationConfig),"serialization-config.json from NativeReflectionExporter: "+serializationConfig);
         long start=System.nanoTime();
         rejections(isamaru,yargle);
+        onDemand(isamaru,yargle);
         randomContinuity(isamaru,yargle);
         // One AI: bundled precons (Token Triumph human vs Chaos Incarnate MAD) at several turns.
         scenario("solo-1ai-precons",tokens,List.of(chaos),new int[]{3,5,7},Set.of(),0,true,18);
@@ -87,7 +88,7 @@ public final class RealCheckpointTests {
      * CheckpointSerializationFeature registers from serialization-config.json; JVM runs never see
      * a missing one (the device self-test first failed on [Ljava.lang.Enum; from EnumSet's proxy).
      * So every class this run's checkpoints wrote or read (the self-test, the named conditions,
-     * all scenarios and their fresh-process restores, which keep checkpointing) must be listed:
+     * all scenarios and their fresh-process restores, which save again on request) must be listed:
      * superclass, array, enum and Class-object descriptors, JDK serialization proxies and
      * readResolve results. Only primitives, which ObjectInputStream resolves itself, are exempt.
      * The file is read the way the feature reads it.
@@ -135,27 +136,38 @@ public final class RealCheckpointTests {
             expect("checkpoint_corrupt",()->engine.restore(Json.map("path",dir.resolve("absent.ckpt").toString())));
             check(threads("GAME mobile-")==0,"rejected configurations start no game");
 
-            // A real checkpoint, then every damaged variant of it.
+            // A real checkpoint, saved on request, then every damaged variant of it.
             String id=Json.requiredString(engine.create(solo(humanDeck,aiDeck,file.toString())),"matchId");
+            expect("invalid_request",()->engine.checkpoint(id,1001));
+            expect("invalid_request",()->engine.checkpoint(id,-1));
+            expect("unknown_match",()->engine.checkpoint("missing",0));
+            expect("unknown_match",()->engine.cancelCheckpoint("missing"));
             Driver driver=new Driver(engine,id,false);
-            Map<String,Object> saved=driver.untilCheckpoint(1,60);
+            Map<String,Object> saved=driver.untilSaved(1,60);
             check(!Json.write(saved).contains(file.toString()),"polls never carry the checkpoint path or payload");
             check(Json.object(saved.get("checkpoint")).keySet().equals(Set.of("sequence","savedAtMillis","turn","bytes","writeMillis")),
                 "poll checkpoint info is metadata only");
             byte[] valid=Files.readAllBytes(file);
             expect("match_limit",()->engine.restore(Json.map("path",file.toString())));
-            // A failed write never ends or blocks the game.
+            // A failed write never ends or blocks the game, and is the request's answer.
             Path moved=dir.resolveSibling("rejections-away");
             Files.move(dir,moved);
-            Map<String,Object> failed=driver.untilNewPrompt(e->e.containsKey("checkpointFailure"),60);
-            check("checkpoint_write_failed".equals(Json.object(failed.get("checkpointFailure")).get("code")),"write failure reported in polls");
+            driver.answer(saved);
+            Driver.Request attempt=driver.requestAtPriority(0,60);
+            check("failed".equals(attempt.result()) && "checkpoint_write_failed".equals(Json.object(attempt.reply.get("checkpointFailure")).get("code")),
+                "a failed write answers the request: "+attempt.reply);
+            Map<String,Object> failed=attempt.state;
+            check(Json.object(failed.get("checkpointFailure")).equals(Json.object(attempt.reply.get("checkpointFailure"))),"write failure reported in polls");
             check(String.valueOf(EngineDiagnostics.read().get("report")).contains("checkpoint-write"),"write failure kept in diagnostics");
             check("running".equals(failed.get("phase")) && failed.get("prompt")!=null,"game continues after a failed write");
             Files.move(moved,dir);
             long before=Json.integer(Json.object(failed.get("checkpoint")).get("sequence"));
-            Map<String,Object> recovered=driver.untilNewPrompt(e->!e.containsKey("checkpointFailure"),60);
-            check(Json.integer(Json.object(recovered.get("checkpoint")).get("sequence"))==before+1,"next safe point writes again");
+            driver.answer(failed);
+            Map<String,Object> recovered=driver.untilSaved(0,60);
+            check(!recovered.containsKey("checkpointFailure"),"a successful write clears the failure");
+            check(Json.integer(Json.object(recovered.get("checkpoint")).get("sequence"))==before+1,"the next requested save writes again");
             engine.destroy(id);
+            expect("unknown_match",()->engine.checkpoint(id,0));
             EngineDiagnostics.clear();
 
             Path good=dir.resolve("good.ckpt");Files.write(good,valid);
@@ -201,7 +213,8 @@ public final class RealCheckpointTests {
             engine.destroy(Json.requiredString(restored,"matchId"));
             EngineDiagnostics.clear();
             System.out.println("PASS checkpoint rejections: one-human rule, paths, header identity, format, SHA-256, truncation,"
-                +" filter, serializable lambda (both ways), wrong root, failed write keeps playing, no partial match or threads");
+                +" filter, serializable lambda (both ways), wrong root, wait bounds, failed write answers the request and keeps playing,"
+                +" no partial match or threads");
         } finally { engine.close(); }
         // Core boundary: the operation is reachable through the JSON API.
         try(EngineService service=new EngineService(new XmageEngine("jvm-checkpoint-service"))) {
@@ -281,6 +294,147 @@ public final class RealCheckpointTests {
         catch(IOException e) { throw new UncheckedIOException(e); }
     }
 
+    // ---- Saves on request ------------------------------------------------------------------
+
+    /**
+     * The engine writes only when asked (docs/PROTOCOL.md): nothing while playing; a request at a
+     * parked priority decision saves it once; a request at a question that is not a priority
+     * decision waits for the player; a request made while the engine works on the AI's turn is
+     * written at the human's next priority decision; cancel clears a request; ended matches and
+     * matches without a checkpoint path say so; and both ops work through the JSON API. The human
+     * only passes, so every priority decision is the first question of its priority() call.
+     */
+    private static void onDemand(Map<String,Object> humanDeck,Map<String,Object> aiDeck) throws Exception {
+        Path dir=Files.createDirectories(work.resolve("on-demand"));
+        Path file=dir.resolve("game.ckpt"),temporary=dir.resolve("game.ckpt.tmp");
+        XmageEngine engine=new XmageEngine("jvm-checkpoint-on-demand");
+        String waitingFor;
+        try {
+            check(Boolean.TRUE.equals(engine.capabilities().get("checkpointOnDemand")),"JVM build reports checkpointOnDemand");
+            String id=Json.requiredString(engine.create(solo(humanDeck,aiDeck,file.toString())),"matchId");
+            Driver driver=new Driver(engine,id,false);
+            // The opening question (mulligan or starting player) is not a priority decision: a request
+            // waits for the player's answer for the whole wait, and cancel clears it.
+            Map<String,Object> opening=driver.untilPrompt(60);
+            check(!Driver.isPriority(Json.object(opening.get("prompt"))),"the game opens with a setup question: "+Json.object(opening.get("prompt")).get("kind"));
+            long started=System.nanoTime();
+            Map<String,Object> waiting=driver.save(1000);
+            long waited=TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started);
+            check(waiting.equals(Map.of("state","pending","waitingFor","player")),"a setup question waits for the player: "+waiting);
+            check(waited>=900,"a pending request waits up to waitMillis: "+waited+" ms");
+            driver.cancel();
+            // No write without a request (the Driver fails on any write it did not ask for).
+            int decisions=0;Set<Boolean> turnsSeen=new HashSet<>();
+            Map<String,Object> parked;
+            while(true) {
+                Map<String,Object> state=driver.untilPrompt(120);
+                check("running".equals(state.get("phase")),"game running before turn 3: "+state.get("phase"));
+                if(Driver.isPriority(Json.object(state.get("prompt")))) {
+                    decisions++;turnsSeen.add(aiTurn(state));
+                    if(Driver.turn(state)>=3) {parked=state;break;}
+                }
+                driver.answer(state);
+            }
+            check(decisions>=4,"several priority decisions before turn 3: "+decisions);
+            System.out.println("ON-DEMAND no write through "+decisions+" priority decisions (on the AI's turn: "+turnsSeen.contains(true)+")");
+            check(parked.get("checkpoint")==null && !Files.exists(file) && !Files.exists(temporary),
+                "no checkpoint written without a request after "+decisions+" priority decisions");
+            // A request at the parked priority decision is written by the GAME thread while it waits.
+            Map<String,Object> reply=driver.save(1000);
+            check("saved".equals(reply.get("state")),"a parked priority decision is saved: "+reply);
+            Map<String,Object> info=Json.object(reply.get("checkpoint"));
+            check(Json.integer(info.get("sequence"))==1 && Json.integer(info.get("turn"))==Driver.turn(parked)
+                && Json.integer(info.get("bytes"))==Files.size(file) && !Files.exists(temporary),"saved file matches the reply: "+info);
+            check(Json.integer(header(Files.readAllBytes(file)).get("sequence"))==1,"file header sequence 1");
+            check(Json.object(driver.poll().get("checkpoint")).equals(info),"polls report the saved checkpoint");
+            // The same safe point is never rewritten: a second request answers at once.
+            byte[] bytes=Files.readAllBytes(file);
+            java.nio.file.attribute.FileTime modified=Files.getLastModifiedTime(file);
+            started=System.nanoTime();
+            check(driver.save(1000).equals(reply),"a saved safe point answers saved again without writing");
+            check(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started)<500,"an already saved decision answers at once");
+            check(Arrays.equals(bytes,Files.readAllBytes(file)) && modified.equals(Files.getLastModifiedTime(file)),"the file was not rewritten");
+            driver.cancel(); // harmless with nothing armed
+            // A request made while the engine works on the AI's turn (no human question open) stays
+            // armed and is written at the human's next priority decision, before it is published.
+            driver.answer(parked);
+            long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(180);
+            waitingFor=null;
+            while(waitingFor==null) {
+                check(System.nanoTime()<deadline,"the engine never worked on the AI's turn without a human question"+driver.diagnostics());
+                Map<String,Object> state=driver.poll();
+                check("running".equals(state.get("phase")),"game running: "+state.get("phase"));
+                Map<String,Object> prompt=state.get("prompt")==null?null:Json.object(state.get("prompt"));
+                // No question at all: the last answer was consumed and the next is not published yet.
+                if(prompt==null && aiTurn(state)) {
+                    Map<String,Object> armed=driver.save(0);
+                    check("pending".equals(armed.get("state")),"a request while the engine works is pending: "+armed);
+                    if("engine".equals(armed.get("waitingFor"))) waitingFor="engine";
+                    else driver.cancel(); // a setup-style question was published in between: try again later
+                } else if(prompt!=null && !Boolean.TRUE.equals(prompt.get("submitted"))) driver.answer(state);
+                else Thread.sleep(2);
+            }
+            Map<String,Object> next;
+            while(true) {
+                next=driver.untilPrompt(120);
+                check("running".equals(next.get("phase")),"game running: "+next.get("phase"));
+                Map<String,Object> prompt=Json.object(next.get("prompt"));
+                if(Driver.isPriority(prompt)) {
+                    // Written before this decision is published, or (armed just as it was being
+                    // published) by the GAME thread while it waits: either way at this decision.
+                    for(long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(2);driver.armed && System.nanoTime()<until;Thread.sleep(5)) next=driver.poll();
+                    check(!driver.armed && driver.lastSequence==2 && prompt.get("promptId").equals(Json.object(next.get("prompt")).get("promptId")),
+                        "the armed request is written at the human's next priority decision: sequence "+driver.lastSequence);
+                    break;
+                }
+                check(driver.lastSequence==1,"nothing is written at a question that is not a priority decision");
+                driver.answer(next);
+            }
+            check(Json.integer(header(Files.readAllBytes(file)).get("sequence"))==2,"file header sequence 2");
+            check(driver.save(0).get("state").equals("saved"),"that decision is saved");
+            // An ended match answers over; cancel stays harmless.
+            engine.concede(id,HUMAN);
+            Map<String,Object> ended=driver.untilFinished(120);
+            check("ended".equals(ended.get("phase")),"conceding ends a one-on-one game: "+ended.get("phase"));
+            check(driver.save(1000).equals(Map.of("state","over")),"an ended match answers over");
+            driver.cancel();
+            check(Json.integer(header(Files.readAllBytes(file)).get("sequence"))==2,"nothing written after the end");
+            engine.destroy(id);
+            // A match without a checkpoint path cannot save.
+            String table=Json.requiredString(engine.create(Json.map("seats",List.of(seat(HUMAN,"Human",humanDeck,null),seat("ai","AI",aiDeck,1)))),"matchId");
+            expect("checkpoint_unavailable",()->engine.checkpoint(table,0));
+            check(engine.cancelCheckpoint(table).equals(Map.of("cancelled",true)),"cancel is harmless without a checkpoint path");
+            engine.destroy(table);
+        } finally { engine.close(); }
+        // The JSON API: capability, both ops, bounds, and a destroyed match.
+        try(EngineService service=new EngineService(new XmageEngine("jvm-checkpoint-service"))) {
+            Map<String,Object> capabilities=Json.object(Json.parseObject(service.request("{\"protocol\":1,\"op\":\"capabilities\"}")).get("result"));
+            check(Boolean.TRUE.equals(capabilities.get("checkpointOnDemand")) && Boolean.TRUE.equals(capabilities.get("saveResume")),"capabilities advertise checkpointOnDemand");
+            Path served=dir.resolve("service.ckpt");
+            Map<String,Object> created=Json.parseObject(service.request(Json.write(Json.map("protocol",1L,"op","create",
+                "configuration",solo(humanDeck,aiDeck,served.toString())))));
+            check(Boolean.TRUE.equals(created.get("ok")),"create through EngineService: "+created);
+            String id=Json.requiredString(Json.object(created.get("result")),"matchId");
+            String request="{\"protocol\":1,\"op\":\"checkpoint\",\"matchId\":\""+id+"\",\"waitMillis\":";
+            Map<String,Object> reply=Json.parseObject(service.request(request+"0}"));
+            check(Boolean.TRUE.equals(reply.get("ok")) && "pending".equals(Json.object(reply.get("result")).get("state")),"checkpoint op through EngineService: "+reply);
+            check(service.request(request+"1001}").contains("invalid_request"),"waitMillis above 1000 is refused");
+            check(service.request("{\"protocol\":1,\"op\":\"cancelCheckpoint\",\"matchId\":\""+id+"\"}").contains("\"cancelled\":true"),
+                "cancelCheckpoint op through EngineService");
+            check(service.request("{\"protocol\":1,\"op\":\"destroy\",\"matchId\":\""+id+"\"}").contains("\"ok\":true"),"destroy");
+            check(service.request(request+"0}").contains("unknown_match"),"a destroyed match is unknown");
+            check(!Files.exists(served),"nothing was written for the cancelled request");
+        }
+        System.out.println("PASS saves on request: none without a request, parked priority decision saved once, setup question"
+            +" pending(player) for the whole wait, request during the AI's turn pending("+waitingFor+") and written at the"
+            +" human's next priority decision, cancel, over after the end, checkpoint_unavailable without a path, JSON ops");
+    }
+    private static boolean aiTurn(Map<String,Object> state) {
+        Map<String,Object> snapshot=state.get("snapshot")==null?Map.of():Json.object(state.get("snapshot"));
+        Map<String,Object> view=snapshot.isEmpty()?Map.of():Json.object(snapshot.get("gameView"));
+        return view.get("activePlayerId")!=null && !view.get("activePlayerId").equals(snapshot.get("enginePlayerId"));
+    }
+
     // ---- RNG continuity --------------------------------------------------------------------
 
     private static void randomContinuity(Map<String,Object> humanDeck,Map<String,Object> aiDeck) throws Exception {
@@ -291,7 +445,7 @@ public final class RealCheckpointTests {
         try {
             String id=Json.requiredString(engine.create(solo(humanDeck,aiDeck,file.toString())),"matchId");
             // The human goes first, so no AI search has started: only the waiting GAME thread owns the RNG.
-            new Driver(engine,id,false).untilCheckpoint(1,60);
+            new Driver(engine,id,false).untilSaved(1,60);
             Files.copy(file,copy);
             for(int i=0;i<64;i++) drawn.add(RandomUtil.nextInt()&0xffffffffL);
             engine.destroy(id);
@@ -336,7 +490,7 @@ public final class RealCheckpointTests {
             long placedAt=-1;int placements=0;
             while(!targets.isEmpty() || !missing.isEmpty()) {
                 check(System.nanoTime()<deadline,name+": features never on the board at a checkpoint: "+missing+driver.diagnostics());
-                Map<String,Object> state=driver.untilCheckpoint(targets.isEmpty()?0:targets.get(0),240);
+                Map<String,Object> state=driver.untilSaved(targets.isEmpty()?0:targets.get(0),240);
                 if(!"running".equals(state.get("phase"))) {
                     check(targets.isEmpty(),name+": game ended before turns "+targets+driver.diagnostics());
                     System.out.println("GAME-ENDED "+name+" attempt "+attempt+" at turn "+game.getTurnNum()+"; still missing "+missing);
@@ -379,7 +533,8 @@ public final class RealCheckpointTests {
             check(errors.get()==0 && game.getTotalErrorsCount()==0,"original game had no errors");
             engine.destroy(id);
             writeMillis.addAll(driver.writeMillis);writeBytes.addAll(driver.writeBytes);
-            System.out.println("WRITES "+name+" count="+driver.writeMillis.size()+" "+stats("writeMs",driver.writeMillis)+" "+stats("bytes",driver.writeBytes)+" humanActions="+driver.actions);
+            System.out.println("WRITES "+name+" count="+driver.writeMillis.size()+" requests="+driver.requests+" pendingAtPriority="+driver.pendingAtPriority
+                +" "+stats("writeMs",driver.writeMillis)+" "+stats("bytes",driver.writeBytes)+" humanActions="+driver.actions);
         } finally { engine.close(); }
         }
         check(targets.isEmpty() && missing.isEmpty(),name+": three games ended before board features "+missing+" were checkpointed");
@@ -390,7 +545,8 @@ public final class RealCheckpointTests {
             check(Boolean.TRUE.equals(result.get("fingerprintMatches")),"restored fingerprint equals checkpoint: "+result);
             check(Boolean.TRUE.equals(result.get("samePrompt")),"restored game re-asks the same priority decision: "+result);
             check(Boolean.TRUE.equals(result.get("legalEnd")) && Json.integer(result.get("errors"))==0,"restored game plays to a legal end: "+result);
-            check(Boolean.TRUE.equals(result.get("keepsCheckpointing")),"restored game keeps checkpointing: "+result);
+            check(Boolean.TRUE.equals(result.get("noWriteAfterRestore")),"a restored game writes nothing until asked: "+result);
+            check(Boolean.TRUE.equals(result.get("savesAgainOnRequest")),"a restored game saves again on request: "+result);
             Json.object(savedInfo.get(i).get("features")).forEach((k,v)->covered.merge(k,(int)Json.integer(v)>0?1:0,Integer::sum));
             System.out.println("RESTORED "+name+" #"+i+" "+Json.write(result));
         }
@@ -417,7 +573,8 @@ public final class RealCheckpointTests {
             AtomicInteger errors=new AtomicInteger();
             game.addTableEventListener(e->{if(e.getEventType()==TableEvent.EventType.ERROR)errors.incrementAndGet();});
             Map<String,Object> restoredInfo=Json.object(restored.get("restored"));
-            Driver driver=new Driver(engine,id,mode.equals("active"));
+            long restoredSequence=Json.integer(restoredInfo.get("sequence"));
+            Driver driver=new Driver(engine,id,mode.equals("active"),restoredSequence);
             Map<String,Object> first=driver.untilPrompt(90);
             if(mode.equals("rng")) {
                 List<Long> draws=new ArrayList<>();
@@ -435,10 +592,17 @@ public final class RealCheckpointTests {
                     && Objects.equals(expected.get("message"),Json.object(prompt.get("payload")).get("message"))
                     && Objects.equals(expected.get("selectMode"),Json.object(prompt.get("payload")).get("selectMode"))
                     && Json.integer(restoredInfo.get("turn"))==Json.integer(expected.get("turn")));
-                // The first re-asked decision is itself a safe point: the same path gets the next sequence.
-                result.put("keepsCheckpointing",first.get("checkpoint")!=null
-                    && Json.integer(Json.object(first.get("checkpoint")).get("sequence"))==Json.integer(expected.get("sequence"))+1
-                    && Checkpoints.read(checkpoint).sequence()==Json.integer(expected.get("sequence"))+1);
+                // Until asked, polls describe the file just read and nothing is written.
+                long savedSequence=Json.integer(expected.get("sequence"));
+                Map<String,Object> seeded=first.get("checkpoint")==null?Map.of():Json.object(first.get("checkpoint"));
+                result.put("noWriteAfterRestore",restoredSequence==savedSequence && seeded.get("sequence")!=null
+                    && Json.integer(seeded.get("sequence"))==savedSequence && Json.integer(seeded.get("writeMillis"))==0
+                    && Checkpoints.read(checkpoint).sequence()==savedSequence);
+                // The re-asked decision is a safe point: a request writes the same path with the next sequence.
+                Map<String,Object> again=driver.save(1000);
+                result.put("savesAgainOnRequest","saved".equals(again.get("state"))
+                    && Json.integer(Json.object(again.get("checkpoint")).get("sequence"))==savedSequence+1
+                    && Checkpoints.read(checkpoint).sequence()==savedSequence+1);
                 result.put("turnRestored",game.getTurnNum());
                 driver.answer(first);
                 Map<String,Object> last=driver.play(prompts,120);
@@ -497,7 +661,11 @@ public final class RealCheckpointTests {
         final Map<String,Integer> actions=new TreeMap<>();
         final ArrayDeque<String> recent=new ArrayDeque<>();
         String lastDialog="";
-        long lastSequence=-1,failures;int answered;
+        long failures;int answered,requests,pendingAtPriority;
+        /** Latest checkpoint sequence seen (0 before the first write; the file's after a restore). */
+        long lastSequence;
+        /** True while a save this driver asked for may still be written; any other write fails the test. */
+        boolean armed;
         /** Recent questions and the GAME thread's stack, for a stalled-game failure. */
         String diagnostics() {
             String stack=Thread.getAllStackTraces().entrySet().stream().filter(e->e.getKey().getName().startsWith("GAME mobile-"))
@@ -505,20 +673,46 @@ public final class RealCheckpointTests {
                 .collect(Collectors.joining("\n  ---\n    "));
             return "\n recent prompts:\n  "+String.join("\n  ",recent)+"\n GAME thread:\n    "+stack;
         }
-        Driver(XmageEngine engine,String match,boolean active) { this.engine=engine;this.match=match;this.active=active; }
+        Driver(XmageEngine engine,String match,boolean active) { this(engine,match,active,0); }
+        Driver(XmageEngine engine,String match,boolean active,long restoredSequence) {
+            this.engine=engine;this.match=match;this.active=active;lastSequence=restoredSequence;
+        }
         Map<String,Object> poll() {
             Map<String,Object> state=engine.poll(match,HUMAN,0);
             if(state.containsKey("checkpointFailure")) failures++;
-            if(state.get("checkpoint")!=null) {
-                Map<String,Object> info=Json.object(state.get("checkpoint"));
-                long sequence=Json.integer(info.get("sequence"));
-                if(sequence!=lastSequence && lastSequence>=0) { writeMillis.add(Json.integer(info.get("writeMillis")));writeBytes.add(Json.integer(info.get("bytes"))); }
-                if(lastSequence<0) { writeMillis.add(Json.integer(info.get("writeMillis")));writeBytes.add(Json.integer(info.get("bytes"))); }
-                lastSequence=sequence;
-            }
+            if(state.get("checkpoint")!=null) observe(Json.object(state.get("checkpoint")));
             if("failed".equals(state.get("phase")) && !Json.write(state.get("failure")).contains("engine_stopped"))
                 throw new AssertionError("engine failed: "+state.get("failure"));
             return state;
+        }
+        /** The engine writes only when asked: every new sequence answers this driver's request. */
+        private void observe(Map<String,Object> info) {
+            long sequence=Json.integer(info.get("sequence"));
+            if(sequence==lastSequence) return;
+            check(armed,"the engine wrote checkpoint "+sequence+" that nobody asked for (last "+lastSequence+")"+diagnostics());
+            check(sequence==lastSequence+1,"checkpoint sequence continues: "+lastSequence+" -> "+sequence);
+            armed=false;lastSequence=sequence;
+            writeMillis.add(Json.integer(info.get("writeMillis")));writeBytes.add(Json.integer(info.get("bytes")));
+        }
+        /** The checkpoint op, as the app sends it when the player leaves. */
+        Map<String,Object> save(long waitMillis) {
+            armed=true;requests++;
+            Map<String,Object> reply=engine.checkpoint(match,waitMillis);
+            String result=(String)reply.get("state");
+            if("saved".equals(result)) {
+                check(reply.keySet().equals(Set.of("state","checkpoint")),"saved reply shape: "+reply);
+                observe(Json.object(reply.get("checkpoint")));
+            } else if("pending".equals(result)) {
+                check(reply.keySet().equals(Set.of("state","waitingFor")) && Set.of("engine","player").contains(reply.get("waitingFor")),"pending reply shape: "+reply);
+            } else if("failed".equals(result)) {
+                check(reply.keySet().equals(Set.of("state","checkpointFailure")),"failed reply shape: "+reply);
+            } else check(reply.equals(Map.of("state","over")),"checkpoint reply: "+reply);
+            if(!"pending".equals(result)) armed=false; // saved, failed or over: nothing stays armed
+            return reply;
+        }
+        void cancel() {
+            check(engine.cancelCheckpoint(match).equals(Map.of("cancelled",true)),"cancelCheckpoint reply");
+            armed=false;
         }
         /** Next unanswered prompt, without answering it. */
         Map<String,Object> untilPrompt(int seconds) throws InterruptedException {
@@ -532,36 +726,46 @@ public final class RealCheckpointTests {
             }
             throw new AssertionError("no prompt within "+seconds+"s"+diagnostics());
         }
-        /** Answers prompts until one is a new checkpointed priority decision at or after the turn. */
-        Map<String,Object> untilCheckpoint(int turn,int seconds) throws InterruptedException {
+        /** A save request and the poll right after it, at the decision it settled on. */
+        static final class Request {
+            final Map<String,Object> state,reply;
+            Request(Map<String,Object> state,Map<String,Object> reply) { this.state=state;this.reply=reply; }
+            String result() { return (String)reply.get("state"); }
+        }
+        /**
+         * Answers prompts until a priority decision at or after the turn, then asks the engine to save
+         * there (waiting up to a second) and returns once the request settles as saved or failed. A
+         * later question of the same priority() call (after an action attempt) is not a safe point:
+         * the engine answers pending(player), the request stays armed and the next safe point writes it.
+         */
+        Request requestAtPriority(int turn,int seconds) throws InterruptedException {
             long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(seconds);
-            long sequence=lastSequence;
             while(System.nanoTime()<deadline) {
                 Map<String,Object> state=untilPrompt(seconds);
-                if(!"running".equals(state.get("phase"))) return state; // callers decide whether an end is expected
-                Map<String,Object> info=state.get("checkpoint")==null?null:Json.object(state.get("checkpoint"));
-                boolean fresh=info!=null && Json.integer(info.get("sequence"))!=sequence;
-                if(info!=null) sequence=Json.integer(info.get("sequence"));
-                if(fresh && Json.integer(info.get("turn"))>=turn) {
-                    Map<String,Object> prompt=Json.object(state.get("prompt"));
-                    check("SELECT".equals(prompt.get("kind")) && "priority".equals(Json.object(prompt.get("payload")).get("selectMode")),
-                        "a checkpoint is written only for a priority decision: "+prompt.get("kind"));
-                    return state;
+                if(!"running".equals(state.get("phase"))) return new Request(state,null); // callers decide whether an end is expected
+                Map<String,Object> prompt=Json.object(state.get("prompt"));
+                if(isPriority(prompt) && turn(state)>=turn) {
+                    Map<String,Object> reply=save(1000);
+                    if(!"pending".equals(reply.get("state"))) {
+                        Map<String,Object> after=poll();
+                        Map<String,Object> open=after.get("prompt")==null?Map.of():Json.object(after.get("prompt"));
+                        check(prompt.get("promptId").equals(open.get("promptId")),"the save settled at the decision it was asked at");
+                        if("saved".equals(reply.get("state")))
+                            check(Json.object(reply.get("checkpoint")).equals(Json.object(after.get("checkpoint"))),"poll and reply name the same checkpoint");
+                        return new Request(after,reply);
+                    }
+                    check("player".equals(reply.get("waitingFor")),"a priority decision saves or waits for the player's answer: "+reply);
+                    pendingAtPriority++;
                 }
                 answer(state);
             }
-            throw new AssertionError("no checkpoint at turn "+turn+" within "+seconds+"s"+diagnostics());
+            throw new AssertionError("no save at turn "+turn+" within "+seconds+"s"+diagnostics());
         }
-        Map<String,Object> untilNewPrompt(java.util.function.Predicate<Map<String,Object>> condition,int seconds) throws InterruptedException {
-            long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(seconds);
-            Map<String,Object> state=untilPrompt(seconds);
-            answer(state);
-            while(System.nanoTime()<deadline) {
-                state=untilPrompt(seconds);
-                if(condition.test(state)) return state;
-                answer(state);
-            }
-            throw new AssertionError("condition not reached");
+        /** Answers prompts until a priority decision at or after the turn is saved on request. */
+        Map<String,Object> untilSaved(int turn,int seconds) throws InterruptedException {
+            Request request=requestAtPriority(turn,seconds);
+            if(request.reply!=null) check("saved".equals(request.result()),"requested save: "+request.reply);
+            return request.state;
         }
         Map<String,Object> play(int prompts,int seconds) throws InterruptedException {
             long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(seconds);
@@ -581,6 +785,14 @@ public final class RealCheckpointTests {
                 Thread.sleep(20);
             }
             throw new AssertionError("game did not finish within "+seconds+"s"+diagnostics());
+        }
+        static boolean isPriority(Map<String,Object> prompt) {
+            return "SELECT".equals(prompt.get("kind")) && "priority".equals(Json.object(prompt.get("payload")).get("selectMode"));
+        }
+        static long turn(Map<String,Object> state) {
+            Map<String,Object> snapshot=state.get("snapshot")==null?Map.of():Json.object(state.get("snapshot"));
+            Map<String,Object> view=snapshot.isEmpty()?Map.of():Json.object(snapshot.get("gameView"));
+            return view.containsKey("turn")?Json.integer(view.get("turn")):0;
         }
         void answer(Map<String,Object> state) {
             Map<String,Object> prompt=Json.object(state.get("prompt"));

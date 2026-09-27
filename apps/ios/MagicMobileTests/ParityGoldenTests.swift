@@ -79,6 +79,35 @@ final class ParityGoldenTests: XCTestCase {
 
     func testSpectatorSeatCasesOnBothPlatforms() throws { try runSeatCases("spectator-cases.json") }
 
+    /// game-summary-cases.json: combat credit and the top attacker (name, damage, art card).
+    func testGameSummaryCasesOnBothPlatforms() throws {
+        let root = try caseFile("game-summary-cases.json")
+        let base = try XCTUnwrap(root["base"] as? [String: Any])
+        let cards = try XCTUnwrap(root["cards"] as? [String: [String: Any]])
+        let cases = try XCTUnwrap(root["cases"] as? [[String: Any]])
+        XCTAssertFalse(cases.isEmpty)
+        for item in cases {
+            let at = "game-summary-cases.json · \(item["name"] ?? "")"
+            var stats = GameStats()
+            for step in item["steps"] as? [[String: Any]] ?? [] {
+                let json = try GameSummaryCase.snapshot(base, step, cards: cards)
+                stats.record(try JSONDecoder().decode(GameSnapshot.self, from: JSONSerialization.data(withJSONObject: json)))
+            }
+            let expect = try XCTUnwrap(item["expect"] as? [String: Any], at)
+            XCTAssertEqual(stats.combatDamage, expect["combatDamage"] as? Int, at)
+            XCTAssertEqual(stats.biggestHit, expect["biggestHit"] as? Int, at)
+            if let top = expect["top"] as? [String: Any] {
+                let actual = try XCTUnwrap(stats.topCard, at)
+                XCTAssertEqual(actual.name, top["name"] as? String, at)
+                XCTAssertEqual(actual.damage, top["damage"] as? Int, at)
+                XCTAssertEqual(actual.card?.instanceId, top["instanceId"] as? String, at)
+                XCTAssertEqual(actual.card?.card.tokenArtwork?.name, top["tokenArtwork"] as? String, at)
+            } else {
+                XCTAssertNil(stats.topCard, at)
+            }
+        }
+    }
+
     func testPriorityStatusCasesOnBothPlatforms() throws {
         let root = try caseFile("focus-cases.json")
         let base = try XCTUnwrap(root["base"] as? [String: Any])
@@ -197,6 +226,7 @@ final class ParityGoldenTests: XCTestCase {
             XCTAssertEqual(store.checkpointURL.lastPathComponent, files["checkpoint"] as? String)
             XCTAssertEqual(store.sidecarURL.lastPathComponent, files["sidecar"] as? String)
             XCTAssertEqual(store.markerURL.lastPathComponent, files["marker"] as? String)
+            XCTAssertEqual(store.consumedCheckpointURL.lastPathComponent, files["consumed"] as? String)
             if present.contains("sidecar") {
                 if let text = item["sidecarText"] as? String {
                     try store.writeAtomically(Data(text.utf8), to: store.sidecarURL)
@@ -217,6 +247,10 @@ final class ParityGoldenTests: XCTestCase {
                 try store.prepareDirectory()
                 try Data("checkpoint".utf8).write(to: store.checkpointURL)
             }
+            if present.contains("consumed") {
+                try store.prepareDirectory()
+                try Data("used-up checkpoint".utf8).write(to: store.consumedCheckpointURL)
+            }
             if present.contains("marker") { try store.writeMarker(startedAt: millis(60.0)!) }
             let resume = GameResumeCoordinator(store: store, now: { now })
             resume.evaluateLaunch(appBuild: "same", engineIdentity: "same")
@@ -233,6 +267,7 @@ final class ParityGoldenTests: XCTestCase {
             let remains = outcome == "offer"
             XCTAssertEqual(store.sidecarExists, remains, "\(at) · sidecar")
             XCTAssertEqual(store.checkpointExists, remains, "\(at) · checkpoint")
+            XCTAssertFalse(store.consumedCheckpointExists, "\(at) · consumed")
             XCTAssertFalse(store.hasMarker, "\(at) · marker")
         }
 
@@ -337,6 +372,42 @@ enum SeatCase {
             player["hasLeft"] = out.contains(player["playerId"] as? String ?? "")
             return player
         }
+        return json
+    }
+}
+
+/// Builds a game-summary-cases.json step's snapshot. GameSummaryCase in ParityGoldenTest.kt is its twin.
+enum GameSummaryCase {
+    static func snapshot(_ base: [String: Any], _ step: [String: Any], cards: [String: [String: Any]]) throws -> [String: Any] {
+        func card(_ key: String) throws -> [String: Any] { try XCTUnwrap(cards[key], "unknown card \(key)") }
+        let life = step["life"] as? [String: Int] ?? [:]
+        let battlefield = try (step["battlefield"] as? [String] ?? []).map(card)
+        var json = base
+        json["players"] = (base["players"] as? [[String: Any]] ?? []).map { player -> [String: Any] in
+            var player = player
+            let id = player["playerId"] as? String ?? ""
+            if let value = life[id] { player["life"] = value }
+            if id == base["viewerPlayerId"] as? String {
+                var zones = player["zones"] as? [String: Any] ?? [:]
+                zones["battlefield"] = battlefield
+                player["zones"] = zones
+            }
+            return player
+        }
+        var xmage = base["xmage"] as? [String: Any] ?? [:]
+        xmage["combat"] = try (step["attacks"] as? [[String: Any]] ?? []).map { attack -> [String: Any] in
+            let attackers = try (attack["attackers"] as? [String] ?? []).map { key -> [String: Any] in
+                // XMage's combat groups carry no token template.
+                var attacker = try card(key)
+                var identity = attacker["card"] as? [String: Any] ?? [:]
+                identity["tokenArtwork"] = nil
+                attacker["card"] = identity
+                return attacker
+            }
+            return ["defenderId": attack["defender"] ?? "", "defenderName": attack["defender"] ?? "",
+                    "blocked": attack["blocked"] as? Bool ?? false, "attackers": attackers, "blockers": []]
+        }
+        json["xmage"] = xmage
         return json
     }
 }
@@ -819,6 +890,30 @@ extension ParityGoldenTests {
             XCTAssertEqual(check.groups.map { [$0.title, "\($0.issues.count)"] },
                            try XCTUnwrap(item["groups"] as? [[Any]]).map { ["\($0[0])", "\($0[1])"] })
             XCTAssertEqual(check.cardNames, item["cardNames"] as? [String])
+        }
+    }
+}
+
+// MARK: - Token art downloads
+
+extension ParityGoldenTests {
+    /// token-cases.json: the tokens a card's rules text makes, and the common token list, for
+    /// offline token-art downloads. ParityGoldenTest.kt runs the same cases through TokenRules.
+    func testTokenCasesOnBothPlatforms() throws {
+        let root = try caseFile("token-cases.json")
+        XCTAssertEqual(root["commonTokens"] as? [String], NativeTokenRules.commonTokenNames)
+        let cases = try XCTUnwrap(root["cases"] as? [[String: Any]])
+        XCTAssertFalse(cases.isEmpty)
+        for item in cases {
+            let card = item["card"] as? String ?? ""
+            let text = try XCTUnwrap(item["text"] as? String, card)
+            let expected = try XCTUnwrap(item["tokens"] as? [[String: Any]], card).map {
+                NativeTokenRules.Request(name: $0["name"] as? String ?? "", power: $0["power"] as? String,
+                                         toughness: $0["toughness"] as? String, colors: $0["colors"] as? [String])
+            }
+            XCTAssertEqual(NativeTokenRules.requests(rules: text), expected, card)
+            // Production reads the catalogue's display text; it must find the same tokens.
+            XCTAssertEqual(NativeTokenRules.requests(rules: EngineDisplayText.text(text)), expected, "\(card) (display text)")
         }
     }
 }

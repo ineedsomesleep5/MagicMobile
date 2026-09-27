@@ -37,6 +37,11 @@ fun main() {
     check(runCatching{ArtworkCatalogue.parse(ByteArrayInputStream(Wire.encode(transform)+Wire.encode(transform)))}.isFailure)
     val doubleToken=token+("layout" to "double_faced_token")+("card_faces" to listOf(front,back))
     check(parse(listOf(doubleToken)).unavailableTokens.any{it.contains("Insectile Aberration")})
+    // Engine and Oracle wording of one Food token normalize alike; a 0/0 artifact has no P/T.
+    val food:Obj=mapOf("id" to id,"name" to "Food","layout" to "token","type_line" to "Token Artifact — Food","oracle_text" to "{2}, {T}, Sacrifice this token: You gain 3 life.","colors" to emptyList<String>(),"image_uris" to image("food"))
+    val engineFood=ArtworkTokenIdentity("Food Token","Artifact — Food","{2}, {T}, Sacrifice Food Token: You gain 3 life.","0","0",emptySet())
+    check(parse(listOf(food)).tokens[id]?.token?.normalized()==engineFood.normalized())
+    check(selectDiscoveredTokens(parse(listOf(food)).tokens.values,io.magicmobile.android.core.TokenRules.commonTokenNames.map{io.magicmobile.android.core.TokenRules.Request(it)}).single().id==id)
     var checks=0
     check(runCatching{ArtworkCatalogue.parse(ByteArrayInputStream(Wire.encode(transform))){if(++checks>1)error("cancelled")}}.isFailure)
     val fixture=System.getenv("MAGICMOBILE_BULK_FIXTURE")

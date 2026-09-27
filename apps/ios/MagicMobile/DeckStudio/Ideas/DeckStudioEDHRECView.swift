@@ -108,8 +108,15 @@ final class DeckStudioEDHRECModel: NSObject, ObservableObject, WKNavigationDeleg
 struct DeckStudioEDHRECPanel: View {
     @ObservedObject var model: DeckStudioEDHRECModel
     let commanders: [String]
+    /// Inside the workspace's own scroll (portrait): no ScrollView here, and the page, which
+    /// scrolls itself, keeps `webHeight`.
+    var embedded = false
+    var webHeight: CGFloat = 480
     @Environment(\.openURL) private var openURL
     @State private var copied = false
+    @ViewBuilder private func scroll(@ViewBuilder _ content: () -> some View) -> some View {
+        if embedded { content() } else { ScrollView(content: content) }
+    }
     var body: some View {
         VStack(spacing: 10) {
             HStack {
@@ -132,9 +139,9 @@ struct DeckStudioEDHRECPanel: View {
                     Button("Safari", systemImage: "arrow.up.right.square") { openURL(model.currentURL ?? DeckStudioEDHRECPolicy.browseURL) }.frame(minHeight: 44)
                 }.padding(.horizontal, 12)
                 if model.loading { ProgressView("Loading EDHREC…") }
-                DeckStudioWebSurface(webView: webView)
+                DeckStudioWebSurface(webView: webView).frame(height: embedded ? webHeight : nil)
             } else {
-                ScrollView {
+                scroll {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Explore another perspective.").font(.title2.weight(.semibold))
                         Text("Browse the actual EDHREC website, then return to Cards without losing your draft. MagicMobile does not read recommendations, fill forms, or submit your deck.")

@@ -107,6 +107,7 @@ struct OnDeviceRootView: View {
         // Lower the chance that iOS ends the app in the background; everything reloads lazily.
         resume.backgroundPurges = [{ GameAudio.shared.unloadBuffers() }, { NativeDeckArtwork.purgeMemoryCaches() }]
         resume.runBackgroundTask = { name, body in ResumeBackgroundTask.run(name, body) }
+        resume.backgroundTimeRemaining = { UIApplication.shared.backgroundTimeRemaining }
         return resume
     }
 
@@ -208,11 +209,6 @@ struct OnDeviceRootView: View {
         ZStack {
             if activeGame {
                 game
-                if let versusIntro {
-                    VersusIntroOverlay(you: versusIntro.you, opponents: versusIntro.opponents) { self.versusIntro = nil }
-                        .transition(.opacity)
-                        .zIndex(10)
-                }
             } else {
                 BrandTheme.canvas.ignoresSafeArea()
                 if showSetup || setup.needsLeave {
@@ -227,6 +223,7 @@ struct OnDeviceRootView: View {
                 }
             }
         }
+        .startingRollCovered(startingRollVisible)
         .preferredColorScheme(.dark)
         .animation(reduceMotion ? .easeOut(duration: 0.12) : .easeOut(duration: 0.26), value: showSetup)
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: activeGame)
@@ -238,8 +235,15 @@ struct OnDeviceRootView: View {
             NativeDownloadsView(decks: downloadDecks, selectedDeckID: selectedDeckID,
                                 engineReady: setup.identity != nil)
         }
-        .overlay(alignment: .bottom) { recoveryBanner }
+        .overlay(alignment: .bottom) { if !startingRollVisible { recoveryBanner } }
         .overlay { startingRollOverlay }
+        // The versus intro plays first, over the opaque starting roll that follows it.
+        .overlay {
+            if activeGame, let versusIntro {
+                VersusIntroOverlay(you: versusIntro.you, opponents: versusIntro.opponents) { self.versusIntro = nil }
+                    .transition(.opacity)
+            }
+        }
         .overlay {
             if !activeGame, let offer = resume.offer {
                 GameResumePrompt(offer: offer, resume: resumeSavedGame, abandon: {
@@ -307,8 +311,10 @@ struct OnDeviceRootView: View {
         .onChange(of: portraitModeEnabled) { _, enabled in
             MagicMobileOrientationController.shared.setPortraitModeEnabled(enabled)
         }
-        .onChange(of: scenePhase) { _, phase in
+        .onChange(of: scenePhase) { previous, phase in
             setup.setSceneActive(phase == .active)
+            // Leaving: the app switcher (from which the app may be closed) or on to the background.
+            if previous == .active, phase == .inactive { resume.willLeave() }
             if phase == .background { resume.enteredBackground() }
             if phase == .active { resume.enteredForeground(); GameAudio.shared.resume() }
         }
@@ -382,77 +388,89 @@ struct OnDeviceRootView: View {
         if let current = inspectedCard { inspectedCard = cards.first { $0.id == current.id } }
     }
 
+    /// A Game Center table's shared roll (or its "Who goes first?" panel) is up.
+    private var multiplayerRollVisible: Bool {
+        guard setup.usingMultiplayer, let multiplayer = setup.multiplayer else { return false }
+        return multiplayer.endpoint != nil && multiplayer.isConnected && !didDismissStartingRoll
+    }
+
+    /// An AI table's local roll is up.
+    private var aiRollVisible: Bool {
+        !setup.usingMultiplayer && !setup.usingOnline && session.matchID != nil && aiStartingPlayerMode == "roll"
+            && aiStartingRoll != nil && !didDismissStartingRoll
+    }
+
+    /// One flag for everything the starting roll covers (StartingRollCover, startingRollCovered).
+    private var startingRollVisible: Bool { multiplayerRollVisible || aiRollVisible }
+
     @ViewBuilder
     private var startingRollOverlay: some View {
-        if setup.usingMultiplayer, let multiplayer = setup.multiplayer,
-           multiplayer.endpoint != nil, multiplayer.isConnected,
-           !didDismissStartingRoll {
-            GeometryReader { proxy in
-                ZStack {
-                    Color.black.opacity(multiplayer.startingRoll == nil ? 0.82 : 0.58).ignoresSafeArea()
-                    Group {
-                        if let roll = multiplayer.startingRoll {
-                            MultiplayerD20View(roll: roll, seatNames: multiplayer.seatNames,
-                                               isLocalWinner: roll.winnerSeatID == multiplayer.endpoint?.seatID,
-                                               revealedStepCount: multiplayer.rollProgress?.revealedCount ?? 0,
-                                               localSeatID: multiplayer.endpoint?.seatID,
-                                               rollPending: multiplayer.hasRolled,
-                                               onRollTap: {
-                                                   do { try multiplayer.rollStartingPlayer() }
-                                                   catch { bannerError = error.localizedDescription }
-                                               }, onStepPlayed: {
-                                                   do { try multiplayer.advanceAISeatIfNeeded() }
-                                                   catch { bannerError = error.localizedDescription }
-                                               }) {
-                                didDismissStartingRoll = true
-                                submitStartingChoiceIfNeeded()
-                            }
-                        } else {
-                            VStack(spacing: 16) {
-                                Text("Who goes first?")
-                                    .font(.title2.bold())
-                                Text(multiplayer.rollStatus)
-                                    .font(.subheadline).multilineTextAlignment(.center)
-                                    .foregroundStyle(.secondary)
-                                Text(multiplayer.hostAISeatSummary ?? "Each player rolls a D20. Highest starts; ties reroll.")
-                                    .font(.caption).multilineTextAlignment(.center)
-                                    .foregroundStyle(.secondary)
-                                Button(multiplayer.hasRolled ? "Waiting for other players…" : "Roll D20") {
-                                    do { try multiplayer.rollStartingPlayer() }
-                                    catch { bannerError = error.localizedDescription }
-                                }
-                                .buttonStyle(CommanderActionStyle())
-                                .disabled(multiplayer.hasRolled)
-                                .accessibilityIdentifier("ondevice.multiplayer.roll")
-                            }
-                            .foregroundStyle(CommanderPresentation.ink)
-                            .padding(24)
-                            .frame(maxWidth: 440)
-                            .background(CommanderPresentation.surface, in: RoundedRectangle(cornerRadius: 22))
-                        }
-                    }
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+        if startingRollVisible {
+            StartingRollCover {
+                GeometryReader { proxy in
+                    startingRollContent
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+                }
+                // A roll error stays readable, and dismissible, on the opaque cover.
+                if bannerError != nil {
+                    VStack { Spacer(minLength: 0); recoveryBanner }
                 }
             }
-        } else if !setup.usingMultiplayer, !setup.usingOnline,
-                  session.matchID != nil, aiStartingPlayerMode == "roll",
-                  let roll = aiStartingRoll, !didDismissStartingRoll {
-            GeometryReader { proxy in
-                ZStack {
-                    Color.black.opacity(0.58).ignoresSafeArea()
-                    MultiplayerD20View(roll: roll, seatNames: aiRollSeatNames,
-                                       isLocalWinner: roll.winnerSeatID == session.snapshot?.viewerID,
-                                       revealedStepCount: aiRevealedRollCount,
-                                       localSeatID: session.snapshot?.viewerID,
-                                       onRollTap: advanceLocalAIRoll,
-                                       onStepPlayed: advanceAIRollIfNeeded) {
-                        didDismissStartingRoll = true
-                        submitStartingChoiceIfNeeded()
-                    }
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+        }
+    }
+
+    @ViewBuilder
+    private var startingRollContent: some View {
+        if multiplayerRollVisible, let multiplayer = setup.multiplayer {
+            if let roll = multiplayer.startingRoll {
+                MultiplayerD20View(roll: roll, seatNames: multiplayer.seatNames,
+                                   isLocalWinner: roll.winnerSeatID == multiplayer.endpoint?.seatID,
+                                   revealedStepCount: multiplayer.rollProgress?.revealedCount ?? 0,
+                                   localSeatID: multiplayer.endpoint?.seatID,
+                                   rollPending: multiplayer.hasRolled,
+                                   onRollTap: {
+                                       do { try multiplayer.rollStartingPlayer() }
+                                       catch { bannerError = error.localizedDescription }
+                                   }, onStepPlayed: {
+                                       do { try multiplayer.advanceAISeatIfNeeded() }
+                                       catch { bannerError = error.localizedDescription }
+                                   }) {
+                    didDismissStartingRoll = true
+                    submitStartingChoiceIfNeeded()
                 }
+            } else {
+                VStack(spacing: 16) {
+                    Text("Who goes first?")
+                        .font(.title2.bold())
+                    Text(multiplayer.rollStatus)
+                        .font(.subheadline).multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                    Text(multiplayer.hostAISeatSummary ?? "Each player rolls a D20. Highest starts; ties reroll.")
+                        .font(.caption).multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                    Button(multiplayer.hasRolled ? "Waiting for other players…" : "Roll D20") {
+                        do { try multiplayer.rollStartingPlayer() }
+                        catch { bannerError = error.localizedDescription }
+                    }
+                    .buttonStyle(CommanderActionStyle())
+                    .disabled(multiplayer.hasRolled)
+                    .accessibilityIdentifier("ondevice.multiplayer.roll")
+                }
+                .foregroundStyle(CommanderPresentation.ink)
+                .padding(24)
+                .frame(maxWidth: 440)
+                .background(CommanderPresentation.surface, in: RoundedRectangle(cornerRadius: 22))
+            }
+        } else if let roll = aiStartingRoll {
+            MultiplayerD20View(roll: roll, seatNames: aiRollSeatNames,
+                               isLocalWinner: roll.winnerSeatID == session.snapshot?.viewerID,
+                               revealedStepCount: aiRevealedRollCount,
+                               localSeatID: session.snapshot?.viewerID,
+                               onRollTap: advanceLocalAIRoll,
+                               onStepPlayed: advanceAIRollIfNeeded) {
+                didDismissStartingRoll = true
+                submitStartingChoiceIfNeeded()
             }
         }
     }
@@ -1040,6 +1058,18 @@ private final class OnDeviceSetupModel: ObservableObject {
             session.$isOverForSeat.removeDuplicates().filter { $0 }
                 .sink { [weak resume] _ in resume?.gameFinished() }
         ]
+        // Saving when the player leaves goes to the live solo game's engine. The coordinator
+        // asks only when that engine advertises checkpointOnDemand.
+        resume.requestSave = { [weak self] wait in
+            guard let client = self?.aiClient, let matchID = self?.aiMatchID else {
+                return .unavailable(code: EngineSaveResume.matchUnavailableCode)
+            }
+            return try await client.requestCheckpoint(matchID: matchID, waitMillis: wait)
+        }
+        resume.cancelSave = { [weak self] in
+            guard let client = self?.aiClient, let matchID = self?.aiMatchID else { return }
+            try await client.cancelCheckpoint(matchID: matchID)
+        }
     }
 
     var needsLeave: Bool { usingOnline || online.lobby != nil || usingMultiplayer || runtime.isOpen || session.matchID != nil || multiplayer?.needsCleanup == true }
@@ -1637,7 +1667,7 @@ private struct MatchRoomView: View {
     }
 }
 
-/// iOS background time for the save-game flush and an in-flight engine checkpoint write.
+/// iOS background time for saving the game when the player leaves the app.
 @MainActor
 private enum ResumeBackgroundTask {
     static func run(_ name: String, _ body: @escaping @MainActor () async -> Void) -> Task<Void, Never> {

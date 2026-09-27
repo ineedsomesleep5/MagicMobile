@@ -51,10 +51,13 @@ jobs:
           name: boundary-test-evidence
           path: packages/ondevice-engine/evidence
   swift:
-    runs-on: macos-latest
+    # Xcode 27.0 (27A266a), the release TestFlight builds use. GitHub's `xcode-27`
+    # image is a public preview (actions/runner-images#14404); macos-latest still
+    # defaults to Xcode 26.6. Move to the GA label when GitHub publishes one.
+    runs-on: xcode-27
     timeout-minutes: 45
     env:
-      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
         with:
@@ -77,23 +80,49 @@ jobs:
         run: bash scripts/deck-studio/test-core.sh
       - run: bash packages/ondevice-engine/scripts/test_swift_close.sh
         if: steps.reuse.outputs.reused != 'true'
+      - name: Runtime-manager native-ABI fixtures (not XMage runtime)
+        if: steps.reuse.outputs.reused != 'true'
+        run: bash packages/ondevice-engine/scripts/test_runtime_manager.sh
       - run: bash packages/ondevice-engine/scripts/test_ios_harness.sh
         if: steps.reuse.outputs.reused != 'true'
+      # The xcode-27 image ships without Xcode 27's separately installed Metal Toolchain
+      # (actions/runner-images#14548); the app's BoardFXShaders.metal needs it.
+      - name: Install the Xcode 27 Metal Toolchain when the image lacks it
+        if: steps.reuse.outputs.reused != 'true'
+        run: xcrun metal --version >/dev/null 2>&1 || xcodebuild -downloadComponent MetalToolchain
       - name: Compile actual iOS app and tests without simulator or signing
         if: steps.reuse.outputs.reused != 'true'
-        env:
-          DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
         run: |
           set -euo pipefail
           mkdir -p build_output/deck-studio
           { git rev-parse HEAD; xcodebuild -version; swift --version; } > build_output/deck-studio/source.txt
           xcodegen generate --spec apps/ios/project.yml
+          # The timing warnings feed the type-check budget step below; they do not fail this build.
           xcodebuild -project apps/ios/MagicMobileiOS.xcodeproj -scheme MagicMobile \
             -configuration Debug -sdk iphoneos -destination 'generic/platform=iOS' \
             -derivedDataPath "$RUNNER_TEMP/deck-studio-sdk" -jobs 2 \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
+            'OTHER_SWIFT_FLAGS=$(inherited) -Xfrontend -warn-long-expression-type-checking=200' \
             build-for-testing 2>&1 | tee build_output/deck-studio/unsigned-sdk-build.log
           echo 'App and test compilation only; no simulator, native XMage product link, signing, or phone execution.' > build_output/deck-studio/SCOPE.txt
+      # Slow SwiftUI expressions in ContentView.swift were the recurring type-checker
+      # timeouts. Fail on any ContentView expression over 200 ms (about 106 ms at most
+      # on a local Xcode 27 build, 2026-09-27); other files are reported, not failed.
+      - name: Keep ContentView.swift expressions under the 200 ms type-check budget
+        if: steps.reuse.outputs.reused != 'true'
+        run: |
+          set -euo pipefail
+          slow=build_output/deck-studio/slow-type-checks.txt
+          { grep -E '^/.+\.swift:[0-9]+:[0-9]+: warning: expression took [0-9]+ms to type-check' \
+              build_output/deck-studio/unsigned-sdk-build.log || true; } | sort -u > "$slow"
+          while IFS=: read -r file line column message; do
+            echo "::warning file=${file#"$GITHUB_WORKSPACE"/},line=$line,col=$column::${message# warning: }"
+          done < "$slow"
+          if grep -q '/apps/ios/MagicMobile/ContentView\.swift:' "$slow"; then
+            echo '::error file=apps/ios/MagicMobile/ContentView.swift::Expressions over the 200 ms type-check budget (warnings above). Split them or add explicit types.'
+            exit 1
+          fi
+          echo "ContentView.swift is within budget; $(wc -l < "$slow" | tr -d ' ') slower expressions elsewhere are warnings only."
       - name: Write trusted job receipt
         if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.reuse.outputs.reused != 'true'
         run: python3 scripts/ci/reuse_evidence.py write --job swift --output "$RUNNER_TEMP/ci-evidence/receipt.json"

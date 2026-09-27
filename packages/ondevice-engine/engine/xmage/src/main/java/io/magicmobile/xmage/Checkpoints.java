@@ -183,7 +183,10 @@ final class Checkpoints {
         @Override public boolean apply(Game game,Ability source) { return expected==7; }
     }
 
-    /** Runs on the GAME thread before the priority prompt is published. */
+    /**
+     * Runs on the GAME thread at a human priority safe point, only when the app asked for a save
+     * (XmageEngine: before that prompt is published, or while it waits for an answer).
+     */
     static Written write(Path path,MobileCommanderGame game,LinkedHashMap<String,UUID> seats,ArrayList<String> humanSeats,
                          List<Map<String,Object>> seatSummary,long sequence) throws IOException {
         long start=System.nanoTime();

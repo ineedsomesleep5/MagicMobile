@@ -168,6 +168,8 @@ fun NativeGameView(
 ) {
     val view = LocalView.current
     val scope = rememberCoroutineScope()
+    /** The starting roll covers the board and answers its starting-player prompt itself. */
+    val startingRollVisible = LocalStartingRollVisible.current
     var isLogOpen by remember { mutableStateOf(false) }
     var isGameMenuOpen by remember { mutableStateOf(false) }
     var isPromptInspectorOpen by remember { mutableStateOf(false) }
@@ -505,11 +507,11 @@ fun NativeGameView(
     OnChange(commandFailure) { old, new -> if (committedCardChoice != null && CardChoiceCommandFailure.isNewFailure(old, new)) cancelCommittedCardChoice() }
     OnChange(PortraitInteractionPolicy.detailChoiceKey(board)) { _, key ->
         isPromptDetailOpen = key != null
-        // A decision that needs you, not a routine priority pass.
-        if (key != null) GameAudio.play(GameSound.RESPONSE_ALERT)
+        // A decision that needs you, not a routine priority pass (the starting roll answers its own).
+        if (key != null && !startingRollVisible) GameAudio.play(GameSound.RESPONSE_ALERT)
     }
     OnChange(PortraitInteractionPolicy.cardChoiceKey(board)) { _, key ->
-        if (key != null && committedCardChoice == null) GameAudio.play(GameSound.RESPONSE_ALERT)
+        if (key != null && committedCardChoice == null && !startingRollVisible) GameAudio.play(GameSound.RESPONSE_ALERT)
         isCardChoiceOpen = key != null && committedCardChoice == null && !reviewCardChoiceAfterPending
         selection.inspectedCard = null; selection.selectedCard = null
         if (key != null) { isPromptDetailOpen = false; isStackSheetOpen = false }

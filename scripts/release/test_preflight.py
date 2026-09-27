@@ -48,6 +48,57 @@ class PreflightTests(unittest.TestCase):
             if command[0] == 'swift':
                 self.assertEqual(command[-2:], ['--jobs', '2'])
 
+    def test_profiles_include_policy_pin_and_native_fixture_scripts(self):
+        tooling = [name for name, _ in preflight.commands('tooling')]
+        fast = dict(preflight.commands('ios-fast'))
+        self.assertIn('policy-pin', tooling)
+        self.assertNotIn('native-close-fixtures', tooling)
+        self.assertEqual(fast['native-close-fixtures'][-1], 'packages/ondevice-engine/scripts/test_swift_close.sh')
+        self.assertEqual(fast['runtime-manager-fixtures'][-1], 'packages/ondevice-engine/scripts/test_runtime_manager.sh')
+
+    def pin_fixture(self, pin=None):
+        """Commit a policy, then a far-call workflow pinned to it; return the pin."""
+        (self.repo / '.github/workflows').mkdir(parents=True)
+        (self.repo / 'scripts/magicmobile-native-gate').mkdir(parents=True)
+        (self.repo / preflight.CHEAP_WORKFLOW).write_text('name: cheap\n')
+        (self.repo / preflight.NATIVE_GATE / 'approve_native.py').write_text('# gate\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'policy')
+        policy = subprocess.check_output(['git', '-C', str(self.repo), 'rev-parse', 'HEAD'], text=True).strip()
+        (self.repo / preflight.FAR_CALLS_WORKFLOW).write_text(
+            "jobs:\n  approve:\n    env:\n      # reviewed\n      TRUSTED_POLICY_SHA: '%s'\n" % (pin or policy))
+        self.git('add', '.')
+        self.git('commit', '-qm', 'pin')
+        return policy
+
+    def test_policy_pin_passes_until_the_cheap_workflow_or_gate_moves(self):
+        policy = self.pin_fixture()
+        self.assertEqual(preflight.policy_pin(self.repo)['trustedPolicySHA'], policy)
+        (self.repo / preflight.CHEAP_WORKFLOW).write_text('name: cheap\non: push\n')
+        with self.assertRaisesRegex(ValueError, 'working tree.*refuse every far-calls candidate'):
+            preflight.policy_pin(self.repo)
+        self.git('commit', '-qam', 'edit cheap workflow')
+        with self.assertRaisesRegex(ValueError, r'Policy pin drift: \S+magicmobile-issue4-nonsimulator.yml in HEAD'):
+            preflight.policy_pin(self.repo)
+        self.git('revert', '--no-edit', 'HEAD')
+        self.assertEqual(preflight.policy_pin(self.repo)['state'], 'pinned')
+        (self.repo / preflight.NATIVE_GATE / 'approve_native.py').write_text('# changed gate\n')
+        self.git('commit', '-qam', 'edit gate')
+        with self.assertRaisesRegex(ValueError, 'pinned native-gate scripts') as caught:
+            preflight.policy_pin(self.repo)
+        self.assertNotIn('refuse every', str(caught.exception))
+
+    def test_policy_pin_requires_one_known_pin(self):
+        self.pin_fixture(pin='c' * 40)
+        with self.assertRaisesRegex(ValueError, 'not in this clone'):
+            preflight.policy_pin(self.repo)
+        path = self.repo / preflight.FAR_CALLS_WORKFLOW
+        for text in ('env: {}\n', "TRUSTED_POLICY_SHA: '%s'\nTRUSTED_POLICY_SHA: '%s'\n" % ('a' * 40, 'b' * 40),
+                     "TRUSTED_POLICY_SHA: '${{ inputs.pin }}'\n"):
+            path.write_text(text)
+            with self.assertRaisesRegex(ValueError, 'Expected one literal'):
+                preflight.policy_pin(self.repo)
+
     def test_snapshot_covers_dirty_untracked_deleted_and_ignores_logs(self):
         before = preflight.source_snapshot(self.repo)
         (self.repo / 'untracked').write_text('new')

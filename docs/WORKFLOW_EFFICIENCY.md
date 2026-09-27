@@ -42,6 +42,32 @@ or deployment. Keep original release evidence and logs recoverable.
   Index creation and freshness maintenance should be evaluated separately rather
   than becoming an ordinary edit prerequisite.
 
+## Heavy-work lock
+
+The Mac has 8 GB. Run every heavy command through `scripts/dev/heavy.sh`, from any
+checkout or worktree: Gradle, `xcodebuild`, `swift build`/`swift test`,
+`scripts/test_real_engine.sh`, image batch conversions and simulator UI runs.
+
+```sh
+zsh scripts/dev/heavy.sh "ios-fast" -- python3 scripts/release/preflight.py run --profile ios-fast
+zsh scripts/dev/heavy.sh --stop-gradle "android-unit" -- apps/android/gradlew -p apps/android --offline test
+zsh scripts/dev/heavy.sh --status   # "free" or "held by: <label> (pid, since, directory)"
+```
+
+- One holder at a time machine-wide: the lock is `/tmp/magicmobile-heavy.lock`,
+  shared by every checkout. A waiter prints who holds it, then again every
+  2 minutes, and runs as soon as it is free. The command's exit status is returned.
+- It is a kernel file lock, so it is released when the holder exits or is
+  killed; there is no stale lock to delete. A command whose wrapper was killed
+  can keep running, so check `ps` before starting another heavy job.
+- `--stop-gradle` runs `gradlew --stop` after the command, still holding the lock,
+  so idle Gradle and Kotlin daemons do not sit on memory while Xcode builds next.
+- Simulator UI tests take the lock for the whole boot, test and shutdown.
+  Never run the Android emulator and an iOS simulator together.
+- It replaces the per-session scratchpad `heavy.sh`, which used a different lock
+  path. Until every running session has switched, the two locks do not see each
+  other.
+
 ## Entry points
 
 Run from the selected checkout. These examples do not prepare a new version,
@@ -53,11 +79,17 @@ python3 scripts/release/preflight.py plan --profile ios-fast
 python3 scripts/release/preflight.py run --profile ios-fast
 # Tooling-only changes do not need app compilation or simulator work.
 python3 scripts/release/preflight.py run --profile tooling
+# Before dispatching far-calls: is the cheap workflow still byte-equal to its pin?
+python3 scripts/release/preflight.py policy-pin
 
 # Offline tool safety tests (temporary fixture repositories only).
 python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
 python3 -m unittest discover -s scripts/release -p 'test_*.py' -v
 python3 -m unittest discover -s scripts/deck-studio -p 'test_ios_ui_tests.py' -v
+
+# Stage a successful far-calls engine build: download, verify, prepare --apply and
+# copy the provenance receipt. Needs gh auth; refuses an existing apps/ios/NativeEngine.
+python3 scripts/release/controller.py stage-native --engine-run-id FAR_CALLS_RUN_ID
 
 # Read-only release plan. Requires committed reviewed source and staged inputs.
 python3 scripts/release/controller.py plan --platform ios
@@ -114,10 +146,12 @@ not trusted CI receipts. The tooling workflow uses the same entry point and
 uploads its logs, reducing drift between local and CI checks. No signing,
 simulator boot, engine build, paid runner, dependency or Android work is introduced.
 
-The slow native compilation itself is unchanged: build 9's full ARM64 step took
-73 minutes 5 seconds. These improvements target unnecessary builds and late
-failures, not a promised reduction in genuine compiler time. Measure comparable
-future updates before claiming an end-to-end speedup.
+The slow native compilation itself is not sped up by this tooling: build 9's full
+ARM64 step took 73 minutes 5 seconds, and the build-20 engine's took 91.6 minutes
+(see [current native timings](#current-native-timings-2026-09-27)). These
+improvements target unnecessary builds and late failures, not a promised reduction
+in genuine compiler time. Measure comparable future updates before claiming an
+end-to-end speedup.
 
 Local follow-up verification (September 22, 2026 UTC): the integrated `ios-fast`
 preflight passed in 66.666 seconds on the existing checkout/caches. All 72 Python
@@ -191,6 +225,29 @@ and the remainder for artifact preservation. The compiler backport itself took
 30 seconds. Unsigned product compilation took about 7.5 minutes, local signing
 and upload about 6 minutes, and Apple processing/discovery about 7 minutes.
 These overlap in the full release; do not add waiting jobs as active build time.
+
+### Current native timings (2026-09-27)
+
+`magicmobile-far-calls.yml` on `macos-26-intel`, compiler-probe steps from GitHub's
+recorded timings:
+
+| Run (engine) | Wall clock | Pre-build steps | Real-JVM step | Native probes | Full ARM64 build |
+| --- | --- | --- | --- | --- | --- |
+| [36066265586](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/36066265586) (`fb0ea18`, builds 17–19) | 74 min | 8.8 min | 3.8 min | 3.7 min | 56.7 min |
+| [36311846082](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/36311846082) (`79de39c`, build 20) | 117 min | 11 min | 8.5 min | 4.7 min | 91.6 min |
+
+Pre-build steps are checkout through `build_jvm.sh` (about 7 minutes of it). The
+save/resume engine made both the real-JVM regressions and the native build
+longer, so plan on about two hours for an engine-changing far-calls run.
+
+From the CI and release tooling PR (September 27, 2026), far-calls no longer runs
+the real-JVM step: the approval job already requires the same-SHA Issue 4 run's
+`real-jvm` job to have passed `scripts/test_real_engine.sh`. That removes about
+4–9 minutes. The Maven `~/.m2` cache should shorten `build_jvm.sh`'s dependency
+download on a warm cache; that saving is not measured yet. The native build step is
+capped at 130 minutes and the job at 180, so a hung build fails about 50 minutes
+sooner than the old 180/210-minute limits. The Issue 4 gate itself is unchanged,
+because it is pinned by `TRUSTED_POLICY_SHA`.
 
 Build 7 needed changed bridge metadata, so skipping its native compilation would
 not have been safe. Exact reuse mainly helps future UI-only changes. Some reuse

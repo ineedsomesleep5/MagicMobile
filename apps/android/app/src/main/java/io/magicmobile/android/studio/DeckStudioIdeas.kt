@@ -12,6 +12,8 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -25,10 +27,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,9 +48,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import io.magicmobile.android.board.BoardSheet
@@ -127,61 +134,99 @@ class DeckStudioComboModel(private val scope: CoroutineScope, private val client
     }
 }
 
-/** DeckStudioComboPanel: documented interactions from Commander Spellbook, sent only after approval. */
+/** What the combo panel keeps while it is shown: the pending approval, the open combo, feedback and the other-possibilities disclosure. */
+class DeckStudioComboPanelState {
+    var approval by mutableStateOf<SpellbookDeck?>(null)
+    var selected by mutableStateOf<SpellbookVariant?>(null)
+    var feedback by mutableStateOf<String?>(null)
+    var showOthers by mutableStateOf(false)
+}
+
+/**
+ * DeckStudioComboPanel: documented interactions from Commander Spellbook, sent only after approval.
+ * Its rows are [deckStudioComboItems] in the workspace's list. The lookup and the dialogs stay here,
+ * outside that list, so scrolling a long result list never cancels a lookup or closes a dialog.
+ */
 @Composable
-fun DeckStudioComboPanel(model: DeckStudioComboModel, draft: NativeDeckDraft, metadata: NativeDeckMetadataCatalogue?, resolver: OnDeviceDeckResolver?,
-                         readOnly: Boolean, add: (String, String, SpellbookDeck) -> Boolean, inspect: (String) -> Unit) {
-    val context = LocalContext.current
-    val input = remember(draft, resolver) { DeckStudioSpellbookInput.make(draft, resolver) }
-    val snapshot = model.snapshot?.takeIf { it.deck == input }
-    var approval by remember { mutableStateOf<SpellbookDeck?>(null) }
-    var selected by remember { mutableStateOf<SpellbookVariant?>(null) }
-    var feedback by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(input) { feedback = null; model.setInput(input) }
+fun DeckStudioComboPanel(model: DeckStudioComboModel, panel: DeckStudioComboPanelState, input: SpellbookDeck?, resolver: OnDeviceDeckResolver?) {
+    LaunchedEffect(input) { panel.feedback = null; model.setInput(input) }
     DisposableEffect(Unit) { onDispose { model.cancel() } }
+    panel.approval?.let { deck ->
+        ConfirmationDialog("Send this deck to Commander Spellbook?", "This is an optional online lookup of the current main deck and commanders. It never changes your deck automatically.",
+            listOf(ConfirmationAction("Send deck and find combos") {
+                panel.approval = null
+                if (deck != input) panel.feedback = "The deck changed. Review it before a new lookup." else model.analyze(deck)
+            }), light = true) { panel.approval = null }
+    }
+    panel.selected?.let { variant ->
+        BoardSheet({ panel.selected = null }, background = DeckStudioPalette.background, skipPartiallyExpanded = true, sound = false) {
+            DeckStudioComboDetail(variant, { resolver?.canonicalCardName(it) ?: it }) { panel.selected = null }
+        }
+    }
+}
+
+/**
+ * The combo panel's rows, below [top] (the Ideas source picker). Each result is a lazy row (up to
+ * SpellbookAPI.maximumResults); before any results the panel fills at least [minHeight].
+ */
+fun LazyListScope.deckStudioComboItems(model: DeckStudioComboModel, panel: DeckStudioComboPanelState, input: SpellbookDeck?, draft: NativeDeckDraft,
+                                       metadata: NativeDeckMetadataCatalogue?, resolver: OnDeviceDeckResolver?, readOnly: Boolean,
+                                       add: (String, String, SpellbookDeck) -> Boolean, inspect: (String) -> Unit, minHeight: Dp, top: @Composable () -> Unit) {
+    val snapshot = model.snapshot?.takeIf { it.deck == input }
     fun addCard(name: String, section: String, current: SpellbookSnapshot) {
-        feedback = if (current.deck != input || !add(name, section, current.deck)) "The deck changed or the edit could not be saved. No automatic replacement was made."
+        panel.feedback = if (current.deck != input || !add(name, section, current.deck)) "The deck changed or the edit could not be saved. No automatic replacement was made."
         else "Added $name to ${if (section == "deck") "main deck" else "maybeboard"}. Undo is available in Cards."
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        StudioPanel {
-            Text("Find your combos", color = DeckStudioPalette.ink, style = StudioText.title2.weight(SfWeight.semibold))
-            Text("Documented interactions from Commander Spellbook.", color = DeckStudioPalette.secondaryInk, style = StudioText.subheadline)
-            Text("Lookup shares your main-deck and commander names, quantities, and IP address with Commander Spellbook.",
-                color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
-            StudioButton(if (snapshot == null) "Find combos" else "Refresh this deck’s combos", { approval = input },
-                Modifier.semantics { contentDescription = "deckStudio.combos.lookup" }, icon = "sparkles", enabled = input != null && !model.loading)
-            if (input == null) Text("Choose commander(s) and resolve main-deck card names before looking up combos. You can still edit and save your draft.",
-                color = DeckStudioPalette.warning, style = StudioText.caption)
-            StudioDisclosure("About these results", titleStyle = StudioText.caption) {
-                Text("Other sections, deck title and private notes stay on this device. These are documented combos, not EDHREC recommendations or proof they will execute in your game.",
-                    color = DeckStudioPalette.ink, style = StudioText.caption)
-                StudioPlainButton("Commander Spellbook", { openExternal(context, "https://commanderspellbook.com/about/") }, style = StudioText.caption)
-            }
-        }
-        if (model.loading) Row(verticalAlignment = Alignment.CenterVertically) {
-            StudioProgress("Looking up combos…", Modifier.weight(1f)); StudioPlainButton("Cancel", { model.cancel() })
-        }
-        model.error?.let { DeckStudioNotice("Lookup unavailable", it, "wifi.exclamationmark") }
-        feedback?.let { Text(it, color = DeckStudioPalette.ink, style = StudioText.caption) }
-        if (snapshot != null) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("${snapshot.loadedCount} results loaded", color = DeckStudioPalette.ink, style = StudioText.headline)
-                Text("Commander Spellbook · ${formatDateTime(snapshot.fetchedAt)}", color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
-                model.cacheNote?.let { Text(it, color = DeckStudioPalette.secondaryInk, style = StudioText.caption2) }
-                if (snapshot.nextOffset != null) Text("More results exist. Counts below cover only the pages you have loaded.", color = DeckStudioPalette.ink, style = StudioText.caption)
-            }
-            ComboGroup(SpellbookGroup.INCLUDED, snapshot, draft, metadata, resolver, readOnly, inspect, { selected = it }) { name, section -> addCard(name, section, snapshot) }
-            ComboGroup(SpellbookGroup.ALMOST_INCLUDED, snapshot, draft, metadata, resolver, readOnly, inspect, { selected = it }) { name, section -> addCard(name, section, snapshot) }
-            if (SpellbookGroup.entries.filter { it.isOther }.any { snapshot.groups[it]?.isNotEmpty() == true }) {
-                StudioDisclosure("Other possibilities — require deck changes") {
-                    Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        for (group in SpellbookGroup.entries.filter { it.isOther }) {
-                            ComboGroup(group, snapshot, draft, metadata, resolver, readOnly, inspect, { selected = it }) { name, section -> addCard(name, section, snapshot) }
-                        }
+    item(key = "combos") {
+        val context = LocalContext.current
+        Column(Modifier.fillMaxWidth().heightIn(min = if (snapshot == null) minHeight else 0.dp)) {
+            top()
+            Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                StudioPanel {
+                    Text("Find your combos", color = DeckStudioPalette.ink, style = StudioText.title2.weight(SfWeight.semibold))
+                    Text("Documented interactions from Commander Spellbook.", color = DeckStudioPalette.secondaryInk, style = StudioText.subheadline)
+                    Text("Lookup shares your main-deck and commander names, quantities, and IP address with Commander Spellbook.",
+                        color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+                    StudioButton(if (snapshot == null) "Find combos" else "Refresh this deck’s combos", { panel.approval = input },
+                        Modifier.semantics { contentDescription = "deckStudio.combos.lookup" }, icon = "sparkles", enabled = input != null && !model.loading)
+                    if (input == null) Text("Choose commander(s) and resolve main-deck card names before looking up combos. You can still edit and save your draft.",
+                        color = DeckStudioPalette.warning, style = StudioText.caption)
+                    StudioDisclosure("About these results", titleStyle = StudioText.caption) {
+                        Text("Other sections, deck title and private notes stay on this device. These are documented combos, not EDHREC recommendations or proof they will execute in your game.",
+                            color = DeckStudioPalette.ink, style = StudioText.caption)
+                        StudioPlainButton("Commander Spellbook", { openExternal(context, "https://commanderspellbook.com/about/") }, style = StudioText.caption)
                     }
                 }
+                if (model.loading) Row(verticalAlignment = Alignment.CenterVertically) {
+                    StudioProgress("Looking up combos…", Modifier.weight(1f)); StudioPlainButton("Cancel", { model.cancel() })
+                }
+                model.error?.let { DeckStudioNotice("Lookup unavailable", it, "wifi.exclamationmark") }
+                panel.feedback?.let { Text(it, color = DeckStudioPalette.ink, style = StudioText.caption) }
+                if (snapshot != null) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("${snapshot.loadedCount} results loaded", color = DeckStudioPalette.ink, style = StudioText.headline)
+                    Text("Commander Spellbook · ${formatDateTime(snapshot.fetchedAt)}", color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+                    model.cacheNote?.let { Text(it, color = DeckStudioPalette.secondaryInk, style = StudioText.caption2) }
+                    if (snapshot.nextOffset != null) Text("More results exist. Counts below cover only the pages you have loaded.", color = DeckStudioPalette.ink, style = StudioText.caption)
+                }
             }
+        }
+    }
+    if (snapshot == null) return
+    val details: (SpellbookVariant) -> Unit = { panel.selected = it }
+    val addTo: (String, String) -> Unit = { name, section -> addCard(name, section, snapshot) }
+    comboGroup(SpellbookGroup.INCLUDED, snapshot, draft, metadata, resolver, readOnly, inspect, details, addTo)
+    comboGroup(SpellbookGroup.ALMOST_INCLUDED, snapshot, draft, metadata, resolver, readOnly, inspect, details, addTo)
+    val others = SpellbookGroup.entries.filter { it.isOther }
+    if (others.any { snapshot.groups[it]?.isNotEmpty() == true }) {
+        item(key = "combos/others") {
+            ComboDisclosureRow("Other possibilities — require deck changes", panel.showOthers, Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp)) {
+                panel.showOthers = !panel.showOthers
+            }
+        }
+        if (panel.showOthers) for (group in others) comboGroup(group, snapshot, draft, metadata, resolver, readOnly, inspect, details, addTo, spacing = 12.dp)
+    }
+    item(key = "combos/end") {
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (snapshot.loadedCount == 0) DeckStudioNotice("No documented matches returned",
                 "This does not prove the deck has no combos. New or undocumented interactions may not be in this database.")
             if (snapshot.nextOffset != null && snapshot.loadedCount < SpellbookAPI.maximumResults) {
@@ -192,61 +237,70 @@ fun DeckStudioComboPanel(model: DeckStudioComboModel, draft: NativeDeckDraft, me
                 color = DeckStudioPalette.secondaryInk, style = StudioText.caption2)
         }
     }
-    approval?.let { deck ->
-        ConfirmationDialog("Send this deck to Commander Spellbook?", "This is an optional online lookup of the current main deck and commanders. It never changes your deck automatically.",
-            listOf(ConfirmationAction("Send deck and find combos") {
-                approval = null
-                if (deck != input) feedback = "The deck changed. Review it before a new lookup." else model.analyze(deck)
-            }), light = true) { approval = null }
+}
+
+/** StudioDisclosure's row, with the state kept by the panel so the rows it reveals can be lazy. */
+@Composable
+private fun ComboDisclosureRow(title: String, expanded: Boolean, modifier: Modifier, toggle: () -> Unit) {
+    val rotation by animateFloatAsState(if (expanded) 90f else 0f, tween(180), label = "disclosure")
+    Row(modifier.fillMaxWidth().defaultMinSize(minHeight = 32.dp).clickable(role = Role.Button, onClick = toggle)
+        .semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" },
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, Modifier.weight(1f), color = DeckStudioPalette.ink, style = StudioText.body)
+        SfImage("chevron.right", DeckStudioPalette.ink, 14.dp, Modifier.rotate(rotation))
     }
-    selected?.let { variant ->
-        BoardSheet({ selected = null }, background = DeckStudioPalette.background, skipPartiallyExpanded = true, sound = false) {
-            DeckStudioComboDetail(variant, { resolver?.canonicalCardName(it) ?: it }) { selected = null }
-        }
+}
+
+private fun LazyListScope.comboGroup(group: SpellbookGroup, snapshot: SpellbookSnapshot, draft: NativeDeckDraft, metadata: NativeDeckMetadataCatalogue?,
+                                     resolver: OnDeviceDeckResolver?, readOnly: Boolean, inspect: (String) -> Unit, details: (SpellbookVariant) -> Unit,
+                                     addCard: (String, String) -> Unit, spacing: Dp = 16.dp) {
+    val variants = snapshot.groups[group] ?: emptyList()
+    if (variants.isEmpty()) return
+    val row = Modifier.padding(start = 20.dp, end = 20.dp, top = spacing)
+    item(key = "combos/${group.name}") { Text("${group.title} · ${variants.size}", row, color = DeckStudioPalette.ink, style = StudioText.headline) }
+    // A snapshot's variant ids are unique (SpellbookSnapshot.validate).
+    items(variants, key = { "combo/${it.id}" }) { variant ->
+        ComboVariant(variant, group, snapshot, draft, metadata, resolver, readOnly, inspect, details, addCard, row)
     }
 }
 
 @Composable
-private fun ComboGroup(group: SpellbookGroup, snapshot: SpellbookSnapshot, draft: NativeDeckDraft, metadata: NativeDeckMetadataCatalogue?, resolver: OnDeviceDeckResolver?,
-                       readOnly: Boolean, inspect: (String) -> Unit, details: (SpellbookVariant) -> Unit, addCard: (String, String) -> Unit) {
-    val variants = snapshot.groups[group] ?: emptyList()
-    if (variants.isEmpty()) return
-    Text("${group.title} · ${variants.size}", color = DeckStudioPalette.ink, style = StudioText.headline)
-    for (variant in variants) {
-        val assessment = SpellbookAssessment.make(variant, group, snapshot.deck, DeckStudioDraftPresentation.colors(draft, metadata)) { resolver?.canonicalCardName(it) }
-        StudioPanel {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                for (ingredient in variant.uses) {
-                    val canonical = resolver?.canonicalCardName(ingredient.cardName) ?: ingredient.cardName
-                    Column(Modifier.width(100.dp).clickable { inspect(canonical) }, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Box(Modifier.size(100.dp, 140.dp).clip(RoundedCornerShape(5.dp))) { DeckStudioArtwork(canonical, Modifier.fillMaxSize()) }
-                        Text(ingredient.cardName, color = DeckStudioPalette.ink, style = StudioText.caption)
-                        Text("×${ingredient.quantity}", color = DeckStudioPalette.ink, style = StudioText.caption)
-                    }
+private fun ComboVariant(variant: SpellbookVariant, group: SpellbookGroup, snapshot: SpellbookSnapshot, draft: NativeDeckDraft, metadata: NativeDeckMetadataCatalogue?,
+                         resolver: OnDeviceDeckResolver?, readOnly: Boolean, inspect: (String) -> Unit, details: (SpellbookVariant) -> Unit,
+                         addCard: (String, String) -> Unit, modifier: Modifier) {
+    val assessment = SpellbookAssessment.make(variant, group, snapshot.deck, DeckStudioDraftPresentation.colors(draft, metadata)) { resolver?.canonicalCardName(it) }
+    StudioPanel(modifier) {
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            for (ingredient in variant.uses) {
+                val canonical = resolver?.canonicalCardName(ingredient.cardName) ?: ingredient.cardName
+                Column(Modifier.width(100.dp).clickable { inspect(canonical) }, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(Modifier.size(100.dp, 140.dp).clip(RoundedCornerShape(5.dp))) { DeckStudioArtwork(canonical, Modifier.fillMaxSize()) }
+                    Text(ingredient.cardName, color = DeckStudioPalette.ink, style = StudioText.caption)
+                    Text("×${ingredient.quantity}", color = DeckStudioPalette.ink, style = StudioText.caption)
                 }
             }
-            for (effect in variant.produces) GameRulesText(effect.featureName, style = StudioText.subheadline.weight(SfWeight.semibold), color = DeckStudioPalette.ink)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                val (icon, title) = when (assessment.readiness) {
-                    SpellbookAssessment.Readiness.NamedPiecesPresent -> "checkmark.circle" to "Named pieces present"
-                    is SpellbookAssessment.Readiness.OneCardAway -> "plus.circle" to "One named card away"
-                    SpellbookAssessment.Readiness.ReviewRequirements -> "info.circle" to "Requirements need review"
-                }
-                SfImage(icon, DeckStudioPalette.ink, 13.dp)
-                Text(title, color = DeckStudioPalette.ink, style = StudioText.caption.weight(SfWeight.semibold))
+        }
+        for (effect in variant.produces) GameRulesText(effect.featureName, style = StudioText.subheadline.weight(SfWeight.semibold), color = DeckStudioPalette.ink)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            val (icon, title) = when (assessment.readiness) {
+                SpellbookAssessment.Readiness.NamedPiecesPresent -> "checkmark.circle" to "Named pieces present"
+                is SpellbookAssessment.Readiness.OneCardAway -> "plus.circle" to "One named card away"
+                SpellbookAssessment.Readiness.ReviewRequirements -> "info.circle" to "Requirements need review"
             }
-            StudioDisclosure("Deck requirements", titleStyle = StudioText.caption) {
-                Text(assessment.explanation, color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
-            }
-            StudioPlainButton("Prerequisites and steps", { details(variant) }, icon = "list.bullet.rectangle")
-            val readiness = assessment.readiness
-            if (readiness is SpellbookAssessment.Readiness.OneCardAway && !readOnly) {
-                StudioMenu({ listOf(MenuEntry.Item("Add to main deck") { addCard(readiness.name, "deck") }, MenuEntry.Item("Save to maybeboard") { addCard(readiness.name, "maybeboard") }) }) {
-                    Row(Modifier.defaultMinSize(minHeight = 44.dp).semantics { contentDescription = "deckStudio.combos.addMissing" },
-                        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        SfImage("plus.circle", DeckStudioPalette.ink, 18.dp)
-                        Text("Add ${readiness.name}", color = DeckStudioPalette.ink, style = StudioText.body)
-                    }
+            SfImage(icon, DeckStudioPalette.ink, 13.dp)
+            Text(title, color = DeckStudioPalette.ink, style = StudioText.caption.weight(SfWeight.semibold))
+        }
+        StudioDisclosure("Deck requirements", titleStyle = StudioText.caption) {
+            Text(assessment.explanation, color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+        }
+        StudioPlainButton("Prerequisites and steps", { details(variant) }, icon = "list.bullet.rectangle")
+        val readiness = assessment.readiness
+        if (readiness is SpellbookAssessment.Readiness.OneCardAway && !readOnly) {
+            StudioMenu({ listOf(MenuEntry.Item("Add to main deck") { addCard(readiness.name, "deck") }, MenuEntry.Item("Save to maybeboard") { addCard(readiness.name, "maybeboard") }) }) {
+                Row(Modifier.defaultMinSize(minHeight = 44.dp).semantics { contentDescription = "deckStudio.combos.addMissing" },
+                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SfImage("plus.circle", DeckStudioPalette.ink, 18.dp)
+                    Text("Add ${readiness.name}", color = DeckStudioPalette.ink, style = StudioText.body)
                 }
             }
         }
@@ -402,14 +456,15 @@ class DeckStudioEDHRECModel(private val scope: CoroutineScope) {
     }
 }
 
+/** DeckStudioEDHRECPanel: a row of the workspace's list, with no scroll of its own; the page scrolls itself within [webHeight]. */
 @Composable
-fun DeckStudioEDHRECPanel(model: DeckStudioEDHRECModel, commanders: List<String>) {
+fun DeckStudioEDHRECPanel(model: DeckStudioEDHRECModel, commanders: List<String>, webHeight: Dp) {
     val context = LocalContext.current
     var copied by remember { mutableStateOf(false) }
     val names = commanders.toSortedSet().toList()
     LaunchedEffect(commanders) { copied = false; model.pause() }
     DisposableEffect(Unit) { model.resume(); onDispose { model.pause() } }
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("EDHREC — web", Modifier.weight(1f), color = DeckStudioPalette.ink, style = StudioText.subheadline.weight(SfWeight.semibold))
             StudioMenu({ names.map { name -> MenuEntry.Item(name) { model.openCommander(context, name) } } +
@@ -432,9 +487,9 @@ fun DeckStudioEDHRECPanel(model: DeckStudioEDHRECModel, commanders: List<String>
                 StudioPlainButton("Browser", { openExternal(context, model.currentURL ?: DeckStudioEDHRECPolicy.browseURL) }, icon = "arrow.up.right.square")
             }
             if (model.loading) StudioProgress("Loading EDHREC…")
-            AndroidView({ view.also { (it.parent as? android.view.ViewGroup)?.removeView(it) } }, Modifier.fillMaxWidth().weight(1f))
+            AndroidView({ view.also { (it.parent as? android.view.ViewGroup)?.removeView(it) } }, Modifier.fillMaxWidth().height(webHeight))
         } else {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text("Explore another perspective.", color = DeckStudioPalette.ink, style = StudioText.title2.weight(SfWeight.semibold))
                 Text("Browse the actual EDHREC website, then return to Cards without losing your draft. MagicMobile does not read recommendations, fill forms, or submit your deck.",
                     color = DeckStudioPalette.ink, style = StudioText.body)

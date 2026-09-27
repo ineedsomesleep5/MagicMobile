@@ -8,6 +8,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const infoPlist = resolve(repoRoot, "apps/ios/MagicMobile/Info.plist");
 const ledgerPath = resolve(repoRoot, "release/testflight/build-ledger.json");
 const projectPath = resolve(repoRoot, "apps/ios/project.yml");
+const pbxprojPath = resolve(repoRoot, "apps/ios/MagicMobileiOS.xcodeproj/project.pbxproj");
 const plistBuddy = "/usr/libexec/PlistBuddy";
 
 function usage() {
@@ -47,6 +48,22 @@ function projectVersions() {
   }
   if (!/^\d+$/.test(values.CURRENT_PROJECT_VERSION)) throw new Error("Invalid CURRENT_PROJECT_VERSION");
   return { text, ...values };
+}
+
+// The committed Xcode project repeats the build number per configuration. Rewrite
+// only literal values that already match a known current/next build; anything else
+// means the project is stale or hand-edited, so stop before any write.
+function pbxprojWithBuild(knownBuilds, nextBuild) {
+  if (!existsSync(pbxprojPath)) return null;
+  const text = readFileSync(pbxprojPath, "utf8");
+  const setting = /^([\t ]*CURRENT_PROJECT_VERSION = )("?)([^";\n]*)\2;[\t ]*$/gm;
+  const values = [...text.matchAll(setting)].map((match) => match[3]);
+  if (!values.length) throw new Error("No CURRENT_PROJECT_VERSION in project.pbxproj");
+  const unknown = values.filter((value) => !knownBuilds.includes(value));
+  if (unknown.length) {
+    throw new Error(`project.pbxproj CURRENT_PROJECT_VERSION ${unknown[0]} differs from project.yml; regenerate the Xcode project first`);
+  }
+  return text.replace(setting, (_, prefix, quote) => `${prefix}${quote}${nextBuild}${quote};`);
 }
 
 function versions(project) {
@@ -195,11 +212,13 @@ function prepare() {
   const nextBuild = startAt !== undefined || ledger.versionSequential
     ? versionBuildNumber(ledger, marketingVersion, currentBuild, startAt)
     : nextBuildNumber(ledger, currentBuild, datePrefix);
+  const pbxproj = pbxprojWithBuild([project.CURRENT_PROJECT_VERSION, currentBuild, nextBuild], nextBuild);
 
   execFileSync(plistBuddy, ["-c", `Set :CFBundleVersion ${nextBuild}`, infoPlist], { stdio: "inherit" });
   writeFileSync(projectPath, project.text.replace(
     /^(    CURRENT_PROJECT_VERSION: *)(["']?)[0-9]+\2( *(?:#.*)?\r?)$/m,
     (_, prefix, quote, suffix) => `${prefix}${quote}${nextBuild}${quote}${suffix}`));
+  if (pbxproj !== null) writeFileSync(pbxprojPath, pbxproj);
   ledger.bundleId = "com.calebfeliciano.magicmobile";
   ledger.marketingVersion = marketingVersion;
   ledger.lastPreparedBuild = nextBuild;

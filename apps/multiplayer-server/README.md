@@ -18,9 +18,9 @@ The database must provide `matchmaking_leave_match(p_match_id uuid)`, checking t
 
 Deployment is not complete until real engine two-player and four-player tests, cross-platform device play, hidden-information isolation, reconnect, and public TLS checks pass. Free VM capacity/availability is not guaranteed.
 
-## Manual GitHub runtime package
+## Manual GitHub runtime package (retired)
 
-After the pinned engine and matching app catalogue are reviewed and committed, choose **Actions → Package verified multiplayer runtime (manual) → Run workflow** on that exact ref. The public-repository standard `macos-26-intel` job builds fresh, exports all five precons through the Swift resolver, checks bridge regressions, and runs real two-/four-seat opening HTTP checks on the exact portable payload with a 256 MB heap. Download its candidate archive, checksum, provenance, and logs from Actions artifacts; publication and updating the self-host launcher's pinned URL/checksum remain separate reviewed steps. It never deploys or accesses Supabase. A passing macOS probe does not establish Windows/Linux execution, sustained games, mobile parity, or fit within a 512 MB host. Java 17 and matching committed catalogue are hard gates; an upstream change requiring a different toolchain must be reviewed rather than bypassed. Local receipt helper: `node apps/multiplayer-server/resolved-deck-proof.mjs /path/to/fresh-swift-export`.
+The manual `magicmobile-multiplayer-package.yml` workflow ("Package verified multiplayer runtime") was retired on 2026-09-27 with the hosted server; its last run was 2026-09-21. To package a runtime again, build it locally with `package-runtime.mjs` (below), or restore that workflow from Git history and review it before dispatching. Local receipt helper: `node apps/multiplayer-server/resolved-deck-proof.mjs /path/to/fresh-swift-export`.
 
 ## Portable Render trial
 

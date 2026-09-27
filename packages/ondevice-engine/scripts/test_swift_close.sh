@@ -9,10 +9,11 @@ mkdir -p "$OUT" "$ROOT/evidence"
 clang -std=c11 -Wall -Wextra -Werror -pthread \
   -I"$ROOT/swift/Sources/CMagicEngine/include" \
   -c "$ROOT/swift/Sources/CMagicEngine/mm_runtime.c" -o "$OUT/runtime_swift_close.o"
+# Every package source, so a new file in MagicMobileOnDevice cannot silently fall out of this build.
+SOURCES=("$ROOT"/swift/Sources/MagicMobileOnDevice/*.swift)
+[[ -f "${SOURCES[0]}" ]] || { echo "No Swift sources in swift/Sources/MagicMobileOnDevice" >&2; exit 1; }
 swiftc -swift-version 6 -parse-as-library -I"$ROOT/native/tests" \
-  "$ROOT/swift/Sources/MagicMobileOnDevice/JSONValue.swift" \
-  "$ROOT/swift/Sources/MagicMobileOnDevice/EngineClient.swift" \
-  "$ROOT/swift/Sources/MagicMobileOnDevice/SaveResume.swift" \
+  "${SOURCES[@]}" \
   "$ROOT/native/tests/NativeCloseTests.swift" "$OUT/runtime_swift_close.o" \
   -o "$OUT/swift_close_tests"
 "$OUT/swift_close_tests" | tee "$ROOT/evidence/swift-close-tests.txt"

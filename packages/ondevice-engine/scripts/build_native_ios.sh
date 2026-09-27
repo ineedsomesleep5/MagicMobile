@@ -135,6 +135,10 @@ cp "$NATIVE_BUILD/checkpoint-accessor/jdk/internal/reflect/MobileCheckpointConst
   "$NATIVE_BUILD/native-java/io/magicmobile/nativebridge/checkpoint-constructor-accessor.bin"
 python3 "$ROOT/scripts/prepare_native_color.py" --graalvm-home "$JAVA_HOME" \
   --output "$NATIVE_BUILD/color-patch"
+# Refuse, before the long native build, a resource configuration that would embed .class files
+# (or leave out a resource the engine reads). The report lists every embedded resource.
+python3 "$ROOT/scripts/check_native_resources.py" --classpath "$NATIVE_BUILD/native-java:$NATIVE_CP" \
+  --config "$ROOT/native/resource-config.json" --report "$NATIVE_BUILD/native-resources.json"
 
 # Keep Maven dependencies and Gluon downloads within the authorized build tree.
 export MAVEN_OPTS="-Xmx512m -Duser.home=$ROOT/build/ios-native-home"

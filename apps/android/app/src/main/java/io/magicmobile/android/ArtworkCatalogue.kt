@@ -9,8 +9,41 @@ import java.util.Locale
 /** A printing is never selected from a generic token name alone. */
 data class ArtworkTokenIdentity(val name: String, val typeLine: String, val oracleText: String,
     val power: String?, val toughness: String?, val colors: Set<String>) {
-    internal fun normalized() = copy(name=normalize(name).removeSuffix(" token"), typeLine=normalize(typeLine).replace("token ", "").replace("—", "-"), oracleText=normalize(oracleText))
-    companion object { private fun normalize(value:String)=Decisions.plain(value).lowercase(Locale.ROOT).trim().split(Regex("\\s+")).joinToString(" ") }
+    /**
+     * NativeAssetStore's token normalization: engine and Oracle self-references ("Sacrifice this
+     * artifact", "this token", "Sacrifice Food Token:") read alike. A non-creature's P/T of "0"
+     * or "" is no P/T: the engine reports 0/0 for a Food that Scryfall prints without one.
+     */
+    internal fun normalized():ArtworkTokenIdentity {
+        val type=normalizedType(typeLine)
+        val creature="creature" in type.split(" - ").first().split(" ")
+        fun stat(value:String?)=value?.takeIf{it.isNotEmpty()&&(creature||it!="0")}
+        return copy(name=normalize(tokenArtworkName(name)),typeLine=type,oracleText=normalizedRules(oracleText,type,name),power=stat(power),toughness=stat(toughness))
+    }
+    companion object {
+        private fun normalize(value:String)=Decisions.plain(value).lowercase(Locale.ROOT).trim().split(Regex("\\s+")).joinToString(" ")
+        /** "Food Token" and "Food" are one name; a token called just "Token" keeps it. */
+        internal fun tokenArtworkName(name:String):String {
+            val trimmed=name.trim()
+            return if(trimmed.length>6&&trimmed.lowercase(Locale.ROOT).endsWith(" token"))trimmed.dropLast(6).trim() else trimmed
+        }
+        /** Case- and spacing-insensitive token name, without a trailing " Token". */
+        internal fun tokenNameKey(name:String)=normalize(tokenArtworkName(name))
+        private fun normalizedType(value:String):String {
+            val line=normalize(value).replace("—","-")
+            return if(line.startsWith("token "))line.drop(6) else line
+        }
+        private fun normalizedRules(value:String,type:String,name:String):String {
+            var rules=normalize(value).replace("this token","this permanent")
+            // XMage and current Oracle word self-references differently. Abilities, reminder
+            // text and unrelated token variants stay distinct.
+            val kinds=type.split(" - ").first().split(" ")
+            for(kind in listOf("artifact","creature","enchantment","land"))if(kind in kinds)rules=rules.replace("this $kind","this permanent")
+            // Only a self-named sacrifice cost ("Sacrifice Food Token:", older "Sacrifice Food:").
+            val self=normalize(tokenArtworkName(name))
+            return Regex("(?<![a-z0-9])sacrifice ${Regex.escape(self)}(?: token)?(?=\\s*:)").replace(rules,"sacrifice this permanent")
+        }
+    }
 }
 internal data class ArtworkRecord(val id:String, val name:String, val images:Map<String,String>,
     val faces:List<ArtworkRecord> = emptyList(), val related:List<String> = emptyList(), val token:ArtworkTokenIdentity? = null) {

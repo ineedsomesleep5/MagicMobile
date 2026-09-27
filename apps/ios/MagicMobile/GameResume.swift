@@ -2,12 +2,14 @@ import Foundation
 import Combine
 import MagicMobileOnDevice
 
-/// Resume a solo game against the AI after the app closes. The engine writes the whole match
-/// to `game.checkpoint`; this app keeps `resume.json` beside it and owns both files. A saved
-/// game can be resumed for 10 minutes after the player left the app (or after the last
-/// checkpoint, if the app died in the foreground). Game Center and online tables never
-/// checkpoint; for those, and for engines without `saveResume`, a small marker lets the next
-/// launch say that the game ended instead of silently showing the menu.
+/// Resume a solo game against the AI after the app closes. When the player leaves the app, the
+/// engine writes the whole match to `game.checkpoint` (engines with `checkpointOnDemand` save
+/// only when asked; older `saveResume` engines save at every decision); this app keeps
+/// `resume.json` beside it and owns both files. A game saved when the player left can be resumed
+/// for 10 minutes after they left. Coming back consumes that save, so a game that was open when
+/// the app died is reported as ended, never resumed from an older save. Game Center and online
+/// tables never checkpoint; for those, and for engines without `saveResume`, a small marker lets
+/// the next launch say that the game ended instead of silently showing the menu.
 /// The same strings and rules apply on Android (parity/resume-cases.json).
 enum GameResumeText {
     static let promptTitle = "Resume your game?"
@@ -145,7 +147,8 @@ enum GameResumeLaunchDecision: Equatable {
     case nothing
     /// A checkpoint without its sidecar: the app already abandoned that game. Delete quietly.
     case orphanCheckpoint
-    /// The game died before its first checkpoint, or the sidecar is unreadable.
+    /// The game was not saved when the player left: it was still open when the app died, it
+    /// could not be saved in time, or the sidecar is unreadable.
     case endedOnClose
     case updated
     case expired
@@ -153,13 +156,15 @@ enum GameResumeLaunchDecision: Equatable {
 
     static let window: Int64 = 600_000
 
-    /// Expiry comes first: a game older than the window has expired whatever the build. Only a
-    /// fresh game saved by another app build, engine or sidecar format is "updated".
+    /// Only a game saved when the player left the app (`leftAt`) is resumable; one that was open
+    /// when the app died has ended, even with a checkpoint. Expiry comes next: a game left longer
+    /// ago than the window has expired whatever the build. Only a fresh game saved by another app
+    /// build, engine or sidecar format is "updated".
     static func decide(record: GameResumeRecord?, sidecarExists: Bool, checkpointExists: Bool,
                        nowMillis: Int64, appBuild: String, engineIdentity: String) -> Self {
         guard sidecarExists else { return checkpointExists ? .orphanCheckpoint : .nothing }
-        guard let record, checkpointExists else { return .endedOnClose }
-        guard nowMillis - (record.leftAt ?? record.lastCheckpointAt) <= window else { return .expired }
+        guard let record, checkpointExists, let leftAt = record.leftAt else { return .endedOnClose }
+        guard nowMillis - leftAt <= window else { return .expired }
         guard record.format == GameResumeRecord.currentFormat, record.appBuild == appBuild,
               record.engineIdentity == engineIdentity else { return .updated }
         return .resumable(record)
@@ -178,6 +183,9 @@ final class GameResumeStore {
     var markerURL: URL { directory.appendingPathComponent("game-in-progress.json") }
     /// The engine writes `path.tmp`, fsyncs and renames it over the checkpoint.
     var checkpointTemporaryURL: URL { URL(fileURLWithPath: checkpointURL.path + ".tmp") }
+    /// The save made when the player last left, set aside when they came back. Never offered;
+    /// the next launch deletes it.
+    var consumedCheckpointURL: URL { directory.appendingPathComponent("game.checkpoint.consumed") }
 
     init(directory: URL, protectsFiles: Bool) {
         self.directory = directory
@@ -205,7 +213,7 @@ final class GameResumeStore {
 
     var sidecarExists: Bool { fileManager.fileExists(atPath: sidecarURL.path) }
     var checkpointExists: Bool { fileManager.fileExists(atPath: checkpointURL.path) }
-    var checkpointWriteInProgress: Bool { fileManager.fileExists(atPath: checkpointTemporaryURL.path) }
+    var consumedCheckpointExists: Bool { fileManager.fileExists(atPath: consumedCheckpointURL.path) }
     var hasMarker: Bool { fileManager.fileExists(atPath: markerURL.path) }
 
     func readRecord() -> GameResumeRecord? {
@@ -223,11 +231,28 @@ final class GameResumeStore {
         try writeAtomically(Data("{\"format\":1,\"startedAt\":\(startedAt)}".utf8), to: markerURL)
     }
 
-    /// Both game files, and any interrupted temporary writes.
+    /// Both game files, a consumed save, and any interrupted temporary writes.
     func deleteGame() {
-        for url in [sidecarURL, checkpointURL, URL(fileURLWithPath: sidecarURL.path + ".tmp"), checkpointTemporaryURL] {
+        for url in [sidecarURL, checkpointURL, URL(fileURLWithPath: sidecarURL.path + ".tmp"), checkpointTemporaryURL,
+                    consumedCheckpointURL] {
             try? fileManager.removeItem(at: url)
         }
+    }
+
+    func deleteConsumedCheckpoint() { try? fileManager.removeItem(at: consumedCheckpointURL) }
+
+    /// The player came back: the save made when they left is used up. From now on the game has
+    /// no checkpoint, so a crash ends it. The file is set aside rather than deleted, because an
+    /// engine asked to save again at the same decision reports that save instead of rewriting it.
+    func consumeCheckpoint() {
+        guard checkpointExists else { return }
+        if rename(checkpointURL.path, consumedCheckpointURL.path) != 0 { try? fileManager.removeItem(at: checkpointURL) }
+    }
+
+    /// The engine reported a save. If it wrote nothing since the player came back, that save is
+    /// the consumed one: put it back. Otherwise the consumed one is older and goes.
+    func restoreConsumedCheckpointIfLatest() {
+        if checkpointExists || rename(consumedCheckpointURL.path, checkpointURL.path) != 0 { deleteConsumedCheckpoint() }
     }
 
     func deleteMarker() {
@@ -273,28 +298,48 @@ struct GameResumeOffer: Equatable {
 final class GameResumeCoordinator: ObservableObject {
     /// Starts platform background time, runs `body`, then ends it.
     typealias BackgroundTaskRunner = @MainActor (_ name: String, _ body: @escaping @MainActor () async -> Void) -> Task<Void, Never>
+    /// Asks the live game's engine to save now, waiting up to `waitMillis` (0...1000).
+    typealias SaveRequest = @MainActor (_ waitMillis: Int) async throws -> EngineCheckpointResult
+    /// Clears the engine's armed save request.
+    typealias SaveCancel = @MainActor () async throws -> Void
+
+    /// The background save stops after this long, or earlier if iOS allows less time.
+    static let backgroundSaveLimit: TimeInterval = 15
+    /// Background time left unused after the save, so iOS never has to end the app for it.
+    static let backgroundTimeReserve: TimeInterval = 3
 
     @Published private(set) var offer: GameResumeOffer?
     @Published var notice: String?
 
     let store: GameResumeStore
     private let now: () -> Date
+    private let uptime: () -> TimeInterval
     /// Called on every move to the background: drop in-memory image caches, audio buffers.
     var backgroundPurges: [@MainActor () -> Void] = []
     var runBackgroundTask: BackgroundTaskRunner = { _, body in Task { @MainActor in await body() } }
-    /// How long the background task waits for an in-flight engine checkpoint write.
-    var checkpointWriteGrace: TimeInterval = 4
+    /// Background time iOS still allows, read inside the background task.
+    var backgroundTimeRemaining: @MainActor () -> TimeInterval = { .infinity }
+    /// The live solo game's engine, supplied by the setup model (engines with `checkpointOnDemand`).
+    var requestSave: SaveRequest?
+    var cancelSave: SaveCancel?
 
     private(set) var appBuild: String?
     private(set) var engineIdentity: String?
     /// The checkpointing game this process is playing, if any.
     private(set) var active: GameResumeRecord?
+    /// The live game's engine saves only when asked. Older engines save at every decision.
+    private(set) var savesOnDemand = false
     private var lastSequence: Int64 = -1
     private var launchEvaluated = false
+    private var backgroundSave: Task<Void, Never>?
+    /// The last cancel sent on coming back; a new save request waits for it.
+    private var cancelling: Task<Void, Never>?
 
-    init(store: GameResumeStore, now: @escaping () -> Date = Date.init) {
+    init(store: GameResumeStore, now: @escaping () -> Date = Date.init,
+         uptime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.store = store
         self.now = now
+        self.uptime = uptime
     }
 
     private var nowMillis: Int64 { Int64((now().timeIntervalSince1970 * 1000).rounded()) }
@@ -310,6 +355,8 @@ final class GameResumeCoordinator: ObservableObject {
         launchEvaluated = true
         let hadMarker = store.hasMarker
         store.deleteMarker()
+        // A save the player already came back from is never offered.
+        store.deleteConsumedCheckpoint()
         let decision = GameResumeLaunchDecision.decide(
             record: store.readRecord(), sidecarExists: store.sidecarExists, checkpointExists: store.checkpointExists,
             nowMillis: nowMillis, appBuild: appBuild, engineIdentity: engineIdentity)
@@ -350,6 +397,8 @@ final class GameResumeCoordinator: ObservableObject {
         let configuration: MagicMobileOnDevice.JSONValue
         let baseConfiguration: MagicMobileOnDevice.JSONValue
         let checkpointing: Bool
+        /// The engine saves only when asked (`checkpointOnDemand`).
+        let savesOnDemand: Bool
     }
 
     /// Before creating a solo game: forget any earlier game and add the checkpoint path when
@@ -359,9 +408,10 @@ final class GameResumeCoordinator: ObservableObject {
         guard appBuild != nil, engineIdentity != nil, (try? store.prepareDirectory()) != nil,
               let checkpointed = try? EngineSaveResume.configuration(configuration, checkpointPath: store.checkpointURL.path,
                                                                       capabilities: capabilities) else {
-            return SoloPlan(configuration: configuration, baseConfiguration: configuration, checkpointing: false)
+            return SoloPlan(configuration: configuration, baseConfiguration: configuration, checkpointing: false, savesOnDemand: false)
         }
-        return SoloPlan(configuration: checkpointed, baseConfiguration: configuration, checkpointing: true)
+        return SoloPlan(configuration: checkpointed, baseConfiguration: configuration, checkpointing: true,
+                        savesOnDemand: EngineSaveResume.supportsOnDemand(capabilities))
     }
 
     /// The engine created the planned game: write the sidecar, or the marker when it cannot checkpoint.
@@ -371,11 +421,11 @@ final class GameResumeCoordinator: ObservableObject {
         let record = GameResumeRecord(appBuild: appBuild, engineIdentity: engineIdentity, createdAt: created,
                                       lastCheckpointAt: created, playerDeckName: playerDeckName,
                                       opponents: GameResumeRecord.opponents(in: plan.baseConfiguration), setup: setup)
-        do { try store.write(record); active = record; lastSequence = -1 }
+        do { try store.write(record); active = record; lastSequence = -1; savesOnDemand = plan.savesOnDemand }
         catch { store.deleteGame(); markInProgress(at: created) }
     }
 
-    /// A poll reported a newer engine checkpoint.
+    /// A poll or a save request reported a newer engine checkpoint.
     func checkpointSaved(_ checkpoint: EngineCheckpoint) {
         guard var record = active, checkpoint.sequence > lastSequence else { return }
         lastSequence = checkpoint.sequence
@@ -401,6 +451,9 @@ final class GameResumeCoordinator: ObservableObject {
             resumed.turn = restored.turn
             try? store.write(resumed)
             active = resumed; lastSequence = -1
+            savesOnDemand = EngineSaveResume.supportsOnDemand(capabilities)
+            // Playing again uses up the save, as coming back to the app does.
+            if savesOnDemand { store.consumeCheckpoint() }
             store.deleteMarker()
             notice = GameResumeText.resumed
             return restored
@@ -429,6 +482,8 @@ final class GameResumeCoordinator: ObservableObject {
 
     private func discardAll() {
         active = nil
+        savesOnDemand = false
+        backgroundSave?.cancel(); backgroundSave = nil
         store.deleteGame()
         store.deleteMarker()
     }
@@ -437,38 +492,89 @@ final class GameResumeCoordinator: ObservableObject {
         try? store.writeMarker(startedAt: time)
     }
 
-    // MARK: Background
+    // MARK: Leaving and coming back
 
-    /// The app moved to the background: record when the player left, inside platform
-    /// background time so an in-flight engine checkpoint write can finish.
+    /// `.inactive` from `.active`: the player may be leaving, perhaps to close the app from the
+    /// app switcher, which never reaches `.background`. Records when, and asks the engine to save
+    /// at its next safe point without waiting.
+    @discardableResult
+    func willLeave() -> Task<Void, Never> {
+        guard recordLeaving(), savesOnDemand, let requestSave else { return Task {} }
+        let cancelling = self.cancelling
+        return Task { [weak self] in
+            await cancelling?.value
+            guard let result = try? await requestSave(0) else { return }
+            self?.saveFinished(result)
+        }
+    }
+
+    /// The app moved to the background: record when the player left, then, inside platform
+    /// background time, ask the engine to save until it saves, cannot, or time runs out.
     @discardableResult
     func enteredBackground() -> Task<Void, Never> {
         for purge in backgroundPurges { purge() }
-        let checkpointing = active != nil
+        guard recordLeaving(), savesOnDemand, let requestSave else { return Task {} }
+        backgroundSave?.cancel()
+        let cancelling = self.cancelling
         let task = runBackgroundTask("MagicMobile save game") { [weak self] in
-            guard checkpointing, let self else { return }
-            await self.waitForCheckpointWrite()
+            await cancelling?.value
+            await self?.saveWhileAway(requestSave)
         }
-        if var record = active {
+        backgroundSave = task
+        return task
+    }
+
+    /// Back in the app: the live game continues, however long the player was away. The save
+    /// made on leaving is used up, so if the app now dies, the next launch says the game ended.
+    @discardableResult
+    func enteredForeground() -> Task<Void, Never> {
+        backgroundSave?.cancel(); backgroundSave = nil
+        guard var record = active, record.leftAt != nil else { return Task {} }
+        record.leftAt = nil
+        active = record
+        try? store.write(record)
+        guard savesOnDemand else { return Task {} }
+        store.consumeCheckpoint()
+        guard let cancelSave else { return Task {} }
+        let previous = cancelling
+        let task = Task { await previous?.value; try? await cancelSave() }
+        cancelling = task
+        return task
+    }
+
+    /// Writes `leftAt` once per absence. False when no saved game is being played.
+    private func recordLeaving() -> Bool {
+        guard var record = active else { return false }
+        if record.leftAt == nil {
             record.leftAt = nowMillis
             active = record
             try? store.write(record)
         }
-        return task
+        return true
     }
 
-    /// Back in the app: the live game continues, however long the player was away.
-    func enteredForeground() {
-        guard var record = active, record.leftAt != nil else { return }
-        record.leftAt = nil
-        active = record
-        try? store.write(record)
+    /// Requests of up to one second each until the engine saves, cannot save, or the deadline:
+    /// 15 seconds, or less when iOS allows less background time.
+    private func saveWhileAway(_ requestSave: SaveRequest) async {
+        let deadline = uptime() + min(Self.backgroundSaveLimit, backgroundTimeRemaining() - Self.backgroundTimeReserve)
+        while active?.leftAt != nil, !Task.isCancelled {
+            let wait = max(0, min(EngineSaveResume.maxWaitMillis, Int(((deadline - uptime()) * 1000).rounded(.down))))
+            guard let result = try? await requestSave(wait), !Task.isCancelled else { return }
+            guard result == .waitingForEngine, uptime() < deadline else { return saveFinished(result) }
+        }
     }
 
-    private func waitForCheckpointWrite() async {
-        let deadline = ProcessInfo.processInfo.systemUptime + checkpointWriteGrace
-        while store.checkpointWriteInProgress, ProcessInfo.processInfo.systemUptime < deadline {
-            try? await Task.sleep(for: .milliseconds(100))
+    /// What the engine said about a save made while the player is away.
+    private func saveFinished(_ result: EngineCheckpointResult) {
+        guard active?.leftAt != nil else { return }
+        switch result {
+        case .saved(let checkpoint):
+            store.restoreConsumedCheckpointIfLatest()
+            checkpointSaved(checkpoint)
+        case .over:
+            gameFinished()
+        case .waitingForEngine, .waitingForPlayer, .failed, .unavailable:
+            break
         }
     }
 }

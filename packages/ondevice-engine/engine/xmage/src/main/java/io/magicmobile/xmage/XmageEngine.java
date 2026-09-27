@@ -40,6 +40,13 @@ public final class XmageEngine implements EnginePort {
         private long checkpointSequence; // GAME thread
         private long failedCheckpoints; // GAME thread
         volatile Map<String,Object> checkpointInfo,checkpointFailure;
+        // Saves happen only on request (docs/PROTOCOL.md, "When the engine saves"). The GAME thread
+        // records where it is parked; a CALL thread arms a request and waits for the GAME thread's
+        // write. Guarded by saveLock.
+        private final Object saveLock=new Object();
+        private boolean saveRequested,atSafePoint,awaitingPlayer,writing,lastWriteSaved,humanLeft;
+        private long safePointGeneration,savedGeneration=-1,writeAttempts;
+        private String stopped; // ended, failed or closed
         Running(MobileCommanderMatch match,LinkedHashMap<String,Player> players,LinkedHashMap<String,MobileHumanPlayer> seats,
                 MobileAICancellation cancellation,Path checkpointPath,List<Map<String,Object>> seatSummary,long checkpointSequence,boolean resumed) {
             this.match=match;this.game=match.getGame();this.players=players;this.seats=seats;
@@ -80,6 +87,7 @@ public final class XmageEngine implements EnginePort {
                 Player player=game.getPlayer(s.getValue().getId());
                 if(player==null || player.hasLeft()) left.add(s.getKey());
             }
+            if(checkpointPath!=null && left.size()==seats.size()) synchronized(saveLock) {humanLeft=true;saveLock.notifyAll();}
             cancellation.runIfOpen(()->{mailbox.publishSnapshots(views);left.forEach(mailbox::retract);});
         }
         void concede(String seat) {
@@ -106,18 +114,42 @@ public final class XmageEngine implements EnginePort {
                 cancellation.runIfOpen(()->mailbox.inform(seat,Json.map("message",e.getMessage())));return;
             }
             // Safe point: the first question of this seat's own priority() call, between actions.
-            // Written before the prompt is published, so the file always matches a published decision.
             boolean firstPriorityQuestion=((MobileHumanPlayer)controller).takeFirstPriorityQuestion();
-            if(checkpointPath!=null && firstPriorityQuestion && acting==controller
+            if(checkpointPath!=null) {
+                asked(firstPriorityQuestion && acting==controller
                     && e.getQueryType()==PlayerQueryEvent.QueryType.SELECT && game.getStep()!=null
-                    && game.getStep().getStepPart()==mage.game.turn.Step.StepPart.PRIORITY) checkpoint();
+                    && game.getStep().getStepPart()==mage.game.turn.Step.StepPart.PRIORITY);
+                // A request armed before this safe point is written before the prompt is published,
+                // so the file always matches a published decision.
+                checkpoint();
+            }
             snapshot();
             cancellation.runIfOpen(()->mailbox.ask(seat,QueryEncoder.encode(e,game),
                 answer->cancellation.runIfOpen(()->seats.get(seat).offer(answer))));
         }
-        /** Never ends or blocks the game: a failed write is recorded for polls and diagnostics. */
+        /** GAME thread, before a question to the human seat is published. */
+        private void asked(boolean safePoint) {
+            synchronized(saveLock) {
+                awaitingPlayer=true;atSafePoint=safePoint;
+                if(safePoint) safePointGeneration++;
+            }
+        }
+        /** GAME thread: the human's question was answered or retracted, or a concede changed the board. */
+        private void leftDecision(boolean answered) {
+            synchronized(saveLock) {atSafePoint=false;if(answered) awaitingPlayer=false;}
+        }
+        /**
+         * GAME thread, at a published safe point (from query or the idle hook): writes when a save is
+         * requested and this safe point is not saved yet. Never ends or blocks the game: a failed write
+         * is recorded for polls, diagnostics and the waiting request.
+         */
         private void checkpoint() {
-            if(cancellation.isClosing()) return;
+            long generation;
+            synchronized(saveLock) {
+                if(!atSafePoint || !saveRequested || savedGeneration==safePointGeneration || cancellation.isClosing()) return;
+                generation=safePointGeneration;writing=true;
+            }
+            boolean saved=false;
             try {
                 LinkedHashMap<String,UUID> seatPlayers=new LinkedHashMap<>();
                 players.forEach((seat,player)->seatPlayers.put(seat,player.getId()));
@@ -126,20 +158,78 @@ public final class XmageEngine implements EnginePort {
                 checkpointSequence=written.sequence;
                 checkpointInfo=Collections.unmodifiableMap(Json.map("sequence",written.sequence,"savedAtMillis",written.savedAtMillis,
                     "turn",written.turn,"bytes",written.bytes,"writeMillis",written.writeMillis));
-                checkpointFailure=null;failedCheckpoints=0;
+                checkpointFailure=null;failedCheckpoints=0;saved=true;
             } catch(Throwable failure) {
                 EngineDiagnostics.capture("checkpoint-write",failure);
                 failedCheckpoints++;
                 checkpointFailure=Collections.unmodifiableMap(Json.map("code","checkpoint_write_failed",
                     "message","The game could not be saved; it continues without a new checkpoint.",
                     "atMillis",System.currentTimeMillis(),"failedWrites",failedCheckpoints));
+            } finally {
+                synchronized(saveLock) {
+                    // One attempt answers the request, saved or not; a failure is not retried until asked again.
+                    writing=false;saveRequested=false;lastWriteSaved=saved;writeAttempts++;
+                    if(saved) savedGeneration=generation;
+                    saveLock.notifyAll();
+                }
             }
+        }
+        /**
+         * CALL thread (the checkpoint op). Arms a save and waits up to waitMillis for the GAME thread
+         * to write it. A request that is still pending stays armed for the human's next safe point.
+         */
+        Map<String,Object> requestCheckpoint(long waitMillis) {
+            if(checkpointPath==null) throw new BridgeException("checkpoint_unavailable","This match does not save games");
+            long deadline=System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(waitMillis);
+            synchronized(saveLock) {
+                Map<String,Object> settled=settled();
+                if(settled!=null) return settled;
+                long attempts=writeAttempts;
+                saveRequested=true;
+                while(true) {
+                    if(writeAttempts>attempts) return lastWriteSaved?Json.map("state","saved","checkpoint",checkpointInfo)
+                        :Json.map("state","failed","checkpointFailure",checkpointFailure);
+                    settled=settled();
+                    if(settled!=null) return settled;
+                    long remaining=deadline-System.nanoTime();
+                    // The human must first answer a non-priority question (targets, payment, mulligan,
+                    // attackers); otherwise the engine is still on its way to the next safe point.
+                    if(remaining<=0) return Json.map("state","pending","waitingFor",awaitingPlayer && !atSafePoint?"player":"engine");
+                    try { TimeUnit.NANOSECONDS.timedWait(saveLock,remaining); }
+                    catch(InterruptedException e) { Thread.currentThread().interrupt();deadline=System.nanoTime(); }
+                }
+            }
+        }
+        /** Under saveLock: the reply that needs no new write, or null. */
+        private Map<String,Object> settled() {
+            if(cancellation.isClosing() || "failed".equals(stopped) || "closed".equals(stopped))
+                throw new BridgeException("match_unavailable","The match has stopped");
+            if(stopped!=null || humanLeft) return Json.map("state","over");
+            if(atSafePoint && savedGeneration==safePointGeneration) return Json.map("state","saved","checkpoint",checkpointInfo);
+            return null;
+        }
+        /** Clears an armed request. A write already under way finishes first (at most about a second). */
+        void cancelCheckpoint() {
+            long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(1);
+            synchronized(saveLock) {
+                saveRequested=false;
+                while(writing) {
+                    long remaining=deadline-System.nanoTime();
+                    if(remaining<=0) break;
+                    try { TimeUnit.NANOSECONDS.timedWait(saveLock,remaining); }
+                    catch(InterruptedException e) { Thread.currentThread().interrupt();break; }
+                }
+            }
+        }
+        private void stop(String how) {
+            synchronized(saveLock) {if(stopped==null) stopped=how;saveLock.notifyAll();}
         }
         void start() {
             for(Map.Entry<String,MobileHumanPlayer> s:seats.entrySet()) {
-                s.getValue().onConsumed(()->cancellation.runIfOpen(()->mailbox.consumed(s.getKey())));
-                s.getValue().onRetracted(()->cancellation.runIfOpen(()->mailbox.retract(s.getKey())));
-                s.getValue().onBoardChanged(this::snapshot);
+                s.getValue().onConsumed(()->{leftDecision(true);cancellation.runIfOpen(()->mailbox.consumed(s.getKey()));});
+                s.getValue().onRetracted(()->{leftDecision(true);cancellation.runIfOpen(()->mailbox.retract(s.getKey()));});
+                s.getValue().onBoardChanged(()->{leftDecision(false);snapshot();});
+                if(checkpointPath!=null) s.getValue().onIdle(this::checkpoint);
             }
             game.addPlayerQueryEventListener(new QueryListener());
             task=worker.submit(()->{
@@ -149,18 +239,19 @@ public final class XmageEngine implements EnginePort {
                     if(resumed) game.resume();
                     else game.start(seats.values().iterator().next().getId());
                     if(cancellation.isClosing()) return;
-                    if(game.hasEnded()) {match.endGame();snapshot();mailbox.finish();}
+                    if(game.hasEnded()) {match.endGame();snapshot();mailbox.finish();stop("ended");}
                     else mailbox.fail("engine_stopped","XMage returned before ending the match");
                 } catch(CancellationException ignored) {
                 } catch(Throwable e) {
                     EngineDiagnostics.capture("game-worker",e);
                     if(Boolean.getBoolean("magicmobile.debug")) e.printStackTrace(System.err);
                     mailbox.fail(e instanceof BridgeException?((BridgeException)e).code():"engine_failure","The local engine stopped. This match cannot continue.");
-                } finally { worker.shutdown(); }
+                } finally { stop(game.hasEnded()?"ended":"failed");worker.shutdown(); }
             });
         }
         boolean close() {
             long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(2);
+            stop("closed");
             cancellation.close();
             seats.values().forEach(MobileHumanPlayer::closeChannel);
             if(task!=null) task.cancel(true);
@@ -295,7 +386,7 @@ public final class XmageEngine implements EnginePort {
             throw Checkpoints.corrupt("The checkpoint could not be restored",e);
         }
         Running running=new Running(match,players,seats,cancellation,path,seatSummary,loaded.sequence(),true);
-        // The file just read is the latest checkpoint until the re-asked decision writes the next one.
+        // The file just read is the latest checkpoint until a requested save writes the next one.
         running.checkpointInfo=Collections.unmodifiableMap(Json.map("sequence",loaded.sequence(),"savedAtMillis",loaded.savedAtMillis(),
             "turn",(long)loaded.turn(),"bytes",loaded.bytes,"writeMillis",0L));
         String id=game.getId().toString();
@@ -327,6 +418,16 @@ public final class XmageEngine implements EnginePort {
         return result;
     }
     @Override public Map<String,Object> respond(String id,String seat,Map<String,Object> c) {return match(id).mailbox.submit(seat,c);}
+    /** Unsynchronized: waits up to waitMillis for the GAME thread's write without holding the engine. */
+    @Override public Map<String,Object> checkpoint(String id,long waitMillis) {
+        if(waitMillis<0 || waitMillis>EngineService.MAX_CHECKPOINT_WAIT_MILLIS)
+            throw new BridgeException("invalid_request","waitMillis must be 0 to "+EngineService.MAX_CHECKPOINT_WAIT_MILLIS);
+        return match(id).requestCheckpoint(waitMillis);
+    }
+    @Override public Map<String,Object> cancelCheckpoint(String id) {
+        match(id).cancelCheckpoint();
+        return Json.map("cancelled",true);
+    }
     @Override public void concede(String id,String seat) {match(id).concede(seat);}
     @Override public synchronized void destroy(String id) {
         Running r=matches.get(id);if(r==null) throw new BridgeException("unknown_match","Match does not exist");
@@ -338,7 +439,9 @@ public final class XmageEngine implements EnginePort {
             "catalogueHash",GeneratedCardFactory.CATALOGUE_HASH,"maxPlayers",4,"deckValidation",true,
             "nativeDeviceValidated",false,"aiEnabled",false,"hostMigration",false,
             // True only when this build passes its checkpoint round trip (native needs serialization metadata).
-            "saveResume",Checkpoints.available(),"concede",true,"experimental",true);
+            // It saves only when asked (the checkpoint op), never at every decision.
+            "saveResume",Checkpoints.available(),"checkpointOnDemand",Checkpoints.available(),
+            "concede",true,"experimental",true);
     }
     @Override public synchronized void close() {
         closed=true;

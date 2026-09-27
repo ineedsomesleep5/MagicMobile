@@ -157,7 +157,7 @@ fun NativeDownloadsView(decks: List<NativeDownloadDeck>, selectedDeckID: String,
         if (downloadScope == "catalogue" && loadingCatalogue) return
         scanning = true
         scope.launch {
-            runCatching { ArtworkDownloadClient(context).scan(names, quality, downloadsTokens) }
+            runCatching { ArtworkDownloadClient(context).scan(names, quality, downloadsTokens, fullCatalogue) }
                 .onSuccess { scan = it; scanned = key }
             scanning = false
         }

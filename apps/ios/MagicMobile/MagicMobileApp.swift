@@ -126,6 +126,8 @@ struct MagicMobileApp: App {
                 #if DEBUG
                 if ProcessInfo.processInfo.environment["MAGICMOBILE_MULTIPLAYER_D20_FIXTURE"] == "1" {
                     MultiplayerD20FixtureScreen()
+                } else if ProcessInfo.processInfo.environment["MAGICMOBILE_STARTING_ROLL_FIXTURE"] == "1" {
+                    StartingRollFixtureScreen()
                 } else if ProcessInfo.processInfo.environment["MAGICMOBILE_VERSUS_FIXTURE"] == "1" {
                     VersusFixtureScreen()
                 } else if ProcessInfo.processInfo.environment["MAGICMOBILE_SOUND_LAB_FIXTURE"] == "1" {
@@ -210,6 +212,58 @@ private struct MultiplayerD20FixtureScreen: View {
                     .overlay(Color.black.opacity(0.58))
             }
             .ignoresSafeArea()
+        }
+        .onAppear {
+            MagicMobileOrientationController.shared.setPortraitModeEnabled(
+                ProcessInfo.processInfo.environment["MAGICMOBILE_D20_LANDSCAPE_FIXTURE"] != "1")
+        }
+    }
+}
+#endif
+
+#if DEBUG
+/// Opt-in visual fixture only: the design-preview board with XMage's pending starting-player
+/// question, under the AI table's starting roll exactly as OnDeviceRootView covers it
+/// (StartingRollCover over a startingRollCovered board). It never creates an XMage match,
+/// and the prompt stays unanswered after the roll.
+private struct StartingRollFixtureScreen: View {
+    @State private var selectedCard: ZoneCard?
+    @State private var inspectedCard: ZoneCard?
+    @State private var portraitModeEnabled = true
+    @State private var revealedStepCount = 0
+    @State private var dismissed = false
+    @State private var snapshot = GameBoardPreviewFixtures.startingPlayerPrompt()
+
+    private static let roll: OnDeviceStartingRoll? = {
+        var values = [17, 6].makeIterator()
+        return try? OnDeviceStartingRoll.generate(seatIDs: ["human", "ai-1"], draw: { values.next() ?? 1 })
+    }()
+
+    var body: some View {
+        let roll = dismissed ? nil : Self.roll
+        ZStack {
+            ImmersivePlayShell(
+                snapshot: snapshot, startupStatus: nil, selectedCard: $selectedCard, inspectedCard: $inspectedCard,
+                playerDisplayName: "You", avatarData: nil, pendingActionId: nil, pendingCardInstanceId: nil,
+                lastActionRejection: nil, commandFailure: nil, liveUpdateStatus: "Design Preview",
+                onInteractionFeedback: { _ in }, runAction: { _ in }, runCommand: { _, _, _ in },
+                refreshGame: {}, reconnectGame: {}, checkBridgeHealth: { nil }, newGame: {}, quitGame: {},
+                loadProtocolDebug: { _ in throw CancellationError() },
+                portraitModeEnabled: $portraitModeEnabled, viewZone: { _, _ in }
+            )
+            .startingRollCovered(roll != nil)
+            if let roll {
+                StartingRollCover {
+                    MultiplayerD20View(roll: roll, seatNames: ["human": "You", "ai-1": "AI"], isLocalWinner: true,
+                                       revealedStepCount: revealedStepCount,
+                                       // The test taps for both seats; the fixture has no AI.
+                                       localSeatID: roll.steps.indices.contains(revealedStepCount)
+                                           ? roll.steps[revealedStepCount].seatID : nil,
+                                       onRollTap: { revealedStepCount += 1 }) {
+                        dismissed = true
+                    }
+                }
+            }
         }
         .onAppear {
             MagicMobileOrientationController.shared.setPortraitModeEnabled(

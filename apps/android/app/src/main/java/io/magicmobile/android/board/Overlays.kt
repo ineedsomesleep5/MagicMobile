@@ -210,11 +210,13 @@ fun GameSummaryPanel(stats: GameStats, victory: Boolean, modifier: Modifier = Mo
             tile("${stats.combatDamage}", "Combat damage", Modifier.weight(1f))
             tile("${stats.creaturesDestroyed}", "Creatures destroyed", Modifier.weight(1f))
         }
-        stats.topCard?.let { (name, damage) ->
+        stats.topCard?.let { (name, damage, card) ->
             Row(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(10.dp)).padding(8.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.7f), RoundedCornerShape(8.dp))) {
-                    CardArtwork(name, Modifier.fillMaxSize(), artOnly = true) { Box(Modifier.fillMaxSize().background(MagicPalette.iron)) }
+                    // The battlefield card, so a token draws its own art ("Squirrel", not a card lookup).
+                    if (card != null) CardArtworkOrPlaceholder(card, 40.dp, 40.dp, artOnly = true)
+                    else CardArtwork(name, Modifier.fillMaxSize(), artOnly = true) { Box(Modifier.fillMaxSize().background(MagicPalette.iron)) }
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     Text("TOP ATTACKER", color = MagicPalette.antiqueGold, style = sf(10f, SfWeight.black, tracking = 1.2f))

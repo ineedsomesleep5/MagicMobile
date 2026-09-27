@@ -13,6 +13,10 @@ on:
       - 'scripts/ios/distribute-testflight-groups.sh'
       - 'packages/ondevice-engine/scripts/verify_native_candidate.py'
       - '.github/workflows/magicmobile-workflow-tools.yml'
+      # preflight's policy-pin check compares these with TRUSTED_POLICY_SHA.
+      - '.github/workflows/magicmobile-far-calls.yml'
+      - '.github/workflows/magicmobile-issue4-nonsimulator.yml'
+      - 'scripts/magicmobile-native-gate/**'
   push:
     branches: [main]
     paths:
@@ -26,6 +30,9 @@ on:
       - 'scripts/ios/distribute-testflight-groups.sh'
       - 'packages/ondevice-engine/scripts/verify_native_candidate.py'
       - '.github/workflows/magicmobile-workflow-tools.yml'
+      - '.github/workflows/magicmobile-far-calls.yml'
+      - '.github/workflows/magicmobile-issue4-nonsimulator.yml'
+      - 'scripts/magicmobile-native-gate/**'
   workflow_dispatch:
 
 permissions:
@@ -39,6 +46,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          # The policy-pin check needs the pinned commit, not just HEAD.
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

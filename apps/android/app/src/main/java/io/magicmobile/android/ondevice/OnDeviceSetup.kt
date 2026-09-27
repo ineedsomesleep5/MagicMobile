@@ -13,6 +13,7 @@ import io.magicmobile.android.core.PrintingIndex
 import io.magicmobile.android.core.Wire
 import io.magicmobile.android.core.array
 import io.magicmobile.android.game.BuildIdentity
+import io.magicmobile.android.game.EngineCheckpointResult
 import io.magicmobile.android.game.EngineClient
 import io.magicmobile.android.game.EngineError
 import io.magicmobile.android.game.EngineHealth
@@ -38,6 +39,7 @@ import io.magicmobile.android.ui.LaunchEnvironment
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -385,6 +387,53 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
         if (isBusy || session.isWorking) return false
         resume.discard()
         return close().also { closed -> if (closed) resume.discard() }
+    }
+
+    /** The ON_STOP save while the player is away, and the last cancel sent on coming back (a new request waits for it). */
+    private var backgroundSave: Job? = null
+    private var cancellingSave: Job? = null
+
+    /**
+     * The live solo game's engine, for saving when the player leaves. Its calls go straight to the
+     * client: the runtime's open() guard would close the runtime on a failure. The controller asks
+     * only an engine with `checkpointOnDemand`.
+     */
+    private fun saveEngine(): GameResumeController.SaveEngine? {
+        val client = aiClient ?: return null
+        val matchID = aiMatchID ?: return null
+        return object : GameResumeController.SaveEngine {
+            override suspend fun checkpoint(waitMillis: Int): EngineCheckpointResult = client.checkpoint(matchID, waitMillis).also { result ->
+                if (result is EngineCheckpointResult.Saved) android.util.Log.i("MagicMobile",
+                    "Game saved on leaving: ${result.checkpoint.bytes} bytes in ${result.checkpoint.writeMillis ?: "?"} ms")
+            }
+            override suspend fun cancel() = client.cancelCheckpoint(matchID)
+        }
+    }
+
+    /** ON_PAUSE: the player may be leaving, perhaps to close the app from Recents. Records when, and arms a save at the engine's next safe point. */
+    fun armSaveForLeaving() {
+        if (!resume.backgrounded() || !resume.savesOnDemand) return
+        val engine = saveEngine() ?: return
+        val previous = cancellingSave
+        scope.launch { previous?.join(); resume.armSave(engine) }
+    }
+
+    /** ON_STOP: records when the player left, then asks the engine to save for at most 5 seconds. */
+    fun saveForBackground() {
+        if (!resume.backgrounded() || !resume.savesOnDemand) return
+        val engine = saveEngine() ?: return
+        backgroundSave?.cancel()
+        val previous = cancellingSave
+        backgroundSave = scope.launch { previous?.join(); resume.saveForBackground(engine) }
+    }
+
+    /** ON_START and ON_RESUME: back in the app. The background save stops, the engine's armed request is cancelled and the save made on leaving is used up. */
+    fun returnedToApp() {
+        backgroundSave?.cancel(); backgroundSave = null
+        if (!resume.foregrounded()) return
+        val engine = saveEngine() ?: return
+        val previous = cancellingSave
+        cancellingSave = scope.launch { previous?.join(); runCatching { engine.cancel() } }
     }
 
     /** Resume: restore the saved solo game in a fresh engine and open its board. A failure closes it and stays on the menu. */

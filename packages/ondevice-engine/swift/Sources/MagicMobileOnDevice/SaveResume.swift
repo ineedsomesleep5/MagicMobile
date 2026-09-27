@@ -8,10 +8,20 @@ public enum EngineSaveResume {
     public static let unavailableCode = "checkpoint_unavailable"
     public static let incompatibleCode = "checkpoint_incompatible"
     public static let corruptCode = "checkpoint_corrupt"
+    /// A `checkpoint` request for a match the engine no longer has.
+    public static let matchUnavailableCode = "match_unavailable"
+    /// The longest a `checkpoint` request may wait for its save.
+    public static let maxWaitMillis = 1000
 
     /// True only when the capabilities explicitly advertise checkpoint support.
     public static func isSupported(_ capabilities: JSONValue?) -> Bool {
         capabilities?["saveResume"]?.bool == true
+    }
+
+    /// True only for an engine that saves when asked (`checkpoint`, `cancelCheckpoint`) instead
+    /// of at every decision. Older `saveResume` engines are never sent those operations.
+    public static func supportsOnDemand(_ capabilities: JSONValue?) -> Bool {
+        isSupported(capabilities) && capabilities?["checkpointOnDemand"]?.bool == true
     }
 
     /// The create configuration with `"checkpoint": {"path": ...}` added. Throws, sending
@@ -41,15 +51,19 @@ public enum EngineSaveResume {
     }
 }
 
-/// The engine's latest checkpoint write, reported on each poll after it.
+/// The engine's latest checkpoint write, reported on each poll after it and by a `checkpoint`
+/// request that saved.
 public struct EngineCheckpoint: Sendable, Equatable, Codable {
     public let sequence: Int64
     public let savedAtMillis: Int64
     public let turn: Int64
     public let bytes: Int64
+    /// How long the write took, when the engine reports it.
+    public let writeMillis: Int64?
 
-    public init(sequence: Int64, savedAtMillis: Int64, turn: Int64, bytes: Int64) {
+    public init(sequence: Int64, savedAtMillis: Int64, turn: Int64, bytes: Int64, writeMillis: Int64? = nil) {
         self.sequence = sequence; self.savedAtMillis = savedAtMillis; self.turn = turn; self.bytes = bytes
+        self.writeMillis = writeMillis
     }
 
     /// Nil for an absent or malformed field. Checkpoint progress is advisory: it never
@@ -59,7 +73,45 @@ public struct EngineCheckpoint: Sendable, Equatable, Codable {
               let saved = value["savedAtMillis"]?.integer, let turn = value["turn"]?.integer,
               let bytes = value["bytes"]?.integer,
               sequence >= 0, saved > 0, turn >= 0, bytes >= 0 else { return nil }
-        self.init(sequence: sequence, savedAtMillis: saved, turn: turn, bytes: bytes)
+        self.init(sequence: sequence, savedAtMillis: saved, turn: turn, bytes: bytes,
+                  writeMillis: value["writeMillis"]?.integer.flatMap { $0 >= 0 ? $0 : nil })
+    }
+}
+
+/// What a `checkpoint` request found (engines with `checkpointOnDemand` only).
+public enum EngineCheckpointResult: Sendable, Equatable {
+    /// The current decision is saved: written now, or already saved earlier.
+    case saved(EngineCheckpoint)
+    /// The AI is thinking or something is resolving. The request stays armed, and the engine
+    /// saves at the player's next priority decision.
+    case waitingForEngine
+    /// The player is in the middle of an action (targets, payment, mulligan, attackers...),
+    /// which cannot be saved.
+    case waitingForPlayer
+    /// The write failed: the engine's `checkpointFailure`.
+    case failed(JSONValue)
+    /// The match ended, or this seat is out of it.
+    case over
+    /// `checkpoint_unavailable` (no checkpoint path, a table, or no support) or `match_unavailable`.
+    case unavailable(code: String)
+
+    public init(_ value: JSONValue) throws {
+        switch value["state"]?.string {
+        case "saved":
+            guard let checkpoint = EngineCheckpoint(value["checkpoint"]) else {
+                throw EngineError.invalidMessage("Malformed checkpoint result")
+            }
+            self = .saved(checkpoint)
+        case "pending":
+            switch value["waitingFor"]?.string {
+            case "engine": self = .waitingForEngine
+            case "player": self = .waitingForPlayer
+            default: throw EngineError.invalidMessage("Malformed checkpoint result")
+            }
+        case "failed": self = .failed(value["checkpointFailure"] ?? .null)
+        case "over": self = .over
+        default: throw EngineError.invalidMessage("Malformed checkpoint result")
+        }
     }
 }
 
@@ -91,4 +143,30 @@ extension EngineClient {
         let value = try await call("restore", fields: ["checkpoint": .object(["path": .string(path)])])
         return try EngineRestoredMatch(value)
     }
+
+    /// Asks the engine to save the match now, waiting up to `waitMillis` (0...1000) for the
+    /// write. Only for an engine that passes `EngineSaveResume.supportsOnDemand`.
+    /// `checkpoint_unavailable` and `match_unavailable` return `.unavailable`; anything else throws.
+    public func requestCheckpoint(matchID: String, waitMillis: Int) async throws -> EngineCheckpointResult {
+        guard !matchID.isEmpty, (0...EngineSaveResume.maxWaitMillis).contains(waitMillis) else {
+            throw EngineError.invalidMessage("Invalid checkpoint request")
+        }
+        let value: JSONValue
+        do {
+            value = try await call("checkpoint", fields: ["matchId": .string(matchID), "waitMillis": .integer(Int64(waitMillis))])
+        } catch EngineError.rejected(let code, _) where Self.unavailableCodes.contains(code) {
+            return .unavailable(code: code)
+        } catch EngineError.rejectionDetails(let code, _, _) where Self.unavailableCodes.contains(code) {
+            return .unavailable(code: code)
+        }
+        return try EngineCheckpointResult(value)
+    }
+
+    /// Clears an armed `checkpoint` request (engines with `checkpointOnDemand` only).
+    public func cancelCheckpoint(matchID: String) async throws {
+        guard !matchID.isEmpty else { throw EngineError.invalidMessage("Invalid checkpoint request") }
+        _ = try await call("cancelCheckpoint", fields: ["matchId": .string(matchID)])
+    }
+
+    private static let unavailableCodes: Set<String> = [EngineSaveResume.unavailableCode, EngineSaveResume.matchUnavailableCode]
 }
