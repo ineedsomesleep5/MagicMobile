@@ -26,8 +26,11 @@ CP="$BUILD/core:$BUILD/engine:${CP#"$PREFIX"}"
 (cd "$BUILD"; find core engine -type f -print0 | sort -z | xargs -0 sha256sum) > "$BUILD/class-snapshot.sha256"
 mkdir -p "$BUILD/tools"
 "$JAVA_HOME/bin/javac" -J-Xmx512m --release 17 -cp "$BUILD/core" -d "$BUILD/tools" "$ROOT/engine/tools/NativeReflectionExporter.java"
-"$JAVA_HOME/bin/java" -Xmx512m -cp "$BUILD/tools:$CP" NativeReflectionExporter "$BUILD/metadata" \
-  "$ROOT/.upstream/mage/Mage/target/classes" "$ROOT/.upstream/mage/Mage.Sets/target/classes" "$ROOT/.upstream/mage/Mage.Common/target/classes"
+# Reflection plus save/resume serialization metadata (Serializable engine, card and plugin classes).
+"$JAVA_HOME/bin/java" -Xmx768m -cp "$BUILD/tools:$CP" NativeReflectionExporter "$BUILD/metadata" \
+  "$ROOT/.upstream/mage/Mage/target/classes" "$ROOT/.upstream/mage/Mage.Sets/target/classes" "$ROOT/.upstream/mage/Mage.Common/target/classes" \
+  --serialization "$ROOT"/.upstream/mage/Mage.Server.Plugins/*/target/classes "$BUILD/engine"
+[[ -s "$BUILD/metadata/serialization-config.json" ]]
 "$JAVA_HOME/bin/javac" -J-Xmx512m -source 17 -target 17 --add-modules org.graalvm.sdk \
   -cp "$JAVA_HOME/lib/svm/builder/svm.jar:$CP" -d "$BUILD/native-java" \
   "$ROOT/engine/native/src/main/java/io/magicmobile/nativebridge/NativeEntryPoints.java" \
@@ -74,6 +77,7 @@ PY
 mvn --batch-mode --no-transfer-progress -f "$BUILD/android-pom.xml" \
   "-Dmaven.repo.local=$OUT/maven" "-Dengine.root=$ROOT" "-Dnative.build=$BUILD" \
   "-Dnative.classpath=$CP" "-Dnative.reflection.config=$BUILD/metadata/reflect-config.json" \
+  "-Dnative.serialization.config=$BUILD/metadata/serialization-config.json" \
   "-Dnative.init.arg=--initialize-at-build-time=$INIT_TYPES" \
   '-Dnative.orm.arg=--initialize-at-build-time=com.j256.ormlite.field.types' \
   "-Dnative.max.heap=$HEAP" "-Dnative.color.patch=$BUILD/color-patch/classes" \

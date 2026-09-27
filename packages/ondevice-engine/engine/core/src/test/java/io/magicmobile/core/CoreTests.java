@@ -221,6 +221,9 @@ public final class CoreTests {
         ok(service.request("{\"protocol\":1,\"op\":\"diagnostics\"}").contains("\"report\":null"),"cleared report releases private data");
         ok(service.request("{\"protocol\":1,\"op\":\"concede\",\"matchId\":\"m\",\"viewerId\":\"A\"}").contains("concede_unavailable"),"older backends cannot concede");
         ok(service.request("{\"protocol\":1,\"op\":\"concede\",\"matchId\":\"m\"}").contains("invalid_request"),"concede needs the authenticated seat");
+        ok(service.request("{\"protocol\":1,\"op\":\"restore\",\"checkpoint\":{\"path\":\"/tmp/x\"}}").contains("checkpoint_unavailable"),"backends without save/resume say so");
+        ok(service.request("{\"protocol\":1,\"op\":\"restore\"}").contains("invalid_request"),"restore needs a checkpoint");
+        ok(service.request("{\"protocol\":1,\"op\":\"restore\",\"checkpoint\":{},\"matchId\":\"m\"}").contains("invalid_request"),"restore takes no other fields");
         ok(service.request("{\"protocol\":1,\"op\":\"nonsense\"}").contains("unknown_operation"),"operation whitelist");
         ok(service.request("bad").contains("invalid_json"),"malformed request");
     }

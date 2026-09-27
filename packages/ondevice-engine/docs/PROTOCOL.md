@@ -7,6 +7,7 @@ One UTF-8 JSON request per native call. Maximum input/output 4 MiB, bounded nest
 ```
 {"protocol":1,"op":"capabilities"}
 {"protocol":1,"op":"create","configuration":{"seats":[...]}}
+{"protocol":1,"op":"restore","checkpoint":{"path":"/absolute/app/private/game.ckpt"}}
 {"protocol":1,"op":"poll","matchId":"...","viewerId":"player-1","after":0}
 {"protocol":1,"op":"respond","matchId":"...","viewerId":"player-1","command":{...}}
 {"protocol":1,"op":"concede","matchId":"...","viewerId":"player-1"}
@@ -48,6 +49,81 @@ new setup control defaults to desktop level 2. The value goes directly to the up
 constructor (search depth `max(4, skill)` and thinking budget `skill * 3` seconds per calculation).
 Higher levels allow more thinking, not different rules or access to additional private information.
 Human seats reject this field. Invalid values fail rather than silently becoming a different level.
+
+### Save/resume checkpoints (solo games)
+
+A solo game against AI seats can survive the app process being killed, including a
+force quit. The engine saves the whole match to a local file; the app offers
+Resume or Abandon on relaunch and owns the file's lifecycle (resumable window,
+deletion, backup exclusion, file protection). Multiplayer games are not resumable.
+
+- **Capability.** `capabilities` reports `"saveResume": true` only when this build
+  can save and read checkpoints. The first call runs a small self-test (a real
+  card, a game zone, collections and the RNG through the same writer, SHA-256,
+  filter and reader). A native build without serialization metadata fails it and
+  reports `false`; the failure is kept in `diagnostics`. `hostMigration` stays `false`.
+- **Create.** `configuration` accepts an optional `"checkpoint": {"path": "<absolute file path>"}`.
+  It fails with `invalid_configuration` unless the configuration has exactly one
+  human seat, the path is absolute and its directory exists, and the object has
+  only `path`. It fails with `checkpoint_unavailable` when the capability is false.
+- **When the engine saves.** At every safe point: the first question of the
+  human seat's own `priority()` call (step part `PRIORITY`, between actions),
+  on the GAME thread, **before** that priority prompt is published. The file on
+  disk therefore always matches a published priority decision. Targets,
+  payments, mulligans, combat declarations and other mid-action questions are
+  never safe points. The write goes to `path + ".tmp"`, is flushed and
+  fsynced (`FileChannel.force`), then renamed atomically over `path`. Each AI's
+  retained search tree (`ComputerPlayer6.root`, a whole game copy that a late
+  simulation thread may still change) is detached while writing. A failed
+  write is recorded in `diagnostics` and in polls; it never ends or blocks the game.
+- **Polls.** Additive fields, local metadata only:
+  - `"checkpoint": {"sequence": n, "savedAtMillis": <epoch ms>, "turn": t, "bytes": b, "writeMillis": w}`
+    describes the latest successful write. It is absent before the first one.
+    `sequence` starts at 1 and continues after a restore; a restored match starts with the
+    checkpoint it read (`writeMillis` 0) until the re-asked decision writes the next one.
+  - `"checkpointFailure": {"code": "checkpoint_write_failed", "message": "...", "atMillis": <epoch ms>, "failedWrites": k}`
+    is present only while the most recent write attempt failed (before or after a
+    success). The next successful write removes it.
+- **Restore.** `{"protocol":1,"op":"restore","checkpoint":{"path":"..."}}` returns the
+  same result as `create` (`matchId`, `seats`, `engine`) plus
+  `"restored": {"turn": t, "savedAtMillis": <epoch ms>, "sequence": n}`. The match
+  keeps its original `matchId`, and its mailbox is new: prompt tokens are new and
+  cursors restart at 0, so poll from `after: 0`. The game re-asks the human the
+  checkpointed priority decision (upstream `GameImpl.resume` →
+  `playPriority(resuming=true)`); any action started after it is gone, and AI
+  seats think again, so they may play differently than they would have without
+  the interruption. The engine keeps saving to the same path. Errors:
+  - `checkpoint_unavailable`: this build cannot save or restore games;
+  - `checkpoint_incompatible`: the header's format version, protocol, upstream
+    commit, catalogue hash or engine build identity differs from this engine
+    (an app update that changes the engine ends saved games);
+  - `checkpoint_corrupt`: missing, truncated or oversized file, extra bytes,
+    SHA-256 mismatch, a class the filter refuses, or any read or rehydration
+    failure (cause kept in `diagnostics`);
+  - `invalid_request` for a malformed request or a relative path, `match_limit`
+    while another match exists, `engine_closed` after shutdown.
+
+  A failed restore leaves no match and no running game or mailbox thread.
+- **RNG.** The checkpoint holds the state of `mage.util.RandomUtil`'s generator. A
+  restore installs it just before the game thread starts, so the draws after a
+  restore equal the draws the saved process would have made from that state.
+- **File format.** 8-byte magic `MMCHKPT\n`, big-endian u16 format version (1),
+  big-endian u32 header length, a UTF-8 JSON header, then the payload: gzip'd
+  Java serialization of the game, the seat binding and the RNG. The header holds
+  `format`, `protocol`, `upstream`, `catalogueHash`, `engineBuild`, `sequence`,
+  `savedAtMillis`, `turn`, `seats` (`seatId`, `name`, `controller`), `payloadBytes`
+  and `payloadSha256`. `engineBuild` is generated from the adapter sources, the
+  upstream lock and the reviewed upstream patches (`scripts/engine_build_identity.py`).
+  Reads go through one `ObjectInputFilter` allowlist (`mage.*`,
+  `io.magicmobile.xmage.*` and a fixed list of JDK collection and value types in
+  `Checkpoints.java`) with depth, reference, array and byte limits. Proxies are
+  refused; serializable lambdas (upstream keeps some `Condition` method references in
+  fields) are read only through their allowed capturing class. The writer enforces the
+  same allowlist, so the engine never saves a file it would refuse to read.
+- **Hidden information.** A checkpoint contains every hand and library. It is local
+  only: never send it, or its path, to a peer, relay or poll. `HostRouter` never
+  forwards `restore`. The engine never deletes checkpoint files (including a
+  leftover `.tmp`); the app deletes both when the game ends or the player abandons it.
 
 A response command has exactly:
 
@@ -99,7 +175,7 @@ Build identity includes protocol version, upstream commit, catalogue fingerprint
 
 `PacketChunk` splits messages into 8 KiB parts. `PacketAssembler` scopes buffers by authenticated peer+message ID, enforces 4 MiB/message, per-peer/global concurrency and aggregate byte quotas, validates indexes and duplicate content, and expires stale assemblies. A bounded chunk layer is not transport authentication or matchmaking.
 
-The production app implements lobby/host election, deck exchange, request/reply correlation, suspension/cleanup and guest UI orchestration in `OnDeviceMultiplayer` and `GameKitTransport`. Portable tests do not establish actual Game Center or multi-phone execution. Guaranteed reconnect, host migration and durable match restoration remain outside the MVP. The host is trusted with the full game, including hidden information; guest filtering is not host anti-cheat.
+The production app implements lobby/host election, deck exchange, request/reply correlation, suspension/cleanup and guest UI orchestration in `OnDeviceMultiplayer` and `GameKitTransport`. Portable tests do not establish actual Game Center or multi-phone execution. Guaranteed reconnect, host migration and durable restoration of multiplayer matches remain outside the MVP (solo save/resume is above). The host is trusted with the full game, including hidden information; guest filtering is not host anti-cheat.
 
 ### Game Center starting D20 presentation
 

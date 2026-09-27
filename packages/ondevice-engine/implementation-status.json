@@ -220,6 +220,19 @@
     },
     "scope": "Historical baseline evidence; not validation of this candidate"
   },
+  "saveResume": {
+    "appIntegration": "not-in-engine-scope",
+    "branch": "codex/save-resume-engine",
+    "capabilityFlag": "saveResume true only after a runtime checkpoint self-test; false in builds without serialization metadata",
+    "contract": "docs/PROTOCOL.md#saveresume-checkpoints-solo-games",
+    "deviceValidated": false,
+    "engine": "implemented-jvm-verified",
+    "jvmTests": "RealCheckpointTests in scripts/test_real_engine.sh (fresh-JVM restores, rejections, RNG continuity)",
+    "nativeBuild": "not-run",
+    "nativeRuntime": "not-run",
+    "nativeSerializationMetadata": "generated-not-yet-built",
+    "scope": "solo games against AI seats (exactly one human); no multiplayer resume"
+  },
   "schema": 3,
   "status": "upstream-candidate-unverified",
   "targetRepository": "ineedsomesleep5/MagicMobile",

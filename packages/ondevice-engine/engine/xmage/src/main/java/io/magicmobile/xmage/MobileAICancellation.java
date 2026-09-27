@@ -8,6 +8,8 @@ import mage.game.Game;
 import mage.players.Player;
 import mage.player.ai.ComputerPlayerControllableProxy;
 import mage.player.ai.SimulationNode2;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -75,8 +77,29 @@ final class MobileAICancellation {
         return stackEmpty && humansPlaying?configured:Math.min(configured,STACK_THINK_SECS);
     }
 
+    /** A restored game's AI seats answer to this match's lifecycle; budgets are kept as read. */
+    void adopt(Game game) {
+        for(Player player:game.getState().getPlayers().values())
+            if(player instanceof CancellablePlayer) ((CancellablePlayer)player).cancellation=this;
+    }
+    /**
+     * Detaches each AI's retained search tree (a whole game copy that a late simulation thread
+     * may still change) while a checkpoint is written on the GAME thread. The live AI keeps it.
+     */
+    static Runnable detachSearchTrees(Game game) {
+        List<CancellablePlayer> players=new ArrayList<>();List<SimulationNode2> trees=new ArrayList<>();
+        for(Player player:game.getState().getPlayers().values())
+            if(player instanceof CancellablePlayer) {
+                CancellablePlayer ai=(CancellablePlayer)player;
+                players.add(ai);trees.add(ai.swapSearchTree(null));
+            }
+        return ()->{ for(int i=0;i<players.size();i++) players.get(i).swapSearchTree(trees.get(i)); };
+    }
+
     private static final class CancellablePlayer extends ComputerPlayerControllableProxy {
-        private final transient MobileAICancellation cancellation;
+        private static final long serialVersionUID=1L;
+        // Transient: rebound by adopt() after a checkpoint restore; never restored through copy().
+        private transient MobileAICancellation cancellation;
         CancellablePlayer(String name,int skill,MobileAICancellation cancellation) {
             super(name,RangeOfInfluence.ALL,skill);this.cancellation=cancellation;
         }
@@ -86,6 +109,7 @@ final class MobileAICancellation {
             maxNodes=source.maxNodes;maxThinkTimeSecs=source.maxThinkTimeSecs;
         }
         @Override public CancellablePlayer copy() { return new CancellablePlayer(this); }
+        SimulationNode2 swapSearchTree(SimulationNode2 tree) { SimulationNode2 previous=root;root=tree;return previous; }
         @Override public boolean priority(Game game) {
             if(game.isSimulation() || !isGameUnderControl() || !actions.isEmpty()
                 || !searchesAt(game.getTurnStepType()) || hasNonManaPlayable(game)) return super.priority(game);
