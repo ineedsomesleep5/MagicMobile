@@ -304,14 +304,13 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 10 lets you play any deck straight from Deck
-                Studio, with an automatic rules check, and makes building
-                faster: a live deck check, quick adds, editing the list as
-                text, grouping by role, a card grid and a sample hand. Hosts
-                can also remove a player while a table fills. Android is an
-                early alpha; physical-phone acceptance is still pending. Live
-                games do not yet resume after Android closes the app; that is
-                coming in the next build.
+                Android build 11 picks up where you left off: if Android
+                closes the app during a game against the AI, open it again
+                within 10 minutes and resume at your last decision. It keeps
+                everything from build 10, including playing any deck straight
+                from Deck Studio with an automatic rules check, a live deck
+                check, quick adds and a sample hand. Android is an early alpha;
+                physical-phone acceptance is still pending.
               </p>
             </details>
             <details>

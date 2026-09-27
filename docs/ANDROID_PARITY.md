@@ -98,3 +98,4 @@ iOS change has one obvious Android counterpart. Update the table and the log bef
   - singular card counts (#56)
 
   Android build 10 ships with the engine package restored to `2c32482` (the native library's source), because `verify_native.py` compares the whole package, including the iOS-only Swift wrapper.
+- 2026-09-27 (Claude): Android build 11 (versionCode 2026092702) ships resume on a native engine built from `79de39c`. iOS build 20 gets the same engine once its far-calls build finishes; the app-side rules already match through `parity/resume-cases.json`.
