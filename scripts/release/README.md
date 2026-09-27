@@ -7,9 +7,15 @@ release approval or phone acceptance.
 
 Before expensive work, use `python3 scripts/release/preflight.py plan --profile ios-fast`
 to inspect the local checks, then `run --profile ios-fast` to execute them sequentially.
-`tooling` runs Python tooling tests, diff checks and shell syntax only. `ios-fast`
-adds temporary generated-project comparison, standalone Deck Studio compilation,
-and the two portable Swift suites. Neither profile boots a simulator, builds the
+`tooling` runs Python tooling tests, diff checks, shell syntax and the policy-pin
+check. `ios-fast` adds temporary generated-project comparison, standalone Deck Studio
+compilation, the two portable Swift suites, and the native-close and runtime-manager
+ABI fixtures (`test_swift_close.sh`, `test_runtime_manager.sh`; test-only, not XMage).
+The policy-pin check (`preflight.py policy-pin` runs it alone) fails when
+`magicmobile-issue4-nonsimulator.yml` or `scripts/magicmobile-native-gate/` differ
+between `TRUSTED_POLICY_SHA` in `magicmobile-far-calls.yml` and HEAD or the working
+tree: far-calls approval would refuse that candidate, so move the pin in its own
+reviewed PR before dispatching. Neither profile boots a simulator, builds the
 native engine, signs or uploads. Live artwork and precon-export test opt-ins are removed from the
 child environment. Results are fresh development feedback, never CI reuse receipts.
 Logs and timing survive failures under a unique `build_output/preflight/` directory;

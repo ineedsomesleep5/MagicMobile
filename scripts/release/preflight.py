@@ -11,6 +11,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -18,6 +19,9 @@ import time
 
 ROOT = Path(__file__).resolve().parents[2]
 DEVELOPER_DIR = '/Applications/Xcode.app/Contents/Developer'
+FAR_CALLS_WORKFLOW = '.github/workflows/magicmobile-far-calls.yml'
+CHEAP_WORKFLOW = '.github/workflows/magicmobile-issue4-nonsimulator.yml'
+NATIVE_GATE = 'scripts/magicmobile-native-gate'
 
 
 def load(path, name):
@@ -55,9 +59,43 @@ def source_snapshot(repo):
     return {'commit': head, 'workingTreeSHA256': digest.hexdigest()}
 
 
+def policy_pin(repo):
+    """Fail when the native approval policy moved away from the far-call workflow's pin.
+
+    approve_native.py refuses any candidate whose cheap workflow blob differs from
+    the pinned one, and far-calls runs the pinned gate scripts, not the candidate's.
+    Finding that out after a multi-hour dispatch is expensive; this is a local diff.
+    """
+    text = (repo / FAR_CALLS_WORKFLOW).read_text()
+    pins = re.findall(r"^\s*TRUSTED_POLICY_SHA:\s*(['\"]?)([0-9a-f]{40})\1\s*(?:#.*)?$", text, re.M)
+    if len(pins) != 1:
+        raise ValueError(f'Expected one literal 40-character TRUSTED_POLICY_SHA in {FAR_CALLS_WORKFLOW}')
+    pin = pins[0][1]
+    if subprocess.run(['git', '-C', str(repo), 'cat-file', '-e', pin + '^{commit}'],
+                      capture_output=True).returncode:
+        raise ValueError(f'Policy pin {pin} is not in this clone; run `git fetch origin {pin}` and retry')
+    paths = (CHEAP_WORKFLOW, NATIVE_GATE)
+    for label, target in (('HEAD', ['HEAD']), ('the working tree', [])):
+        changed = git(repo, 'diff', '--name-only', pin, *target, '--', *paths).decode().split()
+        if changed:
+            effects = []
+            if CHEAP_WORKFLOW in changed:
+                effects.append('approve_native.py will refuse every far-calls candidate from this source '
+                               '("Cheap workflow differs from trusted policy")')
+            if any(name.startswith(NATIVE_GATE + '/') for name in changed):
+                effects.append('far-calls keeps running the pinned native-gate scripts, not these')
+            raise ValueError(
+                f'Policy pin drift: {", ".join(changed)} in {label} differ from TRUSTED_POLICY_SHA {pin} '
+                f'({FAR_CALLS_WORKFLOW}). ' + '; '.join(effects) + '. Review the change, then move '
+                'TRUSTED_POLICY_SHA to the reviewed commit in its own policy-pin PR '
+                '(scripts/magicmobile-native-gate/README.md).')
+    return {'state': 'pinned', 'trustedPolicySHA': pin, 'paths': list(paths)}
+
+
 def commands(profile):
     checks = [
         ('diff-check', ['git', 'diff', '--check', 'HEAD']),
+        ('policy-pin', [sys.executable, 'scripts/release/preflight.py', 'policy-pin']),
         ('ci-tools', [sys.executable, '-m', 'unittest', 'discover', '-s', 'scripts/ci', '-p', 'test_*.py']),
         ('release-tools', [sys.executable, '-m', 'unittest', 'discover', '-s', 'scripts/release', '-p', 'test_*.py']),
         ('ui-runner', [sys.executable, '-m', 'unittest', 'discover', '-s', 'scripts/deck-studio', '-p', 'test_ios_ui_tests.py']),
@@ -71,6 +109,9 @@ def commands(profile):
             ('standalone-deck-contracts', ['bash', 'scripts/deck-studio/test-core.sh']),
             ('engine-swift-contracts', ['swift', 'test', '--package-path', 'packages/ondevice-engine/swift', '--jobs', '2']),
             ('presentation-contracts', ['swift', 'test', '--package-path', 'apps/ios', '--jobs', '2']),
+            # Test-only native ABI fixtures (not XMage runtime); CI runs the same scripts.
+            ('native-close-fixtures', ['bash', 'packages/ondevice-engine/scripts/test_swift_close.sh']),
+            ('runtime-manager-fixtures', ['bash', 'packages/ondevice-engine/scripts/test_runtime_manager.sh']),
         ]
     elif profile != 'tooling':
         raise ValueError('Unknown profile')
@@ -178,11 +219,14 @@ def run(repo, profile, engine_commit=None, runner=execute):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('mode', choices=('plan', 'run'))
+    parser.add_argument('mode', choices=('plan', 'run', 'policy-pin'))
     parser.add_argument('--profile', choices=('tooling', 'ios-fast'), default='tooling')
     parser.add_argument('--engine-commit', help='Exact native source commit, not a branch name')
     args = parser.parse_args()
     try:
+        if args.mode == 'policy-pin':
+            print(json.dumps(policy_pin(ROOT), indent=2))
+            return 0
         report = (plan if args.mode == 'plan' else run)(ROOT, args.profile, args.engine_commit)
         print(json.dumps(report, indent=2))
         return 0 if args.mode == 'plan' or report['state'] == 'passed' else 1
