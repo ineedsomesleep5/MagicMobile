@@ -49,18 +49,53 @@ writes `serialization-config.json` next to `reflect-config.json`:
   in Mage, Mage.Sets, Mage.Common, the built plugin modules and the adapter (`build/engine`),
   the JDK allowlist read from `Checkpoints.jdkTypes()`, and the array types of serializable
   fields.
-- `lambdaCapturingTypes`: classes with serializable lambdas. Upstream stores method
-  references in Serializable `Condition` fields (Reconfigure and 12 cards); the checkpoint
-  self-test uses one in `Checkpoints` too. The object form with `types` and
-  `lambdaCapturingTypes` is the GraalVM 21.3+ format; the pinned 22.1 parser is expected to
-  accept it (read, not yet exercised by a native build). Proxies are refused, so none are listed.
+- `lambdaCapturingTypes`: always an empty list. The pinned 22.1 parser requires both keys of
+  the object form (GraalVM 21.3+ format). Proxies and serializable lambdas are refused by the
+  checkpoint writer and reader, so neither is registered.
 
-The JVM export at upstream `4825513` registers **48,715 types** (48,623 engine classes, of
-which 48,528 are concrete; 85 JDK types; 7 array types) and **15 lambda capturing classes**
-(13 upstream, `Checkpoints`, and `XmageEngine$Running`, whose listener method references live
-only in transient event sources). 48,571 engine classes declare no `serialVersionUID`, so
-their stream identity is computed at runtime from reflective class data (340,868 declared
-members across the registered classes). The export takes about 13 s and 0.6 GB on the JVM.
+**No serializable lambdas (September 27, 2026).** The first metadata listed 15 lambda capturing
+classes (the 13 upstream classes below, `Checkpoints` for its self-test, and
+`XmageEngine$Running` for its `Listener` method references). Android run
+[36287088288](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/36287088288) on
+`9b26186` then failed 20 s into image generation, in `[1/7] Initializing`:
+`Serializable lambda class must contain the writeReplace method`. GraalVM 22.1.0.1's
+`SerializationFeature.beforeAnalysis` parses every declared method and constructor of each
+capturing class and requires `writeReplace` on every lambda class it finds there, without
+checking whether that lambda is serializable (read from the `vm-22.1.0.1` source). `Checkpoints` (its
+`ObjectInputFilter` lambda) and `XmageEngine$Running` (its thread factory and mailbox callbacks)
+create such lambdas, so any metadata listing them cannot build. Instead, nothing needs a
+serializable lambda any more:
+
+- `scripts/prepare_upstream.py` (`LAMBDA_PATCHES`, reviewed exact-text patches with pinned blob
+  IDs in `upstream.lock.json`) turns each Serializable `Condition`/`Predicate` lambda or method
+  reference in the 13 classes that declared `$deserializeLambda$` at `4825513` into a named enum
+  singleton. Where upstream referenced a static method (`...Watcher::checkSpell` and similar),
+  the enum's `apply` calls that same method; the three inline lambdas (For the Ancestors,
+  Shaile's filter, Surge Engine's ability condition) moved verbatim into `apply`. The classes:
+  `ReconfigureUnattachAbility` (Mage core) and, in Mage.Sets, `ArcaneBombardment`,
+  `CaptainNghathrod`, `ForTheAncestorsEffect`, `HotheadedGiant`,
+  `LeylineImmersionConditionalMana`, `MaarikaBrutalGladiator`, `NeyaliSunsVanguardEffect`,
+  `SailorsBaneValue`, `ShaileDeanOfRadiance`, `SurgeEngineAbility`, `SwordswornCavalier`,
+  `TalarasBattalion`. `Condition.getManaText()` is the class simple name, which Leyline
+  Immersion's mana shows and `ManaOptions` uses as a de-duplication key: it becomes the stable
+  `LeylineImmersionSpellCondition`, still one name per condition, instead of a generated lambda
+  class name. A restored enum is the same object, so `ConditionalMana.equals` still holds.
+- `Checkpoints` round-trips a named Serializable `ProbeCondition`; `XmageEngine$Running` uses
+  named `Listener` classes (kept only in upstream's transient event sources).
+- The checkpoint allowlist no longer contains `java.lang.invoke.SerializedLambda`, so the writer
+  refuses any serializable lambda and the reader rejects one in a stream.
+- `NativeReflectionExporter` fails, before writing `serialization-config.json`, if any scanned
+  engine, card, plugin or adapter class still declares `$deserializeLambda$` (for example after
+  an upstream bump), naming the classes. Its `LAMBDA_SAFE` map, empty, would only admit a class
+  with a reviewed reason that its lambda never reaches a checkpoint; even then it is not a
+  capturing type.
+
+The JVM export at upstream `4825513` registers **48,730 types** (48,639 engine classes, of
+which 48,544 are concrete; 84 JDK types; 7 array types) and **no lambda capturing classes**.
+48,586 engine classes declare no `serialVersionUID`, so their stream identity is computed at
+runtime from reflective class data (340,962 declared members across the registered classes).
+The export takes about 14 s and 0.56 GB RSS on the JVM. A probe class with a serializable
+lambda passed as an extra `--serialization` directory makes it fail and write no file.
 
 `build_native_ios.sh` (every reflection profile) and `scripts/android/build_native.sh` run the
 exporter and pass the file as `-Dnative.serialization.config`; the Gluon POM adds the
@@ -76,8 +111,8 @@ and the 180-minute step are enough is the first thing the next ARM64 run must sh
 native-image was run locally.
 
 **Capability probe.** `capabilities.saveResume` is `true` only after a runtime self-test
-(a real Mage.Sets card, a game zone, collections, `EnumSet`, the RNG and a serializable lambda
-through the production writer, SHA-256, filter and reader). A native image built without
+(a real Mage.Sets card, a game zone, collections, `EnumSet`, the RNG and a named Serializable
+`Condition` through the production writer, SHA-256, filter and reader). A native image built without
 this metadata, or one where serialization fails for another reason, reports `false`, keeps
 the failure in `diagnostics`, and refuses `create` with a checkpoint and `restore` with
 `checkpoint_unavailable`.

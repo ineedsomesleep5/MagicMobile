@@ -6,6 +6,7 @@ import io.magicmobile.generated.GeneratedSetRegistry;
 import mage.cards.MobileCardFactories;
 import mage.constants.*;
 import mage.game.*;
+import mage.game.events.Listener;
 import mage.game.events.PlayerQueryEvent;
 import mage.game.events.TableEvent;
 import mage.players.Player;
@@ -46,7 +47,16 @@ public final class XmageEngine implements EnginePort {
             this.cancellation=cancellation;((MobileCommanderGame)game).setCancellation(cancellation);
             mailbox=new MatchMailbox(game.getId().toString(),seats.keySet());
             worker=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"GAME mobile-"+game.getId());t.setDaemon(true);return t;});
-            game.addTableEventListener(this::tableEvent);
+            game.addTableEventListener(new TableListener());
+        }
+        // Named listeners: upstream Listener is Serializable, so a method reference would be a
+        // serializable lambda, which native checkpoint metadata must not need (docs/NATIVE_METADATA.md).
+        // Game keeps them only in transient event sources; they are never written to a checkpoint.
+        private final class TableListener implements Listener<TableEvent> {
+            @Override public void event(TableEvent event) { tableEvent(event); }
+        }
+        private final class QueryListener implements Listener<PlayerQueryEvent> {
+            @Override public void event(PlayerQueryEvent event) { query(event); }
         }
         void tableEvent(TableEvent event) {
             if(event.getGame()!=game || (event.getEventType()!=TableEvent.EventType.INFO
@@ -131,7 +141,7 @@ public final class XmageEngine implements EnginePort {
                 s.getValue().onRetracted(()->cancellation.runIfOpen(()->mailbox.retract(s.getKey())));
                 s.getValue().onBoardChanged(this::snapshot);
             }
-            game.addPlayerQueryEventListener(this::query);
+            game.addPlayerQueryEventListener(new QueryListener());
             task=worker.submit(()->{
                 try {
                     // A restored game re-asks the checkpointed priority decision (upstream

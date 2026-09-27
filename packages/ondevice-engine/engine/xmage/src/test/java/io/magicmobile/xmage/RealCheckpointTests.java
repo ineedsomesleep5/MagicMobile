@@ -139,14 +139,16 @@ public final class RealCheckpointTests {
             byte[] map0=gzipSerialized(new HashMap<>(Map.of("a",1)));
             expect("checkpoint_corrupt",()->restore(engine,dir,"wrong-root.ckpt",withHeader(valid,header,map0)));
             try { Checkpoints.serialize(new java.io.File("x"));throw new AssertionError("writer must refuse a disallowed class"); }
-            catch(InvalidClassException expected) {}
-            // Reconfigure keeps a Condition method reference in a Serializable field.
-            Card reconfigure=new mage.cards.c.ChainflailCentipede(UUID.randomUUID(),
-                new mage.cards.CardSetInfo("Chainflail Centipede","NEO","135",mage.constants.Rarity.COMMON));
-            Card read=(Card)Checkpoints.deserialize(Checkpoints.serialize(reconfigure));
-            check(read.getAbilities().size()==reconfigure.getAbilities().size() && read.getAbilities().stream()
-                .anyMatch(a->a.getClass().getName().equals("mage.abilities.keyword.ReconfigureUnattachAbility")),
-                "serializable lambdas in upstream abilities round-trip");
+            catch(InvalidClassException expected) { check("java.io.File".equals(expected.classname),"writer names the refused class: "+expected); }
+            namedConditions();
+            // No serializable lambda is written or read, even one the engine could resolve.
+            mage.abilities.condition.Condition lambda=(g,s)->true; // Condition is Serializable
+            try { Checkpoints.serialize(lambda);throw new AssertionError("writer must refuse a serializable lambda"); }
+            catch(InvalidClassException expected) {
+                check("java.lang.invoke.SerializedLambda".equals(expected.classname),"lambda refused as SerializedLambda: "+expected);
+            }
+            byte[] lambda0=gzipSerialized(lambda);
+            expect("checkpoint_corrupt",()->restore(engine,dir,"lambda.ckpt",withHeader(valid,header,lambda0)));
             check(threads("GAME mobile-")==0 && threads("CALL mobile-")==0,"failed restores leave no running threads");
             // No partial match remains: a valid restore is still accepted.
             Map<String,Object> restored=engine.restore(Json.map("path",good.toString()));
@@ -155,13 +157,80 @@ public final class RealCheckpointTests {
             engine.destroy(Json.requiredString(restored,"matchId"));
             EngineDiagnostics.clear();
             System.out.println("PASS checkpoint rejections: one-human rule, paths, header identity, format, SHA-256, truncation,"
-                +" filter, wrong root, failed write keeps playing, no partial match or threads");
+                +" filter, serializable lambda (both ways), wrong root, failed write keeps playing, no partial match or threads");
         } finally { engine.close(); }
         // Core boundary: the operation is reachable through the JSON API.
         try(EngineService service=new EngineService(new XmageEngine("jvm-checkpoint-service"))) {
             String reply=service.request("{\"protocol\":1,\"op\":\"restore\",\"checkpoint\":{\"path\":\""+work.resolve("none.ckpt")+"\"}}");
             check(reply.contains("checkpoint_corrupt"),"restore op through EngineService: "+reply);
         }
+    }
+    /**
+     * Upstream classes that kept Serializable Condition/Predicate lambdas (listed by
+     * NativeReflectionExporter at 4825513) and the named singleton prepare_upstream.py gives each.
+     * Cards whose abilities, filters or targets hold one round-trip through the production writer,
+     * which refuses SerializedLambda, and keep the same condition object.
+     */
+    @SuppressWarnings({"unchecked","rawtypes"})
+    private static void namedConditions() throws Exception {
+        String[][] named={
+            {"mage.abilities.keyword.ReconfigureUnattachAbility","AttachedToCreatureCondition"},
+            {"mage.cards.a.ArcaneBombardment","mage.cards.a.ArcaneBombardmentWatcher$FirstSpellPredicate"},
+            {"mage.cards.c.CaptainNghathrod","mage.cards.c.CaptainNghathrodWatcher$MilledThisTurnPredicate"},
+            {"mage.cards.f.ForTheAncestorsEffect","NoCardPredicate"},
+            {"mage.cards.h.HotheadedGiant","mage.cards.h.HotheadedGiantWatcher$NoOtherRedSpellCondition"},
+            {"mage.cards.l.LeylineImmersionConditionalMana","LeylineImmersionSpellCondition"},
+            {"mage.cards.m.MaarikaBrutalGladiator","mage.cards.m.MaarikaBrutalGladiatorWatcher$ExcessDamagePredicate"},
+            {"mage.cards.n.NeyaliSunsVanguardEffect","mage.cards.n.NeyaliSunsVanguardWatcher$AttackedWithTokenCondition"},
+            {"mage.cards.s.SailorsBaneValue","AdventurePredicate"},
+            {"mage.cards.s.ShaileDeanOfRadiance","ControlNotChangedPredicate"},
+            {"mage.cards.s.SurgeEngineAbility","BlueSourceCondition"},
+            {"mage.cards.s.SwordswornCavalier","mage.cards.s.SwordswornCavalierWatcher$AnotherKnightEnteredCondition"},
+            {"mage.cards.t.TalarasBattalion","mage.cards.t.TalarasBattalionWatcher$CastAnotherGreenSpellCondition"}};
+        for(String[] pair:named) {
+            Class<?> host=Class.forName(pair[0]);
+            for(java.lang.reflect.Method m:host.getDeclaredMethods())
+                check(!m.getName().equals("$deserializeLambda$"),host.getName()+" still has a serializable lambda");
+            Object instance=Enum.valueOf((Class)Class.forName(pair[1].contains(".")?pair[1]:pair[0]+"$"+pair[1]),"instance");
+            check(instance instanceof mage.abilities.condition.Condition || instance instanceof mage.filter.predicate.Predicate,
+                "named singleton implements the upstream interface: "+instance.getClass().getName());
+            check(Checkpoints.deserialize(Checkpoints.serialize(instance))==instance,"named singleton restores itself: "+pair[1]);
+        }
+        // Cards built by upstream constructors, holding the named conditions in abilities, filters and targets.
+        Map<Class<?>,String> cards=new LinkedHashMap<>();
+        cards.put(mage.cards.c.ChainflailCentipede.class,"Chainflail Centipede");cards.put(mage.cards.a.ArcaneBombardment.class,"Arcane Bombardment");
+        cards.put(mage.cards.c.CaptainNghathrod.class,"Captain N'ghathrod");cards.put(mage.cards.h.HotheadedGiant.class,"Hotheaded Giant");
+        cards.put(mage.cards.m.MaarikaBrutalGladiator.class,"Maarika, Brutal Gladiator");cards.put(mage.cards.s.SailorsBane.class,"Sailor's Bane");
+        cards.put(mage.cards.s.ShaileDeanOfRadiance.class,"Shaile, Dean of Radiance");cards.put(mage.cards.s.SurgeEngine.class,"Surge Engine");
+        cards.put(mage.cards.s.SwordswornCavalier.class,"Swordsworn Cavalier");cards.put(mage.cards.t.TalarasBattalion.class,"Talara's Battalion");
+        cards.put(mage.cards.n.NeyaliSunsVanguard.class,"Neyali, Suns' Vanguard");cards.put(mage.cards.l.LeylineImmersion.class,"Leyline Immersion");
+        cards.put(mage.cards.f.ForTheAncestors.class,"For the Ancestors");
+        for(Map.Entry<Class<?>,String> entry:cards.entrySet()) {
+            Card card=(Card)entry.getKey().getConstructor(UUID.class,mage.cards.CardSetInfo.class).newInstance(UUID.randomUUID(),
+                new mage.cards.CardSetInfo(entry.getValue(),"TST","1",mage.constants.Rarity.RARE));
+            Card read=(Card)Checkpoints.deserialize(Checkpoints.serialize(card));
+            check(read.getId().equals(card.getId()) && read.getAbilities().size()==card.getAbilities().size()
+                && read.getRules().equals(card.getRules()),"card with named conditions round-trips: "+entry.getValue());
+        }
+        Card centipede=(Card)Checkpoints.deserialize(Checkpoints.serialize(new mage.cards.c.ChainflailCentipede(UUID.randomUUID(),
+            new mage.cards.CardSetInfo("Chainflail Centipede","NEO","135",mage.constants.Rarity.COMMON))));
+        Field condition=mage.abilities.ActivatedAbilityImpl.class.getDeclaredField("condition");
+        condition.setAccessible(true);
+        boolean unattach=false;
+        for(Ability ability:centipede.getAbilities())
+            if(ability.getClass().getName().equals("mage.abilities.keyword.ReconfigureUnattachAbility"))
+                unattach=condition.get(ability)==Enum.valueOf((Class)Class.forName(
+                    "mage.abilities.keyword.ReconfigureUnattachAbility$AttachedToCreatureCondition"),"instance");
+        check(unattach,"Reconfigure's unattach condition is the named singleton after a restore");
+        // Leyline Immersion's conditional mana is made when the mana ability resolves.
+        java.lang.reflect.Constructor<?> leyline=Class.forName("mage.cards.l.LeylineImmersionConditionalMana").getConstructor(mage.Mana.class);
+        leyline.setAccessible(true);
+        mage.ConditionalMana mana=(mage.ConditionalMana)leyline.newInstance(mage.Mana.GreenMana(5));
+        mage.ConditionalMana manaRead=(mage.ConditionalMana)Checkpoints.deserialize(Checkpoints.serialize(mana));
+        check(manaRead.equals(mana) && manaRead.getConditionString().equals("[{LeylineImmersionSpellCondition}]"),
+            "Leyline Immersion mana keeps its condition: "+manaRead.getConditionString());
+        System.out.println("PASS named checkpoint conditions: "+named.length+" upstream classes without serializable lambdas, "
+            +cards.size()+" cards round-trip through the writer that refuses SerializedLambda");
     }
     private static Object restore(XmageEngine engine,Path dir,String name,byte[] bytes) {
         try { Path path=dir.resolve(name);Files.write(path,bytes);return engine.restore(Json.map("path",path.toString())); }

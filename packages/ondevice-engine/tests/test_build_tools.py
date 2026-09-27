@@ -45,6 +45,22 @@ class PatchTests(unittest.TestCase):
             with self.assertRaises(ValueError):function('class Changed {}')
         lock=json.loads((ROOT/'upstream.lock.json').read_text())
         self.assertEqual(set(lock['sourceBlobs']),set(patch.PATCHES))
+    def test_lambda_patches_are_exact_and_leave_no_method_reference(self):
+        lock=json.loads((ROOT/'upstream.lock.json').read_text())
+        self.assertEqual(len(patch.LAMBDA_PATCHES),13)  # every $deserializeLambda$ class at the pinned commit
+        self.assertLessEqual(set(patch.LAMBDA_PATCHES),set(lock['sourceBlobs']))
+        for function in patch.LAMBDA_PATCHES.values():
+            with self.assertRaises(ValueError):function('class Changed {}')
+        fixture=('    static {\n        filter.add(W::check);\n    }\nclass W {\n'
+                 '    static boolean check(Card card, Game game) {\n        return true;\n    }\n}\n')
+        out=patch.lambda_free('Fixture',('filter.add(W::check);','filter.add(W.Named.instance);'),
+            patch.delegate('Named',patch.PREDICATE+'<Card>','Card card, Game game','check','card, game'))(fixture)
+        self.assertNotIn('::',out)
+        self.assertIn('    enum Named implements mage.filter.predicate.Predicate<Card> {\n        instance;',out)
+        self.assertIn('        public boolean apply(Card card, Game game) {\n            return check(card, game);\n        }',out)
+        self.assertIn('    static boolean check(Card card, Game game) {\n        return true;',out)  # upstream logic unchanged
+        with self.assertRaises(ValueError):  # a second occurrence is a reviewed-source change
+            patch.lambda_free('Fixture',('filter.add(W::check);','x'))(fixture+fixture)
     def test_card_hooks_remove_reflective_bodies(self):
         s='''class CardImpl {
  public static Card createCard(String name, CardSetInfo setInfo) { return dangerousReflection(); }
