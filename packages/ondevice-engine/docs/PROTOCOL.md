@@ -8,6 +8,8 @@ One UTF-8 JSON request per native call. Maximum input/output 4 MiB, bounded nest
 {"protocol":1,"op":"capabilities"}
 {"protocol":1,"op":"create","configuration":{"seats":[...]}}
 {"protocol":1,"op":"restore","checkpoint":{"path":"/absolute/app/private/game.ckpt"}}
+{"protocol":1,"op":"checkpoint","matchId":"...","waitMillis":1000}
+{"protocol":1,"op":"cancelCheckpoint","matchId":"..."}
 {"protocol":1,"op":"poll","matchId":"...","viewerId":"player-1","after":0}
 {"protocol":1,"op":"respond","matchId":"...","viewerId":"player-1","command":{...}}
 {"protocol":1,"op":"concede","matchId":"...","viewerId":"player-1"}
@@ -53,34 +55,80 @@ Human seats reject this field. Invalid values fail rather than silently becoming
 ### Save/resume checkpoints (solo games)
 
 A solo game against AI seats can survive the app process being killed, including a
-force quit. The engine saves the whole match to a local file; the app offers
-Resume or Abandon on relaunch and owns the file's lifecycle (resumable window,
-deletion, backup exclusion, file protection). Multiplayer games are not resumable.
+force quit. When the app asks (as the player leaves it), the engine saves the whole
+match to a local file; the app offers Resume or Abandon on relaunch and owns the
+file's lifecycle (resumable window, deletion, backup exclusion, file protection).
+Multiplayer games are not resumable.
 
 - **Capability.** `capabilities` reports `"saveResume": true` only when this build
   can save and read checkpoints. The first call runs a small self-test (a real
   card, a game zone, collections and the RNG through the same writer, SHA-256,
   filter and reader). A native build without serialization metadata fails it and
   reports `false`; the failure is kept in `diagnostics`. `hostMigration` stays `false`.
+  `"checkpointOnDemand"` has the same value as `saveResume`: this engine saves only
+  when the `checkpoint` op asks. The earlier save/resume engine (iOS build 20,
+  Android build 11) wrote a checkpoint at every safe point and answers
+  `unknown_operation` to `checkpoint` and `cancelCheckpoint`.
 - **Create.** `configuration` accepts an optional `"checkpoint": {"path": "<absolute file path>"}`.
   It fails with `invalid_configuration` unless the configuration has exactly one
   human seat, the path is absolute and its directory exists, and the object has
   only `path`. It fails with `checkpoint_unavailable` when the capability is false.
-- **When the engine saves.** At every safe point: the first question of the
-  human seat's own `priority()` call (step part `PRIORITY`, between actions),
-  on the GAME thread, **before** that priority prompt is published. The file on
-  disk therefore always matches a published priority decision. Targets,
-  payments, mulligans, combat declarations and other mid-action questions are
-  never safe points. The write goes to `path + ".tmp"`, is flushed and
+- **When the engine saves.** Only when asked, and only at a safe point: the first
+  question of the human seat's own `priority()` call (step part `PRIORITY`,
+  between actions). Nothing is written while the game is simply played, so
+  decisions never wait for a write. A request arms a save:
+  - if the human is parked at a safe point that is not saved yet, the GAME thread
+    writes it from its answer wait (it checks about every 250 ms);
+  - if the engine is working (AI turn, resolving), the request stays armed and the
+    GAME thread writes at the human's next safe point, **before** that priority
+    prompt is published;
+  - a question that is not a safe point (targets, payments, mulligans, combat
+    declarations and other mid-action questions, or a later question of the same
+    `priority()` call after an action attempt) cannot be saved: the request waits
+    for the player's answer and is written at the next safe point after it.
+
+  Every write runs on the GAME thread, never concurrently with the rules; the
+  file on disk always matches a published priority decision. A safe point is
+  written at most once; asking again there answers `saved` at once. One write
+  attempt answers the request whether it succeeds or fails; a failure is not
+  retried until asked again. The write goes to `path + ".tmp"`, is flushed and
   fsynced (`FileChannel.force`), then renamed atomically over `path`. Each AI's
   retained search tree (`ComputerPlayer6.root`, a whole game copy that a late
-  simulation thread may still change) is detached while writing. A failed
-  write is recorded in `diagnostics` and in polls; it never ends or blocks the game.
+  simulation thread may still change) is detached while writing. A failed write
+  is recorded in `diagnostics` and in polls; it never ends or blocks the game.
+  **Known limit:** a player who leaves mid-action (choosing targets, paying,
+  mulliganing, declaring attackers) leaves the request pending, and nothing new
+  is saved.
+- **Checkpoint op.** `{"protocol":1,"op":"checkpoint","matchId":"...","waitMillis":N}`
+  (exactly these fields; `N` from 0 to 1000) arms a save and waits up to `N` ms
+  for it. Trusted local API only; it is not synchronized with other ops, so polls
+  keep working while it waits. Results:
+  - `{"state":"saved","checkpoint":{"sequence":n,"savedAtMillis":ms,"turn":t,"bytes":b,"writeMillis":w}}`:
+    written, or the current safe point was already saved (returned at once);
+  - `{"state":"pending","waitingFor":"engine"}`: the engine is still on its way to
+    the human's next safe point (AI thinking, resolving) or is about to write the
+    current one; the request stays armed and the GAME thread writes it there;
+  - `{"state":"pending","waitingFor":"player"}`: the human is at a question that
+    cannot be saved (see above); the request stays armed until answered or cancelled;
+  - `{"state":"failed","checkpointFailure":{...}}`: the write attempt failed (same
+    object as in polls);
+  - `{"state":"over"}`: the match ended or the human seat left it.
+
+  `waitMillis` 0 only arms the request (or reports `saved`/`over`). Errors:
+  `checkpoint_unavailable` for a match created without a checkpoint path (tables,
+  multiplayer) or an engine without on-demand saves, `match_unavailable` once the
+  match failed or is shutting down, `unknown_match`, and `invalid_request` for
+  other fields or a wait outside 0–1000.
+- **Cancel op.** `{"protocol":1,"op":"cancelCheckpoint","matchId":"..."}` returns
+  `{"cancelled":true}`. It clears an armed request; a write already under way
+  finishes first (the op waits for it, about a second at most), so no write starts
+  after it returns. It is harmless with nothing armed, for a match without a
+  checkpoint path, or after the match ended.
 - **Polls.** Additive fields, local metadata only:
   - `"checkpoint": {"sequence": n, "savedAtMillis": <epoch ms>, "turn": t, "bytes": b, "writeMillis": w}`
     describes the latest successful write. It is absent before the first one.
     `sequence` starts at 1 and continues after a restore; a restored match starts with the
-    checkpoint it read (`writeMillis` 0) until the re-asked decision writes the next one.
+    checkpoint it read (`writeMillis` 0) until a requested save writes the next one.
   - `"checkpointFailure": {"code": "checkpoint_write_failed", "message": "...", "atMillis": <epoch ms>, "failedWrites": k}`
     is present only while the most recent write attempt failed (before or after a
     success). The next successful write removes it.
@@ -92,7 +140,9 @@ deletion, backup exclusion, file protection). Multiplayer games are not resumabl
   checkpointed priority decision (upstream `GameImpl.resume` →
   `playPriority(resuming=true)`); any action started after it is gone, and AI
   seats think again, so they may play differently than they would have without
-  the interruption. The engine keeps saving to the same path. Errors:
+  the interruption. Nothing is written after a restore until the app asks; the
+  re-asked decision is a safe point, and requested saves go to the same path with
+  the next sequence. Errors:
   - `checkpoint_unavailable`: this build cannot save or restore games;
   - `checkpoint_incompatible`: the header's format version, protocol, upstream
     commit, catalogue hash or engine build identity differs from this engine
@@ -123,7 +173,8 @@ deletion, backup exclusion, file protection). Multiplayer games are not resumabl
   engine never saves a file it would refuse to read.
 - **Hidden information.** A checkpoint contains every hand and library. It is local
   only: never send it, or its path, to a peer, relay or poll. `HostRouter` never
-  forwards `restore`. The engine never deletes checkpoint files (including a
+  forwards `restore`, `checkpoint` or `cancelCheckpoint` (it accepts only the peer
+  operations listed below). The engine never deletes checkpoint files (including a
   leftover `.tmp`); the app deletes both when the game ends or the player abandons it.
 
 A response command has exactly:
@@ -170,7 +221,7 @@ costs remain absent, not guessed as zero. Split halves remain separate.
 
 ## Untrusted multiplayer boundary
 
-The trusted API above must **not** be exposed raw to guests. `HostRouter` accepts a framed `hello`, `poll`, `respond` or `concede` (empty payload, allowed even while the host is suspended), with epoch and monotonically increasing sequence. Its peer ID is supplied by authenticated GameKit transport, outside the JSON body. The host's binding supplies the seat. Guests cannot create/destroy/shutdown the host engine or select another viewer.
+The trusted API above must **not** be exposed raw to guests. `HostRouter` accepts a framed `hello`, `poll`, `respond` or `concede` (empty payload, allowed even while the host is suspended), with epoch and monotonically increasing sequence; every other operation, including `validateDeck`, `restore`, `checkpoint` and `cancelCheckpoint`, is refused before it reaches the engine. Its peer ID is supplied by authenticated GameKit transport, outside the JSON body. The host's binding supplies the seat. Guests cannot create/destroy/shutdown the host engine or select another viewer.
 
 Build identity includes protocol version, upstream commit, catalogue fingerprint and adapter version. It must match before player input. The fingerprint covers constructor/set inventory, so commit+adapter identity must also match; do not treat the catalogue hash alone as all-code equivalence.
 

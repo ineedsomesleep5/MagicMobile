@@ -238,7 +238,7 @@ each class a checkpoint stream writes as a class descriptor (the writer's `annot
 class a read resolves or gets back from `readResolve` (input filter calls with a negative array
 length; the JDK collections' `checkArray` pre-checks are not stream classes). `RealCheckpointTests`
 records these in every process: the self-test, the named-condition round trips, all three game
-scenarios and every fresh-JVM restore, which keeps checkpointing while it plays to the end. It then
+scenarios and every fresh-JVM restore, which saves again on request and plays to the end. It then
 requires each of them in `serialization-config.json`, read the way the feature reads it.
 `test_real_engine.sh` exports that file first, with the same arguments as the native builds
 (`build/native-metadata-check`, about 18 s). Primitive classes are exempt: `ObjectInputStream`

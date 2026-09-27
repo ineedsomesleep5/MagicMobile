@@ -224,8 +224,36 @@ public final class CoreTests {
         ok(service.request("{\"protocol\":1,\"op\":\"restore\",\"checkpoint\":{\"path\":\"/tmp/x\"}}").contains("checkpoint_unavailable"),"backends without save/resume say so");
         ok(service.request("{\"protocol\":1,\"op\":\"restore\"}").contains("invalid_request"),"restore needs a checkpoint");
         ok(service.request("{\"protocol\":1,\"op\":\"restore\",\"checkpoint\":{},\"matchId\":\"m\"}").contains("invalid_request"),"restore takes no other fields");
+        ok(service.request("{\"protocol\":1,\"op\":\"checkpoint\",\"matchId\":\"m\",\"waitMillis\":0}").contains("checkpoint_unavailable"),"backends without on-demand saves say so");
+        ok(service.request("{\"protocol\":1,\"op\":\"cancelCheckpoint\",\"matchId\":\"m\"}").contains("checkpoint_unavailable"),"backends without on-demand saves cannot cancel one");
         ok(service.request("{\"protocol\":1,\"op\":\"nonsense\"}").contains("unknown_operation"),"operation whitelist");
         ok(service.request("bad").contains("invalid_json"),"malformed request");
+        // On-demand saves: exact fields, a bounded wait, and the backend's reply unchanged.
+        List<String> calls=new ArrayList<>();
+        EngineService saving=new EngineService(new EnginePort() {
+            public Map<String,Object> create(Map<String,Object> c) {return Json.map();}
+            public Map<String,Object> poll(String a,String b,long c){return Json.map();}
+            public Map<String,Object> respond(String a,String b,Map<String,Object> c){return Json.map();}
+            public Map<String,Object> checkpoint(String id,long wait){calls.add("checkpoint "+id+" "+wait);return Json.map("state","pending","waitingFor","engine");}
+            public Map<String,Object> cancelCheckpoint(String id){calls.add("cancel "+id);return Json.map("cancelled",true);}
+            public void destroy(String id){}
+            public Map<String,Object> capabilities(){return Json.map();}
+            public void close(){}
+        });
+        ok(saving.request("{\"protocol\":1,\"op\":\"checkpoint\",\"matchId\":\"m\",\"waitMillis\":1000}").contains("\"waitingFor\":\"engine\""),"checkpoint reply passes through");
+        ok(saving.request("{\"protocol\":1,\"op\":\"checkpoint\",\"matchId\":\"m\",\"waitMillis\":0}").contains("\"ok\":true"),"a zero wait only arms the save");
+        for(String bad:List.of("{\"protocol\":1,\"op\":\"checkpoint\",\"matchId\":\"m\"}",
+                "{\"protocol\":1,\"op\":\"checkpoint\",\"waitMillis\":0}",
+                "{\"protocol\":1,\"op\":\"checkpoint\",\"matchId\":\"m\",\"waitMillis\":0,\"viewerId\":\"A\"}",
+                "{\"protocol\":1,\"op\":\"checkpoint\",\"matchId\":\"m\",\"waitMillis\":1001}",
+                "{\"protocol\":1,\"op\":\"checkpoint\",\"matchId\":\"m\",\"waitMillis\":-1}",
+                "{\"protocol\":1,\"op\":\"checkpoint\",\"matchId\":\"m\",\"waitMillis\":\"5\"}",
+                "{\"protocol\":1,\"op\":\"checkpoint\",\"matchId\":\"m\",\"waitMillis\":1.5}",
+                "{\"protocol\":1,\"op\":\"cancelCheckpoint\"}",
+                "{\"protocol\":1,\"op\":\"cancelCheckpoint\",\"matchId\":\"m\",\"waitMillis\":0}"))
+            ok(saving.request(bad).contains("invalid_request"),"checkpoint fields are exact and the wait is 0 to 1000 ms: "+bad);
+        ok(saving.request("{\"protocol\":1,\"op\":\"cancelCheckpoint\",\"matchId\":\"m\"}").contains("\"cancelled\":true"),"cancel reply passes through");
+        ok(calls.equals(List.of("checkpoint m 1000","checkpoint m 0","cancel m")),"only valid requests reach the engine: "+calls);
     }
     private static void diagnostics() {
         RuntimeException first=new RuntimeException("private diagnostic message");

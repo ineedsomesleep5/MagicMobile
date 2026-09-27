@@ -15,6 +15,17 @@ public interface EnginePort extends AutoCloseable {
     default Map<String,Object> restore(Map<String,Object> checkpoint) {
         throw new BridgeException("checkpoint_unavailable","This installed engine cannot restore saved games");
     }
+    /**
+     * Asks a solo match to save at the human's current or next priority decision, waiting up to
+     * waitMillis (0 to 1000) for the write. Backends without on-demand saves say so.
+     */
+    default Map<String,Object> checkpoint(String matchId,long waitMillis) {
+        throw new BridgeException("checkpoint_unavailable","This installed engine cannot save games on request");
+    }
+    /** Clears a save request that has not been written yet. */
+    default Map<String,Object> cancelCheckpoint(String matchId) {
+        throw new BridgeException("checkpoint_unavailable","This installed engine cannot save games on request");
+    }
     void destroy(String matchId);
     Map<String,Object> capabilities();
     /** Trusted local-only operation. Older/test backends must not imply validation. */

@@ -8,6 +8,8 @@ import java.util.function.Supplier;
 /** A trusted, in-process API. Do NOT expose it directly to unauthenticated peers. */
 public final class EngineService implements AutoCloseable {
     public static final int PROTOCOL=1;
+    /** Longest wait a checkpoint request may ask for. */
+    public static final long MAX_CHECKPOINT_WAIT_MILLIS=1000;
     private EnginePort engine;
     private final Supplier<? extends EnginePort> initializer;
     private boolean closed;
@@ -40,6 +42,10 @@ public final class EngineService implements AutoCloseable {
                 case "create": keys(r,"protocol","op","configuration");result=engine().create(Json.object(r.get("configuration")));break;
                 // Trusted local API only: the checkpoint holds every hidden zone. HostRouter never forwards it.
                 case "restore": keys(r,"protocol","op","checkpoint");result=engine().restore(Json.object(r.get("checkpoint")));break;
+                // Trusted local API only, like restore: saves happen only when the app asks (on leaving).
+                case "checkpoint": keys(r,"protocol","op","matchId","waitMillis");
+                    result=engine().checkpoint(Json.requiredString(r,"matchId"),waitMillis(r.get("waitMillis")));break;
+                case "cancelCheckpoint": keys(r,"protocol","op","matchId");result=engine().cancelCheckpoint(Json.requiredString(r,"matchId"));break;
                 case "poll": keys(r,"protocol","op","matchId","viewerId","after");result=engine().poll(Json.requiredString(r,"matchId"),Json.requiredString(r,"viewerId"),Json.integer(r.get("after")));break;
                 case "respond": keys(r,"protocol","op","matchId","viewerId","command");result=engine().respond(Json.requiredString(r,"matchId"),Json.requiredString(r,"viewerId"),Json.object(r.get("command")));break;
                 case "concede": keys(r,"protocol","op","matchId","viewerId");engine().concede(Json.requiredString(r,"matchId"),Json.requiredString(r,"viewerId"));result=Json.map("conceded",true);break;
@@ -55,6 +61,13 @@ public final class EngineService implements AutoCloseable {
             EngineDiagnostics.capture("engine-request",e);
             return Json.write(Json.map("protocol",PROTOCOL,"ok",false,"error",Json.map("code","engine_failure","message","Engine operation failed.")));
         }
+    }
+    private static long waitMillis(Object value) {
+        long millis;
+        try { millis=Json.integer(value); }
+        catch(BridgeException invalid) { throw new BridgeException("invalid_request","waitMillis must be an integer"); }
+        if(millis<0 || millis>MAX_CHECKPOINT_WAIT_MILLIS) throw new BridgeException("invalid_request","waitMillis must be 0 to "+MAX_CHECKPOINT_WAIT_MILLIS);
+        return millis;
     }
     private static void keys(Map<String,Object> r,String... keys) {
         if(!r.keySet().equals(Set.of(keys))) throw new BridgeException("invalid_request","Unexpected or missing request fields");
