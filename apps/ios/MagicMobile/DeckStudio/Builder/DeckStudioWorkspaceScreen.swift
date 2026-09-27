@@ -18,6 +18,10 @@ struct DeckStudioWorkspaceScreen: View {
     private var compactLandscape: Bool { verticalSizeClass == .compact && !dynamicType.isAccessibilitySize }
     @State private var tab = "Cards"
     @State private var headerExpanded = true
+    /// The pinned workspace tabs' measured height (portrait).
+    @State private var tabsHeight: CGFloat = 68
+    /// A portrait tab change waiting to land on the pinned tabs.
+    @State private var landingTab: String?
     @State private var ideas = "Combos"
     @State private var query = ""
     @State private var grouping = "Type"
@@ -71,8 +75,8 @@ struct DeckStudioWorkspaceScreen: View {
         NavigationStack {
             GeometryReader { geometry in
             let split = geometry.size.width >= 700 && !dynamicType.isAccessibilitySize && !model.readOnly
-            if verticalSizeClass != .compact && !split && (tab == "Cards" || tab == "Playtest") {
-                portraitScrollingWorkspace
+            if verticalSizeClass != .compact && !split {
+                portraitScrollingWorkspace(height: geometry.size.height)
             } else {
             VStack(spacing: 0) {
                 if !compactLandscape && geometry.size.height > 500 { header.padding(.horizontal, 20).padding(.vertical, 12) }
@@ -95,7 +99,7 @@ struct DeckStudioWorkspaceScreen: View {
                         cardsTab(showAddButton: !split)
                     }
                 }
-                else if tab == "Ideas" { ideasTab }
+                else if tab == "Ideas" { ideasTab() }
                 else {
                     ScrollView {
                         VStack(spacing: 16) {
@@ -109,6 +113,8 @@ struct DeckStudioWorkspaceScreen: View {
                             }
                         }.padding(20)
                     }
+                    // Each tab starts at its top, as in portrait.
+                    .id(tab)
                     .accessibilityIdentifier(tab == "Playtest" ? "deckStudio.playtest.list" : "deckStudio.analysis.list")
                 }
             }
@@ -349,9 +355,14 @@ struct DeckStudioWorkspaceScreen: View {
         }
     }
 
-    /// Cards and Playtest share one portrait scroll: the artwork/header leaves the
-    /// viewport while the workspace selector remains pinned above either content.
-    private var portraitScrollingWorkspace: some View {
+    /// Every portrait tab shares one scroll: the artwork/header leaves the viewport while
+    /// the workspace selector remains pinned above the content. A tab change lands on the
+    /// pinned tabs, so the new tab starts at its top.
+    private func portraitScrollingWorkspace(height: CGFloat) -> some View {
+        // Ideas and Analysis fill at least the screen below the tabs, so the header can
+        // always scroll away and a tab change always lands in the same place.
+        let content = max(0, height - tabsHeight)
+        return ScrollViewReader { proxy in
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                 // A container keeps the header's own identifiers (deckStudio.play, the quick
@@ -363,14 +374,25 @@ struct DeckStudioWorkspaceScreen: View {
                     DeckStudioNotice(title: "Check this draft", message: error, icon: "exclamationmark.triangle")
                         .padding(.horizontal, 20).padding(.bottom, 10)
                 }
+                DeckStudioTabsLanding(tab: tab, landing: $landingTab, proxy: proxy)
                 Section {
-                    if tab == "Cards" {
+                    switch tab {
+                    case "Cards":
                         cardFilters
                         // This inner lazy stack does not pin its group headers over the tabs.
                         LazyVStack(alignment: .leading, spacing: 8) {
                             cardSections
                         }.padding(.horizontal, 20).padding(.bottom, 16)
-                    } else {
+                    case "Ideas":
+                        // The combo results keep their own lazy stack inside this plain one.
+                        ideasTab(embedded: true, viewport: content).padding(.top, 4)
+                            .frame(minHeight: content, alignment: .top)
+                    case "Analysis":
+                        VStack(spacing: 16) {
+                            DeckStudioAnalysisContent(draft: model.draft, metadata: metadata, curveOnly: false, inspect: inspect)
+                            DeckStudioRoleInsightsView(draft: model.draft, metadata: metadata, contextID: model.record?.id, inspect: inspect)
+                        }.padding(20).frame(minHeight: content, alignment: .top)
+                    default:
                         // Three fixed panels: a plain stack. A lazy one here, between the pinned
                         // outer stack and the history's lazy rows, kept re-measuring near the end
                         // of the history under UI automation and hung the main thread.
@@ -383,21 +405,30 @@ struct DeckStudioWorkspaceScreen: View {
                 } header: {
                     workspaceTabs.padding(.horizontal, 20).padding(.vertical, 8)
                         .background(DeckStudioPalette.background)
+                        .background(GeometryReader { tabs in
+                            Color.clear.onAppear { tabsHeight = tabs.size.height }
+                                .onChange(of: tabs.size.height) { _, value in tabsHeight = value }
+                        })
                         .accessibilityIdentifier("deckStudio.workspace.pinned")
                 }
             }
         }
-        // The pinned lazy section must be rebuilt when its tab changes. Keeping
-        // one identity can leave the previous tab's header and rows on screen.
-        .id(tab)
         .scrollDismissesKeyboard(.interactively)
-        .accessibilityIdentifier(tab == "Cards" ? "deckStudio.cards.list" : "deckStudio.playtest.list")
+        .accessibilityIdentifier(Self.listIdentifiers[tab] ?? "deckStudio.playtest.list")
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if tab == "Cards" && !model.readOnly {
                 cardsBottomBar(showAdd: true).padding(.top, 8).background(DeckStudioPalette.background)
             }
         }
+        }
+        // The pinned lazy section must be rebuilt when its tab changes. Keeping
+        // one identity can leave the previous tab's header and rows on screen.
+        // The reader is rebuilt with it, so a landing scrolls only this tab's view.
+        .id(tab)
+        .onChange(of: tab) { _, value in landingTab = value }
     }
+    private static let listIdentifiers = ["Cards": "deckStudio.cards.list", "Ideas": "deckStudio.ideas.list",
+                                          "Analysis": "deckStudio.analysis.list", "Playtest": "deckStudio.playtest.list"]
 
     private var addCardsButton: some View {
         Button { showSearch = true } label: { Label(DeckStudioPlayText.addCards, systemImage: "plus").frame(maxWidth: .infinity) }
@@ -685,15 +716,21 @@ struct DeckStudioWorkspaceScreen: View {
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { listCopied = false }
         }
     }
-    private var ideasTab: some View {
+    /// Combos or EDHREC. Embedded in the portrait scroll, neither panel has a ScrollView of its
+    /// own, and the page keeps a bounded height: the viewport below the tabs, less the source
+    /// picker and the browser controls above it.
+    private func ideasTab(embedded: Bool = false, viewport: CGFloat = 0) -> some View {
         VStack(spacing: 12) {
             Picker("Ideas source", selection: $ideas) { ForEach(["Combos", "EDHREC"], id: \.self) { Text($0).tag($0) } }.pickerStyle(.segmented).padding(.horizontal, 20)
-            if ideas == "EDHREC" { DeckStudioEDHRECPanel(model: browser, commanders: DeckStudioDraftPresentation.commanders(model.draft)) }
+            if ideas == "EDHREC" {
+                DeckStudioEDHRECPanel(model: browser, commanders: DeckStudioDraftPresentation.commanders(model.draft),
+                                      embedded: embedded, webHeight: max(320, viewport - 150))
+            }
             else if ideas == "Combos" {
                 DeckStudioComboPanel(model: combos, draft: model.draft, metadata: metadata, resolver: resolver, readOnly: model.readOnly, add: { name, section, approved in
                     guard approved == DeckStudioSpellbookInput.make(model.draft, resolver: resolver), resolver?.canonicalCardName(name) == name else { return false }
                     return model.add(name, section: section)
-                }, inspect: inspect)
+                }, inspect: inspect, embedded: embedded)
             }
         }
     }
@@ -712,4 +749,32 @@ struct DeckStudioWorkspaceScreen: View {
         listFilter = cards.isEmpty || listRows(filter).isEmpty ? nil : filter
     }
     private func inspect(_ name: String) { inspection = InspectedCard(name: name) }
+}
+
+/// The point a portrait tab change scrolls to: just above the pinned workspace tabs, so the
+/// header is scrolled away and the new tab starts at its top. iOS 17 has no scroll position
+/// API that can target the pinned tabs, so this uses ScrollViewReader.
+private struct DeckStudioTabsLanding: View {
+    let tab: String
+    @Binding var landing: String?
+    let proxy: ScrollViewProxy
+    @State private var id = UUID()
+    var body: some View {
+        // One point tall: scrolling to a zero-height anchor here landed hundreds of points
+        // past the tabs.
+        Color.clear.frame(height: 1).id(id)
+            // The tab change and this anchor's first layout come in either order.
+            .onAppear(perform: land)
+            .onChange(of: landing) { _, _ in land() }
+    }
+    private func land() {
+        guard landing == tab else { return }
+        landing = nil
+        // The first scroll can stop short, or not move at all, while the rebuilt lazy stack
+        // is still sizing its content (iOS 27 simulator), so repeat it briefly. Once it has
+        // landed, a repeat does nothing.
+        for delay in [0, 0.1, 0.3, 0.6] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { proxy.scrollTo(id, anchor: .top) }
+        }
+    }
 }
