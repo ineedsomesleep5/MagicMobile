@@ -107,6 +107,7 @@ struct OnDeviceRootView: View {
         // Lower the chance that iOS ends the app in the background; everything reloads lazily.
         resume.backgroundPurges = [{ GameAudio.shared.unloadBuffers() }, { NativeDeckArtwork.purgeMemoryCaches() }]
         resume.runBackgroundTask = { name, body in ResumeBackgroundTask.run(name, body) }
+        resume.backgroundTimeRemaining = { UIApplication.shared.backgroundTimeRemaining }
         return resume
     }
 
@@ -307,8 +308,10 @@ struct OnDeviceRootView: View {
         .onChange(of: portraitModeEnabled) { _, enabled in
             MagicMobileOrientationController.shared.setPortraitModeEnabled(enabled)
         }
-        .onChange(of: scenePhase) { _, phase in
+        .onChange(of: scenePhase) { previous, phase in
             setup.setSceneActive(phase == .active)
+            // Leaving: the app switcher (from which the app may be closed) or on to the background.
+            if previous == .active, phase == .inactive { resume.willLeave() }
             if phase == .background { resume.enteredBackground() }
             if phase == .active { resume.enteredForeground(); GameAudio.shared.resume() }
         }
@@ -1040,6 +1043,18 @@ private final class OnDeviceSetupModel: ObservableObject {
             session.$isOverForSeat.removeDuplicates().filter { $0 }
                 .sink { [weak resume] _ in resume?.gameFinished() }
         ]
+        // Saving when the player leaves goes to the live solo game's engine. The coordinator
+        // asks only when that engine advertises checkpointOnDemand.
+        resume.requestSave = { [weak self] wait in
+            guard let client = self?.aiClient, let matchID = self?.aiMatchID else {
+                return .unavailable(code: EngineSaveResume.matchUnavailableCode)
+            }
+            return try await client.requestCheckpoint(matchID: matchID, waitMillis: wait)
+        }
+        resume.cancelSave = { [weak self] in
+            guard let client = self?.aiClient, let matchID = self?.aiMatchID else { return }
+            try await client.cancelCheckpoint(matchID: matchID)
+        }
     }
 
     var needsLeave: Bool { usingOnline || online.lobby != nil || usingMultiplayer || runtime.isOpen || session.matchID != nil || multiplayer?.needsCleanup == true }
@@ -1637,7 +1652,7 @@ private struct MatchRoomView: View {
     }
 }
 
-/// iOS background time for the save-game flush and an in-flight engine checkpoint write.
+/// iOS background time for saving the game when the player leaves the app.
 @MainActor
 private enum ResumeBackgroundTask {
     static func run(_ name: String, _ body: @escaping @MainActor () async -> Void) -> Task<Void, Never> {

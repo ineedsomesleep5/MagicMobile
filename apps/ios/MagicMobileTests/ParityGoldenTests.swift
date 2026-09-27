@@ -197,6 +197,7 @@ final class ParityGoldenTests: XCTestCase {
             XCTAssertEqual(store.checkpointURL.lastPathComponent, files["checkpoint"] as? String)
             XCTAssertEqual(store.sidecarURL.lastPathComponent, files["sidecar"] as? String)
             XCTAssertEqual(store.markerURL.lastPathComponent, files["marker"] as? String)
+            XCTAssertEqual(store.consumedCheckpointURL.lastPathComponent, files["consumed"] as? String)
             if present.contains("sidecar") {
                 if let text = item["sidecarText"] as? String {
                     try store.writeAtomically(Data(text.utf8), to: store.sidecarURL)
@@ -217,6 +218,10 @@ final class ParityGoldenTests: XCTestCase {
                 try store.prepareDirectory()
                 try Data("checkpoint".utf8).write(to: store.checkpointURL)
             }
+            if present.contains("consumed") {
+                try store.prepareDirectory()
+                try Data("used-up checkpoint".utf8).write(to: store.consumedCheckpointURL)
+            }
             if present.contains("marker") { try store.writeMarker(startedAt: millis(60.0)!) }
             let resume = GameResumeCoordinator(store: store, now: { now })
             resume.evaluateLaunch(appBuild: "same", engineIdentity: "same")
@@ -233,6 +238,7 @@ final class ParityGoldenTests: XCTestCase {
             let remains = outcome == "offer"
             XCTAssertEqual(store.sidecarExists, remains, "\(at) · sidecar")
             XCTAssertEqual(store.checkpointExists, remains, "\(at) · checkpoint")
+            XCTAssertFalse(store.consumedCheckpointExists, "\(at) · consumed")
             XCTAssertFalse(store.hasMarker, "\(at) · marker")
         }
 
