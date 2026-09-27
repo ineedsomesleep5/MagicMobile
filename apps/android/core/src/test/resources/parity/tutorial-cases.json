@@ -1,0 +1,116 @@
+{
+  "about": "The \"How to play\" walkthrough. One set of words for both apps: iOS ParityGoldenTests.testHowToPlayCasesOnBothPlatforms checks HowToPlayText and HowToPlayLaunch (HowToPlay.swift), and Android ParityGoldenTest.howToPlayCasesOnBothPlatforms checks HowToPlayText and HowToPlayLaunch (core, HowToPlay.kt). title is the menu entry and the screen title; buttons are the walkthrough's controls; pages are in order, and each page's id also picks its drawn illustration. progress is the progress indicator's spoken value with {page} and {count} filled in. launch: the walkthrough opens by itself on the main menu while the stored seenVersionKey is below contentVersion, never under automation (UI tests, previews) unless a test forces the first-launch walkthrough; closing it stores contentVersion.",
+  "title": "How to play",
+  "buttons": {
+    "back": "Back",
+    "next": "Next",
+    "skip": "Skip",
+    "done": "Done"
+  },
+  "progress": {
+    "format": "Page {page} of {count}",
+    "page": 3,
+    "count": 10,
+    "text": "Page 3 of 10"
+  },
+  "pages": [
+    {
+      "id": "welcome",
+      "title": "Welcome to MagicMobile",
+      "body": "Play Commander against AI opponents right on your phone. The XMage rules engine runs on this device and handles the rules for you."
+    },
+    {
+      "id": "decks",
+      "title": "Choose your deck",
+      "body": "Tap Decks to open Deck Studio. Paste, link or scan a deck list, or tap Create deck to build your own. Tap Play this deck to check it against the Commander rules; your pick then shows the Playing badge."
+    },
+    {
+      "id": "start",
+      "title": "Start a game",
+      "body": "Tap Play Commander, then pick your deck, one to three AI opponents and their skill. Under Who goes first?, choose the starting player or roll a D20: the highest roll starts. Then keep your opening hand or take a mulligan."
+    },
+    {
+      "id": "board",
+      "title": "Know the board",
+      "body": "Your hand runs along the bottom, with your battlefield above it. Opponents and their life totals sit at the top; with more than one, tap the people button to watch another. The turn bar shows whose turn it is and the current step."
+    },
+    {
+      "id": "casting",
+      "title": "Play your cards",
+      "body": "Drag a card from your hand up onto the battlefield to play it. When a spell needs mana, the Pay cost tray shows what's left, so tap your lands to pay. If it needs a target, tap a highlighted card or player."
+    },
+    {
+      "id": "priority",
+      "title": "Pass priority",
+      "body": "When you're done, tap Pass Priority to let this step continue. With a spell on the stack, respond with an instant or ability, or pass to let it resolve. Skip ends your turn or jumps to your next one, and still stops when a choice needs you."
+    },
+    {
+      "id": "combat",
+      "title": "Attack and block",
+      "body": "To attack, tap each creature you want to send, then the player to attack if there's a choice. Tap Done Attacking when you're ready. To block, tap your creature, then the attacker it blocks, and tap Done Blocking."
+    },
+    {
+      "id": "reading",
+      "title": "Read the cards",
+      "body": "Press and hold any card to see it up close with its full rules text. Open the game log to look back at every play."
+    },
+    {
+      "id": "resume",
+      "title": "Leave and come back",
+      "body": "Games against the AI are saved when you leave the app. Come back within 10 minutes and tap Resume to pick up at your last decision. Quitting from the game menu ends the game for good."
+    },
+    {
+      "id": "friends",
+      "title": "Play with friends",
+      "body": "In game setup, choose Online to host a table and share its code, or join a friend's table with their code. Online works between iPhone and Android. On iPhone, Game Center can find players too."
+    }
+  ],
+  "launch": {
+    "seenVersionKey": "magicmobile.howToPlay.seenVersion",
+    "contentVersion": 1,
+    "cases": [
+      {
+        "name": "first launch after the update",
+        "seenVersion": 0,
+        "automated": false,
+        "forced": false,
+        "show": true
+      },
+      {
+        "name": "already closed once",
+        "seenVersion": 1,
+        "automated": false,
+        "forced": false,
+        "show": false
+      },
+      {
+        "name": "a newer walkthrough was seen",
+        "seenVersion": 2,
+        "automated": false,
+        "forced": false,
+        "show": false
+      },
+      {
+        "name": "UI test or preview",
+        "seenVersion": 0,
+        "automated": true,
+        "forced": false,
+        "show": false
+      },
+      {
+        "name": "UI test asking for the first-launch walkthrough",
+        "seenVersion": 0,
+        "automated": true,
+        "forced": true,
+        "show": true
+      },
+      {
+        "name": "forced but already closed",
+        "seenVersion": 1,
+        "automated": true,
+        "forced": true,
+        "show": false
+      }
+    ]
+  }
+}

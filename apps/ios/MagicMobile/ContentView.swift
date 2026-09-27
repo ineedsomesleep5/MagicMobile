@@ -133,6 +133,7 @@ struct TavernMainMenu: View {
     var commanderName: String? = nil
     var commanderNamespace: Namespace.ID? = nil
     var downloads: (() -> Void)? = nil
+    var howToPlay: (() -> Void)? = nil
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
@@ -185,6 +186,8 @@ struct TavernMainMenu: View {
                         .accessibilityIdentifier("menu.decks")
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: 20) { utilityActions }
+                            HStack(spacing: 8) { utilityActions }
+                            HStack(spacing: 0) { utilityActions }
                             VStack(alignment: .leading, spacing: 0) { utilityActions }
                         }
                         .frame(maxWidth: .infinity)
@@ -266,6 +269,13 @@ struct TavernMainMenu: View {
                 downloads()
             }
             .accessibilityIdentifier("menu.downloads")
+        }
+        if let howToPlay {
+            BrandIconButton(title: HowToPlayText.title, systemImage: "questionmark.circle") {
+                GameAudio.shared.play(.pageFlip)
+                howToPlay()
+            }
+            .accessibilityIdentifier("menu.howToPlay")
         }
     }
 }
@@ -9264,6 +9274,7 @@ struct GameManagementMenu: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.gameConcede) private var gameConcede
     @State private var confirmingConcede = false
+    @State private var showHowToPlay = false
     let snapshot: GameSnapshot
     let concedeAction: LegalAction?
     let runAction: (LegalAction) -> Void
@@ -9293,6 +9304,13 @@ struct GameManagementMenu: View {
             PortraitModeToggle(isOn: $portraitModeEnabled)
             FollowTurnsToggle()
             BoardEffectsPicker()
+
+            Button { showHowToPlay = true } label: {
+                Label(HowToPlayText.title, systemImage: "questionmark.circle")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(CompactActionButtonStyle(isPrimary: false))
+            .accessibilityIdentifier("board.menu.howToPlay")
 
             if snapshot.isSpectating {
                 Label("You’re out of this game and watching the others play. Quit when you’re done.", systemImage: "eye.fill")
@@ -9337,6 +9355,7 @@ struct GameManagementMenu: View {
         .accessibilityIdentifier("board.menu.scroll")
         }
         .background(BattlefieldSurface().ignoresSafeArea())
+        .sheet(isPresented: $showHowToPlay) { HowToPlayView() }
         .confirmationDialog("Concede this game?", isPresented: $confirmingConcede, titleVisibility: .visible) {
             Button("Concede", role: .destructive) {
                 dismiss()

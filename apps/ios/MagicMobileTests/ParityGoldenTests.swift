@@ -294,6 +294,35 @@ final class ParityGoldenTests: XCTestCase {
         }
     }
 
+    /// tutorial-cases.json: the "How to play" walkthrough's words and when it opens by itself.
+    /// ParityGoldenTest.kt checks Android's HowToPlayText and HowToPlayLaunch against the same file.
+    func testHowToPlayCasesOnBothPlatforms() throws {
+        let root = try caseFile("tutorial-cases.json")
+        XCTAssertEqual(root["title"] as? String, HowToPlayText.title)
+        XCTAssertEqual(root["buttons"] as? [String: String],
+                       ["back": HowToPlayText.back, "next": HowToPlayText.next, "skip": HowToPlayText.skip, "done": HowToPlayText.done])
+        let progress = try XCTUnwrap(root["progress"] as? [String: Any])
+        let page = try XCTUnwrap(progress["page"] as? Int), count = try XCTUnwrap(progress["count"] as? Int)
+        let format = try XCTUnwrap(progress["format"] as? String)
+        XCTAssertEqual(HowToPlayText.progress(page: page, of: count), progress["text"] as? String)
+        XCTAssertEqual(format.replacingOccurrences(of: "{page}", with: "\(page)").replacingOccurrences(of: "{count}", with: "\(count)"),
+                       progress["text"] as? String)
+        let pages = try XCTUnwrap(root["pages"] as? [[String: String]])
+        XCTAssertEqual(pages, HowToPlayText.pages.map { ["id": $0.id, "title": $0.title, "body": $0.body] })
+
+        let launch = try XCTUnwrap(root["launch"] as? [String: Any])
+        XCTAssertEqual(launch["seenVersionKey"] as? String, HowToPlayLaunch.seenVersionKey)
+        XCTAssertEqual(launch["contentVersion"] as? Int, HowToPlayLaunch.contentVersion)
+        let cases = try XCTUnwrap(launch["cases"] as? [[String: Any]])
+        XCTAssertFalse(cases.isEmpty)
+        for item in cases {
+            XCTAssertEqual(HowToPlayLaunch.shouldShowAutomatically(seenVersion: try XCTUnwrap(item["seenVersion"] as? Int),
+                                                                   automated: try XCTUnwrap(item["automated"] as? Bool),
+                                                                   forced: try XCTUnwrap(item["forced"] as? Bool)),
+                           item["show"] as? Bool, "launch · \(item["name"] ?? "")")
+        }
+    }
+
     private func caseFile(_ name: String) throws -> [String: Any] {
         let data = try Data(contentsOf: parityDirectory.appendingPathComponent(name))
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
