@@ -36,12 +36,35 @@ class EngineClient(private val transport: EngineTransport) {
 
     /**
      * Reopens a checkpointed match (engines with `saveResume` only). Returns the create result plus
-     * `restored: {turn, savedAtMillis}`; the engine keeps checkpointing to the same path. Rejections:
+     * `restored: {turn, savedAtMillis}`; the engine saves again to the same path. Rejections:
      * checkpoint_unavailable, checkpoint_incompatible (another engine build) and checkpoint_corrupt.
      */
     suspend fun restore(path: String): J {
         if (path.isEmpty()) throw EngineError.InvalidMessage("Invalid checkpoint path")
         return call("restore", mapOf("checkpoint" to jsonObject("path" to JsonPrimitive(path))))
+    }
+
+    /**
+     * Asks the engine to save the match now, waiting up to [waitMillis] (0..1000) for the write.
+     * Only for an engine that passes `GameResumePolicy.onDemand`. checkpoint_unavailable and
+     * match_unavailable return [EngineCheckpointResult.Unavailable]; anything else throws.
+     */
+    suspend fun checkpoint(matchID: String, waitMillis: Int): EngineCheckpointResult {
+        if (matchID.isEmpty() || waitMillis !in 0..EngineCheckpointResult.MAX_WAIT_MILLIS) throw EngineError.InvalidMessage("Invalid checkpoint request")
+        val result = try {
+            call("checkpoint", mapOf("matchId" to JsonPrimitive(matchID), "waitMillis" to JsonPrimitive(waitMillis)))
+        } catch (error: EngineError) {
+            val code = when (error) { is EngineError.Rejected -> error.code; is EngineError.RejectionDetails -> error.code; else -> null }
+            if (code != null && code in EngineCheckpointResult.UNAVAILABLE_CODES) return EngineCheckpointResult.Unavailable(code)
+            throw error
+        }
+        return EngineCheckpointResult.parse(result)
+    }
+
+    /** Clears an armed `checkpoint` request (engines with `checkpointOnDemand` only). */
+    suspend fun cancelCheckpoint(matchID: String) {
+        if (matchID.isEmpty()) throw EngineError.InvalidMessage("Invalid checkpoint request")
+        call("cancelCheckpoint", mapOf("matchId" to JsonPrimitive(matchID)))
     }
 
     suspend fun poll(matchID: String, seatID: String, after: Long = 0): MatchPoll {
@@ -142,6 +165,40 @@ class MatchPoll(value: J) {
 
     override fun equals(other: Any?): Boolean = other is MatchPoll && other.raw == raw
     override fun hashCode(): Int = raw.hashCode()
+}
+
+/** What a `checkpoint` request found (engines with `checkpointOnDemand` only). Port of EngineCheckpointResult in SaveResume.swift. */
+sealed interface EngineCheckpointResult {
+    /** The current decision is saved: written now, or already saved earlier. */
+    data class Saved(val checkpoint: EngineCheckpoint) : EngineCheckpointResult
+    /** The AI is thinking or something is resolving. The request stays armed; the engine saves at the player's next priority decision. */
+    object WaitingForEngine : EngineCheckpointResult
+    /** The player is in the middle of an action (targets, payment, mulligan, attackers...), which cannot be saved. */
+    object WaitingForPlayer : EngineCheckpointResult
+    /** The write failed: the engine's `checkpointFailure`. */
+    data class Failed(val failure: J) : EngineCheckpointResult
+    /** The match ended, or this seat is out of it. */
+    object Over : EngineCheckpointResult
+    /** checkpoint_unavailable (no checkpoint path, a table, or no support) or match_unavailable. */
+    data class Unavailable(val code: String) : EngineCheckpointResult
+
+    companion object {
+        /** The longest a `checkpoint` request may wait for its save. */
+        const val MAX_WAIT_MILLIS = 1000
+        val UNAVAILABLE_CODES = setOf("checkpoint_unavailable", "match_unavailable")
+
+        fun parse(value: J): EngineCheckpointResult = when (value["state"].string) {
+            "saved" -> Saved(EngineCheckpoint.parse(value["checkpoint"]) ?: throw EngineError.InvalidMessage("Malformed checkpoint result"))
+            "pending" -> when (value["waitingFor"].string) {
+                "engine" -> WaitingForEngine
+                "player" -> WaitingForPlayer
+                else -> throw EngineError.InvalidMessage("Malformed checkpoint result")
+            }
+            "failed" -> Failed(value["checkpointFailure"] ?: JsonNull)
+            "over" -> Over
+            else -> throw EngineError.InvalidMessage("Malformed checkpoint result")
+        }
+    }
 }
 
 /** Swift `[String]` built from a JSON array of strings, or null when any entry is not a string. */

@@ -8,10 +8,17 @@ final class GameResumeTests: XCTestCase {
     private static let launch = Date(timeIntervalSince1970: 1_790_000_000)
     private static let build = "0.1.1 (21)"
     private static let engine = "xmage/protocol-1/upstream/catalogue"
+    /// Today's shipped engines: they save at every decision.
     private static let checkpointCapabilities = MagicMobileOnDevice.JSONValue.object(["engine": .string("xmage"), "saveResume": .bool(true)])
+    /// Engines that save only when asked.
+    private static let onDemandCapabilities = MagicMobileOnDevice.JSONValue.object([
+        "engine": .string("xmage"), "saveResume": .bool(true), "checkpointOnDemand": .bool(true)])
     private static let oldCapabilities = MagicMobileOnDevice.JSONValue.object(["engine": .string("xmage"), "saveResume": .bool(false)])
 
-    private final class Clock { var now = GameResumeTests.launch }
+    private final class Clock {
+        var now = GameResumeTests.launch
+        var uptime: TimeInterval = 100
+    }
 
     private func makeStore() -> GameResumeStore {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("GameResumeTests-\(UUID().uuidString)")
@@ -54,7 +61,7 @@ final class GameResumeTests: XCTestCase {
 
     @MainActor
     private func coordinator(_ store: GameResumeStore, clock: Clock = Clock()) -> GameResumeCoordinator {
-        GameResumeCoordinator(store: store, now: { clock.now })
+        GameResumeCoordinator(store: store, now: { clock.now }, uptime: { clock.uptime })
     }
 
     // MARK: Expiry and identity
@@ -65,13 +72,15 @@ final class GameResumeTests: XCTestCase {
         XCTAssertEqual(decide(Self.record(checkpointAgo: 900, leftAgo: 601)), .expired)
     }
 
-    func testForegroundDeathUsesTheLastCheckpoint() {
-        XCTAssertEqual(decide(Self.record(checkpointAgo: 599, leftAgo: nil)), .resumable(Self.record(checkpointAgo: 599, leftAgo: nil)))
-        XCTAssertEqual(decide(Self.record(checkpointAgo: 601, leftAgo: nil)), .expired)
+    func testAGameOpenWhenTheAppDiedHasEndedEvenWithACheckpoint() {
+        // Only a save made when the player left is offered; an older one never is.
+        XCTAssertEqual(decide(Self.record(checkpointAgo: 5, leftAgo: nil)), .endedOnClose)
+        XCTAssertEqual(decide(Self.record(checkpointAgo: 601, leftAgo: nil)), .endedOnClose)
+        XCTAssertEqual(decide(Self.record(checkpointAgo: 5, leftAgo: nil), appBuild: "0.1.1 (22)"), .endedOnClose)
     }
 
     func testBuildOrEngineMismatchCannotResume() {
-        let fresh = Self.record(checkpointAgo: 10, leftAgo: nil)
+        let fresh = Self.record(checkpointAgo: 10, leftAgo: 5)
         XCTAssertEqual(decide(fresh, appBuild: "0.1.1 (22)"), .updated)
         XCTAssertEqual(decide(fresh, engine: "xmage/protocol-1/other/catalogue"), .updated)
         var future = fresh
@@ -81,7 +90,7 @@ final class GameResumeTests: XCTestCase {
                        "Still inside the window: the update is the reason")
         XCTAssertEqual(decide(Self.record(checkpointAgo: 9000, leftAgo: 9000), appBuild: "0.1.1 (22)"), .expired,
                        "Expiry is the reason even when the app was also updated")
-        future.lastCheckpointAt = Self.millis(Self.launch.addingTimeInterval(-601))
+        future.leftAt = Self.millis(Self.launch.addingTimeInterval(-601))
         XCTAssertEqual(decide(future), .expired)
     }
 
@@ -212,7 +221,7 @@ final class GameResumeTests: XCTestCase {
     @MainActor
     func testAbandonDeletesBothFiles() throws {
         let store = makeStore()
-        try writeGame(Self.record(checkpointAgo: 10, leftAgo: nil), to: store)
+        try writeGame(Self.record(checkpointAgo: 10, leftAgo: 5), to: store)
         let resume = coordinator(store)
         resume.evaluateLaunch(appBuild: Self.build, engineIdentity: Self.engine)
         XCTAssertNotNil(resume.offer)
@@ -315,7 +324,7 @@ final class GameResumeTests: XCTestCase {
     @MainActor
     func testRestoreIsNeverCalledWithoutSaveResume() async throws {
         let store = makeStore()
-        try writeGame(Self.record(checkpointAgo: 10, leftAgo: nil), to: store)
+        try writeGame(Self.record(checkpointAgo: 10, leftAgo: 5), to: store)
         let resume = coordinator(store)
         resume.evaluateLaunch(appBuild: Self.build, engineIdentity: Self.engine)
         let record = try XCTUnwrap(resume.acceptOffer())
@@ -341,7 +350,7 @@ final class GameResumeTests: XCTestCase {
     @MainActor
     func testRestoreFailureDeletesTheSaveAndSaysSo() async throws {
         let store = makeStore()
-        try writeGame(Self.record(checkpointAgo: 10, leftAgo: nil), to: store)
+        try writeGame(Self.record(checkpointAgo: 10, leftAgo: 5), to: store)
         let resume = coordinator(store)
         resume.evaluateLaunch(appBuild: Self.build, engineIdentity: Self.engine)
         let record = try XCTUnwrap(resume.acceptOffer())
@@ -389,6 +398,34 @@ final class GameResumeTests: XCTestCase {
         XCTAssertEqual(resume.notice, "Resumed at your last decision.")
         resume.checkpointSaved(EngineCheckpoint(sequence: 1, savedAtMillis: Self.millis(Self.launch) + 1000, turn: 13, bytes: 1))
         XCTAssertEqual(store.readRecord()?.turn, 13, "The restored game keeps saving")
+        XCTAssertTrue(store.checkpointExists, "An engine that saves at every decision keeps its file")
+    }
+
+    @MainActor
+    func testRestoreWithAnOnDemandEngineUsesUpTheSaveAndSavesAgainOnLeaving() async throws {
+        let store = makeStore(), clock = Clock()
+        try writeGame(Self.record(checkpointAgo: 200, leftAgo: 100), to: store)
+        let resume = coordinator(store, clock: clock)
+        resume.evaluateLaunch(appBuild: Self.build, engineIdentity: Self.engine)
+        let record = try XCTUnwrap(resume.acceptOffer())
+        _ = try await resume.restore(record, capabilities: Self.onDemandCapabilities) { _ in
+            try EngineRestoredMatch(.object(["matchId": .string("restored"),
+                                             "restored": .object(["turn": .integer(12), "savedAtMillis": .integer(Self.millis(Self.launch) - 200_000)])]))
+        }
+        XCTAssertTrue(resume.savesOnDemand)
+        XCTAssertFalse(store.checkpointExists, "Playing again uses up the save: a crash now ends the game")
+        XCTAssertTrue(store.consumedCheckpointExists)
+
+        // Leaving again before any decision: the engine reports the save it restored from.
+        let engine = FakeSave(clock: clock, store: store, results: [Self.saved(4, turn: 12, at: Self.launch.addingTimeInterval(-200))])
+        engine.writesFile = false
+        engine.install(on: resume)
+        await resume.enteredBackground().value
+        XCTAssertTrue(store.checkpointExists)
+        XCTAssertFalse(store.consumedCheckpointExists)
+        let next = coordinator(store, clock: clock)
+        next.evaluateLaunch(appBuild: Self.build, engineIdentity: Self.engine)
+        XCTAssertNotNil(next.offer)
     }
 
     // MARK: Games that cannot checkpoint
@@ -431,38 +468,263 @@ final class GameResumeTests: XCTestCase {
         XCTAssertFalse(store.sidecarExists)
     }
 
-    // MARK: Background
+    // MARK: Saving when the player leaves
+
+    /// TEST-ONLY engine side of saving on leaving. Each request takes the next scripted result
+    /// (the last one repeats) and advances the clock by its wait, as the engine waits. A saved
+    /// result writes the checkpoint unless `writesFile` is false (a decision saved earlier).
+    @MainActor
+    private final class FakeSave {
+        let clock: Clock, store: GameResumeStore
+        var results: [EngineCheckpointResult]
+        var writesFile = true
+        var throwsError = false
+        var waits: [Int] = []
+        var cancels = 0
+        var onRequest: (() -> Void)?
+
+        init(clock: Clock, store: GameResumeStore, results: [EngineCheckpointResult]) {
+            self.clock = clock; self.store = store; self.results = results
+        }
+
+        func install(on resume: GameResumeCoordinator) {
+            resume.requestSave = { [self] wait in
+                waits.append(wait)
+                clock.uptime += Double(wait) / 1000
+                onRequest?()
+                if throwsError { throw EngineError.runtimeFailure(3) }
+                let result = results.count > 1 ? results.removeFirst() : results[0]
+                if case .saved = result, writesFile { try Data("engine checkpoint \(waits.count)".utf8).write(to: store.checkpointURL) }
+                return result
+            }
+            resume.cancelSave = { [self] in cancels += 1 }
+        }
+    }
+
+    private static func saved(_ sequence: Int64, turn: Int64, at date: Date) -> EngineCheckpointResult {
+        .saved(EngineCheckpoint(sequence: sequence, savedAtMillis: millis(date), turn: turn, bytes: 600_000, writeMillis: 40))
+    }
 
     @MainActor
-    func testBackgroundRecordsLeavingInsideBackgroundTimeAndPurges() async throws {
+    private func startOnDemandGame(_ resume: GameResumeCoordinator) {
+        resume.evaluateLaunch(appBuild: Self.build, engineIdentity: Self.engine)
+        let plan = resume.planSoloGame(configuration: Self.configuration, capabilities: Self.onDemandCapabilities)
+        XCTAssertTrue(plan.checkpointing && plan.savesOnDemand)
+        resume.soloGameStarted(plan, setup: Self.setup, playerDeckName: "Token Triumph")
+    }
+
+    @MainActor
+    private func relaunch(_ store: GameResumeStore, clock: Clock) -> GameResumeCoordinator {
+        let next = coordinator(store, clock: clock)
+        next.evaluateLaunch(appBuild: Self.build, engineIdentity: Self.engine)
+        return next
+    }
+
+    @MainActor
+    func testLeavingSavesInsideBackgroundTimeAndTheNextLaunchOffersIt() async throws {
         let store = makeStore(), clock = Clock()
         let resume = coordinator(store, clock: clock)
-        resume.evaluateLaunch(appBuild: Self.build, engineIdentity: Self.engine)
         var purges: [String] = []
         var taskNames: [String] = []
         resume.backgroundPurges = [{ purges.append("images") }, { purges.append("audio") }]
         resume.runBackgroundTask = { name, body in taskNames.append(name); return Task { @MainActor in await body() } }
-        resume.checkpointWriteGrace = 0.3
 
-        // No game: caches still drop, nothing is written.
+        // No game: caches still drop, nothing is written or asked.
         await resume.enteredBackground().value
         XCTAssertEqual(purges, ["images", "audio"])
         XCTAssertFalse(store.sidecarExists)
+        XCTAssertTrue(taskNames.isEmpty)
 
-        try startCheckpointedGame(resume, store: store)
+        startOnDemandGame(resume)
+        XCTAssertFalse(store.checkpointExists, "Nothing is saved while the player plays")
         clock.now = Self.launch.addingTimeInterval(42)
-        try Data("in-flight".utf8).write(to: store.checkpointTemporaryURL)
-        let started = ProcessInfo.processInfo.systemUptime
+        let engine = FakeSave(clock: clock, store: store,
+                              results: [.waitingForEngine, .waitingForEngine, Self.saved(3, turn: 5, at: clock.now)])
+        engine.install(on: resume)
         let task = resume.enteredBackground()
-        XCTAssertEqual(store.readRecord()?.leftAt, Self.millis(clock.now), "Flushed before the background task ends")
+        XCTAssertEqual(store.readRecord()?.leftAt, Self.millis(clock.now), "leftAt is written before the engine is asked")
         await task.value
-        XCTAssertGreaterThanOrEqual(ProcessInfo.processInfo.systemUptime - started, 0.25,
-                                    "Background time is held for an in-flight checkpoint write")
+        XCTAssertEqual(engine.waits, [1000, 1000, 1000], "Asks again while the AI is thinking")
+        XCTAssertEqual(taskNames, ["MagicMobile save game"])
         XCTAssertEqual(purges.count, 4)
-        XCTAssertEqual(taskNames.count, 2)
+        let saved = try XCTUnwrap(store.readRecord())
+        XCTAssertEqual(saved.turn, 5)
+        XCTAssertEqual(saved.lastCheckpointAt, Self.millis(clock.now))
+        XCTAssertEqual(saved.leftAt, Self.millis(clock.now))
+        XCTAssertTrue(store.checkpointExists)
 
-        resume.enteredForeground()
+        // iOS ends the app while it is away.
+        clock.now = clock.now.addingTimeInterval(60)
+        XCTAssertEqual(relaunch(store, clock: clock).offer?.detail, "Turn 5 against AI 1 and AI 2 · saved 1 min ago")
+    }
+
+    @MainActor
+    func testBackgroundSaveStopsAtItsDeadline() async throws {
+        // 15 s at most, and never within 3 s of the end of iOS background time.
+        for (remaining, waits) in [(30.0, Array(repeating: 1000, count: 15)), (8.0, Array(repeating: 1000, count: 5)),
+                                   (3.5, [500]), (1.0, [0])] {
+            let store = makeStore(), clock = Clock()
+            let resume = coordinator(store, clock: clock)
+            startOnDemandGame(resume)
+            resume.backgroundTimeRemaining = { remaining }
+            let engine = FakeSave(clock: clock, store: store, results: [.waitingForEngine])
+            engine.install(on: resume)
+            await resume.enteredBackground().value
+            XCTAssertEqual(engine.waits, waits, "\(remaining) s of background time")
+            XCTAssertFalse(store.checkpointExists)
+            // Never saved: the next launch says the game ended.
+            XCTAssertEqual(relaunch(store, clock: clock).notice, "Your last game ended when the app closed.")
+            XCTAssertFalse(store.sidecarExists)
+        }
+    }
+
+    @MainActor
+    func testBackgroundSaveStopsWhenTheGameCannotBeSaved() async throws {
+        let cases: [(String, EngineCheckpointResult?)] = [
+            ("mid-action", .waitingForPlayer), ("write failed", .failed(.object(["message": .string("disk full")]))),
+            ("unavailable", .unavailable(code: EngineSaveResume.unavailableCode)), ("transport error", nil)]
+        for (name, result) in cases {
+            let store = makeStore(), clock = Clock()
+            let resume = coordinator(store, clock: clock)
+            startOnDemandGame(resume)
+            let engine = FakeSave(clock: clock, store: store, results: [result ?? .waitingForEngine])
+            engine.throwsError = result == nil
+            engine.install(on: resume)
+            await resume.enteredBackground().value
+            XCTAssertEqual(engine.waits.count, 1, name)
+            XCTAssertNotNil(store.readRecord()?.leftAt, name)
+            XCTAssertEqual(relaunch(store, clock: clock).notice, "Your last game ended when the app closed.", name)
+        }
+
+        // The match is over: nothing is left to resume.
+        let store = makeStore(), clock = Clock()
+        let resume = coordinator(store, clock: clock)
+        startOnDemandGame(resume)
+        FakeSave(clock: clock, store: store, results: [.over]).install(on: resume)
+        await resume.enteredBackground().value
+        XCTAssertFalse(store.sidecarExists || store.checkpointExists)
+        XCTAssertNil(resume.active)
+        XCTAssertNil(relaunch(store, clock: clock).notice)
+    }
+
+    @MainActor
+    func testComingBackUsesUpTheSaveSoACrashEndsTheGame() async throws {
+        let store = makeStore(), clock = Clock()
+        let resume = coordinator(store, clock: clock)
+        startOnDemandGame(resume)
+        let engine = FakeSave(clock: clock, store: store, results: [Self.saved(1, turn: 3, at: clock.now)])
+        engine.install(on: resume)
+        await resume.enteredBackground().value
+        XCTAssertTrue(store.checkpointExists)
+
+        await resume.enteredForeground().value
         XCTAssertNil(try XCTUnwrap(store.readRecord()).leftAt, "A surviving process keeps its live game")
+        XCTAssertEqual(engine.cancels, 1, "The engine forgets any armed request")
+        XCTAssertFalse(store.checkpointExists, "The save made on leaving is used up")
+        XCTAssertTrue(store.sidecarExists)
+        await resume.enteredForeground().value
+        XCTAssertEqual(engine.cancels, 1, "Only a return from leaving cancels")
+
+        // The app dies while the player is in it: never an older save.
+        let next = relaunch(store, clock: clock)
+        XCTAssertNil(next.offer)
+        XCTAssertEqual(next.notice, "Your last game ended when the app closed.")
+        XCTAssertFalse(store.sidecarExists || store.checkpointExists || store.consumedCheckpointExists)
+    }
+
+    @MainActor
+    func testLeavingAgainAtTheSameDecisionKeepsThatSave() async throws {
+        let store = makeStore(), clock = Clock()
+        let resume = coordinator(store, clock: clock)
+        startOnDemandGame(resume)
+        let engine = FakeSave(clock: clock, store: store, results: [Self.saved(1, turn: 3, at: clock.now)])
+        engine.install(on: resume)
+        await resume.enteredBackground().value
+        await resume.enteredForeground().value
+        XCTAssertFalse(store.checkpointExists)
+
+        // Back out without a decision: the engine reports the save it already made.
+        engine.writesFile = false
+        await resume.enteredBackground().value
+        XCTAssertTrue(store.checkpointExists, "The used-up save is the current one again")
+        XCTAssertFalse(store.consumedCheckpointExists)
+
+        // After a decision the engine writes a new save, and the old one goes.
+        await resume.enteredForeground().value
+        engine.writesFile = true
+        engine.results = [Self.saved(2, turn: 4, at: clock.now.addingTimeInterval(30))]
+        await resume.enteredBackground().value
+        XCTAssertTrue(store.checkpointExists)
+        XCTAssertFalse(store.consumedCheckpointExists)
+        XCTAssertEqual(store.readRecord()?.turn, 4)
+        XCTAssertNotNil(relaunch(store, clock: clock).offer)
+        XCTAssertFalse(store.consumedCheckpointExists)
+    }
+
+    @MainActor
+    func testTheAppSwitcherArmsASaveWithoutWaiting() async throws {
+        let store = makeStore(), clock = Clock()
+        let resume = coordinator(store, clock: clock)
+        startOnDemandGame(resume)
+        let engine = FakeSave(clock: clock, store: store, results: [.waitingForEngine])
+        engine.install(on: resume)
+        clock.now = Self.launch.addingTimeInterval(10)
+        await resume.willLeave().value
+        XCTAssertEqual(engine.waits, [0])
+        XCTAssertEqual(store.readRecord()?.leftAt, Self.millis(clock.now))
+        // Back without leaving the app: the request is cancelled.
+        await resume.enteredForeground().value
+        XCTAssertEqual(engine.cancels, 1)
+        XCTAssertNil(store.readRecord()?.leftAt)
+
+        // Closed from the app switcher after the engine saved: the next launch offers it.
+        engine.results = [Self.saved(1, turn: 2, at: clock.now)]
+        await resume.willLeave().value
+        XCTAssertTrue(store.checkpointExists)
+        XCTAssertEqual(store.readRecord()?.turn, 2)
+        XCTAssertNotNil(relaunch(store, clock: clock).offer)
+    }
+
+    @MainActor
+    func testComingBackStopsTheBackgroundSave() async throws {
+        let store = makeStore(), clock = Clock()
+        let resume = coordinator(store, clock: clock)
+        startOnDemandGame(resume)
+        let engine = FakeSave(clock: clock, store: store, results: [Self.saved(1, turn: 3, at: clock.now)])
+        engine.install(on: resume)
+        // The player returns while the request is waiting; its answer comes after.
+        engine.onRequest = { [weak resume] in resume?.enteredForeground() }
+        await resume.enteredBackground().value
+        XCTAssertEqual(engine.waits.count, 1)
+        let record = try XCTUnwrap(store.readRecord())
+        XCTAssertNil(record.leftAt)
+        XCTAssertEqual(record.turn, 0, "A save answered after the return is not recorded as the save on leaving")
+        XCTAssertNil(relaunch(store, clock: clock).offer)
+    }
+
+    @MainActor
+    func testOlderEnginesSaveAtEveryDecisionAndAreNeverAsked() async throws {
+        let store = makeStore(), clock = Clock()
+        let resume = coordinator(store, clock: clock)
+        resume.evaluateLaunch(appBuild: Self.build, engineIdentity: Self.engine)
+        try startCheckpointedGame(resume, store: store)
+        XCTAssertFalse(resume.savesOnDemand)
+        var taskNames: [String] = []
+        resume.runBackgroundTask = { name, body in taskNames.append(name); return Task { @MainActor in await body() } }
+        let engine = FakeSave(clock: clock, store: store, results: [.waitingForEngine])
+        engine.install(on: resume)
+        await resume.willLeave().value
+        await resume.enteredBackground().value
+        XCTAssertTrue(engine.waits.isEmpty, "checkpoint is never sent to an engine without checkpointOnDemand")
+        XCTAssertNotNil(store.readRecord()?.leftAt)
+        XCTAssertTrue(taskNames.isEmpty)
+        XCTAssertNotNil(relaunch(store, clock: clock).offer, "Its last per-decision save is offered after leaving")
+
+        await resume.enteredForeground().value
+        XCTAssertEqual(engine.cancels, 0)
+        XCTAssertNil(store.readRecord()?.leftAt)
+        XCTAssertTrue(store.checkpointExists, "The engine keeps writing its file")
+        XCTAssertEqual(relaunch(store, clock: clock).notice, "Your last game ended when the app closed.")
     }
 
     // MARK: Session

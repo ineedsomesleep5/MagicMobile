@@ -199,6 +199,7 @@ class ParityGoldenTest {
         assertEquals(files["checkpoint"].string, GameResumeStore.CHECKPOINT)
         assertEquals(files["sidecar"].string, GameResumeStore.SIDECAR)
         assertEquals(files["marker"].string, GameResumeStore.MARKER)
+        assertEquals(files["consumed"].string, GameResumeStore.CONSUMED)
         assertEquals(files["sidecarFormat"].integer, GameResumeSidecar.FORMAT)
         val sidecarKeys = files["sidecarKeys"].array!!.map { it.string }.toSet()
 
@@ -225,6 +226,7 @@ class ParityGoldenTest {
                     }
                 }
                 if ("checkpoint" in present) store.checkpointFile.writeBytes(byteArrayOf(1))
+                if ("consumed" in present) store.consumedFile.writeBytes(byteArrayOf(2))
                 if ("marker" in present) store.markInProgress("solo")
                 val outcome = when (val launch = store.launch("same", "same")) {
                     is GameResumeLaunch.Offer -> "offer"
@@ -235,6 +237,7 @@ class ParityGoldenTest {
                 assertFalse("$at · marker", store.markerFile.exists())
                 assertEquals("$at · sidecar", outcome == "offer", store.sidecarFile.exists())
                 assertEquals("$at · checkpoint", outcome == "offer", store.checkpointFile.exists())
+                assertFalse("$at · consumed", store.consumedFile.exists())
             }
         } finally { directory.deleteRecursively() }
 
