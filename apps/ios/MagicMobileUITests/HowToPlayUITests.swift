@@ -55,14 +55,39 @@ final class HowToPlayUITests: XCTestCase {
         for page in 2...10 {
             app.buttons["howToPlay.next"].tap()
             waitFor(progress, "label == 'Page \(page) of 10'")
+            capture("How to play · page \(page)")
         }
         XCTAssertFalse(app.buttons["howToPlay.next"].exists)
         let skip = app.buttons["howToPlay.skip"]
         XCTAssertFalse(skip.exists && skip.isHittable, "The last page offers Done, not Skip")
-        capture("How to play · last page")
         app.buttons["howToPlay.done"].tap()
         waitFor(progress, "exists == false")
         XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 5))
+    }
+
+    /// The largest accessibility text size: the page scrolls and the controls stay in reach.
+    func testLargestTextScrollsWithinAPage() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 15))
+        UITestHarness.settleFirstTouch(app)
+        let entry = app.buttons["menu.howToPlay"]
+        for _ in 0..<8 where !(entry.exists && entry.isHittable) { app.swipeUp() }
+        XCTAssertTrue(entry.isHittable)
+        entry.tap()
+        waitFor(progress, "label == 'Page 1 of 10'")
+        app.buttons["howToPlay.next"].tap()
+        waitFor(progress, "label == 'Page 2 of 10'")
+        capture("How to play · largest text, top of page")
+        let page = app.descendants(matching: .any)["howToPlay.page.decks"]
+        let body = page.staticTexts.containing(NSPredicate(format: "label ENDSWITH %@", "shows the Playing badge.")).firstMatch
+        XCTAssertTrue(body.waitForExistence(timeout: 5))
+        for _ in 0..<6 { page.swipeUp() }
+        // Scrolled to the end, the body's last line sits inside the page, above the fixed controls.
+        XCTAssertLessThanOrEqual(body.frame.maxY, page.frame.maxY + 1, "The whole body is reachable by scrolling the page")
+        XCTAssertGreaterThan(body.frame.maxY, page.frame.minY)
+        XCTAssertTrue(app.buttons["howToPlay.next"].isHittable)
+        capture("How to play · largest text, end of page")
     }
 
     func testFirstLaunchShowsWalkthroughOnce() {
