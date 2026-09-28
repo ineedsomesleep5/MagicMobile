@@ -304,6 +304,7 @@ fun LandscapeGameContent(
                         SfImage("square.stack.3d.up", rgb(0.04, 0.52, 1.0), 14.dp)
                         Text("Stack · ${snapshot.stackTopFirst.size}", color = rgb(0.04, 0.52, 1.0), style = sf(13f, SfWeight.semibold))
                     }
+                    LocalEmoteCenter.current?.let { Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { TableChatButton(it) } }
                     val xmageStack = snapshot.xmage?.stack
                     if (!xmageStack.isNullOrEmpty()) {
                         XmageStackPeek(if (snapshot.source == "xmage-ondevice") xmageStack.reversed() else xmageStack, actions,

@@ -134,6 +134,9 @@ struct TavernMainMenu: View {
     var commanderNamespace: Namespace.ID? = nil
     var downloads: (() -> Void)? = nil
     var howToPlay: (() -> Void)? = nil
+    var friends: (() -> Void)? = nil
+    /// Friends online plus requests waiting, shown on the Friends button.
+    var friendsBadge = 0
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
@@ -184,6 +187,31 @@ struct TavernMainMenu: View {
                         }
                         .buttonStyle(BrandButtonStyle(kind: .secondary))
                         .accessibilityIdentifier("menu.decks")
+                        if let friends {
+                            Button {
+                                GameAudio.shared.play(.uiOpen)
+                                friends()
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "person.2.fill")
+                                    Text("Friends")
+                                    Spacer(minLength: 0)
+                                    if friendsBadge > 0 {
+                                        Text("\(friendsBadge)")
+                                            .font(.system(size: 13, weight: .black)).monospacedDigit()
+                                            .padding(.horizontal, 8).padding(.vertical, 2)
+                                            .background(BrandTheme.ember, in: Capsule())
+                                            .foregroundStyle(.white)
+                                    }
+                                    Image(systemName: "chevron.right").font(.system(size: 14, weight: .bold))
+                                }
+                                .frame(maxWidth: .infinity)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(BrandButtonStyle(kind: .secondary))
+                            .accessibilityValue(friendsBadge > 0 ? "\(friendsBadge) online or waiting" : "")
+                            .accessibilityIdentifier("menu.friends")
+                        }
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: 20) { utilityActions }
                             HStack(spacing: 8) { utilityActions }
@@ -592,6 +620,7 @@ struct NativeGameView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     /// The starting roll covers the board and answers its starting-player prompt itself.
     @Environment(\.startingRollVisible) private var startingRollVisible
+    @Environment(\.emoteCenter) private var emoteCenter
 
     private func openPromptDetails() {
         if let snapshot, PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil {
@@ -1122,6 +1151,8 @@ struct NativeGameView: View {
                                 .frame(maxWidth: .infinity, minHeight: 44)
                         }
                         .accessibilityLabel("Inspect stack")
+
+                        if let emoteCenter { TableChatButton(center: emoteCenter) }
 
                         if let xmageStack = snapshot.xmage?.stack, !xmageStack.isEmpty {
                             XmageStackPeek(
@@ -7660,6 +7691,7 @@ struct PortraitBottomCommandBar: View {
                     .accessibilityLabel("Floating mana; swipe to view all colors")
                     BoardStackTray(objects: snapshot.stackTopFirst,
                                    count: snapshot.xmage?.stack.count ?? human.zones.stack.count) { isStackOpen = true }
+                    if let emoteCenter { TableChatButton(center: emoteCenter) }
                 }
                 HStack(spacing: 8) {
                     Button {

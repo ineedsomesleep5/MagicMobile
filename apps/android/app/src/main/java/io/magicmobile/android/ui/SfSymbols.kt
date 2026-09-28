@@ -4,6 +4,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.HowToReg
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.LibraryBooks
@@ -85,6 +91,12 @@ object SfSymbols {
         "xmark.circle" -> Icons.Outlined.Cancel
         "xmark.circle.fill" -> Icons.Filled.Cancel
         "person.2.fill" -> Icons.Filled.People
+        "bubble.left.and.bubble.right.fill" -> Icons.Filled.Forum
+        "paperplane.fill" -> Icons.AutoMirrored.Filled.Send
+        "speaker.slash" -> Icons.AutoMirrored.Filled.VolumeOff
+        "person.badge.plus" -> Icons.Filled.PersonAdd
+        "person.crop.circle.badge.checkmark" -> Icons.Filled.HowToReg
+        "link" -> Icons.Filled.Link
         "person.crop.circle" -> Icons.Filled.AccountCircle
         "person.crop.square" -> Icons.Filled.AccountBox
         "person.crop.rectangle.stack" -> Icons.Filled.RecentActors

@@ -23,5 +23,18 @@ class MainActivity: ComponentActivity() {
         io.magicmobile.android.studio.DeckStudioServices.install(this)
         if(DesignPreview.active) setContent { DesignPreviewHost() }
         else setContent { io.magicmobile.android.ondevice.OnDeviceRoot(onDevice) }
+        if (savedInstanceState==null) openJoinLink(intent)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        openJoinLink(intent)
+    }
+
+    /** A table invite link (TableJoinLink) opens that table's join flow. */
+    private fun openJoinLink(intent: android.content.Intent?) {
+        val link = intent?.takeIf { it.action == android.content.Intent.ACTION_VIEW }?.dataString ?: return
+        io.magicmobile.android.game.TableJoinLink.code(link)?.let { onDevice.joinLinkCode = it }
     }
 }

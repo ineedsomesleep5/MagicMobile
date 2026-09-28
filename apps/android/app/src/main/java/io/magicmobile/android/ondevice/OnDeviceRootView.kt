@@ -85,6 +85,10 @@ import io.magicmobile.android.board.LocalGameRematchTitle
 import io.magicmobile.android.board.LocalInspectorBattlefield
 import io.magicmobile.android.board.LocalNativeTurnControl
 import io.magicmobile.android.board.LocalStartingRollVisible
+import io.magicmobile.android.board.TableChatPanel
+import io.magicmobile.android.social.FriendsSheet
+import io.magicmobile.android.social.LocalPlayerAccount
+import io.magicmobile.android.social.PlayerAccount
 import io.magicmobile.android.board.MenuEntry
 import io.magicmobile.android.board.NativeGameView
 import io.magicmobile.android.board.NativeTurnControl
@@ -94,8 +98,12 @@ import io.magicmobile.android.core.Deck
 import io.magicmobile.android.core.DeckTextImport
 import io.magicmobile.android.game.CardChoiceCommandFailure
 import io.magicmobile.android.game.EngineError
+import io.magicmobile.android.game.GameCommand
+import io.magicmobile.android.game.GameSnapshot
 import io.magicmobile.android.game.GameResumeSettings
 import io.magicmobile.android.game.HowToPlayLaunch
+import io.magicmobile.android.game.OfflineArtLaunch
+import io.magicmobile.android.game.TableJoinLink
 import io.magicmobile.android.game.HowToPlayText
 import io.magicmobile.android.session.OnDeviceSession
 import io.magicmobile.android.ui.AppPreferences
@@ -146,6 +154,10 @@ class OnDeviceViewModel(application: Application) : AndroidViewModel(application
     val session = OnDeviceSession(viewModelScope)
     val setup = OnDeviceSetupModel(application, session, viewModelScope)
     val emotes = EmoteCenter(viewModelScope)
+    /** The instant profile: player name, friends and presence (PlayerAccount.swift). */
+    val account = PlayerAccount(application, viewModelScope)
+    /** A table invite link waiting for the root view to open it. */
+    var joinLinkCode by mutableStateOf<String?>(null)
 
     override fun onCleared() {
         // The engine must stop its workers even when the activity is finished for good.
@@ -195,12 +207,18 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var showDownloads by remember { mutableStateOf(false) }
     var showHowToPlay by rememberSaveable { mutableStateOf(false) }
     var howToPlaySeenVersion by AppPreferences.int(HowToPlayLaunch.SEEN_VERSION_KEY, 0)
+    var offlineArtPromptSeen by AppPreferences.boolean(OfflineArtLaunch.SEEN_KEY, false)
+    var showOfflineArtPrompt by remember { mutableStateOf(false) }
+    var showFriends by remember { mutableStateOf(false) }
+    // The profile name is the name at every table; friends see the table this phone hosts while it has open seats.
+    LaunchedEffect(vm.account.username) { vm.account.username?.let { playerDisplayName = it } }
     var showDecks by remember { mutableStateOf(false) }
     var studioOpen by remember { mutableStateOf<io.magicmobile.android.studio.DeckStudioOpen?>(null) }
     var confirmLeave by remember { mutableStateOf(false) }
     var bannerError by remember { mutableStateOf<String?>(null) }
     var didDismissStartingRoll by remember { mutableStateOf(false) }
     var attemptedStartingPromptID by remember { mutableStateOf<String?>(null) }
+    var startingChoiceFailedPromptID by remember { mutableStateOf<String?>(null) }
     var aiStartingRoll by remember { mutableStateOf<OnDeviceStartingRoll?>(null) }
     var aiRevealedRollCount by remember { mutableIntStateOf(0) }
     var aiRollSeatNames by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
@@ -229,6 +247,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     fun makeVersusIntro(): Pair<VersusSeat, List<VersusSeat>> {
         val name = playerDisplayName.trim()
         val you = VersusSeat("you", name.ifEmpty { "You" }, selectedDeck?.commanderName)
+        // A table knows everyone's commander before its first snapshot shows the command zones.
+        val tableSeats = (setup.multiplayer as? RelayTable)?.tableSeats.orEmpty()
+        if (setup.usingMultiplayer && tableSeats.any { it.isLocal } && tableSeats.any { !it.isLocal }) {
+            val local = tableSeats.first { it.isLocal }
+            return VersusSeat("you", local.name, local.commanders.firstOrNull() ?: you.commander) to
+                tableSeats.filter { !it.isLocal }.take(3).map { VersusSeat(it.id, it.name, it.commanders.firstOrNull()) }
+        }
         session.snapshot?.let { snapshot ->
             val others = snapshot.players.filter { !snapshot.isViewer(it.playerId) }.take(3).map {
                 VersusSeat(it.playerId, it.displayName ?: "Opponent", it.zones.command.firstOrNull()?.card?.name)
@@ -302,25 +327,42 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         }
     }
 
+    /** The engine's "starting player" answer for the roll's winner, if this is that prompt. */
+    fun startingChoice(snapshot: GameSnapshot): Pair<GameCommand, String>? {
+        val table = setup.multiplayer as? RelayTable
+        return if (setup.usingMultiplayer && table != null) {
+            val roll = table.startingRoll ?: return null
+            val winnerName = table.seatNames[roll.winnerSeatID] ?: return null
+            OnDeviceStartingPlayerChoice.commandForName(snapshot, winnerName)?.let { it to winnerName }
+        } else if (!setup.usingMultiplayer && aiStartingPlayerMode == "roll") {
+            val roll = aiStartingRoll ?: return null
+            OnDeviceStartingPlayerChoice.command(snapshot, winnerPlayerID = roll.winnerSeatID)?.let { it to (aiRollSeatNames[roll.winnerSeatID] ?: "winner") }
+        } else null
+    }
+
+    /** A table answers as soon as every die is shown (the host is the one XMage asks); an AI game when the roll is closed. */
     fun submitStartingChoiceIfNeeded() {
-        if (!didDismissStartingRoll || setup.isBusy || session.isWorking || !setup.canUseSession) return
+        val tableRollShown = setup.usingMultiplayer && (setup.multiplayer as? RelayTable)?.rollShown == true
+        if (!didDismissStartingRoll && !tableRollShown) return
         val snapshot = session.snapshot ?: return
         val promptID = snapshot.promptEnvelopeV2?.id ?: return
-        if (attemptedStartingPromptID == promptID) return
-        val table = setup.multiplayer as? RelayTable
-        val winnerName: String
-        val command = if (setup.usingMultiplayer && table != null) {
-            val roll = table.startingRoll ?: return
-            winnerName = table.seatNames[roll.winnerSeatID] ?: return
-            OnDeviceStartingPlayerChoice.commandForName(snapshot, winnerName)
-        } else {
-            val roll = aiStartingRoll ?: return
-            if (aiStartingPlayerMode != "roll") return
-            winnerName = aiRollSeatNames[roll.winnerSeatID] ?: "winner"
-            OnDeviceStartingPlayerChoice.command(snapshot, winnerPlayerID = roll.winnerSeatID)
-        } ?: return
+        if (attemptedStartingPromptID == promptID || startingChoice(snapshot) == null) return
         attemptedStartingPromptID = promptID
-        scope.launch { setup.perform { session.send(command, "Start with $winnerName", "starting-roll-$promptID") } }
+        scope.launch {
+            // An automatic reply is never dropped: a busy session, a paused table or a stale
+            // snapshot only delays it. A new prompt means it went through.
+            repeat(12) { attempt ->
+                if (attempt > 0) delay(minOf(250L * attempt, 1500L))
+                val current = session.snapshot
+                if (attemptedStartingPromptID != promptID || current?.promptEnvelopeV2?.id != promptID) return@launch
+                val choice = if (!setup.isBusy && !session.isWorking && setup.canUseSession) startingChoice(current) else null
+                if (choice != null && runCatching { session.send(choice.first, "Start with ${choice.second}", "starting-roll-$promptID") }.isSuccess) return@launch
+            }
+            if (attemptedStartingPromptID == promptID && session.snapshot?.promptEnvelopeV2?.id == promptID) {
+                startingChoiceFailedPromptID = promptID
+                setup.errorMessage = "The roll's winner couldn't be sent. Choose the starting player."
+            }
+        }
     }
 
     fun advanceAIRollIfNeeded() {
@@ -364,9 +406,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 Lifecycle.Event.ON_RESUME -> { setup.returnedToApp(); setup.setSceneActive(true); GameAudio.resume() }
                 // The player may be leaving (perhaps to close the app from Recents): the engine saves at its next safe point.
                 Lifecycle.Event.ON_PAUSE -> { setup.setSceneActive(false); setup.armSaveForLeaving() }
-                Lifecycle.Event.ON_START -> setup.returnedToApp()
+                Lifecycle.Event.ON_START -> { setup.returnedToApp(); vm.account.setForeground(true) }
                 // Leaving starts the saved game's 10 minutes and saves it, and a smaller app is less likely to be ended.
-                Lifecycle.Event.ON_STOP -> { setup.saveForBackground(); Artwork.releaseMemory(); GameAudio.releaseForBackground() }
+                Lifecycle.Event.ON_STOP -> { setup.saveForBackground(); Artwork.releaseMemory(); GameAudio.releaseForBackground(); vm.account.setForeground(false) }
                 else -> {}
             }
         }
@@ -397,10 +439,16 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     LaunchedEffect(session.snapshot?.promptEnvelopeV2?.id) { prepareAIRollIfNeeded(); submitStartingChoiceIfNeeded() }
     LaunchedEffect(session.isWorking, setup.isBusy) { if (!session.isWorking && !setup.isBusy) submitStartingChoiceIfNeeded() }
     LaunchedEffect(session.matchID) {
-        didDismissStartingRoll = false; attemptedStartingPromptID = null; aiStartingRoll = null; aiRevealedRollCount = 0; aiRollSeatNames = emptyMap()
+        // A table's roll outlives the session attaching to its match; resetting it here replayed a
+        // finished roll. Tables reset on a new roll instead (below).
+        if (!setup.usingMultiplayer) { didDismissStartingRoll = false; attemptedStartingPromptID = null }
+        aiStartingRoll = null; aiRevealedRollCount = 0; aiRollSeatNames = emptyMap()
         prepareAIRollIfNeeded()
     }
     val table = setup.multiplayer as? RelayTable
+    LaunchedEffect(table?.startingRoll) { didDismissStartingRoll = false; attemptedStartingPromptID = null; startingChoiceFailedPromptID = null }
+    LaunchedEffect(table?.rollShown) { submitStartingChoiceIfNeeded() }
+    LaunchedEffect(table?.openHostedTable) { vm.account.hosting = table?.openHostedTable }
     LaunchedEffect(table?.endpoint?.matchID) { if (table?.endpoint != null) setup.attachTable(table, selectedDeckID, selectedDeck) }
     LaunchedEffect(table?.isConnected, table?.isSuspended) { setup.updateSessionForeground() }
     // Relay tables carry quick chat between phones; solo games only answer from the AI.
@@ -408,6 +456,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         vm.emotes.reset()
         vm.emotes.send = table?.let { current -> { emote -> current.sendEmote(emote) } }
         table?.onEmote = { name, emote -> vm.emotes.receive(emote, name, session.snapshot) }
+        vm.emotes.sendText = table?.let { current -> { text -> current.sendChat(text) } }
+        vm.account.blocked.forEach(vm.emotes::mute)
+        table?.onChat = { name, text -> vm.emotes.receiveText(text, name) }
     }
 
     // Deck Studio handles Back itself while it is open.
@@ -426,6 +477,31 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     val aiRoll = aiStartingRoll
     val aiRollVisible = !setup.usingMultiplayer && session.matchID != null && aiStartingPlayerMode == "roll" && aiRoll != null && !didDismissStartingRoll
     val startingRollVisible = multiplayerRollVisible || aiRollVisible
+    // The roll's own answer to "Select a starting player" stays quiet while it is on its way.
+    val startingChoicePending = session.snapshot?.let { snapshot ->
+        val promptID = snapshot.promptEnvelopeV2?.id
+        promptID != null && startingChoiceFailedPromptID != promptID && OnDeviceStartingPlayerChoice.candidateIDs(snapshot) != null &&
+            (if (setup.usingMultiplayer) table?.startingRoll != null else aiStartingPlayerMode == "roll" && aiStartingRoll != null)
+    } == true
+    val boardQuiet = startingRollVisible || startingChoicePending
+
+    // A join link (iOS openJoinLink): the online table setup with its code, joining right away with the
+    // chosen deck. During a game the code waits in the field instead; before the catalogue loads it waits here.
+    var pendingJoinCode by remember { mutableStateOf<String?>(null) }
+    fun openJoinLink(code: String) {
+        setup.relayJoinCode = code
+        if (activeGame || setup.needsLeave || (setup.multiplayer as? RelayTable)?.tableCode != null) {
+            bannerError = "Finish or leave this game, then join table $code."
+            return
+        }
+        playWithFriends = true
+        showSetup = true
+        if (setup.identity == null) { pendingJoinCode = code; return }
+        val deck = selectedDeck ?: return
+        if (!setup.isBusy && runCatching { OnDeviceSetupModel.playerName(playerDisplayName) }.isSuccess) setup.joinOnline(code, playerDisplayName, deck)
+    }
+    LaunchedEffect(vm.joinLinkCode) { vm.joinLinkCode?.let { code -> vm.joinLinkCode = null; openJoinLink(code) } }
+    LaunchedEffect(setup.identity) { if (setup.identity != null) pendingJoinCode?.let { code -> pendingJoinCode = null; openJoinLink(code) } }
 
     // The main menu is showing with nothing over it (no game, setup, saved-game offer or sheet).
     val menuIsFree = !activeGame && !showSetup && !setup.needsLeave && setup.resume.offer == null && !startingRollVisible &&
@@ -435,6 +511,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         if (!menuIsFree) return@LaunchedEffect
         delay(700)
         if (HowToPlayLaunch.shouldShowAutomatically(howToPlaySeenVersion, LaunchEnvironment.values)) showHowToPlay = true
+        else if (OfflineArtLaunch.shouldShowAutomatically(howToPlaySeenVersion, offlineArtPromptSeen, LaunchEnvironment.values)) showOfflineArtPrompt = true
     }
     fun closeHowToPlay() {
         showHowToPlay = false
@@ -443,7 +520,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
 
     MaterialTheme(colorScheme = darkColorScheme()) {
         CompositionLocalProvider(LocalBrandAmbientMotion provides !(showDecks || showAppearance || showUpdates || showDownloads || showHowToPlay),
-            LocalNativeTurnControl provides turnControl) {
+            LocalNativeTurnControl provides turnControl, LocalPlayerAccount provides vm.account) {
             Box(Modifier.fillMaxSize().background(BrandTheme.canvas)) {
                 if (activeGame) {
                     CompositionLocalProvider(
@@ -451,10 +528,10 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         LocalGameRematchTitle provides if (setup.usingMultiplayer) null else "Rematch",
                         LocalGameConcede provides GameConcedeHandler { concede() },
                         LocalEmoteCenter provides vm.emotes,
-                        LocalStartingRollVisible provides startingRollVisible) {
+                        LocalStartingRollVisible provides boardQuiet) {
                         // Hidden from TalkBack while the starting roll covers it.
                         Box(Modifier.fillMaxSize().alpha(if (setup.isBusy) 0.999f else 1f)
-                            .then(if (startingRollVisible) Modifier.clearAndSetSemantics {} else Modifier)) {
+                            .then(if (boardQuiet) Modifier.clearAndSetSemantics {} else Modifier)) {
                             NativeGameView(session.snapshot, selection, session.pendingActionID, session.pendingCardID,
                                 CardChoiceCommandFailure.of(setup.errorMessage ?: session.errorMessage,
                                     if (setup.errorMessage != null) CardChoiceCommandFailure.Source.SETUP else CardChoiceCommandFailure.Source.SESSION),
@@ -498,7 +575,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 } else {
                     TavernMainMenu(selectedDeck?.name ?: "Choose a deck", playerDisplayName, play = { showSetup = true },
                         decks = { showDecks = true }, settings = { showAppearance = true }, news = { showUpdates = true },
-                        commanderName = selectedDeck?.commanderName, downloads = { showDownloads = true }, howToPlay = { showHowToPlay = true })
+                        commanderName = selectedDeck?.commanderName, downloads = { showDownloads = true }, howToPlay = { showHowToPlay = true },
+                        friends = { showFriends = true }, friendsBadge = vm.account.onlineFriendCount + vm.account.incomingCount)
                 }
 
                 // The starting roll, on an opaque cover: a relay table's shared roll (the host's recorded dice,
@@ -611,6 +689,21 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         catalogueNames, setup.errorMessage?.takeIf { setup.catalogue == null }) { showDownloads = false }
                 }
             }
+            if (activeGame && vm.emotes.isChatOpen) BoardSheet({ vm.emotes.openChat(false) }, skipPartiallyExpanded = true) {
+                val profileReady = vm.account.phase == PlayerAccount.Phase.READY
+                TableChatPanel(vm.emotes, session.snapshot,
+                    report = if (profileReady) { line -> scope.launch { vm.account.report(line.name, line.text, "chat") } } else null,
+                    block = if (profileReady) { name -> vm.emotes.mute(name); scope.launch { vm.account.block(name) } } else null) { vm.emotes.openChat(false) }
+            }
+            if (showFriends) BoardSheet({ showFriends = false }, skipPartiallyExpanded = true) {
+                FriendsSheet(vm.account, join = { code -> scope.launch { delay(450); openJoinLink(code) } }) { showFriends = false }
+            }
+            if (showOfflineArtPrompt) {
+                ConfirmationDialog("Play offline with card art?",
+                    "Card art loads from Scryfall while you're online. Save your decks' images now so they show without a connection too.",
+                    listOf(ConfirmationAction("Choose downloads") { offlineArtPromptSeen = true; showOfflineArtPrompt = false; showDownloads = true }),
+                    cancelTitle = "Not now") { offlineArtPromptSeen = true; showOfflineArtPrompt = false }
+            }
             if (confirmLeave) {
                 val message = when {
                     setup.multiplayer?.endpoint?.isHost == true -> "You are hosting. Leaving ends this match for everyone; it cannot be resumed."
@@ -631,7 +724,8 @@ private fun BannerButton(title: String, enabled: Boolean, action: () -> Unit) {
 /** Port of TavernMainMenu (ContentView.swift). */
 @Composable
 fun TavernMainMenu(deckName: String, playerName: String, play: () -> Unit, decks: () -> Unit, settings: () -> Unit, news: (() -> Unit)? = null,
-                   commanderName: String? = null, downloads: (() -> Unit)? = null, howToPlay: (() -> Unit)? = null) {
+                   commanderName: String? = null, downloads: (() -> Unit)? = null, howToPlay: (() -> Unit)? = null,
+                   friends: (() -> Unit)? = null, friendsBadge: Int = 0) {
     val reduceMotion = LaunchEnvironment.reduceMotion
     var appeared by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { appeared = true }
@@ -668,6 +762,17 @@ fun TavernMainMenu(deckName: String, playerName: String, play: () -> Unit, decks
                             SfImage("rectangle.stack.fill", BrandTheme.ink, 17.dp)
                             Text("Decks", Modifier.weight(1f).padding(start = 4.dp), color = BrandTheme.ink, style = sf(17f, SfWeight.bold))
                             SfImage("chevron.right", BrandTheme.ink, 14.dp)
+                        }
+                        friends?.let { openFriends ->
+                            BrandButton({ GameAudio.play(GameSound.UI_OPEN); openFriends() }, Modifier.semantics {
+                                contentDescription = if (friendsBadge > 0) "Friends, $friendsBadge online or waiting" else "Friends"
+                            }, kind = BrandButtonKind.SECONDARY) {
+                                SfImage("person.2.fill", BrandTheme.ink, 17.dp)
+                                Text("Friends", Modifier.weight(1f).padding(start = 4.dp), color = BrandTheme.ink, style = sf(17f, SfWeight.bold))
+                                if (friendsBadge > 0) Text("$friendsBadge", Modifier.background(BrandTheme.ember, RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 2.dp),
+                                    color = Color.White, style = sf(13f, SfWeight.black))
+                                SfImage("chevron.right", BrandTheme.ink, 14.dp)
+                            }
                         }
                         // iOS ViewThatFits: one row with the widest gap that fits, else a column.
                         BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 6.dp)) {
@@ -770,8 +875,11 @@ private fun SetupScreen(setup: OnDeviceSetupModel, selectedDeck: Deck?, aiPrecon
                 // Your seat
                 Column(Modifier.fillMaxWidth().brandPanel(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     BrandDivider(Modifier.fillMaxWidth(), title = "Your seat")
-                    IosTextField(playerName, setPlayerName, "Player name", Modifier.semantics { contentDescription = "Player name" }, enabled = !seatLocked)
-                    Text("Choose a name with 1–24 characters.", color = setupSecondary, style = SfText.caption())
+                    val profileName = LocalPlayerAccount.current?.username
+                    IosTextField(playerName, setPlayerName, "Player name", Modifier.semantics { contentDescription = "Player name" },
+                        enabled = !seatLocked && profileName == null)
+                    Text(if (profileName != null) "Your profile name. Change it in Friends." else "Choose a name with 1–24 characters.",
+                        color = setupSecondary, style = SfText.caption())
                     IosToggle(portraitModeEnabled, setPortraitModeEnabled, tint = setupAccent) {
                         Text("Auto-Rotate", color = setupInk, style = SfText.subheadline())
                     }
@@ -873,11 +981,11 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
                 upstreamCommit?.let { IosListRow("XMage revision", value = it.take(12), monospacedValue = true) }
             }
             IosListSection("What's new") {
-                IosListRow("Edge-to-edge menus and cleaner deck covers.", systemImage = "rectangle.stack")
-                IosListRow("Compact card rows and clearer combo steps.", systemImage = "list.number")
-                IosListRow("Six battlefield backgrounds for both orientations.", systemImage = "photo.on.rectangle")
-                IosListRow("Quieter error notices that dismiss automatically.", systemImage = "bell")
-                IosListRow("Offline artwork with three quality options.", systemImage = "externaldrive")
+                IosListRow("Friends: see who's online and join their table in one tap.", systemImage = "person.2.fill")
+                IosListRow("Table chat with quick messages, plus mute, block and report.", systemImage = "bubble.left.and.bubble.right.fill")
+                IosListRow("Invite links that open straight into your table.", systemImage = "link")
+                IosListRow("Online games: one starting roll, and your opponent's commander on the versus screen.", systemImage = "checkmark.circle")
+                IosListRow("Scryfall card art on by default, with an offer to save it for offline play.", systemImage = "photo.on.rectangle")
             }
             IosListSection("XMage news", footer = "Opens GitHub. Upstream changes are not installed automatically. New cards and abilities become available only after a compatible MagicMobile build is tested and released.") {
                 IosListRow("XMage release notes", systemImage = "arrow.up.right.square") { open("https://github.com/magefree/mage/releases") }
@@ -902,7 +1010,7 @@ private fun OnlineTablePanel(setup: OnDeviceSetupModel, selectedDeck: Deck?, pla
     val table = setup.multiplayer as? RelayTable
     var storedAICount by AppPreferences.int("magicmobile.relay.aiOpponentCount", 0)
     val aiCount = storedAICount.coerceIn(0, maxOf(0, 4 - players))
-    var code by remember { mutableStateOf("") }
+    val code = setup.relayJoinCode
     val locked = setup.isBusy || setup.needsLeave
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (table == null) {
@@ -921,11 +1029,11 @@ private fun OnlineTablePanel(setup: OnDeviceSetupModel, selectedDeck: Deck?, pla
                 IosStepper("AI skill: $aiSkill", aiSkill, 1..10, setAISkill, enabled = !locked, color = setupInk)
                 Text("The host’s AI choices apply to everyone. Higher skill may slow turns.", color = setupSecondary, style = SfText.caption())
             }
-            Text("iPhone and Android players join with the table code. Every player needs this app version and keeps it open during the match.",
+            Text("Share the invite link, or friends type the table code. Every player needs this app version and keeps it open during the match.",
                 color = setupSecondary, style = SfText.caption())
             BrandButton(host, Modifier.semantics { contentDescription = "Host a table" }, enabled = mayHost) { BrandButtonText("Host a table") }
             BrandDivider(Modifier.fillMaxWidth(), title = "or join")
-            IosTextField(code, { value -> code = value.uppercase().filter { it in "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" }.take(6) }, "Table code",
+            IosTextField(code, { value -> setup.relayJoinCode = value.uppercase().filter { it in TableJoinLink.ALPHABET }.take(6) }, "Table code",
                 Modifier.semantics { contentDescription = "Table code" }, enabled = !locked)
             BrandButton({ join(code) }, kind = BrandButtonKind.SECONDARY, enabled = mayHost && code.length == 6) {
                 BrandButtonText("Join table", BrandButtonKind.SECONDARY)
@@ -939,12 +1047,14 @@ private fun OnlineTablePanel(setup: OnDeviceSetupModel, selectedDeck: Deck?, pla
                         color = setupInk, style = sf(34f, SfWeight.black, io.magicmobile.android.ui.SfDesign.MONOSPACED, tracking = 2f))
                     if (table.room == null && table.endpoint == null && !table.isFailed) {
                         Text("Players ${table.seatsTaken}/${table.seatsWanted.coerceAtLeast(2)}", color = setupSecondary, style = SfText.caption())
-                        IosTextButton("Share code", {
+                        IosTextButton("Share invite link", {
+                            val link = TableJoinLink.url(tableCode) ?: return@IosTextButton
                             val send = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, "Join my MagicMobile table with code $tableCode")
+                                putExtra(Intent.EXTRA_SUBJECT, "Join my MagicMobile table")
+                                putExtra(Intent.EXTRA_TEXT, "Tap to join my MagicMobile table (code $tableCode): $link")
                             }
-                            runCatching { context.startActivity(Intent.createChooser(send, "Share table code")) }
+                            runCatching { context.startActivity(Intent.createChooser(send, "Share invite link")) }
                         }, color = setupAccent, bold = true)
                     }
                 }

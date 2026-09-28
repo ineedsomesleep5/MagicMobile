@@ -48,11 +48,30 @@ final class EmoteCenter: ObservableObject {
         let emote: GameEmote
     }
 
+    /// One line in the table's chat: a typed message or a quick-chat emote.
+    struct ChatLine: Identifiable, Equatable {
+        let id = UUID()
+        let name: String
+        let text: String
+        let isLocal: Bool
+        let emote: GameEmote?
+    }
+
     @Published private(set) var bubbles: [String: Bubble] = [:]
     @Published private(set) var canSend = true
     /// Game Center: delivers your emote to the other players.
     var send: ((GameEmote) -> Void)?
+    /// Tables with other people: delivers your typed message. Nil in AI games (no chat panel).
+    var sendText: ((String) -> Void)? { didSet { objectWillChange.send() } }
+    var canChat: Bool { sendText != nil }
+    @Published private(set) var lines: [ChatLine] = []
+    @Published private(set) var unread = 0
+    @Published var isChatOpen = false { didSet { if isChatOpen { unread = 0 } } }
+    /// Table names whose messages you have hidden for this game.
+    @Published private(set) var muted: Set<String> = []
     private var lastHeard: [String: Date] = [:]
+    private var lastText = Date.distantPast
+    static let maxLines = 150
 
     func show(_ emote: GameEmote, from playerID: String) {
         let bubble = Bubble(emote: emote)
@@ -74,6 +93,7 @@ final class EmoteCenter: ObservableObject {
         }
         show(emote, from: snapshot.viewerID)
         send?(emote)
+        if canChat { append(ChatLine(name: String(localized: "You"), text: emote.text, isLocal: true, emote: emote)) }
         let bots = snapshot.players.filter { !snapshot.isViewer($0.playerId) && $0.isHuman == false && !$0.isOut }
         if let reply = emote.aiReply, let bot = bots.randomElement(), Double.random(in: 0..<1) < 0.6 {
             Task { @MainActor [weak self] in
@@ -90,10 +110,42 @@ final class EmoteCenter: ObservableObject {
         }) else { return }
         if let last = lastHeard[player.playerId], Date().timeIntervalSince(last) < 1.5 { return }
         lastHeard[player.playerId] = Date()
+        guard !muted.contains(name) else { return }
         show(emote, from: player.playerId)
+        append(ChatLine(name: name, text: emote.text, isLocal: false, emote: emote))
     }
 
-    func reset() { bubbles = [:]; lastHeard = [:] }
+    /// Sends a typed message. False when there is nothing to send or it came too soon after the last.
+    @discardableResult
+    func say(text raw: String) -> Bool {
+        guard let sendText, let text = TableChatText.sanitize(raw), Date().timeIntervalSince(lastText) >= 0.7 else { return false }
+        lastText = Date()
+        sendText(text)
+        append(ChatLine(name: String(localized: "You"), text: text, isLocal: true, emote: nil))
+        return true
+    }
+
+    /// Another player's message, already checked by the table.
+    func receive(text: String, fromName name: String) {
+        guard !muted.contains(name) else { return }
+        append(ChatLine(name: name, text: text, isLocal: false, emote: nil))
+        GameAudio.shared.play(.emote)
+    }
+
+    func mute(_ name: String) {
+        muted.insert(name)
+        lines.removeAll { !$0.isLocal && $0.name == name }
+    }
+
+    func unmute(_ name: String) { muted.remove(name) }
+
+    private func append(_ line: ChatLine) {
+        lines.append(line)
+        if lines.count > Self.maxLines { lines.removeFirst(lines.count - Self.maxLines) }
+        if !line.isLocal, !isChatOpen { unread += 1 }
+    }
+
+    func reset() { bubbles = [:]; lastHeard = [:]; lines = []; unread = 0; muted = []; isChatOpen = false }
 }
 
 private struct EmoteCenterKey: EnvironmentKey { static let defaultValue: EmoteCenter? = nil }
@@ -217,5 +269,173 @@ struct EmotePicker: View {
         .padding(14)
         .frame(width: 300)
         .background(MagicPalette.iron.opacity(0.97))
+    }
+}
+
+/// Opens the table's chat, with a badge for messages you have not seen. Only tables with
+/// other people have chat; AI games keep quick chat on the life orb.
+struct TableChatButton: View {
+    @ObservedObject var center: EmoteCenter
+
+    var body: some View {
+        if center.canChat {
+            Button { center.isChatOpen = true } label: {
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(MagicPalette.parchment.opacity(0.9))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .overlay(alignment: .topTrailing) {
+                        if center.unread > 0 {
+                            Text(center.unread > 99 ? "99+" : "\(center.unread)")
+                                .font(.system(size: 10, weight: .black)).monospacedDigit()
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5).frame(minWidth: 18, minHeight: 18)
+                                .background(MagicPalette.oxblood, in: Capsule())
+                                .overlay(Capsule().stroke(.black.opacity(0.6), lineWidth: 1))
+                                .offset(x: 2, y: 2)
+                        }
+                    }
+            }
+            .buttonStyle(.plain)
+            .fixedSize()
+            .accessibilityLabel("Chat")
+            .accessibilityValue(center.unread > 0 ? "\(center.unread) unread" : "")
+            .accessibilityIdentifier("board.chat")
+        }
+    }
+}
+
+/// The table's chat: typed messages and quick chat, newest at the bottom. Other players'
+/// messages can be muted for this game or reported.
+struct TableChatPanel: View {
+    @ObservedObject var center: EmoteCenter
+    let snapshot: GameSnapshot?
+    /// Sends a report of another player's message; nil when reporting is unavailable.
+    var report: ((EmoteCenter.ChatLine) -> Void)?
+    /// Blocks a player by their table name (their profile name); nil without a profile.
+    var block: ((String) -> Void)?
+    @AppStorage("magicmobile.chat.filterLanguage") private var filterLanguage = true
+    @State private var draft = ""
+    @State private var reported: Set<UUID> = []
+    @FocusState private var fieldFocused: Bool
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 10) {
+                            if center.lines.isEmpty {
+                                Text("Say hi to the table. Messages last for this game only.")
+                                    .font(.subheadline).foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity).padding(.top, 24)
+                            }
+                            ForEach(center.lines) { line in row(line).id(line.id) }
+                        }
+                        .padding(16)
+                    }
+                    .onAppear { if let last = center.lines.last { proxy.scrollTo(last.id, anchor: .bottom) } }
+                    .onChange(of: center.lines.last?.id) { _, id in
+                        if let id { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .bottom) } }
+                    }
+                }
+                if let snapshot {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(GameEmote.allCases) { emote in
+                                Button { center.say(emote, in: snapshot) } label: {
+                                    Label(emote.text, systemImage: emote.symbol)
+                                        .font(.system(size: 13, weight: .heavy, design: .rounded))
+                                        .padding(.horizontal, 10).frame(minHeight: 36)
+                                }
+                                .buttonStyle(CompactActionButtonStyle(isPrimary: false))
+                                .disabled(!center.canSend)
+                                .accessibilityIdentifier("chat.emote.\(emote.rawValue)")
+                            }
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                    }
+                }
+                HStack(spacing: 8) {
+                    TextField("Message", text: $draft, axis: .vertical)
+                        .lineLimit(1...3)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($fieldFocused)
+                        .submitLabel(.send)
+                        .onSubmit(send)
+                        .accessibilityIdentifier("chat.field")
+                    Button(action: send) {
+                        Image(systemName: "paperplane.fill").font(.system(size: 17, weight: .semibold))
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .disabled(TableChatText.sanitize(draft) == nil)
+                    .accessibilityLabel("Send")
+                    .accessibilityIdentifier("chat.send")
+                }
+                .padding(.horizontal, 16).padding(.bottom, 12).padding(.top, 4)
+            }
+            .navigationTitle("Table chat")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        Toggle("Filter language", isOn: $filterLanguage)
+                        if !center.muted.isEmpty {
+                            Section("Muted") {
+                                ForEach(center.muted.sorted(), id: \.self) { name in
+                                    Button("Unmute \(name)") { center.unmute(name) }
+                                }
+                            }
+                        }
+                    } label: { Image(systemName: "ellipsis.circle") }
+                    .accessibilityLabel("Chat options")
+                }
+            }
+        }
+        .onAppear { center.isChatOpen = true }
+        .onDisappear { center.isChatOpen = false }
+    }
+
+    private func send() {
+        if center.say(text: draft) { draft = "" }
+        fieldFocused = true
+    }
+
+    private func shown(_ line: EmoteCenter.ChatLine) -> String {
+        filterLanguage && !line.isLocal ? TableChatFilter.filtered(line.text) : line.text
+    }
+
+    @ViewBuilder
+    private func row(_ line: EmoteCenter.ChatLine) -> some View {
+        VStack(alignment: line.isLocal ? .trailing : .leading, spacing: 3) {
+            Text(line.name).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                if let emote = line.emote { Image(systemName: emote.symbol).foregroundStyle(MagicPalette.antiqueGold) }
+                Text(shown(line)).font(.body)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(line.isLocal ? MagicPalette.antiqueGold.opacity(0.28) : Color.white.opacity(0.08),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            if reported.contains(line.id) {
+                Text("Reported").font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: line.isLocal ? .trailing : .leading)
+        .accessibilityElement(children: .combine)
+        .contextMenu {
+            if !line.isLocal {
+                Button("Mute \(line.name)", systemImage: "speaker.slash") { center.mute(line.name) }
+                if let block {
+                    Button("Block \(line.name)", systemImage: "hand.raised") { block(line.name) }
+                }
+                if let report, !reported.contains(line.id) {
+                    Button("Report message", systemImage: "exclamationmark.bubble", role: .destructive) {
+                        report(line); reported.insert(line.id)
+                    }
+                }
+            }
+        }
     }
 }

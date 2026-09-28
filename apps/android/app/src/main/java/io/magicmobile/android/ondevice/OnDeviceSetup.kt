@@ -88,7 +88,7 @@ object OnDeviceSetupPreferences {
 }
 
 /** The table features every cross-play phone must share (see RelayTable). */
-const val RELAY_ADAPTER_VERSION = "ondevice-0.1/relay-1/rollstep-2/room-1/concede-1/emote-1"
+const val RELAY_ADAPTER_VERSION = "ondevice-0.1/relay-1/rollstep-2/room-1/concede-1/emote-1/chat-1"
 
 /** Port of OnDeviceAppConfiguration.aiGameSeats. */
 object OnDeviceAppConfiguration {
@@ -363,6 +363,9 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
     }
 
     fun updateSessionForeground() = session.setForeground(canUseSession)
+
+    /** The online table code being typed, or opened from an invite link. */
+    var relayJoinCode by mutableStateOf("")
 
     suspend fun perform(reportingBusy: Boolean = false, operation: suspend () -> Unit) {
         if (isBusy || session.isWorking || !canUseSession) {

@@ -65,6 +65,13 @@ final class MagicMobileAppDelegate: NSObject, UIApplicationDelegate {
     private var artworkConsentObserver: NSObjectProtocol?
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         MainActor.assumeIsolated {
+            // Live Scryfall art is on unless the player turned it off; UI tests keep their own store,
+            // offline. Registered here, before the observer below: registering posts a change
+            // notification, and doing it inside MagicMobilePreferences.current's initializer
+            // re-entered that initializer through the observer and crashed.
+            if MagicMobilePreferences.current === UserDefaults.standard {
+                UserDefaults.standard.register(defaults: [NativeArtworkPreference.key: true])
+            }
             _ = NativeAssetDownloads.shared
             // Local crash and hang summaries for the report sheet; nothing is uploaded.
             OnDeviceCrashReporter.shared.start()

@@ -21,6 +21,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -31,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.unit.dp
 import io.magicmobile.android.game.GameSnapshot
+import io.magicmobile.android.game.TableChatText
 import io.magicmobile.android.ui.GameAudio
 import io.magicmobile.android.ui.GameSound
 import io.magicmobile.android.ui.MagicPalette
@@ -63,11 +66,25 @@ enum class GameEmote(val rawValue: String, val text: String, val symbol: String)
 class EmoteCenter(private val scope: CoroutineScope = MainScope()) {
     data class Bubble(val emote: GameEmote, val id: String = UUID.randomUUID().toString())
 
+    /** One line in the table's chat: a typed message or a quick-chat emote (iOS ChatLine). */
+    data class ChatLine(val name: String, val text: String, val isLocal: Boolean, val emote: GameEmote?, val id: String = UUID.randomUUID().toString())
+
     val bubbles = mutableStateMapOf<String, Bubble>()
     var canSend by mutableStateOf(true); private set
     /** Online and Game Center-style games deliver your emote to the other players. */
     var send: ((GameEmote) -> Unit)? = null
+    /** Tables with other people: delivers your typed message. Null in AI games (no chat panel). */
+    var sendText by mutableStateOf<((String) -> Unit)?>(null)
+    val canChat: Boolean get() = sendText != null
+    val lines = mutableStateListOf<ChatLine>()
+    var unread by mutableIntStateOf(0); private set
+    var isChatOpen by mutableStateOf(false); private set
+    /** Table names whose messages you have hidden for this game. */
+    val muted = mutableStateListOf<String>()
     private val lastHeard = HashMap<String, Long>()
+    private var lastText = 0L
+
+    fun openChat(open: Boolean) { isChatOpen = open; if (open) unread = 0 }
 
     fun show(emote: GameEmote, playerID: String) {
         val bubble = Bubble(emote)
@@ -83,6 +100,7 @@ class EmoteCenter(private val scope: CoroutineScope = MainScope()) {
         scope.launch { delay(2000); canSend = true }
         show(emote, snapshot.viewerID)
         send?.invoke(emote)
+        if (canChat) append(ChatLine("You", emote.text, true, emote))
         val bots = snapshot.players.filter { !snapshot.isViewer(it.playerId) && it.isHuman == false && !it.isOut }
         val reply = emote.aiReply
         val bot = bots.randomOrNull()
@@ -98,10 +116,42 @@ class EmoteCenter(private val scope: CoroutineScope = MainScope()) {
         val now = System.currentTimeMillis()
         lastHeard[player.playerId]?.let { if (now - it < 1500) return }
         lastHeard[player.playerId] = now
+        if (fromName in muted) return
         show(emote, player.playerId)
+        append(ChatLine(fromName, emote.text, false, emote))
     }
 
-    fun reset() { bubbles.clear(); lastHeard.clear() }
+    /** Sends a typed message. False when there is nothing to send or it came too soon after the last. */
+    fun sayText(raw: String): Boolean {
+        val deliver = sendText ?: return false
+        val text = TableChatText.sanitize(raw) ?: return false
+        val now = System.currentTimeMillis()
+        if (now - lastText < 700) return false
+        lastText = now
+        deliver(text)
+        append(ChatLine("You", text, true, null))
+        return true
+    }
+
+    /** Another player's message, already checked by the table. */
+    fun receiveText(text: String, fromName: String) {
+        if (fromName in muted) return
+        append(ChatLine(fromName, text, false, null))
+        GameAudio.play(GameSound.EMOTE)
+    }
+
+    fun mute(name: String) { if (name !in muted) muted += name; lines.removeAll { !it.isLocal && it.name == name } }
+    fun unmute(name: String) { muted.remove(name) }
+
+    private fun append(line: ChatLine) {
+        lines += line
+        repeat(lines.size - MAX_LINES) { lines.removeAt(0) }
+        if (!line.isLocal && !isChatOpen) unread += 1
+    }
+
+    fun reset() { bubbles.clear(); lastHeard.clear(); lines.clear(); unread = 0; muted.clear(); isChatOpen = false }
+
+    companion object { const val MAX_LINES = 150 }
 }
 
 /** Set by on-device games (Swift `\.emoteCenter`). */

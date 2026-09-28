@@ -74,6 +74,24 @@ seconds, so the answer would be discarded anyway. The apps encode packets with s
 relay recognises an answer by its ending, `…,"type":"reply"}`; for a split packet it checks the last
 part and drops the whole packet. Every other message waits as before.
 
+## What the apps send through a table
+
+The relay never reads the table's packets; the apps define them (`OnDeviceMultiplayer.swift`,
+`OnDeviceMultiplayer.kt`, and `packages/ondevice-engine/docs/PROTOCOL.md` for the game itself).
+Two are social and never reach the engine:
+
+- Quick chat: `{"type":"emote","epoch":"…","emote":"<id>"}` with a fixed set of emotes.
+- Table chat (identity `chat-1`): `{"type":"chat","epoch":"…","text":"…"}`, exactly those keys.
+  Both apps clean the text the same way (`TableChatText`: control characters and line breaks
+  become single spaces, trimmed, at most 200 Unicode scalars) and a receiver rejects anything
+  else. More than one line per player per 0.5 s is dropped. Strong language is masked only
+  on screen (`TableChatFilter`, on by default). Players can mute a name for the game, and with
+  a profile report a message or block the player (Supabase `mm_report` / `mm_block`).
+  `apps/android/core/src/test/resources/parity/chat-cases.json` holds the shared cases.
+
+Invite links are `https://magicmobile-downloads.vercel.app/join/<CODE>` (the site's join page,
+a universal link / verified app link when the app is installed) and `magicmobile://join/<CODE>`.
+
 ## Develop, test, deploy
 
 ```sh

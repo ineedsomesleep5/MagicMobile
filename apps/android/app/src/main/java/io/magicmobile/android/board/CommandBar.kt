@@ -272,6 +272,7 @@ fun PortraitBottomCommandBar(humanName: String, human: PlayerGameState, opponent
                 })
             }
             BoardStackTray(snapshot.stackTopFirst, snapshot.xmage?.stack?.size ?: human.zones.stack.size) { isStackOpen = true }
+            emoteCenter?.let { TableChatButton(it) }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Box {

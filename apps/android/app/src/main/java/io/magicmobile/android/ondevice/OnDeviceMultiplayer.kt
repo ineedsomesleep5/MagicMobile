@@ -7,6 +7,7 @@ import io.magicmobile.android.board.GameEmote
 import io.magicmobile.android.game.BuildIdentity
 import io.magicmobile.android.game.EngineClient
 import io.magicmobile.android.game.EngineError
+import io.magicmobile.android.game.TableChatText
 import io.magicmobile.android.game.EngineJson
 import io.magicmobile.android.game.EngineTransport
 import io.magicmobile.android.game.HostRouter
@@ -529,6 +530,9 @@ data class RelayWaitingSeat(val id: String, val name: String, val connected: Boo
 class RelayTable(private val identity: BuildIdentity, private val scope: CoroutineScope,
                  private val makeHostEngine: suspend () -> EngineClient,
                  private val closeHostEngine: suspend (EngineClient) -> Unit) : TableConnection {
+    /** A seat's table name and public commanders (iOS TableSeat). */
+    data class TableSeat(val id: String, val name: String, val commanders: List<String>, val isLocal: Boolean)
+
     data class MatchRoom(val players: List<Player>, val localReady: Boolean, val aiSummary: String?) {
         data class Player(val id: String, val name: String, val isHost: Boolean, val isLocal: Boolean, val isReady: Boolean, val commanders: List<String>)
     }
@@ -542,9 +546,13 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
     var seatNames by mutableStateOf<Map<String, String>>(emptyMap()); private set
     var startingRoll by mutableStateOf<OnDeviceStartingRoll?>(null); private set
     var rollRevealedCount by mutableStateOf(0); private set
+    /** Every die of the shared roll has been shown (iOS rollProgress.isComplete). */
+    val rollShown: Boolean get() = startingRoll?.let { rollRevealedCount >= it.steps.size } == true
     var hasRolled by mutableStateOf(false); private set
     var rollStatus by mutableStateOf(""); private set
     var room by mutableStateOf<MatchRoom?>(null); private set
+    /** Every seat's name and commanders, kept from the room once the match starts (the versus intro opens before the first snapshot). */
+    var tableSeats by mutableStateOf<List<TableSeat>>(emptyList()); private set
     /** The code to share while players join, and how many seats are taken. */
     var tableCode by mutableStateOf<String?>(null); private set
     var seatsTaken by mutableStateOf(0); private set
@@ -552,9 +560,18 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
     /** Who has joined a table that is still filling; empty once the match room opens. */
     var waitingSeats by mutableStateOf<List<RelayWaitingSeat>>(emptyList()); private set
     var isHosting by mutableStateOf(false); private set
+    /** The table this phone hosts while seats are open, shared with friends so they can join (iOS openHostedTable). */
+    val openHostedTable: Pair<String, Int>? get() {
+        val code = tableCode ?: return null
+        if (!isHosting || endpoint != null || isFailed || seatsWanted <= seatsTaken) return null
+        return code to minOf(3, seatsWanted - seatsTaken)
+    }
     var isFailed by mutableStateOf(false); private set
     /** A player's quick-chat line: their table name and a fixed emote, never free text. */
     var onEmote: ((String, GameEmote) -> Unit)? = null
+    /** A player's typed chat line: their table name and the checked text. */
+    var onChat: ((String, String) -> Unit)? = null
+    private val lastChatFrom = HashMap<String, Long>()
 
     private var relay: RelayTransport? = null
     private var remote: OnDeviceRemoteEngineTransport? = null
@@ -746,6 +763,7 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
                     val seats = (1..names.size).map { "player$it" }
                     val result = OnDeviceStartingRoll.decode(fields["roll"] ?: throw EngineError.IncompatibleBuild, seats)
                     seatNames = names
+                    captureTableSeats(names)
                     startingRoll = result
                     rollProgress = OnDeviceStartingRollProgress(result, (1..lobby.peerIDs.size).map { "player$it" }.toSet())
                     rollRevealedCount = 0
@@ -806,6 +824,18 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
                 lastEmoteFrom[peer]?.let { if (now - it < 1500) return }
                 lastEmoteFrom[peer] = now
                 (seatNames[lobby.seatID(peer)] ?: playerNames[peer])?.let { onEmote?.invoke(it, emote) }
+            }
+            "chat" -> {
+                val raw = fields["text"].string
+                val text = raw?.takeIf { TableChatText.codePoints(it) <= TableChatText.MAX_CODE_POINTS }?.let(TableChatText::sanitize)
+                if (fields.keys != setOf("type", "epoch", "text") || (nativeMatchID == null && remote == null) || text == null) {
+                    throw EngineError.InvalidMessage("Invalid chat message.")
+                }
+                // Cosmetic only: a flood from one player is dropped, never an error.
+                val now = System.currentTimeMillis()
+                lastChatFrom[peer]?.let { if (now - it < 500) return }
+                lastChatFrom[peer] = now
+                (seatNames[lobby.seatID(peer)] ?: playerNames[peer])?.let { onChat?.invoke(it, text) }
             }
             "end" -> {
                 if (fields.keys != setOf("type", "epoch")) throw EngineError.InvalidMessage("Invalid match ending.")
@@ -885,6 +915,14 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
         runCatching { broadcast(obj("type" to text("emote"), "epoch" to text(epoch.wire), "emote" to text(emote.rawValue))) }
     }
 
+    /** A typed chat line to every other player in the running match. */
+    fun sendChat(message: String) {
+        val epoch = epoch ?: return
+        if (nativeMatchID == null && remote == null) return
+        val clean = TableChatText.sanitize(message) ?: return
+        runCatching { broadcast(obj("type" to text("chat"), "epoch" to text(epoch.wire), "text" to text(clean))) }
+    }
+
     /** The local player confirms a deck in the match room. */
     fun markReady(name: String, deck: J) {
         val lobby = lobby ?: return
@@ -928,6 +966,24 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
         room = MatchRoom(players, localReady, hostAISeatSummary)
     }
 
+    /** The roster the versus intro shows: humans in seat order, then AI seats. */
+    private fun captureTableSeats(names: Map<String, String>) {
+        val lobby = lobby ?: return
+        val isHost = lobby.localPeerID == lobby.hostID
+        val humans = lobby.peerIDs.mapIndexed { index, peer ->
+            val local = peer == lobby.localPeerID
+            val commanders = if (isHost) lobby.commanderNames(lobby.submissions[peer])
+                else if (local) lobby.commanderNames(submission) else reportedReady[peer] ?: emptyList()
+            val seat = "player${index + 1}"
+            TableSeat(seat, names[seat] ?: playerNames[peer] ?: "Player", commanders, local)
+        }
+        val bots = (lobby.aiSettings["seats"].array ?: emptyList()).mapIndexed { index, value ->
+            val seat = "player${lobby.peerIDs.size + index + 1}"
+            TableSeat(seat, names[seat] ?: "AI ${index + 1}", lobby.commanderNames(value), false)
+        }
+        tableSeats = humans + bots
+    }
+
     private fun startHost() {
         val lobby = lobby ?: return
         val epoch = epoch ?: return
@@ -957,6 +1013,7 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
                 broadcast(JsonObject(lobbyPacket("start") + mapOf("matchId" to text(matchID), "seatNames" to packetNames,
                     "roll" to result.encoded(seats))))
                 seatNames = names
+                captureTableSeats(names)
                 startingRoll = result
                 rollProgress = OnDeviceStartingRollProgress(result, (1..lobby.peerIDs.size).map { "player$it" }.toSet())
                 rollRevealedCount = 0
@@ -1084,7 +1141,7 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
             }
             generation = UUID.randomUUID(); hostEngine = null; needsCleanup = false; endpoint = null; hostAISeatSummary = null; seatNames = emptyMap()
             rollTimer?.cancel(); rollTimer = null
-            startingRoll = null; rollProgress = null; rollRevealedCount = 0; hasRolled = false; rollStatus = ""
+            startingRoll = null; rollProgress = null; rollRevealedCount = 0; hasRolled = false; rollStatus = ""; tableSeats = emptyList()
             remote = null; tableLink = null; router = null; hostDispatcher = null; relay = null; lobby = null; epoch = null; submission = null; requestedAISeats = emptyList()
             suspendedPeers.clear(); relayAwayPeers.clear(); peerPresenceSequences.clear(); presenceSequence = 0; suspensionRevision = 0
             room = null; localReady = false; reportedReady = emptyMap(); playerNames.clear()
@@ -1097,7 +1154,7 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
         if (isFailed) return
         isFailed = true; isConnected = false; status = message; seatNames = emptyMap(); room = null; waitingSeats = emptyList()
         rollTimer?.cancel(); rollTimer = null
-        startingRoll = null; rollProgress = null; rollRevealedCount = 0; hasRolled = false; rollStatus = ""
+        startingRoll = null; rollProgress = null; rollRevealedCount = 0; hasRolled = false; rollStatus = ""; tableSeats = emptyList()
         lobbyTimer?.cancel(); startup?.cancel(); remote?.close(); hostDispatcher?.cancel()
         epoch?.let { runCatching { broadcast(obj("type" to text("end"), "epoch" to text(it.wire))) } }
         relay?.let { it.onPacket = null; it.onRoster = null; it.onDisconnect = null; it.onError = null; it.disconnect() }
