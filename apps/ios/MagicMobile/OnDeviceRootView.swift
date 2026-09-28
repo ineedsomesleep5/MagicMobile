@@ -36,6 +36,7 @@ struct OnDeviceRootView: View {
     @State private var showAppearance = false
     @State private var showUpdates = false
     @State private var showDownloads = false
+    @State private var showHowToPlay = false
     @State private var showImport = false
     @State private var studioFocus: DeckStudioPlaySelection.FixRequest?
     @State private var confirmLeave = false
@@ -219,7 +220,7 @@ struct OnDeviceRootView: View {
                                    settings: { showAppearance = true }, news: { showUpdates = true },
                                    commanderName: selectedDeck?.commander?.cardName,
                                    commanderNamespace: reduceMotion ? nil : commanderTransition,
-                                   downloads: { showDownloads = true })
+                                   downloads: { showDownloads = true }, howToPlay: { showHowToPlay = true })
                 }
             }
         }
@@ -228,9 +229,12 @@ struct OnDeviceRootView: View {
         .animation(reduceMotion ? .easeOut(duration: 0.12) : .easeOut(duration: 0.26), value: showSetup)
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: activeGame)
         // Menu ambience pauses while anything covers the menu.
-        .environment(\.brandAmbientMotion, !(showImport || showAppearance || showUpdates || showDownloads || showDiagnostics))
+        .environment(\.brandAmbientMotion, !(showImport || showAppearance || showUpdates || showDownloads || showDiagnostics || showHowToPlay))
         .sheet(isPresented: $showAppearance) { AppearanceSettingsView(portraitModeEnabled: $portraitModeEnabled) }
         .sheet(isPresented: $showUpdates) { NativeUpdateNewsView(upstreamCommit: setup.identity?.upstreamCommit) }
+        .sheet(isPresented: $showHowToPlay, onDismiss: { HowToPlayLaunch.markSeen(in: MagicMobilePreferences.current) }) {
+            HowToPlayView()
+        }
         .sheet(isPresented: $showDownloads) {
             NativeDownloadsView(decks: downloadDecks, selectedDeckID: selectedDeckID,
                                 engineReady: setup.identity != nil)
@@ -287,6 +291,19 @@ struct OnDeviceRootView: View {
         }
     }
 
+    /// The main menu is showing with nothing over it (no game, setup, saved-game offer or sheet).
+    private var menuIsFree: Bool {
+        !activeGame && !showSetup && !setup.needsLeave && resume.offer == nil && !startingRollVisible
+            && !(showImport || showAppearance || showUpdates || showDownloads || showDiagnostics || showHowToPlay)
+    }
+
+    /// First visit to the menu after this update: the walkthrough opens once by itself.
+    private func showHowToPlayIfFirstLaunch() async {
+        do { try await Task.sleep(for: .milliseconds(700)) } catch { return }
+        guard menuIsFree, HowToPlayLaunch.shouldShowAutomatically(defaults: MagicMobilePreferences.current) else { return }
+        showHowToPlay = true
+    }
+
     private func preparePresentation() async {
         MagicMobileOrientationController.shared.setPortraitModeEnabled(portraitModeEnabled)
         restoreSetupPreferences()
@@ -318,6 +335,7 @@ struct OnDeviceRootView: View {
             if phase == .active { resume.enteredForeground(); GameAudio.shared.resume() }
         }
         .onChange(of: setup.identity) { _, _ in evaluateResumeLaunch() }
+        .task(id: menuIsFree) { if menuIsFree { await showHowToPlayIfFirstLaunch() } }
         .onAppear { GameAudio.shared.setScene(activeGame ? .game : .menu) }
         .onChange(of: activeGame) { _, playing in
             GameAudio.shared.setScene(playing ? .game : .menu)

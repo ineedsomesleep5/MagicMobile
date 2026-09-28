@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -40,6 +41,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +57,7 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -65,6 +68,7 @@ import io.magicmobile.android.game.BoardPoint
 import io.magicmobile.android.game.GameCommand
 import io.magicmobile.android.game.GameSnapshot
 import io.magicmobile.android.game.GameStats
+import io.magicmobile.android.game.HowToPlayText
 import io.magicmobile.android.game.LegalAction
 import io.magicmobile.android.game.MobilePromptPresentation
 import io.magicmobile.android.game.OpeningHandChoice
@@ -78,6 +82,7 @@ import io.magicmobile.android.ui.BrandTheme
 import io.magicmobile.android.ui.BrandTitle
 import io.magicmobile.android.ui.FitText
 import io.magicmobile.android.ui.GameAudio
+import io.magicmobile.android.ui.HowToPlayView
 import io.magicmobile.android.ui.GameSound
 import io.magicmobile.android.ui.IosTextButton
 import io.magicmobile.android.ui.MagicPalette
@@ -430,6 +435,7 @@ fun GameManagementMenu(snapshot: GameSnapshot, concedeAction: LegalAction?, runA
                        dismiss: () -> Unit) {
     val gameConcede = LocalGameConcede.current
     var confirmingConcede by remember { mutableStateOf(false) }
+    var showHowToPlay by rememberSaveable { mutableStateOf(false) }
     val canConcede = !snapshot.isCompleted && snapshot.human?.isOut != true && (gameConcede != null || concedeAction != null)
     Box(Modifier.fillMaxWidth()) {
         BattlefieldSurface(Modifier.matchParentSize())
@@ -444,6 +450,9 @@ fun GameManagementMenu(snapshot: GameSnapshot, concedeAction: LegalAction?, runA
                 PortraitModeToggle(portraitModeEnabled, setPortraitModeEnabled)
                 FollowTurnsToggle()
                 BoardEffectsPicker()
+                CompactActionButton({ showHowToPlay = true }, Modifier.fillMaxWidth().testTag("board.menu.howToPlay")) {
+                    SfImage("questionmark.circle", Color.White, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText(HowToPlayText.TITLE)
+                }
                 if (snapshot.isSpectating) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     SfImage("eye.fill", MagicPalette.parchment.copy(alpha = 0.8f), 12.dp)
                     Text("You’re out of this game and watching the others play. Quit when you’re done.", color = MagicPalette.parchment.copy(alpha = 0.8f),
@@ -465,6 +474,9 @@ fun GameManagementMenu(snapshot: GameSnapshot, concedeAction: LegalAction?, runA
                 }
             }
         }
+    }
+    if (showHowToPlay) BoardSheet({ showHowToPlay = false }, background = BrandTheme.canvas, skipPartiallyExpanded = true) {
+        HowToPlayView({ showHowToPlay = false }, Modifier.fillMaxWidth().fillMaxHeight(0.94f))
     }
     if (confirmingConcede) {
         ConfirmationDialog("Concede this game?", if (snapshot.remainingOpponents.size > 1) "You leave the game and can keep watching the others play it out."

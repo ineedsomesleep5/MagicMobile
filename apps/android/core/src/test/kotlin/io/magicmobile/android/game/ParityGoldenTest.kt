@@ -210,6 +210,31 @@ class ParityGoldenTest {
         }
     }
 
+    /** tutorial-cases.json: the "How to play" walkthrough's words and when it opens by itself (iOS testHowToPlayCasesOnBothPlatforms). */
+    @Test fun howToPlayCasesOnBothPlatforms() {
+        val root = Json.parseToJsonElement(File(parity, "tutorial-cases.json").readText())
+        assertEquals(HowToPlayText.TITLE, root["title"].string)
+        assertEquals(mapOf("back" to HowToPlayText.BACK, "next" to HowToPlayText.NEXT, "skip" to HowToPlayText.SKIP, "done" to HowToPlayText.DONE),
+            root["buttons"].obj!!.mapValues { it.value.string })
+        val progress = root["progress"]!!
+        val page = progress["page"].integer!!.toInt()
+        val count = progress["count"].integer!!.toInt()
+        assertEquals(progress["text"].string, HowToPlayText.progress(page, count))
+        assertEquals(progress["text"].string, progress["format"].string!!.replace("{page}", "$page").replace("{count}", "$count"))
+        assertEquals(root["pages"].array!!.map { mapOf("id" to it["id"].string, "title" to it["title"].string, "body" to it["body"].string) },
+            HowToPlayText.pages.map { mapOf("id" to it.id, "title" to it.title, "body" to it.body) })
+
+        val launch = root["launch"]!!
+        assertEquals(HowToPlayLaunch.SEEN_VERSION_KEY, launch["seenVersionKey"].string)
+        assertEquals(HowToPlayLaunch.CONTENT_VERSION.toLong(), launch["contentVersion"].integer)
+        val cases = launch["cases"].array!!
+        check(cases.isNotEmpty())
+        for (item in cases) {
+            assertEquals("launch · ${item["name"].string}", item["show"].bool,
+                HowToPlayLaunch.shouldShowAutomatically(item["seenVersion"].integer!!.toInt(), item["automated"].bool!!, item["forced"].bool!!))
+        }
+    }
+
     /**
      * resume-cases.json: the save/resume strings, files, launch outcomes, prompt detail and
      * game-over rule. ParityGoldenTests.swift runs the same cases on iOS.

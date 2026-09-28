@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -49,6 +50,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +58,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -92,6 +95,8 @@ import io.magicmobile.android.core.DeckTextImport
 import io.magicmobile.android.game.CardChoiceCommandFailure
 import io.magicmobile.android.game.EngineError
 import io.magicmobile.android.game.GameResumeSettings
+import io.magicmobile.android.game.HowToPlayLaunch
+import io.magicmobile.android.game.HowToPlayText
 import io.magicmobile.android.session.OnDeviceSession
 import io.magicmobile.android.ui.AppPreferences
 import io.magicmobile.android.ui.BrandBackdrop
@@ -108,6 +113,7 @@ import io.magicmobile.android.ui.GameAudio
 import io.magicmobile.android.ui.GameMusic
 import io.magicmobile.android.ui.GameSound
 import io.magicmobile.android.ui.HeroCommanderCard
+import io.magicmobile.android.ui.HowToPlayView
 import io.magicmobile.android.ui.IosListRow
 import io.magicmobile.android.ui.IosListSection
 import io.magicmobile.android.ui.IosMenuPicker
@@ -187,6 +193,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var showAppearance by remember { mutableStateOf(false) }
     var showUpdates by remember { mutableStateOf(false) }
     var showDownloads by remember { mutableStateOf(false) }
+    var showHowToPlay by rememberSaveable { mutableStateOf(false) }
+    var howToPlaySeenVersion by AppPreferences.int(HowToPlayLaunch.SEEN_VERSION_KEY, 0)
     var showDecks by remember { mutableStateOf(false) }
     var studioOpen by remember { mutableStateOf<io.magicmobile.android.studio.DeckStudioOpen?>(null) }
     var confirmLeave by remember { mutableStateOf(false) }
@@ -419,8 +427,22 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     val aiRollVisible = !setup.usingMultiplayer && session.matchID != null && aiStartingPlayerMode == "roll" && aiRoll != null && !didDismissStartingRoll
     val startingRollVisible = multiplayerRollVisible || aiRollVisible
 
+    // The main menu is showing with nothing over it (no game, setup, saved-game offer or sheet).
+    val menuIsFree = !activeGame && !showSetup && !setup.needsLeave && setup.resume.offer == null && !startingRollVisible &&
+        !(showDecks || showAppearance || showUpdates || showDownloads || showHowToPlay)
+    // First visit to the menu after this update: the walkthrough opens once by itself.
+    LaunchedEffect(menuIsFree) {
+        if (!menuIsFree) return@LaunchedEffect
+        delay(700)
+        if (HowToPlayLaunch.shouldShowAutomatically(howToPlaySeenVersion, LaunchEnvironment.values)) showHowToPlay = true
+    }
+    fun closeHowToPlay() {
+        showHowToPlay = false
+        howToPlaySeenVersion = HowToPlayLaunch.seenVersionAfterClosing(howToPlaySeenVersion)
+    }
+
     MaterialTheme(colorScheme = darkColorScheme()) {
-        CompositionLocalProvider(LocalBrandAmbientMotion provides !(showDecks || showAppearance || showUpdates || showDownloads),
+        CompositionLocalProvider(LocalBrandAmbientMotion provides !(showDecks || showAppearance || showUpdates || showDownloads || showHowToPlay),
             LocalNativeTurnControl provides turnControl) {
             Box(Modifier.fillMaxSize().background(BrandTheme.canvas)) {
                 if (activeGame) {
@@ -476,7 +498,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 } else {
                     TavernMainMenu(selectedDeck?.name ?: "Choose a deck", playerDisplayName, play = { showSetup = true },
                         decks = { showDecks = true }, settings = { showAppearance = true }, news = { showUpdates = true },
-                        commanderName = selectedDeck?.commanderName, downloads = { showDownloads = true })
+                        commanderName = selectedDeck?.commanderName, downloads = { showDownloads = true }, howToPlay = { showHowToPlay = true })
                 }
 
                 // The starting roll, on an opaque cover: a relay table's shared roll (the host's recorded dice,
@@ -572,6 +594,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 AppearanceSettings(portraitModeEnabled, { portraitModeEnabled = it }, inGame = activeGame) { showAppearance = false }
             }
             if (showUpdates) BoardSheet({ showUpdates = false }) { UpdatesSheet(setup.identity?.upstreamCommit) { showUpdates = false } }
+            if (showHowToPlay) BoardSheet(::closeHowToPlay, background = BrandTheme.canvas, skipPartiallyExpanded = true) {
+                HowToPlayView(::closeHowToPlay, Modifier.fillMaxWidth().fillMaxHeight(0.94f))
+            }
             // DeckStudioRootView, full screen over the menu (fullScreenCover on iOS).
             io.magicmobile.android.studio.StudioCover(showDecks) {
                 io.magicmobile.android.studio.DeckStudioRootView(setup, selectedDeckID, { selectedDeckID = it },
@@ -606,7 +631,7 @@ private fun BannerButton(title: String, enabled: Boolean, action: () -> Unit) {
 /** Port of TavernMainMenu (ContentView.swift). */
 @Composable
 fun TavernMainMenu(deckName: String, playerName: String, play: () -> Unit, decks: () -> Unit, settings: () -> Unit, news: (() -> Unit)? = null,
-                   commanderName: String? = null, downloads: (() -> Unit)? = null) {
+                   commanderName: String? = null, downloads: (() -> Unit)? = null, howToPlay: (() -> Unit)? = null) {
     val reduceMotion = LaunchEnvironment.reduceMotion
     var appeared by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { appeared = true }
@@ -644,10 +669,21 @@ fun TavernMainMenu(deckName: String, playerName: String, play: () -> Unit, decks
                             Text("Decks", Modifier.weight(1f).padding(start = 4.dp), color = BrandTheme.ink, style = sf(17f, SfWeight.bold))
                             SfImage("chevron.right", BrandTheme.ink, 14.dp)
                         }
-                        Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally)) {
-                            BrandIconButton("Settings", "gearshape.fill", { GameAudio.play(GameSound.UI_OPEN); settings() })
-                            news?.let { BrandIconButton("Updates", "scroll.fill", { GameAudio.play(GameSound.PAGE_FLIP); it() }) }
-                            downloads?.let { BrandIconButton("Downloads", "arrow.down.to.line.circle.fill", { GameAudio.play(GameSound.UI_OPEN); it() }) }
+                        // iOS ViewThatFits: one row with the widest gap that fits, else a column.
+                        BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                            val count = 1 + listOfNotNull(news, downloads, howToPlay).size
+                            val gap = listOf(20.dp, 8.dp, 0.dp).firstOrNull { 72.dp * count + it * (count - 1) <= maxWidth }
+                            val utilities: @Composable () -> Unit = {
+                                BrandIconButton("Settings", "gearshape.fill", { GameAudio.play(GameSound.UI_OPEN); settings() })
+                                news?.let { BrandIconButton("Updates", "scroll.fill", { GameAudio.play(GameSound.PAGE_FLIP); it() }) }
+                                downloads?.let { BrandIconButton("Downloads", "arrow.down.to.line.circle.fill", { GameAudio.play(GameSound.UI_OPEN); it() }) }
+                                howToPlay?.let {
+                                    BrandIconButton(HowToPlayText.TITLE, "questionmark.circle", { GameAudio.play(GameSound.PAGE_FLIP); it() },
+                                        Modifier.testTag("menu.howToPlay"))
+                                }
+                            }
+                            if (gap != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally)) { utilities() }
+                            else Column { utilities() }
                         }
                     }
                 }
