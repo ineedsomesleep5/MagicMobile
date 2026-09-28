@@ -10,9 +10,9 @@ android {
         minSdk = 26
         targetSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2026092703
+        versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2026092801
         versionName = providers.gradleProperty("androidVersionName").orNull ?: "0.1.1"
-        buildConfigField("int", "RELEASE_BUILD", "12")
+        buildConfigField("int", "RELEASE_BUILD", "13")
         ndk { abiFilters += "arm64-v8a" }
         buildConfigField("boolean", "NATIVE_ENGINE", withNative.toString())
         val relayURL = providers.gradleProperty("relayUrl").orNull ?: "https://magicmobile-relay.calebjfeliciano.workers.dev"
