@@ -321,3 +321,7 @@ Caleb authorizes.
 - 2026-09-28 (Claude): iOS build 21 and Android build 12 shipped.
   - Contents: save on exit, a smaller engine (Android .so 795→381 MB; APK 229→139 MB; IPA 202→138 MB), the playtest fixes, How to play, legacy iOS client removal, repo/CI cleanup.
   - Follow-up: warm the serialization descriptors at game start (the first save took 5.3 s on the emulator), then split ContentView.swift.
+
+- 2026-09-28 (Claude): iOS build 22 and Android build 13 shipped (#90).
+  - Contents: friends and instant profiles (Supabase anonymous auth plus `mm_*` functions), table chat, invite links (`/join/CODE` plus AASA/assetlinks), the starting-roll and starting-player fix, the opponent's commander on the versus intro, and Scryfall art on by default.
+  - Pending: enable anonymous sign-ins in the Supabase project (Authentication → Sign In / Providers); until then Friends shows as unavailable.

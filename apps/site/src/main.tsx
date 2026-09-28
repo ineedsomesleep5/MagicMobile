@@ -304,13 +304,12 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 12 plays smoother: games save only when you leave
-                the app, so there are no pauses between actions, and the
-                download is about 40% smaller. A new How to play walkthrough
-                covers the board, casting, priority and combat. Leave a game
-                against the AI and come back within 10 minutes to resume it.
-                Android is an early alpha; physical-phone acceptance is still
-                pending.
+                Android build 13 adds friends, table chat and invite links.
+                Pick a player name once and use it at every table, see which
+                friends are online and join their table in one tap, or share a
+                link that opens straight into your table. Online games now roll
+                the D20 once and the winner goes first. Android is an early
+                alpha; physical-phone acceptance is still pending.
               </p>
             </details>
             <details>
@@ -319,12 +318,12 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 21 plays smoother: games save only when you leave the app,
-                so there are no pauses between actions, and the download is
-                about a third smaller. A new How to play walkthrough covers the
-                board, casting, priority and combat. Leave a game against the
-                AI and come back within 10 minutes to resume it. Apple has
-                approved this build for Internal and External TestFlight.
+                Build 22 adds friends, table chat and invite links. Pick a
+                player name once and use it at every table, see which friends
+                are online and join their table in one tap, or share a link that
+                opens straight into your table. Online games now roll the D20
+                once and the winner goes first. Apple has approved this build
+                for Internal and External TestFlight.
               </p>
             </details>
             <details>
