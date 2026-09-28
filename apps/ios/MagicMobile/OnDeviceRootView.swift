@@ -828,7 +828,7 @@ struct OnDeviceRootView: View {
                         Button("Your profile name. Change it in Friends.") { showFriends = true }
                             .font(.caption).foregroundStyle(.secondary)
                     } else {
-                        Text("Choose a name with 1–24 characters, or pick a profile name in Friends.").font(.caption).foregroundStyle(.secondary)
+                        Text("Choose a name with 1–24 characters.").font(.caption).foregroundStyle(.secondary)
                     }
                     Toggle("Auto-Rotate", isOn: $portraitModeEnabled)
                         .font(.subheadline).tint(CommanderPresentation.accent)

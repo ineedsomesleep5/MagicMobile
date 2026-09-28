@@ -878,7 +878,7 @@ private fun SetupScreen(setup: OnDeviceSetupModel, selectedDeck: Deck?, aiPrecon
                     val profileName = LocalPlayerAccount.current?.username
                     IosTextField(playerName, setPlayerName, "Player name", Modifier.semantics { contentDescription = "Player name" },
                         enabled = !seatLocked && profileName == null)
-                    Text(if (profileName != null) "Your profile name. Change it in Friends." else "Choose a name with 1–24 characters, or pick a profile name in Friends.",
+                    Text(if (profileName != null) "Your profile name. Change it in Friends." else "Choose a name with 1–24 characters.",
                         color = setupSecondary, style = SfText.caption())
                     IosToggle(portraitModeEnabled, setPortraitModeEnabled, tint = setupAccent) {
                         Text("Auto-Rotate", color = setupInk, style = SfText.subheadline())
