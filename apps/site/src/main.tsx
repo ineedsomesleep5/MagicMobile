@@ -304,13 +304,13 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 11 picks up where you left off: if Android
-                closes the app during a game against the AI, open it again
-                within 10 minutes and resume at your last decision. It keeps
-                everything from build 10, including playing any deck straight
-                from Deck Studio with an automatic rules check, a live deck
-                check, quick adds and a sample hand. Android is an early alpha;
-                physical-phone acceptance is still pending.
+                Android build 12 plays smoother: games save only when you leave
+                the app, so there are no pauses between actions, and the
+                download is about 40% smaller. A new How to play walkthrough
+                covers the board, casting, priority and combat. Leave a game
+                against the AI and come back within 10 minutes to resume it.
+                Android is an early alpha; physical-phone acceptance is still
+                pending.
               </p>
             </details>
             <details>
@@ -319,13 +319,12 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 20 picks up where you left off: if iOS closes the app
-                during a game against the AI, open it again within 10 minutes
-                and resume at your last decision. It keeps everything from build
-                19, including playing any deck straight from Deck Studio with an
-                automatic rules check, a live deck check, quick adds and a
-                sample hand. Apple has approved this build for Internal and
-                External TestFlight.
+                Build 21 plays smoother: games save only when you leave the app,
+                so there are no pauses between actions, and the download is
+                about a third smaller. A new How to play walkthrough covers the
+                board, casting, priority and combat. Leave a game against the
+                AI and come back within 10 minutes to resume it. Apple has
+                approved this build for Internal and External TestFlight.
               </p>
             </details>
             <details>
