@@ -242,7 +242,10 @@ class GameResumeController(private val store: GameResumeStore?, private val appB
     }
 
     companion object {
-        /** The longest the ON_STOP save keeps asking the engine. */
-        const val BACKGROUND_SAVE_MILLIS = 5_000L
+        /**
+         * The longest the ON_STOP save keeps asking the engine. The first save in a process builds the
+         * serialization descriptors, which took 5.3 s on the API 35 emulator (build 12), so 5 s was too tight.
+         */
+        const val BACKGROUND_SAVE_MILLIS = 12_000L
     }
 }
