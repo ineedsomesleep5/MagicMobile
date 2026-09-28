@@ -89,8 +89,9 @@ object Artwork {
     private fun downloadDirectory(context: Context) =
         File(context.filesDir, "downloaded-card-art-v1").apply { mkdirs() }
 
+    /** Live Scryfall art is on unless the player turned it off (iOS registers the same default). */
     fun enabled(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(CONSENT_KEY, false)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(CONSENT_KEY, true)
 
     fun setEnabled(context: Context, value: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()

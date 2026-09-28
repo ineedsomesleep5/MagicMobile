@@ -5,8 +5,22 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application android:theme="@style/Theme.MagicMobile" android:label="MagicMobile" android:icon="@drawable/magicmobile_icon" android:roundIcon="@drawable/magicmobile_icon" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true" android:usesCleartextTraffic="false">
         <service android:name=".ArtworkDownloadService" android:exported="false" android:foregroundServiceType="dataSync"/>
-        <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation" android:windowSoftInputMode="adjustResize">
+        <!-- singleTask: a join link opens the running app (onNewIntent), never a second copy with its own engine. -->
+        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation" android:windowSoftInputMode="adjustResize">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+            <!-- Table invite links (TableJoinLink): verified https links from the download site, and the app's own scheme. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="magicmobile-downloads.vercel.app" android:pathPrefix="/join/"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="magicmobile" android:host="join"/>
+            </intent-filter>
         </activity>
     </application>
 </manifest>

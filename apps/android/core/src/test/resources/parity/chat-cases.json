@@ -1,0 +1,215 @@
+{
+  "comment": "Table chat, invite links and profile rules. TableChat.swift / PlayerAccount.swift and TableChat.kt / TableLinks.kt / PlayerAccountRules.kt must agree.",
+  "maxScalars": 200,
+  "sanitize": [
+    {
+      "name": "collapses spaces",
+      "input": "  hello   world  ",
+      "output": "hello world"
+    },
+    {
+      "name": "line breaks and tabs",
+      "input": "line1\nline2\tend",
+      "output": "line1 line2 end"
+    },
+    {
+      "name": "only spaces",
+      "input": "   \n\t ",
+      "output": null
+    },
+    {
+      "name": "empty",
+      "input": "",
+      "output": null
+    },
+    {
+      "name": "control character",
+      "input": "a\u0000b",
+      "output": "a b"
+    },
+    {
+      "name": "no-break spaces",
+      "input": " nbsp ",
+      "output": "nbsp"
+    },
+    {
+      "name": "emoji with skin tone",
+      "input": "gg 👍🏽",
+      "output": "gg 👍🏽"
+    },
+    {
+      "name": "emoji joined family",
+      "input": "👨‍👩‍👧 ok",
+      "output": "👨‍👩‍👧 ok"
+    },
+    {
+      "name": "capped",
+      "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "output": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "name": "cap then trailing space",
+      "input": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy z",
+      "output": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+    }
+  ],
+  "filter": [
+    {
+      "input": "well played",
+      "output": "well played"
+    },
+    {
+      "input": "oh shit",
+      "output": "oh s***"
+    },
+    {
+      "input": "FUCKING hell",
+      "output": "F****** hell"
+    },
+    {
+      "input": "Cockatrice is great",
+      "output": "Cockatrice is great"
+    },
+    {
+      "input": "class assignment",
+      "output": "class assignment"
+    },
+    {
+      "input": "you ass",
+      "output": "you a**"
+    },
+    {
+      "input": "dicks",
+      "output": "d****"
+    },
+    {
+      "input": "Scunthorpe",
+      "output": "Scunthorpe"
+    },
+    {
+      "input": "shit!!",
+      "output": "s***!!"
+    },
+    {
+      "input": "bitchy remark",
+      "output": "b***** remark"
+    }
+  ],
+  "links": [
+    {
+      "link": "https://magicmobile-downloads.vercel.app/join/ABC234",
+      "code": "ABC234"
+    },
+    {
+      "link": "https://magicmobile-downloads.vercel.app/join/abc234",
+      "code": "ABC234"
+    },
+    {
+      "link": "https://magicmobile-downloads.vercel.app/join/ABC234/",
+      "code": "ABC234"
+    },
+    {
+      "link": "magicmobile://join/ABC234",
+      "code": "ABC234"
+    },
+    {
+      "link": "MagicMobile://join/xyz789",
+      "code": "XYZ789"
+    },
+    {
+      "link": "https://magicmobile-downloads.vercel.app/join/ABC23",
+      "code": null
+    },
+    {
+      "link": "https://magicmobile-downloads.vercel.app/join/ABC2O4",
+      "code": null
+    },
+    {
+      "link": "https://example.com/join/ABC234",
+      "code": null
+    },
+    {
+      "link": "http://magicmobile-downloads.vercel.app/join/ABC234",
+      "code": null
+    },
+    {
+      "link": "https://magicmobile-downloads.vercel.app/join/ABC234/extra",
+      "code": null
+    },
+    {
+      "link": "magicmobile://table/ABC234",
+      "code": null
+    }
+  ],
+  "shareLink": {
+    "code": "abc234",
+    "url": "https://magicmobile-downloads.vercel.app/join/ABC234"
+  },
+  "usernames": [
+    {
+      "name": "Caleb_22",
+      "valid": true
+    },
+    {
+      "name": "abc",
+      "valid": true
+    },
+    {
+      "name": "ab",
+      "valid": false
+    },
+    {
+      "name": "aaaaaaaaaaaaaaaaaaaaa",
+      "valid": false
+    },
+    {
+      "name": "aaaaaaaaaaaaaaaaaaaa",
+      "valid": true
+    },
+    {
+      "name": "bad name",
+      "valid": false
+    },
+    {
+      "name": "émile",
+      "valid": false
+    },
+    {
+      "name": "",
+      "valid": false
+    },
+    {
+      "name": "dash-name",
+      "valid": false
+    }
+  ],
+  "messages": {
+    "username_taken": "That name is taken. Try another.",
+    "invalid_username": "Use 3–20 letters, numbers or underscores.",
+    "not_found": "No player has that name.",
+    "self": "That's you.",
+    "no_username": "Choose your name first.",
+    "too_many_requests": "You have too many friend requests waiting.",
+    "too_many_reports": "You've sent a lot of reports. Try again later.",
+    "anonymous_provider_disabled": "Profiles aren't available right now. You can still play.",
+    "offline": "You're offline. Profiles and friends come back when you reconnect.",
+    "something_new": "Something went wrong. Try again."
+  },
+  "requestResults": [
+    {
+      "result": "requested",
+      "username": "Bebo",
+      "text": "Friend request sent to Bebo."
+    },
+    {
+      "result": "accepted",
+      "username": "Bebo",
+      "text": "You and Bebo are now friends."
+    },
+    {
+      "result": "already_friends",
+      "username": "Bebo",
+      "text": "You're already friends with Bebo."
+    }
+  ]
+}

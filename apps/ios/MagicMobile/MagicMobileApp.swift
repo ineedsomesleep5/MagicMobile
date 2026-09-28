@@ -11,6 +11,8 @@ enum MagicMobilePreferences {
             return store
         }
         #endif
+        // Live Scryfall art is on unless the player turned it off (UI tests keep their own store, offline).
+        UserDefaults.standard.register(defaults: [NativeArtworkPreference.key: true])
         return .standard
     }()
 }

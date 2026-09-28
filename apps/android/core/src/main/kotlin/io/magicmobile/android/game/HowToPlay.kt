@@ -70,3 +70,11 @@ object HowToPlayLaunch {
     /** Closing the walkthrough (Done, Skip or dismissing the sheet) stores this; a newer stored version is kept. */
     fun seenVersionAfterClosing(seenVersion: Int): Int = maxOf(seenVersion, CONTENT_VERSION)
 }
+
+/** The one-time offer, after the walkthrough, to save card art for offline play (iOS OfflineArtLaunch). */
+object OfflineArtLaunch {
+    const val SEEN_KEY = "magicmobile.offlineArtPrompt.seen"
+
+    fun shouldShowAutomatically(howToPlaySeenVersion: Int, seen: Boolean, launch: Map<String, String>): Boolean =
+        !HowToPlayLaunch.isAutomated(launch) && howToPlaySeenVersion >= HowToPlayLaunch.CONTENT_VERSION && !seen
+}

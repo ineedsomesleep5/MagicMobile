@@ -84,3 +84,18 @@ enum HowToPlayLaunch {
         if defaults.integer(forKey: seenVersionKey) < contentVersion { defaults.set(contentVersion, forKey: seenVersionKey) }
     }
 }
+
+/// The one-time offer, after the walkthrough, to save card art for offline play.
+enum OfflineArtLaunch {
+    static let seenKey = "magicmobile.offlineArtPrompt.seen"
+
+    static func shouldShowAutomatically(defaults: UserDefaults,
+                                        arguments: [String] = ProcessInfo.processInfo.arguments,
+                                        environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
+        !HowToPlayLaunch.isAutomated(arguments: arguments, environment: environment)
+            && defaults.integer(forKey: HowToPlayLaunch.seenVersionKey) >= HowToPlayLaunch.contentVersion
+            && !defaults.bool(forKey: seenKey)
+    }
+
+    static func markSeen(in defaults: UserDefaults) { defaults.set(true, forKey: seenKey) }
+}

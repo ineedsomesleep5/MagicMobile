@@ -8,6 +8,8 @@ import MagicMobileOnDevice
 @MainActor
 struct OnDeviceRootView: View {
     @AppStorage("magicmobile.playerDisplayName") private var playerDisplayName = ""
+    @ObservedObject private var account = PlayerAccount.shared
+    @State private var showFriends = false
     @AppStorage(PortraitModePreference.key) private var portraitModeEnabled = true
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -45,7 +47,13 @@ struct OnDeviceRootView: View {
     @State private var confirmDeleteReport = false
     @State private var bannerError: String?
     @State private var didDismissStartingRoll = false
+    @State private var showOfflineArtPrompt = false
+    /// The table code typed or opened from a join link; a link that arrives before the
+    /// catalogue is ready waits in `pendingJoinCode`.
+    @State private var relayJoinCode = ""
+    @State private var pendingJoinCode: String?
     @State private var attemptedStartingPromptID: String?
+    @State private var startingChoiceFailedPromptID: String?
     @State private var aiStartingRoll: OnDeviceStartingRoll?
     @State private var aiRevealedRollCount = 0
     @State private var aiRollSeatNames: [String: String] = [:]
@@ -63,6 +71,18 @@ struct OnDeviceRootView: View {
         let name = playerDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
         let you = VersusIntroOverlay.Seat(id: "you", name: name.isEmpty ? "You" : name,
                                           commander: selectedDeck?.commander?.cardName)
+        // A table knows everyone's commander before its first snapshot shows the command zones.
+        if setup.usingMultiplayer, let seats = setup.multiplayer?.tableSeats, seats.contains(where: \.isLocal) {
+            let opponents = seats.filter { !$0.isLocal }.prefix(3).map {
+                VersusIntroOverlay.Seat(id: $0.id, name: $0.name, commander: $0.commanders.first)
+            }
+            if !opponents.isEmpty {
+                let local = seats.first(where: \.isLocal)
+                let tableYou = VersusIntroOverlay.Seat(id: "you", name: local?.name ?? you.name,
+                                                       commander: local?.commanders.first ?? you.commander)
+                return VersusIntro(you: tableYou, opponents: Array(opponents))
+            }
+        }
         if let snapshot = session.snapshot {
             let others = snapshot.players.filter { !snapshot.isViewer($0.playerId) }.prefix(3).map {
                 VersusIntroOverlay.Seat(id: $0.playerId, name: $0.displayName ?? "Opponent",
@@ -220,11 +240,14 @@ struct OnDeviceRootView: View {
                                    settings: { showAppearance = true }, news: { showUpdates = true },
                                    commanderName: selectedDeck?.commander?.cardName,
                                    commanderNamespace: reduceMotion ? nil : commanderTransition,
-                                   downloads: { showDownloads = true }, howToPlay: { showHowToPlay = true })
+                                   downloads: { showDownloads = true }, howToPlay: { showHowToPlay = true },
+                                   friends: { showFriends = true },
+                                   friendsBadge: account.onlineFriendCount + account.incomingCount)
                 }
             }
         }
-        .startingRollCovered(startingRollVisible)
+        // The roll's own answer to "Select a starting player" stays quiet while it is on its way.
+        .startingRollCovered(startingRollVisible || startingChoicePending)
         .preferredColorScheme(.dark)
         .animation(reduceMotion ? .easeOut(duration: 0.12) : .easeOut(duration: 0.26), value: showSetup)
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: activeGame)
@@ -234,6 +257,18 @@ struct OnDeviceRootView: View {
         .sheet(isPresented: $showUpdates) { NativeUpdateNewsView(upstreamCommit: setup.identity?.upstreamCommit) }
         .sheet(isPresented: $showHowToPlay, onDismiss: { HowToPlayLaunch.markSeen(in: MagicMobilePreferences.current) }) {
             HowToPlayView()
+        }
+        .sheet(isPresented: $showFriends) {
+            FriendsView(account: account) { code in
+                // After the sheet closes, so the table setup can open.
+                Task { try? await Task.sleep(for: .milliseconds(450)); openJoinLink(code) }
+            }
+        }
+        .alert("Play offline with card art?", isPresented: $showOfflineArtPrompt) {
+            Button("Choose downloads") { OfflineArtLaunch.markSeen(in: MagicMobilePreferences.current); showDownloads = true }
+            Button("Not now", role: .cancel) { OfflineArtLaunch.markSeen(in: MagicMobilePreferences.current) }
+        } message: {
+            Text("Card art loads from Scryfall while you're online. Save your decks' images now so they show without a connection too.")
         }
         .sheet(isPresented: $showDownloads) {
             NativeDownloadsView(decks: downloadDecks, selectedDeckID: selectedDeckID,
@@ -291,6 +326,22 @@ struct OnDeviceRootView: View {
         }
     }
 
+    /// A join link: open the online table setup with its code and join right away with the
+    /// chosen deck. During a game the code waits in the field instead.
+    private func openJoinLink(_ code: String) {
+        relayJoinCode = code
+        guard !activeGame, !setup.needsLeave, setup.multiplayer?.tableCode == nil else {
+            bannerError = String(localized: "Finish or leave this game, then join table \(code).")
+            return
+        }
+        playerMode.wrappedValue = "online"
+        showSetup = true
+        guard setup.identity != nil else { pendingJoinCode = code; return }
+        if mayStart, !setup.isBusy, let deck = selectedDeck {
+            setup.joinRelay(code: code, name: playerDisplayName, deck: deck)
+        }
+    }
+
     /// The main menu is showing with nothing over it (no game, setup, saved-game offer or sheet).
     private var menuIsFree: Bool {
         !activeGame && !showSetup && !setup.needsLeave && resume.offer == nil && !startingRollVisible
@@ -300,8 +351,12 @@ struct OnDeviceRootView: View {
     /// First visit to the menu after this update: the walkthrough opens once by itself.
     private func showHowToPlayIfFirstLaunch() async {
         do { try await Task.sleep(for: .milliseconds(700)) } catch { return }
-        guard menuIsFree, HowToPlayLaunch.shouldShowAutomatically(defaults: MagicMobilePreferences.current) else { return }
-        showHowToPlay = true
+        guard menuIsFree else { return }
+        if HowToPlayLaunch.shouldShowAutomatically(defaults: MagicMobilePreferences.current) {
+            showHowToPlay = true
+        } else if OfflineArtLaunch.shouldShowAutomatically(defaults: MagicMobilePreferences.current) {
+            showOfflineArtPrompt = true
+        }
     }
 
     private func preparePresentation() async {
@@ -333,8 +388,20 @@ struct OnDeviceRootView: View {
             if previous == .active, phase == .inactive { resume.willLeave() }
             if phase == .background { resume.enteredBackground() }
             if phase == .active { resume.enteredForeground(); GameAudio.shared.resume() }
+            account.setForeground(phase == .active)
         }
-        .onChange(of: setup.identity) { _, _ in evaluateResumeLaunch() }
+        .onAppear { if scenePhase == .active { account.setForeground(true) } }
+        // The profile name is the name at every table.
+        .onChange(of: account.username) { _, name in if let name { playerDisplayName = name } }
+        // Friends see the table this phone hosts while it has open seats.
+        .onChange(of: setup.multiplayer?.openHostedTable.map { "\($0.code):\($0.openSeats)" }) { _, _ in
+            account.hosting = setup.multiplayer?.openHostedTable
+        }
+        .onChange(of: setup.identity) { _, _ in
+            evaluateResumeLaunch()
+            if let code = pendingJoinCode { pendingJoinCode = nil; openJoinLink(code) }
+        }
+        .onOpenURL { url in if let code = TableJoinLink.code(from: url) { openJoinLink(code) } }
         .task(id: menuIsFree) { if menuIsFree { await showHowToPlayIfFirstLaunch() } }
         .onAppear { GameAudio.shared.setScene(activeGame ? .game : .menu) }
         .onChange(of: activeGame) { _, playing in
@@ -383,9 +450,19 @@ struct OnDeviceRootView: View {
         .onChange(of: setup.isBusy) { _, busy in
             if !busy { submitStartingChoiceIfNeeded() }
         }
-        .onChange(of: session.matchID) { _, _ in
+        .onChange(of: setup.multiplayer?.startingRoll) { _, _ in
             didDismissStartingRoll = false
             attemptedStartingPromptID = nil
+            startingChoiceFailedPromptID = nil
+        }
+        .onChange(of: setup.multiplayer?.rollProgress?.isComplete) { _, _ in submitStartingChoiceIfNeeded() }
+        .onChange(of: session.matchID) { _, _ in
+            // A table's roll outlives the session attaching to its match; resetting it here
+            // replayed a finished roll. Tables reset on a new roll instead (below).
+            if !setup.usingMultiplayer {
+                didDismissStartingRoll = false
+                attemptedStartingPromptID = nil
+            }
             aiStartingRoll = nil
             aiRevealedRollCount = 0
             aiRollSeatNames = [:]
@@ -528,30 +605,57 @@ struct OnDeviceRootView: View {
         }
     }
 
-    private func submitStartingChoiceIfNeeded() {
-        guard didDismissStartingRoll,
-              !setup.isBusy, !session.isWorking, setup.canUseSession,
-              let snapshot = session.snapshot,
-              let promptID = snapshot.promptEnvelopeV2?.id,
-              attemptedStartingPromptID != promptID else { return }
-        let command: GameCommand?
-        let winnerName: String
+    /// The engine's "starting player" answer for the roll's winner, if this is that prompt.
+    private func startingChoice(for snapshot: GameSnapshot) -> (command: GameCommand, winnerName: String)? {
         if setup.usingMultiplayer, let multiplayer = setup.multiplayer,
            let roll = multiplayer.startingRoll,
            let name = multiplayer.seatNames[roll.winnerSeatID] {
-            winnerName = name
-            command = OnDeviceStartingPlayerChoice.command(snapshot: snapshot, winnerName: name)
-        } else if aiStartingPlayerMode == "roll", let roll = aiStartingRoll {
-            winnerName = aiRollSeatNames[roll.winnerSeatID] ?? "winner"
-            command = OnDeviceStartingPlayerChoice.command(snapshot: snapshot, winnerPlayerID: roll.winnerSeatID)
-        } else {
-            return
+            return OnDeviceStartingPlayerChoice.command(snapshot: snapshot, winnerName: name).map { ($0, name) }
+        } else if !setup.usingMultiplayer, aiStartingPlayerMode == "roll", let roll = aiStartingRoll {
+            return OnDeviceStartingPlayerChoice.command(snapshot: snapshot, winnerPlayerID: roll.winnerSeatID)
+                .map { ($0, aiRollSeatNames[roll.winnerSeatID] ?? "winner") }
         }
-        guard let command else { return }
+        return nil
+    }
+
+    /// The table answers as soon as every die is shown (the host is the one XMage asks);
+    /// an AI game answers when the player closes the roll.
+    private func submitStartingChoiceIfNeeded() {
+        let tableRollShown = setup.usingMultiplayer && setup.multiplayer?.rollProgress?.isComplete == true
+        guard didDismissStartingRoll || tableRollShown,
+              let snapshot = session.snapshot,
+              let promptID = snapshot.promptEnvelopeV2?.id,
+              attemptedStartingPromptID != promptID,
+              startingChoice(for: snapshot) != nil else { return }
         attemptedStartingPromptID = promptID
-        Task { await setup.perform {
-            try await session.send(command, label: "Start with \(winnerName)", actionID: "starting-roll-\(promptID)")
-        } }
+        Task { @MainActor in
+            // An automatic reply is never dropped: a busy session, a paused table or a stale
+            // snapshot only delays it. A new prompt means it went through.
+            for attempt in 0..<12 {
+                if attempt > 0 { try? await Task.sleep(for: .milliseconds(min(250 * attempt, 1500))) }
+                guard attemptedStartingPromptID == promptID,
+                      let current = session.snapshot, current.promptEnvelopeV2?.id == promptID else { return }
+                guard !setup.isBusy, !session.isWorking, setup.canUseSession,
+                      let choice = startingChoice(for: current) else { continue }
+                do {
+                    try await session.send(choice.command, label: "Start with \(choice.winnerName)",
+                                           actionID: "starting-roll-\(promptID)")
+                    return
+                } catch { continue }
+            }
+            guard attemptedStartingPromptID == promptID, session.snapshot?.promptEnvelopeV2?.id == promptID else { return }
+            startingChoiceFailedPromptID = promptID
+            setup.errorMessage = String(localized: "The roll's winner couldn't be sent. Choose the starting player.")
+        }
+    }
+
+    /// The roll's automatic answer is on its way, so the board hides the prompt it answers.
+    private var startingChoicePending: Bool {
+        guard let snapshot = session.snapshot, let promptID = snapshot.promptEnvelopeV2?.id,
+              startingChoiceFailedPromptID != promptID,
+              OnDeviceStartingPlayerChoice.candidateIDs(snapshot: snapshot) != nil else { return false }
+        return setup.usingMultiplayer ? setup.multiplayer?.startingRoll != nil
+            : (aiStartingPlayerMode == "roll" && aiStartingRoll != nil)
     }
 
     private var game: some View {
@@ -594,6 +698,17 @@ struct OnDeviceRootView: View {
         .environment(\.gameRematchTitle, setup.usingMultiplayer ? nil : "Rematch")
         .environment(\.gameConcede, GameConcedeHandler(concede: concede))
         .environment(\.emoteCenter, emotes)
+        .sheet(isPresented: $emotes.isChatOpen) {
+            TableChatPanel(center: emotes, snapshot: session.snapshot,
+                           report: account.phase == .ready ? { line in
+                               Task { await account.report(line.name, message: line.text, context: "chat") }
+                           } : nil,
+                           block: account.phase == .ready ? { name in
+                               emotes.mute(name)
+                               Task { await account.block(name) }
+                           } : nil)
+                .presentationDetents([.medium, .large])
+        }
         .onAppear { connectEmotes() }
         .onChange(of: session.snapshot?.id) { _, _ in emotes.reset(); connectEmotes() }
     }
@@ -605,6 +720,9 @@ struct OnDeviceRootView: View {
         multiplayer?.onEmote = { [weak emotes = self.emotes, weak session = self.session] name, emote in
             emotes?.receive(emote, fromName: name, in: session?.snapshot)
         }
+        emotes.sendText = multiplayer.map { match in { text in match.sendChat(text) } }
+        account.blocked.forEach(emotes.mute)
+        multiplayer?.onChat = { [weak emotes = self.emotes] name, text in emotes?.receive(text: text, fromName: name) }
     }
 
     /// XMage records the loss. In a pod the others play on and you can watch.
@@ -704,8 +822,14 @@ struct OnDeviceRootView: View {
                         .textContentType(.nickname).autocorrectionDisabled()
                         .padding(12).background(CommanderPresentation.canvas, in: RoundedRectangle(cornerRadius: 10))
                         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(BrandTheme.border, lineWidth: 1))
+                        .disabled(account.username != nil)
                         .accessibilityIdentifier("ondevice.playerName")
-                    Text("Choose a name with 1–24 characters.").font(.caption).foregroundStyle(.secondary)
+                    if account.username != nil {
+                        Button("Your profile name. Change it in Friends.") { showFriends = true }
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text("Choose a name with 1–24 characters, or pick a profile name in Friends.").font(.caption).foregroundStyle(.secondary)
+                    }
                     Toggle("Auto-Rotate", isOn: $portraitModeEnabled)
                         .font(.subheadline).tint(CommanderPresentation.accent)
                     Picker("Your deck", selection: $selectedDeckID) {
@@ -736,7 +860,7 @@ struct OnDeviceRootView: View {
                             }.disabled(setup.isBusy || setup.needsLeave)
                         }
                         if playOnline {
-                            RelayTablePanel(multiplayer: setup.multiplayer, mayEnter: mayStart && !setup.needsLeave,
+                            RelayTablePanel(multiplayer: setup.multiplayer, code: $relayJoinCode, mayEnter: mayStart && !setup.needsLeave,
                                             locked: setup.isBusy || setup.needsLeave,
                                             aiCount: gameCenterAICountBinding, maxAI: max(0, 4 - playerCount),
                                             aiDeckSelection: aiDeckSelection, aiSkill: $aiSkill,
@@ -1210,7 +1334,7 @@ private final class OnDeviceSetupModel: ObservableObject {
     /// registry and table features. App build numbers differ between the platforms, so they are left out.
     var relayIdentity: BuildIdentity? {
         identity.map { BuildIdentity(upstreamCommit: $0.upstreamCommit, catalogueHash: $0.catalogueHash,
-                                     adapterVersion: "ondevice-0.1/relay-1/rollstep-2/room-1/concede-1/emote-1") }
+                                     adapterVersion: "ondevice-0.1/relay-1/rollstep-2/room-1/concede-1/emote-1/chat-1") }
     }
 
     /// Opens a cross-play table this phone hosts: `playerCount` people plus any AI seats.
@@ -1440,6 +1564,7 @@ private struct OnDeviceTextImportView: View {
 @MainActor
 private struct RelayTablePanel: View {
     let multiplayer: OnDeviceMultiplayer?
+    @Binding var code: String
     let mayEnter: Bool
     let locked: Bool
     @Binding var aiCount: Int
@@ -1451,7 +1576,6 @@ private struct RelayTablePanel: View {
     let host: () -> Void
     let join: (String) -> Void
     let ready: () -> Void
-    @State private var code = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1472,7 +1596,7 @@ private struct RelayTablePanel: View {
                     Text("The host’s AI choices apply to everyone. Higher skill may slow turns.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                Text("iPhone and Android players join with the table code. Every player needs this app version and keeps it open during the match.")
+                Text("Share the invite link, or friends type the table code. Every player needs this app version and keeps it open during the match.")
                     .font(.caption).foregroundStyle(.secondary)
                 Button("Host a table", action: host)
                     .buttonStyle(CommanderActionStyle())
@@ -1513,8 +1637,12 @@ private struct RelayTablePanel: View {
                 if multiplayer.room == nil, multiplayer.endpoint == nil, !multiplayer.isFailed {
                     Text("Players \(multiplayer.seatsTaken)/\(max(2, multiplayer.seatsWanted))")
                         .font(.caption).foregroundStyle(CommanderPresentation.secondary)
-                    ShareLink(item: "Join my MagicMobile table with code \(tableCode)") {
-                        Label("Share code", systemImage: "square.and.arrow.up")
+                    if let link = TableJoinLink.url(code: tableCode) {
+                        ShareLink(item: link, subject: Text("Join my MagicMobile table"),
+                                  message: Text("Tap to join my MagicMobile table (code \(tableCode)).")) {
+                            Label("Share invite link", systemImage: "square.and.arrow.up")
+                        }
+                        .accessibilityIdentifier("ondevice.relay.share")
                     }
                 }
             }

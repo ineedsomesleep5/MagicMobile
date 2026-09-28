@@ -612,6 +612,9 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     @Published private(set) var rollStatus = ""
     /// The pregame room between matchmaking and the first engine snapshot.
     @Published private(set) var room: MatchRoom?
+    /// Every seat's table name and public commanders, kept from the room once the match starts
+    /// (the versus intro opens before the first snapshot shows the command zones).
+    @Published private(set) var tableSeats: [TableSeat] = []
     /// Cross-play tables (the relay): the code to share, and how many seats are taken.
     @Published private(set) var tableCode: String?
     @Published private(set) var seatsTaken = 0
@@ -619,10 +622,20 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     /// Who has joined a relay table that is still filling; empty once the match room opens.
     @Published private(set) var waitingSeats: [RelayWaitingSeat] = []
     @Published private(set) var isRelayTable = false
+    /// This phone opened the relay table (not a guest).
+    @Published private(set) var isHostingRelay = false
+    /// The table this phone hosts while seats are open, shared with friends so they can join.
+    var openHostedTable: (code: String, openSeats: Int)? {
+        guard isHostingRelay, let tableCode, endpoint == nil, !isFailed, seatsWanted > seatsTaken else { return nil }
+        return (tableCode, min(3, seatsWanted - seatsTaken))
+    }
     @Published private(set) var isFailed = false
     /// A player's quick-chat line: their table name and a fixed emote, never free text.
     var onEmote: ((String, GameEmote) -> Void)?
     private var lastEmoteFrom: [String: Date] = [:]
+    /// A player's typed chat line: their table name and the checked text.
+    var onChat: ((String, String) -> Void)?
+    private var lastChatFrom: [String: Date] = [:]
 
     /// Game Center tables share the whole app build; relay tables share `relayIdentity` across iPhone and Android.
     private var identity: BuildIdentity
@@ -661,6 +674,13 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     private var authenticationHandlerInstalled = false
     private var userRequestedSignIn = false
     private var pendingSignInController: UIViewController?
+
+    struct TableSeat: Equatable, Identifiable {
+        let id: String
+        let name: String
+        let commanders: [String]
+        let isLocal: Bool
+    }
 
     struct MatchRoom: Equatable {
         struct Player: Equatable, Identifiable {
@@ -924,6 +944,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         let relay = RelayTransport()
         let table = try await relay.createTable(seats: humans)
         tableCode = table.code
+        isHostingRelay = true
         attachRelay(relay)
         relay.connect(code: table.code, name: name.trimmingCharacters(in: .whitespacesAndNewlines), hostKey: table.hostKey)
         status = "Share code \(table.code). Waiting for players…"
@@ -1034,6 +1055,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
                     guard let rawRoll = value["roll"] else { throw EngineError.incompatibleBuild }
                     let result = try OnDeviceStartingRoll(rawRoll, seatIDs: seats)
                     seatNames = names
+                    captureTableSeats(names: names)
                     startingRoll = result
                     rollProgress = OnDeviceStartingRollProgress(
                         roll: result, humanSeatIDs: Set((1...lobby.peerIDs.count).map { "player\($0)" }))
@@ -1094,6 +1116,17 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
             lastEmoteFrom[peer] = Date()
             let seat = try lobby.seatID(for: peer)
             if let name = seatNames[seat] ?? playerNames[peer] { onEmote?(name, emote) }
+        case "chat":
+            guard Set(fields.keys) == ["type", "epoch", "text"], nativeMatchID != nil || remote != nil,
+                  let raw = fields["text"]?.string, raw.unicodeScalars.count <= TableChatText.maxScalars,
+                  let text = TableChatText.sanitize(raw) else {
+                throw EngineError.invalidMessage("Invalid chat message.")
+            }
+            // Cosmetic only: a flood from one player is dropped, never an error.
+            if let last = lastChatFrom[peer], Date().timeIntervalSince(last) < 0.5 { return }
+            lastChatFrom[peer] = Date()
+            let seat = try lobby.seatID(for: peer)
+            if let name = seatNames[seat] ?? playerNames[peer] { onChat?(name, text) }
         case "end":
             guard Set(fields.keys) == ["type", "epoch"] else { throw EngineError.invalidMessage("Invalid match ending.") }
             fail(peer == lobby.hostID ? "The host ended this match." : "A player left. Start a new match to play again.")
@@ -1110,6 +1143,12 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     func sendEmote(_ emote: GameEmote) {
         guard let epoch, nativeMatchID != nil || remote != nil else { return }
         try? broadcast(.object(["type": .string("emote"), "epoch": .string(epoch.uuidString), "emote": .string(emote.rawValue)]))
+    }
+
+    /// A typed chat line to every other player in the running match.
+    func sendChat(_ text: String) {
+        guard let epoch, nativeMatchID != nil || remote != nil, let text = TableChatText.sanitize(text) else { return }
+        try? broadcast(.object(["type": .string("chat"), "epoch": .string(epoch.uuidString), "text": .string(text)]))
     }
 
     /// The local player confirms their deck in the match room. The host counts its own
@@ -1160,6 +1199,25 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         room = MatchRoom(players: players, localReady: localReady, aiSummary: hostAISeatSummary)
     }
 
+    /// The roster the versus intro shows: humans in seat order, then AI seats.
+    private func captureTableSeats(names: [String: String]) {
+        guard let lobby else { return }
+        let isHost = lobby.localPeerID == lobby.hostID
+        let humans = lobby.peerIDs.enumerated().map { index, peer -> TableSeat in
+            let local = peer == lobby.localPeerID
+            let commanders = isHost ? OnDeviceMultiplayerLobby.commanderNames(lobby.submissions[peer])
+                : (local ? OnDeviceMultiplayerLobby.commanderNames(submission) : reportedReady[peer] ?? [])
+            let seat = "player\(index + 1)"
+            return TableSeat(id: seat, name: names[seat] ?? playerNames[peer] ?? "Player", commanders: commanders, isLocal: local)
+        }
+        let bots = (lobby.aiSettings["seats"]?.array ?? []).enumerated().map { index, value -> TableSeat in
+            let seat = "player\(lobby.peerIDs.count + index + 1)"
+            return TableSeat(id: seat, name: names[seat] ?? "AI \(index + 1)",
+                             commanders: OnDeviceMultiplayerLobby.commanderNames(value), isLocal: false)
+        }
+        tableSeats = humans + bots
+    }
+
     private func startHost() {
         guard let lobby, let epoch else { return }
         let token = generation
@@ -1208,6 +1266,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
                 let link = OnDeviceTableLink(role: .host, hostName: names[hostSeat] ?? "")
                 link.announce = { [weak self] revision in self?.announceRevision(revision, token: token) }
                 self.tableLink = link
+                self.captureTableSeats(names: names)
                 self.endpoint = OnDeviceMultiplayerEndpoint(client: engine, matchID: matchID, seatID: hostSeat, isHost: true, table: link)
                 self.room = nil
                 self.isConnected = true
@@ -1331,10 +1390,10 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         }
         generation = UUID(); hostEngine = nil; needsCleanup = false; endpoint = nil; hostAISeatSummary = nil; seatNames = [:]
         rollTimer?.cancel(); rollTimer = nil
-        startingRoll = nil; rollProgress = nil; hasRolled = false; rollStatus = ""
+        startingRoll = nil; rollProgress = nil; hasRolled = false; rollStatus = ""; tableSeats = []
         remote = nil; tableLink = nil; router = nil; hostDispatcher = nil; transport = nil; lobby = nil; epoch = nil; submission = nil; requestedAISeats = []
         suspendedPeers.removeAll(); relayAwayPeers.removeAll(); peerPresenceSequences.removeAll(); presenceSequence = 0
-        tableCode = nil; seatsTaken = 0; seatsWanted = 0; waitingSeats = []; isRelayTable = false; identity = gameCenterIdentity
+        tableCode = nil; seatsTaken = 0; seatsWanted = 0; waitingSeats = []; isRelayTable = false; isHostingRelay = false; identity = gameCenterIdentity
         suspensionRevision = 0
         matchmakerController?.dismiss(animated: true); matchmakerController = nil
         room = nil; localReady = false; reportedReady = [:]; playerNames = [:]
@@ -1345,7 +1404,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         guard !failed else { return }
         failed = true; isFailed = true; isConnected = false; status = message; seatNames = [:]; room = nil; waitingSeats = []
         rollTimer?.cancel(); rollTimer = nil
-        startingRoll = nil; rollProgress = nil; hasRolled = false; rollStatus = ""
+        startingRoll = nil; rollProgress = nil; hasRolled = false; rollStatus = ""; tableSeats = []
         lobbyTimer?.cancel(); startup?.cancel(); remote?.close()
         hostDispatcher?.cancel()
         if let epoch { try? broadcast(.object(["type": .string("end"), "epoch": .string(epoch.uuidString)])) }

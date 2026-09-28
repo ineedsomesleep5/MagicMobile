@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#141518">
+  <title>Join a MagicMobile table</title>
+  <meta property="og:title" content="Join my MagicMobile table">
+  <meta property="og:description" content="Tap to join a Commander table in MagicMobile on iPhone or Android.">
+  <meta property="og:image" content="https://magicmobile-downloads.vercel.app/social.png">
+  <link rel="icon" href="/app-icon.png">
+  <style>
+    :root { --canvas: #141518; --surface: #202125; --ink: #f3f1ec; --soft: #b5b5af; --accent: #ff8058; --accent-ink: #191513; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px;
+      background: var(--canvas); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    main { width: 100%; max-width: 420px; text-align: center; }
+    img { width: 88px; height: 88px; border-radius: 20px; }
+    h1 { font-size: 26px; line-height: 1.2; margin: 18px 0 6px; font-weight: 800; }
+    p { color: var(--soft); margin: 0 0 18px; }
+    .code { font: 800 38px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 4px; margin: 10px 0 22px;
+      background: var(--surface); border-radius: 14px; padding: 16px 8px; }
+    a.button { display: block; text-decoration: none; font-weight: 800; border-radius: 999px; padding: 15px 20px; margin: 10px 0; }
+    .primary { background: var(--accent); color: var(--accent-ink); }
+    .secondary { background: var(--surface); color: var(--ink); }
+    small { display: block; color: var(--soft); margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="/app-icon.png" alt="MagicMobile">
+    <h1>You're invited to a table</h1>
+    <p>Open MagicMobile to join. If it doesn't open, enter this code under Play → Online.</p>
+    <div class="code" id="code" aria-label="Table code">——————</div>
+    <a class="button primary" id="open" href="/">Open in MagicMobile</a>
+    <a class="button secondary" href="/#download">Get MagicMobile</a>
+    <small>iPhone and Android can play together. Keep the app open during the match.</small>
+  </main>
+  <script>
+    (function () {
+      var alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      var raw = (location.pathname.split("/").filter(Boolean)[1] || "").toUpperCase();
+      var valid = raw.length === 6 && raw.split("").every(function (c) { return alphabet.indexOf(c) >= 0; });
+      var open = document.getElementById("open");
+      if (!valid) {
+        document.getElementById("code").textContent = "No code";
+        open.style.display = "none";
+        return;
+      }
+      document.getElementById("code").textContent = raw.slice(0, 3) + " " + raw.slice(3);
+      var android = /Android/i.test(navigator.userAgent);
+      open.href = android
+        ? "intent://join/" + raw + "#Intent;scheme=magicmobile;package=com.calebfeliciano.magicmobile.android;S.browser_fallback_url=" +
+          encodeURIComponent(location.origin + "/#download") + ";end"
+        : "magicmobile://join/" + raw;
+    })();
+  </script>
+</body>
+</html>

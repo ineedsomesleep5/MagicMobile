@@ -16,11 +16,11 @@ struct NativeUpdateNewsView: View {
                     }
                 }
                 Section("What's new") {
-                    Label("Edge-to-edge menus and cleaner deck covers.", systemImage: "rectangle.stack")
-                    Label("Compact card rows and clearer combo steps.", systemImage: "list.number")
-                    Label("Six battlefield backgrounds for both orientations.", systemImage: "photo.on.rectangle")
-                    Label("Quieter error notices that dismiss automatically.", systemImage: "bell")
-                    Label("Offline artwork with three quality options.", systemImage: "externaldrive")
+                    Label("Friends: see who's online and join their table in one tap.", systemImage: "person.2.fill")
+                    Label("Table chat with quick messages, plus mute, block and report.", systemImage: "bubble.left.and.bubble.right.fill")
+                    Label("Invite links that open straight into your table.", systemImage: "link")
+                    Label("Online games: one starting roll, and your opponent's commander on the versus screen.", systemImage: "checkmark.circle")
+                    Label("Scryfall card art on by default, with an offer to save it for offline play.", systemImage: "photo.on.rectangle")
                 }
                 Section {
                     Link(destination: URL(string: "https://github.com/magefree/mage/releases")!) {

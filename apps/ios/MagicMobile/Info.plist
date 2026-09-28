@@ -16,6 +16,17 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.calebfeliciano.magicmobile.join</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>magicmobile</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>21</string>
 	<key>ITSAppUsesNonExemptEncryption</key>

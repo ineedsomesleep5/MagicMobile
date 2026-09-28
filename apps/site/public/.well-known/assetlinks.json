@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.calebfeliciano.magicmobile.android",
+      "sha256_cert_fingerprints": ["B1:0C:A2:CD:F5:D1:84:C2:B2:64:B5:6D:AE:88:8D:95:0F:3A:B5:2A:40:55:1B:7F:8E:B6:34:DE:03:16:D4:BB"]
+    }
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["82HPAY85M8.com.calebfeliciano.magicmobile"],
+        "components": [{ "/": "/join/*", "comment": "Table invite links" }]
+      }
+    ]
+  }
+}
