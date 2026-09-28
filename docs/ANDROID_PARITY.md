@@ -103,3 +103,5 @@ iOS change has one obvious Android counterpart. Update the table and the log bef
   cloud deck library and the dead-URL card image fallback), the dormant online client and the engine-less
   DEBUG reference entry point. This matches Android's 2026-09-26 removal; no Android change.
 - 2026-09-28 (Claude): Android build 12 ships the same features as iOS build 21, and the shared parity fixtures cover them: resume, deck-studio, token, game-summary and tutorial cases. Android-only fixes: the stuck turn banner (#85) and the save budget (#87).
+
+- 2026-09-28 (Claude): Android build 13 matches iOS build 22: chat, invite links, friends and profiles, and the roll fix. The shared cases are in `parity/chat-cases.json`. Android adds verified app links and a `singleTask` main activity.
