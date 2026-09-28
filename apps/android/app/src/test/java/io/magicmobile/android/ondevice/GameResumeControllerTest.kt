@@ -390,7 +390,7 @@ class GameResumeControllerTest {
     }
 
     @Test fun theBackgroundSaveStopsAtItsDeadline() = runBlocking {
-        for ((budget, waits) in listOf(GameResumeController.BACKGROUND_SAVE_MILLIS to List(5) { 1000 }, 500L to listOf(500), 0L to listOf(0))) {
+        for ((budget, waits) in listOf(GameResumeController.BACKGROUND_SAVE_MILLIS to List(12) { 1000 }, 500L to listOf(500), 0L to listOf(0))) {
             startOnDemandGame()
             val engine = FakeSave(EngineCheckpointResult.WaitingForEngine)
             controller.backgrounded()
