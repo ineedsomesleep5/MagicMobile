@@ -1,5 +1,17 @@
 # Weekly reviewed updates and releases
 
+**Current arrangement (2026-10-01).** Caleb paused the Codex heartbeat
+`watch-xmage-updates-for-magicmobile` (backup beside its `automation.toml`) and
+replaced it with a Claude Code scheduled task, `xmage-update-watch` (Mondays about
+9:30 local, `~/.claude/scheduled-tasks/xmage-update-watch/SKILL.md`). Each week it
+runs detection, judges whether the update is worth shipping (new cards, rules or
+engine fixes, adapter risk such as removed upstream APIs, whether a big upstream
+refactor has settled), and notifies Caleb only when it is. Nothing is built or
+released until Caleb says yes in that run's session. A yes authorizes that one
+update end to end on BOTH platforms (native CI, TestFlight, the Android GitHub
+release, the site and the merges) under the gates below. The standing Codex
+auto-release authority described next is no longer in use.
+
 On September 20, 2026, Caleb authorized a weekly Codex check that reviews, tests,
 releases eligible XMage updates to Android and TestFlight, updates verified website
 links, and safely merges to main. This is standing authority for the routine
