@@ -18,3 +18,12 @@ export const releases = {
     status: `Build ${iosTestFlightBuild} is available now for Internal and External TestFlight testers.`,
   },
 };
+
+// Obtainium installs MagicMobile from its GitHub releases and offers each new build.
+// The `latest/download` link always serves Obtainium's newest ARM64 APK; the add link
+// opens Obtainium with MagicMobile's repository filled in.
+export const obtainium = {
+  download: "https://github.com/ImranR98/Obtainium/releases/latest/download/app-arm64-v8a-release.apk",
+  addApp: "obtainium://add/https://github.com/ineedsomesleep5/MagicMobile",
+  source: "github.com/ineedsomesleep5/MagicMobile",
+};
