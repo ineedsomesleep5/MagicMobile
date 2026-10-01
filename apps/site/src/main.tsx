@@ -11,7 +11,7 @@ import "@fontsource-variable/archivo";
 import "@fontsource-variable/manrope";
 import "./style.css";
 import { cards } from "./cards";
-import { releases } from "./releases";
+import { obtainium, releases } from "./releases";
 
 declare global {
   interface Window {
@@ -279,6 +279,34 @@ function App() {
                   : "Join TestFlight"}
                 <ArrowUpRight size={26} />
               </a>
+              {platform === "android" && (
+                <div className="update-steps">
+                  <strong>Get every update automatically</strong>
+                  <ol>
+                    <li>
+                      <a href={obtainium.download}>Download Obtainium ↓</a>
+                      <span>
+                        A free, open-source app updater. Open the file and
+                        allow the install.
+                      </span>
+                    </li>
+                    <li>
+                      <a href={obtainium.addApp}>Add MagicMobile to Obtainium ↗</a>
+                      <span>
+                        Opens Obtainium with MagicMobile filled in. Tap Add,
+                        then Install. If nothing opens, choose Add App in
+                        Obtainium and paste {obtainium.source}.
+                      </span>
+                    </li>
+                    <li>
+                      <span>
+                        Done. Obtainium shows each new build; tap Update.
+                        Your decks and settings stay.
+                      </span>
+                    </li>
+                  </ol>
+                </div>
+              )}
               <small>
                 {platform === "android"
                   ? "Android 8+ · ARM64. Hosted on GitHub. No account needed."
@@ -293,9 +321,13 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Open the APK link on your Android phone, then open the
-                downloaded file. If asked, allow your browser to install this
-                app. You can turn that permission off after installation.
+                Easiest: install Obtainium, then add MagicMobile in it (the
+                steps under the Android download). It installs the newest
+                build and tells you when another one is out. Or open the APK
+                link on your phone and open the downloaded file; if asked,
+                allow your browser to install this app. You can turn that
+                permission off after installation. If an install ever fails,
+                check that the phone has about 1 GB free.
               </p>
             </details>
             <details>
