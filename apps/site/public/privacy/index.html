@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#141518">
+  <title>MagicMobile privacy</title>
+  <meta name="description" content="What MagicMobile stores, what it sends, and how to delete your profile.">
+  <link rel="icon" href="/app-icon.png">
+  <style>
+    :root { --canvas: #141518; --surface: #202125; --ink: #f3f1ec; --soft: #b5b5af; --accent: #ff8058; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--canvas); color: var(--ink); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    main { max-width: 720px; margin: 0 auto; padding: 40px 16px 64px; }
+    h1 { font-size: 32px; line-height: 1.2; margin: 0 0 8px; font-weight: 800; }
+    h2 { font-size: 20px; margin: 32px 0 8px; }
+    p, li { color: var(--soft); }
+    strong { color: var(--ink); }
+    a { color: var(--accent); }
+    ul { padding-left: 20px; }
+    .updated { margin: 0 0 24px; }
+    .card { background: var(--surface); border-radius: 14px; padding: 4px 18px; }
+  </style>
+</head>
+<body>
+  <main>
+    <a href="/">← MagicMobile</a>
+    <h1>Privacy</h1>
+    <p class="updated">Last updated October 1, 2026. Applies to the MagicMobile apps for iPhone and Android and this website.</p>
+
+    <p>MagicMobile is an independent, non-commercial fan project. There are no ads, no analytics and no tracking in the apps or on this site, and nothing is sold or shared for advertising.</p>
+
+    <h2>On your phone only</h2>
+    <p>Your decks, game settings, a saved game you can resume, downloaded card art, and the app's own crash and engine reports stay on your device. Games against the AI run entirely on your phone. Crash reports are only shared if you choose to send one from the app.</p>
+
+    <h2>Profiles and friends</h2>
+    <p>If you open <strong>Friends</strong>, the app creates an anonymous account (no email, no password) and stores, on MagicMobile's database hosted by Supabase in the United States:</p>
+    <ul>
+      <li>a random account ID and the <strong>player name</strong> you choose;</li>
+      <li>your friends and friend requests, and players you block;</li>
+      <li>when you were last online, your phone type (iPhone or Android), and the code of a table you are hosting while it has open seats. Only your accepted friends can see these;</li>
+      <li>reports you send about another player, including the reported chat message.</li>
+    </ul>
+    <p>You can delete all of this at any time: <strong>Friends → Delete my profile</strong>. Reports you sent are kept without your account attached so abuse can still be reviewed.</p>
+
+    <h2>Online tables and chat</h2>
+    <p>Cross-play tables pass game moves and chat messages between players' phones through a relay on Cloudflare. The relay keeps a table's roster and undelivered messages only while the table is open and deletes them when everyone leaves or after 30 idle minutes. Chat is not stored on a server unless someone reports a message. Game Center tables use Apple's Game Center.</p>
+
+    <h2>Card images</h2>
+    <p>With <strong>Scryfall live images</strong> on (the default; you can turn it off in Settings), the app requests card images from Scryfall, which receives the card names being shown, including cards in your hand, and your IP address. Downloaded images then work offline.</p>
+
+    <h2>Children</h2>
+    <p>MagicMobile is not directed at children under 13 and does not knowingly collect their information.</p>
+
+    <h2>Questions</h2>
+    <p>Open an issue on the <a href="https://github.com/ineedsomesleep5/MagicMobile/issues">project's GitHub page</a>. If this policy changes, the date above changes with it.</p>
+
+    <p>Magic: The Gathering and card artwork belong to their respective owners. MagicMobile is not affiliated with Wizards of the Coast.</p>
+  </main>
+</body>
+</html>

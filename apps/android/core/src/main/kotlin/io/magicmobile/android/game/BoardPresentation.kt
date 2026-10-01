@@ -1,7 +1,7 @@
 package io.magicmobile.android.game
 
 /**
- * Ports of the presentation rules inside apps/ios/MagicMobile/ContentView.swift: the compact
+ * Ports of the presentation rules inside apps/ios/MagicMobile/Board/: the compact
  * prompt popup's rules, payment state, prompt guidance, combat selection and arrows, portrait
  * row planning, the hand fan and the action display text. The composables live in the app
  * module under the same names.
@@ -582,7 +582,7 @@ object PhaseTitles {
     }
 }
 
-/** Display text for a legal action (the private LegalAction extension in ContentView.swift). */
+/** Display text for a legal action (the private LegalAction extension in Board/CardImageURL.swift). */
 object LegalActionDisplay {
     fun displayLabel(action: LegalAction): String {
         if (action.type == "choose_ability" || action.type == "activate_ability") return action.compactPromptTitle

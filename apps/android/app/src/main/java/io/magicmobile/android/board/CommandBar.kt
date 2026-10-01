@@ -134,7 +134,7 @@ fun YieldActionsControl(snapshot: GameSnapshot, actions: List<LegalAction>, font
     }
 }
 
-/** ContentView.swift GameplayActionDock: the primary Pass/Choice button, skip options and the controls menu. */
+/** Board/GameplayActionDock.swift GameplayActionDock: the primary Pass/Choice button, skip options and the controls menu. */
 @Composable
 fun GameplayActionDock(snapshot: GameSnapshot, passAction: LegalAction?, yieldActions: List<LegalAction>, pendingActionId: String?,
                        openPromptDetails: () -> Unit, openLog: () -> Unit, openSettings: () -> Unit, runAction: (LegalAction) -> Unit,
@@ -249,7 +249,7 @@ fun GameplayActionDock(snapshot: GameSnapshot, passAction: LegalAction?, yieldAc
     }
 }
 
-/** ContentView.swift PortraitBottomCommandBar: your zones, effects, mana, stack tray, life orb and the dock. */
+/** Board/GameplayActionDock.swift PortraitBottomCommandBar: your zones, effects, mana, stack tray, life orb and the dock. */
 @Composable
 fun PortraitBottomCommandBar(humanName: String, human: PlayerGameState, opponentId: String, manaPool: ManaPool?, passAction: LegalAction?,
                              yieldActions: List<LegalAction>, pendingActionId: String?, snapshot: GameSnapshot, selection: BoardSelection,

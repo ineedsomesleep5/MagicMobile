@@ -721,7 +721,7 @@ private fun BannerButton(title: String, enabled: Boolean, action: () -> Unit) {
         color = if (enabled) BrandTheme.ember else BrandTheme.ember.copy(alpha = 0.45f), style = SfText.body())
 }
 
-/** Port of TavernMainMenu (ContentView.swift). */
+/** Port of TavernMainMenu (Board/MainMenuViews.swift). */
 @Composable
 fun TavernMainMenu(deckName: String, playerName: String, play: () -> Unit, decks: () -> Unit, settings: () -> Unit, news: (() -> Unit)? = null,
                    commanderName: String? = null, downloads: (() -> Unit)? = null, howToPlay: (() -> Unit)? = null,
@@ -953,7 +953,7 @@ private fun ArtworkPreferenceToggle() {
     }
 }
 
-/** AppearanceSettingsView (ContentView.swift). */
+/** AppearanceSettingsView (Board/MainMenuViews.swift). */
 @Composable
 private fun AppearanceSettings(portraitModeEnabled: Boolean, setPortraitModeEnabled: (Boolean) -> Unit, inGame: Boolean, done: () -> Unit) {
     Column(Modifier.fillMaxWidth().background(io.magicmobile.android.ui.rgb(0.08, 0.07, 0.065))) {
@@ -994,6 +994,7 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
             // Same notice as the download site's footer.
             IosListSection("About", footer = "Independent fan project. Not affiliated with Wizards of the Coast. Magic: The Gathering and card artwork belong to their respective owners.") {
                 IosListRow("Card images", value = "Scryfall")
+                IosListRow("Privacy", systemImage = "arrow.up.right.square") { open("https://magicmobile-downloads.vercel.app/privacy/") }
             }
         }
     }

@@ -11,7 +11,7 @@ let package = Package(
             name: "MagicMobile",
             dependencies: [.product(name: "MagicMobileOnDevice", package: "swift")],
             path: "MagicMobile",
-            exclude: ["Assets.xcassets", "Info.plist", "PrivacyInfo.xcprivacy", "MagicMobile.entitlements", "ContentView.swift", "DeckLibrary.swift",
+            exclude: ["Assets.xcassets", "Info.plist", "PrivacyInfo.xcprivacy", "MagicMobile.entitlements", "Board", "DeckLibrary.swift",
                       "GameBoardDesignTokens.swift", "GameBoardInteractionState.swift",
                       "GameBoardLayoutMetrics.swift", "BattlefieldViewportMetrics.swift", "GameBoardPreviewFixtures.swift", "HandCardPan.swift", "BoardCardChoiceView.swift",
                       "GameBoardScreen.swift", "GameBoardTheme.swift", "GameBoardZones.swift",

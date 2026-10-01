@@ -36,6 +36,10 @@ struct NativeUpdateNewsView: View {
                 }
                 Section {
                     LabeledContent("Card images", value: "Scryfall")
+                    Link(destination: URL(string: "https://magicmobile-downloads.vercel.app/privacy/")!) {
+                        Label("Privacy", systemImage: "hand.raised")
+                    }
+                    .accessibilityIdentifier("updates.privacy")
                 } header: {
                     Text("About")
                 } footer: {

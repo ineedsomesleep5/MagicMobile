@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.sp
 import io.magicmobile.android.R
 
 /**
- * Port of GameBoardTheme.swift, MagicPalette (ContentView.swift), BrandTheme (BrandUI.swift)
+ * Port of GameBoardTheme.swift, MagicPalette (Board/BoardChrome.swift), BrandTheme (BrandUI.swift)
  * and GameBoardDesignTokens.swift. Colours are the exact iOS values.
  */
 fun rgb(red: Double, green: Double, blue: Double, alpha: Double = 1.0) =

@@ -75,7 +75,7 @@ import io.magicmobile.android.ui.rgb
 import io.magicmobile.android.ui.sf
 
 /**
- * The board's button styles and text helpers from ContentView.swift (CompactActionButtonStyle,
+ * The board's button styles and text helpers from Board/GameLogAndStyles.swift (CompactActionButtonStyle,
  * PanelActionButtonStyle, PrimaryButtonStyle, SecondaryButtonStyle, IconButtonStyle,
  * PromptButtonLabel, PromptMiniLabel, SurfaceChip) and GameLogPresentation.swift's views.
  */

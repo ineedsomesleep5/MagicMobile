@@ -3,7 +3,7 @@ import Foundation
 
 // Pure presentation rules for board cards, shared with Android's core
 // game/BoardCardPresentation.kt: the token copy frame, the held-card inspector's
-// fit, and the showcase banner. Views live in ContentView.swift and BoardFXOverlay.swift.
+// fit, and the showcase banner. Views live in Board/ and BoardFXOverlay.swift.
 
 /// A token that copies a visible card. It is drawn as its own card frame (name, type
 /// line and live power/toughness) around the source card's illustration, never as the

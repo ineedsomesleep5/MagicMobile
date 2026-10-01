@@ -82,7 +82,7 @@ import io.magicmobile.android.ui.rgb
 import io.magicmobile.android.ui.sf
 
 /**
- * Ports of ContentView.swift's CardTile, CardArtPlaceholder, TokenCopyCardFace, CardCounterBadgeStrip,
+ * Ports of Board/CardTile.swift's CardTile, CardArtPlaceholder, TokenCopyCardFace, CardCounterBadgeStrip,
  * XmageCardIconStrip, TargetingStatusPill, ManaSymbolView and ArenaBoardPresentation.swift's
  * ArenaBattlefieldCard, BattlefieldAbilityBadges and HandManaCost.
  */
@@ -219,7 +219,7 @@ fun CardArtworkOrPlaceholder(card: ZoneCard, width: Dp, height: Dp, artOnly: Boo
 }
 
 /**
- * Port of ContentView.swift's TokenCopyCardFace: a token copy drawn as its own card, with the token's
+ * Port of Board/CardTile.swift's TokenCopyCardFace: a token copy drawn as its own card, with the token's
  * live name, type line, rules and P/T around the copied card's illustration and a tag naming the source.
  * The printed source card is never shown, because its name or stats can differ from the token's.
  */

@@ -171,7 +171,7 @@ fun AttachmentNameTab(card: ZoneCard, height: Dp, modifier: Modifier = Modifier,
     }
 }
 
-/** A battlefield lane (ContentView.swift BattlefieldRow): grouped, attachment-stacked, density-sized permanents. */
+/** A battlefield lane (Board/BattlefieldRow.swift BattlefieldRow): grouped, attachment-stacked, density-sized permanents. */
 @Composable
 fun BattlefieldRow(
     title: String, cards: List<ZoneCard>, legalActions: List<LegalAction>, targetableIds: Set<String>, combatHighlightIds: Set<String>,
@@ -348,7 +348,7 @@ fun BattlefieldRow(
 }
 
 /**
- * One BattlefieldRow scroller (ContentView.swift battlefieldRowOverflow): a soft fade at an edge that clips
+ * One BattlefieldRow scroller (Board/BattlefieldRow.swift battlefieldRowOverflow): a soft fade at an edge that clips
  * cards and "+N" markers for cards entirely out of view. The markers only draw, so taps, drags and holds
  * reach the lane beneath. Every tile is one card wide; a group counts all of its cards.
  */
@@ -420,7 +420,7 @@ fun requiresIndividualCombatCards(group: BattlefieldCardGroup, highlightedIDs: S
     it.isAttacking == true || it.blocking?.isNotEmpty() == true || highlightedIDs.contains(it.instanceId) || highlightedIDs.contains(it.id)
 }
 
-/** ContentView.swift PortraitBattlefieldPermanentGroup: creatures and other permanents in portrait's two-row lane. */
+/** Board/PortraitBoardViews.swift PortraitBattlefieldPermanentGroup: creatures and other permanents in portrait's two-row lane. */
 @Composable
 fun PortraitBattlefieldPermanentGroup(
     title: String, cards: List<ZoneCard>, legalActions: List<LegalAction>, targetableIds: Set<String>, combatHighlightIds: Set<String>,
