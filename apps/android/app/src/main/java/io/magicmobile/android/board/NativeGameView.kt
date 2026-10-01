@@ -155,7 +155,7 @@ fun Modifier.centerAt(x: Float, y: Float): Modifier = this.layout { measurable, 
 
 
 /**
- * ContentView.swift NativeGameView: the whole on-device board. It owns only presentation
+ * Board/NativeGameView.swift NativeGameView: the whole on-device board. It owns only presentation
  * state; every game decision is the engine's, delivered as authorized commands.
  */
 @Composable

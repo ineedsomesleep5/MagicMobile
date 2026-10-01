@@ -346,6 +346,10 @@ function App() {
               Follow the project
               <ArrowUpRight size={16} />
             </a>
+            <a href="/privacy/">
+              Privacy
+              <ArrowUpRight size={16} />
+            </a>
             <p>
               Independent fan project. Not affiliated with Wizards of the Coast.
               Magic: The Gathering and card artwork belong to their respective

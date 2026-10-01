@@ -111,7 +111,7 @@ fun PortraitScrollScrubber(progress: Float, visible: Boolean, drag: (Float) -> U
 }
 
 /**
- * ContentView.swift PortraitHandRow: an Arena-style fanned hand. Tap expands it, hold
+ * Board/PortraitBoardViews.swift PortraitHandRow: an Arena-style fanned hand. Tap expands it, hold
  * inspects, sideways swipes browse, and an upward drag onto your battlefield plays a card.
  */
 @Composable

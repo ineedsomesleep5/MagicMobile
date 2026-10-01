@@ -1,0 +1,597 @@
+import SwiftUI
+import PhotosUI
+import UIKit
+
+enum LandscapeActionDockLayout {
+    static let horizontalPadding: CGFloat = 6
+    static let bottomPadding: CGFloat = 4
+    static let controlSpacing: CGFloat = 4
+    static let primaryLineLimit = 1
+    static func sidebarWidth(hasStack: Bool) -> CGFloat { hasStack ? 176 : 160 }
+}
+
+struct GameplayActionDock: View {
+    @Environment(\.nativeTurnControl) private var nativeTurnControl
+    @Environment(\.startingRollVisible) private var startingRollVisible
+    let snapshot: GameSnapshot
+    let passAction: LegalAction?
+    let yieldActions: [LegalAction]
+    let pendingActionId: String?
+    var compact = false
+    var landscapeSidebar = false
+    var horizontal = false
+    let openPromptDetails: () -> Void
+    let openLog: () -> Void
+    let openSettings: () -> Void
+    let runAction: (LegalAction) -> Void
+
+    private var promptActions: [LegalAction] {
+        CompactPromptPopup.compactLegalPromptActions(in: snapshot)
+    }
+
+    /// No "Open Choice" while the starting roll covers the board: the roll answers that prompt.
+    private var hasPromptDecision: Bool {
+        !startingRollVisible && CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: nil)
+    }
+
+    private var model: GameActionDockModel {
+        GameActionDockModel.make(
+            snapshot: snapshot,
+            passAction: passAction,
+            promptActions: promptActions,
+            decisionRequired: hasPromptDecision,
+            pendingActionId: pendingActionId
+        )
+    }
+
+    var body: some View {
+        if horizontal {
+            HStack(spacing: 6) {
+                secondaryControl.frame(width: 44)
+                controlsMenu
+                primaryButton
+            }
+        } else {
+            VStack(spacing: landscapeSidebar ? LandscapeActionDockLayout.controlSpacing : 8) {
+                primaryButton
+                HStack(spacing: 6) { secondaryControl; controlsMenu }
+            }
+        }
+    }
+
+    private var primaryButton: some View {
+        VStack(spacing: 2) {
+        Button {
+                    if let primaryAction = model.primaryAction {
+                        runAction(primaryAction)
+                    } else if model.mode == .prompt {
+                        openPromptDetails()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: model.mode == .prompt ? "sparkles" : "forward.end.fill")
+                            .font(.system(size: compact ? 10 : 11, weight: .black))
+                        Text(model.primaryTitle)
+                            .font(.system(size: compact ? 13 : 15, weight: .bold, design: .serif))
+                            .lineLimit(landscapeSidebar ? LandscapeActionDockLayout.primaryLineLimit : 2)
+                            .minimumScaleFactor(0.62)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(GameplayDockButtonStyle(isPrimary: true))
+                .disabled(!model.isPrimaryEnabled)
+                .accessibilityIdentifier("board.action.primary")
+                .accessibilityHint(showsPriorityHelp ? GameplayActionPresentation.priorityHint(hasStack: hasStackForPriority) : "")
+                // A finger-down on Pass must not become a new prompt's action
+                // if an engine update replaces this control before finger-up.
+                .id("\(model.primaryAction?.id ?? "none"):\(snapshot.promptEnvelopeV2?.id ?? "none"):\(model.primaryAction?.messageId ?? snapshot.promptEnvelopeV2?.messageId ?? -1)")
+            // The landscape sidebar keeps its height for the stack; the hint stays in VoiceOver.
+            if showsPriorityHelp && !landscapeSidebar {
+                Text(GameplayActionPresentation.priorityDetail(hasStack: hasStackForPriority))
+                    .font(.caption2)
+                    .foregroundStyle(MagicPalette.parchment.opacity(0.8))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+
+    private var showsPriorityHelp: Bool {
+        model.mode == .priority && model.isPrimaryEnabled && model.primaryAction?.type == "pass_priority"
+    }
+
+    private var hasStackForPriority: Bool {
+        !snapshot.stackTopFirst.isEmpty || snapshot.players.contains { !$0.zones.stack.isEmpty }
+    }
+
+    private var controlsMenu: some View {
+        Menu {
+                    if model.mode == .prompt {
+                        ForEach(model.promptActions.filter { $0.id != model.primaryAction?.id }) { action in
+                            Button(action.label) {
+                                runAction(action)
+                            }
+                            .disabled(pendingActionId != nil)
+                        }
+                        Button("All Choices", action: openPromptDetails)
+                        Divider()
+                    }
+                    Button(action: openLog) {
+                        Label("Game Log", systemImage: "list.bullet.rectangle")
+                    }
+                    if snapshot.source == "xmage-ondevice", model.mode != .prompt {
+                        Button("More actions", action: openPromptDetails)
+                    }
+                    Button(action: openSettings) {
+                        Label("Game Settings", systemImage: "gearshape.fill")
+                    }
+                } label: {
+                    Image(systemName: model.mode == .prompt && model.promptActions.count > 1 ? "ellipsis.circle.fill" : "slider.horizontal.3")
+                        .font(.system(size: 14, weight: .black))
+                }
+                .buttonStyle(GameplayDockMenuButtonStyle())
+                .accessibilityLabel(model.mode == .prompt && model.promptActions.count > 1 ? "More choices and game controls" : "Game controls")
+    }
+
+    @ViewBuilder private var secondaryControl: some View {
+            if let control = nativeTurnControl {
+                if control.isAutoPassing {
+                    Button(action: control.stop) {
+                        secondaryLabel("Stop skipping", icon: "stop.fill")
+                    }
+                    .modifier(DockSecondaryButtonStyle(circular: horizontal))
+                    .accessibilityLabel("Stop skipping")
+                    .accessibilityHint(control.status ?? "Stops future automatic passes")
+                } else {
+                    Menu {
+                        Button("End turn — skip stack responses", action: control.skipResponses)
+                            .disabled(!control.canSkipResponses)
+                        Button("Skip to my turn — skip stack responses", action: control.skipToMyTurn)
+                            .disabled(!control.canSkipToMyTurn)
+                        Button("End turn — stop for responses", action: control.endTurn)
+                            .disabled(!control.canEndTurn)
+                    } label: {
+                        secondaryLabel("Skip…", icon: "forward.end")
+                    }
+                    .modifier(DockSecondaryButtonStyle(circular: horizontal))
+                    .disabled(!control.canEndTurn && !control.canSkipResponses && !control.canSkipToMyTurn)
+                    .accessibilityLabel("Skip options")
+                    .accessibilityHint("Choose how long to skip responses. Required choices always stop skipping.")
+                }
+            } else if model.showsPromptDetails {
+                Button(action: openPromptDetails) {
+                    secondaryLabel("Choices", icon: "list.bullet.rectangle.portrait")
+                }
+                .modifier(DockSecondaryButtonStyle(circular: horizontal))
+                .accessibilityLabel("View all choices")
+            } else {
+                YieldActionsControl(
+                    snapshot: snapshot,
+                    actions: yieldActions,
+                    fontSize: compact ? 8 : 10,
+                    iconOnly: horizontal,
+                    runAction: runAction
+                )
+            }
+    }
+
+    private func secondaryLabel(_ title: String, icon: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+            if !horizontal { Text(title).lineLimit(2) }
+        }
+        .font(.system(size: 14, weight: .semibold))
+        .frame(maxWidth: .infinity, minHeight: 44)
+    }
+}
+
+struct GameplayDockButtonStyle: ButtonStyle {
+    let isPrimary: Bool
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .pressSound(.uiTap, isPressed: configuration.isPressed)
+            .foregroundStyle(isPrimary ? Color.white : MagicPalette.parchment)
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(
+                LinearGradient(
+                    colors: backgroundColors(isPressed: configuration.isPressed),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: Capsule()
+            )
+            .overlay(Capsule().strokeBorder(isPrimary ? Color(red: 1, green: 0.79, blue: 0.39) : MagicPalette.parchment.opacity(0.25), lineWidth: isPrimary ? 1.5 : 1))
+            .shadow(color: isPrimary && isEnabled ? Color.orange.opacity(0.35) : .clear, radius: 8, y: 2)
+            .opacity(isEnabled ? 1 : 0.42)
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: configuration.isPressed)
+    }
+
+    private func backgroundColors(isPressed: Bool) -> [Color] {
+        if isPrimary {
+            return isPressed
+                ? [Color(red: 0.66, green: 0.28, blue: 0.08), Color(red: 0.40, green: 0.12, blue: 0.03)]
+                : [Color(red: 0.78, green: 0.31, blue: 0.065), Color(red: 0.64, green: 0.20, blue: 0.05)]
+        }
+        return [MagicPalette.iron.opacity(0.88), MagicPalette.leather.opacity(0.76)]
+    }
+}
+
+/// The portrait dock shows its secondary control as an icon beside the settings button;
+/// give it the same 44pt circle instead of a wide capsule spilling past its slot. Applied
+/// as real button styles so each keeps its own environment (enabled state, Reduce Motion).
+struct DockSecondaryButtonStyle: ViewModifier {
+    let circular: Bool
+    func body(content: Content) -> some View {
+        if circular { content.buttonStyle(GameplayDockMenuButtonStyle()) }
+        else { content.buttonStyle(GameplayDockButtonStyle(isPrimary: false)) }
+    }
+}
+
+struct CompactOrCircleButtonStyle: ViewModifier {
+    let circular: Bool
+    func body(content: Content) -> some View {
+        if circular { content.buttonStyle(GameplayDockMenuButtonStyle()) }
+        else { content.buttonStyle(CompactActionButtonStyle(isPrimary: false)) }
+    }
+}
+
+struct GameplayDockMenuButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(MagicPalette.parchment)
+            .frame(width: 44, height: 44)
+            .background(configuration.isPressed ? MagicPalette.brass.opacity(0.62) : MagicPalette.iron.opacity(0.84), in: Circle())
+            .overlay(Circle().stroke(MagicPalette.parchment.opacity(0.25), lineWidth: 1))
+            .contentShape(Rectangle())
+    }
+}
+
+struct PortraitBottomCommandBar: View {
+    let humanName: String
+    let human: PlayerGameState
+    let opponentId: String
+    let manaPool: ManaPool?
+    let passAction: LegalAction?
+    let yieldActions: [LegalAction]
+    let pendingActionId: String?
+    let snapshot: GameSnapshot
+    @Binding var selectedCard: ZoneCard?
+    @Binding var inspectedCard: ZoneCard?
+    let openLog: () -> Void
+    let openSettings: () -> Void
+    let openPromptDetails: () -> Void
+    let viewZone: (String, [ZoneCard]) -> Void
+    let runAction: (LegalAction) -> Void
+    let runCommand: (GameCommand, String, String) -> Void
+    @State private var isStackOpen = false
+    @State private var isEmotePickerOpen = false
+    @Environment(\.emoteCenter) private var emoteCenter
+
+    var body: some View {
+        GeometryReader { proxy in
+            VStack(spacing: 6) {
+                HStack(spacing: 4) {
+                    PlayerZoneMenu(player: human, viewZone: viewZone, snapshot: snapshot, pendingActionID: pendingActionId)
+                    BoardPlayerEffects(player: human, attachments: BattlefieldAttachments.enchanting(playerID: human.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: viewZone)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        ManaPoolHUD(manaPool: manaPool, compact: true,
+                            payableSymbols: GameplayAffordances.floatingManaSymbols(in: snapshot, pendingActionID: pendingActionId),
+                            payMana: { symbol in
+                                if pendingActionId == nil, let command = GameplayAffordances.floatingManaCommand(symbol: symbol, in: snapshot) {
+                                    runCommand(command, "Spend floating {\(symbol)}", "floating-\(snapshot.promptEnvelopeV2?.id ?? "")-\(symbol)")
+                                }
+                            })
+                    }
+                    .frame(maxWidth: .infinity)
+                    .accessibilityLabel("Floating mana; swipe to view all colors")
+                    BoardStackTray(objects: snapshot.stackTopFirst,
+                                   count: snapshot.xmage?.stack.count ?? human.zones.stack.count) { isStackOpen = true }
+                    if let emoteCenter { TableChatButton(center: emoteCenter) }
+                }
+                HStack(spacing: 8) {
+                    Button {
+                        if emoteCenter != nil { isEmotePickerOpen = true }
+                    } label: {
+                        VStack(spacing: 0) {
+                            Image(systemName: "heart.fill").font(.system(size: 9))
+                                .foregroundStyle(MagicPalette.antiqueGold)
+                            BoardLifeTotal(life: human.life).id(human.playerId)
+                                .font(.system(size: 23, weight: .bold, design: .serif))
+                                .foregroundStyle(.white).monospacedDigit()
+                        }
+                        .frame(width: 52, height: 52)
+                        .background(.black.opacity(0.85), in: Circle())
+                        .overlay(Circle().strokeBorder(MagicPalette.antiqueGold.opacity(snapshot.isViewer(snapshot.activePlayerId) ? 1 : 0.65),
+                                                       lineWidth: snapshot.isViewer(snapshot.activePlayerId) ? 3 : 2))
+                        .shadow(color: MagicPalette.antiqueGold.opacity(snapshot.isViewer(snapshot.activePlayerId) ? 0.7 : 0), radius: 10)
+                        .animation(.easeInOut(duration: 0.35), value: snapshot.activePlayerId)
+                    }
+                    .buttonStyle(.plain)
+                    .overlay(alignment: .bottomLeading) {
+                        if let emoteCenter {
+                            EmoteBubbleSlot(center: emoteCenter, playerID: human.playerId)
+                                .fixedSize()
+                                .offset(y: -62)
+                        }
+                    }
+                    .popover(isPresented: $isEmotePickerOpen) {
+                        if let emoteCenter {
+                            EmotePicker(center: emoteCenter, snapshot: snapshot) { isEmotePickerOpen = false }
+                                .presentationCompactAdaptation(.popover)
+                        }
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Your life: \(human.life)")
+                    .accessibilityHint(emoteCenter == nil ? "" : "Opens quick chat")
+                    .accessibilityAddTraits(emoteCenter == nil ? [] : .isButton)
+                    .accessibilityIdentifier("board.lifeOrb")
+                    GameplayActionDock(
+                        snapshot: snapshot,
+                        passAction: passAction,
+                        yieldActions: yieldActions,
+                        pendingActionId: pendingActionId,
+                        horizontal: true,
+                        openPromptDetails: openPromptDetails,
+                        openLog: openLog,
+                        openSettings: openSettings,
+                        runAction: runAction
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.horizontal, 4)
+            .onAppear {
+                #if DEBUG
+                isStackOpen = snapshot.id == "design-preview-stack-response-prompt"
+                #endif
+            }
+            .sheet(isPresented: $isStackOpen) {
+                BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+            }
+            .onChange(of: isStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
+        }
+    }
+}
+
+struct BoardStackInspector: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.nativeTurnControl) private var turnControl
+    let snapshot: GameSnapshot
+    @Binding var selectedCard: ZoneCard?
+    @Binding var inspectedCard: ZoneCard?
+
+    var body: some View {
+        GeometryReader { geometry in
+        VStack(spacing: 0) {
+            HStack {
+                Text("Stack").font(.headline)
+                Spacer()
+                if let turnControl, turnControl.isAutoPassing {
+                    Button("Stop skipping", action: turnControl.stop)
+                        .frame(minHeight: 44)
+                }
+                Button("Done") { inspectedCard = nil; dismiss() }
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("board.stack.done")
+            }
+            PortraitStackLane(snapshot: snapshot, humanStack: snapshot.human?.zones.stack ?? [],
+                              legalActions: snapshot.legalActions ?? [],
+                              selectedCard: $selectedCard, inspectedCard: $inspectedCard,
+                              horizontal: geometry.size.width > geometry.size.height)
+                .overlay {
+                    if let inspectedCard {
+                        CardInspector(card: inspectedCard)
+                            .overlay(alignment: .topTrailing) {
+                                Button("Close card") { self.inspectedCard = nil }
+                                    .frame(minHeight: 44).padding(8)
+                            }
+                            .inspectionTouchPassthrough()
+                    }
+                }
+        }
+        .padding(12)
+        }
+        .presentationDetents([.height(460), .large])
+        .presentationContentInteraction(.scrolls)
+        .presentationDragIndicator(.visible)
+    }
+}
+
+/// Only the engine's authorized zone projection is ever presented.
+struct PlayerZoneMenu: View {
+    @Environment(\.boardZoneInspectionAction) private var inspectZone
+    let player: PlayerGameState
+    let viewZone: (String, [ZoneCard]) -> Void
+    var snapshot: GameSnapshot? = nil
+    var pendingActionID: String? = nil
+
+    private var commanderReady: Bool {
+        snapshot.map { GameplayAffordances.commanderCastAvailable(player: player, snapshot: $0, pendingActionID: pendingActionID) } ?? false
+    }
+
+    var body: some View {
+        Menu {
+            Button(commanderReady ? "Command · Cast available" : "Command · \(player.zones.command.count)") { open(.command, player.zones.command) }
+            Button("Graveyard · \(player.zones.graveyard.count)") { open(.graveyard, player.zones.graveyard) }
+            Button("Exile · \(player.zones.exile.count)") { open(.exile, player.zones.exile) }
+            Button("Hand · \(player.zones.visibleHandCount)") { open(.hand, player.zones.hand) }
+            Button("Library · \(player.zones.visibleLibraryCount)") { open(.library, player.zones.library) }
+            Button("Battlefield · \(player.zones.battlefield.count)") { open(.battlefield, player.zones.battlefield) }
+            if let snapshot {
+                Divider()
+                ForEach(BoardZoneReference.namedReferences(in: snapshot), id: \.self) { reference in
+                    Button("\(reference.title(in: snapshot)) · \(reference.cards(in: snapshot).count)") {
+                        if let inspectZone { inspectZone(reference) }
+                        else { viewZone(reference.title(in: snapshot), reference.cards(in: snapshot)) }
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "square.grid.2x2")
+                .font(.system(size: 12, weight: .semibold))
+                .frame(minWidth: 44, minHeight: 44)
+                .foregroundStyle(commanderReady ? .white : MagicPalette.parchment)
+                .background(commanderReady ? MagicPalette.antiqueGold.opacity(0.22) : .clear, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(commanderReady ? .white.opacity(0.9) : .clear, lineWidth: 1.5))
+                .shadow(color: commanderReady ? MagicPalette.antiqueGold.opacity(0.75) : .clear, radius: 7)
+        }
+        .accessibilityLabel("\(player.displayName ?? player.playerId) zones\(commanderReady ? ", commander cast available" : "")")
+        .accessibilityIdentifier("board.zones.\(player.playerId)")
+    }
+
+    private func open(_ zone: BoardZoneReference.PlayerZone, _ cards: [ZoneCard]) {
+        if let inspectZone { inspectZone(.player(playerID: player.playerId, zone: zone)) }
+        else { viewZone("\(player.displayName ?? player.playerId) · \(zone.rawValue.capitalized)", cards) }
+    }
+}
+
+enum StackTargetPresentation {
+    static func labels(for ids: [String], in snapshot: GameSnapshot) -> [String] {
+        let cards = PortraitInteractionPolicy.authorizedCards(snapshot)
+        return ids.map { id in
+            if let player = snapshot.players.first(where: { CombatPlayerIdentity.ids(for: $0.playerId, in: snapshot).contains(id) }) {
+                return snapshot.playerLabel(player.playerId)
+            }
+            if let card = cards.first(where: { $0.id == id }) {
+                return NativeCardArtworkPolicy.permitsLookup(card: card) ? card.card.name : "Hidden card"
+            }
+            if let object = snapshot.xmage?.stack.first(where: { $0.id == id || $0.objectId == id }) {
+                return object.displayName
+            }
+            return "Unavailable target"
+        }
+    }
+}
+
+struct PortraitStackLane: View {
+    let snapshot: GameSnapshot
+    let humanStack: [ZoneCard]
+    let legalActions: [LegalAction]
+    @Binding var selectedCard: ZoneCard?
+    @Binding var inspectedCard: ZoneCard?
+    var horizontal = false
+
+    var body: some View {
+        VStack(spacing: 5) {
+            HStack(spacing: 4) {
+                Text("STACK")
+                    .font(.headline)
+                    .foregroundStyle(MagicPalette.antiqueGold)
+                Text("\(stackCount)")
+                    .font(.headline)
+                    .foregroundStyle(.white.opacity(0.68))
+                Spacer(minLength: 0)
+                Text(responseLabel)
+                    .font(.caption.bold())
+                    .foregroundStyle(responseColor)
+            }
+            .padding(.horizontal, 2)
+
+            Divider()
+                .background(MagicPalette.antiqueGold.opacity(0.22))
+
+            if stackCount == 0 {
+                VStack(spacing: 5) {
+                    Image(systemName: "square.stack.3d.up")
+                        .font(.system(size: 18, weight: .black))
+                        .foregroundStyle(MagicPalette.antiqueGold.opacity(0.76))
+                    Text("No stack")
+                        .font(.system(size: 9, weight: .black))
+                        .foregroundStyle(.white)
+                    Text("Spells and abilities appear here")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(MagicPalette.parchment.opacity(0.68))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView(.vertical, showsIndicators: true) {
+                    VStack(spacing: 6) {
+                        ForEach(Array(xmageObjects.enumerated()), id: \.element.id) { _, object in
+                            stackObjectView(object)
+                        }
+                        if xmageObjects.isEmpty {
+                            ForEach(Array(humanStack.reversed().enumerated()), id: \.element.id) { _, card in
+                                stackCardView(card)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .accessibilityIdentifier("board.stack.items")
+            }
+        }
+        .padding(7)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(MagicPalette.iron.opacity(0.78), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MagicPalette.antiqueGold.opacity(0.30), lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func stackObjectView(_ object: XmageStackObject) -> some View {
+        let layout = horizontal ? AnyLayout(HStackLayout(alignment: .top, spacing: 16)) : AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+        layout {
+            if horizontal { stackArtwork(object) }
+            VStack(alignment: .leading, spacing: 8) {
+            Text(object.displayName).font(.headline).foregroundStyle(MagicPalette.parchment)
+            Text("Source: \(object.displaySourceName)").font(.caption).foregroundStyle(.secondary)
+            if let targets = object.targetIds, !targets.isEmpty {
+                Text("Targets: \(StackTargetPresentation.labels(for: targets, in: snapshot).joined(separator: ", "))")
+                    .font(.subheadline).foregroundStyle(MagicPalette.parchment)
+            }
+            if !horizontal { stackArtwork(object) }
+            if let rules = object.rulesText {
+                GameRulesText(source: rules,
+                              cardName: object.displaySourceCard?.card.name ?? object.sourceName,
+                              isHidden: object.displaySourceCard.map { !NativeCardArtworkPolicy.permitsLookup(card: $0) } ?? false)
+                    .font(.body).foregroundStyle(MagicPalette.parchment)
+            }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private func stackArtwork(_ object: XmageStackObject) -> some View {
+        if let card = object.displaySourceCard {
+            stackCardView(card)
+        } else {
+            SyntheticStackObjectTile(object: object, width: horizontal ? 150 : 180, height: horizontal ? 210 : 252)
+        }
+    }
+
+    private func stackCardView(_ card: ZoneCard) -> some View {
+        CardTile(card: card, selected: false, legal: false, zoneName: "Stack", width: horizontal ? 150 : 180, height: horizontal ? 210 : 252, ignoreTappedRotation: true, imageVariant: .inspection)
+            .onTapGesture { inspectedCard = card }
+            .accessibilityHint("Tap to inspect source card")
+    }
+
+    private var xmageObjects: [XmageStackObject] {
+        snapshot.stackTopFirst
+    }
+
+    private var stackCount: Int {
+        if let count = snapshot.xmage?.stack.count, count > 0 {
+            return count
+        }
+        return humanStack.count
+    }
+
+    private var responseLabel: String {
+        legalActions.contains { ["pass_priority", "pass_until_response", "advance_phase"].contains($0.type) } ? "RESPOND" : "WAIT"
+    }
+
+    private var responseColor: Color {
+        responseLabel == "RESPOND" ? MagicPalette.legalEmerald : .white.opacity(0.55)
+    }
+
+}

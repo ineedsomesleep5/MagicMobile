@@ -120,7 +120,7 @@ fun AdaptiveGrid(minimum: Float, spacing: Float, count: Int, item: @Composable (
 }
 
 /**
- * ContentView.swift UniversalPromptActionPanel: every control XMage exposes for the current
+ * Board/PromptActionPanel.swift UniversalPromptActionPanel: every control XMage exposes for the current
  * prompt — choices, targets, cards, abilities, piles, amounts, order, mana — plus the game's
  * other legal actions and zones.
  */

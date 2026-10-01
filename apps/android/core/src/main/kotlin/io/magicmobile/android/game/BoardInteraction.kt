@@ -4,7 +4,7 @@ import java.text.Normalizer
 
 /**
  * Ports of apps/ios/MagicMobile/GameBoardInteractionState.swift, PortraitInteractionPolicy.swift,
- * PromptCommandBuilder.swift and the command/selection helpers at the top of ContentView.swift.
+ * PromptCommandBuilder.swift and the command/selection helpers at the top of the iOS Board/ views.
  */
 sealed class GameBoardInteractionMode {
     object Idle : GameBoardInteractionMode()

@@ -5,10 +5,14 @@ releases eligible XMage updates to Android and TestFlight, updates verified webs
 links, and safely merges to main. This is standing authority for the routine
 path below, not permission to bypass a gate or incur charges.
 
-On September 21, Caleb paused Android implementation, builds, version changes and
-releases until he explicitly resumes them. The active weekly Codex automation was
-updated successfully to iOS-only releases. Preserve the existing Android version
-and public download; Android parity is not a gate for an authorized iOS release.
+On September 21, Caleb paused Android; on September 24 he resumed it (see AGENTS.md).
+Since build 22 (iOS) / 13 (Android), iPhone and Android play together at relay
+tables, and a table only seats phones whose XMage commit and card catalogue are
+identical (the relay identity). An engine or catalogue update therefore has to
+reach both platforms together, or mixed tables stop working until the other side
+updates. The weekly automation still has iOS-only release authority from
+September 21: prepare and validate the matching Android build, then stop and ask
+Caleb before publishing either platform's engine update alone.
 
 ## Scope and stopping conditions
 
@@ -44,17 +48,17 @@ and public download; Android parity is not a gate for an authorized iOS release.
    unchanged inputs. Never weaken the trusted native policy or substitute fixture
    success for real engines.
 5. Verify native artifacts, app compilation/linkage, privacy, signing and relevant
-   runtime acceptance for iOS. Preserve Game Center. Keep
-   dedicated Online disabled until its separate hosting, database concurrency,
-   authentication and real cross-platform gameplay gates pass.
+   runtime acceptance for iOS and Android. Preserve Game Center and the relay
+   tables (`chat-1` identity); profiles use Supabase `mm_*` functions and need no
+   engine change.
 6. Keep marketing version **0.1.1**. Check Apple and the ledger for an unused iOS
-   visible build. Leave Android's versionCode, artifact and links unchanged. Upload iOS once,
+   visible build, and use an Android versionCode above the last published APK
+   (publishing Android needs Caleb's go-ahead; see above). Upload iOS once,
    verify processing/internal access, then submit to the existing external group
    when Apple permits. Never cancel existing review or claim pending approval is
    external availability. Reconcile interrupted uploads before retrying.
-7. When engine/bridge inputs changed, build/test the matching self-host runtime
-   with the manual multiplayer packaging workflow. Publish checksum-pinned assets
-   and update launcher references together; no moving executable `latest` URL.
+7. (Retired.) The hosted Online server and its self-host packaging went offline on
+   September 24; there is no server runtime to rebuild.
 8. Update and verify website artifact links, build labels and TestFlight status.
    Recheck required PR checks and source identity, then merge safely without force
    pushes. Record exact source, runs/artifacts, hashes, builds, links and remaining

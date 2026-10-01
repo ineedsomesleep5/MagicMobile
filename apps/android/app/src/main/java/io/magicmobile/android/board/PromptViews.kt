@@ -85,7 +85,7 @@ fun PromptPill(snapshot: GameSnapshot, modifier: Modifier = Modifier, combatSele
     }
 }
 
-/** The mana-payment rules behind ManaPaymentTray (its static helpers in ContentView.swift). */
+/** The mana-payment rules behind ManaPaymentTray (its static helpers in Board/CompactPromptPopup.swift). */
 object ManaPaymentTrayRules {
     fun manaUndoActions(snapshot: GameSnapshot): List<LegalAction> {
         val undoTypes = setOf("undo_mana", "cancel_payment", "cancel_mana_payment")
