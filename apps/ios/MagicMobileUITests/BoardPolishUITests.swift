@@ -406,8 +406,10 @@ final class BoardPolishUITests: XCTestCase {
         XCTAssertFalse(application.staticTexts["Poison"].exists, "Counters are icons, not words")
         captureImage(name: "tavern-opponent-popover-swapped")
 
-        // Close it with a tap on the table's right edge, clear of the pop-over's rows.
-        application.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.6)).tap()
+        // Close it the way a finger does, on the pop-over's dismiss region outside it.
+        let outside = application.otherElements["PopoverDismissRegion"]
+        XCTAssertTrue(outside.waitForExistence(timeout: 5))
+        outside.tap()
         XCTAssertTrue(swapToKozilek.waitForNonExistence(timeout: 5))
         let mine = application.buttons["board.lifeOrb"]
         XCTAssertTrue(mine.waitForExistence(timeout: 5))
