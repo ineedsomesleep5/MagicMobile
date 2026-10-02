@@ -36,6 +36,7 @@ final class DeckStudioReleaseUITests: XCTestCase {
         app.launch()
         defer { app.terminate(); XCUIDevice.shared.orientation = .portrait }
         XCTAssertTrue(app.buttons["menu.decks"].waitForExistence(timeout: 20))
+        UITestHarness.settleFirstTouch(app)
         app.buttons["menu.decks"].tap()
         XCTAssertTrue(app.buttons["deckStudio.create"].waitForExistence(timeout: 15))
         app.buttons["deckStudio.create"].tap()
